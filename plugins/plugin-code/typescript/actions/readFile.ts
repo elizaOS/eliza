@@ -8,8 +8,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import type { CoderService } from "../services/coderService";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
+import type { CoderService } from "../services/coderService";
 
 function extToLang(ext: string): string {
   const e = ext.toLowerCase();

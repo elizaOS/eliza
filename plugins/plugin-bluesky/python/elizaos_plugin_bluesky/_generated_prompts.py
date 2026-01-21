@@ -14,7 +14,7 @@ GENERATE_DM_TEMPLATE = """Generate a friendly direct message response under 200 
 
 GENERATE_POST_TEMPLATE = """Generate an engaging BlueSky post under {{maxLength}} characters."""
 
-TRUNCATE_POST_TEMPLATE = """Shorten to under {{maxLength}} characters: "{{text}}""""
+TRUNCATE_POST_TEMPLATE = """Shorten to under {{maxLength}} characters: "{{text}}""" ""
 
 __all__ = [
     "GENERATE_DM_TEMPLATE",

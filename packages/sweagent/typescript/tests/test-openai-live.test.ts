@@ -55,7 +55,10 @@ async function callOpenAI(
 
   const promptTokens = Math.max(
     1,
-    messages.reduce((sum, m) => sum + Math.max(1, Math.floor(m.content.length / 4)), 0),
+    messages.reduce(
+      (sum, m) => sum + Math.max(1, Math.floor(m.content.length / 4)),
+      0,
+    ),
   );
   const completionTokens = Math.min(
     maxTokens,

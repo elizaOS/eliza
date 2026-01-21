@@ -39,25 +39,25 @@ export const POINTS = {
  * Used in balance transactions and points service to track point movements.
  */
 export type PointsReason =
-  | 'initial_signup'
-  | 'profile_completion'
-  | 'farcaster_link'
-  | 'farcaster_follow'
-  | 'twitter_link'
-  | 'twitter_follow'
-  | 'discord_link'
-  | 'discord_join'
-  | 'wallet_connect'
-  | 'share_action'
-  | 'share_to_twitter'
-  | 'referral_signup'
-  | 'referral_bonus'
-  | 'referral_qualified'
-  | 'private_group_create'
-  | 'private_channel_create'
-  | 'admin_award'
-  | 'admin_deduction'
-  | 'purchase'
-  | 'transfer_sent'
-  | 'transfer_received'
-  | 'report_reward'; // Reward for successful reporting of CSAM/scammer
+  | "initial_signup"
+  | "profile_completion"
+  | "farcaster_link"
+  | "farcaster_follow"
+  | "twitter_link"
+  | "twitter_follow"
+  | "discord_link"
+  | "discord_join"
+  | "wallet_connect"
+  | "share_action"
+  | "share_to_twitter"
+  | "referral_signup"
+  | "referral_bonus"
+  | "referral_qualified"
+  | "private_group_create"
+  | "private_channel_create"
+  | "admin_award"
+  | "admin_deduction"
+  | "purchase"
+  | "transfer_sent"
+  | "transfer_received"
+  | "report_reward"; // Reward for successful reporting of CSAM/scammer

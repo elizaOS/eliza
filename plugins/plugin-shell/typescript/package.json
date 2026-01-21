@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-shell",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "Shell command execution plugin for ElizaOS with directory restrictions and history tracking",
   "type": "module",
   "main": "dist/index.js",

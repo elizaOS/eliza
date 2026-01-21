@@ -769,7 +769,7 @@ Agent: {{agentName}} (ID: {{agentId}})
 5. If multiple matches exist, use context to disambiguate
 6. Consider recent interactions and relationship strength when resolving ambiguity
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Do NOT include any thinking, reasoning, or <think> sections in your response.
 Go directly to the XML response format without any preamble or explanation.
 
 Return an XML response with:
@@ -806,7 +806,7 @@ COMPONENT_TEMPLATE = """# Task: Extract Source and Update Component Data
    - Includes the new information from the conversation
    - Contains only valid data for this component type
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Do NOT include any thinking, reasoning, or <think> sections in your response.
 Go directly to the XML response format without any preamble or explanation.
 
 Return an XML response with the following structure:
@@ -933,7 +933,7 @@ Be objective and descriptive. Focus on what you can actually see in the image ra
 </instructions>
 
 <output>
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Do NOT include any thinking, reasoning, or <think> sections in your response.
 Go directly to the XML response format without any preamble or explanation.
 
 Respond using XML format like this:
@@ -960,7 +960,7 @@ OPTION_EXTRACTION_TEMPLATE = """# Task: Extract selected task and option from us
 3. Return the task ID (shortened UUID) and selected option name exactly as listed above
 4. If no clear selection is made, return null for both fields
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Do NOT include any thinking, reasoning, or <think> sections in your response.
 Go directly to the XML response format without any preamble or explanation.
 
 Return in XML format:
@@ -1002,7 +1002,7 @@ Message Sender: {{senderName}} (ID: {{senderId}})
   - The targetEntityId is the UUID of the entity being interacted with.
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Do NOT include any thinking, reasoning, or <think> sections in your response.
 Go directly to the XML response format without any preamble or explanation.
 
 Generate a response in the following format:

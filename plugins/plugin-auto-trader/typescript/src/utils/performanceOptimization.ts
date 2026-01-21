@@ -1,4 +1,4 @@
-import { OHLCV } from '../types.ts';
+import type { OHLCV } from "../types.ts";
 
 /**
  * Performance optimization utilities for handling large historical datasets
@@ -16,50 +16,51 @@ export interface StreamingIndicator {
 }
 
 /**
- * Efficient batch processing for large datasets
+ * Process data in batches to avoid memory overflow
  */
-export class BatchDataProcessor {
-  /**
-   * Process data in batches to avoid memory overflow
-   */
-  static async processBatches<T, R>(
-    data: T[],
-    processor: BatchProcessor<T, R>,
-    options?: {
-      maxConcurrency?: number;
-      onProgress?: (processed: number, total: number) => void;
-    }
-  ): Promise<R[]> {
-    const { maxConcurrency = 3, onProgress } = options || {};
-    const results: R[] = [];
-    const batchSize = processor.batchSize;
+export async function processBatches<T, R>(
+  data: T[],
+  processor: BatchProcessor<T, R>,
+  options?: {
+    maxConcurrency?: number;
+    onProgress?: (processed: number, total: number) => void;
+  },
+): Promise<R[]> {
+  const { maxConcurrency = 3, onProgress } = options || {};
+  const results: R[] = [];
+  const batchSize = processor.batchSize;
 
-    let processed = 0;
-    const totalBatches = Math.ceil(data.length / batchSize);
+  let processed = 0;
+  const _totalBatches = Math.ceil(data.length / batchSize);
 
-    // Process batches with concurrency control
-    for (let i = 0; i < data.length; i += batchSize * maxConcurrency) {
-      const batchPromises: Promise<R[]>[] = [];
+  // Process batches with concurrency control
+  for (let i = 0; i < data.length; i += batchSize * maxConcurrency) {
+    const batchPromises: Promise<R[]>[] = [];
 
-      for (let j = 0; j < maxConcurrency && i + j * batchSize < data.length; j++) {
-        const start = i + j * batchSize;
-        const end = Math.min(start + batchSize, data.length);
-        const batch = data.slice(start, end);
+    for (
+      let j = 0;
+      j < maxConcurrency && i + j * batchSize < data.length;
+      j++
+    ) {
+      const start = i + j * batchSize;
+      const end = Math.min(start + batchSize, data.length);
+      const batch = data.slice(start, end);
 
-        batchPromises.push(processor.process(batch));
-      }
-
-      const batchResults = await Promise.all(batchPromises);
-      batchResults.forEach((res) => results.push(...res));
-
-      processed += batchPromises.length;
-      if (onProgress) {
-        onProgress(processed * batchSize, data.length);
-      }
+      batchPromises.push(processor.process(batch));
     }
 
-    return results;
+    const batchResults = await Promise.all(batchPromises);
+    for (const res of batchResults) {
+      results.push(...res);
+    }
+
+    processed += batchPromises.length;
+    if (onProgress) {
+      onProgress(processed * batchSize, data.length);
+    }
   }
+
+  return results;
 }
 
 /**
@@ -93,10 +94,10 @@ export class StreamingRSI implements StreamingIndicator {
           this.avgGain = this.gains.reduce((a, b) => a + b, 0) / this.period;
           this.avgLoss = this.losses.reduce((a, b) => a + b, 0) / this.period;
         }
-      } else {
+      } else if (this.avgGain !== undefined && this.avgLoss !== undefined) {
         // Use smoothed averages (Wilder's method)
-        this.avgGain = (this.avgGain! * (this.period - 1) + gain) / this.period;
-        this.avgLoss = (this.avgLoss! * (this.period - 1) + loss) / this.period;
+        this.avgGain = (this.avgGain * (this.period - 1) + gain) / this.period;
+        this.avgLoss = (this.avgLoss * (this.period - 1) + loss) / this.period;
       }
     }
 
@@ -149,8 +150,9 @@ export class StreamingEMA implements StreamingIndicator {
       if (this.count === this.period) {
         this.ema = this.sum / this.period;
       }
-    } else {
-      this.ema = candle.close * this.multiplier + this.ema! * (1 - this.multiplier);
+    } else if (this.ema !== undefined) {
+      this.ema =
+        candle.close * this.multiplier + this.ema * (1 - this.multiplier);
     }
   }
 
@@ -197,41 +199,39 @@ export class SlidingWindow<T> {
 }
 
 /**
- * Optimized data aggregator for different timeframes
+ * Aggregate 1-minute candles into higher timeframes
  */
-export class TimeframeAggregator {
-  /**
-   * Aggregate 1-minute candles into higher timeframes
-   */
-  static aggregate(candles: OHLCV[], targetMinutes: number): OHLCV[] {
-    if (targetMinutes <= 1) {
-      return candles;
-    }
-
-    const aggregated: OHLCV[] = [];
-    let currentGroup: OHLCV[] = [];
-
-    for (const candle of candles) {
-      currentGroup.push(candle);
-
-      // Check if we've collected enough candles for the target timeframe
-      if (currentGroup.length >= targetMinutes) {
-        const aggregatedCandle: OHLCV = {
-          timestamp: currentGroup[0].timestamp,
-          open: currentGroup[0].open,
-          high: Math.max(...currentGroup.map((c) => c.high)),
-          low: Math.min(...currentGroup.map((c) => c.low)),
-          close: currentGroup[currentGroup.length - 1].close,
-          volume: currentGroup.reduce((sum, c) => sum + c.volume, 0),
-        };
-
-        aggregated.push(aggregatedCandle);
-        currentGroup = [];
-      }
-    }
-
-    return aggregated;
+export function aggregateTimeframe(
+  candles: OHLCV[],
+  targetMinutes: number,
+): OHLCV[] {
+  if (targetMinutes <= 1) {
+    return candles;
   }
+
+  const aggregated: OHLCV[] = [];
+  let currentGroup: OHLCV[] = [];
+
+  for (const candle of candles) {
+    currentGroup.push(candle);
+
+    // Check if we've collected enough candles for the target timeframe
+    if (currentGroup.length >= targetMinutes) {
+      const aggregatedCandle: OHLCV = {
+        timestamp: currentGroup[0].timestamp,
+        open: currentGroup[0].open,
+        high: Math.max(...currentGroup.map((c) => c.high)),
+        low: Math.min(...currentGroup.map((c) => c.low)),
+        close: currentGroup[currentGroup.length - 1].close,
+        volume: currentGroup.reduce((sum, c) => sum + c.volume, 0),
+      };
+
+      aggregated.push(aggregatedCandle);
+      currentGroup = [];
+    }
+  }
+
+  return aggregated;
 }
 
 /**
@@ -252,7 +252,7 @@ export class DataCache<K, V> {
     // Evict oldest entries if cache is full
     if (this.cache.size >= this.maxSize) {
       const oldestKey = Array.from(this.cache.entries()).sort(
-        (a, b) => a[1].timestamp - b[1].timestamp
+        (a, b) => a[1].timestamp - b[1].timestamp,
       )[0][0];
       this.cache.delete(oldestKey);
     }
@@ -297,7 +297,7 @@ export class PerformanceTracker {
         this.metrics.set(operation, []);
       }
 
-      this.metrics.get(operation)!.push(durationMs);
+      this.metrics.get(operation)?.push(durationMs);
     };
   }
 
@@ -321,8 +321,8 @@ export class PerformanceTracker {
   }
 
   logMetrics(): void {
-    console.log('\n=== Performance Metrics ===');
-    for (const [operation, times] of this.metrics.entries()) {
+    console.log("\n=== Performance Metrics ===");
+    for (const [operation, _times] of this.metrics.entries()) {
       const metrics = this.getMetrics(operation);
       if (metrics) {
         console.log(`${operation}:`);

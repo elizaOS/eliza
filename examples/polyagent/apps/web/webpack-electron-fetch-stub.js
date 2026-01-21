@@ -11,10 +11,10 @@
 
 // Use node-fetch for Node.js environments, or global fetch for browser
 // This matches electron-fetch's behavior when electron is not available
-if (typeof window === 'undefined' && typeof require !== 'undefined') {
+if (typeof window === "undefined" && typeof require !== "undefined") {
   // Node.js environment - use node-fetch
   try {
-    module.exports = require('node-fetch');
+    module.exports = require("node-fetch");
   } catch (_e) {
     // Fallback to global fetch if node-fetch is not available
     module.exports = globalThis.fetch || fetch;

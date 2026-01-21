@@ -6,4 +6,3 @@ __all__ = [
     "MinecraftPlugin",
     "create_minecraft_plugin",
 ]
-

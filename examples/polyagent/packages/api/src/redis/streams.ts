@@ -5,8 +5,8 @@
  * Works with any Redis server via the standard Redis protocol.
  */
 
-import type { JsonValue } from '../types';
-import { getRedisClient } from './client';
+import type { JsonValue } from "../types";
+import { getRedisClient } from "./client";
 
 /**
  * Convert a payload object into Redis stream field/value pairs (stringified).
@@ -29,7 +29,7 @@ const encodeStreamPayload = (payload: Record<string, JsonValue>) => {
 export async function streamAdd(
   stream: string,
   payload: Record<string, JsonValue>,
-  opts?: { maxlen?: number }
+  opts?: { maxlen?: number },
 ): Promise<string | null> {
   const client = getRedisClient();
   if (!client) return null;
@@ -42,10 +42,10 @@ export async function streamAdd(
 
   // MAXLEN must come after the stream key and before the entry ID
   if (opts?.maxlen !== undefined) {
-    args.push('MAXLEN', '~', opts.maxlen);
+    args.push("MAXLEN", "~", opts.maxlen);
   }
 
-  args.push('*');
+  args.push("*");
   Object.entries(entry).forEach(([key, value]) => {
     args.push(key, String(value));
   });
@@ -67,14 +67,14 @@ const extractPayload = (fields: unknown[]): Record<string, unknown> | null => {
   for (let i = 0; i < fields.length; i += 2) {
     const key = fields[i];
     const value = fields[i + 1];
-    if (typeof key === 'string') {
+    if (typeof key === "string") {
       obj[key] = value;
     }
   }
 
-  if (typeof obj.payload === 'string') {
+  if (typeof obj.payload === "string") {
     const parsed: unknown = JSON.parse(obj.payload);
-    if (typeof parsed === 'object' && parsed !== null) {
+    if (typeof parsed === "object" && parsed !== null) {
       return parsed as Record<string, unknown>;
     }
     return { payload: obj.payload };
@@ -94,7 +94,7 @@ const extractPayload = (fields: unknown[]): Record<string, unknown> | null => {
 export async function streamRead(
   streams: string[],
   ids: string[],
-  opts?: { count?: number; block?: number }
+  opts?: { count?: number; block?: number },
 ): Promise<StreamMessage[]> {
   const client = getRedisClient();
   if (!client || streams.length === 0 || ids.length === 0) return [];
@@ -106,19 +106,19 @@ export async function streamRead(
   let res: unknown;
   if (opts?.block !== undefined && opts?.count !== undefined) {
     res = await client.xread(
-      'COUNT',
+      "COUNT",
       opts.count,
-      'BLOCK',
+      "BLOCK",
       opts.block,
-      'STREAMS',
-      ...streamArgs
+      "STREAMS",
+      ...streamArgs,
     );
   } else if (opts?.block !== undefined) {
-    res = await client.xread('BLOCK', opts.block, 'STREAMS', ...streamArgs);
+    res = await client.xread("BLOCK", opts.block, "STREAMS", ...streamArgs);
   } else if (opts?.count !== undefined) {
-    res = await client.xread('COUNT', opts.count, 'STREAMS', ...streamArgs);
+    res = await client.xread("COUNT", opts.count, "STREAMS", ...streamArgs);
   } else {
-    res = await client.xread('STREAMS', ...streamArgs);
+    res = await client.xread("STREAMS", ...streamArgs);
   }
 
   const parsed: StreamMessage[] = [];

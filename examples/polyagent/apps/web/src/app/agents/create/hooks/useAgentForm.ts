@@ -1,10 +1,10 @@
-import type { AgentTemplate } from '@polyagent/agents/client';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
-import { useAuth } from '@/hooks/useAuth';
-import { createNameMatchRegex, generateAgentName } from '@/utils/nameGenerator';
+import type { AgentTemplate } from "@polyagent/agents/client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { createNameMatchRegex, generateAgentName } from "@/utils/nameGenerator";
 
-const STORAGE_KEY = 'polyagent_agent_draft';
+const STORAGE_KEY = "polyagent_agent_draft";
 
 // Debounce delay for name replacement in prompts (ms)
 const NAME_REPLACEMENT_DEBOUNCE_MS = 300;
@@ -32,7 +32,7 @@ interface UseAgentFormResult {
   updateProfileField: (field: keyof ProfileFormData, value: string) => void;
   updateAgentField: (
     field: keyof AgentFormData,
-    value: string | number
+    value: string | number,
   ) => void;
   regenerateField: (field: string) => Promise<void>;
   clearDraft: () => void;
@@ -58,15 +58,15 @@ export function useAgentForm(): UseAgentFormResult {
   const [profileData, setProfileData] = useState<ProfileFormData>({
     username: initialName.username,
     displayName: initialName.displayName,
-    bio: '',
-    profileImageUrl: '',
-    coverImageUrl: '',
+    bio: "",
+    profileImageUrl: "",
+    coverImageUrl: "",
   });
 
   const [agentData, setAgentData] = useState<AgentFormData>({
-    system: '',
-    personality: '',
-    tradingStrategy: '',
+    system: "",
+    personality: "",
+    tradingStrategy: "",
     initialDeposit: 100,
   });
 
@@ -77,7 +77,7 @@ export function useAgentForm(): UseAgentFormResult {
   const nameInPromptsRef = useRef<string>(initialName.displayName);
   // Debounce timer for name replacement to handle rapid typing
   const nameReplacementTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
+    null,
   );
 
   // Load template on mount
@@ -87,9 +87,9 @@ export function useAgentForm(): UseAgentFormResult {
       localStorage.removeItem(STORAGE_KEY);
 
       // Load random template
-      const indexResponse = await fetch('/api/agent-templates');
+      const indexResponse = await fetch("/api/agent-templates");
       if (!indexResponse.ok) {
-        console.error('Failed to load template index');
+        console.error("Failed to load template index");
         setIsInitialized(true);
         return;
       }
@@ -103,7 +103,7 @@ export function useAgentForm(): UseAgentFormResult {
       const randomTemplate =
         index.templates[Math.floor(Math.random() * index.templates.length)]!;
       const templateResponse = await fetch(
-        `/api/agent-templates/${randomTemplate}`
+        `/api/agent-templates/${randomTemplate}`,
       );
 
       if (!templateResponse.ok) {
@@ -138,7 +138,7 @@ export function useAgentForm(): UseAgentFormResult {
         personality: template.bio.replace(/\{\{agentName\}\}/g, displayName),
         tradingStrategy: template.tradingStrategy.replace(
           /\{\{agentName\}\}/g,
-          displayName
+          displayName,
         ),
         initialDeposit: prev.initialDeposit,
       }));
@@ -158,7 +158,7 @@ export function useAgentForm(): UseAgentFormResult {
     if (!isInitialized) return;
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ profileData, agentData })
+      JSON.stringify({ profileData, agentData }),
     );
   }, [profileData, agentData, isInitialized]);
 
@@ -168,7 +168,7 @@ export function useAgentForm(): UseAgentFormResult {
 
       // When displayName changes, replace the old name with new name in prompts
       // Debounced to handle rapid typing and prevent race conditions
-      if (field === 'displayName' && value) {
+      if (field === "displayName" && value) {
         // Clear any pending replacement
         if (nameReplacementTimerRef.current) {
           clearTimeout(nameReplacementTimerRef.current);
@@ -188,7 +188,7 @@ export function useAgentForm(): UseAgentFormResult {
               personality: prevAgent.personality.replace(oldNameRegex, value),
               tradingStrategy: prevAgent.tradingStrategy.replace(
                 oldNameRegex,
-                value
+                value,
               ),
             }));
           }
@@ -198,14 +198,14 @@ export function useAgentForm(): UseAgentFormResult {
         }, NAME_REPLACEMENT_DEBOUNCE_MS);
       }
     },
-    []
+    [],
   );
 
   const updateAgentField = useCallback(
     (field: keyof AgentFormData, value: string | number) => {
       setAgentData((prev) => ({ ...prev, [field]: value }));
     },
-    []
+    [],
   );
 
   const regenerateField = useCallback(
@@ -214,16 +214,16 @@ export function useAgentForm(): UseAgentFormResult {
 
       const token = await getAccessToken();
       if (!token) {
-        toast.error('Authentication required');
+        toast.error("Authentication required");
         setGeneratingField(null);
         return;
       }
 
-      const response = await fetch('/api/agents/generate-field', {
-        method: 'POST',
+      const response = await fetch("/api/agents/generate-field", {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           fieldName: field,
@@ -240,7 +240,7 @@ export function useAgentForm(): UseAgentFormResult {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        toast.error(errorData.error || 'Failed to generate field');
+        toast.error(errorData.error || "Failed to generate field");
         setGeneratingField(null);
         return;
       }
@@ -248,23 +248,23 @@ export function useAgentForm(): UseAgentFormResult {
       const result = await response.json();
       const value = (result.value as string).trim();
 
-      if (field === 'personality') {
+      if (field === "personality") {
         const personalityLines = value
-          .split('|')
+          .split("|")
           .map((s: string) => s.trim())
           .filter((s: string) => s);
-        updateAgentField('personality', personalityLines.join('\n'));
+        updateAgentField("personality", personalityLines.join("\n"));
       } else {
         updateAgentField(
           field as keyof AgentFormData,
-          value.replace(/\n\n+/g, '\n')
+          value.replace(/\n\n+/g, "\n"),
         );
       }
 
       toast.success(`Regenerated ${field}!`);
       setGeneratingField(null);
     },
-    [agentData, profileData, getAccessToken, updateAgentField]
+    [agentData, profileData, getAccessToken, updateAgentField],
   );
 
   const clearDraft = useCallback(() => {

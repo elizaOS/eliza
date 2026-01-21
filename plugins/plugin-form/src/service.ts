@@ -96,11 +96,13 @@
 
 import {
   Service,
+  type EventPayload,
   type IAgentRuntime,
+  type JsonValue,
   type UUID,
   logger,
-} from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 import type {
   FormDefinition,
   FormSession,
@@ -118,11 +120,8 @@ import type {
   ActivationContext,
   ExternalActivation,
   PendingExternalFieldSummary,
-} from './types.ts';
-import {
-  FORM_DEFINITION_DEFAULTS,
-  FORM_CONTROL_DEFAULTS,
-} from './types.ts';
+} from "./types";
+import { FORM_DEFINITION_DEFAULTS, FORM_CONTROL_DEFAULTS } from "./types";
 import {
   getActiveSession as storageGetActiveSession,
   getAllActiveSessions as storageGetAllActiveSessions,
@@ -134,14 +133,14 @@ import {
   getSubmissions as storageGetSubmissions,
   getAutofillData,
   saveAutofillData,
-} from './storage.ts';
+} from "./storage";
 import {
   validateField,
   formatValue,
   registerTypeHandler,
   getTypeHandler,
-} from './validation.ts';
-import { registerBuiltinTypes } from './builtins.ts';
+} from "./validation";
+import { registerBuiltinTypes } from "./builtins";
 
 // ============================================================================
 // FORM SERVICE
@@ -162,10 +161,10 @@ import { registerBuiltinTypes } from './builtins.ts';
  */
 export class FormService extends Service {
   /** Service type identifier for runtime.getService() */
-  static serviceType = 'FORM';
+  static serviceType = "FORM";
 
   /** Description shown in agent capabilities */
-  capabilityDescription = 'Manages conversational forms for data collection';
+  capabilityDescription = "Manages conversational forms for data collection";
 
   /**
    * In-memory storage of form definitions.
@@ -195,11 +194,13 @@ export class FormService extends Service {
    */
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new FormService(runtime);
-    
+
     // Register built-in control types
-    registerBuiltinTypes((type, options) => service.registerControlType(type, options));
-    
-    logger.info('[FormService] Started with built-in types');
+    registerBuiltinTypes((type, options) =>
+      service.registerControlType(type, options),
+    );
+
+    logger.info("[FormService] Started with built-in types");
     return service;
   }
 
@@ -207,7 +208,7 @@ export class FormService extends Service {
    * Stop the FormService
    */
   async stop(): Promise<void> {
-    logger.info('[FormService] Stopped');
+    logger.info("[FormService] Stopped");
   }
 
   // ============================================================================
@@ -231,7 +232,8 @@ export class FormService extends Service {
         ...control,
         type: control.type || FORM_CONTROL_DEFAULTS.type,
         required: control.required ?? FORM_CONTROL_DEFAULTS.required,
-        confirmThreshold: control.confirmThreshold ?? FORM_CONTROL_DEFAULTS.confirmThreshold,
+        confirmThreshold:
+          control.confirmThreshold ?? FORM_CONTROL_DEFAULTS.confirmThreshold,
         label: control.label || prettify(control.key),
       })),
     };
@@ -311,14 +313,14 @@ export class FormService extends Service {
    */
   registerControlType(
     type: ControlType,
-    options?: { allowOverride?: boolean }
+    options?: { allowOverride?: boolean },
   ): void {
     const existing = this.controlTypes.get(type.id);
 
     if (existing) {
       if (existing.builtin && !options?.allowOverride) {
         logger.warn(
-          `[FormService] Cannot override builtin type '${type.id}' without allowOverride: true`
+          `[FormService] Cannot override builtin type '${type.id}' without allowOverride: true`,
         );
         return;
       }
@@ -396,10 +398,10 @@ export class FormService extends Service {
     entityId: UUID,
     roomId: UUID,
     options?: {
-      context?: Record<string, unknown>;
-      initialValues?: Record<string, unknown>;
+      context?: Record<string, JsonValue>;
+      initialValues?: Record<string, JsonValue>;
       locale?: string;
-    }
+    },
   ): Promise<FormSession> {
     const form = this.getForm(formId);
     if (!form) {
@@ -407,9 +409,15 @@ export class FormService extends Service {
     }
 
     // Check for existing active session
-    const existing = await storageGetActiveSession(this.runtime, entityId, roomId);
+    const existing = await storageGetActiveSession(
+      this.runtime,
+      entityId,
+      roomId,
+    );
     if (existing) {
-      throw new Error(`Active session already exists for this user/room: ${existing.id}`);
+      throw new Error(
+        `Active session already exists for this user/room: ${existing.id}`,
+      );
     }
 
     const now = Date.now();
@@ -419,20 +427,20 @@ export class FormService extends Service {
     for (const control of form.controls) {
       if (options?.initialValues?.[control.key] !== undefined) {
         fields[control.key] = {
-          status: 'filled',
+          status: "filled",
           value: options.initialValues[control.key],
-          source: 'manual',
+          source: "manual",
           updatedAt: now,
         };
       } else if (control.defaultValue !== undefined) {
         fields[control.key] = {
-          status: 'filled',
+          status: "filled",
           value: control.defaultValue,
-          source: 'default',
+          source: "default",
           updatedAt: now,
         };
       } else {
-        fields[control.key] = { status: 'empty' };
+        fields[control.key] = { status: "empty" };
       }
     }
 
@@ -446,7 +454,7 @@ export class FormService extends Service {
       formVersion: form.version,
       entityId,
       roomId,
-      status: 'active',
+      status: "active",
       fields,
       history: [],
       context: options?.context,
@@ -466,10 +474,12 @@ export class FormService extends Service {
 
     // Execute onStart hook
     if (form.hooks?.onStart) {
-      await this.executeHook(session, 'onStart');
+      await this.executeHook(session, "onStart");
     }
 
-    logger.debug(`[FormService] Started session ${session.id} for form ${formId}`);
+    logger.debug(
+      `[FormService] Started session ${session.id} for form ${formId}`,
+    );
 
     return session;
   }
@@ -477,7 +487,10 @@ export class FormService extends Service {
   /**
    * Get active session for entity in room
    */
-  async getActiveSession(entityId: UUID, roomId: UUID): Promise<FormSession | null> {
+  async getActiveSession(
+    entityId: UUID,
+    roomId: UUID,
+  ): Promise<FormSession | null> {
     return storageGetActiveSession(this.runtime, entityId, roomId);
   }
 
@@ -514,10 +527,10 @@ export class FormService extends Service {
     sessionId: string,
     entityId: UUID,
     field: string,
-    value: unknown,
+    value: JsonValue,
     confidence: number,
-    source: FieldState['source'],
-    messageId?: string
+    source: FieldState["source"],
+    messageId?: string,
   ): Promise<void> {
     const session = await getSessionById(this.runtime, entityId, sessionId);
     if (!session) {
@@ -541,13 +554,13 @@ export class FormService extends Service {
     const validation = validateField(value, control);
 
     // Determine status based on confidence and validation
-    let status: FieldState['status'];
+    let status: FieldState["status"];
     if (!validation.valid) {
-      status = 'invalid';
+      status = "invalid";
     } else if (confidence < (control.confirmThreshold ?? 0.8)) {
-      status = 'uncertain';
+      status = "uncertain";
     } else {
-      status = 'filled';
+      status = "filled";
     }
 
     const now = Date.now();
@@ -590,10 +603,10 @@ export class FormService extends Service {
 
     // Check if all required fields are filled
     const allRequiredFilled = this.checkAllRequiredFilled(session, form);
-    if (allRequiredFilled && session.status === 'active') {
-      session.status = 'ready';
+    if (allRequiredFilled && session.status === "active") {
+      session.status = "ready";
       if (form.hooks?.onReady) {
-        await this.executeHook(session, 'onReady');
+        await this.executeHook(session, "onReady");
       }
     }
 
@@ -602,7 +615,11 @@ export class FormService extends Service {
 
     // Execute onFieldChange hook
     if (form.hooks?.onFieldChange) {
-      await this.executeHook(session, 'onFieldChange', { field, value, oldValue });
+      const hookPayload: Record<string, JsonValue> = { field, value };
+      if (oldValue !== undefined) {
+        hookPayload.oldValue = oldValue;
+      }
+      await this.executeHook(session, "onFieldChange", hookPayload);
     }
   }
 
@@ -611,8 +628,8 @@ export class FormService extends Service {
    */
   async undoLastChange(
     sessionId: string,
-    entityId: UUID
-  ): Promise<{ field: string; restoredValue: unknown } | null> {
+    entityId: UUID,
+  ): Promise<{ field: string; restoredValue: JsonValue } | null> {
     const session = await getSessionById(this.runtime, entityId, sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
@@ -631,13 +648,13 @@ export class FormService extends Service {
     // Restore the old value
     if (lastChange.oldValue !== undefined) {
       session.fields[lastChange.field] = {
-        status: 'filled',
+        status: "filled",
         value: lastChange.oldValue,
-        source: 'correction',
+        source: "correction",
         updatedAt: Date.now(),
       };
     } else {
-      session.fields[lastChange.field] = { status: 'empty' };
+      session.fields[lastChange.field] = { status: "empty" };
     }
 
     session.updatedAt = Date.now();
@@ -649,7 +666,11 @@ export class FormService extends Service {
   /**
    * Skip an optional field
    */
-  async skipField(sessionId: string, entityId: UUID, field: string): Promise<boolean> {
+  async skipField(
+    sessionId: string,
+    entityId: UUID,
+    field: string,
+  ): Promise<boolean> {
     const session = await getSessionById(this.runtime, entityId, sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
@@ -671,7 +692,7 @@ export class FormService extends Service {
     }
 
     session.fields[field] = {
-      status: 'skipped',
+      status: "skipped",
       updatedAt: Date.now(),
     };
 
@@ -684,25 +705,30 @@ export class FormService extends Service {
   /**
    * Confirm an uncertain field value
    */
-  async confirmField(sessionId: string, entityId: UUID, field: string, accepted: boolean): Promise<void> {
+  async confirmField(
+    sessionId: string,
+    entityId: UUID,
+    field: string,
+    accepted: boolean,
+  ): Promise<void> {
     const session = await getSessionById(this.runtime, entityId, sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
     const fieldState = session.fields[field];
-    if (!fieldState || fieldState.status !== 'uncertain') {
+    if (!fieldState || fieldState.status !== "uncertain") {
       return;
     }
 
     const now = Date.now();
 
     if (accepted) {
-      fieldState.status = 'filled';
+      fieldState.status = "filled";
       fieldState.confirmedAt = now;
     } else {
       // Reset the field
-      fieldState.status = 'empty';
+      fieldState.status = "empty";
       fieldState.value = undefined;
       fieldState.confidence = undefined;
     }
@@ -740,9 +766,9 @@ export class FormService extends Service {
     entityId: UUID,
     parentField: string,
     subField: string,
-    value: unknown,
+    value: JsonValue,
     confidence: number,
-    messageId?: string
+    messageId?: string,
   ): Promise<void> {
     const session = await getSessionById(this.runtime, entityId, sessionId);
     if (!session) {
@@ -761,7 +787,9 @@ export class FormService extends Service {
 
     const controlType = this.getControlType(parentControl.type);
     if (!controlType?.getSubControls) {
-      throw new Error(`Control type '${parentControl.type}' is not a composite type`);
+      throw new Error(
+        `Control type '${parentControl.type}' is not a composite type`,
+      );
     }
 
     // Get subcontrols to find the subcontrol definition
@@ -775,37 +803,37 @@ export class FormService extends Service {
 
     // Initialize parent field state if needed
     if (!session.fields[parentField]) {
-      session.fields[parentField] = { status: 'empty' };
+      session.fields[parentField] = { status: "empty" };
     }
     if (!session.fields[parentField].subFields) {
       session.fields[parentField].subFields = {};
     }
 
     // Validate the subfield value
-    let subFieldStatus: FieldState['status'];
+    let subFieldStatus: FieldState["status"];
     let error: string | undefined;
 
     // Use control type's validate if available
     if (controlType.validate) {
       const result = controlType.validate(value, subControl);
       if (!result.valid) {
-        subFieldStatus = 'invalid';
+        subFieldStatus = "invalid";
         error = result.error;
       } else if (confidence < (subControl.confirmThreshold ?? 0.8)) {
-        subFieldStatus = 'uncertain';
+        subFieldStatus = "uncertain";
       } else {
-        subFieldStatus = 'filled';
+        subFieldStatus = "filled";
       }
     } else {
       // Fallback to basic validation
       const validation = validateField(value, subControl);
       if (!validation.valid) {
-        subFieldStatus = 'invalid';
+        subFieldStatus = "invalid";
         error = validation.error;
       } else if (confidence < (subControl.confirmThreshold ?? 0.8)) {
-        subFieldStatus = 'uncertain';
+        subFieldStatus = "uncertain";
       } else {
-        subFieldStatus = 'filled';
+        subFieldStatus = "filled";
       }
     }
 
@@ -814,7 +842,7 @@ export class FormService extends Service {
       status: subFieldStatus,
       value,
       confidence,
-      source: 'extraction',
+      source: "extraction",
       messageId,
       updatedAt: now,
       error,
@@ -855,7 +883,7 @@ export class FormService extends Service {
     for (const subControl of subControls) {
       if (!subControl.required) continue;
       const subField = subFields[subControl.key];
-      if (!subField || subField.status !== 'filled') {
+      if (!subField || subField.status !== "filled") {
         return false;
       }
     }
@@ -870,9 +898,12 @@ export class FormService extends Service {
    * @param parentField - The parent control key
    * @returns Record of subfield key to value
    */
-  getSubFieldValues(session: FormSession, parentField: string): Record<string, unknown> {
+  getSubFieldValues(
+    session: FormSession,
+    parentField: string,
+  ): Record<string, JsonValue> {
     const subFields = session.fields[parentField]?.subFields || {};
-    const values: Record<string, unknown> = {};
+    const values: Record<string, JsonValue> = {};
     for (const [key, state] of Object.entries(subFields)) {
       if (state.value !== undefined) {
         values[key] = state.value;
@@ -905,7 +936,7 @@ export class FormService extends Service {
   async activateExternalField(
     sessionId: string,
     entityId: UUID,
-    field: string
+    field: string,
   ): Promise<ExternalActivation> {
     const session = await getSessionById(this.runtime, entityId, sessionId);
     if (!session) {
@@ -924,7 +955,9 @@ export class FormService extends Service {
 
     const controlType = this.getControlType(control.type);
     if (!controlType?.activate) {
-      throw new Error(`Control type '${control.type}' does not support activation`);
+      throw new Error(
+        `Control type '${control.type}' does not support activation`,
+      );
     }
 
     // Gather subfield values
@@ -945,12 +978,12 @@ export class FormService extends Service {
 
     // Store activation state in the field
     if (!session.fields[field]) {
-      session.fields[field] = { status: 'empty' };
+      session.fields[field] = { status: "empty" };
     }
 
-    session.fields[field].status = 'pending';
+    session.fields[field].status = "pending";
     session.fields[field].externalState = {
-      status: 'pending',
+      status: "pending",
       reference: activation.reference,
       instructions: activation.instructions,
       address: activation.address,
@@ -960,7 +993,9 @@ export class FormService extends Service {
     session.updatedAt = now;
     await storageSaveSession(this.runtime, session);
 
-    logger.info(`[FormService] Activated external field ${field} with reference ${activation.reference}`);
+    logger.info(
+      `[FormService] Activated external field ${field} with reference ${activation.reference}`,
+    );
 
     return activation;
   }
@@ -986,8 +1021,8 @@ export class FormService extends Service {
     sessionId: string,
     entityId: UUID,
     field: string,
-    value: unknown,
-    externalData?: Record<string, unknown>
+    value: JsonValue,
+    externalData?: Record<string, JsonValue>,
   ): Promise<void> {
     const session = await getSessionById(this.runtime, entityId, sessionId);
     if (!session) {
@@ -995,22 +1030,24 @@ export class FormService extends Service {
     }
 
     const fieldState = session.fields[field];
-    if (!fieldState || fieldState.status !== 'pending') {
-      logger.warn(`[FormService] Cannot confirm field ${field}: not in pending state`);
+    if (!fieldState || fieldState.status !== "pending") {
+      logger.warn(
+        `[FormService] Cannot confirm field ${field}: not in pending state`,
+      );
       return;
     }
 
     const now = Date.now();
 
     // Update field state
-    fieldState.status = 'filled';
+    fieldState.status = "filled";
     fieldState.value = value;
-    fieldState.source = 'external';
+    fieldState.source = "external";
     fieldState.updatedAt = now;
 
     // Update external state
     if (fieldState.externalState) {
-      fieldState.externalState.status = 'confirmed';
+      fieldState.externalState.status = "confirmed";
       fieldState.externalState.confirmedAt = now;
       fieldState.externalState.externalData = externalData;
     }
@@ -1018,10 +1055,10 @@ export class FormService extends Service {
     // Check if form is now ready
     const form = this.getForm(session.formId);
     if (form && this.checkAllRequiredFilled(session, form)) {
-      if (session.status === 'active') {
-        session.status = 'ready';
+      if (session.status === "active") {
+        session.status = "ready";
         if (form.hooks?.onReady) {
-          await this.executeHook(session, 'onReady');
+          await this.executeHook(session, "onReady");
         }
       }
     }
@@ -1031,13 +1068,14 @@ export class FormService extends Service {
 
     // Emit event for listeners
     try {
-      await this.runtime.emitEvent('FORM_FIELD_CONFIRMED', {
+      await this.runtime.emitEvent("FORM_FIELD_CONFIRMED", {
+        runtime: this.runtime,
         sessionId,
         entityId,
         field,
         value,
         externalData,
-      });
+      } as EventPayload);
     } catch (error) {
       logger.debug(`[FormService] No event handler for FORM_FIELD_CONFIRMED`);
     }
@@ -1059,7 +1097,7 @@ export class FormService extends Service {
     sessionId: string,
     entityId: UUID,
     field: string,
-    reason: string
+    reason: string,
   ): Promise<void> {
     const session = await getSessionById(this.runtime, entityId, sessionId);
     if (!session) {
@@ -1080,17 +1118,19 @@ export class FormService extends Service {
           subValues: this.getSubFieldValues(session, field),
         });
       } catch (error) {
-        logger.error(`[FormService] Deactivate failed for ${field}: ${String(error)}`);
+        logger.error(
+          `[FormService] Deactivate failed for ${field}: ${String(error)}`,
+        );
       }
     }
 
     const fieldState = session.fields[field];
     if (fieldState) {
       // Keep subfields but reset external state
-      fieldState.status = 'empty';
+      fieldState.status = "empty";
       fieldState.error = reason;
       if (fieldState.externalState) {
-        fieldState.externalState.status = 'failed';
+        fieldState.externalState.status = "failed";
       }
     }
 
@@ -1099,12 +1139,13 @@ export class FormService extends Service {
 
     // Emit event for listeners
     try {
-      await this.runtime.emitEvent('FORM_FIELD_CANCELLED', {
+      await this.runtime.emitEvent("FORM_FIELD_CANCELLED", {
+        runtime: this.runtime,
         sessionId,
         entityId,
         field,
         reason,
-      });
+      } as EventPayload);
     } catch (error) {
       logger.debug(`[FormService] No event handler for FORM_FIELD_CANCELLED`);
     }
@@ -1132,15 +1173,15 @@ export class FormService extends Service {
 
     // Check all required fields are filled
     if (!this.checkAllRequiredFilled(session, form)) {
-      throw new Error('Not all required fields are filled');
+      throw new Error("Not all required fields are filled");
     }
 
     const now = Date.now();
 
     // Build submission values
-    const values: Record<string, unknown> = {};
-    const mappedValues: Record<string, unknown> = {};
-    const files: Record<string, NonNullable<FieldState['files']>> = {};
+    const values: Record<string, JsonValue> = {};
+    const mappedValues: Record<string, JsonValue> = {};
+    const files: Record<string, NonNullable<FieldState["files"]>> = {};
 
     for (const control of form.controls) {
       const fieldState = session.fields[control.key];
@@ -1174,14 +1215,19 @@ export class FormService extends Service {
     await saveAutofillData(this.runtime, entityId, session.formId, values);
 
     // Update session status
-    session.status = 'submitted';
+    session.status = "submitted";
     session.submittedAt = now;
     session.updatedAt = now;
     await storageSaveSession(this.runtime, session);
 
     // Execute onSubmit hook
     if (form.hooks?.onSubmit) {
-      await this.executeHook(session, 'onSubmit', { submission });
+      const submissionPayload = JSON.parse(
+        JSON.stringify(submission),
+      ) as JsonValue;
+      await this.executeHook(session, "onSubmit", {
+        submission: submissionPayload,
+      });
     }
 
     logger.debug(`[FormService] Submitted session ${sessionId}`);
@@ -1200,7 +1246,7 @@ export class FormService extends Service {
 
     const form = this.getForm(session.formId);
 
-    session.status = 'stashed';
+    session.status = "stashed";
     session.updatedAt = Date.now();
     await storageSaveSession(this.runtime, session);
 
@@ -1221,17 +1267,21 @@ export class FormService extends Service {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
-    if (session.status !== 'stashed') {
+    if (session.status !== "stashed") {
       throw new Error(`Session is not stashed: ${session.status}`);
     }
 
     // Check for existing active session in the same room
-    const existing = await storageGetActiveSession(this.runtime, entityId, session.roomId);
+    const existing = await storageGetActiveSession(
+      this.runtime,
+      entityId,
+      session.roomId,
+    );
     if (existing && existing.id !== sessionId) {
       throw new Error(`Active session already exists in room: ${existing.id}`);
     }
 
-    session.status = 'active';
+    session.status = "active";
     session.updatedAt = Date.now();
 
     // Recalculate TTL on restore
@@ -1247,14 +1297,22 @@ export class FormService extends Service {
   /**
    * Cancel a session
    */
-  async cancel(sessionId: string, entityId: UUID, force = false): Promise<boolean> {
+  async cancel(
+    sessionId: string,
+    entityId: UUID,
+    force = false,
+  ): Promise<boolean> {
     const session = await getSessionById(this.runtime, entityId, sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
     // Check if we should confirm cancellation
-    if (!force && this.shouldConfirmCancel(session) && !session.cancelConfirmationAsked) {
+    if (
+      !force &&
+      this.shouldConfirmCancel(session) &&
+      !session.cancelConfirmationAsked
+    ) {
       session.cancelConfirmationAsked = true;
       session.updatedAt = Date.now();
       await storageSaveSession(this.runtime, session);
@@ -1263,13 +1321,13 @@ export class FormService extends Service {
 
     const form = this.getForm(session.formId);
 
-    session.status = 'cancelled';
+    session.status = "cancelled";
     session.updatedAt = Date.now();
     await storageSaveSession(this.runtime, session);
 
     // Execute onCancel hook
     if (form?.hooks?.onCancel) {
-      await this.executeHook(session, 'onCancel');
+      await this.executeHook(session, "onCancel");
     }
 
     logger.debug(`[FormService] Cancelled session ${sessionId}`);
@@ -1284,7 +1342,10 @@ export class FormService extends Service {
   /**
    * Get submissions for entity, optionally filtered by form ID
    */
-  async getSubmissions(entityId: UUID, formId?: string): Promise<FormSubmission[]> {
+  async getSubmissions(
+    entityId: UUID,
+    formId?: string,
+  ): Promise<FormSubmission[]> {
     return storageGetSubmissions(this.runtime, entityId, formId);
   }
 
@@ -1295,7 +1356,10 @@ export class FormService extends Service {
   /**
    * Get autofill data for a form
    */
-  async getAutofill(entityId: UUID, formId: string): Promise<Record<string, unknown> | null> {
+  async getAutofill(
+    entityId: UUID,
+    formId: string,
+  ): Promise<Record<string, JsonValue> | null> {
     const data = await getAutofillData(this.runtime, entityId, formId);
     return data?.values || null;
   }
@@ -1309,7 +1373,11 @@ export class FormService extends Service {
       return [];
     }
 
-    const autofill = await getAutofillData(this.runtime, session.entityId, session.formId);
+    const autofill = await getAutofillData(
+      this.runtime,
+      session.entityId,
+      session.formId,
+    );
     if (!autofill) {
       return [];
     }
@@ -1319,16 +1387,16 @@ export class FormService extends Service {
 
     for (const control of form.controls) {
       // Only autofill empty fields
-      if (session.fields[control.key]?.status !== 'empty') {
+      if (session.fields[control.key]?.status !== "empty") {
         continue;
       }
 
       const value = autofill.values[control.key];
       if (value !== undefined) {
         session.fields[control.key] = {
-          status: 'filled',
+          status: "filled",
           value,
-          source: 'autofill',
+          source: "autofill",
           updatedAt: now,
         };
         appliedFields.push(control.key);
@@ -1382,34 +1450,36 @@ export class FormService extends Service {
         totalRequired++;
       }
 
-      if (fieldState?.status === 'filled') {
+      if (fieldState?.status === "filled") {
         filledCount++;
         filledFields.push({
           key: control.key,
           label: control.label,
-          displayValue: formatValue(fieldState.value, control),
+          displayValue: formatValue(fieldState.value ?? null, control),
         });
-      } else if (fieldState?.status === 'pending') {
+      } else if (fieldState?.status === "pending") {
         // External field waiting for confirmation
         if (fieldState.externalState) {
           pendingExternalFields.push({
             key: control.key,
             label: control.label,
-            instructions: fieldState.externalState.instructions || 'Waiting for confirmation...',
-            reference: fieldState.externalState.reference || '',
+            instructions:
+              fieldState.externalState.instructions ||
+              "Waiting for confirmation...",
+            reference: fieldState.externalState.reference || "",
             activatedAt: fieldState.externalState.activatedAt || Date.now(),
             address: fieldState.externalState.address,
           });
         }
         // Don't set as nextField - we're waiting for external confirmation
-      } else if (fieldState?.status === 'uncertain') {
+      } else if (fieldState?.status === "uncertain") {
         uncertainFields.push({
           key: control.key,
           label: control.label,
-          value: fieldState.value,
+          value: fieldState.value ?? null,
           confidence: fieldState.confidence ?? 0,
         });
-      } else if (fieldState?.status === 'invalid') {
+      } else if (fieldState?.status === "invalid") {
         missingRequired.push({
           key: control.key,
           label: control.label,
@@ -1417,7 +1487,7 @@ export class FormService extends Service {
           askPrompt: control.askPrompt,
         });
         if (!nextField) nextField = control;
-      } else if (control.required && fieldState?.status !== 'skipped') {
+      } else if (control.required && fieldState?.status !== "skipped") {
         missingRequired.push({
           key: control.key,
           label: control.label,
@@ -1425,12 +1495,13 @@ export class FormService extends Service {
           askPrompt: control.askPrompt,
         });
         if (!nextField) nextField = control;
-      } else if (!nextField && fieldState?.status === 'empty') {
+      } else if (!nextField && fieldState?.status === "empty") {
         nextField = control;
       }
     }
 
-    const progress = totalRequired > 0 ? Math.round((filledCount / totalRequired) * 100) : 100;
+    const progress =
+      totalRequired > 0 ? Math.round((filledCount / totalRequired) * 100) : 100;
 
     return {
       hasActiveForm: true,
@@ -1442,7 +1513,8 @@ export class FormService extends Service {
       uncertainFields,
       nextField,
       status: session.status,
-      pendingCancelConfirmation: session.cancelConfirmationAsked && session.status === 'active',
+      pendingCancelConfirmation:
+        session.cancelConfirmationAsked && session.status === "active",
       pendingExternalFields,
     };
   }
@@ -1450,8 +1522,8 @@ export class FormService extends Service {
   /**
    * Get current values from session
    */
-  getValues(session: FormSession): Record<string, unknown> {
-    const values: Record<string, unknown> = {};
+  getValues(session: FormSession): Record<string, JsonValue> {
+    const values: Record<string, JsonValue> = {};
     for (const [key, state] of Object.entries(session.fields)) {
       if (state.value !== undefined) {
         values[key] = state.value;
@@ -1463,11 +1535,11 @@ export class FormService extends Service {
   /**
    * Get mapped values (using dbbind)
    */
-  getMappedValues(session: FormSession): Record<string, unknown> {
+  getMappedValues(session: FormSession): Record<string, JsonValue> {
     const form = this.getForm(session.formId);
     if (!form) return {};
 
-    const values: Record<string, unknown> = {};
+    const values: Record<string, JsonValue> = {};
     for (const control of form.controls) {
       const state = session.fields[control.key];
       if (state?.value !== undefined) {
@@ -1517,8 +1589,8 @@ export class FormService extends Service {
    */
   private async executeHook(
     session: FormSession,
-    hookName: keyof NonNullable<FormDefinition['hooks']>,
-    options?: Record<string, unknown>
+    hookName: keyof NonNullable<FormDefinition["hooks"]>,
+    options?: Record<string, JsonValue>,
   ): Promise<void> {
     const form = this.getForm(session.formId);
     const workerName = form?.hooks?.[hookName];
@@ -1539,13 +1611,20 @@ export class FormService extends Service {
         roomId: session.roomId,
         entityId: session.entityId,
       };
-      await worker.execute(this.runtime, {
-        session,
-        form,
-        ...options,
-      }, task as any);
+      await worker.execute(
+        this.runtime,
+        {
+          session,
+          form,
+          ...options,
+        },
+        task as any,
+      );
     } catch (error) {
-      logger.error(`[FormService] Hook execution failed: ${hookName}`, String(error));
+      logger.error(
+        `[FormService] Hook execution failed: ${hookName}`,
+        String(error),
+      );
     }
   }
 
@@ -1556,12 +1635,19 @@ export class FormService extends Service {
   /**
    * Check if all required fields are filled
    */
-  private checkAllRequiredFilled(session: FormSession, form: FormDefinition): boolean {
+  private checkAllRequiredFilled(
+    session: FormSession,
+    form: FormDefinition,
+  ): boolean {
     for (const control of form.controls) {
       if (!control.required) continue;
 
       const fieldState = session.fields[control.key];
-      if (!fieldState || fieldState.status === 'empty' || fieldState.status === 'invalid') {
+      if (
+        !fieldState ||
+        fieldState.status === "empty" ||
+        fieldState.status === "invalid"
+      ) {
         return false;
       }
     }
@@ -1577,8 +1663,5 @@ export class FormService extends Service {
  * Convert snake_case or kebab-case to Title Case
  */
 function prettify(key: string): string {
-  return key
-    .replace(/[-_]/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return key.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
-

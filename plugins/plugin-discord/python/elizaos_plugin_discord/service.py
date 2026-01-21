@@ -831,7 +831,9 @@ class DiscordService:
             "mention": f"<#{channel_id}>",
         }
 
-    async def get_channel_messages(self, channel_id: str, limit: int) -> list[DiscordMessageSummary]:
+    async def get_channel_messages(
+        self, channel_id: str, limit: int
+    ) -> list[DiscordMessageSummary]:
         channel = await self._get_text_channel(channel_id)
 
         msgs: list[DiscordMessageSummary] = []
@@ -904,13 +906,12 @@ class DiscordService:
 
         import aiohttp
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(media_url) as resp:
-                if resp.status != 200:
-                    return None
+        async with aiohttp.ClientSession() as session, session.get(media_url) as resp:
+            if resp.status != 200:
+                return None
 
-                content_type = resp.headers.get("Content-Type")
-                data = await resp.read()
+            content_type = resp.headers.get("Content-Type")
+            data = await resp.read()
 
         filename = Path(media_url.split("?")[0]).name or "download"
         suffix = Path(filename).suffix
@@ -1020,7 +1021,9 @@ class DiscordService:
 
         return {"question": question, "options": options[:10], "use_emojis": True}
 
-    async def send_poll(self, channel_id: str, poll_message: str, emojis: list[str]) -> Snowflake | None:
+    async def send_poll(
+        self, channel_id: str, poll_message: str, emojis: list[str]
+    ) -> Snowflake | None:
         """Send a poll message and add reactions for the provided emoji options."""
         if not poll_message.strip() or not emojis:
             return None
@@ -1031,7 +1034,9 @@ class DiscordService:
 
         return message_id
 
-    async def get_member_info(self, guild_id: str, user_identifier: str) -> dict[str, object] | None:
+    async def get_member_info(
+        self, guild_id: str, user_identifier: str
+    ) -> dict[str, object] | None:
         """Fetch basic member info by snowflake or username."""
         if self._client is None:
             raise ClientNotInitializedError()

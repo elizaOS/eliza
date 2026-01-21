@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from elizaos.bootstrap.types import EvaluatorResult
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.generated.spec_helpers import require_evaluator_spec
 from elizaos.prompts import REFLECTION_TEMPLATE
-from elizaos.types import Evaluator, ModelType
+from elizaos.types import ActionResult, Evaluator, HandlerOptions, ModelType
 
 if TYPE_CHECKING:
-    from elizaos.types import IAgentRuntime, Memory, State
+    from elizaos.types import Content, IAgentRuntime, Memory, State
 
 # Get text content from centralized specs
 _spec = require_evaluator_spec("REFLECTION")
@@ -107,12 +108,27 @@ async def validate_reflection(
     return True
 
 
+async def _reflection_handler(
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State | None = None,
+    options: HandlerOptions | None = None,
+    callback: Callable[[Content], Awaitable[list[Memory]]] | None = None,
+    responses: list[Memory] | None = None,
+) -> ActionResult | None:
+    """Wrapper handler that matches the expected signature."""
+    _ = options, callback, responses  # Unused parameters
+    result = await evaluate_reflection(runtime, message, state)
+    # Return ActionResult - evaluators don't typically return action results
+    return ActionResult(text=result.reason, success=result.passed, values={}, data={})
+
+
 reflection_evaluator = Evaluator(
-    name=_spec["name"],
-    description=_spec["description"],
-    similes=_spec.get("similes", []),
+    name=str(_spec["name"]),
+    description=str(_spec["description"]),
+    similes=list(_spec.get("similes", [])) if _spec.get("similes") else [],
     validate=validate_reflection,
-    handler=evaluate_reflection,
-    always_run=_spec.get("alwaysRun", False),
-    examples=_spec.get("examples", []),
+    handler=_reflection_handler,
+    always_run=bool(_spec.get("alwaysRun", False)),
+    examples=[],
 )

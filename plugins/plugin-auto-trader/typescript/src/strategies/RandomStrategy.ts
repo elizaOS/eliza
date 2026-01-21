@@ -1,12 +1,12 @@
 import {
-  TradingStrategy,
-  TradeOrder,
-  TradeType,
+  type AgentState,
   OrderType,
-  StrategyContextMarketData,
-  AgentState,
-  PortfolioSnapshot,
-} from '../types.ts';
+  type PortfolioSnapshot,
+  type StrategyContextMarketData,
+  type TradeOrder,
+  TradeType,
+  type TradingStrategy,
+} from "../types.ts";
 
 export interface RandomStrategyParams {
   /**
@@ -41,10 +41,10 @@ const DEFAULT_FIXED_TRADE_QUANTITY = 1;
 const MIN_TRADE_QUANTITY_THRESHOLD = 1e-8; // Define a threshold for minimum tradeable quantity
 
 export class RandomStrategy implements TradingStrategy {
-  public readonly id = 'random-v1';
-  public readonly name = 'Random Trading Strategy';
+  public readonly id = "random-v1";
+  public readonly name = "Random Trading Strategy";
   public readonly description =
-    'Makes random buy or sell decisions based on configured probabilities.';
+    "Makes random buy or sell decisions based on configured probabilities.";
 
   private params: RandomStrategyParams = {
     tradeAttemptProbability: DEFAULT_TRADE_ATTEMPT_PROBABILITY,
@@ -57,20 +57,26 @@ export class RandomStrategy implements TradingStrategy {
 
   configure(params: RandomStrategyParams): void {
     if (params.tradeAttemptProbability !== undefined) {
-      if (params.tradeAttemptProbability < 0 || params.tradeAttemptProbability > 1) {
-        throw new Error('tradeAttemptProbability must be between 0 and 1.');
+      if (
+        params.tradeAttemptProbability < 0 ||
+        params.tradeAttemptProbability > 1
+      ) {
+        throw new Error("tradeAttemptProbability must be between 0 and 1.");
       }
       this.params.tradeAttemptProbability = params.tradeAttemptProbability;
     }
     if (params.buyProbability !== undefined) {
       if (params.buyProbability < 0 || params.buyProbability > 1) {
-        throw new Error('buyProbability must be between 0 and 1.');
+        throw new Error("buyProbability must be between 0 and 1.");
       }
       this.params.buyProbability = params.buyProbability;
     }
     if (params.maxTradeSizePercentage !== undefined) {
-      if (params.maxTradeSizePercentage < 0 || params.maxTradeSizePercentage > 1) {
-        throw new Error('maxTradeSizePercentage must be between 0 and 1.');
+      if (
+        params.maxTradeSizePercentage < 0 ||
+        params.maxTradeSizePercentage > 1
+      ) {
+        throw new Error("maxTradeSizePercentage must be between 0 and 1.");
       }
       this.params.maxTradeSizePercentage = params.maxTradeSizePercentage;
       // If percentage is explicitly set, prefer it over fixed quantity
@@ -78,7 +84,7 @@ export class RandomStrategy implements TradingStrategy {
     }
     if (params.fixedTradeQuantity !== undefined) {
       if (params.fixedTradeQuantity <= 0) {
-        throw new Error('fixedTradeQuantity must be positive.');
+        throw new Error("fixedTradeQuantity must be positive.");
       }
       this.params.fixedTradeQuantity = params.fixedTradeQuantity;
       // Only use fixed quantity if percentage is not explicitly set in this configure call
@@ -96,12 +102,13 @@ export class RandomStrategy implements TradingStrategy {
     marketData: StrategyContextMarketData;
     agentState: AgentState;
     portfolioSnapshot: PortfolioSnapshot;
-    agentRuntime?: any;
+    agentRuntime?: unknown;
   }): Promise<TradeOrder | null> {
-    const { marketData, agentState, portfolioSnapshot } = params;
+    const { marketData, portfolioSnapshot } = params;
 
     if (
-      Math.random() >= (this.params.tradeAttemptProbability ?? DEFAULT_TRADE_ATTEMPT_PROBABILITY)
+      Math.random() >=
+      (this.params.tradeAttemptProbability ?? DEFAULT_TRADE_ATTEMPT_PROBABILITY)
     ) {
       return null; // No trade attempt this time
     }
@@ -128,13 +135,17 @@ export class RandomStrategy implements TradingStrategy {
       marketData.currentPrice > 0
     ) {
       // Calculate percentage-based quantity
-      const tradeValue = portfolioSnapshot.totalValue * this.params.maxTradeSizePercentage;
+      const tradeValue =
+        portfolioSnapshot.totalValue * this.params.maxTradeSizePercentage;
       quantity = tradeValue / marketData.currentPrice;
     } else {
       // Default: 1% of portfolio or minimal amount
       const defaultPercentage = 0.01;
       const tradeValue = portfolioSnapshot.totalValue * defaultPercentage;
-      quantity = marketData.currentPrice > 0 ? tradeValue / marketData.currentPrice : 0.01;
+      quantity =
+        marketData.currentPrice > 0
+          ? tradeValue / marketData.currentPrice
+          : 0.01;
     }
 
     // Check minimum quantity threshold
@@ -145,8 +156,8 @@ export class RandomStrategy implements TradingStrategy {
     // Extract asset from portfolio snapshot or use a default
     const assetSymbol =
       Object.keys(portfolioSnapshot.holdings).find(
-        (key) => key !== 'USDC' && portfolioSnapshot.holdings[key] > 0
-      ) || 'SOL';
+        (key) => key !== "USDC" && portfolioSnapshot.holdings[key] > 0,
+      ) || "SOL";
 
     const pair = `${assetSymbol}/USDC`;
 
@@ -172,7 +183,7 @@ export class RandomStrategy implements TradingStrategy {
       quantity: roundedQuantity,
       orderType: OrderType.MARKET, // Random strategy uses market orders for simplicity
       timestamp: Date.now(),
-      reason: 'Random trading decision',
+      reason: "Random trading decision",
     };
   }
 }

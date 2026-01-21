@@ -87,13 +87,14 @@
  * This enables the concise syntax shown in examples.
  */
 
+import type { JsonValue } from "@elizaos/core";
 import type {
   FormControl,
   FormControlOption,
   FormControlDependency,
   FormDefinition,
   FormDefinitionHooks,
-} from './types.ts';
+} from "./types";
 
 // ============================================================================
 // CONTROL BUILDER
@@ -134,37 +135,37 @@ export class ControlBuilder {
 
   /** Create a text field */
   static text(key: string): ControlBuilder {
-    return new ControlBuilder(key).type('text');
+    return new ControlBuilder(key).type("text");
   }
 
   /** Create an email field */
   static email(key: string): ControlBuilder {
-    return new ControlBuilder(key).type('email');
+    return new ControlBuilder(key).type("email");
   }
 
   /** Create a number field */
   static number(key: string): ControlBuilder {
-    return new ControlBuilder(key).type('number');
+    return new ControlBuilder(key).type("number");
   }
 
   /** Create a boolean (yes/no) field */
   static boolean(key: string): ControlBuilder {
-    return new ControlBuilder(key).type('boolean');
+    return new ControlBuilder(key).type("boolean");
   }
 
   /** Create a select field with options */
   static select(key: string, options: FormControlOption[]): ControlBuilder {
-    return new ControlBuilder(key).type('select').options(options);
+    return new ControlBuilder(key).type("select").options(options);
   }
 
   /** Create a date field */
   static date(key: string): ControlBuilder {
-    return new ControlBuilder(key).type('date');
+    return new ControlBuilder(key).type("date");
   }
 
   /** Create a file upload field */
   static file(key: string): ControlBuilder {
-    return new ControlBuilder(key).type('file');
+    return new ControlBuilder(key).type("file");
   }
 
   // ═══ TYPE ═══
@@ -327,13 +328,17 @@ export class ControlBuilder {
   // ═══ DEFAULTS & CONDITIONS ═══
 
   /** Set default value */
-  default(value: unknown): this {
+  default(value: JsonValue): this {
     this.control.defaultValue = value;
     return this;
   }
 
   /** Set dependency on another field */
-  dependsOn(field: string, condition: FormControlDependency['condition'] = 'exists', value?: unknown): this {
+  dependsOn(
+    field: string,
+    condition: FormControlDependency["condition"] = "exists",
+    value?: JsonValue,
+  ): this {
     this.control.dependsOn = { field, condition, value };
     return this;
   }
@@ -381,7 +386,15 @@ export class ControlBuilder {
   // ═══ I18N ═══
 
   /** Add localized text for a locale */
-  i18n(locale: string, translations: { label?: string; description?: string; askPrompt?: string; helpText?: string }): this {
+  i18n(
+    locale: string,
+    translations: {
+      label?: string;
+      description?: string;
+      askPrompt?: string;
+      helpText?: string;
+    },
+  ): this {
     this.control.i18n = { ...this.control.i18n, [locale]: translations };
     return this;
   }
@@ -389,7 +402,7 @@ export class ControlBuilder {
   // ═══ META ═══
 
   /** Add custom metadata */
-  meta(key: string, value: unknown): this {
+  meta(key: string, value: JsonValue): this {
     this.control.meta = { ...this.control.meta, [key]: value };
     return this;
   }
@@ -408,7 +421,7 @@ export class ControlBuilder {
     const control: FormControl = {
       key: this.control.key!,
       label: this.control.label || prettify(this.control.key!),
-      type: this.control.type || 'text',
+      type: this.control.type || "text",
       ...this.control,
     };
 
@@ -556,7 +569,11 @@ export class FormBuilder {
   // ═══ TTL ═══
 
   /** Configure TTL (time-to-live) settings */
-  ttl(config: { minDays?: number; maxDays?: number; effortMultiplier?: number }): this {
+  ttl(config: {
+    minDays?: number;
+    maxDays?: number;
+    effortMultiplier?: number;
+  }): this {
     this.form.ttl = { ...this.form.ttl, ...config };
     return this;
   }
@@ -637,7 +654,10 @@ export class FormBuilder {
   // ═══ I18N ═══
 
   /** Add localized form text */
-  i18n(locale: string, translations: { name?: string; description?: string }): this {
+  i18n(
+    locale: string,
+    translations: { name?: string; description?: string },
+  ): this {
     this.form.i18n = { ...this.form.i18n, [locale]: translations };
     return this;
   }
@@ -645,7 +665,7 @@ export class FormBuilder {
   // ═══ META ═══
 
   /** Add custom metadata */
-  meta(key: string, value: unknown): this {
+  meta(key: string, value: JsonValue): this {
     this.form.meta = { ...this.form.meta, [key]: value };
     return this;
   }
@@ -702,7 +722,5 @@ export const C = ControlBuilder;
  * @example prettify('email-address') // "Email Address"
  */
 function prettify(key: string): string {
-  return key
-    .replace(/[-_]/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return key.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

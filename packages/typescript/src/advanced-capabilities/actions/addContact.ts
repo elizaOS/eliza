@@ -22,7 +22,14 @@ import {
 
 // Get text content from centralized specs
 const spec = requireActionSpec("ADD_CONTACT");
-const ADD_KEYWORDS = ["add", "save", "remember", "categorize", "contact", "rolodex"];
+const ADD_KEYWORDS = [
+  "add",
+  "save",
+  "remember",
+  "categorize",
+  "contact",
+  "rolodex",
+];
 
 interface AddContactXmlResult {
   contactName?: string;
@@ -95,15 +102,22 @@ export const addContactAction: Action = {
     });
 
     const parsedResponse = parseKeyValueXml<AddContactXmlResult>(response);
-    const contactName = parsedResponse?.contactName?.trim();
-    if (!contactName) {
+    if (!parsedResponse) {
       logger.warn(
         "[AddContact] Failed to parse contact information from response",
       );
       throw new Error("Could not extract contact information");
     }
 
-    let entityId = parsedResponse.entityId ? asUUID(parsedResponse.entityId) : null;
+    const contactName = parsedResponse.contactName?.trim();
+    if (!contactName) {
+      logger.warn("[AddContact] Missing contact name in response");
+      throw new Error("Could not extract contact name");
+    }
+
+    let entityId = parsedResponse.entityId
+      ? asUUID(parsedResponse.entityId)
+      : null;
 
     if (!entityId) {
       const entity = await findEntityByName(runtime, message, state);
@@ -112,9 +126,7 @@ export const addContactAction: Action = {
         entityId = entity.id;
       } else {
         // Create a new entity ID based on the name
-        entityId = stringToUuid(
-          `contact-${contactName}-${runtime.agentId}`,
-        );
+        entityId = stringToUuid(`contact-${contactName}-${runtime.agentId}`);
       }
     }
 
@@ -142,9 +154,7 @@ export const addContactAction: Action = {
       preferences,
     );
 
-    logger.info(
-      `[AddContact] Added contact ${contactName} (${entityId})`,
-    );
+    logger.info(`[AddContact] Added contact ${contactName} (${entityId})`);
 
     const responseText = `I've added ${contactName} to your contacts as ${categories.join(", ")}. ${
       parsedResponse.reason || "They have been saved to your rolodex."

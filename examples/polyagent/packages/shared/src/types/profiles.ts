@@ -4,7 +4,7 @@
  * Types for user and actor profiles used throughout the application
  */
 
-import type { Actor } from '../game-types';
+import type { Actor } from "../game-types";
 
 /**
  * User profile information
@@ -42,7 +42,7 @@ export interface ActorProfile extends Actor {
  * Includes all properties that may be present in profile pages
  */
 export type ProfileInfo = (UserProfile | ActorProfile) & {
-  type?: 'user' | 'actor' | 'organization';
+  type?: "user" | "actor" | "organization";
   role?: string;
   name?: string;
   username?: string;
@@ -70,7 +70,7 @@ export type ProfileInfo = (UserProfile | ActorProfile) & {
  */
 export function isUserProfile(profile: ProfileInfo): profile is UserProfile {
   return (
-    'username' in profile || 'email' in profile || 'walletAddress' in profile
+    "username" in profile || "email" in profile || "walletAddress" in profile
   );
 }
 
@@ -78,5 +78,5 @@ export function isUserProfile(profile: ProfileInfo): profile is UserProfile {
  * Type guard to check if profile is an actor profile
  */
 export function isActorProfile(profile: ProfileInfo): profile is ActorProfile {
-  return 'description' in profile && 'domain' in profile;
+  return "description" in profile && "domain" in profile;
 }

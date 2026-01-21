@@ -1,12 +1,12 @@
 """Services module for Polymarket plugin."""
 
 from elizaos_plugin_polymarket.services.research_storage import (
-    ResearchStorageService,
     MarketResearch,
-    ResearchResult,
     ResearchRecommendation,
+    ResearchResult,
     ResearchSource,
     ResearchStatus,
+    ResearchStorageService,
 )
 
 __all__ = [

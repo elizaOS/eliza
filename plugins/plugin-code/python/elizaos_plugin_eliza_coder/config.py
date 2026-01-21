@@ -38,4 +38,3 @@ def load_coder_config() -> CoderConfig:
         timeout_ms=timeout_ms,
         forbidden_commands=forbidden,
     )
-

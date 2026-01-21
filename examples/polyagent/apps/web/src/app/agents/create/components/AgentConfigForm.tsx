@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { cn } from '@polyagent/shared';
-import { Loader2, Sparkles } from 'lucide-react';
-import { memo } from 'react';
-import type { AgentFormData } from '../hooks/useAgentForm';
+import { cn } from "@polyagent/shared";
+import { Loader2, Sparkles } from "lucide-react";
+import { memo } from "react";
+import type { AgentFormData } from "../hooks/useAgentForm";
 
 interface AgentConfigFormProps {
   agentData: AgentFormData;
@@ -47,9 +47,9 @@ const FieldWithAI = memo(function FieldWithAI({
           onClick={onRegenerate}
           disabled={isGenerating}
           className={cn(
-            'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors',
-            'text-muted-foreground hover:bg-muted hover:text-foreground',
-            'disabled:cursor-not-allowed disabled:opacity-50'
+            "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors",
+            "text-muted-foreground hover:bg-muted hover:text-foreground",
+            "disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >
           {isGenerating ? (
@@ -72,9 +72,9 @@ const FieldWithAI = memo(function FieldWithAI({
         placeholder={placeholder}
         rows={rows}
         className={cn(
-          'w-full resize-none rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm',
-          'focus:outline-none focus:ring-2 focus:ring-[#0066FF]',
-          isGenerating && 'animate-pulse opacity-70'
+          "w-full resize-none rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm",
+          "focus:outline-none focus:ring-2 focus:ring-[#0066FF]",
+          isGenerating && "animate-pulse opacity-70",
         )}
       />
       {helpText && <p className="text-muted-foreground text-xs">{helpText}</p>}
@@ -97,9 +97,9 @@ export const AgentConfigForm = memo(function AgentConfigForm({
         value={agentData.system}
         placeholder="You are a trading agent focused on..."
         rows={6}
-        isGenerating={generatingField === 'system'}
-        onRegenerate={() => onRegenerate('system')}
-        onChange={(v) => onFieldChange('system', v)}
+        isGenerating={generatingField === "system"}
+        onRegenerate={() => onRegenerate("system")}
+        onChange={(v) => onFieldChange("system", v)}
         helpText="Core instructions defining agent behavior and capabilities."
       />
 
@@ -109,9 +109,9 @@ export const AgentConfigForm = memo(function AgentConfigForm({
         value={agentData.personality}
         placeholder="Analytical and methodical..."
         rows={4}
-        isGenerating={generatingField === 'personality'}
-        onRegenerate={() => onRegenerate('personality')}
-        onChange={(v) => onFieldChange('personality', v)}
+        isGenerating={generatingField === "personality"}
+        onRegenerate={() => onRegenerate("personality")}
+        onChange={(v) => onFieldChange("personality", v)}
         helpText="Character traits that influence communication style."
       />
 
@@ -121,9 +121,9 @@ export const AgentConfigForm = memo(function AgentConfigForm({
         value={agentData.tradingStrategy}
         placeholder="Focus on momentum indicators..."
         rows={5}
-        isGenerating={generatingField === 'tradingStrategy'}
-        onRegenerate={() => onRegenerate('tradingStrategy')}
-        onChange={(v) => onFieldChange('tradingStrategy', v)}
+        isGenerating={generatingField === "tradingStrategy"}
+        onRegenerate={() => onRegenerate("tradingStrategy")}
+        onChange={(v) => onFieldChange("tradingStrategy", v)}
         helpText="Market analysis approach and position sizing rules."
       />
 
@@ -141,32 +141,32 @@ export const AgentConfigForm = memo(function AgentConfigForm({
           type="text"
           inputMode="numeric"
           pattern="[0-9]*"
-          value={agentData.initialDeposit === 0 ? '' : agentData.initialDeposit}
+          value={agentData.initialDeposit === 0 ? "" : agentData.initialDeposit}
           onChange={(e) => {
             // Allow free typing - accept empty or numeric values
-            const rawValue = e.target.value.replace(/[^0-9]/g, '');
-            if (rawValue === '') {
-              onFieldChange('initialDeposit', 0);
+            const rawValue = e.target.value.replace(/[^0-9]/g, "");
+            if (rawValue === "") {
+              onFieldChange("initialDeposit", 0);
             } else {
-              onFieldChange('initialDeposit', parseInt(rawValue, 10));
+              onFieldChange("initialDeposit", parseInt(rawValue, 10));
             }
           }}
           onBlur={() => {
             // On blur, clamp to valid range
             const val = agentData.initialDeposit;
             if (val < 10) {
-              onFieldChange('initialDeposit', 10);
+              onFieldChange("initialDeposit", 10);
             } else if (val > maxDeposit) {
-              onFieldChange('initialDeposit', maxDeposit);
+              onFieldChange("initialDeposit", maxDeposit);
             }
           }}
           className={cn(
-            'w-full rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm',
-            'focus:outline-none focus:ring-2 focus:ring-[#0066FF]'
+            "w-full rounded-lg border border-border bg-muted px-4 py-3 font-mono text-sm",
+            "focus:outline-none focus:ring-2 focus:ring-[#0066FF]",
           )}
         />
         <p className="text-muted-foreground text-xs">
-          Points to fund your agent&apos;s trading account (10 -{' '}
+          Points to fund your agent&apos;s trading account (10 -{" "}
           {maxDeposit.toLocaleString()}). You can add more later.
         </p>
       </div>

@@ -2,8 +2,8 @@
  * Game and utility validation schemas
  */
 
-import { z } from 'zod';
-import { UserIdSchema } from './common';
+import { z } from "zod";
+import { UserIdSchema } from "./common";
 
 /**
  * Game tick cron authentication schema
@@ -11,7 +11,7 @@ import { UserIdSchema } from './common';
 export const GameTickCronSchema = z.object({
   authorization: z
     .string()
-    .regex(/^Bearer .+$/, 'Authorization must be Bearer token'),
+    .regex(/^Bearer .+$/, "Authorization must be Bearer token"),
 });
 
 /**
@@ -29,17 +29,17 @@ export const ImageUploadSchema = z.object({
         .refine(
           (type) =>
             [
-              'image/jpeg',
-              'image/png',
-              'image/webp',
-              'image/gif',
-              'image/jpg',
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "image/gif",
+              "image/jpg",
             ].includes(type),
-          { message: 'Invalid file type. Allowed: jpeg, png, webp, gif' }
+          { message: "Invalid file type. Allowed: jpeg, png, webp, gif" },
         ),
     })
     .nullable(),
-  type: z.enum(['profile', 'cover', 'post']).optional(),
+  type: z.enum(["profile", "cover", "post"]).optional(),
 });
 
 /**
@@ -51,7 +51,7 @@ export const ImageUploadBodySchema = z.object({
   contentType: z
     .string()
     .regex(/^image\/(jpeg|jpg|png|gif|webp)$/)
-    .default('image/jpeg'),
+    .default("image/jpeg"),
 });
 
 /**
@@ -59,8 +59,8 @@ export const ImageUploadBodySchema = z.object({
  */
 export const RegistryQuerySchema = z.object({
   onChainOnly: z.coerce.boolean().optional(),
-  sortBy: z.enum(['username', 'createdAt', 'nftTokenId']).default('createdAt'),
-  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  sortBy: z.enum(["username", "createdAt", "nftTokenId"]).default("createdAt"),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
   limit: z.coerce.number().positive().max(100).default(100),
   offset: z.coerce.number().nonnegative().default(0),
 });
@@ -72,16 +72,16 @@ export const AwardPointsSchema = z.object({
   userId: UserIdSchema,
   points: z.number().int().min(-1000000).max(1000000),
   reason: z.enum([
-    'profile_completion',
-    'profile_image',
-    'username',
-    'social_connect',
-    'wallet_connect',
-    'referral',
-    'trade',
-    'achievement',
-    'bonus',
-    'penalty',
+    "profile_completion",
+    "profile_image",
+    "username",
+    "social_connect",
+    "wallet_connect",
+    "referral",
+    "trade",
+    "achievement",
+    "bonus",
+    "penalty",
   ]),
   description: z.string().max(500).optional(),
 });
@@ -98,7 +98,7 @@ export const ReferralQuerySchema = z.object({
  * Link social account schema
  */
 export const LinkSocialAccountSchema = z.object({
-  platform: z.enum(['twitter', 'farcaster']),
+  platform: z.enum(["twitter", "farcaster"]),
   username: z.string().min(1).max(50),
   verificationToken: z.string().optional(),
 });
@@ -147,7 +147,7 @@ export const BreakingNewsQuerySchema = z.object({
  */
 export const UpcomingEventsQuerySchema = z.object({
   limit: z.coerce.number().positive().max(50).default(10),
-  timeframe: z.enum(['24h', '7d', '30d']).default('7d'),
+  timeframe: z.enum(["24h", "7d", "30d"]).default("7d"),
 });
 
 /**
@@ -157,18 +157,18 @@ export const TrendingPostsQuerySchema = z.object({
   limit: z.coerce.number().positive().max(50).default(10),
   timeframe: z
     .string()
-    .transform((val): '1h' | '6h' | '24h' | '7d' => {
-      const validTimeframes: readonly ['1h', '6h', '24h', '7d'] = [
-        '1h',
-        '6h',
-        '24h',
-        '7d',
+    .transform((val): "1h" | "6h" | "24h" | "7d" => {
+      const validTimeframes: readonly ["1h", "6h", "24h", "7d"] = [
+        "1h",
+        "6h",
+        "24h",
+        "7d",
       ];
       return (validTimeframes as readonly string[]).includes(val)
-        ? (val as '1h' | '6h' | '24h' | '7d')
-        : '24h'; // Default to 24h for invalid values
+        ? (val as "1h" | "6h" | "24h" | "7d")
+        : "24h"; // Default to 24h for invalid values
     })
-    .default('24h'),
+    .default("24h"),
   minInteractions: z.coerce.number().nonnegative().default(5),
 });
 

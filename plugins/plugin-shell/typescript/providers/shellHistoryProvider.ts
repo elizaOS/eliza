@@ -6,9 +6,9 @@ import {
   type Provider,
   type State,
 } from "@elizaos/core";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { ShellService } from "../services/shellService";
 import type { CommandHistoryEntry, FileOperation } from "../types";
-import { requireProviderSpec } from "../generated/specs/spec-helpers";
 
 const MAX_OUTPUT_LENGTH = 8000;
 const TRUNCATE_SEGMENT_LENGTH = 4000;

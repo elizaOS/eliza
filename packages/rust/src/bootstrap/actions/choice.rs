@@ -28,7 +28,11 @@ impl Action for ChooseOptionAction {
 
     fn similes(&self) -> &[&'static str] {
         static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
-            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+            SPEC.similes
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
         });
         &SIMILES
     }
@@ -88,12 +92,14 @@ impl Action for ChooseOptionAction {
             return Err(PluginError::InvalidInput("No option selected".to_string()));
         }
 
-        Ok(ActionResult::success(format!("Selected option: {}", selected_id))
-            .with_value("success", true)
-            .with_value("selectedId", selected_id.clone())
-            .with_value("thought", thought.clone())
-            .with_data("actionName", "CHOOSE_OPTION")
-            .with_data("selectedId", selected_id)
-            .with_data("thought", thought))
+        Ok(
+            ActionResult::success(format!("Selected option: {}", selected_id))
+                .with_value("success", true)
+                .with_value("selectedId", selected_id.clone())
+                .with_value("thought", thought.clone())
+                .with_data("actionName", "CHOOSE_OPTION")
+                .with_data("selectedId", selected_id)
+                .with_data("thought", thought),
+        )
     }
 }

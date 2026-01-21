@@ -6,19 +6,18 @@ These allow language-specific implementations to import their text content
 DO NOT EDIT the spec data - update packages/prompts/specs/** and regenerate.
 """
 
-from typing import Optional
-
 from .action_docs import (
     ActionDoc,
-    ProviderDoc,
     EvaluatorDoc,
-    core_action_docs,
-    core_provider_docs,
-    core_evaluator_docs,
+    ProviderDoc,
     all_action_docs,
-    all_provider_docs,
     all_evaluator_docs,
+    all_provider_docs,
+    core_action_docs,
+    core_evaluator_docs,
+    core_provider_docs,
 )
+
 
 def _get_items(doc: object, key: str) -> list[dict[str, object]]:
     if not isinstance(doc, dict):
@@ -67,13 +66,13 @@ for evaluator in _get_items(all_evaluator_docs, "evaluators"):
         _all_evaluator_map[name] = evaluator  # type: ignore[assignment]
 
 
-def get_action_spec(name: str) -> Optional[ActionDoc]:
+def get_action_spec(name: str) -> ActionDoc | None:
     """
     Get an action spec by name from the core specs.
-    
+
     Args:
         name: The action name (e.g., "REPLY", "IGNORE")
-        
+
     Returns:
         The action spec or None if not found
     """
@@ -83,13 +82,13 @@ def get_action_spec(name: str) -> Optional[ActionDoc]:
 def require_action_spec(name: str) -> ActionDoc:
     """
     Get an action spec by name, raising if not found.
-    
+
     Args:
         name: The action name
-        
+
     Returns:
         The action spec
-        
+
     Raises:
         ValueError: If the action is not found
     """
@@ -99,13 +98,13 @@ def require_action_spec(name: str) -> ActionDoc:
     return spec
 
 
-def get_provider_spec(name: str) -> Optional[ProviderDoc]:
+def get_provider_spec(name: str) -> ProviderDoc | None:
     """
     Get a provider spec by name from the core specs.
-    
+
     Args:
         name: The provider name (e.g., "CHARACTER", "TIME")
-        
+
     Returns:
         The provider spec or None if not found
     """
@@ -115,13 +114,13 @@ def get_provider_spec(name: str) -> Optional[ProviderDoc]:
 def require_provider_spec(name: str) -> ProviderDoc:
     """
     Get a provider spec by name, raising if not found.
-    
+
     Args:
         name: The provider name
-        
+
     Returns:
         The provider spec
-        
+
     Raises:
         ValueError: If the provider is not found
     """
@@ -131,13 +130,13 @@ def require_provider_spec(name: str) -> ProviderDoc:
     return spec
 
 
-def get_evaluator_spec(name: str) -> Optional[EvaluatorDoc]:
+def get_evaluator_spec(name: str) -> EvaluatorDoc | None:
     """
     Get an evaluator spec by name from the core specs.
-    
+
     Args:
         name: The evaluator name (e.g., "REFLECTION")
-        
+
     Returns:
         The evaluator spec or None if not found
     """
@@ -147,13 +146,13 @@ def get_evaluator_spec(name: str) -> Optional[EvaluatorDoc]:
 def require_evaluator_spec(name: str) -> EvaluatorDoc:
     """
     Get an evaluator spec by name, raising if not found.
-    
+
     Args:
         name: The evaluator name
-        
+
     Returns:
         The evaluator spec
-        
+
     Raises:
         ValueError: If the evaluator is not found
     """

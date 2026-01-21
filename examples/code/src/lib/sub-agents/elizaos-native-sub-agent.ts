@@ -9,11 +9,11 @@ import type {
   TaskTraceEvent,
 } from "../../types.js";
 import type {
+  McpToolDefinition,
   SubAgent,
   SubAgentContext,
   SubAgentTool,
   ToolResult,
-  McpToolDefinition,
 } from "./types.js";
 
 /**
@@ -212,7 +212,11 @@ function parsePlan(response: string): PlanStep[] {
 function parseToolCalls(
   response: string,
 ): Array<{ name: string; args: Record<string, string>; content?: string }> {
-  const calls: Array<{ name: string; args: Record<string, string>; content?: string }> = [];
+  const calls: Array<{
+    name: string;
+    args: Record<string, string>;
+    content?: string;
+  }> = [];
 
   // Match TOOL: patterns
   const toolMatches = response.matchAll(
@@ -234,8 +238,12 @@ function parseToolCalls(
     let content: string | undefined;
     if (name === "write_file") {
       const fullMatch = match[0];
-      const afterTool = response.slice(response.indexOf(fullMatch) + fullMatch.length);
-      const contentMatch = afterTool.match(/CONTENT_START\s*([\s\S]*?)\s*CONTENT_END/);
+      const afterTool = response.slice(
+        response.indexOf(fullMatch) + fullMatch.length,
+      );
+      const contentMatch = afterTool.match(
+        /CONTENT_START\s*([\s\S]*?)\s*CONTENT_END/,
+      );
       if (contentMatch) {
         content = contentMatch[1];
       }
@@ -250,7 +258,9 @@ function parseToolCalls(
 /**
  * Generate Context7 documentation instructions
  */
-function generateContext7Docs(mcpTools: McpToolDefinition[] | undefined): string {
+function generateContext7Docs(
+  mcpTools: McpToolDefinition[] | undefined,
+): string {
   if (!mcpTools || mcpTools.length === 0) {
     return "";
   }
@@ -273,7 +283,9 @@ When you need documentation for a library or API:
 /**
  * Generate MCP tools documentation
  */
-function generateMcpToolsDocs(mcpTools: McpToolDefinition[] | undefined): string {
+function generateMcpToolsDocs(
+  mcpTools: McpToolDefinition[] | undefined,
+): string {
   if (!mcpTools || mcpTools.length === 0) {
     return "";
   }
@@ -358,8 +370,14 @@ export class ElizaOSNativeSubAgent implements SubAgent {
   private readonly debug: boolean;
   private readonly enableThinking: boolean;
 
-  constructor(config?: { maxIterations?: number; debug?: boolean; enableThinking?: boolean }) {
-    this.maxIterations = config?.maxIterations ?? getEnvInt("ELIZA_CODE_NATIVE_MAX_ITERATIONS", 30);
+  constructor(config?: {
+    maxIterations?: number;
+    debug?: boolean;
+    enableThinking?: boolean;
+  }) {
+    this.maxIterations =
+      config?.maxIterations ??
+      getEnvInt("ELIZA_CODE_NATIVE_MAX_ITERATIONS", 30);
     this.debug = config?.debug ?? process.env.ELIZA_CODE_DEBUG === "1";
     this.enableThinking = config?.enableThinking ?? true;
   }
@@ -393,10 +411,22 @@ export class ElizaOSNativeSubAgent implements SubAgent {
     const filesModified: string[] = [];
     const createdTodos: SubAgentTodo[] = [];
 
-    const maxTraceResponseChars = getEnvInt("ELIZA_CODE_TRACE_MAX_RESPONSE_CHARS", this.debug ? 20000 : 4000);
-    const maxTracePromptChars = getEnvInt("ELIZA_CODE_TRACE_MAX_PROMPT_CHARS", 20000);
-    const maxTraceToolOutputChars = getEnvInt("ELIZA_CODE_TRACE_MAX_TOOL_OUTPUT_CHARS", 8000);
-    const maxUiPreviewChars = getEnvInt("ELIZA_CODE_TRACE_UI_PREVIEW_CHARS", 180);
+    const maxTraceResponseChars = getEnvInt(
+      "ELIZA_CODE_TRACE_MAX_RESPONSE_CHARS",
+      this.debug ? 20000 : 4000,
+    );
+    const maxTracePromptChars = getEnvInt(
+      "ELIZA_CODE_TRACE_MAX_PROMPT_CHARS",
+      20000,
+    );
+    const maxTraceToolOutputChars = getEnvInt(
+      "ELIZA_CODE_TRACE_MAX_TOOL_OUTPUT_CHARS",
+      8000,
+    );
+    const maxUiPreviewChars = getEnvInt(
+      "ELIZA_CODE_TRACE_UI_PREVIEW_CHARS",
+      180,
+    );
 
     let traceSeq = 0;
     const base = (): Pick<TaskTraceEvent, "ts" | "seq"> => {
@@ -407,8 +437,10 @@ export class ElizaOSNativeSubAgent implements SubAgent {
     onProgress({ taskId: task.id ?? "", progress: 0 });
 
     // Build system prompt with dynamic sections
-    const systemPrompt = ELIZAOS_NATIVE_SYSTEM_PROMPT
-      .replace("{cwd}", workingDirectory)
+    const systemPrompt = ELIZAOS_NATIVE_SYSTEM_PROMPT.replace(
+      "{cwd}",
+      workingDirectory,
+    )
       .replace("{context7_docs}", generateContext7Docs(mcpTools))
       .replace("{mcp_tools_docs}", generateMcpToolsDocs(mcpTools))
       .replace("{goals_context}", generateGoalsContext(goals))
@@ -434,7 +466,12 @@ Begin by analyzing the task in a <thinking> block, then explore the codebase to 
       // Check cancellation
       if (isCancelled()) {
         onMessage("Task cancelled", "warning");
-        onTrace?.({ kind: "status", status: "cancelled", message: "Task cancelled", ...base() });
+        onTrace?.({
+          kind: "status",
+          status: "cancelled",
+          message: "Task cancelled",
+          ...base(),
+        });
         return {
           success: false,
           summary: "Task was cancelled",
@@ -449,7 +486,12 @@ Begin by analyzing the task in a <thinking> block, then explore the codebase to 
         if (!wasPaused) {
           wasPaused = true;
           onMessage("Task paused", "warning");
-          onTrace?.({ kind: "status", status: "paused", message: "Task paused", ...base() });
+          onTrace?.({
+            kind: "status",
+            status: "paused",
+            message: "Task paused",
+            ...base(),
+          });
         }
         await sleep(300);
         continue;
@@ -458,18 +500,28 @@ Begin by analyzing the task in a <thinking> block, then explore the codebase to 
       if (wasPaused) {
         wasPaused = false;
         onMessage("Task resumed", "info");
-        onTrace?.({ kind: "status", status: "resumed", message: "Task resumed", ...base() });
+        onTrace?.({
+          kind: "status",
+          status: "resumed",
+          message: "Task resumed",
+          ...base(),
+        });
       }
 
       iteration++;
       onProgress({
         taskId: task.id ?? "",
-        progress: Math.min(90, Math.round((iteration / this.maxIterations) * 80)),
+        progress: Math.min(
+          90,
+          Math.round((iteration / this.maxIterations) * 80),
+        ),
       });
 
       // Call LLM
       const history = messages
-        .map((m) => (m.role === "user" ? `User: ${m.content}` : `Assistant: ${m.content}`))
+        .map((m) =>
+          m.role === "user" ? `User: ${m.content}` : `Assistant: ${m.content}`,
+        )
         .join("\n\n");
       const prompt = `${systemPrompt}\n\n${history}\n\nAssistant:`;
 
@@ -487,7 +539,12 @@ Begin by analyzing the task in a <thinking> block, then explore the codebase to 
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         onMessage(`LLM error: ${errorMsg}`, "error");
-        onTrace?.({ kind: "note", level: "error", message: errorMsg, ...base() });
+        onTrace?.({
+          kind: "note",
+          level: "error",
+          message: errorMsg,
+          ...base(),
+        });
         return {
           success: false,
           summary: `Failed: ${errorMsg}`,
@@ -524,8 +581,14 @@ Begin by analyzing the task in a <thinking> block, then explore the codebase to 
 
       // Log response
       const responseRedacted = redactSensitiveText(response);
-      const responseStored = truncateText(responseRedacted, maxTraceResponseChars);
-      const responsePreview = truncateText(collapseWhitespace(firstNonEmptyLine(responseStored)), maxUiPreviewChars);
+      const responseStored = truncateText(
+        responseRedacted,
+        maxTraceResponseChars,
+      );
+      const responsePreview = truncateText(
+        collapseWhitespace(firstNonEmptyLine(responseStored)),
+        maxUiPreviewChars,
+      );
 
       const llmTrace: TaskTraceEvent = this.debug
         ? {
@@ -534,7 +597,10 @@ Begin by analyzing the task in a <thinking> block, then explore the codebase to 
             modelType: String(modelType),
             response: responseStored,
             responsePreview,
-            prompt: truncateText(redactSensitiveText(prompt), maxTracePromptChars),
+            prompt: truncateText(
+              redactSensitiveText(prompt),
+              maxTracePromptChars,
+            ),
             ...base(),
           }
         : {
@@ -549,9 +615,15 @@ Begin by analyzing the task in a <thinking> block, then explore the codebase to 
 
       // Check if done
       if (response.includes("DONE:")) {
-        const summary = response.split("DONE:")[1]?.trim().split("\n")[0] ?? "Task completed";
+        const summary =
+          response.split("DONE:")[1]?.trim().split("\n")[0] ?? "Task completed";
         onMessage(`Done: ${summary}`, "info");
-        onTrace?.({ kind: "note", level: "info", message: `Done: ${summary}`, ...base() });
+        onTrace?.({
+          kind: "note",
+          level: "info",
+          message: `Done: ${summary}`,
+          ...base(),
+        });
 
         // Complete any remaining todos
         if (completeTodo) {
@@ -627,8 +699,14 @@ Remember to:
 
       // Log tool result
       const outputRedacted = redactSensitiveText(result.output);
-      const outputStored = truncateText(outputRedacted, maxTraceToolOutputChars);
-      const outputPreview = truncateText(collapseWhitespace(firstNonEmptyLine(outputStored)), maxUiPreviewChars);
+      const outputStored = truncateText(
+        outputRedacted,
+        maxTraceToolOutputChars,
+      );
+      const outputPreview = truncateText(
+        collapseWhitespace(firstNonEmptyLine(outputStored)),
+        maxUiPreviewChars,
+      );
 
       onTrace?.({
         kind: "tool_result",
@@ -642,7 +720,10 @@ Remember to:
 
       // Update plan progress if applicable
       const completedSteps = this.plan.filter((s) => s.completed).length;
-      if (completeTodo && completedSteps > createdTodos.filter((t) => t.isCompleted).length) {
+      if (
+        completeTodo &&
+        completedSteps > createdTodos.filter((t) => t.isCompleted).length
+      ) {
         const todoToComplete = createdTodos.find((t) => !t.isCompleted);
         if (todoToComplete) {
           await completeTodo(todoToComplete.id);
@@ -685,7 +766,10 @@ Continue with the next step. Remember to start with a <thinking> block.`,
     workingDirectory: string,
     filesCreated: string[],
     filesModified: string[],
-    onMessage: (message: string, priority: "info" | "warning" | "error") => void,
+    onMessage: (
+      message: string,
+      priority: "info" | "warning" | "error",
+    ) => void,
   ): Promise<ToolResult> {
     // Handle write_file with content
     if (name === "write_file" && content !== undefined) {
@@ -703,15 +787,21 @@ Continue with the next step. Remember to start with a <thinking> block.`,
         const abs = path.resolve(workingDirectory, args.filepath);
         const link = pathToFileURL(abs).toString();
         const sizeValue = result.data?.size;
-        const sizeSuffix = typeof sizeValue === "number" ? ` (${sizeValue} chars)` : "";
-        onMessage(`FILE write: ${args.filepath}${sizeSuffix} — ${link}`, "info");
+        const sizeSuffix =
+          typeof sizeValue === "number" ? ` (${sizeValue} chars)` : "";
+        onMessage(
+          `FILE write: ${args.filepath}${sizeSuffix} — ${link}`,
+          "info",
+        );
       }
 
       return result;
     }
 
     // Find tool by name
-    const tool = tools.find((t) => t.name === name || t.name === name.toLowerCase());
+    const tool = tools.find(
+      (t) => t.name === name || t.name === name.toLowerCase(),
+    );
     if (!tool) {
       return { success: false, output: `Unknown tool: ${name}` };
     }
@@ -728,7 +818,8 @@ Continue with the next step. Remember to start with a <thinking> block.`,
         const abs = path.resolve(workingDirectory, filepath);
         const link = pathToFileURL(abs).toString();
         const sizeValue = result.data?.size;
-        const sizeSuffix = typeof sizeValue === "number" ? ` (${sizeValue} chars)` : "";
+        const sizeSuffix =
+          typeof sizeValue === "number" ? ` (${sizeValue} chars)` : "";
         onMessage(`FILE write: ${filepath}${sizeSuffix} — ${link}`, "info");
       } else if (name === "edit_file" || name.includes("edit")) {
         if (!filesModified.includes(filepath)) {
@@ -804,8 +895,14 @@ function redactSensitiveText(text: string): string {
   out = out.replace(/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED:AWS_ACCESS_KEY_ID]");
   out = out.replace(/\bASIA[0-9A-Z]{16}\b/g, "[REDACTED:AWS_ACCESS_KEY_ID]");
   out = out.replace(/\bghp_[A-Za-z0-9]{20,}\b/g, "[REDACTED:GITHUB_TOKEN]");
-  out = out.replace(/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, "[REDACTED:GITHUB_TOKEN]");
-  out = out.replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED:SLACK_TOKEN]");
+  out = out.replace(
+    /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+    "[REDACTED:GITHUB_TOKEN]",
+  );
+  out = out.replace(
+    /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
+    "[REDACTED:SLACK_TOKEN]",
+  );
   out = out.replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, "Bearer [REDACTED]");
   out = out.replace(/\bBasic\s+[A-Za-z0-9+/=]{10,}\b/g, "Basic [REDACTED]");
   out = out.replace(/(password\s*[:=]\s*)(\S+)/gi, "$1[REDACTED]");

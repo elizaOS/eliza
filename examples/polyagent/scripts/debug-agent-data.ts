@@ -4,12 +4,12 @@
  * Debug script to check agent data and trade records
  */
 
-import { db } from '@polyagent/db';
-import { agentTrades, perpPositions, users } from '@polyagent/db/schema';
-import { desc, eq, sql } from 'drizzle-orm';
+import { db } from "@polyagent/db";
+import { agentTrades, perpPositions, users } from "@polyagent/db/schema";
+import { desc, eq, sql } from "drizzle-orm";
 
 async function debugAgentData() {
-  console.log('🔍 Debugging agent data...\n');
+  console.log("🔍 Debugging agent data...\n");
 
   try {
     // Check if there are ANY trades in AgentTrade table
@@ -18,7 +18,7 @@ async function debugAgentData() {
       .from(agentTrades);
 
     console.log(
-      `📊 Total trades in AgentTrade table: ${totalTrades[0].count}\n`
+      `📊 Total trades in AgentTrade table: ${totalTrades[0].count}\n`,
     );
 
     if (totalTrades[0].count > 0) {
@@ -29,13 +29,13 @@ async function debugAgentData() {
         .orderBy(desc(agentTrades.executedAt))
         .limit(5);
 
-      console.log('Sample trades:');
+      console.log("Sample trades:");
       sampleTrades.forEach((trade, idx) => {
         console.log(
-          `${idx + 1}. Agent: ${trade.agentUserId} | Action: ${trade.action} | Ticker: ${trade.ticker} | Time: ${trade.executedAt}`
+          `${idx + 1}. Agent: ${trade.agentUserId} | Action: ${trade.action} | Ticker: ${trade.ticker} | Time: ${trade.executedAt}`,
         );
       });
-      console.log('');
+      console.log("");
     }
 
     // Check users with isAgent=true
@@ -58,16 +58,16 @@ async function debugAgentData() {
     console.log(`👤 Users with isAgent=true: ${agentUsers.length}\n`);
 
     if (agentUsers.length > 0) {
-      console.log('Agent users:');
+      console.log("Agent users:");
       agentUsers.forEach((user, idx) => {
         console.log(
           `${idx + 1}. ${user.username || user.displayName || user.id} | ` +
             `Status: ${user.agentStatus} | ` +
             `Autonomous Trading: ${user.autonomousTrading} | ` +
-            `Created: ${user.createdAt.toISOString()}`
+            `Created: ${user.createdAt.toISOString()}`,
         );
       });
-      console.log('');
+      console.log("");
 
       // Check if these agents have any trades (using IN clause instead of ANY)
       const agentIds = agentUsers.map((u) => u.id);
@@ -80,22 +80,22 @@ async function debugAgentData() {
         .where(
           sql`${agentTrades.agentUserId} IN (${sql.join(
             agentIds.map((id) => sql`${id}`),
-            sql`, `
-          )})`
+            sql`, `,
+          )})`,
         )
         .groupBy(agentTrades.agentUserId);
 
-      console.log('Trades by agent users:');
+      console.log("Trades by agent users:");
       if (tradesForAgents.length === 0) {
-        console.log('  None found\n');
+        console.log("  None found\n");
       } else {
         tradesForAgents.forEach((stat) => {
           const agent = agentUsers.find((u) => u.id === stat.agentUserId);
           console.log(
-            `  ${agent?.username || stat.agentUserId}: ${stat.count} trades`
+            `  ${agent?.username || stat.agentUserId}: ${stat.count} trades`,
           );
         });
-        console.log('');
+        console.log("");
       }
     }
 
@@ -114,19 +114,19 @@ async function debugAgentData() {
       .limit(20);
 
     console.log(
-      `🤖 Users with autonomousTrading=true: ${autonomousUsers.length}\n`
+      `🤖 Users with autonomousTrading=true: ${autonomousUsers.length}\n`,
     );
 
     if (autonomousUsers.length > 0) {
-      console.log('Users with autonomous trading enabled:');
+      console.log("Users with autonomous trading enabled:");
       autonomousUsers.forEach((user, idx) => {
         console.log(
           `${idx + 1}. ${user.username || user.displayName || user.id} | ` +
             `isAgent: ${user.isAgent} | ` +
-            `Status: ${user.agentStatus}`
+            `Status: ${user.agentStatus}`,
         );
       });
-      console.log('');
+      console.log("");
     }
 
     // Check PerpPositions for any recent trading activity
@@ -144,23 +144,23 @@ async function debugAgentData() {
       .limit(10);
 
     console.log(
-      `📈 Recent perp positions (last 10): ${recentPositions.length}\n`
+      `📈 Recent perp positions (last 10): ${recentPositions.length}\n`,
     );
 
     if (recentPositions.length > 0) {
-      console.log('Recent positions:');
+      console.log("Recent positions:");
       recentPositions.forEach((pos, idx) => {
-        const status = pos.closedAt ? 'CLOSED' : 'OPEN';
+        const status = pos.closedAt ? "CLOSED" : "OPEN";
         const timeAgo = getTimeAgo(pos.openedAt);
         console.log(
           `${idx + 1}. User: ${pos.userId.slice(0, 8)}... | ` +
             `${pos.ticker} ${pos.side} | ` +
             `Size: ${pos.size} | ` +
             `Status: ${status} | ` +
-            `Opened: ${timeAgo}`
+            `Opened: ${timeAgo}`,
         );
       });
-      console.log('');
+      console.log("");
 
       // Check if these users are agents (using IN clause instead of ANY)
       const userIds = [...new Set(recentPositions.map((p) => p.userId))];
@@ -175,21 +175,21 @@ async function debugAgentData() {
         .where(
           sql`${users.id} IN (${sql.join(
             userIds.map((id) => sql`${id}`),
-            sql`, `
-          )})`
+            sql`, `,
+          )})`,
         );
 
-      console.log('Are these users agents?');
+      console.log("Are these users agents?");
       usersData.forEach((user) => {
         console.log(
           `  ${user.username || user.id.slice(0, 8)}: ` +
-            `isAgent=${user.isAgent}, autonomousTrading=${user.autonomousTrading}`
+            `isAgent=${user.isAgent}, autonomousTrading=${user.autonomousTrading}`,
         );
       });
-      console.log('');
+      console.log("");
     }
   } catch (error) {
-    console.error('Error debugging:', error);
+    console.error("Error debugging:", error);
     throw error;
   }
 }
@@ -211,10 +211,10 @@ function getTimeAgo(date: Date): string {
 // Run the debug check
 debugAgentData()
   .then(() => {
-    console.log('✅ Debug complete');
+    console.log("✅ Debug complete");
     process.exit(0);
   })
   .catch((error) => {
-    console.error('❌ Debug failed:', error);
+    console.error("❌ Debug failed:", error);
     process.exit(1);
   });

@@ -4,10 +4,10 @@
  * Returns Polymarket positions, recent trades, and USDC balance for an agent.
  */
 
-import { db, eq, users } from '@babylon/db';
-import { authenticateUser } from '@babylon/api';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { authenticateUser } from "@babylon/api";
+import { db, eq, users } from "@babylon/db";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 interface Position {
   market: string;
@@ -17,14 +17,14 @@ interface Position {
   average_price: string;
   current_price?: string;
   unrealized_pnl?: string;
-  side: 'YES' | 'NO';
+  side: "YES" | "NO";
 }
 
 interface Trade {
   id: string;
   market: string;
   marketQuestion?: string;
-  side: 'BUY' | 'SELL';
+  side: "BUY" | "SELL";
   outcome: string;
   size: string;
   price: string;
@@ -38,7 +38,7 @@ interface PositionsResponse {
 }
 
 async function fetchPolymarketData(
-  walletAddress: string
+  _walletAddress: string,
 ): Promise<PositionsResponse> {
   // TODO: Implement actual Polymarket API integration
   // This will call the Polymarket CLOB API using the agent's wallet
@@ -53,7 +53,7 @@ async function fetchPolymarketData(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const user = await authenticateUser(request);
   const { agentId } = await params;
@@ -66,12 +66,12 @@ export async function GET(
     .limit(1);
 
   if (!agent || !agent.isAgent) {
-    return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
   // Verify ownership
   if (agent.managedBy !== user.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   // If agent has no wallet, return empty data
@@ -87,7 +87,7 @@ export async function GET(
     const data = await fetchPolymarketData(agent.walletAddress);
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Failed to fetch Polymarket data:', error);
+    console.error("Failed to fetch Polymarket data:", error);
     return NextResponse.json({
       positions: [],
       recentTrades: [],

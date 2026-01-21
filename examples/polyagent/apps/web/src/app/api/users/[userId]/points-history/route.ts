@@ -15,10 +15,10 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@polyagent/api';
-import { db, desc, eq, pointsTransactions } from '@polyagent/db';
-import { UserIdParamSchema } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
+} from "@polyagent/api";
+import { db, desc, eq, pointsTransactions } from "@polyagent/db";
+import { UserIdParamSchema } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/users/[userId]/points-history
@@ -27,7 +27,7 @@ import type { NextRequest } from 'next/server';
 export const GET = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate user
     const authUser = await authenticate(request);
@@ -36,9 +36,9 @@ export const GET = withErrorHandling(
     // Check if the authenticated user has a database record
     if (!authUser.dbUserId) {
       throw new AuthorizationError(
-        'User profile not found. Please complete onboarding first.',
-        'points-history',
-        'read'
+        "User profile not found. Please complete onboarding first.",
+        "points-history",
+        "read",
       );
     }
 
@@ -48,9 +48,9 @@ export const GET = withErrorHandling(
     // Verify user is getting their own history
     if (authUser.dbUserId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only view your own points history',
-        'points-history',
-        'read'
+        "You can only view your own points history",
+        "points-history",
+        "read",
       );
     }
 
@@ -65,5 +65,5 @@ export const GET = withErrorHandling(
     return successResponse({
       transactions,
     });
-  }
+  },
 );

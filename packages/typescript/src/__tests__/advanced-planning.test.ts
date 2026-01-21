@@ -1,9 +1,9 @@
-import { describe, expect, test } from "vitest";
 import { v4 as uuidv4 } from "uuid";
+import { describe, expect, test } from "vitest";
+import type { PlanningService } from "../advanced-planning";
 import { AgentRuntime } from "../runtime";
 import type { Character, Memory, State, UUID } from "../types";
 import { ModelType } from "../types";
-import { PlanningService } from "../advanced-planning";
 
 const asTestUuid = (id: string): UUID => id as UUID;
 
@@ -67,7 +67,7 @@ describe("advanced planning (built-in)", () => {
           "<step>",
           "<id>step_1</id>",
           "<action>ANALYZE_INPUT</action>",
-          "<parameters>{\"goal\":\"Do thing\"}</parameters>",
+          '<parameters>{"goal":"Do thing"}</parameters>',
           "<dependencies>[]</dependencies>",
           "</step>",
           "</steps>",
@@ -81,24 +81,34 @@ describe("advanced planning (built-in)", () => {
     await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
 
     // Provider registered
-    expect(runtime.providers.some((p) => p.name === "messageClassifier")).toBe(true);
+    expect(runtime.providers.some((p) => p.name === "messageClassifier")).toBe(
+      true,
+    );
 
     // Service registered
-    const svc = (await runtime.getServiceLoadPromise("planning")) as PlanningService;
+    const svc = (await runtime.getServiceLoadPromise(
+      "planning",
+    )) as PlanningService;
     expect(runtime.hasService("planning")).toBe(true);
 
     // Actions registered
     expect(runtime.actions.some((a) => a.name === "ANALYZE_INPUT")).toBe(true);
 
     // Provider behavior (parses planningRequired)
-    const provider = runtime.providers.find((p) => p.name === "messageClassifier");
+    const provider = runtime.providers.find(
+      (p) => p.name === "messageClassifier",
+    );
     if (!provider) throw new Error("Expected messageClassifier provider");
     const msg = makeMemory("Please plan a small project");
     const providerResult = await provider.get(runtime, msg, makeState());
     expect(providerResult.data?.planningRequired).toBe(true);
 
     // Service behavior (simple plan)
-    const simplePlan = await svc.createSimplePlan(runtime, makeMemory("email the team"), makeState());
+    const simplePlan = await svc.createSimplePlan(
+      runtime,
+      makeMemory("email the team"),
+      makeState(),
+    );
     expect(simplePlan?.steps.length).toBeGreaterThan(0);
 
     // Service behavior (comprehensive plan)
@@ -132,7 +142,9 @@ describe("advanced planning (built-in)", () => {
     await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
 
     expect(runtime.hasService("planning")).toBe(false);
-    expect(runtime.providers.some((p) => p.name === "messageClassifier")).toBe(false);
+    expect(runtime.providers.some((p) => p.name === "messageClassifier")).toBe(
+      false,
+    );
   });
 
   test("executes DAG steps in dependency order", async () => {
@@ -191,7 +203,9 @@ describe("advanced planning (built-in)", () => {
 
     await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
 
-    const svc = (await runtime.getServiceLoadPromise("planning")) as PlanningService;
+    const svc = (await runtime.getServiceLoadPromise(
+      "planning",
+    )) as PlanningService;
 
     const stepA: UUID = asTestUuid(uuidv4());
     const stepB: UUID = asTestUuid(uuidv4());
@@ -205,8 +219,18 @@ describe("advanced planning (built-in)", () => {
       currentStep: 0,
       steps: [
         { id: stepA, actionName: "STEP_A", parameters: {}, dependencies: [] },
-        { id: stepB, actionName: "STEP_B", parameters: {}, dependencies: [stepA] },
-        { id: stepC, actionName: "STEP_C", parameters: {}, dependencies: [stepB] },
+        {
+          id: stepB,
+          actionName: "STEP_B",
+          parameters: {},
+          dependencies: [stepA],
+        },
+        {
+          id: stepC,
+          actionName: "STEP_C",
+          parameters: {},
+          dependencies: [stepB],
+        },
       ],
       executionModel: "dag",
       state: { status: "pending" as const },
@@ -217,4 +241,3 @@ describe("advanced planning (built-in)", () => {
     expect(executionOrder).toEqual(["STEP_A", "STEP_B", "STEP_C"]);
   });
 });
-

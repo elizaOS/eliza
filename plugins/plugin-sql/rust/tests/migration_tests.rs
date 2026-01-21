@@ -228,7 +228,7 @@ async fn test_multiple_snapshots() {
 
     // Save multiple snapshots
     let snapshot1 = json!({"version": "1.0.0"});
-    let snapshot2 = json!({"version": "2.0.0"});
+    let snapshot2 = json!({"version": "2.0.0-alpha"});
     let snapshot3 = json!({"version": "3.0.0"});
 
     storage

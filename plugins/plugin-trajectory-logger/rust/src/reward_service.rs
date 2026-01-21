@@ -5,6 +5,7 @@ use crate::types::Trajectory;
 pub struct RewardService;
 
 impl RewardService {
+    /// Creates a new reward scoring service instance.
     pub fn new() -> Self {
         Self
     }

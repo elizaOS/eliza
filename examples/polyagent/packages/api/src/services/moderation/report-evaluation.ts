@@ -16,9 +16,9 @@ import {
   posts,
   reports,
   users,
-} from '@polyagent/db';
-import { logger } from '@polyagent/shared';
-import { callClaudeDirect } from '../claude-service';
+} from "@polyagent/db";
+import { logger } from "@polyagent/shared";
+import { callClaudeDirect } from "../claude-service";
 
 /**
  * NotificationService interface for dependency injection
@@ -44,17 +44,17 @@ export function setNotificationService(service: NotificationService): void {
 function getNotificationService(): NotificationService {
   if (!notificationServiceInstance) {
     throw new Error(
-      'NotificationService not initialized. Call setNotificationService() first.'
+      "NotificationService not initialized. Call setNotificationService() first.",
     );
   }
   return notificationServiceInstance;
 }
 
 export type ReportEvaluationOutcome =
-  | 'valid_report' // Reporter has valid reason, reported user is abusive
-  | 'invalid_report' // Reporter has fair reason but is not right
-  | 'abusive_reporter' // Reporter is being abusive themselves
-  | 'insufficient_evidence'; // Not enough evidence to make a determination
+  | "valid_report" // Reporter has valid reason, reported user is abusive
+  | "invalid_report" // Reporter has fair reason but is not right
+  | "abusive_reporter" // Reporter is being abusive themselves
+  | "insufficient_evidence"; // Not enough evidence to make a determination
 
 export interface ReportEvaluationResult {
   outcome: ReportEvaluationOutcome;
@@ -116,18 +116,18 @@ interface ReportContext {
  * Evaluate a report by collecting context and using AI
  */
 export async function evaluateReport(
-  reportId: string
+  reportId: string,
 ): Promise<ReportEvaluationResult> {
-  logger.info('Evaluating report', { reportId }, 'ReportEvaluation');
+  logger.info("Evaluating report", { reportId }, "ReportEvaluation");
 
   // Collect context
   const context = await collectReportContext(reportId);
 
   if (!context) {
     return {
-      outcome: 'insufficient_evidence',
+      outcome: "insufficient_evidence",
       confidence: 0,
-      reasoning: 'Report or users not found',
+      reasoning: "Report or users not found",
       recommendedActions: [],
       evidenceSummary: {
         chatMessages: 0,
@@ -142,13 +142,13 @@ export async function evaluateReport(
   const evaluation = await evaluateWithAI(context);
 
   logger.info(
-    'Report evaluation complete',
+    "Report evaluation complete",
     {
       reportId,
       outcome: evaluation.outcome,
       confidence: evaluation.confidence,
     },
-    'ReportEvaluation'
+    "ReportEvaluation",
   );
 
   // Send notification to reporter about evaluation result
@@ -165,9 +165,9 @@ export async function evaluateReport(
     const notificationService = getNotificationService();
     await notificationService.createNotification({
       userId: report.reporterId,
-      type: 'system',
-      title: 'Report Evaluation Complete',
-      message: `Your report has been evaluated. Outcome: ${evaluation.outcome.replace('_', ' ')}. ${evaluation.reasoning.substring(0, 100)}...`,
+      type: "system",
+      title: "Report Evaluation Complete",
+      message: `Your report has been evaluated. Outcome: ${evaluation.outcome.replace("_", " ")}. ${evaluation.reasoning.substring(0, 100)}...`,
     });
   }
 
@@ -178,7 +178,7 @@ export async function evaluateReport(
  * Collect all relevant context for a report
  */
 async function collectReportContext(
-  reportId: string
+  reportId: string,
 ): Promise<ReportContext | null> {
   const [report] = await db
     .select({
@@ -237,7 +237,7 @@ async function collectReportContext(
 
   // Find DM chat between reporter and reported
   const sortedIds = [reporterId, reportedId].sort();
-  const chatId = `dm-${sortedIds.join('-')}`;
+  const chatId = `dm-${sortedIds.join("-")}`;
 
   const chatMessages = await db
     .select({
@@ -327,7 +327,7 @@ async function collectReportContext(
     },
     chatMessages,
     posts: [...reporterPosts, ...reportedPosts].sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
     ),
   };
 }
@@ -336,7 +336,7 @@ async function collectReportContext(
  * Use AI to evaluate the report context
  */
 async function evaluateWithAI(
-  context: ReportContext
+  context: ReportContext,
 ): Promise<ReportEvaluationResult> {
   const prompt = `You are a moderation AI evaluating a user report. Analyze the context and determine if the report is valid.
 
@@ -354,7 +354,7 @@ We ONLY ban for TWO things:
 REPORT DETAILS:
 - Category: ${context.report.category}
 - Reason: ${context.report.reason}
-- Evidence: ${context.report.evidence || 'None provided'}
+- Evidence: ${context.report.evidence || "None provided"}
 
 REPORTER:
 - Username: ${context.reporter.username || context.reporter.displayName || context.reporter.id}
@@ -379,21 +379,21 @@ ${context.chatMessages
   .slice(0, 20)
   .map((msg) => {
     const sender =
-      msg.senderId === context.reporter.id ? 'REPORTER' : 'REPORTED';
+      msg.senderId === context.reporter.id ? "REPORTER" : "REPORTED";
     return `[${sender}] ${msg.content.substring(0, 200)}`;
   })
-  .join('\n')}
+  .join("\n")}
 
 RECENT POSTS (${context.posts.length} posts):
 ${context.posts
   .slice(0, 10)
   .map((post) => {
     const author = post.id.startsWith(context.reporter.id)
-      ? 'REPORTER'
-      : 'REPORTED';
+      ? "REPORTER"
+      : "REPORTED";
     return `[${author}] ${post.content.substring(0, 200)}`;
   })
-  .join('\n')}
+  .join("\n")}
 
 EVALUATION CRITERIA (ONLY evaluate for scamming or CSAM):
 1. Is the reported user attempting to SCAM others (steal points or real money)?
@@ -423,8 +423,8 @@ Respond with a JSON object:
   const response = await callClaudeDirect({
     prompt,
     system:
-      'You are a moderation AI for a right-leaning libertarian platform. You ONLY ban for scamming (stealing points/money) or CSAM. You do NOT ban for crude jokes, harassment, or offensive language.',
-    model: 'claude-sonnet-4-5',
+      "You are a moderation AI for a right-leaning libertarian platform. You ONLY ban for scamming (stealing points/money) or CSAM. You do NOT ban for crude jokes, harassment, or offensive language.",
+    model: "claude-sonnet-4-5",
     temperature: 0.2, // Lower temperature for more consistent evaluations
     maxTokens: 4096,
   });
@@ -434,7 +434,7 @@ Respond with a JSON object:
   // Try to extract JSON from the response
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    throw new Error('No JSON found in AI response');
+    throw new Error("No JSON found in AI response");
   }
 
   const evaluation = JSON.parse(jsonMatch[0]) as ReportEvaluationResult;
@@ -442,13 +442,13 @@ Respond with a JSON object:
   // Validate outcome
   if (
     ![
-      'valid_report',
-      'invalid_report',
-      'abusive_reporter',
-      'insufficient_evidence',
+      "valid_report",
+      "invalid_report",
+      "abusive_reporter",
+      "insufficient_evidence",
     ].includes(evaluation.outcome)
   ) {
-    evaluation.outcome = 'insufficient_evidence';
+    evaluation.outcome = "insufficient_evidence";
   }
 
   // Add evidence summary
@@ -467,13 +467,13 @@ Respond with a JSON object:
  */
 export async function storeEvaluationResult(
   reportId: string,
-  evaluation: ReportEvaluationResult
+  evaluation: ReportEvaluationResult,
 ): Promise<void> {
   await db
     .update(reports)
     .set({
       resolution: JSON.stringify(evaluation),
-      status: evaluation.outcome === 'valid_report' ? 'resolved' : 'reviewing',
+      status: evaluation.outcome === "valid_report" ? "resolved" : "reviewing",
       updatedAt: new Date(),
     })
     .where(eq(reports.id, reportId));

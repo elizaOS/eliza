@@ -1,8 +1,8 @@
-import { Character } from './Character.tsx';
-import { characters } from '../../data/characters.ts';
-import type { TownAgent } from '../../shared/types';
+import { characters } from "../../data/characters.ts";
+import type { TownAgent } from "../../shared/types";
+import { Character } from "./Character.tsx";
 
-export type SelectElement = (element?: { kind: 'player'; id: string }) => void;
+export type SelectElement = (element?: { kind: "player"; id: string }) => void;
 
 export const Player = ({
   agent,
@@ -19,42 +19,45 @@ export const Player = ({
   }
 
   const now = Date.now();
-  const isMoving = agent.status === 'moving';
+  const isMoving = agent.status === "moving";
   const speechMessage =
-    agent.lastMessage && agent.lastMessageExpiresAt && agent.lastMessageExpiresAt > now
+    agent.lastMessage &&
+    agent.lastMessageExpiresAt &&
+    agent.lastMessageExpiresAt > now
       ? agent.lastMessage
       : undefined;
   const { thoughtText, speechText } = splitThoughtAndSpeech(speechMessage);
   const activeEmote =
-    agent.emote && agent.emoteExpiresAt && agent.emoteExpiresAt > now ? agent.emote : '';
+    agent.emote && agent.emoteExpiresAt && agent.emoteExpiresAt > now
+      ? agent.emote
+      : "";
   const renderPosition = agent.renderPosition ?? agent.position;
   const headOffsetPx = tileDim;
   return (
-    <>
-      <Character
-        x={renderPosition.x * tileDim + tileDim / 2}
-        y={renderPosition.y * tileDim + tileDim / 2}
-        orientation={agent.orientation}
-        isMoving={isMoving}
-        thoughtText={thoughtText}
-        speechText={speechText}
-        headOffsetPx={headOffsetPx}
-        emoji={activeEmote ?? ''}
-        isViewer={false}
-        textureUrl={character.textureUrl}
-        spritesheetData={character.spritesheetData}
-        speed={character.speed}
-        onClick={() => {
-          onClick({ kind: 'player', id: agent.id });
-        }}
-      />
-    </>
+    <Character
+      x={renderPosition.x * tileDim + tileDim / 2}
+      y={renderPosition.y * tileDim + tileDim / 2}
+      orientation={agent.orientation}
+      isMoving={isMoving}
+      thoughtText={thoughtText}
+      speechText={speechText}
+      headOffsetPx={headOffsetPx}
+      emoji={activeEmote ?? ""}
+      isViewer={false}
+      textureUrl={character.textureUrl}
+      spritesheetData={character.spritesheetData}
+      speed={character.speed}
+      onClick={() => {
+        onClick({ kind: "player", id: agent.id });
+      }}
+    />
   );
 };
 
-function splitThoughtAndSpeech(
-  message?: string,
-): { thoughtText?: string; speechText?: string } {
+function splitThoughtAndSpeech(message?: string): {
+  thoughtText?: string;
+  speechText?: string;
+} {
   if (!message) {
     return {};
   }

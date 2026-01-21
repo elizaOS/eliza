@@ -46,9 +46,8 @@ impl RelationshipRecord {
             source_entity_id: UUID::new(&self.source_entity_id.to_string()).unwrap(),
             target_entity_id: UUID::new(&self.target_entity_id.to_string()).unwrap(),
             agent_id: UUID::new(&self.agent_id.to_string()).unwrap(),
-            tags,
-            metadata: serde_json::from_value(self.metadata.clone()).unwrap_or_default(),
-            created_at: Some(self.created_at.to_rfc3339()),
+            tags: Some(tags),
+            metadata: Some(self.metadata.clone()),
         }
     }
 }

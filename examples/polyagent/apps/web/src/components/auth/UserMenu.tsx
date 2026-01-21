@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { getDisplayReferralUrl, getReferralUrl } from '@babylon/shared';
-import { Check, Copy, Key, LogOut, Settings } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
-import { Avatar } from '@/components/shared/Avatar';
-import { Dropdown, DropdownItem } from '@/components/shared/Dropdown';
-import { useAuth } from '@/hooks/useAuth';
-import { getAuthToken } from '@/lib/auth';
-import { useAuthStore } from '@/stores/authStore';
+import { getDisplayReferralUrl, getReferralUrl } from "@babylon/shared";
+import { Check, Copy, Key, LogOut, Settings } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { Avatar } from "@/components/shared/Avatar";
+import { Dropdown, DropdownItem } from "@/components/shared/Dropdown";
+import { useAuth } from "@/hooks/useAuth";
+import { getAuthToken } from "@/lib/auth";
+import { useAuthStore } from "@/stores/authStore";
 
 /**
  * Global fetch tracking to prevent duplicate calls across all UserMenu instances.
@@ -73,7 +73,7 @@ export function UserMenu() {
       }
 
       const headers: HeadersInit = {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       };
 
@@ -93,12 +93,12 @@ export function UserMenu() {
         }),
       ]).catch((error) => {
         // Ignore abort errors
-        if (error instanceof Error && error.name === 'AbortError') {
+        if (error instanceof Error && error.name === "AbortError") {
           return [null, null];
         }
         // Silently handle network errors - component will show previous state or null
         if (isMounted) {
-          console.warn('Failed to fetch user menu data:', error);
+          console.warn("Failed to fetch user menu data:", error);
         }
         return [null, null];
       });
@@ -190,9 +190,9 @@ export function UserMenu() {
       refresh();
     };
 
-    window.addEventListener('rewards-updated', handleRewardsUpdated);
+    window.addEventListener("rewards-updated", handleRewardsUpdated);
     return () => {
-      window.removeEventListener('rewards-updated', handleRewardsUpdated);
+      window.removeEventListener("rewards-updated", handleRewardsUpdated);
     };
   }, [refresh]);
 
@@ -209,7 +209,7 @@ export function UserMenu() {
   }
 
   const displayName =
-    user.displayName || user.email?.split('@')[0] || 'Anonymous';
+    user.displayName || user.email?.split("@")[0] || "Anonymous";
   const username = user.username || `user${user.id.slice(0, 8)}`;
 
   const trigger = (
@@ -272,7 +272,7 @@ export function UserMenu() {
               </>
             ) : (
               <>
-                <Copy className="h-5 w-5" style={{ color: '#0066FF' }} />
+                <Copy className="h-5 w-5" style={{ color: "#0066FF" }} />
                 <div className="flex min-w-0 flex-1 flex-col">
                   <span className="font-semibold text-foreground text-sm">
                     Copy Referral Link
@@ -287,18 +287,18 @@ export function UserMenu() {
         </DropdownItem>
       )}
 
-      <DropdownItem onClick={() => router.push('/settings')}>
+      <DropdownItem onClick={() => router.push("/settings")}>
         <div className="flex items-center gap-3 py-2">
-          <Settings className="h-5 w-5" style={{ color: '#0066FF' }} />
+          <Settings className="h-5 w-5" style={{ color: "#0066FF" }} />
           <span className="font-semibold text-foreground text-sm">
             Settings
           </span>
         </div>
       </DropdownItem>
 
-      <DropdownItem onClick={() => router.push('/settings?tab=api')}>
+      <DropdownItem onClick={() => router.push("/settings?tab=api")}>
         <div className="flex items-center gap-3 py-2">
-          <Key className="h-5 w-5" style={{ color: '#0066FF' }} />
+          <Key className="h-5 w-5" style={{ color: "#0066FF" }} />
           <span className="font-semibold text-foreground text-sm">
             API Keys
           </span>

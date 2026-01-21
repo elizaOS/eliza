@@ -34,7 +34,8 @@ export interface TaskStep {
   description: string;
   status: TaskStatus;
   output?: string;
-  [key: string]: JsonValue | undefined;
+  /** Additional metadata for the step */
+  metadata?: Record<string, JsonValue>;
 }
 
 export interface TaskResult {
@@ -43,6 +44,8 @@ export interface TaskResult {
   filesModified: string[];
   filesCreated: string[];
   error?: string;
+  /** Additional metadata for the result */
+  metadata?: Record<string, JsonValue>;
 }
 
 export type TaskTraceLevel = "info" | "warning" | "error";
@@ -209,12 +212,10 @@ export interface CodeTaskMetadata {
   goals?: SubAgentGoal[];
   /** Todos created during task execution */
   todos?: SubAgentTodo[];
-  /** Additional plugin-specific metadata. */
-  [key: string]: JsonValue | undefined;
 }
 
 /** Code task - uses core Task with typed metadata */
-export interface CodeTask extends CoreTask {
+export interface CodeTask extends Omit<CoreTask, "metadata"> {
   metadata: CodeTaskMetadata;
 }
 

@@ -10,14 +10,20 @@ export interface TrajectoryContext {
 }
 
 export interface ITrajectoryContextManager {
-  run<T>(context: TrajectoryContext | undefined, fn: () => T | Promise<T>): T | Promise<T>;
+  run<T>(
+    context: TrajectoryContext | undefined,
+    fn: () => T | Promise<T>,
+  ): T | Promise<T>;
   active(): TrajectoryContext | undefined;
 }
 
 class StackContextManager implements ITrajectoryContextManager {
   private stack: Array<TrajectoryContext | undefined> = [];
 
-  run<T>(context: TrajectoryContext | undefined, fn: () => T | Promise<T>): T | Promise<T> {
+  run<T>(
+    context: TrajectoryContext | undefined,
+    fn: () => T | Promise<T>,
+  ): T | Promise<T> {
     this.stack.push(context);
     try {
       return fn();
@@ -51,7 +57,10 @@ async function createContextManager(): Promise<ITrajectoryContextManager> {
       const { AsyncLocalStorage } = await import("node:async_hooks");
       return {
         storage: new AsyncLocalStorage<TrajectoryContext | undefined>(),
-        run<T>(context: TrajectoryContext | undefined, fn: () => T | Promise<T>): T | Promise<T> {
+        run<T>(
+          context: TrajectoryContext | undefined,
+          fn: () => T | Promise<T>,
+        ): T | Promise<T> {
           return (
             this as {
               storage: InstanceType<
@@ -120,4 +129,3 @@ export function runWithTrajectoryContext<T>(
 export function getTrajectoryContext(): TrajectoryContext | undefined {
   return getOrCreateContextManager().active();
 }
-

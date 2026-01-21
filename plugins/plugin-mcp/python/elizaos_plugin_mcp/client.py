@@ -49,7 +49,7 @@ class McpClient:
                 "capabilities": {},
                 "clientInfo": {
                     "name": "elizaos-plugin-mcp",
-                    "version": "2.0.0",
+                    "version": "2.0.0-alpha",
                 },
             },
         }
@@ -102,7 +102,7 @@ class McpClient:
         result = response.get("result", {})
         tools_data = result.get("tools", [])
 
-        return [McpTool.model_validate(tool) for tool in tools_data]
+        return [McpTool.model_validate(tool) for tool in tools_data]  # type: ignore[attr-defined]
 
     async def call_tool(
         self,
@@ -136,7 +136,7 @@ class McpClient:
             )
 
         result = response.get("result", {})
-        return McpToolResult.model_validate(result)
+        return McpToolResult.model_validate(result)  # type: ignore[attr-defined,no-any-return]
 
     async def list_resources(self) -> list[McpResource]:
         if self._status != ConnectionStatus.CONNECTED:
@@ -161,7 +161,7 @@ class McpClient:
         result = response.get("result", {})
         resources_data = result.get("resources", [])
 
-        return [McpResource.model_validate(resource) for resource in resources_data]
+        return [McpResource.model_validate(resource) for resource in resources_data]  # type: ignore[attr-defined]
 
     async def read_resource(self, uri: str) -> list[McpResourceContent]:
         if self._status != ConnectionStatus.CONNECTED:
@@ -192,7 +192,7 @@ class McpClient:
         result = response.get("result", {})
         contents_data = result.get("contents", [])
 
-        return [McpResourceContent.model_validate(content) for content in contents_data]
+        return [McpResourceContent.model_validate(content) for content in contents_data]  # type: ignore[attr-defined]
 
     async def list_resource_templates(self) -> list[McpResourceTemplate]:
         if self._status != ConnectionStatus.CONNECTED:
@@ -217,7 +217,7 @@ class McpClient:
         result = response.get("result", {})
         templates_data = result.get("resourceTemplates", [])
 
-        return [McpResourceTemplate.model_validate(template) for template in templates_data]
+        return [McpResourceTemplate.model_validate(template) for template in templates_data]  # type: ignore[attr-defined]
 
     async def __aenter__(self) -> McpClient:
         await self.connect()

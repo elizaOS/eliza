@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::{Action, ActionExample, ActionResult};
 use crate::service::CoderService;
+use crate::{Action, ActionExample, ActionResult};
 
 pub struct SearchFilesAction;
 
@@ -39,9 +39,20 @@ impl Action for SearchFilesAction {
             };
         };
 
-        let pattern = state.get("pattern").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let dirpath = state.get("path").and_then(|v| v.as_str()).unwrap_or(".").to_string();
-        let max_matches = state.get("max_matches").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+        let pattern = state
+            .get("pattern")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let dirpath = state
+            .get("path")
+            .and_then(|v| v.as_str())
+            .unwrap_or(".")
+            .to_string();
+        let max_matches = state
+            .get("max_matches")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(50) as usize;
         if pattern.trim().is_empty() {
             return ActionResult {
                 success: false,
@@ -57,7 +68,10 @@ impl Action for SearchFilesAction {
             .or_else(|| message.get("agent_id").and_then(|v| v.as_str()))
             .unwrap_or("default");
 
-        match svc.search_files(conv, &pattern, &dirpath, max_matches).await {
+        match svc
+            .search_files(conv, &pattern, &dirpath, max_matches)
+            .await
+        {
             Ok(matches) => {
                 let text = if matches.is_empty() {
                     format!("No matches for \"{}\".", pattern)
@@ -91,4 +105,3 @@ impl Action for SearchFilesAction {
         }]
     }
 }
-

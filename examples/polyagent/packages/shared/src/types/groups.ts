@@ -15,4 +15,4 @@ export type TierLevel = 1 | 2 | 3;
 /**
  * Alpha content level corresponding to each tier.
  */
-export type AlphaLevel = 'full' | 'partial' | 'public';
+export type AlphaLevel = "full" | "partial" | "public";

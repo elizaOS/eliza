@@ -4,15 +4,15 @@
  * Give all agents starting virtual balance for trading
  */
 
-import { db } from '@polyagent/db';
-import { users } from '@polyagent/db/schema';
-import { eq } from 'drizzle-orm';
+import { db } from "@polyagent/db";
+import { users } from "@polyagent/db/schema";
+import { eq } from "drizzle-orm";
 
-const STARTING_BALANCE = '1000.00'; // $1000 starting balance
+const STARTING_BALANCE = "1000.00"; // $1000 starting balance
 
 async function fundAllAgents() {
   console.log(
-    `💰 Funding all agents with $${STARTING_BALANCE} starting balance...\n`
+    `💰 Funding all agents with $${STARTING_BALANCE} starting balance...\n`,
   );
 
   try {
@@ -31,11 +31,11 @@ async function fundAllAgents() {
 
     // 2. Find agents with low balance
     const agentsToFund = allAgents.filter(
-      (a) => parseFloat(a.virtualBalance) < parseFloat(STARTING_BALANCE)
+      (a) => parseFloat(a.virtualBalance) < parseFloat(STARTING_BALANCE),
     );
 
     console.log(
-      `Agents with sufficient balance (>=$${STARTING_BALANCE}): ${allAgents.length - agentsToFund.length}`
+      `Agents with sufficient balance (>=$${STARTING_BALANCE}): ${allAgents.length - agentsToFund.length}`,
     );
     console.log(`Agents to fund: ${agentsToFund.length}\n`);
 
@@ -45,17 +45,17 @@ async function fundAllAgents() {
     }
 
     // 3. Show agents that will be funded
-    console.log('Funding agents:');
+    console.log("Funding agents:");
     agentsToFund.forEach((agent, idx) => {
       const currentBalance = parseFloat(agent.virtualBalance).toFixed(2);
-      const trading = agent.autonomousTrading ? '✅' : '❌';
+      const trading = agent.autonomousTrading ? "✅" : "❌";
       console.log(
         `  ${idx + 1}. ${agent.username} | ` +
           `Current: $${currentBalance} → $${STARTING_BALANCE} | ` +
-          `Trading: ${trading}`
+          `Trading: ${trading}`,
       );
     });
-    console.log('');
+    console.log("");
 
     // 4. Fund all agents
     let successCount = 0;
@@ -75,7 +75,7 @@ async function fundAllAgents() {
 
         successCount++;
         console.log(
-          `✅ ${successCount}/${agentsToFund.length} - Funded: ${agent.username}`
+          `✅ ${successCount}/${agentsToFund.length} - Funded: ${agent.username}`,
         );
       } catch (error) {
         errorCount++;
@@ -86,36 +86,36 @@ async function fundAllAgents() {
     }
 
     // 5. Summary
-    console.log('\n' + '='.repeat(80));
-    console.log('📊 Funding Summary:');
-    console.log('='.repeat(80));
+    console.log(`\n${"=".repeat(80)}`);
+    console.log("📊 Funding Summary:");
+    console.log("=".repeat(80));
     console.log(`Total agents: ${allAgents.length}`);
     console.log(`Already funded: ${allAgents.length - agentsToFund.length}`);
     console.log(`Needed funding: ${agentsToFund.length}`);
     console.log(`Successfully funded: ${successCount}`);
     console.log(`Failed: ${errorCount}`);
     console.log(
-      `Total funds distributed: $${(successCount * parseFloat(STARTING_BALANCE)).toFixed(2)}`
+      `Total funds distributed: $${(successCount * parseFloat(STARTING_BALANCE)).toFixed(2)}`,
     );
 
     if (errors.length > 0) {
-      console.log('\n❌ Errors:');
+      console.log("\n❌ Errors:");
       errors.forEach(({ agent, error }) => {
         console.log(`  - ${agent}: ${error}`);
       });
     }
 
     if (successCount > 0) {
-      console.log('\n✅ All agents funded and ready to trade!');
-      console.log('\n💡 Next steps:');
-      console.log('   1. Wait for next agent-tick cron cycle (~1-2 minutes)');
-      console.log('   2. Check trades: bun run scripts/check-agent-trades.ts');
+      console.log("\n✅ All agents funded and ready to trade!");
+      console.log("\n💡 Next steps:");
+      console.log("   1. Wait for next agent-tick cron cycle (~1-2 minutes)");
+      console.log("   2. Check trades: bun run scripts/check-agent-trades.ts");
       console.log(
-        '   3. Monitor tick logs: bun run scripts/check-last-tick.ts'
+        "   3. Monitor tick logs: bun run scripts/check-last-tick.ts",
       );
     }
   } catch (error) {
-    console.error('Error funding agents:', error);
+    console.error("Error funding agents:", error);
     throw error;
   }
 }
@@ -123,10 +123,10 @@ async function fundAllAgents() {
 // Run the script
 fundAllAgents()
   .then(() => {
-    console.log('\n✅ Script complete');
+    console.log("\n✅ Script complete");
     process.exit(0);
   })
   .catch((error) => {
-    console.error('\n❌ Script failed:', error);
+    console.error("\n❌ Script failed:", error);
     process.exit(1);
   });

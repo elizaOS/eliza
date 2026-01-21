@@ -1,8 +1,8 @@
 import pytest
 
-from elizaos.runtime import AgentRuntime
 from elizaos.action_docs import with_canonical_action_docs
 from elizaos.bootstrap.actions import send_message_action
+from elizaos.runtime import AgentRuntime
 from elizaos.types import Character, Content, Memory, as_uuid
 
 
@@ -37,4 +37,3 @@ async def test_actions_provider_includes_examples_and_parameter_examples() -> No
     # Canonical docs include examples for SEND_MESSAGE parameters
     assert "SEND_MESSAGE" in text
     assert "examples:" in text
-

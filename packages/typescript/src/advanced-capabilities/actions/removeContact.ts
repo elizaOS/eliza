@@ -17,7 +17,8 @@ import { composePromptFromState, parseKeyValueXml } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("REMOVE_CONTACT");
-const REMOVE_CONTACT_INTENT = /remove|delete|drop.*contact|remove.*from.*rolodex/i;
+const REMOVE_CONTACT_INTENT =
+  /remove|delete|drop.*contact|remove.*from.*rolodex/i;
 
 interface RemoveContactXmlResult {
   contactName?: string;

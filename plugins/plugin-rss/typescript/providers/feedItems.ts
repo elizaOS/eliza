@@ -1,6 +1,6 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
-import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { logger } from "@elizaos/core";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { FeedItemMetadata } from "../types";
 
 const spec = requireProviderSpec("feedItems");

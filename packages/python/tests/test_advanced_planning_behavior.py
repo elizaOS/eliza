@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 
 from elizaos.advanced_planning.planning_service import ActionPlan, ActionStep
 from elizaos.runtime import AgentRuntime
 from elizaos.types.agent import Character
-from elizaos.types.memory import Memory
-from elizaos.types.primitives import Content, as_uuid
 from elizaos.types.components import ActionDefinition, ActionResult
+from elizaos.types.memory import Memory
 from elizaos.types.model import ModelType
+from elizaos.types.primitives import Content, as_uuid
 
 
 @pytest.mark.asyncio
@@ -83,7 +85,7 @@ async def test_advanced_planning_service_creates_comprehensive_plan_and_executes
                 "<step>",
                 "<id>step_1</id>",
                 "<action>REPLY</action>",
-                "<parameters>{\"text\":\"ok\"}</parameters>",
+                '<parameters>{"text":"ok"}</parameters>',
                 "<dependencies>[]</dependencies>",
                 "</step>",
                 "</steps>",
@@ -192,4 +194,3 @@ async def test_advanced_planning_dag_executes_in_dependency_order() -> None:
     await planning_service.execute_plan(plan, msg, state=state, callback=None)
 
     assert execution_order == ["STEP_A", "STEP_B", "STEP_C"]
-

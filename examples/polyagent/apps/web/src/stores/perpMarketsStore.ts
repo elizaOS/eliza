@@ -20,20 +20,20 @@
  * ```
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { create } from 'zustand';
-import { useShallow } from 'zustand/react/shallow';
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import {
   type PerpPriceUpdateSSE,
   type PerpTradeSSE,
   usePerpMarketsSubscription,
   usePerpPriceSubscription,
-} from '@/hooks/usePerpMarketStream';
-import type { PerpMarket } from '@/types/markets';
-import { MARKETS_CONFIG } from '@/types/markets';
+} from "@/hooks/usePerpMarketStream";
+import type { PerpMarket } from "@/types/markets";
+import { MARKETS_CONFIG } from "@/types/markets";
 
 // Re-export for backwards compatibility
-export type { PerpMarket } from '@/types/markets';
+export type { PerpMarket } from "@/types/markets";
 
 /**
  * Partial update for market stats (from SSE events).
@@ -105,7 +105,7 @@ export const usePerpMarketsStore = create<PerpMarketsState>((set, get) => ({
       set({ error: null });
 
       try {
-        const response = await fetch('/api/markets/perps');
+        const response = await fetch("/api/markets/perps");
         if (!response.ok) {
           throw new Error(`Failed to fetch perp markets: ${response.status}`);
         }
@@ -120,7 +120,7 @@ export const usePerpMarketsStore = create<PerpMarketsState>((set, get) => ({
         }
       } catch (err) {
         const errorMessage =
-          err instanceof Error ? err.message : 'Failed to fetch markets';
+          err instanceof Error ? err.message : "Failed to fetch markets";
         set({ error: errorMessage });
       } finally {
         set({ loading: false, fetchPromise: null });
@@ -210,7 +210,7 @@ const dataSelector = (state: PerpMarketsState) => ({
 export function usePerpMarkets() {
   // Single subscription with shallow comparison for the object
   const { markets, loading, error } = usePerpMarketsStore(
-    useShallow(dataSelector)
+    useShallow(dataSelector),
   );
   const fetchMarkets = usePerpMarketsStore((state) => state.fetchMarkets);
 
@@ -263,7 +263,7 @@ export function usePerpMarketsPolling(intervalMs = 30000) {
  */
 export function usePerpMarketsRealtime() {
   const updateMarketStats = usePerpMarketsStore(
-    (state) => state.updateMarketStats
+    (state) => state.updateMarketStats,
   );
 
   // Handle trade events (OI and volume updates)
@@ -274,7 +274,7 @@ export function usePerpMarketsRealtime() {
         volume24h: event.volume24h,
       });
     },
-    [updateMarketStats]
+    [updateMarketStats],
   );
 
   usePerpMarketsSubscription({ onTrade: handleTrade });
@@ -288,7 +288,7 @@ export function usePerpMarketsRealtime() {
           changePercent24h: update.changePercent,
         });
       },
-      [updateMarketStats]
+      [updateMarketStats],
     ),
   });
 }
@@ -308,7 +308,7 @@ export function usePerpMarket(ticker: string) {
 
   const market = useMemo(
     () => markets.find((m) => m.ticker.toLowerCase() === ticker.toLowerCase()),
-    [markets, ticker]
+    [markets, ticker],
   );
 
   // Initial load is complete when we've fetched at least once
@@ -325,7 +325,7 @@ export function usePerpTopMovers(count = 4) {
 
   const { topGainers, topLosers } = useMemo(() => {
     const sorted = [...markets].sort(
-      (a, b) => b.changePercent24h - a.changePercent24h
+      (a, b) => b.changePercent24h - a.changePercent24h,
     );
     return {
       topGainers: sorted.slice(0, count),

@@ -60,4 +60,3 @@ impl From<quick_xml::DeError> for PluginError {
         Self::XmlParse(err.to_string())
     }
 }
-

@@ -8,8 +8,14 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { MinecraftService, MINECRAFT_SERVICE_TYPE } from "../services/minecraft-service.js";
-import { WaypointsService, WAYPOINTS_SERVICE_TYPE } from "../services/waypoints-service.js";
+import {
+  MINECRAFT_SERVICE_TYPE,
+  type MinecraftService,
+} from "../services/minecraft-service.js";
+import {
+  WAYPOINTS_SERVICE_TYPE,
+  type WaypointsService,
+} from "../services/waypoints-service.js";
 
 function parseName(text: string): string | null {
   const name = text.trim();
@@ -19,9 +25,16 @@ function parseName(text: string): string | null {
 export const minecraftWaypointSetAction: Action = {
   name: "MC_WAYPOINT_SET",
   similes: ["MINECRAFT_WAYPOINT_SET", "SET_WAYPOINT", "SAVE_WAYPOINT"],
-  description: "Save the bot's current position as a named waypoint (message text is the name).",
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    return Boolean(runtime.getService(WAYPOINTS_SERVICE_TYPE)) && Boolean(parseName(message.content.text ?? ""));
+  description:
+    "Save the bot's current position as a named waypoint (message text is the name).",
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
+    return (
+      Boolean(runtime.getService(WAYPOINTS_SERVICE_TYPE)) &&
+      Boolean(parseName(message.content.text ?? ""))
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -30,15 +43,25 @@ export const minecraftWaypointSetAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const waypoints = runtime.getService<WaypointsService>(WAYPOINTS_SERVICE_TYPE);
+    const waypoints = runtime.getService<WaypointsService>(
+      WAYPOINTS_SERVICE_TYPE,
+    );
     const mc = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
     const name = parseName(message.content.text ?? "");
-    if (!waypoints || !mc) return { text: "Waypoint or Minecraft service not available", success: false };
+    if (!waypoints || !mc)
+      return {
+        text: "Waypoint or Minecraft service not available",
+        success: false,
+      };
     if (!name) return { text: "Missing waypoint name", success: false };
 
     const ws = await mc.getWorldState();
     const pos = ws.position;
-    if (!pos) return { text: "No position available (is the bot connected?)", success: false };
+    if (!pos)
+      return {
+        text: "No position available (is the bot connected?)",
+        success: false,
+      };
 
     const wp = await waypoints.setWaypoint(name, pos.x, pos.y, pos.z);
     const content: Content = {
@@ -65,8 +88,14 @@ export const minecraftWaypointDeleteAction: Action = {
   name: "MC_WAYPOINT_DELETE",
   similes: ["MINECRAFT_WAYPOINT_DELETE", "DELETE_WAYPOINT", "REMOVE_WAYPOINT"],
   description: "Delete a named waypoint (message text is the name).",
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    return Boolean(runtime.getService(WAYPOINTS_SERVICE_TYPE)) && Boolean(parseName(message.content.text ?? ""));
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
+    return (
+      Boolean(runtime.getService(WAYPOINTS_SERVICE_TYPE)) &&
+      Boolean(parseName(message.content.text ?? ""))
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -75,14 +104,19 @@ export const minecraftWaypointDeleteAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const waypoints = runtime.getService<WaypointsService>(WAYPOINTS_SERVICE_TYPE);
+    const waypoints = runtime.getService<WaypointsService>(
+      WAYPOINTS_SERVICE_TYPE,
+    );
     const name = parseName(message.content.text ?? "");
-    if (!waypoints) return { text: "Waypoints service not available", success: false };
+    if (!waypoints)
+      return { text: "Waypoints service not available", success: false };
     if (!name) return { text: "Missing waypoint name", success: false };
 
     const deleted = await waypoints.deleteWaypoint(name);
     const content: Content = {
-      text: deleted ? `Deleted waypoint "${name}".` : `No waypoint named "${name}".`,
+      text: deleted
+        ? `Deleted waypoint "${name}".`
+        : `No waypoint named "${name}".`,
       actions: ["MC_WAYPOINT_DELETE"],
       source: message.content.source,
     };
@@ -105,12 +139,20 @@ export const minecraftWaypointListAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const waypoints = runtime.getService<WaypointsService>(WAYPOINTS_SERVICE_TYPE);
-    if (!waypoints) return { text: "Waypoints service not available", success: false };
+    const waypoints = runtime.getService<WaypointsService>(
+      WAYPOINTS_SERVICE_TYPE,
+    );
+    if (!waypoints)
+      return { text: "Waypoints service not available", success: false };
     const list = waypoints.listWaypoints();
-    const lines = list.map((w) => `- ${w.name}: (${w.x.toFixed(1)}, ${w.y.toFixed(1)}, ${w.z.toFixed(1)})`);
+    const lines = list.map(
+      (w) =>
+        `- ${w.name}: (${w.x.toFixed(1)}, ${w.y.toFixed(1)}, ${w.z.toFixed(1)})`,
+    );
     const content: Content = {
-      text: list.length ? `Waypoints:\n${lines.join("\n")}` : "No waypoints saved.",
+      text: list.length
+        ? `Waypoints:\n${lines.join("\n")}`
+        : "No waypoints saved.",
       actions: ["MC_WAYPOINT_LIST"],
       source: message.content.source,
     };
@@ -135,7 +177,10 @@ export const minecraftWaypointGotoAction: Action = {
   name: "MC_WAYPOINT_GOTO",
   similes: ["MINECRAFT_WAYPOINT_GOTO", "GOTO_WAYPOINT", "NAVIGATE_WAYPOINT"],
   description: "Pathfind to a named waypoint (message text is the name).",
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     return (
       Boolean(runtime.getService(WAYPOINTS_SERVICE_TYPE)) &&
       Boolean(runtime.getService(MINECRAFT_SERVICE_TYPE)) &&
@@ -149,15 +194,25 @@ export const minecraftWaypointGotoAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const waypoints = runtime.getService<WaypointsService>(WAYPOINTS_SERVICE_TYPE);
+    const waypoints = runtime.getService<WaypointsService>(
+      WAYPOINTS_SERVICE_TYPE,
+    );
     const mc = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
     const name = parseName(message.content.text ?? "");
-    if (!waypoints || !mc) return { text: "Waypoint or Minecraft service not available", success: false };
+    if (!waypoints || !mc)
+      return {
+        text: "Waypoint or Minecraft service not available",
+        success: false,
+      };
     if (!name) return { text: "Missing waypoint name", success: false };
 
     const wp = waypoints.getWaypoint(name);
     if (!wp) {
-      const content: Content = { text: `No waypoint named "${name}".`, actions: ["MC_WAYPOINT_GOTO"], source: message.content.source };
+      const content: Content = {
+        text: `No waypoint named "${name}".`,
+        actions: ["MC_WAYPOINT_GOTO"],
+        source: message.content.source,
+      };
       await callback?.(content);
       return { text: content.text ?? "", success: false };
     }
@@ -172,4 +227,3 @@ export const minecraftWaypointGotoAction: Action = {
     return { text: content.text ?? "", success: true };
   },
 };
-

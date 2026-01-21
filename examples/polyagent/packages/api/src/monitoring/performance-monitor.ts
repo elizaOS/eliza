@@ -9,7 +9,7 @@
  * - Vercel cache effectiveness
  */
 
-import { logger } from '@polyagent/shared';
+import { logger } from "@polyagent/shared";
 
 interface CacheMetrics {
   hits: number;
@@ -125,14 +125,14 @@ class PerformanceMonitor {
    * Record a cache operation
    */
   recordCacheOperation(
-    operation: 'get' | 'set' | 'delete',
+    operation: "get" | "set" | "delete",
     hit: boolean,
     latencyMs: number,
-    bytes?: number
+    bytes?: number,
   ): void {
     this.cacheOps[operation]++;
 
-    if (operation === 'get') {
+    if (operation === "get") {
       if (hit) {
         this.cacheHits++;
         if (bytes) this.cacheBytesRead += bytes;
@@ -140,7 +140,7 @@ class PerformanceMonitor {
         this.cacheMisses++;
       }
       this.cacheLatencies.push(latencyMs);
-    } else if (operation === 'set' && bytes) {
+    } else if (operation === "set" && bytes) {
       this.cacheBytesWritten += bytes;
     }
   }
@@ -149,10 +149,10 @@ class PerformanceMonitor {
    * Record a storage operation
    */
   recordStorageOperation(
-    operation: 'upload' | 'download' | 'delete',
+    operation: "upload" | "download" | "delete",
     latencyMs: number,
     bytes?: number,
-    error?: boolean
+    error?: boolean,
   ): void {
     if (error) {
       this.storageErrors++;
@@ -160,17 +160,17 @@ class PerformanceMonitor {
     }
 
     switch (operation) {
-      case 'upload':
+      case "upload":
         this.storageUploads++;
         this.storageUploadLatencies.push(latencyMs);
         if (bytes) this.storageBytesUp += bytes;
         break;
-      case 'download':
+      case "download":
         this.storageDownloads++;
         this.storageDownloadLatencies.push(latencyMs);
         if (bytes) this.storageBytesDown += bytes;
         break;
-      case 'delete':
+      case "delete":
         this.storageDeletes++;
         break;
     }
@@ -183,7 +183,7 @@ class PerformanceMonitor {
     model: string,
     operation: string,
     durationMs: number,
-    cpuIntensive = false
+    cpuIntensive = false,
   ): void {
     const key = `${model}.${operation}`;
     const existing = this.dbOperations.get(key);
@@ -234,12 +234,12 @@ class PerformanceMonitor {
   takeSnapshot(): PerformanceSnapshot {
     // Check if process methods are available (not available in browser environments)
     const hasMemoryUsage =
-      typeof process !== 'undefined' &&
-      typeof process.memoryUsage === 'function';
+      typeof process !== "undefined" &&
+      typeof process.memoryUsage === "function";
     const hasCpuUsage =
-      typeof process !== 'undefined' && typeof process.cpuUsage === 'function';
+      typeof process !== "undefined" && typeof process.cpuUsage === "function";
     const hasUptime =
-      typeof process !== 'undefined' && typeof process.uptime === 'function';
+      typeof process !== "undefined" && typeof process.uptime === "function";
 
     const memUsage = hasMemoryUsage
       ? process.memoryUsage()
@@ -389,14 +389,14 @@ class PerformanceMonitor {
    * Identify bottlenecks
    */
   identifyBottlenecks(): {
-    type: 'cache' | 'database' | 'storage' | 'memory' | 'cpu';
-    severity: 'critical' | 'warning' | 'info';
+    type: "cache" | "database" | "storage" | "memory" | "cpu";
+    severity: "critical" | "warning" | "info";
     description: string;
     metric: number;
     threshold: number;
   }[] {
     const snapshot = this.takeSnapshot();
-    const bottlenecks: ReturnType<PerformanceMonitor['identifyBottlenecks']> =
+    const bottlenecks: ReturnType<PerformanceMonitor["identifyBottlenecks"]> =
       [];
 
     // Check cache hit rate
@@ -405,17 +405,17 @@ class PerformanceMonitor {
       const hitRate = snapshot.cache.hits / cacheTotal;
       if (hitRate < 0.5) {
         bottlenecks.push({
-          type: 'cache',
-          severity: 'critical',
-          description: 'Low cache hit rate - consider caching more data',
+          type: "cache",
+          severity: "critical",
+          description: "Low cache hit rate - consider caching more data",
           metric: hitRate,
           threshold: 0.5,
         });
       } else if (hitRate < 0.8) {
         bottlenecks.push({
-          type: 'cache',
-          severity: 'warning',
-          description: 'Moderate cache hit rate - optimization possible',
+          type: "cache",
+          severity: "warning",
+          description: "Moderate cache hit rate - optimization possible",
           metric: hitRate,
           threshold: 0.8,
         });
@@ -425,17 +425,17 @@ class PerformanceMonitor {
     // Check database performance
     if (snapshot.database.p95DurationMs > 200) {
       bottlenecks.push({
-        type: 'database',
-        severity: 'critical',
-        description: 'Slow database queries - P95 > 200ms',
+        type: "database",
+        severity: "critical",
+        description: "Slow database queries - P95 > 200ms",
         metric: snapshot.database.p95DurationMs,
         threshold: 200,
       });
     } else if (snapshot.database.avgDurationMs > 50) {
       bottlenecks.push({
-        type: 'database',
-        severity: 'warning',
-        description: 'Average query time elevated',
+        type: "database",
+        severity: "warning",
+        description: "Average query time elevated",
         metric: snapshot.database.avgDurationMs,
         threshold: 50,
       });
@@ -444,9 +444,9 @@ class PerformanceMonitor {
     // Check storage performance
     if (snapshot.storage.avgUploadLatencyMs > 1000) {
       bottlenecks.push({
-        type: 'storage',
-        severity: 'warning',
-        description: 'Slow storage uploads',
+        type: "storage",
+        severity: "warning",
+        description: "Slow storage uploads",
         metric: snapshot.storage.avgUploadLatencyMs,
         threshold: 1000,
       });
@@ -455,17 +455,17 @@ class PerformanceMonitor {
     // Check memory usage
     if (snapshot.system.memoryUsagePercent > 90) {
       bottlenecks.push({
-        type: 'memory',
-        severity: 'critical',
-        description: 'High memory usage - possible memory leak',
+        type: "memory",
+        severity: "critical",
+        description: "High memory usage - possible memory leak",
         metric: snapshot.system.memoryUsagePercent,
         threshold: 90,
       });
     } else if (snapshot.system.memoryUsagePercent > 75) {
       bottlenecks.push({
-        type: 'memory',
-        severity: 'warning',
-        description: 'Elevated memory usage',
+        type: "memory",
+        severity: "warning",
+        description: "Elevated memory usage",
         metric: snapshot.system.memoryUsagePercent,
         threshold: 75,
       });
@@ -473,12 +473,12 @@ class PerformanceMonitor {
 
     // Find CPU-intensive database operations
     for (const [operation, stats] of Object.entries(
-      snapshot.database.operationBreakdown
+      snapshot.database.operationBreakdown,
     )) {
       if (stats.cpuIntensive && stats.avgDuration > 100) {
         bottlenecks.push({
-          type: 'database',
-          severity: 'warning',
+          type: "database",
+          severity: "warning",
           description: `CPU-intensive operation: ${operation}`,
           metric: stats.avgDuration,
           threshold: 100,
@@ -501,14 +501,14 @@ class PerformanceMonitor {
     const cacheHitRate = this.getCacheHitRate();
     if (cacheHitRate < 0.8) {
       recommendations.push(
-        `Cache hit rate is ${(cacheHitRate * 100).toFixed(1)}% - consider caching more frequently accessed data`
+        `Cache hit rate is ${(cacheHitRate * 100).toFixed(1)}% - consider caching more frequently accessed data`,
       );
     }
 
     // Database recommendations
     if (snapshot.database.slowQueries > snapshot.database.queries * 0.05) {
       recommendations.push(
-        'More than 5% of queries are slow - add database indexes or optimize query patterns'
+        "More than 5% of queries are slow - add database indexes or optimize query patterns",
       );
     }
 
@@ -520,38 +520,38 @@ class PerformanceMonitor {
 
     if (slowOperations.length > 0) {
       recommendations.push(
-        'Slowest database operations:\n' +
+        "Slowest database operations:\n" +
           slowOperations
             .map(
               ([op, stats]) =>
-                `  - ${op}: ${stats.avgDuration.toFixed(2)}ms avg (${stats.count} calls)`
+                `  - ${op}: ${stats.avgDuration.toFixed(2)}ms avg (${stats.count} calls)`,
             )
-            .join('\n')
+            .join("\n"),
       );
     }
 
     // Storage recommendations
     if (snapshot.storage.errors > 0) {
       recommendations.push(
-        `${snapshot.storage.errors} storage errors detected - check storage configuration and connectivity`
+        `${snapshot.storage.errors} storage errors detected - check storage configuration and connectivity`,
       );
     }
 
     // Memory recommendations
     if (snapshot.system.memoryUsagePercent > 75) {
       recommendations.push(
-        `Memory usage at ${snapshot.system.memoryUsagePercent.toFixed(1)}% - consider increasing heap size or investigating memory leaks`
+        `Memory usage at ${snapshot.system.memoryUsagePercent.toFixed(1)}% - consider increasing heap size or investigating memory leaks`,
       );
     }
 
     // Critical bottlenecks
     const criticalBottlenecks = bottlenecks.filter(
-      (b) => b.severity === 'critical'
+      (b) => b.severity === "critical",
     );
     if (criticalBottlenecks.length > 0) {
       recommendations.push(
-        'CRITICAL ISSUES:\n' +
-          criticalBottlenecks.map((b) => `  - ${b.description}`).join('\n')
+        "CRITICAL ISSUES:\n" +
+          criticalBottlenecks.map((b) => `  - ${b.description}`).join("\n"),
       );
     }
 
@@ -588,7 +588,7 @@ class PerformanceMonitor {
 
     this.snapshots = [];
 
-    logger.info('Performance metrics reset', undefined, 'PerformanceMonitor');
+    logger.info("Performance metrics reset", undefined, "PerformanceMonitor");
   }
 
   /**
@@ -600,7 +600,7 @@ class PerformanceMonitor {
     const recommendations = this.getRecommendations();
 
     logger.info(
-      'Performance Summary',
+      "Performance Summary",
       {
         cache: {
           hitRate: `${(this.getCacheHitRate() * 100).toFixed(2)}%`,
@@ -627,20 +627,20 @@ class PerformanceMonitor {
           rps: snapshot.system.requestsPerSecond.toFixed(2),
         },
         bottlenecks: bottlenecks.length,
-        criticalIssues: bottlenecks.filter((b) => b.severity === 'critical')
+        criticalIssues: bottlenecks.filter((b) => b.severity === "critical")
           .length,
       },
-      'PerformanceMonitor'
+      "PerformanceMonitor",
     );
 
     if (recommendations.length > 0) {
       logger.info(
-        'Performance Recommendations',
+        "Performance Recommendations",
         {
           count: recommendations.length,
           recommendations,
         },
-        'PerformanceMonitor'
+        "PerformanceMonitor",
       );
     }
   }
@@ -650,7 +650,7 @@ class PerformanceMonitor {
 export const performanceMonitor = new PerformanceMonitor();
 
 // Auto-snapshot every minute
-if (typeof setInterval !== 'undefined') {
+if (typeof setInterval !== "undefined") {
   setInterval(() => {
     performanceMonitor.takeSnapshot();
   }, 60000);

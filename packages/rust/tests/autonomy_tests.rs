@@ -256,5 +256,6 @@ async fn autonomy_service_exports_are_available() -> Result<()> {
     .await?;
 
     runtime.initialize().await?;
-    assert!(runtime.get_service(AUTONOMY_SERVICE_TYPE).await.is_some());    Ok(())
+    assert!(runtime.get_service(AUTONOMY_SERVICE_TYPE).await.is_some());
+    Ok(())
 }

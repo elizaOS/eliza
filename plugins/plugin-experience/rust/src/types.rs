@@ -79,14 +79,18 @@ pub struct Experience {
     /// 0-1 importance.
     pub importance: f64,
 
-    /// Unix ms timestamps.
+    /// Unix ms timestamp when the experience was created.
     pub created_at: i64,
+    /// Unix ms timestamp when the experience was last updated.
     pub updated_at: i64,
+    /// Unix ms timestamp when the experience was last accessed.
     pub last_accessed_at: Option<i64>,
+    /// Number of times the experience has been accessed.
     pub access_count: u32,
 
-    /// For corrections.
+    /// For corrections: what the agent believed before.
     pub previous_belief: Option<String>,
+    /// For corrections: what the agent now believes.
     pub corrected_belief: Option<String>,
 
     /// Optional embedding vector.
@@ -99,7 +103,9 @@ pub struct Experience {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimeRange {
+    /// Start of the time range (unix ms, inclusive).
     pub start: Option<i64>,
+    /// End of the time range (unix ms, inclusive).
     pub end: Option<i64>,
 }
 
@@ -107,15 +113,25 @@ pub struct TimeRange {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExperienceQuery {
+    /// Free-text query for similarity search.
     pub query: Option<String>,
+    /// Filter by experience types.
     pub types: Option<Vec<ExperienceType>>,
+    /// Filter by outcome types.
     pub outcomes: Option<Vec<OutcomeType>>,
+    /// Filter by domains.
     pub domains: Option<Vec<String>>,
+    /// Filter by tags (any match).
     pub tags: Option<Vec<String>>,
+    /// Minimum importance threshold (0-1).
     pub min_importance: Option<f64>,
+    /// Minimum confidence threshold (0-1).
     pub min_confidence: Option<f64>,
+    /// Time range filter.
     pub time_range: Option<TimeRange>,
+    /// Maximum number of results to return.
     pub limit: Option<usize>,
+    /// Whether to include related experiences in results.
     pub include_related: Option<bool>,
 }
 

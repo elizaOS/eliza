@@ -12,4 +12,3 @@ def test_coerce_json_object_ok() -> None:
 def test_coerce_json_object_rejects_non_string_keys() -> None:
     coerced = coerce_json_object({1: "x"})  # type: ignore[arg-type]
     assert coerced is None
-

@@ -49,4 +49,3 @@ impl Provider for FollowUpsProvider {
         .with_value("followUpsAvailable", true))
     }
 }
-

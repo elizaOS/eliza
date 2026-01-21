@@ -4,29 +4,29 @@
  * Structured error types for Agent0 SDK operations extending PolyagentError system
  */
 
-import { ExternalServiceError, RateLimitError } from './base.errors';
+import { ExternalServiceError, RateLimitError } from "./base.errors";
 
 /**
  * Base error class for all Agent0 operations
  */
 export class Agent0Error extends ExternalServiceError {
   public readonly operation:
-    | 'register'
-    | 'feedback'
-    | 'reputation'
-    | 'search'
-    | 'discovery';
+    | "register"
+    | "feedback"
+    | "reputation"
+    | "search"
+    | "discovery";
   public readonly agent0Code?: string;
 
   constructor(
     message: string,
-    operation: 'register' | 'feedback' | 'reputation' | 'search' | 'discovery',
+    operation: "register" | "feedback" | "reputation" | "search" | "discovery",
     agent0Code?: string,
     originalError?: Error,
-    originalStatusCode?: number
+    originalStatusCode?: number,
   ) {
     // Pass enhanced context to parent
-    super('Agent0', message, originalStatusCode);
+    super("Agent0", message, originalStatusCode);
     this.operation = operation;
     this.agent0Code = agent0Code;
 
@@ -38,7 +38,7 @@ export class Agent0Error extends ExternalServiceError {
         agent0Code,
         originalError: originalError?.message,
         originalStack:
-          process.env.NODE_ENV === 'development'
+          process.env.NODE_ENV === "development"
             ? originalError?.stack
             : undefined,
       },
@@ -63,16 +63,16 @@ export class Agent0Error extends ExternalServiceError {
 
     // Specific retryable error codes
     const retryableMessages = [
-      'ECONNRESET',
-      'ETIMEDOUT',
-      'ENOTFOUND',
-      'NetworkError',
-      'timeout',
-      'network',
+      "ECONNRESET",
+      "ETIMEDOUT",
+      "ENOTFOUND",
+      "NetworkError",
+      "timeout",
+      "network",
     ];
 
     return retryableMessages.some((msg) =>
-      this.message.toLowerCase().includes(msg.toLowerCase())
+      this.message.toLowerCase().includes(msg.toLowerCase()),
     );
   }
 }
@@ -88,9 +88,9 @@ export class Agent0RegistrationError extends Agent0Error {
     agentName?: string,
     agent0Code?: string,
     originalError?: Error,
-    originalStatusCode?: number
+    originalStatusCode?: number,
   ) {
-    super(message, 'register', agent0Code, originalError, originalStatusCode);
+    super(message, "register", agent0Code, originalError, originalStatusCode);
     this.agentName = agentName;
 
     Object.assign(this, {
@@ -119,9 +119,9 @@ export class Agent0FeedbackError extends Agent0Error {
     targetAgentId?: number,
     agent0Code?: string,
     originalError?: Error,
-    originalStatusCode?: number
+    originalStatusCode?: number,
   ) {
-    super(message, 'feedback', agent0Code, originalError, originalStatusCode);
+    super(message, "feedback", agent0Code, originalError, originalStatusCode);
     this.feedbackId = feedbackId;
     this.targetAgentId = targetAgentId;
 
@@ -150,9 +150,9 @@ export class Agent0ReputationError extends Agent0Error {
     tokenId?: number,
     agent0Code?: string,
     originalError?: Error,
-    originalStatusCode?: number
+    originalStatusCode?: number,
   ) {
-    super(message, 'reputation', agent0Code, originalError, originalStatusCode);
+    super(message, "reputation", agent0Code, originalError, originalStatusCode);
     this.tokenId = tokenId;
 
     Object.assign(this, {
@@ -179,9 +179,9 @@ export class Agent0SearchError extends Agent0Error {
     filters?: Record<string, unknown>,
     agent0Code?: string,
     originalError?: Error,
-    originalStatusCode?: number
+    originalStatusCode?: number,
   ) {
-    super(message, 'search', agent0Code, originalError, originalStatusCode);
+    super(message, "search", agent0Code, originalError, originalStatusCode);
     this.filters = filters;
 
     Object.assign(this, {
@@ -206,12 +206,12 @@ export class Agent0DuplicateFeedbackError extends Agent0FeedbackError {
       `Feedback ${feedbackId} already submitted to Agent0 for agent ${targetAgentId}`,
       feedbackId,
       targetAgentId,
-      'DUPLICATE_FEEDBACK'
+      "DUPLICATE_FEEDBACK",
     );
     // Override properties via Object.assign since they're readonly
     Object.assign(this, {
       statusCode: 409,
-      code: 'AGENT0_DUPLICATE_FEEDBACK',
+      code: "AGENT0_DUPLICATE_FEEDBACK",
     });
   }
 }

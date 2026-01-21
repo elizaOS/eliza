@@ -1,8 +1,8 @@
 # Re-export from centralized prompts
 from elizaos.prompts import (
     INITIAL_SUMMARIZATION_TEMPLATE,
-    UPDATE_SUMMARIZATION_TEMPLATE,
     LONG_TERM_EXTRACTION_TEMPLATE,
+    UPDATE_SUMMARIZATION_TEMPLATE,
 )
 
 __all__ = [

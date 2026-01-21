@@ -27,7 +27,11 @@ impl Action for UnfollowRoomAction {
 
     fn similes(&self) -> &[&'static str] {
         static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
-            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+            SPEC.similes
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
         });
         &SIMILES
     }
@@ -79,7 +83,10 @@ impl Action for UnfollowRoomAction {
             .await?
             .ok_or_else(|| PluginError::NotFound("Room not found".to_string()))?;
 
-        let room_name = room.name.clone().unwrap_or_else(|| "Unknown Room".to_string());
+        let room_name = room
+            .name
+            .clone()
+            .unwrap_or_else(|| "Unknown Room".to_string());
 
         // Update world's followed rooms
         if let Some(world_id) = room.world_id {
@@ -97,10 +104,9 @@ impl Action for UnfollowRoomAction {
 
                 let room_str = room_id.to_string();
                 followed.retain(|r| r != &room_str);
-                world.metadata.insert(
-                    "followedRooms".to_string(),
-                    serde_json::json!(followed),
-                );
+                world
+                    .metadata
+                    .insert("followedRooms".to_string(), serde_json::json!(followed));
                 runtime.update_world(&world).await?;
             }
         }
@@ -124,14 +130,15 @@ impl Action for UnfollowRoomAction {
             )
             .await?;
 
-        Ok(ActionResult::success(format!("Stopped following room: {}", room_name))
-            .with_value("success", true)
-            .with_value("unfollowed", true)
-            .with_value("roomId", room_id.to_string())
-            .with_value("roomName", room_name.clone())
-            .with_data("actionName", "UNFOLLOW_ROOM")
-            .with_data("roomId", room_id.to_string())
-            .with_data("roomName", room_name))
+        Ok(
+            ActionResult::success(format!("Stopped following room: {}", room_name))
+                .with_value("success", true)
+                .with_value("unfollowed", true)
+                .with_value("roomId", room_id.to_string())
+                .with_value("roomName", room_name.clone())
+                .with_data("actionName", "UNFOLLOW_ROOM")
+                .with_data("roomId", room_id.to_string())
+                .with_data("roomName", room_name),
+        )
     }
 }
-

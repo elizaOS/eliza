@@ -15,7 +15,7 @@ export interface OpenAPIRoute {
   /** Route path (e.g., '/api/users/me') */
   path: string;
   /** HTTP method(s) supported */
-  methods: ('GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE')[];
+  methods: ("GET" | "POST" | "PUT" | "PATCH" | "DELETE")[];
   /** Route summary (short description) */
   summary: string;
   /** Detailed description */
@@ -42,7 +42,7 @@ export interface OpenAPIParameter {
   /** Parameter name */
   name: string;
   /** Where the parameter is located */
-  in: 'query' | 'path' | 'header' | 'cookie';
+  in: "query" | "path" | "header" | "cookie";
   /** Parameter description */
   description: string;
   /** Whether parameter is required */

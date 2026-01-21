@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Character } from "../types/agent";
-import type { JsonValue } from "../types/proto";
 import { ChannelType, ContentType } from "../types/primitives";
+import type { JsonValue } from "../types/proto";
 
 // UUID validation schema
 export const uuidSchema = z
@@ -81,7 +81,7 @@ export const contentSchema = z
       .optional()
       .describe("Type of channel this content is for"),
   })
-  .catchall(jsonValueSchema)
+  .passthrough()
   .describe("Content structure for messages in conversation examples");
 
 // MessageExample schema
@@ -134,9 +134,7 @@ export const messageExampleGroupSchema = z
 const messageExamplesSchema = z
   .array(z.union([messageExampleGroupSchema, z.array(messageExampleSchema)]))
   .transform((groups) =>
-    groups.map((group) =>
-      Array.isArray(group) ? { examples: group } : group,
-    ),
+    groups.map((group) => (Array.isArray(group) ? { examples: group } : group)),
   );
 
 // Style configuration schema
@@ -199,7 +197,7 @@ export const settingsSchema = z
     enableExtendedCapabilities: z.boolean().optional(),
     extra: z.record(z.string(), jsonValueSchema).optional(),
   })
-  .catchall(jsonValueSchema)
+  .passthrough()
   .transform((value) => {
     const entries = Object.entries(value) as Array<[string, JsonValue]>;
     const extraValues: Record<string, JsonValue> = {};
@@ -215,7 +213,10 @@ export const settingsSchema = z
 
     const mergedExtra =
       Object.keys(extraValues).length > 0
-        ? { ...(knownValues.extra as Record<string, JsonValue> | undefined), ...extraValues }
+        ? {
+            ...(knownValues.extra as Record<string, JsonValue> | undefined),
+            ...extraValues,
+          }
         : (knownValues.extra as Record<string, JsonValue> | undefined);
 
     if (mergedExtra) {

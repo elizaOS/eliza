@@ -321,7 +321,9 @@ try {
 } catch {
   // Fallback for environments where fast-redact fails (e.g., browser extensions)
   redact = ((obj: unknown) => obj) as ReturnType<typeof fastRedact>;
-  (redact as { restore?: (obj: unknown) => unknown }).restore = (obj: unknown) => obj;
+  (redact as { restore?: (obj: unknown) => unknown }).restore = (
+    obj: unknown,
+  ) => obj;
 }
 
 // ============================================================================

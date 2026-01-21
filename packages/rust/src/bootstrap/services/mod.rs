@@ -46,4 +46,3 @@ pub trait Service: Send + Sync {
     /// Stop the service.
     async fn stop(&mut self) -> PluginResult<()>;
 }
-

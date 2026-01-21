@@ -10,9 +10,9 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { XService } from "../services/x.service";
 import { sendPost } from "../utils";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 const spec = requireActionSpec("POST");
 

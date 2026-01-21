@@ -1,13 +1,13 @@
-import { db } from '@babylon/db';
 import {
   agentLogs,
   agentPerformanceMetrics,
   agentRegistries,
   agentTrades,
+  db,
   users,
-} from '@babylon/db';
-import { and, desc, eq, ne, sql } from 'drizzle-orm';
-import { NextResponse } from 'next/server';
+} from "@babylon/db";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { NextResponse } from "next/server";
 
 interface DashboardAgent {
   id: string;
@@ -70,8 +70,8 @@ interface PnlSummary {
 }
 
 const toNumber = (value?: number | string | null): number => {
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string' && value.trim().length > 0) {
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && value.trim().length > 0) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
   }
@@ -99,7 +99,7 @@ export async function GET() {
       .from(users)
       .leftJoin(
         agentPerformanceMetrics,
-        eq(agentPerformanceMetrics.userId, users.id)
+        eq(agentPerformanceMetrics.userId, users.id),
       )
       .leftJoin(agentRegistries, eq(agentRegistries.userId, users.id))
       .where(eq(users.isAgent, true))
@@ -138,7 +138,7 @@ export async function GET() {
     const recentTrades: DashboardTrade[] = recentTradesRaw.map((row) => ({
       id: row.id,
       agentId: row.agentId,
-      agentName: row.agentName || 'Agent',
+      agentName: row.agentName || "Agent",
       action: row.action,
       side: row.side,
       amount: Number(row.amount ?? 0),
@@ -159,14 +159,14 @@ export async function GET() {
       })
       .from(agentLogs)
       .leftJoin(users, eq(users.id, agentLogs.agentUserId))
-      .where(ne(agentLogs.level, 'debug'))
+      .where(ne(agentLogs.level, "debug"))
       .orderBy(desc(agentLogs.createdAt))
       .limit(8);
 
     const highlights: DashboardHighlight[] = highlightsRaw.map((row) => ({
       id: row.id,
       agentId: row.agentId,
-      agentName: row.agentName || 'Agent',
+      agentName: row.agentName || "Agent",
       type: row.type,
       message: row.message,
       createdAt: row.createdAt.toISOString(),
@@ -204,10 +204,15 @@ export async function GET() {
       .where(
         and(
           sql`${agentTrades.executedAt} >= now() - interval '7 days'`,
-          sql`${agentTrades.pnl} is not null`
-        )
+          sql`${agentTrades.pnl} is not null`,
+        ),
       )
-      .groupBy(agentTrades.agentUserId, users.displayName, users.username, users.profileImageUrl)
+      .groupBy(
+        agentTrades.agentUserId,
+        users.displayName,
+        users.username,
+        users.profileImageUrl,
+      )
       .orderBy(desc(sql`coalesce(sum(${agentTrades.pnl}), 0)`))
       .limit(10);
 
@@ -218,7 +223,7 @@ export async function GET() {
       const volatility = toNumber(row.volatility);
       return {
         agentId: row.agentId,
-        agentName: row.agentName || 'Agent',
+        agentName: row.agentName || "Agent",
         username: row.username,
         profileImageUrl: row.profileImageUrl,
         pnl: toNumber(row.pnl),
@@ -246,10 +251,15 @@ export async function GET() {
       .where(
         and(
           sql`${agentTrades.executedAt} >= now() - interval '30 days'`,
-          sql`${agentTrades.pnl} is not null`
-        )
+          sql`${agentTrades.pnl} is not null`,
+        ),
       )
-      .groupBy(agentTrades.agentUserId, users.displayName, users.username, users.profileImageUrl)
+      .groupBy(
+        agentTrades.agentUserId,
+        users.displayName,
+        users.username,
+        users.profileImageUrl,
+      )
       .orderBy(desc(sql`coalesce(sum(${agentTrades.pnl}), 0)`))
       .limit(10);
 
@@ -260,7 +270,7 @@ export async function GET() {
       const volatility = toNumber(row.volatility);
       return {
         agentId: row.agentId,
-        agentName: row.agentName || 'Agent',
+        agentName: row.agentName || "Agent",
         username: row.username,
         profileImageUrl: row.profileImageUrl,
         pnl: toNumber(row.pnl),
@@ -285,16 +295,21 @@ export async function GET() {
       .where(
         and(
           sql`${agentTrades.executedAt} >= now() - interval '24 hours'`,
-          sql`${agentTrades.pnl} is not null`
-        )
+          sql`${agentTrades.pnl} is not null`,
+        ),
       )
-      .groupBy(agentTrades.agentUserId, users.displayName, users.username, users.profileImageUrl)
+      .groupBy(
+        agentTrades.agentUserId,
+        users.displayName,
+        users.username,
+        users.profileImageUrl,
+      )
       .orderBy(desc(sql`abs(coalesce(sum(${agentTrades.pnl}), 0))`))
       .limit(6);
 
     const topMovers: TopMoverEntry[] = moversRaw.map((row) => ({
       agentId: row.agentId,
-      agentName: row.agentName || 'Agent',
+      agentName: row.agentName || "Agent",
       username: row.username,
       profileImageUrl: row.profileImageUrl,
       pnl24h: toNumber(row.pnl24h),
@@ -311,10 +326,10 @@ export async function GET() {
       pnlSummary,
     });
   } catch (error) {
-    console.error('Error building dashboard:', error);
+    console.error("Error building dashboard:", error);
     return NextResponse.json(
-      { error: 'Failed to load dashboard' },
-      { status: 500 }
+      { error: "Failed to load dashboard" },
+      { status: 500 },
     );
   }
 }

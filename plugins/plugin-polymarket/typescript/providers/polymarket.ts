@@ -1,11 +1,14 @@
-import type { IAgentRuntime, Memory, Provider, ProviderResult, ProviderValue, State } from "@elizaos/core";
-import { requireProviderSpec } from "../generated/specs/spec-helpers";
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  ProviderValue,
+  State,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  DEFAULT_CLOB_API_URL,
-  POLYGON_CHAIN_ID,
-  POLYMARKET_SERVICE_NAME,
-} from "../constants";
+import { DEFAULT_CLOB_API_URL, POLYGON_CHAIN_ID, POLYMARKET_SERVICE_NAME } from "../constants";
+import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { PolymarketService } from "../services/polymarket";
 import type {
   ActivityContext,
@@ -16,7 +19,6 @@ import type {
   OpenOrder,
   OrderDetailsActivityData,
   OrderScoringActivityData,
-  Position,
   PriceHistoryActivityData,
   TradeHistoryActivityData,
 } from "../types";
@@ -191,7 +193,8 @@ const spec = requireProviderSpec("polymarket");
 
 export const polymarketProvider: Provider = {
   name: spec.name,
-  description: "Provides current Polymarket account state and trading context from the service cache",
+  description:
+    "Provides current Polymarket account state and trading context from the service cache",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     const clobApiUrl = runtime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_API_URL;
@@ -204,11 +207,13 @@ export const polymarketProvider: Provider = {
       runtime.getSetting("CLOB_API_KEY") && runtime.getSetting("CLOB_API_SECRET")
     );
     const allowCreateSetting = runtime.getSetting("POLYMARKET_ALLOW_CREATE_API_KEY");
-    const canDeriveOrCreateCreds = hasPrivateKey && allowCreateSetting !== "false" && allowCreateSetting !== false;
+    const canDeriveOrCreateCreds =
+      hasPrivateKey && allowCreateSetting !== "false" && allowCreateSetting !== false;
     const hasApiCreds = hasEnvApiCreds || canDeriveOrCreateCreds;
 
     const strictSetting = runtime.getSetting("POLYMARKET_PROVIDER_STRICT");
-    const strictMode = strictSetting === undefined ? true : parseBooleanSetting(String(strictSetting));
+    const strictMode =
+      strictSetting === undefined ? true : parseBooleanSetting(String(strictSetting));
 
     const featuresAvailable: string[] = ["market_data", "price_feeds", "order_book"];
     if (hasPrivateKey) {

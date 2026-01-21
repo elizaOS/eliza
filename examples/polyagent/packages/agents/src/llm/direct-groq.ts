@@ -10,22 +10,22 @@
  * - Purpose field tracks call type: action, reasoning, evaluation, response
  */
 
-import { createGroq } from '@ai-sdk/groq';
-import type { IAgentRuntime } from '@elizaos/core';
-import { generateText } from 'ai';
-import { getTrajectoryContext } from '../plugins/plugin-trajectory-logger/src/action-interceptor';
-import type { TrajectoryLoggerService } from '../plugins/plugin-trajectory-logger/src/TrajectoryLoggerService';
-import { isPromptLoggingEnabled, logPrompt } from '../utils/prompt-logger';
+import { createGroq } from "@ai-sdk/groq";
+import type { IAgentRuntime } from "@elizaos/core";
+import { generateText } from "ai";
+import { getTrajectoryContext } from "../plugins/plugin-trajectory-logger/src/action-interceptor";
+import type { TrajectoryLoggerService } from "../plugins/plugin-trajectory-logger/src/TrajectoryLoggerService";
+import { isPromptLoggingEnabled, logPrompt } from "../utils/prompt-logger";
 
 export async function callGroqDirect(params: {
   prompt: string;
   system?: string;
-  modelSize?: 'small' | 'large';
+  modelSize?: "small" | "large";
   temperature?: number;
   maxTokens?: number;
   trajectoryLogger?: TrajectoryLoggerService;
   trajectoryId?: string;
-  purpose?: 'action' | 'reasoning' | 'evaluation' | 'response' | 'other';
+  purpose?: "action" | "reasoning" | "evaluation" | "response" | "other";
   actionType?: string;
   runtime?: IAgentRuntime; // Pass runtime to access settings
 }): Promise<string> {
@@ -44,16 +44,16 @@ export async function callGroqDirect(params: {
 
   // Use Groq models
   if (!process.env.GROQ_API_KEY) {
-    throw new Error('GROQ_API_KEY not set');
+    throw new Error("GROQ_API_KEY not set");
   }
 
   const groq = createGroq({
     apiKey: process.env.GROQ_API_KEY,
-    baseURL: 'https://api.groq.com/openai/v1',
+    baseURL: "https://api.groq.com/openai/v1",
   });
 
   // Model selection: Use Kimi K2 for agent decisions (excellent reasoning)
-  const model = 'moonshotai/kimi-k2-instruct-0905';
+  const model = "moonshotai/kimi-k2-instruct-0905";
 
   const startTime = Date.now();
 
@@ -85,12 +85,12 @@ export async function callGroqDirect(params: {
     if (stepId) {
       trajectoryLogger.logLLMCall(stepId, {
         model,
-        systemPrompt: params.system || '',
+        systemPrompt: params.system || "",
         userPrompt: params.prompt,
         response: result.text,
         temperature: params.temperature ?? 0.7,
         maxTokens: params.maxTokens ?? 8192,
-        purpose: params.purpose || 'action',
+        purpose: params.purpose || "action",
         actionType: params.actionType,
         latencyMs,
         promptTokens: undefined, // Token counts not available from Groq SDK
@@ -101,11 +101,11 @@ export async function callGroqDirect(params: {
 
   if (isPromptLoggingEnabled()) {
     await logPrompt({
-      promptType: params.actionType || params.purpose || 'groq_direct',
-      input: `System: ${params.system || ''}\n\nUser: ${params.prompt}`,
+      promptType: params.actionType || params.purpose || "groq_direct",
+      input: `System: ${params.system || ""}\n\nUser: ${params.prompt}`,
       output: result.text,
       metadata: {
-        provider: 'groq',
+        provider: "groq",
         model,
         temperature: params.temperature ?? 0.7,
         maxTokens: params.maxTokens ?? 8192,

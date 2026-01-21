@@ -1,5 +1,24 @@
-import type { UUID } from "@elizaos/core";
+import type { Content, UUID } from "@elizaos/core";
 import z from "zod";
+
+/**
+ * Local metadata type for stored knowledge items.
+ * Uses a permissive record type to avoid conflicts between TypeScript and protobuf MemoryMetadata types.
+ */
+export type StoredKnowledgeMetadata = Record<string, unknown>;
+
+/**
+ * Stored knowledge item with content, metadata, and optional similarity score.
+ * Used for knowledge retrieval results and internal knowledge processing.
+ * This is a local definition to avoid conflicts with the proto KnowledgeItem type.
+ */
+export interface StoredKnowledgeItem {
+  id: UUID;
+  content: Content;
+  metadata?: StoredKnowledgeMetadata;
+  worldId?: UUID;
+  similarity?: number;
+}
 
 export const ModelConfigSchema = z.object({
   EMBEDDING_PROVIDER: z.enum(["openai", "google"]).optional(),

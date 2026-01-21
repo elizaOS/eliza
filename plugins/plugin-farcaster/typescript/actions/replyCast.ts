@@ -1,6 +1,6 @@
 import type { Action, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { ModelType } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { FarcasterService } from "../services/FarcasterService";
 import { FARCASTER_SERVICE_NAME, FarcasterMessageType } from "../types";
 

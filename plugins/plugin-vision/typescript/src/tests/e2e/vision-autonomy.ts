@@ -1,10 +1,10 @@
 // @ts-nocheck
-import type { IAgentRuntime, Memory, TestSuite } from "@elizaos/core";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
 import { killAutonomousAction } from "../../action";
 import type { VisionService } from "../../service";
 
-export class VisionAutonomyE2ETestSuite  {
+export class VisionAutonomyE2ETestSuite {
   name = "plugin-vision-autonomy-e2e";
   description = "Tests for vision plugin integration with autonomy plugin";
 

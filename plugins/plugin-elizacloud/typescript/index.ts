@@ -35,12 +35,10 @@ export const elizaOSCloudPlugin: Plugin = {
     ELIZAOS_CLOUD_LARGE_MODEL: env.ELIZAOS_CLOUD_LARGE_MODEL ?? null,
     SMALL_MODEL: env.SMALL_MODEL ?? null,
     LARGE_MODEL: env.LARGE_MODEL ?? null,
-    ELIZAOS_CLOUD_EMBEDDING_MODEL:
-      env.ELIZAOS_CLOUD_EMBEDDING_MODEL ?? null,
+    ELIZAOS_CLOUD_EMBEDDING_MODEL: env.ELIZAOS_CLOUD_EMBEDDING_MODEL ?? null,
     ELIZAOS_CLOUD_EMBEDDING_API_KEY:
       env.ELIZAOS_CLOUD_EMBEDDING_API_KEY ?? null,
-    ELIZAOS_CLOUD_EMBEDDING_URL:
-      env.ELIZAOS_CLOUD_EMBEDDING_URL ?? null,
+    ELIZAOS_CLOUD_EMBEDDING_URL: env.ELIZAOS_CLOUD_EMBEDDING_URL ?? null,
     ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS:
       env.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS ?? null,
     ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL:
@@ -71,11 +69,9 @@ export const elizaOSCloudPlugin: Plugin = {
   },
   tests: [
     {
-      $typeName: "eliza.v1.TestSuite",
       name: "ELIZAOS_CLOUD_plugin_tests",
       tests: [
         {
-          $typeName: "eliza.v1.TestCase",
           name: "ELIZAOS_CLOUD_test_url_and_api_key_validation",
           fn: async (runtime: IAgentRuntime) => {
             const baseURL = getBaseURL(runtime);
@@ -101,7 +97,6 @@ export const elizaOSCloudPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "ELIZAOS_CLOUD_test_text_embedding",
           fn: async (runtime: IAgentRuntime) => {
             try {
@@ -121,7 +116,6 @@ export const elizaOSCloudPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "ELIZAOS_CLOUD_test_text_large",
           fn: async (runtime: IAgentRuntime) => {
             try {
@@ -141,7 +135,6 @@ export const elizaOSCloudPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "ELIZAOS_CLOUD_test_text_small",
           fn: async (runtime: IAgentRuntime) => {
             try {
@@ -161,7 +154,6 @@ export const elizaOSCloudPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "ELIZAOS_CLOUD_test_image_generation",
           fn: async (runtime: IAgentRuntime) => {
             logger.log("ELIZAOS_CLOUD_test_image_generation");
@@ -181,7 +173,6 @@ export const elizaOSCloudPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "image-description",
           fn: async (runtime: IAgentRuntime) => {
             try {
@@ -217,7 +208,6 @@ export const elizaOSCloudPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "ELIZAOS_CLOUD_test_transcription",
           fn: async (runtime: IAgentRuntime) => {
             logger.log("ELIZAOS_CLOUD_test_transcription");
@@ -243,7 +233,6 @@ export const elizaOSCloudPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "ELIZAOS_CLOUD_test_text_tokenizer_encode",
           fn: async (runtime: IAgentRuntime) => {
             const prompt = "Hello tokenizer encode!";
@@ -263,7 +252,6 @@ export const elizaOSCloudPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "ELIZAOS_CLOUD_test_text_tokenizer_decode",
           fn: async (runtime: IAgentRuntime) => {
             const prompt = "Hello tokenizer decode!";
@@ -290,7 +278,6 @@ export const elizaOSCloudPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "ELIZAOS_CLOUD_test_text_to_speech",
           fn: async (runtime: IAgentRuntime) => {
             try {

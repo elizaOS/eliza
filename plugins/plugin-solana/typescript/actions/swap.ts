@@ -14,11 +14,10 @@ import {
 import { Connection, PublicKey, VersionedTransaction } from "@solana/web3.js";
 import BigNumber, { type BigNumber as BigNumberType } from "../bn";
 import { SOLANA_SERVICE_NAME } from "../constants";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { getWalletKey } from "../keypairUtils";
 import type { SolanaService } from "../service";
-
 import type { Item } from "../types";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 async function getTokenDecimals(connection: Connection, mintAddress: string): Promise<number> {
   const mintPublicKey = new PublicKey(mintAddress);

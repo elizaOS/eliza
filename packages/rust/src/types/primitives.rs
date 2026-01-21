@@ -146,25 +146,79 @@ pub fn string_to_uuid<T: ToString>(target: T) -> Uuid {
     }
 }
 
+/// Characters that should NOT be encoded by encodeURIComponent (matching JavaScript behavior)
+const URI_COMPONENT_ENCODE_SET: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'!')
+    .remove(b'~')
+    .remove(b'*')
+    .remove(b'\'')
+    .remove(b'(')
+    .remove(b')');
+
 /// Encode a string in the same way as JavaScript's encodeURIComponent
 fn encode_uri_component(input: &str) -> String {
-    percent_encoding::utf8_percent_encode(
-        input,
-        percent_encoding::NON_ALPHANUMERIC
-            .remove(b'-')
-            .remove(b'_')
-            .remove(b'.')
-            .remove(b'!')
-            .remove(b'~')
-            .remove(b'*')
-            .remove(b'\'')
-            .remove(b'(')
-            .remove(b')'),
-    )
-    .to_string()
+    percent_encoding::utf8_percent_encode(input, URI_COMPONENT_ENCODE_SET).to_string()
 }
 
 pub use super::generated::eliza::v1::DefaultUuid;
+
+/// Channel types for messaging
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
+pub enum ChannelType {
+    /// Direct message to self
+    #[serde(rename = "SELF")]
+    SELF,
+    /// Direct message (1:1)
+    #[serde(rename = "DM")]
+    #[default]
+    DM,
+    /// Group chat
+    #[serde(rename = "GROUP")]
+    GROUP,
+    /// Voice direct message
+    #[serde(rename = "VOICE_DM")]
+    VoiceDm,
+    /// Voice group
+    #[serde(rename = "VOICE_GROUP")]
+    VoiceGroup,
+    /// Feed/timeline
+    #[serde(rename = "FEED")]
+    FEED,
+    /// Thread conversation
+    #[serde(rename = "THREAD")]
+    THREAD,
+    /// World chat
+    #[serde(rename = "WORLD")]
+    WORLD,
+    /// Forum channel
+    #[serde(rename = "FORUM")]
+    FORUM,
+    /// API channel
+    #[serde(rename = "API")]
+    API,
+}
+
+impl std::fmt::Display for ChannelType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChannelType::SELF => write!(f, "SELF"),
+            ChannelType::DM => write!(f, "DM"),
+            ChannelType::GROUP => write!(f, "GROUP"),
+            ChannelType::VoiceDm => write!(f, "VOICE_DM"),
+            ChannelType::VoiceGroup => write!(f, "VOICE_GROUP"),
+            ChannelType::FEED => write!(f, "FEED"),
+            ChannelType::THREAD => write!(f, "THREAD"),
+            ChannelType::WORLD => write!(f, "WORLD"),
+            ChannelType::FORUM => write!(f, "FORUM"),
+            ChannelType::API => write!(f, "API"),
+        }
+    }
+}
 
 /// Flexible metadata container used across types.
 pub type Metadata = serde_json::Value;
@@ -179,38 +233,55 @@ pub type Media = serde_json::Value;
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Content {
+    /// Internal reasoning or thought process.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thought: Option<String>,
+    /// Main text content of the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// Actions to execute with this content.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actions: Option<Vec<String>>,
+    /// Providers used to generate this content.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub providers: Option<Vec<String>>,
+    /// Source platform or origin.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// Target destination or recipient.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
+    /// Associated URL.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// ID of the message this is replying to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub in_reply_to: Option<String>,
+    /// Media attachments.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<Media>>,
+    /// Type of channel (e.g., "dm", "group").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_type: Option<String>,
+    /// Platform-specific mention context.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mention_context: Option<MentionContext>,
+    /// ID of the response message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_message_id: Option<String>,
+    /// Response identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
+    /// Whether this is a simple response.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub simple: Option<bool>,
+    /// Content type identifier.
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
+    /// Structured data payload.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<serde_json::Value>,
+    /// Additional extensible fields.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub extra: HashMap<String, serde_json::Value>,
 }

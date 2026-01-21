@@ -1,8 +1,8 @@
-import { CHAIN, RPC_URL } from '@polyagent/shared';
-import { useCallback, useEffect, useState } from 'react';
-import type { Address } from 'viem';
-import { createPublicClient, http } from 'viem';
-import { useSmartWallet } from '@/hooks/useSmartWallet';
+import { CHAIN, RPC_URL } from "@polyagent/shared";
+import { useCallback, useEffect, useState } from "react";
+import type { Address } from "viem";
+import { createPublicClient, http } from "viem";
+import { useSmartWallet } from "@/hooks/useSmartWallet";
 
 const publicClient = createPublicClient({
   chain: CHAIN,

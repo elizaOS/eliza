@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import { logger } from '@polyagent/shared';
+import { logger } from "@polyagent/shared";
 import {
   AlertCircle,
   Download,
   ExternalLink,
   Shield,
   Trash2,
-} from 'lucide-react';
-import { useState } from 'react';
-import { toast } from 'sonner';
-import { useAuth } from '@/hooks/useAuth';
-import { apiFetch } from '@/utils/api-fetch';
+} from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { apiFetch } from "@/utils/api-fetch";
 
 /**
  * Privacy tab component for managing user privacy and data rights.
@@ -33,25 +33,25 @@ export function PrivacyTab() {
   const { user, logout } = useAuth();
   const [isExporting, setIsExporting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteConfirmation, setDeleteConfirmation] = useState('');
-  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteReason, setDeleteReason] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleExportData = async () => {
     setIsExporting(true);
 
-    const response = await apiFetch('/api/users/export-data');
+    const response = await apiFetch("/api/users/export-data");
 
     if (!response.ok) {
       setIsExporting(false);
-      toast.error('Failed to export data. Please try again.');
+      toast.error("Failed to export data. Please try again.");
       return;
     }
 
     // Get the JSON data and create a download
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = `polyagent-data-export-${Date.now()}.json`;
     document.body.appendChild(a);
@@ -59,24 +59,24 @@ export function PrivacyTab() {
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
 
-    toast.success('Data exported successfully');
-    logger.info('User exported their data', undefined, 'PrivacyTab');
+    toast.success("Data exported successfully");
+    logger.info("User exported their data", undefined, "PrivacyTab");
     setIsExporting(false);
   };
 
   const handleDeleteAccount = async () => {
-    if (deleteConfirmation !== 'DELETE MY ACCOUNT') {
-      toast.error('Please type the confirmation text exactly');
+    if (deleteConfirmation !== "DELETE MY ACCOUNT") {
+      toast.error("Please type the confirmation text exactly");
       return;
     }
 
     setIsDeleting(true);
 
-    const response = await apiFetch('/api/users/delete-account', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await apiFetch("/api/users/delete-account", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        confirmation: 'DELETE MY ACCOUNT',
+        confirmation: "DELETE MY ACCOUNT",
         reason: deleteReason || undefined,
       }),
     });
@@ -84,19 +84,19 @@ export function PrivacyTab() {
     if (!response.ok) {
       setIsDeleting(false);
       toast.error(
-        'Failed to delete account. Please try again or contact support.'
+        "Failed to delete account. Please try again or contact support.",
       );
       return;
     }
 
-    toast.success('Account deleted successfully');
-    logger.info('User deleted their account', undefined, 'PrivacyTab');
+    toast.success("Account deleted successfully");
+    logger.info("User deleted their account", undefined, "PrivacyTab");
 
     // Logout after a brief delay to show success message
     setTimeout(async () => {
       await logout();
       // After logout, redirect to home page
-      window.location.href = '/';
+      window.location.href = "/";
     }, 2000);
     setIsDeleting(false);
   };
@@ -140,7 +140,7 @@ export function PrivacyTab() {
         </div>
         {user?.tosAcceptedAt && (
           <p className="text-muted-foreground text-xs">
-            You accepted the Terms of Service on{' '}
+            You accepted the Terms of Service on{" "}
             {new Date(user.tosAcceptedAt).toLocaleDateString()}
           </p>
         )}
@@ -162,7 +162,7 @@ export function PrivacyTab() {
               disabled={isExporting}
               className="mt-3 rounded-lg bg-[#0066FF] px-4 py-2 text-primary-foreground hover:bg-[#0066FF]/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isExporting ? 'Exporting...' : 'Export My Data'}
+              {isExporting ? "Exporting..." : "Export My Data"}
             </button>
             <p className="mt-2 text-muted-foreground text-xs">
               You will receive a JSON file containing all your data.
@@ -181,10 +181,10 @@ export function PrivacyTab() {
                 Blockchain Data Notice
               </h3>
               <p className="mt-1 text-muted-foreground text-sm">
-                You have on-chain identity data (wallet address:{' '}
+                You have on-chain identity data (wallet address:{" "}
                 {user.walletAddress?.slice(0, 6)}...
                 {user.walletAddress?.slice(-4)}, NFT token ID: {user.nftTokenId}
-                ) that is permanently recorded on the blockchain and{' '}
+                ) that is permanently recorded on the blockchain and{" "}
                 <strong>cannot be deleted</strong>. This data will remain
                 publicly visible even if you delete your account.
               </p>
@@ -229,10 +229,10 @@ export function PrivacyTab() {
 
                 <div className="space-y-2">
                   <label className="font-medium text-sm">
-                    Type{' '}
+                    Type{" "}
                     <code className="rounded bg-muted px-2 py-1">
                       DELETE MY ACCOUNT
-                    </code>{' '}
+                    </code>{" "}
                     to confirm:
                   </label>
                   <input
@@ -270,17 +270,17 @@ export function PrivacyTab() {
                   <button
                     onClick={handleDeleteAccount}
                     disabled={
-                      isDeleting || deleteConfirmation !== 'DELETE MY ACCOUNT'
+                      isDeleting || deleteConfirmation !== "DELETE MY ACCOUNT"
                     }
                     className="rounded-lg bg-red-500 px-4 py-2 text-primary-foreground hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {isDeleting ? 'Deleting...' : 'Confirm Deletion'}
+                    {isDeleting ? "Deleting..." : "Confirm Deletion"}
                   </button>
                   <button
                     onClick={() => {
                       setShowDeleteConfirm(false);
-                      setDeleteConfirmation('');
-                      setDeleteReason('');
+                      setDeleteConfirmation("");
+                      setDeleteReason("");
                     }}
                     disabled={isDeleting}
                     className="rounded-lg bg-muted px-4 py-2 text-foreground hover:bg-muted/80"

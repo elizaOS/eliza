@@ -29,7 +29,11 @@ impl Action for ReplyAction {
     fn similes(&self) -> &[&'static str] {
         // Convert Vec<String> to static slice - this is safe because SPEC is Lazy/static
         static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
-            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+            SPEC.similes
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
         });
         &SIMILES
     }
@@ -108,4 +112,3 @@ impl Action for ReplyAction {
             .with_data("messageGenerated", true))
     }
 }
-

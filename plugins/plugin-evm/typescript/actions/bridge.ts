@@ -1,5 +1,4 @@
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { composePromptFromState, logger, ModelType, parseKeyValueXml } from "@elizaos/core";
 import {
   createConfig,
@@ -13,7 +12,6 @@ import {
   type RouteExtended,
   resumeRoute,
 } from "@lifi/sdk";
-
 import { type Address, parseAbi, parseUnits } from "viem";
 import {
   BRIDGE_POLL_INTERVAL_MS,
@@ -22,6 +20,7 @@ import {
   MAX_PRICE_IMPACT,
   NATIVE_TOKEN_ADDRESS,
 } from "../constants";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { initWalletProvider, type WalletProvider } from "../providers/wallet";
 import { bridgeTemplate } from "../templates";
 import {

@@ -16,14 +16,14 @@ pub use crate::bootstrap::actions::{
     SendMessageAction, UnfollowRoomAction, UnmuteRoomAction, UpdateContactAction,
     UpdateEntityAction, UpdateRoleAction, UpdateSettingsAction,
 };
+pub use crate::bootstrap::evaluators::{
+    extended_evaluators as advanced_evaluators, Evaluator, ReflectionEvaluator,
+    RelationshipExtractionEvaluator,
+};
 pub use crate::bootstrap::providers::{
     extended_providers as advanced_providers, AgentSettingsProvider, ContactsProvider,
     FactsProvider, FollowUpsProvider, KnowledgeProvider, RelationshipsProvider, RolesProvider,
     SettingsProvider,
-};
-pub use crate::bootstrap::evaluators::{
-    extended_evaluators as advanced_evaluators, Evaluator, ReflectionEvaluator,
-    RelationshipExtractionEvaluator,
 };
 pub use crate::bootstrap::services::{FollowUpService, RolodexService};
 

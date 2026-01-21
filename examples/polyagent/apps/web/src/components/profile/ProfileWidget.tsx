@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import type {
   PerpPositionFromAPI,
@@ -6,25 +6,25 @@ import type {
   UserBalanceData,
   UserBalanceDataAPI,
   UserProfileStats,
-} from '@polyagent/shared';
-import { cn, parseUserBalanceData } from '@polyagent/shared';
-import { HelpCircle, TrendingDown, TrendingUp } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
-import { useWidgetCacheStore } from '@/stores/widgetCacheStore';
-import { PositionDetailModal } from './PositionDetailModal';
+} from "@polyagent/shared";
+import { cn, parseUserBalanceData } from "@polyagent/shared";
+import { HelpCircle, TrendingDown, TrendingUp } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { useWidgetCacheStore } from "@/stores/widgetCacheStore";
+import { PositionDetailModal } from "./PositionDetailModal";
 
 // Module-scope formatters to avoid recreating on every render
 const formatPoints = (points: number) => {
-  return points.toLocaleString('en-US', {
+  return points.toLocaleString("en-US", {
     maximumFractionDigits: 0,
   });
 };
 
 const formatPercent = (value: number) => {
-  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 };
 
 const formatPrice = (price: number) => {
@@ -59,7 +59,7 @@ async function fetchProfileWidgetData(userId: string): Promise<{
       profile: { status: profileRes.status, statusText: profileRes.statusText },
     };
     throw new Error(
-      `All profile widget fetches failed: ${JSON.stringify(errorDetails)}`
+      `All profile widget fetches failed: ${JSON.stringify(errorDetails)}`,
     );
   }
 
@@ -154,8 +154,8 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalType, setModalType] = useState<'prediction' | 'perp'>(
-    'prediction'
+  const [modalType, setModalType] = useState<"prediction" | "perp">(
+    "prediction",
   );
   const [selectedPosition, setSelectedPosition] = useState<
     PredictionPosition | PerpPositionFromAPI | null
@@ -167,7 +167,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
   const pointsInPositions = useMemo(() => {
     const predictionValue = predictions.reduce(
       (sum, pos) => sum + (pos.currentValue ?? pos.shares * pos.currentPrice),
-      0
+      0,
     );
     // Use margin (size/leverage) for perps to represent actual capital at risk
     const perpValue = perps.reduce((sum, pos) => {
@@ -182,14 +182,14 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
   // Total portfolio = available balance + points in positions
   const totalPortfolio = useMemo(
     () => (balance?.balance || 0) + pointsInPositions,
-    [balance?.balance, pointsInPositions]
+    [balance?.balance, pointsInPositions],
   );
 
   // Calculate total unrealized P&L from positions
   const unrealizedPnL = useMemo(() => {
     const predictionPnL = predictions.reduce(
       (sum, pos) => sum + (pos.unrealizedPnL ?? 0),
-      0
+      0,
     );
     const perpPnL = perps.reduce((sum, pos) => sum + pos.unrealizedPnL, 0);
     return predictionPnL + perpPnL;
@@ -198,18 +198,18 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
   // Total P&L = lifetime realized P&L + unrealized P&L
   const totalPnL = useMemo(
     () => (balance?.lifetimePnL || 0) + unrealizedPnL,
-    [balance?.lifetimePnL, unrealizedPnL]
+    [balance?.lifetimePnL, unrealizedPnL],
   );
 
   // P&L percentage based on net contributions (totalDeposited - totalWithdrawn)
   const netContributions = useMemo(
     () => (balance?.totalDeposited || 0) - (balance?.totalWithdrawn || 0),
-    [balance?.totalDeposited, balance?.totalWithdrawn]
+    [balance?.totalDeposited, balance?.totalWithdrawn],
   );
 
   const pnlPercent = useMemo(
     () => (netContributions > 0 ? (totalPnL / netContributions) * 100 : 0),
-    [totalPnL, netContributions]
+    [totalPnL, netContributions],
   );
 
   /**
@@ -239,7 +239,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
 
       return true;
     },
-    [userId, widgetCache]
+    [userId, widgetCache],
   );
 
   useEffect(() => {
@@ -284,11 +284,11 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
           return;
         }
       } catch (fetchError) {
-        console.error('Error fetching profile widget data:', fetchError);
+        console.error("Error fetching profile widget data:", fetchError);
         setError(
           fetchError instanceof Error
             ? fetchError
-            : new Error('Failed to load profile data')
+            : new Error("Failed to load profile data"),
         );
       } finally {
         setLoading(false);
@@ -311,11 +311,11 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
       const result = await fetchProfileWidgetData(userId);
       applyFetchResult(result);
     } catch (fetchError) {
-      console.error('Error fetching profile widget data:', fetchError);
+      console.error("Error fetching profile widget data:", fetchError);
       setError(
         fetchError instanceof Error
           ? fetchError
-          : new Error('Failed to load profile data')
+          : new Error("Failed to load profile data"),
       );
     } finally {
       setLoading(false);
@@ -382,8 +382,8 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
             <span className="text-muted-foreground text-sm">P&L</span>
             <span
               className={cn(
-                'font-semibold text-sm',
-                totalPnL >= 0 ? 'text-green-600' : 'text-red-600'
+                "font-semibold text-sm",
+                totalPnL >= 0 ? "text-green-600" : "text-red-600",
               )}
             >
               {formatPoints(totalPnL)} pts ({formatPercent(pnlPercent)})
@@ -395,7 +395,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
       {/* Holdings Section */}
       <div className="mb-6">
         <button
-          onClick={() => router.push('/markets')}
+          onClick={() => router.push("/markets")}
           className="mb-3 cursor-pointer text-left font-bold text-foreground text-lg transition-colors hover:text-[#0066FF]"
         >
           Holdings
@@ -405,7 +405,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
         {predictions.length > 0 && (
           <div className="mb-4">
             <button
-              onClick={() => router.push('/markets')}
+              onClick={() => router.push("/markets")}
               className="mb-2 block cursor-pointer font-semibold text-muted-foreground text-xs uppercase transition-colors hover:text-[#0066FF]"
             >
               PREDICTIONS
@@ -422,7 +422,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
                     key={pred.id}
                     onClick={() => {
                       setSelectedPosition(pred);
-                      setModalType('prediction');
+                      setModalType("prediction");
                       setModalOpen(true);
                     }}
                     className="-ml-2 w-full cursor-pointer rounded p-2 text-left text-sm transition-colors hover:bg-muted/30"
@@ -431,13 +431,13 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
                       {pred.question}
                     </div>
                     <div className="text-muted-foreground text-xs">
-                      {pred.shares} shares {pred.side} @{' '}
+                      {pred.shares} shares {pred.side} @{" "}
                       {formatPrice(pred.avgPrice)}
                     </div>
                     <div
                       className={cn(
-                        'mt-0.5 font-medium text-xs',
-                        pnlPercent >= 0 ? 'text-green-600' : 'text-red-600'
+                        "mt-0.5 font-medium text-xs",
+                        pnlPercent >= 0 ? "text-green-600" : "text-red-600",
                       )}
                     >
                       {formatPercent(pnlPercent)}
@@ -453,7 +453,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
         {perps.length > 0 && (
           <div className="mb-4">
             <button
-              onClick={() => router.push('/markets')}
+              onClick={() => router.push("/markets")}
               className="mb-2 block cursor-pointer font-semibold text-muted-foreground text-xs uppercase transition-colors hover:text-[#0066FF]"
             >
               STOCKS
@@ -464,7 +464,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
                   key={perp.id}
                   onClick={() => {
                     setSelectedPosition(perp);
-                    setModalType('perp');
+                    setModalType("perp");
                     setModalOpen(true);
                   }}
                   className="-ml-2 w-full cursor-pointer rounded p-2 text-left text-sm transition-colors hover:bg-muted/30"
@@ -484,10 +484,10 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
                   </div>
                   <div
                     className={cn(
-                      'mt-0.5 font-medium text-xs',
+                      "mt-0.5 font-medium text-xs",
                       perp.unrealizedPnL >= 0
-                        ? 'text-green-600'
-                        : 'text-red-600'
+                        ? "text-green-600"
+                        : "text-red-600",
                     )}
                   >
                     {formatPoints(perp.unrealizedPnL)} pts (
@@ -557,7 +557,7 @@ export function ProfileWidget({ userId }: ProfileWidgetProps) {
             const result = await fetchProfileWidgetData(userId);
             applyFetchResult(result);
           } catch (refreshError) {
-            console.error('Error refreshing profile data:', refreshError);
+            console.error("Error refreshing profile data:", refreshError);
             // Don't set error state here since original data is still valid
           }
         }}

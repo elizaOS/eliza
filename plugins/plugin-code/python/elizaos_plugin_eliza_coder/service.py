@@ -9,12 +9,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from elizaos_plugin_eliza_coder.config import load_coder_config
-from elizaos_plugin_eliza_coder.path_utils import is_forbidden_command, is_safe_command, validate_path
+from elizaos_plugin_eliza_coder.path_utils import (
+    is_forbidden_command,
+    is_safe_command,
+    validate_path,
+)
 from elizaos_plugin_eliza_coder.types import (
     CommandHistoryEntry,
     CommandResult,
     FileOperation,
-    FileOperationType,
 )
 
 logger = logging.getLogger(__name__)
@@ -140,7 +143,9 @@ class CoderService:
             return False, "File not found"
         return True, p.read_text(encoding="utf-8")
 
-    async def write_file(self, conversation_id: str, filepath: str, content: str) -> tuple[bool, str]:
+    async def write_file(
+        self, conversation_id: str, filepath: str, content: str
+    ) -> tuple[bool, str]:
         disabled = self._ensure_enabled()
         if disabled:
             return False, disabled
@@ -339,4 +344,3 @@ class CoderService:
 
     async def git(self, conversation_id: str, args: str) -> CommandResult:
         return await self.execute_shell(conversation_id, f"git {args}")
-

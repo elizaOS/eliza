@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Player, SelectElement } from './Player.tsx';
-import { PixiStaticMap } from './PixiStaticMap.tsx';
-import PixiViewport from './PixiViewport.tsx';
-import { AgentRadius } from './AgentRadius.tsx';
-import { Viewport } from 'pixi-viewport';
-import type { TownState, WorldMapData } from '../../shared/types';
+import type { Viewport } from "pixi-viewport";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { TownState, WorldMapData } from "../../shared/types";
+import { AgentRadius } from "./AgentRadius.tsx";
+import { PixiStaticMap } from "./PixiStaticMap.tsx";
+import PixiViewport from "./PixiViewport.tsx";
+import { Player, type SelectElement } from "./Player.tsx";
 
 export const PixiGame = (props: {
   state: TownState;
@@ -29,25 +29,18 @@ export const PixiGame = (props: {
     if (props.selectedAgentId) {
       setIsFollowing(true);
     }
-  }, [props.selectedAgentId, props.followNonce]);
+  }, [props.selectedAgentId]);
 
   useEffect(() => {
     if (!selectedAgent || !viewportRef.current || !isFollowing) {
       return;
     }
-    const renderPosition = selectedAgent.renderPosition ?? selectedAgent.position;
+    const renderPosition =
+      selectedAgent.renderPosition ?? selectedAgent.position;
     const centerX = renderPosition.x * tileDim + tileDim / 2;
     const centerY = renderPosition.y * tileDim + tileDim / 2;
     viewportRef.current.moveCenter(centerX, centerY);
-  }, [
-    selectedAgent?.id,
-    selectedAgent?.position.x,
-    selectedAgent?.position.y,
-    selectedAgent?.renderPosition?.x,
-    selectedAgent?.renderPosition?.y,
-    isFollowing,
-    tileDim,
-  ]);
+  }, [selectedAgent, isFollowing, tileDim]);
 
   return (
     <PixiViewport

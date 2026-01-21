@@ -2,25 +2,25 @@
  * Agent-related validation schemas
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 import {
   createTrimmedStringSchema,
   SnowflakeIdSchema,
   URLSchema,
-} from './common';
+} from "./common";
 
 /**
  * Agent authentication schema
  */
 export const AgentAuthSchema = z
   .object({
-    agentId: SnowflakeIdSchema.describe('Agent identifier (required)'),
+    agentId: SnowflakeIdSchema.describe("Agent identifier (required)"),
     agentSecret: z
       .string()
-      .min(32, { message: 'Agent secret must be at least 32 characters' })
-      .describe('Agent secret key (required)'),
+      .min(32, { message: "Agent secret must be at least 32 characters" })
+      .describe("Agent secret key (required)"),
   })
-  .describe('Agent authentication credentials');
+  .describe("Agent authentication credentials");
 
 /**
  * Agent discovery query parameters schema
@@ -29,7 +29,7 @@ export const AgentDiscoveryQuerySchema = z.object({
   strategies: z.string().optional(), // Comma-separated list of strategies
   markets: z.string().optional(), // Comma-separated list of markets
   minReputation: z.coerce.number().nonnegative().optional(),
-  external: z.enum(['true', 'false']).optional(),
+  external: z.enum(["true", "false"]).optional(),
 });
 
 /**
@@ -70,7 +70,7 @@ export const AgentFeedbackCreateSchema = z.object({
     .number()
     .int()
     .min(-5)
-    .max(5, { message: 'Rating must be between -5 and 5' }),
+    .max(5, { message: "Rating must be between -5 and 5" }),
   comment: createTrimmedStringSchema(1, 1000),
 });
 

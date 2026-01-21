@@ -9,7 +9,11 @@ export function extractVec3(text: string): Vec3 | null {
   const trimmed = text.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     try {
-      const parsed = JSON.parse(trimmed) as { x?: number; y?: number; z?: number };
+      const parsed = JSON.parse(trimmed) as {
+        x?: number;
+        y?: number;
+        z?: number;
+      };
       const v = vec3Schema.parse(parsed);
       return v;
     } catch {
@@ -17,12 +21,14 @@ export function extractVec3(text: string): Vec3 | null {
     }
   }
 
-  const m = trimmed.match(/(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/);
+  const m = trimmed.match(
+    /(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/,
+  );
   if (!m) return null;
   const x = Number(m[1]);
   const y = Number(m[2]);
   const z = Number(m[3]);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z))
+    return null;
   return { x, y, z };
 }
-

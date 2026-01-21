@@ -1,5 +1,5 @@
-import { cn } from '@polyagent/shared';
-import type React from 'react';
+import { cn } from "@polyagent/shared";
+import type React from "react";
 
 /**
  * Label component for form field labels.
@@ -15,7 +15,7 @@ import type React from 'react';
  * <Label htmlFor="email">Email</Label>
  * ```
  */
-export type LabelProps = React.ComponentPropsWithoutRef<'label'>;
+export type LabelProps = React.ComponentPropsWithoutRef<"label">;
 
 export const Label = ({ children, className, ...props }: LabelProps) => {
   return (

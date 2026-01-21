@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-local-ai-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha.1",
   "type": "module",
   "main": "typescript/dist/node/index.node.js",
   "module": "typescript/dist/node/index.node.js",
@@ -44,7 +44,7 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-alpha.1",
     "@huggingface/transformers": "^3.5.1",
     "node-llama-cpp": "3.10.0",
     "stream-browserify": "^3.0.0",
@@ -54,10 +54,10 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/node": "^25.0.3",
     "@types/uuid": "^11.0.0",
-    "typescript": "^5.9.3",
-    "@biomejs/biome": "^2.3.11"
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "build": "bun run build:ts && bun run build:rust && bun run build:python",
@@ -133,5 +133,6 @@
         "sensitive": false
       }
     }
-  }
+  },
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
 }

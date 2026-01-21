@@ -12,7 +12,7 @@ import {
   type UserAgentConfig,
   userAgentConfigs,
   users,
-} from '@polyagent/db';
+} from "@polyagent/db";
 
 /** User with agent configuration attached */
 export type UserWithAgentConfig = User & {
@@ -23,7 +23,7 @@ export type UserWithAgentConfig = User & {
  * Get agent config for a user
  */
 export async function getAgentConfig(
-  userId: string
+  userId: string,
 ): Promise<UserAgentConfig | null> {
   const result = await db
     .select()
@@ -37,7 +37,7 @@ export async function getAgentConfig(
  * Get user with their agent config
  */
 export async function getUserWithAgentConfig(
-  userId: string
+  userId: string,
 ): Promise<UserWithAgentConfig | null> {
   const userResult = await db
     .select()
@@ -56,12 +56,12 @@ export async function getUserWithAgentConfig(
  * Get multiple users with their agent configs
  */
 export async function getUsersWithAgentConfigs(
-  userIds: string[]
+  userIds: string[],
 ): Promise<UserWithAgentConfig[]> {
   if (userIds.length === 0) return [];
 
   const results = await Promise.all(
-    userIds.map((id) => getUserWithAgentConfig(id))
+    userIds.map((id) => getUserWithAgentConfig(id)),
   );
 
   return results.filter((r): r is UserWithAgentConfig => r !== null);
@@ -72,7 +72,7 @@ export async function getUsersWithAgentConfigs(
  */
 export async function upsertAgentConfig(
   userId: string,
-  config: Partial<Omit<UserAgentConfig, 'id' | 'userId' | 'createdAt'>>
+  config: Partial<Omit<UserAgentConfig, "id" | "userId" | "createdAt">>,
 ): Promise<UserAgentConfig> {
   const existing = await getAgentConfig(userId);
 
@@ -108,7 +108,7 @@ export async function upsertAgentConfig(
  */
 export function getSystemPrompt(
   user: User,
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): string | null {
   // systemPrompt is stored in the 'system' column in the database
   return config?.systemPrompt ?? user.personality ?? null;
@@ -127,7 +127,7 @@ export function getStyle(config: UserAgentConfig | null): string[] {
  * Get message examples from config
  */
 export function getMessageExamples(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): Array<Array<{ user: string; content: { text: string } }>> {
   if (!config?.messageExamples) return [];
   return config.messageExamples as Array<
@@ -139,7 +139,7 @@ export function getMessageExamples(
  * Get trading strategy from config
  */
 export function getTradingStrategy(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): string | null {
   return config?.tradingStrategy ?? null;
 }
@@ -171,21 +171,21 @@ export function getMaxActionsPerTick(config: UserAgentConfig | null): number {
  * Get risk tolerance from config
  */
 export function getRiskTolerance(config: UserAgentConfig | null): string {
-  return config?.riskTolerance ?? 'medium';
+  return config?.riskTolerance ?? "medium";
 }
 
 /**
  * Get planning horizon from config
  */
 export function getPlanningHorizon(config: UserAgentConfig | null): string {
-  return config?.planningHorizon ?? 'single';
+  return config?.planningHorizon ?? "single";
 }
 
 /**
  * Helper to check if autonomous trading is enabled
  */
 export function isAutonomousTradingEnabled(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): boolean {
   return config?.autonomousTrading ?? false;
 }
@@ -194,7 +194,7 @@ export function isAutonomousTradingEnabled(
  * Helper to check if autonomous posting is enabled
  */
 export function isAutonomousPostingEnabled(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): boolean {
   return config?.autonomousPosting ?? false;
 }
@@ -203,7 +203,7 @@ export function isAutonomousPostingEnabled(
  * Helper to check if autonomous commenting is enabled
  */
 export function isAutonomousCommentingEnabled(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): boolean {
   return config?.autonomousCommenting ?? false;
 }
@@ -212,7 +212,7 @@ export function isAutonomousCommentingEnabled(
  * Helper to check if autonomous DMs are enabled
  */
 export function isAutonomousDMsEnabled(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): boolean {
   return config?.autonomousDMs ?? false;
 }
@@ -221,7 +221,7 @@ export function isAutonomousDMsEnabled(
  * Helper to check if autonomous group chats are enabled
  */
 export function isAutonomousGroupChatsEnabled(
-  config: UserAgentConfig | null
+  config: UserAgentConfig | null,
 ): boolean {
   return config?.autonomousGroupChats ?? false;
 }
@@ -230,5 +230,5 @@ export function isAutonomousGroupChatsEnabled(
  * Helper to get model tier from config
  */
 export function getModelTier(config: UserAgentConfig | null): string {
-  return config?.modelTier ?? 'free';
+  return config?.modelTier ?? "free";
 }

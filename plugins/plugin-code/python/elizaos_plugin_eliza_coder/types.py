@@ -40,4 +40,3 @@ class CommandHistoryEntry:
     stderr: str
     exit_code: int | None
     file_operations: list[FileOperation] | None = None
-

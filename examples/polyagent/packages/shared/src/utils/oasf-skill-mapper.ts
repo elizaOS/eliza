@@ -11,7 +11,7 @@
  * @see https://sdk.ag0.xyz/ for Agent0 SDK documentation
  */
 
-import type { ActorData } from '../game-types';
+import type { ActorData } from "../game-types";
 
 /**
  * OASF Skill Categories
@@ -22,43 +22,43 @@ import type { ActorData } from '../game-types';
  */
 export const OASFSkillCategories = {
   // Natural Language & Communication
-  NLP: 'natural_language_processing',
-  DIALOGUE: 'dialogue_systems',
+  NLP: "natural_language_processing",
+  DIALOGUE: "dialogue_systems",
 
   // Finance & Trading
-  FINANCE: 'finance_and_business',
-  INVESTMENT: 'finance_and_business/investment_services',
-  TRADING: 'finance_and_business/trading',
-  RISK_ANALYSIS: 'finance_and_business/risk_analysis',
+  FINANCE: "finance_and_business",
+  INVESTMENT: "finance_and_business/investment_services",
+  TRADING: "finance_and_business/trading",
+  RISK_ANALYSIS: "finance_and_business/risk_analysis",
 
   // Data & Analytics
-  DATA_ENGINEERING: 'data_engineering',
-  DATA_ANALYSIS: 'data_analysis',
-  PREDICTION: 'predictive_analytics',
+  DATA_ENGINEERING: "data_engineering",
+  DATA_ANALYSIS: "data_analysis",
+  PREDICTION: "predictive_analytics",
 
   // Agent Orchestration
-  AGENT_ORCHESTRATION: 'agent_orchestration',
-  MULTI_AGENT: 'agent_orchestration/multi_agent_systems',
+  AGENT_ORCHESTRATION: "agent_orchestration",
+  MULTI_AGENT: "agent_orchestration/multi_agent_systems",
 
   // Information & Knowledge
-  INFORMATION_RETRIEVAL: 'information_retrieval',
-  KNOWLEDGE_MANAGEMENT: 'knowledge_management',
+  INFORMATION_RETRIEVAL: "information_retrieval",
+  KNOWLEDGE_MANAGEMENT: "knowledge_management",
 
   // Content & Media
-  CONTENT_CREATION: 'content_creation',
-  CONTENT_MODERATION: 'content_moderation',
+  CONTENT_CREATION: "content_creation",
+  CONTENT_MODERATION: "content_moderation",
 
   // Social & Community
-  SOCIAL_MEDIA: 'social_media_management',
-  COMMUNITY: 'community_management',
+  SOCIAL_MEDIA: "social_media_management",
+  COMMUNITY: "community_management",
 
   // Decision Support
-  DECISION_SUPPORT: 'decision_support_systems',
-  REASONING: 'reasoning_and_problem_solving',
+  DECISION_SUPPORT: "decision_support_systems",
+  REASONING: "reasoning_and_problem_solving",
 
   // Workflow & Automation
-  WORKFLOW: 'workflow_automation',
-  TASK_PLANNING: 'task_planning_and_scheduling',
+  WORKFLOW: "workflow_automation",
+  TASK_PLANNING: "task_planning_and_scheduling",
 } as const;
 
 /**
@@ -69,18 +69,18 @@ export const OASFSkillCategories = {
  * domain/subdomain.
  */
 export const OASFDomainCategories = {
-  FINANCE: 'finance_and_business',
-  INVESTMENT: 'finance_and_business/investment_services',
-  TRADING_MARKETS: 'finance_and_business/trading_and_markets',
+  FINANCE: "finance_and_business",
+  INVESTMENT: "finance_and_business/investment_services",
+  TRADING_MARKETS: "finance_and_business/trading_and_markets",
 
-  ENTERTAINMENT: 'entertainment_and_media',
-  GAMING: 'entertainment_and_media/gaming',
+  ENTERTAINMENT: "entertainment_and_media",
+  GAMING: "entertainment_and_media/gaming",
 
-  SOCIAL_NETWORKING: 'social_networking',
-  COMMUNITY_PLATFORMS: 'social_networking/community_platforms',
+  SOCIAL_NETWORKING: "social_networking",
+  COMMUNITY_PLATFORMS: "social_networking/community_platforms",
 
-  EDUCATION: 'education_and_learning',
-  RESEARCH: 'research_and_development',
+  EDUCATION: "education_and_learning",
+  RESEARCH: "research_and_development",
 } as const;
 
 /**
@@ -240,7 +240,7 @@ export function mapActorToOASFSkills(actorData: ActorData): string[] {
   const skills: string[] = [];
 
   // Determine NPC type from role field
-  const npcType = actorData.role?.toLowerCase() || 'default';
+  const npcType = actorData.role?.toLowerCase() || "default";
 
   // Get skills for this NPC type
   const typeSkills = NPCTypeSkillMap[npcType] || NPCTypeSkillMap.default;
@@ -249,35 +249,35 @@ export function mapActorToOASFSkills(actorData: ActorData): string[] {
   }
 
   // Add skills based on description keywords
-  const description = (actorData.description || '').toLowerCase();
+  const description = (actorData.description || "").toLowerCase();
 
-  if (description.includes('trade') || description.includes('trading')) {
+  if (description.includes("trade") || description.includes("trading")) {
     skills.push(OASFSkillCategories.TRADING);
   }
 
-  if (description.includes('invest') || description.includes('portfolio')) {
+  if (description.includes("invest") || description.includes("portfolio")) {
     skills.push(OASFSkillCategories.INVESTMENT);
   }
 
-  if (description.includes('analyz') || description.includes('predict')) {
+  if (description.includes("analyz") || description.includes("predict")) {
     skills.push(
       OASFSkillCategories.DATA_ANALYSIS,
-      OASFSkillCategories.PREDICTION
+      OASFSkillCategories.PREDICTION,
     );
   }
 
-  if (description.includes('social') || description.includes('community')) {
+  if (description.includes("social") || description.includes("community")) {
     skills.push(
       OASFSkillCategories.SOCIAL_MEDIA,
-      OASFSkillCategories.COMMUNITY
+      OASFSkillCategories.COMMUNITY,
     );
   }
 
-  if (description.includes('content') || description.includes('post')) {
+  if (description.includes("content") || description.includes("post")) {
     skills.push(OASFSkillCategories.CONTENT_CREATION);
   }
 
-  if (description.includes('moderate') || description.includes('moderation')) {
+  if (description.includes("moderate") || description.includes("moderation")) {
     skills.push(OASFSkillCategories.CONTENT_MODERATION);
   }
 
@@ -308,7 +308,7 @@ export function mapActorToOASFDomains(actorData: ActorData): string[] {
   const domains: string[] = [];
 
   // Determine NPC type from role field
-  const npcType = actorData.role?.toLowerCase() || 'default';
+  const npcType = actorData.role?.toLowerCase() || "default";
 
   // Get domains for this NPC type
   const typeDomains = NPCTypeDomainMap[npcType] || NPCTypeDomainMap.default;
@@ -317,28 +317,28 @@ export function mapActorToOASFDomains(actorData: ActorData): string[] {
   }
 
   // Add domains based on description keywords
-  const description = (actorData.description || '').toLowerCase();
+  const description = (actorData.description || "").toLowerCase();
 
-  if (description.includes('finance') || description.includes('financial')) {
+  if (description.includes("finance") || description.includes("financial")) {
     domains.push(OASFDomainCategories.FINANCE);
   }
 
-  if (description.includes('invest')) {
+  if (description.includes("invest")) {
     domains.push(OASFDomainCategories.INVESTMENT);
   }
 
-  if (description.includes('market') || description.includes('trading')) {
+  if (description.includes("market") || description.includes("trading")) {
     domains.push(OASFDomainCategories.TRADING_MARKETS);
   }
 
-  if (description.includes('social')) {
+  if (description.includes("social")) {
     domains.push(OASFDomainCategories.SOCIAL_NETWORKING);
   }
 
   if (
-    description.includes('game') ||
-    description.includes('gaming') ||
-    description.includes('prediction market')
+    description.includes("game") ||
+    description.includes("gaming") ||
+    description.includes("prediction market")
   ) {
     domains.push(OASFDomainCategories.GAMING);
   }
@@ -435,28 +435,28 @@ export function suggestSkillsFromKeywords(keywords: string[]): string[] {
   const lowerKeywords = keywords.map((k) => k.toLowerCase());
 
   for (const keyword of lowerKeywords) {
-    if (keyword.includes('trade') || keyword.includes('trading')) {
+    if (keyword.includes("trade") || keyword.includes("trading")) {
       suggestions.add(OASFSkillCategories.TRADING);
     }
-    if (keyword.includes('invest')) {
+    if (keyword.includes("invest")) {
       suggestions.add(OASFSkillCategories.INVESTMENT);
     }
-    if (keyword.includes('analyz') || keyword.includes('analysis')) {
+    if (keyword.includes("analyz") || keyword.includes("analysis")) {
       suggestions.add(OASFSkillCategories.DATA_ANALYSIS);
     }
-    if (keyword.includes('predict')) {
+    if (keyword.includes("predict")) {
       suggestions.add(OASFSkillCategories.PREDICTION);
     }
-    if (keyword.includes('dialogue') || keyword.includes('conversation')) {
+    if (keyword.includes("dialogue") || keyword.includes("conversation")) {
       suggestions.add(OASFSkillCategories.DIALOGUE);
     }
-    if (keyword.includes('nlp') || keyword.includes('language')) {
+    if (keyword.includes("nlp") || keyword.includes("language")) {
       suggestions.add(OASFSkillCategories.NLP);
     }
-    if (keyword.includes('social')) {
+    if (keyword.includes("social")) {
       suggestions.add(OASFSkillCategories.SOCIAL_MEDIA);
     }
-    if (keyword.includes('content')) {
+    if (keyword.includes("content")) {
       suggestions.add(OASFSkillCategories.CONTENT_CREATION);
     }
   }
@@ -486,22 +486,22 @@ export function suggestDomainsFromKeywords(keywords: string[]): string[] {
   const lowerKeywords = keywords.map((k) => k.toLowerCase());
 
   for (const keyword of lowerKeywords) {
-    if (keyword.includes('finance') || keyword.includes('financial')) {
+    if (keyword.includes("finance") || keyword.includes("financial")) {
       suggestions.add(OASFDomainCategories.FINANCE);
     }
-    if (keyword.includes('invest')) {
+    if (keyword.includes("invest")) {
       suggestions.add(OASFDomainCategories.INVESTMENT);
     }
-    if (keyword.includes('market') || keyword.includes('trading')) {
+    if (keyword.includes("market") || keyword.includes("trading")) {
       suggestions.add(OASFDomainCategories.TRADING_MARKETS);
     }
-    if (keyword.includes('social')) {
+    if (keyword.includes("social")) {
       suggestions.add(OASFDomainCategories.SOCIAL_NETWORKING);
     }
-    if (keyword.includes('game') || keyword.includes('gaming')) {
+    if (keyword.includes("game") || keyword.includes("gaming")) {
       suggestions.add(OASFDomainCategories.GAMING);
     }
-    if (keyword.includes('education') || keyword.includes('learning')) {
+    if (keyword.includes("education") || keyword.includes("learning")) {
       suggestions.add(OASFDomainCategories.EDUCATION);
     }
   }

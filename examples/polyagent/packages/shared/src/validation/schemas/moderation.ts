@@ -3,12 +3,12 @@
  * Block, Mute, and Report functionality
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 
 // ============ Block Schemas ============
 
 export const BlockUserSchema = z.object({
-  action: z.enum(['block', 'unblock']),
+  action: z.enum(["block", "unblock"]),
   reason: z.string().max(500).optional(),
 });
 
@@ -20,7 +20,7 @@ export const GetBlocksSchema = z.object({
 // ============ Mute Schemas ============
 
 export const MuteUserSchema = z.object({
-  action: z.enum(['mute', 'unmute']),
+  action: z.enum(["mute", "unmute"]),
   reason: z.string().max(500).optional(),
 });
 
@@ -32,27 +32,27 @@ export const GetMutesSchema = z.object({
 // ============ Report Schemas ============
 
 export const ReportCategoryEnum = z.enum([
-  'spam',
-  'harassment',
-  'hate_speech',
-  'violence',
-  'misinformation',
-  'inappropriate',
-  'impersonation',
-  'self_harm',
-  'other',
+  "spam",
+  "harassment",
+  "hate_speech",
+  "violence",
+  "misinformation",
+  "inappropriate",
+  "impersonation",
+  "self_harm",
+  "other",
 ]);
 
-export const ReportTypeEnum = z.enum(['user', 'post']);
+export const ReportTypeEnum = z.enum(["user", "post"]);
 
 export const ReportStatusEnum = z.enum([
-  'pending',
-  'reviewing',
-  'resolved',
-  'dismissed',
+  "pending",
+  "reviewing",
+  "resolved",
+  "dismissed",
 ]);
 
-export const ReportPriorityEnum = z.enum(['low', 'normal', 'high', 'critical']);
+export const ReportPriorityEnum = z.enum(["low", "normal", "high", "critical"]);
 
 export const CreateReportSchema = z
   .object({
@@ -69,8 +69,8 @@ export const CreateReportSchema = z
       return !!(data.reportedUserId || data.reportedPostId);
     },
     {
-      message: 'Either reportedUserId or reportedPostId must be provided',
-    }
+      message: "Either reportedUserId or reportedPostId must be provided",
+    },
   );
 
 export const UpdateReportSchema = z.object({
@@ -89,28 +89,28 @@ export const GetReportsSchema = z.object({
   reporterId: z.string().optional(),
   reportedUserId: z.string().optional(),
   reportedPostId: z.string().optional(),
-  sortBy: z.enum(['created', 'updated', 'priority']).default('created'),
-  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  sortBy: z.enum(["created", "updated", "priority"]).default("created"),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
 
 // ============ Admin Report Schemas ============
 
 export const AdminReportActionSchema = z
   .object({
-    action: z.enum(['resolve', 'dismiss', 'escalate', 'ban_user', 'evaluate']),
+    action: z.enum(["resolve", "dismiss", "escalate", "ban_user", "evaluate"]),
     resolution: z.string().min(1).max(1000).optional(),
   })
   .refine(
     (data) => {
       // Resolution required for all actions except 'evaluate'
-      if (data.action !== 'evaluate' && !data.resolution) {
+      if (data.action !== "evaluate" && !data.resolution) {
         return false;
       }
       return true;
     },
     {
-      message: 'Resolution is required for this action',
-    }
+      message: "Resolution is required for this action",
+    },
   );
 
 export const GetAdminReportsStatsSchema = z.object({

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-rest-api-elysia",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "private": true,
   "type": "module",
   "description": "elizaOS REST API example using Elysia - no API keys required",

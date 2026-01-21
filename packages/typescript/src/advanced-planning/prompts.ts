@@ -41,4 +41,3 @@ STAKEHOLDERS: [comma-separated list]
 CONSTRAINTS: [comma-separated list]
 DEPENDENCIES: [comma-separated list]
 CONFIDENCE: [0.0-1.0]`;
-

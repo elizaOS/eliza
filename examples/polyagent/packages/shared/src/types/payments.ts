@@ -4,7 +4,7 @@
  * Complete interfaces for x402 micropayment system
  */
 
-import type { JsonValue } from './common';
+import type { JsonValue } from "./common";
 
 /**
  * Payment request creation parameters
@@ -52,7 +52,7 @@ export interface PaymentVerificationResult {
  */
 export interface PaymentStatus {
   requestId: string;
-  status: 'pending' | 'verified' | 'expired' | 'failed';
+  status: "pending" | "verified" | "expired" | "failed";
   amount: string;
   from: string;
   to: string;

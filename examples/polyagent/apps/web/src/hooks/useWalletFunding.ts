@@ -1,9 +1,9 @@
-import { CHAIN, WALLET_ERROR_MESSAGES } from '@polyagent/shared';
-import { useFundWallet } from '@privy-io/react-auth';
-import { useCallback, useRef } from 'react';
-import { toast } from 'sonner';
-import { formatEther } from 'viem';
-import { useSmartWalletBalance } from './useSmartWalletBalance';
+import { CHAIN, WALLET_ERROR_MESSAGES } from "@polyagent/shared";
+import { useFundWallet } from "@privy-io/react-auth";
+import { useCallback, useRef } from "react";
+import { toast } from "sonner";
+import { formatEther } from "viem";
+import { useSmartWalletBalance } from "./useSmartWalletBalance";
 
 /**
  * Options for the ensureFunds function.
@@ -36,7 +36,7 @@ interface UseWalletFundingResult {
   ensureFunds: (
     smartWalletAddress: string | undefined,
     requiredAmountWei: bigint,
-    options?: EnsureFundsOptions
+    options?: EnsureFundsOptions,
   ) => Promise<boolean>;
 }
 
@@ -87,7 +87,7 @@ export function useWalletFunding(): UseWalletFundingResult {
     async (
       smartWalletAddress: string | undefined,
       requiredAmountWei: bigint,
-      options?: EnsureFundsOptions
+      options?: EnsureFundsOptions,
     ): Promise<boolean> => {
       const {
         signal,
@@ -102,7 +102,7 @@ export function useWalletFunding(): UseWalletFundingResult {
 
       // Check if operation was cancelled before starting
       if (signal?.aborted) {
-        throw new Error('Operation cancelled');
+        throw new Error("Operation cancelled");
       }
 
       // Check current balance
@@ -120,13 +120,13 @@ export function useWalletFunding(): UseWalletFundingResult {
         options: {
           chain: CHAIN,
           amount: formatEther(deficit),
-          asset: 'native-currency',
+          asset: "native-currency",
         },
       });
 
       // Show feedback to user
       if (showToasts) {
-        toastIdRef.current = toast.info('Waiting for deposit to settle...');
+        toastIdRef.current = toast.info("Waiting for deposit to settle...");
       }
 
       // Poll for balance updates with cancellation support
@@ -137,14 +137,14 @@ export function useWalletFunding(): UseWalletFundingResult {
             toast.dismiss(toastIdRef.current);
             toastIdRef.current = null;
           }
-          throw new Error('Operation cancelled');
+          throw new Error("Operation cancelled");
         }
 
         const updatedBalance = await refreshBalance();
 
         if (updatedBalance && updatedBalance >= requiredAmountWei) {
           if (showToasts) {
-            toast.success('Funds received!');
+            toast.success("Funds received!");
           }
           return true;
         }
@@ -161,7 +161,7 @@ export function useWalletFunding(): UseWalletFundingResult {
             };
 
             if (signal) {
-              signal.addEventListener('abort', abortHandler, { once: true });
+              signal.addEventListener("abort", abortHandler, { once: true });
             }
           });
         }
@@ -169,13 +169,13 @@ export function useWalletFunding(): UseWalletFundingResult {
 
       // If we get here, funds didn't arrive in time
       if (showToasts) {
-        toast.error('Deposit is taking longer than expected');
+        toast.error("Deposit is taking longer than expected");
       }
       throw new Error(
-        'Funds are still settling. Please try again in a moment once the deposit arrives.'
+        "Funds are still settling. Please try again in a moment once the deposit arrives.",
       );
     },
-    [balance, fundWallet, refreshBalance]
+    [balance, fundWallet, refreshBalance],
   );
 
   return { ensureFunds };

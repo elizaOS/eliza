@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-experience-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha.1",
   "description": "Experience learning plugin for ElizaOS - records and recalls transferable agent learnings",
   "type": "module",
   "main": "typescript/dist/node/index.node.js",
@@ -10,7 +10,13 @@
   "platform": "node",
   "license": "MIT",
   "author": "elizaOS",
-  "keywords": ["plugin", "elizaos", "experience", "learning", "memory"],
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "experience",
+    "learning",
+    "memory"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos/elizaos"
@@ -35,18 +41,23 @@
       "default": "./typescript/dist/node/index.node.js"
     }
   },
-  "files": ["typescript/dist", "python", "rust", "README.md"],
+  "files": [
+    "typescript/dist",
+    "python",
+    "rust",
+    "README.md"
+  ],
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-alpha.1",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/bun": "^1.3.5",
     "@types/node": "^25.0.3",
     "@types/uuid": "^11.0.0",
-    "typescript": "^5.9.3",
-    "@biomejs/biome": "^2.3.11"
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
@@ -89,6 +100,6 @@
       }
     },
     "description": "Records and recalls transferable agent learnings."
-  }
+  },
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
 }
-

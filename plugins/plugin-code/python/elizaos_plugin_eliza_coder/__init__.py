@@ -56,4 +56,3 @@ __all__ = [
     "PLUGIN_NAME",
     "PLUGIN_DESCRIPTION",
 ]
-

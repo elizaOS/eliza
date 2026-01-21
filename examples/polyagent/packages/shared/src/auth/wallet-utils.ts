@@ -5,7 +5,7 @@
  * vs external wallets. Provides error message helpers for wallet-related operations.
  */
 
-import type { ConnectedWallet } from '@privy-io/react-auth';
+import type { ConnectedWallet } from "@privy-io/react-auth";
 
 /**
  * Check if a wallet is a Privy embedded wallet
@@ -25,12 +25,12 @@ import type { ConnectedWallet } from '@privy-io/react-auth';
  * ```
  */
 export function isEmbeddedPrivyWallet(
-  wallet?: ConnectedWallet | null
+  wallet?: ConnectedWallet | null,
 ): boolean {
   if (!wallet) return false;
   return (
-    wallet.walletClientType === 'privy' ||
-    wallet.walletClientType === 'privy-v2'
+    wallet.walletClientType === "privy" ||
+    wallet.walletClientType === "privy-v2"
   );
 }
 
@@ -74,7 +74,7 @@ export function isExternalWallet(wallet?: ConnectedWallet | null): boolean {
  * ```
  */
 export function findEmbeddedWallet(
-  wallets: ConnectedWallet[]
+  wallets: ConnectedWallet[],
 ): ConnectedWallet | undefined {
   return wallets.find(isEmbeddedPrivyWallet);
 }
@@ -97,7 +97,7 @@ export function findEmbeddedWallet(
  * ```
  */
 export function findExternalWallet(
-  wallets: ConnectedWallet[]
+  wallets: ConnectedWallet[],
 ): ConnectedWallet | undefined {
   return wallets.find(isExternalWallet);
 }
@@ -110,15 +110,15 @@ export function findExternalWallet(
  */
 export const WALLET_ERROR_MESSAGES = {
   NO_EMBEDDED_WALLET:
-    'Your Polyagent smart wallet is required for this action. Please wait for it to finish preparing.',
+    "Your Polyagent smart wallet is required for this action. Please wait for it to finish preparing.",
   EXTERNAL_WALLET_ONLY:
-    'You are connected with an external wallet. Please switch to your Polyagent smart wallet to continue.',
-  NO_WALLET: 'Please connect a wallet to continue.',
+    "You are connected with an external wallet. Please switch to your Polyagent smart wallet to continue.",
+  NO_WALLET: "Please connect a wallet to continue.",
   SPONSOR_FAILED:
-    'Unable to sponsor this transaction. Make sure your Polyagent smart wallet is active.',
-  USER_REJECTED: 'Transaction was cancelled in your wallet.',
+    "Unable to sponsor this transaction. Make sure your Polyagent smart wallet is active.",
+  USER_REJECTED: "Transaction was cancelled in your wallet.",
   INSUFFICIENT_FUNDS:
-    'Insufficient funds to cover gas. Use your Polyagent smart wallet for sponsored transactions.',
+    "Insufficient funds to cover gas. Use your Polyagent smart wallet for sponsored transactions.",
 } as const;
 
 /**
@@ -144,23 +144,23 @@ export function getWalletErrorMessage(error: unknown): string {
   const message =
     error instanceof Error ? error.message.toLowerCase() : String(error);
 
-  if (message.includes('user rejected') || message.includes('user denied')) {
+  if (message.includes("user rejected") || message.includes("user denied")) {
     return WALLET_ERROR_MESSAGES.USER_REJECTED;
   }
 
-  if (message.includes('insufficient funds')) {
+  if (message.includes("insufficient funds")) {
     return WALLET_ERROR_MESSAGES.INSUFFICIENT_FUNDS;
   }
 
-  if (message.includes('sponsor')) {
+  if (message.includes("sponsor")) {
     return WALLET_ERROR_MESSAGES.SPONSOR_FAILED;
   }
 
-  if (message.includes('no wallet') || message.includes('wallet not found')) {
+  if (message.includes("no wallet") || message.includes("wallet not found")) {
     return WALLET_ERROR_MESSAGES.NO_WALLET;
   }
 
   return error instanceof Error
     ? error.message
-    : 'An unknown error occurred with your wallet.';
+    : "An unknown error occurred with your wallet.";
 }

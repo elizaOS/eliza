@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { logger } from '@polyagent/shared';
-import { usePrivy } from '@privy-io/react-auth';
-import { useEffect, useRef } from 'react';
+import { logger } from "@polyagent/shared";
+import { usePrivy } from "@privy-io/react-auth";
+import { useEffect, useRef } from "react";
 
 /**
  * Login modal component that triggers Privy's native login modal.
@@ -66,10 +66,10 @@ export function LoginModal({
   // Log title/message if provided for debugging
   useEffect(() => {
     if (title) {
-      logger.debug('LoginModal title:', title, 'LoginModal');
+      logger.debug("LoginModal title:", title, "LoginModal");
     }
     if (message) {
-      logger.debug('LoginModal message:', message, 'LoginModal');
+      logger.debug("LoginModal message:", message, "LoginModal");
     }
   }, [title, message]);
 

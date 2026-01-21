@@ -51,7 +51,10 @@ async fn test_service_file_ops() {
     let content = service.read_file(conv, "a.txt").await.unwrap();
     assert!(content.contains("hello"));
 
-    service.edit_file(conv, "a.txt", "hello", "hi").await.unwrap();
+    service
+        .edit_file(conv, "a.txt", "hello", "hi")
+        .await
+        .unwrap();
     let content2 = service.read_file(conv, "a.txt").await.unwrap();
     assert!(content2.contains("hi"));
 
@@ -96,4 +99,3 @@ async fn test_service_security() {
     let cd = service.change_directory(conv, "..").await;
     assert!(!cd.success);
 }
-

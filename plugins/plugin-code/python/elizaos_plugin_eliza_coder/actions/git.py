@@ -30,4 +30,3 @@ class GitAction:
 
         res = await service.git(conversation_id(message), args)
         return ActionResult(res.success, res.stdout if res.success else res.stderr)
-

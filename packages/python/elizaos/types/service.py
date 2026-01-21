@@ -5,8 +5,6 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel, Field
 
-from elizaos.types.primitives import Metadata
-
 if TYPE_CHECKING:
     from elizaos.types.runtime import IAgentRuntime
 

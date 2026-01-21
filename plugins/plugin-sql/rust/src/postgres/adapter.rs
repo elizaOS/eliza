@@ -306,7 +306,11 @@ impl DatabaseAdapter for PostgresAdapter {
                 .as_ref()
                 .map(|u| uuid::Uuid::parse_str(u.as_str()).unwrap())
                 .unwrap_or_else(uuid::Uuid::new_v4);
-            let agent_id = uuid::Uuid::parse_str(entity.agent_id.as_str())?;
+            let agent_id = entity
+                .agent_id
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Entity agent_id is required"))?;
+            let agent_id = uuid::Uuid::parse_str(agent_id.as_str())?;
             let names = serde_json::to_value(&entity.names)?;
             let metadata = serde_json::to_value(&entity.metadata)?;
 
@@ -472,8 +476,16 @@ impl DatabaseAdapter for PostgresAdapter {
         let entity_id = uuid::Uuid::parse_str(component.entity_id.as_str())?;
         let agent_id = uuid::Uuid::parse_str(component.agent_id.as_str())?;
         let room_id = uuid::Uuid::parse_str(component.room_id.as_str())?;
-        let world_id = uuid::Uuid::parse_str(component.world_id.as_str())?;
-        let source_entity_id = uuid::Uuid::parse_str(component.source_entity_id.as_str())?;
+        let world_id = component
+            .world_id
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Component world_id is required"))?;
+        let world_id = uuid::Uuid::parse_str(world_id.as_str())?;
+        let source_entity_id = component
+            .source_entity_id
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Component source_entity_id is required"))?;
+        let source_entity_id = uuid::Uuid::parse_str(source_entity_id.as_str())?;
         let data = serde_json::to_value(&component.data)?;
 
         sqlx::query(

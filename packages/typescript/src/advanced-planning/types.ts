@@ -8,11 +8,19 @@ import type {
 } from "../types/index.ts";
 
 export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+  | JsonPrimitive
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 export type ExecutionModel = "sequential" | "parallel" | "dag";
 
-export type PlanStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+export type PlanStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
 
 export interface PlanningContext {
   goal: string;
@@ -78,8 +86,14 @@ export interface PlanState {
 }
 
 export interface IPlanningService {
-  createSimplePlan(goal: string, message?: Memory, state?: State): Promise<ExtendedActionPlan>;
-  createComprehensivePlan(context: PlanningContext): Promise<ExtendedActionPlan>;
+  createSimplePlan(
+    goal: string,
+    message?: Memory,
+    state?: State,
+  ): Promise<ExtendedActionPlan>;
+  createComprehensivePlan(
+    context: PlanningContext,
+  ): Promise<ExtendedActionPlan>;
   executePlan(
     plan: ExtendedActionPlan,
     message: Memory,
@@ -97,4 +111,3 @@ export interface IPlanningService {
     reason: string,
   ): Promise<ExtendedActionPlan | null>;
 }
-

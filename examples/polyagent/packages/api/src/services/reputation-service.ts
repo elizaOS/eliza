@@ -5,13 +5,13 @@
  * outcomes. Winners get +10 reputation, losers get -5 reputation.
  */
 
-import { db, eq, inArray, positions, users } from '@polyagent/db';
+import { db, eq, inArray, positions, users } from "@polyagent/db";
 import {
   getCurrentRpcUrl,
   logger,
   REPUTATION_SYSTEM_ABI,
   REPUTATION_SYSTEM_BASE_SEPOLIA,
-} from '@polyagent/shared';
+} from "@polyagent/shared";
 import {
   type Address,
   createPublicClient,
@@ -19,16 +19,16 @@ import {
   http,
   parseAbi,
   parseEther,
-} from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
-import { baseSepolia } from 'viem/chains';
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { baseSepolia } from "viem/chains";
 
 // Contract addresses from canonical config
 const REPUTATION_SYSTEM = REPUTATION_SYSTEM_BASE_SEPOLIA as Address;
 
 // Hardhat default account #0 private key (has 10000 ETH on local node)
 const HARDHAT_DEFAULT_PRIVATE_KEY =
-  '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as const;
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as const;
 
 // Server wallet for paying gas - uses Hardhat's pre-funded account for local dev
 const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 31337);
@@ -64,7 +64,7 @@ export class ReputationService {
    * Update reputation for all users who had positions in a resolved market
    */
   static async updateReputationForResolvedMarket(
-    resolution: MarketResolution
+    resolution: MarketResolution,
   ): Promise<ReputationUpdate[]> {
     const results: ReputationUpdate[] = [];
 
@@ -83,7 +83,7 @@ export class ReputationService {
       logger.info(
         `No positions found for market ${resolution.marketId}`,
         undefined,
-        'ReputationService'
+        "ReputationService",
       );
       return [];
     }
@@ -104,7 +104,7 @@ export class ReputationService {
     logger.info(
       `Updating reputation for ${positionsData.length} positions in market ${resolution.marketId}`,
       { count: positionsData.length, marketId: resolution.marketId },
-      'ReputationService'
+      "ReputationService",
     );
 
     // 2. Create clients
@@ -130,7 +130,7 @@ export class ReputationService {
           userId: position.userId,
           tokenId: 0,
           change: 0,
-          error: 'User not registered on-chain',
+          error: "User not registered on-chain",
         });
         continue;
       }
@@ -147,12 +147,12 @@ export class ReputationService {
         logger.info(
           `Recording WIN for token ${tokenId} (+10 reputation)`,
           { tokenId, change: 10 },
-          'ReputationService'
+          "ReputationService",
         );
         txHash = await walletClient.writeContract({
           address: REPUTATION_SYSTEM,
           abi: parseAbi(REPUTATION_SYSTEM_ABI),
-          functionName: 'recordWin',
+          functionName: "recordWin",
           args: [BigInt(tokenId), amount],
         });
       } else {
@@ -160,12 +160,12 @@ export class ReputationService {
         logger.info(
           `Recording LOSS for token ${tokenId} (-5 reputation)`,
           { tokenId, change: -5 },
-          'ReputationService'
+          "ReputationService",
         );
         txHash = await walletClient.writeContract({
           address: REPUTATION_SYSTEM,
           abi: parseAbi(REPUTATION_SYSTEM_ABI),
-          functionName: 'recordLoss',
+          functionName: "recordLoss",
           args: [BigInt(tokenId), amount],
         });
       }
@@ -186,7 +186,7 @@ export class ReputationService {
       logger.info(
         `Updated reputation for token ${tokenId}`,
         { tokenId, txHash, change: isWinner ? 10 : -5 },
-        'ReputationService'
+        "ReputationService",
       );
     }
 
@@ -220,7 +220,7 @@ export class ReputationService {
     const reputation = (await publicClient.readContract({
       address: REPUTATION_SYSTEM,
       abi: parseAbi(REPUTATION_SYSTEM_ABI),
-      functionName: 'getReputation',
+      functionName: "getReputation",
       args: [BigInt(user.nftTokenId)],
     })) as [bigint, bigint, bigint, bigint, bigint, bigint, boolean];
 
@@ -248,7 +248,7 @@ export class ReputationService {
    * Batch update reputation for multiple market resolutions
    */
   static async batchUpdateReputation(
-    resolutions: MarketResolution[]
+    resolutions: MarketResolution[],
   ): Promise<Record<string, ReputationUpdate[]>> {
     const allResults: Record<string, ReputationUpdate[]> = {};
 

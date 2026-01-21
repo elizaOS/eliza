@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Awaitable, Callable
 
 from elizaos_plugin_minecraft.protocol import coerce_json_object
 from elizaos_plugin_minecraft.service import MinecraftService
@@ -346,8 +346,16 @@ class MinecraftPlugin:
 
         if name in self.waypoints:
             del self.waypoints[name]
-            return {"text": f'Deleted waypoint "{name}".', "success": True, "values": {"deleted": True}}
-        return {"text": f'No waypoint named "{name}".', "success": False, "values": {"deleted": False}}
+            return {
+                "text": f'Deleted waypoint "{name}".',
+                "success": True,
+                "values": {"deleted": True},
+            }
+        return {
+            "text": f'No waypoint named "{name}".',
+            "success": False,
+            "values": {"deleted": False},
+        }
 
     async def _waypoint_list(self, _message: str) -> object:
         """List all saved waypoints."""
@@ -361,7 +369,7 @@ class MinecraftPlugin:
 
         lines = [f"- {w.name}: ({w.x:.1f}, {w.y:.1f}, {w.z:.1f})" for w in wp_list]
         return {
-            "text": f"Waypoints:\n" + "\n".join(lines),
+            "text": "Waypoints:\n" + "\n".join(lines),
             "success": True,
             "data": {
                 "waypoints": [
@@ -406,7 +414,7 @@ class MinecraftPlugin:
 
         lines = [f"- {w.name}: ({w.x:.1f}, {w.y:.1f}, {w.z:.1f})" for w in wp_list]
         return {
-            "text": f"Waypoints:\n" + "\n".join(lines),
+            "text": "Waypoints:\n" + "\n".join(lines),
             "values": {"count": len(wp_list)},
             "data": {
                 "waypoints": [
@@ -426,4 +434,3 @@ class MinecraftPlugin:
 def create_minecraft_plugin(config: MinecraftConfig | None = None) -> MinecraftPlugin:
     plugin = MinecraftPlugin(config=config or MinecraftConfig())
     return plugin
-

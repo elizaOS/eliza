@@ -1,9 +1,12 @@
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import type { JsonObject } from "../protocol.js";
-import { minecraftWorldStateSchema, type MinecraftSession, type MinecraftWorldState } from "../types.js";
+import type { JsonObject, MinecraftBridgeRequestType } from "../protocol.js";
+import {
+  type MinecraftSession,
+  type MinecraftWorldState,
+  minecraftWorldStateSchema,
+} from "../types.js";
 import { MinecraftProcessManager } from "./process-manager.js";
 import { MinecraftWebSocketClient } from "./websocket-client.js";
-import type { MinecraftBridgeRequestType } from "../protocol.js";
 
 export const MINECRAFT_SERVICE_TYPE = "minecraft" as const;
 
@@ -28,10 +31,15 @@ export class MinecraftService extends Service {
     if (!runtime) throw new Error("MinecraftService requires a runtime");
     this.runtime = runtime;
     const portSetting = runtime.getSetting("MC_SERVER_PORT");
-    const port = typeof portSetting === "number" ? portSetting : Number(portSetting ?? 3457);
+    const port =
+      typeof portSetting === "number"
+        ? portSetting
+        : Number(portSetting ?? 3457);
     const serverPort = Number.isFinite(port) ? port : 3457;
     this.processManager = new MinecraftProcessManager(serverPort);
-    this.client = new MinecraftWebSocketClient(this.processManager.getServerUrl());
+    this.client = new MinecraftWebSocketClient(
+      this.processManager.getServerUrl(),
+    );
   }
 
   static async start(runtime: IAgentRuntime): Promise<MinecraftService> {
@@ -79,7 +87,11 @@ export class MinecraftService extends Service {
     if (!this.isInitialized) {
       throw new Error("Minecraft service not initialized");
     }
-    const resp = await this.client.sendMessage("createBot", undefined, overrides ?? {});
+    const resp = await this.client.sendMessage(
+      "createBot",
+      undefined,
+      overrides ?? {},
+    );
     const botId = typeof resp.data?.botId === "string" ? resp.data.botId : null;
     if (!botId) {
       throw new Error("Bridge did not return botId");
@@ -106,7 +118,10 @@ export class MinecraftService extends Service {
     await this.client.sendMessage("chat", session.botId, { message });
   }
 
-  async request(type: MinecraftBridgeRequestType, data: JsonObject): Promise<JsonObject> {
+  async request(
+    type: MinecraftBridgeRequestType,
+    data: JsonObject,
+  ): Promise<JsonObject> {
     const session = await this.ensureBot();
     const resp = await this.client.sendMessage(type, session.botId, data);
     return resp.data ?? {};
@@ -116,11 +131,18 @@ export class MinecraftService extends Service {
     if (!this.session) {
       return { connected: false };
     }
-    const resp = await this.client.sendMessage("getState", this.session.botId, {});
+    const resp = await this.client.sendMessage(
+      "getState",
+      this.session.botId,
+      {},
+    );
     return minecraftWorldStateSchema.parse(resp.data ?? { connected: false });
   }
 
-  private async waitForReady(maxAttempts: number = 20, delayMs: number = 500): Promise<void> {
+  private async waitForReady(
+    maxAttempts: number = 20,
+    delayMs: number = 500,
+  ): Promise<void> {
     for (let i = 0; i < maxAttempts; i++) {
       try {
         if (await this.client.health()) return;
@@ -130,4 +152,3 @@ export class MinecraftService extends Service {
     throw new Error("Mineflayer bridge server did not become ready");
   }
 }
-

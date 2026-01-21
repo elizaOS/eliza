@@ -28,7 +28,11 @@ impl Action for UpdateEntityAction {
 
     fn similes(&self) -> &[&'static str] {
         static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
-            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+            SPEC.similes
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
         });
         &SIMILES
     }
@@ -116,19 +120,23 @@ impl Action for UpdateEntityAction {
         if let (Some(name), Some(value)) = (field_name.clone(), field_value.clone()) {
             // Update entity metadata
             let mut updated_entity = entity.clone();
-            updated_entity.metadata.insert(name.clone(), serde_json::json!(value));
+            updated_entity
+                .metadata
+                .insert(name.clone(), serde_json::json!(value));
             runtime.update_entity(&updated_entity).await?;
 
-            Ok(ActionResult::success(format!("Updated entity field: {}", name))
-                .with_value("success", true)
-                .with_value("entityUpdated", true)
-                .with_value("entityId", target_entity_id.to_string())
-                .with_value("updatedField", name.clone())
-                .with_data("actionName", "UPDATE_ENTITY")
-                .with_data("entityId", target_entity_id.to_string())
-                .with_data("fieldName", name)
-                .with_data("fieldValue", value)
-                .with_data("thought", thought))
+            Ok(
+                ActionResult::success(format!("Updated entity field: {}", name))
+                    .with_value("success", true)
+                    .with_value("entityUpdated", true)
+                    .with_value("entityId", target_entity_id.to_string())
+                    .with_value("updatedField", name.clone())
+                    .with_data("actionName", "UPDATE_ENTITY")
+                    .with_data("entityId", target_entity_id.to_string())
+                    .with_data("fieldName", name)
+                    .with_data("fieldValue", value)
+                    .with_data("thought", thought),
+            )
         } else {
             Ok(ActionResult::success("No fields to update")
                 .with_value("success", true)
@@ -138,4 +146,3 @@ impl Action for UpdateEntityAction {
         }
     }
 }
-

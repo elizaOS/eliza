@@ -18,7 +18,6 @@ from typing import Literal
 from elizaos_plugin_polymarket.services.research_storage import (
     MarketResearch,
     ResearchRecommendation,
-    ResearchResult,
     ResearchStatus,
     ResearchStorageService,
 )
@@ -72,7 +71,13 @@ Provide a thorough, well-sourced analysis that would help someone make an inform
 def format_research_results(research: MarketResearch) -> str:
     """Format research results for display."""
     rec = research.result.recommendation if research.result else None
-    rec_emoji = "🟢" if rec and rec.should_trade and rec.confidence > 80 else "🟡" if rec and rec.should_trade else "🔴"
+    rec_emoji = (
+        "🟢"
+        if rec and rec.should_trade and rec.confidence > 80
+        else "🟡"
+        if rec and rec.should_trade
+        else "🔴"
+    )
 
     lines = [f"📊 **Research Complete: {research.market_question}**\n"]
 
@@ -92,11 +97,13 @@ def format_research_results(research: MarketResearch) -> str:
 
     if research.completed_at:
         from datetime import datetime
+
         completed = datetime.fromtimestamp(research.completed_at)
         lines.append(f"**Completed:** {completed.strftime('%Y-%m-%d %H:%M:%S')}")
 
     if research.expires_at:
         from datetime import datetime
+
         expires = datetime.fromtimestamp(research.expires_at)
         lines.append(f"**Expires:** {expires.strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -172,7 +179,9 @@ async def research_market(
             status="completed",
             market_id=market_id,
             market_question=market_question,
-            recommendation=existing_research.result.recommendation if existing_research.result else None,
+            recommendation=existing_research.result.recommendation
+            if existing_research.result
+            else None,
             cached=True,
             completed_at=existing_research.completed_at,
             expires_at=existing_research.expires_at,
@@ -204,7 +213,9 @@ async def research_market(
             status="expired",
             market_id=market_id,
             market_question=market_question,
-            recommendation=existing_research.result.recommendation if existing_research.result else None,
+            recommendation=existing_research.result.recommendation
+            if existing_research.result
+            else None,
             expires_at=existing_research.expires_at,
         )
 
@@ -225,6 +236,7 @@ async def research_market(
     # CASE 5: No research or force refresh - start new research
     # Generate a task ID (would normally come from elizaOS task system)
     import uuid
+
     task_id = str(uuid.uuid4())
 
     # Build the research prompt

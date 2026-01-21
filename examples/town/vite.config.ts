@@ -1,10 +1,13 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 
 // https://vitejs.dev/config/
-const workspaceRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
+const workspaceRoot = resolve(
+  fileURLToPath(new URL(".", import.meta.url)),
+  "../..",
+);
 
 export default defineConfig({
   define: {
@@ -15,7 +18,10 @@ export default defineConfig({
     alias: {
       react: resolve(workspaceRoot, "node_modules/react"),
       "react-dom": resolve(workspaceRoot, "node_modules/react-dom"),
-      "react/jsx-runtime": resolve(workspaceRoot, "node_modules/react/jsx-runtime.js"),
+      "react/jsx-runtime": resolve(
+        workspaceRoot,
+        "node_modules/react/jsx-runtime.js",
+      ),
       "react/jsx-dev-runtime": resolve(
         workspaceRoot,
         "node_modules/react/jsx-dev-runtime.js",

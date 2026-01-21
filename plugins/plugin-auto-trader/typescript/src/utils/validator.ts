@@ -1,11 +1,11 @@
-import { logger } from '@elizaos/core';
-import { PublicKey } from '@solana/web3.js';
+import { logger } from "@elizaos/core";
+import { PublicKey } from "@solana/web3.js";
 
 export function validateSolanaAddress(address: string | undefined): boolean {
   if (!address) return false;
   try {
     // Handle Base (0x) addresses
-    if (address.startsWith('0x')) {
+    if (address.startsWith("0x")) {
       const isValidBase = /^0x[a-fA-F0-9]{40}$/.test(address);
       logger.log(
         { isValid: isValidBase },

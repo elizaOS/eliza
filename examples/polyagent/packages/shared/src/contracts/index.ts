@@ -7,5 +7,5 @@
  * which provides a higher-level interface for agent registration, discovery, and reputation.
  */
 
-export * from './abis';
-export * from './addresses';
+export * from "./abis";
+export * from "./addresses";

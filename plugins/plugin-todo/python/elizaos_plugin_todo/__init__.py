@@ -27,8 +27,8 @@ from elizaos_plugin_todo.errors import (
     ValidationError,
 )
 from elizaos_plugin_todo.notification_manager import NotificationManager
-from elizaos_plugin_todo.providers import TODOS_PROVIDER, get_todos
 from elizaos_plugin_todo.plugin import todo_plugin
+from elizaos_plugin_todo.providers import TODOS_PROVIDER, get_todos
 from elizaos_plugin_todo.reminder_service import ReminderService, TodoReminderService
 from elizaos_plugin_todo.types import (
     ConfirmationResponse,

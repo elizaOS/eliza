@@ -2768,6 +2768,18 @@ export const allActionsSpec = {
       ]
     },
     {
+      "name": "CONFIRM_MEETING",
+      "description": "Confirm or decline attendance for a scheduled meeting",
+      "parameters": [],
+      "similes": [
+        "ACCEPT_MEETING",
+        "CONFIRM_ATTENDANCE",
+        "RSVP_YES",
+        "DECLINE_MEETING",
+        "CANCEL_ATTENDANCE"
+      ]
+    },
+    {
       "name": "CREATE_GITHUB_BRANCH",
       "description": "",
       "parameters": [
@@ -3172,6 +3184,15 @@ export const allActionsSpec = {
         "SWAP",
         "BUY_TOKEN",
         "SELL_TOKEN"
+      ]
+    },
+    {
+      "name": "FORM_RESTORE",
+      "description": "Restore a previously stashed form session",
+      "parameters": [],
+      "similes": [
+        "RESUME_FORM",
+        "CONTINUE_FORM"
       ]
     },
     {
@@ -3842,6 +3863,18 @@ export const allActionsSpec = {
       ]
     },
     {
+      "name": "SCHEDULE_MEETING",
+      "description": "Schedule a meeting between multiple participants by finding a suitable time slot",
+      "parameters": [],
+      "similes": [
+        "BOOK_MEETING",
+        "ARRANGE_MEETING",
+        "SET_UP_MEETING",
+        "PLAN_MEETING",
+        "CREATE_MEETING"
+      ]
+    },
+    {
       "name": "SEARCH_KNOWLEDGE",
       "description": "Search the knowledge base for specific information",
       "parameters": [],
@@ -3952,6 +3985,18 @@ export const allActionsSpec = {
       "name": "SEND_MMS",
       "description": "Send an MMS (multimedia message) with images, audio, or video via Twilio",
       "parameters": []
+    },
+    {
+      "name": "SET_AVAILABILITY",
+      "description": "Set the user's availability for scheduling meetings",
+      "parameters": [],
+      "similes": [
+        "UPDATE_AVAILABILITY",
+        "SET_SCHEDULE",
+        "UPDATE_SCHEDULE",
+        "SET_FREE_TIME",
+        "WHEN_FREE"
+      ]
     },
     {
       "name": "START_TRADING",

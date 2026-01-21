@@ -619,7 +619,9 @@ describe("Plugin Functions", () => {
   describe("tryInstallPlugin (auto-install)", () => {
     const originalSpawn = BunGlobal.spawn;
     const originalBun: object | undefined =
-      typeof globalThis.Bun === "undefined" ? undefined : (globalThis.Bun as object);
+      typeof globalThis.Bun === "undefined"
+        ? undefined
+        : (globalThis.Bun as object);
     const originalEnv = { ...process.env } as Record<string, string>;
 
     const bunDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Bun");

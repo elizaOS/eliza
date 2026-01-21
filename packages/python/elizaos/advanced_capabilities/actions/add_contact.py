@@ -89,14 +89,18 @@ class AddContactAction:
         notes = str(parsed.get("notes", ""))
         reason = str(parsed.get("reason", ""))
 
+        from uuid import UUID as StdUUID
+
         entity_id = message.entity_id
+        entity_id_uuid = StdUUID(str(entity_id)) if entity_id else None
         preferences = ContactPreferences(notes=notes) if notes else None
 
-        await rolodex_service.add_contact(
-            entity_id=entity_id,
-            categories=categories,
-            preferences=preferences,
-        )
+        if entity_id_uuid:
+            await rolodex_service.add_contact(
+                entity_id=entity_id_uuid,
+                categories=categories,
+                preferences=preferences,
+            )
 
         response_text = (
             f"I've added {contact_name} to your contacts as {', '.join(categories)}. {reason}"

@@ -7,8 +7,8 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-import uuid
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from .config import get_configured_options
 from .types import (
@@ -41,6 +41,7 @@ def _clamp_progress(n: int | float) -> int:
 
 class ControlState:
     """Per-task cancellation/pause state."""
+
     def __init__(self) -> None:
         self.cancelled = False
         self.paused = False
@@ -49,7 +50,7 @@ class ControlState:
 class AgentOrchestratorService:
     """
     Orchestrates tasks across registered agent providers.
-    
+
     This service manages task lifecycle (create, pause, resume, cancel)
     and delegates actual execution to registered AgentProviders.
     """
@@ -59,13 +60,13 @@ class AgentOrchestratorService:
 
     def __init__(self, runtime: Any) -> None:
         self.runtime = runtime
-        self._current_task_id: Optional[str] = None
+        self._current_task_id: str | None = None
         self._control_states: dict[str, ControlState] = {}
         self._executions: dict[str, asyncio.Task[None]] = {}
         self._event_handlers: dict[str, list[Callable[[TaskEvent], None]]] = {}
 
     @classmethod
-    async def start(cls, runtime: Any) -> "AgentOrchestratorService":
+    async def start(cls, runtime: Any) -> AgentOrchestratorService:
         """Start the service."""
         return cls(runtime)
 
@@ -96,7 +97,7 @@ class AgentOrchestratorService:
         raw = os.environ.get(env_var, "").strip()
         return raw if raw else opts.default_provider_id
 
-    def _get_provider_by_id(self, provider_id: AgentProviderId) -> Optional[AgentProvider]:
+    def _get_provider_by_id(self, provider_id: AgentProviderId) -> AgentProvider | None:
         opts = self._get_options()
         for p in opts.providers:
             if p.id == provider_id:
@@ -107,17 +108,17 @@ class AgentOrchestratorService:
     # Current task
     # ========================================================================
 
-    def get_current_task_id(self) -> Optional[str]:
+    def get_current_task_id(self) -> str | None:
         """Get the current task ID."""
         return self._current_task_id
 
-    def set_current_task(self, task_id: Optional[str]) -> None:
+    def set_current_task(self, task_id: str | None) -> None:
         """Set the current task."""
         self._current_task_id = task_id
         if task_id:
             self._emit(TaskEventType.PROGRESS, task_id, {"selected": True})
 
-    async def get_current_task(self) -> Optional[OrchestratedTask]:
+    async def get_current_task(self) -> OrchestratedTask | None:
         """Get the current task."""
         if not self._current_task_id:
             return None
@@ -131,8 +132,8 @@ class AgentOrchestratorService:
         self,
         name: str,
         description: str,
-        room_id: Optional[str] = None,
-        provider_id: Optional[AgentProviderId] = None,
+        room_id: str | None = None,
+        provider_id: AgentProviderId | None = None,
     ) -> OrchestratedTask:
         """Create a new orchestrated task."""
         opts = self._get_options()
@@ -183,14 +184,14 @@ class AgentOrchestratorService:
         self._emit(TaskEventType.CREATED, task_id, {"name": task.name, "providerId": provider.id})
         return task
 
-    async def _resolve_world_id(self, room_id: Optional[str]) -> str:
+    async def _resolve_world_id(self, room_id: str | None) -> str:
         if room_id:
             room = await self.runtime.get_room(room_id)
             if room and hasattr(room, "world_id") and room.world_id:
                 return room.world_id
         return self.runtime.agent_id
 
-    async def get_task(self, task_id: str) -> Optional[OrchestratedTask]:
+    async def get_task(self, task_id: str) -> OrchestratedTask | None:
         """Get a task by ID."""
         t = await self.runtime.get_task(task_id)
         if t is None:
@@ -268,7 +269,7 @@ class AgentOrchestratorService:
             metadata.completed_at = _now()
 
         await self.runtime.update_task(task_id, {"metadata": metadata.to_dict()})
-        
+
         # Map status to event type
         event_map = {
             TaskStatus.RUNNING: TaskEventType.STARTED,
@@ -297,7 +298,7 @@ class AgentOrchestratorService:
         if task is None:
             return
 
-        lines = [l for l in output.split("\n") if l.strip()]
+        lines = [line for line in output.split("\n") if line.strip()]
         metadata = task.metadata
         metadata.output = (metadata.output + lines)[-500:]
         await self.runtime.update_task(task_id, {"metadata": metadata.to_dict()})
@@ -320,7 +321,7 @@ class AgentOrchestratorService:
         task_id: str,
         step_id: str,
         status: TaskStatus,
-        output: Optional[str] = None,
+        output: str | None = None,
     ) -> None:
         """Update a step's status."""
         task = await self.get_task(task_id)
@@ -364,11 +365,15 @@ class AgentOrchestratorService:
 
         await self.runtime.update_task(task_id, {"metadata": metadata.to_dict()})
         event_type = TaskEventType.COMPLETED if result.success else TaskEventType.FAILED
-        self._emit(event_type, task_id, {
-            "success": result.success,
-            "summary": result.summary,
-            "error": result.error,
-        })
+        self._emit(
+            event_type,
+            task_id,
+            {
+                "success": result.success,
+                "summary": result.summary,
+                "error": result.error,
+            },
+        )
 
     async def set_task_error(self, task_id: str, error: str) -> None:
         """Set task error."""
@@ -383,7 +388,11 @@ class AgentOrchestratorService:
             metadata.completed_at = _now()
 
         await self.runtime.update_task(task_id, {"metadata": metadata.to_dict()})
-        event_type = TaskEventType.CANCELLED if metadata.status == TaskStatus.CANCELLED else TaskEventType.FAILED
+        event_type = (
+            TaskEventType.CANCELLED
+            if metadata.status == TaskStatus.CANCELLED
+            else TaskEventType.FAILED
+        )
         self._emit(event_type, task_id, {"error": error})
 
     async def set_user_status(self, task_id: str, user_status: TaskUserStatus) -> None:
@@ -408,11 +417,15 @@ class AgentOrchestratorService:
         metadata = task.metadata
         metadata.provider_id = next_provider_id
         metadata.sub_agent_type = next_provider_id
-        metadata.provider_label = provider.label if provider else metadata.provider_label or next_provider_id
+        metadata.provider_label = (
+            provider.label if provider else metadata.provider_label or next_provider_id
+        )
 
         await self.runtime.update_task(task_id, {"metadata": metadata.to_dict()})
         self._emit(TaskEventType.MESSAGE, task_id, {"providerId": next_provider_id})
-        await self.append_output(task_id, f"Provider: {metadata.provider_label} ({metadata.provider_id})")
+        await self.append_output(
+            task_id, f"Provider: {metadata.provider_label} ({metadata.provider_id})"
+        )
 
     # ========================================================================
     # Control
@@ -465,8 +478,8 @@ class AgentOrchestratorService:
     def _set_control(
         self,
         task_id: str,
-        cancelled: Optional[bool] = None,
-        paused: Optional[bool] = None,
+        cancelled: bool | None = None,
+        paused: bool | None = None,
     ) -> None:
         state = self._control_states.get(task_id)
         if state is None:
@@ -520,7 +533,7 @@ class AgentOrchestratorService:
         self,
         name: str,
         description: str,
-        room_id: Optional[str] = None,
+        room_id: str | None = None,
         sub_agent_type: str = "eliza",
     ) -> OrchestratedTask:
         """Compatibility alias for create_task."""
@@ -542,8 +555,7 @@ class AgentOrchestratorService:
 
             await self.update_task_status(task_id, TaskStatus.RUNNING)
             await self.append_output(
-                task_id,
-                f"Starting: {task.name}\nProvider: {provider.label} ({provider.id})"
+                task_id, f"Starting: {task.name}\nProvider: {provider.label} ({provider.id})"
             )
 
             ctx = ProviderTaskExecutionContext(
@@ -585,7 +597,7 @@ class AgentOrchestratorService:
         self,
         event_type: TaskEventType,
         task_id: str,
-        data: Optional[dict[str, JsonValue]] = None,
+        data: dict[str, JsonValue] | None = None,
     ) -> None:
         event = TaskEvent(type=event_type, task_id=task_id, data=data)
         for handler in self._event_handlers.get(event_type.value, []):

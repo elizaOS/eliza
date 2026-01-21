@@ -14,4 +14,3 @@ export const n8nPlugin: Plugin = {
 };
 
 export default n8nPlugin;
-

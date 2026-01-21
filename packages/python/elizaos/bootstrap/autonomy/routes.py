@@ -22,9 +22,7 @@ def _get_autonomy_service(runtime: IAgentRuntime) -> AutonomyService | None:
     return service  # type: ignore[return-value]
 
 
-async def _status_handler(
-    _req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime
-) -> None:
+async def _status_handler(_req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) -> None:
     """GET /autonomy/status - Get current autonomy status."""
     autonomy_service = _get_autonomy_service(runtime)
 
@@ -50,9 +48,7 @@ async def _status_handler(
     )
 
 
-async def _enable_handler(
-    _req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime
-) -> None:
+async def _enable_handler(_req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) -> None:
     """POST /autonomy/enable - Enable autonomy."""
     autonomy_service = _get_autonomy_service(runtime)
 
@@ -76,9 +72,7 @@ async def _enable_handler(
     )
 
 
-async def _disable_handler(
-    _req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime
-) -> None:
+async def _disable_handler(_req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) -> None:
     """POST /autonomy/disable - Disable autonomy."""
     autonomy_service = _get_autonomy_service(runtime)
 
@@ -102,9 +96,7 @@ async def _disable_handler(
     )
 
 
-async def _toggle_handler(
-    _req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime
-) -> None:
+async def _toggle_handler(_req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) -> None:
     """POST /autonomy/toggle - Toggle autonomy state."""
     autonomy_service = _get_autonomy_service(runtime)
 
@@ -134,9 +126,7 @@ async def _toggle_handler(
     )
 
 
-async def _interval_handler(
-    req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime
-) -> None:
+async def _interval_handler(req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) -> None:
     """POST /autonomy/interval - Set loop interval."""
     autonomy_service = _get_autonomy_service(runtime)
 

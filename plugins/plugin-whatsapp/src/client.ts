@@ -1,5 +1,5 @@
-import axios, { type AxiosInstance } from "axios";
-import type { WhatsAppConfig, WhatsAppMessage } from "./types";
+import axios, { type AxiosInstance, type AxiosResponse } from 'axios';
+import type { WhatsAppConfig, WhatsAppMessage, WhatsAppMessageResponse } from './types';
 
 export class WhatsAppClient {
     private client: AxiosInstance;
@@ -8,23 +8,23 @@ export class WhatsAppClient {
     constructor(config: WhatsAppConfig) {
         this.config = config;
         this.client = axios.create({
-            baseURL: "https://graph.facebook.com/v17.0",
+            baseURL: 'https://graph.facebook.com/v17.0',
             headers: {
                 Authorization: `Bearer ${config.accessToken}`,
-                "Content-Type": "application/json",
+                'Content-Type': 'application/json',
             },
         });
     }
 
-    async sendMessage(message: WhatsAppMessage): Promise<any> {
+    async sendMessage(message: WhatsAppMessage): Promise<AxiosResponse<WhatsAppMessageResponse>> {
         const endpoint = `/${this.config.phoneNumberId}/messages`;
 
         const payload = {
-            messaging_product: "whatsapp",
-            recipient_type: "individual",
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
             to: message.to,
             type: message.type,
-            ...(message.type === "text"
+            ...(message.type === 'text'
                 ? { text: { body: message.content } }
                 : { template: message.content }),
         };

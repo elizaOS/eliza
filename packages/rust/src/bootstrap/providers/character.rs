@@ -81,7 +81,10 @@ impl Provider for CharacterProvider {
             style_parts.push(format!("Posts: {}", character.style.post.join(", ")));
         }
         if !style_parts.is_empty() {
-            sections.push(format!("\n## Communication Style\n{}", style_parts.join("\n")));
+            sections.push(format!(
+                "\n## Communication Style\n{}",
+                style_parts.join("\n")
+            ));
         }
 
         let context_text = sections.join("\n");

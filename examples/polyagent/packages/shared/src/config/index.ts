@@ -5,8 +5,8 @@
  * Import this instead of reading from environment variables.
  */
 
-import type { Address } from 'viem';
-import configData from './public-config.json';
+import type { Address } from "viem";
+import configData from "./public-config.json";
 
 // =============================================================================
 // Types
@@ -57,19 +57,19 @@ export interface PublicConfig {
 
 export const PUBLIC_CONFIG = configData as PublicConfig;
 
-type NetworkId = 'local' | 'baseSepolia' | 'base';
-type EnvironmentName = 'development' | 'staging' | 'production';
+type NetworkId = "local" | "baseSepolia" | "base";
+type EnvironmentName = "development" | "staging" | "production";
 
 const CHAIN_ID_TO_NETWORK: Record<number, NetworkId> = {
-  31337: 'local',
-  84532: 'baseSepolia',
-  8453: 'base',
+  31337: "local",
+  84532: "baseSepolia",
+  8453: "base",
 };
 
 const NETWORK_TO_ENVIRONMENT: Record<NetworkId, EnvironmentName> = {
-  local: 'development',
-  baseSepolia: 'staging',
-  base: 'production',
+  local: "development",
+  baseSepolia: "staging",
+  base: "production",
 };
 
 export function getCurrentChainId(): number {
@@ -77,18 +77,18 @@ export function getCurrentChainId(): number {
   if (envChainId) return Number.parseInt(envChainId, 10);
 
   // Default to local for development, Base Sepolia for test
-  if (process.env.NODE_ENV === 'production') return 8453;
-  if (process.env.NODE_ENV === 'test') return 84532;
+  if (process.env.NODE_ENV === "production") return 8453;
+  if (process.env.NODE_ENV === "test") return 84532;
   return 31337;
 }
 
 function getCurrentEnvironment(): EnvironmentName {
   const networkId = CHAIN_ID_TO_NETWORK[getCurrentChainId()];
-  return networkId ? NETWORK_TO_ENVIRONMENT[networkId] : 'development';
+  return networkId ? NETWORK_TO_ENVIRONMENT[networkId] : "development";
 }
 
 function getCurrentNetwork(): NetworkConfig {
-  const networkId = CHAIN_ID_TO_NETWORK[getCurrentChainId()] || 'local';
+  const networkId = CHAIN_ID_TO_NETWORK[getCurrentChainId()] || "local";
   return PUBLIC_CONFIG.networks[networkId];
 }
 
@@ -107,10 +107,10 @@ export function getCurrentContractAddresses():
 }
 
 export function areContractsDeployed(chainId: number): boolean {
-  const networkId = CHAIN_ID_TO_NETWORK[chainId] || 'local';
+  const networkId = CHAIN_ID_TO_NETWORK[chainId] || "local";
   const contracts = PUBLIC_CONFIG.networks[networkId].contracts;
   return (
-    contracts.identityRegistry !== '0x0000000000000000000000000000000000000000'
+    contracts.identityRegistry !== "0x0000000000000000000000000000000000000000"
   );
 }
 

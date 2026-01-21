@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from elizaos_plugin_eliza_classic.types import ElizaConfig, ElizaPattern, ElizaRule
+from elizaos_plugin_eliza_classic.types import ElizaConfig
+
 
 @dataclass(frozen=True)
 class ScriptRule:
@@ -57,11 +58,15 @@ def _load_doctor_json() -> DoctorScript:
     keywords: list[KeywordEntry] = []
     for entry in parsed["keywords"]:
         rules = [
-            ScriptRule(decomposition=r["decomposition"], reassembly=list(r["reassembly"]))
+            ScriptRule(
+                decomposition=r["decomposition"], reassembly=list(r["reassembly"])
+            )
             for r in entry["rules"]
         ]
         memory_rules = [
-            ScriptRule(decomposition=r["decomposition"], reassembly=list(r["reassembly"]))
+            ScriptRule(
+                decomposition=r["decomposition"], reassembly=list(r["reassembly"])
+            )
             for r in entry.get("memory", [])
         ]
         keywords.append(
@@ -276,7 +281,9 @@ def _stable_key(keyword: str, rule: ScriptRule, rule_index: int) -> str:
     return f"{keyword}::{rule_index}::{rule.decomposition}"
 
 
-def _pick_next_reassembly(state: SessionState, keyword: str, rule: ScriptRule, idx: int) -> str:
+def _pick_next_reassembly(
+    state: SessionState, keyword: str, rule: ScriptRule, idx: int
+) -> str:
     key = _stable_key(keyword, rule, idx)
     current = state.reassembly_index.get(key, 0)
     if not rule.reassembly:
@@ -348,7 +355,9 @@ class RuleResult:
     parts: list[str] | None = None
 
 
-def _try_rules(state: SessionState, keyword: str, entry: KeywordEntry, words: list[str]) -> RuleResult:
+def _try_rules(
+    state: SessionState, keyword: str, entry: KeywordEntry, words: list[str]
+) -> RuleResult:
     for idx, rule in enumerate(entry.rules):
         tokens = _parse_decomposition(rule.decomposition)
         parts = _match_decomposition(tokens, words)
@@ -360,7 +369,9 @@ def _try_rules(state: SessionState, keyword: str, entry: KeywordEntry, words: li
         pre = _parse_pre(picked)
         if pre:
             pre_text, redirect = pre
-            return RuleResult(kind="pre", pre_text=pre_text, redirect=redirect, parts=parts)
+            return RuleResult(
+                kind="pre", pre_text=pre_text, redirect=redirect, parts=parts
+            )
         redirect = _resolve_redirect(picked)
         if redirect:
             return RuleResult(kind="redirect", redirect=redirect)
@@ -368,7 +379,9 @@ def _try_rules(state: SessionState, keyword: str, entry: KeywordEntry, words: li
     return RuleResult(kind="no_match")
 
 
-def _maybe_record_memory(state: SessionState, entry: KeywordEntry, words: list[str]) -> None:
+def _maybe_record_memory(
+    state: SessionState, entry: KeywordEntry, words: list[str]
+) -> None:
     if not entry.memory:
         return
     last = words[-1] if words else ""
@@ -397,7 +410,9 @@ class ElizaClassicEngine:
         self._state = SessionState()
 
     def get_greeting(self) -> str:
-        return (_SCRIPT.greetings[1] if len(_SCRIPT.greetings) > 1 else _SCRIPT.greetings[0])
+        return (
+            _SCRIPT.greetings[1] if len(_SCRIPT.greetings) > 1 else _SCRIPT.greetings[0]
+        )
 
     def generate(self, input_text: str) -> str:
         text = _extract_user_message(input_text)
@@ -438,7 +453,9 @@ class ElizaClassicEngine:
                         return rr.text or ""
                     continue
                 if result.kind == "pre":
-                    pre_text = _apply_reassembly(result.pre_text or "", result.parts or [])
+                    pre_text = _apply_reassembly(
+                        result.pre_text or "", result.parts or []
+                    )
                     pre_words = _tokenize_words(pre_text)
                     target = result.redirect or ""
                     target_entry = _KEYWORD_INDEX.get(target)
@@ -489,13 +506,17 @@ def create_eliza_classic_elizaos_plugin() -> object:
 
     plugin_instance = ElizaClassicPlugin()
 
-    async def text_large_handler(runtime: IAgentRuntime, params: dict[str, object]) -> str:
+    async def text_large_handler(
+        runtime: IAgentRuntime, params: dict[str, object]
+    ) -> str:
         prompt = params.get("prompt", "")
         match = re.search(r"(?:User|Human|You):\s*(.+?)(?:\n|$)", prompt, re.IGNORECASE)
         input_text = match.group(1) if match else prompt
         return plugin_instance.generate_response(input_text)
 
-    async def text_small_handler(runtime: IAgentRuntime, params: dict[str, object]) -> str:
+    async def text_small_handler(
+        runtime: IAgentRuntime, params: dict[str, object]
+    ) -> str:
         return await text_large_handler(runtime, params)
 
     return Plugin(

@@ -1,6 +1,6 @@
 {
   "name": "polyagent",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "Autonomous Polymarket demo agent CLI (TypeScript) using plugin-evm + plugin-polymarket",
   "type": "module",
   "private": false,

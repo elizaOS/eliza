@@ -9,8 +9,8 @@ use crate::runtime::IAgentRuntime;
 use crate::types::{ActionResult, Memory, State};
 
 use super::Action;
-use once_cell::sync::Lazy;
 use crate::generated::spec_helpers::require_action_spec;
+use once_cell::sync::Lazy;
 
 /// Action to schedule a follow-up reminder.
 pub struct ScheduleFollowUpAction;
@@ -26,7 +26,11 @@ impl Action for ScheduleFollowUpAction {
 
     fn similes(&self) -> &[&'static str] {
         static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
-            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+            SPEC.similes
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
         });
         &SIMILES
     }
@@ -100,4 +104,3 @@ impl Action for ScheduleFollowUpAction {
         .with_data("days", days))
     }
 }
-

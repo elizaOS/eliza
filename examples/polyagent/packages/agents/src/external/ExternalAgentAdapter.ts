@@ -16,15 +16,15 @@
  * @packageDocumentation
  */
 
-import { db } from '@polyagent/db';
-import { createDecipheriv } from 'crypto';
-import { logger } from '../shared/logger';
-import type { AgentCard } from '../types/agent-registry';
-import { TrustLevel } from '../types/agent-registry';
-import type { JsonValue } from '../types/common';
+import { createDecipheriv } from "node:crypto";
+import { db } from "@polyagent/db";
+import { logger } from "../shared/logger";
+import type { AgentCard } from "../types/agent-registry";
+import { TrustLevel } from "../types/agent-registry";
+import type { JsonValue } from "../types/common";
 
 // Re-export TrustLevel from types for backwards compatibility
-export { TrustLevel } from '../types/agent-registry';
+export { TrustLevel } from "../types/agent-registry";
 
 /**
  * Gets encryption key from environment
@@ -32,23 +32,23 @@ export { TrustLevel } from '../types/agent-registry';
  */
 const getEncryptionKey = () => {
   if (process.env.CRON_SECRET) return process.env.CRON_SECRET;
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('CRON_SECRET must be set in production');
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("CRON_SECRET must be set in production");
   }
-  return 'dev-key-change-in-production-32-chars!!';
+  return "dev-key-change-in-production-32-chars!!";
 };
 
 /** Encryption algorithm for API key storage */
-const ALGORITHM = 'aes-256-cbc';
+const ALGORITHM = "aes-256-cbc";
 
-export type Protocol = 'a2a' | 'mcp' | 'agent0' | 'custom';
+export type Protocol = "a2a" | "mcp" | "agent0" | "custom";
 
 export enum AuthMethod {
-  NONE = 'NONE',
-  BEARER_TOKEN = 'BEARER_TOKEN',
-  API_KEY = 'API_KEY',
-  OAUTH2 = 'OAUTH2',
-  MUTUAL_TLS = 'MUTUAL_TLS',
+  NONE = "NONE",
+  BEARER_TOKEN = "BEARER_TOKEN",
+  API_KEY = "API_KEY",
+  OAUTH2 = "OAUTH2",
+  MUTUAL_TLS = "MUTUAL_TLS",
 }
 
 export interface ExternalAgentConnection {
@@ -92,7 +92,7 @@ export interface AgentResponse {
  * @internal
  */
 interface JsonRpcRequest {
-  jsonrpc: '2.0';
+  jsonrpc: "2.0";
   id: string | number;
   method: string;
   params?: Record<string, JsonValue>;
@@ -103,7 +103,7 @@ interface JsonRpcRequest {
  * @internal
  */
 interface JsonRpcResponse {
-  jsonrpc: '2.0';
+  jsonrpc: "2.0";
   id: string | number;
   result?: JsonValue;
   error?: { code: number; message: string; data?: JsonValue };
@@ -175,7 +175,7 @@ export class ExternalAgentAdapter {
       // Load and decrypt authentication credentials if present
       if (agent.authType && agent.authCredentials) {
         const decryptedCredentials = this.decryptCredentials(
-          agent.authCredentials
+          agent.authCredentials,
         );
         // Map authType to AuthMethod and create appropriate credentials structure
         const authMethod = agent.authType as AuthMethod;
@@ -193,7 +193,7 @@ export class ExternalAgentAdapter {
     logger.info(
       `Loaded ${this.connections.size} external agent connections`,
       {},
-      'ExternalAgentAdapter'
+      "ExternalAgentAdapter",
     );
   }
 
@@ -201,7 +201,7 @@ export class ExternalAgentAdapter {
    * Fetch a single connection from DB and cache it
    */
   async fetchConnection(
-    externalId: string
+    externalId: string,
   ): Promise<ExternalAgentConnection | null> {
     const agent = await db.externalAgentConnection.findUnique({
       where: { externalId },
@@ -224,7 +224,7 @@ export class ExternalAgentAdapter {
     // Load and decrypt authentication credentials if present
     if (agent.authType && agent.authCredentials) {
       const decryptedCredentials = this.decryptCredentials(
-        agent.authCredentials
+        agent.authCredentials,
       );
       const authMethod = agent.authType as AuthMethod;
       const credentials: AuthCredentials = {
@@ -245,7 +245,7 @@ export class ExternalAgentAdapter {
    */
   async sendMessage(
     externalId: string,
-    message: ExternalAgentMessage
+    message: ExternalAgentMessage,
   ): Promise<AgentResponse> {
     let connection = this.connections.get(externalId);
 
@@ -270,13 +270,13 @@ export class ExternalAgentAdapter {
 
     // Route to appropriate protocol handler
     switch (connection.protocol) {
-      case 'a2a':
+      case "a2a":
         return await this.sendA2AMessage(connection, message);
-      case 'mcp':
+      case "mcp":
         return await this.sendMCPMessage(connection, message);
-      case 'agent0':
+      case "agent0":
         return await this.sendAgent0Message(connection, message);
-      case 'custom':
+      case "custom":
         return await this.sendCustomMessage(connection, message);
       default:
         return {
@@ -291,13 +291,13 @@ export class ExternalAgentAdapter {
    */
   private async sendA2AMessage(
     connection: ExternalAgentConnection,
-    message: ExternalAgentMessage
+    message: ExternalAgentMessage,
   ): Promise<AgentResponse> {
     const requestId = ++this.requestIdCounter;
     const params: Record<string, JsonValue> = {
       parts: [
         {
-          type: 'text',
+          type: "text",
           content: message.content,
         },
       ],
@@ -309,17 +309,17 @@ export class ExternalAgentAdapter {
       params.metadata = message.metadata;
     }
     const request: JsonRpcRequest = {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       id: requestId,
-      method: 'message/send',
+      method: "message/send",
       params,
     };
 
     const response = await fetch(connection.endpoint, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
+        "Content-Type": "application/json",
+        Accept: "application/json",
         ...this.getAuthHeaders(connection.externalId),
       },
       body: JSON.stringify(request),
@@ -351,15 +351,15 @@ export class ExternalAgentAdapter {
    */
   private async sendMCPMessage(
     connection: ExternalAgentConnection,
-    message: ExternalAgentMessage
+    message: ExternalAgentMessage,
   ): Promise<AgentResponse> {
     const response = await fetch(connection.endpoint, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         id: crypto.randomUUID(),
         method: message.type,
         params: message.content,
@@ -375,7 +375,7 @@ export class ExternalAgentAdapter {
     if (data.error) {
       return {
         success: false,
-        error: data.error.message || 'MCP error',
+        error: data.error.message || "MCP error",
       };
     }
 
@@ -390,13 +390,13 @@ export class ExternalAgentAdapter {
    */
   private async sendAgent0Message(
     connection: ExternalAgentConnection,
-    message: ExternalAgentMessage
+    message: ExternalAgentMessage,
   ): Promise<AgentResponse> {
     // Agent0 SDK typically uses REST API
     const response = await fetch(`${connection.endpoint}/api/agent/message`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(message),
     });
@@ -417,13 +417,13 @@ export class ExternalAgentAdapter {
    */
   private async sendCustomMessage(
     connection: ExternalAgentConnection,
-    message: ExternalAgentMessage
+    message: ExternalAgentMessage,
   ): Promise<AgentResponse> {
     // For custom protocols, use generic JSON POST
     const response = await fetch(connection.endpoint, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(message),
     });
@@ -450,7 +450,7 @@ export class ExternalAgentAdapter {
     }
 
     const response = await fetch(connection.endpoint, {
-      method: 'HEAD',
+      method: "HEAD",
       signal: AbortSignal.timeout(5000), // 5 second timeout
     });
 
@@ -483,7 +483,7 @@ export class ExternalAgentAdapter {
     logger.info(
       `Health checks started (interval: ${this.healthCheckIntervalMs}ms)`,
       undefined,
-      'ExternalAgentAdapter'
+      "ExternalAgentAdapter",
     );
   }
 
@@ -494,7 +494,7 @@ export class ExternalAgentAdapter {
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
-      logger.info('Health checks stopped', undefined, 'ExternalAgentAdapter');
+      logger.info("Health checks stopped", undefined, "ExternalAgentAdapter");
     }
   }
 
@@ -527,7 +527,7 @@ export class ExternalAgentAdapter {
     logger.info(
       `Authentication configured for ${externalId}`,
       { method: credentials.method },
-      'ExternalAgentAdapter'
+      "ExternalAgentAdapter",
     );
   }
 
@@ -535,17 +535,17 @@ export class ExternalAgentAdapter {
    * Decrypt credentials from storage
    */
   private decryptCredentials(encrypted: string): string {
-    const [ivHex, encryptedData] = encrypted.split(':');
+    const [ivHex, encryptedData] = encrypted.split(":");
     if (!ivHex || !encryptedData) {
-      throw new Error('Invalid encrypted credentials format');
+      throw new Error("Invalid encrypted credentials format");
     }
 
-    const iv = Buffer.from(ivHex, 'hex');
+    const iv = Buffer.from(ivHex, "hex");
     const key = Buffer.from(getEncryptionKey().padEnd(32).slice(0, 32));
     const decipher = createDecipheriv(ALGORITHM, key, iv);
 
-    let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
+    let decrypted = decipher.update(encryptedData, "hex", "utf8");
+    decrypted += decipher.final("utf8");
 
     return decrypted;
   }
@@ -567,7 +567,7 @@ export class ExternalAgentAdapter {
       case AuthMethod.OAUTH2:
         return auth.oauth?.accessToken
           ? {
-              Authorization: `${auth.oauth.tokenType || 'Bearer'} ${auth.oauth.accessToken}`,
+              Authorization: `${auth.oauth.tokenType || "Bearer"} ${auth.oauth.accessToken}`,
             }
           : {};
       default:
@@ -587,12 +587,12 @@ export class ExternalAgentAdapter {
 
     try {
       const cardUrl = new URL(
-        '/.well-known/agent-card.json',
-        endpoint
+        "/.well-known/agent-card.json",
+        endpoint,
       ).toString();
       const response = await fetch(cardUrl, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
+        method: "GET",
+        headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(10000), // 10s timeout
       });
 
@@ -600,7 +600,7 @@ export class ExternalAgentAdapter {
         logger.warn(
           `Agent discovery failed for ${endpoint}: HTTP ${response.status}`,
           undefined,
-          'ExternalAgentAdapter'
+          "ExternalAgentAdapter",
         );
         return null;
       }
@@ -613,14 +613,14 @@ export class ExternalAgentAdapter {
       logger.info(
         `Discovered agent at ${endpoint}`,
         { agentId: card.agentId, name: card.name },
-        'ExternalAgentAdapter'
+        "ExternalAgentAdapter",
       );
       return card;
     } catch (error) {
       logger.error(
         `Agent discovery failed for ${endpoint}`,
         { error: (error as Error).message },
-        'ExternalAgentAdapter'
+        "ExternalAgentAdapter",
       );
       return null;
     }
@@ -697,7 +697,7 @@ export class ExternalAgentAdapter {
     logger.info(
       `Verified agent ${externalId}`,
       { trustLevel, trustScore: connection.trustScore },
-      'ExternalAgentAdapter'
+      "ExternalAgentAdapter",
     );
 
     return trustLevel;
@@ -712,9 +712,9 @@ export class ExternalAgentAdapter {
     this.authStore.clear();
     this.discoveryCache.clear();
     logger.info(
-      'ExternalAgentAdapter shutdown complete',
+      "ExternalAgentAdapter shutdown complete",
       undefined,
-      'ExternalAgentAdapter'
+      "ExternalAgentAdapter",
     );
   }
 }
@@ -731,9 +731,9 @@ export function getExternalAgentAdapter(): ExternalAgentAdapter {
     // Initialize asynchronously (don't block)
     adapterInstance.initialize().catch((error) => {
       logger.error(
-        'Failed to initialize ExternalAgentAdapter',
+        "Failed to initialize ExternalAgentAdapter",
         error instanceof Error ? error : new Error(String(error)),
-        'ExternalAgentAdapter'
+        "ExternalAgentAdapter",
       );
     });
   }

@@ -9,19 +9,19 @@
  * itself and its capabilities to the user.
  */
 
-import { agentRuntimeManager, agentService } from '@polyagent/agents';
-import { authenticateUser, withErrorHandling } from '@polyagent/api';
-import { db } from '@polyagent/db';
-import { GROQ_MODELS, logger } from '@polyagent/shared';
 import {
   composePromptFromState,
   type Memory,
   ModelType,
   parseKeyValueXml,
-} from '@elizaos/core';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
+} from "@elizaos/core";
+import { agentRuntimeManager, agentService } from "@polyagent/agents";
+import { authenticateUser, withErrorHandling } from "@polyagent/api";
+import { db } from "@polyagent/db";
+import { GROQ_MODELS, logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { v4 as uuidv4 } from "uuid";
 
 // Onboarding message template - uses {{actionsWithDescriptions}} from ACTIONS provider
 const onboardingTemplate = `You are an AI agent that has just been created. Generate a warm, personalized welcome message to introduce yourself to your owner.
@@ -69,13 +69,13 @@ Output ONLY this XML format:
 export const POST = withErrorHandling(
   async (
     req: NextRequest,
-    { params }: { params: Promise<{ agentId: string }> }
+    { params }: { params: Promise<{ agentId: string }> },
   ) => {
     const { agentId } = await params;
     logger.info(
-      'Agent onboarding endpoint hit',
+      "Agent onboarding endpoint hit",
       { agentId },
-      'AgentOnboarding'
+      "AgentOnboarding",
     );
 
     const user = await authenticateUser(req);
@@ -83,17 +83,17 @@ export const POST = withErrorHandling(
     // Verify ownership
     const agentWithConfig = await agentService.getAgentWithConfig(
       agentId,
-      user.id
+      user.id,
     );
     if (!agentWithConfig) {
       return NextResponse.json(
-        { success: false, error: 'Agent not found' },
-        { status: 404 }
+        { success: false, error: "Agent not found" },
+        { status: 404 },
       );
     }
 
     const agentConfig = agentWithConfig.agentConfig;
-    const agentName = agentWithConfig.displayName || 'AI Agent';
+    const agentName = agentWithConfig.displayName || "AI Agent";
 
     // Get runtime
     const runtime = await agentRuntimeManager.getRuntime(agentId);
@@ -103,7 +103,7 @@ export const POST = withErrorHandling(
       id: uuidv4() as `${string}-${string}-${string}-${string}-${string}`,
       entityId: user.id as `${string}-${string}-${string}-${string}-${string}`,
       roomId: agentId as `${string}-${string}-${string}-${string}-${string}`,
-      content: { text: 'Hello, introduce yourself!' },
+      content: { text: "Hello, introduce yourself!" },
       createdAt: Date.now(),
     };
 
@@ -112,17 +112,17 @@ export const POST = withErrorHandling(
     // This prevents all Polyagent A2A providers from running unnecessarily
     const state = await runtime.composeState(
       onboardingMessage,
-      ['ACTIONS'],
-      true
+      ["ACTIONS"],
+      true,
     );
 
     // Add custom values to state
     state.values = {
       ...state.values,
       agentName,
-      system: agentConfig?.systemPrompt || 'You are a helpful AI assistant.',
-      personality: agentConfig?.personality || '',
-      tradingStrategy: agentConfig?.tradingStrategy || '',
+      system: agentConfig?.systemPrompt || "You are a helpful AI assistant.",
+      personality: agentConfig?.personality || "",
+      tradingStrategy: agentConfig?.tradingStrategy || "",
     };
 
     // Build prompt using composePromptFromState (handles Handlebars-style template)
@@ -133,7 +133,7 @@ export const POST = withErrorHandling(
 
     // Generate the welcome message
     const modelType =
-      agentConfig?.modelTier === 'pro'
+      agentConfig?.modelTier === "pro"
         ? ModelType.TEXT_LARGE
         : ModelType.TEXT_SMALL;
 
@@ -154,7 +154,7 @@ export const POST = withErrorHandling(
           logger.debug(
             `[Onboarding] Generated message on attempt ${attempt}`,
             { preview: welcomeMessage.substring(0, 100) },
-            'AgentOnboarding'
+            "AgentOnboarding",
           );
           break;
         }
@@ -169,13 +169,13 @@ export const POST = withErrorHandling(
         logger.warn(
           `[Onboarding] Failed to parse response (attempt ${attempt})`,
           { preview: response.substring(0, 200) },
-          'AgentOnboarding'
+          "AgentOnboarding",
         );
       } catch (error) {
         logger.error(
           `[Onboarding] Error generating message (attempt ${attempt})`,
-          { error: error instanceof Error ? error.message : 'Unknown error' },
-          'AgentOnboarding'
+          { error: error instanceof Error ? error.message : "Unknown error" },
+          "AgentOnboarding",
         );
       }
     }
@@ -188,15 +188,15 @@ export const POST = withErrorHandling(
       data: {
         id: messageId,
         agentUserId: agentId,
-        role: 'assistant',
+        role: "assistant",
         content: welcomeMessage,
         modelUsed:
-          agentConfig?.modelTier === 'pro'
+          agentConfig?.modelTier === "pro"
             ? GROQ_MODELS.PRO.displayName
             : GROQ_MODELS.FREE.displayName,
         pointsCost: 0, // Onboarding message is free
         metadata: {
-          type: 'onboarding',
+          type: "onboarding",
           generated: true,
         },
         createdAt: messageTime,
@@ -206,7 +206,7 @@ export const POST = withErrorHandling(
     logger.info(
       `Onboarding message generated for agent ${agentId}`,
       { messageId },
-      'AgentOnboarding'
+      "AgentOnboarding",
     );
 
     return NextResponse.json({
@@ -214,5 +214,5 @@ export const POST = withErrorHandling(
       messageId,
       message: welcomeMessage,
     });
-  }
+  },
 );

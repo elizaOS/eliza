@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn } from '@polyagent/shared';
+import { cn } from "@polyagent/shared";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -8,15 +8,15 @@ import {
   MessageSquare,
   TrendingDown,
   TrendingUp,
-} from 'lucide-react';
-import { memo, useState } from 'react';
+} from "lucide-react";
+import { memo, useState } from "react";
 import {
   type AgentActivity,
   isCommentActivity,
   isMessageActivity,
   isPostActivity,
   isTradeActivity,
-} from '@/hooks/useAgentActivity';
+} from "@/hooks/useAgentActivity";
 
 interface AgentActivityCardProps {
   activity: AgentActivity;
@@ -44,13 +44,13 @@ export const AgentActivityCard = memo(function AgentActivityCard({
   return (
     <div
       className={cn(
-        'group relative cursor-pointer rounded-lg border border-border p-4 transition-colors hover:border-border/80',
-        'bg-card/50 hover:bg-card/80',
-        className
+        "group relative cursor-pointer rounded-lg border border-border p-4 transition-colors hover:border-border/80",
+        "bg-card/50 hover:bg-card/80",
+        className,
       )}
       onClick={() => setExpanded((prev) => !prev)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
+        if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           setExpanded((prev) => !prev);
         }
@@ -58,14 +58,14 @@ export const AgentActivityCard = memo(function AgentActivityCard({
       role="button"
       tabIndex={0}
       aria-expanded={expanded}
-      aria-label={`${getActivityTitle(activity)}. Click to ${expanded ? 'collapse' : 'expand'} details.`}
+      aria-label={`${getActivityTitle(activity)}. Click to ${expanded ? "collapse" : "expand"} details.`}
     >
       <div className="flex items-start gap-3">
         {/* Activity Icon */}
         <div
           className={cn(
-            'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-            getActivityIconBackground(activity)
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+            getActivityIconBackground(activity),
           )}
         >
           {getActivityIcon(activity)}
@@ -92,8 +92,8 @@ export const AgentActivityCard = memo(function AgentActivityCard({
         </div>
 
         {/* P&L Badge for trades */}
-        {activity.type === 'trade' &&
-          'pnl' in activity.data &&
+        {activity.type === "trade" &&
+          "pnl" in activity.data &&
           activity.data.pnl !== null && <PnLBadge pnl={activity.data.pnl} />}
       </div>
     </div>
@@ -104,8 +104,8 @@ export const AgentActivityCard = memo(function AgentActivityCard({
 function getActivityIcon(activity: AgentActivity) {
   if (isTradeActivity(activity)) {
     const { side, action } = activity.data;
-    const isLong = side === 'long' || side === 'yes';
-    const isOpen = action === 'open';
+    const isLong = side === "long" || side === "yes";
+    const isOpen = action === "open";
 
     if (isOpen) {
       return isLong ? (
@@ -144,38 +144,38 @@ function getActivityIcon(activity: AgentActivity) {
 function getActivityIconBackground(activity: AgentActivity): string {
   if (isTradeActivity(activity)) {
     const isLong =
-      activity.data.side === 'long' || activity.data.side === 'yes';
+      activity.data.side === "long" || activity.data.side === "yes";
     return isLong
-      ? 'bg-emerald-100 dark:bg-emerald-900/30'
-      : 'bg-red-100 dark:bg-red-900/30';
+      ? "bg-emerald-100 dark:bg-emerald-900/30"
+      : "bg-red-100 dark:bg-red-900/30";
   }
 
-  if (isPostActivity(activity)) return 'bg-primary/10';
-  if (isCommentActivity(activity)) return 'bg-violet-100 dark:bg-violet-900/30';
-  if (isMessageActivity(activity)) return 'bg-amber-100 dark:bg-amber-900/30';
+  if (isPostActivity(activity)) return "bg-primary/10";
+  if (isCommentActivity(activity)) return "bg-violet-100 dark:bg-violet-900/30";
+  if (isMessageActivity(activity)) return "bg-amber-100 dark:bg-amber-900/30";
 
-  return 'bg-muted';
+  return "bg-muted";
 }
 
 // Helper: Get activity title
 function getActivityTitle(activity: AgentActivity): string {
   if (isTradeActivity(activity)) {
     const { action, side, marketType } = activity.data;
-    const sideLabel = side ? ` ${side.toUpperCase()}` : '';
-    return `${action === 'open' ? 'Opened' : 'Closed'}${sideLabel} ${marketType} position`;
+    const sideLabel = side ? ` ${side.toUpperCase()}` : "";
+    return `${action === "open" ? "Opened" : "Closed"}${sideLabel} ${marketType} position`;
   }
 
-  if (isPostActivity(activity)) return 'Created a post';
+  if (isPostActivity(activity)) return "Created a post";
 
   if (isCommentActivity(activity)) {
     return activity.data.parentCommentId
-      ? 'Replied to a comment'
-      : 'Commented on a post';
+      ? "Replied to a comment"
+      : "Commented on a post";
   }
 
-  if (isMessageActivity(activity)) return 'Sent a message';
+  if (isMessageActivity(activity)) return "Sent a message";
 
-  return 'Activity';
+  return "Activity";
 }
 
 // Helper: Render activity-specific content
@@ -188,7 +188,7 @@ function renderActivityContent(activity: AgentActivity, expanded: boolean) {
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-muted-foreground">
-            {marketType === 'perp' ? ticker : 'Prediction'}
+            {marketType === "perp" ? ticker : "Prediction"}
           </span>
           <span className="text-muted-foreground/60">•</span>
           <span className="font-mono text-foreground">
@@ -196,7 +196,7 @@ function renderActivityContent(activity: AgentActivity, expanded: boolean) {
           </span>
           <span className="text-muted-foreground/60">@</span>
           <span className="font-mono text-foreground/80">
-            {marketType === 'perp'
+            {marketType === "perp"
               ? `$${price.toLocaleString()}`
               : `${(price * 100).toFixed(1)}%`}
           </span>
@@ -224,8 +224,8 @@ function renderActivityContent(activity: AgentActivity, expanded: boolean) {
     return (
       <p
         className={cn(
-          'text-muted-foreground text-sm',
-          expanded ? '' : 'line-clamp-2'
+          "text-muted-foreground text-sm",
+          expanded ? "" : "line-clamp-2",
         )}
       >
         {activity.data.contentPreview}
@@ -237,8 +237,8 @@ function renderActivityContent(activity: AgentActivity, expanded: boolean) {
     return (
       <p
         className={cn(
-          'text-muted-foreground text-sm',
-          expanded ? '' : 'line-clamp-2'
+          "text-muted-foreground text-sm",
+          expanded ? "" : "line-clamp-2",
         )}
       >
         {activity.data.contentPreview}
@@ -250,8 +250,8 @@ function renderActivityContent(activity: AgentActivity, expanded: boolean) {
     return (
       <p
         className={cn(
-          'text-muted-foreground text-sm italic',
-          expanded ? '' : 'line-clamp-2'
+          "text-muted-foreground text-sm italic",
+          expanded ? "" : "line-clamp-2",
         )}
       >
         {activity.data.contentPreview}
@@ -268,13 +268,13 @@ function PnLBadge({ pnl }: { pnl: number }) {
   return (
     <div
       className={cn(
-        'shrink-0 rounded-md px-2.5 py-1 font-medium font-mono text-sm',
+        "shrink-0 rounded-md px-2.5 py-1 font-medium font-mono text-sm",
         isPositive
-          ? 'border border-emerald-300 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-          : 'border border-red-300 bg-red-100 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400'
+          ? "border border-emerald-300 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
+          : "border border-red-300 bg-red-100 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400",
       )}
     >
-      {isPositive ? '+' : ''}$
+      {isPositive ? "+" : ""}$
       {pnl.toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
@@ -289,17 +289,17 @@ function getTimeAgo(date: Date): string {
   const diffMs = now.getTime() - date.getTime();
 
   // Handle future dates (clock skew from SSE or timestamps)
-  if (diffMs < 0) return 'just now';
+  if (diffMs < 0) return "just now";
 
   const diffSec = Math.floor(diffMs / 1000);
   const diffMin = Math.floor(diffSec / 60);
   const diffHour = Math.floor(diffMin / 60);
   const diffDay = Math.floor(diffHour / 24);
 
-  if (diffSec < 60) return 'just now';
+  if (diffSec < 60) return "just now";
   if (diffMin < 60) return `${diffMin}m ago`;
   if (diffHour < 24) return `${diffHour}h ago`;
-  if (diffDay === 1) return 'yesterday';
+  if (diffDay === 1) return "yesterday";
   if (diffDay < 7) return `${diffDay}d ago`;
 
   return date.toLocaleDateString();

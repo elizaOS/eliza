@@ -121,17 +121,17 @@
  * ```
  */
 
-import { authenticate } from '@polyagent/api';
-import { db } from '@polyagent/db';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { authenticate } from "@polyagent/api";
+import { db } from "@polyagent/db";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 /**
  * GET - Get single goal
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string; goalId: string }> }
+  { params }: { params: Promise<{ agentId: string; goalId: string }> },
 ) {
   const authUser = await authenticate(req);
   const userId = authUser.userId;
@@ -144,21 +144,21 @@ export async function GET(
   });
 
   if (!agent?.isAgent || agent.managedBy !== userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   const goal = await db.agentGoal.findUnique({
     where: { id: goalId },
     include: {
       AgentGoalAction: {
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 20,
       },
     },
   });
 
   if (!goal || goal.agentUserId !== agentId) {
-    return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+    return NextResponse.json({ error: "Goal not found" }, { status: 404 });
   }
 
   return NextResponse.json({
@@ -175,7 +175,7 @@ export async function GET(
  */
 export async function PUT(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string; goalId: string }> }
+  { params }: { params: Promise<{ agentId: string; goalId: string }> },
 ) {
   const authUser = await authenticate(req);
   const userId = authUser.userId;
@@ -188,7 +188,7 @@ export async function PUT(
   });
 
   if (!agent?.isAgent || agent.managedBy !== userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   // Get existing goal
@@ -197,7 +197,7 @@ export async function PUT(
   });
 
   if (!existingGoal || existingGoal.agentUserId !== agentId) {
-    return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+    return NextResponse.json({ error: "Goal not found" }, { status: 404 });
   }
 
   // Parse updates
@@ -223,33 +223,33 @@ export async function PUT(
     updatedAt: new Date(),
   };
 
-  if (name !== undefined && typeof name === 'string') updates.name = name;
-  if (description !== undefined && typeof description === 'string')
+  if (name !== undefined && typeof name === "string") updates.name = name;
+  if (description !== undefined && typeof description === "string")
     updates.description = description;
-  if (target !== undefined && typeof target === 'string')
+  if (target !== undefined && typeof target === "string")
     updates.target = target;
   if (priority !== undefined && priority !== null) {
-    if (typeof priority !== 'number' || priority < 1 || priority > 10) {
+    if (typeof priority !== "number" || priority < 1 || priority > 10) {
       return NextResponse.json(
-        { error: 'Priority must be between 1 and 10' },
-        { status: 400 }
+        { error: "Priority must be between 1 and 10" },
+        { status: 400 },
       );
     }
     updates.priority = priority;
   }
   if (status !== undefined) {
-    const validStatuses = ['active', 'paused', 'completed', 'failed'];
+    const validStatuses = ["active", "paused", "completed", "failed"];
     if (!validStatuses.includes(status)) {
       return NextResponse.json(
         {
-          error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+          error: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
     updates.status = status;
 
-    if (status === 'completed' && !existingGoal.completedAt) {
+    if (status === "completed" && !existingGoal.completedAt) {
       updates.completedAt = new Date();
     }
   }
@@ -276,7 +276,7 @@ export async function PUT(
  */
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string; goalId: string }> }
+  { params }: { params: Promise<{ agentId: string; goalId: string }> },
 ) {
   const authUser = await authenticate(req);
   const userId = authUser.userId;
@@ -289,7 +289,7 @@ export async function DELETE(
   });
 
   if (!agent?.isAgent || agent.managedBy !== userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   // Verify goal exists and belongs to agent
@@ -298,7 +298,7 @@ export async function DELETE(
   });
 
   if (!goal || goal.agentUserId !== agentId) {
-    return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+    return NextResponse.json({ error: "Goal not found" }, { status: 404 });
   }
 
   // Delete goal (cascades to goal actions)
@@ -308,6 +308,6 @@ export async function DELETE(
 
   return NextResponse.json({
     success: true,
-    message: 'Goal deleted successfully',
+    message: "Goal deleted successfully",
   });
 }

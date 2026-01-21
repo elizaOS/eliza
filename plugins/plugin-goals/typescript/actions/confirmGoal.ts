@@ -14,8 +14,8 @@ import {
   parseKeyValueXml,
   type State,
 } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { extractConfirmationTemplate } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { createGoalDataService } from "../services/goalDataService.js";
 
 interface PendingGoalData {

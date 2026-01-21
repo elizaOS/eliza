@@ -1,8 +1,13 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { createMessageMemory, logger, type TestCase, type TestSuite, type UUID } from "@elizaos/core";
+import {
+  createMessageMemory,
+  logger,
+  type TestCase,
+  type TestSuite,
+  type UUID,
+} from "@elizaos/core";
 
 export const GoalsPluginE2ETestSuite: TestSuite = {
-  $typeName: "eliza.v1.TestSuite",
   name: "Goals Plugin E2E Tests",
   tests: [
     {

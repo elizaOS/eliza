@@ -14,41 +14,56 @@ use super::action_docs::{
     CORE_ACTION_DOCS_JSON, CORE_EVALUATOR_DOCS_JSON, CORE_PROVIDER_DOCS_JSON,
 };
 
-/// Action document structure from the centralized specs
+/// Action document structure from the centralized specs.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ActionDoc {
+    /// Unique name identifier for the action.
     pub name: String,
+    /// Human-readable description of what the action does.
     pub description: String,
+    /// Alternative names that can trigger this action.
     #[serde(default)]
     pub similes: Vec<String>,
+    /// Parameter definitions for the action.
     #[serde(default)]
     pub parameters: Vec<serde_json::Value>,
+    /// Example conversations demonstrating the action.
     #[serde(default)]
     pub examples: Vec<Vec<serde_json::Value>>,
+    /// Example action calls with parameters.
     #[serde(rename = "exampleCalls", default)]
     pub example_calls: Vec<serde_json::Value>,
 }
 
-/// Provider document structure from the centralized specs
+/// Provider document structure from the centralized specs.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProviderDoc {
+    /// Unique name identifier for the provider.
     pub name: String,
+    /// Human-readable description of what the provider provides.
     pub description: String,
+    /// Position in provider ordering (lower runs first).
     #[serde(default)]
     pub position: Option<i32>,
+    /// Whether the provider generates dynamic content.
     #[serde(default)]
     pub dynamic: Option<bool>,
 }
 
-/// Evaluator document structure from the centralized specs
+/// Evaluator document structure from the centralized specs.
 #[derive(Debug, Clone, Deserialize)]
 pub struct EvaluatorDoc {
+    /// Unique name identifier for the evaluator.
     pub name: String,
+    /// Human-readable description of what the evaluator does.
     pub description: String,
+    /// Alternative names that can trigger this evaluator.
     #[serde(default)]
     pub similes: Vec<String>,
+    /// Whether to run this evaluator on every message.
     #[serde(rename = "alwaysRun", default)]
     pub always_run: Option<bool>,
+    /// Examples demonstrating the evaluator.
     #[serde(default)]
     pub examples: Vec<serde_json::Value>,
 }

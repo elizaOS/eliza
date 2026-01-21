@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { useCallback } from 'react';
-import { getAuthToken } from '@/lib/auth';
-import type { TradeSide } from '@/types/markets';
+import { useCallback } from "react";
+import { getAuthToken } from "@/lib/auth";
+import type { TradeSide } from "@/types/markets";
 
 // Re-export for backwards compatibility
-export type { TradeSide } from '@/types/markets';
+export type { TradeSide } from "@/types/markets";
 
 /**
  * Options for configuring the usePerpTrade hook.
@@ -70,13 +70,13 @@ interface ClosePerpResponse {
 }
 
 async function resolveToken(
-  resolver?: () => Promise<string | null> | string | null
+  resolver?: () => Promise<string | null> | string | null,
 ): Promise<string | null> {
   if (!resolver) {
     return getAuthToken();
   }
 
-  const value = typeof resolver === 'function' ? resolver() : resolver;
+  const value = typeof resolver === "function" ? resolver() : resolver;
   const token = await Promise.resolve(value);
   if (token) return token;
   return getAuthToken();
@@ -84,25 +84,25 @@ async function resolveToken(
 
 function extractErrorMessage(
   payload: Record<string, unknown> | null,
-  status: number
+  status: number,
 ): string {
   if (
     payload &&
-    typeof payload === 'object' &&
-    'error' in payload &&
+    typeof payload === "object" &&
+    "error" in payload &&
     payload.error !== undefined
   ) {
     const errorPayload = payload.error;
 
-    if (typeof errorPayload === 'string') {
+    if (typeof errorPayload === "string") {
       return errorPayload;
     }
 
     if (
       errorPayload &&
-      typeof errorPayload === 'object' &&
-      'message' in errorPayload &&
-      typeof (errorPayload as { message?: string }).message === 'string'
+      typeof errorPayload === "object" &&
+      "message" in errorPayload &&
+      typeof (errorPayload as { message?: string }).message === "string"
     ) {
       return (errorPayload as { message: string }).message;
     }
@@ -145,11 +145,11 @@ export function usePerpTrade(options: UsePerpTradeOptions = {}) {
   const callApi = useCallback(
     async <T>(url: string, init: RequestInit = {}): Promise<T> => {
       const headers = new Headers(init.headers);
-      headers.set('Content-Type', 'application/json');
+      headers.set("Content-Type", "application/json");
 
       const token = await resolveToken(options.getAccessToken);
       if (token) {
-        headers.set('Authorization', `Bearer ${token}`);
+        headers.set("Authorization", `Bearer ${token}`);
       }
 
       const response = await fetch(url, {
@@ -165,26 +165,26 @@ export function usePerpTrade(options: UsePerpTradeOptions = {}) {
 
       return data as T;
     },
-    [options.getAccessToken]
+    [options.getAccessToken],
   );
 
   const openPosition = useCallback(
     async (payload: OpenPerpPayload): Promise<OpenPerpResponse> => {
-      return await callApi('/api/markets/perps/open', {
-        method: 'POST',
+      return await callApi("/api/markets/perps/open", {
+        method: "POST",
         body: JSON.stringify(payload),
       });
     },
-    [callApi]
+    [callApi],
   );
 
   const closePosition = useCallback(
     async (positionId: string): Promise<ClosePerpResponse> => {
       return await callApi(`/api/markets/perps/position/${positionId}/close`, {
-        method: 'POST',
+        method: "POST",
       });
     },
-    [callApi]
+    [callApi],
   );
 
   return {

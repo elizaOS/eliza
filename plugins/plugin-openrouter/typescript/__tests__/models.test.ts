@@ -35,8 +35,7 @@ async function createTestRuntime(settings: Record<string, string> = {}): Promise
     settings: {},
     secrets: {
       ...settings,
-      OPENROUTER_API_KEY:
-        settings.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY,
+      OPENROUTER_API_KEY: settings.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY,
     },
     messageExamples: [],
     postExamples: [],

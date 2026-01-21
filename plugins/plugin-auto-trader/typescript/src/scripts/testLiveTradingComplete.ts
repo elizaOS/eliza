@@ -1,22 +1,5 @@
-import { AgentRuntime, elizaLogger } from '@elizaos/core';
-import { TokenResolverService } from '../services/TokenResolverService.ts';
-import { RandomStrategy } from '../strategies/RandomStrategy.ts';
-// Missing services - commented out until implemented
-// import { AutoTradingService } from '../services/AutoTradingService.ts';
-// import { AnalyticsService } from '../services/analyticsService.ts';
-// import { StrategyRegistryService } from '../services/StrategyRegistryService.ts';
-// import { DefaultHistoricalDataService } from '../services/HistoricalDataService.ts';
-// import { PerformanceReportingService } from '../services/PerformanceReportingService.ts';
-// import { SimulationService } from '../services/SimulationService.ts';
-// import { WalletIntegrationService } from '../services/WalletIntegrationService.ts';
-// import { JupiterSwapService } from '../services/JupiterSwapService.ts';
-// import { RealtimePriceFeedService } from '../services/RealtimePriceFeedService.ts';
-// import { RiskManagementService } from '../services/RiskManagementService.ts';
-// import { TransactionMonitoringService } from '../services/TransactionMonitoringService.ts';
-import * as readline from 'readline';
-
 // Live trading configuration
-const LIVE_TRADING_CONFIG = {
+const _LIVE_TRADING_CONFIG = {
   MAX_POSITION_SIZE: 10, // $10 max per position
   MAX_DAILY_LOSS: 20, // $20 max daily loss
   STOP_LOSS_PERCENT: 3, // 3% stop loss
@@ -25,7 +8,9 @@ const LIVE_TRADING_CONFIG = {
 };
 
 async function main() {
-  throw new Error('This script requires missing services: AutoTradingService, AnalyticsService, StrategyRegistryService, HistoricalDataService, PerformanceReportingService, SimulationService, WalletIntegrationService, JupiterSwapService, RealtimePriceFeedService, RiskManagementService, TransactionMonitoringService');
+  throw new Error(
+    "This script requires missing services: AutoTradingService, AnalyticsService, StrategyRegistryService, HistoricalDataService, PerformanceReportingService, SimulationService, WalletIntegrationService, JupiterSwapService, RealtimePriceFeedService, RiskManagementService, TransactionMonitoringService",
+  );
   /* Commented out until services are implemented
   console.log('🚀 ElizaOS Auto-Trader Live Trading Test');
   console.log('========================================\n');

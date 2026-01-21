@@ -23,7 +23,7 @@
  * ```
  */
 
-import { logger } from '@polyagent/shared';
+import { logger } from "@polyagent/shared";
 
 // ============================================================================
 // Types
@@ -33,10 +33,10 @@ import { logger } from '@polyagent/shared';
  * Static SSE channel names for standard event types.
  */
 export type StaticChannel =
-  | 'feed'
-  | 'markets'
-  | 'breaking-news'
-  | 'upcoming-events';
+  | "feed"
+  | "markets"
+  | "breaking-news"
+  | "upcoming-events";
 
 /**
  * Dynamic SSE channel names that include user-specific identifiers.
@@ -84,7 +84,7 @@ export interface SSEManagerConfig {
 /**
  * Connection state for the SSE manager.
  */
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
+export type ConnectionState = "disconnected" | "connecting" | "connected";
 
 /**
  * Callback for SSE messages.
@@ -96,7 +96,7 @@ export type SSECallback = (message: SSEMessage) => void;
  */
 export type ConnectionStateListener = (
   state: ConnectionState,
-  error: string | null
+  error: string | null,
 ) => void;
 
 /**
@@ -134,7 +134,7 @@ export class SSEManager {
 
   // Connection state
   private eventSource: EventSource | null = null;
-  private connectionState: ConnectionState = 'disconnected';
+  private connectionState: ConnectionState = "disconnected";
   private lastConnectionError: string | null = null;
   private reconnectAttempts = 0;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -189,9 +189,9 @@ export class SSEManager {
       SSEManager.instance = new SSEManager(config);
     } else if (config) {
       logger.debug(
-        'SSEManager already initialized, use updateConfig() to modify settings',
+        "SSEManager already initialized, use updateConfig() to modify settings",
         { providedConfig: config },
-        'SSEManager'
+        "SSEManager",
       );
     }
     return SSEManager.instance;
@@ -251,7 +251,7 @@ export class SSEManager {
       this.connectingChannels = null;
       this.pendingChannelReconnect = false;
       this.closeEventSource();
-      this.notifyConnectionState('disconnected', null);
+      this.notifyConnectionState("disconnected", null);
       return;
     }
 
@@ -270,7 +270,7 @@ export class SSEManager {
   // ============================================================================
 
   private setupNetworkListeners(): void {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     // Clean up any existing listeners first (prevents duplicates on hot reload)
     this.cleanupNetworkListeners();
@@ -279,9 +279,9 @@ export class SSEManager {
 
     this.onlineListener = () => {
       logger.info(
-        'Network came online, attempting SSE reconnect',
+        "Network came online, attempting SSE reconnect",
         undefined,
-        'SSEManager'
+        "SSEManager",
       );
       this.isOnline = true;
       // Reset reconnect attempts on network recovery
@@ -293,28 +293,28 @@ export class SSEManager {
 
     this.offlineListener = () => {
       logger.info(
-        'Network went offline, closing SSE connection',
+        "Network went offline, closing SSE connection",
         undefined,
-        'SSEManager'
+        "SSEManager",
       );
       this.isOnline = false;
       this.closeEventSource();
-      this.notifyConnectionState('disconnected', 'Network offline');
+      this.notifyConnectionState("disconnected", "Network offline");
     };
 
-    window.addEventListener('online', this.onlineListener);
-    window.addEventListener('offline', this.offlineListener);
+    window.addEventListener("online", this.onlineListener);
+    window.addEventListener("offline", this.offlineListener);
   }
 
   private cleanupNetworkListeners(): void {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     if (this.onlineListener) {
-      window.removeEventListener('online', this.onlineListener);
+      window.removeEventListener("online", this.onlineListener);
       this.onlineListener = null;
     }
     if (this.offlineListener) {
-      window.removeEventListener('offline', this.offlineListener);
+      window.removeEventListener("offline", this.offlineListener);
       this.offlineListener = null;
     }
   }
@@ -334,7 +334,7 @@ export class SSEManager {
    * Check if currently connected.
    */
   isConnected(): boolean {
-    return this.connectionState === 'connected';
+    return this.connectionState === "connected";
   }
 
   /**
@@ -352,7 +352,7 @@ export class SSEManager {
 
   private notifyConnectionState(
     state: ConnectionState,
-    error: string | null
+    error: string | null,
   ): void {
     this.connectionState = state;
     this.lastConnectionError = error;
@@ -376,9 +376,9 @@ export class SSEManager {
   subscribe(channel: Channel, callback: SSECallback): () => void {
     if (!channel) {
       logger.warn(
-        'Attempted to subscribe to empty channel',
+        "Attempted to subscribe to empty channel",
         undefined,
-        'SSEManager'
+        "SSEManager",
       );
       return () => {};
     }
@@ -398,13 +398,13 @@ export class SSEManager {
     logger.debug(
       `Subscribed to channel: ${channel}`,
       { channel },
-      'SSEManager'
+      "SSEManager",
     );
 
     // If we're mid-connection and this channel isn't part of the in-flight set,
     // mark a reconnect as needed once the connection settles.
     if (
-      this.connectionState === 'connecting' &&
+      this.connectionState === "connecting" &&
       this.connectingChannels &&
       !this.connectingChannels.has(channel)
     ) {
@@ -441,11 +441,11 @@ export class SSEManager {
       logger.debug(
         `Unsubscribed from channel: ${channel}`,
         { channel },
-        'SSEManager'
+        "SSEManager",
       );
 
       if (
-        this.connectionState === 'connecting' &&
+        this.connectionState === "connecting" &&
         this.connectingChannels &&
         this.connectingChannels.has(channel)
       ) {
@@ -455,7 +455,7 @@ export class SSEManager {
       // Close connection if no channels left
       if (this.requestedChannels.size === 0) {
         this.closeEventSource();
-        this.notifyConnectionState('disconnected', null);
+        this.notifyConnectionState("disconnected", null);
       } else if (!this.channelsInSync()) {
         // Reconnect with updated channel list
         void this.ensureConnection(true);
@@ -478,11 +478,11 @@ export class SSEManager {
     logger.debug(
       `Unsubscribed all from channel: ${channel}`,
       { channel },
-      'SSEManager'
+      "SSEManager",
     );
 
     if (
-      this.connectionState === 'connecting' &&
+      this.connectionState === "connecting" &&
       this.connectingChannels &&
       this.connectingChannels.has(channel)
     ) {
@@ -491,7 +491,7 @@ export class SSEManager {
 
     if (this.requestedChannels.size === 0) {
       this.closeEventSource();
-      this.notifyConnectionState('disconnected', null);
+      this.notifyConnectionState("disconnected", null);
     } else if (!this.channelsInSync()) {
       void this.ensureConnection(true);
     }
@@ -517,7 +517,7 @@ export class SSEManager {
    */
   disconnect(): void {
     this.closeEventSource();
-    this.notifyConnectionState('disconnected', null);
+    this.notifyConnectionState("disconnected", null);
   }
 
   /**
@@ -533,7 +533,7 @@ export class SSEManager {
     this.cachedToken = null;
     this.authTokenProvider = null;
     // Notify listeners before clearing them so they receive final disconnect
-    this.notifyConnectionState('disconnected', null);
+    this.notifyConnectionState("disconnected", null);
     this.connectionStateListeners.clear();
   }
 
@@ -606,22 +606,22 @@ export class SSEManager {
 
   private async ensureConnection(forceReconnect = false): Promise<void> {
     // Browser environment check
-    if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+    if (typeof window === "undefined" || typeof EventSource === "undefined") {
       return;
     }
 
     // Network check
     if (!this.isOnline) {
-      logger.debug('SSE connection skipped - offline', undefined, 'SSEManager');
+      logger.debug("SSE connection skipped - offline", undefined, "SSEManager");
       return;
     }
 
     // Auth check
     if (!this.isAuthenticated) {
       logger.debug(
-        'SSE connection skipped - not authenticated',
+        "SSE connection skipped - not authenticated",
         undefined,
-        'SSEManager'
+        "SSEManager",
       );
       return;
     }
@@ -629,22 +629,22 @@ export class SSEManager {
     // No channels to subscribe
     if (this.requestedChannels.size === 0) {
       this.closeEventSource();
-      this.notifyConnectionState('disconnected', null);
+      this.notifyConnectionState("disconnected", null);
       return;
     }
 
     // Already in sync
     if (!forceReconnect && this.channelsInSync()) {
-      this.notifyConnectionState('connected', null);
+      this.notifyConnectionState("connected", null);
       return;
     }
 
     // Already connecting
-    if (this.connectionState === 'connecting') {
+    if (this.connectionState === "connecting") {
       logger.debug(
-        'SSE connection already in progress',
+        "SSE connection already in progress",
         undefined,
-        'SSEManager'
+        "SSEManager",
       );
       return;
     }
@@ -655,9 +655,9 @@ export class SSEManager {
       this.reconnectAttempts >= this.config.maxReconnectAttempts
     ) {
       logger.debug(
-        'SSE connection skipped - max attempts reached',
+        "SSE connection skipped - max attempts reached",
         undefined,
-        'SSEManager'
+        "SSEManager",
       );
       return;
     }
@@ -665,21 +665,21 @@ export class SSEManager {
     // Reconnect already scheduled
     if (!forceReconnect && this.reconnectTimeout) {
       logger.debug(
-        'SSE connection skipped - reconnect scheduled',
+        "SSE connection skipped - reconnect scheduled",
         undefined,
-        'SSEManager'
+        "SSEManager",
       );
       return;
     }
 
     // Already connected and valid
     if (!forceReconnect && this.eventSource?.readyState === EventSource.OPEN) {
-      logger.debug('SSE already connected', undefined, 'SSEManager');
+      logger.debug("SSE already connected", undefined, "SSEManager");
       return;
     }
 
     // Start connection
-    this.notifyConnectionState('connecting', null);
+    this.notifyConnectionState("connecting", null);
     this.closeEventSource();
 
     const channelsList = Array.from(this.requestedChannels);
@@ -690,7 +690,7 @@ export class SSEManager {
     // Get auth token
     const token = await this.getAuthToken(channelsList);
     if (!token) {
-      this.notifyConnectionState('disconnected', 'Missing realtime token');
+      this.notifyConnectionState("disconnected", "Missing realtime token");
       this.scheduleTokenRetry();
       return;
     }
@@ -707,17 +707,17 @@ export class SSEManager {
     const cursorParam =
       Object.keys(cursorPayload).length > 0
         ? `&cursor=${encodeURIComponent(JSON.stringify(cursorPayload))}`
-        : '';
+        : "";
 
     const baseUrl = this.config.baseUrl ?? window.location.origin;
     const url = `${baseUrl}/api/sse/events?channels=${encodeURIComponent(
-      channelsList.join(',')
+      channelsList.join(","),
     )}&token=${encodeURIComponent(token)}${cursorParam}`;
 
     logger.debug(
-      'Connecting to SSE endpoint',
-      { channels: channelsList.join(',') },
-      'SSEManager'
+      "Connecting to SSE endpoint",
+      { channels: channelsList.join(",") },
+      "SSEManager",
     );
 
     const eventSource = new EventSource(url);
@@ -729,19 +729,19 @@ export class SSEManager {
       this.connectedChannels = new Set(channelsList);
       this.connectingChannels = null;
       this.reconnectAttempts = 0;
-      this.notifyConnectionState('connected', null);
-      logger.info('SSE connected', { channels: channelsList }, 'SSEManager');
+      this.notifyConnectionState("connected", null);
+      logger.info("SSE connected", { channels: channelsList }, "SSEManager");
       this.reconcileChannelDrift();
     };
 
     // Handle the 'connected' event from server
-    eventSource.addEventListener('connected', (event) => {
+    eventSource.addEventListener("connected", (event) => {
       let data: { clientId?: string; channels?: string[] };
       try {
         data = JSON.parse(event.data);
       } catch (parseError) {
         logger.error(
-          'Failed to parse SSE connected event',
+          "Failed to parse SSE connected event",
           {
             error:
               parseError instanceof Error
@@ -749,7 +749,7 @@ export class SSEManager {
                 : String(parseError),
             dataPreview: event.data?.substring(0, 100),
           },
-          'SSEManager'
+          "SSEManager",
         );
         return;
       }
@@ -757,38 +757,38 @@ export class SSEManager {
       if (Array.isArray(data.channels)) {
         this.connectedChannels = new Set(data.channels as Channel[]);
         const missing = channelsList.filter(
-          (ch) => !this.connectedChannels.has(ch)
+          (ch) => !this.connectedChannels.has(ch),
         );
         if (missing.length > 0) {
           logger.warn(
-            'SSE connected without some requested channels',
+            "SSE connected without some requested channels",
             { requested: channelsList, granted: data.channels },
-            'SSEManager'
+            "SSEManager",
           );
         }
       }
       logger.debug(
-        'SSE connected event received',
+        "SSE connected event received",
         { clientId: data.clientId, channels: data.channels },
-        'SSEManager'
+        "SSEManager",
       );
       this.reconnectAttempts = 0;
-      this.notifyConnectionState('connected', null);
+      this.notifyConnectionState("connected", null);
       this.reconcileChannelDrift();
     });
 
-    eventSource.addEventListener('message', (event) => {
+    eventSource.addEventListener("message", (event) => {
       let message: SSEMessage;
       try {
         message = JSON.parse(event.data);
       } catch (error) {
         logger.error(
-          'Failed to parse SSE message',
+          "Failed to parse SSE message",
           {
             error: error instanceof Error ? error.message : String(error),
             dataPreview: event.data?.substring(0, 100),
           },
-          'SSEManager'
+          "SSEManager",
         );
         return;
       }
@@ -806,7 +806,7 @@ export class SSEManager {
             callback(message);
           } catch (callbackError) {
             logger.error(
-              'SSE callback threw an error',
+              "SSE callback threw an error",
               {
                 channel: message.channel,
                 error:
@@ -814,7 +814,7 @@ export class SSEManager {
                     ? callbackError.message
                     : String(callbackError),
               },
-              'SSEManager'
+              "SSEManager",
             );
           }
         }
@@ -839,14 +839,14 @@ export class SSEManager {
       eventSource.onerror = null;
       eventSource.close();
 
-      this.notifyConnectionState('disconnected', 'SSE connection error');
+      this.notifyConnectionState("disconnected", "SSE connection error");
       logger.warn(
-        'SSE connection lost',
+        "SSE connection lost",
         {
           reconnectAttempts: this.reconnectAttempts,
           maxAttempts: this.config.maxReconnectAttempts,
         },
-        'SSEManager'
+        "SSEManager",
       );
 
       if (!this.config.autoReconnect) return;
@@ -854,13 +854,13 @@ export class SSEManager {
 
       if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
         this.notifyConnectionState(
-          'disconnected',
-          'Unable to connect to real-time updates. Please refresh the page.'
+          "disconnected",
+          "Unable to connect to real-time updates. Please refresh the page.",
         );
         logger.error(
-          'SSE: Max reconnection attempts reached',
+          "SSE: Max reconnection attempts reached",
           undefined,
-          'SSEManager'
+          "SSEManager",
         );
         return;
       }
@@ -885,7 +885,7 @@ export class SSEManager {
     logger.debug(
       `SSE reconnect scheduled in ${Math.round(delay)}ms`,
       { attempt: this.reconnectAttempts, delay: Math.round(delay) },
-      'SSEManager'
+      "SSEManager",
     );
 
     this.reconnectTimeout = setTimeout(() => {
@@ -900,13 +900,13 @@ export class SSEManager {
     // Respect max reconnect attempts for token retries too
     if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
       this.notifyConnectionState(
-        'disconnected',
-        'Failed to get auth token after max attempts'
+        "disconnected",
+        "Failed to get auth token after max attempts",
       );
       logger.error(
-        'SSE: Max token retry attempts reached',
+        "SSE: Max token retry attempts reached",
         { attempts: this.reconnectAttempts },
-        'SSEManager'
+        "SSEManager",
       );
       return;
     }
@@ -924,12 +924,12 @@ export class SSEManager {
   // ============================================================================
 
   private channelsKeyFromList(channels: Channel[]): string {
-    return channels.slice().sort().join(',');
+    return channels.slice().sort().join(",");
   }
 
   private includesChatChannel(channels: Channel[]): boolean {
     return channels.some(
-      (ch) => typeof ch === 'string' && ch.startsWith('chat:')
+      (ch) => typeof ch === "string" && ch.startsWith("chat:"),
     );
   }
 
@@ -945,7 +945,7 @@ export class SSEManager {
   }
 
   private async fetchRealtimeToken(
-    channels: Channel[]
+    channels: Channel[],
   ): Promise<string | null> {
     if (!this.authTokenProvider) return null;
     const epoch = this.authEpoch;
@@ -955,11 +955,11 @@ export class SSEManager {
       if (!accessToken) return null;
       if (epoch !== this.authEpoch) return null;
 
-      const res = await fetch('/api/realtime/token', {
-        method: 'POST',
+      const res = await fetch("/api/realtime/token", {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           channels,
@@ -969,9 +969,9 @@ export class SSEManager {
 
       if (!res.ok) {
         logger.debug(
-          'Realtime token request failed',
+          "Realtime token request failed",
           { status: res.status },
-          'SSEManager'
+          "SSEManager",
         );
         return null;
       }
@@ -980,7 +980,7 @@ export class SSEManager {
       if (!json?.token) return null;
 
       const expiresAt =
-        typeof json.expiresAt === 'number'
+        typeof json.expiresAt === "number"
           ? json.expiresAt
           : Date.now() + DEFAULT_TOKEN_TTL_MS;
 
@@ -996,11 +996,11 @@ export class SSEManager {
     } catch (error) {
       // Network errors (connection failures, DNS, timeouts) are caught here
       logger.error(
-        'Failed to fetch realtime token',
+        "Failed to fetch realtime token",
         {
           error: error instanceof Error ? error.message : String(error),
         },
-        'SSEManager'
+        "SSEManager",
       );
       return null;
     }

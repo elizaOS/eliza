@@ -12,10 +12,10 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { Collection, Message, TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import { searchMessagesTemplate } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
 
 const getSearchParams = async (

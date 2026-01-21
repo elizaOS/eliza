@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import { logger, privyConfig } from '@polyagent/shared';
-import { type PrivyClientConfig, PrivyProvider } from '@privy-io/react-auth';
-import { SmartWalletsProvider } from '@privy-io/react-auth/smart-wallets';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Fragment, Suspense, useEffect, useRef, useState } from 'react';
-import { PostHogErrorBoundary } from '@/components/analytics/PostHogErrorBoundary';
-import { PostHogIdentifier } from '@/components/analytics/PostHogIdentifier';
-import { ThemeProvider } from '@/components/shared/ThemeProvider';
-import { FontSizeProvider } from '@/contexts/FontSizeContext';
-import { WidgetRefreshProvider } from '@/contexts/WidgetRefreshContext';
-import { PostHogProvider } from './PostHogProvider';
+import { logger, privyConfig } from "@polyagent/shared";
+import { type PrivyClientConfig, PrivyProvider } from "@privy-io/react-auth";
+import { SmartWalletsProvider } from "@privy-io/react-auth/smart-wallets";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Fragment, Suspense, useEffect, useRef, useState } from "react";
+import { PostHogErrorBoundary } from "@/components/analytics/PostHogErrorBoundary";
+import { PostHogIdentifier } from "@/components/analytics/PostHogIdentifier";
+import { ThemeProvider } from "@/components/shared/ThemeProvider";
+import { FontSizeProvider } from "@/contexts/FontSizeContext";
+import { WidgetRefreshProvider } from "@/contexts/WidgetRefreshContext";
+import { PostHogProvider } from "./PostHogProvider";
 
 /**
  * Wrapper component to fix clip-path DOM property issue in Privy.
@@ -24,20 +24,20 @@ function PrivyProviderWrapper({
   appId,
   ...props
 }: React.ComponentProps<typeof PrivyProvider>) {
-  if (!appId || appId.trim() === '') {
+  if (!appId || appId.trim() === "") {
     return <>{children}</>;
   }
 
   const privyProps = { ...props } as Omit<
     React.ComponentProps<typeof PrivyProvider>,
-    'appId' | 'children'
+    "appId" | "children"
   >;
 
-  if ('isActive' in privyProps) {
+  if ("isActive" in privyProps) {
     logger.warn(
       'Invalid prop "isActive" passed to PrivyProviderWrapper - this prop is not supported by PrivyProvider',
       undefined,
-      'PrivyProviderWrapper'
+      "PrivyProviderWrapper",
     );
     delete (privyProps as Record<string, unknown>).isActive;
   }
@@ -48,27 +48,27 @@ function PrivyProviderWrapper({
     const fixClipPath = () => {
       if (!containerRef.current) return;
 
-      const allElements = containerRef.current.querySelectorAll('*');
+      const allElements = containerRef.current.querySelectorAll("*");
       allElements.forEach((element) => {
         const htmlElement = element as HTMLElement;
-        const styleAttr = htmlElement.getAttribute('style');
-        if (styleAttr && styleAttr.includes('clip-path')) {
+        const styleAttr = htmlElement.getAttribute("style");
+        if (styleAttr?.includes("clip-path")) {
           const clipPathMatch = styleAttr.match(/clip-path\s*:\s*([^;]+)/);
-          if (clipPathMatch && clipPathMatch[1]) {
+          if (clipPathMatch?.[1]) {
             const clipPathValue = clipPathMatch[1].trim();
             (
               htmlElement.style as CSSStyleDeclaration & { clipPath?: string }
             ).clipPath = clipPathValue;
             const cleanedStyle = styleAttr
-              .replace(/clip-path\s*:\s*[^;]+;?/g, '')
+              .replace(/clip-path\s*:\s*[^;]+;?/g, "")
               .trim()
-              .replace(/;\s*;/g, ';')
-              .replace(/^;|;$/g, '');
+              .replace(/;\s*;/g, ";")
+              .replace(/^;|;$/g, "");
 
             if (cleanedStyle) {
-              htmlElement.setAttribute('style', cleanedStyle);
+              htmlElement.setAttribute("style", cleanedStyle);
             } else {
-              htmlElement.removeAttribute('style');
+              htmlElement.removeAttribute("style");
             }
           }
         }
@@ -77,16 +77,16 @@ function PrivyProviderWrapper({
           Record<string, string | undefined>;
         if (
           computedStyle &&
-          'clip-path' in computedStyle &&
+          "clip-path" in computedStyle &&
           !computedStyle.clipPath
         ) {
           const clipPathValue = (
             computedStyle as Record<string, string | undefined>
-          )['clip-path'];
+          )["clip-path"];
           if (clipPathValue) {
             computedStyle.clipPath = clipPathValue;
             delete (computedStyle as Record<string, string | undefined>)[
-              'clip-path'
+              "clip-path"
             ];
           }
         }
@@ -111,7 +111,7 @@ function PrivyProviderWrapper({
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ['style'],
+        attributeFilter: ["style"],
       });
     }
 
@@ -153,10 +153,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
             refetchOnWindowFocus: false,
           },
         },
-      })
+      }),
   );
 
-  const hasPrivyConfig = privyConfig.appId && privyConfig.appId !== '';
+  const hasPrivyConfig = privyConfig.appId && privyConfig.appId !== "";
 
   useEffect(() => {
     setMounted(true);
@@ -164,12 +164,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   // Render without Privy if not configured
   if (!hasPrivyConfig) {
-    if (mounted && typeof window !== 'undefined') {
+    if (mounted && typeof window !== "undefined") {
       logger.warn(
-        'Privy not configured: NEXT_PUBLIC_PRIVY_APP_ID was not set at build time. ' +
-          'Authentication features will be disabled.',
+        "Privy not configured: NEXT_PUBLIC_PRIVY_APP_ID was not set at build time. " +
+          "Authentication features will be disabled.",
         undefined,
-        'Providers'
+        "Providers",
       );
     }
 
@@ -227,7 +227,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
                       <PostHogIdentifier />
                       <WidgetRefreshProvider>
                         {mounted ? (
-                          <Fragment>{children}</Fragment>
+                          children
                         ) : (
                           <div className="min-h-screen bg-sidebar" />
                         )}

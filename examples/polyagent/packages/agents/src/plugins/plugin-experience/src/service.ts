@@ -6,8 +6,8 @@ import {
   Service,
   type ServiceTypeName,
   type UUID,
-} from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 import {
   type Experience,
   type ExperienceAnalysis,
@@ -15,15 +15,15 @@ import {
   ExperienceServiceType,
   ExperienceType,
   OutcomeType,
-} from './types';
-import { ConfidenceDecayManager } from './utils/confidenceDecay';
-import { ExperienceRelationshipManager } from './utils/experienceRelationships';
+} from "./types";
+import { ConfidenceDecayManager } from "./utils/confidenceDecay";
+import { ExperienceRelationshipManager } from "./utils/experienceRelationships";
 
 export class ExperienceService extends Service {
   static override serviceType: ServiceTypeName =
     ExperienceServiceType.EXPERIENCE;
   override capabilityDescription =
-    'Manages agent experiences, learning from successes and failures to improve future decisions';
+    "Manages agent experiences, learning from successes and failures to improve future decisions";
 
   private experiences: Map<UUID, Experience> = new Map();
   private experiencesByDomain: Map<string, Set<UUID>> = new Map();
@@ -51,26 +51,26 @@ export class ExperienceService extends Service {
     const allMemories = await this.runtime.getMemories({
       entityId: this.runtime.agentId,
       count: this.maxExperiences,
-      tableName: 'memories',
+      tableName: "memories",
     });
 
     // Filter for experience type memories
-    const memories = allMemories.filter((m) => m.content.type === 'experience');
+    const memories = allMemories.filter((m) => m.content.type === "experience");
 
     for (const memory of memories) {
       const experienceData = memory.content.data as Partial<Experience> | null;
-      if (experienceData && experienceData.id) {
+      if (experienceData?.id) {
         // Memory.createdAt is a number (timestamp) from @elizaos/core
         const memoryCreatedAt =
-          typeof memory.createdAt === 'number' ? memory.createdAt : Date.now();
+          typeof memory.createdAt === "number" ? memory.createdAt : Date.now();
 
         // Convert experienceData timestamps to numbers (they should already be numbers, but handle Date objects if present)
         const toTimestamp = (
           value: number | Date | undefined,
-          fallback: number
+          fallback: number,
         ): number => {
           if (value === undefined) return fallback;
-          if (typeof value === 'number') return value;
+          if (typeof value === "number") return value;
           if (value instanceof Date) return value.getTime();
           return fallback;
         };
@@ -80,26 +80,26 @@ export class ExperienceService extends Service {
           agentId: this.runtime.agentId,
           type: experienceData.type || ExperienceType.LEARNING,
           outcome: experienceData.outcome || OutcomeType.NEUTRAL,
-          context: experienceData.context || '',
-          action: experienceData.action || '',
-          result: experienceData.result || '',
-          learning: experienceData.learning || '',
-          domain: experienceData.domain || 'general',
+          context: experienceData.context || "",
+          action: experienceData.action || "",
+          result: experienceData.result || "",
+          learning: experienceData.learning || "",
+          domain: experienceData.domain || "general",
           tags: experienceData.tags || [],
           confidence: experienceData.confidence || 0.5,
           importance: experienceData.importance || 0.5,
           createdAt: toTimestamp(
             experienceData.createdAt as number | Date | undefined,
-            memoryCreatedAt
+            memoryCreatedAt,
           ),
           updatedAt: toTimestamp(
             experienceData.updatedAt as number | Date | undefined,
-            memoryCreatedAt
+            memoryCreatedAt,
           ),
           accessCount: experienceData.accessCount ?? 0,
           lastAccessedAt: toTimestamp(
             experienceData.lastAccessedAt as number | Date | undefined,
-            memoryCreatedAt
+            memoryCreatedAt,
           ),
           embedding: experienceData.embedding,
           relatedExperiences: experienceData.relatedExperiences,
@@ -114,28 +114,28 @@ export class ExperienceService extends Service {
         if (!this.experiencesByDomain.has(experience.domain)) {
           this.experiencesByDomain.set(experience.domain, new Set());
         }
-        this.experiencesByDomain.get(experience.domain)!.add(experience.id);
+        this.experiencesByDomain.get(experience.domain)?.add(experience.id);
 
         if (!this.experiencesByType.has(experience.type)) {
           this.experiencesByType.set(experience.type, new Set());
         }
-        this.experiencesByType.get(experience.type)!.add(experience.id);
+        this.experiencesByType.get(experience.type)?.add(experience.id);
       }
     }
 
     logger.info(
-      `[ExperienceService] Loaded ${this.experiences.size} experiences from memory`
+      `[ExperienceService] Loaded ${this.experiences.size} experiences from memory`,
     );
   }
 
   async recordExperience(
-    experienceData: Partial<Experience>
+    experienceData: Partial<Experience>,
   ): Promise<Experience> {
     // Generate embedding for the experience
     const embeddingText = `${experienceData.context} ${experienceData.action} ${experienceData.result} ${experienceData.learning}`;
     const embedding = await this.runtime.useModel(
       ModelType.TEXT_EMBEDDING,
-      embeddingText
+      embeddingText,
     );
 
     const experience: Experience = {
@@ -143,11 +143,11 @@ export class ExperienceService extends Service {
       agentId: this.runtime.agentId,
       type: experienceData.type || ExperienceType.LEARNING,
       outcome: experienceData.outcome || OutcomeType.NEUTRAL,
-      context: experienceData.context || '',
-      action: experienceData.action || '',
-      result: experienceData.result || '',
-      learning: experienceData.learning || '',
-      domain: experienceData.domain || 'general',
+      context: experienceData.context || "",
+      action: experienceData.action || "",
+      result: experienceData.result || "",
+      learning: experienceData.learning || "",
+      domain: experienceData.domain || "general",
       tags: experienceData.tags || [],
       confidence: experienceData.confidence || 0.5,
       importance: experienceData.importance || 0.5,
@@ -169,12 +169,12 @@ export class ExperienceService extends Service {
     if (!this.experiencesByDomain.has(experience.domain)) {
       this.experiencesByDomain.set(experience.domain, new Set());
     }
-    this.experiencesByDomain.get(experience.domain)!.add(experience.id);
+    this.experiencesByDomain.get(experience.domain)?.add(experience.id);
 
     if (!this.experiencesByType.has(experience.type)) {
       this.experiencesByType.set(experience.type, new Set());
     }
-    this.experiencesByType.get(experience.type)!.add(experience.id);
+    this.experiencesByType.get(experience.type)?.add(experience.id);
 
     // Save to memory/knowledge service
     await this.saveExperienceToMemory(experience);
@@ -183,14 +183,14 @@ export class ExperienceService extends Service {
     const allExperiences = Array.from(this.experiences.values());
     const contradictions = this.relationshipManager.findContradictions(
       experience,
-      allExperiences
+      allExperiences,
     );
 
     for (const contradiction of contradictions) {
       this.relationshipManager.addRelationship({
         fromId: experience.id,
         toId: contradiction.id,
-        type: 'contradicts',
+        type: "contradicts",
         strength: 0.8,
       });
     }
@@ -201,16 +201,16 @@ export class ExperienceService extends Service {
     }
 
     // Emit event
-    await this.runtime.emitEvent('EXPERIENCE_RECORDED', {
+    await this.runtime.emitEvent("EXPERIENCE_RECORDED", {
       runtime: this.runtime,
-      source: 'plugin-experience',
+      source: "plugin-experience",
       experienceId: experience.id,
-      eventType: 'created',
+      eventType: "created",
       timestamp: experience.createdAt,
     } as unknown as EventPayload);
 
     logger.info(
-      `[ExperienceService] Recorded experience: ${experience.id} (${experience.type})`
+      `[ExperienceService] Recorded experience: ${experience.id} (${experience.type})`,
     );
 
     return experience;
@@ -227,7 +227,7 @@ export class ExperienceService extends Service {
       roomId: this.runtime.agentId, // Use agentId as roomId for experiences
       content: {
         text: `Experience: ${experience.learning}`,
-        type: 'experience',
+        type: "experience",
         data: {
           id: experience.id,
           agentId: experience.agentId,
@@ -255,7 +255,7 @@ export class ExperienceService extends Service {
       createdAt: experience.createdAt,
     };
 
-    await this.runtime.createMemory(memory, 'experiences', true);
+    await this.runtime.createMemory(memory, "experiences", true);
   }
 
   async queryExperiences(query: ExperienceQuery): Promise<Experience[]> {
@@ -265,7 +265,7 @@ export class ExperienceService extends Service {
     if (query.query) {
       const similarExperiences = await this.findSimilarExperiences(
         query.query,
-        query.limit || 10
+        query.limit || 10,
       );
       let candidates = similarExperiences;
 
@@ -289,7 +289,7 @@ export class ExperienceService extends Service {
 
       if (query.tags && query.tags.length > 0) {
         candidates = candidates.filter((exp) =>
-          query.tags!.some((tag) => exp.tags.includes(tag))
+          query.tags?.some((tag) => exp.tags.includes(tag)),
         );
       }
 
@@ -302,15 +302,15 @@ export class ExperienceService extends Service {
 
       if (query.minImportance !== undefined) {
         candidates = candidates.filter(
-          (exp) => exp.importance >= query.minImportance!
+          (exp) => exp.importance >= query.minImportance!,
         );
       }
 
       if (query.timeRange) {
         candidates = candidates.filter((exp) => {
-          if (query.timeRange!.start && exp.createdAt < query.timeRange!.start)
+          if (query.timeRange?.start && exp.createdAt < query.timeRange?.start)
             return false;
-          if (query.timeRange!.end && exp.createdAt > query.timeRange!.end)
+          if (query.timeRange?.end && exp.createdAt > query.timeRange?.end)
             return false;
           return true;
         });
@@ -351,7 +351,7 @@ export class ExperienceService extends Service {
 
       if (query.tags && query.tags.length > 0) {
         candidates = candidates.filter((exp) =>
-          query.tags!.some((tag) => exp.tags.includes(tag))
+          query.tags?.some((tag) => exp.tags.includes(tag)),
         );
       }
 
@@ -364,15 +364,15 @@ export class ExperienceService extends Service {
 
       if (query.minImportance !== undefined) {
         candidates = candidates.filter(
-          (exp) => exp.importance >= query.minImportance!
+          (exp) => exp.importance >= query.minImportance!,
         );
       }
 
       if (query.timeRange) {
         candidates = candidates.filter((exp) => {
-          if (query.timeRange!.start && exp.createdAt < query.timeRange!.start)
+          if (query.timeRange?.start && exp.createdAt < query.timeRange?.start)
             return false;
-          if (query.timeRange!.end && exp.createdAt > query.timeRange!.end)
+          if (query.timeRange?.end && exp.createdAt > query.timeRange?.end)
             return false;
           return true;
         });
@@ -417,7 +417,7 @@ export class ExperienceService extends Service {
 
   async findSimilarExperiences(
     text: string,
-    limit: number = 5
+    limit: number = 5,
   ): Promise<Experience[]> {
     if (!text || this.experiences.size === 0) {
       return [];
@@ -426,7 +426,7 @@ export class ExperienceService extends Service {
     // Generate embedding for the query text
     const queryEmbedding = await this.runtime.useModel(
       ModelType.TEXT_EMBEDDING,
-      text
+      text,
     );
 
     // Calculate similarities
@@ -439,7 +439,7 @@ export class ExperienceService extends Service {
       if (experience.embedding) {
         const similarity = this.cosineSimilarity(
           queryEmbedding,
-          experience.embedding
+          experience.embedding,
         );
         similarities.push({ experience, similarity });
       }
@@ -460,7 +460,7 @@ export class ExperienceService extends Service {
 
   async analyzeExperiences(
     domain?: string,
-    type?: ExperienceType
+    type?: ExperienceType,
   ): Promise<ExperienceAnalysis> {
     const experiences = await this.queryExperiences({
       domain: domain ? [domain] : undefined,
@@ -470,7 +470,7 @@ export class ExperienceService extends Service {
 
     if (experiences.length === 0) {
       return {
-        pattern: 'No experiences found for analysis',
+        pattern: "No experiences found for analysis",
         frequency: 0,
         reliability: 0,
         alternatives: [],
@@ -495,14 +495,14 @@ export class ExperienceService extends Service {
     // Generate recommendations
     const recommendations = this.generateRecommendations(
       experiences,
-      reliability
+      reliability,
     );
 
     return {
       pattern:
         commonWords.length > 0
-          ? `Common patterns: ${commonWords.join(', ')}`
-          : 'No clear patterns detected',
+          ? `Common patterns: ${commonWords.join(", ")}`
+          : "No clear patterns detected",
       frequency: experiences.length,
       reliability,
       alternatives,
@@ -572,7 +572,7 @@ export class ExperienceService extends Service {
       }
       if (
         exp.outcome === OutcomeType.NEGATIVE &&
-        exp.learning.includes('instead')
+        exp.learning.includes("instead")
       ) {
         // Extract alternative from learning
         const match = exp.learning.match(/instead\s+(.+?)(?:\.|$)/i);
@@ -588,25 +588,25 @@ export class ExperienceService extends Service {
 
   private generateRecommendations(
     experiences: Experience[],
-    reliability: number
+    reliability: number,
   ): string[] {
     const recommendations: string[] = [];
 
     if (reliability > 0.8) {
-      recommendations.push('Continue using successful approaches');
-      recommendations.push('Document and share these reliable methods');
+      recommendations.push("Continue using successful approaches");
+      recommendations.push("Document and share these reliable methods");
     } else if (reliability > 0.6) {
-      recommendations.push('Continue using successful approaches with caution');
-      recommendations.push('Monitor for potential issues');
-      recommendations.push('Consider backup strategies');
+      recommendations.push("Continue using successful approaches with caution");
+      recommendations.push("Monitor for potential issues");
+      recommendations.push("Consider backup strategies");
     } else if (reliability > 0.4) {
-      recommendations.push('Review and improve current approaches');
-      recommendations.push('Investigate failure patterns');
-      recommendations.push('Consider alternative methods');
+      recommendations.push("Review and improve current approaches");
+      recommendations.push("Investigate failure patterns");
+      recommendations.push("Consider alternative methods");
     } else {
-      recommendations.push('Significant changes needed to current approach');
-      recommendations.push('Analyze failure causes thoroughly');
-      recommendations.push('Seek alternative solutions');
+      recommendations.push("Significant changes needed to current approach");
+      recommendations.push("Analyze failure causes thoroughly");
+      recommendations.push("Seek alternative solutions");
     }
 
     // Add specific recommendations based on patterns
@@ -620,26 +620,26 @@ export class ExperienceService extends Service {
 
     if (failureTypes.size > 0) {
       const mostCommonFailure = Array.from(failureTypes.entries()).sort(
-        (a, b) => b[1] - a[1]
+        (a, b) => b[1] - a[1],
       )[0];
 
       if (mostCommonFailure && mostCommonFailure[1] > 1) {
         recommendations.push(
-          `Address recurring issue: ${mostCommonFailure[0]}`
+          `Address recurring issue: ${mostCommonFailure[0]}`,
         );
       }
     }
 
     // Add domain-specific recommendations
     const domains = new Set(experiences.map((e) => e.domain));
-    if (domains.has('shell')) {
-      recommendations.push('Verify command syntax and permissions');
+    if (domains.has("shell")) {
+      recommendations.push("Verify command syntax and permissions");
     }
-    if (domains.has('coding')) {
-      recommendations.push('Test thoroughly before deployment');
+    if (domains.has("coding")) {
+      recommendations.push("Test thoroughly before deployment");
     }
-    if (domains.has('network')) {
-      recommendations.push('Implement retry logic and error handling');
+    if (domains.has("network")) {
+      recommendations.push("Implement retry logic and error handling");
     }
 
     return recommendations.slice(0, 5); // Limit to 5 recommendations
@@ -668,7 +668,7 @@ export class ExperienceService extends Service {
     // Remove the least important experiences
     const toRemove = experienceArray.slice(
       0,
-      experienceArray.length - this.maxExperiences
+      experienceArray.length - this.maxExperiences,
     );
     let removedCount = 0;
 
@@ -700,7 +700,7 @@ export class ExperienceService extends Service {
   }
 
   async stop(): Promise<void> {
-    logger.info('[ExperienceService] Stopping...');
+    logger.info("[ExperienceService] Stopping...");
 
     // Save all experiences to memory
     const experiencesToSave = Array.from(this.experiences.values());

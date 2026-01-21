@@ -5,7 +5,7 @@
  * from the Polymarket CLOB API.
  */
 
-import { type IAgentRuntime, type State } from "@elizaos/core";
+import type { IAgentRuntime, State } from "@elizaos/core";
 import type { OrderBookSummary } from "@polymarket/clob-client";
 import { initializeClobClient } from "./clobClient";
 import { callLLMWithTimeout, isLLMError } from "./llmHelpers";

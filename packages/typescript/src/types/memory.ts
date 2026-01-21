@@ -1,3 +1,4 @@
+import type { Content, MetadataValue, UUID } from "./primitives";
 import type {
   BaseMetadata as ProtoBaseMetadata,
   CustomMetadata as ProtoCustomMetadata,
@@ -6,10 +7,8 @@ import type {
   FragmentMetadata as ProtoFragmentMetadata,
   Memory as ProtoMemory,
   MemoryMetadata as ProtoMemoryMetadataType,
-  MessageMemory as ProtoMessageMemory,
   MessageMetadata as ProtoMessageMetadata,
 } from "./proto.js";
-import type { Content, MetadataValue, UUID } from "./primitives";
 
 /**
  * Memory type enumeration for built-in memory types
@@ -118,7 +117,8 @@ export type MemoryMetadata = (
   | MessageMetadata
   | DescriptionMetadata
   | CustomMetadata
-) & MemoryMetadataBase;
+) &
+  MemoryMetadataBase;
 
 export type ProtoMemoryMetadata = ProtoMemoryMetadataType;
 

@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { cn } from '@polyagent/shared';
-import type { LucideIcon } from 'lucide-react';
+import { cn } from "@polyagent/shared";
+import type { LucideIcon } from "lucide-react";
 
 /**
  * Props for the EmptyState component.
@@ -53,8 +53,8 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center px-4 py-12 text-center',
-        className
+        "flex flex-col items-center justify-center px-4 py-12 text-center",
+        className,
       )}
     >
       {Icon && (

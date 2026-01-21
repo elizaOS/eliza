@@ -7,8 +7,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import type { CoderService } from "../services/coderService";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
+import type { CoderService } from "../services/coderService";
 
 function getTarget(options: HandlerOptions | undefined): string {
   const opt = options as { path?: string } | undefined;

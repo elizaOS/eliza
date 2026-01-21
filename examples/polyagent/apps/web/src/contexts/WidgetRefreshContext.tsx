@@ -6,10 +6,10 @@
  * triggered globally (e.g., pull-to-refresh gesture).
  */
 
-'use client';
+"use client";
 
-import type { ReactNode } from 'react';
-import { createContext, useContext, useRef } from 'react';
+import type { ReactNode } from "react";
+import { createContext, useContext, useRef } from "react";
 
 /**
  * Widget refresh context interface.
@@ -25,7 +25,7 @@ interface WidgetRefreshContextType {
 }
 
 const WidgetRefreshContext = createContext<WidgetRefreshContextType | null>(
-  null
+  null,
 );
 
 /**
@@ -78,7 +78,7 @@ export function useWidgetRefresh() {
   const context = useContext(WidgetRefreshContext);
   if (!context) {
     throw new Error(
-      'useWidgetRefresh must be used within WidgetRefreshProvider'
+      "useWidgetRefresh must be used within WidgetRefreshProvider",
     );
   }
   return context;

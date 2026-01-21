@@ -9,12 +9,12 @@
  * configuration validation, and deployment information retrieval.
  */
 
-import { logger } from './logger';
+import { logger } from "./logger";
 
 /**
  * Supported deployment environments.
  */
-export type DeploymentEnv = 'localnet' | 'testnet' | 'mainnet';
+export type DeploymentEnv = "localnet" | "testnet" | "mainnet";
 
 /**
  * Chain configuration for a deployment environment.
@@ -45,34 +45,34 @@ export interface ChainConfig {
 export const CHAIN_CONFIGS: Record<DeploymentEnv, ChainConfig> = {
   localnet: {
     chainId: 31337,
-    name: 'Hardhat (Local)',
-    rpcUrl: 'http://localhost:8545',
-    explorerUrl: '',
+    name: "Hardhat (Local)",
+    rpcUrl: "http://localhost:8545",
+    explorerUrl: "",
     nativeCurrency: {
-      name: 'Ethereum',
-      symbol: 'ETH',
+      name: "Ethereum",
+      symbol: "ETH",
       decimals: 18,
     },
   },
   testnet: {
     chainId: 84532,
-    name: 'Base Sepolia',
-    rpcUrl: 'https://sepolia.base.org',
-    explorerUrl: 'https://sepolia.basescan.org',
+    name: "Base Sepolia",
+    rpcUrl: "https://sepolia.base.org",
+    explorerUrl: "https://sepolia.basescan.org",
     nativeCurrency: {
-      name: 'Ethereum',
-      symbol: 'ETH',
+      name: "Ethereum",
+      symbol: "ETH",
       decimals: 18,
     },
   },
   mainnet: {
     chainId: 8453,
-    name: 'Base',
-    rpcUrl: 'https://mainnet.base.org',
-    explorerUrl: 'https://basescan.org',
+    name: "Base",
+    rpcUrl: "https://mainnet.base.org",
+    explorerUrl: "https://basescan.org",
     nativeCurrency: {
-      name: 'Ethereum',
-      symbol: 'ETH',
+      name: "Ethereum",
+      symbol: "ETH",
       decimals: 18,
     },
   },
@@ -109,30 +109,30 @@ export interface EnvValidationResult {
 export function detectEnvironment(): DeploymentEnv {
   const explicitEnv = process.env.DEPLOYMENT_ENV;
   if (
-    explicitEnv === 'localnet' ||
-    explicitEnv === 'testnet' ||
-    explicitEnv === 'mainnet'
+    explicitEnv === "localnet" ||
+    explicitEnv === "testnet" ||
+    explicitEnv === "mainnet"
   ) {
     return explicitEnv;
   }
 
-  if (process.env.USE_MAINNET === 'true') {
-    return 'mainnet';
+  if (process.env.USE_MAINNET === "true") {
+    return "mainnet";
   }
 
-  if (process.env.NODE_ENV === 'production') {
-    return 'testnet';
+  if (process.env.NODE_ENV === "production") {
+    return "testnet";
   }
 
   const chainId = process.env.NEXT_PUBLIC_CHAIN_ID;
   if (chainId) {
-    switch (Number.parseInt(chainId)) {
+    switch (Number.parseInt(chainId, 10)) {
       case 31337:
-        return 'localnet';
+        return "localnet";
       case 84532:
-        return 'testnet';
+        return "testnet";
       case 8453:
-        return 'mainnet';
+        return "mainnet";
     }
   }
 
@@ -141,18 +141,18 @@ export function detectEnvironment(): DeploymentEnv {
     process.env.BASE_SEPOLIA_RPC_URL ||
     process.env.BASE_RPC_URL;
   if (rpcUrl) {
-    if (rpcUrl.includes('localhost') || rpcUrl.includes('127.0.0.1')) {
-      return 'localnet';
+    if (rpcUrl.includes("localhost") || rpcUrl.includes("127.0.0.1")) {
+      return "localnet";
     }
-    if (rpcUrl.includes('sepolia')) {
-      return 'testnet';
+    if (rpcUrl.includes("sepolia")) {
+      return "testnet";
     }
-    if (rpcUrl.includes('mainnet.base.org')) {
-      return 'mainnet';
+    if (rpcUrl.includes("mainnet.base.org")) {
+      return "mainnet";
     }
   }
 
-  return 'localnet';
+  return "localnet";
 }
 
 /**
@@ -171,23 +171,23 @@ export function validateEnvironment(env?: DeploymentEnv): EnvValidationResult {
   const warnings: string[] = [];
 
   if (!process.env.DATABASE_URL) {
-    errors.push('DATABASE_URL is required');
+    errors.push("DATABASE_URL is required");
   }
 
   const privyAppId =
     process.env.NEXT_PUBLIC_PRIVY_APP_ID || process.env.PRIVY_APP_ID;
   if (!privyAppId) {
-    errors.push('NEXT_PUBLIC_PRIVY_APP_ID (or PRIVY_APP_ID) is required');
+    errors.push("NEXT_PUBLIC_PRIVY_APP_ID (or PRIVY_APP_ID) is required");
   }
 
   switch (environment) {
-    case 'localnet':
+    case "localnet":
       validateLocalnet(errors, warnings);
       break;
-    case 'testnet':
+    case "testnet":
       validateTestnet(errors, warnings);
       break;
-    case 'mainnet':
+    case "mainnet":
       validateMainnet(errors, warnings);
       break;
   }
@@ -204,15 +204,15 @@ export function validateEnvironment(env?: DeploymentEnv): EnvValidationResult {
 function validateLocalnet(_errors: string[], warnings: string[]): void {
   if (
     process.env.DEPLOYER_PRIVATE_KEY &&
-    !process.env.DEPLOYER_PRIVATE_KEY.startsWith('0xac0974')
+    !process.env.DEPLOYER_PRIVATE_KEY.startsWith("0xac0974")
   ) {
     warnings.push(
-      'Using non-default private key for localnet (this is OK if intentional)'
+      "Using non-default private key for localnet (this is OK if intentional)",
     );
   }
 
   if (!process.env.REDIS_URL) {
-    warnings.push('REDIS_URL not set (SSE will use polling fallback)');
+    warnings.push("REDIS_URL not set (SSE will use polling fallback)");
   }
 }
 
@@ -220,85 +220,85 @@ function validateTestnet(errors: string[], warnings: string[]): void {
   // Contract addresses are now in canonical config (packages/shared/src/config/default-config.ts)
   // Only warn if config has zero addresses (not deployed yet)
   warnings.push(
-    'Ensure Base Sepolia contracts are deployed. Check packages/shared/src/config/default-config.ts'
+    "Ensure Base Sepolia contracts are deployed. Check packages/shared/src/config/default-config.ts",
   );
 
   if (!process.env.DEPLOYER_PRIVATE_KEY) {
     warnings.push(
-      'DEPLOYER_PRIVATE_KEY not set (required for contract deployment)'
+      "DEPLOYER_PRIVATE_KEY not set (required for contract deployment)",
     );
   }
 
-  if (process.env.AGENT0_ENABLED === 'true') {
+  if (process.env.AGENT0_ENABLED === "true") {
     if (!process.env.BASE_SEPOLIA_RPC_URL) {
-      errors.push('BASE_SEPOLIA_RPC_URL is required when AGENT0_ENABLED=true');
+      errors.push("BASE_SEPOLIA_RPC_URL is required when AGENT0_ENABLED=true");
     }
     if (!process.env.POLYAGENT_GAME_PRIVATE_KEY) {
       errors.push(
-        'POLYAGENT_GAME_PRIVATE_KEY is required when AGENT0_ENABLED=true'
+        "POLYAGENT_GAME_PRIVATE_KEY is required when AGENT0_ENABLED=true",
       );
     }
     if (!process.env.AGENT0_SUBGRAPH_URL) {
       warnings.push(
-        'AGENT0_SUBGRAPH_URL not set (Agent0 discovery may not work)'
+        "AGENT0_SUBGRAPH_URL not set (Agent0 discovery may not work)",
       );
     }
   }
 
   if (!process.env.ETHERSCAN_API_KEY) {
     warnings.push(
-      'ETHERSCAN_API_KEY not set (contract verification will fail)'
+      "ETHERSCAN_API_KEY not set (contract verification will fail)",
     );
   }
 }
 
 function validateMainnet(errors: string[], warnings: string[]): void {
-  if (process.env.USE_MAINNET !== 'true') {
+  if (process.env.USE_MAINNET !== "true") {
     errors.push('USE_MAINNET must be set to "true" to deploy to mainnet');
     errors.push(
-      'This is a safety check to prevent accidental mainnet deployments'
+      "This is a safety check to prevent accidental mainnet deployments",
     );
   }
 
   // Contract addresses are now in canonical config (packages/shared/src/config/default-config.ts)
   // Only secrets should be validated from env vars
   if (!process.env.DEPLOYER_PRIVATE_KEY) {
-    errors.push('DEPLOYER_PRIVATE_KEY is required for mainnet deployment');
+    errors.push("DEPLOYER_PRIVATE_KEY is required for mainnet deployment");
   }
 
   if (!process.env.ETHERSCAN_API_KEY) {
     errors.push(
-      'ETHERSCAN_API_KEY is required for mainnet (contract verification)'
+      "ETHERSCAN_API_KEY is required for mainnet (contract verification)",
     );
   }
 
-  if (process.env.AGENT0_ENABLED === 'true') {
+  if (process.env.AGENT0_ENABLED === "true") {
     if (!process.env.BASE_RPC_URL) {
       errors.push(
-        'BASE_RPC_URL is required when AGENT0_ENABLED=true on mainnet'
+        "BASE_RPC_URL is required when AGENT0_ENABLED=true on mainnet",
       );
     }
     if (!process.env.POLYAGENT_GAME_PRIVATE_KEY) {
       errors.push(
-        'POLYAGENT_GAME_PRIVATE_KEY is required when AGENT0_ENABLED=true'
+        "POLYAGENT_GAME_PRIVATE_KEY is required when AGENT0_ENABLED=true",
       );
     }
     if (!process.env.AGENT0_SUBGRAPH_URL) {
       errors.push(
-        'AGENT0_SUBGRAPH_URL is required for mainnet Agent0 integration'
+        "AGENT0_SUBGRAPH_URL is required for mainnet Agent0 integration",
       );
     }
   }
 
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === "production") {
     const privyAppId =
       process.env.PRIVY_APP_ID || process.env.NEXT_PUBLIC_PRIVY_APP_ID;
     if (!privyAppId || !process.env.PRIVY_APP_SECRET) {
-      errors.push('Privy credentials required for production');
+      errors.push("Privy credentials required for production");
     }
 
     if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) {
-      warnings.push('PostHog analytics not configured');
+      warnings.push("PostHog analytics not configured");
     }
   }
 }
@@ -310,25 +310,25 @@ function validateMainnet(errors: string[], warnings: string[]): void {
  * Only secrets and runtime configuration should be in env vars.
  */
 export function getRequiredEnvVars(env: DeploymentEnv): string[] {
-  const common = ['DATABASE_URL'];
+  const common = ["DATABASE_URL"];
 
   switch (env) {
-    case 'localnet':
+    case "localnet":
       return [...common];
 
-    case 'testnet':
+    case "testnet":
       return [
         ...common,
         // NEXT_PUBLIC_CHAIN_ID is optional - defaults to local if not set
         // Contract addresses are in canonical config
       ];
 
-    case 'mainnet':
+    case "mainnet":
       return [
         ...common,
-        'USE_MAINNET', // Safety flag for mainnet
-        'DEPLOYER_PRIVATE_KEY',
-        'ETHERSCAN_API_KEY',
+        "USE_MAINNET", // Safety flag for mainnet
+        "DEPLOYER_PRIVATE_KEY",
+        "ETHERSCAN_API_KEY",
       ];
   }
 }
@@ -340,28 +340,28 @@ export function printValidationResult(result: EnvValidationResult): void {
   logger.info(
     `Environment: ${result.environment} (${result.config.name})`,
     undefined,
-    'EnvDetection'
+    "EnvDetection",
   );
-  logger.info(`Chain ID: ${result.config.chainId}`, undefined, 'EnvDetection');
-  logger.info(`RPC URL: ${result.config.rpcUrl}`, undefined, 'EnvDetection');
+  logger.info(`Chain ID: ${result.config.chainId}`, undefined, "EnvDetection");
+  logger.info(`RPC URL: ${result.config.rpcUrl}`, undefined, "EnvDetection");
 
   if (result.warnings.length > 0) {
-    logger.warn('Warnings:', undefined, 'EnvDetection');
+    logger.warn("Warnings:", undefined, "EnvDetection");
     for (const warning of result.warnings) {
-      logger.warn(`  ⚠️  ${warning}`, undefined, 'EnvDetection');
+      logger.warn(`  ⚠️  ${warning}`, undefined, "EnvDetection");
     }
   }
 
   if (result.errors.length > 0) {
-    logger.error('Validation failed:', undefined, 'EnvDetection');
+    logger.error("Validation failed:", undefined, "EnvDetection");
     for (const error of result.errors) {
-      logger.error(`  ❌ ${error}`, undefined, 'EnvDetection');
+      logger.error(`  ❌ ${error}`, undefined, "EnvDetection");
     }
-    throw new Error('Environment validation failed');
+    throw new Error("Environment validation failed");
   }
 
   if (result.warnings.length === 0 && result.errors.length === 0) {
-    logger.info('✅ Environment validation passed', undefined, 'EnvDetection');
+    logger.info("✅ Environment validation passed", undefined, "EnvDetection");
   }
 }
 
@@ -370,13 +370,13 @@ export function printValidationResult(result: EnvValidationResult): void {
  */
 export function loadEnvFile(env: DeploymentEnv): void {
   const envFiles = {
-    localnet: '.env.local',
-    testnet: '.env.testnet',
-    mainnet: '.env.production',
+    localnet: ".env.local",
+    testnet: ".env.testnet",
+    mainnet: ".env.production",
   };
 
   const envFile = envFiles[env];
-  logger.info(`Loading environment from ${envFile}`, undefined, 'EnvDetection');
+  logger.info(`Loading environment from ${envFile}`, undefined, "EnvDetection");
 }
 
 /**
@@ -398,7 +398,7 @@ export function getDeploymentInfo(): {
 
   // For localnet, contracts are always considered deployed (canonical config has addresses)
   // For testnet/mainnet, check if contracts are in canonical config
-  const contractsDeployed = environment === 'localnet';
+  const contractsDeployed = environment === "localnet";
 
   return {
     environment,
@@ -407,6 +407,6 @@ export function getDeploymentInfo(): {
     rpcUrl: config.rpcUrl,
     explorerUrl: config.explorerUrl,
     contractsDeployed,
-    agent0Enabled: process.env.AGENT0_ENABLED === 'true',
+    agent0Enabled: process.env.AGENT0_ENABLED === "true",
   };
 }

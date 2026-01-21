@@ -27,40 +27,40 @@ export type EvaluatorDoc = {
 };
 
 export const coreActionsSpec = {
-  "version": "1.0.0",
-  "actions": []
+  version: "1.0.0",
+  actions: [],
 } as const;
 export const allActionsSpec = {
-  "version": "1.0.0",
-  "actions": []
+  version: "1.0.0",
+  actions: [],
 } as const;
 export const coreProvidersSpec = {
-  "version": "1.0.0",
-  "providers": [
+  version: "1.0.0",
+  providers: [
     {
-      "name": "roblox-game-state",
-      "description": "Provides information about the connected Roblox game/experience",
-      "dynamic": true
-    }
-  ]
+      name: "roblox-game-state",
+      description: "Provides information about the connected Roblox game/experience",
+      dynamic: true,
+    },
+  ],
 } as const;
 export const allProvidersSpec = {
-  "version": "1.0.0",
-  "providers": [
+  version: "1.0.0",
+  providers: [
     {
-      "name": "roblox-game-state",
-      "description": "Provides information about the connected Roblox game/experience",
-      "dynamic": true
-    }
-  ]
+      name: "roblox-game-state",
+      description: "Provides information about the connected Roblox game/experience",
+      dynamic: true,
+    },
+  ],
 } as const;
 export const coreEvaluatorsSpec = {
-  "version": "1.0.0",
-  "evaluators": []
+  version: "1.0.0",
+  evaluators: [],
 } as const;
 export const allEvaluatorsSpec = {
-  "version": "1.0.0",
-  "evaluators": []
+  version: "1.0.0",
+  evaluators: [],
 } as const;
 
 export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;

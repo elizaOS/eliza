@@ -6,7 +6,7 @@
  *
  * @returns {JSX.Element} Agents loading skeleton
  */
-import { Card } from '@/components/ui/card';
+import { Card } from "@/components/ui/card";
 
 export default function AgentsLoading() {
   return (

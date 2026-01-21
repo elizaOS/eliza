@@ -1,6 +1,5 @@
 # Import generated module first to set up sys.path for protobuf imports
 import elizaos.types.generated  # noqa: F401
-
 from elizaos.types.agent import (
     Agent,
     AgentStatus,
@@ -99,14 +98,9 @@ from elizaos.types.model import (
     ImageGenerationParams,
     LLMMode,
     ModelHandler,
-    ModelSettings,
     ModelType,
     ModelTypeName,
     ObjectGenerationParams,
-    ResearchAnnotation,
-    ResearchParams,
-    ResearchResult,
-    ResearchTool,
     TextEmbeddingParams,
     TextGenerationModelType,
     TextStreamChunk,
@@ -393,7 +387,6 @@ __all__ = [
     "LLMMode",
     "ModelType",
     "ModelTypeName",
-    "ModelSettings",
     "TextGenerationModelType",
     "GenerateTextParams",
     "GenerateTextOptions",
@@ -410,10 +403,6 @@ __all__ = [
     "TranscriptionParams",
     "TextToSpeechParams",
     "ObjectGenerationParams",
-    "ResearchParams",
-    "ResearchResult",
-    "ResearchAnnotation",
-    "ResearchTool",
     "ModelHandler",
     # Runtime
     "IAgentRuntime",

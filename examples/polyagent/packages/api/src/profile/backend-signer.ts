@@ -13,18 +13,18 @@ import {
   getIdentityRegistryAddress,
   identityRegistryAbi,
   logger,
-} from '@polyagent/shared';
+} from "@polyagent/shared";
 import {
   type Address,
   createPublicClient,
   createWalletClient,
   http,
-} from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
-import { baseSepolia } from 'viem/chains';
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { baseSepolia } from "viem/chains";
 
 const PROFILE_MANAGER_PRIVATE_KEY = process.env.PROFILE_MANAGER_PRIVATE_KEY;
-const RPC_URL = process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org';
+const RPC_URL = process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org";
 
 export interface ProfileMetadata {
   name: string;
@@ -70,19 +70,19 @@ export async function updateProfileBackendSigned({
 }: BackendSignedUpdateParams): Promise<BackendSignedUpdateResult> {
   if (!PROFILE_MANAGER_PRIVATE_KEY) {
     throw new Error(
-      'Backend signing not configured. Set PROFILE_MANAGER_PRIVATE_KEY environment variable.'
+      "Backend signing not configured. Set PROFILE_MANAGER_PRIVATE_KEY environment variable.",
     );
   }
 
   logger.info(
-    'Backend signing profile update',
+    "Backend signing profile update",
     { userAddress, username: metadata.username },
-    'BackendSigner'
+    "BackendSigner",
   );
 
   // Create wallet client with server's private key
   const account = privateKeyToAccount(
-    PROFILE_MANAGER_PRIVATE_KEY as `0x${string}`
+    PROFILE_MANAGER_PRIVATE_KEY as `0x${string}`,
   );
   const walletClient = createWalletClient({
     account,
@@ -97,38 +97,38 @@ export async function updateProfileBackendSigned({
 
   const registryAddress = getIdentityRegistryAddress();
   if (!registryAddress) {
-    throw new Error('Identity registry not configured for this chain');
+    throw new Error("Identity registry not configured for this chain");
   }
 
   // Prepare metadata JSON
   const metadataJson = JSON.stringify({
     ...metadata,
-    type: metadata.type || 'user',
+    type: metadata.type || "user",
     updated: metadata.updated || new Date().toISOString(),
   });
 
   logger.debug(
-    'Submitting on-chain update',
+    "Submitting on-chain update",
     {
       registry: registryAddress,
       endpoint,
       signer: account.address,
     },
-    'BackendSigner'
+    "BackendSigner",
   );
 
   // Sign and submit transaction
   const txHash = await walletClient.writeContract({
     address: registryAddress,
     abi: identityRegistryAbi,
-    functionName: 'updateAgent',
+    functionName: "updateAgent",
     args: [endpoint, CAPABILITIES_HASH, metadataJson],
   });
 
   logger.info(
-    'Profile update transaction submitted',
+    "Profile update transaction submitted",
     { txHash, userAddress },
-    'BackendSigner'
+    "BackendSigner",
   );
 
   // Wait for transaction confirmation
@@ -137,14 +137,14 @@ export async function updateProfileBackendSigned({
     confirmations: 1,
   });
 
-  if (receipt.status !== 'success') {
-    throw new Error('Transaction failed on-chain');
+  if (receipt.status !== "success") {
+    throw new Error("Transaction failed on-chain");
   }
 
   logger.info(
-    'Profile update confirmed on-chain',
+    "Profile update confirmed on-chain",
     { txHash, blockNumber: receipt.blockNumber.toString() },
-    'BackendSigner'
+    "BackendSigner",
   );
 
   return {
@@ -160,7 +160,7 @@ export async function updateProfileBackendSigned({
  * @returns Whether the transaction succeeded
  */
 export async function verifyBackendSignedUpdate(
-  txHash: `0x${string}`
+  txHash: `0x${string}`,
 ): Promise<boolean> {
   const publicClient = createPublicClient({
     chain: baseSepolia,
@@ -168,5 +168,5 @@ export async function verifyBackendSignedUpdate(
   });
 
   const receipt = await publicClient.getTransactionReceipt({ hash: txHash });
-  return receipt.status === 'success';
+  return receipt.status === "success";
 }

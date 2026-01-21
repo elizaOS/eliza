@@ -10,9 +10,9 @@ use crate::types::{ActionResult, Memory, ModelType, State};
 use crate::xml::parse_key_value_xml;
 
 use super::Action;
-use once_cell::sync::Lazy;
 use crate::generated::spec_helpers::require_action_spec;
 use crate::prompts::UPDATE_ROLE_TEMPLATE;
+use once_cell::sync::Lazy;
 
 /// Action for updating entity roles.
 pub struct UpdateRoleAction;
@@ -28,7 +28,11 @@ impl Action for UpdateRoleAction {
 
     fn similes(&self) -> &[&'static str] {
         static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
-            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+            SPEC.similes
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
         });
         &SIMILES
     }
@@ -86,9 +90,9 @@ impl Action for UpdateRoleAction {
             .await?
             .ok_or_else(|| PluginError::NotFound("Room not found".to_string()))?;
 
-        let world_id = room.world_id.ok_or_else(|| {
-            PluginError::InvalidInput("Room has no world".to_string())
-        })?;
+        let world_id = room
+            .world_id
+            .ok_or_else(|| PluginError::InvalidInput("Room has no world".to_string()))?;
 
         let world = runtime
             .get_world(world_id)
@@ -143,7 +147,12 @@ impl Action for UpdateRoleAction {
         // Validate role
         match new_role_str.as_str() {
             "OWNER" | "ADMIN" | "MEMBER" | "GUEST" | "NONE" => {}
-            _ => return Err(PluginError::InvalidInput(format!("Invalid role: {}", new_role_str))),
+            _ => {
+                return Err(PluginError::InvalidInput(format!(
+                    "Invalid role: {}",
+                    new_role_str
+                )))
+            }
         }
 
         // Get old role
@@ -155,10 +164,10 @@ impl Action for UpdateRoleAction {
 
         // Update role in world
         let mut updated_world = world.clone();
-        let metadata = updated_world
-            .metadata
-            .get_or_insert_with(Default::default);
-        metadata.roles.insert(entity_id_str.clone(), new_role_str.clone());
+        let metadata = updated_world.metadata.get_or_insert_with(Default::default);
+        metadata
+            .roles
+            .insert(entity_id_str.clone(), new_role_str.clone());
         runtime.update_world(&updated_world).await?;
 
         Ok(ActionResult::success(format!(
@@ -177,4 +186,3 @@ impl Action for UpdateRoleAction {
         .with_data("thought", thought))
     }
 }
-

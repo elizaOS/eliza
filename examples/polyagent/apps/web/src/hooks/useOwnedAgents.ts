@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useAuth } from './useAuth';
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "./useAuth";
 
 /**
  * Agent data structure for owned agents.
@@ -12,7 +12,7 @@ export interface OwnedAgentData {
   name: string;
   profileImageUrl?: string;
   virtualBalance: number;
-  modelTier: 'free' | 'pro';
+  modelTier: "free" | "pro";
   status: string;
   autonomousEnabled: boolean;
 }
@@ -72,19 +72,19 @@ export function useOwnedAgents(): UseOwnedAgentsReturn {
     try {
       const token = await getAccessToken();
       if (!token) {
-        setError('Authentication required');
+        setError("Authentication required");
         setLoading(false);
         return;
       }
 
-      const response = await fetch('/api/agents', {
+      const response = await fetch("/api/agents", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch agents');
+        throw new Error("Failed to fetch agents");
       }
 
       const data = await response.json();
@@ -95,18 +95,18 @@ export function useOwnedAgents(): UseOwnedAgentsReturn {
       for (const agent of agentsList) {
         agentsMap.set(agent.id, {
           id: agent.id,
-          name: agent.name || agent.username || 'Agent',
+          name: agent.name || agent.username || "Agent",
           profileImageUrl: agent.profileImageUrl,
           virtualBalance: Number(agent.virtualBalance ?? 0),
-          modelTier: agent.modelTier === 'pro' ? 'pro' : 'free',
-          status: agent.status || 'idle',
+          modelTier: agent.modelTier === "pro" ? "pro" : "free",
+          status: agent.status || "idle",
           autonomousEnabled: Boolean(agent.autonomousEnabled),
         });
       }
 
       setAgents(agentsMap);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
@@ -125,14 +125,14 @@ export function useOwnedAgents(): UseOwnedAgentsReturn {
     (userId: string): boolean => {
       return agents.has(userId);
     },
-    [agents]
+    [agents],
   );
 
   const getAgentData = useCallback(
     (userId: string): OwnedAgentData | undefined => {
       return agents.get(userId);
     },
-    [agents]
+    [agents],
   );
 
   const updateAgentBalance = useCallback(
@@ -149,7 +149,7 @@ export function useOwnedAgents(): UseOwnedAgentsReturn {
         return updated;
       });
     },
-    []
+    [],
   );
 
   return useMemo(
@@ -170,6 +170,6 @@ export function useOwnedAgents(): UseOwnedAgentsReturn {
       getAgentData,
       fetchAgents,
       updateAgentBalance,
-    ]
+    ],
   );
 }

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-polymarket-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha.1",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -35,7 +35,7 @@
     "types"
   ],
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-alpha.1",
     "@elizaos/plugin-evm": "workspace:*",
     "@polymarket/clob-client": "^5.2.0",
     "viem": "^2.21.0",
@@ -43,11 +43,11 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/node": "^25.0.3",
     "@types/ws": "^8.5.0",
     "bun-types": "^1.2.0",
-    "typescript": "^5.9.3",
-    "@biomejs/biome": "^2.3.11"
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
@@ -119,5 +119,6 @@
         "sensitive": true
       }
     }
-  }
+  },
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
 }

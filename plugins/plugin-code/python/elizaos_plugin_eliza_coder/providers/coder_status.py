@@ -62,4 +62,3 @@ class CoderStatusProvider:
             text=text,
             data={"historyCount": len(history), "cwd": cwd, "allowedDir": allowed},
         )
-

@@ -28,4 +28,3 @@ def create_advanced_memory_plugin() -> Plugin:
 
 
 advanced_memory_plugin = create_advanced_memory_plugin()
-

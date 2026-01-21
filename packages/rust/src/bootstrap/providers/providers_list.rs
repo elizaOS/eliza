@@ -40,8 +40,9 @@ impl Provider for ProvidersListProvider {
         let providers = super::all_providers();
 
         if providers.is_empty() {
-            return Ok(ProviderResult::new("No providers available.")
-                .with_value("providerCount", 0i64));
+            return Ok(
+                ProviderResult::new("No providers available.").with_value("providerCount", 0i64)
+            );
         }
 
         let provider_info: Vec<serde_json::Value> = providers
@@ -66,9 +67,13 @@ impl Provider for ProvidersListProvider {
 
         Ok(ProviderResult::new(text)
             .with_value("providerCount", providers.len() as i64)
-            .with_data("providerNames", serde_json::to_value(&names).unwrap_or_default())
-            .with_data("providers", serde_json::to_value(&provider_info).unwrap_or_default()))
+            .with_data(
+                "providerNames",
+                serde_json::to_value(&names).unwrap_or_default(),
+            )
+            .with_data(
+                "providers",
+                serde_json::to_value(&provider_info).unwrap_or_default(),
+            ))
     }
 }
-
-

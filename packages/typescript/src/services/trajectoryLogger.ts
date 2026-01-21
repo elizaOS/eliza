@@ -1,5 +1,5 @@
-import { Service } from "../types/service";
 import type { IAgentRuntime } from "../types/runtime";
+import { Service } from "../types/service";
 
 export type TrajectoryScalar = string | number | boolean | null;
 export type TrajectoryData = Record<string, TrajectoryScalar>;
@@ -82,4 +82,3 @@ export class TrajectoryLoggerService extends Service {
     return this.llmCalls;
   }
 }
-

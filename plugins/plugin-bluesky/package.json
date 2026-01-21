@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-bluesky-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha.1",
   "type": "module",
   "main": "typescript/dist/node/index.node.js",
   "module": "typescript/dist/node/index.node.js",
@@ -58,19 +58,19 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "workspace:*",
     "@atproto/api": "^0.13.14",
     "@atproto/identity": "^0.4.4",
     "@atproto/lexicon": "^0.4.11",
     "@atproto/syntax": "^0.3.2",
     "@atproto/xrpc": "^0.6.4",
+    "@elizaos/core": "2.0.0-alpha.1",
     "lru-cache": "^11.1.0",
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/node": "^25.0.3",
-    "typescript": "^5.9.3",
-    "@biomejs/biome": "^2.3.11"
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
@@ -209,5 +209,5 @@
       }
     }
   },
-  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
 }

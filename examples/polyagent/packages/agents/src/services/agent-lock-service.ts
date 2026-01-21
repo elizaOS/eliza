@@ -29,8 +29,8 @@
  * @packageDocumentation
  */
 
-import { DistributedLockService } from '@polyagent/api';
-import { randomBytes } from 'crypto';
+import { randomBytes } from "node:crypto";
+import { DistributedLockService } from "@polyagent/api";
 
 /**
  * Lock duration for agent tick operations.
@@ -52,23 +52,23 @@ function getAgentLockId(agentId: string): string {
 
 export async function acquireAgentLock(
   agentId: string,
-  processId?: string
+  processId?: string,
 ): Promise<boolean> {
   const lockHolder =
-    processId || `serverless-${Date.now()}-${randomBytes(8).toString('hex')}`;
+    processId || `serverless-${Date.now()}-${randomBytes(8).toString("hex")}`;
   const lockId = getAgentLockId(agentId);
 
   return DistributedLockService.acquireLock({
     lockId,
     durationMs: LOCK_DURATION_MS,
-    operation: 'agent-tick',
+    operation: "agent-tick",
     processId: lockHolder,
   });
 }
 
 export async function releaseAgentLock(
   agentId: string,
-  processId?: string
+  processId?: string,
 ): Promise<void> {
   const lockId = getAgentLockId(agentId);
   return DistributedLockService.releaseLock(lockId, processId);

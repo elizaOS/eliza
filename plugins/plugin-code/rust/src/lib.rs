@@ -17,17 +17,14 @@ pub use path_utils::{
     DEFAULT_FORBIDDEN_COMMANDS,
 };
 pub use service::CoderService;
-pub use types::{
-    CodeConfig, CommandHistoryEntry, CommandResult, FileOperation, FileOperationType,
-};
+pub use types::{CodeConfig, CommandHistoryEntry, CommandResult, FileOperation, FileOperationType};
 
 pub use actions::get_code_actions;
 pub use providers::get_code_providers;
 pub use providers::CoderStatusProvider;
 
 pub const PLUGIN_NAME: &str = "code";
-pub const PLUGIN_DESCRIPTION: &str =
-    "Filesystem + shell + git tools within a restricted directory";
+pub const PLUGIN_DESCRIPTION: &str = "Filesystem + shell + git tools within a restricted directory";
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Clone)]
@@ -83,8 +80,9 @@ pub mod prelude {
     pub use crate::actions::get_code_actions;
     pub use crate::providers::{get_code_providers, CoderStatusProvider};
     pub use crate::service::CoderService;
-    pub use crate::types::{CodeConfig, CommandHistoryEntry, CommandResult, FileOperation, FileOperationType};
+    pub use crate::types::{
+        CodeConfig, CommandHistoryEntry, CommandResult, FileOperation, FileOperationType,
+    };
     pub use crate::{Action, ActionExample, ActionResult, Provider, ProviderResult};
     pub use crate::{Result, PLUGIN_DESCRIPTION, PLUGIN_NAME, PLUGIN_VERSION};
 }
-

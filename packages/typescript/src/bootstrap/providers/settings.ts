@@ -44,26 +44,37 @@ function generateStatusMessage(
   // Format settings for display
   const formattedSettings = Object.entries(worldSettings)
     .map(([key, setting]) => {
-      if (typeof setting !== "object" || !setting.name) {
+      // Type guard: ensure setting is a Setting object with required properties
+      if (
+        typeof setting !== "object" ||
+        setting === null ||
+        !("name" in setting) ||
+        !("description" in setting) ||
+        !("dependsOn" in setting)
+      ) {
         return null;
       }
 
-      const description = setting.description || "";
-      const usageDescription = setting.usageDescription || "";
+      const typedSetting = setting as Setting;
+      const description = typedSetting.description || "";
+      const usageDescription = typedSetting.usageDescription || "";
 
       // Skip settings that should be hidden based on visibility function
-      if (setting.visibleIf && !setting.visibleIf(worldSettings)) {
+      if (
+        typedSetting.visibleIf &&
+        !typedSetting.visibleIf(worldSettings.settings ?? {})
+      ) {
         return null;
       }
 
       return {
         key,
-        name: setting.name,
-        value: formatSettingValue(setting, isOnboarding),
+        name: typedSetting.name,
+        value: formatSettingValue(typedSetting, isOnboarding),
         description,
         usageDescription,
-        required: setting.required,
-        configured: setting.value !== null,
+        required: typedSetting.required,
+        configured: typedSetting.value !== null,
       };
     })
     .filter(Boolean);

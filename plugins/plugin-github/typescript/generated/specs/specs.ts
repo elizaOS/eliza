@@ -27,122 +27,124 @@ export type EvaluatorDoc = {
 };
 
 export const coreActionsSpec = {
-  "version": "1.0.0",
-  "actions": [
+  version: "1.0.0",
+  actions: [
     {
-      "name": "CREATE_GITHUB_BRANCH",
-      "description": "",
-      "parameters": []
+      name: "CREATE_GITHUB_BRANCH",
+      description: "",
+      parameters: [],
     },
     {
-      "name": "CREATE_GITHUB_COMMENT",
-      "description": "",
-      "parameters": []
+      name: "CREATE_GITHUB_COMMENT",
+      description: "",
+      parameters: [],
     },
     {
-      "name": "CREATE_GITHUB_ISSUE",
-      "description": "",
-      "parameters": []
+      name: "CREATE_GITHUB_ISSUE",
+      description: "",
+      parameters: [],
     },
     {
-      "name": "CREATE_GITHUB_PULL_REQUEST",
-      "description": "",
-      "parameters": []
+      name: "CREATE_GITHUB_PULL_REQUEST",
+      description: "",
+      parameters: [],
     },
     {
-      "name": "MERGE_GITHUB_PULL_REQUEST",
-      "description": "",
-      "parameters": []
+      name: "MERGE_GITHUB_PULL_REQUEST",
+      description: "",
+      parameters: [],
     },
     {
-      "name": "PUSH_GITHUB_CODE",
-      "description": "",
-      "parameters": []
+      name: "PUSH_GITHUB_CODE",
+      description: "",
+      parameters: [],
     },
     {
-      "name": "REVIEW_GITHUB_PULL_REQUEST",
-      "description": "",
-      "parameters": []
-    }
-  ]
+      name: "REVIEW_GITHUB_PULL_REQUEST",
+      description: "",
+      parameters: [],
+    },
+  ],
 } as const;
 export const allActionsSpec = {
-  "version": "1.0.0",
-  "actions": [
+  version: "1.0.0",
+  actions: [
     {
-      "name": "CREATE_GITHUB_BRANCH",
-      "description": "",
-      "parameters": []
+      name: "CREATE_GITHUB_BRANCH",
+      description: "",
+      parameters: [],
     },
     {
-      "name": "CREATE_GITHUB_COMMENT",
-      "description": "",
-      "parameters": []
+      name: "CREATE_GITHUB_COMMENT",
+      description: "",
+      parameters: [],
     },
     {
-      "name": "CREATE_GITHUB_ISSUE",
-      "description": "",
-      "parameters": []
+      name: "CREATE_GITHUB_ISSUE",
+      description: "",
+      parameters: [],
     },
     {
-      "name": "CREATE_GITHUB_PULL_REQUEST",
-      "description": "",
-      "parameters": []
+      name: "CREATE_GITHUB_PULL_REQUEST",
+      description: "",
+      parameters: [],
     },
     {
-      "name": "MERGE_GITHUB_PULL_REQUEST",
-      "description": "",
-      "parameters": []
+      name: "MERGE_GITHUB_PULL_REQUEST",
+      description: "",
+      parameters: [],
     },
     {
-      "name": "PUSH_GITHUB_CODE",
-      "description": "",
-      "parameters": []
+      name: "PUSH_GITHUB_CODE",
+      description: "",
+      parameters: [],
     },
     {
-      "name": "REVIEW_GITHUB_PULL_REQUEST",
-      "description": "",
-      "parameters": []
-    }
-  ]
+      name: "REVIEW_GITHUB_PULL_REQUEST",
+      description: "",
+      parameters: [],
+    },
+  ],
 } as const;
 export const coreProvidersSpec = {
-  "version": "1.0.0",
-  "providers": [
+  version: "1.0.0",
+  providers: [
     {
-      "name": "GITHUB_ISSUE_CONTEXT",
-      "description": "Provides detailed context about a specific GitHub issue or pull request when referenced",
-      "dynamic": true
+      name: "GITHUB_ISSUE_CONTEXT",
+      description:
+        "Provides detailed context about a specific GitHub issue or pull request when referenced",
+      dynamic: true,
     },
     {
-      "name": "GITHUB_REPOSITORY_STATE",
-      "description": "Provides context about the current GitHub repository including recent activity",
-      "dynamic": true
-    }
-  ]
+      name: "GITHUB_REPOSITORY_STATE",
+      description: "Provides context about the current GitHub repository including recent activity",
+      dynamic: true,
+    },
+  ],
 } as const;
 export const allProvidersSpec = {
-  "version": "1.0.0",
-  "providers": [
+  version: "1.0.0",
+  providers: [
     {
-      "name": "GITHUB_ISSUE_CONTEXT",
-      "description": "Provides detailed context about a specific GitHub issue or pull request when referenced",
-      "dynamic": true
+      name: "GITHUB_ISSUE_CONTEXT",
+      description:
+        "Provides detailed context about a specific GitHub issue or pull request when referenced",
+      dynamic: true,
     },
     {
-      "name": "GITHUB_REPOSITORY_STATE",
-      "description": "Provides context about the current GitHub repository including recent activity",
-      "dynamic": true
-    }
-  ]
+      name: "GITHUB_REPOSITORY_STATE",
+      description: "Provides context about the current GitHub repository including recent activity",
+      dynamic: true,
+    },
+  ],
 } as const;
 export const coreEvaluatorsSpec = {
-  "version": "1.0.0",
-  "evaluators": []
+  version: "1.0.0",
+  evaluators: [],
 } as const;
 export const allEvaluatorsSpec = {
-  "version": "1.0.0",
-  "evaluators": []
+  version: "1.0.0",
+  evaluators: [],
 } as const;
 
 export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;

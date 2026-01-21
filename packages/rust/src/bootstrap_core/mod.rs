@@ -14,7 +14,8 @@ use serde_json::Value;
 
 use crate::runtime::AgentRuntime;
 use crate::types::components::{
-    ActionDefinition, ActionHandler, ActionResult, ProviderDefinition, ProviderHandler, ProviderResult,
+    ActionDefinition, ActionHandler, ActionResult, ProviderDefinition, ProviderHandler,
+    ProviderResult,
 };
 use crate::types::database::GetMemoriesParams;
 use crate::types::memory::Memory;
@@ -47,12 +48,20 @@ pub fn create_bootstrap_plugin(runtime: Weak<AgentRuntime>, config: CapabilityCo
 
         // Core providers
         if !config.skip_character_provider {
-            plugin = plugin.with_provider(Arc::new(CharacterProvider { runtime: runtime.clone() }));
+            plugin = plugin.with_provider(Arc::new(CharacterProvider {
+                runtime: runtime.clone(),
+            }));
         }
         plugin = plugin
-            .with_provider(Arc::new(ActionsListProvider { runtime: runtime.clone() }))
-            .with_provider(Arc::new(ProvidersListProvider { runtime: runtime.clone() }))
-            .with_provider(Arc::new(EvaluatorsListProvider { runtime: runtime.clone() }))
+            .with_provider(Arc::new(ActionsListProvider {
+                runtime: runtime.clone(),
+            }))
+            .with_provider(Arc::new(ProvidersListProvider {
+                runtime: runtime.clone(),
+            }))
+            .with_provider(Arc::new(EvaluatorsListProvider {
+                runtime: runtime.clone(),
+            }))
             .with_provider(Arc::new(RecentMessagesProvider { runtime }));
     }
 
@@ -140,7 +149,10 @@ impl ActionHandler for IgnoreAction {
         _options: Option<&crate::types::components::HandlerOptions>,
     ) -> Result<Option<ActionResult>, anyhow::Error> {
         let mut data: HashMap<String, Value> = HashMap::new();
-        data.insert("actionName".to_string(), Value::String("IGNORE".to_string()));
+        data.insert(
+            "actionName".to_string(),
+            Value::String("IGNORE".to_string()),
+        );
         Ok(Some(ActionResult {
             success: true,
             text: Some("ignored".to_string()),
@@ -203,7 +215,11 @@ impl ProviderHandler for CharacterProvider {
         }
     }
 
-    async fn get(&self, _message: &Memory, _state: &State) -> Result<ProviderResult, anyhow::Error> {
+    async fn get(
+        &self,
+        _message: &Memory,
+        _state: &State,
+    ) -> Result<ProviderResult, anyhow::Error> {
         let Some(rt) = self.runtime.upgrade() else {
             return Ok(ProviderResult::default());
         };
@@ -218,7 +234,10 @@ impl ProviderHandler for CharacterProvider {
         );
         Ok(ProviderResult {
             text: Some(text.clone()),
-            values: Some(HashMap::from([("characterName".to_string(), Value::String(character.name))])),
+            values: Some(HashMap::from([(
+                "characterName".to_string(),
+                Value::String(character.name),
+            )])),
             data: None,
         })
     }
@@ -240,7 +259,11 @@ impl ProviderHandler for ActionsListProvider {
         }
     }
 
-    async fn get(&self, _message: &Memory, _state: &State) -> Result<ProviderResult, anyhow::Error> {
+    async fn get(
+        &self,
+        _message: &Memory,
+        _state: &State,
+    ) -> Result<ProviderResult, anyhow::Error> {
         let Some(rt) = self.runtime.upgrade() else {
             return Ok(ProviderResult::default());
         };
@@ -274,7 +297,11 @@ impl ProviderHandler for ProvidersListProvider {
         }
     }
 
-    async fn get(&self, _message: &Memory, _state: &State) -> Result<ProviderResult, anyhow::Error> {
+    async fn get(
+        &self,
+        _message: &Memory,
+        _state: &State,
+    ) -> Result<ProviderResult, anyhow::Error> {
         let Some(rt) = self.runtime.upgrade() else {
             return Ok(ProviderResult::default());
         };
@@ -311,7 +338,11 @@ impl ProviderHandler for EvaluatorsListProvider {
         }
     }
 
-    async fn get(&self, _message: &Memory, _state: &State) -> Result<ProviderResult, anyhow::Error> {
+    async fn get(
+        &self,
+        _message: &Memory,
+        _state: &State,
+    ) -> Result<ProviderResult, anyhow::Error> {
         let Some(rt) = self.runtime.upgrade() else {
             return Ok(ProviderResult::default());
         };
@@ -384,10 +415,12 @@ impl ProviderHandler for RecentMessagesProvider {
         }
 
         Ok(ProviderResult {
-            text: Some(format!("[RECENT_MESSAGES]\n{}\n[/RECENT_MESSAGES]", lines.join("\n"))),
+            text: Some(format!(
+                "[RECENT_MESSAGES]\n{}\n[/RECENT_MESSAGES]",
+                lines.join("\n")
+            )),
             values: None,
             data: None,
         })
     }
 }
-

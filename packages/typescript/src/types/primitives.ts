@@ -1,10 +1,14 @@
+import type { UnknownField } from "@bufbuild/protobuf";
 import type {
+  JsonObject,
   Content as ProtoContent,
+  JsonValue as ProtoJsonValue,
   Media as ProtoMedia,
   MentionContext as ProtoMentionContext,
 } from "./proto.js";
-import type { JsonObject, JsonValue } from "./proto.js";
-import type { UnknownField } from "@bufbuild/protobuf";
+
+// Re-export JsonValue for use by other modules
+export type JsonValue = ProtoJsonValue;
 
 /**
  * Defines a UUID as a string for protobuf interoperability.
@@ -56,7 +60,7 @@ export function asUUID(id: string): UUID {
  * Allowed value types for content dynamic properties
  */
 export type ContentValue =
-  | JsonValue
+  | ProtoJsonValue
   | undefined
   | ContentValue[]
   | { [key: string]: ContentValue };
@@ -233,7 +237,7 @@ export type ContentType = (typeof ContentType)[keyof typeof ContentType];
  * unsafe 'as unknown as' casts.
  */
 export type MetadataValue =
-  | JsonValue
+  | ProtoJsonValue
   | undefined
   | MetadataValue[]
   | { readonly [key: string]: MetadataValue | undefined }
@@ -242,5 +246,8 @@ export type MetadataValue =
 /**
  * A type for metadata objects with JSON-serializable values.
  * Accepts any object shape that can be serialized to JSON.
+ * The index signature allows dynamic property access.
  */
-export type Metadata = Record<string, MetadataValue>;
+export type Metadata = {
+  [key: string]: MetadataValue;
+};

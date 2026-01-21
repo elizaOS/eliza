@@ -1,7 +1,21 @@
-import { useApplication } from "@pixi/react";
-import { Viewport, type IViewportOptions } from "pixi-viewport";
+import { extend, useApplication } from "@pixi/react";
+import { type IViewportOptions, Viewport } from "pixi-viewport";
 import type { MutableRefObject, ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { createElement, useCallback, useEffect, useMemo, useRef } from "react";
+
+// Register Viewport with @pixi/react
+extend({ Viewport });
+
+// Type for the pixiViewport JSX element
+type PixiViewportProps = IViewportOptions & {
+  ref?: React.Ref<Viewport>;
+  children?: ReactNode;
+};
+
+// Helper to create the pixiViewport element with proper typing
+function createPixiViewport(props: PixiViewportProps) {
+  return createElement("pixiViewport" as unknown as string, props);
+}
 
 export type ViewportProps = {
   viewportRef?: MutableRefObject<Viewport | undefined>;
@@ -38,7 +52,7 @@ export default function PixiViewport({
   const { app, isInitialised } = useApplication();
   const viewportInstance = useRef<ViewportWithWheel | null>(null);
   const scaleBoundsRef = useRef<ScaleBounds>({ minScale: 1, maxScale: 3 });
-  const events = isInitialised && app ? app.renderer?.events ?? null : null;
+  const events = isInitialised && app ? (app.renderer?.events ?? null) : null;
 
   const setViewportRef = useCallback(
     (instance: Viewport | null) => {
@@ -73,10 +87,19 @@ export default function PixiViewport({
       return;
     }
 
-    if (!viewport.__didInit && screenWidth > 0 && screenHeight > 0 && worldWidth > 0 && worldHeight > 0) {
+    if (
+      !viewport.__didInit &&
+      screenWidth > 0 &&
+      screenHeight > 0 &&
+      worldWidth > 0 &&
+      worldHeight > 0
+    ) {
       viewport.__didInit = true;
       // fitScale = scale at which world exactly fills screen
-      const fitScale = Math.max(screenWidth / worldWidth, screenHeight / worldHeight);
+      const fitScale = Math.max(
+        screenWidth / worldWidth,
+        screenHeight / worldHeight,
+      );
       // minScale = 15% larger than fit, so there's always room to pan around
       const minScale = fitScale * 1.15;
       const maxScale = 3;
@@ -104,21 +127,25 @@ export default function PixiViewport({
       // Always prevent default to stop trackpad scroll from panning the page
       event.preventDefault();
       event.stopPropagation();
-      
+
       // Only zoom on vertical scroll (deltaY), ignore horizontal scroll (deltaX)
       // This prevents trackpad two-finger swipes from both zooming and scrolling
       if (event.deltaY === 0) {
         return;
       }
-      
+
       viewport.__userInteract?.();
       const { minScale, maxScale } = scaleBoundsRef.current;
       // Use ctrlKey check to detect pinch-to-zoom gesture on trackpad
       // Pinch gestures typically have ctrlKey set and larger deltaY values
       const isPinchGesture = event.ctrlKey;
       const zoomMultiplier = isPinchGesture
-        ? (event.deltaY < 0 ? 1.05 : 0.95) // Finer control for pinch
-        : (event.deltaY < 0 ? 1.1 : 0.9);  // Standard scroll wheel
+        ? event.deltaY < 0
+          ? 1.05
+          : 0.95 // Finer control for pinch
+        : event.deltaY < 0
+          ? 1.1
+          : 0.9; // Standard scroll wheel
       const nextScale = viewport.scale.x * zoomMultiplier;
       const clampedScale = Math.min(Math.max(nextScale, minScale), maxScale);
       viewport.setZoom(clampedScale, true);
@@ -137,11 +164,25 @@ export default function PixiViewport({
       viewport.off("drag-start", handleInteract);
       viewport.off("pinch-start", handleInteract);
     };
-  }, [app, isInitialised, onUserInteract, screenWidth, screenHeight, worldHeight, worldWidth]);
+  }, [
+    app,
+    isInitialised,
+    onUserInteract,
+    screenWidth,
+    screenHeight,
+    worldHeight,
+    worldWidth,
+  ]);
 
   useEffect(() => {
     const viewport = viewportInstance.current;
-    if (!viewport || screenWidth <= 0 || screenHeight <= 0 || worldWidth <= 0 || worldHeight <= 0) {
+    if (
+      !viewport ||
+      screenWidth <= 0 ||
+      screenHeight <= 0 ||
+      worldWidth <= 0 ||
+      worldHeight <= 0
+    ) {
       return;
     }
     viewport.screenWidth = screenWidth;
@@ -150,7 +191,10 @@ export default function PixiViewport({
     viewport.worldHeight = worldHeight;
 
     // fitScale = scale at which world exactly fills screen
-    const fitScale = Math.max(screenWidth / worldWidth, screenHeight / worldHeight);
+    const fitScale = Math.max(
+      screenWidth / worldWidth,
+      screenHeight / worldHeight,
+    );
     // minScale = 15% larger than fit, so there's always room to pan around
     const minScale = fitScale * 1.15;
     const maxScale = 3;
@@ -170,12 +214,9 @@ export default function PixiViewport({
     return null;
   }
 
-  return (
-    <pixiViewport
-      ref={setViewportRef}
-      {...viewportOptions}
-    >
-      {children}
-    </pixiViewport>
-  );
+  return createPixiViewport({
+    ref: setViewportRef,
+    ...viewportOptions,
+    children,
+  });
 }

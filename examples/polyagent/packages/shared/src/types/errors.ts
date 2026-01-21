@@ -10,8 +10,8 @@ import {
   DatabaseError,
   LLMError,
   ValidationError,
-} from '../errors';
-import type { JsonValue } from './common';
+} from "../errors";
+import type { JsonValue } from "./common";
 
 /**
  * Base error interface for all application errors
@@ -36,7 +36,7 @@ export interface NetworkError extends Error {
  * Type guard to check if error is AuthenticationError class
  */
 export function isAuthenticationError(
-  error: Error
+  error: Error,
 ): error is AuthenticationError {
   return error instanceof AuthenticationError;
 }
@@ -59,7 +59,7 @@ export function isLLMError(error: Error): error is LLMError {
  * Type guard to check if error is NetworkError interface
  */
 export function isNetworkError(error: Error): error is NetworkError {
-  return 'status' in error || 'url' in error;
+  return "status" in error || "url" in error;
 }
 
 /**
@@ -73,9 +73,9 @@ export function isValidationError(error: Error): error is ValidationError {
  * Extract error message from any error-like object
  */
 export function extractErrorMessage(
-  error: Error | AppError | string | JsonValue | { message?: string }
+  error: Error | AppError | string | JsonValue | { message?: string },
 ): string {
-  if (typeof error === 'string') {
+  if (typeof error === "string") {
     return error;
   }
   if (error instanceof Error) {
@@ -83,11 +83,11 @@ export function extractErrorMessage(
   }
   if (
     error &&
-    typeof error === 'object' &&
-    'message' in error &&
-    typeof error.message === 'string'
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string"
   ) {
     return error.message;
   }
-  return 'An unknown error occurred';
+  return "An unknown error occurred";
 }

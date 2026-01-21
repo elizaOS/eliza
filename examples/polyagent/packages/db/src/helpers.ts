@@ -4,11 +4,11 @@
  * Helper functions for common database operations using Drizzle ORM.
  */
 
-import type { sql } from 'drizzle-orm';
-import type postgres from 'postgres';
-import type { DrizzleClient, SQLValue } from './client';
-import type { Database } from './db';
-import type { DatabaseErrorType } from './types';
+import type { sql } from "drizzle-orm";
+import type postgres from "postgres";
+import type { DrizzleClient, SQLValue } from "./client";
+import type { Database } from "./db";
+import type { DatabaseErrorType } from "./types";
 
 /**
  * Re-export SQLValue type for convenience.
@@ -38,7 +38,7 @@ export async function $queryRaw<
  */
 export async function $executeRaw(
   db: Database,
-  query: ReturnType<typeof sql>
+  query: ReturnType<typeof sql>,
 ): Promise<number> {
   await db.execute(query);
   return 1;
@@ -56,7 +56,7 @@ export async function $executeRaw(
 export async function withRetry<T>(
   operation: () => Promise<T>,
   maxRetries = 3,
-  delayMs = 100
+  delayMs = 100,
 ): Promise<T> {
   let lastError: Error | undefined;
 
@@ -67,7 +67,7 @@ export async function withRetry<T>(
       const dbError: DatabaseErrorType =
         error instanceof Error
           ? error
-          : typeof error === 'object' && error !== null && 'message' in error
+          : typeof error === "object" && error !== null && "message" in error
             ? (error as DatabaseErrorType)
             : new Error(String(error));
 
@@ -77,7 +77,7 @@ export async function withRetry<T>(
         throw lastError;
       }
       await new Promise((resolve) =>
-        setTimeout(resolve, delayMs * 2 ** attempt)
+        setTimeout(resolve, delayMs * 2 ** attempt),
       );
     }
   }
@@ -96,21 +96,21 @@ export function isRetryableError(error: DatabaseErrorType): boolean {
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
     return (
-      message.includes('connection') ||
-      message.includes('timeout') ||
-      message.includes('deadlock') ||
-      message.includes('econnrefused') ||
-      message.includes('econnreset')
+      message.includes("connection") ||
+      message.includes("timeout") ||
+      message.includes("deadlock") ||
+      message.includes("econnrefused") ||
+      message.includes("econnreset")
     );
   }
-  if (typeof error === 'object' && error !== null && 'message' in error) {
-    const errorMessage = String(error.message || '').toLowerCase();
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const errorMessage = String(error.message || "").toLowerCase();
     return (
-      errorMessage.includes('connection') ||
-      errorMessage.includes('timeout') ||
-      errorMessage.includes('deadlock') ||
-      errorMessage.includes('econnrefused') ||
-      errorMessage.includes('econnreset')
+      errorMessage.includes("connection") ||
+      errorMessage.includes("timeout") ||
+      errorMessage.includes("deadlock") ||
+      errorMessage.includes("econnrefused") ||
+      errorMessage.includes("econnreset")
     );
   }
   return false;

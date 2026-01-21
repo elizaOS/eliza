@@ -1,10 +1,10 @@
-declare module '@elizaos/core' {
+declare module "@elizaos/core" {
   interface ServiceTypeRegistry {
-    TWILIO: 'twilio';
+    TWILIO: "twilio";
   }
 
   interface ServiceClassMap {
-    twilio: typeof import('../service').TwilioService;
+    twilio: typeof import("../service").TwilioService;
   }
 }
 

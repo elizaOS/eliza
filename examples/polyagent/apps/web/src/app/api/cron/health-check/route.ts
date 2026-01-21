@@ -53,23 +53,23 @@
  * ```
  */
 
-import { verifyCronAuth } from '@polyagent/api';
-import { db } from '@polyagent/db';
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { verifyCronAuth } from "@polyagent/api";
+import { db } from "@polyagent/db";
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 // Vercel function configuration
 export const maxDuration = 60; // 1 minute max for health check
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
 
   // Verify cron authorization using centralized auth
-  if (!verifyCronAuth(request, { jobName: 'HealthCheck' })) {
-    logger.warn('Unauthorized health check attempt', undefined, 'HealthCheck');
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!verifyCronAuth(request, { jobName: "HealthCheck" })) {
+    logger.warn("Unauthorized health check attempt", undefined, "HealthCheck");
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // Quick database health check
@@ -78,18 +78,18 @@ export async function GET(request: NextRequest) {
   const duration = Date.now() - startTime;
 
   logger.info(
-    'Health check passed',
+    "Health check passed",
     {
       duration,
       timestamp: new Date().toISOString(),
     },
-    'HealthCheck'
+    "HealthCheck",
   );
 
   return NextResponse.json({
     success: true,
-    status: 'healthy',
-    database: 'connected',
+    status: "healthy",
+    database: "connected",
     duration,
     timestamp: new Date().toISOString(),
   });

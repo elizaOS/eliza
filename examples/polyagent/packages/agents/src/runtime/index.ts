@@ -6,4 +6,4 @@
  * @packageDocumentation
  */
 
-export * from './AgentRuntimeManager';
+export * from "./AgentRuntimeManager";

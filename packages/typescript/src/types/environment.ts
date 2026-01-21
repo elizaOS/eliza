@@ -1,3 +1,4 @@
+import type { ChannelType, Metadata } from "./primitives";
 import type {
   Component as ProtoComponent,
   Entity as ProtoEntity,
@@ -7,13 +8,15 @@ import type {
   World as ProtoWorld,
   WorldMetadata as ProtoWorldMetadata,
 } from "./proto.js";
-import type { ChannelType, Metadata, UUID } from "./primitives";
 import type { WorldSettings } from "./settings";
 
 export type TimestampValue = number;
 
 export interface Component
-  extends Omit<ProtoComponent, "$typeName" | "$unknown" | "createdAt" | "data"> {
+  extends Omit<
+    ProtoComponent,
+    "$typeName" | "$unknown" | "createdAt" | "data"
+  > {
   createdAt: TimestampValue;
   data?: Metadata;
 }
@@ -22,7 +25,10 @@ export interface Component
  * Represents a user account
  */
 export interface Entity
-  extends Omit<ProtoEntity, "$typeName" | "$unknown" | "metadata" | "components"> {
+  extends Omit<
+    ProtoEntity,
+    "$typeName" | "$unknown" | "metadata" | "components"
+  > {
   metadata?: Metadata;
   components?: Component[];
 }
@@ -42,10 +48,18 @@ export const Role = {
 
 export type Role = (typeof Role)[keyof typeof Role];
 
+export interface WorldOwnership {
+  ownerId: string;
+}
+
 export interface WorldMetadata
-  extends Omit<ProtoWorldMetadata, "$typeName" | "$unknown" | "roles" | "extra"> {
+  extends Omit<
+    ProtoWorldMetadata,
+    "$typeName" | "$unknown" | "roles" | "extra" | "ownership"
+  > {
   type?: string;
   description?: string;
+  ownership?: WorldOwnership;
   roles?: Record<string, Role>;
   extra?: Metadata;
   settings?: WorldSettings;

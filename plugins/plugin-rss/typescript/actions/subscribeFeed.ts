@@ -8,9 +8,9 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { RssService } from "../service";
 import { createMessageReply, extractUrls } from "../utils";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 const spec = requireActionSpec("SUBSCRIBE_FEED");
 

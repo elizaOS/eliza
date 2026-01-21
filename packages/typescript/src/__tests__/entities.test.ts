@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  cleanupTestRuntime,
-  createTestRuntime,
-} from "./test-utils";
-import {
   createUniqueUuid,
   findEntityByName,
   formatEntities,
@@ -14,6 +10,7 @@ import * as logger_module from "../logger";
 import type { Entity, Memory, State, UUID } from "../types";
 import type { IAgentRuntime } from "../types/runtime";
 import * as utils from "../utils";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 describe("entities", () => {
   let runtime: IAgentRuntime;

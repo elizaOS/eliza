@@ -29,9 +29,7 @@ async function build(): Promise<void> {
     console.error("Node ESM build failed:", nodeResult.logs);
     throw new Error("Node ESM build failed");
   }
-  console.log(
-    `✅ Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
-  );
+  console.log(`✅ Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
 
   const cjsStart = Date.now();
   console.log("🧱 Building @elizaos/plugin-mcp for Node (CJS)...");
@@ -56,9 +54,7 @@ async function build(): Promise<void> {
   await access("dist/cjs/index.js");
   await rename("dist/cjs/index.js", "dist/cjs/index.cjs");
 
-  console.log(
-    `✅ Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`,
-  );
+  console.log(`✅ Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
 
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
@@ -77,13 +73,9 @@ export { default } from "../node/index";
   await writeFile("dist/index.d.ts", rootReexport);
   await writeFile("dist/cjs/index.d.ts", cjsReexport);
 
-  console.log(
-    `✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`,
-  );
+  console.log(`✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);
 
-  console.log(
-    `🎉 All builds finished in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`,
-  );
+  console.log(`🎉 All builds finished in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`);
 }
 
 build().catch((err) => {

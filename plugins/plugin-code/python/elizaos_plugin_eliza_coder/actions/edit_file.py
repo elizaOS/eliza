@@ -15,7 +15,9 @@ class EditFileAction:
     async def validate(self, _message: Message, _state: dict) -> bool:
         return True
 
-    async def handler(self, message: Message, state: dict, service: CoderService | None = None) -> ActionResult:
+    async def handler(
+        self, message: Message, state: dict, service: CoderService | None = None
+    ) -> ActionResult:
         if service is None:
             return ActionResult(False, "Coder service is not available.", "missing_service")
 
@@ -29,4 +31,3 @@ class EditFileAction:
         if not ok:
             return ActionResult(False, err, "edit_failed")
         return ActionResult(True, f"Edited {filepath}")
-

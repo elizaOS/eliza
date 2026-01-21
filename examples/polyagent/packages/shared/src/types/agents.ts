@@ -4,7 +4,7 @@
  * Shared types for agent capabilities and profiles
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 
 export const GameNetworkInfoSchema = z.object({
   chainId: z.number(),
@@ -18,7 +18,7 @@ export const AgentCapabilitiesSchema = z.object({
   strategies: z.array(z.string()).optional().default([]),
   markets: z.array(z.string()).optional().default([]),
   actions: z.array(z.string()).optional().default([]),
-  version: z.string().optional().default('1.0.0'),
+  version: z.string().optional().default("1.0.0"),
   x402Support: z.boolean().optional(),
   platform: z.string().optional(),
   userType: z.string().optional(),

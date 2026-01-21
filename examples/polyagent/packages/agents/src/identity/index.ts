@@ -6,5 +6,5 @@
  * @packageDocumentation
  */
 
-export * from './AgentIdentityService';
-export * from './AgentWalletService';
+export * from "./AgentIdentityService";
+export * from "./AgentWalletService";

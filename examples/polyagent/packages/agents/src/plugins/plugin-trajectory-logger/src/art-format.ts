@@ -10,14 +10,14 @@
  * - Grouping by scenario for GRPO
  */
 
-import type { JsonValue } from '@polyagent/shared';
+import type { JsonValue } from "@polyagent/shared";
 import type {
   ARTTrajectory,
   ChatMessage,
   Trajectory,
   TrajectoryGroup,
   TrajectoryStep,
-} from './types';
+} from "./types";
 
 /**
  * Convert rich trajectory to ART message format
@@ -42,7 +42,7 @@ export function toARTMessages(trajectory: Trajectory): ChatMessage[] {
     const userContent = buildUserMessage(step);
     if (userContent) {
       messages.push({
-        role: 'user',
+        role: "user",
         content: userContent,
       });
     }
@@ -51,7 +51,7 @@ export function toARTMessages(trajectory: Trajectory): ChatMessage[] {
     const assistantContent = buildAssistantMessage(step);
     if (assistantContent) {
       messages.push({
-        role: 'assistant',
+        role: "assistant",
         content: assistantContent,
       });
     }
@@ -70,17 +70,17 @@ function buildSystemMessage(trajectory: Trajectory): ChatMessage | null {
 
   if (firstLLMCall?.systemPrompt) {
     return {
-      role: 'system',
+      role: "system",
       content: firstLLMCall.systemPrompt,
     };
   }
 
   // Fallback: construct from metadata
-  const agentName = trajectory.metadata.agentName || 'Agent';
-  const goal = trajectory.metadata.goalDescription || 'make good decisions';
+  const agentName = trajectory.metadata.agentName || "Agent";
+  const goal = trajectory.metadata.goalDescription || "make good decisions";
 
   return {
-    role: 'system',
+    role: "system",
     content: `You are ${agentName}, an autonomous agent. Your goal is to ${goal}.`,
   };
 }
@@ -90,7 +90,7 @@ function buildSystemMessage(trajectory: Trajectory): ChatMessage | null {
  */
 function buildUserMessage(step: TrajectoryStep): string | null {
   // Use the actual user prompt from LLM calls
-  const llmCall = step.llmCalls.find((call) => call.purpose === 'action');
+  const llmCall = step.llmCalls.find((call) => call.purpose === "action");
 
   if (llmCall?.userPrompt) {
     return llmCall.userPrompt;
@@ -113,7 +113,7 @@ function buildUserMessage(step: TrajectoryStep): string | null {
 
   parts.push(`\nWhat action should you take?`);
 
-  return parts.join('\n');
+  return parts.join("\n");
 }
 
 /**
@@ -121,7 +121,7 @@ function buildUserMessage(step: TrajectoryStep): string | null {
  */
 function buildAssistantMessage(step: TrajectoryStep): string | null {
   // Use the actual LLM response
-  const llmCall = step.llmCalls.find((call) => call.purpose === 'action');
+  const llmCall = step.llmCalls.find((call) => call.purpose === "action");
 
   if (llmCall?.response) {
     return llmCall.response;
@@ -139,7 +139,7 @@ function buildAssistantMessage(step: TrajectoryStep): string | null {
 
   parts.push(`Parameters: ${JSON.stringify(action.parameters)}`);
 
-  return parts.join('\n');
+  return parts.join("\n");
 }
 
 /**
@@ -166,7 +166,7 @@ export function toARTTrajectory(trajectory: Trajectory): ARTTrajectory {
         actionsTaken: trajectory.steps.map((s) => s.action.actionType),
         errors: trajectory.steps
           .filter((s) => !s.action.success)
-          .map((s) => s.action.error || 'Unknown error'),
+          .map((s) => s.action.error || "Unknown error"),
       },
 
       // Game knowledge for RULER (you know the future!)
@@ -187,12 +187,12 @@ export function toARTTrajectory(trajectory: Trajectory): ARTTrajectory {
  * Converts trajectory.metrics (which may have unknown values) to Record<string, number>
  */
 function filterNumericMetrics(
-  metrics: Trajectory['metrics']
+  metrics: Trajectory["metrics"],
 ): Record<string, number> {
   const numericMetrics: Record<string, number> = {};
 
   for (const [key, value] of Object.entries(metrics)) {
-    if (typeof value === 'number' && !isNaN(value)) {
+    if (typeof value === "number" && !Number.isNaN(value)) {
       numericMetrics[key] = value;
     }
   }
@@ -255,16 +255,16 @@ function extractGameKnowledge(trajectory: Trajectory): {
  * This is what RULER needs to compare trajectories.
  */
 export function groupTrajectories(
-  trajectories: Trajectory[]
+  trajectories: Trajectory[],
 ): TrajectoryGroup[] {
   const groups = new Map<string, Trajectory[]>();
 
   for (const traj of trajectories) {
-    const scenarioId = traj.scenarioId || 'default';
+    const scenarioId = traj.scenarioId || "default";
     if (!groups.has(scenarioId)) {
       groups.set(scenarioId, []);
     }
-    groups.get(scenarioId)!.push(traj);
+    groups.get(scenarioId)?.push(traj);
   }
 
   return Array.from(groups.entries()).map(([scenarioId, trajs], idx) => ({
@@ -297,8 +297,8 @@ export function extractSharedPrefix(trajectories: Trajectory[]): ChatMessage[] {
     const allMatch = allMessages.every(
       (msgs) =>
         msgs[i] &&
-        msgs[i]!.role === message.role &&
-        msgs[i]!.content === message.content
+        msgs[i]?.role === message.role &&
+        msgs[i]?.content === message.content,
     );
 
     if (allMatch) {
@@ -318,7 +318,7 @@ export function extractSharedPrefix(trajectories: Trajectory[]): ChatMessage[] {
  */
 export function removeSharedPrefix(
   messages: ChatMessage[],
-  sharedPrefix: ChatMessage[]
+  sharedPrefix: ChatMessage[],
 ): ChatMessage[] {
   return messages.slice(sharedPrefix.length);
 }
@@ -331,7 +331,7 @@ export function removeSharedPrefix(
 export function prepareForRULER(group: TrajectoryGroup): {
   sharedPrefix: ChatMessage[];
   suffixes: ChatMessage[][];
-  metadata: ARTTrajectory['metadata'][];
+  metadata: ARTTrajectory["metadata"][];
 } {
   const artTrajs = group.trajectories.map((t) => toARTTrajectory(t));
   const sharedPrefix =
@@ -340,7 +340,7 @@ export function prepareForRULER(group: TrajectoryGroup): {
   return {
     sharedPrefix,
     suffixes: artTrajs.map((art) =>
-      removeSharedPrefix(art.messages, sharedPrefix)
+      removeSharedPrefix(art.messages, sharedPrefix),
     ),
     metadata: artTrajs.map((art) => art.metadata),
   };
@@ -367,7 +367,7 @@ export function validateARTCompatibility(trajectory: Trajectory): {
 
   // Must have steps
   if (trajectory.steps.length === 0) {
-    errors.push('Trajectory has no steps');
+    errors.push("Trajectory has no steps");
   }
 
   // Each step must have at least one LLM call
@@ -387,14 +387,17 @@ export function validateARTCompatibility(trajectory: Trajectory): {
   }
 
   // Must have reward
-  if (trajectory.totalReward === undefined || isNaN(trajectory.totalReward)) {
-    errors.push('Trajectory has no valid reward');
+  if (
+    trajectory.totalReward === undefined ||
+    Number.isNaN(trajectory.totalReward)
+  ) {
+    errors.push("Trajectory has no valid reward");
   }
 
   // Try to convert
   const artTraj = toARTTrajectory(trajectory);
   if (artTraj.messages.length < 2) {
-    warnings.push('Trajectory converts to very few messages (< 2)');
+    warnings.push("Trajectory converts to very few messages (< 2)");
   }
 
   return {

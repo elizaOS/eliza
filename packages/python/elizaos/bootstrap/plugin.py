@@ -4,18 +4,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from elizaos.types import Plugin
-
 from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
+from elizaos.advanced_capabilities import (
+    advanced_actions,
+    advanced_evaluators,
+    advanced_providers,
+    advanced_services,
+)
 
 # Import from new capability modules
 from elizaos.basic_capabilities import basic_actions, basic_providers, basic_services
-from elizaos.advanced_capabilities import (
-    advanced_actions,
-    advanced_providers,
-    advanced_evaluators,
-    advanced_services,
-)
+from elizaos.types import Plugin
 
 # Autonomy capabilities remain in bootstrap
 from .autonomy import (

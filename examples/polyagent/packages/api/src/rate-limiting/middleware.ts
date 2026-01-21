@@ -4,13 +4,13 @@
  * Provides helpers to apply rate limiting and duplicate detection to API routes
  */
 
-import { logger } from '@polyagent/shared';
-import { NextResponse } from 'next/server';
+import { logger } from "@polyagent/shared";
+import { NextResponse } from "next/server";
 import {
   checkDuplicate,
   type DUPLICATE_DETECTION_CONFIGS,
-} from '../utils/duplicate-detector';
-import { checkRateLimit, type RATE_LIMIT_CONFIGS } from './user-rate-limiter';
+} from "../utils/duplicate-detector";
+import { checkRateLimit, type RATE_LIMIT_CONFIGS } from "./user-rate-limiter";
 
 /**
  * Error response for rate limit exceeded
@@ -19,18 +19,18 @@ export function rateLimitError(retryAfter?: number) {
   const response = NextResponse.json(
     {
       success: false,
-      error: 'Rate limit exceeded',
-      message: `Too many requests. Please try again ${retryAfter ? `in ${retryAfter} seconds` : 'later'}.`,
+      error: "Rate limit exceeded",
+      message: `Too many requests. Please try again ${retryAfter ? `in ${retryAfter} seconds` : "later"}.`,
       retryAfter,
     },
-    { status: 429 }
+    { status: 429 },
   );
 
   // Add standard rate limit headers
   if (retryAfter) {
-    response.headers.set('Retry-After', retryAfter.toString());
+    response.headers.set("Retry-After", retryAfter.toString());
   }
-  response.headers.set('X-RateLimit-Exceeded', 'true');
+  response.headers.set("X-RateLimit-Exceeded", "true");
 
   return response;
 }
@@ -42,12 +42,12 @@ export function duplicateContentError(lastPostedAt?: Date) {
   return NextResponse.json(
     {
       success: false,
-      error: 'Duplicate content',
+      error: "Duplicate content",
       message:
-        'You have already posted this content recently. Please wait before posting it again.',
+        "You have already posted this content recently. Please wait before posting it again.",
       lastPostedAt: lastPostedAt?.toISOString(),
     },
-    { status: 409 } // 409 Conflict
+    { status: 409 }, // 409 Conflict
   );
 }
 
@@ -70,7 +70,7 @@ export function duplicateContentError(lastPostedAt?: Date) {
  */
 export function applyRateLimit(
   userId: string,
-  config: (typeof RATE_LIMIT_CONFIGS)[keyof typeof RATE_LIMIT_CONFIGS]
+  config: (typeof RATE_LIMIT_CONFIGS)[keyof typeof RATE_LIMIT_CONFIGS],
 ) {
   return checkRateLimit(userId, config);
 }
@@ -93,7 +93,7 @@ export function applyRateLimit(
 export function applyDuplicateDetection(
   userId: string,
   content: string,
-  config: (typeof DUPLICATE_DETECTION_CONFIGS)[keyof typeof DUPLICATE_DETECTION_CONFIGS]
+  config: (typeof DUPLICATE_DETECTION_CONFIGS)[keyof typeof DUPLICATE_DETECTION_CONFIGS],
 ) {
   return checkDuplicate(userId, content, config);
 }
@@ -117,13 +117,13 @@ export function checkRateLimitAndDuplicates(
   userId: string,
   content: string | null,
   rateLimitConfig: (typeof RATE_LIMIT_CONFIGS)[keyof typeof RATE_LIMIT_CONFIGS],
-  duplicateConfig?: (typeof DUPLICATE_DETECTION_CONFIGS)[keyof typeof DUPLICATE_DETECTION_CONFIGS]
+  duplicateConfig?: (typeof DUPLICATE_DETECTION_CONFIGS)[keyof typeof DUPLICATE_DETECTION_CONFIGS],
 ): NextResponse | null {
   // SECURITY: Only skip rate limiting in test environment with EXPLICIT flag
   // Additional safeguard: also require not being in production
-  const isTestEnv = process.env.NODE_ENV === 'test';
-  const isProduction = process.env.NODE_ENV === 'production';
-  const disableFlag = process.env.DISABLE_RATE_LIMITING === 'true';
+  const isTestEnv = process.env.NODE_ENV === "test";
+  const isProduction = process.env.NODE_ENV === "production";
+  const disableFlag = process.env.DISABLE_RATE_LIMITING === "true";
 
   if (isTestEnv && disableFlag && !isProduction) {
     return null;
@@ -132,7 +132,7 @@ export function checkRateLimitAndDuplicates(
   // Check rate limit first
   const rateLimitResult = checkRateLimit(userId, rateLimitConfig);
   if (!rateLimitResult.allowed) {
-    logger.warn('Rate limit check failed', {
+    logger.warn("Rate limit check failed", {
       userId,
       actionType: rateLimitConfig.actionType,
       retryAfter: rateLimitResult.retryAfter,
@@ -144,7 +144,7 @@ export function checkRateLimitAndDuplicates(
   if (content && duplicateConfig) {
     const duplicateResult = checkDuplicate(userId, content, duplicateConfig);
     if (duplicateResult.isDuplicate) {
-      logger.warn('Duplicate content detected', {
+      logger.warn("Duplicate content detected", {
         userId,
         actionType: duplicateConfig.actionType,
         lastPostedAt: duplicateResult.lastPostedAt?.toISOString(),
@@ -154,7 +154,7 @@ export function checkRateLimitAndDuplicates(
   }
 
   // All checks passed
-  logger.debug('Rate limit and duplicate checks passed', {
+  logger.debug("Rate limit and duplicate checks passed", {
     userId,
     actionType: rateLimitConfig.actionType,
     remaining: rateLimitResult.remaining,
@@ -169,9 +169,9 @@ export function checkRateLimitAndDuplicates(
 export function addRateLimitHeaders(
   response: NextResponse,
   remaining: number,
-  resetAt: Date
+  resetAt: Date,
 ): NextResponse {
-  response.headers.set('X-RateLimit-Remaining', remaining.toString());
-  response.headers.set('X-RateLimit-Reset', resetAt.toISOString());
+  response.headers.set("X-RateLimit-Remaining", remaining.toString());
+  response.headers.set("X-RateLimit-Reset", resetAt.toISOString());
   return response;
 }

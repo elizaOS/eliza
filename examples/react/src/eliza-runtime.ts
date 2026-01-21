@@ -11,9 +11,9 @@
 import {
   AgentRuntime,
   ChannelType,
-  createCharacter,
   type Character,
   type Content,
+  createCharacter,
   createMessageMemory,
   type Memory,
   stringToUuid,

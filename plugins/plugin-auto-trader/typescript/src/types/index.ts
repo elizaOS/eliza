@@ -1,11 +1,11 @@
-import { UUID } from '@elizaos/core';
+import type { UUID } from "@elizaos/core";
 
 export enum ServiceTypes {
-  DEGEN_TRADING = 'DEGEN_TRADING',
-  TRADE_MEMORY = 'TRADE_MEMORY',
-  DATA = 'DATA',
-  BUY = 'BUY',
-  SELL = 'SELL',
+  DEGEN_TRADING = "DEGEN_TRADING",
+  TRADE_MEMORY = "TRADE_MEMORY",
+  DATA = "DATA",
+  BUY = "BUY",
+  SELL = "SELL",
 }
 
 export interface TokenSignal {
@@ -25,7 +25,7 @@ export interface TokenSignal {
       histogram: number;
     };
     volumeProfile: {
-      trend: 'increasing' | 'decreasing' | 'stable';
+      trend: "increasing" | "decreasing" | "stable";
       unusualActivity: boolean;
     };
     volatility: number;

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { getAuthToken } from '@/lib/auth';
-import { useAuthStore } from '@/stores/authStore';
+import { useCallback, useEffect, useState } from "react";
+import { getAuthToken } from "@/lib/auth";
+import { useAuthStore } from "@/stores/authStore";
 
 /**
  * Represents the current Twitter authentication status.
@@ -76,7 +76,7 @@ export function useTwitterAuth(): UseTwitterAuthReturn {
       return;
     }
 
-    const response = await fetch('/api/twitter/auth-status', {
+    const response = await fetch("/api/twitter/auth-status", {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -98,33 +98,33 @@ export function useTwitterAuth(): UseTwitterAuthReturn {
 
   // Check for successful auth callback
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     const urlParams = new URLSearchParams(window.location.search);
-    const twitterAuth = urlParams.get('twitter_auth');
+    const twitterAuth = urlParams.get("twitter_auth");
 
-    if (twitterAuth === 'success') {
+    if (twitterAuth === "success") {
       // Refresh auth status
       checkAuthStatus();
 
       // Clean up URL
       const url = new URL(window.location.href);
-      url.searchParams.delete('twitter_auth');
-      window.history.replaceState({}, '', url.toString());
+      url.searchParams.delete("twitter_auth");
+      window.history.replaceState({}, "", url.toString());
     }
   }, [checkAuthStatus]);
 
   const connectTwitter = useCallback(
     (_returnPath?: string) => {
       if (!user?.id) {
-        setError('Please sign in first');
+        setError("Please sign in first");
         return;
       }
 
       // Redirect to OAuth 2.0 flow
-      window.location.href = '/api/auth/twitter/initiate';
+      window.location.href = "/api/auth/twitter/initiate";
     },
-    [user?.id]
+    [user?.id],
   );
 
   const disconnectTwitter = useCallback(async () => {
@@ -133,8 +133,8 @@ export function useTwitterAuth(): UseTwitterAuthReturn {
     const token = getAuthToken();
     if (!token) return;
 
-    const response = await fetch('/api/twitter/disconnect', {
-      method: 'POST',
+    const response = await fetch("/api/twitter/disconnect", {
+      method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
 

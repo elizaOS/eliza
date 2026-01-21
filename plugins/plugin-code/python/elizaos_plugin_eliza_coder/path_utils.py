@@ -52,4 +52,3 @@ def validate_path(target_path: str, allowed_directory: str, current_directory: s
         return None
 
     return os.fspath(resolved)
-

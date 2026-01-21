@@ -1,10 +1,12 @@
 //! Integration tests for the Agent Orchestrator plugin.
 
 use elizaos_plugin_agent_orchestrator::{
-    config::{configure_agent_orchestrator_plugin, reset_configuration, AgentOrchestratorPluginOptions},
+    config::{
+        configure_agent_orchestrator_plugin, reset_configuration, AgentOrchestratorPluginOptions,
+    },
+    error::Result,
     service::{AgentOrchestratorService, RoomInfo, Runtime},
     types::*,
-    error::Result,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -50,24 +52,47 @@ impl Runtime for MockRuntime {
         *counter += 1;
         let task_id = format!("task-{}", *counter);
 
-        let metadata: OrchestratedTaskMetadata = serde_json::from_value(
-            input.get("metadata").cloned().unwrap_or_default()
-        ).unwrap_or_else(|_| OrchestratedTaskMetadata::new("default", "/tmp"));
+        let metadata: OrchestratedTaskMetadata =
+            serde_json::from_value(input.get("metadata").cloned().unwrap_or_default())
+                .unwrap_or_else(|_| OrchestratedTaskMetadata::new("default", "/tmp"));
 
         let task = OrchestratedTask {
             id: task_id.clone(),
-            name: input.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            description: input.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            name: input
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            description: input
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             metadata,
-            tags: input.get("tags")
+            tags: input
+                .get("tags")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
                 .unwrap_or_default(),
-            room_id: input.get("roomId").and_then(|v| v.as_str()).map(|s| s.to_string()),
-            world_id: input.get("worldId").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            room_id: input
+                .get("roomId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            world_id: input
+                .get("worldId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
         };
 
-        self.storage.tasks.write().unwrap().insert(task_id.clone(), task);
+        self.storage
+            .tasks
+            .write()
+            .unwrap()
+            .insert(task_id.clone(), task);
         Ok(task_id)
     }
 
@@ -77,7 +102,8 @@ impl Runtime for MockRuntime {
 
     async fn get_tasks(&self, tags: &[&str]) -> Result<Vec<OrchestratedTask>> {
         let tasks = self.storage.tasks.read().unwrap();
-        Ok(tasks.values()
+        Ok(tasks
+            .values()
             .filter(|t| tags.is_empty() || tags.iter().any(|tag| t.tags.contains(&tag.to_string())))
             .cloned()
             .collect())
@@ -87,7 +113,8 @@ impl Runtime for MockRuntime {
         let mut tasks = self.storage.tasks.write().unwrap();
         if let Some(task) = tasks.get_mut(task_id) {
             if let Some(metadata) = updates.get("metadata") {
-                task.metadata = serde_json::from_value(metadata.clone()).unwrap_or(task.metadata.clone());
+                task.metadata =
+                    serde_json::from_value(metadata.clone()).unwrap_or(task.metadata.clone());
             }
         }
         Ok(())
@@ -129,13 +156,11 @@ impl AgentProvider for NoOpProvider {
 
 fn setup() {
     reset_configuration();
-    configure_agent_orchestrator_plugin(
-        AgentOrchestratorPluginOptions::new(
-            vec![Arc::new(NoOpProvider)],
-            "noop",
-            || "/tmp".to_string(),
-        )
-    );
+    configure_agent_orchestrator_plugin(AgentOrchestratorPluginOptions::new(
+        vec![Arc::new(NoOpProvider)],
+        "noop",
+        || "/tmp".to_string(),
+    ));
 }
 
 #[tokio::test]
@@ -144,7 +169,10 @@ async fn test_create_task() {
     let runtime = Arc::new(MockRuntime::new());
     let (service, _rx) = AgentOrchestratorService::start(runtime).await.unwrap();
 
-    let task = service.create_task("Test Task", "Test description", None, None).await.unwrap();
+    let task = service
+        .create_task("Test Task", "Test description", None, None)
+        .await
+        .unwrap();
 
     assert_eq!(task.name, "Test Task");
     assert_eq!(task.description, "Test description");
@@ -160,9 +188,18 @@ async fn test_get_recent_tasks() {
     let runtime = Arc::new(MockRuntime::new());
     let (service, _rx) = AgentOrchestratorService::start(runtime).await.unwrap();
 
-    service.create_task("Task 1", "Description 1", None, None).await.unwrap();
-    service.create_task("Task 2", "Description 2", None, None).await.unwrap();
-    service.create_task("Task 3", "Description 3", None, None).await.unwrap();
+    service
+        .create_task("Task 1", "Description 1", None, None)
+        .await
+        .unwrap();
+    service
+        .create_task("Task 2", "Description 2", None, None)
+        .await
+        .unwrap();
+    service
+        .create_task("Task 3", "Description 3", None, None)
+        .await
+        .unwrap();
 
     let tasks = service.get_recent_tasks(2).await.unwrap();
     assert_eq!(tasks.len(), 2);
@@ -176,8 +213,14 @@ async fn test_search_tasks() {
     let runtime = Arc::new(MockRuntime::new());
     let (service, _rx) = AgentOrchestratorService::start(runtime).await.unwrap();
 
-    service.create_task("Implement feature", "Feature description", None, None).await.unwrap();
-    service.create_task("Fix bug", "Bug description", None, None).await.unwrap();
+    service
+        .create_task("Implement feature", "Feature description", None, None)
+        .await
+        .unwrap();
+    service
+        .create_task("Fix bug", "Bug description", None, None)
+        .await
+        .unwrap();
 
     let results = service.search_tasks("feature").await.unwrap();
     assert_eq!(results.len(), 1);
@@ -191,7 +234,10 @@ async fn test_pause_resume_task() {
     let runtime = Arc::new(MockRuntime::new());
     let (service, _rx) = AgentOrchestratorService::start(runtime).await.unwrap();
 
-    let task = service.create_task("Test Task", "Description", None, None).await.unwrap();
+    let task = service
+        .create_task("Test Task", "Description", None, None)
+        .await
+        .unwrap();
 
     service.pause_task(&task.id).await.unwrap();
     let paused = service.get_task(&task.id).await.unwrap().unwrap();
@@ -208,7 +254,10 @@ async fn test_cancel_task() {
     let runtime = Arc::new(MockRuntime::new());
     let (service, _rx) = AgentOrchestratorService::start(runtime).await.unwrap();
 
-    let task = service.create_task("Test Task", "Description", None, None).await.unwrap();
+    let task = service
+        .create_task("Test Task", "Description", None, None)
+        .await
+        .unwrap();
 
     service.cancel_task(&task.id).await.unwrap();
     let cancelled = service.get_task(&task.id).await.unwrap().unwrap();
@@ -221,7 +270,10 @@ async fn test_update_progress() {
     let runtime = Arc::new(MockRuntime::new());
     let (service, _rx) = AgentOrchestratorService::start(runtime).await.unwrap();
 
-    let task = service.create_task("Test Task", "Description", None, None).await.unwrap();
+    let task = service
+        .create_task("Test Task", "Description", None, None)
+        .await
+        .unwrap();
 
     service.update_task_progress(&task.id, 50).await.unwrap();
     let updated = service.get_task(&task.id).await.unwrap().unwrap();
@@ -234,7 +286,10 @@ async fn test_add_step() {
     let runtime = Arc::new(MockRuntime::new());
     let (service, _rx) = AgentOrchestratorService::start(runtime).await.unwrap();
 
-    let task = service.create_task("Test Task", "Description", None, None).await.unwrap();
+    let task = service
+        .create_task("Test Task", "Description", None, None)
+        .await
+        .unwrap();
 
     let step = service.add_step(&task.id, "Step 1").await.unwrap();
     assert_eq!(step.description, "Step 1");
@@ -253,7 +308,10 @@ async fn test_get_task_context() {
     let context = service.get_task_context().await.unwrap();
     assert!(context.contains("No tasks"));
 
-    service.create_task("Test Task", "Description", None, None).await.unwrap();
+    service
+        .create_task("Test Task", "Description", None, None)
+        .await
+        .unwrap();
     let context = service.get_task_context().await.unwrap();
     assert!(context.contains("Test Task"));
 }

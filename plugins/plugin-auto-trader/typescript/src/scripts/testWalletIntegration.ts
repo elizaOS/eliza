@@ -1,21 +1,31 @@
-import { elizaLogger } from '@elizaos/core';
+import { elizaLogger } from "@elizaos/core";
+
 // Missing service - commented out until implemented
 // import { WalletIntegrationService } from '../services/WalletIntegrationService.ts';
 
-// Mock runtime for testing
-const mockRuntime = {
+/** Mock runtime interface for testing wallet integration */
+interface MockWalletRuntime {
+  getSetting: (key: string) => string;
+  logger: typeof elizaLogger;
+}
+
+// Mock runtime for testing (used when WalletIntegrationService is implemented)
+const _mockRuntime: MockWalletRuntime = {
   getSetting: (key: string) => {
     const settings: Record<string, string> = {
-      SOLANA_RPC_URL: process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
-      WALLET_PRIVATE_KEY: process.env.WALLET_PRIVATE_KEY || '',
+      SOLANA_RPC_URL:
+        process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com",
+      WALLET_PRIVATE_KEY: process.env.WALLET_PRIVATE_KEY || "",
     };
-    return settings[key] || '';
+    return settings[key] || "";
   },
   logger: elizaLogger,
-} as any;
+};
 
 async function main() {
-  throw new Error('This script requires WalletIntegrationService which is not yet implemented');
+  throw new Error(
+    "This script requires WalletIntegrationService which is not yet implemented",
+  );
   /* Commented out until service is implemented
   console.log('🔧 Testing Wallet Integration Service\n');
 
@@ -75,10 +85,10 @@ async function main() {
 
 main()
   .then(() => {
-    console.log('\n👋 Test complete');
+    console.log("\n👋 Test complete");
     process.exit(0);
   })
   .catch((error) => {
-    console.error('Fatal error:', error);
+    console.error("Fatal error:", error);
     process.exit(1);
   });

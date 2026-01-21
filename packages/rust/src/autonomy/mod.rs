@@ -24,18 +24,26 @@ pub use service::{AutonomyService, AUTONOMY_SERVICE_TYPE};
 pub use types::AutonomyStatus;
 
 /// Create the autonomy plugin (actions/providers/routes) bound to a runtime + service.
-pub fn create_autonomy_plugin(runtime: Weak<AgentRuntime>, service: Arc<AutonomyService>) -> Plugin {
+pub fn create_autonomy_plugin(
+    runtime: Weak<AgentRuntime>,
+    service: Arc<AutonomyService>,
+) -> Plugin {
     let mut plugin = Plugin::new(
         "autonomy",
         "Built-in autonomy capabilities (providers/actions/routes) gated by ENABLE_AUTONOMY",
     );
 
     plugin = plugin
-        .with_action(Arc::new(SendToAdminAction::new(runtime.clone(), service.clone())))
-        .with_provider(Arc::new(AdminChatHistoryProvider::new(runtime.clone(), service.clone())))
+        .with_action(Arc::new(SendToAdminAction::new(
+            runtime.clone(),
+            service.clone(),
+        )))
+        .with_provider(Arc::new(AdminChatHistoryProvider::new(
+            runtime.clone(),
+            service.clone(),
+        )))
         .with_provider(Arc::new(AutonomyStatusProvider::new(runtime, service)))
         .with_routes(autonomy_routes());
 
     plugin
 }
-

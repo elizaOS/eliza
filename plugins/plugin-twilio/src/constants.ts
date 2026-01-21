@@ -61,36 +61,38 @@ export const TWILIO_SERVICE_NAME = "twilio";
 
 // Twilio constants
 export const TWILIO_CONSTANTS = {
-    // Message limits
-    SMS_MAX_LENGTH: 1600,
-    MMS_MAX_MEDIA_SIZE: 5242880, // 5MB
-    MMS_MAX_MEDIA_COUNT: 10,
-    
-    // Voice constants
-    DEFAULT_VOICE: "alice",
-    DEFAULT_LANGUAGE: "en-US",
-    VOICE_STREAM_TIMEOUT: 300000, // 5 minutes
-    
-    // API endpoints
-    API_BASE_URL: "https://api.twilio.com",
-    
-    // Webhook paths
-    WEBHOOK_PATHS: {
-        SMS: "/webhooks/twilio/sms",
-        VOICE: "/webhooks/twilio/voice",
-        STATUS: "/webhooks/twilio/status",
-        VOICE_STREAM: "/webhooks/twilio/voice-stream",
-    },
-    
-    // TwiML templates
-    TWIML: {
-        DEFAULT_VOICE_RESPONSE: `<?xml version="1.0" encoding="UTF-8"?>
+  // Message limits
+  SMS_MAX_LENGTH: 1600,
+  MMS_MAX_MEDIA_SIZE: 5242880, // 5MB
+  MMS_MAX_MEDIA_COUNT: 10,
+
+  // Voice constants
+  DEFAULT_VOICE: "alice",
+  DEFAULT_LANGUAGE: "en-US",
+  VOICE_STREAM_TIMEOUT: 300000, // 5 minutes
+
+  // API endpoints
+  API_BASE_URL: "https://api.twilio.com",
+
+  // Webhook paths
+  WEBHOOK_PATHS: {
+    SMS: "/webhooks/twilio/sms",
+    VOICE: "/webhooks/twilio/voice",
+    STATUS: "/webhooks/twilio/status",
+    VOICE_STREAM: "/webhooks/twilio/voice-stream",
+  },
+
+  // TwiML templates
+  TWIML: {
+    DEFAULT_VOICE_RESPONSE: `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say voice="alice">Hello from Eliza AI assistant. How can I help you today?</Say>
     <Pause length="1"/>
 </Response>`,
-        
-        STREAM_RESPONSE: (streamUrl: string) => `<?xml version="1.0" encoding="UTF-8"?>
+
+    STREAM_RESPONSE: (
+      streamUrl: string,
+    ) => `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Start>
         <Stream url="${streamUrl}" />
@@ -98,48 +100,49 @@ export const TWILIO_CONSTANTS = {
     <Say>Please wait while I connect you to the AI assistant.</Say>
     <Pause length="60"/>
 </Response>`,
-    },
-    
-    // Rate limits
-    RATE_LIMITS: {
-        SMS_PER_SECOND: 1,
-        CALLS_PER_SECOND: 1,
-        WEBHOOK_TIMEOUT: 15000, // 15 seconds
-    },
-    
-    // Cache TTL
-    CACHE_TTL: {
-        CONVERSATION: 3600, // 1 hour
-        MEDIA: 86400, // 24 hours
-        CALL_STATE: 1800, // 30 minutes
-    },
+  },
+
+  // Rate limits
+  RATE_LIMITS: {
+    SMS_PER_SECOND: 1,
+    CALLS_PER_SECOND: 1,
+    WEBHOOK_TIMEOUT: 15000, // 15 seconds
+  },
+
+  // Cache TTL
+  CACHE_TTL: {
+    CONVERSATION: 3600, // 1 hour
+    MEDIA: 86400, // 24 hours
+    CALL_STATE: 1800, // 30 minutes
+  },
 } as const;
 
 // Audio formats for voice
 export const AUDIO_FORMATS = {
-    INPUT: "audio/x-mulaw",
-    OUTPUT: "audio/x-mulaw",
-    SAMPLE_RATE: 8000,
-    CHANNELS: 1,
+  INPUT: "audio/x-mulaw",
+  OUTPUT: "audio/x-mulaw",
+  SAMPLE_RATE: 8000,
+  CHANNELS: 1,
 } as const;
 
 // Supported media types
 export const SUPPORTED_MEDIA_TYPES = [
-    "image/jpeg",
-    "image/png",
-    "image/gif",
-    "audio/mpeg",
-    "audio/ogg",
-    "audio/wav",
-    "video/mp4",
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/wav",
+  "video/mp4",
 ] as const;
 
 // Error messages
 export const ERROR_MESSAGES = {
-    INVALID_PHONE_NUMBER: "Invalid phone number format. Please use E.164 format (e.g., +18885551212)",
-    MISSING_CREDENTIALS: "Twilio credentials not configured",
-    WEBHOOK_VALIDATION_FAILED: "Failed to validate Twilio webhook signature",
-    RATE_LIMIT_EXCEEDED: "Rate limit exceeded. Please try again later.",
-    MEDIA_TOO_LARGE: "Media file too large. Maximum size is 5MB",
-    UNSUPPORTED_MEDIA_TYPE: "Unsupported media type",
+  INVALID_PHONE_NUMBER:
+    "Invalid phone number format. Please use E.164 format (e.g., +18885551212)",
+  MISSING_CREDENTIALS: "Twilio credentials not configured",
+  WEBHOOK_VALIDATION_FAILED: "Failed to validate Twilio webhook signature",
+  RATE_LIMIT_EXCEEDED: "Rate limit exceeded. Please try again later.",
+  MEDIA_TOO_LARGE: "Media file too large. Maximum size is 5MB",
+  UNSUPPORTED_MEDIA_TYPE: "Unsupported media type",
 } as const;

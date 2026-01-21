@@ -1,11 +1,17 @@
-import { describe, expect, test } from "vitest";
 import { v4 as uuidv4 } from "uuid";
+import { describe, expect, test } from "vitest";
 import { AutonomyService } from "../autonomy/service";
 import type { IAgentRuntime, Memory, UUID } from "../types";
 
 const asTestUuid = (id: string): UUID => id as UUID;
 
-const makeMemory = (id: UUID, entityId: UUID, roomId: UUID, text: string, createdAt: number): Memory => ({
+const makeMemory = (
+  id: UUID,
+  entityId: UUID,
+  roomId: UUID,
+  text: string,
+  createdAt: number,
+): Memory => ({
   id,
   entityId,
   roomId,
@@ -21,7 +27,8 @@ describe("autonomy service", () => {
 
     const runtime = {
       agentId,
-      getSetting: (key: string) => (key === "AUTONOMY_TARGET_ROOM_ID" ? roomId : undefined),
+      getSetting: (key: string) =>
+        key === "AUTONOMY_TARGET_ROOM_ID" ? roomId : undefined,
       getMemories: async ({ tableName }: { tableName: string }) => {
         if (tableName === "memories") {
           return [makeMemory(dupId, agentId, roomId, "old", 10)];

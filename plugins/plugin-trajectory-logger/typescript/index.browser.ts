@@ -14,4 +14,3 @@ export const trajectoryLoggerPlugin: Plugin = {
 };
 
 export default trajectoryLoggerPlugin;
-
