@@ -49,3 +49,6 @@ logs/
 .cache/
 .turbo/
 *.tsbuildinfo
+# Embedded git repos in soulmates
+examples/soulmates/old/alt-ori/
+examples/soulmates/old/ori/
