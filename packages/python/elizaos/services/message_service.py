@@ -518,11 +518,21 @@ class DefaultMessageService(IMessageService):
                 ),
             )
 
+            # Handle complete generation failure
+            if parsed_response is None:
+                runtime.logger.error("Generation failed completely - returning did_respond=False")
+                return MessageProcessingResult(
+                    did_respond=False,
+                    response_content=None,
+                    response_messages=[],
+                    state=state,
+                )
+
             # Extract parsed fields
-            thought = str(parsed_response.get("thought", "")) if parsed_response else ""
-            actions_raw = str(parsed_response.get("actions", "REPLY")) if parsed_response else "REPLY"
-            providers_raw = str(parsed_response.get("providers", "")) if parsed_response else ""
-            response_text = str(parsed_response.get("text", "")) if parsed_response else ""
+            thought = str(parsed_response.get("thought", ""))
+            actions_raw = str(parsed_response.get("actions", "REPLY"))
+            providers_raw = str(parsed_response.get("providers", ""))
+            response_text = str(parsed_response.get("text", ""))
             
             # Parse actions and providers from comma-separated strings
             actions = [a.strip().upper() for a in actions_raw.split(",") if a.strip()]
