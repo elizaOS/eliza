@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/core",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-alpha.1",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -75,7 +75,7 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.10.2",
-    "@elizaos/prompts": "2.0.0-alpha",
+    "@elizaos/prompts": "2.0.0-alpha.1",
     "@langchain/core": "^1.1.12",
     "@langchain/textsplitters": "^1.0.1",
     "adze": "^2.2.5",

@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/sweagent-root",
   "private": false,
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-alpha.1",
   "description": "SWE-agent: AI software engineering agent with Python, TypeScript, and Rust implementations",
   "type": "module",
   "main": "typescript/dist/index.js",
