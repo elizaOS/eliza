@@ -948,8 +948,28 @@ class DefaultMessageService(IMessageService):
             ),
         )
 
-        final_thought = str(summary_result.get("thought", "")) if summary_result else ""
-        final_text = str(summary_result.get("text", "")) if summary_result else ""
+        # Handle summary generation failure
+        if summary_result is None:
+            runtime.logger.error("Multi-step summary generation failed - returning did_respond=False")
+            return MessageProcessingResult(
+                did_respond=False,
+                response_content=None,
+                response_messages=[],
+                state=state,
+            )
+
+        final_thought = str(summary_result.get("thought", ""))
+        final_text = str(summary_result.get("text", ""))
+
+        # If text is empty, treat as failure
+        if not final_text.strip():
+            runtime.logger.error("Multi-step summary returned empty text - returning did_respond=False")
+            return MessageProcessingResult(
+                did_respond=False,
+                response_content=None,
+                response_messages=[],
+                state=state,
+            )
 
         final_content = Content(text=final_text, thought=final_thought)
         if callback:
