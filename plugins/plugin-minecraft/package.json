@@ -67,7 +67,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-alpha.1"
   },
   "publishConfig": {
     "access": "public"
@@ -106,5 +106,6 @@
         "required": false
       }
     }
-  }
+  },
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
 }

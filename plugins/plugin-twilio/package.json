@@ -22,7 +22,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-alpha.1",
     "axios": "^1.6.5",
     "body-parser": "^1.20.2",
     "express": "^4.18.2",
@@ -58,7 +58,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543",
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
