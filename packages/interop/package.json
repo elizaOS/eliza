@@ -28,7 +28,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-alpha"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
@@ -38,5 +38,6 @@
   "license": "MIT",
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "gitHead": "bb40cffa35b2ff04b9301f7132925153540820fe"
 }
