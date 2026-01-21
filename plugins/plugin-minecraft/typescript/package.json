@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-minecraft",
   "description": "Minecraft automation plugin for ElizaOS (Mineflayer bridge)",
-  "version": "0.1.0",
+  "version": "2.0.0-alpha.1",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -25,8 +25,16 @@
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      }
-    }
+      ,
+  "publishConfig": {
+    "access": "public"
+  }
+}
+    ,
+  "publishConfig": {
+    "access": "public"
+  }
+}
   },
   "files": [
     "dist",
@@ -54,5 +62,13 @@
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"
+  ,
+  "publishConfig": {
+    "access": "public"
+  }
+}
+,
+  "publishConfig": {
+    "access": "public"
   }
 }

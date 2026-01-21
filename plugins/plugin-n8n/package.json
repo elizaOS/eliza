@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/plugin-n8n-root",
+  "private": true,
   "version": "2.0.0-alpha.1",
   "description": "N8n workflow integration plugin with AI-powered plugin creation for ElizaOS",
   "type": "module",

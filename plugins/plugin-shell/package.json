@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/plugin-shell-root",
+  "private": true,
   "version": "2.0.0-alpha.1",
   "description": "Shell command execution plugin for ElizaOS with directory restrictions and history tracking",
   "type": "module",

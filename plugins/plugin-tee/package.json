@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/plugin-tee-root",
+  "private": true,
   "version": "2.0.0-alpha.1",
   "description": "Trusted Execution Environment (TEE) integration plugin for elizaOS - Multi-language support (TypeScript, Python, Rust)",
   "type": "module",

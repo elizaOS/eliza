@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/plugin-trajectory-logger-root",
+  "private": true,
   "version": "2.0.0-alpha.1",
   "description": "Trajectory logging plugin for ElizaOS - capture agent interaction trajectories for RL training",
   "type": "module",
@@ -86,5 +87,5 @@
     "pluginParameters": {},
     "description": "Collects complete agent interaction trajectories for RL training."
   },
-  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
+  "gitHead": "401e0d2502fea9d6f459aa80faad1369798e9600"
 }

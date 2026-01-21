@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-solana",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-alpha.1",
   "engines": {
     "bun": ">=1.1.0"
   },
@@ -18,7 +18,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    }
+    ,
+  "publishConfig": {
+    "access": "public"
+  }
+}
   },
   "files": [
     "dist",
@@ -128,7 +132,23 @@
         "description": "Alternative variable name for the Solana wallet private key in base58 or base64.",
         "required": false,
         "sensitive": true
-      }
-    }
+      ,
+  "publishConfig": {
+    "access": "public"
+  }
+}
+    ,
+  "publishConfig": {
+    "access": "public"
+  }
+}
+  ,
+  "publishConfig": {
+    "access": "public"
+  }
+}
+,
+  "publishConfig": {
+    "access": "public"
   }
 }

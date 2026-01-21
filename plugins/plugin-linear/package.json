@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/plugin-linear-root",
+  "private": true,
   "version": "2.0.0-alpha.1",
   "description": "Linear integration plugin for ElizaOS (TypeScript)",
   "type": "module",

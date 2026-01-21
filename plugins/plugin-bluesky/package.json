@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/plugin-bluesky-root",
+  "private": true,
   "version": "2.0.0-alpha.1",
   "type": "module",
   "main": "typescript/dist/node/index.node.js",

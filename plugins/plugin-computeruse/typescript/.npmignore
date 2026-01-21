@@ -1,0 +1,22 @@
+# Source files (dist is published)
+src/
+tsconfig.json
+tsconfig.*.json
+*.tsbuildinfo
+
+# Tests
+__tests__/
+test/
+tests/
+*.test.ts
+*.spec.ts
+
+# Development
+.turbo/
+.cache/
+coverage/
+
+# Environment files
+.env
+.env.*
+!.env.example

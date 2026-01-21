@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/plugin-code-root",
+  "private": true,
   "version": "2.0.0-alpha.1",
   "description": "Coder tools plugin for ElizaOS (filesystem + shell + git) with multi-language implementations",
   "type": "module",
