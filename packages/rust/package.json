@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/rust",
   "version": "2.0.0-alpha",
-  "private": true,
   "description": "elizaOS Core - Rust runtime and types",
   "type": "module",
   "main": "pkg/node/elizaos.js",
@@ -23,7 +22,7 @@
     "pkg"
   ],
   "scripts": {
-    "build": "echo 'Rust build skipped - run ./build.sh manually when Rust is needed'",
+    "build": "./build.sh",
     "build:native": "cargo build --release",
     "build:wasm": "wasm-pack build --target web --out-dir pkg/web --no-default-features --features wasm && wasm-pack build --target nodejs --out-dir pkg/node --no-default-features --features wasm",
     "test": "cargo test",

@@ -75,7 +75,7 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.10.2",
-    "@elizaos/prompts": "workspace:*",
+    "@elizaos/prompts": "2.0.0-alpha",
     "@langchain/core": "^1.1.12",
     "@langchain/textsplitters": "^1.0.1",
     "adze": "^2.2.5",
@@ -92,5 +92,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "255e37c0e4a76da0b776219db5ebb9dadf20e89f"
+  "gitHead": "bb40cffa35b2ff04b9301f7132925153540820fe"
 }

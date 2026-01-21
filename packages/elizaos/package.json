@@ -54,5 +54,6 @@
   "homepage": "https://elizaos.ai",
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "gitHead": "bb40cffa35b2ff04b9301f7132925153540820fe"
 }

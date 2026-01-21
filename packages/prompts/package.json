@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/prompts",
+  "private": false,
   "version": "2.0.0-alpha",
   "description": "Shared prompt templates for elizaOS across TypeScript, Python, and Rust",
   "type": "module",
@@ -39,5 +40,5 @@
     "llm"
   ],
   "license": "MIT",
-  "devDependencies": {}
+  "gitHead": "bb40cffa35b2ff04b9301f7132925153540820fe"
 }
