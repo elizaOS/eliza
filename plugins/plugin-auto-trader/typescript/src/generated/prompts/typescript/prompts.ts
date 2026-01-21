@@ -582,3 +582,4 @@ Important considerations:
 Respond ONLY with the JSON object, no additional text.`;
 
 export const TRADING_DECISION_TEMPLATE = tradingDecisionTemplate;
+
