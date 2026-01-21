@@ -9,8 +9,8 @@ This module provides advanced capabilities that can be enabled with
 """
 
 from .actions import (
-    advanced_actions,
     add_contact_action,
+    advanced_actions,
     follow_room_action,
     generate_image_action,
     mute_room_action,
@@ -25,6 +25,11 @@ from .actions import (
     update_role_action,
     update_settings_action,
 )
+from .evaluators import (
+    advanced_evaluators,
+    reflection_evaluator,
+    relationship_extraction_evaluator,
+)
 from .providers import (
     advanced_providers,
     agent_settings_provider,
@@ -36,15 +41,10 @@ from .providers import (
     roles_provider,
     settings_provider,
 )
-from .evaluators import (
-    advanced_evaluators,
-    reflection_evaluator,
-    relationship_extraction_evaluator,
-)
 from .services import (
-    advanced_services,
     FollowUpService,
     RolodexService,
+    advanced_services,
 )
 
 __all__ = [

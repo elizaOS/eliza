@@ -4,7 +4,7 @@
  * Shared types for common patterns that replace 'unknown' and 'any'
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 
 /**
  * JSON-serializable value types
@@ -32,7 +32,7 @@ export const JsonValueSchema: JsonValueSchema = z.lazy(() =>
     z.null(),
     z.array(JsonValueSchema),
     z.record(z.string(), JsonValueSchema),
-  ])
+  ]),
 );
 
 /**
@@ -94,7 +94,7 @@ export interface PaginatedResponse<T> {
 /**
  * Sort order
  */
-export type SortOrder = 'asc' | 'desc';
+export type SortOrder = "asc" | "desc";
 
 /**
  * Sort parameters
@@ -149,7 +149,7 @@ export interface PostHogServerConstructor {
       flushAt?: number;
       flushInterval?: number;
       requestTimeout?: number;
-    }
+    },
   ): PostHogServerClient;
 }
 
@@ -181,9 +181,9 @@ export interface PostHogClient {
       enable_recording_console_log?: boolean;
       capture_exceptions?: boolean;
       sanitize_properties?: (
-        properties: StringRecord<JsonValue>
+        properties: StringRecord<JsonValue>,
       ) => StringRecord<JsonValue>;
-    }
+    },
   ): void;
   capture(event: string, properties?: StringRecord<JsonValue>): void;
   identify(distinctId: string, properties?: StringRecord<JsonValue>): void;

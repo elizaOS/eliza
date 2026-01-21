@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-lp-manager",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "type": "module",
   "private": true,
   "description": "Autonomous LP management agent for Solana and EVM DEXes with automatic rebalancing",

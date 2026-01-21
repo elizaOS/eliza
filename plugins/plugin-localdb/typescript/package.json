@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-localdb",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -24,12 +24,12 @@
         "default": "./dist/browser/index.browser.js"
       },
       "node": {
-        "types": "./dist/node/index.d.ts",
+        "types": "./dist/node/index.node.d.ts",
         "import": "./dist/node/index.node.js",
         "default": "./dist/node/index.node.js"
       },
       "bun": {
-        "types": "./dist/node/index.d.ts",
+        "types": "./dist/node/index.node.d.ts",
         "default": "./dist/node/index.node.js"
       },
       "default": "./dist/node/index.node.js"

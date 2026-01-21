@@ -3,7 +3,7 @@ import type { Entity, Room, World } from "./environment";
 import type { Memory } from "./memory";
 import type { ControlMessage } from "./messaging";
 import type { ModelTypeName } from "./model";
-import type { Content, UUID } from "./primitives";
+import type { Content, JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
 /**
@@ -64,6 +64,10 @@ export enum EventType {
 
   // Control events
   CONTROL_MESSAGE = "CONTROL_MESSAGE",
+
+  // Form events
+  FORM_FIELD_CONFIRMED = "FORM_FIELD_CONFIRMED",
+  FORM_FIELD_CANCELLED = "FORM_FIELD_CANCELLED",
 }
 
 /**
@@ -202,6 +206,15 @@ export interface ControlMessagePayload extends EventPayload {
   message: ControlMessage;
 }
 
+export interface FormFieldEventPayload extends EventPayload {
+  sessionId: string;
+  entityId: UUID;
+  field: string;
+  value?: JsonValue;
+  externalData?: JsonValue;
+  reason?: string;
+}
+
 /**
  * Maps event types to their corresponding payload types
  */
@@ -233,6 +246,8 @@ export interface EventPayloadMap {
   [EventType.EMBEDDING_GENERATION_COMPLETED]: EmbeddingGenerationPayload;
   [EventType.EMBEDDING_GENERATION_FAILED]: EmbeddingGenerationPayload;
   [EventType.CONTROL_MESSAGE]: ControlMessagePayload;
+  [EventType.FORM_FIELD_CONFIRMED]: FormFieldEventPayload;
+  [EventType.FORM_FIELD_CANCELLED]: FormFieldEventPayload;
 }
 
 /**

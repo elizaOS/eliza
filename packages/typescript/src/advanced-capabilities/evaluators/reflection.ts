@@ -6,8 +6,8 @@ import { reflectionEvaluatorTemplate } from "../../prompts.ts";
 import type {
   ActionResult,
   Entity,
-  Evaluator,
   EvaluationExample,
+  Evaluator,
   IAgentRuntime,
   Memory,
   State,
@@ -286,7 +286,10 @@ async function handler(
       : [reflection.relationships.relationship];
   }
 
-  const relationshipByPair = new Map<string, (typeof existingRelationships)[number]>();
+  const relationshipByPair = new Map<
+    string,
+    (typeof existingRelationships)[number]
+  >();
   for (const rel of existingRelationships) {
     relationshipByPair.set(`${rel.sourceEntityId}|${rel.targetEntityId}`, rel);
   }
@@ -313,7 +316,9 @@ async function handler(
       continue; // Skip this relationship if we can't resolve the IDs
     }
 
-    const existingRelationship = relationshipByPair.get(`${sourceId}|${target}`);
+    const existingRelationship = relationshipByPair.get(
+      `${sourceId}|${target}`,
+    );
 
     // Parse tags from comma-separated string
     const tags = relationship.tags

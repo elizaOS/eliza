@@ -26,10 +26,10 @@ async def get_contacts_context(
         return ProviderResult(text="No contacts in rolodex.", values={"contactCount": 0}, data={})
 
     entities = await asyncio.gather(
-        *(runtime.get_entity(contact.entity_id) for contact in contacts)
+        *(runtime.get_entity(str(contact.entity_id)) for contact in contacts)
     )
     contact_details: list[dict[str, str]] = []
-    for contact, entity in zip(contacts, entities):
+    for contact, entity in zip(contacts, entities, strict=False):
         name = entity.name if entity and entity.name else "Unknown"
         contact_details.append(
             {

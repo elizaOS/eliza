@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-todo-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha.1",
   "type": "module",
   "description": "Multi-language Todo list plugin for elizaOS with TypeScript, Python, and Rust implementations",
   "main": "typescript/dist/node/index.node.js",
@@ -60,14 +60,14 @@
     "url": "https://github.com/elizaos-plugins/plugin-todo/issues"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-alpha.1",
     "drizzle-orm": "^0.30.10",
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/node": "^25.0.3",
-    "typescript": "^5.9.3",
-    "@biomejs/biome": "^2.3.11"
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "zod": "^3.24.2"
@@ -115,5 +115,6 @@
         "sensitive": false
       }
     }
-  }
+  },
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
 }

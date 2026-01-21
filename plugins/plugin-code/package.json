@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-code-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha.1",
   "description": "Coder tools plugin for ElizaOS (filesystem + shell + git) with multi-language implementations",
   "type": "module",
   "main": "typescript/dist/index.js",
@@ -20,7 +20,14 @@
     "rust/Cargo.toml",
     "README.md"
   ],
-  "keywords": ["eliza", "plugin", "coding", "filesystem", "shell", "git"],
+  "keywords": [
+    "eliza",
+    "plugin",
+    "coding",
+    "filesystem",
+    "shell",
+    "git"
+  ],
   "author": "elizaOS",
   "license": "MIT",
   "repository": {
@@ -46,13 +53,13 @@
     "lint:python:fix": "test -d python && cd python && ruff check --fix . && ruff format . || echo 'Python lint fix skipped'"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/bun": "^1.3.5",
     "@types/node": "^25.0.3",
-    "typescript": "^5.9.3",
-    "@biomejs/biome": "^2.3.11"
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-alpha.1"
   },
   "publishConfig": {
     "access": "public"
@@ -87,6 +94,6 @@
         "sensitive": false
       }
     }
-  }
+  },
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
 }
-

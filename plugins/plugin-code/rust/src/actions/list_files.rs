@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::{Action, ActionExample, ActionResult};
 use crate::service::CoderService;
+use crate::{Action, ActionExample, ActionResult};
 
 pub struct ListFilesAction;
 
@@ -49,7 +49,11 @@ impl Action for ListFilesAction {
         match svc.list_files(conv, dirpath).await {
             Ok(items) => ActionResult {
                 success: true,
-                text: if items.is_empty() { "(empty)".to_string() } else { items.join("\n") },
+                text: if items.is_empty() {
+                    "(empty)".to_string()
+                } else {
+                    items.join("\n")
+                },
                 data: None,
                 error: None,
             },
@@ -69,4 +73,3 @@ impl Action for ListFilesAction {
         }]
     }
 }
-

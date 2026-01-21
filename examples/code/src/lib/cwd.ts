@@ -20,4 +20,3 @@ export async function setCwd(
     return { success: false, path: resolved, error: msg };
   }
 }
-

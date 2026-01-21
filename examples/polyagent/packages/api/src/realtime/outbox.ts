@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   and,
   db,
@@ -7,12 +8,11 @@ import {
   or,
   realtimeOutboxes,
   sql,
-} from '@polyagent/db';
-import { logger } from '@polyagent/shared';
-import { randomUUID } from 'crypto';
-import { streamAdd } from '../redis';
-import type { RealtimeChannel, RealtimeEventEnvelope } from './index';
-import { toStreamKey } from './index';
+} from "@polyagent/db";
+import { logger } from "@polyagent/shared";
+import { streamAdd } from "../redis";
+import type { RealtimeChannel, RealtimeEventEnvelope } from "./index";
+import { toStreamKey } from "./index";
 
 const MAX_ATTEMPTS = 5;
 const BATCH_SIZE = 100;
@@ -21,13 +21,13 @@ const BATCH_SIZE = 100;
  * Persist an event in the realtime outbox for retry.
  */
 export async function enqueueOutbox(
-  event: RealtimeEventEnvelope
+  event: RealtimeEventEnvelope,
 ): Promise<void> {
   // RealtimeEventEnvelope is compatible with JsonValue - it's a plain object with JsonValue fields
   const payload: JsonValue = {
     channel: event.channel,
     type: event.type,
-    version: event.version ?? 'v1',
+    version: event.version ?? "v1",
     data: event.data,
     timestamp: event.timestamp,
   };
@@ -35,7 +35,7 @@ export async function enqueueOutbox(
     id: randomUUID(),
     channel: event.channel,
     type: event.type,
-    version: event.version ?? 'v1',
+    version: event.version ?? "v1",
     payload,
     updatedAt: new Date(),
   });
@@ -54,12 +54,12 @@ export async function drainOutboxBatch(limit: number = BATCH_SIZE): Promise<{
     .from(realtimeOutboxes)
     .where(
       or(
-        eq(realtimeOutboxes.status, 'pending'),
+        eq(realtimeOutboxes.status, "pending"),
         and(
-          eq(realtimeOutboxes.status, 'failed'),
-          lt(realtimeOutboxes.attempts, MAX_ATTEMPTS)
-        )
-      )
+          eq(realtimeOutboxes.status, "failed"),
+          lt(realtimeOutboxes.attempts, MAX_ATTEMPTS),
+        ),
+      ),
     )
     .orderBy(realtimeOutboxes.createdAt)
     .limit(limit);
@@ -72,16 +72,16 @@ export async function drainOutboxBatch(limit: number = BATCH_SIZE): Promise<{
     const payload = row.payload;
     if (
       !payload ||
-      typeof payload !== 'object' ||
-      !('channel' in payload) ||
-      !('type' in payload) ||
-      !('data' in payload) ||
-      !('timestamp' in payload)
+      typeof payload !== "object" ||
+      !("channel" in payload) ||
+      !("type" in payload) ||
+      !("data" in payload) ||
+      !("timestamp" in payload)
     ) {
       logger.error(
-        'Invalid payload structure in outbox',
+        "Invalid payload structure in outbox",
         { rowId: row.id },
-        'RealtimeOutbox'
+        "RealtimeOutbox",
       );
       failed++;
       continue;
@@ -90,10 +90,10 @@ export async function drainOutboxBatch(limit: number = BATCH_SIZE): Promise<{
     const envelope: RealtimeEventEnvelope = {
       channel: payload.channel as RealtimeChannel,
       type: payload.type as string,
-      version: 'version' in payload ? (payload.version as string) : undefined,
+      version: "version" in payload ? (payload.version as string) : undefined,
       data: payload.data as JsonValue,
       timestamp:
-        typeof payload.timestamp === 'number'
+        typeof payload.timestamp === "number"
           ? payload.timestamp
           : Number(payload.timestamp),
     };
@@ -102,7 +102,7 @@ export async function drainOutboxBatch(limit: number = BATCH_SIZE): Promise<{
     const envelopeRecord: Record<string, JsonValue> = {
       channel: envelope.channel,
       type: envelope.type,
-      version: envelope.version ?? 'v1',
+      version: envelope.version ?? "v1",
       data: envelope.data,
       timestamp: envelope.timestamp,
     };
@@ -112,7 +112,7 @@ export async function drainOutboxBatch(limit: number = BATCH_SIZE): Promise<{
     await db
       .update(realtimeOutboxes)
       .set({
-        status: 'sent',
+        status: "sent",
         attempts: sql`${realtimeOutboxes.attempts} + 1`,
         lastError: null,
       })

@@ -6,7 +6,7 @@
  * automatic level filtering based on environment.
  */
 
-import type { JsonValue } from '../types/common';
+import type { JsonValue } from "../types/common";
 
 /**
  * Log data payload - structured data for logging
@@ -20,7 +20,7 @@ export type LogData = Record<string, any> | Error | JsonValue;
  *
  * @description Valid log levels ordered by severity: debug < info < warn < error
  */
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogLevel = "debug" | "info" | "warn" | "error";
 
 /**
  * Log entry structure
@@ -62,7 +62,7 @@ export class Logger {
         this.level = envLevel;
       } else {
         // Default: debug in development, info in production
-        this.level = process.env.NODE_ENV === 'production' ? 'info' : 'debug';
+        this.level = process.env.NODE_ENV === "production" ? "info" : "debug";
       }
     }
   }
@@ -72,8 +72,8 @@ export class Logger {
   }
 
   private formatLog(entry: LogEntry): string {
-    const contextStr = entry.context ? `[${entry.context}]` : '';
-    let dataStr = '';
+    const contextStr = entry.context ? `[${entry.context}]` : "";
+    let dataStr = "";
     if (entry.data) {
       // Handle cyclic structures and errors safely
       // Create a replacer function with persistent seen set
@@ -88,9 +88,9 @@ export class Logger {
           } satisfies Record<string, JsonValue>;
         }
         // Handle cyclic references
-        if (typeof value === 'object' && value !== null) {
+        if (typeof value === "object" && value !== null) {
           if (seen.has(value)) {
-            return '[Circular]';
+            return "[Circular]";
           }
           seen.add(value);
         }
@@ -105,7 +105,7 @@ export class Logger {
     level: LogLevel,
     message: string,
     data?: LogData,
-    context?: string
+    context?: string,
   ): void {
     if (!this.shouldLog(level)) return;
 
@@ -122,14 +122,14 @@ export class Logger {
     // In production, we might want to send errors to external logging service
     // For now, use console methods but through a structured logger
     switch (level) {
-      case 'debug':
-      case 'info':
+      case "debug":
+      case "info":
         console.log(formatted);
         break;
-      case 'warn':
+      case "warn":
         console.warn(formatted);
         break;
-      case 'error':
+      case "error":
         console.error(formatted);
         break;
     }
@@ -145,7 +145,7 @@ export class Logger {
    * @param {string} [context] - Optional context identifier
    */
   debug(message: string, data?: LogData, context?: string): void {
-    this.log('debug', message, data, context);
+    this.log("debug", message, data, context);
   }
 
   /**
@@ -158,7 +158,7 @@ export class Logger {
    * @param {string} [context] - Optional context identifier
    */
   info(message: string, data?: LogData, context?: string): void {
-    this.log('info', message, data, context);
+    this.log("info", message, data, context);
   }
 
   /**
@@ -171,7 +171,7 @@ export class Logger {
    * @param {string} [context] - Optional context identifier
    */
   warn(message: string, data?: LogData, context?: string): void {
-    this.log('warn', message, data, context);
+    this.log("warn", message, data, context);
   }
 
   /**
@@ -184,7 +184,7 @@ export class Logger {
    * @param {string} [context] - Optional context identifier
    */
   error(message: string, data?: LogData, context?: string): void {
-    this.log('error', message, data, context);
+    this.log("error", message, data, context);
   }
 
   /**

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import ReactModal from "react-modal";
+import ReactModal, { type Styles } from "react-modal";
 import Game from "./components/Game.tsx";
-import SplashPage from "./components/SplashPage.tsx";
 import ModelSettingsPanel from "./components/ModelSettings";
-import { useIsRunning } from "./hooks/useTownControls";
+import SplashPage from "./components/SplashPage.tsx";
 import { useModelSettings } from "./hooks/useModelSettings";
+import { useIsRunning } from "./hooks/useTownControls";
 import { useTownState } from "./hooks/useTownState";
 import { isProviderConfigured } from "./runtime/modelSettings";
 
@@ -83,20 +83,23 @@ export default function Home() {
         ariaHideApp={false}
       >
         <div className="font-body">
-          <h1 className="text-center text-6xl font-bold font-display game-title">Help</h1>
+          <h1 className="text-center text-6xl font-bold font-display game-title">
+            Help
+          </h1>
           <p>
-            Welcome to Eliza Town. Eliza agents wander the map, notice nearby neighbors, and
-            start conversations on their own.
+            Welcome to Eliza Town. Eliza agents wander the map, notice nearby
+            neighbors, and start conversations on their own.
           </p>
           <h2 className="text-4xl mt-4">Viewing the town</h2>
           <p className="mt-4">
-            Click and drag to move around the town, and scroll to zoom. Click a character to view
-            their latest messages.
+            Click and drag to move around the town, and scroll to zoom. Click a
+            character to view their latest messages.
           </p>
           <h2 className="text-4xl mt-4">Simulation</h2>
           <p className="mt-4">
-            The town runs entirely in your browser. Each agent receives a short world update, picks
-            an action like moving or chatting, and speaks using an elizaOS runtime.
+            The town runs entirely in your browser. Each agent receives a short
+            world update, picks an action like moving or chatting, and speaks
+            using an elizaOS runtime.
           </p>
         </div>
       </ReactModal>
@@ -132,20 +135,28 @@ export default function Home() {
       >
         <div className="font-body space-y-4 text-brown-900">
           <div className="flex items-center justify-between gap-4">
-            <h1 className="text-3xl font-bold font-display">Conversation Log</h1>
+            <h1 className="text-3xl font-bold font-display">
+              Conversation Log
+            </h1>
             <button
+              type="button"
               className="button text-brown-900 shadow-solid text-sm cursor-pointer"
               onClick={() => setLogModalOpen(false)}
             >
-              <div className="h-full bg-white/80 text-center px-3 py-1">Close</div>
+              <div className="h-full bg-white/80 text-center px-3 py-1">
+                Close
+              </div>
             </button>
           </div>
           <div className="max-h-[70vh] overflow-y-auto space-y-2 pr-2">
             {townState?.messages.length ? (
               townState.messages.map((message) => (
                 <div key={message.id} className="text-sm">
-                  <span className="opacity-70">{formatTimestamp(message.createdAt)}</span>{" "}
-                  <span className="font-semibold">{message.authorName}:</span> {message.text}
+                  <span className="opacity-70">
+                    {formatTimestamp(message.createdAt)}
+                  </span>{" "}
+                  <span className="font-semibold">{message.authorName}:</span>{" "}
+                  {message.text}
                 </div>
               ))
             ) : (
@@ -157,6 +168,7 @@ export default function Home() {
 
       <div className="w-full h-screen min-h-screen relative isolate overflow-hidden flex flex-col justify-start">
         <button
+          type="button"
           className="button text-white shadow-solid text-sm cursor-pointer pointer-events-auto absolute top-4 left-4 lg:hidden"
           onClick={() => {
             setSettingsModalOpen(true);
@@ -175,39 +187,42 @@ export default function Home() {
         />
 
         <button
+          type="button"
           className="button text-brown-900 shadow-solid text-sm cursor-pointer pointer-events-auto absolute bottom-6 left-6"
           onClick={() => setLogModalOpen(true)}
         >
-          <div className="h-full bg-white/80 text-center px-4 py-2">Conversation Log</div>
+          <div className="h-full bg-white/80 text-center px-4 py-2">
+            Conversation Log
+          </div>
         </button>
       </div>
     </main>
   );
 }
 
-const modalStyles = {
+const modalStyles: Styles = {
   overlay: {
-    backgroundColor: 'rgb(0, 0, 0, 75%)',
+    backgroundColor: "rgb(0, 0, 0, 75%)",
     zIndex: 12,
   },
   content: {
-    top: '50%',
-    left: '50%',
-    right: 'auto',
-    bottom: 'auto',
-    marginRight: '-50%',
-    transform: 'translate(-50%, -50%)',
-    maxWidth: '50%',
+    top: "50%",
+    left: "50%",
+    right: "auto",
+    bottom: "auto",
+    marginRight: "-50%",
+    transform: "translate(-50%, -50%)",
+    maxWidth: "50%",
 
-    border: '10px solid rgb(23, 20, 33)',
-    borderRadius: '0',
-    background: 'rgb(35, 38, 58)',
-    color: 'white',
+    border: "10px solid rgb(23, 20, 33)",
+    borderRadius: "0",
+    background: "rgb(35, 38, 58)",
+    color: "white",
     fontFamily: '"Upheaval Pro", "sans-serif"',
   },
 };
 
-const settingsModalStyles = {
+const settingsModalStyles: Styles = {
   overlay: {
     backgroundColor: "rgba(0, 0, 0, 0.6)",
     zIndex: 12,
@@ -232,7 +247,7 @@ const settingsModalStyles = {
   },
 };
 
-const logModalStyles = {
+const logModalStyles: Styles = {
   overlay: {
     backgroundColor: "rgba(0, 0, 0, 0.35)",
     zIndex: 12,
@@ -257,5 +272,8 @@ const logModalStyles = {
 
 function formatTimestamp(timestamp: number): string {
   const date = new Date(timestamp);
-  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

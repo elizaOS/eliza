@@ -11,8 +11,8 @@
  * @returns {Promise<NextResponse>} JSON response with template data
  */
 
-import { getTemplate } from '@polyagent/agents';
-import { NextResponse } from 'next/server';
+import { getTemplate } from "@polyagent/agents";
+import { NextResponse } from "next/server";
 
 /**
  * GET /api/agent-templates/[archetype]
@@ -23,7 +23,7 @@ import { NextResponse } from 'next/server';
  */
 export async function GET(
   _req: Request,
-  { params }: { params: Promise<{ archetype: string }> }
+  { params }: { params: Promise<{ archetype: string }> },
 ) {
   const { archetype } = await params;
   const template = getTemplate(archetype);
@@ -31,7 +31,7 @@ export async function GET(
   if (!template) {
     return NextResponse.json(
       { error: `Template '${archetype}' not found` },
-      { status: 404 }
+      { status: 404 },
     );
   }
 

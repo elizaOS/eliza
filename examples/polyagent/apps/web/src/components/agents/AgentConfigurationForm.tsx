@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { cn, GROQ_MODELS } from '@polyagent/shared';
-import { Copy, ExternalLink, Info } from 'lucide-react';
-import { memo } from 'react';
-import { toast } from 'sonner';
-import { Switch } from '@/components/ui/switch';
-import { MODEL_TIER_POINTS_COST } from '@/lib/constants';
+import { cn, GROQ_MODELS } from "@polyagent/shared";
+import { Copy, ExternalLink, Info } from "lucide-react";
+import { memo } from "react";
+import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
+import { MODEL_TIER_POINTS_COST } from "@/lib/constants";
 
 export interface AgentConfigurationData {
-  modelTier: 'free' | 'pro';
+  modelTier: "free" | "pro";
   /**
    * Controls autonomous trading capability for the agent.
    *
@@ -50,7 +50,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
 }: AgentConfigurationFormProps) {
   const updateField = <K extends keyof AgentConfigurationData>(
     key: K,
-    value: AgentConfigurationData[K]
+    value: AgentConfigurationData[K],
   ) => {
     onChange({ ...data, [key]: value });
   };
@@ -66,12 +66,12 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
         <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
           <button
             type="button"
-            onClick={() => updateField('modelTier', 'free')}
+            onClick={() => updateField("modelTier", "free")}
             className={cn(
-              'flex-1 rounded-lg border p-3 text-left transition-colors sm:p-4',
-              data.modelTier === 'free'
-                ? 'border-[#0066FF] bg-[#0066FF]/10'
-                : 'border-border hover:border-[#0066FF]/50'
+              "flex-1 rounded-lg border p-3 text-left transition-colors sm:p-4",
+              data.modelTier === "free"
+                ? "border-[#0066FF] bg-[#0066FF]/10"
+                : "border-border hover:border-[#0066FF]/50",
             )}
           >
             <div className="font-medium text-sm sm:text-base">
@@ -83,12 +83,12 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
           </button>
           <button
             type="button"
-            onClick={() => updateField('modelTier', 'pro')}
+            onClick={() => updateField("modelTier", "pro")}
             className={cn(
-              'flex-1 rounded-lg border p-3 text-left transition-colors sm:p-4',
-              data.modelTier === 'pro'
-                ? 'border-[#0066FF] bg-[#0066FF]/10'
-                : 'border-border hover:border-[#0066FF]/50'
+              "flex-1 rounded-lg border p-3 text-left transition-colors sm:p-4",
+              data.modelTier === "pro"
+                ? "border-[#0066FF] bg-[#0066FF]/10"
+                : "border-border hover:border-[#0066FF]/50",
             )}
           >
             <div className="font-medium text-sm sm:text-base">
@@ -159,7 +159,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
             <Switch
               checked={data.autonomousEnabled}
               onCheckedChange={(checked) =>
-                updateField('autonomousEnabled', checked)
+                updateField("autonomousEnabled", checked)
               }
               className="shrink-0"
             />
@@ -177,7 +177,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
             <Switch
               checked={data.autonomousPosting}
               onCheckedChange={(checked) =>
-                updateField('autonomousPosting', checked)
+                updateField("autonomousPosting", checked)
               }
               className="shrink-0"
             />
@@ -195,7 +195,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
             <Switch
               checked={data.autonomousCommenting}
               onCheckedChange={(checked) =>
-                updateField('autonomousCommenting', checked)
+                updateField("autonomousCommenting", checked)
               }
               className="shrink-0"
             />
@@ -213,7 +213,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
             <Switch
               checked={data.autonomousDMs}
               onCheckedChange={(checked) =>
-                updateField('autonomousDMs', checked)
+                updateField("autonomousDMs", checked)
               }
               className="shrink-0"
             />
@@ -231,7 +231,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
             <Switch
               checked={data.autonomousGroupChats}
               onCheckedChange={(checked) =>
-                updateField('autonomousGroupChats', checked)
+                updateField("autonomousGroupChats", checked)
               }
               className="shrink-0"
             />
@@ -248,7 +248,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
             </div>
             <Switch
               checked={data.a2aEnabled}
-              onCheckedChange={(checked) => updateField('a2aEnabled', checked)}
+              onCheckedChange={(checked) => updateField("a2aEnabled", checked)}
               className="shrink-0"
             />
           </div>
@@ -264,18 +264,18 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
               </div>
               <div className="flex items-center gap-2 rounded border border-border bg-background p-2">
                 <code className="flex-1 overflow-x-auto break-all text-[10px] sm:text-xs">
-                  {typeof window !== 'undefined'
+                  {typeof window !== "undefined"
                     ? `${window.location.origin}/api/agents/${agentId}/a2a`
                     : `/api/agents/${agentId}/a2a`}
                 </code>
                 <button
                   onClick={() => {
                     const url =
-                      typeof window !== 'undefined'
+                      typeof window !== "undefined"
                         ? `${window.location.origin}/api/agents/${agentId}/a2a`
                         : `/api/agents/${agentId}/a2a`;
                     navigator.clipboard.writeText(url);
-                    toast.success('Link copied to clipboard');
+                    toast.success("Link copied to clipboard");
                   }}
                   className="shrink-0 rounded p-1.5 transition-colors hover:bg-muted"
                   title="Copy link"
@@ -284,7 +284,7 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
                 </button>
                 <a
                   href={
-                    typeof window !== 'undefined'
+                    typeof window !== "undefined"
                       ? `${window.location.origin}/api/agents/${agentId}/.well-known/agent-card`
                       : `/api/agents/${agentId}/.well-known/agent-card`
                   }
@@ -297,9 +297,9 @@ export const AgentConfigurationForm = memo(function AgentConfigurationForm({
                 </a>
               </div>
               <div className="mt-2 break-all text-[10px] text-muted-foreground sm:text-xs">
-                Agent Card:{' '}
+                Agent Card:{" "}
                 <code className="text-[10px] sm:text-xs">
-                  {typeof window !== 'undefined'
+                  {typeof window !== "undefined"
                     ? `${window.location.origin}/api/agents/${agentId}/.well-known/agent-card`
                     : `/api/agents/${agentId}/.well-known/agent-card`}
                 </code>

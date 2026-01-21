@@ -47,7 +47,7 @@ def _create_browser_action(
         service = service_getter()
         if not service:
             return ActionResult(success=False, error="Browser service not initialized")
-        
+
         # Extract text from memory content
         message = ""
         if hasattr(memory, "content"):
@@ -58,9 +58,9 @@ def _create_browser_action(
                 message = content.get("text", "")
             elif isinstance(content, str):
                 message = content
-        
+
         result = await handler_fn(service, message, callback)
-        
+
         # Convert to standard ActionResult
         return ActionResult(
             success=getattr(result, "success", True),
@@ -90,7 +90,7 @@ def _create_browser_provider(
         service = service_getter()
         if not service:
             return ProviderResult(text="Browser service not initialized")
-        
+
         result = await provider_fn(service)
         return ProviderResult(text=str(result))
 
@@ -121,7 +121,7 @@ class BrowserPlugin:
             "BROWSER_EXTRACT": browser_extract,
             "BROWSER_SCREENSHOT": browser_screenshot,
         }
-        
+
         # Create proper Action objects
         self.actions = [
             _create_browser_action(
@@ -167,7 +167,7 @@ class BrowserPlugin:
                 lambda: self.service,
             ),
         ]
-        
+
         # Create proper Provider objects
         self.providers = [
             _create_browser_provider(
@@ -216,7 +216,7 @@ class BrowserPlugin:
 
         if not self.service:
             raise RuntimeError("Browser service not initialized")
-        
+
         return await self._action_handlers[action_name](self.service, message, callback)
 
     async def get_provider(self, provider_name: str) -> Any:
@@ -225,7 +225,7 @@ class BrowserPlugin:
             if not self.service:
                 raise RuntimeError("Browser service not initialized")
             return await get_browser_state(self.service)
-        
+
         raise ValueError(f"Unknown provider: {provider_name}")
 
 

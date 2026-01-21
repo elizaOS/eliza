@@ -3,14 +3,14 @@
  * when navigating between pages
  */
 
-import type { A2AReputationResponse } from '@polyagent/agents/client';
+import type { A2AReputationResponse } from "@polyagent/agents/client";
 import type {
   PerpPositionFromAPI,
   PredictionPosition,
   UserBalanceData,
   UserProfileStats,
-} from '@polyagent/shared';
-import { create } from 'zustand';
+} from "@polyagent/shared";
+import { create } from "zustand";
 
 /**
  * Trending item structure for trending panel (supports grouped trends).
@@ -31,7 +31,7 @@ export interface BreakingNewsItem {
   id: string;
   title: string;
   description: string;
-  icon: 'chart' | 'calendar' | 'dollar' | 'trending';
+  icon: "chart" | "calendar" | "dollar" | "trending";
   timestamp: string;
   trending?: boolean;
   source?: string;

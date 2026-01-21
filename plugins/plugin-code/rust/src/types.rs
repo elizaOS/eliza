@@ -45,4 +45,3 @@ pub struct CommandResult {
     pub error: Option<String>,
     pub executed_in: String,
 }
-

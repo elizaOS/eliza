@@ -5,15 +5,16 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
-from google.protobuf.json_format import MessageToDict
 from uuid import UUID, uuid4
+
+from google.protobuf.json_format import MessageToDict
 
 from elizaos.logger import Logger
 from elizaos.types.components import ActionContext, ActionResult, HandlerCallback, HandlerOptions
 from elizaos.types.memory import Memory
 from elizaos.types.primitives import Content
-from elizaos.types.state import State
 from elizaos.types.service import Service
+from elizaos.types.state import State
 
 
 @dataclass
@@ -135,7 +136,9 @@ class PlanningService(Service):
                     id=step_id,
                     action_name=action_name,
                     parameters={
-                        "message": response_content.text if response_content else (message.content.text or ""),
+                        "message": response_content.text
+                        if response_content
+                        else (message.content.text or ""),
                         "thought": response_content.thought if response_content else None,
                         "providers": response_content.providers if response_content else [],
                     },
@@ -146,8 +149,12 @@ class PlanningService(Service):
 
         plan = ActionPlan(
             id=plan_id,
-            goal=response_content.text if response_content and response_content.text else (message.content.text or "Execute plan"),
-            thought=response_content.thought if response_content and response_content.thought else f"Executing {len(steps)} action(s)",
+            goal=response_content.text
+            if response_content and response_content.text
+            else (message.content.text or "Execute plan"),
+            thought=response_content.thought
+            if response_content and response_content.thought
+            else f"Executing {len(steps)} action(s)",
             total_steps=len(steps),
             current_step=0,
             steps=steps,
@@ -165,15 +172,25 @@ class PlanningService(Service):
         state: State | None,
     ) -> str:
         goal = str(context.get("goal") or "")
-        available_actions = context.get("available_actions") or context.get("availableActions") or []
-        available_providers = context.get("available_providers") or context.get("availableProviders") or []
+        available_actions = (
+            context.get("available_actions") or context.get("availableActions") or []
+        )
+        available_providers = (
+            context.get("available_providers") or context.get("availableProviders") or []
+        )
         constraints_obj = context.get("constraints") or []
-        preferences = context.get("preferences") if isinstance(context.get("preferences"), dict) else {}
+        preferences = (
+            context.get("preferences") if isinstance(context.get("preferences"), dict) else {}
+        )
 
         execution_model = "sequential"
         max_steps = 10
         if isinstance(preferences, dict):
-            execution_model = str(preferences.get("execution_model") or preferences.get("executionModel") or "sequential")
+            execution_model = str(
+                preferences.get("execution_model")
+                or preferences.get("executionModel")
+                or "sequential"
+            )
             max_steps = int(preferences.get("max_steps") or preferences.get("maxSteps") or 10)
 
         if isinstance(available_actions, list):
@@ -181,7 +198,11 @@ class PlanningService(Service):
         else:
             actions_text = ""
 
-        providers_text = ", ".join(str(p) for p in available_providers) if isinstance(available_providers, list) else ""
+        providers_text = (
+            ", ".join(str(p) for p in available_providers)
+            if isinstance(available_providers, list)
+            else ""
+        )
         constraints_text = ""
         if isinstance(constraints_obj, list):
             parts: list[str] = []
@@ -193,7 +214,9 @@ class PlanningService(Service):
                     parts.append(f"{c_type}: {c_desc or c_val}")
             constraints_text = ", ".join(parts)
 
-        msg_text = f"CONTEXT MESSAGE: {message.content.text}" if message and message.content.text else ""
+        msg_text = (
+            f"CONTEXT MESSAGE: {message.content.text}" if message and message.content.text else ""
+        )
         state_text = f"CURRENT STATE: {json.dumps(state.values)}" if state else ""
 
         return f"""You are an expert AI planning system. Create a comprehensive action plan to achieve the following goal.
@@ -421,10 +444,7 @@ Focus on:
             stack.discard(step_id)
             return False
 
-        for s in steps:
-            if dfs(s.id):
-                return True
-        return False
+        return any(dfs(s.id) for s in steps)
 
     async def execute_plan(
         self,
@@ -439,17 +459,23 @@ Focus on:
         errors: list[str] = []
 
         execution_state = PlanState(status="running", start_time=start, current_step_index=0)
-        execution = PlanExecution(state=execution_state, working_memory=working_memory, results=results)
+        execution = PlanExecution(
+            state=execution_state, working_memory=working_memory, results=results
+        )
         action_lookup = self._build_action_lookup()
         self._executions[plan.id] = execution
 
         try:
             if plan.execution_model == "parallel":
-                await self._execute_parallel(plan, message, state, callback, execution, action_lookup)
+                await self._execute_parallel(
+                    plan, message, state, callback, execution, action_lookup
+                )
             elif plan.execution_model == "dag":
                 await self._execute_dag(plan, message, state, callback, execution, action_lookup)
             else:
-                await self._execute_sequential(plan, message, state, callback, execution, action_lookup)
+                await self._execute_sequential(
+                    plan, message, state, callback, execution, action_lookup
+                )
 
             execution_state.status = "failed" if errors else "completed"
             execution_state.end_time = time.time()
@@ -490,7 +516,9 @@ Focus on:
         for i, step in enumerate(plan.steps):
             if execution.abort_event.is_set():
                 raise RuntimeError("Plan execution aborted")
-            result = await self._execute_step(step, message, state, callback, execution, action_lookup)
+            result = await self._execute_step(
+                step, message, state, callback, execution, action_lookup
+            )
             if result is not None:
                 execution.results.append(result)
             execution.state.current_step_index = i + 1
@@ -556,7 +584,7 @@ Focus on:
                 return_exceptions=True,
             )
 
-            for step, r in zip(ready_batch, results):
+            for step, r in zip(ready_batch, results, strict=False):
                 completed_count += 1
                 if isinstance(r, ActionResult):
                     execution.results.append(r)
@@ -602,7 +630,9 @@ Focus on:
                 options.previous_results = previous_results  # type: ignore[attr-defined]
                 options.context = {"workingMemory": execution.working_memory}  # type: ignore[attr-defined]
 
-                validate_fn = getattr(action, "validate", None) or getattr(action, "validate_fn", None)
+                validate_fn = getattr(action, "validate", None) or getattr(
+                    action, "validate_fn", None
+                )
                 ok = await validate_fn(self.runtime, message, state) if validate_fn else True
                 if not ok:
                     return None
@@ -622,7 +652,9 @@ Focus on:
                 retries += 1
                 if retries > max_retries:
                     raise e
-                backoff = step.retry_policy.backoff_ms * (step.retry_policy.backoff_multiplier ** (retries - 1))
+                backoff = step.retry_policy.backoff_ms * (
+                    step.retry_policy.backoff_multiplier ** (retries - 1)
+                )
                 await asyncio.sleep(backoff / 1000.0)
 
         return None
@@ -678,4 +710,3 @@ Return the adapted plan in the same XML format as the original planning response
             plan.steps = plan.steps[:current_step_index] + [fallback]
             plan.total_steps = len(plan.steps)
             return plan
-

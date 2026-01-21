@@ -20,7 +20,9 @@ async def _summarization_validate(runtime, message, _state=None) -> bool:
     return (count - existing.last_message_offset) >= cfg.short_term_summarization_interval
 
 
-async def _summarization_handler(runtime, message, _state=None, _options: HandlerOptions | None = None, *_args):
+async def _summarization_handler(
+    runtime, message, _state=None, _options: HandlerOptions | None = None, *_args
+):
     svc = runtime.get_service("memory")
     if svc is None:
         return None
@@ -52,7 +54,9 @@ async def _long_term_validate(runtime, message, _state=None) -> bool:
     return await svc.should_run_extraction(message.entity_id, message.room_id, count)
 
 
-async def _long_term_handler(runtime, message, _state=None, _options: HandlerOptions | None = None, *_args):
+async def _long_term_handler(
+    runtime, message, _state=None, _options: HandlerOptions | None = None, *_args
+):
     svc = runtime.get_service("memory")
     if svc is None:
         return None
@@ -75,7 +79,7 @@ async def _long_term_handler(runtime, message, _state=None, _options: HandlerOpt
 summarization_evaluator = Evaluator(
     name="MEMORY_SUMMARIZATION",
     description="Automatically summarizes conversations to optimize context usage",
-    alwaysRun=True,
+    always_run=True,
     similes=["CONVERSATION_SUMMARY", "CONTEXT_COMPRESSION", "MEMORY_OPTIMIZATION"],
     examples=[],
     validate=_summarization_validate,
@@ -85,10 +89,9 @@ summarization_evaluator = Evaluator(
 long_term_extraction_evaluator = Evaluator(
     name="LONG_TERM_MEMORY_EXTRACTION",
     description="Extracts long-term facts about users from conversations",
-    alwaysRun=True,
+    always_run=True,
     similes=["MEMORY_EXTRACTION", "FACT_LEARNING", "USER_PROFILING"],
     examples=[],
     validate=_long_term_validate,
     handler=_long_term_handler,
 )
-

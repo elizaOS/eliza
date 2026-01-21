@@ -6,11 +6,11 @@
  * @packageDocumentation
  */
 
-import { agentLogs, db, eq, type JsonValue, users } from '@babylon/db';
-import { PrivyClient } from '@privy-io/server-auth';
-import { ethers } from 'ethers';
-import { v4 as uuidv4 } from 'uuid';
-import { logger } from '../shared/logger';
+import { agentLogs, db, eq, users } from "@babylon/db";
+import { PrivyClient } from "@privy-io/server-auth";
+import { ethers } from "ethers";
+import { v4 as uuidv4 } from "uuid";
+import { logger } from "../shared/logger";
 
 /**
  * Privy wallet structure
@@ -67,7 +67,7 @@ interface PrivySignedTransaction {
 interface ExtendedPrivyClient extends PrivyClient {
   createUser(params: PrivyCreateUserParams): Promise<PrivyUser>;
   signTransaction(
-    params: PrivySignTransactionParams
+    params: PrivySignTransactionParams,
   ): Promise<PrivySignedTransaction>;
 }
 
@@ -97,18 +97,18 @@ export class AgentWalletService {
       .limit(1);
 
     if (!agent || !agent.isAgent) {
-      throw new Error('Agent user not found');
+      throw new Error("Agent user not found");
     }
 
     // Check if agent already has a wallet address
     if (agent.walletAddress) {
       logger.info(
-        'Agent already has wallet address, skipping creation',
+        "Agent already has wallet address, skipping creation",
         {
           agentUserId,
           walletAddress: agent.walletAddress,
         },
-        'AgentWalletService'
+        "AgentWalletService",
       );
 
       return {
@@ -120,11 +120,11 @@ export class AgentWalletService {
     const privy = getPrivyClient();
 
     // If Privy is not available, use development wallet
-    if (!privy || typeof privy.createUser !== 'function') {
+    if (!privy || typeof privy.createUser !== "function") {
       logger.info(
-        'Privy not available, using development wallet',
+        "Privy not available, using development wallet",
         { agentUserId },
-        'AgentWalletService'
+        "AgentWalletService",
       );
 
       // Create dev wallet directly
@@ -148,7 +148,7 @@ export class AgentWalletService {
     logger.info(
       `Creating Privy embedded wallet for agent ${agentUserId}`,
       undefined,
-      'AgentWalletService'
+      "AgentWalletService",
     );
 
     const privyUser = await privy.createUser({
@@ -157,7 +157,7 @@ export class AgentWalletService {
     });
 
     if (!privyUser.wallet) {
-      throw new Error('Failed to create embedded wallet');
+      throw new Error("Failed to create embedded wallet");
     }
 
     const walletAddress = privyUser.wallet.address;
@@ -178,8 +178,8 @@ export class AgentWalletService {
     await db.insert(agentLogs).values({
       id: uuidv4(),
       agentUserId,
-      type: 'system',
-      level: 'info',
+      type: "system",
+      level: "info",
       message: `Privy embedded wallet created: ${walletAddress}`,
       metadata: {
         privyUserId,
@@ -191,7 +191,7 @@ export class AgentWalletService {
     logger.info(
       `Privy wallet created for agent ${agentUserId}: ${walletAddress}`,
       undefined,
-      'AgentWalletService'
+      "AgentWalletService",
     );
 
     return { walletAddress, privyWalletId };
@@ -206,7 +206,7 @@ export class AgentWalletService {
       to: string;
       value: string;
       data: string;
-    }
+    },
   ): Promise<string> {
     const [agent] = await db
       .select({
@@ -219,16 +219,16 @@ export class AgentWalletService {
       .limit(1);
 
     if (!agent || !agent.isAgent) {
-      throw new Error('Agent not found');
+      throw new Error("Agent not found");
     }
 
     if (!agent.privyId) {
-      throw new Error('Agent does not have Privy wallet');
+      throw new Error("Agent does not have Privy wallet");
     }
 
     const privy = getPrivyClient();
     if (!privy) {
-      throw new Error('Privy not configured');
+      throw new Error("Privy not configured");
     }
 
     const signedTx = await privy.signTransaction({
@@ -239,7 +239,7 @@ export class AgentWalletService {
     logger.info(
       `Transaction signed for agent ${agentUserId}`,
       undefined,
-      'AgentWalletService'
+      "AgentWalletService",
     );
 
     return signedTx.signed_transaction;

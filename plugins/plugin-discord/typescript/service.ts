@@ -4060,7 +4060,7 @@ export class DiscordService extends Service implements IDiscordService {
     }
 
     const metadata = {
-      type: MemoryType.CUSTOM as MemoryType.CUSTOM,
+      type: "custom" as const,
       entityName:
         (message.member &&
         "displayName" in message.member &&
@@ -4101,7 +4101,7 @@ export class DiscordService extends Service implements IDiscordService {
           : undefined,
         ...(options?.extraContent ? options.extraContent : {}),
       },
-      metadata,
+      metadata: metadata as unknown as Memory["metadata"],
       createdAt: message.createdTimestamp ?? Date.now(),
       worldId,
     };

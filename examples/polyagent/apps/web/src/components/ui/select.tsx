@@ -1,5 +1,5 @@
-import { cn } from '@polyagent/shared';
-import type React from 'react';
+import { cn } from "@polyagent/shared";
+import type React from "react";
 
 /**
  * Select component for dropdown selection.
@@ -17,7 +17,7 @@ import type React from 'react';
  * </Select>
  * ```
  */
-export interface SelectProps extends React.ComponentPropsWithoutRef<'select'> {
+export interface SelectProps extends React.ComponentPropsWithoutRef<"select"> {
   value?: string;
   onValueChange?: (value: string) => void;
 }
@@ -49,7 +49,7 @@ export const Select = ({
  * @param props - SelectContent component props
  * @returns Select content element
  */
-export type SelectContentProps = React.ComponentPropsWithoutRef<'div'>;
+export type SelectContentProps = React.ComponentPropsWithoutRef<"div">;
 
 export const SelectContent = ({
   children,
@@ -71,7 +71,7 @@ export const SelectContent = ({
  * @param props - SelectItem component props
  * @returns Select item element
  */
-export interface SelectItemProps extends React.ComponentPropsWithoutRef<'div'> {
+export interface SelectItemProps extends React.ComponentPropsWithoutRef<"div"> {
   value: string;
 }
 
@@ -96,7 +96,7 @@ export const SelectItem = ({
  * @param props - SelectTrigger component props
  * @returns Select trigger button element
  */
-export type SelectTriggerProps = React.ComponentPropsWithoutRef<'button'>;
+export type SelectTriggerProps = React.ComponentPropsWithoutRef<"button">;
 
 export const SelectTrigger = ({
   children,

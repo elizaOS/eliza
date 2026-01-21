@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/schemas",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha.1",
   "private": true,
   "description": "Protocol Buffer schemas for elizaOS - single source of truth for all types",
   "scripts": {

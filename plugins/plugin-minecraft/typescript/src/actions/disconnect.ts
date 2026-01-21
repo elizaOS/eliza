@@ -8,14 +8,19 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { MinecraftService, MINECRAFT_SERVICE_TYPE } from "../services/minecraft-service.js";
+import {
+  MINECRAFT_SERVICE_TYPE,
+  type MinecraftService,
+} from "../services/minecraft-service.js";
 
 export const minecraftDisconnectAction: Action = {
   name: "MC_DISCONNECT",
   similes: ["MINECRAFT_DISCONNECT", "LEAVE_SERVER", "QUIT_MINECRAFT"],
   description: "Disconnect the Mineflayer bot from the Minecraft server",
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+    const service = runtime.getService<MinecraftService>(
+      MINECRAFT_SERVICE_TYPE,
+    );
     return Boolean(service?.getCurrentSession());
   },
   handler: async (
@@ -25,7 +30,9 @@ export const minecraftDisconnectAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+    const service = runtime.getService<MinecraftService>(
+      MINECRAFT_SERVICE_TYPE,
+    );
     if (!service) {
       return { text: "Minecraft service is not available", success: false };
     }
@@ -42,7 +49,11 @@ export const minecraftDisconnectAction: Action = {
         source: message.content.source,
       };
       await callback?.(content);
-      return { text: content.text ?? "", success: true, values: { connected: false } };
+      return {
+        text: content.text ?? "",
+        success: true,
+        values: { connected: false },
+      };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const content: Content = {
@@ -55,4 +66,3 @@ export const minecraftDisconnectAction: Action = {
     }
   },
 };
-

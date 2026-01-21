@@ -15,8 +15,8 @@ import {
   gte,
   profileUpdateLogs,
   sql,
-} from '@polyagent/db';
-import { generateSnowflakeId, logger } from '@polyagent/shared';
+} from "@polyagent/db";
+import { generateSnowflakeId, logger } from "@polyagent/shared";
 
 interface RateLimitConfig {
   maxUpdatesPerDay: number;
@@ -41,7 +41,7 @@ interface RateLimitResult {
  */
 export async function checkProfileUpdateRateLimit(
   userId: string,
-  isUsernameChange: boolean
+  isUsernameChange: boolean,
 ): Promise<RateLimitResult> {
   const now = new Date();
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -56,8 +56,8 @@ export async function checkProfileUpdateRateLimit(
       .where(
         and(
           eq(profileUpdateLogs.userId, userId),
-          gte(profileUpdateLogs.createdAt, oneDayAgo)
-        )
+          gte(profileUpdateLogs.createdAt, oneDayAgo),
+        ),
       ),
     // Updates in last hour
     db
@@ -66,8 +66,8 @@ export async function checkProfileUpdateRateLimit(
       .where(
         and(
           eq(profileUpdateLogs.userId, userId),
-          gte(profileUpdateLogs.createdAt, oneHourAgo)
-        )
+          gte(profileUpdateLogs.createdAt, oneHourAgo),
+        ),
       ),
   ]);
 
@@ -84,8 +84,8 @@ export async function checkProfileUpdateRateLimit(
         and(
           eq(profileUpdateLogs.userId, userId),
           gte(profileUpdateLogs.createdAt, oneDayAgo),
-          sql`'username' = ANY(${profileUpdateLogs.changedFields})`
-        )
+          sql`'username' = ANY(${profileUpdateLogs.changedFields})`,
+        ),
       );
     recentUsernameChanges = usernameChangesResult[0]?.count || 0;
   }
@@ -98,8 +98,8 @@ export async function checkProfileUpdateRateLimit(
       .where(
         and(
           eq(profileUpdateLogs.userId, userId),
-          gte(profileUpdateLogs.createdAt, oneHourAgo)
-        )
+          gte(profileUpdateLogs.createdAt, oneHourAgo),
+        ),
       )
       .orderBy(asc(profileUpdateLogs.createdAt))
       .limit(1);
@@ -111,14 +111,14 @@ export async function checkProfileUpdateRateLimit(
           (oldestRecentUpdate.createdAt.getTime() +
             60 * 60 * 1000 -
             now.getTime()) /
-            1000
+            1000,
         )
       : 3600;
 
     logger.warn(
-      'Profile update rate limit exceeded (hourly)',
+      "Profile update rate limit exceeded (hourly)",
       { userId, recentUpdates1h },
-      'RateLimiter'
+      "RateLimiter",
     );
 
     return {
@@ -131,14 +131,14 @@ export async function checkProfileUpdateRateLimit(
   // Check daily limit
   if (recentUpdates24h >= DEFAULT_CONFIG.maxUpdatesPerDay) {
     logger.warn(
-      'Profile update rate limit exceeded (daily)',
+      "Profile update rate limit exceeded (daily)",
       { userId, recentUpdates24h },
-      'RateLimiter'
+      "RateLimiter",
     );
 
     return {
       allowed: false,
-      reason: 'Daily profile update limit reached. Try again tomorrow.',
+      reason: "Daily profile update limit reached. Try again tomorrow.",
       retryAfter: 86400,
     };
   }
@@ -149,14 +149,14 @@ export async function checkProfileUpdateRateLimit(
     recentUsernameChanges >= DEFAULT_CONFIG.maxUsernameChangesPerDay
   ) {
     logger.warn(
-      'Username change rate limit exceeded',
+      "Username change rate limit exceeded",
       { userId, recentUsernameChanges },
-      'RateLimiter'
+      "RateLimiter",
     );
 
     return {
       allowed: false,
-      reason: 'You can only change your username twice per day.',
+      reason: "You can only change your username twice per day.",
       retryAfter: 86400,
     };
   }
@@ -171,7 +171,7 @@ export async function logProfileUpdate(
   userId: string,
   changedFields: string[],
   backendSigned: boolean,
-  txHash?: string
+  txHash?: string,
 ): Promise<void> {
   await db.insert(profileUpdateLogs).values({
     id: await generateSnowflakeId(),
@@ -188,7 +188,7 @@ export async function logProfileUpdate(
  */
 export async function getProfileUpdateHistory(
   userId: string,
-  limit = 20
+  limit = 20,
 ): Promise<
   Array<{
     changedFields: string[];

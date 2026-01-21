@@ -1,4 +1,37 @@
 from elizaos.character import parse_character, validate_character_config
+from elizaos.generated.action_docs import (
+    ActionDoc,
+    ActionDocExampleCall,
+    ActionDocExampleMessage,
+    ActionDocParameter,
+    ActionDocParameterExampleValue,
+    ActionDocParameterSchema,
+    EvaluatorDoc,
+    EvaluatorDocExample,
+    EvaluatorDocMessage,
+    EvaluatorDocMessageContent,
+    ProviderDoc,
+    all_action_docs,
+    all_actions_spec_version,
+    all_evaluator_docs,
+    all_evaluators_spec_version,
+    all_provider_docs,
+    all_providers_spec_version,
+    core_action_docs,
+    core_actions_spec_version,
+    core_evaluator_docs,
+    core_evaluators_spec_version,
+    core_provider_docs,
+    core_providers_spec_version,
+)
+from elizaos.generated.spec_helpers import (
+    get_action_spec,
+    get_evaluator_spec,
+    get_provider_spec,
+    require_action_spec,
+    require_evaluator_spec,
+    require_provider_spec,
+)
 from elizaos.logger import Logger, create_logger
 from elizaos.plugin import load_plugin, register_plugin
 from elizaos.prompts import (
@@ -71,9 +104,9 @@ from elizaos.types import (
     ServiceTypeName,
     State,
     StateData,
-    WorkingMemoryItem,
     Task,
     TaskWorker,
+    WorkingMemoryItem,
     World,
     WorldOwnership,
     as_uuid,
@@ -82,39 +115,6 @@ from elizaos.types import (
 from elizaos.types.database import IDatabaseAdapter  # noqa: E402
 from elizaos.types.runtime import IAgentRuntime  # noqa: E402
 from elizaos.utils import compose_prompt, compose_prompt_from_state, get_current_time_ms
-from elizaos.generated.action_docs import (
-    ActionDoc,
-    ActionDocExampleCall,
-    ActionDocExampleMessage,
-    ActionDocParameter,
-    ActionDocParameterSchema,
-    ActionDocParameterExampleValue,
-    ProviderDoc,
-    EvaluatorDoc,
-    EvaluatorDocExample,
-    EvaluatorDocMessage,
-    EvaluatorDocMessageContent,
-    core_actions_spec_version,
-    all_actions_spec_version,
-    core_providers_spec_version,
-    all_providers_spec_version,
-    core_evaluators_spec_version,
-    all_evaluators_spec_version,
-    core_action_docs,
-    all_action_docs,
-    core_provider_docs,
-    all_provider_docs,
-    core_evaluator_docs,
-    all_evaluator_docs,
-)
-from elizaos.generated.spec_helpers import (
-    get_action_spec,
-    require_action_spec,
-    get_provider_spec,
-    require_provider_spec,
-    get_evaluator_spec,
-    require_evaluator_spec,
-)
 
 _rebuild_ns = {
     "IAgentRuntime": IAgentRuntime,

@@ -2,6 +2,7 @@ import type {
   Content,
   HandlerCallback,
   IAgentRuntime,
+  State,
   TestSuite,
 } from "@elizaos/core";
 
@@ -26,12 +27,6 @@ interface Memory {
   };
 }
 
-interface State {
-  values: Record<string, unknown>;
-  data: Record<string, unknown>;
-  text: string;
-  [key: string]: unknown;
-}
 
 export const RustPluginTestSuite: TestSuite = {
   name: "rust_plugin_starter_test_suite",
@@ -114,7 +109,7 @@ export const RustPluginTestSuite: TestSuite = {
           values: {},
           data: {},
           text: "",
-        };
+        } as State;
 
         let responseText = "";
         let responseReceived = false;
@@ -219,7 +214,7 @@ export const RustPluginTestSuite: TestSuite = {
           values: {},
           data: {},
           text: "",
-        };
+        } as State;
 
         // Find the RUST_INFO provider in runtime.providers
         const runtimeProviders = runtime.providers;

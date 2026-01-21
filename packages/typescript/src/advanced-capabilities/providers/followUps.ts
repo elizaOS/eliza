@@ -58,7 +58,9 @@ export const followUpsProvider: Provider = {
       const scheduledAt = item.task.metadata?.scheduledAt
         ? new Date(item.task.metadata.scheduledAt as string).getTime()
         : 0;
-      scheduledAtMs.set(item.task.id, scheduledAt);
+      if (item.task.id) {
+        scheduledAtMs.set(item.task.id, scheduledAt);
+      }
       if (scheduledAt < now) {
         overdue.push(item);
       } else {
@@ -73,7 +75,7 @@ export const followUpsProvider: Provider = {
       textSummary += `\nOverdue (${overdue.length}):\n`;
       for (const f of overdue) {
         const name = entityNames.get(f.contact.entityId) || "Unknown";
-        const scheduledAt = scheduledAtMs.get(f.task.id) ?? 0;
+        const scheduledAt = f.task.id ? (scheduledAtMs.get(f.task.id) ?? 0) : 0;
 
         textSummary += `- ${name}`;
         if (scheduledAt > 0) {
@@ -93,7 +95,7 @@ export const followUpsProvider: Provider = {
       textSummary += `\nUpcoming (${upcoming.length}):\n`;
       for (const f of upcoming) {
         const name = entityNames.get(f.contact.entityId) || "Unknown";
-        const scheduledAt = scheduledAtMs.get(f.task.id) ?? 0;
+        const scheduledAt = f.task.id ? (scheduledAtMs.get(f.task.id) ?? 0) : 0;
 
         textSummary += `- ${name}`;
         if (scheduledAt > 0) {

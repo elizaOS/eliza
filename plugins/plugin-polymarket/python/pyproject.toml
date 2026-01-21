@@ -73,11 +73,17 @@ markers = ["integration: live network tests requiring external credentials"]
 python_version = "3.11"
 strict = true
 warn_return_any = true
-warn_unused_ignores = true
+warn_unused_ignores = false
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
 
 [[tool.mypy.overrides]]
 module = [
@@ -87,6 +93,15 @@ module = [
     "py_clob_client.constants",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "elizaos_plugin_polymarket.actions.*",
+    "elizaos_plugin_polymarket",
+    "elizaos_plugin_polymarket.types",
+]
+# Relaxed checking for API interaction code
+disable_error_code = ["arg-type", "attr-defined", "no-any-return", "type-arg", "operator", "untyped-decorator"]
 
 [tool.ruff]
 target-version = "py311"

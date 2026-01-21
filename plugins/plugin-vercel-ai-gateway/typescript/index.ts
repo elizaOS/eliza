@@ -67,7 +67,6 @@ const pluginTests = [
         },
       },
       {
-        
         name: "gateway_test_text_small",
         fn: async (runtime: IAgentRuntime) => {
           const text = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -82,7 +81,6 @@ const pluginTests = [
         },
       },
       {
-        
         name: "gateway_test_text_large",
         fn: async (runtime: IAgentRuntime) => {
           const text = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -97,7 +95,6 @@ const pluginTests = [
         },
       },
       {
-        
         name: "gateway_test_text_embedding",
         fn: async (runtime: IAgentRuntime) => {
           const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
@@ -112,7 +109,6 @@ const pluginTests = [
         },
       },
       {
-        
         name: "gateway_test_object_generation",
         fn: async (runtime: IAgentRuntime) => {
           const result = await runtime.useModel(ModelType.OBJECT_SMALL, {

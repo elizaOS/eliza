@@ -2,13 +2,13 @@ import type { HandlerCallback } from "./components";
 import type { Room } from "./environment";
 import type { Memory } from "./memory";
 import type { Content, Media, MentionContext, UUID } from "./primitives";
-import type { IAgentRuntime } from "./runtime";
-import type { State } from "./state";
 import type {
   MessageProcessingMode as ProtoMessageProcessingMode,
   MessageProcessingOptions as ProtoMessageProcessingOptions,
   ShouldRespondModelType as ProtoShouldRespondModelType,
 } from "./proto.js";
+import type { IAgentRuntime } from "./runtime";
+import type { State } from "./state";
 
 /**
  * Configuration options for message processing

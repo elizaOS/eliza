@@ -82,21 +82,21 @@ import {
   requireUserByIdentifier,
   successResponse,
   withErrorHandling,
-} from '@polyagent/api';
-import { db, eq, users } from '@polyagent/db';
-import { logger, UserIdParamSchema } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+} from "@polyagent/api";
+import { db, eq, users } from "@polyagent/db";
+import { logger, UserIdParamSchema } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { z } from "zod";
 
 const UpdateVisibilityRequestSchema = z.object({
-  platform: z.enum(['twitter', 'farcaster', 'wallet']),
+  platform: z.enum(["twitter", "farcaster", "wallet"]),
   visible: z.boolean(),
 });
 
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate user
     const authUser = await authenticate(request);
@@ -108,9 +108,9 @@ export const POST = withErrorHandling(
     // Verify user is updating their own preferences
     if (authUser.userId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only update your own visibility preferences',
-        'visibility-preferences',
-        'update'
+        "You can only update your own visibility preferences",
+        "visibility-preferences",
+        "update",
       );
     }
 
@@ -121,13 +121,13 @@ export const POST = withErrorHandling(
     // Build update data based on platform
     const updateData: Partial<typeof users.$inferInsert> = {};
     switch (platform) {
-      case 'twitter':
+      case "twitter":
         updateData.showTwitterPublic = visible;
         break;
-      case 'farcaster':
+      case "farcaster":
         updateData.showFarcasterPublic = visible;
         break;
-      case 'wallet':
+      case "wallet":
         updateData.showWalletPublic = visible;
         break;
     }
@@ -147,7 +147,7 @@ export const POST = withErrorHandling(
     logger.info(
       `User ${canonicalUserId} updated ${platform} visibility to ${visible}`,
       { userId: canonicalUserId, platform, visible },
-      'POST /api/users/[userId]/update-visibility'
+      "POST /api/users/[userId]/update-visibility",
     );
 
     return successResponse({
@@ -158,5 +158,5 @@ export const POST = withErrorHandling(
         wallet: updatedUser?.showWalletPublic ?? false,
       },
     });
-  }
+  },
 );

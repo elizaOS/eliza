@@ -13,7 +13,7 @@
 // Agent Template Types (used for agent creation UI)
 // =============================================================================
 
-export type { AgentTemplate } from './types/agent-template';
+export type { AgentTemplate } from "./types/agent-template";
 
 // =============================================================================
 // A2A Response Types (used for widget caching and API responses)
@@ -56,10 +56,10 @@ export type {
   A2AUserSearchResult,
   A2AUsersSearchResponse,
   A2AUserWalletResponse,
-} from './types/a2a-responses';
+} from "./types/a2a-responses";
 
 // =============================================================================
 // Common Types (used across client and server)
 // =============================================================================
 
-export type { JsonValue } from './types/common';
+export type { JsonValue } from "./types/common";

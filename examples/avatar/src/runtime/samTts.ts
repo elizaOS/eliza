@@ -32,7 +32,7 @@ function sanitizeForSam(text: string): string {
 }
 
 export function synthesizeSamWav(runtime: AgentRuntime, text: string, options: SamOptions): ArrayBuffer {
-  const service = runtime.getService<SamTTSService>("SAM_TTS");
+  const service = runtime.getService("SAM_TTS") as SamTTSService | null;
   if (!service) {
     throw new Error("SAM_TTS service is not available (plugin-simple-voice not loaded?)");
   }

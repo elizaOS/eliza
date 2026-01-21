@@ -336,19 +336,25 @@ class BlueSkyClient:
         self, data: dict[str, str | int | float | bool | dict | list | None]
     ) -> BlueSkyPost:
         record = data.get("record", {})
+        record_dict = record if isinstance(record, dict) else {}
+        author_data = data.get("author", {})
+        author_dict = author_data if isinstance(author_data, dict) else {}
         return BlueSkyPost(
-            uri=data["uri"],
-            cid=data["cid"],
+            uri=str(data.get("uri", "")),
+            cid=str(data.get("cid", "")),
             author=BlueSkyProfile(
-                did=data["author"]["did"],
-                handle=data["author"]["handle"],
-                display_name=data["author"].get("displayName"),
+                did=str(author_dict.get("did", "")),
+                handle=str(author_dict.get("handle", "")),
+                display_name=str(author_dict.get("displayName", "")) if author_dict.get("displayName") else None,
             ),
-            record=PostRecord(text=record.get("text", ""), created_at=record.get("createdAt", "")),
-            reply_count=data.get("replyCount"),
-            repost_count=data.get("repostCount"),
-            like_count=data.get("likeCount"),
-            indexed_at=data.get("indexedAt", ""),
+            record=PostRecord(
+                text=str(record_dict.get("text", "")),
+                created_at=str(record_dict.get("createdAt", ""))
+            ),
+            reply_count=int(data.get("replyCount", 0)) if data.get("replyCount") is not None else None,
+            repost_count=int(data.get("repostCount", 0)) if data.get("repostCount") is not None else None,
+            like_count=int(data.get("likeCount", 0)) if data.get("likeCount") is not None else None,
+            indexed_at=str(data.get("indexedAt", "")),
         )
 
     def _mock_post(self, text: str) -> BlueSkyPost:

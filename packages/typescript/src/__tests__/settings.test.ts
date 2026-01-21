@@ -1,8 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  cleanupTestRuntime,
-  createTestRuntime,
-} from "./test-utils";
 import * as entities from "../entities";
 import * as logger_module from "../logger";
 import {
@@ -37,6 +33,7 @@ import type {
 import { BufferUtils } from "../utils/buffer";
 import * as cryptoUtils from "../utils/crypto-compat";
 import { getEnvironment } from "../utils/environment";
+import { cleanupTestRuntime, createTestRuntime } from "./test-utils";
 
 // Remove global module mocks - they interfere with other tests
 

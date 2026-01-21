@@ -13,17 +13,17 @@
  * - Familiar ORM-style API for findUnique, findMany, create, update, delete
  */
 
-import * as schema from './schema';
+import * as schema from "./schema";
 
 // Re-export everything from schema
-export * from './schema';
+export * from "./schema";
 export { schema };
 
 // Re-export client types
-export type { DrizzleClient, JsonValue, SQLValue } from './client';
-export { TableRepository } from './client';
+export type { DrizzleClient, JsonValue, SQLValue } from "./client";
+export { TableRepository } from "./client";
 // Database runtime (connection management, `db`, JSON mode)
-export * from './db';
+export * from "./db";
 /**
  * Re-export unique relation types from model-types.
  *
@@ -39,16 +39,16 @@ export type {
   ExternalAgentConnectionWithRegistry,
   MessageWithSender,
   ModerationEscrowWithRelations,
+  NewOrganizationStateRow,
+  // Deprecated types kept for backwards compatibility
+  OrganizationStateRow,
   PostWithRelations,
   TradingFeeWithUser,
   UserWithAgentRelations,
   UserWithMetrics,
-  // Deprecated types kept for backwards compatibility
-  OrganizationStateRow,
-  NewOrganizationStateRow,
-} from './model-types';
+} from "./model-types";
 // Re-export types
-export * from './types';
+export * from "./types";
 
 // ============================================================================
 // Drizzle Query Operators
@@ -60,8 +60,8 @@ export {
   isValidSnowflakeId,
   parseSnowflakeId,
   SnowflakeGenerator,
-} from '@babylon/shared';
-export type { SQL } from 'drizzle-orm';
+} from "@babylon/shared";
+export type { SQL } from "drizzle-orm";
 export {
   aliasedTable,
   and,
@@ -90,13 +90,13 @@ export {
   or,
   sql,
   sum,
-} from 'drizzle-orm';
+} from "drizzle-orm";
 // Re-export database service
 export {
   DatabaseService,
   type FeedPost,
   getDbInstance,
-} from './database-service';
+} from "./database-service";
 // Re-export query helpers
 export {
   $connect,
@@ -105,15 +105,15 @@ export {
   $queryRaw,
   isRetryableError,
   withRetry,
-} from './helpers';
+} from "./helpers";
 // Re-export moderation filters
-export * from './moderation/filters';
+export * from "./moderation/filters";
 // Re-export query monitor
 export {
   type QueryMetrics,
   queryMonitor,
   type SlowQueryStats,
-} from './query-monitor';
-export type { DatabaseErrorType } from './types';
+} from "./query-monitor";
+export type { DatabaseErrorType } from "./types";
 // Re-export error utilities
-export { isUniqueConstraintError, toDatabaseErrorType } from './types';
+export { isUniqueConstraintError, toDatabaseErrorType } from "./types";

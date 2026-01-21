@@ -59,7 +59,10 @@ impl ElevenLabsPlugin {
     ///
     /// * `tts_options` - Text-to-speech options
     /// * `stt_options` - Speech-to-text options
-    pub fn with_options(tts_options: ElevenLabsTTSOptions, stt_options: ElevenLabsSTTOptions) -> Self {
+    pub fn with_options(
+        tts_options: ElevenLabsTTSOptions,
+        stt_options: ElevenLabsSTTOptions,
+    ) -> Self {
         Self {
             name: "elevenLabs".to_string(),
             description: "High-quality text-to-speech synthesis and speech-to-text transcription \

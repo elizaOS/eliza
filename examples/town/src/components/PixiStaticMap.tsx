@@ -1,26 +1,35 @@
-import { useEffect, useRef } from 'react';
-import * as PIXI from 'pixi.js';
-import type { AnimatedSprite, WorldMapData } from '../../shared/types';
-import * as campfire from '../../data/animations/campfire.json';
-import * as gentlesparkle from '../../data/animations/gentlesparkle.json';
-import * as gentlewaterfall from '../../data/animations/gentlewaterfall.json';
-import * as gentlesplash from '../../data/animations/gentlesplash.json';
-import * as windmill from '../../data/animations/windmill.json';
+import * as PIXI from "pixi.js";
+import { useEffect, useRef } from "react";
+import * as campfire from "../../data/animations/campfire.json";
+import * as gentlesparkle from "../../data/animations/gentlesparkle.json";
+import * as gentlesplash from "../../data/animations/gentlesplash.json";
+import * as gentlewaterfall from "../../data/animations/gentlewaterfall.json";
+import * as windmill from "../../data/animations/windmill.json";
+import type { AnimatedSprite, WorldMapData } from "../../shared/types";
 
-const animations: Record<string, { spritesheet: PIXI.ISpritesheetData; url: string }> = {
-  'campfire.json': { spritesheet: campfire, url: '/assets/spritesheets/campfire.png' },
-  'gentlesparkle.json': {
+const animations: Record<
+  string,
+  { spritesheet: PIXI.SpritesheetData; url: string }
+> = {
+  "campfire.json": {
+    spritesheet: campfire,
+    url: "/assets/spritesheets/campfire.png",
+  },
+  "gentlesparkle.json": {
     spritesheet: gentlesparkle,
-    url: '/assets/spritesheets/gentlesparkle32.png',
+    url: "/assets/spritesheets/gentlesparkle32.png",
   },
-  'gentlewaterfall.json': {
+  "gentlewaterfall.json": {
     spritesheet: gentlewaterfall,
-    url: '/assets/spritesheets/gentlewaterfall32.png',
+    url: "/assets/spritesheets/gentlewaterfall32.png",
   },
-  'windmill.json': { spritesheet: windmill, url: '/assets/spritesheets/windmill.png' },
-  'gentlesplash.json': {
+  "windmill.json": {
+    spritesheet: windmill,
+    url: "/assets/spritesheets/windmill.png",
+  },
+  "gentlesplash.json": {
     spritesheet: gentlesplash,
-    url: '/assets/spritesheets/gentlewaterfall32.png',
+    url: "/assets/spritesheets/gentlewaterfall32.png",
   },
 };
 
@@ -101,11 +110,13 @@ export function PixiStaticMap({ map }: { map: WorldMapData }) {
       for (const [sheet, sprites] of spritesBySheet.entries()) {
         const animation = animations[sheet];
         if (!animation) {
-          console.error('Could not find animation', sheet);
+          console.error("Could not find animation", sheet);
           continue;
         }
         const { spritesheet, url } = animation;
-        const sheetTexture = (await PIXI.Assets.load(url)) as PIXI.Texture | undefined;
+        const sheetTexture = (await PIXI.Assets.load(url)) as
+          | PIXI.Texture
+          | undefined;
         if (
           cancelled ||
           !sheetTexture ||
@@ -124,7 +135,7 @@ export function PixiStaticMap({ map }: { map: WorldMapData }) {
         for (const sprite of sprites) {
           const pixiAnimation = spriteSheet.animations[sprite.animation];
           if (!pixiAnimation) {
-            console.error('Failed to load animation', sprite);
+            console.error("Failed to load animation", sprite);
             continue;
           }
           const pixiSprite = new PIXI.AnimatedSprite(pixiAnimation);
@@ -143,7 +154,7 @@ export function PixiStaticMap({ map }: { map: WorldMapData }) {
       container.y = 0;
 
       // Set the hit area manually to ensure `pointerdown` events are delivered to this container.
-      container.eventMode = 'static';
+      container.eventMode = "static";
       container.hitArea = new PIXI.Rectangle(
         0,
         0,

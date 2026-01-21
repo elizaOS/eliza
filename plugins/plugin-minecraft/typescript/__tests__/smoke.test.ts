@@ -7,4 +7,3 @@ describe("plugin-minecraft smoke", () => {
     expect(typeof minecraftPlugin.description).toBe("string");
   });
 });
-

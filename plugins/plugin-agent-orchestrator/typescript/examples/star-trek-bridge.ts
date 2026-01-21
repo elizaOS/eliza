@@ -1,11 +1,11 @@
 import { AgentRuntime, createCharacter } from "@elizaos/core";
 import {
+  type AgentOrchestratorService,
+  type AgentProvider,
   agentOrchestratorPlugin,
   configureAgentOrchestratorPlugin,
-  type AgentProvider,
   type OrchestratedTask,
   type ProviderTaskExecutionContext,
-  AgentOrchestratorService,
   type TaskResult,
 } from "../index.js";
 
@@ -140,4 +140,3 @@ async function main(): Promise<void> {
 }
 
 await main();
-

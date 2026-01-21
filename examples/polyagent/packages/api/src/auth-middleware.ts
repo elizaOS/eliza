@@ -6,17 +6,17 @@
  * helper functions for authentication, optional authentication, and error responses.
  */
 
-import { db, eq, users } from '@polyagent/db';
-import type { AuthenticatedUser } from '@polyagent/shared';
-import { PrivyClient } from '@privy-io/server-auth';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { verifyAgentSession } from './agent-auth';
-import { AuthenticationError, isAuthenticationError } from './errors';
+import { db, eq, users } from "@polyagent/db";
+import type { AuthenticatedUser } from "@polyagent/shared";
+import { PrivyClient } from "@privy-io/server-auth";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { verifyAgentSession } from "./agent-auth";
+import { AuthenticationError, isAuthenticationError } from "./errors";
 
 // Re-export types from shared for backwards compatibility
-export type { AuthenticatedUser } from '@polyagent/shared';
-export { extractErrorMessage } from '@polyagent/shared';
+export type { AuthenticatedUser } from "@polyagent/shared";
+export { extractErrorMessage } from "@polyagent/shared";
 
 // Re-export from errors for backwards compatibility
 export { AuthenticationError, isAuthenticationError };
@@ -30,7 +30,7 @@ export function getPrivyClient(): PrivyClient {
     const privyAppSecret = process.env.PRIVY_APP_SECRET;
 
     if (!privyAppId || !privyAppSecret) {
-      throw new Error('Privy credentials not configured');
+      throw new Error("Privy credentials not configured");
     }
 
     privyClient = new PrivyClient(privyAppId, privyAppSecret);
@@ -58,23 +58,23 @@ export function getPrivyClient(): PrivyClient {
  * @see https://docs.privy.io/guide/react/configuration/cookies
  */
 export async function authenticate(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<AuthenticatedUser> {
-  const authHeader = request.headers.get('authorization');
+  const authHeader = request.headers.get("authorization");
   let token: string | undefined;
 
   // With HTTP-only cookies enabled, prefer the cookie over the Authorization header.
-  const cookieToken = request.cookies.get('privy-token')?.value;
+  const cookieToken = request.cookies.get("privy-token")?.value;
 
   if (cookieToken) {
     token = cookieToken;
-  } else if (authHeader?.startsWith('Bearer ')) {
+  } else if (authHeader?.startsWith("Bearer ")) {
     token = authHeader.substring(7);
   }
 
   if (!token) {
     throw new AuthenticationError(
-      'Missing or invalid authorization header or cookie'
+      "Missing or invalid authorization header or cookie",
     );
   }
 
@@ -82,17 +82,17 @@ export async function authenticate(
   // Bearer token (used by API integration tests). Disabled by default in prod.
   const allowTestPrivyDidAuth =
     process.env.ALLOW_TEST_PRIVY_DID_AUTH !== undefined
-      ? ['true', '1', 'yes', 'on'].includes(
-          process.env.ALLOW_TEST_PRIVY_DID_AUTH.toLowerCase()
+      ? ["true", "1", "yes", "on"].includes(
+          process.env.ALLOW_TEST_PRIVY_DID_AUTH.toLowerCase(),
         )
-      : process.env.NODE_ENV === 'development' ||
-        process.env.NODE_ENV === 'test';
+      : process.env.NODE_ENV === "development" ||
+        process.env.NODE_ENV === "test";
 
-  if (allowTestPrivyDidAuth && token.startsWith('did:privy:test')) {
+  if (allowTestPrivyDidAuth && token.startsWith("did:privy:test")) {
     // Fast-path: our test Privy DIDs are of the form `did:privy:test-${userId}`,
     // where `userId` is the DB user id (snowflake). Avoid a DB read when possible.
-    if (token.startsWith('did:privy:test-')) {
-      const embeddedUserId = token.slice('did:privy:test-'.length);
+    if (token.startsWith("did:privy:test-")) {
+      const embeddedUserId = token.slice("did:privy:test-".length);
       const isSnowflakeId = /^\d{15,20}$/.test(embeddedUserId);
       if (isSnowflakeId) {
         return {
@@ -114,7 +114,7 @@ export async function authenticate(
     const dbUser = dbUserResult[0];
 
     if (!dbUser) {
-      throw new AuthenticationError('Test user not found');
+      throw new AuthenticationError("Test user not found");
     }
 
     return {
@@ -141,7 +141,7 @@ export async function authenticate(
   const privy = getPrivyClient();
 
   // Get the Authorization header token as a potential fallback
-  const authHeaderToken = authHeader?.startsWith('Bearer ')
+  const authHeaderToken = authHeader?.startsWith("Bearer ")
     ? authHeader.substring(7)
     : undefined;
 
@@ -179,26 +179,25 @@ export async function authenticate(
       lastError = error as Error;
       // If this isn't the last token to try, continue to the next one
       if (tokensToTry.indexOf(tokenToVerify) < tokensToTry.length - 1) {
-        continue;
       }
     }
   }
 
   // If we get here, all tokens failed verification
-  throw lastError ?? new AuthenticationError('Token verification failed');
+  throw lastError ?? new AuthenticationError("Token verification failed");
 }
 
 /**
  * Authenticate and require that the user has a database record
  */
 export async function authenticateWithDbUser(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<AuthenticatedUser & { dbUserId: string }> {
   const authUser = await authenticate(request);
 
   if (!authUser.dbUserId) {
     throw new AuthenticationError(
-      'User profile not found. Please complete onboarding first.'
+      "User profile not found. Please complete onboarding first.",
     );
   }
 
@@ -209,17 +208,17 @@ export async function authenticateWithDbUser(
  * Optional authentication - returns user if authenticated, null otherwise
  */
 export async function optionalAuth(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<AuthenticatedUser | null> {
-  const authHeader = request.headers.get('authorization');
+  const authHeader = request.headers.get("authorization");
   let token: string | undefined;
 
   // Prefer cookie over header
-  const cookieToken = request.cookies.get('privy-token')?.value;
+  const cookieToken = request.cookies.get("privy-token")?.value;
 
   if (cookieToken) {
     token = cookieToken;
-  } else if (authHeader?.startsWith('Bearer ')) {
+  } else if (authHeader?.startsWith("Bearer ")) {
     token = authHeader.substring(7);
   }
 
@@ -240,7 +239,7 @@ export async function optionalAuth(
   const privy = getPrivyClient();
 
   // Get the Authorization header token as a potential fallback
-  const authHeaderToken = authHeader?.startsWith('Bearer ')
+  const authHeaderToken = authHeader?.startsWith("Bearer ")
     ? authHeader.substring(7)
     : undefined;
 
@@ -289,11 +288,11 @@ export async function optionalAuth(
  * Optional authentication from headers - for use when NextRequest is not available
  */
 export async function optionalAuthFromHeaders(
-  headers: Headers
+  headers: Headers,
 ): Promise<AuthenticatedUser | null> {
-  const authHeader = headers.get('authorization');
+  const authHeader = headers.get("authorization");
 
-  if (!authHeader?.startsWith('Bearer ')) {
+  if (!authHeader?.startsWith("Bearer ")) {
     return null;
   }
 
@@ -327,7 +326,7 @@ export async function optionalAuthFromHeaders(
 /**
  * Standard auth error response helper
  */
-export function authErrorResponse(message = 'Unauthorized') {
+export function authErrorResponse(message = "Unauthorized") {
   return NextResponse.json({ error: message }, { status: 401 });
 }
 

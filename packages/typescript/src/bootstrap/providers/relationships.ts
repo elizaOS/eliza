@@ -80,7 +80,7 @@ async function formatRelationships(
       const names = entity.names.join(" aka ");
       return `${names}\n${
         rel.tags ? rel.tags.join(", ") : ""
-      }\n${formatMetadata(entity.metadata)}\n`;
+      }\n${formatMetadata(entity.metadata ?? {})}\n`;
     })
     .filter(Boolean);
 

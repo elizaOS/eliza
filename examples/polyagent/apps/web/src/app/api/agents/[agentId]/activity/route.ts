@@ -9,8 +9,8 @@
  * Used for the real-time Activity feed in the agent detail page.
  */
 
-import { agentService } from '@polyagent/agents';
-import { authenticateUser } from '@polyagent/api';
+import { agentService } from "@polyagent/agents";
+import { authenticateUser } from "@polyagent/api";
 import {
   agentTrades,
   comments,
@@ -20,23 +20,23 @@ import {
   inArray,
   markets,
   posts,
-} from '@polyagent/db';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+} from "@polyagent/db";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 const QuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
-  type: z.enum(['all', 'trade', 'post', 'comment']).optional().default('all'),
+  type: z.enum(["all", "trade", "post", "comment"]).optional().default("all"),
 });
 
 interface TradeActivity {
-  type: 'trade';
+  type: "trade";
   id: string;
   timestamp: string;
   data: {
     tradeId: string;
-    marketType: 'prediction' | 'perp';
+    marketType: "prediction" | "perp";
     marketId: string | null;
     ticker: string | null;
     marketQuestion: string | null;
@@ -50,7 +50,7 @@ interface TradeActivity {
 }
 
 interface PostActivity {
-  type: 'post';
+  type: "post";
   id: string;
   timestamp: string;
   data: {
@@ -60,7 +60,7 @@ interface PostActivity {
 }
 
 interface CommentActivity {
-  type: 'comment';
+  type: "comment";
   id: string;
   timestamp: string;
   data: {
@@ -75,7 +75,7 @@ type AgentActivity = TradeActivity | PostActivity | CommentActivity;
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ agentId: string }> }
+  { params }: { params: Promise<{ agentId: string }> },
 ) {
   const user = await authenticateUser(req);
   const { agentId } = await params;
@@ -85,21 +85,21 @@ export async function GET(
 
   if (!agent) {
     return NextResponse.json(
-      { success: false, error: 'Agent not found or access denied' },
-      { status: 404 }
+      { success: false, error: "Agent not found or access denied" },
+      { status: 404 },
     );
   }
 
   const { searchParams } = new URL(req.url);
   const { limit, type } = QuerySchema.parse({
-    limit: searchParams.get('limit'),
-    type: searchParams.get('type'),
+    limit: searchParams.get("limit"),
+    type: searchParams.get("type"),
   });
 
   const activities: AgentActivity[] = [];
 
   // Fetch trades if requested
-  if (type === 'all' || type === 'trade') {
+  if (type === "all" || type === "trade") {
     const trades = await db
       .select({
         id: agentTrades.id,
@@ -123,8 +123,8 @@ export async function GET(
     const marketIds = [
       ...new Set(
         trades
-          .filter((t) => t.marketType === 'prediction' && t.marketId)
-          .map((t) => t.marketId!)
+          .filter((t) => t.marketType === "prediction" && t.marketId)
+          .map((t) => t.marketId!),
       ),
     ];
 
@@ -142,12 +142,12 @@ export async function GET(
 
     for (const trade of trades) {
       activities.push({
-        type: 'trade',
+        type: "trade",
         id: trade.id,
         timestamp: trade.executedAt.toISOString(),
         data: {
           tradeId: trade.id,
-          marketType: trade.marketType as 'prediction' | 'perp',
+          marketType: trade.marketType as "prediction" | "perp",
           marketId: trade.marketId,
           ticker: trade.ticker,
           marketQuestion: trade.marketId
@@ -165,7 +165,7 @@ export async function GET(
   }
 
   // Fetch posts if requested
-  if (type === 'all' || type === 'post') {
+  if (type === "all" || type === "post") {
     const agentPosts = await db
       .select({
         id: posts.id,
@@ -179,7 +179,7 @@ export async function GET(
 
     for (const post of agentPosts) {
       activities.push({
-        type: 'post',
+        type: "post",
         id: post.id,
         timestamp: post.createdAt.toISOString(),
         data: {
@@ -191,7 +191,7 @@ export async function GET(
   }
 
   // Fetch comments if requested
-  if (type === 'all' || type === 'comment') {
+  if (type === "all" || type === "comment") {
     const agentComments = await db
       .select({
         id: comments.id,
@@ -207,7 +207,7 @@ export async function GET(
 
     for (const comment of agentComments) {
       activities.push({
-        type: 'comment',
+        type: "comment",
         id: comment.id,
         timestamp: comment.createdAt.toISOString(),
         data: {
@@ -225,7 +225,7 @@ export async function GET(
   // (up to 3x limit, max 300 rows) ensures we return the most recent activities
   // across all types. The enforced max limit of 100 keeps this acceptable.
   activities.sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
   );
 
   const limitedActivities = activities.slice(0, limit);

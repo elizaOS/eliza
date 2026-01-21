@@ -34,9 +34,7 @@ export const followRoomAction: Action = {
     const messageContentText = message.content.text?.toLowerCase();
     if (
       !messageContentText ||
-      !FOLLOW_KEYWORDS.some((keyword) =>
-        messageContentText.includes(keyword),
-      )
+      !FOLLOW_KEYWORDS.some((keyword) => messageContentText.includes(keyword))
     ) {
       return false;
     }

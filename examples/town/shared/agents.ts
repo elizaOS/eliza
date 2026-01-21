@@ -17,8 +17,7 @@ export const TOWN_AGENTS: TownAgentDefinition[] = [
     id: "alex-rivera",
     name: "Briar Holt",
     characterId: "f1",
-    description:
-      "A steady-handed barblade who keeps the tavern calm and cozy.",
+    description: "A steady-handed barblade who keeps the tavern calm and cozy.",
     role: "Tavern Sword",
     persona: "Focused, candid, and quietly reassuring by the hearth.",
     relationships: [
@@ -38,8 +37,7 @@ export const TOWN_AGENTS: TownAgentDefinition[] = [
     id: "jordan-lee",
     name: "Juniper Vale",
     characterId: "f2",
-    description:
-      "A cheerful adventurer who brings new faces to the tavern.",
+    description: "A cheerful adventurer who brings new faces to the tavern.",
     role: "Wandering Regular",
     persona: "Optimistic, energetic, and allergic to over-planning.",
     relationships: [
@@ -59,8 +57,7 @@ export const TOWN_AGENTS: TownAgentDefinition[] = [
     id: "taylor-park",
     name: "Tamsin Reed",
     characterId: "f3",
-    description:
-      "A soft-footed helper who keeps supplies neat and tidy.",
+    description: "A soft-footed helper who keeps supplies neat and tidy.",
     role: "Pantry Scout",
     persona: "Dry humor, sharp eye, and a soft spot for clean shelves.",
     relationships: [
@@ -80,8 +77,7 @@ export const TOWN_AGENTS: TownAgentDefinition[] = [
     id: "morgan-kim",
     name: "Maren Sol",
     characterId: "f4",
-    description:
-      "A gentle fortune-reader who keeps the room bright and easy.",
+    description: "A gentle fortune-reader who keeps the room bright and easy.",
     role: "Hearth Seer",
     persona: "Warm, thoughtful, and softly luminous.",
     relationships: [
@@ -101,8 +97,7 @@ export const TOWN_AGENTS: TownAgentDefinition[] = [
     id: "casey-wu",
     name: "Elowen Pike",
     characterId: "f5",
-    description:
-      "A ledger-keeper who knows every recipe and every rumor.",
+    description: "A ledger-keeper who knows every recipe and every rumor.",
     role: "Tavern Archivist",
     persona: "Soft-spoken, curious, and precise.",
     relationships: [
@@ -122,8 +117,7 @@ export const TOWN_AGENTS: TownAgentDefinition[] = [
     id: "riley-chen",
     name: "Lark Rowan",
     characterId: "f6",
-    description:
-      "A warm-voiced bard who turns quiet nights into gentle songs.",
+    description: "A warm-voiced bard who turns quiet nights into gentle songs.",
     role: "House Bard",
     persona: "Charming, upbeat, and detail-oriented.",
     relationships: [
@@ -143,8 +137,7 @@ export const TOWN_AGENTS: TownAgentDefinition[] = [
     id: "devon-gray",
     name: "Calder Ashe",
     characterId: "f7",
-    description:
-      "A steady doorman who keeps the tavern safe and welcoming.",
+    description: "A steady doorman who keeps the tavern safe and welcoming.",
     role: "Door Warden",
     persona: "Blunt, protective, and quietly kind.",
     relationships: [

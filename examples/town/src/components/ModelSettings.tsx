@@ -1,7 +1,10 @@
-import { useModelSettings, useUpdateModelSettings } from "../hooks/useModelSettings";
 import {
-  MODEL_PROVIDER_LABELS,
+  useModelSettings,
+  useUpdateModelSettings,
+} from "../hooks/useModelSettings";
+import {
   isModelProvider,
+  MODEL_PROVIDER_LABELS,
   type ModelProvider,
   type ModelSettings,
   type ProviderModelConfig,
@@ -30,10 +33,16 @@ export default function ModelSettingsPanel() {
   };
 
   const provider: ConfigurableProvider = settings.provider;
-  const providerConfig: ProviderModelConfig = getProviderConfig(settings, provider);
+  const providerConfig: ProviderModelConfig = getProviderConfig(
+    settings,
+    provider,
+  );
   const supportsApiKey = provider !== "local";
   const supportsBaseUrl =
-    provider === "openai" || provider === "anthropic" || provider === "groq" || provider === "xai";
+    provider === "openai" ||
+    provider === "anthropic" ||
+    provider === "groq" ||
+    provider === "xai";
 
   return (
     <div className="box w-full">
@@ -42,7 +51,9 @@ export default function ModelSettingsPanel() {
       </h2>
       <div className="flex flex-col gap-3 p-3 text-sm">
         <label className="flex flex-col gap-1">
-          <span className="text-xs uppercase tracking-wider opacity-70">Provider</span>
+          <span className="text-xs uppercase tracking-wider opacity-70">
+            Provider
+          </span>
           <select
             className="rounded bg-brown-900/60 px-3 py-2 text-brown-100"
             value={provider}
@@ -83,7 +94,9 @@ export default function ModelSettingsPanel() {
 
         {supportsBaseUrl && (
           <label className="flex flex-col gap-1">
-            <span className="text-xs uppercase tracking-wider opacity-70">Base URL</span>
+            <span className="text-xs uppercase tracking-wider opacity-70">
+              Base URL
+            </span>
             <input
               type="text"
               className="rounded bg-brown-900/60 px-3 py-2 text-brown-100"
@@ -97,7 +110,9 @@ export default function ModelSettingsPanel() {
         )}
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs uppercase tracking-wider opacity-70">Small Model</span>
+          <span className="text-xs uppercase tracking-wider opacity-70">
+            Small Model
+          </span>
           <input
             type="text"
             className="rounded bg-brown-900/60 px-3 py-2 text-brown-100"
@@ -110,7 +125,9 @@ export default function ModelSettingsPanel() {
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs uppercase tracking-wider opacity-70">Large Model</span>
+          <span className="text-xs uppercase tracking-wider opacity-70">
+            Large Model
+          </span>
           <input
             type="text"
             className="rounded bg-brown-900/60 px-3 py-2 text-brown-100"
@@ -136,7 +153,10 @@ export default function ModelSettingsPanel() {
   );
 }
 
-function getProviderConfig(settings: ModelSettings, provider: ModelProvider): ProviderModelConfig {
+function getProviderConfig(
+  settings: ModelSettings,
+  provider: ModelProvider,
+): ProviderModelConfig {
   switch (provider) {
     case "openai":
       return settings.openai;

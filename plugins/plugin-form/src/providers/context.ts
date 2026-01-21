@@ -52,10 +52,23 @@
  * the agent can remind the user they have unfinished work.
  */
 
-import type { IAgentRuntime, Memory, Provider, ProviderResult, State, UUID } from '@elizaos/core';
-import { logger } from '@elizaos/core';
-import { FormService } from '../service.ts';
-import type { FormContextState } from '../types.ts';
+import type {
+  IAgentRuntime,
+  JsonValue,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
+  UUID,
+} from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { FormService } from "../service";
+import type { FormContextState } from "../types";
+import {
+  buildTemplateValues,
+  renderTemplate,
+  resolveControlTemplates,
+} from "../template";
 
 /**
  * Form Context Provider
@@ -70,8 +83,8 @@ import type { FormContextState } from '../types.ts';
  * - Evaluator runs AFTER, too late for response
  */
 export const formContextProvider: Provider = {
-  name: 'FORM_CONTEXT',
-  description: 'Provides context about active form sessions',
+  name: "FORM_CONTEXT",
+  description: "Provides context about active form sessions",
 
   /**
    * Get form context for the current message.
@@ -84,17 +97,17 @@ export const formContextProvider: Provider = {
   get: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
     try {
       // Get form service
       // WHY type cast: Runtime returns unknown, we know it's FormService
-      const formService = runtime.getService('FORM') as FormService;
+      const formService = runtime.getService("FORM") as FormService;
       if (!formService) {
         return {
           data: { hasActiveForm: false },
-          values: { formContext: '' },
-          text: '',
+          values: { formContext: "" },
+          text: "",
         };
       }
 
@@ -106,8 +119,8 @@ export const formContextProvider: Provider = {
       if (!entityId || !roomId) {
         return {
           data: { hasActiveForm: false },
-          values: { formContext: '' },
-          text: '',
+          values: { formContext: "" },
+          text: "",
         };
       }
 
@@ -121,19 +134,43 @@ export const formContextProvider: Provider = {
       if (!session && stashed.length === 0) {
         return {
           data: { hasActiveForm: false, stashedCount: 0 },
-          values: { formContext: '' },
-          text: '',
+          values: { formContext: "" },
+          text: "",
         };
       }
 
       // Build context for active session
-      let contextText = '';
+      let contextText = "";
       let contextState: FormContextState;
 
       if (session) {
         // Get session context from service
         contextState = formService.getSessionContext(session);
         const form = formService.getForm(session.formId);
+        const templateValues = buildTemplateValues(session);
+        const resolveText = (value?: string): string | undefined =>
+          renderTemplate(value, templateValues);
+
+        contextState = {
+          ...contextState,
+          filledFields: contextState.filledFields.map((field) => ({
+            ...field,
+            label: resolveText(field.label) ?? field.label,
+          })),
+          missingRequired: contextState.missingRequired.map((field) => ({
+            ...field,
+            label: resolveText(field.label) ?? field.label,
+            description: resolveText(field.description),
+            askPrompt: resolveText(field.askPrompt),
+          })),
+          uncertainFields: contextState.uncertainFields.map((field) => ({
+            ...field,
+            label: resolveText(field.label) ?? field.label,
+          })),
+          nextField: contextState.nextField
+            ? resolveControlTemplates(contextState.nextField, templateValues)
+            : null,
+        };
 
         // Build human-readable context for agent
         // WHY markdown: Agent can parse and use structure
@@ -149,7 +186,7 @@ export const formContextProvider: Provider = {
           for (const field of contextState.filledFields) {
             contextText += `- ${field.label}: ${field.displayValue}\n`;
           }
-          contextText += '\n';
+          contextText += "\n";
         }
 
         // Missing required fields - what we still need
@@ -157,9 +194,9 @@ export const formContextProvider: Provider = {
         if (contextState.missingRequired.length > 0) {
           contextText += `## Still Needed\n`;
           for (const field of contextState.missingRequired) {
-            contextText += `- ${field.label}${field.description ? ` (${field.description})` : ''}\n`;
+            contextText += `- ${field.label}${field.description ? ` (${field.description})` : ""}\n`;
           }
-          contextText += '\n';
+          contextText += "\n";
         }
 
         // Uncertain fields needing confirmation
@@ -169,7 +206,7 @@ export const formContextProvider: Provider = {
           for (const field of contextState.uncertainFields) {
             contextText += `- ${field.label}: "${field.value}" (${Math.round(field.confidence * 100)}% confident)\n`;
           }
-          contextText += '\n';
+          contextText += "\n";
         }
 
         // Pending external fields (payments, signatures, etc.)
@@ -179,13 +216,13 @@ export const formContextProvider: Provider = {
           for (const field of contextState.pendingExternalFields) {
             const ageMs = Date.now() - field.activatedAt;
             const ageMin = Math.floor(ageMs / 60000);
-            const ageText = ageMin < 1 ? 'just now' : `${ageMin}m ago`;
+            const ageText = ageMin < 1 ? "just now" : `${ageMin}m ago`;
             contextText += `- ${field.label}: ${field.instructions} (started ${ageText})\n`;
             if (field.address) {
               contextText += `  Address: ${field.address}\n`;
             }
           }
-          contextText += '\n';
+          contextText += "\n";
         }
 
         // Explicit agent guidance
@@ -211,12 +248,12 @@ export const formContextProvider: Provider = {
           if (next.example) {
             contextText += `Example: "${next.example}"\n`;
           }
-        } else if (contextState.status === 'ready') {
+        } else if (contextState.status === "ready") {
           // All required fields done, suggest submit
           contextText += `All fields collected! Nudge user to submit: "I have everything I need. Ready to submit?"\n`;
         }
 
-        contextText += '\n';
+        contextText += "\n";
 
         // User commands reference
         // WHY: Agent should know what user can say
@@ -257,24 +294,27 @@ export const formContextProvider: Provider = {
 
       return {
         // Full context object for programmatic access
-        data: contextState as unknown as Record<string, unknown>,
+        data: JSON.parse(JSON.stringify(contextState)) as Record<
+          string,
+          JsonValue
+        >,
         // String values for template substitution
         values: {
           formContext: contextText,
           hasActiveForm: String(contextState.hasActiveForm),
           formProgress: String(contextState.progress),
-          formStatus: contextState.status || '',
+          formStatus: contextState.status || "",
           stashedCount: String(stashed.length),
         },
         // Human-readable text for agent
         text: contextText,
       };
     } catch (error) {
-      logger.error('[FormContextProvider] Error:', String(error));
+      logger.error("[FormContextProvider] Error:", String(error));
       return {
         data: { hasActiveForm: false, error: true },
-        values: { formContext: 'Error loading form context.' },
-        text: 'Error loading form context.',
+        values: { formContext: "Error loading form context." },
+        text: "Error loading form context.",
       };
     }
   },

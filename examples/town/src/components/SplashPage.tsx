@@ -1,6 +1,9 @@
 import { useState } from "react";
+import {
+  isProviderConfigured,
+  type ModelSettings,
+} from "../runtime/modelSettings";
 import ModelSettingsPanel from "./ModelSettings";
-import { isProviderConfigured, type ModelSettings } from "../runtime/modelSettings";
 
 type SplashPageProps = {
   settings: ModelSettings;
@@ -31,28 +34,33 @@ export default function SplashPage({ settings, onEnter }: SplashPageProps) {
         {/* Game Description */}
         <div className="box p-4 space-y-3">
           <p className="text-brown-200 text-sm leading-relaxed">
-            Welcome to <strong>Eliza Town</strong>, where AI agents play a game of{" "}
-            <strong>Mafia</strong> — the classic social deduction game.
+            Welcome to <strong>Eliza Town</strong>, where AI agents play a game
+            of <strong>Mafia</strong> — the classic social deduction game.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div className="bg-brown-800/50 p-3 rounded">
               <div className="font-display text-brown-300 mb-1">The Mafia</div>
               <p className="text-brown-200/80">
-                Hidden killers who eliminate one citizen each night. They must blend in during the
-                day and avoid suspicion.
+                Hidden killers who eliminate one citizen each night. They must
+                blend in during the day and avoid suspicion.
               </p>
             </div>
             <div className="bg-brown-800/50 p-3 rounded">
-              <div className="font-display text-brown-300 mb-1">The Citizens</div>
+              <div className="font-display text-brown-300 mb-1">
+                The Citizens
+              </div>
               <p className="text-brown-200/80">
-                Innocent townspeople trying to identify and vote out the mafia before it's too
-                late.
+                Innocent townspeople trying to identify and vote out the mafia
+                before it's too late.
               </p>
             </div>
             <div className="bg-brown-800/50 p-3 rounded">
-              <div className="font-display text-brown-300 mb-1">The Sheriff</div>
+              <div className="font-display text-brown-300 mb-1">
+                The Sheriff
+              </div>
               <p className="text-brown-200/80">
-                Can investigate one player each night to learn if they're mafia or innocent.
+                Can investigate one player each night to learn if they're mafia
+                or innocent.
               </p>
             </div>
             <div className="bg-brown-800/50 p-3 rounded">
@@ -63,14 +71,16 @@ export default function SplashPage({ settings, onEnter }: SplashPageProps) {
             </div>
           </div>
           <p className="text-brown-200/70 text-xs">
-            Watch as 8 AI agents navigate accusations, form alliances, and try to survive the
-            night. Will the town prevail, or will the mafia take over?
+            Watch as 8 AI agents navigate accusations, form alliances, and try
+            to survive the night. Will the town prevail, or will the mafia take
+            over?
           </p>
         </div>
 
         {/* Settings */}
         <div className="box">
           <button
+            type="button"
             className="w-full bg-brown-700 p-3 text-left font-display text-lg tracking-wider shadow-solid flex items-center justify-between cursor-pointer"
             onClick={() => setShowSettings(!showSettings)}
           >
@@ -80,8 +90,8 @@ export default function SplashPage({ settings, onEnter }: SplashPageProps) {
           {showSettings && (
             <div className="p-4 space-y-3">
               <p className="text-brown-200/80 text-xs">
-                The agents need an AI model to think and act. Choose a provider and add your API
-                key. Keys are stored locally in your browser.
+                The agents need an AI model to think and act. Choose a provider
+                and add your API key. Keys are stored locally in your browser.
               </p>
               <ModelSettingsPanel />
               {!providerReady && (
@@ -103,6 +113,7 @@ export default function SplashPage({ settings, onEnter }: SplashPageProps) {
         {/* Enter Button */}
         <div className="flex flex-col items-center gap-3">
           <button
+            type="button"
             className="button text-white shadow-solid text-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={onEnter}
             disabled={!providerReady}
@@ -112,7 +123,9 @@ export default function SplashPage({ settings, onEnter }: SplashPageProps) {
             </div>
           </button>
           {!providerReady && (
-            <p className="text-brown-300/70 text-xs">Configure your AI provider above to enter</p>
+            <p className="text-brown-300/70 text-xs">
+              Configure your AI provider above to enter
+            </p>
           )}
         </div>
 

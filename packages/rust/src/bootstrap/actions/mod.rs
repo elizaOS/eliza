@@ -110,4 +110,3 @@ pub fn all_actions() -> Vec<Box<dyn Action>> {
     actions.extend(extended_actions());
     actions
 }
-

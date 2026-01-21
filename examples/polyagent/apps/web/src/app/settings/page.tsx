@@ -1,18 +1,18 @@
-'use client';
+"use client";
 
-import { cn, logger } from '@polyagent/shared';
-import { ArrowLeft, Key, Palette, Save, Shield, User } from 'lucide-react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useTheme } from 'next-themes';
-import { useEffect, useState } from 'react';
-import { LoginButton } from '@/components/auth/LoginButton';
-import { ApiKeysTab } from '@/components/settings/ApiKeysTab';
-import { PrivacyTab } from '@/components/settings/PrivacyTab';
-import { SecurityTab } from '@/components/settings/SecurityTab';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { useAuth } from '@/hooks/useAuth';
-import { useAuthStore } from '@/stores/authStore';
+import { cn, logger } from "@polyagent/shared";
+import { ArrowLeft, Key, Palette, Save, Shield, User } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
+import { LoginButton } from "@/components/auth/LoginButton";
+import { ApiKeysTab } from "@/components/settings/ApiKeysTab";
+import { PrivacyTab } from "@/components/settings/PrivacyTab";
+import { SecurityTab } from "@/components/settings/SecurityTab";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { useAuthStore } from "@/stores/authStore";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -21,8 +21,8 @@ export default function SettingsPage() {
   const { user, setUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState(() => {
     // Check for tab parameter in URL
-    const tab = searchParams?.get('tab');
-    return tab || 'profile';
+    const tab = searchParams?.get("tab");
+    return tab || "profile";
   });
 
   // Sync tab changes with URL
@@ -33,7 +33,7 @@ export default function SettingsPage() {
 
   // Sync tab when URL changes (e.g., browser back/forward)
   useEffect(() => {
-    const tab = searchParams?.get('tab');
+    const tab = searchParams?.get("tab");
     if (tab && tab !== activeTab) {
       setActiveTab(tab);
     }
@@ -44,9 +44,9 @@ export default function SettingsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Profile settings state
-  const [displayName, setDisplayName] = useState(user?.displayName || '');
-  const [username, setUsername] = useState(user?.username || '');
-  const [bio, setBio] = useState(user?.bio || '');
+  const [displayName, setDisplayName] = useState(user?.displayName || "");
+  const [username, setUsername] = useState(user?.username || "");
+  const [bio, setBio] = useState(user?.bio || "");
 
   // Theme settings - connected to next-themes
   const { theme, setTheme } = useTheme();
@@ -86,16 +86,16 @@ export default function SettingsPage() {
 
   // Sync profile fields when user data changes
   useEffect(() => {
-    setDisplayName(user?.displayName ?? '');
-    setUsername(user?.username ?? '');
-    setBio(user?.bio ?? '');
+    setDisplayName(user?.displayName ?? "");
+    setUsername(user?.username ?? "");
+    setBio(user?.bio ?? "");
   }, [user?.displayName, user?.username, user?.bio]);
 
   const handleSave = async () => {
     if (!user?.id) return;
     if (user.onChainRegistered !== true) {
       setErrorMessage(
-        'Complete your on-chain registration before editing your profile.'
+        "Complete your on-chain registration before editing your profile.",
       );
       return;
     }
@@ -104,9 +104,9 @@ export default function SettingsPage() {
     setSaved(false);
     setErrorMessage(null);
 
-    const trimmedDisplayName = (displayName ?? '').trim();
-    const trimmedUsername = (username ?? '').trim();
-    const trimmedBio = (bio ?? '').trim();
+    const trimmedDisplayName = (displayName ?? "").trim();
+    const trimmedUsername = (username ?? "").trim();
+    const trimmedBio = (bio ?? "").trim();
 
     // Backend now handles ALL signing automatically - no user popups!
     // This includes username changes, bio updates, display name changes.
@@ -114,33 +114,33 @@ export default function SettingsPage() {
 
     const token = await getAccessToken();
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     };
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      headers.Authorization = `Bearer ${token}`;
     }
 
     const response = await fetch(
       `/api/users/${encodeURIComponent(user.id)}/update-profile`,
       {
-        method: 'POST',
+        method: "POST",
         headers,
         body: JSON.stringify({
           displayName: trimmedDisplayName,
           username: trimmedUsername,
           bio: trimmedBio,
         }),
-      }
+      },
     );
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const message = payload?.error || 'Unable to save your changes.';
+      const message = payload?.error || "Unable to save your changes.";
       setErrorMessage(message);
       logger.error(
-        'Failed to save profile settings',
+        "Failed to save profile settings",
         { error: message },
-        'SettingsPage'
+        "SettingsPage",
       );
       setSaving(false);
       return;
@@ -213,11 +213,11 @@ export default function SettingsPage() {
   }
 
   const tabs = [
-    { id: 'profile', label: 'Profile', icon: User },
-    { id: 'theme', label: 'Theme', icon: Palette },
-    { id: 'security', label: 'Security', icon: Shield },
-    { id: 'privacy', label: 'Privacy', icon: Shield },
-    { id: 'api', label: 'API Keys', icon: Key },
+    { id: "profile", label: "Profile", icon: User },
+    { id: "theme", label: "Theme", icon: Palette },
+    { id: "security", label: "Security", icon: Shield },
+    { id: "privacy", label: "Privacy", icon: Shield },
+    { id: "api", label: "API Keys", icon: Key },
   ];
 
   return (
@@ -244,10 +244,10 @@ export default function SettingsPage() {
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
                 className={cn(
-                  'flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 transition-all',
+                  "flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 transition-all",
                   activeTab === tab.id
-                    ? 'border-[#0066FF] text-[#0066FF]'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                    ? "border-[#0066FF] text-[#0066FF]"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -259,7 +259,7 @@ export default function SettingsPage() {
 
         {/* Tab Content */}
         <div className="space-y-6 pb-8">
-          {activeTab === 'profile' && (
+          {activeTab === "profile" && (
             <div className="space-y-6">
               <div>
                 <label
@@ -291,7 +291,7 @@ export default function SettingsPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={Boolean(
-                    usernameChangeLimit && !usernameChangeLimit.canChange
+                    usernameChangeLimit && !usernameChangeLimit.canChange,
                   )}
                   className="w-full rounded-lg border border-border bg-muted px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0066FF] disabled:cursor-not-allowed disabled:opacity-50"
                   placeholder="Enter your username"
@@ -299,7 +299,7 @@ export default function SettingsPage() {
                 {usernameChangeLimit && !usernameChangeLimit.canChange ? (
                   <p className="mt-1 text-xs text-yellow-500">
                     Username can only be changed once every 24 hours. Please
-                    wait {usernameChangeLimit.hours}h{' '}
+                    wait {usernameChangeLimit.hours}h{" "}
                     {usernameChangeLimit.minutes}m before changing again.
                   </p>
                 ) : (
@@ -326,7 +326,7 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {activeTab === 'theme' && (
+          {activeTab === "theme" && (
             <div className="space-y-6">
               <div>
                 <h3 className="mb-4 font-medium">Theme Preference</h3>
@@ -336,7 +336,7 @@ export default function SettingsPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {['light', 'dark', 'system'].map((themeOption) => (
+                    {["light", "dark", "system"].map((themeOption) => (
                       <label
                         key={themeOption}
                         className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-muted"
@@ -354,12 +354,12 @@ export default function SettingsPage() {
                             {themeOption}
                           </p>
                           <p className="text-muted-foreground text-sm">
-                            {themeOption === 'light' &&
-                              'Light background with dark text'}
-                            {themeOption === 'dark' &&
-                              'Dark background with light text'}
-                            {themeOption === 'system' &&
-                              'Match your system settings'}
+                            {themeOption === "light" &&
+                              "Light background with dark text"}
+                            {themeOption === "dark" &&
+                              "Dark background with light text"}
+                            {themeOption === "system" &&
+                              "Match your system settings"}
                           </p>
                         </div>
                       </label>
@@ -371,16 +371,16 @@ export default function SettingsPage() {
           )}
 
           {/* Security Tab */}
-          {activeTab === 'security' && <SecurityTab />}
+          {activeTab === "security" && <SecurityTab />}
 
           {/* Privacy Tab */}
-          {activeTab === 'privacy' && <PrivacyTab />}
+          {activeTab === "privacy" && <PrivacyTab />}
 
           {/* API Keys Tab */}
-          {activeTab === 'api' && <ApiKeysTab />}
+          {activeTab === "api" && <ApiKeysTab />}
 
           {/* Save Button - Only show for profile tab (theme saves automatically) */}
-          {activeTab === 'profile' && (
+          {activeTab === "profile" && (
             <div className="border-border border-t pt-6">
               {errorMessage && (
                 <p className="mb-4 text-red-500 text-sm">{errorMessage}</p>
@@ -395,21 +395,21 @@ export default function SettingsPage() {
                 onClick={handleSave}
                 disabled={saving || user?.onChainRegistered !== true}
                 className={cn(
-                  'flex items-center gap-2 rounded-lg px-6 py-3 font-medium transition-all',
-                  'bg-[#0066FF] text-primary-foreground hover:bg-[#2952d9]',
-                  'disabled:cursor-not-allowed disabled:opacity-50'
+                  "flex items-center gap-2 rounded-lg px-6 py-3 font-medium transition-all",
+                  "bg-[#0066FF] text-primary-foreground hover:bg-[#2952d9]",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
                 )}
               >
                 <Save className="h-4 w-4" />
                 <span>
-                  {saving ? 'Saving...' : saved ? 'Saved!' : 'Save Changes'}
+                  {saving ? "Saving..." : saved ? "Saved!" : "Save Changes"}
                 </span>
               </button>
             </div>
           )}
 
           {/* Theme saves automatically, show confirmation */}
-          {activeTab === 'theme' && mounted && (
+          {activeTab === "theme" && mounted && (
             <div className="border-border border-t pt-6">
               <p className="text-muted-foreground text-sm">
                 Theme preference is saved automatically and applied immediately.

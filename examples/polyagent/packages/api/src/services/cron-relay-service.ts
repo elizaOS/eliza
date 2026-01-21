@@ -1,5 +1,5 @@
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
 
 interface RelayResult {
   forwarded: boolean;
@@ -16,20 +16,20 @@ interface RelayResult {
  */
 export async function relayCronToStaging(
   request: NextRequest | { url: string; headers: Headers },
-  routeName: string
+  routeName: string,
 ): Promise<RelayResult> {
-  if (process.env.REDIRECT_CRON_STAGING !== 'true') {
+  if (process.env.REDIRECT_CRON_STAGING !== "true") {
     return { forwarded: false };
   }
 
   const stagingBaseUrl =
-    process.env.CRON_STAGING_URL || 'https://staging.polyagent.market';
-  const stagingHost = stagingBaseUrl.replace(/^https?:\/\//, '');
+    process.env.CRON_STAGING_URL || "https://staging.polyagent.market";
+  const stagingHost = stagingBaseUrl.replace(/^https?:\/\//, "");
   // Access headers safely - handle both NextRequest and plain Headers objects
   const headers = request.headers as
     | Headers
     | { get: (key: string) => string | null };
-  const requestHost = headers?.get('host') || '';
+  const requestHost = headers?.get("host") || "";
 
   // Avoid infinite loops when request already targets staging
   if (requestHost === stagingHost) {
@@ -39,9 +39,9 @@ export async function relayCronToStaging(
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
     logger.warn(
-      'Cannot relay cron - CRON_SECRET missing',
+      "Cannot relay cron - CRON_SECRET missing",
       { routeName },
-      'CronRelay'
+      "CronRelay",
     );
     return { forwarded: false };
   }
@@ -50,22 +50,22 @@ export async function relayCronToStaging(
   const targetUrl = `${stagingBaseUrl}${pathname}${search}`;
 
   const res = await fetch(targetUrl, {
-    method: 'POST',
+    method: "POST",
     headers: {
       Authorization: `Bearer ${cronSecret}`,
-      'x-cron-relay': routeName,
+      "x-cron-relay": routeName,
     },
-    cache: 'no-store',
+    cache: "no-store",
   });
 
   logger.info(
-    'Relayed cron execution to staging',
+    "Relayed cron execution to staging",
     {
       routeName,
       targetUrl,
       status: res.status,
     },
-    'CronRelay'
+    "CronRelay",
   );
 
   return { forwarded: true, status: res.status };

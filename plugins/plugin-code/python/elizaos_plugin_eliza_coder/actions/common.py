@@ -23,4 +23,3 @@ class ActionResult:
 
 def conversation_id(message: Message) -> str:
     return message.get("room_id") or message.get("agent_id") or "default"
-

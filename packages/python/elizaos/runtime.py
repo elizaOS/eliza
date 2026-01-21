@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import re
 import uuid
 import xml.etree.ElementTree as ET
@@ -9,8 +8,8 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from elizaos.logger import Logger, create_logger
 from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
+from elizaos.logger import Logger, create_logger
 from elizaos.settings import decrypt_secret, get_salt
 from elizaos.types.agent import Character, TemplateType
 from elizaos.types.components import (
@@ -240,7 +239,11 @@ class AgentRuntime(IAgentRuntime):
                 from elizaos.advanced_planning import advanced_planning_plugin
 
                 # Register after bootstrap so core providers/actions are available.
-                insert_at = 1 if self._initial_plugins and self._initial_plugins[0].name == "bootstrap" else 0
+                insert_at = (
+                    1
+                    if self._initial_plugins and self._initial_plugins[0].name == "bootstrap"
+                    else 0
+                )
                 self._initial_plugins.insert(insert_at, advanced_planning_plugin)
 
         # Advanced memory is built into core, but only loaded when enabled on the character.
@@ -249,7 +252,11 @@ class AgentRuntime(IAgentRuntime):
             if not has_adv:
                 from elizaos.advanced_memory import advanced_memory_plugin
 
-                insert_at = 1 if self._initial_plugins and self._initial_plugins[0].name == "bootstrap" else 0
+                insert_at = (
+                    1
+                    if self._initial_plugins and self._initial_plugins[0].name == "bootstrap"
+                    else 0
+                )
                 self._initial_plugins.insert(insert_at, advanced_memory_plugin)
 
         for plugin in self._initial_plugins:
@@ -271,12 +278,20 @@ class AgentRuntime(IAgentRuntime):
                 if hasattr(settings, "disable_basic_capabilities"):
                     # Protobuf message
                     settings_disable_basic = getattr(settings, "disable_basic_capabilities", False)
-                    settings_enable_extended = getattr(settings, "enable_extended_capabilities", False)
+                    settings_enable_extended = getattr(
+                        settings, "enable_extended_capabilities", False
+                    )
                     settings_enable_autonomy = False  # Not in protobuf
                 elif isinstance(settings, dict):
                     # Dict-style
-                    settings_disable_basic = settings.get("DISABLE_BASIC_CAPABILITIES") in (True, "true")
-                    settings_enable_extended = settings.get("ENABLE_EXTENDED_CAPABILITIES") in (True, "true")
+                    settings_disable_basic = settings.get("DISABLE_BASIC_CAPABILITIES") in (
+                        True,
+                        "true",
+                    )
+                    settings_enable_extended = settings.get("ENABLE_EXTENDED_CAPABILITIES") in (
+                        True,
+                        "true",
+                    )
                     settings_enable_autonomy = settings.get("ENABLE_AUTONOMY") in (True, "true")
                 else:
                     settings_disable_basic = False
@@ -797,6 +812,7 @@ class AgentRuntime(IAgentRuntime):
                     if hasattr(options_obj, "parameters"):
                         try:
                             from google.protobuf.struct_pb2 import Struct
+
                             from elizaos.types.components import ActionParameters
                         except Exception:
                             pass
@@ -1211,7 +1227,12 @@ class AgentRuntime(IAgentRuntime):
         priority: int = 0,
     ) -> None:
         """Register a streaming model handler."""
-        key = model_type.value if isinstance(model_type, ModelType) else model_type
+        if isinstance(model_type, int):
+            key = str(model_type)
+        elif isinstance(model_type, str):
+            key = model_type
+        else:
+            key = str(model_type)
         if key not in self._streaming_models:
             self._streaming_models[key] = []
 
@@ -1227,7 +1248,12 @@ class AgentRuntime(IAgentRuntime):
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Internal implementation for streaming model calls."""
-        effective_model_type = model_type.value if isinstance(model_type, ModelType) else model_type
+        if isinstance(model_type, int):
+            effective_model_type = str(model_type)
+        elif isinstance(model_type, str):
+            effective_model_type = model_type
+        else:
+            effective_model_type = str(model_type)
         if params is None:
             params = dict(kwargs)
         elif kwargs:
@@ -1235,16 +1261,16 @@ class AgentRuntime(IAgentRuntime):
 
         # Apply LLM mode override for streaming text generation models
         llm_mode = self.get_llm_mode()
-        if llm_mode != LLMMode.DEFAULT:
+        if llm_mode != LLMMode.LLM_MODE_DEFAULT:
             streaming_text_models = [
-                ModelType.TEXT_SMALL_STREAM.value,
-                ModelType.TEXT_LARGE_STREAM.value,
+                str(ModelType.TEXT_SMALL_STREAM),
+                str(ModelType.TEXT_LARGE_STREAM),
             ]
             if effective_model_type in streaming_text_models:
                 override_model_type = (
-                    ModelType.TEXT_SMALL_STREAM.value
-                    if llm_mode == LLMMode.SMALL
-                    else ModelType.TEXT_LARGE_STREAM.value
+                    str(ModelType.TEXT_SMALL_STREAM)
+                    if llm_mode == LLMMode.LLM_MODE_SMALL
+                    else str(ModelType.TEXT_LARGE_STREAM)
                 )
                 if effective_model_type != override_model_type:
                     self.logger.debug(
@@ -1384,8 +1410,10 @@ class AgentRuntime(IAgentRuntime):
         entities = await self._adapter.get_entities_by_ids([entity_id])
         return entities[0] if entities else None
 
-    async def get_entity(self, entity_id: UUID) -> Entity | None:
-        """Alias for get_entity_by_id."""
+    async def get_entity(self, entity_id: UUID | str) -> Entity | None:
+        """Alias for get_entity_by_id, accepts UUID or string."""
+        if isinstance(entity_id, str):
+            entity_id = as_uuid(entity_id)
         return await self.get_entity_by_id(entity_id)
 
     async def get_room(self, room_id: UUID) -> Room | None:

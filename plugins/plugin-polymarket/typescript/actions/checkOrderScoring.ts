@@ -1,20 +1,20 @@
-import {
-  type Action,
-  type ActionResult,
-  type Content,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  Content,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 import type { ClobClient } from "@polymarket/clob-client";
 import { POLYMARKET_SERVICE_NAME } from "../constants";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { PolymarketService } from "../services/polymarket";
 import { checkOrderScoringTemplate } from "../templates";
 import type { AreOrdersScoringResponse, OrderScoringActivityData } from "../types";
 import { initializeClobClientWithCreds } from "../utils/clobClient";
 import { callLLMWithTimeout } from "../utils/llmHelpers";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 interface OfficialOrdersScoringParams {
   orderIds: string[];
@@ -32,9 +32,7 @@ const spec = requireActionSpec("CHECK_ORDER_SCORING");
 
 export const checkOrderScoringAction: Action = {
   name: spec.name,
-  similes: spec.similes ? [...spec.similes] : [].map(
-    (s) => `POLYMARKET_${s}`
-  ),
+  similes: spec.similes ? [...spec.similes] : [].map((s) => `POLYMARKET_${s}`),
   description: spec.description,
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
@@ -220,30 +218,77 @@ export const checkOrderScoringAction: Action = {
   examples: [
     // Example 1: Direct request with order IDs - SHOULD use action
     [
-      { name: "{{user1}}", content: { text: "I placed some limit orders earlier. Are orders 0xabc123 and 0xdef456 scoring?" } },
-      { name: "{{user2}}", content: { text: "Let me check the scoring status for those orders.", action: "POLYMARKET_CHECK_ORDER_SCORING" } },
+      {
+        name: "{{user1}}",
+        content: {
+          text: "I placed some limit orders earlier. Are orders 0xabc123 and 0xdef456 scoring?",
+        },
+      },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "Let me check the scoring status for those orders.",
+          action: "POLYMARKET_CHECK_ORDER_SCORING",
+        },
+      },
     ],
     // Example 2: Multi-turn - user provides context then asks
     [
       { name: "{{user1}}", content: { text: "I have a limit order on the Trump market" } },
-      { name: "{{user2}}", content: { text: "I can help check if it's earning liquidity rewards. What's the order ID?" } },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "I can help check if it's earning liquidity rewards. What's the order ID?",
+        },
+      },
       { name: "{{user1}}", content: { text: "The order ID is 0x789abc" } },
-      { name: "{{user2}}", content: { text: "Checking scoring status for order 0x789abc.", action: "POLYMARKET_CHECK_ORDER_SCORING" } },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "Checking scoring status for order 0x789abc.",
+          action: "POLYMARKET_CHECK_ORDER_SCORING",
+        },
+      },
     ],
     // Example 3: User asks vaguely - should NOT use action yet
     [
       { name: "{{user1}}", content: { text: "Am I earning any rewards on Polymarket?" } },
-      { name: "{{user2}}", content: { text: "I can check if your specific limit orders are scoring for rewards. Could you provide the order ID(s) you want to check? You can find them in your order history." } },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "I can check if your specific limit orders are scoring for rewards. Could you provide the order ID(s) you want to check? You can find them in your order history.",
+        },
+      },
     ],
     // Example 4: User wants order status, not scoring - should NOT use this action
     [
-      { name: "{{user1}}", content: { text: "What's the status of my order 0x123abc? Is it filled?" } },
-      { name: "{{user2}}", content: { text: "You're asking about order status and fills. Let me fetch the order details for you.", action: "POLYMARKET_GET_ORDER_DETAILS" } },
+      {
+        name: "{{user1}}",
+        content: { text: "What's the status of my order 0x123abc? Is it filled?" },
+      },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "You're asking about order status and fills. Let me fetch the order details for you.",
+          action: "POLYMARKET_GET_ORDER_DETAILS",
+        },
+      },
     ],
     // Example 5: Multiple orders after placing trades
     [
-      { name: "{{user1}}", content: { text: "I just placed 3 limit orders. Can you check if they're scoring? IDs are order1, order2, order3" } },
-      { name: "{{user2}}", content: { text: "Checking scoring status for all three orders.", action: "POLYMARKET_CHECK_ORDER_SCORING" } },
+      {
+        name: "{{user1}}",
+        content: {
+          text: "I just placed 3 limit orders. Can you check if they're scoring? IDs are order1, order2, order3",
+        },
+      },
+      {
+        name: "{{user2}}",
+        content: {
+          text: "Checking scoring status for all three orders.",
+          action: "POLYMARKET_CHECK_ORDER_SCORING",
+        },
+      },
     ],
   ],
 };

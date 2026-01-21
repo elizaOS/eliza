@@ -15,8 +15,8 @@ import {
   pointsTransactions,
   reports,
   users,
-} from '@polyagent/db';
-import { generateSnowflakeId, logger } from '@polyagent/shared';
+} from "@polyagent/db";
+import { generateSnowflakeId, logger } from "@polyagent/shared";
 
 /**
  * PointsService interface for dependency injection
@@ -29,7 +29,7 @@ type PointsService = {
     userId: string,
     amount: number,
     reason: string,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ) => Promise<{
     success: boolean;
     pointsAwarded: number;
@@ -47,7 +47,7 @@ export function setPointsService(service: PointsService): void {
 function getPointsService(): PointsService {
   if (!pointsServiceInstance) {
     throw new Error(
-      'PointsService not initialized. Call setPointsService() first.'
+      "PointsService not initialized. Call setPointsService() first.",
     );
   }
   return pointsServiceInstance;
@@ -61,15 +61,15 @@ function getPointsService(): PointsService {
  */
 export async function distributePointsToReporters(
   reportedUserId: string,
-  reason: 'scammer' | 'csam'
+  reason: "scammer" | "csam",
 ): Promise<void> {
   logger.info(
-    'Distributing points to successful reporters',
+    "Distributing points to successful reporters",
     {
       reportedUserId,
       reason,
     },
-    'PointsDistribution'
+    "PointsDistribution",
   );
 
   // Get the reported user's point balance
@@ -87,9 +87,9 @@ export async function distributePointsToReporters(
 
   if (!reportedUser) {
     logger.warn(
-      'Reported user not found',
+      "Reported user not found",
       { reportedUserId },
-      'PointsDistribution'
+      "PointsDistribution",
     );
     return;
   }
@@ -100,9 +100,9 @@ export async function distributePointsToReporters(
 
   if (forfeitedPoints <= 0) {
     logger.info(
-      'No points to distribute',
+      "No points to distribute",
       { reportedUserId, forfeitedPoints },
-      'PointsDistribution'
+      "PointsDistribution",
     );
     return;
   }
@@ -120,18 +120,18 @@ export async function distributePointsToReporters(
     .where(
       and(
         eq(reports.reportedUserId, reportedUserId),
-        eq(reports.status, 'resolved'),
-        eq(reports.category, reason === 'scammer' ? 'spam' : 'inappropriate'),
-        gte(reports.createdAt, ninetyDaysAgo)
-      )
+        eq(reports.status, "resolved"),
+        eq(reports.category, reason === "scammer" ? "spam" : "inappropriate"),
+        gte(reports.createdAt, ninetyDaysAgo),
+      ),
     )
     .orderBy(asc(reports.createdAt));
 
   if (successfulReports.length === 0) {
     logger.info(
-      'No successful reports found',
+      "No successful reports found",
       { reportedUserId },
-      'PointsDistribution'
+      "PointsDistribution",
     );
     // Still forfeit the points (remove them from the user)
     await forfeitUserPoints(reportedUserId, forfeitedPoints);
@@ -141,12 +141,12 @@ export async function distributePointsToReporters(
   // Distribute points proportionally
   // Each reporter gets an equal share
   const pointsPerReporter = Math.floor(
-    forfeitedPoints / successfulReports.length
+    forfeitedPoints / successfulReports.length,
   );
   const remainder = forfeitedPoints % successfulReports.length;
 
   logger.info(
-    'Distributing points',
+    "Distributing points",
     {
       reportedUserId,
       forfeitedPoints,
@@ -154,7 +154,7 @@ export async function distributePointsToReporters(
       pointsPerReporter,
       remainder,
     },
-    'PointsDistribution'
+    "PointsDistribution",
   );
 
   const pointsService = getPointsService();
@@ -172,38 +172,38 @@ export async function distributePointsToReporters(
       await pointsService.awardPoints(
         report.reporterId,
         pointsToAward,
-        'report_reward',
+        "report_reward",
         {
           reportedUserId,
           reportId: report.id,
           reason,
           forfeitedPoints: pointsToAward,
-        }
+        },
       );
 
       logger.info(
-        'Awarded points to reporter',
+        "Awarded points to reporter",
         {
           reporterId: report.reporterId,
           points: pointsToAward,
           reportId: report.id,
         },
-        'PointsDistribution'
+        "PointsDistribution",
       );
-    })
+    }),
   );
 
   // Log any failures
-  const failures = distributionResults.filter((r) => r.status === 'rejected');
+  const failures = distributionResults.filter((r) => r.status === "rejected");
   if (failures.length > 0) {
     logger.error(
-      'Failed to distribute points to some reporters',
+      "Failed to distribute points to some reporters",
       {
         reportedUserId,
         failures: failures.length,
         total: distributionResults.length,
       },
-      'PointsDistribution'
+      "PointsDistribution",
     );
   }
 
@@ -211,14 +211,14 @@ export async function distributePointsToReporters(
   await forfeitUserPoints(reportedUserId, forfeitedPoints);
 
   logger.info(
-    '✅ Points distribution complete',
+    "✅ Points distribution complete",
     {
       reportedUserId,
       forfeitedPoints,
       reportersRewarded: successfulReports.length,
       totalDistributed: forfeitedPoints,
     },
-    'PointsDistribution'
+    "PointsDistribution",
   );
 }
 
@@ -227,7 +227,7 @@ export async function distributePointsToReporters(
  */
 async function forfeitUserPoints(
   userId: string,
-  amount: number
+  amount: number,
 ): Promise<void> {
   const [user] = await db
     .select({
@@ -276,22 +276,22 @@ async function forfeitUserPoints(
     amount: -amount,
     pointsBefore: user.reputationPoints,
     pointsAfter: user.reputationPoints - amount,
-    reason: 'forfeited',
+    reason: "forfeited",
     metadata: JSON.stringify({
-      reason: 'csam_or_scammer_confirmed',
+      reason: "csam_or_scammer_confirmed",
       forfeitedAmount: amount,
     }),
   });
 
   logger.info(
-    'Forfeited points from user',
+    "Forfeited points from user",
     {
       userId,
       amount,
       inviteRemoved: inviteToRemove,
       bonusRemoved: bonusToRemove,
     },
-    'PointsDistribution'
+    "PointsDistribution",
   );
 }
 

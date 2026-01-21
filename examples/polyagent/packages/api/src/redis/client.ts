@@ -14,8 +14,8 @@
  * Falls back gracefully if Redis is not configured.
  */
 
-import { logger } from '@polyagent/shared';
-import type IORedis from 'ioredis';
+import { logger } from "@polyagent/shared";
+import type IORedis from "ioredis";
 
 // Type for ioredis instance
 export type RedisInstance = IORedis;
@@ -24,12 +24,12 @@ export type RedisInstance = IORedis;
 let redisClient: RedisInstance | null = null;
 let isInitialized = false;
 let isClosing = false;
-const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build';
-const isTestEnv = process.env.NODE_ENV === 'test';
-const isDev = process.env.NODE_ENV === 'development';
+const isBuildTime = process.env.NEXT_PHASE === "phase-production-build";
+const isTestEnv = process.env.NODE_ENV === "test";
+const isDev = process.env.NODE_ENV === "development";
 
 // Default Redis URL for local development (Docker Compose uses port 6380)
-const DEFAULT_DEV_REDIS_URL = 'redis://localhost:6380';
+const DEFAULT_DEV_REDIS_URL = "redis://localhost:6380";
 
 /**
  * Initialize Redis client
@@ -48,14 +48,14 @@ async function initializeRedis(): Promise<void> {
     process.env.REDIS_URL || (isDev ? DEFAULT_DEV_REDIS_URL : undefined);
   if (!redisUrl) {
     logger.info(
-      'Redis not configured - caching will use in-memory fallback',
+      "Redis not configured - caching will use in-memory fallback",
       undefined,
-      'Redis'
+      "Redis",
     );
     logger.info(
-      'Set REDIS_URL to connect (e.g., redis://localhost:6379)',
+      "Set REDIS_URL to connect (e.g., redis://localhost:6379)",
       undefined,
-      'Redis'
+      "Redis",
     );
     return;
   }
@@ -64,22 +64,22 @@ async function initializeRedis(): Promise<void> {
     logger.info(
       `Using default Redis URL for development: ${DEFAULT_DEV_REDIS_URL}`,
       undefined,
-      'Redis'
+      "Redis",
     );
   }
 
   // Check if we're in a Node.js environment (not edge runtime)
-  if (typeof process === 'undefined' || typeof process.cwd !== 'function') {
+  if (typeof process === "undefined" || typeof process.cwd !== "function") {
     logger.warn(
-      'Redis not available in edge runtime - use in-memory fallback or serverless Redis',
+      "Redis not available in edge runtime - use in-memory fallback or serverless Redis",
       undefined,
-      'Redis'
+      "Redis",
     );
     return;
   }
 
   // Dynamic import to prevent bundling in edge runtime
-  const IORedisModule = await import('ioredis');
+  const IORedisModule = await import("ioredis");
   const IORedisClass = IORedisModule.default;
 
   redisClient = new IORedisClass(redisUrl, {
@@ -94,17 +94,17 @@ async function initializeRedis(): Promise<void> {
   });
 
   await redisClient.connect();
-  logger.info('Redis client connected', undefined, 'Redis');
+  logger.info("Redis client connected", undefined, "Redis");
 }
 
 // Skip initialization during build time and test
 if (isBuildTime || isTestEnv) {
   logger.info(
     isTestEnv
-      ? 'Test environment detected - skipping Redis initialization'
-      : 'Build time detected - skipping Redis initialization',
+      ? "Test environment detected - skipping Redis initialization"
+      : "Build time detected - skipping Redis initialization",
     undefined,
-    'Redis'
+    "Redis",
   );
 } else {
   // Always attempt initialization - the function handles missing config gracefully
@@ -162,7 +162,7 @@ export function getRedisClient(): RedisInstance | null {
  */
 export async function safePublish(
   channel: string,
-  message: string
+  message: string,
 ): Promise<boolean> {
   const client = getRedisClient();
   if (!client) return false;
@@ -211,19 +211,19 @@ export async function closeRedis(): Promise<void> {
   const client = getRedisClient();
   if (client) {
     const status = client.status;
-    if (status === 'ready' || status === 'connect') {
+    if (status === "ready" || status === "connect") {
       await client.quit();
-      logger.info('Redis connection closed', undefined, 'Redis');
+      logger.info("Redis connection closed", undefined, "Redis");
     }
   }
 }
 
 // Cleanup on process exit (only if not build time)
-if (typeof process !== 'undefined' && !isBuildTime) {
-  process.on('SIGINT', () => {
+if (typeof process !== "undefined" && !isBuildTime) {
+  process.on("SIGINT", () => {
     void closeRedis();
   });
-  process.on('SIGTERM', () => {
+  process.on("SIGTERM", () => {
     void closeRedis();
   });
 }

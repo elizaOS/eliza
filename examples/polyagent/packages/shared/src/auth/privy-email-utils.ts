@@ -18,7 +18,7 @@
  * Matches Privy's LinkedAccountEmail structure.
  */
 export interface PrivyEmailAccount {
-  type: 'email';
+  type: "email";
   address: string;
   /** UNIX timestamp when email was last verified */
   verified_at?: number;
@@ -33,15 +33,15 @@ export interface PrivyEmailAccount {
  */
 export type PrivyLinkedAccount =
   | PrivyEmailAccount
-  | { type: 'wallet'; address?: string; walletClient?: string }
-  | { type: 'farcaster'; fid?: number; username?: string }
-  | { type: 'twitter'; username?: string }
-  | { type: 'google_oauth'; email?: string }
-  | { type: 'apple_oauth'; email?: string }
-  | { type: 'discord_oauth'; username?: string }
-  | { type: 'passkey'; credential_id?: string }
-  | { type: 'phone'; number?: string }
-  | { type: 'custom_auth'; custom_user_id?: string }
+  | { type: "wallet"; address?: string; walletClient?: string }
+  | { type: "farcaster"; fid?: number; username?: string }
+  | { type: "twitter"; username?: string }
+  | { type: "google_oauth"; email?: string }
+  | { type: "apple_oauth"; email?: string }
+  | { type: "discord_oauth"; username?: string }
+  | { type: "passkey"; credential_id?: string }
+  | { type: "phone"; number?: string }
+  | { type: "custom_auth"; custom_user_id?: string }
   | { type?: string; address?: string }; // Fallback for unknown types
 
 /**
@@ -103,7 +103,7 @@ function isEmailVerified(account: {
  * // Returns email from linkedAccounts if verified
  */
 export function getAllVerifiedEmails(
-  user: PrivyUserWithEmails | null | undefined
+  user: PrivyUserWithEmails | null | undefined,
 ): string[] {
   if (!user) return [];
 
@@ -126,8 +126,8 @@ export function getAllVerifiedEmails(
   if (Array.isArray(user.linkedAccounts)) {
     for (const account of user.linkedAccounts) {
       if (
-        account?.type === 'email' &&
-        'address' in account &&
+        account?.type === "email" &&
+        "address" in account &&
         account.address
       ) {
         const emailAccount = account as PrivyEmailAccount;
@@ -159,7 +159,7 @@ export function getAllVerifiedEmails(
  */
 export function findEmailByDomain(
   emails: string[],
-  adminDomain: string | null | undefined
+  adminDomain: string | null | undefined,
 ): string | null {
   if (!adminDomain || emails.length === 0) return null;
 
@@ -190,7 +190,7 @@ export function findEmailByDomain(
  * }
  */
 export function checkForAdminEmail(
-  user: PrivyUserWithEmails | null | undefined
+  user: PrivyUserWithEmails | null | undefined,
 ): {
   adminEmail: string | null;
   allVerifiedEmails: string[];

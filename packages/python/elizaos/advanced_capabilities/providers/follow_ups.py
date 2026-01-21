@@ -33,10 +33,8 @@ async def get_follow_ups_context(
     overdue_items: list[dict[str, str]] = []
     upcoming_items: list[dict[str, str]] = []
 
-    entities = await asyncio.gather(
-        *(runtime.get_entity(task.entity_id) for task in upcoming)
-    )
-    for task, entity in zip(upcoming, entities):
+    entities = await asyncio.gather(*(runtime.get_entity(str(task.entity_id)) for task in upcoming))
+    for task, entity in zip(upcoming, entities, strict=False):
         scheduled = datetime.fromisoformat(task.scheduled_at.replace("Z", "+00:00"))
         name = entity.name if entity and entity.name else "Unknown"
 

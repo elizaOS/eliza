@@ -1,6 +1,6 @@
-import { ISpritesheetData, Spritesheet } from 'pixi.js';
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import * as PIXI from 'pixi.js';
+import * as PIXI from "pixi.js";
+import { Spritesheet, type SpritesheetData } from "pixi.js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export const Character = ({
   textureUrl,
@@ -12,7 +12,7 @@ export const Character = ({
   thoughtText,
   speechText,
   headOffsetPx = 48,
-  emoji = '',
+  emoji = "",
   isViewer = false,
   speed = 0.1,
   onClick,
@@ -20,7 +20,7 @@ export const Character = ({
   // Path to the texture packed image.
   textureUrl: string;
   // The data for the spritesheet.
-  spritesheetData: ISpritesheetData;
+  spritesheetData: SpritesheetData;
   // The pose of the NPC.
   x: number;
   y: number;
@@ -39,7 +39,9 @@ export const Character = ({
   const [spriteSheet, setSpriteSheet] = useState<Spritesheet>();
   useEffect(() => {
     const parseSheet = async () => {
-      const texture = (await PIXI.Assets.load(textureUrl)) as PIXI.Texture | undefined;
+      const texture = (await PIXI.Assets.load(textureUrl)) as
+        | PIXI.Texture
+        | undefined;
       if (
         !texture ||
         typeof texture !== "object" ||
@@ -58,7 +60,7 @@ export const Character = ({
 
   // The first "left" is "right" but reflected.
   const roundedOrientation = Math.floor(orientation / 90);
-  const direction = ['right', 'down', 'left', 'up'][roundedOrientation];
+  const direction = ["right", "down", "left", "up"][roundedOrientation];
 
   // Prevents the animation from stopping when the texture changes
   // (see https://github.com/pixijs/pixi-react/issues/359)
@@ -73,7 +75,7 @@ export const Character = ({
     } else {
       sprite.gotoAndStop(0);
     }
-  }, [direction, isMoving]);
+  }, [isMoving]);
 
   if (!spriteSheet) return null;
 
@@ -165,10 +167,10 @@ function Bubble({
   const thoughtStyle = useMemo(
     () =>
       new PIXI.TextStyle({
-        fontFamily: 'VCR OSD Mono',
+        fontFamily: "VCR OSD Mono",
         fontSize,
         fill: 0x9ca3af,
-        fontStyle: 'italic',
+        fontStyle: "italic",
         wordWrap: true,
         wordWrapWidth: wrapWidth,
       }),
@@ -177,7 +179,7 @@ function Bubble({
   const speechStyle = useMemo(
     () =>
       new PIXI.TextStyle({
-        fontFamily: 'VCR OSD Mono',
+        fontFamily: "VCR OSD Mono",
         fontSize,
         fill: 0xffffff,
         wordWrap: true,
@@ -187,11 +189,13 @@ function Bubble({
   );
 
   const thoughtSize = useMemo(
-    () => (thoughtText ? estimateTextSize(thoughtText, fontSize, wrapWidth) : null),
+    () =>
+      thoughtText ? estimateTextSize(thoughtText, fontSize, wrapWidth) : null,
     [thoughtText],
   );
   const speechSize = useMemo(
-    () => (speechText ? estimateTextSize(speechText, fontSize, wrapWidth) : null),
+    () =>
+      speechText ? estimateTextSize(speechText, fontSize, wrapWidth) : null,
     [speechText],
   );
 
@@ -215,7 +219,7 @@ function Bubble({
       g.drawRoundedRect(-width / 2, -offsetY, width, height, 6);
       g.endFill();
     },
-    [background, height, offsetY, outline, width],
+    [height, offsetY, width],
   );
 
   return (

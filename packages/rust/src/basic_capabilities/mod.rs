@@ -11,14 +11,14 @@
 pub use crate::bootstrap::actions::{
     basic_actions, Action, ChooseOptionAction, IgnoreAction, NoneAction, ReplyAction,
 };
+pub use crate::bootstrap::evaluators::basic_evaluators;
 pub use crate::bootstrap::providers::{
-    basic_providers, ActionsProvider, ActionStateProvider, AttachmentsProvider,
+    basic_providers, ActionStateProvider, ActionsProvider, AttachmentsProvider,
     CapabilitiesProvider, CharacterProvider, ChoiceProvider, ContextBenchProvider,
     CurrentTimeProvider, EntitiesProvider, EvaluatorsProvider, Provider, ProvidersListProvider,
     RecentMessagesProvider, TimeProvider, WorldProvider,
 };
 pub use crate::bootstrap::services::{EmbeddingService, Service, ServiceType, TaskService};
-pub use crate::bootstrap::evaluators::basic_evaluators;
 
 /// Get all basic capabilities as vectors.
 pub fn get_basic_capabilities() -> (
@@ -26,9 +26,5 @@ pub fn get_basic_capabilities() -> (
     Vec<Box<dyn Provider>>,
     Vec<Box<dyn crate::bootstrap::evaluators::Evaluator>>,
 ) {
-    (
-        basic_actions(),
-        basic_providers(),
-        basic_evaluators(),
-    )
+    (basic_actions(), basic_providers(), basic_evaluators())
 }

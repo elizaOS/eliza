@@ -69,4 +69,3 @@ class MinecraftService:
                 return
             await asyncio.sleep(delay_s)
         raise RuntimeError("Mineflayer bridge server did not become ready")
-

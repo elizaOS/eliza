@@ -4,7 +4,7 @@
  * Minimal logger to avoid circular dependency with @polyagent/shared
  */
 
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+type LogLevel = "debug" | "info" | "warn" | "error";
 
 const levelPriority: Record<LogLevel, number> = {
   debug: 0,
@@ -15,7 +15,7 @@ const levelPriority: Record<LogLevel, number> = {
 
 const currentLevel: LogLevel =
   (process.env.LOG_LEVEL as LogLevel) ||
-  (process.env.NODE_ENV === 'production' ? 'info' : 'debug');
+  (process.env.NODE_ENV === "production" ? "info" : "debug");
 
 function shouldLog(level: LogLevel): boolean {
   return levelPriority[level] >= levelPriority[currentLevel];
@@ -25,11 +25,11 @@ function formatLog(
   level: LogLevel,
   message: string,
   data?: Record<string, unknown>,
-  context?: string
+  context?: string,
 ): string {
   const timestamp = new Date().toISOString();
-  const contextStr = context ? `[${context}]` : '';
-  const dataStr = data ? ` ${JSON.stringify(data)}` : '';
+  const contextStr = context ? `[${context}]` : "";
+  const dataStr = data ? ` ${JSON.stringify(data)}` : "";
   return `[${timestamp}] ${contextStr} [${level.toUpperCase()}] ${message}${dataStr}`;
 }
 
@@ -37,40 +37,40 @@ export const logger = {
   debug(
     message: string,
     data?: Record<string, unknown>,
-    context?: string
+    context?: string,
   ): void {
-    if (shouldLog('debug')) {
-      console.log(formatLog('debug', message, data, context));
+    if (shouldLog("debug")) {
+      console.log(formatLog("debug", message, data, context));
     }
   },
 
   info(
     message: string,
     data?: Record<string, unknown>,
-    context?: string
+    context?: string,
   ): void {
-    if (shouldLog('info')) {
-      console.log(formatLog('info', message, data, context));
+    if (shouldLog("info")) {
+      console.log(formatLog("info", message, data, context));
     }
   },
 
   warn(
     message: string,
     data?: Record<string, unknown>,
-    context?: string
+    context?: string,
   ): void {
-    if (shouldLog('warn')) {
-      console.warn(formatLog('warn', message, data, context));
+    if (shouldLog("warn")) {
+      console.warn(formatLog("warn", message, data, context));
     }
   },
 
   error(
     message: string,
     data?: Record<string, unknown>,
-    context?: string
+    context?: string,
   ): void {
-    if (shouldLog('error')) {
-      console.error(formatLog('error', message, data, context));
+    if (shouldLog("error")) {
+      console.error(formatLog("error", message, data, context));
     }
   },
 };

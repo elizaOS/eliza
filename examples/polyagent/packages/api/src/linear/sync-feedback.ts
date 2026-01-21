@@ -4,11 +4,11 @@
  * Includes retry logic with exponential backoff for transient failures.
  */
 
-import { db } from '@polyagent/db';
-import { FeedbackTypeSchema, logger } from '@polyagent/shared';
-import { z } from 'zod';
-import { createLinearIssue } from './client';
-import { formatFeedbackForLinear } from './format-feedback';
+import { db } from "@polyagent/db";
+import { FeedbackTypeSchema, logger } from "@polyagent/shared";
+import { z } from "zod";
+import { createLinearIssue } from "./client";
+import { formatFeedbackForLinear } from "./format-feedback";
 
 /** Maximum number of retry attempts for Linear API calls */
 const MAX_RETRIES = 3;
@@ -28,7 +28,7 @@ function sleep(ms: number): Promise<void> {
  */
 async function withRetry<T>(
   fn: () => Promise<T>,
-  context: { feedbackId: string }
+  context: { feedbackId: string },
 ): Promise<T> {
   let lastError: Error | undefined;
 
@@ -40,8 +40,8 @@ async function withRetry<T>(
 
       // Don't retry on the last attempt
       if (attempt < MAX_RETRIES - 1) {
-        const delay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt);
-        logger.warn('Linear API call failed, retrying', {
+        const delay = BASE_RETRY_DELAY_MS * 2 ** attempt;
+        logger.warn("Linear API call failed, retrying", {
           feedbackId: context.feedbackId,
           attempt: attempt + 1,
           maxRetries: MAX_RETRIES,
@@ -62,7 +62,7 @@ async function withRetry<T>(
  * Reuses FeedbackTypeSchema from shared package for DRY compliance.
  */
 const FeedbackMetadataSchema = z.object({
-  feedbackType: FeedbackTypeSchema.catch('bug'),
+  feedbackType: FeedbackTypeSchema.catch("bug"),
   stepsToReproduce: z.string().nullable().catch(null),
   screenshotUrl: z.string().nullable().catch(null),
   rating: z.number().nullable().catch(null),
@@ -98,7 +98,7 @@ const LinearSyncMetadataSchema = z.object({
 export async function syncFeedbackToLinear(
   config: LinearConfig,
   feedbackId: string,
-  user: FeedbackUser
+  user: FeedbackUser,
 ): Promise<void> {
   // Fetch feedback from DB to get current state (ensures consistency)
   const feedback = await db.feedback.findUnique({
@@ -107,20 +107,20 @@ export async function syncFeedbackToLinear(
   });
 
   if (!feedback) {
-    logger.warn('Feedback not found for Linear sync', { feedbackId });
+    logger.warn("Feedback not found for Linear sync", { feedbackId });
     return;
   }
 
   // Safely parse metadata using Zod schema
   const rawMetadata =
-    feedback.metadata && typeof feedback.metadata === 'object'
+    feedback.metadata && typeof feedback.metadata === "object"
       ? feedback.metadata
       : {};
 
   // Idempotency check: skip if already synced to Linear
   const syncMetadata = LinearSyncMetadataSchema.parse(rawMetadata);
   if (syncMetadata.linearIssueId) {
-    logger.info('Feedback already synced to Linear, skipping', {
+    logger.info("Feedback already synced to Linear, skipping", {
       feedbackId,
       linearIssueId: syncMetadata.linearIssueId,
     });
@@ -132,7 +132,7 @@ export async function syncFeedbackToLinear(
   const formatted = formatFeedbackForLinear({
     id: feedbackId,
     feedbackType: metadata.feedbackType,
-    description: feedback.comment ?? '',
+    description: feedback.comment ?? "",
     stepsToReproduce: metadata.stepsToReproduce,
     screenshotUrl: metadata.screenshotUrl,
     rating: metadata.rating,
@@ -151,7 +151,7 @@ export async function syncFeedbackToLinear(
           ? [config.gameFeedbackLabelId]
           : undefined,
       }),
-    { feedbackId }
+    { feedbackId },
   );
 
   // Merge update: fetch fresh metadata to preserve concurrent updates.
@@ -164,7 +164,7 @@ export async function syncFeedbackToLinear(
   });
 
   const freshMetadata =
-    freshFeedback?.metadata && typeof freshFeedback.metadata === 'object'
+    freshFeedback?.metadata && typeof freshFeedback.metadata === "object"
       ? (freshFeedback.metadata as Record<string, unknown>)
       : {};
 
@@ -180,7 +180,7 @@ export async function syncFeedbackToLinear(
     },
   });
 
-  logger.info('Linear issue created for feedback', {
+  logger.info("Linear issue created for feedback", {
     feedbackId,
     issueId: issue.id,
     identifier: issue.identifier,

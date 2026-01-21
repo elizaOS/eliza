@@ -14,7 +14,7 @@ export type {
   LightweightChartBaseProps,
   LineSeriesOptions,
   Time,
-} from './LightweightChartBase';
+} from "./LightweightChartBase";
 export {
   AREA_STYLES,
   DARK_CHART_THEME,
@@ -22,4 +22,4 @@ export {
   formatChartTime,
   LINE_STYLES,
   useLightweightChart,
-} from './LightweightChartBase';
+} from "./LightweightChartBase";

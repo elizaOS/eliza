@@ -2,13 +2,21 @@ import type {
   GenerateTextParams,
   IAgentRuntime,
   ImageDescriptionParams,
-  ImageGenerationResult,
-  ImageDescriptionResult,
   ObjectGenerationParams,
   Plugin,
   TextEmbeddingParams,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
+
+// Inline types for browser compatibility (avoid import resolution issues)
+type ImageDescriptionResult = {
+  title: string;
+  description: string;
+};
+
+type ImageGenerationResult = {
+  url: string;
+};
 
 const pluginName = "local-ai";
 const unsupportedMessage =
@@ -91,8 +99,7 @@ export const localAiPlugin: Plugin = {
     [ModelType.IMAGE_DESCRIPTION]: async (
       _runtime: IAgentRuntime,
       _params: ImageDescriptionParams | string
-    ): Promise<ImageDescriptionResult> =>
-      unsupportedImageDescription(ModelType.IMAGE_DESCRIPTION),
+    ): Promise<ImageDescriptionResult> => unsupportedImageDescription(ModelType.IMAGE_DESCRIPTION),
     [ModelType.TRANSCRIPTION]: async (): Promise<string> =>
       unsupportedText(ModelType.TRANSCRIPTION),
     [ModelType.TEXT_TO_SPEECH]: async (): Promise<Uint8Array> => {
@@ -107,4 +114,3 @@ export const localAiPlugin: Plugin = {
 };
 
 export default localAiPlugin;
-

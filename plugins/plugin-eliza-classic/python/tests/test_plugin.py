@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from elizaos_plugin_eliza_classic import ElizaClassicPlugin, get_greeting, reflect
 
@@ -25,14 +24,19 @@ class TestReflect:
 
 class TestGenerateResponse:
     def test_family_response_deterministic(self, plugin: ElizaClassicPlugin) -> None:
-        assert plugin.generate_response("my mother is kind") == "Tell me more about your family"
+        assert (
+            plugin.generate_response("my mother is kind")
+            == "Tell me more about your family"
+        )
 
     def test_computer_response_cycles(self, plugin: ElizaClassicPlugin) -> None:
         assert plugin.generate_response("computer") == "Do computers worry you?"
         assert plugin.generate_response("computer") == "Why do you mention computers?"
 
     def test_pre_rule_youre(self, plugin: ElizaClassicPlugin) -> None:
-        assert plugin.generate_response("you're sad") == "What makes you think I am sad?"
+        assert (
+            plugin.generate_response("you're sad") == "What makes you think I am sad?"
+        )
 
     def test_memory_recall_on_limit_4(self, plugin: ElizaClassicPlugin) -> None:
         plugin.generate_response("my car is broken")  # records memory

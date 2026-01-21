@@ -5,7 +5,9 @@
  * Data types are proto-generated; runtime classes remain TypeScript.
  */
 
+import type { Content, UUID } from "./primitives";
 import type {
+  JsonValue,
   LpPositionDetails,
   PoolInfo,
   TokenBalance,
@@ -14,8 +16,6 @@ import type {
   WalletAsset,
   WalletPortfolio,
 } from "./proto.js";
-import type { JsonValue } from "./proto.js";
-import type { Content, UUID } from "./primitives";
 import { Service, ServiceType } from "./service";
 
 export type {
@@ -458,10 +458,7 @@ export abstract class IPostService extends Service {
 
   abstract savePost(postId: UUID, save: boolean): Promise<void>;
 
-  abstract commentOnPost(
-    postId: UUID,
-    content: PostContent,
-  ): Promise<UUID>;
+  abstract commentOnPost(postId: UUID, content: PostContent): Promise<UUID>;
 
   abstract getComments(
     postId: UUID,

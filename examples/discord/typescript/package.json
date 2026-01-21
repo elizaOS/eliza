@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/example-discord",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "Full-featured Discord AI agent using elizaOS",
   "type": "module",
   "private": true,

@@ -6,7 +6,7 @@
  * cryptographically secure random generation and SHA-256 hashing.
  */
 
-import crypto from 'crypto';
+import crypto from "node:crypto";
 
 /**
  * Generate a secure random API key
@@ -24,7 +24,7 @@ import crypto from 'crypto';
  */
 export function generateApiKey(): string {
   const randomBytes = crypto.randomBytes(32);
-  const hex = randomBytes.toString('hex');
+  const hex = randomBytes.toString("hex");
   return `bab_live_${hex}`;
 }
 
@@ -45,7 +45,7 @@ export function generateApiKey(): string {
  * ```
  */
 export function hashApiKey(apiKey: string): string {
-  return crypto.createHash('sha256').update(apiKey).digest('hex');
+  return crypto.createHash("sha256").update(apiKey).digest("hex");
 }
 
 /**
@@ -71,7 +71,7 @@ export function verifyApiKey(apiKey: string, storedHash: string): boolean {
   const inputHash = hashApiKey(apiKey);
   return crypto.timingSafeEqual(
     Buffer.from(inputHash),
-    Buffer.from(storedHash)
+    Buffer.from(storedHash),
   );
 }
 
@@ -91,6 +91,6 @@ export function verifyApiKey(apiKey: string, storedHash: string): boolean {
  */
 export function generateTestApiKey(): string {
   const randomBytes = crypto.randomBytes(32);
-  const hex = randomBytes.toString('hex');
+  const hex = randomBytes.toString("hex");
   return `bab_test_${hex}`;
 }

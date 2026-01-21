@@ -28,10 +28,16 @@ export const longTermMemories = pgTable(
     accessCount: integer("access_count").default(0),
   },
   (table) => ({
-    agentEntityIdx: index("long_term_memories_agent_entity_idx").on(table.agentId, table.entityId),
+    agentEntityIdx: index("long_term_memories_agent_entity_idx").on(
+      table.agentId,
+      table.entityId,
+    ),
     categoryIdx: index("long_term_memories_category_idx").on(table.category),
-    confidenceIdx: index("long_term_memories_confidence_idx").on(table.confidence),
-    createdAtIdx: index("long_term_memories_created_at_idx").on(table.createdAt),
+    confidenceIdx: index("long_term_memories_confidence_idx").on(
+      table.confidence,
+    ),
+    createdAtIdx: index("long_term_memories_created_at_idx").on(
+      table.createdAt,
+    ),
   }),
 );
-

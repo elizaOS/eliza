@@ -4,17 +4,10 @@ from typing import TypeAlias
 
 from pydantic import BaseModel, Field
 
-JsonValue: TypeAlias = (
-    None
-    | bool
-    | int
-    | float
-    | str
-    | list["JsonValue"]
-    | dict[str, "JsonValue"]
-)
+JsonValue: TypeAlias = None | bool | int | float | str | list["JsonValue"] | dict[str, "JsonValue"]
 
 JsonObject: TypeAlias = dict[str, JsonValue]
+
 
 def coerce_json_value(value: object) -> JsonValue | None:
     if value is None:
@@ -70,4 +63,3 @@ class BridgeResponse(BaseModel):
     # Use a non-recursive type for pydantic; callers can validate separately.
     data: dict[str, object] | None = None
     error: str | None = None
-

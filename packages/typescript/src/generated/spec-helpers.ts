@@ -7,35 +7,35 @@
  */
 
 import {
-  coreActionDocs,
-  coreProviderDocs,
-  coreEvaluatorDocs,
-  allActionDocs,
-  allProviderDocs,
-  allEvaluatorDocs,
   type ActionDoc,
-  type ProviderDoc,
+  allActionDocs,
+  allEvaluatorDocs,
+  allProviderDocs,
+  coreActionDocs,
+  coreEvaluatorDocs,
+  coreProviderDocs,
   type EvaluatorDoc,
+  type ProviderDoc,
 } from "./action-docs";
 
 // Build lookup maps for O(1) access
 const coreActionMap = new Map<string, ActionDoc>(
-  coreActionDocs.map((doc) => [doc.name, doc])
+  coreActionDocs.map((doc) => [doc.name, doc]),
 );
 const allActionMap = new Map<string, ActionDoc>(
-  allActionDocs.map((doc) => [doc.name, doc])
+  allActionDocs.map((doc) => [doc.name, doc]),
 );
 const coreProviderMap = new Map<string, ProviderDoc>(
-  coreProviderDocs.map((doc) => [doc.name, doc])
+  coreProviderDocs.map((doc) => [doc.name, doc]),
 );
 const allProviderMap = new Map<string, ProviderDoc>(
-  allProviderDocs.map((doc) => [doc.name, doc])
+  allProviderDocs.map((doc) => [doc.name, doc]),
 );
 const coreEvaluatorMap = new Map<string, EvaluatorDoc>(
-  coreEvaluatorDocs.map((doc) => [doc.name, doc])
+  coreEvaluatorDocs.map((doc) => [doc.name, doc]),
 );
 const allEvaluatorMap = new Map<string, EvaluatorDoc>(
-  allEvaluatorDocs.map((doc) => [doc.name, doc])
+  allEvaluatorDocs.map((doc) => [doc.name, doc]),
 );
 
 /**

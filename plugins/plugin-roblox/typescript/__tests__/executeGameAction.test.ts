@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
 import { ChannelType, createMessageMemory, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { describe, expect, it } from "vitest";
 import executeGameAction from "../actions/executeGameAction";
 
 class FakeRobloxService {
@@ -26,7 +26,7 @@ describe("EXECUTE_ROBLOX_ACTION parsing", () => {
     const service = new FakeRobloxService();
     const runtime = {
       agentId: uuidv4() as UUID,
-      getService: <T,>(_name: string) => service as never as T,
+      getService: <T>(_name: string) => service as never as T,
     };
 
     const msg = createMessageMemory({
@@ -47,7 +47,7 @@ describe("EXECUTE_ROBLOX_ACTION parsing", () => {
     const service = new FakeRobloxService();
     const runtime = {
       agentId: uuidv4() as UUID,
-      getService: <T,>(_name: string) => service as never as T,
+      getService: <T>(_name: string) => service as never as T,
     };
 
     const msg = createMessageMemory({
@@ -64,4 +64,3 @@ describe("EXECUTE_ROBLOX_ACTION parsing", () => {
     expect(service.calls[0]?.parameters).toEqual({ x: 1, y: 2, z: 3 });
   });
 });
-

@@ -1,9 +1,16 @@
 __version__ = "2.0.0"
 
 from elizaos_plugin_polymarket.actions import (
+    GammaMarket,
+    ResearchActionResult,
+    ResearchParams,
+    SearchResult,
     cancel_order,
     check_order_scoring,
     create_api_key,
+    format_research_action_result,
+    format_research_results,
+    format_search_results,
     get_account_access_status,
     get_active_orders,
     get_all_api_keys,
@@ -27,20 +34,13 @@ from elizaos_plugin_polymarket.actions import (
     handle_authentication,
     handle_realtime_updates,
     place_order,
-    revoke_api_key,
-    retrieve_all_markets,
-    setup_websocket,
-    # Search markets (Gamma API) - TS parity
-    search_markets,
-    SearchResult,
-    GammaMarket,
-    format_search_results,
     # Research market - TS parity
     research_market,
-    ResearchParams,
-    ResearchActionResult,
-    format_research_results,
-    format_research_action_result,
+    retrieve_all_markets,
+    revoke_api_key,
+    # Search markets (Gamma API) - TS parity
+    search_markets,
+    setup_websocket,
 )
 from elizaos_plugin_polymarket.constants import (
     CACHE_REFRESH_INTERVAL_SECS,
@@ -78,12 +78,12 @@ from elizaos_plugin_polymarket.providers import (
 )
 from elizaos_plugin_polymarket.service import PolymarketService, PolymarketWalletData
 from elizaos_plugin_polymarket.services import (
-    ResearchStorageService,
     MarketResearch,
-    ResearchResult,
     ResearchRecommendation,
+    ResearchResult,
     ResearchSource,
     ResearchStatus,
+    ResearchStorageService,
 )
 from elizaos_plugin_polymarket.types import (
     ApiKey,

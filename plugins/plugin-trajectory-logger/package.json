@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-trajectory-logger-root",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha.1",
   "description": "Trajectory logging plugin for ElizaOS - capture agent interaction trajectories for RL training",
   "type": "module",
   "main": "typescript/dist/node/index.node.js",
@@ -10,7 +10,14 @@
   "platform": "node",
   "license": "MIT",
   "author": "elizaOS",
-  "keywords": ["plugin", "elizaos", "trajectory", "rl", "training", "logging"],
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "trajectory",
+    "rl",
+    "training",
+    "logging"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos/elizaos"
@@ -35,18 +42,23 @@
       "default": "./typescript/dist/node/index.node.js"
     }
   },
-  "files": ["typescript/dist", "python", "rust", "README.md"],
+  "files": [
+    "typescript/dist",
+    "python",
+    "rust",
+    "README.md"
+  ],
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-alpha.1",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/bun": "^1.3.5",
     "@types/node": "^25.0.3",
     "@types/uuid": "^11.0.0",
-    "typescript": "^5.9.3",
-    "@biomejs/biome": "^2.3.11"
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "build": "bun run build:ts && bun run build:rust && bun run build:python",
@@ -73,6 +85,6 @@
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {},
     "description": "Collects complete agent interaction trajectories for RL training."
-  }
+  },
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
 }
-

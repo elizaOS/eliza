@@ -27,41 +27,41 @@ export function analyzeCertainty(content: string): number {
 
   // Certainty markers (increase score):
   const certaintyWords = [
-    'definitely',
-    'certainly',
-    'confirmed',
-    'confirm',
-    'absolute',
-    'guaranteed',
-    'sure',
-    'certain',
-    'undoubtedly',
-    'clearly',
-    'obviously',
-    'proven',
-    'verified',
-    'established',
-    'conclusive',
+    "definitely",
+    "certainly",
+    "confirmed",
+    "confirm",
+    "absolute",
+    "guaranteed",
+    "sure",
+    "certain",
+    "undoubtedly",
+    "clearly",
+    "obviously",
+    "proven",
+    "verified",
+    "established",
+    "conclusive",
   ];
 
   // Hedging markers (decrease score):
   const hedgingWords = [
-    'maybe',
-    'possibly',
-    'perhaps',
-    'might',
-    'could',
-    'probably',
-    'likely',
-    'potentially',
-    'seems',
-    'appears',
-    'suggests',
-    'unclear',
-    'uncertain',
-    'unsure',
-    'questionable',
-    'doubtful',
+    "maybe",
+    "possibly",
+    "perhaps",
+    "might",
+    "could",
+    "probably",
+    "likely",
+    "potentially",
+    "seems",
+    "appears",
+    "suggests",
+    "unclear",
+    "uncertain",
+    "unsure",
+    "questionable",
+    "doubtful",
   ];
 
   let certaintyScore = 0.5; // Neutral baseline
@@ -96,21 +96,21 @@ export function hasInsiderLanguage(content: string): boolean {
   const text = content.toLowerCase();
 
   const insiderPhrases = [
-    'my sources',
-    'sources say',
-    'sources tell me',
-    'sources confirm',
-    'heard from',
-    'insider',
-    'confidential',
-    'off the record',
-    'between us',
-    'not public yet',
+    "my sources",
+    "sources say",
+    "sources tell me",
+    "sources confirm",
+    "heard from",
+    "insider",
+    "confidential",
+    "off the record",
+    "between us",
+    "not public yet",
     "won't be announced",
-    'internal',
-    'private meeting',
-    'leaked',
-    'just learned',
+    "internal",
+    "private meeting",
+    "leaked",
+    "just learned",
   ];
 
   return insiderPhrases.some((phrase) => text.includes(phrase));
@@ -136,43 +136,43 @@ export function analyzeSentiment(content: string): number {
 
   // Positive words:
   const positiveWords = [
-    'great',
-    'good',
-    'excellent',
-    'success',
-    'win',
-    'approved',
-    'confirmed',
-    'breakthrough',
-    'amazing',
-    'fantastic',
-    'bullish',
-    'optimistic',
-    'positive',
-    'growth',
-    'profit',
-    'surge',
+    "great",
+    "good",
+    "excellent",
+    "success",
+    "win",
+    "approved",
+    "confirmed",
+    "breakthrough",
+    "amazing",
+    "fantastic",
+    "bullish",
+    "optimistic",
+    "positive",
+    "growth",
+    "profit",
+    "surge",
   ];
 
   // Negative words:
   const negativeWords = [
-    'bad',
-    'terrible',
-    'failure',
-    'fail',
-    'loss',
-    'rejected',
-    'denied',
-    'crash',
-    'collapse',
-    'bearish',
-    'pessimistic',
-    'negative',
-    'decline',
-    'drop',
-    'concern',
-    'worry',
-    'risk',
+    "bad",
+    "terrible",
+    "failure",
+    "fail",
+    "loss",
+    "rejected",
+    "denied",
+    "crash",
+    "collapse",
+    "bearish",
+    "pessimistic",
+    "negative",
+    "decline",
+    "drop",
+    "concern",
+    "worry",
+    "risk",
   ];
 
   let score = 0;
@@ -206,7 +206,7 @@ export function analyzeSentiment(content: string): number {
  */
 export function calculateFreshness(
   postDay: number,
-  currentDay: number
+  currentDay: number,
 ): number {
   const age = currentDay - postDay;
   const freshness = Math.max(0.3, 1.0 - age * 0.08);
@@ -248,7 +248,7 @@ export function calculateContentQuality(
   authorRole?: string | null,
   postDay?: number | null,
   currentDay?: number | null,
-  historicalAccuracy?: number | null
+  historicalAccuracy?: number | null,
 ): number {
   // Component 1: Content analysis (0-40 points)
   const certainty = analyzeCertainty(content);
@@ -302,32 +302,32 @@ function getRoleBaseScore(role?: string | null): number {
  */
 export function detectPrediction(content: string): {
   makesPrediction: boolean;
-  direction: 'YES' | 'NO' | 'UNCLEAR';
+  direction: "YES" | "NO" | "UNCLEAR";
   confidence: number;
 } {
   const text = content.toLowerCase();
 
   // YES indicators:
   const yesIndicators = [
-    'will happen',
-    'will succeed',
-    'will announce',
-    'going to happen',
-    'definitely yes',
-    'absolutely',
-    'for sure',
-    'guaranteed',
+    "will happen",
+    "will succeed",
+    "will announce",
+    "going to happen",
+    "definitely yes",
+    "absolutely",
+    "for sure",
+    "guaranteed",
   ];
 
   // NO indicators:
   const noIndicators = [
     "won't happen",
-    'will fail',
+    "will fail",
     "won't announce",
-    'not going to',
-    'definitely not',
-    'no way',
-    'impossible',
+    "not going to",
+    "definitely not",
+    "no way",
+    "impossible",
     "won't succeed",
   ];
 
@@ -337,21 +337,21 @@ export function detectPrediction(content: string): {
   if (hasYes && !hasNo) {
     return {
       makesPrediction: true,
-      direction: 'YES',
+      direction: "YES",
       confidence: analyzeCertainty(content),
     };
   }
   if (hasNo && !hasYes) {
     return {
       makesPrediction: true,
-      direction: 'NO',
+      direction: "NO",
       confidence: analyzeCertainty(content),
     };
   }
 
   return {
     makesPrediction: false,
-    direction: 'UNCLEAR',
+    direction: "UNCLEAR",
     confidence: 0,
   };
 }

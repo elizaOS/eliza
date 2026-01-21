@@ -7,7 +7,7 @@
  * @module monitoring/cron-metrics
  */
 
-import { logger } from '@polyagent/shared';
+import { logger } from "@polyagent/shared";
 
 export interface CronExecutionMetrics {
   jobName: string;
@@ -88,13 +88,13 @@ class CronMetricsService {
     // Log execution
     const logLevel =
       !metrics.success && !metrics.skipped
-        ? 'error'
+        ? "error"
         : metrics.skipped
-          ? 'info'
-          : 'info';
+          ? "info"
+          : "info";
 
     logger[logLevel](
-      `Cron ${jobName}: ${metrics.success ? '✅' : metrics.skipped ? '⏭️' : '❌'} ${metrics.durationMs}ms`,
+      `Cron ${jobName}: ${metrics.success ? "✅" : metrics.skipped ? "⏭️" : "❌"} ${metrics.durationMs}ms`,
       {
         jobName,
         durationMs: metrics.durationMs,
@@ -104,7 +104,7 @@ class CronMetricsService {
         error: metrics.error,
         consecutiveFailures: stats.consecutiveFailures,
       },
-      'CronMetrics'
+      "CronMetrics",
     );
 
     // Fire alert callbacks if failed
@@ -180,17 +180,17 @@ class CronMetricsService {
     };
     alerts: Array<{
       jobName: string;
-      type: 'consecutive_failures' | 'high_duration' | 'no_recent_execution';
+      type: "consecutive_failures" | "high_duration" | "no_recent_execution";
       message: string;
-      severity: 'warning' | 'critical';
+      severity: "warning" | "critical";
     }>;
   } {
     const jobs = this.getAllJobStats();
     const alerts: Array<{
       jobName: string;
-      type: 'consecutive_failures' | 'high_duration' | 'no_recent_execution';
+      type: "consecutive_failures" | "high_duration" | "no_recent_execution";
       message: string;
-      severity: 'warning' | 'critical';
+      severity: "warning" | "critical";
     }> = [];
 
     let totalExecutions = 0;
@@ -212,9 +212,9 @@ class CronMetricsService {
       if (job.consecutiveFailures >= 3) {
         alerts.push({
           jobName: job.jobName,
-          type: 'consecutive_failures',
+          type: "consecutive_failures",
           message: `${job.consecutiveFailures} consecutive failures`,
-          severity: job.consecutiveFailures >= 5 ? 'critical' : 'warning',
+          severity: job.consecutiveFailures >= 5 ? "critical" : "warning",
         });
       }
 
@@ -222,9 +222,9 @@ class CronMetricsService {
         // > 10 minutes
         alerts.push({
           jobName: job.jobName,
-          type: 'high_duration',
+          type: "high_duration",
           message: `Max duration ${Math.round(job.maxDurationMs / 1000)}s exceeds 10 minute threshold`,
-          severity: job.maxDurationMs > 700000 ? 'critical' : 'warning',
+          severity: job.maxDurationMs > 700000 ? "critical" : "warning",
         });
       }
 
@@ -232,13 +232,13 @@ class CronMetricsService {
       if (
         job.lastExecution &&
         job.lastExecution < fiveMinutesAgo &&
-        ['game-tick', 'agent-tick', 'realtime-drain'].includes(job.jobName)
+        ["game-tick", "agent-tick", "realtime-drain"].includes(job.jobName)
       ) {
         alerts.push({
           jobName: job.jobName,
-          type: 'no_recent_execution',
+          type: "no_recent_execution",
           message: `No execution in last 5 minutes`,
-          severity: 'warning',
+          severity: "warning",
         });
       }
     }
@@ -276,9 +276,9 @@ class CronMetricsService {
         await callback(metrics);
       } catch (error) {
         logger.error(
-          'Failed to fire cron alert callback',
+          "Failed to fire cron alert callback",
           { error: String(error) },
-          'CronMetrics'
+          "CronMetrics",
         );
       }
     }
@@ -290,7 +290,7 @@ class CronMetricsService {
   async trackExecution<T>(
     jobName: string,
     executor: () => Promise<T>,
-    getMetadata?: (result: T) => Record<string, unknown>
+    getMetadata?: (result: T) => Record<string, unknown>,
   ): Promise<T> {
     const startTime = new Date();
 
@@ -355,7 +355,7 @@ export function recordCronExecution(
     reason?: string;
     error?: string;
     [key: string]: unknown;
-  }
+  },
 ): void {
   const endTime = new Date();
 

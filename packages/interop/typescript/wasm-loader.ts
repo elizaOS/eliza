@@ -204,7 +204,9 @@ async function loadWasmModule(
       const view = new Uint8Array(memory.buffer, buf, len);
       const cryptoObj = globalThis.crypto;
       if (!cryptoObj || typeof cryptoObj.getRandomValues !== "function") {
-        throw new Error("No secure random source available for WASI random_get");
+        throw new Error(
+          "No secure random source available for WASI random_get",
+        );
       }
       cryptoObj.getRandomValues(view);
       return 0;

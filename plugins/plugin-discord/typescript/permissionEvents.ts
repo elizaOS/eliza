@@ -57,7 +57,9 @@ export async function fetchAuditEntry(
 
     for (const entry of logs.entries.values()) {
       // Match by target and ensure entry is recent (within 10 seconds)
-      if (entry.target?.id === target && now - entry.createdTimestamp < 10000) {
+      // Type guard: entry.target can be various types, not all have 'id'
+      const targetId = entry.target && "id" in entry.target ? entry.target.id : undefined;
+      if (targetId === target && now - entry.createdTimestamp < 10000) {
         return {
           executorId: entry.executor?.id ?? "unknown",
           executorTag: entry.executor?.tag ?? "Unknown",

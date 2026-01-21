@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-lp-manager",
-  "version": "1.0.0",
+  "version": "2.0.0-alpha.1",
   "type": "module",
   "private": true,
   "description": "A unified plugin for managing liquidity positions on Solana DEXs (Raydium, Orca, Meteora) and EVM DEXs (Uniswap, PancakeSwap, Aerodrome).",
@@ -11,31 +11,28 @@
     "test": "tsup && elizaos test"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.30.1",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-bootstrap": "1.0.5",
     "@elizaos/plugin-discord": "1.0.6",
     "@elizaos/plugin-telegram": "1.0.0",
-
-    "@solana/web3.js": "^1.91.7",
-    "@solana/spl-token": "^0.4.6",
-    "@coral-xyz/anchor": "^0.30.1",
-    "@raydium-io/raydium-sdk": "^1.3.1-beta.58",
-    "@orca-so/whirlpools-sdk": "^0.13.0",
+    "@meteora-ag/dlmm": "^1.0.0",
+    "@orca-so/whirlpools": "^0.3.0",
     "@orca-so/whirlpools-client": "^0.3.0",
     "@orca-so/whirlpools-core": "^0.3.0",
-    "@orca-so/whirlpools": "^0.3.0",
-    "@meteora-ag/dlmm": "^1.0.0",
-
-    "viem": "^2.21.0",
-    "@uniswap/v3-sdk": "^3.13.1",
+    "@orca-so/whirlpools-sdk": "^0.13.0",
+    "@pancakeswap/sdk": "^5.8.0",
+    "@pancakeswap/v3-sdk": "^3.9.7",
+    "@raydium-io/raydium-sdk": "^1.3.1-beta.58",
+    "@solana/spl-token": "^0.4.6",
+    "@solana/web3.js": "^1.91.7",
     "@uniswap/sdk-core": "^5.8.2",
     "@uniswap/smart-order-router": "^3.49.0",
-    "@pancakeswap/v3-sdk": "^3.9.7",
-    "@pancakeswap/sdk": "^5.8.0",
-
+    "@uniswap/v3-sdk": "^3.13.1",
+    "bs58": "^6.0.0",
     "decimal.js": "^10.4.3",
-    "bs58": "^6.0.0"
+    "viem": "^2.21.0"
   },
   "devDependencies": {
     "@types/decimal.js": "^7.4.0",
@@ -48,7 +45,16 @@
   },
   "peerDependenciesMeta": {
     "@elizaos/plugin-evm": {
-      "optional": true
+      "optional": true,
+      "publishConfig": {
+        "access": "public"
+      }
+    },
+    "publishConfig": {
+      "access": "public"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

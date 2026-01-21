@@ -52,7 +52,11 @@ const factsProvider: Provider = {
 
     // join the text of the last 5 messages
     const lastMessageLines: string[] = [];
-    for (let i = recentMessages.length - 1; i >= 0 && lastMessageLines.length < 5; i -= 1) {
+    for (
+      let i = recentMessages.length - 1;
+      i >= 0 && lastMessageLines.length < 5;
+      i -= 1
+    ) {
       lastMessageLines.push(recentMessages[i]?.content.text ?? "");
     }
     lastMessageLines.reverse();

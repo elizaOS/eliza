@@ -25,4 +25,3 @@ async fn local_mode_init() {
     // May succeed or fail depending on platform capabilities (GUI session, permissions, etc.)
     let _ = plugin.init().await;
 }
-

@@ -89,7 +89,7 @@
  *
  */
 
-import type { JsonValue } from '@polyagent/api';
+import type { JsonValue } from "@polyagent/api";
 import {
   AuthorizationError,
   authenticate,
@@ -104,13 +104,13 @@ import {
   successResponse,
   updateProfileBackendSigned,
   withErrorHandling,
-} from '@polyagent/api';
-import { and, db, eq, ne, sql, users } from '@polyagent/db';
-import type { StringRecord } from '@polyagent/shared';
-import { logger, UpdateUserSchema, UserIdParamSchema } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import type { Address } from 'viem';
-import { trackServerEvent } from '@/lib/posthog/server';
+} from "@polyagent/api";
+import { and, db, eq, ne, sql, users } from "@polyagent/db";
+import type { StringRecord } from "@polyagent/shared";
+import { logger, UpdateUserSchema, UserIdParamSchema } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import type { Address } from "viem";
+import { trackServerEvent } from "@/lib/posthog/server";
 
 /**
  * POST /api/users/[userId]/update-profile
@@ -134,7 +134,7 @@ import { trackServerEvent } from '@/lib/posthog/server';
 export const POST = withErrorHandling(
   async (
     request: NextRequest,
-    context: { params: Promise<{ userId: string }> }
+    context: { params: Promise<{ userId: string }> },
   ) => {
     // Authenticate user
     const authUser = await authenticate(request);
@@ -146,9 +146,9 @@ export const POST = withErrorHandling(
     // Ensure user can only update their own profile
     if (authUser.userId !== canonicalUserId) {
       throw new AuthorizationError(
-        'You can only update your own profile',
-        'profile',
-        'update'
+        "You can only update your own profile",
+        "profile",
+        "update",
       );
     }
 
@@ -176,15 +176,15 @@ export const POST = withErrorHandling(
         .where(
           and(
             sql`lower(${users.username}) = lower(${normalizedUsername})`,
-            ne(users.id, canonicalUserId)
-          )
+            ne(users.id, canonicalUserId),
+          ),
         )
         .limit(1);
 
       if (existingUser) {
         throw new BusinessLogicError(
-          'Username is already taken',
-          'USERNAME_TAKEN'
+          "Username is already taken",
+          "USERNAME_TAKEN",
         );
       }
     }
@@ -221,22 +221,22 @@ export const POST = withErrorHandling(
 
     const isUsernameChanging =
       normalizedUsername !== undefined &&
-      normalizedUsername !== (currentUser!.username ?? '');
+      normalizedUsername !== (currentUser?.username ?? "");
 
     await checkProfileUpdateRateLimit(canonicalUserId, isUsernameChanging);
 
     const hasOnchainProfileChanges = [
       normalizedUsername !== undefined &&
-        normalizedUsername !== (currentUser!.username ?? ''),
+        normalizedUsername !== (currentUser?.username ?? ""),
       normalizedDisplayName !== undefined &&
-        normalizedDisplayName !== (currentUser!.displayName ?? ''),
-      normalizedBio !== undefined && normalizedBio !== (currentUser!.bio ?? ''),
+        normalizedDisplayName !== (currentUser?.displayName ?? ""),
+      normalizedBio !== undefined && normalizedBio !== (currentUser?.bio ?? ""),
     ].some(Boolean);
 
     const requiresOnchainUpdate =
       hasOnchainProfileChanges &&
-      currentUser!.onChainRegistered &&
-      currentUser!.nftTokenId;
+      currentUser?.onChainRegistered &&
+      currentUser?.nftTokenId;
 
     let onchainMetadata: StringRecord<JsonValue> | null = null;
     let backendSignedTxHash: `0x${string}` | undefined;
@@ -244,12 +244,12 @@ export const POST = withErrorHandling(
     if (requiresOnchainUpdate) {
       if (isBackendSigningEnabled()) {
         logger.info(
-          'Using backend signing for profile update',
+          "Using backend signing for profile update",
           { userId: canonicalUserId },
-          'POST /api/users/[userId]/update-profile'
+          "POST /api/users/[userId]/update-profile",
         );
 
-        const endpoint = `https://polyagent.market/agent/${currentUser!.walletAddress!.toLowerCase()}`;
+        const endpoint = `https://polyagent.market/agent/${currentUser?.walletAddress?.toLowerCase()}`;
         const metadata = {
           name: normalizedDisplayName!,
           username: normalizedUsername!,
@@ -259,7 +259,7 @@ export const POST = withErrorHandling(
         };
 
         const result = await updateProfileBackendSigned({
-          userAddress: currentUser!.walletAddress! as Address,
+          userAddress: currentUser?.walletAddress! as Address,
           metadata,
           endpoint,
         });
@@ -270,33 +270,33 @@ export const POST = withErrorHandling(
         onchainMetadata = result.metadata as unknown as StringRecord<JsonValue>;
 
         logger.info(
-          'Backend-signed profile update successful',
+          "Backend-signed profile update successful",
           { userId: canonicalUserId, txHash: backendSignedTxHash },
-          'POST /api/users/[userId]/update-profile'
+          "POST /api/users/[userId]/update-profile",
         );
 
         logger.error(
-          'Backend signing failed',
+          "Backend signing failed",
           { userId: canonicalUserId },
-          'POST /api/users/[userId]/update-profile'
+          "POST /api/users/[userId]/update-profile",
         );
       } else {
         const onchainResult = await confirmOnchainProfileUpdate({
           userId: canonicalUserId,
-          walletAddress: currentUser!.walletAddress!,
+          walletAddress: currentUser?.walletAddress!,
           txHash: onchainTxHash! as `0x${string}`,
         });
 
         onchainMetadata = onchainResult.metadata as StringRecord<JsonValue>;
 
         logger.info(
-          'Confirmed user-signed on-chain profile update',
+          "Confirmed user-signed on-chain profile update",
           {
             userId: canonicalUserId,
             txHash: onchainTxHash,
             tokenId: onchainResult.tokenId,
           },
-          'POST /api/users/[userId]/update-profile'
+          "POST /api/users/[userId]/update-profile",
         );
       }
     }
@@ -311,8 +311,8 @@ export const POST = withErrorHandling(
         .where(
           and(
             eq(users.referralCode, normalizedUsername),
-            ne(users.id, canonicalUserId)
-          )
+            ne(users.id, canonicalUserId),
+          ),
         )
         .limit(1);
 
@@ -389,7 +389,7 @@ export const POST = withErrorHandling(
     // Award points for profile milestones
     const pointsAwarded: { reason: string; amount: number }[] = [];
 
-    if (!currentUser!.pointsAwardedForProfile && updatedUser) {
+    if (!currentUser?.pointsAwardedForProfile && updatedUser) {
       const hasUsername =
         updatedUser.username && updatedUser.username.trim().length > 0;
       const hasImage =
@@ -402,20 +402,20 @@ export const POST = withErrorHandling(
           await PointsService.awardProfileCompletion(canonicalUserId);
         if (result.success && result.pointsAwarded > 0) {
           pointsAwarded.push({
-            reason: 'profile_completion',
+            reason: "profile_completion",
             amount: result.pointsAwarded,
           });
           logger.info(
             `Awarded ${result.pointsAwarded} points to user ${canonicalUserId} for completing profile (username + image + bio)`,
             { userId: canonicalUserId, points: result.pointsAwarded },
-            'POST /api/users/[userId]/update-profile'
+            "POST /api/users/[userId]/update-profile",
           );
 
           await notifyProfileComplete(canonicalUserId, result.pointsAwarded);
           logger.info(
-            'Profile completion notification sent',
+            "Profile completion notification sent",
             { userId: canonicalUserId },
-            'POST /api/users/[userId]/update-profile'
+            "POST /api/users/[userId]/update-profile",
           );
 
           // Award referral qualification bonus to referrer if user was referred
@@ -426,22 +426,19 @@ export const POST = withErrorHandling(
                 logger.warn(
                   `Failed to check and qualify referral for user ${canonicalUserId}`,
                   { userId: canonicalUserId, error },
-                  'POST /api/users/[userId]/update-profile'
+                  "POST /api/users/[userId]/update-profile",
                 );
                 return null;
-              }
+              },
             );
-          if (
-            referralQualificationResult &&
-            referralQualificationResult.success
-          ) {
+          if (referralQualificationResult?.success) {
             logger.info(
               `Awarded ${referralQualificationResult.pointsAwarded} referral qualification points to referrer`,
               {
                 referredUserId: canonicalUserId,
                 points: referralQualificationResult.pointsAwarded,
               },
-              'POST /api/users/[userId]/update-profile'
+              "POST /api/users/[userId]/update-profile",
             );
           }
         }
@@ -450,57 +447,57 @@ export const POST = withErrorHandling(
 
     if (pointsAwarded.length > 0) {
       logger.info(
-        `Awarded points for profile updates: ${pointsAwarded.map((p) => `${p.reason}(+${p.amount})`).join(', ')}`,
+        `Awarded points for profile updates: ${pointsAwarded.map((p) => `${p.reason}(+${p.amount})`).join(", ")}`,
         { userId: canonicalUserId, pointsAwarded },
-        'POST /api/users/[userId]/update-profile'
+        "POST /api/users/[userId]/update-profile",
       );
     }
 
     // Log the profile update for rate limiting and auditing
     const fieldsUpdated = Object.keys(parsedBody).filter(
-      (key) => parsedBody[key as keyof typeof parsedBody] !== undefined
+      (key) => parsedBody[key as keyof typeof parsedBody] !== undefined,
     );
     await logProfileUpdate(
       canonicalUserId,
       fieldsUpdated,
       Boolean(backendSignedTxHash),
-      backendSignedTxHash || onchainTxHash
+      backendSignedTxHash || onchainTxHash,
     );
 
     logger.info(
-      'Profile updated successfully',
+      "Profile updated successfully",
       {
         userId: canonicalUserId,
         pointsAwarded: pointsAwarded.length,
         onchainConfirmed: requiresOnchainUpdate,
         backendSigned: Boolean(backendSignedTxHash),
       },
-      'POST /api/users/[userId]/update-profile'
+      "POST /api/users/[userId]/update-profile",
     );
 
     // Track profile updated event
-    trackServerEvent(canonicalUserId, 'profile_updated', {
+    trackServerEvent(canonicalUserId, "profile_updated", {
       fieldsUpdated,
       hasNewProfileImage:
         normalizedProfileImageUrl !== undefined &&
-        normalizedProfileImageUrl !== currentUser!.profileImageUrl,
+        normalizedProfileImageUrl !== currentUser?.profileImageUrl,
       hasNewCoverImage:
         normalizedCoverImageUrl !== undefined &&
-        normalizedCoverImageUrl !== currentUser!.coverImageUrl,
+        normalizedCoverImageUrl !== currentUser?.coverImageUrl,
       hasNewBio:
-        normalizedBio !== undefined && normalizedBio !== currentUser!.bio,
+        normalizedBio !== undefined && normalizedBio !== currentUser?.bio,
       usernameChanged: isUsernameChanging,
       profileComplete: updatedUser?.profileComplete ?? false,
       pointsAwarded: pointsAwarded.reduce((sum, p) => sum + p.amount, 0),
       onchainUpdate: requiresOnchainUpdate,
       backendSigned: Boolean(backendSignedTxHash),
     }).catch((error) => {
-      logger.warn('Failed to track profile_updated event', { error });
+      logger.warn("Failed to track profile_updated event", { error });
     });
 
     return successResponse({
       user: updatedUser,
-      message: 'Profile updated successfully',
+      message: "Profile updated successfully",
       pointsAwarded,
       onchain: requiresOnchainUpdate
         ? {
@@ -510,5 +507,5 @@ export const POST = withErrorHandling(
           }
         : null,
     });
-  }
+  },
 );

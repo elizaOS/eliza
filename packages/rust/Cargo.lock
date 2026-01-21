@@ -436,6 +436,7 @@ dependencies = [
  "lazy_static",
  "maybe-async",
  "once_cell",
+ "percent-encoding",
  "pretty_assertions",
  "prost",
  "prost-types",

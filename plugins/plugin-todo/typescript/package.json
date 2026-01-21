@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-todo",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "Multi-language Todo list plugin for elizaOS with TypeScript, Python, and Rust implementations",
   "type": "module",
   "main": "dist/node/index.node.js",

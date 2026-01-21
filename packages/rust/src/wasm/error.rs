@@ -46,7 +46,11 @@ impl WasmError {
 
 impl WasmError {
     /// Creates a new WasmError with all fields.
-    pub fn new(code: impl Into<String>, message: impl Into<String>, source: Option<String>) -> Self {
+    pub fn new(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        source: Option<String>,
+    ) -> Self {
         Self {
             code: code.into(),
             message: message.into(),

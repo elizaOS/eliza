@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from elizaos.types import Action, ActionResult, Plugin
 
 from elizaos_plugin_todo.actions import (
@@ -24,17 +26,19 @@ from elizaos_plugin_todo.providers import TODOS_PROVIDER
 
 def _wrap_action(
     spec: dict[str, object],
-    validate_fn,
-    handler_fn,
+    validate_fn: Any,  # noqa: ANN401
+    handler_fn: Any,  # noqa: ANN401
 ) -> Action:
     name = str(spec.get("name", ""))
     description = str(spec.get("description", ""))
     similes_obj = spec.get("similes")
-    similes = [s for s in similes_obj if isinstance(s, str)] if isinstance(similes_obj, list) else None
+    similes = (
+        [s for s in similes_obj if isinstance(s, str)] if isinstance(similes_obj, list) else None
+    )
 
     examples = spec.get("examples")
 
-    async def handler(runtime, message, state, options, callback, responses):  # noqa: ANN001
+    async def handler(runtime, message, state, options, callback, responses) -> ActionResult | None:  # noqa: ANN001
         res = await handler_fn(runtime, message, state, options, callback, responses)
         if res is None:
             return None
@@ -58,7 +62,7 @@ def _wrap_action(
     )
 
 
-async def init_todo_plugin(config, runtime):  # noqa: ANN001
+async def init_todo_plugin(config, runtime) -> None:  # noqa: ANN001
     _ = config, runtime
 
 
@@ -75,4 +79,3 @@ todo_plugin = Plugin(
     ],
     providers=[TODOS_PROVIDER],
 )
-

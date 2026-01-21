@@ -55,7 +55,9 @@ async function initializeRuntime(): Promise<AgentRuntime> {
   const runtime = new AgentRuntime({
     character: {
       name: "Elizagotchi Agent",
-      bio: "A virtual pet simulation agent. The pet's state lives inside the agent runtime.",
+      bio: [
+        "A virtual pet simulation agent. The pet's state lives inside the agent runtime.",
+      ],
     },
     plugins: [localdbPlugin, elizagotchiPlugin],
   });

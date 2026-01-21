@@ -267,15 +267,23 @@ class RuntimeTodoDataService(TodoDataService):
         created_at_ms = task.get("createdAt")
         updated_at_ms = task.get("updatedAt")
         created_at = (
-            datetime.utcfromtimestamp(created_at_ms / 1000) if isinstance(created_at_ms, int) else datetime.utcnow()
+            datetime.utcfromtimestamp(created_at_ms / 1000)
+            if isinstance(created_at_ms, int)
+            else datetime.utcnow()
         )
         updated_at = (
-            datetime.utcfromtimestamp(updated_at_ms / 1000) if isinstance(updated_at_ms, int) else datetime.utcnow()
+            datetime.utcfromtimestamp(updated_at_ms / 1000)
+            if isinstance(updated_at_ms, int)
+            else datetime.utcnow()
         )
 
         todo_metadata = TodoMetadata()
         # Persist extra metadata in the existing TodoMetadata container when possible.
-        todo_metadata.streak = int(metadata_dict.get("streak", 0)) if isinstance(metadata_dict.get("streak"), int) else 0
+        todo_metadata.streak = (
+            int(metadata_dict.get("streak", 0))
+            if isinstance(metadata_dict.get("streak"), int)
+            else 0
+        )
         todo_metadata.points_awarded = (
             int(metadata_dict.get("pointsAwarded", 0))
             if isinstance(metadata_dict.get("pointsAwarded"), int)
@@ -292,7 +300,9 @@ class RuntimeTodoDataService(TodoDataService):
             room_id=room_id if isinstance(room_id, str) else None,
             entity_id=entity_id,
             name=name,
-            description=task.get("description") if isinstance(task.get("description"), str) else None,
+            description=task.get("description")
+            if isinstance(task.get("description"), str)
+            else None,
             type=todo_type,
             priority=priority,
             is_urgent=bool(metadata_dict.get("isUrgent", False)),
@@ -356,7 +366,11 @@ class RuntimeTodoDataService(TodoDataService):
             todo = self._task_to_todo(t)
             if not todo:
                 continue
-            if filters and filters.is_completed is not None and todo.is_completed != filters.is_completed:
+            if (
+                filters
+                and filters.is_completed is not None
+                and todo.is_completed != filters.is_completed
+            ):
                 continue
             if filters and filters.type and todo.type != filters.type:
                 continue
@@ -372,7 +386,11 @@ class RuntimeTodoDataService(TodoDataService):
         if not existing:
             raise NotFoundError(f"Todo {todo_id} not found")
 
-        new_tags = list(set(existing.tags) | set(updates.tags or [])) if updates.tags is not None else existing.tags
+        new_tags = (
+            list(set(existing.tags) | set(updates.tags or []))
+            if updates.tags is not None
+            else existing.tags
+        )
 
         new_status: str | None
         if updates.is_completed is None:
@@ -398,7 +416,9 @@ class RuntimeTodoDataService(TodoDataService):
 
         patch: dict[str, object] = {
             "name": updates.name if updates.name is not None else existing.name,
-            "description": updates.description if updates.description is not None else existing.description,
+            "description": updates.description
+            if updates.description is not None
+            else existing.description,
             "tags": new_tags,
             "metadata": new_metadata,
         }
@@ -426,7 +446,11 @@ def create_todo_data_service(db_connection: object | None = None) -> TodoDataSer
         return db_connection
 
     runtime_like = db_connection
-    if runtime_like is not None and hasattr(runtime_like, "create_task") and hasattr(runtime_like, "get_tasks"):
+    if (
+        runtime_like is not None
+        and hasattr(runtime_like, "create_task")
+        and hasattr(runtime_like, "get_tasks")
+    ):
         return RuntimeTodoDataService(cast(TaskRuntime, runtime_like))
 
     return TodoDataService(db_connection)

@@ -121,58 +121,58 @@ pub struct WalletPortfolio {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait TokenDataService: Service {
-            /// Fetch detailed information for a single token
-            async fn get_token_details(
-                &self,
-                address: &str,
-                chain: &str,
-            ) -> Result<Option<TokenData>, anyhow::Error>;
+    /// Fetch detailed information for a single token
+    async fn get_token_details(
+        &self,
+        address: &str,
+        chain: &str,
+    ) -> Result<Option<TokenData>, anyhow::Error>;
 
-            /// Fetch trending tokens
-            async fn get_trending_tokens(
-                &self,
-                chain: Option<&str>,
-                limit: Option<usize>,
-                time_period: Option<&str>,
-            ) -> Result<Vec<TokenData>, anyhow::Error>;
+    /// Fetch trending tokens
+    async fn get_trending_tokens(
+        &self,
+        chain: Option<&str>,
+        limit: Option<usize>,
+        time_period: Option<&str>,
+    ) -> Result<Vec<TokenData>, anyhow::Error>;
 
-            /// Search for tokens
-            async fn search_tokens(
-                &self,
-                query: &str,
-                chain: Option<&str>,
-                limit: Option<usize>,
-            ) -> Result<Vec<TokenData>, anyhow::Error>;
+    /// Search for tokens
+    async fn search_tokens(
+        &self,
+        query: &str,
+        chain: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Vec<TokenData>, anyhow::Error>;
 
-            /// Fetch tokens by addresses
-            async fn get_tokens_by_addresses(
-                &self,
-                addresses: &[String],
-                chain: &str,
-            ) -> Result<Vec<TokenData>, anyhow::Error>;
+    /// Fetch tokens by addresses
+    async fn get_tokens_by_addresses(
+        &self,
+        addresses: &[String],
+        chain: &str,
+    ) -> Result<Vec<TokenData>, anyhow::Error>;
 }
 
 /// Wallet service trait
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait WalletService: Service {
-            /// Get wallet portfolio
-            async fn get_portfolio(&self, owner: Option<&str>) -> Result<WalletPortfolio, anyhow::Error>;
+    /// Get wallet portfolio
+    async fn get_portfolio(&self, owner: Option<&str>) -> Result<WalletPortfolio, anyhow::Error>;
 
-            /// Get balance of specific asset
-            async fn get_balance(
-                &self,
-                asset_address: &str,
-                owner: Option<&str>,
-            ) -> Result<f64, anyhow::Error>;
+    /// Get balance of specific asset
+    async fn get_balance(
+        &self,
+        asset_address: &str,
+        owner: Option<&str>,
+    ) -> Result<f64, anyhow::Error>;
 
-            /// Transfer native tokens
-            async fn transfer_sol(
-                &self,
-                from: &[u8],
-                to: &[u8],
-                lamports: u64,
-            ) -> Result<String, anyhow::Error>;
+    /// Transfer native tokens
+    async fn transfer_sol(
+        &self,
+        from: &[u8],
+        to: &[u8],
+        lamports: u64,
+    ) -> Result<String, anyhow::Error>;
 }
 
 // ============================================================================
@@ -311,42 +311,42 @@ pub struct RemoveLiquidityParams {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait LpService: Service {
-            /// Get DEX name
-            fn get_dex_name(&self) -> &str;
+    /// Get DEX name
+    fn get_dex_name(&self) -> &str;
 
-            /// Get available pools
-            async fn get_pools(
-                &self,
-                token_a_mint: Option<&str>,
-                token_b_mint: Option<&str>,
-            ) -> Result<Vec<PoolInfo>, anyhow::Error>;
+    /// Get available pools
+    async fn get_pools(
+        &self,
+        token_a_mint: Option<&str>,
+        token_b_mint: Option<&str>,
+    ) -> Result<Vec<PoolInfo>, anyhow::Error>;
 
-            /// Add liquidity
-            async fn add_liquidity(
-                &self,
-                user_vault: &[u8],
-                params: AddLiquidityParams,
-            ) -> Result<(TransactionResult, Option<TokenBalance>), anyhow::Error>;
+    /// Add liquidity
+    async fn add_liquidity(
+        &self,
+        user_vault: &[u8],
+        params: AddLiquidityParams,
+    ) -> Result<(TransactionResult, Option<TokenBalance>), anyhow::Error>;
 
-            /// Remove liquidity
-            async fn remove_liquidity(
-                &self,
-                user_vault: &[u8],
-                params: RemoveLiquidityParams,
-            ) -> Result<(TransactionResult, Option<Vec<TokenBalance>>), anyhow::Error>;
+    /// Remove liquidity
+    async fn remove_liquidity(
+        &self,
+        user_vault: &[u8],
+        params: RemoveLiquidityParams,
+    ) -> Result<(TransactionResult, Option<Vec<TokenBalance>>), anyhow::Error>;
 
-            /// Get LP position details
-            async fn get_lp_position_details(
-                &self,
-                user_account_public_key: &str,
-                pool_or_position_identifier: &str,
-            ) -> Result<Option<LpPositionDetails>, anyhow::Error>;
+    /// Get LP position details
+    async fn get_lp_position_details(
+        &self,
+        user_account_public_key: &str,
+        pool_or_position_identifier: &str,
+    ) -> Result<Option<LpPositionDetails>, anyhow::Error>;
 
-            /// Get market data for pools
-            async fn get_market_data_for_pools(
-                &self,
-                pool_ids: &[String],
-            ) -> Result<HashMap<String, PoolInfo>, anyhow::Error>;
+    /// Get market data for pools
+    async fn get_market_data_for_pools(
+        &self,
+        pool_ids: &[String],
+    ) -> Result<HashMap<String, PoolInfo>, anyhow::Error>;
 }
 
 // ============================================================================
@@ -514,42 +514,42 @@ pub struct VoiceInfo {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait TranscriptionService: Service {
-            /// Transcribe audio to text
-            async fn transcribe_audio(
-                &self,
-                audio: &[u8],
-                options: Option<TranscriptionOptions>,
-            ) -> Result<TranscriptionResult, anyhow::Error>;
+    /// Transcribe audio to text
+    async fn transcribe_audio(
+        &self,
+        audio: &[u8],
+        options: Option<TranscriptionOptions>,
+    ) -> Result<TranscriptionResult, anyhow::Error>;
 
-            /// Transcribe video to text
-            async fn transcribe_video(
-                &self,
-                video: &[u8],
-                options: Option<TranscriptionOptions>,
-            ) -> Result<TranscriptionResult, anyhow::Error>;
+    /// Transcribe video to text
+    async fn transcribe_video(
+        &self,
+        video: &[u8],
+        options: Option<TranscriptionOptions>,
+    ) -> Result<TranscriptionResult, anyhow::Error>;
 
-            /// Speech to text
-            async fn speech_to_text(
-                &self,
-                audio_stream: &[u8],
-                options: Option<SpeechToTextOptions>,
-            ) -> Result<TranscriptionResult, anyhow::Error>;
+    /// Speech to text
+    async fn speech_to_text(
+        &self,
+        audio_stream: &[u8],
+        options: Option<SpeechToTextOptions>,
+    ) -> Result<TranscriptionResult, anyhow::Error>;
 
-            /// Text to speech
-            async fn text_to_speech(
-                &self,
-                text: &str,
-                options: Option<TextToSpeechOptions>,
-            ) -> Result<Vec<u8>, anyhow::Error>;
+    /// Text to speech
+    async fn text_to_speech(
+        &self,
+        text: &str,
+        options: Option<TextToSpeechOptions>,
+    ) -> Result<Vec<u8>, anyhow::Error>;
 
-            /// Get supported languages
-            async fn get_supported_languages(&self) -> Result<Vec<String>, anyhow::Error>;
+    /// Get supported languages
+    async fn get_supported_languages(&self) -> Result<Vec<String>, anyhow::Error>;
 
-            /// Get available voices
-            async fn get_available_voices(&self) -> Result<Vec<VoiceInfo>, anyhow::Error>;
+    /// Get available voices
+    async fn get_available_voices(&self) -> Result<Vec<VoiceInfo>, anyhow::Error>;
 
-            /// Detect language
-            async fn detect_language(&self, audio: &[u8]) -> Result<String, anyhow::Error>;
+    /// Detect language
+    async fn detect_language(&self, audio: &[u8]) -> Result<String, anyhow::Error>;
 }
 
 // ============================================================================
@@ -684,40 +684,40 @@ pub struct VideoProcessingOptions {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait VideoService: Service {
-            /// Get video info
-            async fn get_video_info(&self, url: &str) -> Result<VideoInfo, anyhow::Error>;
+    /// Get video info
+    async fn get_video_info(&self, url: &str) -> Result<VideoInfo, anyhow::Error>;
 
-            /// Download video
-            async fn download_video(
-                &self,
-                url: &str,
-                options: Option<VideoDownloadOptions>,
-            ) -> Result<String, anyhow::Error>;
+    /// Download video
+    async fn download_video(
+        &self,
+        url: &str,
+        options: Option<VideoDownloadOptions>,
+    ) -> Result<String, anyhow::Error>;
 
-            /// Extract audio
-            async fn extract_audio(
-                &self,
-                video_path: &str,
-                output_path: Option<&str>,
-            ) -> Result<String, anyhow::Error>;
+    /// Extract audio
+    async fn extract_audio(
+        &self,
+        video_path: &str,
+        output_path: Option<&str>,
+    ) -> Result<String, anyhow::Error>;
 
-            /// Get thumbnail
-            async fn get_thumbnail(
-                &self,
-                video_path: &str,
-                timestamp: Option<f64>,
-            ) -> Result<String, anyhow::Error>;
+    /// Get thumbnail
+    async fn get_thumbnail(
+        &self,
+        video_path: &str,
+        timestamp: Option<f64>,
+    ) -> Result<String, anyhow::Error>;
 
-            /// Convert video
-            async fn convert_video(
-                &self,
-                video_path: &str,
-                output_path: &str,
-                options: Option<VideoProcessingOptions>,
-            ) -> Result<String, anyhow::Error>;
+    /// Convert video
+    async fn convert_video(
+        &self,
+        video_path: &str,
+        output_path: &str,
+        options: Option<VideoProcessingOptions>,
+    ) -> Result<String, anyhow::Error>;
 
-            /// Get available formats
-            async fn get_available_formats(&self, url: &str) -> Result<Vec<VideoFormat>, anyhow::Error>;
+    /// Get available formats
+    async fn get_available_formats(&self, url: &str) -> Result<Vec<VideoFormat>, anyhow::Error>;
 }
 
 // ============================================================================
@@ -879,57 +879,57 @@ pub struct TypeOptions {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait BrowserService: Service {
-            /// Navigate to URL
-            async fn navigate(
-                &self,
-                url: &str,
-                options: Option<BrowserNavigationOptions>,
-            ) -> Result<(), anyhow::Error>;
+    /// Navigate to URL
+    async fn navigate(
+        &self,
+        url: &str,
+        options: Option<BrowserNavigationOptions>,
+    ) -> Result<(), anyhow::Error>;
 
-            /// Take screenshot
-            async fn screenshot(
-                &self,
-                options: Option<ScreenshotOptions>,
-            ) -> Result<Vec<u8>, anyhow::Error>;
+    /// Take screenshot
+    async fn screenshot(
+        &self,
+        options: Option<ScreenshotOptions>,
+    ) -> Result<Vec<u8>, anyhow::Error>;
 
-            /// Extract content
-            async fn extract_content(
-                &self,
-                selector: Option<&str>,
-            ) -> Result<ExtractedContent, anyhow::Error>;
+    /// Extract content
+    async fn extract_content(
+        &self,
+        selector: Option<&str>,
+    ) -> Result<ExtractedContent, anyhow::Error>;
 
-            /// Click element
-            async fn click(
-                &self,
-                selector: &str,
-                options: Option<ClickOptions>,
-            ) -> Result<(), anyhow::Error>;
+    /// Click element
+    async fn click(
+        &self,
+        selector: &str,
+        options: Option<ClickOptions>,
+    ) -> Result<(), anyhow::Error>;
 
-            /// Type text
-            async fn type_text(
-                &self,
-                selector: &str,
-                text: &str,
-                options: Option<TypeOptions>,
-            ) -> Result<(), anyhow::Error>;
+    /// Type text
+    async fn type_text(
+        &self,
+        selector: &str,
+        text: &str,
+        options: Option<TypeOptions>,
+    ) -> Result<(), anyhow::Error>;
 
-            /// Wait for element
-            async fn wait_for_element(&self, selector: &str) -> Result<(), anyhow::Error>;
+    /// Wait for element
+    async fn wait_for_element(&self, selector: &str) -> Result<(), anyhow::Error>;
 
-            /// Evaluate JavaScript
-            async fn evaluate(&self, script: &str) -> Result<serde_json::Value, anyhow::Error>;
+    /// Evaluate JavaScript
+    async fn evaluate(&self, script: &str) -> Result<serde_json::Value, anyhow::Error>;
 
-            /// Get current URL
-            async fn get_current_url(&self) -> Result<String, anyhow::Error>;
+    /// Get current URL
+    async fn get_current_url(&self) -> Result<String, anyhow::Error>;
 
-            /// Go back
-            async fn go_back(&self) -> Result<(), anyhow::Error>;
+    /// Go back
+    async fn go_back(&self) -> Result<(), anyhow::Error>;
 
-            /// Go forward
-            async fn go_forward(&self) -> Result<(), anyhow::Error>;
+    /// Go forward
+    async fn go_forward(&self) -> Result<(), anyhow::Error>;
 
-            /// Refresh
-            async fn refresh(&self) -> Result<(), anyhow::Error>;
+    /// Refresh
+    async fn refresh(&self) -> Result<(), anyhow::Error>;
 }
 
 // ============================================================================
@@ -1025,28 +1025,28 @@ pub struct PdfConversionOptions {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait PdfService: Service {
-            /// Extract text from PDF
-            async fn extract_text(&self, pdf: &[u8]) -> Result<PdfExtractionResult, anyhow::Error>;
+    /// Extract text from PDF
+    async fn extract_text(&self, pdf: &[u8]) -> Result<PdfExtractionResult, anyhow::Error>;
 
-            /// Generate PDF from HTML
-            async fn generate_pdf(
-                &self,
-                html_content: &str,
-                options: Option<PdfGenerationOptions>,
-            ) -> Result<Vec<u8>, anyhow::Error>;
+    /// Generate PDF from HTML
+    async fn generate_pdf(
+        &self,
+        html_content: &str,
+        options: Option<PdfGenerationOptions>,
+    ) -> Result<Vec<u8>, anyhow::Error>;
 
-            /// Convert file to PDF
-            async fn convert_to_pdf(
-                &self,
-                file_path: &str,
-                options: Option<PdfConversionOptions>,
-            ) -> Result<Vec<u8>, anyhow::Error>;
+    /// Convert file to PDF
+    async fn convert_to_pdf(
+        &self,
+        file_path: &str,
+        options: Option<PdfConversionOptions>,
+    ) -> Result<Vec<u8>, anyhow::Error>;
 
-            /// Merge PDFs
-            async fn merge_pdfs(&self, pdfs: &[&[u8]]) -> Result<Vec<u8>, anyhow::Error>;
+    /// Merge PDFs
+    async fn merge_pdfs(&self, pdfs: &[&[u8]]) -> Result<Vec<u8>, anyhow::Error>;
 
-            /// Split PDF
-            async fn split_pdf(&self, pdf: &[u8]) -> Result<Vec<Vec<u8>>, anyhow::Error>;
+    /// Split PDF
+    async fn split_pdf(&self, pdf: &[u8]) -> Result<Vec<Vec<u8>>, anyhow::Error>;
 }
 
 // ============================================================================
@@ -1175,45 +1175,45 @@ pub struct PageInfo {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait WebSearchService: Service {
-            /// Perform web search
-            async fn search(
-                &self,
-                query: &str,
-                options: Option<SearchOptions>,
-            ) -> Result<SearchResponse, anyhow::Error>;
+    /// Perform web search
+    async fn search(
+        &self,
+        query: &str,
+        options: Option<SearchOptions>,
+    ) -> Result<SearchResponse, anyhow::Error>;
 
-            /// Search news
-            async fn search_news(
-                &self,
-                query: &str,
-                options: Option<SearchOptions>,
-            ) -> Result<SearchResponse, anyhow::Error>;
+    /// Search news
+    async fn search_news(
+        &self,
+        query: &str,
+        options: Option<SearchOptions>,
+    ) -> Result<SearchResponse, anyhow::Error>;
 
-            /// Search images
-            async fn search_images(
-                &self,
-                query: &str,
-                options: Option<SearchOptions>,
-            ) -> Result<SearchResponse, anyhow::Error>;
+    /// Search images
+    async fn search_images(
+        &self,
+        query: &str,
+        options: Option<SearchOptions>,
+    ) -> Result<SearchResponse, anyhow::Error>;
 
-            /// Search videos
-            async fn search_videos(
-                &self,
-                query: &str,
-                options: Option<SearchOptions>,
-            ) -> Result<SearchResponse, anyhow::Error>;
+    /// Search videos
+    async fn search_videos(
+        &self,
+        query: &str,
+        options: Option<SearchOptions>,
+    ) -> Result<SearchResponse, anyhow::Error>;
 
-            /// Get suggestions
-            async fn get_suggestions(&self, query: &str) -> Result<Vec<String>, anyhow::Error>;
+    /// Get suggestions
+    async fn get_suggestions(&self, query: &str) -> Result<Vec<String>, anyhow::Error>;
 
-            /// Get trending searches
-            async fn get_trending_searches(
-                &self,
-                region: Option<&str>,
-            ) -> Result<Vec<String>, anyhow::Error>;
+    /// Get trending searches
+    async fn get_trending_searches(
+        &self,
+        region: Option<&str>,
+    ) -> Result<Vec<String>, anyhow::Error>;
 
-            /// Get page info
-            async fn get_page_info(&self, url: &str) -> Result<PageInfo, anyhow::Error>;
+    /// Get page info
+    async fn get_page_info(&self, url: &str) -> Result<PageInfo, anyhow::Error>;
 }
 
 // ============================================================================
@@ -1407,53 +1407,53 @@ pub struct EmailAccount {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait EmailService: Service {
-            /// Send email
-            async fn send_email(
-                &self,
-                message: EmailMessage,
-                options: Option<EmailSendOptions>,
-            ) -> Result<String, anyhow::Error>;
+    /// Send email
+    async fn send_email(
+        &self,
+        message: EmailMessage,
+        options: Option<EmailSendOptions>,
+    ) -> Result<String, anyhow::Error>;
 
-            /// Get emails
-            async fn get_emails(
-                &self,
-                options: Option<EmailSearchOptions>,
-            ) -> Result<Vec<EmailMessage>, anyhow::Error>;
+    /// Get emails
+    async fn get_emails(
+        &self,
+        options: Option<EmailSearchOptions>,
+    ) -> Result<Vec<EmailMessage>, anyhow::Error>;
 
-            /// Get email by ID
-            async fn get_email(&self, message_id: &str) -> Result<EmailMessage, anyhow::Error>;
+    /// Get email by ID
+    async fn get_email(&self, message_id: &str) -> Result<EmailMessage, anyhow::Error>;
 
-            /// Delete email
-            async fn delete_email(&self, message_id: &str) -> Result<(), anyhow::Error>;
+    /// Delete email
+    async fn delete_email(&self, message_id: &str) -> Result<(), anyhow::Error>;
 
-            /// Mark email as read
-            async fn mark_email_as_read(&self, message_id: &str, read: bool) -> Result<(), anyhow::Error>;
+    /// Mark email as read
+    async fn mark_email_as_read(&self, message_id: &str, read: bool) -> Result<(), anyhow::Error>;
 
-            /// Flag email
-            async fn flag_email(&self, message_id: &str, flagged: bool) -> Result<(), anyhow::Error>;
+    /// Flag email
+    async fn flag_email(&self, message_id: &str, flagged: bool) -> Result<(), anyhow::Error>;
 
-            /// Move email
-            async fn move_email(&self, message_id: &str, folder_path: &str) -> Result<(), anyhow::Error>;
+    /// Move email
+    async fn move_email(&self, message_id: &str, folder_path: &str) -> Result<(), anyhow::Error>;
 
-            /// Get folders
-            async fn get_folders(&self) -> Result<Vec<EmailFolder>, anyhow::Error>;
+    /// Get folders
+    async fn get_folders(&self) -> Result<Vec<EmailFolder>, anyhow::Error>;
 
-            /// Create folder
-            async fn create_folder(
-                &self,
-                folder_name: &str,
-                parent_path: Option<&str>,
-            ) -> Result<(), anyhow::Error>;
+    /// Create folder
+    async fn create_folder(
+        &self,
+        folder_name: &str,
+        parent_path: Option<&str>,
+    ) -> Result<(), anyhow::Error>;
 
-            /// Get account info
-            async fn get_account_info(&self) -> Result<EmailAccount, anyhow::Error>;
+    /// Get account info
+    async fn get_account_info(&self) -> Result<EmailAccount, anyhow::Error>;
 
-            /// Search emails
-            async fn search_emails(
-                &self,
-                query: &str,
-                options: Option<EmailSearchOptions>,
-            ) -> Result<Vec<EmailMessage>, anyhow::Error>;
+    /// Search emails
+    async fn search_emails(
+        &self,
+        query: &str,
+        options: Option<EmailSearchOptions>,
+    ) -> Result<Vec<EmailMessage>, anyhow::Error>;
 }
 
 // ============================================================================
@@ -1751,68 +1751,68 @@ pub struct MessageChannel {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait MessagingService: Service {
-            /// Send message
-            async fn send_message(
-                &self,
-                channel_id: &Uuid,
-                content: MessageContent,
-                options: Option<MessageSendOptions>,
-            ) -> Result<Uuid, anyhow::Error>;
+    /// Send message
+    async fn send_message(
+        &self,
+        channel_id: &Uuid,
+        content: MessageContent,
+        options: Option<MessageSendOptions>,
+    ) -> Result<Uuid, anyhow::Error>;
 
-            /// Get messages
-            async fn get_messages(
-                &self,
-                channel_id: &Uuid,
-                options: Option<MessageSearchOptions>,
-            ) -> Result<Vec<MessageInfo>, anyhow::Error>;
+    /// Get messages
+    async fn get_messages(
+        &self,
+        channel_id: &Uuid,
+        options: Option<MessageSearchOptions>,
+    ) -> Result<Vec<MessageInfo>, anyhow::Error>;
 
-            /// Get message by ID
-            async fn get_message(&self, message_id: &Uuid) -> Result<MessageInfo, anyhow::Error>;
+    /// Get message by ID
+    async fn get_message(&self, message_id: &Uuid) -> Result<MessageInfo, anyhow::Error>;
 
-            /// Edit message
-            async fn edit_message(
-                &self,
-                message_id: &Uuid,
-                content: MessageContent,
-            ) -> Result<(), anyhow::Error>;
+    /// Edit message
+    async fn edit_message(
+        &self,
+        message_id: &Uuid,
+        content: MessageContent,
+    ) -> Result<(), anyhow::Error>;
 
-            /// Delete message
-            async fn delete_message(&self, message_id: &Uuid) -> Result<(), anyhow::Error>;
+    /// Delete message
+    async fn delete_message(&self, message_id: &Uuid) -> Result<(), anyhow::Error>;
 
-            /// Add reaction
-            async fn add_reaction(&self, message_id: &Uuid, emoji: &str) -> Result<(), anyhow::Error>;
+    /// Add reaction
+    async fn add_reaction(&self, message_id: &Uuid, emoji: &str) -> Result<(), anyhow::Error>;
 
-            /// Remove reaction
-            async fn remove_reaction(&self, message_id: &Uuid, emoji: &str) -> Result<(), anyhow::Error>;
+    /// Remove reaction
+    async fn remove_reaction(&self, message_id: &Uuid, emoji: &str) -> Result<(), anyhow::Error>;
 
-            /// Pin message
-            async fn pin_message(&self, message_id: &Uuid) -> Result<(), anyhow::Error>;
+    /// Pin message
+    async fn pin_message(&self, message_id: &Uuid) -> Result<(), anyhow::Error>;
 
-            /// Unpin message
-            async fn unpin_message(&self, message_id: &Uuid) -> Result<(), anyhow::Error>;
+    /// Unpin message
+    async fn unpin_message(&self, message_id: &Uuid) -> Result<(), anyhow::Error>;
 
-            /// Get channels
-            async fn get_channels(&self) -> Result<Vec<MessageChannel>, anyhow::Error>;
+    /// Get channels
+    async fn get_channels(&self) -> Result<Vec<MessageChannel>, anyhow::Error>;
 
-            /// Get channel by ID
-            async fn get_channel(&self, channel_id: &Uuid) -> Result<MessageChannel, anyhow::Error>;
+    /// Get channel by ID
+    async fn get_channel(&self, channel_id: &Uuid) -> Result<MessageChannel, anyhow::Error>;
 
-            /// Create channel
-            async fn create_channel(
-                &self,
-                name: &str,
-                channel_type: &str,
-                description: Option<&str>,
-                participants: Option<&[Uuid]>,
-                private: Option<bool>,
-            ) -> Result<Uuid, anyhow::Error>;
+    /// Create channel
+    async fn create_channel(
+        &self,
+        name: &str,
+        channel_type: &str,
+        description: Option<&str>,
+        participants: Option<&[Uuid]>,
+        private: Option<bool>,
+    ) -> Result<Uuid, anyhow::Error>;
 
-            /// Search messages
-            async fn search_messages(
-                &self,
-                query: &str,
-                options: Option<MessageSearchOptions>,
-            ) -> Result<Vec<MessageInfo>, anyhow::Error>;
+    /// Search messages
+    async fn search_messages(
+        &self,
+        query: &str,
+        options: Option<MessageSearchOptions>,
+    ) -> Result<Vec<MessageInfo>, anyhow::Error>;
 }
 
 // ============================================================================
@@ -2207,78 +2207,78 @@ pub struct PostAnalytics {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait PostService: Service {
-            /// Create post
-            async fn create_post(
-                &self,
-                content: PostContent,
-                options: Option<PostCreateOptions>,
-            ) -> Result<Uuid, anyhow::Error>;
+    /// Create post
+    async fn create_post(
+        &self,
+        content: PostContent,
+        options: Option<PostCreateOptions>,
+    ) -> Result<Uuid, anyhow::Error>;
 
-            /// Get posts
-            async fn get_posts(
-                &self,
-                options: Option<PostSearchOptions>,
-            ) -> Result<Vec<PostInfo>, anyhow::Error>;
+    /// Get posts
+    async fn get_posts(
+        &self,
+        options: Option<PostSearchOptions>,
+    ) -> Result<Vec<PostInfo>, anyhow::Error>;
 
-            /// Get post by ID
-            async fn get_post(&self, post_id: &Uuid) -> Result<PostInfo, anyhow::Error>;
+    /// Get post by ID
+    async fn get_post(&self, post_id: &Uuid) -> Result<PostInfo, anyhow::Error>;
 
-            /// Edit post
-            async fn edit_post(&self, post_id: &Uuid, content: PostContent) -> Result<(), anyhow::Error>;
+    /// Edit post
+    async fn edit_post(&self, post_id: &Uuid, content: PostContent) -> Result<(), anyhow::Error>;
 
-            /// Delete post
-            async fn delete_post(&self, post_id: &Uuid) -> Result<(), anyhow::Error>;
+    /// Delete post
+    async fn delete_post(&self, post_id: &Uuid) -> Result<(), anyhow::Error>;
 
-            /// Like/unlike post
-            async fn like_post(&self, post_id: &Uuid, like: bool) -> Result<(), anyhow::Error>;
+    /// Like/unlike post
+    async fn like_post(&self, post_id: &Uuid, like: bool) -> Result<(), anyhow::Error>;
 
-            /// Share post
-            async fn share_post(
-                &self,
-                post_id: &Uuid,
-                comment: Option<&str>,
-            ) -> Result<Uuid, anyhow::Error>;
+    /// Share post
+    async fn share_post(
+        &self,
+        post_id: &Uuid,
+        comment: Option<&str>,
+    ) -> Result<Uuid, anyhow::Error>;
 
-            /// Save/unsave post
-            async fn save_post(&self, post_id: &Uuid, save: bool) -> Result<(), anyhow::Error>;
+    /// Save/unsave post
+    async fn save_post(&self, post_id: &Uuid, save: bool) -> Result<(), anyhow::Error>;
 
-            /// Comment on post
-            async fn comment_on_post(
-                &self,
-                post_id: &Uuid,
-                content: PostContent,
-            ) -> Result<Uuid, anyhow::Error>;
+    /// Comment on post
+    async fn comment_on_post(
+        &self,
+        post_id: &Uuid,
+        content: PostContent,
+    ) -> Result<Uuid, anyhow::Error>;
 
-            /// Get comments
-            async fn get_comments(
-                &self,
-                post_id: &Uuid,
-                options: Option<PostSearchOptions>,
-            ) -> Result<Vec<PostInfo>, anyhow::Error>;
+    /// Get comments
+    async fn get_comments(
+        &self,
+        post_id: &Uuid,
+        options: Option<PostSearchOptions>,
+    ) -> Result<Vec<PostInfo>, anyhow::Error>;
 
-            /// Schedule post
-            async fn schedule_post(
-                &self,
-                content: PostContent,
-                scheduled_at: &str,
-                options: Option<PostCreateOptions>,
-            ) -> Result<Uuid, anyhow::Error>;
+    /// Schedule post
+    async fn schedule_post(
+        &self,
+        content: PostContent,
+        scheduled_at: &str,
+        options: Option<PostCreateOptions>,
+    ) -> Result<Uuid, anyhow::Error>;
 
-            /// Get post analytics
-            async fn get_post_analytics(&self, post_id: &Uuid) -> Result<PostAnalytics, anyhow::Error>;
+    /// Get post analytics
+    async fn get_post_analytics(&self, post_id: &Uuid) -> Result<PostAnalytics, anyhow::Error>;
 
-            /// Get trending posts
-            async fn get_trending_posts(
-                &self,
-                options: Option<PostSearchOptions>,
-            ) -> Result<Vec<PostInfo>, anyhow::Error>;
+    /// Get trending posts
+    async fn get_trending_posts(
+        &self,
+        options: Option<PostSearchOptions>,
+    ) -> Result<Vec<PostInfo>, anyhow::Error>;
 
-            /// Search posts
-            async fn search_posts(
-                &self,
-                query: &str,
-                options: Option<PostSearchOptions>,
-            ) -> Result<Vec<PostInfo>, anyhow::Error>;
+    /// Search posts
+    async fn search_posts(
+        &self,
+        query: &str,
+        options: Option<PostSearchOptions>,
+    ) -> Result<Vec<PostInfo>, anyhow::Error>;
 }
 
 #[cfg(test)]

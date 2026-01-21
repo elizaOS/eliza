@@ -14,7 +14,19 @@ import {
 import { polymarketProvider } from "./providers";
 import { PolymarketService } from "./services";
 import { researchTaskWorker } from "./workers";
-export { initializeClobClient, initializeClobClientWithCreds, getWalletAddress } from "./utils/clobClient";
+
+export {
+  checkOrderScoringAction,
+  getOrderBookDepthAction,
+  getOrderDetailsAction,
+  getTokenInfoAction,
+  placeOrderAction,
+  researchMarketAction,
+  retrieveAllMarketsAction,
+} from "./actions";
+export { ACCOUNT_STATE_TTL_MS, DEFAULT_CLOB_API_URL, POLYGON_CHAIN_ID } from "./constants";
+export { polymarketProvider } from "./providers";
+export { PolymarketService, ResearchStorageService } from "./services";
 export type {
   AccountBalances,
   ApiKeyCreds,
@@ -37,19 +49,12 @@ export type {
   Token,
 } from "./types";
 export { ResearchStatus as ResearchStatusEnum } from "./types";
-export { POLYGON_CHAIN_ID, DEFAULT_CLOB_API_URL, ACCOUNT_STATE_TTL_MS } from "./constants";
-export { ResearchStorageService, PolymarketService } from "./services";
-export { researchTaskWorker, RESEARCH_TASK_NAME, TRADE_EVALUATION_TASK_NAME } from "./workers";
-export { polymarketProvider } from "./providers";
 export {
-  checkOrderScoringAction,
-  getOrderBookDepthAction,
-  getOrderDetailsAction,
-  getTokenInfoAction,
-  placeOrderAction,
-  researchMarketAction,
-  retrieveAllMarketsAction,
-} from "./actions";
+  getWalletAddress,
+  initializeClobClient,
+  initializeClobClientWithCreds,
+} from "./utils/clobClient";
+export { RESEARCH_TASK_NAME, researchTaskWorker, TRADE_EVALUATION_TASK_NAME } from "./workers";
 
 const configSchema = z.object({
   CLOB_API_URL: z
@@ -63,10 +68,7 @@ const configSchema = z.object({
   CLOB_API_SECRET: z.string().min(1, "CLOB API secret cannot be empty").optional(),
   CLOB_API_PASSPHRASE: z.string().min(1, "CLOB API passphrase cannot be empty").optional(),
   POLYMARKET_ALLOW_CREATE_API_KEY: z.string().optional().default("true"),
-  POLYMARKET_PROVIDER_STRICT: z
-    .string()
-    .optional()
-    .default("true"),
+  POLYMARKET_PROVIDER_STRICT: z.string().optional().default("true"),
   POLYMARKET_PROVIDER_CACHE_TTL_MS: z.string().optional(),
 });
 
@@ -109,9 +111,7 @@ export const polymarketPlugin: Plugin = {
         // Check if OpenAI is configured for research
         const openaiKey = runtime.getSetting("OPENAI_API_KEY");
         if (!openaiKey) {
-          logger.warn(
-            "OPENAI_API_KEY not configured. Deep research features will be unavailable."
-          );
+          logger.warn("OPENAI_API_KEY not configured. Deep research features will be unavailable.");
         }
       }
 

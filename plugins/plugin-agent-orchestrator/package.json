@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-agent-orchestrator",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha.1",
   "description": "Agent orchestration plugin for ElizaOS (task lifecycle + agent providers) with multi-agent demos",
   "type": "module",
   "main": "typescript/dist/index.js",
@@ -20,7 +20,14 @@
     "rust/Cargo.toml",
     "README.md"
   ],
-  "keywords": ["eliza", "plugin", "orchestrator", "agents", "tasks", "multi-agent"],
+  "keywords": [
+    "eliza",
+    "plugin",
+    "orchestrator",
+    "agents",
+    "tasks",
+    "multi-agent"
+  ],
   "author": "elizaOS",
   "license": "MIT",
   "repository": {
@@ -48,14 +55,14 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/bun": "^1.3.5",
     "@types/node": "^25.0.6",
     "typescript": "^5.9.3",
-    "@biomejs/biome": "^2.3.11",
     "vitest": "^4.0.17"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-alpha.1"
   },
   "publishConfig": {
     "access": "public"
@@ -71,5 +78,6 @@
         "sensitive": false
       }
     }
-  }
+  },
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
 }

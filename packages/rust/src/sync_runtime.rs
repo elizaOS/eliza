@@ -58,11 +58,13 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-// Conditional imports based on sync feature
-#[cfg(not(feature = "sync"))]
+// Conditional imports based on sync feature and native availability
+// Use tokio::sync::RwLock only when not sync AND native feature is enabled
+#[cfg(all(not(feature = "sync"), feature = "native"))]
 use tokio::sync::RwLock;
 
-#[cfg(feature = "sync")]
+// Use std::sync::RwLock when sync feature is enabled OR native is not available
+#[cfg(any(feature = "sync", not(feature = "native")))]
 use std::sync::RwLock;
 
 // ============================================================================
@@ -257,7 +259,10 @@ pub trait UnifiedDatabaseAdapter: Send + Sync {
     }
 
     /// Get relationships for an entity
-    async fn get_relationships(&self, entity_id: &UUID) -> Result<Vec<crate::types::environment::Relationship>> {
+    async fn get_relationships(
+        &self,
+        entity_id: &UUID,
+    ) -> Result<Vec<crate::types::environment::Relationship>> {
         let _ = entity_id;
         Ok(Vec::new())
     }
@@ -346,11 +351,11 @@ pub trait UnifiedService: Send + Sync {
 // ============================================================================
 
 /// Model handler type for sync builds
-#[cfg(feature = "sync")]
+#[cfg(any(feature = "sync", not(feature = "native")))]
 pub type UnifiedModelHandler = Box<dyn Fn(serde_json::Value) -> Result<String> + Send + Sync>;
 
 /// Model handler type for async builds
-#[cfg(not(feature = "sync"))]
+#[cfg(all(not(feature = "sync"), feature = "native"))]
 pub type UnifiedModelHandler = Box<
     dyn Fn(
             serde_json::Value,
@@ -483,12 +488,12 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
         }
 
         // Mark as initialized
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         {
             let mut init = self.initialized.write().await;
             *init = true;
         }
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         {
             let mut init = self.initialized.write().expect("lock poisoned");
             *init = true;
@@ -499,7 +504,7 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
 
     /// Check if initialized
     pub fn is_initialized(&self) -> bool {
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         {
             // For async, we need to use try_read or block
             self.initialized
@@ -507,7 +512,7 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
                 .map(|guard| *guard)
                 .unwrap_or(false)
         }
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         {
             *self.initialized.read().expect("lock poisoned")
         }
@@ -520,13 +525,13 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
 
     /// Register a model handler
     pub fn register_model(&self, model_type: &str, handler: UnifiedModelHandler) {
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         {
             if let Ok(mut handlers) = self.model_handlers.try_write() {
                 handlers.insert(model_type.to_string(), handler);
             }
         }
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         {
             let mut handlers = self.model_handlers.write().expect("lock poisoned");
             handlers.insert(model_type.to_string(), handler);
@@ -536,7 +541,7 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
     /// Use a model to generate text
     #[maybe_async::maybe_async]
     pub async fn use_model(&self, model_type: &str, params: serde_json::Value) -> Result<String> {
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         {
             let handlers = self.model_handlers.read().await;
             let handler = handlers
@@ -544,7 +549,7 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
                 .ok_or_else(|| anyhow::anyhow!("No handler for model: {}", model_type))?;
             handler(params).await
         }
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         {
             let handlers = self.model_handlers.read().expect("lock poisoned");
             let handler = handlers
@@ -557,9 +562,9 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
     /// Get a setting value
     #[maybe_async::maybe_async]
     pub async fn get_setting(&self, key: &str) -> Option<SettingValue> {
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         let character = self.character.read().await;
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         let character = self.character.read().expect("lock poisoned");
 
         // Check secrets first
@@ -577,9 +582,9 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
         }
 
         // Check runtime settings
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         let settings = self.settings.read().await;
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         let settings = self.settings.read().expect("lock poisoned");
 
         settings.values.get(key).cloned()
@@ -589,28 +594,32 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
     #[maybe_async::maybe_async]
     pub async fn set_setting(&self, key: &str, value: SettingValue, secret: bool) {
         if secret {
-            #[cfg(not(feature = "sync"))]
+            #[cfg(all(not(feature = "sync"), feature = "native"))]
             let mut character = self.character.write().await;
-            #[cfg(feature = "sync")]
+            #[cfg(any(feature = "sync", not(feature = "native")))]
             let mut character = self.character.write().expect("lock poisoned");
 
             if character.secrets.is_none() {
                 character.secrets = Some(CharacterSecrets::default());
             }
             if let Some(secrets) = &mut character.secrets {
-                secrets.values.insert(key.to_string(), setting_to_json(&value));
+                secrets
+                    .values
+                    .insert(key.to_string(), setting_to_json(&value));
             }
         } else {
-            #[cfg(not(feature = "sync"))]
+            #[cfg(all(not(feature = "sync"), feature = "native"))]
             let mut character = self.character.write().await;
-            #[cfg(feature = "sync")]
+            #[cfg(any(feature = "sync", not(feature = "native")))]
             let mut character = self.character.write().expect("lock poisoned");
 
             if character.settings.is_none() {
                 character.settings = Some(CharacterSettings::default());
             }
             if let Some(settings) = &mut character.settings {
-                settings.values.insert(key.to_string(), setting_to_json(&value));
+                settings
+                    .values
+                    .insert(key.to_string(), setting_to_json(&value));
             }
         }
     }
@@ -621,10 +630,16 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
         let mut state = State::new();
 
         // Get providers
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         let providers: Vec<_> = self.providers.read().await.iter().cloned().collect();
-        #[cfg(feature = "sync")]
-        let providers: Vec<_> = self.providers.read().expect("lock poisoned").iter().cloned().collect();
+        #[cfg(any(feature = "sync", not(feature = "native")))]
+        let providers: Vec<_> = self
+            .providers
+            .read()
+            .expect("lock poisoned")
+            .iter()
+            .cloned()
+            .collect();
 
         // Run each provider
         for provider in providers.iter() {
@@ -651,7 +666,9 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
             if !state.text.is_empty() {
                 state.text.push_str("\n\n");
             }
-            state.text.push_str(&format!("# Current Message\nUser: {}", text));
+            state
+                .text
+                .push_str(&format!("# Current Message\nUser: {}", text));
         }
 
         Ok(state)
@@ -659,13 +676,13 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
 
     /// Register an action handler
     pub fn register_action(&self, action: Arc<dyn UnifiedActionHandler>) {
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         {
             if let Ok(mut actions) = self.actions.try_write() {
                 actions.push(action);
             }
         }
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         {
             self.actions.write().expect("lock poisoned").push(action);
         }
@@ -673,74 +690,95 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
 
     /// Register a provider handler
     pub fn register_provider(&self, provider: Arc<dyn UnifiedProviderHandler>) {
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         {
             if let Ok(mut providers) = self.providers.try_write() {
                 providers.push(provider);
             }
         }
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         {
-            self.providers.write().expect("lock poisoned").push(provider);
+            self.providers
+                .write()
+                .expect("lock poisoned")
+                .push(provider);
         }
     }
 
     /// Register an evaluator handler
     pub fn register_evaluator(&self, evaluator: Arc<dyn UnifiedEvaluatorHandler>) {
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         {
             if let Ok(mut evaluators) = self.evaluators.try_write() {
                 evaluators.push(evaluator);
             }
         }
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         {
-            self.evaluators.write().expect("lock poisoned").push(evaluator);
+            self.evaluators
+                .write()
+                .expect("lock poisoned")
+                .push(evaluator);
         }
     }
 
     /// List action definitions
     pub fn list_action_definitions(&self) -> Vec<ActionDefinition> {
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         {
-            self.actions.try_read()
+            self.actions
+                .try_read()
                 .map(|actions| actions.iter().map(|a| a.definition()).collect())
                 .unwrap_or_default()
         }
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         {
-            self.actions.read().expect("lock poisoned")
-                .iter().map(|a| a.definition()).collect()
+            self.actions
+                .read()
+                .expect("lock poisoned")
+                .iter()
+                .map(|a| a.definition())
+                .collect()
         }
     }
 
     /// List provider definitions
     pub fn list_provider_definitions(&self) -> Vec<ProviderDefinition> {
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         {
-            self.providers.try_read()
+            self.providers
+                .try_read()
                 .map(|providers| providers.iter().map(|p| p.definition()).collect())
                 .unwrap_or_default()
         }
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         {
-            self.providers.read().expect("lock poisoned")
-                .iter().map(|p| p.definition()).collect()
+            self.providers
+                .read()
+                .expect("lock poisoned")
+                .iter()
+                .map(|p| p.definition())
+                .collect()
         }
     }
 
     /// List evaluator definitions
     pub fn list_evaluator_definitions(&self) -> Vec<EvaluatorDefinition> {
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         {
-            self.evaluators.try_read()
+            self.evaluators
+                .try_read()
                 .map(|evaluators| evaluators.iter().map(|e| e.definition()).collect())
                 .unwrap_or_default()
         }
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         {
-            self.evaluators.read().expect("lock poisoned")
-                .iter().map(|e| e.definition()).collect()
+            self.evaluators
+                .read()
+                .expect("lock poisoned")
+                .iter()
+                .map(|e| e.definition())
+                .collect()
         }
     }
 
@@ -754,10 +792,17 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
     ) -> Result<Vec<ActionResult>> {
         let mut results = Vec::new();
 
-        #[cfg(not(feature = "sync"))]
-        let actions: Vec<Arc<dyn UnifiedActionHandler>> = self.actions.read().await.iter().cloned().collect();
-        #[cfg(feature = "sync")]
-        let actions: Vec<Arc<dyn UnifiedActionHandler>> = self.actions.read().expect("lock poisoned").iter().cloned().collect();
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
+        let actions: Vec<Arc<dyn UnifiedActionHandler>> =
+            self.actions.read().await.iter().cloned().collect();
+        #[cfg(any(feature = "sync", not(feature = "native")))]
+        let actions: Vec<Arc<dyn UnifiedActionHandler>> = self
+            .actions
+            .read()
+            .expect("lock poisoned")
+            .iter()
+            .cloned()
+            .collect();
 
         // Limit to single action if action planning disabled
         let actions_to_run: Vec<_> = if self.action_planning {
@@ -786,13 +831,24 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
 
     /// Run evaluators
     #[maybe_async::maybe_async]
-    pub async fn evaluate_message(&self, message: &Memory, state: &State) -> Result<Vec<ActionResult>> {
+    pub async fn evaluate_message(
+        &self,
+        message: &Memory,
+        state: &State,
+    ) -> Result<Vec<ActionResult>> {
         let mut results = Vec::new();
 
-        #[cfg(not(feature = "sync"))]
-        let evaluators: Vec<Arc<dyn UnifiedEvaluatorHandler>> = self.evaluators.read().await.iter().cloned().collect();
-        #[cfg(feature = "sync")]
-        let evaluators: Vec<Arc<dyn UnifiedEvaluatorHandler>> = self.evaluators.read().expect("lock poisoned").iter().cloned().collect();
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
+        let evaluators: Vec<Arc<dyn UnifiedEvaluatorHandler>> =
+            self.evaluators.read().await.iter().cloned().collect();
+        #[cfg(any(feature = "sync", not(feature = "native")))]
+        let evaluators: Vec<Arc<dyn UnifiedEvaluatorHandler>> = self
+            .evaluators
+            .read()
+            .expect("lock poisoned")
+            .iter()
+            .cloned()
+            .collect();
 
         for evaluator in evaluators.iter() {
             let should_run = evaluator.validate(message, Some(state)).await;
@@ -815,15 +871,15 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
     pub async fn register_event(&self, event_type: EventType, handler: EventHandler) {
         let event_name = format!("{:?}", event_type);
 
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         {
             let mut events = self.events.write().await;
-            events.entry(event_name).or_insert_with(Vec::new).push(handler);
+            events.entry(event_name).or_default().push(handler);
         }
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         {
             let mut events = self.events.write().expect("lock poisoned");
-            events.entry(event_name).or_insert_with(Vec::new).push(handler);
+            events.entry(event_name).or_default().push(handler);
         }
     }
 
@@ -832,9 +888,9 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
     pub async fn emit_event(&self, event_type: EventType, payload: EventPayload) -> Result<()> {
         let event_name = format!("{:?}", event_type);
 
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         let events = self.events.read().await;
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         let events = self.events.read().expect("lock poisoned");
 
         if let Some(handlers) = events.get(&event_name) {
@@ -885,7 +941,7 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
     /// Get a message service
     pub fn message_service(&self) -> UnifiedMessageService {
         UnifiedMessageService {
-            check_should_respond: self.check_should_respond,
+            _check_should_respond: self.check_should_respond,
         }
     }
 
@@ -900,14 +956,14 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
 
     /// Get character name
     pub fn character_name(&self) -> String {
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         {
             self.character
                 .try_read()
                 .map(|c| c.name.clone())
                 .unwrap_or_else(|_| "Agent".to_string())
         }
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         {
             self.character.read().expect("lock poisoned").name.clone()
         }
@@ -915,14 +971,14 @@ impl<A: UnifiedDatabaseAdapter + 'static> UnifiedRuntime<A> {
 
     /// Get character system prompt
     pub fn character_system(&self) -> Option<String> {
-        #[cfg(not(feature = "sync"))]
+        #[cfg(all(not(feature = "sync"), feature = "native"))]
         {
             self.character
                 .try_read()
                 .ok()
                 .and_then(|c| c.system.clone())
         }
-        #[cfg(feature = "sync")]
+        #[cfg(any(feature = "sync", not(feature = "native")))]
         {
             self.character.read().expect("lock poisoned").system.clone()
         }
@@ -968,7 +1024,8 @@ impl Default for UnifiedMessageProcessingResult {
 
 /// Unified message service
 pub struct UnifiedMessageService {
-    check_should_respond: bool,
+    /// Whether to check shouldRespond before processing (reserved for future use)
+    _check_should_respond: bool,
 }
 
 impl UnifiedMessageService {
@@ -1005,19 +1062,20 @@ impl UnifiedMessageService {
         let _user_text = message.content.text.as_deref().unwrap_or("");
         let prompt = format!(
             "You are {}.\n\n{}\n\n# Task\nRespond to the user's message naturally and helpfully.",
-            character_name,
-            state.text
+            character_name, state.text
         );
 
         // Generate response
-        let response_text = runtime.use_model(
-            "TEXT_LARGE",
-            serde_json::json!({
-                "prompt": prompt,
-                "system": system_prompt,
-                "temperature": 0.7
-            }),
-        ).await?;
+        let response_text = runtime
+            .use_model(
+                "TEXT_LARGE",
+                serde_json::json!({
+                    "prompt": prompt,
+                    "system": system_prompt,
+                    "temperature": 0.7
+                }),
+            )
+            .await?;
 
         // Create response content
         let response_content = Content {
@@ -1234,7 +1292,7 @@ mod tests {
     }
 
     // ========== SYNC TESTS ==========
-    #[cfg(feature = "sync")]
+    #[cfg(any(feature = "sync", not(feature = "native")))]
     mod sync_tests {
         use super::*;
 
@@ -1250,7 +1308,8 @@ mod tests {
                 character: Some(character),
                 adapter: Some(Arc::new(MockAdapter::new())),
                 ..Default::default()
-            }).expect("Failed to create runtime");
+            })
+            .expect("Failed to create runtime");
 
             assert_eq!(runtime.character_name(), "TestAgent");
         }
@@ -1260,7 +1319,8 @@ mod tests {
             let runtime = UnifiedRuntime::new(UnifiedRuntimeOptions {
                 adapter: Some(Arc::new(MockAdapter::new())),
                 ..Default::default()
-            }).expect("Failed to create runtime");
+            })
+            .expect("Failed to create runtime");
 
             assert!(!runtime.is_initialized());
             runtime.initialize().expect("Failed to initialize");
@@ -1272,11 +1332,13 @@ mod tests {
             let runtime = UnifiedRuntime::<MockAdapter>::new(UnifiedRuntimeOptions::default())
                 .expect("Failed to create runtime");
 
-            runtime.register_model("TEXT_LARGE", Box::new(|_params| {
-                Ok("Sync response".to_string())
-            }));
+            runtime.register_model(
+                "TEXT_LARGE",
+                Box::new(|_params| Ok("Sync response".to_string())),
+            );
 
-            let result = runtime.use_model("TEXT_LARGE", serde_json::json!({}))
+            let result = runtime
+                .use_model("TEXT_LARGE", serde_json::json!({}))
                 .expect("Failed to use model");
 
             assert_eq!(result, "Sync response");
@@ -1287,7 +1349,11 @@ mod tests {
             let runtime = UnifiedRuntime::<MockAdapter>::new(UnifiedRuntimeOptions::default())
                 .expect("Failed to create runtime");
 
-            runtime.set_setting("TEST_KEY", SettingValue::String("test_value".to_string()), false);
+            runtime.set_setting(
+                "TEST_KEY",
+                SettingValue::String("test_value".to_string()),
+                false,
+            );
             let value = runtime.get_setting("TEST_KEY");
 
             assert_eq!(value, Some(SettingValue::String("test_value".to_string())));
@@ -1318,18 +1384,21 @@ mod tests {
             let runtime = UnifiedRuntime::new(UnifiedRuntimeOptions {
                 adapter: Some(Arc::new(MockAdapter::new())),
                 ..Default::default()
-            }).expect("Failed to create runtime");
+            })
+            .expect("Failed to create runtime");
 
-            runtime.register_model("TEXT_LARGE", Box::new(|_| {
-                Ok("Hello from sync!".to_string())
-            }));
+            runtime.register_model(
+                "TEXT_LARGE",
+                Box::new(|_| Ok("Hello from sync!".to_string())),
+            );
 
             runtime.initialize().expect("Failed to initialize");
 
             let service = runtime.message_service();
             let mut message = Memory::message(UUID::new_v4(), UUID::new_v4(), "Test message");
 
-            let result = service.handle_message(&runtime, &mut message, None)
+            let result = service
+                .handle_message(&runtime, &mut message, None)
                 .expect("Failed to handle message");
 
             assert!(result.did_respond);
@@ -1346,7 +1415,9 @@ mod tests {
                 .expect("Failed to create runtime");
 
             let message = Memory::message(UUID::new_v4(), UUID::new_v4(), "Hello world");
-            let state = runtime.compose_state(&message).expect("Failed to compose state");
+            let state = runtime
+                .compose_state(&message)
+                .expect("Failed to compose state");
 
             assert!(state.text.contains("Hello world"));
         }
@@ -1364,7 +1435,7 @@ mod tests {
     }
 
     // ========== ASYNC TESTS ==========
-    #[cfg(not(feature = "sync"))]
+    #[cfg(all(not(feature = "sync"), feature = "native"))]
     mod async_tests {
         use super::*;
 
@@ -1380,7 +1451,8 @@ mod tests {
                 character: Some(character),
                 adapter: Some(Arc::new(MockAdapter::new())),
                 ..Default::default()
-            }).expect("Failed to create runtime");
+            })
+            .expect("Failed to create runtime");
 
             assert_eq!(runtime.character_name(), "AsyncAgent");
         }
@@ -1390,7 +1462,8 @@ mod tests {
             let runtime = UnifiedRuntime::new(UnifiedRuntimeOptions {
                 adapter: Some(Arc::new(MockAdapter::new())),
                 ..Default::default()
-            }).expect("Failed to create runtime");
+            })
+            .expect("Failed to create runtime");
 
             runtime.initialize().await.expect("Failed to initialize");
             assert!(runtime.is_initialized());
@@ -1401,11 +1474,13 @@ mod tests {
             let runtime = UnifiedRuntime::<MockAdapter>::new(UnifiedRuntimeOptions::default())
                 .expect("Failed to create runtime");
 
-            runtime.register_model("TEXT_LARGE", Box::new(|_params| {
-                Box::pin(async { Ok("Async response".to_string()) })
-            }));
+            runtime.register_model(
+                "TEXT_LARGE",
+                Box::new(|_params| Box::pin(async { Ok("Async response".to_string()) })),
+            );
 
-            let result = runtime.use_model("TEXT_LARGE", serde_json::json!({}))
+            let result = runtime
+                .use_model("TEXT_LARGE", serde_json::json!({}))
                 .await
                 .expect("Failed to use model");
 
@@ -1417,11 +1492,13 @@ mod tests {
             let runtime = UnifiedRuntime::<MockAdapter>::new(UnifiedRuntimeOptions::default())
                 .expect("Failed to create runtime");
 
-            runtime.set_setting(
-                "ASYNC_KEY",
-                SettingValue::String("async_value".to_string()),
-                false,
-            ).await;
+            runtime
+                .set_setting(
+                    "ASYNC_KEY",
+                    SettingValue::String("async_value".to_string()),
+                    false,
+                )
+                .await;
 
             let value = runtime.get_setting("ASYNC_KEY").await;
             assert_eq!(value, Some(SettingValue::String("async_value".to_string())));
@@ -1432,18 +1509,21 @@ mod tests {
             let runtime = UnifiedRuntime::new(UnifiedRuntimeOptions {
                 adapter: Some(Arc::new(MockAdapter::new())),
                 ..Default::default()
-            }).expect("Failed to create runtime");
+            })
+            .expect("Failed to create runtime");
 
-            runtime.register_model("TEXT_LARGE", Box::new(|_| {
-                Box::pin(async { Ok("Hello from async!".to_string()) })
-            }));
+            runtime.register_model(
+                "TEXT_LARGE",
+                Box::new(|_| Box::pin(async { Ok("Hello from async!".to_string()) })),
+            );
 
             runtime.initialize().await.expect("Failed to initialize");
 
             let service = runtime.message_service();
             let mut message = Memory::message(UUID::new_v4(), UUID::new_v4(), "Async test");
 
-            let result = service.handle_message(&runtime, &mut message, None)
+            let result = service
+                .handle_message(&runtime, &mut message, None)
                 .await
                 .expect("Failed to handle message");
 
@@ -1461,7 +1541,10 @@ mod tests {
                 .expect("Failed to create runtime");
 
             let message = Memory::message(UUID::new_v4(), UUID::new_v4(), "Async hello");
-            let state = runtime.compose_state(&message).await.expect("Failed to compose state");
+            let state = runtime
+                .compose_state(&message)
+                .await
+                .expect("Failed to compose state");
 
             assert!(state.text.contains("Async hello"));
         }

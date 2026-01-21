@@ -8,11 +8,15 @@
  * authentication.
  */
 
-import { agentRegistry } from '@polyagent/agents';
-import { authenticate, isAuthenticationError, isUserAdmin } from '@polyagent/api';
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { agentRegistry } from "@polyagent/agents";
+import {
+  authenticate,
+  isAuthenticationError,
+  isUserAdmin,
+} from "@polyagent/api";
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 interface RouteParams {
   params: Promise<{ externalId: string }>;
@@ -27,8 +31,8 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
 
     if (!externalId) {
       return NextResponse.json(
-        { error: 'Missing externalId parameter' },
-        { status: 400 }
+        { error: "Missing externalId parameter" },
+        { status: 400 },
       );
     }
 
@@ -38,8 +42,8 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
 
     if (!connection) {
       return NextResponse.json(
-        { error: 'External agent not found' },
-        { status: 404 }
+        { error: "External agent not found" },
+        { status: 404 },
       );
     }
 
@@ -60,11 +64,11 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
           externalId,
           registeredByUserId: connection.registeredByUserId,
         },
-        'ExternalAgentRevoke'
+        "ExternalAgentRevoke",
       );
       return NextResponse.json(
-        { error: 'Only the owner or an admin can revoke this agent' },
-        { status: 403 }
+        { error: "Only the owner or an admin can revoke this agent" },
+        { status: 403 },
       );
     }
 
@@ -79,42 +83,42 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
         isAdmin,
         isOwner,
       },
-      'ExternalAgentRevoke'
+      "ExternalAgentRevoke",
     );
 
     return NextResponse.json(
       {
         success: true,
-        message: 'External agent API key revoked successfully',
+        message: "External agent API key revoked successfully",
         externalId,
         revokedBy: authUser.userId,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     if (isAuthenticationError(error)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const message = error instanceof Error ? error.message : String(error);
 
     logger.error(
-      'Failed to revoke external agent',
+      "Failed to revoke external agent",
       { error: message },
-      'ExternalAgentRevoke'
+      "ExternalAgentRevoke",
     );
 
-    if (message.includes('already revoked')) {
+    if (message.includes("already revoked")) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    if (message.includes('not found')) {
+    if (message.includes("not found")) {
       return NextResponse.json({ error: message }, { status: 404 });
     }
 
     return NextResponse.json(
-      { error: 'Failed to revoke external agent' },
-      { status: 500 }
+      { error: "Failed to revoke external agent" },
+      { status: 500 },
     );
   }
 }

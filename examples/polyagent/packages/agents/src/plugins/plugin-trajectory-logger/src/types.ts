@@ -1,5 +1,5 @@
-import type { JsonValue } from '@polyagent/shared';
-import { type UUID } from '@elizaos/core';
+import type { UUID } from "@elizaos/core";
+import type { JsonValue } from "@polyagent/shared";
 
 /**
  * Enhanced Trajectory Types for RULER/OpenPipe ART Training
@@ -32,7 +32,7 @@ export interface LLMCall {
   latencyMs?: number;
 
   // Context
-  purpose: 'action' | 'reasoning' | 'evaluation' | 'response' | 'other';
+  purpose: "action" | "reasoning" | "evaluation" | "response" | "other";
   actionType?: string; // e.g., 'post', 'trade', 'comment'
 }
 
@@ -166,7 +166,7 @@ export interface Trajectory {
   // Outcome metrics
   metrics: {
     episodeLength: number;
-    finalStatus: 'completed' | 'terminated' | 'error' | 'timeout';
+    finalStatus: "completed" | "terminated" | "error" | "timeout";
 
     // Performance metrics
     finalBalance?: number;
@@ -211,7 +211,7 @@ export interface Trajectory {
  * This is what ART/GRPO actually trains on
  */
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: "system" | "user" | "assistant";
   content: string;
   name?: string;
 }

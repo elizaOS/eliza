@@ -6,10 +6,10 @@
  * @packageDocumentation
  */
 
-export * from './AgentPnLService';
-export * from './AgentService';
-export * from './agent-lock-service';
-export * from './agent-registry.service';
+export * from "./AgentPnLService";
+export * from "./AgentService";
+export * from "./agent-lock-service";
+export * from "./agent-registry.service";
 export {
   getService,
   getServiceContainer,
@@ -22,4 +22,4 @@ export {
   type ITrajectoryRecorder,
   type IWalletService,
   setServiceContainer,
-} from './interfaces';
+} from "./interfaces";

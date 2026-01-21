@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import TYPE_CHECKING
+
 from elizaos.types import ActionExample, Content
+
+if TYPE_CHECKING:
+    from elizaos.generated.action_docs import ActionDoc
 
 
 def _coerce_text(value: object) -> str:
@@ -13,7 +19,7 @@ def _coerce_actions(value: object) -> list[str] | None:
     return None
 
 
-def convert_spec_examples(spec: dict[str, object]) -> list[list[ActionExample]]:
+def convert_spec_examples(spec: ActionDoc | Mapping[str, object]) -> list[list[ActionExample]]:
     examples = spec.get("examples")
     if not isinstance(examples, list):
         return []

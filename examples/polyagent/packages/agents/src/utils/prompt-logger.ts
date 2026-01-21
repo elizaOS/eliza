@@ -7,9 +7,9 @@
  * @packageDocumentation
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { logger } from '../shared/logger';
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { logger } from "../shared/logger";
 
 export interface PromptLogEntry {
   promptType: string;
@@ -33,10 +33,10 @@ export interface PromptLogEntry {
  */
 export function isPromptLoggingEnabled(): boolean {
   return (
-    process.env.DEBUG_SAVE_PROMPTS === 'true' ||
-    process.env.DEBUG_SAVE_PROMPTS === '1' ||
-    process.env.DEBUG_PROMPTS === 'true' ||
-    process.env.DEBUG_PROMPTS === '1'
+    process.env.DEBUG_SAVE_PROMPTS === "true" ||
+    process.env.DEBUG_SAVE_PROMPTS === "1" ||
+    process.env.DEBUG_PROMPTS === "true" ||
+    process.env.DEBUG_PROMPTS === "1"
   );
 }
 
@@ -51,10 +51,10 @@ export async function logPrompt(entry: PromptLogEntry): Promise<void> {
   }
 
   try {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const safePromptType = entry.promptType.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const safePromptType = entry.promptType.replace(/[^a-zA-Z0-9-_]/g, "_");
     const filename = `${timestamp}_${safePromptType}.md`;
-    const debugDir = path.join(process.cwd(), 'debug', 'prompts');
+    const debugDir = path.join(process.cwd(), "debug", "prompts");
     const filepath = path.join(debugDir, filename);
 
     // Create debug directory if it doesn't exist
@@ -89,32 +89,32 @@ export async function logPrompt(entry: PromptLogEntry): Promise<void> {
     // Add prompt template if available
     if (entry.promptTemplate) {
       lines.push(`## Prompt Template`, ``);
-      lines.push('```');
+      lines.push("```");
       lines.push(entry.promptTemplate);
-      lines.push('```');
+      lines.push("```");
       lines.push(``);
     }
 
     // Add rendered input
     lines.push(`# Input`, ``);
-    lines.push('```');
+    lines.push("```");
     lines.push(entry.input);
-    lines.push('```');
+    lines.push("```");
     lines.push(``);
 
     // Add raw output
     lines.push(`# Output`, ``);
-    lines.push('```');
+    lines.push("```");
     lines.push(entry.output);
-    lines.push('```');
+    lines.push("```");
     lines.push(``);
 
     // Add parsed output if available
     if (entry.parsedOutput) {
       lines.push(`## Parsed Output`, ``);
-      lines.push('```json');
+      lines.push("```json");
       lines.push(entry.parsedOutput);
-      lines.push('```');
+      lines.push("```");
       lines.push(``);
     }
 
@@ -123,7 +123,7 @@ export async function logPrompt(entry: PromptLogEntry): Promise<void> {
     lines.push(``);
 
     // Write to file
-    fs.writeFileSync(filepath, lines.join('\n'), 'utf-8');
+    fs.writeFileSync(filepath, lines.join("\n"), "utf-8");
 
     logger.debug(
       `Logged prompt to ${filename}`,
@@ -131,16 +131,16 @@ export async function logPrompt(entry: PromptLogEntry): Promise<void> {
         promptType: entry.promptType,
         filepath,
       },
-      'PromptLogger'
+      "PromptLogger",
     );
   } catch (error) {
     logger.error(
-      'Failed to log prompt debug file',
+      "Failed to log prompt debug file",
       {
         error: error instanceof Error ? error.message : String(error),
         promptType: entry.promptType,
       },
-      'PromptLogger'
+      "PromptLogger",
     );
   }
 }
@@ -154,7 +154,7 @@ export async function cleanOldDebugLogs(maxAgeDays = 7): Promise<number> {
   }
 
   try {
-    const debugDir = path.join(process.cwd(), 'debug', 'prompts');
+    const debugDir = path.join(process.cwd(), "debug", "prompts");
 
     if (!fs.existsSync(debugDir)) {
       return 0;
@@ -166,7 +166,7 @@ export async function cleanOldDebugLogs(maxAgeDays = 7): Promise<number> {
 
     let deleted = 0;
     for (const file of files) {
-      if (!file.endsWith('.md')) continue;
+      if (!file.endsWith(".md")) continue;
 
       const filepath = path.join(debugDir, file);
       const stats = fs.statSync(filepath);
@@ -182,13 +182,13 @@ export async function cleanOldDebugLogs(maxAgeDays = 7): Promise<number> {
       logger.info(
         `Cleaned up ${deleted} old debug logs`,
         { maxAgeDays },
-        'PromptLogger'
+        "PromptLogger",
       );
     }
 
     return deleted;
   } catch (error) {
-    logger.error('Failed to clean debug logs', { error }, 'PromptLogger');
+    logger.error("Failed to clean debug logs", { error }, "PromptLogger");
     return 0;
   }
 }

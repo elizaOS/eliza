@@ -9,10 +9,20 @@ EXTRACT_GOAL_UPDATE_TEMPLATE: str
 try:
     from elizaos_plugin_goals._generated_prompts import (  # type: ignore[import-not-found]
         CHECK_SIMILARITY_TEMPLATE as _CHECK_SIMILARITY_TEMPLATE,
+    )
+    from elizaos_plugin_goals._generated_prompts import (
         EXTRACT_CANCELLATION_TEMPLATE as _EXTRACT_CANCELLATION_TEMPLATE,
+    )
+    from elizaos_plugin_goals._generated_prompts import (
         EXTRACT_CONFIRMATION_TEMPLATE as _EXTRACT_CONFIRMATION_TEMPLATE,
+    )
+    from elizaos_plugin_goals._generated_prompts import (
         EXTRACT_GOAL_SELECTION_TEMPLATE as _EXTRACT_GOAL_SELECTION_TEMPLATE,
+    )
+    from elizaos_plugin_goals._generated_prompts import (
         EXTRACT_GOAL_TEMPLATE as _EXTRACT_GOAL_TEMPLATE,
+    )
+    from elizaos_plugin_goals._generated_prompts import (
         EXTRACT_GOAL_UPDATE_TEMPLATE as _EXTRACT_GOAL_UPDATE_TEMPLATE,
     )
 
@@ -22,12 +32,12 @@ try:
     EXTRACT_CONFIRMATION_TEMPLATE = _EXTRACT_CONFIRMATION_TEMPLATE
     EXTRACT_GOAL_SELECTION_TEMPLATE = _EXTRACT_GOAL_SELECTION_TEMPLATE
     EXTRACT_GOAL_UPDATE_TEMPLATE = _EXTRACT_GOAL_UPDATE_TEMPLATE
-except ImportError:
+except ImportError as err:
     # Generated prompts not available - this should not happen in production
     # Prompts should be generated via build:prompts script
     raise ImportError(
         "Generated prompts not found. Run 'npm run build:prompts' to generate prompts."
-    )
+    ) from err
 
 
 def build_check_similarity_prompt(

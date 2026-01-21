@@ -1,6 +1,6 @@
-import { cn } from '@polyagent/shared';
-import type { ReactNode } from 'react';
-import { forwardRef } from 'react';
+import { cn } from "@polyagent/shared";
+import type { ReactNode } from "react";
+import { forwardRef } from "react";
 
 /**
  * Page container component for consistent page layout.
@@ -31,19 +31,19 @@ export const PageContainer = forwardRef<HTMLDivElement, PageContainerProps>(
         ref={ref}
         className={cn(
           // Sharp corners, simple boxy layout
-          'overflow-hidden bg-background',
-          'h-full min-h-full w-full',
+          "overflow-hidden bg-background",
+          "h-full min-h-full w-full",
           // Desktop: Simple container - use full height
-          'md:h-full',
+          "md:h-full",
           // Consistent padding: 16px mobile, 24px desktop
-          !noPadding && 'px-4 md:px-6',
-          className
+          !noPadding && "px-4 md:px-6",
+          className,
         )}
       >
         {children}
       </div>
     );
-  }
+  },
 );
 
-PageContainer.displayName = 'PageContainer';
+PageContainer.displayName = "PageContainer";

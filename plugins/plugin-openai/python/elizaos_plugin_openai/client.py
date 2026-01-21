@@ -383,22 +383,32 @@ class OpenAIClient:
                 if tool_type == "web_search_preview":
                     api_tools.append({"type": "web_search_preview"})
                 elif tool_type == "file_search":
-                    api_tools.append({
-                        "type": "file_search",
-                        "vector_store_ids": tool.get("vectorStoreIds", tool.get("vector_store_ids", [])),
-                    })
+                    api_tools.append(
+                        {
+                            "type": "file_search",
+                            "vector_store_ids": tool.get(
+                                "vectorStoreIds", tool.get("vector_store_ids", [])
+                            ),
+                        }
+                    )
                 elif tool_type == "code_interpreter":
-                    api_tools.append({
-                        "type": "code_interpreter",
-                        "container": tool.get("container", {"type": "auto"}),
-                    })
+                    api_tools.append(
+                        {
+                            "type": "code_interpreter",
+                            "container": tool.get("container", {"type": "auto"}),
+                        }
+                    )
                 elif tool_type == "mcp":
-                    api_tools.append({
-                        "type": "mcp",
-                        "server_label": tool.get("serverLabel", tool.get("server_label", "")),
-                        "server_url": tool.get("serverUrl", tool.get("server_url", "")),
-                        "require_approval": tool.get("requireApproval", tool.get("require_approval", "never")),
-                    })
+                    api_tools.append(
+                        {
+                            "type": "mcp",
+                            "server_label": tool.get("serverLabel", tool.get("server_label", "")),
+                            "server_url": tool.get("serverUrl", tool.get("server_url", "")),
+                            "require_approval": tool.get(
+                                "requireApproval", tool.get("require_approval", "never")
+                            ),
+                        }
+                    )
             request_body["tools"] = api_tools
         else:
             # Default to web search if no tools specified
@@ -425,7 +435,9 @@ class OpenAIClient:
         data = response.json()
 
         if "error" in data:
-            raise OpenAIClientError(f"Research error: {data['error'].get('message', 'Unknown error')}")
+            raise OpenAIClientError(
+                f"Research error: {data['error'].get('message', 'Unknown error')}"
+            )
 
         # Extract text and annotations from response
         text = data.get("output_text", "")
@@ -442,12 +454,14 @@ class OpenAIClient:
                     if not text:
                         text = content.get("text", "")
                     for ann in content.get("annotations", []):
-                        annotations.append(ResearchAnnotation(
-                            url=ann.get("url", ""),
-                            title=ann.get("title", ""),
-                            start_index=ann.get("start_index", 0),
-                            end_index=ann.get("end_index", 0),
-                        ))
+                        annotations.append(
+                            ResearchAnnotation(
+                                url=ann.get("url", ""),
+                                title=ann.get("title", ""),
+                                start_index=ann.get("start_index", 0),
+                                end_index=ann.get("end_index", 0),
+                            )
+                        )
 
             # Add all items to output_items for transparency
             output_items.append(item)

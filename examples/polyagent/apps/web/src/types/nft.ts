@@ -91,10 +91,10 @@ export interface NftClaimInfo {
  * User's NFT mint eligibility status
  */
 export type EligibilityStatus =
-  | 'not_authenticated'
-  | 'not_eligible'
-  | 'eligible'
-  | 'already_minted';
+  | "not_authenticated"
+  | "not_eligible"
+  | "eligible"
+  | "already_minted";
 
 /**
  * Eligibility check response
@@ -159,8 +159,8 @@ export interface MintConfirmResponse {
 /**
  * Gallery sort options
  */
-export type NftSortField = 'tokenId' | 'name' | 'claimedAt';
-export type NftSortOrder = 'asc' | 'desc';
+export type NftSortField = "tokenId" | "name" | "claimedAt";
+export type NftSortOrder = "asc" | "desc";
 
 /**
  * Gallery filter options
@@ -227,16 +227,16 @@ export interface NftDetailResponse {
  * Mint flow state machine
  */
 export type MintFlowState =
-  | 'idle'
-  | 'checking_eligibility'
-  | 'eligible'
-  | 'preparing'
-  | 'awaiting_signature'
-  | 'minting'
-  | 'confirming'
-  | 'revealing'
-  | 'complete'
-  | 'error';
+  | "idle"
+  | "checking_eligibility"
+  | "eligible"
+  | "preparing"
+  | "awaiting_signature"
+  | "minting"
+  | "confirming"
+  | "revealing"
+  | "complete"
+  | "error";
 
 /**
  * Mint flow context
@@ -245,7 +245,7 @@ export interface MintFlowContext {
   state: MintFlowState;
   eligibility: EligibilityResponse | null;
   txHash: string | null;
-  mintedNft: MintConfirmResponse['nft'] | null;
+  mintedNft: MintConfirmResponse["nft"] | null;
   error: string | null;
 }
 
@@ -283,6 +283,6 @@ export interface MintBannerProps {
  */
 export interface RevealModalProps {
   isOpen: boolean;
-  nft: MintConfirmResponse['nft'] | null;
+  nft: MintConfirmResponse["nft"] | null;
   onClose: () => void;
 }

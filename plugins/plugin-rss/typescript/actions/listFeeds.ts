@@ -8,10 +8,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { RssService } from "../service";
 import type { FeedSubscriptionMetadata } from "../types";
 import { createMessageReply, formatRelativeTime } from "../utils";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 const spec = requireActionSpec("LIST_FEEDS");
 

@@ -28,7 +28,11 @@ impl Action for SendMessageAction {
 
     fn similes(&self) -> &[&'static str] {
         static SIMILES: Lazy<Box<[&'static str]>> = Lazy::new(|| {
-            SPEC.similes.iter().map(|s| s.as_str()).collect::<Vec<_>>().into_boxed_slice()
+            SPEC.similes
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .into_boxed_slice()
         });
         &SIMILES
     }
@@ -64,17 +68,17 @@ impl Action for SendMessageAction {
             .or(message.room_id)
             .ok_or_else(|| PluginError::InvalidInput("No target room specified".to_string()))?;
 
-        let target_entity_id: Option<Uuid> = message
-            .content
-            .target
-            .as_ref()
-            .and_then(|t| t.entity_id);
+        let target_entity_id: Option<Uuid> =
+            message.content.target.as_ref().and_then(|t| t.entity_id);
 
         // Create the message memory
         let mut metadata = HashMap::new();
         metadata.insert("type".to_string(), serde_json::json!("SEND_MESSAGE"));
         if let Some(entity_id) = target_entity_id {
-            metadata.insert("targetEntityId".to_string(), serde_json::json!(entity_id.to_string()));
+            metadata.insert(
+                "targetEntityId".to_string(),
+                serde_json::json!(entity_id.to_string()),
+            );
         }
 
         runtime
@@ -106,4 +110,3 @@ impl Action for SendMessageAction {
             .with_data("messagePreview", preview))
     }
 }
-

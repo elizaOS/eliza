@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { cn, formatCurrency } from '@polyagent/shared';
-import { TrendingDown, TrendingUp, Wallet } from 'lucide-react';
-import { memo, useEffect } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { cn, formatCurrency } from "@polyagent/shared";
+import { TrendingDown, TrendingUp, Wallet } from "lucide-react";
+import { memo, useEffect } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import {
   invalidateWalletBalance,
   useWalletBalance,
   useWalletBalancePolling,
-} from '@/stores/walletBalanceStore';
+} from "@/stores/walletBalanceStore";
 
 /**
  * Wallet balance component displaying user balance and lifetime PnL.
@@ -66,14 +66,14 @@ export const WalletBalance = memo(function WalletBalance({
           <div className="text-muted-foreground text-xs">Balance</div>
           <div
             className={cn(
-              'whitespace-nowrap font-bold text-base transition-opacity sm:text-lg',
+              "whitespace-nowrap font-bold text-base transition-opacity sm:text-lg",
               balance > startingBalance
-                ? 'text-green-600'
+                ? "text-green-600"
                 : balance < startingBalance
-                  ? 'text-red-600'
-                  : 'text-foreground',
+                  ? "text-red-600"
+                  : "text-foreground",
               // Subtle opacity during background refresh
-              loading && balance > 0 ? 'opacity-80' : 'opacity-100'
+              loading && balance > 0 ? "opacity-80" : "opacity-100",
             )}
           >
             {showSkeleton ? (
@@ -97,17 +97,17 @@ export const WalletBalance = memo(function WalletBalance({
           <div className="text-muted-foreground text-xs">Lifetime PnL</div>
           <div
             className={cn(
-              'whitespace-nowrap font-bold text-sm transition-opacity',
-              isProfit ? 'text-green-600' : 'text-red-600',
+              "whitespace-nowrap font-bold text-sm transition-opacity",
+              isProfit ? "text-green-600" : "text-red-600",
               // Subtle opacity during background refresh
-              loading && balance > 0 ? 'opacity-80' : 'opacity-100'
+              loading && balance > 0 ? "opacity-80" : "opacity-100",
             )}
           >
             {showSkeleton ? (
               <span className="inline-block h-4 w-12 animate-pulse rounded bg-muted" />
             ) : (
               <>
-                {isProfit ? '+' : ''}
+                {isProfit ? "+" : ""}
                 {formatCurrency(lifetimePnL, 0)}
               </>
             )}

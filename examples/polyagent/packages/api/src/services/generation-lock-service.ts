@@ -27,14 +27,14 @@
  * ```
  */
 
-import { randomBytes } from 'crypto';
-import { DistributedLockService } from './distributed-lock-service';
+import { randomBytes } from "node:crypto";
+import { DistributedLockService } from "./distributed-lock-service";
 
-const LOCK_ID = 'game-tick-lock';
+const LOCK_ID = "game-tick-lock";
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
 export async function acquireGenerationLock(
-  processId?: string
+  processId?: string,
 ): Promise<boolean> {
   /**
    * If processId is not provided, we generate one here.
@@ -43,12 +43,12 @@ export async function acquireGenerationLock(
    * To maintain compatibility with the interface, we handle it here.
    */
   const lockHolder =
-    processId || `serverless-${Date.now()}-${randomBytes(8).toString('hex')}`;
+    processId || `serverless-${Date.now()}-${randomBytes(8).toString("hex")}`;
 
   return DistributedLockService.acquireLock({
     lockId: LOCK_ID,
     durationMs: LOCK_DURATION_MS,
-    operation: 'game-tick',
+    operation: "game-tick",
     processId: lockHolder,
   });
 }

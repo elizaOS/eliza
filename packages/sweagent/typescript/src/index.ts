@@ -27,6 +27,8 @@ export {
   RetryAgentConfig,
   ShellAgentConfig,
   TemplateConfig,
+  ToolConfig as AgentToolConfig,
+  ToolHandler as AgentToolHandler,
 } from "./agent/agents";
 export {
   AbstractHistoryProcessor,
@@ -52,6 +54,7 @@ export {
   InstantEmptySubmitModel,
   LiteLLMModel,
   ModelConfig,
+  ModelOutput,
   ReplayModel,
   ReplayModelConfig,
 } from "./agent/models";

@@ -74,7 +74,7 @@ export function wrapActionWithLogging(
       }
 
       const successHandler = (): void => {
-        const stateSnapshot = state ? (JSON.parse(JSON.stringify(state)) as JsonValue) : undefined;
+        const stateSnapshot = state ? (JSON.parse(JSON.stringify(state)) as JsonValue) : null;
 
         loggerService.completeStep(
           trajectoryId,
@@ -104,7 +104,7 @@ export function wrapActionWithLogging(
 
         logger.error({ action: action.name, trajectoryId, error }, "Action execution failed");
 
-        const stateSnapshot = state ? (JSON.parse(JSON.stringify(state)) as JsonValue) : undefined;
+        const stateSnapshot = state ? (JSON.parse(JSON.stringify(state)) as JsonValue) : null;
 
         loggerService.completeStep(
           trajectoryId,
@@ -232,7 +232,7 @@ export function wrapProviderWithLogging(
 
       const result = (await originalGet?.(runtime, message, state)) || { text: "" };
 
-      const stateSnapshot = state ? (JSON.parse(JSON.stringify(state)) as JsonValue) : undefined;
+      const stateSnapshot = state ? (JSON.parse(JSON.stringify(state)) as JsonValue) : null;
 
       loggerService.logProviderAccess(stepId, {
         providerName: provider.name,

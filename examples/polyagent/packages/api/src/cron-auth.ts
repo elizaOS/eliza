@@ -21,12 +21,12 @@
  * ```
  */
 
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
-import { isValidCronSecret } from './dev-credentials';
-import { AuthorizationError } from './errors';
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
+import { isValidCronSecret } from "./dev-credentials";
+import { AuthorizationError } from "./errors";
 
-const isDevelopment = process.env.NODE_ENV !== 'production';
+const isDevelopment = process.env.NODE_ENV !== "production";
 
 interface CronAuthOptions {
   /** Name of the cron job for logging */
@@ -47,23 +47,23 @@ interface CronAuthOptions {
  */
 export function verifyCronAuth(
   request: NextRequest,
-  options: CronAuthOptions = {}
+  options: CronAuthOptions = {},
 ): boolean {
-  const { jobName = 'Cron', allowVercelCronUserAgent = false } = options;
-  const authHeader = request.headers.get('authorization');
+  const { jobName = "Cron", allowVercelCronUserAgent = false } = options;
+  const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
   // Check for Vercel Cron user-agent (some cron services use this)
   if (allowVercelCronUserAgent) {
-    const userAgent = request.headers.get('user-agent')?.toLowerCase() || '';
-    const isVercelCron = userAgent.includes('vercel-cron');
-    const hasVercelHeader = request.headers.has('x-vercel-id');
+    const userAgent = request.headers.get("user-agent")?.toLowerCase() || "";
+    const isVercelCron = userAgent.includes("vercel-cron");
+    const hasVercelHeader = request.headers.has("x-vercel-id");
 
     if (isVercelCron || hasVercelHeader) {
       logger.info(
-        'Cron request authorized via Vercel headers',
+        "Cron request authorized via Vercel headers",
         { userAgent, hasVercelHeader },
-        jobName
+        jobName,
       );
       return true;
     }
@@ -74,19 +74,19 @@ export function verifyCronAuth(
     // No auth header at all - allow in dev for convenience
     if (!authHeader) {
       logger.info(
-        'Development mode - allowing cron without auth header',
+        "Development mode - allowing cron without auth header",
         undefined,
-        jobName
+        jobName,
       );
       return true;
     }
 
     // Accept 'Bearer development' keyword in dev
-    if (authHeader === 'Bearer development') {
+    if (authHeader === "Bearer development") {
       logger.info(
-        'Cron authorized via development keyword',
+        "Cron authorized via development keyword",
         undefined,
-        jobName
+        jobName,
       );
       return true;
     }
@@ -97,17 +97,17 @@ export function verifyCronAuth(
     }
 
     // Check dev credentials (from dev-credentials.ts)
-    const bearerToken = authHeader.replace('Bearer ', '');
+    const bearerToken = authHeader.replace("Bearer ", "");
     if (bearerToken && isValidCronSecret(bearerToken)) {
-      logger.info('Cron authorized via dev credentials', undefined, jobName);
+      logger.info("Cron authorized via dev credentials", undefined, jobName);
       return true;
     }
 
     // Invalid auth header provided - deny even in dev
     logger.warn(
-      'Cron auth failed - invalid credentials provided',
+      "Cron auth failed - invalid credentials provided",
       { hasAuthHeader: true },
-      jobName
+      jobName,
     );
     return false;
   }
@@ -115,12 +115,12 @@ export function verifyCronAuth(
   // PRODUCTION: FAIL-CLOSED
   if (!cronSecret) {
     logger.error(
-      '🚨 SECURITY: CRON_SECRET not configured in production! Denying request.',
+      "🚨 SECURITY: CRON_SECRET not configured in production! Denying request.",
       {
         environment: process.env.NODE_ENV,
         hasAuthHeader: !!authHeader,
       },
-      jobName
+      jobName,
     );
     return false; // FAIL-CLOSED
   }
@@ -128,9 +128,9 @@ export function verifyCronAuth(
   // Verify the secret
   if (authHeader !== `Bearer ${cronSecret}`) {
     logger.warn(
-      'Cron authentication failed - invalid or missing secret',
+      "Cron authentication failed - invalid or missing secret",
       { hasAuthHeader: !!authHeader },
-      jobName
+      jobName,
     );
     return false;
   }
@@ -145,13 +145,13 @@ export function verifyCronAuth(
  */
 export function requireCronAuth(
   request: NextRequest,
-  options: CronAuthOptions = {}
+  options: CronAuthOptions = {},
 ): void {
   if (!verifyCronAuth(request, options)) {
     throw new AuthorizationError(
-      'Invalid cron authorization',
-      'cron',
-      options.jobName || 'execute'
+      "Invalid cron authorization",
+      "cron",
+      options.jobName || "execute",
     );
   }
 }
@@ -160,8 +160,8 @@ export function requireCronAuth(
  * Create unauthorized cron response
  */
 export function cronUnauthorizedResponse(): Response {
-  return new Response(JSON.stringify({ error: 'Unauthorized cron request' }), {
+  return new Response(JSON.stringify({ error: "Unauthorized cron request" }), {
     status: 401,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { "Content-Type": "application/json" },
   });
 }

@@ -3,6 +3,7 @@ import type {
   Component,
   Entity,
   IDatabaseAdapter,
+  JsonValue,
   Log,
   LogBody,
   Memory,
@@ -12,7 +13,6 @@ import type {
   Relationship,
   Room,
   Task,
-  JsonValue,
   UUID,
   World,
 } from "./types";

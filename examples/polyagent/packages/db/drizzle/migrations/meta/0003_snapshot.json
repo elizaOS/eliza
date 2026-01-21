@@ -713,9 +713,7 @@
         "AgentCapability_agentRegistryId_unique": {
           "name": "AgentCapability_agentRegistryId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "agentRegistryId"
-          ]
+          "columns": ["agentRegistryId"]
         }
       },
       "policies": {},
@@ -1530,9 +1528,7 @@
         "AgentPerformanceMetrics_userId_unique": {
           "name": "AgentPerformanceMetrics_userId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "userId"
-          ]
+          "columns": ["userId"]
         }
       },
       "policies": {},
@@ -2010,30 +2006,22 @@
         "AgentRegistry_agentId_unique": {
           "name": "AgentRegistry_agentId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "agentId"
-          ]
+          "columns": ["agentId"]
         },
         "AgentRegistry_userId_unique": {
           "name": "AgentRegistry_userId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "userId"
-          ]
+          "columns": ["userId"]
         },
         "AgentRegistry_actorId_unique": {
           "name": "AgentRegistry_actorId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "actorId"
-          ]
+          "columns": ["actorId"]
         },
         "AgentRegistry_runtimeInstanceId_unique": {
           "name": "AgentRegistry_runtimeInstanceId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "runtimeInstanceId"
-          ]
+          "columns": ["runtimeInstanceId"]
         }
       },
       "policies": {},
@@ -2562,9 +2550,7 @@
         "CharacterMapping_realName_unique": {
           "name": "CharacterMapping_realName_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "realName"
-          ]
+          "columns": ["realName"]
         }
       },
       "policies": {},
@@ -2645,10 +2631,7 @@
         "ChatAdmin_chatId_userId_key": {
           "name": "ChatAdmin_chatId_userId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "chatId",
-            "userId"
-          ]
+          "columns": ["chatId", "userId"]
         }
       },
       "policies": {},
@@ -2769,10 +2752,7 @@
         "ChatInvite_chatId_invitedUserId_key": {
           "name": "ChatInvite_chatId_invitedUserId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "chatId",
-            "invitedUserId"
-          ]
+          "columns": ["chatId", "invitedUserId"]
         }
       },
       "policies": {},
@@ -2955,10 +2935,7 @@
         "ChatParticipant_chatId_userId_key": {
           "name": "ChatParticipant_chatId_userId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "chatId",
-            "userId"
-          ]
+          "columns": ["chatId", "userId"]
         }
       },
       "policies": {},
@@ -3404,9 +3381,7 @@
         "DMAcceptance_chatId_unique": {
           "name": "DMAcceptance_chatId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "chatId"
-          ]
+          "columns": ["chatId"]
         }
       },
       "policies": {},
@@ -3566,16 +3541,12 @@
         "ExternalAgentConnection_agentRegistryId_unique": {
           "name": "ExternalAgentConnection_agentRegistryId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "agentRegistryId"
-          ]
+          "columns": ["agentRegistryId"]
         },
         "ExternalAgentConnection_externalId_unique": {
           "name": "ExternalAgentConnection_externalId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "externalId"
-          ]
+          "columns": ["externalId"]
         }
       },
       "policies": {},
@@ -3650,10 +3621,7 @@
         "Favorite_userId_targetUserId_key": {
           "name": "Favorite_userId_targetUserId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "userId",
-            "targetUserId"
-          ]
+          "columns": ["userId", "targetUserId"]
         }
       },
       "policies": {},
@@ -4002,10 +3970,7 @@
         "FollowStatus_userId_npcId_key": {
           "name": "FollowStatus_userId_npcId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "userId",
-            "npcId"
-          ]
+          "columns": ["userId", "npcId"]
         }
       },
       "policies": {},
@@ -4080,10 +4045,7 @@
         "Follow_followerId_followingId_key": {
           "name": "Follow_followerId_followingId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "followerId",
-            "followingId"
-          ]
+          "columns": ["followerId", "followingId"]
         }
       },
       "policies": {},
@@ -4149,9 +4111,7 @@
         "GameConfig_key_unique": {
           "name": "GameConfig_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "key"
-          ]
+          "columns": ["key"]
         }
       },
       "policies": {},
@@ -4495,10 +4455,7 @@
         "GroupChatMembership_userId_chatId_key": {
           "name": "GroupChatMembership_userId_chatId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "userId",
-            "chatId"
-          ]
+          "columns": ["userId", "chatId"]
         }
       },
       "policies": {},
@@ -4696,9 +4653,7 @@
         "llm_call_logs_callId_unique": {
           "name": "llm_call_logs_callId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "callId"
-          ]
+          "columns": ["callId"]
         }
       },
       "policies": {},
@@ -5321,23 +5276,17 @@
         "ModerationEscrow_paymentRequestId_unique": {
           "name": "ModerationEscrow_paymentRequestId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "paymentRequestId"
-          ]
+          "columns": ["paymentRequestId"]
         },
         "ModerationEscrow_paymentTxHash_unique": {
           "name": "ModerationEscrow_paymentTxHash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "paymentTxHash"
-          ]
+          "columns": ["paymentTxHash"]
         },
         "ModerationEscrow_refundTxHash_unique": {
           "name": "ModerationEscrow_refundTxHash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "refundTxHash"
-          ]
+          "columns": ["refundTxHash"]
         }
       },
       "policies": {},
@@ -5987,9 +5936,7 @@
         "OAuthState_state_unique": {
           "name": "OAuthState_state_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "state"
-          ]
+          "columns": ["state"]
         }
       },
       "policies": {},
@@ -6115,9 +6062,7 @@
         "OnboardingIntent_userId_unique": {
           "name": "OnboardingIntent_userId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "userId"
-          ]
+          "columns": ["userId"]
         }
       },
       "policies": {},
@@ -6219,9 +6164,7 @@
         "OracleCommitment_questionId_unique": {
           "name": "OracleCommitment_questionId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "questionId"
-          ]
+          "columns": ["questionId"]
         }
       },
       "policies": {},
@@ -6381,9 +6324,7 @@
         "OracleTransaction_txHash_unique": {
           "name": "OracleTransaction_txHash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "txHash"
-          ]
+          "columns": ["txHash"]
         }
       },
       "policies": {},
@@ -6497,9 +6438,7 @@
         "OrganizationMapping_realName_unique": {
           "name": "OrganizationMapping_realName_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "realName"
-          ]
+          "columns": ["realName"]
         }
       },
       "policies": {},
@@ -6810,9 +6749,7 @@
         "ParodyHeadline_originalHeadlineId_unique": {
           "name": "ParodyHeadline_originalHeadlineId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "originalHeadlineId"
-          ]
+          "columns": ["originalHeadlineId"]
         }
       },
       "policies": {},
@@ -7175,9 +7112,7 @@
         "PointsTransaction_paymentRequestId_unique": {
           "name": "PointsTransaction_paymentRequestId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "paymentRequestId"
-          ]
+          "columns": ["paymentRequestId"]
         }
       },
       "policies": {},
@@ -8006,10 +7941,7 @@
         "PostTag_postId_tagId_key": {
           "name": "PostTag_postId_tagId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "postId",
-            "tagId"
-          ]
+          "columns": ["postId", "tagId"]
         }
       },
       "policies": {},
@@ -8727,16 +8659,12 @@
         "Question_questionNumber_unique": {
           "name": "Question_questionNumber_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "questionNumber"
-          ]
+          "columns": ["questionNumber"]
         },
         "Question_oracleSessionId_unique": {
           "name": "Question_oracleSessionId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "oracleSessionId"
-          ]
+          "columns": ["oracleSessionId"]
         }
       },
       "policies": {},
@@ -8839,20 +8767,12 @@
         "Reaction_commentId_userId_type_key": {
           "name": "Reaction_commentId_userId_type_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "commentId",
-            "userId",
-            "type"
-          ]
+          "columns": ["commentId", "userId", "type"]
         },
         "Reaction_postId_userId_type_key": {
           "name": "Reaction_postId_userId_type_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "postId",
-            "userId",
-            "type"
-          ]
+          "columns": ["postId", "userId", "type"]
         }
       },
       "policies": {},
@@ -9197,10 +9117,7 @@
         "Referral_referralCode_referredUserId_key": {
           "name": "Referral_referralCode_referredUserId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "referralCode",
-            "referredUserId"
-          ]
+          "columns": ["referralCode", "referredUserId"]
         }
       },
       "policies": {},
@@ -9601,9 +9518,7 @@
         "reward_judgments_trajectoryId_unique": {
           "name": "reward_judgments_trajectoryId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "trajectoryId"
-          ]
+          "columns": ["trajectoryId"]
         }
       },
       "policies": {},
@@ -10053,10 +9968,7 @@
         "Share_userId_postId_key": {
           "name": "Share_userId_postId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "userId",
-            "postId"
-          ]
+          "columns": ["userId", "postId"]
         }
       },
       "policies": {},
@@ -10300,9 +10212,7 @@
         "Tag_name_unique": {
           "name": "Tag_name_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "name"
-          ]
+          "columns": ["name"]
         }
       },
       "policies": {},
@@ -10798,9 +10708,7 @@
         "trained_models_modelId_unique": {
           "name": "trained_models_modelId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "modelId"
-          ]
+          "columns": ["modelId"]
         }
       },
       "policies": {},
@@ -10948,9 +10856,7 @@
         "training_batches_batchId_unique": {
           "name": "training_batches_batchId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "batchId"
-          ]
+          "columns": ["batchId"]
         }
       },
       "policies": {},
@@ -11290,9 +11196,7 @@
         "trajectories_trajectoryId_unique": {
           "name": "trajectories_trajectoryId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "trajectoryId"
-          ]
+          "columns": ["trajectoryId"]
         }
       },
       "policies": {},
@@ -11496,9 +11400,7 @@
         "TwitterOAuthToken_userId_unique": {
           "name": "TwitterOAuthToken_userId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "userId"
-          ]
+          "columns": ["userId"]
         }
       },
       "policies": {},
@@ -11573,10 +11475,7 @@
         "UserActorFollow_userId_actorId_key": {
           "name": "UserActorFollow_userId_actorId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "userId",
-            "actorId"
-          ]
+          "columns": ["userId", "actorId"]
         }
       },
       "policies": {},
@@ -11843,9 +11742,7 @@
         "UserAgentConfig_userId_unique": {
           "name": "UserAgentConfig_userId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "userId"
-          ]
+          "columns": ["userId"]
         }
       },
       "policies": {},
@@ -12055,10 +11952,7 @@
         "UserBlock_blockerId_blockedId_key": {
           "name": "UserBlock_blockerId_blockedId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "blockerId",
-            "blockedId"
-          ]
+          "columns": ["blockerId", "blockedId"]
         }
       },
       "policies": {},
@@ -12139,10 +12033,7 @@
         "UserGroupAdmin_groupId_userId_key": {
           "name": "UserGroupAdmin_groupId_userId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "groupId",
-            "userId"
-          ]
+          "columns": ["groupId", "userId"]
         }
       },
       "policies": {},
@@ -12263,10 +12154,7 @@
         "UserGroupInvite_groupId_invitedUserId_key": {
           "name": "UserGroupInvite_groupId_invitedUserId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "groupId",
-            "invitedUserId"
-          ]
+          "columns": ["groupId", "invitedUserId"]
         }
       },
       "policies": {},
@@ -12347,10 +12235,7 @@
         "UserGroupMember_groupId_userId_key": {
           "name": "UserGroupMember_groupId_userId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "groupId",
-            "userId"
-          ]
+          "columns": ["groupId", "userId"]
         }
       },
       "policies": {},
@@ -12668,10 +12553,7 @@
         "UserMute_muterId_mutedId_key": {
           "name": "UserMute_muterId_mutedId_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "muterId",
-            "mutedId"
-          ]
+          "columns": ["muterId", "mutedId"]
         }
       },
       "policies": {},
@@ -13750,58 +13632,42 @@
         "User_walletAddress_unique": {
           "name": "User_walletAddress_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "walletAddress"
-          ]
+          "columns": ["walletAddress"]
         },
         "User_username_unique": {
           "name": "User_username_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "username"
-          ]
+          "columns": ["username"]
         },
         "User_nftTokenId_unique": {
           "name": "User_nftTokenId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "nftTokenId"
-          ]
+          "columns": ["nftTokenId"]
         },
         "User_referralCode_unique": {
           "name": "User_referralCode_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "referralCode"
-          ]
+          "columns": ["referralCode"]
         },
         "User_farcasterFid_unique": {
           "name": "User_farcasterFid_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "farcasterFid"
-          ]
+          "columns": ["farcasterFid"]
         },
         "User_privyId_unique": {
           "name": "User_privyId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "privyId"
-          ]
+          "columns": ["privyId"]
         },
         "User_twitterId_unique": {
           "name": "User_twitterId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "twitterId"
-          ]
+          "columns": ["twitterId"]
         },
         "User_discordId_unique": {
           "name": "User_discordId_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "discordId"
-          ]
+          "columns": ["discordId"]
         }
       },
       "policies": {},
@@ -14136,22 +14002,12 @@
     "public.AgentStatus": {
       "name": "AgentStatus",
       "schema": "public",
-      "values": [
-        "REGISTERED",
-        "INITIALIZED",
-        "ACTIVE",
-        "PAUSED",
-        "TERMINATED"
-      ]
+      "values": ["REGISTERED", "INITIALIZED", "ACTIVE", "PAUSED", "TERMINATED"]
     },
     "public.AgentType": {
       "name": "AgentType",
       "schema": "public",
-      "values": [
-        "USER_CONTROLLED",
-        "NPC",
-        "EXTERNAL"
-      ]
+      "values": ["USER_CONTROLLED", "NPC", "EXTERNAL"]
     },
     "public.OnboardingStatus": {
       "name": "OnboardingStatus",
@@ -14167,11 +14023,7 @@
     "public.RealtimeOutboxStatus": {
       "name": "RealtimeOutboxStatus",
       "schema": "public",
-      "values": [
-        "pending",
-        "sent",
-        "failed"
-      ]
+      "values": ["pending", "sent", "failed"]
     }
   },
   "schemas": {},

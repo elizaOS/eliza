@@ -1,6 +1,6 @@
 import {
-  composePromptFromState,
   type Content,
+  composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
   ModelType,

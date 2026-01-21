@@ -5,7 +5,7 @@
  * Automatically retries on network errors, 5xx server errors, and rate limit (429) responses.
  */
 
-import { logger } from './logger';
+import { logger } from "./logger";
 
 /**
  * Retry configuration options
@@ -23,7 +23,7 @@ export interface RetryOptions {
   onRetry?: (attempt: number, error: Error, delayMs: number) => void;
 }
 
-const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'onRetry'>> = {
+const DEFAULT_OPTIONS: Required<Omit<RetryOptions, "onRetry">> = {
   maxAttempts: 3,
   initialDelayMs: 100,
   maxDelayMs: 2000,
@@ -41,11 +41,11 @@ const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'onRetry'>> = {
  * @returns {boolean} True if the error is retryable
  */
 export function isRetryableError(error: unknown): boolean {
-  if (error instanceof TypeError && error.message.includes('fetch')) {
+  if (error instanceof TypeError && error.message.includes("fetch")) {
     return true; // Network errors
   }
 
-  if (error && typeof error === 'object' && 'status' in error) {
+  if (error && typeof error === "object" && "status" in error) {
     const status = (error as { status: number }).status;
     // Retry on 5xx errors and 429 (rate limit)
     return status >= 500 || status === 429;
@@ -89,7 +89,7 @@ export function sleep(ms: number): Promise<void> {
  */
 export async function retryIfRetryable<T>(
   operation: () => Promise<T>,
-  options: RetryOptions = {}
+  options: RetryOptions = {},
 ): Promise<T> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   let lastError: Error | undefined;
@@ -113,7 +113,7 @@ export async function retryIfRetryable<T>(
       // Calculate delay with exponential backoff
       const delay = Math.min(
         opts.initialDelayMs * opts.backoffMultiplier ** attempt,
-        opts.maxDelayMs
+        opts.maxDelayMs,
       );
 
       // Call optional retry callback
@@ -123,7 +123,7 @@ export async function retryIfRetryable<T>(
     }
   }
 
-  throw lastError || new Error('Operation failed with unknown error');
+  throw lastError || new Error("Operation failed with unknown error");
 }
 
 /**
@@ -150,7 +150,7 @@ export async function retryIfRetryable<T>(
 export async function retryWithCondition<T>(
   operation: () => Promise<T>,
   shouldRetry: (error: unknown) => boolean,
-  options: RetryOptions = {}
+  options: RetryOptions = {},
 ): Promise<T> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   let lastError: Error | undefined;
@@ -171,7 +171,7 @@ export async function retryWithCondition<T>(
 
       const delay = Math.min(
         opts.initialDelayMs * opts.backoffMultiplier ** attempt,
-        opts.maxDelayMs
+        opts.maxDelayMs,
       );
 
       // Call optional retry callback
@@ -181,7 +181,7 @@ export async function retryWithCondition<T>(
     }
   }
 
-  throw lastError || new Error('Operation failed with unknown error');
+  throw lastError || new Error("Operation failed with unknown error");
 }
 
 /**
@@ -229,14 +229,14 @@ export interface FireAndForgetRetryOptions {
  */
 export function fireAndForgetWithRetry(
   operation: () => Promise<void>,
-  options: FireAndForgetRetryOptions = {}
+  options: FireAndForgetRetryOptions = {},
 ): void {
   const {
     maxAttempts = 3,
     initialDelayMs = 100,
     maxDelayMs = 2000,
     backoffMultiplier = 2,
-    logContext = 'FireAndForget',
+    logContext = "FireAndForget",
     metadata = {},
   } = options;
 
@@ -253,14 +253,14 @@ export function fireAndForgetWithRetry(
         // Check if error is retryable - if not, log and exit immediately
         if (!isRetryableError(error)) {
           logger.error(
-            'Fire-and-forget operation failed with non-retryable error',
+            "Fire-and-forget operation failed with non-retryable error",
             {
               // Spread metadata first; explicit properties (error, attempt) override metadata values
               ...metadata,
               error: lastError.message,
               attempt: attempt + 1,
             },
-            logContext
+            logContext,
           );
           return; // Don't retry non-retryable errors
         }
@@ -269,7 +269,7 @@ export function fireAndForgetWithRetry(
           // Exponential backoff with cap using shared sleep utility
           const delay = Math.min(
             initialDelayMs * backoffMultiplier ** attempt,
-            maxDelayMs
+            maxDelayMs,
           );
           await sleep(delay);
         }
@@ -278,14 +278,14 @@ export function fireAndForgetWithRetry(
 
     // All retries exhausted - log as error for monitoring
     logger.error(
-      'Fire-and-forget operation failed after retries',
+      "Fire-and-forget operation failed after retries",
       {
         // Spread metadata first; explicit properties (error, retriesAttempted) override metadata values
         ...metadata,
-        error: lastError?.message ?? 'Unknown error',
+        error: lastError?.message ?? "Unknown error",
         retriesAttempted: maxAttempts,
       },
-      logContext
+      logContext,
     );
   })();
 }

@@ -271,11 +271,11 @@ impl Element {
     pub async fn click(&self, options: Option<ActionOptions>) -> napi::Result<ClickResult> {
         let opts = options.unwrap_or_default();
         // Default false: clicking means user wants focus on clicked element
-        let restore_focus = opts.restore_focus.unwrap_or(false);
+        let _restore_focus = opts.restore_focus.unwrap_or(false);
 
         // FOCUS RESTORATION: Save focus state BEFORE any window operations
         #[cfg(target_os = "windows")]
-        let saved_focus = if restore_focus {
+        let saved_focus = if _restore_focus {
             tracing::debug!("[TS SDK] click: saving focus state BEFORE activate_window");
             computeruse::platforms::windows::save_focus_state()
         } else {
@@ -400,11 +400,11 @@ impl Element {
     pub fn double_click(&self, options: Option<ActionOptions>) -> napi::Result<ClickResult> {
         let opts = options.unwrap_or_default();
         // Default false: clicking means user wants focus on clicked element
-        let restore_focus = opts.restore_focus.unwrap_or(false);
+        let _restore_focus = opts.restore_focus.unwrap_or(false);
 
         // FOCUS RESTORATION: Save focus state BEFORE any window operations
         #[cfg(target_os = "windows")]
-        let saved_focus = if restore_focus {
+        let saved_focus = if _restore_focus {
             tracing::debug!("[TS SDK] double_click: saving focus state BEFORE activate_window");
             computeruse::platforms::windows::save_focus_state()
         } else {
@@ -448,11 +448,11 @@ impl Element {
     pub fn right_click(&self, options: Option<ActionOptions>) -> napi::Result<()> {
         let opts = options.unwrap_or_default();
         // Default false: clicking means user wants focus on clicked element
-        let restore_focus = opts.restore_focus.unwrap_or(false);
+        let _restore_focus = opts.restore_focus.unwrap_or(false);
 
         // FOCUS RESTORATION: Save focus state BEFORE any window operations
         #[cfg(target_os = "windows")]
-        let saved_focus = if restore_focus {
+        let saved_focus = if _restore_focus {
             tracing::debug!("[TS SDK] right_click: saving focus state BEFORE activate_window");
             computeruse::platforms::windows::save_focus_state()
         } else {
@@ -490,11 +490,11 @@ impl Element {
     pub fn hover(&self, options: Option<ActionOptions>) -> napi::Result<()> {
         let opts = options.unwrap_or_default();
         // Default false: hover shouldn't steal focus
-        let restore_focus = opts.restore_focus.unwrap_or(false);
+        let _restore_focus = opts.restore_focus.unwrap_or(false);
 
         // FOCUS RESTORATION: Save focus state BEFORE any window operations
         #[cfg(target_os = "windows")]
-        let saved_focus = if restore_focus {
+        let saved_focus = if _restore_focus {
             tracing::debug!("[TS SDK] hover: saving focus state BEFORE activate_window");
             computeruse::platforms::windows::save_focus_state()
         } else {
@@ -570,12 +570,12 @@ impl Element {
         options: Option<TypeTextOptions>,
     ) -> napi::Result<ActionResult> {
         let opts = options.unwrap_or_default();
-        let restore_focus = opts.restore_focus.unwrap_or(true);
+        let _restore_focus = opts.restore_focus.unwrap_or(true);
 
         // CRITICAL: Save focus state BEFORE activate_window() if restore is requested
         // activate_window() steals focus, so we must save first
         #[cfg(target_os = "windows")]
-        let saved_focus = if restore_focus {
+        let saved_focus = if _restore_focus {
             tracing::debug!("[TS SDK] type_text: saving focus state BEFORE activate_window");
             computeruse::platforms::windows::save_focus_state()
         } else {
@@ -640,11 +640,11 @@ impl Element {
         options: Option<ActionOptions>,
     ) -> napi::Result<ActionResult> {
         let opts = options.unwrap_or_default();
-        let restore_focus = opts.restore_focus.unwrap_or(true);
+        let _restore_focus = opts.restore_focus.unwrap_or(true);
 
         // FOCUS RESTORATION: Save focus state BEFORE any window operations
         #[cfg(target_os = "windows")]
-        let saved_focus = if restore_focus {
+        let saved_focus = if _restore_focus {
             tracing::debug!("[TS SDK] press_key: saving focus state BEFORE activate_window");
             computeruse::platforms::windows::save_focus_state()
         } else {
@@ -703,11 +703,11 @@ impl Element {
         options: Option<ActionOptions>,
     ) -> napi::Result<ActionResult> {
         let opts = options.unwrap_or_default();
-        let restore_focus = opts.restore_focus.unwrap_or(true);
+        let _restore_focus = opts.restore_focus.unwrap_or(true);
 
         // FOCUS RESTORATION: Save focus state BEFORE any window operations
         #[cfg(target_os = "windows")]
-        let saved_focus = if restore_focus {
+        let saved_focus = if _restore_focus {
             tracing::debug!("[TS SDK] set_value: saving focus state BEFORE action");
             computeruse::platforms::windows::save_focus_state()
         } else {
@@ -759,11 +759,11 @@ impl Element {
     pub fn invoke(&self, options: Option<ActionOptions>) -> napi::Result<ActionResult> {
         let opts = options.unwrap_or_default();
         // Default false: invoking is like clicking
-        let restore_focus = opts.restore_focus.unwrap_or(false);
+        let _restore_focus = opts.restore_focus.unwrap_or(false);
 
         // FOCUS RESTORATION: Save focus state BEFORE any window operations
         #[cfg(target_os = "windows")]
-        let saved_focus = if restore_focus {
+        let saved_focus = if _restore_focus {
             tracing::debug!("[TS SDK] invoke: saving focus state BEFORE action");
             computeruse::platforms::windows::save_focus_state()
         } else {
@@ -812,11 +812,11 @@ impl Element {
         options: Option<ActionOptions>,
     ) -> napi::Result<ActionResult> {
         let opts = options.unwrap_or_default();
-        let restore_focus = opts.restore_focus.unwrap_or(true);
+        let _restore_focus = opts.restore_focus.unwrap_or(true);
 
         // FOCUS RESTORATION: Save focus state BEFORE any window operations
         #[cfg(target_os = "windows")]
-        let saved_focus = if restore_focus {
+        let saved_focus = if _restore_focus {
             tracing::debug!("[TS SDK] scroll: saving focus state BEFORE action");
             computeruse::platforms::windows::save_focus_state()
         } else {
@@ -1144,11 +1144,11 @@ impl Element {
         options: Option<ActionOptions>,
     ) -> napi::Result<()> {
         let opts = options.unwrap_or_default();
-        let restore_focus = opts.restore_focus.unwrap_or(true);
+        let _restore_focus = opts.restore_focus.unwrap_or(true);
 
         // FOCUS RESTORATION: Save focus state BEFORE any window operations
         #[cfg(target_os = "windows")]
-        let saved_focus = if restore_focus {
+        let saved_focus = if _restore_focus {
             tracing::debug!("[TS SDK] select_option: saving focus state BEFORE action");
             computeruse::platforms::windows::save_focus_state()
         } else {
@@ -1238,11 +1238,11 @@ impl Element {
     #[napi]
     pub fn set_selected(&self, state: bool, options: Option<ActionOptions>) -> napi::Result<()> {
         let opts = options.unwrap_or_default();
-        let restore_focus = opts.restore_focus.unwrap_or(true);
+        let _restore_focus = opts.restore_focus.unwrap_or(true);
 
         // FOCUS RESTORATION: Save focus state BEFORE any window operations
         #[cfg(target_os = "windows")]
-        let saved_focus = if restore_focus {
+        let saved_focus = if _restore_focus {
             tracing::debug!("[TS SDK] set_selected: saving focus state BEFORE action");
             computeruse::platforms::windows::save_focus_state()
         } else {

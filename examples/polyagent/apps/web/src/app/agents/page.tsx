@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn } from '@babylon/shared';
+import { cn } from "@babylon/shared";
 import {
   Activity,
   Bot,
@@ -8,21 +8,21 @@ import {
   Plus,
   TrendingUp,
   Users,
-} from 'lucide-react';
-import dynamic from 'next/dynamic';
-import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
-import { LoginButton } from '@/components/auth/LoginButton';
-import { Avatar } from '@/components/shared/Avatar';
-import { PageContainer } from '@/components/shared/PageContainer';
-import { Skeleton } from '@/components/shared/Skeleton';
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
+} from "lucide-react";
+import dynamic from "next/dynamic";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { LoginButton } from "@/components/auth/LoginButton";
+import { Avatar } from "@/components/shared/Avatar";
+import { PageContainer } from "@/components/shared/PageContainer";
+import { Skeleton } from "@/components/shared/Skeleton";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
 
 // Lazy load activity feed for performance
 const AgentActivityFeed = dynamic(
   () =>
-    import('@/components/agents/AgentActivityFeed').then((m) => ({
+    import("@/components/agents/AgentActivityFeed").then((m) => ({
       default: m.AgentActivityFeed,
     })),
   {
@@ -42,7 +42,7 @@ const AgentActivityFeed = dynamic(
         ))}
       </div>
     ),
-  }
+  },
 );
 
 interface Agent {
@@ -54,7 +54,7 @@ interface Agent {
   virtualBalance?: number;
   isActive: boolean;
   autonomousEnabled: boolean;
-  modelTier: 'free' | 'pro';
+  modelTier: "free" | "pro";
   status: string;
   lifetimePnL: string | number;
   totalTrades: number;
@@ -73,7 +73,7 @@ interface AgentApi {
   virtualBalance?: number | string | null;
   isActive?: boolean;
   autonomousEnabled?: boolean;
-  modelTier?: 'free' | 'pro' | 'lite' | 'standard';
+  modelTier?: "free" | "pro" | "lite" | "standard";
   status?: string;
   lifetimePnL?: string | number | null;
   totalTrades?: number | string | null;
@@ -87,7 +87,7 @@ export default function AgentsPage() {
   const { authenticated, ready, getAccessToken } = useAuth();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'active' | 'idle'>('all');
+  const [filter, setFilter] = useState<"all" | "active" | "idle">("all");
   const [topMovers, setTopMovers] = useState<
     Array<{
       agentId: string;
@@ -103,15 +103,15 @@ export default function AgentsPage() {
     setLoading(true);
     const token = await getAccessToken();
 
-    let url = '/api/agents/public';
+    let url = "/api/agents/public";
     const headers: HeadersInit = {};
 
     if (token) {
-      url = '/api/agents';
-      if (filter === 'active') {
-        url += '?autonomousTrading=true';
-      } else if (filter === 'idle') {
-        url += '?autonomousTrading=false';
+      url = "/api/agents";
+      if (filter === "active") {
+        url += "?autonomousTrading=true";
+      } else if (filter === "idle") {
+        url += "?autonomousTrading=false";
       }
       headers.Authorization = `Bearer ${token}`;
     }
@@ -127,16 +127,16 @@ export default function AgentsPage() {
 
         const normalized = rawAgents.map((agent) => ({
           id: agent.id,
-          name: agent.name || agent.username || 'Agent',
+          name: agent.name || agent.username || "Agent",
           username: agent.username,
           description: agent.description,
           profileImageUrl: agent.profileImageUrl,
           virtualBalance: Number(agent.virtualBalance ?? 0),
           isActive: Boolean(agent.isActive ?? agent.autonomousEnabled ?? false),
           autonomousEnabled: Boolean(agent.autonomousEnabled ?? false),
-          modelTier: agent.modelTier === 'pro' ? 'pro' : 'free',
-          status: agent.status || 'idle',
-          lifetimePnL: agent.lifetimePnL ?? '0',
+          modelTier: agent.modelTier === "pro" ? "pro" : "free",
+          status: agent.status || "idle",
+          lifetimePnL: agent.lifetimePnL ?? "0",
           totalTrades: Number(agent.totalTrades ?? 0),
           winRate: Number(agent.winRate ?? 0),
           lastTickAt: agent.lastTickAt,
@@ -147,7 +147,7 @@ export default function AgentsPage() {
         setAgents(normalized);
       }
     } catch (error) {
-      console.error('Failed to fetch agents:', error);
+      console.error("Failed to fetch agents:", error);
     } finally {
       setLoading(false);
     }
@@ -157,7 +157,7 @@ export default function AgentsPage() {
     const controller = new AbortController();
     const loadTopMovers = async () => {
       try {
-        const response = await fetch('/api/dashboard', {
+        const response = await fetch("/api/dashboard", {
           signal: controller.signal,
         });
         if (!response.ok) return;
@@ -174,7 +174,7 @@ export default function AgentsPage() {
         setTopMovers(Array.isArray(data.topMovers) ? data.topMovers : []);
       } catch (error) {
         if (!controller.signal.aborted) {
-          console.warn('Failed to fetch top movers:', error);
+          console.warn("Failed to fetch top movers:", error);
         }
       }
     };
@@ -227,7 +227,7 @@ export default function AgentsPage() {
                       </h3>
                       <p className="text-muted-foreground text-sm">
                         Coordinate all {agents.length} agent
-                        {agents.length !== 1 ? 's' : ''} in one chat
+                        {agents.length !== 1 ? "s" : ""} in one chat
                       </p>
                     </div>
                   </div>
@@ -246,34 +246,34 @@ export default function AgentsPage() {
         {/* Filters */}
         <div className="flex gap-2">
           <button
-            onClick={() => setFilter('all')}
+            onClick={() => setFilter("all")}
             className={cn(
-              'border border-border px-4 py-2 font-medium text-sm transition-colors',
-              filter === 'all'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-card text-muted-foreground hover:bg-muted'
+              "border border-border px-4 py-2 font-medium text-sm transition-colors",
+              filter === "all"
+                ? "bg-primary text-primary-foreground"
+                : "bg-card text-muted-foreground hover:bg-muted",
             )}
           >
             All
           </button>
           <button
-            onClick={() => setFilter('active')}
+            onClick={() => setFilter("active")}
             className={cn(
-              'border border-border px-4 py-2 font-medium text-sm transition-colors',
-              filter === 'active'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-card text-muted-foreground hover:bg-muted'
+              "border border-border px-4 py-2 font-medium text-sm transition-colors",
+              filter === "active"
+                ? "bg-primary text-primary-foreground"
+                : "bg-card text-muted-foreground hover:bg-muted",
             )}
           >
             Active
           </button>
           <button
-            onClick={() => setFilter('idle')}
+            onClick={() => setFilter("idle")}
             className={cn(
-              'border border-border px-4 py-2 font-medium text-sm transition-colors',
-              filter === 'idle'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-card text-muted-foreground hover:bg-muted'
+              "border border-border px-4 py-2 font-medium text-sm transition-colors",
+              filter === "idle"
+                ? "bg-primary text-primary-foreground"
+                : "bg-card text-muted-foreground hover:bg-muted",
             )}
           >
             Idle
@@ -283,20 +283,18 @@ export default function AgentsPage() {
         {/* Top Movers */}
         <div className="border border-border bg-card p-6">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-semibold text-sm text-foreground">
+            <h2 className="font-semibold text-foreground text-sm">
               Top Movers (24h)
             </h2>
             <Link
               href="/agents"
-              className="text-xs text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground text-xs hover:text-foreground"
             >
               View all
             </Link>
           </div>
           {topMovers.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              No movers yet.
-            </div>
+            <div className="text-muted-foreground text-sm">No movers yet.</div>
           ) : (
             <div className="divide-y divide-border">
               {topMovers.map((mover) => (
@@ -314,17 +312,18 @@ export default function AgentsPage() {
                       <div className="font-semibold text-foreground">
                         {mover.agentName}
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        @{mover.username || mover.agentId.slice(0, 8)} · Trades {mover.trades24h}
+                      <div className="text-muted-foreground text-xs">
+                        @{mover.username || mover.agentId.slice(0, 8)} · Trades{" "}
+                        {mover.trades24h}
                       </div>
                     </div>
                     <div
                       className={cn(
-                        'font-mono',
-                        mover.pnl24h >= 0 ? 'text-green-600' : 'text-red-600'
+                        "font-mono",
+                        mover.pnl24h >= 0 ? "text-green-600" : "text-red-600",
                       )}
                     >
-                      {mover.pnl24h >= 0 ? '+' : '-'}$
+                      {mover.pnl24h >= 0 ? "+" : "-"}$
                       {Math.abs(mover.pnl24h).toFixed(2)}
                     </div>
                   </div>
@@ -338,7 +337,10 @@ export default function AgentsPage() {
         {loading ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="animate-pulse border border-border bg-card p-6">
+              <div
+                key={i}
+                className="animate-pulse border border-border bg-card p-6"
+              >
                 <div className="mb-4 flex items-center gap-4">
                   <Skeleton className="h-12 w-12" />
                   <div className="flex-1">
@@ -407,8 +409,8 @@ export default function AgentsPage() {
                           <span
                             className={
                               agent.autonomousEnabled
-                                ? 'text-green-500'
-                                : 'text-muted-foreground'
+                                ? "text-green-500"
+                                : "text-muted-foreground"
                             }
                           >
                             {agent.autonomousEnabled ? (
@@ -417,7 +419,7 @@ export default function AgentsPage() {
                                 Active
                               </>
                             ) : (
-                              'Idle'
+                              "Idle"
                             )}
                           </span>
                           <span className="text-muted-foreground">•</span>
@@ -453,10 +455,10 @@ export default function AgentsPage() {
                         </div>
                         <div
                           className={cn(
-                            'flex items-center gap-1 font-semibold',
+                            "flex items-center gap-1 font-semibold",
                             Number(agent.lifetimePnL ?? 0) >= 0
-                              ? 'text-green-600'
-                              : 'text-red-600'
+                              ? "text-green-600"
+                              : "text-red-600",
                           )}
                         >
                           <TrendingUp className="h-3 w-3" />

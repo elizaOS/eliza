@@ -9,6 +9,7 @@ import { transferAction } from "./actions/transfer";
 import { tokenBalanceProvider } from "./providers/get-balance";
 import { evmWalletProvider } from "./providers/wallet";
 import { EVMService } from "./service";
+
 export { initWalletProvider, WalletProvider } from "./providers/wallet";
 export type { SupportedChain } from "./types";
 

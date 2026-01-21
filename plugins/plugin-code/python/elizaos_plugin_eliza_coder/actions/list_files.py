@@ -15,7 +15,9 @@ class ListFilesAction:
     async def validate(self, _message: Message, _state: dict) -> bool:
         return True
 
-    async def handler(self, message: Message, state: dict, service: CoderService | None = None) -> ActionResult:
+    async def handler(
+        self, message: Message, state: dict, service: CoderService | None = None
+    ) -> ActionResult:
         if service is None:
             return ActionResult(False, "Coder service is not available.", "missing_service")
 
@@ -25,4 +27,3 @@ class ListFilesAction:
             return ActionResult(False, str(res), "list_failed")
         items = res if isinstance(res, list) else []
         return ActionResult(True, "\n".join(items) if items else "(empty)")
-

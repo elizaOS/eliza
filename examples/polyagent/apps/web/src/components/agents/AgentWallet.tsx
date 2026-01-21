@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import { cn } from '@polyagent/shared';
+import { cn } from "@polyagent/shared";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
   History,
   TrendingUp,
   Wallet,
-} from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { Input } from '@/components/ui/input';
-import { useAuth } from '@/hooks/useAuth';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
+import { useAuth } from "@/hooks/useAuth";
 
 /**
  * Transaction structure for agent wallet.
@@ -50,15 +50,15 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
-  const [amount, setAmount] = useState('');
-  const [action, setAction] = useState<'deposit' | 'withdraw'>('deposit');
+  const [amount, setAmount] = useState("");
+  const [action, setAction] = useState<"deposit" | "withdraw">("deposit");
   const [processing, setProcessing] = useState(false);
 
   // Balance state
   const [balanceInfo, setBalanceInfo] = useState({
     agentBalance: agent.virtualBalance ?? 0,
     userBalance: 0,
-    lifetimePnL: parseFloat(agent.lifetimePnL ?? '0'),
+    lifetimePnL: parseFloat(agent.lifetimePnL ?? "0"),
   });
 
   const fetchBalanceAndTransactions = useCallback(async () => {
@@ -91,19 +91,19 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
     const amountNum = parseFloat(amount);
 
     if (!amountNum || amountNum <= 0) {
-      toast.error('Please enter a valid amount');
+      toast.error("Please enter a valid amount");
       return;
     }
 
-    if (action === 'deposit' && amountNum > balanceInfo.userBalance) {
+    if (action === "deposit" && amountNum > balanceInfo.userBalance) {
       toast.error(
-        `Insufficient balance. You have ${balanceInfo.userBalance.toFixed(2)} pts`
+        `Insufficient balance. You have ${balanceInfo.userBalance.toFixed(2)} pts`,
       );
       return;
     }
-    if (action === 'withdraw' && amountNum > balanceInfo.agentBalance) {
+    if (action === "withdraw" && amountNum > balanceInfo.agentBalance) {
       toast.error(
-        `Insufficient agent balance. Agent has ${balanceInfo.agentBalance.toFixed(2)} pts`
+        `Insufficient agent balance. Agent has ${balanceInfo.agentBalance.toFixed(2)} pts`,
       );
       return;
     }
@@ -112,34 +112,34 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
     const token = await getAccessToken();
     if (!token) {
       setProcessing(false);
-      toast.error('Authentication required');
+      toast.error("Authentication required");
       return;
     }
 
     try {
       const res = await fetch(`/api/agents/${agent.id}/trading-balance`, {
-        method: 'POST',
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ action, amount: amountNum }),
       });
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.error || 'Transaction failed');
+        throw new Error(error.error || "Transaction failed");
       }
 
       const data = await res.json();
       toast.success(data.message);
-      setAmount('');
+      setAmount("");
 
       await fetchBalanceAndTransactions();
       onUpdate();
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : 'Transaction failed'
+        error instanceof Error ? error.message : "Transaction failed",
       );
     } finally {
       setProcessing(false);
@@ -165,11 +165,13 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
             </span>
             <span
               className={cn(
-                'font-medium',
-                balanceInfo.lifetimePnL >= 0 ? 'text-green-600' : 'text-red-600'
+                "font-medium",
+                balanceInfo.lifetimePnL >= 0
+                  ? "text-green-600"
+                  : "text-red-600",
               )}
             >
-              {balanceInfo.lifetimePnL >= 0 ? '+' : ''}
+              {balanceInfo.lifetimePnL >= 0 ? "+" : ""}
               {balanceInfo.lifetimePnL.toFixed(2)} pts
             </span>
           </div>
@@ -194,24 +196,24 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
         {/* Action Toggle */}
         <div className="mb-4 grid grid-cols-2 gap-2">
           <button
-            onClick={() => setAction('deposit')}
+            onClick={() => setAction("deposit")}
             className={cn(
-              'flex items-center justify-center gap-2 rounded-lg px-3 py-3 font-medium transition-all sm:px-4',
-              action === 'deposit'
-                ? 'bg-[#0066FF] text-primary-foreground'
-                : 'bg-muted text-foreground hover:bg-muted/80'
+              "flex items-center justify-center gap-2 rounded-lg px-3 py-3 font-medium transition-all sm:px-4",
+              action === "deposit"
+                ? "bg-[#0066FF] text-primary-foreground"
+                : "bg-muted text-foreground hover:bg-muted/80",
             )}
           >
             <ArrowDownToLine className="h-4 w-4 shrink-0" />
             <span>Deposit</span>
           </button>
           <button
-            onClick={() => setAction('withdraw')}
+            onClick={() => setAction("withdraw")}
             className={cn(
-              'flex items-center justify-center gap-2 rounded-lg px-3 py-3 font-medium transition-all sm:px-4',
-              action === 'withdraw'
-                ? 'bg-[#0066FF] text-primary-foreground'
-                : 'bg-muted text-foreground hover:bg-muted/80'
+              "flex items-center justify-center gap-2 rounded-lg px-3 py-3 font-medium transition-all sm:px-4",
+              action === "withdraw"
+                ? "bg-[#0066FF] text-primary-foreground"
+                : "bg-muted text-foreground hover:bg-muted/80",
             )}
           >
             <ArrowUpFromLine className="h-4 w-4 shrink-0" />
@@ -229,7 +231,7 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
             min={0.01}
             step={0.01}
             max={
-              action === 'deposit'
+              action === "deposit"
                 ? balanceInfo.userBalance
                 : balanceInfo.agentBalance
             }
@@ -241,15 +243,15 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
             className="h-12 w-full rounded-lg bg-[#0066FF] px-6 font-medium text-white transition-all hover:bg-[#2952d9] disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-auto"
           >
             {processing
-              ? 'Processing...'
-              : action === 'deposit'
-                ? 'Deposit'
-                : 'Withdraw'}
+              ? "Processing..."
+              : action === "deposit"
+                ? "Deposit"
+                : "Withdraw"}
           </button>
         </div>
 
         <p className="mt-3 text-muted-foreground text-xs">
-          {action === 'deposit'
+          {action === "deposit"
             ? `Transfer pts from your balance to ${agent.name}`
             : `Transfer pts from ${agent.name} to your balance`}
         </p>
@@ -279,7 +281,7 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
               >
                 <div className="flex-1">
                   <div className="font-medium capitalize">
-                    {tx.type.replace(/_/g, ' ')}
+                    {tx.type.replace(/_/g, " ")}
                   </div>
                   <div className="text-muted-foreground text-sm">
                     {tx.description}
@@ -291,11 +293,11 @@ export function AgentWallet({ agent, onUpdate }: AgentWalletProps) {
                 <div className="text-right">
                   <div
                     className={cn(
-                      'font-semibold',
-                      tx.amount > 0 ? 'text-green-600' : 'text-red-600'
+                      "font-semibold",
+                      tx.amount > 0 ? "text-green-600" : "text-red-600",
                     )}
                   >
-                    {tx.amount > 0 ? '+' : ''}
+                    {tx.amount > 0 ? "+" : ""}
                     {Math.abs(tx.amount).toFixed(2)} pts
                   </div>
                   <div className="text-muted-foreground text-xs">

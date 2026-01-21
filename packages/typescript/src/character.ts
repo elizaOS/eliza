@@ -2,7 +2,7 @@ import { validateCharacter } from "./schemas/character";
 import type {
   Character,
   CharacterSettings,
-  KnowledgeItem,
+  KnowledgeSourceItem,
   MessageExample,
   MessageExampleGroup,
 } from "./types";
@@ -11,7 +11,7 @@ type LegacyKnowledgeItem =
   | string
   | { path: string; shared?: boolean }
   | { directory: string; shared?: boolean }
-  | KnowledgeItem;
+  | KnowledgeSourceItem;
 
 type MessageExamplesInput = MessageExampleGroup[] | MessageExample[][];
 
@@ -46,7 +46,7 @@ interface NormalizedCharacterInput {
   postExamples: string[];
   topics: string[];
   adjectives: string[];
-  knowledge: KnowledgeItem[];
+  knowledge: KnowledgeSourceItem[];
   plugins: string[];
   settings?: CharacterSettings;
   secrets: Record<string, string>;
@@ -78,7 +78,9 @@ function normalizeMessageExamples(
   return [];
 }
 
-function normalizeKnowledgeItem(item: LegacyKnowledgeItem): KnowledgeItem | null {
+function normalizeKnowledgeItem(
+  item: LegacyKnowledgeItem,
+): KnowledgeSourceItem | null {
   if (typeof item === "string") {
     return { item: { case: "path", value: item } };
   }
@@ -88,14 +90,14 @@ function normalizeKnowledgeItem(item: LegacyKnowledgeItem): KnowledgeItem | null
   if ("item" in item && isRecord(item.item)) {
     const caseValue = item.item.case;
     if (caseValue === "path" && typeof item.item.value === "string") {
-      return item as KnowledgeItem;
+      return item as KnowledgeSourceItem;
     }
     if (
       caseValue === "directory" &&
       isRecord(item.item.value) &&
       typeof item.item.value.path === "string"
     ) {
-      return item as KnowledgeItem;
+      return item as KnowledgeSourceItem;
     }
   }
   if ("path" in item && typeof item.path === "string") {
@@ -128,7 +130,7 @@ export function normalizeCharacterInput(
 
   const normalizedKnowledge = (input.knowledge ?? [])
     .map((item) => normalizeKnowledgeItem(item))
-    .filter((item): item is KnowledgeItem => item !== null);
+    .filter((item): item is KnowledgeSourceItem => item !== null);
 
   return {
     id: input.id,
@@ -151,7 +153,9 @@ export function normalizeCharacterInput(
   };
 }
 
-export function createCharacter(input: CharacterInput & { name: string }): Character {
+export function createCharacter(
+  input: CharacterInput & { name: string },
+): Character {
   return normalizeCharacterInput(input) as Character;
 }
 

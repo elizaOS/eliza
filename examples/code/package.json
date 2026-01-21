@@ -1,6 +1,6 @@
 {
   "name": "eliza-code",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "description": "Async coding agent terminal app - Claude Code meets ElizaOS",
   "type": "module",
   "main": "dist/index.js",

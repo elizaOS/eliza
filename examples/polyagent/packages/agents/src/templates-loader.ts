@@ -19,8 +19,8 @@
  * @packageDocumentation
  */
 
-import { templateIds, templates } from './templates';
-import type { AgentTemplate } from './types/agent-template';
+import { templateIds, templates } from "./templates";
+import type { AgentTemplate } from "./types/agent-template";
 
 /**
  * In-memory cache for loaded templates

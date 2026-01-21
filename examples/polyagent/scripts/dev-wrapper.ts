@@ -1,25 +1,26 @@
 #!/usr/bin/env bun
+
 /**
  * Development wrapper that conditionally starts Hardhat based on environment
  */
 
-// @ts-ignore - bun global is available in bun runtime
-import { $ } from 'bun';
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
-import { detectEnvironment } from '../packages/contracts/src/deployment/env-detection';
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+// @ts-expect-error - bun global is available in bun runtime
+import { $ } from "bun";
+import { detectEnvironment } from "../packages/contracts/src/deployment/env-detection";
 
 // Load .env file to detect environment
-const envPath = join(process.cwd(), '.env');
+const envPath = join(process.cwd(), ".env");
 if (existsSync(envPath)) {
-  const envContent = readFileSync(envPath, 'utf-8');
+  const envContent = readFileSync(envPath, "utf-8");
   // Parse .env file and set environment variables
-  for (const line of envContent.split('\n')) {
+  for (const line of envContent.split("\n")) {
     const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const [key, ...valueParts] = trimmed.split('=');
+    if (trimmed && !trimmed.startsWith("#")) {
+      const [key, ...valueParts] = trimmed.split("=");
       if (key && valueParts.length > 0) {
-        const value = valueParts.join('=').replace(/^["']|["']$/g, '');
+        const value = valueParts.join("=").replace(/^["']|["']$/g, "");
         if (!process.env[key]) {
           process.env[key] = value;
         }
@@ -29,7 +30,7 @@ if (existsSync(envPath)) {
 }
 
 const detectedEnv = detectEnvironment();
-const isLocalnet = detectedEnv === 'localnet';
+const isLocalnet = detectedEnv === "localnet";
 
 if (isLocalnet) {
   // Start Hardhat, deploy, Next.js, and cron

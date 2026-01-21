@@ -41,7 +41,8 @@ export const createTaskAction: Action = {
     "Create an orchestrated background task to be executed by a selected agent provider.",
   validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     const text = message.content.text?.toLowerCase() ?? "";
-    const hasExplicit = text.includes("create task") || text.includes("new task") || text.includes("start a task");
+    const hasExplicit =
+      text.includes("create task") || text.includes("new task") || text.includes("start a task");
     const hasIntent =
       text.includes("implement") ||
       text.includes("build") ||
@@ -62,10 +63,9 @@ export const createTaskAction: Action = {
     const svc = getService(runtime);
     const raw = message.content.text ?? "";
 
-    const opts = options as
-      | { title?: string; description?: string; steps?: string[] }
-      | undefined;
-    const name = (opts?.title ?? raw.split("\n")[0] ?? "New Task").trim().slice(0, 100) || "New Task";
+    const opts = options as { title?: string; description?: string; steps?: string[] } | undefined;
+    const name =
+      (opts?.title ?? raw.split("\n")[0] ?? "New Task").trim().slice(0, 100) || "New Task";
     const description = (opts?.description ?? raw).trim().slice(0, 4000) || name;
 
     const roomId = message.roomId;
@@ -78,7 +78,10 @@ export const createTaskAction: Action = {
         if (!step) continue;
         await svc.addStep(task.id ?? "", step);
       }
-      await svc.appendOutput(task.id ?? "", `Plan:\n${stepLines.map((s, i) => `${i + 1}. ${s}`).join("\n")}`);
+      await svc.appendOutput(
+        task.id ?? "",
+        `Plan:\n${stepLines.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
+      );
     }
 
     const msg = `Created task: ${task.name}\nProvider: ${task.metadata.providerLabel ?? task.metadata.providerId}\nStarting execution…`;
@@ -100,7 +103,9 @@ export const listTasksAction: Action = {
   description: "List tasks managed by the orchestrator.",
   validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     const t = message.content.text?.toLowerCase() ?? "";
-    return t.includes("list task") || t.includes("show task") || t === "tasks" || t.includes("my task");
+    return (
+      t.includes("list task") || t.includes("show task") || t === "tasks" || t.includes("my task")
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -138,7 +143,11 @@ export const switchTaskAction: Action = {
   description: "Switch the current task context to a different task.",
   validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     const t = message.content.text?.toLowerCase() ?? "";
-    return t.includes("switch to task") || t.includes("select task") || (t.includes("task") && t.includes("switch"));
+    return (
+      t.includes("switch to task") ||
+      t.includes("select task") ||
+      (t.includes("task") && t.includes("switch"))
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -251,7 +260,10 @@ export const resumeTaskAction: Action = {
   description: "Resume a paused task.",
   validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     const t = message.content.text?.toLowerCase() ?? "";
-    return t.includes("task") && (t.includes("resume") || t.includes("restart") || t.includes("continue"));
+    return (
+      t.includes("task") &&
+      (t.includes("resume") || t.includes("restart") || t.includes("continue"))
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -282,7 +294,9 @@ export const cancelTaskAction: Action = {
   description: "Cancel a task.",
   validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     const t = message.content.text?.toLowerCase() ?? "";
-    return (t.includes("cancel") || t.includes("delete") || t.includes("remove")) && t.includes("task");
+    return (
+      (t.includes("cancel") || t.includes("delete") || t.includes("remove")) && t.includes("task")
+    );
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -305,4 +319,3 @@ export const cancelTaskAction: Action = {
     return { success: true, text: msg };
   },
 };
-

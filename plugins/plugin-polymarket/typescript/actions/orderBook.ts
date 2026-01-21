@@ -29,27 +29,27 @@
  * - **Placing orders**: Use `placeOrderAction` to execute trades
  */
 
-import {
-  type Action,
-  type ActionResult,
-  type Content,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  Content,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { getOrderBookDepthTemplate } from "../templates";
 import type { OrderBook } from "../types";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import {
-  initializeClobClient,
   callLLMWithTimeout,
+  initializeClobClient,
   isLLMError,
+  type LLMTokensResult,
   parseOrderBookParameters,
   sendAcknowledgement,
   sendError,
-  type LLMTokensResult,
 } from "../utils";
 
 // =============================================================================
@@ -143,10 +143,14 @@ export const getOrderBookDepthAction: Action = {
       }
 
       // Send acknowledgement before API calls
-      await sendAcknowledgement(callback, `Comparing order book depth for ${tokenIds.length} token(s)...`, {
-        tokenCount: tokenIds.length,
-        tokens: tokenIds.map((t) => t.slice(0, 12) + "...").join(", "),
-      });
+      await sendAcknowledgement(
+        callback,
+        `Comparing order book depth for ${tokenIds.length} token(s)...`,
+        {
+          tokenCount: tokenIds.length,
+          tokens: tokenIds.map((t) => `${t.slice(0, 12)}...`).join(", "),
+        }
+      );
 
       const clobClient = await initializeClobClient(runtime);
       // Use getOrderBooks and calculate depth from the result
@@ -198,7 +202,11 @@ export const getOrderBookDepthAction: Action = {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       runtime.logger.error("[getOrderBookDepthAction] Error:", error);
-      await sendError(callback, `Failed to fetch order book depth: ${errorMessage}`, `${tokenIds.length} token(s)`);
+      await sendError(
+        callback,
+        `Failed to fetch order book depth: ${errorMessage}`,
+        `${tokenIds.length} token(s)`
+      );
       return { success: false, text: `Order book error: ${errorMessage}`, error: errorMessage };
     }
   },

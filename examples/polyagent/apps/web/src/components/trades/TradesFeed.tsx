@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { Activity, AlertCircle } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { FeedSkeleton } from '@/components/shared/Skeleton';
-import { type Trade, TradeCard } from './TradeCard';
+import { Activity, AlertCircle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FeedSkeleton } from "@/components/shared/Skeleton";
+import { type Trade, TradeCard } from "./TradeCard";
 
 /**
  * Page size for pagination in trades feed.
@@ -73,7 +73,7 @@ export function TradesFeed({ userId, containerRef }: TradesFeedProps) {
       });
 
       if (userId) {
-        params.append('userId', userId);
+        params.append("userId", userId);
       }
 
       const response = await fetch(`/api/trades?${params.toString()}`);
@@ -92,7 +92,7 @@ export function TradesFeed({ userId, containerRef }: TradesFeedProps) {
           // Deduplicate trades by ID
           const existingIds = new Set(prev.map((t) => t.id));
           const uniqueNewTrades = newTrades.filter(
-            (t: Trade) => !existingIds.has(t.id)
+            (t: Trade) => !existingIds.has(t.id),
           );
           return [...prev, ...uniqueNewTrades];
         });
@@ -105,7 +105,7 @@ export function TradesFeed({ userId, containerRef }: TradesFeedProps) {
       setHasMore(data.hasMore || false);
       setOffset(requestOffset + newTrades.length);
     },
-    [userId]
+    [userId],
   );
 
   // Refresh trades (used by polling and pull-to-refresh)
@@ -113,11 +113,11 @@ export function TradesFeed({ userId, containerRef }: TradesFeedProps) {
     // Silent refresh - don't show loading state
     const params = new URLSearchParams({
       limit: PAGE_SIZE.toString(),
-      offset: '0',
+      offset: "0",
     });
 
     if (userId) {
-      params.append('userId', userId);
+      params.append("userId", userId);
     }
 
     const response = await fetch(`/api/trades?${params.toString()}`);
@@ -154,8 +154,8 @@ export function TradesFeed({ userId, containerRef }: TradesFeedProps) {
       setShouldPoll(isNearTop);
     };
 
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
   }, [containerRef]);
 
   // Polling: refresh when at top
@@ -170,7 +170,7 @@ export function TradesFeed({ userId, containerRef }: TradesFeedProps) {
 
     // Only poll if page is visible
     const pollIfVisible = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === "visible") {
         refreshTrades();
       }
     };
@@ -196,7 +196,7 @@ export function TradesFeed({ userId, containerRef }: TradesFeedProps) {
           fetchTrades(offset, true);
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.1 },
     );
 
     observer.observe(loadMoreRef.current);
@@ -247,7 +247,7 @@ export function TradesFeed({ userId, containerRef }: TradesFeedProps) {
         <p className="max-w-sm text-muted-foreground text-sm">
           {userId
             ? "This user hasn't made any trades yet."
-            : 'No trades to display. Check back later!'}
+            : "No trades to display. Check back later!"}
         </p>
       </div>
     );

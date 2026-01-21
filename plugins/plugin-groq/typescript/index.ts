@@ -38,7 +38,8 @@ function createGroqClient(runtime: IAgentRuntime) {
   // In browsers, default to *not* sending secrets.
   // Use a server-side proxy and configure GROQ_BASE_URL (or explicitly opt-in).
   const allowBrowserKey =
-    !isBrowser() || String(runtime.getSetting("GROQ_ALLOW_BROWSER_API_KEY") ?? "").toLowerCase() === "true";
+    !isBrowser() ||
+    String(runtime.getSetting("GROQ_ALLOW_BROWSER_API_KEY") ?? "").toLowerCase() === "true";
   const apiKey = allowBrowserKey ? runtime.getSetting("GROQ_API_KEY") : undefined;
   return createGroq({
     apiKey: typeof apiKey === "string" ? apiKey : undefined,
@@ -173,10 +174,7 @@ export const groqPlugin: Plugin = {
       type AudioDataShape = { audioData: Uint8Array };
 
       function hasAudioData(obj: object): obj is AudioDataShape {
-        return (
-          "audioData" in obj &&
-          (obj as AudioDataShape).audioData instanceof Uint8Array
-        );
+        return "audioData" in obj && (obj as AudioDataShape).audioData instanceof Uint8Array;
       }
 
       if (isBrowser()) {
@@ -192,7 +190,8 @@ export const groqPlugin: Plugin = {
       const audioBuffer: Buffer =
         typeof params === "string"
           ? Buffer.from(params, "base64")
-          : hasBuffer && (Buffer as unknown as { isBuffer: (v: unknown) => boolean }).isBuffer(params)
+          : hasBuffer &&
+              (Buffer as unknown as { isBuffer: (v: unknown) => boolean }).isBuffer(params)
             ? (params as Buffer)
             : typeof params === "object" && params !== null && hasAudioData(params)
               ? Buffer.from((params as AudioDataShape).audioData)
@@ -256,11 +255,9 @@ export const groqPlugin: Plugin = {
 
   tests: [
     {
-      $typeName: "eliza.v1.TestSuite",
       name: "groq_plugin_tests",
       tests: [
         {
-          $typeName: "eliza.v1.TestCase",
           name: "validate_api_key",
           fn: async (runtime) => {
             const baseURL = getBaseURL(runtime);
@@ -279,7 +276,6 @@ export const groqPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "text_small",
           fn: async (runtime) => {
             const text = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -292,7 +288,6 @@ export const groqPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "text_large",
           fn: async (runtime) => {
             const text = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -305,7 +300,6 @@ export const groqPlugin: Plugin = {
           },
         },
         {
-          $typeName: "eliza.v1.TestCase",
           name: "object_generation",
           fn: async (runtime) => {
             const obj = await runtime.useModel(ModelType.OBJECT_SMALL, {

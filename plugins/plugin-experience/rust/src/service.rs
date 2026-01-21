@@ -5,15 +5,25 @@ use uuid::Uuid;
 /// Input parameters for recording an experience.
 #[derive(Debug, Clone)]
 pub struct ExperienceInput {
+    /// Type of experience.
     pub experience_type: ExperienceType,
+    /// Outcome of the experience.
     pub outcome: OutcomeType,
+    /// Context in which the experience occurred.
     pub context: String,
+    /// Action that was taken.
     pub action: String,
+    /// Result of the action.
     pub result: String,
+    /// What was learned from this experience.
     pub learning: String,
+    /// Tags for categorization.
     pub tags: Vec<String>,
+    /// Domain of the experience (e.g., "shell", "coding").
     pub domain: String,
+    /// Confidence level (0-1).
     pub confidence: f64,
+    /// Importance level (0-1).
     pub importance: f64,
 }
 
@@ -34,31 +44,37 @@ impl ExperienceInput {
         }
     }
 
+    /// Set the experience type.
     pub fn with_type(mut self, experience_type: ExperienceType) -> Self {
         self.experience_type = experience_type;
         self
     }
 
+    /// Set the outcome type.
     pub fn with_outcome(mut self, outcome: OutcomeType) -> Self {
         self.outcome = outcome;
         self
     }
 
+    /// Set the domain.
     pub fn with_domain(mut self, domain: String) -> Self {
         self.domain = domain;
         self
     }
 
+    /// Set the tags.
     pub fn with_tags(mut self, tags: Vec<String>) -> Self {
         self.tags = tags;
         self
     }
 
+    /// Set the confidence level (0-1).
     pub fn with_confidence(mut self, confidence: f64) -> Self {
         self.confidence = confidence;
         self
     }
 
+    /// Set the importance level (0-1).
     pub fn with_importance(mut self, importance: f64) -> Self {
         self.importance = importance;
         self
@@ -81,6 +97,7 @@ impl ExperienceService {
         }
     }
 
+    /// Set the maximum number of experiences to store, pruning if necessary.
     pub fn set_max_experiences(&mut self, max_experiences: usize) {
         self.max_experiences = max_experiences.max(1);
         self.prune_if_needed();

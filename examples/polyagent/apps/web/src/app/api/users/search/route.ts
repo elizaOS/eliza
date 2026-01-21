@@ -105,15 +105,19 @@
  * @see {@link /src/components/MentionAutocomplete} Autocomplete UI
  */
 
-import { authenticate, successResponse, withErrorHandling } from '@polyagent/api';
+import {
+  authenticate,
+  successResponse,
+  withErrorHandling,
+} from "@polyagent/api";
 import {
   asUser,
   getBlockedByUserIds,
   getBlockedUserIds,
   getMutedUserIds,
-} from '@polyagent/db';
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
+} from "@polyagent/db";
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
 
 /**
  * GET /api/users/search
@@ -124,8 +128,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   // Get query parameters
   const { searchParams } = new URL(request.url);
-  const query = searchParams.get('q');
-  const includeAgents = searchParams.get('includeAgents') === 'true';
+  const query = searchParams.get("q");
+  const includeAgents = searchParams.get("includeAgents") === "true";
 
   if (!query || query.trim().length < 2) {
     return successResponse({ users: [] });
@@ -153,13 +157,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
               {
                 username: {
                   contains: searchTerm,
-                  mode: 'insensitive',
+                  mode: "insensitive",
                 },
               },
               {
                 displayName: {
                   contains: searchTerm,
-                  mode: 'insensitive',
+                  mode: "insensitive",
                 },
               },
             ],
@@ -193,21 +197,21 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       take: 20, // Limit results
       orderBy: [
         {
-          username: 'asc',
+          username: "asc",
         },
       ],
     });
   });
 
   logger.info(
-    'User search completed',
+    "User search completed",
     {
       userId: user.userId,
       query: searchTerm,
       results: users.length,
       includeAgents,
     },
-    'GET /api/users/search'
+    "GET /api/users/search",
   );
 
   return successResponse({

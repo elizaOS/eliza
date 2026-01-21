@@ -1,5 +1,5 @@
-import type { WhatsAppClient } from "../client";
-import type { WhatsAppWebhookEvent } from "../types";
+import type { WhatsAppClient } from '../client';
+import type { WhatsAppIncomingMessage, WhatsAppStatusUpdate, WhatsAppWebhookEvent } from '../types';
 
 export class WebhookHandler {
     constructor(private client: WhatsAppClient) {}
@@ -23,23 +23,21 @@ export class WebhookHandler {
             }
         } catch (error: unknown) {
             if (error instanceof Error) {
-                throw new Error(
-                    `Failed to send WhatsApp message: ${error.message}`
-                );
+                throw new Error(`Failed to send WhatsApp message: ${error.message}`);
             }
-            throw new Error("Failed to send WhatsApp message");
+            throw new Error('Failed to send WhatsApp message');
         }
     }
 
-    private async handleMessage(message: any): Promise<void> {
+    private async handleMessage(message: WhatsAppIncomingMessage): Promise<void> {
         // Implement message handling logic
         // This could emit events or trigger callbacks based on your framework's needs
-        console.log("Received message:", message);
+        console.log('Received message:', message);
     }
 
-    private async handleStatus(status: any): Promise<void> {
+    private async handleStatus(status: WhatsAppStatusUpdate): Promise<void> {
         // Implement status update handling logic
         // This could emit events or trigger callbacks based on your framework's needs
-        console.log("Received status update:", status);
+        console.log('Received status update:', status);
     }
 }

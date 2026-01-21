@@ -52,7 +52,13 @@ impl RelationshipExtractionEvaluator {
         let lower = text.to_lowercase();
 
         // Friend indicators
-        let friend_patterns = ["my friend", "good friend", "best friend", "close friend", "we're friends"];
+        let friend_patterns = [
+            "my friend",
+            "good friend",
+            "best friend",
+            "close friend",
+            "we're friends",
+        ];
         for pattern in &friend_patterns {
             if lower.contains(pattern) {
                 indicators.push(("friend".to_string(), "positive".to_string(), 0.8));
@@ -61,7 +67,13 @@ impl RelationshipExtractionEvaluator {
         }
 
         // Colleague indicators
-        let colleague_patterns = ["my colleague", "coworker", "co-worker", "work together", "at work"];
+        let colleague_patterns = [
+            "my colleague",
+            "coworker",
+            "co-worker",
+            "work together",
+            "at work",
+        ];
         for pattern in &colleague_patterns {
             if lower.contains(pattern) {
                 indicators.push(("colleague".to_string(), "neutral".to_string(), 0.8));
@@ -70,9 +82,20 @@ impl RelationshipExtractionEvaluator {
         }
 
         // Family indicators
-        let family_patterns = ["my brother", "my sister", "my mom", "my dad", "my mother", 
-                              "my father", "my parent", "my son", "my daughter", "my child", 
-                              "my family", "family member"];
+        let family_patterns = [
+            "my brother",
+            "my sister",
+            "my mom",
+            "my dad",
+            "my mother",
+            "my father",
+            "my parent",
+            "my son",
+            "my daughter",
+            "my child",
+            "my family",
+            "family member",
+        ];
         for pattern in &family_patterns {
             if lower.contains(pattern) {
                 indicators.push(("family".to_string(), "positive".to_string(), 0.9));
@@ -95,7 +118,12 @@ impl Evaluator for RelationshipExtractionEvaluator {
     }
 
     async fn validate(&self, _runtime: &dyn IAgentRuntime, message: &Memory) -> bool {
-        message.content.text.as_ref().map(|t| !t.is_empty()).unwrap_or(false)
+        message
+            .content
+            .text
+            .as_ref()
+            .map(|t| !t.is_empty())
+            .unwrap_or(false)
     }
 
     async fn evaluate(
@@ -107,8 +135,9 @@ impl Evaluator for RelationshipExtractionEvaluator {
         let text = match &message.content.text {
             Some(t) => t,
             None => {
-                return Ok(EvaluatorResult::passed(50, "No text to analyze")
-                    .with_data("noText", true));
+                return Ok(
+                    EvaluatorResult::passed(50, "No text to analyze").with_data("noText", true)
+                );
             }
         };
 
@@ -139,10 +168,3 @@ impl Evaluator for RelationshipExtractionEvaluator {
         .with_data("indicatorsCount", indicators.len()))
     }
 }
-
-
-
-
-
-
-

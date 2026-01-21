@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearSaltCache, getSalt } from "../settings";
 
 describe("getSalt - production enforcement", () => {
@@ -30,4 +30,3 @@ describe("getSalt - production enforcement", () => {
     expect(getSalt()).toBe("secretsalt");
   });
 });
-

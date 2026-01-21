@@ -59,7 +59,10 @@ fn test_stt_options_default() {
     assert!(options.api_key.is_empty());
     assert_eq!(options.model_id, "scribe_v1");
     assert!(options.language_code.is_none());
-    assert_eq!(options.transcription_settings.timestamps_granularity, "word");
+    assert_eq!(
+        options.transcription_settings.timestamps_granularity,
+        "word"
+    );
     assert!(!options.transcription_settings.diarize);
 }
 

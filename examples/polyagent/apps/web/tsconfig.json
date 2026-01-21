@@ -2,11 +2,7 @@
   "compilerOptions": {
     // Language and Environment
     "target": "ES2022",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "preserve",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -41,9 +37,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     // Bun-specific
-    "types": [
-      "bun-types"
-    ],
+    "types": ["bun-types"],
     "moduleDetection": "force",
     // Next.js
     "plugins": [
@@ -54,57 +48,25 @@
     // Path aliases for shared code and Next.js
     "baseUrl": ".",
     "paths": {
-      "@babylon/contracts": [
-        "../../packages/contracts/src/index.ts"
-      ],
+      "@babylon/contracts": ["../../packages/contracts/src/index.ts"],
       "@babylon/contracts/deployments/*": [
         "../../packages/contracts/deployments/*"
       ],
-      "@babylon/contracts/*": [
-        "../../packages/contracts/src/*"
-      ],
-      "@babylon/db": [
-        "../../packages/db/src/index.ts"
-      ],
-      "@babylon/db/*": [
-        "../../packages/db/src/*"
-      ],
-      "@babylon/api": [
-        "../../packages/api/src/index.ts"
-      ],
-      "@babylon/api/*": [
-        "../../packages/api/src/*"
-      ],
-      "@babylon/agents": [
-        "../../packages/agents/src/index.ts"
-      ],
-      "@babylon/agents/*": [
-        "../../packages/agents/src/*"
-      ],
-      "@babylon/shared": [
-        "../../packages/shared/src/index.ts"
-      ],
-      "@babylon/shared/*": [
-        "../../packages/shared/src/*"
-      ],
-      "@/components/*": [
-        "./src/components/*"
-      ],
-      "@/lib/*": [
-        "./src/lib/*"
-      ],
-      "@/hooks/*": [
-        "./src/hooks/*"
-      ],
-      "@/stores/*": [
-        "./src/stores/*"
-      ],
-      "@/app/*": [
-        "./src/app/*"
-      ],
-      "@/*": [
-        "./src/*"
-      ]
+      "@babylon/contracts/*": ["../../packages/contracts/src/*"],
+      "@babylon/db": ["../../packages/db/src/index.ts"],
+      "@babylon/db/*": ["../../packages/db/src/*"],
+      "@babylon/api": ["../../packages/api/src/index.ts"],
+      "@babylon/api/*": ["../../packages/api/src/*"],
+      "@babylon/agents": ["../../packages/agents/src/index.ts"],
+      "@babylon/agents/*": ["../../packages/agents/src/*"],
+      "@babylon/shared": ["../../packages/shared/src/index.ts"],
+      "@babylon/shared/*": ["../../packages/shared/src/*"],
+      "@/components/*": ["./src/components/*"],
+      "@/lib/*": ["./src/lib/*"],
+      "@/hooks/*": ["./src/hooks/*"],
+      "@/stores/*": ["./src/stores/*"],
+      "@/app/*": ["./src/app/*"],
+      "@/*": ["./src/*"]
     },
     "allowJs": true
   },
@@ -115,10 +77,5 @@
     ".next/dev/types/**/*.ts",
     "types/**/*.d.ts"
   ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.disabled",
-    "src/**/__tests__/**/*"
-  ]
+  "exclude": ["node_modules", "dist", "**/*.disabled", "src/**/__tests__/**/*"]
 }

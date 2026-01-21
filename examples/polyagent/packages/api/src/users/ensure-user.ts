@@ -6,8 +6,8 @@
  * information.
  */
 
-import { db, eq, type User, users } from '@polyagent/db';
-import type { AuthenticatedUser } from '../auth-middleware';
+import { db, eq, type User, users } from "@polyagent/db";
+import type { AuthenticatedUser } from "../auth-middleware";
 
 /**
  * Options for ensuring user exists
@@ -22,13 +22,13 @@ export interface EnsureUserOptions {
 
 export type CanonicalUser = Pick<
   User,
-  | 'id'
-  | 'privyId'
-  | 'username'
-  | 'displayName'
-  | 'walletAddress'
-  | 'isActor'
-  | 'profileImageUrl'
+  | "id"
+  | "privyId"
+  | "username"
+  | "displayName"
+  | "walletAddress"
+  | "isActor"
+  | "profileImageUrl"
 >;
 
 /**
@@ -52,7 +52,7 @@ export type CanonicalUser = Pick<
  */
 export async function ensureUserForAuth(
   user: AuthenticatedUser,
-  options: EnsureUserOptions = {}
+  options: EnsureUserOptions = {},
 ): Promise<{ user: CanonicalUser }> {
   const privyId = user.privyId ?? user.userId;
 
@@ -172,7 +172,7 @@ export async function ensureUserForAuth(
  * ```
  */
 export function getCanonicalUserId(
-  user: Pick<AuthenticatedUser, 'userId' | 'dbUserId'>
+  user: Pick<AuthenticatedUser, "userId" | "dbUserId">,
 ): string {
   return user.dbUserId ?? user.userId;
 }

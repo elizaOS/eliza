@@ -62,7 +62,9 @@ async def get_markets(
                 markets = markets[: filters.limit]
 
         return MarketsResponse(
-            limit=response.get("limit", 100) if isinstance(response.get("limit", 100), int) else 100,
+            limit=response.get("limit", 100)
+            if isinstance(response.get("limit", 100), int)
+            else 100,
             count=len(markets),
             next_cursor=str(response.get("next_cursor", "")),
             data=markets,
@@ -103,7 +105,9 @@ async def get_simplified_markets(
                 continue
 
         return SimplifiedMarketsResponse(
-            limit=response.get("limit", 100) if isinstance(response.get("limit", 100), int) else 100,
+            limit=response.get("limit", 100)
+            if isinstance(response.get("limit", 100), int)
+            else 100,
             count=len(markets),
             next_cursor=str(response.get("next_cursor", "")),
             data=markets,
@@ -208,7 +212,9 @@ async def get_sampling_markets(
                 continue
 
         return SimplifiedMarketsResponse(
-            limit=response.get("limit", 100) if isinstance(response.get("limit", 100), int) else 100,
+            limit=response.get("limit", 100)
+            if isinstance(response.get("limit", 100), int)
+            else 100,
             count=len(markets),
             next_cursor=str(response.get("next_cursor", "")),
             data=markets,

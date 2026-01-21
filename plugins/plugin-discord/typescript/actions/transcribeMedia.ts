@@ -15,8 +15,8 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { mediaAttachmentIdTemplate } from "../generated/prompts/typescript/prompts.js";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 /**
  * Asynchronous function to get the media attachment ID from the user input.

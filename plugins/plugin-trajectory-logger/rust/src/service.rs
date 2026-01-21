@@ -228,10 +228,15 @@ impl TrajectoryLoggerService {
 /// Options for starting a trajectory.
 #[derive(Debug, Clone, Default)]
 pub struct StartTrajectoryOptions {
+    /// Optional scenario identifier for grouping related trajectories.
     pub scenario_id: Option<String>,
+    /// Optional episode identifier within a scenario.
     pub episode_id: Option<String>,
+    /// Optional batch identifier for bulk processing.
     pub batch_id: Option<String>,
+    /// Optional index within a trajectory group.
     pub group_index: Option<u32>,
+    /// Optional additional metadata as key-value pairs.
     pub metadata: Option<HashMap<String, JsonValue>>,
 }
 

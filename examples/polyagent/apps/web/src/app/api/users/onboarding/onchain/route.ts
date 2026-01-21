@@ -55,7 +55,7 @@
  * ```
  */
 
-import type { JsonValue } from '@polyagent/api';
+import type { JsonValue } from "@polyagent/api";
 import {
   authenticate,
   BusinessLogicError,
@@ -63,10 +63,10 @@ import {
   processOnchainRegistration,
   successResponse,
   withErrorHandling,
-} from '@polyagent/api';
-import { db, eq, users } from '@polyagent/db';
-import { logger } from '@polyagent/shared';
-import type { NextRequest } from 'next/server';
+} from "@polyagent/api";
+import { db, eq, users } from "@polyagent/db";
+import { logger } from "@polyagent/shared";
+import type { NextRequest } from "next/server";
 
 interface OnchainRequestBody {
   walletAddress?: string | null;
@@ -81,15 +81,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     | Record<string, JsonValue>;
 
   const txHash =
-    typeof (body as OnchainRequestBody).txHash === 'string'
+    typeof (body as OnchainRequestBody).txHash === "string"
       ? (body as OnchainRequestBody).txHash?.trim() || null
       : null;
   const walletOverride =
-    typeof (body as OnchainRequestBody).walletAddress === 'string'
+    typeof (body as OnchainRequestBody).walletAddress === "string"
       ? (body as OnchainRequestBody).walletAddress?.trim() || null
       : null;
   const referralCode =
-    typeof (body as OnchainRequestBody).referralCode === 'string'
+    typeof (body as OnchainRequestBody).referralCode === "string"
       ? (body as OnchainRequestBody).referralCode?.trim() || null
       : null;
 
@@ -115,15 +115,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   if (!dbUser) {
     throw new ConflictError(
-      'User record not found. Complete signup before on-chain registration.',
-      'User'
+      "User record not found. Complete signup before on-chain registration.",
+      "User",
     );
   }
 
   if (!dbUser.username || !dbUser.displayName) {
     throw new BusinessLogicError(
-      'User profile incomplete. Finish signup before on-chain registration.',
-      'PROFILE_INCOMPLETE'
+      "User profile incomplete. Finish signup before on-chain registration.",
+      "PROFILE_INCOMPLETE",
     );
   }
 
@@ -133,8 +133,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     authUser.walletAddress;
   if (!walletAddress) {
     throw new BusinessLogicError(
-      'Wallet address is required for on-chain registration.',
-      'WALLET_REQUIRED'
+      "Wallet address is required for on-chain registration.",
+      "WALLET_REQUIRED",
     );
   }
 
@@ -169,13 +169,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     .limit(1);
 
   logger.info(
-    'User completed on-chain onboarding',
+    "User completed on-chain onboarding",
     {
       userId: canonicalUserId,
       alreadyRegistered: onchainResult.alreadyRegistered,
       tokenId: onchainResult.tokenId,
     },
-    'POST /api/users/onboarding/onchain'
+    "POST /api/users/onboarding/onchain",
   );
 
   return successResponse(
@@ -188,6 +188,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           }
         : null,
     },
-    200
+    200,
   );
 });

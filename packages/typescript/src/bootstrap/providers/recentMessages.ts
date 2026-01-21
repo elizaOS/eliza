@@ -311,7 +311,7 @@ export const recentMessagesProvider: Provider = {
         let sender: string;
 
         if (isSelf) {
-          sender = runtime.character.name;
+          sender = runtime.character.name ?? "Agent";
         } else {
           const interactionEntity = interactionEntityMap.get(message.entityId);
           const interactionMetadata = interactionEntity?.metadata;

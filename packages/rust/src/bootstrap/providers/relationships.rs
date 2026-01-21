@@ -93,7 +93,10 @@ impl Provider for RelationshipsProvider {
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0);
 
-                format!("- {}: tags=[{}], interactions={}", target, tags, interactions)
+                format!(
+                    "- {}: tags=[{}], interactions={}",
+                    target, tags, interactions
+                )
             })
             .collect();
 
@@ -113,5 +116,3 @@ impl Provider for RelationshipsProvider {
             ))
     }
 }
-
-

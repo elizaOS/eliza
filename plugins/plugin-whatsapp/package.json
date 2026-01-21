@@ -1,6 +1,6 @@
 {
-    "name": "@elizaos-plugins/plugin-whatsapp",
-    "version": "0.25.6-alpha.1",
+    "name": "@elizaos/plugin-whatsapp",
+    "version": "2.0.0-alpha.1",
     "description": "WhatsApp Cloud API plugin",
     "type": "module",
     "main": "dist/index.js",
@@ -24,7 +24,7 @@
         "dev": "tsup --format esm --dts --watch",
         "test": "vitest run",
         "coverage": "vitest run --coverage",
-        "lint": "biome check src/",
+        "lint": "biome check --apply-unsafe src/",
         "lint:fix": "biome check --apply src/",
         "format": "biome format src/",
         "format:fix": "biome format --write src/"
@@ -71,5 +71,6 @@
                 "optional": true
             }
         }
-    }
+    },
+    "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
 }

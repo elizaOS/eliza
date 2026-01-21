@@ -30,4 +30,3 @@ class ExecuteShellAction:
 
         res = await service.execute_shell(conversation_id(message), cmd)
         return ActionResult(res.success, res.stdout if res.success else res.stderr)
-

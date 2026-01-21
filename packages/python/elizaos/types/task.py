@@ -12,15 +12,17 @@ Task = task_pb2.Task
 TaskMetadata = task_pb2.TaskMetadata
 TaskStatus = task_pb2.TaskStatus
 
+
 # Runtime worker interface (not in proto)
 class TaskWorker(Protocol):
     name: str
 
     def __call__(
         self,
-        runtime: "IAgentRuntime",
+        runtime: IAgentRuntime,
         params: dict[str, object],
         task: Task,
     ) -> Awaitable[None]: ...
+
 
 __all__ = ["Task", "TaskMetadata", "TaskStatus", "TaskWorker"]

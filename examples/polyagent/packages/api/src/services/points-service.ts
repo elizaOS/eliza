@@ -21,13 +21,13 @@ import {
   referrals,
   sql,
   users,
-} from '@babylon/db';
+} from "@babylon/db";
 import {
   generateSnowflakeId,
   logger,
   POINTS,
   type PointsReason,
-} from '@babylon/shared';
+} from "@babylon/shared";
 
 /**
  * Maximum number of unqualified referrals that can earn signup points at any time.
@@ -41,7 +41,7 @@ const UNQUALIFIED_REFERRAL_LIMIT = 10;
  *
  * @description Categories for filtering leaderboard results.
  */
-type LeaderboardCategory = 'all' | 'earned' | 'referral';
+type LeaderboardCategory = "all" | "earned" | "referral";
 
 /**
  * Result of awarding points to a user
@@ -72,7 +72,7 @@ export class PointsService {
     userId: string,
     amount: number,
     reason: PointsReason,
-    metadata?: Record<string, JsonValue>
+    metadata?: Record<string, JsonValue>,
   ): Promise<AwardPointsResult> {
     // Get current user state
     const userResult = await db
@@ -105,7 +105,7 @@ export class PointsService {
         success: false,
         pointsAwarded: 0,
         newTotal: 0,
-        error: 'User not found',
+        error: "User not found",
       };
     }
 
@@ -146,55 +146,55 @@ export class PointsService {
 
     // Set the appropriate tracking flag and update correct point type
     switch (reason) {
-      case 'referral_signup':
+      case "referral_signup":
         updateData.invitePoints = user.invitePoints + amount;
         break;
-      case 'profile_completion':
+      case "profile_completion":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForProfile = true;
         break;
-      case 'farcaster_link':
+      case "farcaster_link":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForFarcaster = true;
         break;
-      case 'farcaster_follow':
+      case "farcaster_follow":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForFarcasterFollow = true;
         break;
-      case 'twitter_link':
+      case "twitter_link":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForTwitter = true;
         break;
-      case 'twitter_follow':
+      case "twitter_follow":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForTwitterFollow = true;
         break;
-      case 'discord_link':
+      case "discord_link":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForDiscord = true;
         break;
-      case 'discord_join':
+      case "discord_join":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForDiscordJoin = true;
         break;
-      case 'wallet_connect':
+      case "wallet_connect":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForWallet = true;
         break;
-      case 'referral_bonus':
+      case "referral_bonus":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForReferralBonus = true;
         break;
-      case 'share_action':
-      case 'share_to_twitter':
+      case "share_action":
+      case "share_to_twitter":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForShare = true;
         break;
-      case 'private_group_create':
+      case "private_group_create":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForPrivateGroup = true;
         break;
-      case 'private_channel_create':
+      case "private_channel_create":
         updateData.bonusPoints = user.bonusPoints + amount;
         updateData.pointsAwardedForPrivateChannel = true;
         break;
@@ -222,7 +222,7 @@ export class PointsService {
     logger.info(
       `Awarded ${amount} points to user ${userId} for ${reason}`,
       { userId, amount, reason, pointsBefore, pointsAfter },
-      'PointsService'
+      "PointsService",
     );
 
     return {
@@ -236,12 +236,12 @@ export class PointsService {
    * Award points for profile completion (username + image + bio)
    */
   static async awardProfileCompletion(
-    userId: string
+    userId: string,
   ): Promise<AwardPointsResult> {
     return PointsService.awardPoints(
       userId,
       POINTS.PROFILE_COMPLETION,
-      'profile_completion'
+      "profile_completion",
     );
   }
 
@@ -250,13 +250,13 @@ export class PointsService {
    */
   static async awardFarcasterLink(
     userId: string,
-    farcasterUsername?: string
+    farcasterUsername?: string,
   ): Promise<AwardPointsResult> {
     return PointsService.awardPoints(
       userId,
       POINTS.FARCASTER_LINK,
-      'farcaster_link',
-      farcasterUsername ? { farcasterUsername } : undefined
+      "farcaster_link",
+      farcasterUsername ? { farcasterUsername } : undefined,
     );
   }
 
@@ -264,13 +264,13 @@ export class PointsService {
    * Award points for Farcaster follow
    */
   static async awardFarcasterFollow(
-    userId: string
+    userId: string,
   ): Promise<AwardPointsResult> {
     return PointsService.awardPoints(
       userId,
       POINTS.FARCASTER_FOLLOW,
-      'farcaster_follow',
-      { action: 'follow_playbabylon' }
+      "farcaster_follow",
+      { action: "follow_playbabylon" },
     );
   }
 
@@ -281,32 +281,32 @@ export class PointsService {
     return PointsService.awardPoints(
       userId,
       POINTS.TWITTER_FOLLOW,
-      'twitter_follow',
-      { action: 'follow_playbabylon' }
+      "twitter_follow",
+      { action: "follow_playbabylon" },
     );
   }
 
   static async awardDiscordLink(
     userId: string,
-    discordUsername?: string
+    discordUsername?: string,
   ): Promise<AwardPointsResult> {
     return PointsService.awardPoints(
       userId,
       POINTS.DISCORD_LINK,
-      'discord_link',
-      discordUsername ? { discordUsername } : undefined
+      "discord_link",
+      discordUsername ? { discordUsername } : undefined,
     );
   }
 
   static async awardDiscordJoin(
     userId: string,
-    discordUsername?: string
+    discordUsername?: string,
   ): Promise<AwardPointsResult> {
     return PointsService.awardPoints(
       userId,
       POINTS.DISCORD_JOIN,
-      'discord_join',
-      discordUsername ? { discordUsername } : undefined
+      "discord_join",
+      discordUsername ? { discordUsername } : undefined,
     );
   }
 
@@ -315,13 +315,13 @@ export class PointsService {
    */
   static async awardTwitterLink(
     userId: string,
-    twitterUsername?: string
+    twitterUsername?: string,
   ): Promise<AwardPointsResult> {
     return PointsService.awardPoints(
       userId,
       POINTS.TWITTER_LINK,
-      'twitter_link',
-      twitterUsername ? { twitterUsername } : undefined
+      "twitter_link",
+      twitterUsername ? { twitterUsername } : undefined,
     );
   }
 
@@ -330,13 +330,13 @@ export class PointsService {
    */
   static async awardWalletConnect(
     userId: string,
-    walletAddress?: string
+    walletAddress?: string,
   ): Promise<AwardPointsResult> {
     return PointsService.awardPoints(
       userId,
       POINTS.WALLET_CONNECT,
-      'wallet_connect',
-      walletAddress ? { walletAddress } : undefined
+      "wallet_connect",
+      walletAddress ? { walletAddress } : undefined,
     );
   }
 
@@ -347,11 +347,11 @@ export class PointsService {
     userId: string,
     platform: string,
     contentType: string,
-    contentId?: string
+    contentId?: string,
   ): Promise<AwardPointsResult> {
     const amount =
-      platform === 'twitter' ? POINTS.SHARE_TO_TWITTER : POINTS.SHARE_ACTION;
-    const reason = platform === 'twitter' ? 'share_to_twitter' : 'share_action';
+      platform === "twitter" ? POINTS.SHARE_TO_TWITTER : POINTS.SHARE_ACTION;
+    const reason = platform === "twitter" ? "share_to_twitter" : "share_action";
 
     return PointsService.awardPoints(userId, amount, reason, {
       platform,
@@ -365,13 +365,13 @@ export class PointsService {
    */
   static async awardPrivateGroupCreate(
     userId: string,
-    groupId?: string
+    groupId?: string,
   ): Promise<AwardPointsResult> {
     return PointsService.awardPoints(
       userId,
       POINTS.PRIVATE_GROUP_CREATE,
-      'private_group_create',
-      groupId ? { groupId } : undefined
+      "private_group_create",
+      groupId ? { groupId } : undefined,
     );
   }
 
@@ -380,13 +380,13 @@ export class PointsService {
    */
   static async awardPrivateChannelCreate(
     userId: string,
-    channelId?: string
+    channelId?: string,
   ): Promise<AwardPointsResult> {
     return PointsService.awardPoints(
       userId,
       POINTS.PRIVATE_CHANNEL_CREATE,
-      'private_channel_create',
-      channelId ? { channelId } : undefined
+      "private_channel_create",
+      channelId ? { channelId } : undefined,
     );
   }
 
@@ -398,7 +398,7 @@ export class PointsService {
    */
   static async awardReferralSignup(
     referrerId: string,
-    referredUserId: string
+    referredUserId: string,
   ): Promise<AwardPointsResult> {
     // Count unqualified referrals with points already awarded (toward the limit)
     // Unqualified = completed AND qualifiedAt IS NULL AND signupPointsAwarded = true
@@ -408,10 +408,10 @@ export class PointsService {
       .where(
         and(
           eq(referrals.referrerId, referrerId),
-          eq(referrals.status, 'completed'),
+          eq(referrals.status, "completed"),
           isNull(referrals.qualifiedAt),
-          eq(referrals.signupPointsAwarded, true)
-        )
+          eq(referrals.signupPointsAwarded, true),
+        ),
       );
 
     const unqualifiedCount = unqualifiedCountResult?.count ?? 0;
@@ -421,7 +421,7 @@ export class PointsService {
       logger.info(
         `Unqualified referral limit reached for user ${referrerId}. Points deferred.`,
         { referrerId, unqualifiedCount, limit: UNQUALIFIED_REFERRAL_LIMIT },
-        'PointsService'
+        "PointsService",
       );
       // Don't return error - we still track the referral, just defer points
     }
@@ -496,7 +496,7 @@ export class PointsService {
           !hasDifferentIdentifiers
         ) {
           logger.warn(
-            'Self-referral detected: same IP within 15 minutes with no different identifiers',
+            "Self-referral detected: same IP within 15 minutes with no different identifiers",
             {
               referrerId,
               referredUserId,
@@ -506,14 +506,14 @@ export class PointsService {
               referrerPrivyId: referrer.privyId,
               referredPrivyId: referredUser.privyId,
             },
-            'PointsService'
+            "PointsService",
           );
           return {
             success: false,
             pointsAwarded: 0,
             newTotal: 0,
             error:
-              'Self-referral detected: accounts created from same IP within 15 minutes with no different identifiers',
+              "Self-referral detected: accounts created from same IP within 15 minutes with no different identifiers",
           };
         }
 
@@ -524,7 +524,7 @@ export class PointsService {
           !hasDifferentIdentifiers
         ) {
           logger.warn(
-            'Potential self-referral: same IP within 24 hours with no different identifiers',
+            "Potential self-referral: same IP within 24 hours with no different identifiers",
             {
               referrerId,
               referredUserId,
@@ -532,12 +532,12 @@ export class PointsService {
               referrerWallet: referrer.walletAddress,
               referredWallet: referredUser.walletAddress,
             },
-            'PointsService'
+            "PointsService",
           );
           // Continue to award points but mark as suspicious
         } else if (hasDifferentIdentifiers) {
           logger.info(
-            'Allowing referral despite same IP: users have different identifiers',
+            "Allowing referral despite same IP: users have different identifiers",
             {
               referrerId,
               referredUserId,
@@ -547,7 +547,7 @@ export class PointsService {
               hasDifferentFarcaster,
               hasDifferentTwitter,
             },
-            'PointsService'
+            "PointsService",
           );
         }
       }
@@ -557,17 +557,17 @@ export class PointsService {
     let result: AwardPointsResult;
 
     if (shouldAwardPoints) {
-      result = await this.awardPoints(
+      result = await PointsService.awardPoints(
         referrerId,
         POINTS.REFERRAL_SIGNUP,
-        'referral_signup',
+        "referral_signup",
         {
           referredUserId,
           referrerIpHash: referrer?.registrationIpHash || null,
           referredIpHash: referredUser?.registrationIpHash || null,
           sameIp:
             referrer?.registrationIpHash === referredUser?.registrationIpHash,
-        }
+        },
       );
     } else {
       // Points deferred - return success but with 0 points awarded
@@ -591,8 +591,8 @@ export class PointsService {
       .where(
         and(
           eq(referrals.referrerId, referrerId),
-          eq(referrals.referredUserId, referredUserId)
-        )
+          eq(referrals.referredUserId, referredUserId),
+        ),
       )
       .orderBy(desc(referrals.createdAt))
       .limit(1);
@@ -658,7 +658,7 @@ export class PointsService {
    * Uses FIFO ordering based on completedAt timestamp
    */
   static async awardPendingReferralSignupPoints(
-    referrerId: string
+    referrerId: string,
   ): Promise<AwardPointsResult | null> {
     // Check current unqualified count to see if there's a slot available
     const [unqualifiedCountResult] = await db
@@ -667,10 +667,10 @@ export class PointsService {
       .where(
         and(
           eq(referrals.referrerId, referrerId),
-          eq(referrals.status, 'completed'),
+          eq(referrals.status, "completed"),
           isNull(referrals.qualifiedAt),
-          eq(referrals.signupPointsAwarded, true)
-        )
+          eq(referrals.signupPointsAwarded, true),
+        ),
       );
 
     const unqualifiedCount = unqualifiedCountResult?.count ?? 0;
@@ -691,9 +691,9 @@ export class PointsService {
       .where(
         and(
           eq(referrals.referrerId, referrerId),
-          eq(referrals.status, 'completed'),
-          eq(referrals.signupPointsAwarded, false)
-        )
+          eq(referrals.status, "completed"),
+          eq(referrals.signupPointsAwarded, false),
+        ),
       )
       .orderBy(asc(referrals.completedAt))
       .limit(1);
@@ -706,15 +706,15 @@ export class PointsService {
     }
 
     // Award the deferred signup points
-    const result = await this.awardPoints(
+    const result = await PointsService.awardPoints(
       referrerId,
       POINTS.REFERRAL_SIGNUP,
-      'referral_signup',
+      "referral_signup",
       {
         referredUserId: pendingReferral.referredUserId,
         deferredAward: true,
         originalCompletedAt: pendingReferral.completedAt?.toISOString() ?? null,
-      }
+      },
     );
 
     if (result.success) {
@@ -740,7 +740,7 @@ export class PointsService {
           referralId: pendingReferral.id,
           pointsAwarded: result.pointsAwarded,
         },
-        'PointsService'
+        "PointsService",
       );
     }
 
@@ -751,7 +751,7 @@ export class PointsService {
    * Check and qualify referral when referred user links social account
    */
   static async checkAndQualifyReferral(
-    referredUserId: string
+    referredUserId: string,
   ): Promise<AwardPointsResult | null> {
     // Get user with referrer info and social account status
     const userResult = await db
@@ -789,8 +789,8 @@ export class PointsService {
         and(
           eq(referrals.referrerId, user.referredBy),
           eq(referrals.referredUserId, referredUserId),
-          eq(referrals.status, 'completed')
-        )
+          eq(referrals.status, "completed"),
+        ),
       )
       .orderBy(desc(referrals.completedAt))
       .limit(1);
@@ -801,7 +801,7 @@ export class PointsService {
       logger.warn(
         `No referral record found for referrer ${user.referredBy} and referred user ${referredUserId}`,
         { referrerId: user.referredBy, referredUserId },
-        'PointsService'
+        "PointsService",
       );
       return null;
     }
@@ -815,11 +815,11 @@ export class PointsService {
     const qualificationResult = await PointsService.awardPoints(
       user.referredBy,
       POINTS.REFERRAL_QUALIFIED,
-      'referral_qualified',
+      "referral_qualified",
       {
         referredUserId,
         qualifiedAt: new Date().toISOString(),
-      }
+      },
     );
 
     if (qualificationResult.success) {
@@ -837,12 +837,12 @@ export class PointsService {
           referralId: referral.id,
           pointsAwarded: qualificationResult.pointsAwarded,
         },
-        'PointsService'
+        "PointsService",
       );
 
       // When a referral becomes qualified, a slot opens for pending referrals
       // Award signup points to the oldest pending referral (FIFO)
-      await this.awardPendingReferralSignupPoints(user.referredBy);
+      await PointsService.awardPendingReferralSignupPoints(user.referredBy);
     }
 
     return qualificationResult;
@@ -855,7 +855,7 @@ export class PointsService {
     userId: string,
     amountUSD: number,
     paymentRequestId: string,
-    paymentTxHash?: string
+    paymentTxHash?: string,
   ): Promise<AwardPointsResult> {
     const pointsAmount = Math.floor(amountUSD * 100);
 
@@ -873,7 +873,7 @@ export class PointsService {
         success: false,
         pointsAwarded: 0,
         newTotal: 0,
-        error: 'User not found',
+        error: "User not found",
       };
     }
 
@@ -893,7 +893,7 @@ export class PointsService {
         amount: pointsAmount,
         pointsBefore,
         pointsAfter,
-        reason: 'purchase',
+        reason: "purchase",
         metadata: JSON.stringify({
           amountUSD,
           pointsPerDollar: 100,
@@ -909,7 +909,7 @@ export class PointsService {
     logger.info(
       `User ${userId} purchased ${pointsAmount} points for $${amountUSD}`,
       { userId, pointsAmount, amountUSD, paymentRequestId },
-      'PointsService'
+      "PointsService",
     );
 
     return {
@@ -935,31 +935,31 @@ export class PointsService {
       pointsAwardedForReferralBonus: boolean;
       pointsAwardedForShare: boolean;
     },
-    reason: PointsReason
+    reason: PointsReason,
   ): boolean {
     switch (reason) {
-      case 'profile_completion':
+      case "profile_completion":
         return user.pointsAwardedForProfile;
-      case 'farcaster_link':
+      case "farcaster_link":
         return user.pointsAwardedForFarcaster;
-      case 'farcaster_follow':
+      case "farcaster_follow":
         return user.pointsAwardedForFarcasterFollow;
-      case 'twitter_link':
+      case "twitter_link":
         return user.pointsAwardedForTwitter;
-      case 'twitter_follow':
+      case "twitter_follow":
         return user.pointsAwardedForTwitterFollow;
-      case 'discord_link':
+      case "discord_link":
         return user.pointsAwardedForDiscord;
-      case 'discord_join':
+      case "discord_join":
         return user.pointsAwardedForDiscordJoin;
-      case 'wallet_connect':
+      case "wallet_connect":
         return user.pointsAwardedForWallet;
-      case 'referral_bonus':
+      case "referral_bonus":
         return user.pointsAwardedForReferralBonus;
-      case 'referral_qualified':
+      case "referral_qualified":
         return false;
-      case 'share_action':
-      case 'share_to_twitter':
+      case "share_action":
+      case "share_to_twitter":
         return user.pointsAwardedForShare;
       default:
         return false;
@@ -1006,7 +1006,7 @@ export class PointsService {
     page = 1,
     pageSize = 100,
     minPoints = 500,
-    pointsCategory: LeaderboardCategory = 'all'
+    pointsCategory: LeaderboardCategory = "all",
   ) {
     const skip = (page - 1) * pageSize;
 
@@ -1030,14 +1030,14 @@ export class PointsService {
 
     // Build users query based on category
     let usersResult;
-    if (pointsCategory === 'all') {
+    if (pointsCategory === "all") {
       usersResult = await db
         .select(userSelectFields)
         .from(users)
         .where(
-          and(eq(users.isActor, false), gte(users.reputationPoints, minPoints))
+          and(eq(users.isActor, false), gte(users.reputationPoints, minPoints)),
         );
-    } else if (pointsCategory === 'earned') {
+    } else if (pointsCategory === "earned") {
       usersResult = await db
         .select(userSelectFields)
         .from(users)
@@ -1072,12 +1072,12 @@ export class PointsService {
 
     // NPC/Actor support removed
 
-    const sortField: 'allPoints' | 'earnedPoints' | 'invitePoints' =
-      pointsCategory === 'all'
-        ? 'allPoints'
-        : pointsCategory === 'earned'
-          ? 'earnedPoints'
-          : 'invitePoints';
+    const sortField: "allPoints" | "earnedPoints" | "invitePoints" =
+      pointsCategory === "all"
+        ? "allPoints"
+        : pointsCategory === "earned"
+          ? "earnedPoints"
+          : "invitePoints";
 
     combined.sort((a, b) => {
       const comparison = b[sortField] - a[sortField];
@@ -1085,14 +1085,14 @@ export class PointsService {
         return comparison;
       }
 
-      if (pointsCategory === 'referral') {
+      if (pointsCategory === "referral") {
         const referralComparison = b.referralCount - a.referralCount;
         if (referralComparison !== 0) {
           return referralComparison;
         }
       }
 
-      if (pointsCategory === 'earned') {
+      if (pointsCategory === "earned") {
         const pnlComparison = b.lifetimePnL - a.lifetimePnL;
         if (pnlComparison !== 0) {
           return pnlComparison;
@@ -1145,8 +1145,8 @@ export class PointsService {
       .where(
         and(
           gt(users.reputationPoints, user.reputationPoints),
-          eq(users.isActor, false)
-        )
+          eq(users.isActor, false),
+        ),
       );
 
     const higherUsersCount = higherUsersResult?.count ?? 0;

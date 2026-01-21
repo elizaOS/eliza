@@ -191,7 +191,10 @@ function assertProviderDoc(provider, name) {
   assertRecord(provider, name);
   assertString(provider.name, `${name}.name`);
   assertString(provider.description, `${name}.description`);
-  if (provider.position !== undefined && typeof provider.position !== "number") {
+  if (
+    provider.position !== undefined &&
+    typeof provider.position !== "number"
+  ) {
     throw new Error(`${name}.position must be a number if provided`);
   }
   if (provider.dynamic !== undefined) {
@@ -343,7 +346,7 @@ function loadSpecs(dir, corePath, kind) {
   const coreRoot = readJson(corePath);
   const coreLabel = `${kind} core spec`;
   let coreParsed;
-  
+
   if (kind === "actions") {
     coreParsed = parseActionsSpec(coreRoot, coreLabel);
   } else if (kind === "providers") {
@@ -357,14 +360,18 @@ function loadSpecs(dir, corePath, kind) {
   );
   /** @type {unknown[]} */
   const merged = [
-    ...(kind === "actions" ? coreParsed.actions : kind === "providers" ? coreParsed.providers : coreParsed.evaluators),
+    ...(kind === "actions"
+      ? coreParsed.actions
+      : kind === "providers"
+        ? coreParsed.providers
+        : coreParsed.evaluators),
   ];
 
   for (const filePath of allFiles) {
     const root = readJson(filePath);
     const label = `${kind} spec (${path.relative(PROMPTS_ROOT, filePath)})`;
     let parsed;
-    
+
     if (kind === "actions") {
       parsed = parseActionsSpec(root, label);
     } else if (kind === "providers") {
@@ -378,19 +385,32 @@ function loadSpecs(dir, corePath, kind) {
         `${label}.version (${parsed.version}) must match core version (${coreParsed.version})`,
       );
     }
-    merged.push(...(kind === "actions" ? parsed.actions : kind === "providers" ? parsed.providers : parsed.evaluators));
+    merged.push(
+      ...(kind === "actions"
+        ? parsed.actions
+        : kind === "providers"
+          ? parsed.providers
+          : parsed.evaluators),
+    );
   }
 
   const itemsLabel =
-    kind === "actions" ? "actions spec.actions" : 
-    kind === "providers" ? "providers spec.providers" : 
-    "evaluators spec.evaluators";
+    kind === "actions"
+      ? "actions spec.actions"
+      : kind === "providers"
+        ? "providers spec.providers"
+        : "evaluators spec.evaluators";
   assertUniqueNames(merged, itemsLabel);
 
   return {
     core: {
       version: coreParsed.version,
-      items: kind === "actions" ? coreParsed.actions : kind === "providers" ? coreParsed.providers : coreParsed.evaluators,
+      items:
+        kind === "actions"
+          ? coreParsed.actions
+          : kind === "providers"
+            ? coreParsed.providers
+            : coreParsed.evaluators,
     },
     all: {
       version: coreParsed.version,
@@ -449,7 +469,10 @@ function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
     2,
   );
   const providersJson = JSON.stringify(
-    { version: providersSpec.core.version, providers: providersSpec.core.items },
+    {
+      version: providersSpec.core.version,
+      providers: providersSpec.core.items,
+    },
     null,
     2,
   );
@@ -613,7 +636,10 @@ function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
     2,
   );
   const providersJson = JSON.stringify(
-    { version: providersSpec.core.version, providers: providersSpec.core.items },
+    {
+      version: providersSpec.core.version,
+      providers: providersSpec.core.items,
+    },
     null,
     2,
   );
@@ -792,7 +818,10 @@ function generateRust(actionsSpec, providersSpec, evaluatorsSpec) {
     2,
   );
   const providersJson = JSON.stringify(
-    { version: providersSpec.core.version, providers: providersSpec.core.items },
+    {
+      version: providersSpec.core.version,
+      providers: providersSpec.core.items,
+    },
     null,
     2,
   );

@@ -2,11 +2,11 @@
  * Type definitions for Polyagent Agent System
  */
 
-import type { Character } from '@elizaos/core';
-import type { JsonValue } from './types/common';
+import type { Character } from "@elizaos/core";
+import type { JsonValue } from "./types/common";
 
 // Re-export all types from types/index.ts for backwards compatibility
-export * from './types/index';
+export * from "./types/index";
 
 export interface AgentConfig {
   id: string;
@@ -19,7 +19,7 @@ export interface AgentConfig {
   character: Character;
 
   // Runtime config
-  modelTier: 'lite' | 'standard' | 'pro';
+  modelTier: "lite" | "standard" | "pro";
   autonomousEnabled: boolean;
   isActive: boolean;
 
@@ -36,7 +36,7 @@ export interface AgentConfig {
 export interface AgentMessage {
   id: string;
   agentId: string;
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
   modelUsed?: string;
   pointsCost: number;
@@ -47,8 +47,8 @@ export interface AgentMessage {
 export interface AgentLog {
   id: string;
   agentId: string;
-  type: 'chat' | 'tick' | 'trade' | 'error' | 'system';
-  level: 'info' | 'warn' | 'error' | 'debug';
+  type: "chat" | "tick" | "trade" | "error" | "system";
+  level: "info" | "warn" | "error" | "debug";
   message: string;
   prompt?: string;
   completion?: string;
@@ -61,7 +61,7 @@ export interface AgentPointsTransaction {
   id: string;
   agentId: string;
   userId: string;
-  type: 'deposit' | 'withdraw' | 'spend_chat' | 'spend_tick' | 'earn_trade';
+  type: "deposit" | "withdraw" | "spend_chat" | "spend_tick" | "earn_trade";
   amount: number;
   balanceBefore: number;
   balanceAfter: number;
@@ -74,11 +74,11 @@ export interface AgentTrade {
   id: string;
   agentId: string;
   userId: string;
-  marketType: 'prediction' | 'perp';
+  marketType: "prediction" | "perp";
   marketId?: string;
   ticker?: string;
-  action: 'open' | 'close';
-  side?: 'long' | 'short' | 'yes' | 'no';
+  action: "open" | "close";
+  side?: "long" | "short" | "yes" | "no";
   amount: number;
   price: number;
   pnl?: number;
@@ -98,7 +98,7 @@ export interface CreateAgentParams {
   personality?: string;
   tradingStrategy?: string;
   initialDeposit?: number;
-  modelTier?: 'lite' | 'standard' | 'pro';
+  modelTier?: "lite" | "standard" | "pro";
 }
 
 export interface ChatRequest {

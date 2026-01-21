@@ -9,11 +9,11 @@
  * @see src/lib/services/agent-registry.service.ts
  */
 
-import { agentRegistry } from '@polyagent/agents';
-import { db } from '@polyagent/db';
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { agentRegistry } from "@polyagent/agents";
+import { db } from "@polyagent/db";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { z } from "zod";
 
 // Validation schema for connection request
 const ConnectSchema = z.object({
@@ -42,10 +42,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Agent not found',
-        message: 'External agent not registered',
+        error: "Agent not found",
+        message: "External agent not registered",
       },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
@@ -53,21 +53,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'API key revoked',
-        message: 'This agent API key has been revoked',
+        error: "API key revoked",
+        message: "This agent API key has been revoked",
       },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
-  if (connection.authType !== 'apiKey' || !connection.authCredentials) {
+  if (connection.authType !== "apiKey" || !connection.authCredentials) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Authentication not configured',
-        message: 'No API key configured for this agent',
+        error: "Authentication not configured",
+        message: "No API key configured for this agent",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -76,10 +76,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Invalid API key',
-        message: 'API key verification failed',
+        error: "Invalid API key",
+        message: "API key verification failed",
       },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -115,14 +115,14 @@ export async function POST(req: NextRequest) {
         id: registry?.id,
         externalId: connection.externalId,
         name: registry?.name || null,
-        status: registry?.status || 'unknown',
+        status: registry?.status || "unknown",
         trustLevel: registry?.trustLevel || null,
         capabilities: registry?.capabilities || [],
         endpoint: connection.endpoint,
         protocol: connection.protocol,
       },
-      message: 'Connection verified successfully',
+      message: "Connection verified successfully",
     },
-    { status: 200 }
+    { status: 200 },
   );
 }

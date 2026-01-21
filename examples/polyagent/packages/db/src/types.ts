@@ -28,7 +28,7 @@ export class Decimal {
   constructor(value: string | number | Decimal) {
     if (value instanceof Decimal) {
       this.value = value.toString();
-    } else if (typeof value === 'number') {
+    } else if (typeof value === "number") {
       this.value = value.toString();
     } else {
       this.value = value;
@@ -45,37 +45,37 @@ export class Decimal {
 
   static add(
     a: Decimal | string | number,
-    b: Decimal | string | number
+    b: Decimal | string | number,
   ): Decimal {
-    const aNum = typeof a === 'number' ? a : Number.parseFloat(a.toString());
-    const bNum = typeof b === 'number' ? b : Number.parseFloat(b.toString());
+    const aNum = typeof a === "number" ? a : Number.parseFloat(a.toString());
+    const bNum = typeof b === "number" ? b : Number.parseFloat(b.toString());
     return new Decimal((aNum + bNum).toString());
   }
 
   static sub(
     a: Decimal | string | number,
-    b: Decimal | string | number
+    b: Decimal | string | number,
   ): Decimal {
-    const aNum = typeof a === 'number' ? a : Number.parseFloat(a.toString());
-    const bNum = typeof b === 'number' ? b : Number.parseFloat(b.toString());
+    const aNum = typeof a === "number" ? a : Number.parseFloat(a.toString());
+    const bNum = typeof b === "number" ? b : Number.parseFloat(b.toString());
     return new Decimal((aNum - bNum).toString());
   }
 
   static mul(
     a: Decimal | string | number,
-    b: Decimal | string | number
+    b: Decimal | string | number,
   ): Decimal {
-    const aNum = typeof a === 'number' ? a : Number.parseFloat(a.toString());
-    const bNum = typeof b === 'number' ? b : Number.parseFloat(b.toString());
+    const aNum = typeof a === "number" ? a : Number.parseFloat(a.toString());
+    const bNum = typeof b === "number" ? b : Number.parseFloat(b.toString());
     return new Decimal((aNum * bNum).toString());
   }
 
   static div(
     a: Decimal | string | number,
-    b: Decimal | string | number
+    b: Decimal | string | number,
   ): Decimal {
-    const aNum = typeof a === 'number' ? a : Number.parseFloat(a.toString());
-    const bNum = typeof b === 'number' ? b : Number.parseFloat(b.toString());
+    const aNum = typeof a === "number" ? a : Number.parseFloat(a.toString());
+    const bNum = typeof b === "number" ? b : Number.parseFloat(b.toString());
     return new Decimal((aNum / bNum).toString());
   }
 }
@@ -84,10 +84,10 @@ export class Decimal {
  * PostgreSQL database error codes.
  */
 export const DbErrorCodes = {
-  UNIQUE_VIOLATION: '23505',
-  FOREIGN_KEY_VIOLATION: '23503',
-  NOT_NULL_VIOLATION: '23502',
-  CHECK_VIOLATION: '23514',
+  UNIQUE_VIOLATION: "23505",
+  FOREIGN_KEY_VIOLATION: "23503",
+  NOT_NULL_VIOLATION: "23502",
+  CHECK_VIOLATION: "23514",
 } as const;
 
 /**
@@ -98,7 +98,7 @@ export class DatabaseError extends Error {
 
   constructor(message: string, code: string) {
     super(message);
-    this.name = 'DatabaseError';
+    this.name = "DatabaseError";
     this.code = code;
   }
 }
@@ -121,7 +121,7 @@ export function toDatabaseErrorType(error: unknown): DatabaseErrorType {
   if (error instanceof DatabaseError || error instanceof Error) {
     return error;
   }
-  if (typeof error === 'object' && error !== null) {
+  if (typeof error === "object" && error !== null) {
     return error as DatabaseErrorType;
   }
   return new Error(String(error));
@@ -137,7 +137,7 @@ export function isUniqueConstraintError(error: DatabaseErrorType): boolean {
   if (error instanceof DatabaseError) {
     return error.code === DbErrorCodes.UNIQUE_VIOLATION;
   }
-  if (typeof error === 'object' && error !== null && 'code' in error) {
+  if (typeof error === "object" && error !== null && "code" in error) {
     const pgError = error as { code?: string };
     return pgError.code === DbErrorCodes.UNIQUE_VIOLATION;
   }
@@ -173,7 +173,7 @@ export type WhereInput<T> = Partial<{
  * Order by input type for sorting query results.
  */
 export type OrderByInput<T> = Partial<{
-  [K in keyof T]: 'asc' | 'desc';
+  [K in keyof T]: "asc" | "desc";
 }>;
 
 /**

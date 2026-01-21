@@ -1,9 +1,9 @@
-import { type Plugin } from '@elizaos/core';
-import { sendToAdminAction } from './action';
-import { adminChatProvider } from './provider';
-import { autonomyRoutes } from './routes';
-import { AutonomyService } from './service';
-import { autonomyStatusProvider } from './status-provider';
+import type { Plugin } from "@elizaos/core";
+import { sendToAdminAction } from "./action";
+import { adminChatProvider } from "./provider";
+import { autonomyRoutes } from "./routes";
+import { AutonomyService } from "./service";
+import { autonomyStatusProvider } from "./status-provider";
 
 /**
  * Clean autonomy plugin with settings-based control:
@@ -14,8 +14,8 @@ import { autonomyStatusProvider } from './status-provider';
  * 5. Routes: API for enable/disable/status
  */
 export const autonomyPlugin: Plugin = {
-  name: 'autonomy',
-  description: 'Clean autonomous loop plugin with settings-based control',
+  name: "autonomy",
+  description: "Clean autonomous loop plugin with settings-based control",
 
   services: [AutonomyService],
   providers: [adminChatProvider, autonomyStatusProvider],
@@ -23,11 +23,11 @@ export const autonomyPlugin: Plugin = {
   routes: autonomyRoutes,
 };
 
-export { sendToAdminAction } from './action';
-export { adminChatProvider } from './provider';
-export { autonomyRoutes } from './routes';
+export { sendToAdminAction } from "./action";
+export { adminChatProvider } from "./provider";
+export { autonomyRoutes } from "./routes";
 // Export components
-export { AutonomyService } from './service';
-export { autonomyStatusProvider } from './status-provider';
+export { AutonomyService } from "./service";
+export { autonomyStatusProvider } from "./status-provider";
 
 export default autonomyPlugin;

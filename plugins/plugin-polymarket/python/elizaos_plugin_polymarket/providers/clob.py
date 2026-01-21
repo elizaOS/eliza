@@ -70,7 +70,7 @@ class ClobClientProvider:
 
         try:
             client_mod = importlib.import_module("py_clob_client.client")
-            clob_client_ctor = cast(Callable[..., object], getattr(client_mod, "ClobClient"))
+            clob_client_ctor = cast(Callable[..., object], client_mod.ClobClient)
 
             self._client = clob_client_ctor(
                 host=clob_api_url,
@@ -123,10 +123,10 @@ class ClobClientProvider:
 
         try:
             client_mod = importlib.import_module("py_clob_client.client")
-            clob_client_ctor = cast(Callable[..., object], getattr(client_mod, "ClobClient"))
+            clob_client_ctor = cast(Callable[..., object], client_mod.ClobClient)
 
             types_mod = importlib.import_module("py_clob_client.clob_types")
-            api_creds_ctor = cast(Callable[..., object], getattr(types_mod, "ApiCreds"))
+            api_creds_ctor = cast(Callable[..., object], types_mod.ApiCreds)
             creds = api_creds_ctor(
                 api_key=api_key,
                 api_secret=api_secret,

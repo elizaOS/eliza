@@ -249,7 +249,9 @@ export class RolodexService extends Service {
       );
 
       if (contactComponent?.data) {
-        const contactInfo = metadataToContactInfo(contactComponent.data as Metadata);
+        const contactInfo = metadataToContactInfo(
+          contactComponent.data as Metadata,
+        );
         this.setCacheWithLimit(
           this.contactInfoCache,
           entityId,
@@ -380,7 +382,9 @@ export class RolodexService extends Service {
     );
 
     if (contactComponent?.data) {
-      const contactInfo = metadataToContactInfo(contactComponent.data as Metadata);
+      const contactInfo = metadataToContactInfo(
+        contactComponent.data as Metadata,
+      );
       this.setCacheWithLimit(
         this.contactInfoCache,
         entityId,
@@ -432,18 +436,13 @@ export class RolodexService extends Service {
       if (criteria.categories && criteria.categories.length > 0) {
         const categorySet = new Set(contactInfo.categories);
         matches =
-          matches &&
-          criteria.categories.some((cat) =>
-            categorySet.has(cat),
-          );
+          matches && criteria.categories.some((cat) => categorySet.has(cat));
       }
 
       // Check tags
       if (criteria.tags && criteria.tags.length > 0) {
         const tagSet = new Set(contactInfo.tags);
-        matches =
-          matches &&
-          criteria.tags.some((tag) => tagSet.has(tag));
+        matches = matches && criteria.tags.some((tag) => tagSet.has(tag));
       }
 
       // Check privacy level

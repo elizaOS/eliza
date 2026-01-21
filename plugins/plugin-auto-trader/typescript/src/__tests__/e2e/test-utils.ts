@@ -1,21 +1,51 @@
+import { strict as assert } from "node:assert";
 import {
-  IAgentRuntime,
-  type Entity,
-  type Room,
-  type Content,
-  type Memory,
-  createUniqueUuid,
-  EventType,
   asUUID,
   ChannelType,
-  type World,
-  AgentRuntime,
+  type Content,
+  createUniqueUuid,
+  type Entity,
+  EventType,
   elizaLogger,
+  type IAgentRuntime,
+  type Memory,
   type MessagePayload,
-} from '@elizaos/core';
-import { v4 as uuid } from 'uuid';
-import { strict as assert } from 'node:assert';
-import { AutoTradingManager } from '../../services/AutoTradingManager.ts';
+  type Room,
+  type World,
+} from "@elizaos/core";
+import { v4 as uuid } from "uuid";
+import type { AutoTradingManager } from "../../services/AutoTradingManager.ts";
+
+/** Trade log entry for monitoring */
+export interface TradeLogEntry {
+  timestamp: number;
+  isTrading: boolean;
+  strategy: string | undefined;
+  positions: number;
+  performance: {
+    totalPnL: number;
+    dailyPnL: number;
+    totalTrades: number;
+    winRate: number;
+  };
+}
+
+/** Trading monitoring result */
+export interface TradingMonitorResult {
+  duration: number;
+  tradeLog: TradeLogEntry[];
+  finalStatus: {
+    isTrading: boolean;
+    strategy?: string;
+    positions: { tokenAddress: string; amount: number }[];
+  };
+  finalPerformance: {
+    totalPnL: number;
+    dailyPnL: number;
+    totalTrades: number;
+    winRate: number;
+  };
+}
 
 /**
  * Sets up a standard scenario environment for an E2E test.
@@ -27,29 +57,29 @@ import { AutoTradingManager } from '../../services/AutoTradingManager.ts';
  * @returns A promise that resolves to an object containing the created world, user, and room.
  */
 export async function setupScenario(
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<{ user: Entity; room: Room; world: World }> {
-  assert(runtime.agentId, 'Runtime must have an agentId to run a scenario');
+  assert(runtime.agentId, "Runtime must have an agentId to run a scenario");
 
   // Set up mock environment for auto-trader
-  process.env.USE_MOCK_EXCHANGE = 'true';
+  process.env.USE_MOCK_EXCHANGE = "true";
 
   // 1. Create a test user entity first, so we can assign ownership
   const user: Entity = {
     id: asUUID(uuid()),
-    names: ['Test User'],
+    names: ["Test User"],
     agentId: runtime.agentId,
-    metadata: { type: 'user' },
+    metadata: { type: "user" },
   };
   await runtime.createEntity(user);
-  assert(user.id, 'Created user must have an id');
+  assert(user.id, "Created user must have an id");
 
   // 2. Create a World and assign the user as the owner.
   // This is critical for providers that check for ownership.
   const world: World = {
     id: asUUID(uuid()),
     agentId: runtime.agentId,
-    name: 'E2E Test World',
+    name: "E2E Test World",
     messageServerId: asUUID(uuid()),
     metadata: {
       ownership: {
@@ -62,9 +92,9 @@ export async function setupScenario(
   // 3. Create a test room associated with the world
   const room: Room = {
     id: asUUID(uuid()),
-    name: 'Test DM Room',
+    name: "Test DM Room",
     type: ChannelType.DM,
-    source: 'e2e-test',
+    source: "e2e-test",
     worldId: world.id,
     serverId: world.serverId,
   };
@@ -75,10 +105,22 @@ export async function setupScenario(
   await runtime.ensureParticipantInRoom(user.id, room.id);
 
   // 5. Cache mock data for testing
-  await runtime.setCache('mock_strategies', [
-    { id: 'random', name: 'Random Strategy', description: 'Makes random trades.' },
-    { id: 'rsi', name: 'RSI Strategy', description: 'Trades based on RSI indicator.' },
-    { id: 'rule-based', name: 'Rule-Based Strategy', description: 'A simple rule-based strategy.' },
+  await runtime.setCache("mock_strategies", [
+    {
+      id: "random",
+      name: "Random Strategy",
+      description: "Makes random trades.",
+    },
+    {
+      id: "rsi",
+      name: "RSI Strategy",
+      description: "Trades based on RSI indicator.",
+    },
+    {
+      id: "rule-based",
+      name: "Rule-Based Strategy",
+      description: "A simple rule-based strategy.",
+    },
   ]);
 
   return { user, room, world };
@@ -100,11 +142,11 @@ export function sendMessageAndWaitForResponse(
   runtime: IAgentRuntime,
   room: Room,
   user: Entity,
-  text: string
+  text: string,
 ): Promise<Content> {
   return new Promise((resolve) => {
-    assert(runtime.agentId, 'Runtime must have an agentId to send a message');
-    assert(user.id, 'User must have an id to send a message');
+    assert(runtime.agentId, "Runtime must have an agentId to send a message");
+    assert(user.id, "User must have an id to send a message");
 
     // Construct the message object, simulating an incoming message from a user
     const message: Memory = {
@@ -139,32 +181,44 @@ export interface TestContext {
   startTime: number;
 }
 
-export async function waitForTrading(runtime: IAgentRuntime, maxWaitMs = 30000): Promise<boolean> {
-  const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+export async function waitForTrading(
+  runtime: IAgentRuntime,
+  maxWaitMs = 30000,
+): Promise<boolean> {
+  const tradingManager = runtime.getService(
+    "AutoTradingManager",
+  ) as AutoTradingManager;
   const startTime = Date.now();
-  
+
   while (Date.now() - startTime < maxWaitMs) {
     const status = tradingManager.getStatus();
     if (status.isTrading) {
       return true;
     }
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  
+
   return false;
 }
 
-export async function monitorTrades(runtime: IAgentRuntime, durationMs: number): Promise<any> {
-  const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager;
+export async function monitorTrades(
+  runtime: IAgentRuntime,
+  durationMs: number,
+): Promise<TradingMonitorResult> {
+  const tradingManager = runtime.getService(
+    "AutoTradingManager",
+  ) as AutoTradingManager;
   const startTime = Date.now();
-  const tradeLog: any[] = [];
-  
-  elizaLogger.info(`[Test] Monitoring trades for ${durationMs / 1000} seconds...`);
-  
+  const tradeLog: TradeLogEntry[] = [];
+
+  elizaLogger.info(
+    `[Test] Monitoring trades for ${durationMs / 1000} seconds...`,
+  );
+
   while (Date.now() - startTime < durationMs) {
     const status = tradingManager.getStatus();
     const performance = tradingManager.getPerformance();
-    
+
     tradeLog.push({
       timestamp: Date.now(),
       isTrading: status.isTrading,
@@ -175,20 +229,22 @@ export async function monitorTrades(runtime: IAgentRuntime, durationMs: number):
         dailyPnL: performance.dailyPnL,
         totalTrades: performance.totalTrades,
         winRate: performance.winRate,
-      }
+      },
     });
-    
+
     // Log every 10 seconds
     if ((Date.now() - startTime) % 10000 < 1000) {
-      elizaLogger.info(`[Test] Trading status:`, {
-        elapsed: Math.floor((Date.now() - startTime) / 1000) + 's',
-        ...tradeLog[tradeLog.length - 1]
-      });
+      const lastEntry = tradeLog[tradeLog.length - 1];
+      elizaLogger.info(
+        `[Test] Trading status: elapsed=${Math.floor((Date.now() - startTime) / 1000)}s, ` +
+          `isTrading=${lastEntry.isTrading}, positions=${lastEntry.positions}, ` +
+          `totalPnL=${lastEntry.performance.totalPnL.toFixed(2)}`,
+      );
     }
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  
+
   return {
     duration: Date.now() - startTime,
     tradeLog,
@@ -197,15 +253,15 @@ export async function monitorTrades(runtime: IAgentRuntime, durationMs: number):
   };
 }
 
-export function validateTradingResult(result: any): void {
+export function validateTradingResult(result: TradingMonitorResult): void {
   if (!result.finalStatus) {
-    throw new Error('No final status in trading result');
+    throw new Error("No final status in trading result");
   }
-  
+
   if (!result.finalPerformance) {
-    throw new Error('No final performance in trading result');
+    throw new Error("No final performance in trading result");
   }
-  
+
   // Log summary
   elizaLogger.info(
     {
@@ -216,22 +272,22 @@ export function validateTradingResult(result: any): void {
       dailyPnL: result.finalPerformance.dailyPnL.toFixed(2),
       finalPositions: result.finalStatus.positions.length,
     },
-    `[Test] Trading Summary`
+    `[Test] Trading Summary`,
   );
 }
 
 export async function simulateConversation(
-  runtime: IAgentRuntime,
+  _runtime: IAgentRuntime,
   messages: string[],
-  delayMs = 5000
+  delayMs = 5000,
 ): Promise<void> {
   for (const message of messages) {
     elizaLogger.info(`[Test] User message: "${message}"`);
-    
+
     // Simulate user sending a message
     // In a real implementation, this would go through the message handler
     // For now, we'll just log it
-    
-    await new Promise(resolve => setTimeout(resolve, delayMs));
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 }

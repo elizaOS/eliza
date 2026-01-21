@@ -13,7 +13,7 @@
  * ```
  */
 
-import { generateSnowflakeId } from '@babylon/shared';
+import { generateSnowflakeId } from "@babylon/shared";
 import {
   and,
   count,
@@ -24,10 +24,10 @@ import {
   isNull,
   lt,
   lte,
-} from 'drizzle-orm';
-import { db } from './db';
-import { logger } from './logger';
-import type { OrganizationStateRow, Question } from './model-types';
+} from "drizzle-orm";
+import { db } from "./db";
+import { logger } from "./logger";
+import type { OrganizationStateRow, Question } from "./model-types";
 import {
   games,
   organizations,
@@ -36,7 +36,7 @@ import {
   stockPrices,
   users,
   worldEvents,
-} from './schema';
+} from "./schema";
 
 /**
  * FeedPost type representing a post in the feed.
@@ -129,7 +129,7 @@ class DatabaseService {
     activeQuestions?: number;
   }) {
     const game = await this.getGameState();
-    if (!game) throw new Error('Game not initialized');
+    if (!game) throw new Error("Game not initialized");
 
     const updated = await db
       .update(games)
@@ -192,7 +192,7 @@ class DatabaseService {
     relatedQuestion?: number;
   }) {
     const safeDayNumber =
-      typeof data.dayNumber === 'number' &&
+      typeof data.dayNumber === "number" &&
       Number.isFinite(data.dayNumber) &&
       data.dayNumber >= 0 &&
       data.dayNumber <= 2147483647
@@ -200,14 +200,14 @@ class DatabaseService {
         : undefined;
 
     if (data.dayNumber !== undefined && safeDayNumber === undefined) {
-      logger.warn('[Post] Invalid dayNumber value', {
+      logger.warn("[Post] Invalid dayNumber value", {
         dayNumber: data.dayNumber,
         postId: data.id,
       });
     }
 
     const safeRelatedQuestion =
-      typeof data.relatedQuestion === 'number' &&
+      typeof data.relatedQuestion === "number" &&
       Number.isFinite(data.relatedQuestion) &&
       data.relatedQuestion >= 0 &&
       data.relatedQuestion <= 2147483647
@@ -218,7 +218,7 @@ class DatabaseService {
       data.relatedQuestion !== undefined &&
       safeRelatedQuestion === undefined
     ) {
-      logger.warn('[Post] Invalid relatedQuestion value', {
+      logger.warn("[Post] Invalid relatedQuestion value", {
         relatedQuestion: data.relatedQuestion,
         postId: data.id,
       });
@@ -228,7 +228,7 @@ class DatabaseService {
       .insert(posts)
       .values({
         id: data.id,
-        type: data.type || 'post',
+        type: data.type || "post",
         content: data.content,
         fullContent: data.fullContent,
         articleTitle: data.articleTitle,
@@ -259,13 +259,13 @@ class DatabaseService {
    * @returns Object with count of created posts
    */
   async createManyPosts(
-    postsData: Array<FeedPost & { gameId?: string; dayNumber?: number }>
+    postsData: Array<FeedPost & { gameId?: string; dayNumber?: number }>,
   ) {
     if (postsData.length === 0) return { count: 0 };
 
     const values = postsData.map((post) => {
       const safeDayNumber =
-        typeof post.dayNumber === 'number' &&
+        typeof post.dayNumber === "number" &&
         Number.isFinite(post.dayNumber) &&
         post.dayNumber >= 0 &&
         post.dayNumber <= 2147483647
@@ -273,7 +273,7 @@ class DatabaseService {
           : undefined;
 
       if (post.dayNumber !== undefined && safeDayNumber === undefined) {
-        logger.warn('[Post] Invalid dayNumber value', {
+        logger.warn("[Post] Invalid dayNumber value", {
           dayNumber: post.dayNumber,
           postId: post.id,
         });
@@ -303,12 +303,12 @@ class DatabaseService {
    * @returns Array of recent posts
    */
   async getRecentPosts(limit = 100, cursorOrOffset?: string | number) {
-    const isCursor = typeof cursorOrOffset === 'string';
+    const isCursor = typeof cursorOrOffset === "string";
     const cursor = isCursor ? cursorOrOffset : undefined;
     const offset =
-      !isCursor && typeof cursorOrOffset === 'number' ? cursorOrOffset : 0;
+      !isCursor && typeof cursorOrOffset === "number" ? cursorOrOffset : 0;
 
-    logger.debug('DatabaseService.getRecentPosts called', {
+    logger.debug("DatabaseService.getRecentPosts called", {
       limit,
       cursor,
       offset,
@@ -342,7 +342,7 @@ class DatabaseService {
       .where(and(inArray(users.id, authorIds), eq(users.isTest, true)));
 
     // For actors, use ID pattern: test actors have IDs starting with 'test-'
-    const testActorIds = authorIds.filter((id) => id.startsWith('test-'));
+    const testActorIds = authorIds.filter((id) => id.startsWith("test-"));
 
     const testAuthorIds = new Set([
       ...testUsers.map((u) => u.id),
@@ -353,7 +353,7 @@ class DatabaseService {
       .filter((post) => !testAuthorIds.has(post.authorId))
       .slice(0, limit);
 
-    logger.info('DatabaseService.getRecentPosts completed', {
+    logger.info("DatabaseService.getRecentPosts completed", {
       limit,
       cursor,
       offset,
@@ -378,14 +378,14 @@ class DatabaseService {
   async getPostsByActor(
     authorId: string,
     limit = 100,
-    cursorOrOffset?: string | number
+    cursorOrOffset?: string | number,
   ) {
-    const isCursor = typeof cursorOrOffset === 'string';
+    const isCursor = typeof cursorOrOffset === "string";
     const cursor = isCursor ? cursorOrOffset : undefined;
     const offset =
-      !isCursor && typeof cursorOrOffset === 'number' ? cursorOrOffset : 0;
+      !isCursor && typeof cursorOrOffset === "number" ? cursorOrOffset : 0;
 
-    logger.debug('DatabaseService.getPostsByActor called', {
+    logger.debug("DatabaseService.getPostsByActor called", {
       authorId,
       limit,
       cursor,
@@ -400,10 +400,10 @@ class DatabaseService {
       .limit(1);
 
     // Test actors have IDs starting with 'test-'
-    const isTestUser = user[0]?.isTest || authorId.startsWith('test-') || false;
+    const isTestUser = user[0]?.isTest || authorId.startsWith("test-") || false;
 
     if (isTestUser) {
-      logger.info('DatabaseService.getPostsByActor - test user filtered', {
+      logger.info("DatabaseService.getPostsByActor - test user filtered", {
         authorId,
         isTestUser: true,
       });
@@ -429,7 +429,7 @@ class DatabaseService {
       .offset(cursor ? 0 : offset)
       .orderBy(desc(posts.timestamp));
 
-    logger.info('DatabaseService.getPostsByActor completed', {
+    logger.info("DatabaseService.getPostsByActor completed", {
       authorId,
       limit,
       cursor,
@@ -480,7 +480,7 @@ class DatabaseService {
         rank: question.rank ?? 0,
         createdDate: new Date(question.createdDate || new Date()),
         resolutionDate: new Date(question.resolutionDate),
-        status: question.status || 'active',
+        status: question.status || "active",
         resolvedOutcome: question.resolvedOutcome,
         updatedAt: new Date(),
       })
@@ -510,13 +510,13 @@ class DatabaseService {
     const now = new Date();
     const msUntilResolution = resolutionDate.getTime() - now.getTime();
     const daysUntilResolution = Math.ceil(
-      msUntilResolution / (1000 * 60 * 60 * 24)
+      msUntilResolution / (1000 * 60 * 60 * 24),
     );
 
-    if (daysUntilResolution <= 1) return '24h';
-    if (daysUntilResolution <= 7) return '7d';
-    if (daysUntilResolution <= 30) return '30d';
-    return '30d+';
+    if (daysUntilResolution <= 1) return "24h";
+    if (daysUntilResolution <= 7) return "7d";
+    if (daysUntilResolution <= 30) return "30d";
+    return "30d+";
   }
 
   /**
@@ -527,28 +527,28 @@ class DatabaseService {
    */
   async getActiveQuestions(timeframe?: string) {
     const now = new Date();
-    const conditions = [eq(questions.status, 'active')];
+    const conditions = [eq(questions.status, "active")];
 
     if (timeframe) {
       let endDate: Date | undefined;
 
       switch (timeframe) {
-        case '24h':
+        case "24h":
           endDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
           conditions.push(gte(questions.resolutionDate, now));
           conditions.push(lte(questions.resolutionDate, endDate));
           break;
-        case '7d':
+        case "7d":
           endDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
           conditions.push(gte(questions.resolutionDate, now));
           conditions.push(lte(questions.resolutionDate, endDate));
           break;
-        case '30d':
+        case "30d":
           endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
           conditions.push(gte(questions.resolutionDate, now));
           conditions.push(lte(questions.resolutionDate, endDate));
           break;
-        case '30d+': {
+        case "30d+": {
           const startDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
           conditions.push(gte(questions.resolutionDate, startDate));
           break;
@@ -576,9 +576,9 @@ class DatabaseService {
       .from(questions)
       .where(
         and(
-          eq(questions.status, 'active'),
-          lte(questions.resolutionDate, new Date())
-        )
+          eq(questions.status, "active"),
+          lte(questions.resolutionDate, new Date()),
+        ),
       );
 
     return result.map((q) => this.adaptQuestion(q));
@@ -609,7 +609,7 @@ class DatabaseService {
     const updated = await db
       .update(questions)
       .set({
-        status: 'resolved',
+        status: "resolved",
         resolvedOutcome,
       })
       .where(eq(questions.id, id))
@@ -629,7 +629,7 @@ class DatabaseService {
    */
   async upsertOrganizationState(
     id: string,
-    currentPrice: number | null
+    currentPrice: number | null,
   ): Promise<OrganizationStateRow> {
     const existing = await db
       .select({ id: organizations.id })
@@ -664,7 +664,7 @@ class DatabaseService {
    */
   async updateOrganizationPrice(
     id: string,
-    price: number
+    price: number,
   ): Promise<OrganizationStateRow> {
     return this.upsertOrganizationState(id, price);
   }
@@ -720,7 +720,7 @@ class DatabaseService {
     organizationId: string,
     price: number,
     change: number,
-    changePercent: number
+    changePercent: number,
   ) {
     const created = await db
       .insert(stockPrices)
@@ -753,7 +753,7 @@ class DatabaseService {
       lowPrice: number;
       closePrice: number;
       volume: number;
-    }
+    },
   ) {
     const created = await db
       .insert(stockPrices)
@@ -806,8 +806,8 @@ class DatabaseService {
       .where(
         and(
           eq(stockPrices.organizationId, organizationId),
-          eq(stockPrices.isSnapshot, true)
-        )
+          eq(stockPrices.isSnapshot, true),
+        ),
       )
       .limit(days)
       .orderBy(desc(stockPrices.timestamp));
@@ -835,19 +835,19 @@ class DatabaseService {
     dayNumber?: number;
   }) {
     let descriptionString: string;
-    if (typeof event.description === 'string') {
+    if (typeof event.description === "string") {
       descriptionString = event.description;
-    } else if (event.description && typeof event.description === 'object') {
+    } else if (event.description && typeof event.description === "object") {
       descriptionString =
         event.description.text ||
         event.description.title ||
         JSON.stringify(event.description);
     } else {
-      descriptionString = String(event.description || '');
+      descriptionString = String(event.description || "");
     }
 
     const safeRelatedQuestion =
-      typeof event.relatedQuestion === 'number' &&
+      typeof event.relatedQuestion === "number" &&
       Number.isFinite(event.relatedQuestion) &&
       event.relatedQuestion >= 0 &&
       event.relatedQuestion <= 2147483647
@@ -855,7 +855,7 @@ class DatabaseService {
         : undefined;
 
     const safeDayNumber =
-      typeof event.dayNumber === 'number' &&
+      typeof event.dayNumber === "number" &&
       Number.isFinite(event.dayNumber) &&
       event.dayNumber >= 0 &&
       event.dayNumber <= 2147483647
@@ -866,14 +866,14 @@ class DatabaseService {
       event.relatedQuestion !== undefined &&
       safeRelatedQuestion === undefined
     ) {
-      logger.warn('[WorldEvent] Invalid relatedQuestion value', {
+      logger.warn("[WorldEvent] Invalid relatedQuestion value", {
         relatedQuestion: event.relatedQuestion,
         eventId: event.id,
       });
     }
 
     if (event.dayNumber !== undefined && safeDayNumber === undefined) {
-      logger.warn('[WorldEvent] Invalid dayNumber value', {
+      logger.warn("[WorldEvent] Invalid dayNumber value", {
         dayNumber: event.dayNumber,
         eventId: event.id,
       });
@@ -917,10 +917,11 @@ class DatabaseService {
   /**
    * @deprecated Actor state is no longer used in Polyagent
    */
-  async upsertActorState(
-    _state: { id: string; [key: string]: unknown }
-  ): Promise<null> {
-    logger.warn('upsertActorState is deprecated and has no effect');
+  async upsertActorState(_state: {
+    id: string;
+    [key: string]: unknown;
+  }): Promise<null> {
+    logger.warn("upsertActorState is deprecated and has no effect");
     return null;
   }
 
@@ -946,27 +947,23 @@ class DatabaseService {
    * @returns Object containing various database statistics
    */
   async getStats() {
-    const [
-      totalPosts,
-      totalQuestions,
-      activeQuestions,
-      gameState,
-    ] = await Promise.all([
-      db
-        .select({ count: count() })
-        .from(posts)
-        .then((r) => Number(r[0]?.count ?? 0)),
-      db
-        .select({ count: count() })
-        .from(questions)
-        .then((r) => Number(r[0]?.count ?? 0)),
-      db
-        .select({ count: count() })
-        .from(questions)
-        .where(eq(questions.status, 'active'))
-        .then((r) => Number(r[0]?.count ?? 0)),
-      this.getGameState(),
-    ]);
+    const [totalPosts, totalQuestions, activeQuestions, gameState] =
+      await Promise.all([
+        db
+          .select({ count: count() })
+          .from(posts)
+          .then((r) => Number(r[0]?.count ?? 0)),
+        db
+          .select({ count: count() })
+          .from(questions)
+          .then((r) => Number(r[0]?.count ?? 0)),
+        db
+          .select({ count: count() })
+          .from(questions)
+          .where(eq(questions.status, "active"))
+          .then((r) => Number(r[0]?.count ?? 0)),
+        this.getGameState(),
+      ]);
 
     return {
       totalPosts,

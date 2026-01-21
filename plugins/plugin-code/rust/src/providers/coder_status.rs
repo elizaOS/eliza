@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::{Provider, ProviderResult};
 use crate::service::CoderService;
+use crate::{Provider, ProviderResult};
 
 pub struct CoderStatusProvider;
 
@@ -78,4 +78,3 @@ impl Provider for CoderStatusProvider {
         }
     }
 }
-

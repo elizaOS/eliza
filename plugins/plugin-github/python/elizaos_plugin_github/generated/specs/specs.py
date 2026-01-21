@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from typing import TypedDict
 
+
 class ActionDoc(TypedDict, total=False):
     name: str
     description: str
@@ -15,11 +16,13 @@ class ActionDoc(TypedDict, total=False):
     parameters: list[object]
     examples: list[list[object]]
 
+
 class ProviderDoc(TypedDict, total=False):
     name: str
     description: str
     position: int
     dynamic: bool
+
 
 class EvaluatorDoc(TypedDict, total=False):
     name: str
@@ -27,6 +30,7 @@ class EvaluatorDoc(TypedDict, total=False):
     similes: list[str]
     alwaysRun: bool
     examples: list[object]
+
 
 _CORE_ACTION_DOCS_JSON = """{
   "version": "1.0.0",

@@ -79,6 +79,7 @@ async def register_plugin(runtime: IAgentRuntime, plugin: Plugin) -> None:
             config = getattr(plugin, "config", None) or {}
             # Handle different init signatures
             import inspect
+
             sig = inspect.signature(init_fn)
             params = list(sig.parameters.values())
             # Filter out 'self' parameter for bound methods
@@ -112,7 +113,9 @@ async def register_plugin(runtime: IAgentRuntime, plugin: Plugin) -> None:
         if services:
             for service_class in services:
                 await runtime.register_service(service_class)
-                logger.debug(f"Registered service: {getattr(service_class, 'service_type', 'unknown')}")
+                logger.debug(
+                    f"Registered service: {getattr(service_class, 'service_type', 'unknown')}"
+                )
 
         models = getattr(plugin, "models", None)
         if models:

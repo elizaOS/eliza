@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-starter",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -58,7 +58,7 @@
     "start": "elizaos start",
     "dev": "elizaos dev",
     "build": "bun run build.ts",
-    "lint": "bunx @biomejs/biome check --write ./src",
+    "lint": "bunx @biomejs/biome check --write --unsafe ./src",
     "lint:check": "bunx @biomejs/biome check ./src",
     "typecheck": "tsc --noEmit",
     "postinstall": "node -e \"const fs=require('fs');const path=require('path');const zodPath=path.join('node_modules','zod');if(fs.existsSync(zodPath)){fs.writeFileSync(path.join(zodPath,'v3.js'),'module.exports=require(\\\"./lib/index.js\\\");');fs.writeFileSync(path.join(zodPath,'v3.d.ts'),'export * from \\\"./lib/index\\\";');}\" || true",

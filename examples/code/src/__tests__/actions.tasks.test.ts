@@ -7,22 +7,22 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  type AgentProvider,
+  AgentOrchestratorService as CodeTaskService,
+  cancelTaskAction,
   configureAgentOrchestratorPlugin,
   createTaskAction,
-  cancelTaskAction,
   listTasksAction,
+  type OrchestratedTask,
+  type ProviderTaskExecutionContext,
   pauseTaskAction,
   resumeTaskAction,
   searchTasksAction,
   switchTaskAction,
-  AgentOrchestratorService as CodeTaskService,
-  type AgentProvider,
-  type OrchestratedTask,
-  type ProviderTaskExecutionContext,
   type TaskResult,
 } from "@elizaos/plugin-agent-orchestrator";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { CodeTask, CodeTaskMetadata } from "../types.js";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils.js";
 

@@ -2,14 +2,15 @@
 Pytest configuration and fixtures for Agent Orchestrator plugin tests.
 """
 
-import pytest
-from typing import Any, Optional
 from dataclasses import dataclass, field
+from typing import Any
+
+import pytest
 
 from elizaos_plugin_agent_orchestrator import (
-    configure_agent_orchestrator_plugin,
     AgentOrchestratorPluginOptions,
     TaskResult,
+    configure_agent_orchestrator_plugin,
     reset_configuration,
 )
 
@@ -17,13 +18,14 @@ from elizaos_plugin_agent_orchestrator import (
 @dataclass
 class MockTask:
     """Mock task for testing."""
+
     id: str
     name: str
     description: str
     metadata: dict[str, Any]
     tags: list[str] = field(default_factory=list)
-    room_id: Optional[str] = None
-    world_id: Optional[str] = None
+    room_id: str | None = None
+    world_id: str | None = None
 
 
 class MockRuntime:
@@ -49,7 +51,7 @@ class MockRuntime:
         )
         return task_id
 
-    async def get_task(self, task_id: str) -> Optional[MockTask]:
+    async def get_task(self, task_id: str) -> MockTask | None:
         return self._tasks.get(task_id)
 
     async def get_tasks(self, options: dict[str, Any]) -> list[MockTask]:
@@ -66,10 +68,10 @@ class MockRuntime:
     async def delete_task(self, task_id: str) -> None:
         self._tasks.pop(task_id, None)
 
-    async def get_room(self, room_id: str) -> Optional[Any]:
+    async def get_room(self, room_id: str) -> Any | None:
         return None
 
-    def get_service(self, service_type: str) -> Optional[Any]:
+    def get_service(self, service_type: str) -> Any | None:
         return self._services.get(service_type)
 
     def register_service(self, service_type: str, service: Any) -> None:
@@ -78,6 +80,7 @@ class MockRuntime:
 
 class NoOpProvider:
     """No-op provider for testing."""
+
     id = "noop"
     label = "No-Op Provider"
     description = "Does nothing"
@@ -117,6 +120,7 @@ def reset_config():
 def configured_options(noop_provider: NoOpProvider) -> AgentOrchestratorPluginOptions:
     """Configure plugin with no-op provider."""
     import os
+
     options = AgentOrchestratorPluginOptions(
         providers=[noop_provider],
         default_provider_id="noop",

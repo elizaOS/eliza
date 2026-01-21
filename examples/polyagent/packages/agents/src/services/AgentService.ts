@@ -34,22 +34,22 @@ import {
   userAgentConfigs,
   users,
   withTransaction,
-} from '@babylon/db';
-import type { AgentCapabilities } from '@babylon/shared';
+} from "@babylon/db";
+import type { AgentCapabilities } from "@babylon/shared";
 import {
   BABYLON_POINTS_SYMBOL,
   getCurrentChainId,
   IDENTITY_REGISTRY_BASE_SEPOLIA,
   REPUTATION_SYSTEM_BASE_SEPOLIA,
-} from '@babylon/shared';
-import { AuthorizationError } from '../errors';
-import { agentIdentityService } from '../identity/AgentIdentityService';
-import { agentRuntimeManager } from '../runtime/AgentRuntimeManager';
-import { logger } from '../shared/logger';
-import { generateSnowflakeId } from '../shared/snowflake';
-import type { AgentPerformance, CreateAgentParams } from '../types';
-import type { JsonValue } from '../types/common';
-import { agentRegistry } from './agent-registry.service';
+} from "@babylon/shared";
+import { AuthorizationError } from "../errors";
+import { agentIdentityService } from "../identity/AgentIdentityService";
+import { agentRuntimeManager } from "../runtime/AgentRuntimeManager";
+import { logger } from "../shared/logger";
+import { generateSnowflakeId } from "../shared/snowflake";
+import type { AgentPerformance, CreateAgentParams } from "../types";
+import type { JsonValue } from "../types/common";
+import { agentRegistry } from "./agent-registry.service";
 
 /** User with agent configuration */
 export type UserWithConfig = User & { agentConfig: UserAgentConfig | null };
@@ -58,7 +58,7 @@ export type UserWithConfig = User & { agentConfig: UserAgentConfig | null };
  * Get agent config for a user
  */
 export async function getAgentConfig(
-  userId: string
+  userId: string,
 ): Promise<UserAgentConfig | null> {
   const result = await db
     .select()
@@ -72,7 +72,7 @@ export async function getAgentConfig(
  * Get user with their agent config
  */
 export async function getUserWithConfig(
-  userId: string
+  userId: string,
 ): Promise<UserWithConfig | null> {
   const userResult = await db
     .select()
@@ -124,13 +124,13 @@ export class AgentServiceV2 {
       .limit(1);
 
     const manager = managerResult[0];
-    if (!manager) throw new Error('Manager user not found');
+    if (!manager) throw new Error("Manager user not found");
 
     if (initialDeposit && initialDeposit > 0) {
       const managerBalance = Number(manager.virtualBalance ?? 0);
       if (managerBalance < initialDeposit) {
         throw new Error(
-          `Insufficient balance. Have: $${managerBalance.toFixed(2)}, Need: $${initialDeposit.toFixed(2)}`
+          `Insufficient balance. Have: $${managerBalance.toFixed(2)}, Need: $${initialDeposit.toFixed(2)}`,
         );
       }
     }
@@ -143,16 +143,16 @@ export class AgentServiceV2 {
       // Validate format - reject invalid characters instead of sanitizing
       if (!/^[a-z0-9_]+$/.test(trimmed)) {
         throw new Error(
-          'Username can only contain lowercase letters, numbers, and underscores'
+          "Username can only contain lowercase letters, numbers, and underscores",
         );
       }
 
       // Validate username length
       if (trimmed.length < 3) {
-        throw new Error('Username must be at least 3 characters');
+        throw new Error("Username must be at least 3 characters");
       }
       if (trimmed.length > 20) {
-        throw new Error('Username must be at most 20 characters');
+        throw new Error("Username must be at most 20 characters");
       }
 
       agentUsername = trimmed;
@@ -170,7 +170,7 @@ export class AgentServiceV2 {
       // Auto-generate username for programmatic use cases
       const baseUsername = name
         .toLowerCase()
-        .replace(/[^a-z0-9]/g, '_')
+        .replace(/[^a-z0-9]/g, "_")
         .substring(0, 20);
       const randomSuffix = Math.random().toString(36).substring(2, 8);
       agentUsername = `${baseUsername}_${randomSuffix}`;
@@ -192,8 +192,8 @@ export class AgentServiceV2 {
           coverImageUrl: coverImageUrl || null,
           isAgent: true,
           managedBy: managerUserId,
-          virtualBalance: '0',
-          totalDeposited: '0',
+          virtualBalance: "0",
+          totalDeposited: "0",
           reputationPoints: 0,
           profileComplete: true,
           hasUsername: true,
@@ -249,7 +249,7 @@ export class AgentServiceV2 {
         await tx.insert(balanceTransactions).values({
           id: await generateSnowflakeId(),
           userId: managerUserId,
-          type: 'agent_deposit',
+          type: "agent_deposit",
           amount: String(-initialDeposit),
           balanceBefore: String(initialManagerBalance),
           balanceAfter: String(initialManagerBalance - initialDeposit),
@@ -261,20 +261,20 @@ export class AgentServiceV2 {
         await tx.insert(balanceTransactions).values({
           id: await generateSnowflakeId(),
           userId: agentUserId,
-          type: 'owner_deposit',
+          type: "owner_deposit",
           amount: String(initialDeposit),
-          balanceBefore: '0',
+          balanceBefore: "0",
           balanceAfter: String(initialDeposit),
           relatedId: managerUserId,
-          description: 'Initial deposit from owner',
+          description: "Initial deposit from owner",
         });
       }
 
       await tx.insert(agentLogs).values({
         id: await generateSnowflakeId(),
         agentUserId,
-        type: 'system',
-        level: 'info',
+        type: "system",
+        level: "info",
         message: `Agent created: ${name}`,
         metadata: { initialDeposit: initialDeposit || 0 },
       });
@@ -285,33 +285,33 @@ export class AgentServiceV2 {
     logger.info(
       `Agent user created: ${agentUserId} managed by ${managerUserId}`,
       undefined,
-      'AgentService'
+      "AgentService",
     );
 
     // Register agent in registry
     if (agentRegistry) {
       const capabilities: AgentCapabilities = {
         strategies: [
-          'prediction_markets',
-          'social_interaction',
+          "prediction_markets",
+          "social_interaction",
           ...(tradingStrategy
             ? [`trading_${tradingStrategy.toLowerCase()}`]
             : []),
         ],
-        markets: ['prediction', 'perpetual', 'spot'],
+        markets: ["prediction", "perpetual", "spot"],
         actions: [
-          'trade',
-          'post',
-          'comment',
-          'like',
-          'message',
-          'analyze_market',
-          'manage_portfolio',
+          "trade",
+          "post",
+          "comment",
+          "like",
+          "message",
+          "analyze_market",
+          "manage_portfolio",
         ],
-        version: '1.0.0',
+        version: "1.0.0",
         x402Support: true,
-        platform: 'babylon',
-        userType: 'user_controlled',
+        platform: "babylon",
+        userType: "user_controlled",
         gameNetwork: {
           chainId: getCurrentChainId(),
           registryAddress: IDENTITY_REGISTRY_BASE_SEPOLIA,
@@ -325,14 +325,14 @@ export class AgentServiceV2 {
         userId: agentUserId,
         name: name,
         systemPrompt:
-          system || 'You are a helpful AI agent on Babylon prediction market.',
+          system || "You are a helpful AI agent on Babylon prediction market.",
         capabilities,
       });
 
       logger.info(
         `Agent ${agentUserId} registered in registry`,
         undefined,
-        'AgentService'
+        "AgentService",
       );
     }
 
@@ -345,7 +345,7 @@ export class AgentServiceV2 {
 
   async getAgent(
     agentUserId: string,
-    managerUserId?: string
+    managerUserId?: string,
   ): Promise<User | null> {
     const agentResult = await db
       .select()
@@ -355,12 +355,12 @@ export class AgentServiceV2 {
 
     const agent = agentResult[0];
     if (!agent) return null;
-    if (!agent.isAgent) throw new Error('User is not an agent');
+    if (!agent.isAgent) throw new Error("User is not an agent");
     if (managerUserId && agent.managedBy !== managerUserId) {
       throw new AuthorizationError(
-        'You do not have permission to access this agent. You can only chat with agents you own.',
-        'agent',
-        'chat'
+        "You do not have permission to access this agent. You can only chat with agents you own.",
+        "agent",
+        "chat",
       );
     }
     return agent;
@@ -371,7 +371,7 @@ export class AgentServiceV2 {
    */
   async getAgentWithConfig(
     agentUserId: string,
-    managerUserId?: string
+    managerUserId?: string,
   ): Promise<UserWithConfig | null> {
     const agent = await this.getAgent(agentUserId, managerUserId);
     if (!agent) return null;
@@ -382,7 +382,7 @@ export class AgentServiceV2 {
 
   async listUserAgents(
     managerUserId: string,
-    filters?: { autonomousTrading?: boolean }
+    filters?: { autonomousTrading?: boolean },
   ): Promise<User[]> {
     // If filtering by autonomousTrading, we need to join with userAgentConfigs
     if (filters?.autonomousTrading !== undefined) {
@@ -394,8 +394,8 @@ export class AgentServiceV2 {
           and(
             eq(users.isAgent, true),
             eq(users.managedBy, managerUserId),
-            eq(userAgentConfigs.autonomousTrading, filters.autonomousTrading)
-          )
+            eq(userAgentConfigs.autonomousTrading, filters.autonomousTrading),
+          ),
         )
         .orderBy(desc(users.createdAt));
 
@@ -420,14 +420,14 @@ export class AgentServiceV2 {
       bio: string[]; // Bio array for ElizaOS agentMessageExamples
       personality: string;
       tradingStrategy: string;
-      modelTier: 'free' | 'pro';
+      modelTier: "free" | "pro";
       autonomousTrading: boolean;
       autonomousPosting: boolean;
       autonomousCommenting: boolean;
       autonomousDMs: boolean;
       autonomousGroupChats: boolean;
       a2aEnabled: boolean;
-    }>
+    }>,
   ): Promise<User> {
     await this.getAgent(agentUserId, managerUserId); // Verify ownership
 
@@ -491,22 +491,22 @@ export class AgentServiceV2 {
     await db.insert(agentLogs).values({
       id: await generateSnowflakeId(),
       agentUserId,
-      type: 'system',
-      level: 'info',
-      message: 'Agent configuration updated',
+      type: "system",
+      level: "info",
+      message: "Agent configuration updated",
       metadata: updates,
     });
 
-    logger.info(`Agent updated: ${agentUserId}`, undefined, 'AgentService');
+    logger.info(`Agent updated: ${agentUserId}`, undefined, "AgentService");
     return updatedAgent;
   }
 
   async deleteAgent(agentUserId: string, managerUserId: string): Promise<void> {
     const agentWithConfig = await this.getAgentWithConfig(
       agentUserId,
-      managerUserId
+      managerUserId,
     );
-    if (!agentWithConfig) throw new Error('Agent not found');
+    if (!agentWithConfig) throw new Error("Agent not found");
 
     // Get agent's remaining balance from users table
     const agentBalance = Number(agentWithConfig.virtualBalance ?? 0);
@@ -533,7 +533,7 @@ export class AgentServiceV2 {
         await tx.insert(balanceTransactions).values({
           id: await generateSnowflakeId(),
           userId: managerUserId,
-          type: 'agent_balance_return',
+          type: "agent_balance_return",
           amount: String(agentBalance),
           balanceBefore: String(currentBalance),
           balanceAfter: String(currentBalance + agentBalance),
@@ -554,7 +554,7 @@ export class AgentServiceV2 {
     // Clear runtime from agent runtime manager
     await agentRuntimeManager.clearRuntime(agentUserId);
 
-    logger.info(`Agent deleted: ${agentUserId}`, undefined, 'AgentService');
+    logger.info(`Agent deleted: ${agentUserId}`, undefined, "AgentService");
   }
 
   /**
@@ -570,7 +570,7 @@ export class AgentServiceV2 {
   async depositPoints(
     agentUserId: string,
     managerUserId: string,
-    amount: number
+    amount: number,
   ): Promise<User> {
     // Delegate to depositTradingBalance - now unified
     return this.depositTradingBalance(agentUserId, managerUserId, amount);
@@ -583,7 +583,7 @@ export class AgentServiceV2 {
   async withdrawPoints(
     agentUserId: string,
     managerUserId: string,
-    amount: number
+    amount: number,
   ): Promise<User> {
     // Delegate to withdrawTradingBalance - now unified
     return this.withdrawTradingBalance(agentUserId, managerUserId, amount);
@@ -604,15 +604,15 @@ export class AgentServiceV2 {
   async depositTradingBalance(
     agentUserId: string,
     managerUserId: string,
-    amount: number
+    amount: number,
   ): Promise<User> {
-    if (amount <= 0) throw new Error('Amount must be positive');
+    if (amount <= 0) throw new Error("Amount must be positive");
 
     const agentWithConfig = await this.getAgentWithConfig(
       agentUserId,
-      managerUserId
+      managerUserId,
     );
-    if (!agentWithConfig) throw new Error('Agent not found');
+    if (!agentWithConfig) throw new Error("Agent not found");
 
     // Get manager's trading balance
     const managerResult = await db
@@ -624,12 +624,12 @@ export class AgentServiceV2 {
       .limit(1);
 
     const manager = managerResult[0];
-    if (!manager) throw new Error('Manager not found');
+    if (!manager) throw new Error("Manager not found");
 
     const managerBalance = Number(manager.virtualBalance ?? 0);
     if (managerBalance < amount) {
       throw new Error(
-        `Insufficient trading balance. Have: $${managerBalance.toFixed(2)}, Need: $${amount.toFixed(2)}`
+        `Insufficient trading balance. Have: $${managerBalance.toFixed(2)}, Need: $${amount.toFixed(2)}`,
       );
     }
 
@@ -670,7 +670,7 @@ export class AgentServiceV2 {
       await tx.insert(balanceTransactions).values({
         id: await generateSnowflakeId(),
         userId: managerUserId,
-        type: 'agent_deposit',
+        type: "agent_deposit",
         amount: String(-amount),
         balanceBefore: String(managerBalance),
         balanceAfter: String(managerBalance - amount),
@@ -682,7 +682,7 @@ export class AgentServiceV2 {
       await tx.insert(balanceTransactions).values({
         id: await generateSnowflakeId(),
         userId: agentUserId,
-        type: 'owner_deposit',
+        type: "owner_deposit",
         amount: String(amount),
         balanceBefore: String(agentBalance),
         balanceAfter: String(agentBalance + amount),
@@ -694,7 +694,7 @@ export class AgentServiceV2 {
     logger.info(
       `Deposited ${BABYLON_POINTS_SYMBOL}${amount} trading balance to agent ${agentUserId}`,
       undefined,
-      'AgentService'
+      "AgentService",
     );
 
     const finalResult = await db
@@ -721,15 +721,15 @@ export class AgentServiceV2 {
   async withdrawTradingBalance(
     agentUserId: string,
     managerUserId: string,
-    amount: number
+    amount: number,
   ): Promise<User> {
-    if (amount <= 0) throw new Error('Amount must be positive');
+    if (amount <= 0) throw new Error("Amount must be positive");
 
     const agentWithConfig = await this.getAgentWithConfig(
       agentUserId,
-      managerUserId
+      managerUserId,
     );
-    if (!agentWithConfig) throw new Error('Agent not found');
+    if (!agentWithConfig) throw new Error("Agent not found");
 
     // Get agent's trading balance and totalWithdrawn
     const agentResult = await db
@@ -745,7 +745,7 @@ export class AgentServiceV2 {
     const agentTotalWithdrawn = Number(agentResult[0]?.totalWithdrawn ?? 0);
     if (agentBalance < amount) {
       throw new Error(
-        `Insufficient agent trading balance. Have: $${agentBalance.toFixed(2)}, Need: $${amount.toFixed(2)}`
+        `Insufficient agent trading balance. Have: $${agentBalance.toFixed(2)}, Need: $${amount.toFixed(2)}`,
       );
     }
 
@@ -784,7 +784,7 @@ export class AgentServiceV2 {
       await tx.insert(balanceTransactions).values({
         id: await generateSnowflakeId(),
         userId: agentUserId,
-        type: 'owner_withdraw',
+        type: "owner_withdraw",
         amount: String(-amount),
         balanceBefore: String(agentBalance),
         balanceAfter: String(agentBalance - amount),
@@ -796,7 +796,7 @@ export class AgentServiceV2 {
       await tx.insert(balanceTransactions).values({
         id: await generateSnowflakeId(),
         userId: managerUserId,
-        type: 'agent_withdraw',
+        type: "agent_withdraw",
         amount: String(amount),
         balanceBefore: String(managerBalance),
         balanceAfter: String(managerBalance + amount),
@@ -808,7 +808,7 @@ export class AgentServiceV2 {
     logger.info(
       `Withdrew ${BABYLON_POINTS_SYMBOL}${amount} trading balance from agent ${agentUserId}`,
       undefined,
-      'AgentService'
+      "AgentService",
     );
 
     const finalResult = await db
@@ -832,7 +832,7 @@ export class AgentServiceV2 {
     agentUserId: string,
     amount: number,
     reason: string,
-    relatedId?: string
+    relatedId?: string,
   ): Promise<number> {
     // Fetch and validate balance inside transaction with row-level locking to prevent race conditions
     const newBalance = await withTransaction(async (tx) => {
@@ -845,15 +845,15 @@ export class AgentServiceV2 {
         .from(users)
         .where(eq(users.id, agentUserId))
         .limit(1)
-        .for('update');
+        .for("update");
 
       const agent = userResult[0];
-      if (!agent) throw new Error('Agent not found');
+      if (!agent) throw new Error("Agent not found");
 
       const currentBalance = Number(agent.virtualBalance ?? 0);
       if (currentBalance < amount) {
         throw new Error(
-          `Insufficient balance. Have: ${currentBalance.toFixed(2)}, Need: ${amount.toFixed(2)}`
+          `Insufficient balance. Have: ${currentBalance.toFixed(2)}, Need: ${amount.toFixed(2)}`,
         );
       }
 
@@ -872,11 +872,11 @@ export class AgentServiceV2 {
       // Record the transaction for tracking
       await tx.insert(agentPointsTransactions).values({
         id: await generateSnowflakeId(),
-        type: reason.includes('chat')
-          ? 'spend_chat'
-          : reason.includes('post')
-            ? 'spend_post'
-            : 'spend_tick',
+        type: reason.includes("chat")
+          ? "spend_chat"
+          : reason.includes("post")
+            ? "spend_post"
+            : "spend_tick",
         amount: -amount,
         balanceBefore: String(currentBalance),
         balanceAfter: String(currentBalance - amount),
@@ -890,11 +890,11 @@ export class AgentServiceV2 {
       await tx.insert(balanceTransactions).values({
         id: await generateSnowflakeId(),
         userId: agentUserId,
-        type: reason.includes('chat')
-          ? 'agent_chat'
-          : reason.includes('post')
-            ? 'agent_post'
-            : 'agent_tick',
+        type: reason.includes("chat")
+          ? "agent_chat"
+          : reason.includes("post")
+            ? "agent_post"
+            : "agent_tick",
         amount: String(-amount),
         balanceBefore: String(currentBalance),
         balanceAfter: String(currentBalance - amount),
@@ -902,7 +902,7 @@ export class AgentServiceV2 {
         description: reason,
       });
 
-      return Number(result[0]!.virtualBalance ?? 0);
+      return Number(result[0]?.virtualBalance ?? 0);
     });
 
     return newBalance;
@@ -916,7 +916,7 @@ export class AgentServiceV2 {
       .limit(1);
 
     const agent = agentResult[0];
-    if (!agent || !agent.isAgent) throw new Error('Agent not found');
+    if (!agent || !agent.isAgent) throw new Error("Agent not found");
 
     // Get pre-calculated performance metrics from agentPerformanceMetrics table
     const metricsResult = await db
@@ -977,7 +977,7 @@ export class AgentServiceV2 {
   }
 
   async updatePerformanceMetricsForAgents(
-    agentUserIds: string[]
+    agentUserIds: string[],
   ): Promise<void> {
     if (agentUserIds.length === 0) return;
 
@@ -1004,9 +1004,9 @@ export class AgentServiceV2 {
         .where(
           and(
             eq(positions.userId, agentUserId),
-            eq(positions.status, 'active'),
-            isNotNull(positions.pnl)
-          )
+            eq(positions.status, "active"),
+            isNotNull(positions.pnl),
+          ),
         );
 
       const tradeRow = tradeAgg[0];
@@ -1056,9 +1056,9 @@ export class AgentServiceV2 {
 
       // Store avg trade size for analytics if needed later (in logs for now)
       logger.debug(
-        'Updated agent performance metrics',
+        "Updated agent performance metrics",
         { agentUserId, totalTrades, avgTradeSize, winRate, lifetimePnL },
-        'AgentPerformance'
+        "AgentPerformance",
       );
     }
   }
@@ -1066,7 +1066,7 @@ export class AgentServiceV2 {
   async getChatHistory(
     agentUserId: string,
     limit = 50,
-    cursor?: string
+    cursor?: string,
   ): Promise<{
     messages: (typeof agentMessages.$inferSelect)[];
     hasMore: boolean;
@@ -1089,8 +1089,8 @@ export class AgentServiceV2 {
         .where(
           and(
             eq(agentMessages.agentUserId, agentUserId),
-            lt(agentMessages.createdAt, cursorDate)
-          )
+            lt(agentMessages.createdAt, cursorDate),
+          ),
         )
         .orderBy(desc(agentMessages.createdAt))
         .limit(limit + 1);
@@ -1105,7 +1105,7 @@ export class AgentServiceV2 {
     // Get the cursor for the next page (oldest message's createdAt)
     const nextCursor =
       hasMore && messages.length > 0
-        ? messages[messages.length - 1]!.createdAt.toISOString()
+        ? messages[messages.length - 1]?.createdAt.toISOString()
         : null;
 
     return { messages, hasMore, nextCursor };
@@ -1113,7 +1113,7 @@ export class AgentServiceV2 {
 
   async getLogs(
     agentUserId: string,
-    filters?: { type?: string; level?: string; limit?: number }
+    filters?: { type?: string; level?: string; limit?: number },
   ) {
     const query = db
       .select()
@@ -1122,8 +1122,8 @@ export class AgentServiceV2 {
         and(
           eq(agentLogs.agentUserId, agentUserId),
           ...(filters?.type ? [eq(agentLogs.type, filters.type)] : []),
-          ...(filters?.level ? [eq(agentLogs.level, filters.level)] : [])
-        )
+          ...(filters?.level ? [eq(agentLogs.level, filters.level)] : []),
+        ),
       )
       .orderBy(desc(agentLogs.createdAt))
       .limit(filters?.limit || 100);
@@ -1135,23 +1135,23 @@ export class AgentServiceV2 {
     agentUserId: string,
     log: {
       type:
-        | 'chat'
-        | 'tick'
-        | 'trade'
-        | 'error'
-        | 'system'
-        | 'post'
-        | 'comment'
-        | 'dm'
-        | 'like'
-        | 'repost';
-      level: 'info' | 'warn' | 'error' | 'debug';
+        | "chat"
+        | "tick"
+        | "trade"
+        | "error"
+        | "system"
+        | "post"
+        | "comment"
+        | "dm"
+        | "like"
+        | "repost";
+      level: "info" | "warn" | "error" | "debug";
       message: string;
       prompt?: string;
       completion?: string;
       thinking?: string;
       metadata?: Record<string, JsonValue>;
-    }
+    },
   ) {
     const result = await db
       .insert(agentLogs)
@@ -1174,20 +1174,20 @@ export class AgentServiceV2 {
   }
 
   private shouldAutoSetupAgentIdentity(): boolean {
-    if (process.env.AUTO_CREATE_AGENT_WALLETS === 'false') {
+    if (process.env.AUTO_CREATE_AGENT_WALLETS === "false") {
       return false;
     }
 
     // Require Privy credentials outside development so we do not spam errors
     const hasPrivyConfig = Boolean(
-      process.env.NEXT_PUBLIC_PRIVY_APP_ID && process.env.PRIVY_APP_SECRET
+      process.env.NEXT_PUBLIC_PRIVY_APP_ID && process.env.PRIVY_APP_SECRET,
     );
 
-    if (!hasPrivyConfig && process.env.NODE_ENV !== 'development') {
+    if (!hasPrivyConfig && process.env.NODE_ENV !== "development") {
       logger.warn(
-        'Skipping automatic agent identity setup - Privy credentials missing',
+        "Skipping automatic agent identity setup - Privy credentials missing",
         undefined,
-        'AgentService'
+        "AgentService",
       );
       return false;
     }
@@ -1196,21 +1196,21 @@ export class AgentServiceV2 {
   }
 
   private async setupAgentIdentity(agentUserId: string): Promise<void> {
-    const skipAgent0Registration = process.env.AGENT0_ENABLED !== 'true';
+    const skipAgent0Registration = process.env.AGENT0_ENABLED !== "true";
 
     const agent = await agentIdentityService.setupAgentIdentity(agentUserId, {
       skipAgent0Registration,
     });
 
     logger.info(
-      'Agent identity setup complete',
+      "Agent identity setup complete",
       {
         agentUserId,
         walletProvisioned: Boolean(agent.walletAddress),
         agent0TokenId: agent.agent0TokenId,
         skippedAgent0: skipAgent0Registration,
       },
-      'AgentService'
+      "AgentService",
     );
   }
 }

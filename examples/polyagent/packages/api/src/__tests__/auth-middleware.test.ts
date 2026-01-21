@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
-import type { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type { NextRequest } from "next/server";
 
 // Type for mock request
 interface MockNextRequest {
@@ -16,51 +16,51 @@ const mockVerifyAuthToken = mock();
 const mockSelect = mock();
 
 // Mock the local agent-auth module
-mock.module('../agent-auth', () => ({
+mock.module("../agent-auth", () => ({
   verifyAgentSession: mockVerifyAgentSession,
 }));
 
 // Mock @polyagent/db with Drizzle-style API
-mock.module('@polyagent/db', () => ({
+mock.module("@polyagent/db", () => ({
   db: {
     select: mockSelect,
   },
   eq: (field: unknown, value: unknown) => ({ field, value }),
   users: {
-    id: 'id',
-    privyId: 'privyId',
-    walletAddress: 'walletAddress',
+    id: "id",
+    privyId: "privyId",
+    walletAddress: "walletAddress",
   },
 }));
 
 // Mock @privy-io/server-auth - PrivyClient is a class that gets instantiated
-mock.module('@privy-io/server-auth', () => ({
+mock.module("@privy-io/server-auth", () => ({
   PrivyClient: class MockPrivyClient {
     verifyAuthToken = mockVerifyAuthToken;
   },
 }));
 
 // Import after mocks are set up
-import { authenticate } from '../auth-middleware';
+import { authenticate } from "../auth-middleware";
 
 const createRequest = (token: string): NextRequest =>
   ({
     headers: {
       get: (name: string) =>
-        name.toLowerCase() === 'authorization' ? `Bearer ${token}` : null,
+        name.toLowerCase() === "authorization" ? `Bearer ${token}` : null,
     },
     cookies: {
       get: () => undefined,
     },
   }) as MockNextRequest as NextRequest;
 
-describe('authenticate middleware', () => {
+describe("authenticate middleware", () => {
   beforeEach(() => {
     mockVerifyAgentSession.mockReset();
     mockVerifyAuthToken.mockReset();
     mockSelect.mockReset();
-    process.env.NEXT_PUBLIC_PRIVY_APP_ID = 'test-app';
-    process.env.PRIVY_APP_SECRET = 'test-secret';
+    process.env.NEXT_PUBLIC_PRIVY_APP_ID = "test-app";
+    process.env.PRIVY_APP_SECRET = "test-secret";
 
     // Default mock chain for db.select().from().where().limit()
     mockSelect.mockReturnValue({
@@ -72,23 +72,23 @@ describe('authenticate middleware', () => {
     });
   });
 
-  it('returns agent user when session token is valid', async () => {
-    mockVerifyAgentSession.mockReturnValueOnce({ agentId: 'agent-123' });
+  it("returns agent user when session token is valid", async () => {
+    mockVerifyAgentSession.mockReturnValueOnce({ agentId: "agent-123" });
 
-    const request = createRequest('agent-session-token');
+    const request = createRequest("agent-session-token");
     const result = await authenticate(request);
 
     expect(result).toEqual({
-      userId: 'agent-123',
-      privyId: 'agent-123',
+      userId: "agent-123",
+      privyId: "agent-123",
       isAgent: true,
     });
     expect(mockVerifyAuthToken).not.toHaveBeenCalled();
   });
 
-  it('falls back to privy claims when agent session missing and db user absent', async () => {
+  it("falls back to privy claims when agent session missing and db user absent", async () => {
     mockVerifyAgentSession.mockReturnValueOnce(null);
-    mockVerifyAuthToken.mockResolvedValueOnce({ userId: 'privy-user' });
+    mockVerifyAuthToken.mockResolvedValueOnce({ userId: "privy-user" });
 
     // Mock empty db result
     mockSelect.mockReturnValue({
@@ -99,20 +99,20 @@ describe('authenticate middleware', () => {
       }),
     });
 
-    const request = createRequest('privy-token');
+    const request = createRequest("privy-token");
     const result = await authenticate(request);
 
     expect(result).toMatchObject({
-      userId: 'privy-user',
+      userId: "privy-user",
       dbUserId: undefined,
-      privyId: 'privy-user',
+      privyId: "privy-user",
       isAgent: false,
     });
   });
 
-  it('returns canonical id when privy user exists in db', async () => {
+  it("returns canonical id when privy user exists in db", async () => {
     mockVerifyAgentSession.mockReturnValueOnce(null);
-    mockVerifyAuthToken.mockResolvedValueOnce({ userId: 'privy-user' });
+    mockVerifyAuthToken.mockResolvedValueOnce({ userId: "privy-user" });
 
     // Mock db user found
     mockSelect.mockReturnValue({
@@ -121,42 +121,42 @@ describe('authenticate middleware', () => {
           limit: () =>
             Promise.resolve([
               {
-                id: 'db-user-id',
-                walletAddress: '0xabc',
+                id: "db-user-id",
+                walletAddress: "0xabc",
               },
             ]),
         }),
       }),
     });
 
-    const request = createRequest('privy-token');
+    const request = createRequest("privy-token");
     const result = await authenticate(request);
 
     expect(result).toMatchObject({
-      userId: 'db-user-id',
-      dbUserId: 'db-user-id',
-      privyId: 'privy-user',
-      walletAddress: '0xabc',
+      userId: "db-user-id",
+      dbUserId: "db-user-id",
+      privyId: "privy-user",
+      walletAddress: "0xabc",
     });
   });
 
-  it('throws descriptive error when privy token is expired', async () => {
+  it("throws descriptive error when privy token is expired", async () => {
     mockVerifyAgentSession.mockReturnValueOnce(null);
     mockVerifyAuthToken.mockRejectedValueOnce(
-      new Error('token expired: exp mismatch')
+      new Error("token expired: exp mismatch"),
     );
 
-    const request = createRequest('expired-token');
+    const request = createRequest("expired-token");
 
     try {
       await authenticate(request);
-      expect.unreachable('Should have thrown');
+      expect.unreachable("Should have thrown");
     } catch (error) {
       expect(error).toBeInstanceOf(Error);
       expect((error as Error).message).toBe(
-        'Authentication token has expired. Please refresh your session.'
+        "Authentication token has expired. Please refresh your session.",
       );
-      expect((error as { code: string }).code).toBe('AUTH_FAILED');
+      expect((error as { code: string }).code).toBe("AUTH_FAILED");
     }
   });
 });

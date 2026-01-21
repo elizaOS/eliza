@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 /**
  * Global Error Boundary for Next.js App Router
@@ -10,9 +10,9 @@
  * Best practice: This is the last line of defense for errors in the app.
  */
 
-import * as Sentry from '@sentry/nextjs';
-import { AlertTriangle } from 'lucide-react';
-import { useEffect } from 'react';
+import * as Sentry from "@sentry/nextjs";
+import { AlertTriangle } from "lucide-react";
+import { useEffect } from "react";
 
 export default function GlobalError({
   error,
@@ -24,12 +24,12 @@ export default function GlobalError({
   useEffect(() => {
     // Capture error in Sentry with highest priority context
     Sentry.withScope((scope) => {
-      scope.setLevel('fatal'); // Mark as fatal since it's a global error
-      scope.setTag('errorBoundary', 'global');
+      scope.setLevel("fatal"); // Mark as fatal since it's a global error
+      scope.setTag("errorBoundary", "global");
       if (error.digest) {
-        scope.setTag('errorDigest', error.digest);
+        scope.setTag("errorDigest", error.digest);
       }
-      scope.setContext('globalError', {
+      scope.setContext("globalError", {
         message: error.message,
         stack: error.stack,
         digest: error.digest,
@@ -46,7 +46,7 @@ export default function GlobalError({
             <AlertTriangle className="mx-auto mb-4 h-16 w-16 text-destructive" />
             <h2 className="mb-2 font-bold text-2xl">Something went wrong</h2>
             <p className="mb-6 text-muted-foreground">
-              {error.message || 'An unexpected error occurred'}
+              {error.message || "An unexpected error occurred"}
             </p>
             {error.digest && (
               <p className="mb-4 text-muted-foreground text-sm">
@@ -61,7 +61,7 @@ export default function GlobalError({
                 Try again
               </button>
               <button
-                onClick={() => (window.location.href = '/')}
+                onClick={() => (window.location.href = "/")}
                 className="rounded-md bg-secondary px-6 py-2 text-secondary-foreground transition-colors hover:bg-secondary/90"
               >
                 Go home

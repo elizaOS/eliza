@@ -1,17 +1,23 @@
 import type { TownState } from "../../shared/types";
-import { defaultModelSettings, type ModelSettings } from "../runtime/modelSettings";
-import { setAutonomyEnabled, stopTownRuntimes } from "../simulation/elizaTownRuntime";
 import { TownEngine } from "../engine/townEngine";
-import type { TownSimulationSnapshot } from "../simulation/townSimulation";
-import type { MafiaGameState } from "../simulation/mafiaGame";
 import {
-  loadModelSettings,
-  loadTownSnapshot,
-  loadRunningState,
+  defaultModelSettings,
+  type ModelSettings,
+} from "../runtime/modelSettings";
+import {
+  setAutonomyEnabled,
+  stopTownRuntimes,
+} from "../simulation/elizaTownRuntime";
+import type { MafiaGameState } from "../simulation/mafiaGame";
+import type { TownSimulationSnapshot } from "../simulation/townSimulation";
+import {
   clearTownState,
+  loadModelSettings,
+  loadRunningState,
+  loadTownSnapshot,
   saveModelSettings,
-  saveTownSnapshot,
   saveRunningState,
+  saveTownSnapshot,
 } from "./townPersistence";
 
 type StoreSubscriber = () => void;
@@ -28,7 +34,9 @@ let isRunning = false;
 const PERSIST_INTERVAL_MS = 5000;
 
 function notifySubscribers(): void {
-  subscribers.forEach((listener) => listener());
+  for (const listener of subscribers) {
+    listener();
+  }
 }
 
 function handleStateChange(nextState: TownState): void {
@@ -112,7 +120,10 @@ export async function initializeTownStore(): Promise<void> {
     return initializing;
   }
   initializing = (async () => {
-    const [settings, snapshot] = await Promise.all([restoreSettings(), restoreSnapshot()]);
+    const [settings, snapshot] = await Promise.all([
+      restoreSettings(),
+      restoreSnapshot(),
+    ]);
     currentSettings = settings;
     engine = new TownEngine({
       settingsProvider: () => currentSettings,

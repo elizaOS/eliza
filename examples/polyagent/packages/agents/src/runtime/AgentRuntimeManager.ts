@@ -8,30 +8,25 @@
  * @packageDocumentation
  */
 
-import { db, eq, users } from '@babylon/db';
-import { GROQ_MODELS } from '@babylon/shared';
+import { db, eq, users } from "@babylon/db";
+import { GROQ_MODELS } from "@babylon/shared";
 import {
   AgentRuntime,
   type Character,
   type Plugin,
   type UUID,
-} from '@elizaos/core';
-import { anthropicPlugin } from '@elizaos/plugin-anthropic';
-import { openaiPlugin } from '@elizaos/plugin-openai';
-import { babylonPolymarketPlugin } from '../plugins/polymarket';
-import { groqPlugin } from '../plugins/groq';
-import { trajectoryLoggerPlugin } from '../plugins/plugin-trajectory-logger/src';
-import {
-  wrapPluginActions,
-  wrapPluginProviders,
-} from '../plugins/plugin-trajectory-logger/src/action-interceptor';
-import { TrajectoryLoggerService } from '../plugins/plugin-trajectory-logger/src/TrajectoryLoggerService';
-import { agentRegistry } from '../services/agent-registry.service';
-import { getAgentConfig } from '../shared/agent-config';
-import { logger } from '../shared/logger';
-import { generateSnowflakeId } from '../shared/snowflake';
-import { type AgentRegistration, AgentType } from '../types/agent-registry';
-import type { JsonValue } from '../types/common';
+} from "@elizaos/core";
+import { anthropicPlugin } from "@elizaos/plugin-anthropic";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { groqPlugin } from "../plugins/groq";
+import { trajectoryLoggerPlugin } from "../plugins/plugin-trajectory-logger/src";
+import { TrajectoryLoggerService } from "../plugins/plugin-trajectory-logger/src/TrajectoryLoggerService";
+import { babylonPolymarketPlugin } from "../plugins/polymarket";
+import { agentRegistry } from "../services/agent-registry.service";
+import { getAgentConfig } from "../shared/agent-config";
+import { logger } from "../shared/logger";
+import { type AgentRegistration, AgentType } from "../types/agent-registry";
+import type { JsonValue } from "../types/common";
 
 /**
  * Extended AgentRuntime with Polyagent-specific properties
@@ -54,9 +49,9 @@ export class AgentRuntimeManager {
 
   private constructor() {
     logger.info(
-      'AgentRuntimeManager initialized',
+      "AgentRuntimeManager initialized",
       undefined,
-      'AgentRuntimeManager'
+      "AgentRuntimeManager",
     );
   }
 
@@ -79,7 +74,7 @@ export class AgentRuntimeManager {
       logger.info(
         `Using cached runtime for agent ${agentUserId}`,
         undefined,
-        'AgentRuntimeManager'
+        "AgentRuntimeManager",
       );
       return runtime;
     }
@@ -113,7 +108,7 @@ export class AgentRuntimeManager {
    * Create runtime for user-controlled agent
    */
   private async createUserAgentRuntime(
-    registration: AgentRegistration
+    registration: AgentRegistration,
   ): Promise<AgentRuntime> {
     // USER_CONTROLLED agents exist in the User table
     const userResult = await db
@@ -138,7 +133,7 @@ export class AgentRuntimeManager {
         user.bio || registration.systemPrompt,
         config?.tradingStrategy
           ? `Trading Strategy: ${config.tradingStrategy}`
-          : '',
+          : "",
       ].filter(Boolean),
       messageExamples: [],
       plugins: [],
@@ -148,7 +143,7 @@ export class AgentRuntimeManager {
     return this.createRuntimeWithPlugins(
       registration.agentId,
       character,
-      user.id
+      user.id,
     );
   }
 
@@ -156,7 +151,7 @@ export class AgentRuntimeManager {
    * Create runtime for EXTERNAL agent
    */
   private async createExternalRuntime(
-    registration: AgentRegistration
+    registration: AgentRegistration,
   ): Promise<AgentRuntime> {
     const character: Character = {
       name: registration.name,
@@ -174,7 +169,7 @@ export class AgentRuntimeManager {
    * Fallback runtime creation from User table
    */
   private async createFallbackRuntime(
-    agentUserId: string
+    agentUserId: string,
   ): Promise<AgentRuntime> {
     const userResult = await db
       .select()
@@ -190,11 +185,11 @@ export class AgentRuntimeManager {
     const config = await getAgentConfig(agentUserId);
 
     const character: Character = {
-      name: user.displayName || user.username || 'Agent',
+      name: user.displayName || user.username || "Agent",
       system:
         config?.systemPrompt ||
-        `You are ${user.displayName || 'an AI agent'} that trades on Polymarket prediction markets.`,
-      bio: [user.bio || 'AI trading agent'],
+        `You are ${user.displayName || "an AI agent"} that trades on Polymarket prediction markets.`,
+      bio: [user.bio || "AI trading agent"],
       messageExamples: [],
       plugins: [],
       settings: this.getModelSettings(),
@@ -209,7 +204,7 @@ export class AgentRuntimeManager {
   private async createRuntimeWithPlugins(
     agentId: string,
     character: Character,
-    userId?: string
+    _userId?: string,
   ): Promise<AgentRuntime> {
     // Database configuration
     const dbPort = process.env.POSTGRES_DEV_PORT || 5432;
@@ -249,7 +244,7 @@ export class AgentRuntimeManager {
     if (character.settings?.MODEL_VERSION) {
       runtime.currentModelVersion = character.settings.MODEL_VERSION as string;
     }
-    runtime.currentModel = 'groq';
+    runtime.currentModel = "groq";
 
     // Override adapter methods to prevent undefined errors
     runtime.adapter = {
@@ -264,7 +259,7 @@ export class AgentRuntimeManager {
       },
       createMemory: async (
         memory: unknown,
-        _tableName?: string
+        _tableName?: string,
       ): Promise<UUID> => {
         const memoryObj = memory as { id?: string } | null;
         return (memoryObj?.id || crypto.randomUUID()) as UUID;
@@ -297,10 +292,10 @@ export class AgentRuntimeManager {
    */
   private getModelSettings(): Record<string, string> {
     return {
-      GROQ_API_KEY: process.env.GROQ_API_KEY || '',
+      GROQ_API_KEY: process.env.GROQ_API_KEY || "",
       GROQ_LARGE_MODEL: GROQ_MODELS.PRO.modelId,
       GROQ_SMALL_MODEL: GROQ_MODELS.DEFAULT.modelId,
-      MODEL_PROVIDER: 'groq',
+      MODEL_PROVIDER: "groq",
       MODEL_VERSION: GROQ_MODELS.DEFAULT.modelId,
     };
   }
@@ -310,11 +305,11 @@ export class AgentRuntimeManager {
    */
   private configureLogger(runtime: AgentRuntime, agentName: string): void {
     const originalLog = runtime.log?.bind(runtime);
-    runtime.log = (message: string, level = 'info') => {
+    runtime.log = (message: string, level = "info") => {
       logger.info(
         `[${agentName}] ${message}`,
         undefined,
-        'AgentRuntimeManager'
+        "AgentRuntimeManager",
       );
       if (originalLog) {
         originalLog(message, level);
@@ -331,7 +326,7 @@ export class AgentRuntimeManager {
     logger.info(
       `Cleared runtime for agent ${agentUserId}`,
       undefined,
-      'AgentRuntimeManager'
+      "AgentRuntimeManager",
     );
   }
 
@@ -341,14 +336,14 @@ export class AgentRuntimeManager {
   public clearAllRuntimes(): void {
     globalRuntimes.clear();
     trajectoryLoggers.clear();
-    logger.info('Cleared all agent runtimes', undefined, 'AgentRuntimeManager');
+    logger.info("Cleared all agent runtimes", undefined, "AgentRuntimeManager");
   }
 
   /**
    * Get trajectory logger for an agent
    */
   public getTrajectoryLogger(
-    agentUserId: string
+    agentUserId: string,
   ): TrajectoryLoggerService | undefined {
     return trajectoryLoggers.get(agentUserId);
   }

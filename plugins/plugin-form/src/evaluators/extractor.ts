@@ -76,23 +76,27 @@
  * so the agent has the restored form context for its response.
  */
 
-import {
-  type Evaluator,
-  type IAgentRuntime,
-  type Memory,
-  type State,
-  type UUID,
-  logger,
-} from '@elizaos/core';
-import { FormService } from '../service.ts';
-import { quickIntentDetect } from '../intent.ts';
-import { llmIntentAndExtract } from '../extraction.ts';
+import type {
+  ActionResult,
+  EventPayload,
+  Evaluator,
+  IAgentRuntime,
+  JsonValue,
+  Memory,
+  State,
+  UUID,
+} from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { FormService } from "../service";
+import { quickIntentDetect } from "../intent";
+import { llmIntentAndExtract } from "../extraction";
+import { buildTemplateValues } from "../template";
 import type {
   FormIntent,
   ExtractionResult,
   FormSession,
   FormDefinition,
-} from '../types.ts';
+} from "../types";
 
 /**
  * Form Evaluator
@@ -105,9 +109,10 @@ import type {
  * 5. Update session state
  */
 export const formEvaluator: Evaluator = {
-  name: 'form_evaluator',
-  description: 'Extracts form fields and handles form intents from user messages',
-  similes: ['FORM_EXTRACTION', 'FORM_HANDLER'],
+  name: "form_evaluator",
+  description:
+    "Extracts form fields and handles form intents from user messages",
+  similes: ["FORM_EXTRACTION", "FORM_HANDLER"],
   examples: [], // No examples needed for evaluators
 
   /**
@@ -123,9 +128,13 @@ export const formEvaluator: Evaluator = {
    *
    * @returns true if evaluator should run
    */
-  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+  ): Promise<boolean> => {
     try {
-      const formService = runtime.getService('FORM') as FormService;
+      const formService = runtime.getService("FORM") as FormService;
       if (!formService) return false;
 
       const entityId = message.entityId as UUID;
@@ -140,7 +149,7 @@ export const formEvaluator: Evaluator = {
 
       return session !== null || stashed.length > 0;
     } catch (error) {
-      logger.error('[FormEvaluator] Validation error:', String(error));
+      logger.error("[FormEvaluator] Validation error:", String(error));
       return false;
     }
   },
@@ -158,19 +167,23 @@ export const formEvaluator: Evaluator = {
    * @param message - The user message to process
    * @param state - Current agent state (optional)
    */
-  handler: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<void> => {
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<ActionResult | undefined> => {
     try {
-      const formService = runtime.getService('FORM') as FormService;
-      if (!formService) return;
+      const formService = runtime.getService("FORM") as FormService;
+      if (!formService) return undefined;
 
       const entityId = message.entityId as UUID;
       const roomId = message.roomId as UUID;
-      const text = message.content?.text || '';
+      const text = message.content?.text || "";
 
-      if (!entityId || !roomId) return;
+      if (!entityId || !roomId) return undefined;
 
       // Skip empty messages
-      if (!text.trim()) return;
+      if (!text.trim()) return undefined;
 
       // Get active session
       let session = await formService.getActiveSession(entityId, roomId);
@@ -182,22 +195,28 @@ export const formEvaluator: Evaluator = {
 
       // Handle restore intent when no active session
       // WHY early return: Restore is handled by FORM_RESTORE action
-      if (intent === 'restore' && !session) {
-        logger.debug('[FormEvaluator] Restore intent detected, deferring to action');
-        return;
+      if (intent === "restore" && !session) {
+        logger.debug(
+          "[FormEvaluator] Restore intent detected, deferring to action",
+        );
+        return undefined;
       }
 
       // If no active session after restore check, nothing else to do
       if (!session) {
-        return;
+        return undefined;
       }
 
       // Get the form definition
       const form = formService.getForm(session.formId);
       if (!form) {
-        logger.warn('[FormEvaluator] Form not found for session:', session.formId);
-        return;
+        logger.warn(
+          "[FormEvaluator] Form not found for session:",
+          session.formId,
+        );
+        return undefined;
       }
+      const templateValues = buildTemplateValues(session);
 
       // === TIER 2: LLM Fallback ===
       // If fast path didn't match, use LLM for:
@@ -205,12 +224,21 @@ export const formEvaluator: Evaluator = {
       // - Ambiguous messages
       // - Field extraction
       if (!intent) {
-        const result = await llmIntentAndExtract(runtime, text, form, form.controls);
+        const result = await llmIntentAndExtract(
+          runtime,
+          text,
+          form,
+          form.controls,
+          templateValues,
+        );
         intent = result.intent;
         extractions = result.extractions;
 
         if (form.debug) {
-          logger.debug('[FormEvaluator] LLM extraction result:', JSON.stringify({ intent, extractions }));
+          logger.debug(
+            "[FormEvaluator] LLM extraction result:",
+            JSON.stringify({ intent, extractions }),
+          );
         }
       }
 
@@ -219,17 +247,17 @@ export const formEvaluator: Evaluator = {
       switch (intent) {
         // --- Lifecycle Intents ---
 
-        case 'submit':
+        case "submit":
           // User wants to complete the form
           await handleSubmit(formService, session, entityId);
           break;
 
-        case 'stash':
+        case "stash":
           // User wants to save for later
           await formService.stash(session.id, entityId);
           break;
 
-        case 'cancel':
+        case "cancel":
           // User wants to abandon the form
           // Note: cancel() handles confirmation for high-effort forms
           await formService.cancel(session.id, entityId);
@@ -237,17 +265,17 @@ export const formEvaluator: Evaluator = {
 
         // --- UX Intents ---
 
-        case 'undo':
+        case "undo":
           // Revert the last field change
           await handleUndo(formService, session, entityId, form);
           break;
 
-        case 'skip':
+        case "skip":
           // Skip the current optional field
           await handleSkip(formService, session, entityId, form);
           break;
 
-        case 'autofill':
+        case "autofill":
           // Apply saved values from previous submissions
           await formService.applyAutofill(session);
           break;
@@ -255,9 +283,9 @@ export const formEvaluator: Evaluator = {
         // --- Info Intents ---
         // These don't change state - the provider gives context for response
 
-        case 'explain':
-        case 'example':
-        case 'progress':
+        case "explain":
+        case "example":
+        case "progress":
           // These are info intents - the provider will give context
           // The agent (REPLY) will respond based on provider context
           // We just log that we got an info request
@@ -266,15 +294,15 @@ export const formEvaluator: Evaluator = {
 
         // --- Special Cases ---
 
-        case 'restore':
+        case "restore":
           // Handled by FORM_RESTORE action, should not reach here
           // WHY here: Just in case it does, log and skip
-          logger.debug('[FormEvaluator] Restore intent - deferring to action');
+          logger.debug("[FormEvaluator] Restore intent - deferring to action");
           break;
 
         // --- Data Intents ---
 
-        case 'fill_form':
+        case "fill_form":
         default:
           // Process extractions - update field values
           // This handles both simple fields and subfields for composite types
@@ -285,7 +313,7 @@ export const formEvaluator: Evaluator = {
             form,
             entityId,
             extractions,
-            message.id
+            message.id,
           );
           break;
       }
@@ -298,8 +326,10 @@ export const formEvaluator: Evaluator = {
         await formService.saveSession(session);
       }
     } catch (error) {
-      logger.error('[FormEvaluator] Handler error:', String(error));
+      logger.error("[FormEvaluator] Handler error:", String(error));
+      return undefined;
     }
+    return undefined;
   },
 };
 
@@ -339,15 +369,15 @@ async function processExtractions(
   form: FormDefinition,
   entityId: UUID,
   extractions: ExtractionResult[],
-  messageId?: string
+  messageId?: string,
 ): Promise<void> {
   // Track which parent fields had subfields updated (for activation check)
   const updatedParents: Set<string> = new Set();
 
   for (const extraction of extractions) {
     // Check if this is a subfield (e.g., "payment.amount")
-    if (extraction.field.includes('.')) {
-      const [parentKey, subKey] = extraction.field.split('.');
+    if (extraction.field.includes(".")) {
+      const [parentKey, subKey] = extraction.field.split(".");
 
       // Update subfield
       await formService.updateSubField(
@@ -357,11 +387,11 @@ async function processExtractions(
         subKey,
         extraction.value,
         extraction.confidence,
-        messageId
+        messageId,
       );
 
       // Emit FORM_SUBFIELD_UPDATED event
-      await emitEvent(runtime, 'FORM_SUBFIELD_UPDATED', {
+      await emitEvent(runtime, "FORM_SUBFIELD_UPDATED", {
         sessionId: session.id,
         parentField: parentKey,
         subField: subKey,
@@ -382,12 +412,12 @@ async function processExtractions(
         extraction.field,
         extraction.value,
         extraction.confidence,
-        extraction.isCorrection ? 'correction' : 'extraction',
-        messageId
+        extraction.isCorrection ? "correction" : "extraction",
+        messageId,
       );
 
       // Emit FORM_FIELD_EXTRACTED event
-      await emitEvent(runtime, 'FORM_FIELD_EXTRACTED', {
+      await emitEvent(runtime, "FORM_FIELD_EXTRACTED", {
         sessionId: session.id,
         field: extraction.field,
         value: extraction.value,
@@ -409,7 +439,7 @@ async function processExtractions(
       session,
       form,
       entityId,
-      parentKey
+      parentKey,
     );
   }
 }
@@ -445,14 +475,21 @@ async function checkAndActivateExternalField(
   session: FormSession,
   form: FormDefinition,
   entityId: UUID,
-  field: string
+  field: string,
 ): Promise<void> {
   // Refresh session to get latest subfield states
-  const freshSession = await formService.getActiveSession(entityId, session.roomId);
+  const freshSession = await formService.getActiveSession(
+    entityId,
+    session.roomId,
+  );
   if (!freshSession) return;
 
   // Check if this is an external type with all subcontrols filled
-  if (!formService.isExternalType(form.controls.find(c => c.key === field)?.type || '')) {
+  if (
+    !formService.isExternalType(
+      form.controls.find((c) => c.key === field)?.type || "",
+    )
+  ) {
     return;
   }
 
@@ -464,32 +501,42 @@ async function checkAndActivateExternalField(
   const subValues = formService.getSubFieldValues(freshSession, field);
 
   // Emit FORM_SUBCONTROLS_FILLED event
-  await emitEvent(runtime, 'FORM_SUBCONTROLS_FILLED', {
+  await emitEvent(runtime, "FORM_SUBCONTROLS_FILLED", {
     sessionId: session.id,
     field,
     subValues,
   });
 
-  logger.debug(`[FormEvaluator] All subcontrols filled for ${field}, activating...`);
+  logger.debug(
+    `[FormEvaluator] All subcontrols filled for ${field}, activating...`,
+  );
 
   try {
     // Activate the external field
     const activation = await formService.activateExternalField(
       session.id,
       entityId,
-      field
+      field,
     );
+    const activationPayload = JSON.parse(
+      JSON.stringify(activation),
+    ) as JsonValue;
 
     // Emit FORM_EXTERNAL_ACTIVATED event
-    await emitEvent(runtime, 'FORM_EXTERNAL_ACTIVATED', {
+    await emitEvent(runtime, "FORM_EXTERNAL_ACTIVATED", {
       sessionId: session.id,
       field,
-      activation,
+      activation: activationPayload,
     });
 
-    logger.info(`[FormEvaluator] Activated external field ${field}: ${activation.instructions}`);
+    logger.info(
+      `[FormEvaluator] Activated external field ${field}: ${activation.instructions}`,
+    );
   } catch (error) {
-    logger.error(`[FormEvaluator] Failed to activate external field ${field}:`, String(error));
+    logger.error(
+      `[FormEvaluator] Failed to activate external field ${field}:`,
+      String(error),
+    );
   }
 }
 
@@ -511,15 +558,19 @@ async function checkAndActivateExternalField(
 async function emitEvent(
   runtime: IAgentRuntime,
   eventType: string,
-  payload: Record<string, unknown>
+  payload: Record<string, JsonValue>,
 ): Promise<void> {
   try {
-    if (typeof runtime.emitEvent === 'function') {
-      await runtime.emitEvent(eventType, payload);
+    if (typeof runtime.emitEvent === "function") {
+      const eventPayload: EventPayload = { runtime, ...payload };
+      await runtime.emitEvent(eventType, eventPayload);
     }
   } catch (error) {
     // Event handlers might not be registered, that's OK
-    logger.debug(`[FormEvaluator] Event emission (${eventType}):`, String(error));
+    logger.debug(
+      `[FormEvaluator] Event emission (${eventType}):`,
+      String(error),
+    );
   }
 }
 
@@ -540,14 +591,14 @@ async function emitEvent(
 async function handleSubmit(
   formService: FormService,
   session: { id: string; status: string },
-  entityId: UUID
+  entityId: UUID,
 ): Promise<void> {
   try {
     await formService.submit(session.id, entityId);
   } catch (error) {
     // Submit may fail if required fields are missing
     // The provider will show what's missing, agent will ask
-    logger.debug('[FormEvaluator] Submit failed:', String(error));
+    logger.debug("[FormEvaluator] Submit failed:", String(error));
   }
 }
 
@@ -563,7 +614,7 @@ async function handleUndo(
   formService: FormService,
   session: { id: string; lastAskedField?: string },
   entityId: UUID,
-  form: { ux?: { allowUndo?: boolean } }
+  form: { ux?: { allowUndo?: boolean } },
 ): Promise<void> {
   if (!form.ux?.allowUndo) {
     return;
@@ -571,7 +622,7 @@ async function handleUndo(
 
   const result = await formService.undoLastChange(session.id, entityId);
   if (result) {
-    logger.debug('[FormEvaluator] Undid field:', result.field);
+    logger.debug("[FormEvaluator] Undid field:", result.field);
   }
 }
 
@@ -592,7 +643,7 @@ async function handleSkip(
   formService: FormService,
   session: { id: string; lastAskedField?: string },
   entityId: UUID,
-  form: { ux?: { allowSkip?: boolean } }
+  form: { ux?: { allowSkip?: boolean } },
 ): Promise<void> {
   if (!form.ux?.allowSkip) {
     return;
@@ -600,9 +651,13 @@ async function handleSkip(
 
   // Skip the last asked field if known
   if (session.lastAskedField) {
-    const skipped = await formService.skipField(session.id, entityId, session.lastAskedField);
+    const skipped = await formService.skipField(
+      session.id,
+      entityId,
+      session.lastAskedField,
+    );
     if (skipped) {
-      logger.debug('[FormEvaluator] Skipped field:', session.lastAskedField);
+      logger.debug("[FormEvaluator] Skipped field:", session.lastAskedField);
     }
   }
 }

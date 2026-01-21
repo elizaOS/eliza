@@ -9,7 +9,7 @@
 
 // tiktoken is a peer dependency - import types only
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
-import type { Tiktoken } from 'tiktoken';
+import type { Tiktoken } from "tiktoken";
 
 // Lazy-load encoding to avoid startup overhead
 let encoding: Tiktoken | null = null;
@@ -25,9 +25,9 @@ let encoding: Tiktoken | null = null;
  */
 async function getEncoding(): Promise<Tiktoken> {
   if (!encoding) {
-    const tiktoken = await import('tiktoken');
+    const tiktoken = await import("tiktoken");
     // Use gpt-4 as fallback since gpt-5.1 is not a standard tiktoken model
-    encoding = tiktoken.encoding_for_model('gpt-4');
+    encoding = tiktoken.encoding_for_model("gpt-4");
   }
   return encoding;
 }
@@ -99,7 +99,7 @@ export async function truncateToTokenLimit(
   options: {
     ellipsis?: boolean;
     preserveEnd?: boolean;
-  } = {}
+  } = {},
 ): Promise<{ text: string; tokens: number }> {
   const { ellipsis = true, preserveEnd = false } = options;
 
@@ -110,7 +110,7 @@ export async function truncateToTokenLimit(
   }
 
   // Binary search to find the right length
-  const ellipsisText = ellipsis ? '...' : '';
+  const ellipsisText = ellipsis ? "..." : "";
   const ellipsisTokens = ellipsis ? await countTokens(ellipsisText) : 0;
   const targetTokens = maxTokens - ellipsisTokens;
 
@@ -161,7 +161,7 @@ export function truncateToTokenLimitSync(
   options: {
     ellipsis?: boolean;
     preserveEnd?: boolean;
-  } = {}
+  } = {},
 ): { text: string; tokens: number } {
   const { ellipsis = true, preserveEnd = false } = options;
 
@@ -171,7 +171,7 @@ export function truncateToTokenLimitSync(
     return { text, tokens: currentTokens };
   }
 
-  const ellipsisText = ellipsis ? '...' : '';
+  const ellipsisText = ellipsis ? "..." : "";
   const ellipsisTokens = ellipsis ? countTokensSync(ellipsisText) : 0;
   const targetTokens = maxTokens - ellipsisTokens;
 
@@ -196,48 +196,48 @@ export function truncateToTokenLimitSync(
  */
 export const MODEL_TOKEN_LIMITS: Record<string, number> = {
   // OpenAGI (input context)
-  'gpt-5.1': 128000, // 128k input, separate output limit
-  'gpt-5-nano': 128000, // 128k input, separate output limit
-  'gpt-5.1-turbo': 128000,
-  'gpt-3.5-turbo': 16385,
-  'gpt-3.5-turbo-16k': 16385,
+  "gpt-5.1": 128000, // 128k input, separate output limit
+  "gpt-5-nano": 128000, // 128k input, separate output limit
+  "gpt-5.1-turbo": 128000,
+  "gpt-3.5-turbo": 16385,
+  "gpt-3.5-turbo-16k": 16385,
 
   // Current Strategy Models - INPUT CONTEXT LIMITS (output is separate!)
-  'qwen/qwen3-32b': 131072, // 131k INPUT, 40,960 OUTPUT (separate) - Groq
+  "qwen/qwen3-32b": 131072, // 131k INPUT, 40,960 OUTPUT (separate) - Groq
   // Unsloth Qwen3 models - all have 128K context (critical requirement)
-  'unsloth/Qwen3-4B-128K': 131072, // 4B params, 128K context (8GB VRAM min) - DEFAULT
-  'unsloth/Qwen3-8B-128K': 131072, // 8B params, 128K context (16GB VRAM min)
-  'unsloth/Qwen3-14B-128K': 131072, // 14B params, 128K context (24GB VRAM min)
-  'unsloth/Qwen3-32B-128K': 131072, // 32B params, 128K context (48GB VRAM min)
-  'OpenPipe/Qwen3-14B-Instruct': 32768, // 32,768 native INPUT via W&B API
-  'Qwen/Qwen2.5-32B-Instruct': 131072, // 131k INPUT, 40,960 OUTPUT (separate)
+  "unsloth/Qwen3-4B-128K": 131072, // 4B params, 128K context (8GB VRAM min) - DEFAULT
+  "unsloth/Qwen3-8B-128K": 131072, // 8B params, 128K context (16GB VRAM min)
+  "unsloth/Qwen3-14B-128K": 131072, // 14B params, 128K context (24GB VRAM min)
+  "unsloth/Qwen3-32B-128K": 131072, // 32B params, 128K context (48GB VRAM min)
+  "OpenPipe/Qwen3-14B-Instruct": 32768, // 32,768 native INPUT via W&B API
+  "Qwen/Qwen2.5-32B-Instruct": 131072, // 131k INPUT, 40,960 OUTPUT (separate)
 
   // Groq Models - INPUT CONTEXT (per https://console.groq.com/docs/models)
   // Production Models
-  'llama-3.1-8b-instant': 131072, // 131k INPUT, 131k OUTPUT (unique - same!)
-  'llama-3.3-70b-versatile': 131072, // 131k INPUT, 32,768 OUTPUT
-  'llama-3.1-70b-versatile': 131072, // 131k INPUT, 32,768 OUTPUT
-  'meta-llama/llama-guard-4-12b': 131072, // 131k INPUT, 1,024 OUTPUT
-  'openai/gpt-oss-120b': 131072, // 131k INPUT, 65,536 OUTPUT
-  'openai/gpt-oss-20b': 131072, // 131k INPUT, 65,536 OUTPUT
-  'whisper-large-v3': 0, // Audio model (no text context)
-  'whisper-large-v3-turbo': 0, // Audio model (no text context)
+  "llama-3.1-8b-instant": 131072, // 131k INPUT, 131k OUTPUT (unique - same!)
+  "llama-3.3-70b-versatile": 131072, // 131k INPUT, 32,768 OUTPUT
+  "llama-3.1-70b-versatile": 131072, // 131k INPUT, 32,768 OUTPUT
+  "meta-llama/llama-guard-4-12b": 131072, // 131k INPUT, 1,024 OUTPUT
+  "openai/gpt-oss-120b": 131072, // 131k INPUT, 65,536 OUTPUT
+  "openai/gpt-oss-20b": 131072, // 131k INPUT, 65,536 OUTPUT
+  "whisper-large-v3": 0, // Audio model (no text context)
+  "whisper-large-v3-turbo": 0, // Audio model (no text context)
   // Preview Models
-  'meta-llama/llama-4-maverick-17b-128e-instruct': 131072, // 131k INPUT, 8,192 OUTPUT
-  'meta-llama/llama-4-scout-17b-16e-instruct': 131072, // 131k INPUT, 8,192 OUTPUT
-  'moonshotai/kimi-k2-instruct': 262144, // 262k INPUT, 16,384 OUTPUT
-  'moonshotai/kimi-k2-instruct-0905': 262144, // 262k INPUT, 16,384 OUTPUT (versioned)
-  'openai/gpt-oss-safeguard-20b': 131072, // 131k INPUT, 65,536 OUTPUT
+  "meta-llama/llama-4-maverick-17b-128e-instruct": 131072, // 131k INPUT, 8,192 OUTPUT
+  "meta-llama/llama-4-scout-17b-16e-instruct": 131072, // 131k INPUT, 8,192 OUTPUT
+  "moonshotai/kimi-k2-instruct": 262144, // 262k INPUT, 16,384 OUTPUT
+  "moonshotai/kimi-k2-instruct-0905": 262144, // 262k INPUT, 16,384 OUTPUT (versioned)
+  "openai/gpt-oss-safeguard-20b": 131072, // 131k INPUT, 65,536 OUTPUT
   // Legacy
-  'mixtral-8x7b-32768': 32768,
+  "mixtral-8x7b-32768": 32768,
 
   // Anthropic - Claude 4.5 series (200K context)
-  'claude-sonnet-4-5': 200000,
-  'claude-sonnet-4-5-20250929': 200000,
-  'claude-haiku-4-5': 200000,
-  'claude-haiku-4-5-20251001': 200000,
-  'claude-opus-4-1': 200000,
-  'claude-opus-4-1-20250805': 200000,
+  "claude-sonnet-4-5": 200000,
+  "claude-sonnet-4-5-20250929": 200000,
+  "claude-haiku-4-5": 200000,
+  "claude-haiku-4-5-20251001": 200000,
+  "claude-opus-4-1": 200000,
+  "claude-opus-4-1-20250805": 200000,
 };
 
 /**
@@ -280,7 +280,7 @@ export function getModelTokenLimit(model: string): number {
 export function getSafeContextLimit(
   model: string,
   _outputTokens = 8000, // Kept for API compatibility, but input/output are separate
-  safetyMargin = 0.02 // Reduced from 10% to 2% - input/output are separate on modern models
+  safetyMargin = 0.02, // Reduced from 10% to 2% - input/output are separate on modern models
 ): number {
   const inputLimit = getModelTokenLimit(model);
   // Apply minimal safety margin to input context (most models have separate input/output limits)
@@ -312,7 +312,7 @@ export function getSafeContextLimit(
  */
 export function budgetTokens(
   totalTokens: number,
-  sections: Array<{ name: string; priority: number; minTokens?: number }>
+  sections: Array<{ name: string; priority: number; minTokens?: number }>,
 ): Record<string, number> {
   const budget: Record<string, number> = {};
 

@@ -24,7 +24,9 @@ interface ParsedResolution {
   };
 }
 
-function parseEntityResolutionXml(xml: string): (ParsedResolution & { type?: string; entityId?: string }) | null {
+function parseEntityResolutionXml(
+  xml: string,
+): (ParsedResolution & { type?: string; entityId?: string }) | null {
   if (!xml) return null;
 
   const trimmed = xml.trim();
@@ -87,7 +89,8 @@ function parseEntityResolutionXml(xml: string): (ParsedResolution & { type?: str
             if (!m || typeof m !== "object") continue;
             const mo = m as Record<string, unknown>;
             const name = typeof mo.name === "string" ? mo.name : undefined;
-            const reason = typeof mo.reason === "string" ? mo.reason : undefined;
+            const reason =
+              typeof mo.reason === "string" ? mo.reason : undefined;
             if (name) jMatches.push({ name, reason });
           }
         }
@@ -338,56 +341,56 @@ export async function findEntityByName(
   const normalize = (s: string): string => s.trim().toLowerCase();
   const stripAt = (s: string): string => normalize(s).replace(/^@+/, "");
   const indexedEntities = allEntities.map((entity) => {
-      const normalizedNames = new Set<string>();
-      const strippedNames = new Set<string>();
-      for (const name of entity.names) {
-        normalizedNames.add(normalize(name));
-        strippedNames.add(stripAt(name));
+    const normalizedNames = new Set<string>();
+    const strippedNames = new Set<string>();
+    for (const name of entity.names) {
+      normalizedNames.add(normalize(name));
+      strippedNames.add(stripAt(name));
+    }
+
+    const normalizedUsernames = new Set<string>();
+    const strippedUsernames = new Set<string>();
+    const normalizedHandles = new Set<string>();
+    const strippedHandles = new Set<string>();
+    const fallbackTokens: string[] = [];
+    for (const component of entity.components ?? []) {
+      const username =
+        typeof component.data?.username === "string"
+          ? component.data.username
+          : undefined;
+      if (username) {
+        normalizedUsernames.add(normalize(username));
+        strippedUsernames.add(stripAt(username));
+        fallbackTokens.push(normalize(username));
       }
 
-      const normalizedUsernames = new Set<string>();
-      const strippedUsernames = new Set<string>();
-      const normalizedHandles = new Set<string>();
-      const strippedHandles = new Set<string>();
-      const fallbackTokens: string[] = [];
-      for (const component of entity.components ?? []) {
-        const username =
-          typeof component.data?.username === "string"
-            ? component.data.username
-            : undefined;
-        if (username) {
-          normalizedUsernames.add(normalize(username));
-          strippedUsernames.add(stripAt(username));
-          fallbackTokens.push(normalize(username));
-        }
-
-        const handle =
-          typeof component.data?.handle === "string"
-            ? component.data.handle
-            : undefined;
-        if (handle) {
-          const normalizedHandle = normalize(handle);
-          normalizedHandles.add(normalizedHandle);
-          strippedHandles.add(stripAt(handle));
-          fallbackTokens.push(normalizedHandle);
-          const handleNoAt = handle.replace(/^@+/, "");
-          if (handleNoAt) {
-            fallbackTokens.push(normalize(handleNoAt));
-          }
+      const handle =
+        typeof component.data?.handle === "string"
+          ? component.data.handle
+          : undefined;
+      if (handle) {
+        const normalizedHandle = normalize(handle);
+        normalizedHandles.add(normalizedHandle);
+        strippedHandles.add(stripAt(handle));
+        fallbackTokens.push(normalizedHandle);
+        const handleNoAt = handle.replace(/^@+/, "");
+        if (handleNoAt) {
+          fallbackTokens.push(normalize(handleNoAt));
         }
       }
+    }
 
-      return {
-        entity,
-        normalizedNames,
-        strippedNames,
-        normalizedUsernames,
-        strippedUsernames,
-        normalizedHandles,
-        strippedHandles,
-        fallbackTokens,
-      };
-    });
+    return {
+      entity,
+      normalizedNames,
+      strippedNames,
+      normalizedUsernames,
+      strippedUsernames,
+      normalizedHandles,
+      strippedHandles,
+      fallbackTokens,
+    };
+  });
 
   const firstMatch = matchesArray[0];
   if (matchesArray.length > 0 && firstMatch && firstMatch.name) {
@@ -436,7 +439,8 @@ export async function findEntityByName(
   // couldn't map it, and there's only a single candidate entity in context,
   // return it rather than failing closed.
   if (
-    (resolution.type === "USERNAME_MATCH" || resolution.type === "NAME_MATCH") &&
+    (resolution.type === "USERNAME_MATCH" ||
+      resolution.type === "NAME_MATCH") &&
     filteredEntities.length === 1
   ) {
     return filteredEntities[0] ?? null;

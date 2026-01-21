@@ -24,7 +24,6 @@ export class InstagramTestSuite {
       },
     },
     {
-      $typeName: "eliza.v1.TestCase",
       name: "Message splitting - long message",
       fn: async (): Promise<void> => {
         const msg = "a".repeat(MAX_DM_LENGTH + 500);

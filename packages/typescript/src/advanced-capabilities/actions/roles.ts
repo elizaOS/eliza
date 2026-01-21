@@ -8,12 +8,12 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  Role,
   State,
   UUID,
   World,
 } from "../../types/index.ts";
 import { ChannelType, ModelType } from "../../types/index.ts";
-import type { Role } from "../../types/index.ts";
 import { composePrompt, parseKeyValueXml } from "../../utils.ts";
 
 // Get text content from centralized specs
@@ -196,7 +196,9 @@ export const updateRoleAction: Action = {
     const entities = await runtime.getEntitiesForRoom(roomId);
     const entityById = new Map<string, (typeof entities)[number]>();
     for (const entity of entities) {
-      entityById.set(entity.id, entity);
+      if (entity.id) {
+        entityById.set(entity.id, entity);
+      }
     }
 
     // Get the role of the requester

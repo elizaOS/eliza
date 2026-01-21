@@ -302,42 +302,43 @@ export class FollowUpService extends Service {
       return Boolean(needsAttention && needsAttention.daysSinceContact > 14);
     });
 
-    const suggestionResults: Array<FollowUpSuggestion | null> = await Promise.all(
-      candidates.map(async (contact) => {
-        const entity = await this.runtime.getEntityById(contact.entityId);
-        if (!entity) return null;
+    const suggestionResults: Array<FollowUpSuggestion | null> =
+      await Promise.all(
+        candidates.map(async (contact) => {
+          const entity = await this.runtime.getEntityById(contact.entityId);
+          if (!entity) return null;
 
-        const needsAttention = needsAttentionById.get(contact.entityId);
-        if (!needsAttention) return null;
+          const needsAttention = needsAttentionById.get(contact.entityId);
+          if (!needsAttention) return null;
 
-        // Get relationship analytics
-        const analytics = await this.rolodexService.analyzeRelationship(
-          this.runtime.agentId,
-          contact.entityId,
-        );
+          // Get relationship analytics
+          const analytics = await this.rolodexService.analyzeRelationship(
+            this.runtime.agentId,
+            contact.entityId,
+          );
 
-        if (!analytics) {
-          return null;
-        }
+          if (!analytics) {
+            return null;
+          }
 
-        return {
-          entityId: contact.entityId,
-          entityName: entity.names[0] || "Unknown",
-          reason: this.generateFollowUpReason(
-            contact.categories,
-            needsAttention.daysSinceContact,
-            analytics.strength,
-          ),
-          daysSinceLastContact: needsAttention.daysSinceContact,
-          relationshipStrength: analytics.strength,
-          suggestedMessage: this.generateFollowUpMessage(
-            entity.names[0],
-            contact.categories,
-            needsAttention.daysSinceContact,
-          ),
-        };
-      }),
-    );
+          return {
+            entityId: contact.entityId,
+            entityName: entity.names[0] || "Unknown",
+            reason: this.generateFollowUpReason(
+              contact.categories,
+              needsAttention.daysSinceContact,
+              analytics.strength,
+            ),
+            daysSinceLastContact: needsAttention.daysSinceContact,
+            relationshipStrength: analytics.strength,
+            suggestedMessage: this.generateFollowUpMessage(
+              entity.names[0],
+              contact.categories,
+              needsAttention.daysSinceContact,
+            ),
+          };
+        }),
+      );
 
     const suggestions = suggestionResults.filter(
       (suggestion): suggestion is FollowUpSuggestion => suggestion !== null,
@@ -442,7 +443,7 @@ export class FollowUpService extends Service {
       },
       execute: async (
         runtime: IAgentRuntime,
-      options: { [key: string]: JsonValue | object },
+        options: { [key: string]: JsonValue | object },
         task: Task,
       ) => {
         try {

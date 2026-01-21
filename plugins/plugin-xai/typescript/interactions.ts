@@ -13,7 +13,10 @@ import {
   type MessagePayload,
   ModelType,
 } from "@elizaos/core";
-import type { WorldOwnership } from "@elizaos/core/types/proto.js";
+
+// WorldOwnership type for world metadata
+type WorldOwnership = { ownerId: string };
+
 import type { ClientBase } from "./base";
 import { SearchMode } from "./client/index";
 import type { Post as ClientPost } from "./client/posts";

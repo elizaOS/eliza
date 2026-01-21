@@ -1,6 +1,7 @@
 import type {
   IAgentRuntime,
   Memory,
+  MessageExample,
   Provider,
   State,
 } from "../../types/index.ts";
@@ -115,8 +116,8 @@ export const characterProvider: Provider = {
               Math.random().toString(36).substring(2, 8),
             );
 
-            return example
-              .map((message) => {
+            return example.examples
+              .map((message: MessageExample) => {
                 const messageContent = message.content;
                 const messageContentAction = messageContent.action;
                 const messageContentActions = messageContent.actions;

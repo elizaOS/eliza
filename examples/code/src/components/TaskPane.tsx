@@ -1,8 +1,8 @@
+import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import React, { useState } from "react";
 import { useStore } from "../lib/store.js";
-import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
 import type {
   SubAgentType,
   TaskStatus,
@@ -174,11 +174,21 @@ export function TaskPane({
           if (taskService) {
             if (confirm.type === "cancel") {
               taskService.cancelTask(confirm.taskId).catch((err: Error) => {
-                reportTaskServiceError(taskService, confirm.taskId, "cancelTask", err);
+                reportTaskServiceError(
+                  taskService,
+                  confirm.taskId,
+                  "cancelTask",
+                  err,
+                );
               });
             } else {
               taskService.deleteTask(confirm.taskId).catch((err: Error) => {
-                reportTaskServiceError(taskService, confirm.taskId, "deleteTask", err);
+                reportTaskServiceError(
+                  taskService,
+                  confirm.taskId,
+                  "deleteTask",
+                  err,
+                );
               });
             }
           }
@@ -247,8 +257,14 @@ export function TaskPane({
       }
 
       // Mark/unmark current task as finished (user-controlled)
-      if (char === "d" && !key.ctrl && !key.meta && taskService) {
-        const taskId = currentTask?.id ?? null;
+      if (
+        char === "d" &&
+        !key.ctrl &&
+        !key.meta &&
+        taskService &&
+        currentTask
+      ) {
+        const taskId = currentTask.id;
         if (!taskId) return;
         const currentUserStatus = getTaskUserStatus(
           currentTask.metadata?.userStatus,
@@ -263,7 +279,8 @@ export function TaskPane({
       // Edit mode commands
       if (!editMode) return;
       if (!taskService) return;
-      const taskId = currentTask?.id ?? null;
+      if (!currentTask) return;
+      const taskId = currentTask.id;
       if (!taskId) return;
 
       // Cycle sub-agent
@@ -275,7 +292,12 @@ export function TaskPane({
         const idx = Math.max(0, SUB_AGENT_TYPES.indexOf(current));
         const next = SUB_AGENT_TYPES[(idx + 1) % SUB_AGENT_TYPES.length];
         taskService.setTaskSubAgentType(taskId, next).catch((err: Error) => {
-          reportTaskServiceError(taskService, taskId, "setTaskSubAgentType", err);
+          reportTaskServiceError(
+            taskService,
+            taskId,
+            "setTaskSubAgentType",
+            err,
+          );
         });
         return;
       }
@@ -302,23 +324,25 @@ export function TaskPane({
       // Pause/resume
       if (char === "p" && !key.ctrl && !key.meta) {
         const status = currentTask.metadata?.status ?? "pending";
-        const taskId = currentTask.id;
         if (status === "running") {
           taskService.pauseTask(taskId).catch((err: Error) => {
             reportTaskServiceError(taskService, taskId, "pauseTask", err);
           });
         } else if (status === "paused" || status === "pending") {
-          taskService
-            .resumeTask(taskId)
-            .then(
-              () =>
-                taskService.startTaskExecution(taskId).catch((err: Error) => {
-                  reportTaskServiceError(taskService, taskId, "startTaskExecution", err);
-                }),
-              (err: Error) => {
-                reportTaskServiceError(taskService, taskId, "resumeTask", err);
-              },
-            );
+          taskService.resumeTask(taskId).then(
+            () =>
+              taskService.startTaskExecution(taskId).catch((err: Error) => {
+                reportTaskServiceError(
+                  taskService,
+                  taskId,
+                  "startTaskExecution",
+                  err,
+                );
+              }),
+            (err: Error) => {
+              reportTaskServiceError(taskService, taskId, "resumeTask", err);
+            },
+          );
         }
         return;
       }

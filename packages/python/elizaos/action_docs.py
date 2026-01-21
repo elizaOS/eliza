@@ -43,8 +43,9 @@ def _coerce_action_parameters(values: object) -> list[object]:
         return []
 
     # Local import to avoid import cycles during package init.
-    from elizaos.types import ActionParameter  # noqa: PLC0415
     from google.protobuf.json_format import ParseDict
+
+    from elizaos.types import ActionParameter  # noqa: PLC0415
 
     out: list[object] = []
     for item in values:
@@ -146,4 +147,3 @@ def get_canonical_action_example_calls(action_name: str) -> list[dict[str, objec
         if isinstance(item, dict):
             out.append(item)
     return out
-

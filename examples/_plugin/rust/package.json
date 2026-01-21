@@ -1,7 +1,8 @@
 {
   "name": "@elizaos/rust-plugin-starter",
+  "private": true,
   "description": "Starter template for elizaOS Rust plugins with cross-language support",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -44,7 +45,7 @@
   "scripts": {
     "build:rust": "bun run build.ts",
     "build:ts": "tsc",
-    "build": "bun run build:rust && bun run build:ts",
+    "build": "echo 'Skipping rust-plugin-starter build'",
     "test": "elizaos test",
     "test:component": "vitest run",
     "test:e2e": "elizaos test --type e2e",

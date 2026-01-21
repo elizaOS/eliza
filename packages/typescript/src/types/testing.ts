@@ -1,8 +1,8 @@
-import type { IAgentRuntime } from "./runtime";
 import type {
   TestCase as ProtoTestCase,
   TestSuite as ProtoTestSuite,
 } from "./proto.js";
+import type { IAgentRuntime } from "./runtime";
 
 /**
  * Represents a test case for evaluating agent or plugin functionality.

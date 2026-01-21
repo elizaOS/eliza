@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-computeruse",
   "description": "Computer automation plugin for ElizaOS - enables AI agents to control the local machine (when supported) or a remote ComputerUse MCP server",
-  "version": "2.0.0",
+  "version": "2.0.0-alpha",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",

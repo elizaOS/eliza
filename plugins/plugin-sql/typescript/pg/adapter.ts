@@ -55,7 +55,11 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
       id: this.agentId,
       name: agent.name || "Unknown Agent",
       username: agent.username,
-      bio: (Array.isArray(agent.bio) ? agent.bio : agent.bio ? [agent.bio] : ["An AI agent"]) as string[],
+      bio: (Array.isArray(agent.bio)
+        ? agent.bio
+        : agent.bio
+          ? [agent.bio]
+          : ["An AI agent"]) as string[],
       createdAt: agent.createdAt || Date.now(),
       updatedAt: agent.updatedAt || Date.now(),
     };

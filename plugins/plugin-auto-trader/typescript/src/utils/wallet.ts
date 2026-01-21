@@ -1,6 +1,6 @@
-import { logger, type IAgentRuntime } from '@elizaos/core';
-import { Keypair } from '@solana/web3.js';
-import { decodeBase58 } from './utils.ts'; // decodeBase58 is imported from utils.ts
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import { Keypair } from "@solana/web3.js";
+import { decodeBase58 } from "./utils.ts"; // decodeBase58 is imported from utils.ts
 
 /**
  * Gets wallet keypair from runtime settings.
@@ -13,10 +13,15 @@ import { decodeBase58 } from './utils.ts'; // decodeBase58 is imported from util
  * @throws Error if private key is missing or invalid
  */
 export function getWalletKeypair(runtime?: IAgentRuntime): Keypair {
-  const privateKeySetting = runtime?.getSetting('SOLANA_PRIVATE_KEY');
-  if (typeof privateKeySetting !== 'string' || privateKeySetting.trim().length === 0) {
+  const privateKeySetting = runtime?.getSetting("SOLANA_PRIVATE_KEY");
+  if (
+    typeof privateKeySetting !== "string" ||
+    privateKeySetting.trim().length === 0
+  ) {
     // It's important to distinguish this error source if multiple getWalletKeypair functions exist.
-    throw new Error('No wallet private key configured (invoked from degenTrader/utils/wallet.ts)');
+    throw new Error(
+      "No wallet private key configured (invoked from degenTrader/utils/wallet.ts)",
+    );
   }
 
   try {
@@ -24,7 +29,10 @@ export function getWalletKeypair(runtime?: IAgentRuntime): Keypair {
     return Keypair.fromSecretKey(privateKeyBytes);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error(message, 'Failed to create wallet keypair (in degenTrader/utils/wallet.ts)');
+    logger.error(
+      message,
+      "Failed to create wallet keypair (in degenTrader/utils/wallet.ts)",
+    );
     throw error;
   }
 }

@@ -5,7 +5,7 @@ interface CacheEntry<T> {
 }
 
 export class CacheManager {
-  private cache: Map<string, CacheEntry<any>> = new Map();
+  private cache: Map<string, CacheEntry<unknown>> = new Map();
   private defaultTTL = 60000; // 60 seconds default TTL
 
   async get<T>(key: string): Promise<T | null> {
@@ -20,7 +20,11 @@ export class CacheManager {
     return entry.value as T;
   }
 
-  async set<T>(key: string, value: T, ttl: number = this.defaultTTL): Promise<void> {
+  async set<T>(
+    key: string,
+    value: T,
+    ttl: number = this.defaultTTL,
+  ): Promise<void> {
     const entry: CacheEntry<T> = {
       value,
       timestamp: Date.now(),

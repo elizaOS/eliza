@@ -368,8 +368,10 @@ export class AutonomyService extends Service {
           m.entityId === agentEntity.id &&
           m.content?.text &&
           m.content?.metadata &&
-          (m.content.metadata as Record<string, unknown>)?.isAutonomous === true &&
-          (m.content.metadata as Record<string, unknown>)?.type === "autonomous-response",
+          (m.content.metadata as Record<string, unknown>)?.isAutonomous ===
+            true &&
+          (m.content.metadata as Record<string, unknown>)?.type ===
+            "autonomous-response",
       )
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
 

@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { cn, logger } from '@polyagent/shared';
-import { FileText, Filter } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { cn, logger } from "@polyagent/shared";
+import { FileText, Filter } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 /**
  * Log structure for agent logs.
@@ -52,8 +52,8 @@ export function AgentLogs({ agentId }: AgentLogsProps) {
   const { getAccessToken } = useAuth();
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(false);
-  const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [levelFilter, setLevelFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [levelFilter, setLevelFilter] = useState<string>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const fetchLogs = useCallback(async () => {
@@ -65,8 +65,8 @@ export function AgentLogs({ agentId }: AgentLogsProps) {
     }
 
     let url = `/api/agents/${agentId}/logs?limit=100`;
-    if (typeFilter !== 'all') url += `&type=${typeFilter}`;
-    if (levelFilter !== 'all') url += `&level=${levelFilter}`;
+    if (typeFilter !== "all") url += `&type=${typeFilter}`;
+    if (levelFilter !== "all") url += `&level=${levelFilter}`;
 
     const res = await fetch(url, {
       headers: {
@@ -80,7 +80,7 @@ export function AgentLogs({ agentId }: AgentLogsProps) {
         setLogs(data.logs);
       }
     } else {
-      logger.error('Failed to fetch logs', undefined, 'AgentLogs');
+      logger.error("Failed to fetch logs", undefined, "AgentLogs");
     }
     setLoading(false);
   }, [agentId, typeFilter, levelFilter, getAccessToken]);
@@ -104,33 +104,33 @@ export function AgentLogs({ agentId }: AgentLogsProps) {
 
   const getLevelColor = (level: string) => {
     switch (level) {
-      case 'error':
-        return 'text-red-600';
-      case 'warn':
-        return 'text-yellow-600';
-      case 'debug':
-        return 'text-muted-foreground';
+      case "error":
+        return "text-red-600";
+      case "warn":
+        return "text-yellow-600";
+      case "debug":
+        return "text-muted-foreground";
       default:
-        return 'text-blue-600';
+        return "text-blue-600";
     }
   };
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case 'error':
-        return 'bg-red-500/10 border-red-500/20';
-      case 'trade':
-        return 'bg-green-500/10 border-green-500/20';
-      case 'chat':
-        return 'bg-blue-500/10 border-blue-500/20';
-      case 'tick':
-        return 'bg-purple-500/10 border-purple-500/20';
-      case 'post':
-        return 'bg-orange-500/10 border-orange-500/20';
-      case 'comment':
-        return 'bg-cyan-500/10 border-cyan-500/20';
+      case "error":
+        return "bg-red-500/10 border-red-500/20";
+      case "trade":
+        return "bg-green-500/10 border-green-500/20";
+      case "chat":
+        return "bg-blue-500/10 border-blue-500/20";
+      case "tick":
+        return "bg-purple-500/10 border-purple-500/20";
+      case "post":
+        return "bg-orange-500/10 border-orange-500/20";
+      case "comment":
+        return "bg-cyan-500/10 border-cyan-500/20";
       default:
-        return 'bg-muted/30 border-border/50';
+        return "bg-muted/30 border-border/50";
     }
   };
 
@@ -170,7 +170,7 @@ export function AgentLogs({ agentId }: AgentLogsProps) {
             disabled={loading}
             className="rounded-lg bg-muted px-4 py-2 font-medium text-foreground transition-all hover:bg-muted/80 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? 'Refreshing...' : 'Refresh'}
+            {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
       </div>
@@ -187,15 +187,15 @@ export function AgentLogs({ agentId }: AgentLogsProps) {
             {logs.map((log) => (
               <div
                 key={log.id}
-                className={cn('rounded-lg border p-3', getTypeColor(log.type))}
+                className={cn("rounded-lg border p-3", getTypeColor(log.type))}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="mb-1 flex flex-wrap items-center gap-2">
                       <span
                         className={cn(
-                          'font-mono font-semibold text-xs uppercase',
-                          getLevelColor(log.level)
+                          "font-mono font-semibold text-xs uppercase",
+                          getLevelColor(log.level),
                         )}
                       >
                         {log.level}
@@ -219,7 +219,7 @@ export function AgentLogs({ agentId }: AgentLogsProps) {
                         onClick={() => toggleExpanded(log.id)}
                         className="mt-2 rounded bg-muted px-3 py-1 text-xs transition-all hover:bg-muted/80"
                       >
-                        {expanded.has(log.id) ? 'Hide Details' : 'Show Details'}
+                        {expanded.has(log.id) ? "Hide Details" : "Show Details"}
                       </button>
                     )}
 

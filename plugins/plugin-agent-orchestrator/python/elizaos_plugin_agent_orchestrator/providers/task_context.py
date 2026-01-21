@@ -4,7 +4,7 @@ Task context provider for the Agent Orchestrator plugin.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from ..service import AgentOrchestratorService
 
@@ -17,10 +17,10 @@ def _add_header(title: str, content: str) -> str:
 async def get_task_context(
     runtime: Any,
     message: Any,
-    state: Optional[Any] = None,
+    state: Any | None = None,
 ) -> dict[str, Any]:
     """Get task context for prompting."""
-    svc: Optional[AgentOrchestratorService] = runtime.get_service("CODE_TASK")
+    svc: AgentOrchestratorService | None = runtime.get_service("CODE_TASK")
 
     if svc is None:
         return {

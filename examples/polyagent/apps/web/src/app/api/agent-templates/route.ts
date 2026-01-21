@@ -11,8 +11,8 @@
  * @returns {Promise<NextResponse>} JSON response with templates data
  */
 
-import { getAllTemplates, getTemplateIds } from '@polyagent/agents';
-import { NextResponse } from 'next/server';
+import { getAllTemplates, getTemplateIds } from "@polyagent/agents";
+import { NextResponse } from "next/server";
 
 /**
  * GET /api/agent-templates

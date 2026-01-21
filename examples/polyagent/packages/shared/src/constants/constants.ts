@@ -8,10 +8,10 @@
  * Actor tier levels (influence and prominence)
  */
 export const ACTOR_TIERS = {
-  S_TIER: 'S_TIER',
-  A_TIER: 'A_TIER',
-  B_TIER: 'B_TIER',
-  C_TIER: 'C_TIER',
+  S_TIER: "S_TIER",
+  A_TIER: "A_TIER",
+  B_TIER: "B_TIER",
+  C_TIER: "C_TIER",
 } as const;
 
 /**
@@ -47,14 +47,14 @@ export const FEED_WIDGET_CONFIG = {
  * Feed post types
  */
 export const POST_TYPES = {
-  WORLD_EVENT: 'world_event',
-  REACTION: 'reaction',
-  NEWS: 'news',
-  THREAD: 'thread',
-  RUMOR: 'rumor',
-  POST: 'post',
-  REPLY: 'reply',
-  ARTICLE: 'article',
+  WORLD_EVENT: "world_event",
+  REACTION: "reaction",
+  NEWS: "news",
+  THREAD: "thread",
+  RUMOR: "rumor",
+  POST: "post",
+  REPLY: "reply",
+  ARTICLE: "article",
 } as const;
 
 /**
@@ -75,11 +75,11 @@ export const DAY_RANGES = {
  * Organization types
  */
 export const ORG_TYPES = {
-  TECH_COMPANY: 'tech_company',
-  MEDIA_OUTLET: 'media_outlet',
-  GOVERNMENT: 'government',
-  NONPROFIT: 'nonprofit',
-  CRYPTO: 'crypto',
+  TECH_COMPANY: "tech_company",
+  MEDIA_OUTLET: "media_outlet",
+  GOVERNMENT: "government",
+  NONPROFIT: "nonprofit",
+  CRYPTO: "crypto",
 } as const;
 
 export type OrgType = (typeof ORG_TYPES)[keyof typeof ORG_TYPES];
@@ -117,11 +117,11 @@ export const FEED_TARGETS = {
  * Controls how wild content can get based on day number
  */
 export function getEscalationLevel(
-  day: number
-): 'mild' | 'moderate' | 'intense' {
-  if (day <= DAY_RANGES.EARLY.max) return 'mild';
-  if (day <= DAY_RANGES.MID.max) return 'moderate';
-  return 'intense';
+  day: number,
+): "mild" | "moderate" | "intense" {
+  if (day <= DAY_RANGES.EARLY.max) return "mild";
+  if (day <= DAY_RANGES.MID.max) return "moderate";
+  return "intense";
 }
 
 /**
@@ -129,26 +129,26 @@ export function getEscalationLevel(
  */
 export const RELATIONSHIP_TYPES = {
   // Hierarchical
-  MENTOR_STUDENT: 'mentor-student',
-  INDUSTRY_LEADER_FOLLOWER: 'industry-leader-follower',
-  INFLUENCER_FAN: 'influencer-fan',
+  MENTOR_STUDENT: "mentor-student",
+  INDUSTRY_LEADER_FOLLOWER: "industry-leader-follower",
+  INFLUENCER_FAN: "influencer-fan",
   // Collaborative
-  ALLIES: 'allies',
-  COLLABORATORS: 'collaborators',
-  CO_FOUNDERS: 'co-founders',
-  BUSINESS_PARTNERS: 'business-partners',
+  ALLIES: "allies",
+  COLLABORATORS: "collaborators",
+  CO_FOUNDERS: "co-founders",
+  BUSINESS_PARTNERS: "business-partners",
   // Competitive
-  RIVALS: 'rivals',
-  COMPETITORS: 'competitors',
-  FRENEMIES: 'frenemies',
+  RIVALS: "rivals",
+  COMPETITORS: "competitors",
+  FRENEMIES: "frenemies",
   // Critical
-  CRITIC_SUBJECT: 'critic-subject',
-  WATCHDOG_TARGET: 'watchdog-target',
-  REGULATOR_REGULATED: 'regulator-regulated',
+  CRITIC_SUBJECT: "critic-subject",
+  WATCHDOG_TARGET: "watchdog-target",
+  REGULATOR_REGULATED: "regulator-regulated",
   // Social
-  FRIENDS: 'friends',
-  ACQUAINTANCES: 'acquaintances',
-  FORMER_COLLEAGUES: 'former-colleagues',
+  FRIENDS: "friends",
+  ACQUAINTANCES: "acquaintances",
+  FORMER_COLLEAGUES: "former-colleagues",
 } as const;
 
 /**
@@ -159,8 +159,8 @@ export const GROUP_CONFIG = {
   /** Max NPC groups a user can be in simultaneously (env: MAX_ACTIVE_USER_GROUPS)
    * Note: User-created groups don't count toward this limit */
   MAX_ACTIVE_USER_GROUPS: Number.parseInt(
-    process.env.MAX_ACTIVE_USER_GROUPS || '5',
-    10
+    process.env.MAX_ACTIVE_USER_GROUPS || "5",
+    10,
   ),
   /** Min members for NPC group */
   MIN_GROUP_SIZE: 3,

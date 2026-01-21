@@ -9,7 +9,7 @@
  *
  * @returns {JSX.Element} Layout wrapper
  */
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const revalidate = false;
 
 export default function AgentsLayout({

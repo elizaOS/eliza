@@ -320,6 +320,8 @@ describe("Action parameters (optional)", () => {
     await runtime.processActions(message, responses);
 
     expect(executed).toBe(true);
-    expect(receivedErrors.join("\n")).toContain("Required parameter 'direction'");
+    expect(receivedErrors.join("\n")).toContain(
+      "Required parameter 'direction'",
+    );
   });
 });

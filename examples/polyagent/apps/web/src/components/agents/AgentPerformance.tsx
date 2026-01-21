@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn } from '@polyagent/shared';
+import { cn } from "@polyagent/shared";
 import {
   Activity,
   Award,
@@ -11,8 +11,8 @@ import {
   TrendingDown,
   TrendingUp,
   Users,
-} from 'lucide-react';
-import { useAgent0Reputation } from '@/hooks/useAgent0Reputation';
+} from "lucide-react";
+import { useAgent0Reputation } from "@/hooks/useAgent0Reputation";
 
 /**
  * Displays agent trading performance metrics (PnL, trades, win rate).
@@ -46,28 +46,28 @@ export function AgentPerformance({ agent, agentId }: AgentPerformanceProps) {
 
   const stats = [
     {
-      label: 'Lifetime P&L',
+      label: "Lifetime P&L",
       value: pnl.toFixed(2),
       icon: isProfitable ? TrendingUp : TrendingDown,
-      color: isProfitable ? 'text-green-600' : 'text-red-600',
+      color: isProfitable ? "text-green-600" : "text-red-600",
     },
     {
-      label: 'Total Trades',
+      label: "Total Trades",
       value: totalTrades.toString(),
       icon: Activity,
-      color: 'text-blue-600',
+      color: "text-blue-600",
     },
     {
-      label: 'Profitable Trades',
+      label: "Profitable Trades",
       value: profitableTrades.toString(),
       icon: TrendingUp,
-      color: 'text-green-600',
+      color: "text-green-600",
     },
     {
-      label: 'Win Rate',
+      label: "Win Rate",
       value: `${(winRate * 100).toFixed(1)}%`,
       icon: DollarSign,
-      color: 'text-purple-600',
+      color: "text-purple-600",
     },
   ];
 
@@ -82,9 +82,9 @@ export function AgentPerformance({ agent, agentId }: AgentPerformanceProps) {
           >
             <div className="mb-3 flex items-start justify-between">
               <div className="text-muted-foreground text-sm">{stat.label}</div>
-              <stat.icon className={cn('h-5 w-5', stat.color)} />
+              <stat.icon className={cn("h-5 w-5", stat.color)} />
             </div>
-            <div className={cn('font-bold text-2xl', stat.color)}>
+            <div className={cn("font-bold text-2xl", stat.color)}>
               {stat.value}
             </div>
           </div>
@@ -148,11 +148,11 @@ export function AgentPerformance({ agent, agentId }: AgentPerformanceProps) {
                 )}
                 <span
                   className={cn(
-                    'font-semibold text-lg',
-                    isProfitable ? 'text-green-600' : 'text-red-600'
+                    "font-semibold text-lg",
+                    isProfitable ? "text-green-600" : "text-red-600",
                   )}
                 >
-                  {isProfitable ? '+' : ''}
+                  {isProfitable ? "+" : ""}
                   {pnl.toFixed(2)} points
                 </span>
               </div>
@@ -196,7 +196,7 @@ export function AgentPerformance({ agent, agentId }: AgentPerformanceProps) {
                     Accuracy
                   </div>
                   <div className="font-bold text-[#0066FF] text-xl">
-                    {agent0Profile.reputation?.accuracyScore.toFixed(1) ?? '—'}%
+                    {agent0Profile.reputation?.accuracyScore.toFixed(1) ?? "—"}%
                   </div>
                 </div>
 
@@ -206,7 +206,7 @@ export function AgentPerformance({ agent, agentId }: AgentPerformanceProps) {
                     Trust Score
                   </div>
                   <div className="font-bold text-green-600 text-xl">
-                    {agent0Profile.reputation?.trustScore.toFixed(1) ?? '—'}%
+                    {agent0Profile.reputation?.trustScore.toFixed(1) ?? "—"}%
                   </div>
                 </div>
 
@@ -249,7 +249,7 @@ export function AgentPerformance({ agent, agentId }: AgentPerformanceProps) {
                     </div>
                     <div className="text-muted-foreground text-sm">
                       from {agent0Reputation.count} review
-                      {agent0Reputation.count !== 1 ? 's' : ''}
+                      {agent0Reputation.count !== 1 ? "s" : ""}
                     </div>
                   </div>
                 </div>
@@ -259,14 +259,14 @@ export function AgentPerformance({ agent, agentId }: AgentPerformanceProps) {
               <div className="flex items-center gap-2 text-sm">
                 <div
                   className={cn(
-                    'h-2 w-2 rounded-full',
-                    agent0Profile.active ? 'bg-green-500' : 'bg-gray-400'
+                    "h-2 w-2 rounded-full",
+                    agent0Profile.active ? "bg-green-500" : "bg-gray-400",
                   )}
                 />
                 <span className="text-muted-foreground">
                   {agent0Profile.active
-                    ? 'Active on Agent0 Network'
-                    : 'Inactive on Agent0 Network'}
+                    ? "Active on Agent0 Network"
+                    : "Inactive on Agent0 Network"}
                 </span>
               </div>
             </div>

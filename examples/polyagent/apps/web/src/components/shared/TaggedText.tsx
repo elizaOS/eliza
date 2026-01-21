@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn } from '@polyagent/shared';
+import { cn } from "@polyagent/shared";
 
 /**
  * Tagged text component for parsing and highlighting social tags.
@@ -29,8 +29,8 @@ interface TaggedTextProps {
 
 export function TaggedText({ text, onTagClick, className }: TaggedTextProps) {
   // Handle null, undefined, or non-string text - return plain text
-  if (!text || typeof text !== 'string') {
-    return <span className={className}>{text || ''}</span>;
+  if (!text || typeof text !== "string") {
+    return <span className={className}>{text || ""}</span>;
   }
 
   // Handle empty string
@@ -48,7 +48,7 @@ export function TaggedText({ text, onTagClick, className }: TaggedTextProps) {
   const parts: Array<{
     text: string;
     isTag: boolean;
-    tagType?: '@' | '#' | '$';
+    tagType?: "@" | "#" | "$";
   }> = [];
   let lastIndex = 0;
   let match;
@@ -68,7 +68,7 @@ export function TaggedText({ text, onTagClick, className }: TaggedTextProps) {
     // Add the tag - match[0] is the full match
     // match[1] = @mention, match[2] = #hashtag, match[3] = $cashtag
     const fullTag = match[0]; // e.g., "@username" or "#hashtag" or "$cashtag"
-    const tagType = fullTag[0] as '@' | '#' | '$';
+    const tagType = fullTag[0] as "@" | "#" | "$";
     parts.push({
       text: fullTag,
       isTag: true,
@@ -105,11 +105,11 @@ export function TaggedText({ text, onTagClick, className }: TaggedTextProps) {
                 }
               }}
               className={cn(
-                'cursor-pointer font-medium text-[#0066FF] hover:text-[#2952d9]',
-                'transition-colors duration-150',
-                'underline decoration-[#0066FF]/30 hover:decoration-[#0066FF]/50'
+                "cursor-pointer font-medium text-[#0066FF] hover:text-[#2952d9]",
+                "transition-colors duration-150",
+                "underline decoration-[#0066FF]/30 hover:decoration-[#0066FF]/50",
               )}
-              style={{ color: '#0066FF' }}
+              style={{ color: "#0066FF" }}
             >
               {part.text}
             </span>

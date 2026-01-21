@@ -18,14 +18,14 @@
  * ```
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { create } from 'zustand';
-import { useShallow } from 'zustand/react/shallow';
-import type { PredictionMarket } from '@/types/markets';
-import { MARKETS_CONFIG } from '@/types/markets';
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
+import type { PredictionMarket } from "@/types/markets";
+import { MARKETS_CONFIG } from "@/types/markets";
 
 // Re-export for backwards compatibility
-export type { PredictionMarket } from '@/types/markets';
+export type { PredictionMarket } from "@/types/markets";
 
 interface PredictionMarketsState {
   // Data
@@ -85,11 +85,11 @@ export const usePredictionMarketsStore = create<PredictionMarketsState>(
 
         const url = userId
           ? `/api/markets/predictions?userId=${encodeURIComponent(userId)}`
-          : '/api/markets/predictions';
+          : "/api/markets/predictions";
         const response = await fetch(url);
         if (!response.ok) {
           throw new Error(
-            `Failed to fetch prediction markets: ${response.status}`
+            `Failed to fetch prediction markets: ${response.status}`,
           );
         }
 
@@ -140,7 +140,7 @@ export const usePredictionMarketsStore = create<PredictionMarketsState>(
         }
       };
     },
-  })
+  }),
 );
 
 // Selector for data (memoized by zustand)
@@ -157,7 +157,7 @@ const dataSelector = (state: PredictionMarketsState) => ({
 export function usePredictionMarkets(userId?: string) {
   // Single subscription with shallow comparison for the object
   const { markets, loading, error } = usePredictionMarketsStore(
-    useShallow(dataSelector)
+    useShallow(dataSelector),
   );
   const fetchMarkets = usePredictionMarketsStore((state) => state.fetchMarkets);
 
@@ -183,7 +183,7 @@ export function usePredictionMarkets(userId?: string) {
  */
 export function usePredictionMarketsPolling(
   intervalMs = 30000,
-  userId?: string
+  userId?: string,
 ) {
   const subscribe = usePredictionMarketsStore((state) => state.subscribe);
 
@@ -206,7 +206,7 @@ export function usePredictionMarket(marketId: string | number) {
 
   const market = useMemo(
     () => markets.find((m) => m.id.toString() === marketId.toString()),
-    [markets, marketId]
+    [markets, marketId],
   );
 
   return { market, loading, error, refetch };
@@ -219,8 +219,8 @@ export function useActivePredictionMarkets() {
   const { markets, loading, error, refetch } = usePredictionMarkets();
 
   const activeMarkets = useMemo(
-    () => markets.filter((m) => m.status === 'active'),
-    [markets]
+    () => markets.filter((m) => m.status === "active"),
+    [markets],
   );
 
   return { markets: activeMarkets, loading, error, refetch };
@@ -235,14 +235,14 @@ export function usePredictionMarketsStats() {
   const stats = useMemo(
     () => ({
       total: markets.length,
-      active: markets.filter((m) => m.status === 'active').length,
-      resolved: markets.filter((m) => m.status === 'resolved').length,
+      active: markets.filter((m) => m.status === "active").length,
+      resolved: markets.filter((m) => m.status === "resolved").length,
       totalVolume: markets.reduce(
         (sum, m) => sum + (m.yesShares || 0) + (m.noShares || 0),
-        0
+        0,
       ),
     }),
-    [markets]
+    [markets],
   );
 
   return { stats, loading };

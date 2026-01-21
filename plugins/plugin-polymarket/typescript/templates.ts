@@ -12,9 +12,9 @@ import {
   getSpreadTemplate,
   getTradeHistoryTemplate,
   orderTemplate,
+  researchMarketTemplate,
   retrieveAllMarketsTemplate,
   setupWebsocketTemplate,
-  researchMarketTemplate,
 } from "./generated/prompts/typescript/prompts";
 
 export {

@@ -9,9 +9,9 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
+import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { GITHUB_SERVICE_NAME, type GitHubService } from "../service";
 import { type CreateCommentParams, createCommentSchema, formatZodErrors } from "../types";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 
 const spec = requireActionSpec("CREATE_COMMENT");
 

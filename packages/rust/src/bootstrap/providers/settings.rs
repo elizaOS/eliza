@@ -89,4 +89,3 @@ impl Provider for SettingsProvider {
             .with_data("settings", serde_json::Value::Object(settings_map)))
     }
 }
-
