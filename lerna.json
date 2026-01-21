@@ -2,7 +2,12 @@
   "version": "2.0.0-alpha.1",
   "packages": [
     "packages/*",
-    "plugins/*"
+    "plugins/*/typescript",
+    "plugins/plugin-blooio",
+    "plugins/plugin-form",
+    "plugins/plugin-scheduling",
+    "plugins/plugin-twilio",
+    "plugins/plugin-whatsapp"
   ],
   "npmClient": "bun",
   "command": {

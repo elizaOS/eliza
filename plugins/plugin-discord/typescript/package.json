@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-discord",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-alpha.1",
   "description": "",
   "type": "module",
   "main": "dist/index.js",

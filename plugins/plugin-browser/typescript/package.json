@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-browser",
   "description": "Browser automation plugin for ElizaOS - enables AI agents to browse websites, interact with elements, and extract data",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-alpha.1",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -28,8 +28,16 @@
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      }
-    }
+      ,
+  "publishConfig": {
+    "access": "public"
+  }
+}
+    ,
+  "publishConfig": {
+    "access": "public"
+  }
+}
   },
   "files": [
     "dist",
@@ -91,7 +99,23 @@
         "type": "string",
         "description": "CapSolver API key for automated CAPTCHA solving",
         "required": false
-      }
-    }
+      ,
+  "publishConfig": {
+    "access": "public"
+  }
+}
+    ,
+  "publishConfig": {
+    "access": "public"
+  }
+}
+  ,
+  "publishConfig": {
+    "access": "public"
+  }
+}
+,
+  "publishConfig": {
+    "access": "public"
   }
 }

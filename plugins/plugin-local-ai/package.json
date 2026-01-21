@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/plugin-local-ai-root",
+  "private": true,
   "version": "2.0.0-alpha.1",
   "type": "module",
   "main": "typescript/dist/node/index.node.js",
@@ -134,5 +135,5 @@
       }
     }
   },
-  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
+  "gitHead": "401e0d2502fea9d6f459aa80faad1369798e9600"
 }

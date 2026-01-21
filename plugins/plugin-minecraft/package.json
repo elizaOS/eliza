@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/plugin-minecraft-root",
+  "private": true,
   "version": "2.0.0-alpha.1",
   "description": "Minecraft automation plugin for ElizaOS (Mineflayer bridge) - lets agents perceive the world and act in-game",
   "type": "module",
