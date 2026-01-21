@@ -79,7 +79,7 @@ async def _long_term_handler(
 summarization_evaluator = Evaluator(
     name="MEMORY_SUMMARIZATION",
     description="Automatically summarizes conversations to optimize context usage",
-    alwaysRun=True,
+    always_run=True,
     similes=["CONVERSATION_SUMMARY", "CONTEXT_COMPRESSION", "MEMORY_OPTIMIZATION"],
     examples=[],
     validate=_summarization_validate,
@@ -89,7 +89,7 @@ summarization_evaluator = Evaluator(
 long_term_extraction_evaluator = Evaluator(
     name="LONG_TERM_MEMORY_EXTRACTION",
     description="Extracts long-term facts about users from conversations",
-    alwaysRun=True,
+    always_run=True,
     similes=["MEMORY_EXTRACTION", "FACT_LEARNING", "USER_PROFILING"],
     examples=[],
     validate=_long_term_validate,

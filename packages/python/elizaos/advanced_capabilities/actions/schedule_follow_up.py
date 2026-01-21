@@ -105,14 +105,18 @@ class ScheduleFollowUpAction:
 
         scheduled_at = datetime.fromisoformat(scheduled_at_str.replace("Z", "+00:00"))
 
+        from uuid import UUID as StdUUID
+
         entity_id = message.entity_id
-        await follow_up_service.schedule_follow_up(
-            entity_id=entity_id,
-            scheduled_at=scheduled_at,
-            reason=reason,
-            priority=priority,
-            message=follow_up_message,
-        )
+        entity_id_uuid = StdUUID(str(entity_id)) if entity_id else None
+        if entity_id_uuid:
+            await follow_up_service.schedule_follow_up(
+                entity_id=entity_id_uuid,
+                scheduled_at=scheduled_at,
+                reason=reason,
+                priority=priority,
+                message=follow_up_message,
+            )
 
         response_text = f"I've scheduled a follow-up with {contact_name} for {scheduled_at.strftime('%B %d, %Y')}. Reason: {reason}"
 
