@@ -3,6 +3,7 @@ from __future__ import annotations
 import heapq
 import re
 import time
+from typing import cast
 from uuid import UUID, uuid4
 
 from elizaos.types.model import ModelType
@@ -267,7 +268,9 @@ class MemoryService(Service):
             if existing:
                 _ = await runtime.update_memory(mem)
                 return s
-            _ = await runtime.create_memory(mem, _TABLE_SESSION_SUMMARY, unique=False)
+            _ = await runtime.create_memory(
+                cast(dict[str, object], mem), _TABLE_SESSION_SUMMARY, unique=False
+            )
             return s
 
         self._session_summaries[str(room_id)] = s
@@ -375,7 +378,9 @@ class MemoryService(Service):
                     "metadata": dict(m.metadata),
                 },
             }
-            _ = await runtime.create_memory(mem, _TABLE_LONG_TERM_MEMORY, unique=False)
+            _ = await runtime.create_memory(
+                cast(dict[str, object], mem), _TABLE_LONG_TERM_MEMORY, unique=False
+            )
             return m
 
         self._long_term.setdefault(str(entity_id), []).append(m)

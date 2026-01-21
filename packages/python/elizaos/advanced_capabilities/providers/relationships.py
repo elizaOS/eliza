@@ -35,11 +35,10 @@ async def get_relationships(
         )
 
     try:
-        relationships = await runtime.get_relationships(entity_id=entity_id)
+        relationships = await runtime.get_relationships({"entityId": str(entity_id)})
     except Exception as e:
         runtime.logger.debug(
-            {"src": "provider:relationships", "agentId": runtime.agent_id, "error": str(e)},
-            "Failed to get relationships",
+            f"Failed to get relationships: src=provider:relationships agentId={runtime.agent_id} error={e}"
         )
         relationships = []
 
@@ -50,24 +49,35 @@ async def get_relationships(
             data={"relationships": []},
         )
 
+    def _get_interactions(r: object) -> int:
+        if isinstance(r, dict):
+            meta = r.get("metadata", {})
+            if isinstance(meta, dict):
+                val = meta.get("interactions", 0)
+                return int(val) if isinstance(val, (int, float)) else 0
+        return 0
+
     sorted_relationships = sorted(
         relationships,
-        key=lambda r: (r.get("metadata", {}) or {}).get("interactions", 0),
+        key=_get_interactions,
         reverse=True,
     )[:30]
 
     formatted_relationships: list[str] = []
-    entity_cache: dict[object, str] = {}
+    entity_cache: dict[str, str] = {}
     for rel in sorted_relationships:
+        if not isinstance(rel, dict):
+            continue
         target_id = rel.get("targetEntityId")
         if not target_id:
             continue
 
-        target_name = entity_cache.get(target_id)
+        target_id_str = str(target_id)
+        target_name = entity_cache.get(target_id_str)
         if target_name is None:
-            target_entity = await runtime.get_entity(target_id)
-            target_name = target_entity.name if target_entity else str(target_id)[:8]
-            entity_cache[target_id] = target_name
+            target_entity = await runtime.get_entity(target_id_str)
+            target_name = target_entity.name if target_entity else target_id_str[:8]
+            entity_cache[target_id_str] = target_name
 
         formatted_relationships.append(format_relationship(rel, target_name))
 

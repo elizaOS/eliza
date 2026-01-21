@@ -31,17 +31,31 @@ async def get_knowledge_context(
     )
 
     for entry in relevant_knowledge:
-        if entry.content and entry.content.text:
-            knowledge_text = entry.content.text
+        # Handle both dict and object entries
+        if isinstance(entry, dict):
+            content = entry.get("content", {})
+            text = content.get("text", "") if isinstance(content, dict) else ""
+            entry_id = entry.get("id", "")
+            metadata = entry.get("metadata", {})
+        else:
+            content = getattr(entry, "content", None)
+            text = getattr(content, "text", "") if content else ""
+            entry_id = getattr(entry, "id", "")
+            metadata = getattr(entry, "metadata", {})
+
+        if text:
+            knowledge_text = text
             if len(knowledge_text) > 500:
                 knowledge_text = knowledge_text[:500] + "..."
 
+            source = "unknown"
+            if isinstance(metadata, dict):
+                source = str(metadata.get("source", "unknown"))
+
             entry_dict = {
-                "id": str(entry.id) if entry.id else "",
+                "id": str(entry_id) if entry_id else "",
                 "text": knowledge_text,
-                "source": str(entry.metadata.get("source", "unknown"))
-                if entry.metadata
-                else "unknown",
+                "source": source,
             }
             knowledge_entries.append(entry_dict)
             sections.append(f"- {knowledge_text}")

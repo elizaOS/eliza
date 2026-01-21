@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.types import Action, ActionExample, ActionResult, Content
@@ -18,21 +17,34 @@ _spec = require_action_spec("SEND_MESSAGE")
 def _convert_spec_examples() -> list[list[ActionExample]]:
     """Convert spec examples to ActionExample format."""
     spec_examples = _spec.get("examples", [])
-    if spec_examples:
-        return [
-            [
+    if not isinstance(spec_examples, list):
+        return []
+    result: list[list[ActionExample]] = []
+    for example in spec_examples:
+        if not isinstance(example, list):
+            continue
+        row: list[ActionExample] = []
+        for msg in example:
+            if not isinstance(msg, dict):
+                continue
+            content = msg.get("content", {})
+            text = ""
+            actions: list[str] | None = None
+            if isinstance(content, dict):
+                text_val = content.get("text", "")
+                text = str(text_val) if text_val else ""
+                actions_val = content.get("actions")
+                if isinstance(actions_val, list) and all(isinstance(a, str) for a in actions_val):
+                    actions = list(actions_val)
+            row.append(
                 ActionExample(
-                    name=msg.get("name", ""),
-                    content=Content(
-                        text=msg.get("content", {}).get("text", ""),
-                        actions=msg.get("content", {}).get("actions"),
-                    ),
+                    name=str(msg.get("name", "")),
+                    content=Content(text=text, actions=actions),
                 )
-                for msg in example
-            ]
-            for example in spec_examples
-        ]
-    return []
+            )
+        if row:
+            result.append(row)
+    return result
 
 
 @dataclass
@@ -69,8 +81,10 @@ class SendMessageAction:
                 success=False,
             )
 
-        target_room_id = message.room_id
-        target_entity_id: UUID | None = None
+        from uuid import UUID as StdUUID
+
+        target_room_id_val: str | None = str(message.room_id) if message.room_id else None
+        target_entity_id: str | None = None
 
         if message.content and message.content.target:
             target = message.content.target
@@ -79,12 +93,12 @@ class SendMessageAction:
                 entity_str = target.get("entityId")
                 if room_str:
                     with contextlib.suppress(ValueError):
-                        target_room_id = UUID(room_str)
+                        target_room_id_val = str(StdUUID(str(room_str)))
                 if entity_str:
                     with contextlib.suppress(ValueError):
-                        target_entity_id = UUID(entity_str)
+                        target_entity_id = str(StdUUID(str(entity_str)))
 
-        if not target_room_id:
+        if not target_room_id_val:
             return ActionResult(
                 text="No target room specified",
                 values={"success": False, "error": "no_target"},
@@ -100,7 +114,7 @@ class SendMessageAction:
 
         await runtime.create_memory(
             content=message_content,
-            room_id=target_room_id,
+            room_id=target_room_id_val,
             entity_id=runtime.agent_id,
             memory_type="message",
             metadata={
@@ -122,12 +136,12 @@ class SendMessageAction:
             values={
                 "success": True,
                 "messageSent": True,
-                "targetRoomId": str(target_room_id),
+                "targetRoomId": str(target_room_id_val),
                 "targetEntityId": str(target_entity_id) if target_entity_id else None,
             },
             data={
                 "actionName": "SEND_MESSAGE",
-                "targetRoomId": str(target_room_id),
+                "targetRoomId": str(target_room_id_val),
                 "messagePreview": message_text[:100],
             },
             success=True,

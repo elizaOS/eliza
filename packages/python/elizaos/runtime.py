@@ -1226,7 +1226,12 @@ class AgentRuntime(IAgentRuntime):
         priority: int = 0,
     ) -> None:
         """Register a streaming model handler."""
-        key = model_type.value if isinstance(model_type, ModelType) else model_type
+        if isinstance(model_type, int):
+            key = str(model_type)
+        elif isinstance(model_type, str):
+            key = model_type
+        else:
+            key = str(model_type)
         if key not in self._streaming_models:
             self._streaming_models[key] = []
 
@@ -1242,7 +1247,12 @@ class AgentRuntime(IAgentRuntime):
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Internal implementation for streaming model calls."""
-        effective_model_type = model_type.value if isinstance(model_type, ModelType) else model_type
+        if isinstance(model_type, int):
+            effective_model_type = str(model_type)
+        elif isinstance(model_type, str):
+            effective_model_type = model_type
+        else:
+            effective_model_type = str(model_type)
         if params is None:
             params = dict(kwargs)
         elif kwargs:
@@ -1250,16 +1260,16 @@ class AgentRuntime(IAgentRuntime):
 
         # Apply LLM mode override for streaming text generation models
         llm_mode = self.get_llm_mode()
-        if llm_mode != LLMMode.DEFAULT:
+        if llm_mode != LLMMode.LLM_MODE_DEFAULT:
             streaming_text_models = [
-                ModelType.TEXT_SMALL_STREAM.value,
-                ModelType.TEXT_LARGE_STREAM.value,
+                str(ModelType.TEXT_SMALL_STREAM),
+                str(ModelType.TEXT_LARGE_STREAM),
             ]
             if effective_model_type in streaming_text_models:
                 override_model_type = (
-                    ModelType.TEXT_SMALL_STREAM.value
-                    if llm_mode == LLMMode.SMALL
-                    else ModelType.TEXT_LARGE_STREAM.value
+                    str(ModelType.TEXT_SMALL_STREAM)
+                    if llm_mode == LLMMode.LLM_MODE_SMALL
+                    else str(ModelType.TEXT_LARGE_STREAM)
                 )
                 if effective_model_type != override_model_type:
                     self.logger.debug(
@@ -1399,8 +1409,10 @@ class AgentRuntime(IAgentRuntime):
         entities = await self._adapter.get_entities_by_ids([entity_id])
         return entities[0] if entities else None
 
-    async def get_entity(self, entity_id: UUID) -> Entity | None:
-        """Alias for get_entity_by_id."""
+    async def get_entity(self, entity_id: UUID | str) -> Entity | None:
+        """Alias for get_entity_by_id, accepts UUID or string."""
+        if isinstance(entity_id, str):
+            entity_id = as_uuid(entity_id)
         return await self.get_entity_by_id(entity_id)
 
     async def get_room(self, room_id: UUID) -> Room | None:
