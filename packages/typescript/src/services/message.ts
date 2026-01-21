@@ -1830,8 +1830,8 @@ Output ONLY the continuation, starting immediately after the last character abov
           actions: [action],
           thought: thought || "",
         };
-        if (parsedStep && typeof parsedStep.params === "string") {
-          actionContent.params = parsedStep.params;
+        if (parsedStep && typeof parsedStep.parameters === "string") {
+          actionContent.params = parsedStep.parameters;
         }
 
         await runtime.processActions(
