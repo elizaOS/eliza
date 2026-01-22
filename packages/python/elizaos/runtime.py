@@ -277,7 +277,7 @@ class AgentRuntime(IAgentRuntime):
                 from google.protobuf.json_format import MessageToDict
                 char_settings = MessageToDict(char_settings_obj, preserving_proto_field_name=True)
             elif isinstance(char_settings_obj, dict):
-                 char_settings = char_settings_obj
+                char_settings = char_settings_obj
 
             disable_basic = self._capability_disable_basic or (
                 char_settings.get("DISABLE_BASIC_CAPABILITIES") in (True, "true")
