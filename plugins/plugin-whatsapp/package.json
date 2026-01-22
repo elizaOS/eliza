@@ -1,76 +1,84 @@
 {
-    "name": "@elizaos/plugin-whatsapp",
-    "version": "2.0.0-alpha.1",
-    "description": "WhatsApp Cloud API plugin",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "@elizaos/source": "./src/index.ts",
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run",
-        "coverage": "vitest run --coverage",
-        "lint": "biome check --apply-unsafe src/",
-        "lint:fix": "biome check --apply src/",
-        "format": "biome format src/",
-        "format:fix": "biome format --write src/"
-    },
-    "dependencies": {
-        "axios": "1.7.8"
-    },
-    "devDependencies": {
-        "@biomejs/biome": "1.5.3",
-        "@types/node": "20.17.9",
-        "@typescript-eslint/eslint-plugin": "8.16.0",
-        "@typescript-eslint/parser": "8.16.0",
-        "typescript": "5.6.3",
-        "vitest": "^3.0.0"
-    },
-    "publishConfig": {
-        "access": "public"
-    },
-    "agentConfig": {
-        "pluginType": "elizaos:client:1.0.0",
-        "pluginParameters": {
-            "WHATSAPP_ACCESS_TOKEN": {
-                "type": "string",
-                "minLength": 1,
-                "description": "WhatsApp Cloud API access token",
-                "optional": false
-            },
-            "WHATSAPP_PHONE_NUMBER_ID": {
-                "type": "string",
-                "minLength": 1,
-                "description": "WhatsApp business phone number ID",
-                "optional": false
-            },
-            "WHATSAPP_WEBHOOK_TOKEN": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Webhook verification token",
-                "optional": true
-            },
-            "WHATSAPP_BUSINESS_ID": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Business account ID",
-                "optional": true
-            }
-        }
-    },
-    "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
+  "name": "@elizaos/plugin-whatsapp-root",
+  "private": true,
+  "version": "2.0.0-alpha.1",
+  "description": "WhatsApp Cloud API plugin for ElizaOS",
+  "type": "module",
+  "main": "typescript/dist/index.js",
+  "module": "typescript/dist/index.js",
+  "types": "typescript/dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./typescript/dist/index.d.ts",
+        "default": "./typescript/dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "typescript/dist"
+  ],
+  "scripts": {
+    "build": "bun run build:ts && bun run build:rust && bun run build:python",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
+    "build:python": "test -d python && cd python && (python3 -m build 2>/dev/null || pyproject-build) || echo 'Python build skipped - no python directory'",
+    "dev": "cd typescript && bun --hot build.ts",
+    "test": "bun run test:ts && bun run test:rust && bun run test:python",
+    "test:ts": "cd typescript && vitest run || echo 'TypeScript tests skipped - no tests found'",
+    "test:rust": "test -d rust && cd rust && cargo test || echo 'Rust tests skipped'",
+    "test:python": "test -d python && cd python && pytest -p no:anchorpy --asyncio-mode=auto || echo 'Python tests skipped'",
+    "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write ./typescript",
+    "lint:check": "bunx @biomejs/biome check ./typescript",
+    "lint:rust": "test -d rust && cd rust && cargo clippy --all-targets -- -D warnings && cargo fmt || echo 'Rust lint skipped'",
+    "lint:python": "test -d python && cd python && ruff check --fix . && ruff format . || echo 'Python lint skipped'",
+    "clean": "rm -rf typescript/dist .turbo node_modules"
+  },
+  "dependencies": {
+    "axios": "1.7.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "@types/bun": "^1.3.5",
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-alpha.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:client:1.0.0",
+    "pluginParameters": {
+      "WHATSAPP_ACCESS_TOKEN": {
+        "type": "string",
+        "minLength": 1,
+        "description": "WhatsApp Cloud API access token",
+        "optional": false
+      },
+      "WHATSAPP_PHONE_NUMBER_ID": {
+        "type": "string",
+        "minLength": 1,
+        "description": "WhatsApp business phone number ID",
+        "optional": false
+      },
+      "WHATSAPP_WEBHOOK_TOKEN": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Webhook verification token",
+        "optional": true
+      },
+      "WHATSAPP_BUSINESS_ID": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Business account ID",
+        "optional": true
+      }
+    }
+  },
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
 }

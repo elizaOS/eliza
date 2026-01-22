@@ -10,21 +10,19 @@
   "platform": "node",
   "license": "MIT",
   "keywords": ["plugin", "elizaos", "computeruse", "automation", "desktop", "gui", "mcp"],
-  "repository": { "type": "git", "url": "https://github.com/elizaos/eliza" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza"
+  },
   "homepage": "https://elizaos.ai",
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" ,
-  "publishConfig": {
-    "access": "public"
-  }
-}
-    ,
-  "publishConfig": {
-    "access": "public"
-  }
-}
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
   },
   "files": ["dist", "README.md", "package.json"],
   "dependencies": {
@@ -70,24 +68,10 @@
         "type": "string",
         "description": "MCP server name to use for remote control (default: computeruse)",
         "required": false
-      ,
+      }
+    }
+  },
   "publishConfig": {
     "access": "public"
   }
 }
-    ,
-  "publishConfig": {
-    "access": "public"
-  }
-}
-  ,
-  "publishConfig": {
-    "access": "public"
-  }
-}
-,
-  "publishConfig": {
-    "access": "public"
-  }
-}
-

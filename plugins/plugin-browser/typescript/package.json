@@ -28,16 +28,8 @@
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      ,
-  "publishConfig": {
-    "access": "public"
-  }
-}
-    ,
-  "publishConfig": {
-    "access": "public"
-  }
-}
+      }
+    }
   },
   "files": [
     "dist",
@@ -99,22 +91,9 @@
         "type": "string",
         "description": "CapSolver API key for automated CAPTCHA solving",
         "required": false
-      ,
-  "publishConfig": {
-    "access": "public"
-  }
-}
-    ,
-  "publishConfig": {
-    "access": "public"
-  }
-}
-  ,
-  "publishConfig": {
-    "access": "public"
-  }
-}
-,
+      }
+    }
+  },
   "publishConfig": {
     "access": "public"
   }

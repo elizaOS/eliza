@@ -1,5 +1,6 @@
 {
-  "name": "@elizaos/plugin-agent-orchestrator",
+  "name": "@elizaos/plugin-agent-orchestrator-root",
+  "private": true,
   "version": "2.0.0-alpha.1",
   "description": "Agent orchestration plugin for ElizaOS (task lifecycle + agent providers) with multi-agent demos",
   "type": "module",

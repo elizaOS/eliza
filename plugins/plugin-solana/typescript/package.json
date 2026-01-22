@@ -17,10 +17,7 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "default": "./dist/index.js",
-      "publishConfig": {
-        "access": "public"
-      }
+      "default": "./dist/index.js"
     }
   },
   "files": [
@@ -130,17 +127,8 @@
         "type": "string",
         "description": "Alternative variable name for the Solana wallet private key in base58 or base64.",
         "required": false,
-        "sensitive": true,
-        "publishConfig": {
-          "access": "public"
-        }
-      },
-      "publishConfig": {
-        "access": "public"
+        "sensitive": true
       }
-    },
-    "publishConfig": {
-      "access": "public"
     }
   },
   "publishConfig": {

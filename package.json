@@ -51,7 +51,6 @@
     "apps/*",
     "plugins/plugin-*/typescript",
     "plugins/plugin-*",
-    "plugins/plugin-agent-orchestrator",
     "examples/*",
     "examples/*/*",
     "examples/app/*",
