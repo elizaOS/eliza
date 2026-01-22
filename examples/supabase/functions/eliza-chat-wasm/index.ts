@@ -1,20 +1,29 @@
 /**
- * Supabase Edge Function handler for elizaOS chat worker (Rust WASM version)
+ * elizaOS Supabase Edge Function (with optional Rust WASM acceleration)
  *
- * This Edge Function uses Rust compiled to WebAssembly for performance-critical
- * operations while still running on the Deno runtime.
+ * Uses the canonical elizaOS runtime with messageService.handleMessage pattern.
  *
- * Build the WASM module first:
+ * NOTE: The WASM module can accelerate parsing and validation operations,
+ * but the core message processing goes through the elizaOS runtime.
+ *
+ * Build the WASM module (optional):
  *   cd examples/supabase/rust
  *   wasm-pack build --target web --out-dir ../functions/eliza-chat-wasm/wasm
  */
 
-// Import WASM module (will be available after building)
-// In production, import the actual WASM module
-// import init, { ... } from "./wasm/eliza_chat_wasm.js";
-
-// Fallback to pure TypeScript implementation if WASM not available
-// This allows the function to work even without the WASM build
+// Import elizaOS packages via npm specifiers (Deno-compatible)
+import {
+  AgentRuntime,
+  ChannelType,
+  type Character,
+  createCharacter,
+  createMessageMemory,
+  type IAgentRuntime,
+  type Plugin,
+  stringToUuid,
+  type UUID,
+} from "npm:@elizaos/core@latest";
+import { openaiPlugin } from "npm:@elizaos/plugin-openai@latest";
 
 // ============================================================================
 // Types
@@ -23,19 +32,19 @@
 interface ChatRequest {
   message: string;
   userId?: string;
-  conversationId?: string;
 }
 
 interface ChatResponse {
   response: string;
-  conversationId: string;
+  userId: string;
   timestamp: string;
 }
 
 interface HealthResponse {
-  status: "healthy" | "unhealthy";
+  status: "healthy" | "unhealthy" | "initializing";
   runtime: string;
   version: string;
+  wasmEnabled: boolean;
 }
 
 interface ErrorResponse {
@@ -55,69 +64,92 @@ const corsHeaders = {
 };
 
 // ============================================================================
-// WASM Module Loader
+// WASM Module (Optional - for parsing acceleration)
 // ============================================================================
 
 interface WasmModule {
-  parse_chat_request: (json: string) => unknown;
-  build_openai_request: (
-    message: string,
-    system: string,
-    model: string,
-  ) => string;
-  generate_conversation_id: () => string;
-  create_chat_response: (response: string, convId: string) => string;
-  create_health_response: () => string;
-  create_error_response: (error: string, code: string) => string;
-  process_message: (message: string) => string;
-  extract_openai_response: (json: string) => string;
+  parse_chat_request: (json: string) => ChatRequest;
+  validate_message: (message: string) => boolean;
 }
 
-const wasmModule: WasmModule | null = null;
-let wasmInitPromise: Promise<void> | null = null;
+let wasmModule: WasmModule | null = null;
 
 async function initWasm(): Promise<WasmModule | null> {
   if (wasmModule) return wasmModule;
 
-  if (wasmInitPromise) {
-    await wasmInitPromise;
-    return wasmModule;
-  }
-
-  wasmInitPromise = (async () => {
-    // Try to import the WASM module
-    // In production, this would be: const wasm = await import("./wasm/eliza_chat_wasm.js");
+  try {
+    // Try to import the WASM module if built
+    // const wasm = await import("./wasm/eliza_chat_wasm.js");
     // await wasm.default();
     // wasmModule = wasm;
-    console.log(
-      "[elizaOS-WASM] WASM module not built, using TypeScript fallback",
-    );
-  })();
+    console.log("[elizaOS] WASM module not available, using TypeScript");
+  } catch {
+    console.log("[elizaOS] WASM module not built, using TypeScript fallback");
+  }
 
-  await wasmInitPromise;
   return wasmModule;
 }
 
 // ============================================================================
-// TypeScript Fallback Implementations
+// Configuration
 // ============================================================================
 
-function generateConversationId(): string {
-  return `conv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
+function getCharacter(): Character {
+  const name = Deno.env.get("CHARACTER_NAME") ?? "Eliza";
+  const bio = Deno.env.get("CHARACTER_BIO") ?? "A helpful AI assistant.";
 
-function processMessage(message: string): string {
-  return message.trim();
-}
-
-function getCharacter(): { name: string; bio: string; system: string } {
-  return {
-    name: Deno.env.get("CHARACTER_NAME") ?? "Eliza",
-    bio: Deno.env.get("CHARACTER_BIO") ?? "A helpful AI assistant.",
+  return createCharacter({
+    name,
+    bio,
     system:
       Deno.env.get("CHARACTER_SYSTEM") ??
-      "You are a helpful, concise AI assistant. Respond thoughtfully to user messages.",
-  };
+      `You are ${name}, a helpful AI assistant. ${bio}`,
+    secrets: {
+      OPENAI_API_KEY: Deno.env.get("OPENAI_API_KEY") ?? "",
+      OPENAI_MODEL: Deno.env.get("OPENAI_MODEL") ?? "gpt-4o-mini",
+    },
+  });
+}
+
+// ============================================================================
+// Runtime Management
+// ============================================================================
+
+let runtime: IAgentRuntime | null = null;
+let initPromise: Promise<IAgentRuntime> | null = null;
+let initError: string | null = null;
+
+const roomId = stringToUuid("supabase-wasm-room");
+const worldId = stringToUuid("supabase-wasm-world");
+
+async function getRuntime(): Promise<IAgentRuntime> {
+  if (runtime) return runtime;
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    console.log("[elizaOS] Initializing runtime...");
+
+    const character = getCharacter();
+
+    const newRuntime = new AgentRuntime({
+      character,
+      plugins: [openaiPlugin as Plugin],
+    });
+
+    await newRuntime.initialize();
+
+    console.log("[elizaOS] Runtime initialized successfully");
+    runtime = newRuntime;
+    return newRuntime;
+  })();
+
+  try {
+    return await initPromise;
+  } catch (error) {
+    initError = error instanceof Error ? error.message : "Unknown error";
+    console.error("[elizaOS] Runtime initialization failed:", initError);
+    throw error;
+  }
 }
 
 // ============================================================================
@@ -153,115 +185,94 @@ async function handleChat(req: Request): Promise<Response> {
   try {
     const body = (await req.json()) as Record<string, unknown>;
 
-    // Validate request (use WASM if available)
+    // Parse and validate request (use WASM if available)
     let message: string;
-    let conversationId: string;
-
     if (wasm) {
-      // Use WASM for parsing and validation
-      const parsed = wasm.parse_chat_request(
-        JSON.stringify(body),
-      ) as ChatRequest;
-      message = wasm.process_message(parsed.message);
-      conversationId = parsed.conversationId ?? wasm.generate_conversation_id();
+      const parsed = wasm.parse_chat_request(JSON.stringify(body));
+      message = parsed.message;
     } else {
-      // TypeScript fallback
       if (typeof body.message !== "string" || !body.message.trim()) {
-        throw new Error("Message is required and must be a non-empty string");
+        return errorResponse(
+          "Message is required and must be a non-empty string",
+          400,
+          "BAD_REQUEST",
+        );
       }
-      message = processMessage(body.message);
-      conversationId =
-        (body.conversationId as string) ?? generateConversationId();
+      message = body.message.trim();
     }
 
-    console.log(
-      `[elizaOS-WASM] Processing message for conversation ${conversationId}`,
-    );
+    const userId = (
+      typeof body.userId === "string" ? body.userId : crypto.randomUUID()
+    ) as UUID;
 
-    // Get character config
-    const character = getCharacter();
-    const model = Deno.env.get("OPENAI_LARGE_MODEL") ?? "gpt-5";
-    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
+    console.log(`[elizaOS] Processing message for user ${userId}`);
 
-    if (!openaiApiKey) {
-      throw new Error("OPENAI_API_KEY environment variable is required");
-    }
-
-    // Build OpenAI request (use WASM if available)
-    let openaiRequestBody: string;
-    if (wasm) {
-      openaiRequestBody = wasm.build_openai_request(
-        message,
-        character.system,
-        model,
+    // Get runtime
+    let rt: IAgentRuntime;
+    try {
+      rt = await getRuntime();
+    } catch {
+      return errorResponse(
+        `Runtime initialization failed: ${initError}`,
+        503,
+        "SERVICE_UNAVAILABLE",
       );
-    } else {
-      openaiRequestBody = JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: character.system },
-          { role: "user", content: message },
-        ],
-        max_tokens: 1024,
-        temperature: 0.7,
-      });
     }
 
-    // Call OpenAI API
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openaiApiKey}`,
+    // Ensure connection for this user
+    await rt.ensureConnection({
+      entityId: userId,
+      roomId,
+      worldId,
+      userName: "User",
+      source: "supabase-wasm",
+      channelId: "edge-function-wasm",
+      serverId: "supabase-edge-wasm",
+      type: ChannelType.API,
+    } as Parameters<typeof rt.ensureConnection>[0]);
+
+    // Create message memory using canonical helper
+    const messageMemory = createMessageMemory({
+      id: crypto.randomUUID() as UUID,
+      entityId: userId,
+      roomId,
+      content: {
+        text: message,
+        source: "supabase_edge_wasm",
+        channelType: ChannelType.API,
       },
-      body: openaiRequestBody,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[elizaOS-WASM] OpenAI API error:", errorText);
-      throw new Error(`OpenAI API error: ${response.status}`);
-    }
+    // Process through the FULL elizaOS pipeline
+    let responseText = "";
+    await rt.messageService?.handleMessage(rt, messageMemory, async (content) => {
+      if (content?.text) {
+        responseText += content.text;
+      }
+      return [];
+    });
 
-    const data = await response.json();
-
-    // Extract response (use WASM if available)
-    let responseText: string;
-    if (wasm) {
-      responseText = wasm.extract_openai_response(JSON.stringify(data));
-    } else {
-      responseText =
-        data.choices[0]?.message?.content ??
-        "I apologize, but I could not generate a response.";
-    }
-
-    // Build response
     const chatResponse: ChatResponse = {
-      response: responseText,
-      conversationId,
+      response: responseText || "I could not generate a response.",
+      userId,
       timestamp: new Date().toISOString(),
     };
 
-    console.log("[elizaOS-WASM] Message processed successfully");
+    console.log("[elizaOS] Message processed successfully");
     return jsonResponse(chatResponse);
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    console.error("[elizaOS-WASM] Chat error:", errorMessage);
-
-    if (errorMessage.includes("required") || errorMessage.includes("must be")) {
-      return errorResponse(errorMessage, 400, "BAD_REQUEST");
-    }
-
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("[elizaOS] Chat error:", errorMessage);
     return errorResponse("Internal server error", 500, "INTERNAL_ERROR");
   }
 }
 
 function handleHealth(): Response {
   const health: HealthResponse = {
-    status: "healthy",
-    runtime: wasmModule ? "elizaos-rust-wasm" : "elizaos-deno-fallback",
-    version: "1.0.0",
+    status: runtime ? "healthy" : initError ? "unhealthy" : "initializing",
+    runtime: "elizaos-supabase-wasm",
+    version: "2.0.0",
+    wasmEnabled: wasmModule !== null,
   };
   return jsonResponse(health);
 }
@@ -275,7 +286,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const method = req.method;
   const path = url.pathname;
 
-  console.log(`[elizaOS-WASM] ${method} ${path}`);
+  console.log(`[elizaOS] ${method} ${path}`);
 
   // Handle CORS preflight
   if (method === "OPTIONS") {

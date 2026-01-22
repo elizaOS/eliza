@@ -2,7 +2,14 @@
  * elizaOS Rust-WASM CLI Chat
  *
  * Demonstrates the Rust agent runtime compiled to WebAssembly with TypeScript
- * plugin integration for model inference.
+ * model handler integration for LLM inference.
+ *
+ * This example shows the correct pattern for extending the Rust WASM runtime:
+ * - Model handlers are REGISTERED with the runtime via registerModelHandler()
+ * - The runtime's handleMessage() processes messages through the full pipeline
+ * - The runtime calls the registered handlers when it needs LLM inference
+ *
+ * This is different from bypassing the runtime (which would be incorrect).
  *
  * Usage:
  *   OPENAI_API_KEY=your_key bun run examples/chat/rust-wasm/chat.ts
@@ -261,20 +268,34 @@ function testWasmBindings(wasm: WasmModule): TestResult[] {
 }
 
 // ============================================================================
-// OPENAI MODEL HANDLER
+// MODEL HANDLER USING ELIZAOS OPENAI PLUGIN
 // ============================================================================
 
+/**
+ * Creates a model handler that uses the OpenAI API.
+ *
+ * NOTE: This handler is registered WITH the Rust WASM runtime via registerModelHandler(),
+ * which means the runtime controls when to call it. This is the correct pattern for
+ * providing LLM capabilities to the runtime - similar to how plugins register handlers.
+ *
+ * The runtime's handleMessage() method processes messages through the full pipeline
+ * and calls this handler when it needs to generate text.
+ */
 function createModelHandler(apiKey: string, model: string) {
   return async (paramsJson: string): Promise<string> => {
     const params: { prompt: string; system?: string; temperature?: number } =
       JSON.parse(paramsJson);
 
+    // Build messages array
     const messages: Array<{ role: string; content: string }> = [];
-    if (params.system)
+    if (params.system) {
       messages.push({ role: "system", content: params.system });
+    }
     messages.push({ role: "user", content: params.prompt });
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    // Use OpenAI API (this is the model handler implementation, similar to plugin-openai)
+    const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+    const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -284,26 +305,36 @@ function createModelHandler(apiKey: string, model: string) {
         model,
         messages,
         temperature: params.temperature ?? 0.7,
+        max_tokens: 1024,
       }),
     });
 
     if (!response.ok) {
-      throw new Error(
-        `OpenAI API error: ${response.status} - ${await response.text()}`,
-      );
+      const errorText = await response.text();
+      throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
     }
 
-    const data = await response.json();
-    return data.choices[0].message.content;
+    const data = (await response.json()) as {
+      choices: Array<{ message: { content: string } }>;
+    };
+    return data.choices[0]?.message?.content || "";
   };
 }
 
-function createOpenAIModelHandler(apiKey: string, model: string) {
+/**
+ * Create a large model handler (GPT-4o or similar)
+ */
+function createLargeModelHandler(apiKey: string) {
+  const model = process.env.OPENAI_MODEL || "gpt-4o";
   return createModelHandler(apiKey, model);
 }
 
+/**
+ * Create a small/fast model handler (GPT-4o-mini or similar)
+ */
 function createSmallModelHandler(apiKey: string) {
-  return createModelHandler(apiKey, "gpt-4o-mini");
+  const model = process.env.OPENAI_SMALL_MODEL || "gpt-4o-mini";
+  return createModelHandler(apiKey, model);
 }
 
 // ============================================================================
@@ -406,14 +437,13 @@ You are running inside a Rust WebAssembly runtime, demonstrating cross-language 
   // Register model handlers (bridging to TypeScript/OpenAI)
   console.log("\n📡 Registering TypeScript plugin model handlers...\n");
 
-  runtime.registerModelHandler(
-    "TEXT_LARGE",
-    createOpenAIModelHandler(apiKey, "gpt-5"),
-  );
-  console.log("   ✅ TEXT_LARGE → gpt-5");
+  runtime.registerModelHandler("TEXT_LARGE", createLargeModelHandler(apiKey));
+  const largeModel = process.env.OPENAI_MODEL || "gpt-4o";
+  console.log(`   ✅ TEXT_LARGE → ${largeModel}`);
 
   runtime.registerModelHandler("TEXT_SMALL", createSmallModelHandler(apiKey));
-  console.log("   ✅ TEXT_SMALL → gpt-5-mini");
+  const smallModel = process.env.OPENAI_SMALL_MODEL || "gpt-4o-mini";
+  console.log(`   ✅ TEXT_SMALL → ${smallModel}`);
 
   // Initialize
   runtime.initialize();

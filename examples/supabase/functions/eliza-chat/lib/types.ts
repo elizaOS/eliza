@@ -17,7 +17,7 @@ export interface ChatResponse {
 }
 
 export interface HealthResponse {
-  status: "healthy" | "unhealthy";
+  status: "healthy" | "unhealthy" | "initializing";
   runtime: string;
   version: string;
 }

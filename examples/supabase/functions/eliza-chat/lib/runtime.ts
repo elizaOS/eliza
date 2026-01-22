@@ -1,221 +1,98 @@
 /**
- * Serverless AgentRuntime Manager for Supabase Edge Functions
+ * elizaOS Runtime for Supabase Edge Functions
  *
- * This is a lightweight elizaOS runtime for serverless environments.
- * It provides the same chat capabilities as the full runtime but optimized
- * for edge function cold starts and stateless execution.
+ * Uses the canonical elizaOS runtime with messageService.handleMessage pattern.
+ *
+ * NOTE: Due to Supabase Edge Functions (Deno) constraints, some features may be limited.
+ * For full elizaOS features, consider running elizaOS on a dedicated server.
  */
 
+// Import elizaOS packages via npm specifiers (Deno-compatible)
+import {
+  AgentRuntime,
+  ChannelType,
+  type Character,
+  createCharacter,
+  createMessageMemory,
+  type IAgentRuntime,
+  type Plugin,
+  stringToUuid,
+  type UUID,
+} from "npm:@elizaos/core@latest";
+import { openaiPlugin } from "npm:@elizaos/plugin-openai@latest";
+
 import type {
-  Character,
   ChatRequest,
   ChatResponse,
   ErrorResponse,
   HealthResponse,
-  OpenAIChatMessage,
-  UUID,
+  corsHeaders as cors,
 } from "./types.ts";
 
+// Re-export corsHeaders
+export { corsHeaders } from "./types.ts";
 
 // ============================================================================
-// Global State for Warm Container Reuse
-// ============================================================================
-
-interface GlobalRuntimeState {
-  __elizaRuntime?: ElizaRuntimeManager | null;
-  __runtimeInitialized?: boolean;
-}
-
-// Helper function to safely access global state with proper typing
-function getGlobalState(): GlobalRuntimeState {
-  // Type assertion needed because Deno's globalThis doesn't have our custom properties
-  // We verify the properties exist at runtime before using them
-  return globalThis as GlobalRuntimeState;
-}
-
-// Deno global state for warm container reuse
-const globalState = getGlobalState();
-if (typeof globalState.__runtimeInitialized === "undefined") {
-  globalState.__runtimeInitialized = false;
-}
-
-// ============================================================================
-// Logger
-// ============================================================================
-
-const logger = {
-  info: (message: string, ...args: unknown[]) =>
-    console.log(`[elizaOS] ${message}`, ...args),
-  warn: (message: string, ...args: unknown[]) =>
-    console.warn(`[elizaOS] ${message}`, ...args),
-  error: (message: string, ...args: unknown[]) =>
-    console.error(`[elizaOS] ${message}`, ...args),
-  debug: (message: string, ...args: unknown[]) =>
-    console.debug(`[elizaOS] ${message}`, ...args),
-};
-
-// ============================================================================
-// Character Configuration
+// Configuration
 // ============================================================================
 
 function getCharacter(): Character {
-  return {
-    name: Deno.env.get("CHARACTER_NAME") ?? "Eliza",
-    bio: Deno.env.get("CHARACTER_BIO") ?? "A helpful AI assistant.",
+  const name = Deno.env.get("CHARACTER_NAME") ?? "Eliza";
+  const bio = Deno.env.get("CHARACTER_BIO") ?? "A helpful AI assistant.";
+
+  return createCharacter({
+    name,
+    bio,
     system:
       Deno.env.get("CHARACTER_SYSTEM") ??
-      "You are a helpful, concise AI assistant. Respond thoughtfully to user messages.",
-  };
+      `You are ${name}, a helpful AI assistant. ${bio}`,
+    secrets: {
+      OPENAI_API_KEY: Deno.env.get("OPENAI_API_KEY") ?? "",
+      OPENAI_MODEL: Deno.env.get("OPENAI_MODEL") ?? "gpt-4o-mini",
+    },
+  });
 }
 
 // ============================================================================
-// ElizaOS Runtime Manager
+// Runtime Management
 // ============================================================================
 
-class ElizaRuntimeManager {
-  private static instance: ElizaRuntimeManager;
+// Singleton runtime (reused across warm function invocations)
+let runtime: IAgentRuntime | null = null;
+let initPromise: Promise<IAgentRuntime> | null = null;
+let initError: string | null = null;
 
-  private agentId: UUID;
-  private character: Character;
-  private openaiApiKey: string;
-  private model: string;
-  private isInitialized = false;
+// Session IDs
+const roomId = stringToUuid("supabase-room");
+const worldId = stringToUuid("supabase-world");
 
-  private constructor() {
-    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!openaiApiKey) {
-      throw new Error("OPENAI_API_KEY environment variable is required");
-    }
+async function getRuntime(): Promise<IAgentRuntime> {
+  if (runtime) return runtime;
+  if (initPromise) return initPromise;
 
-    this.openaiApiKey = openaiApiKey;
-    this.character = getCharacter();
-    this.model = Deno.env.get("OPENAI_LARGE_MODEL") ?? "gpt-5";
-    this.agentId = crypto.randomUUID() as UUID;
+  initPromise = (async () => {
+    console.log("[elizaOS] Initializing runtime...");
 
-    logger.info("ElizaRuntimeManager instance created");
-  }
+    const character = getCharacter();
 
-  /**
-   * Get or create the singleton instance
-   */
-  public static getInstance(): ElizaRuntimeManager {
-    // Check global state first (warm container reuse)
-    if (globalState.__elizaRuntime) {
-      return globalState.__elizaRuntime;
-    }
-
-    if (!ElizaRuntimeManager.instance) {
-      ElizaRuntimeManager.instance = new ElizaRuntimeManager();
-      globalState.__elizaRuntime = ElizaRuntimeManager.instance;
-    }
-
-    return ElizaRuntimeManager.instance;
-  }
-
-  /**
-   * Initialize the runtime
-   */
-  public async initialize(): Promise<void> {
-    if (this.isInitialized) {
-      return;
-    }
-
-    logger.info("Initializing elizaOS runtime...");
-
-    // In a full implementation, this would initialize:
-    // - Database connections
-    // - Plugin loading
-    // - Memory services
-    // For serverless, we keep it minimal
-
-    this.isInitialized = true;
-    globalState.__runtimeInitialized = true;
-
-    logger.info("elizaOS runtime initialized successfully");
-  }
-
-  /**
-   * Handle a chat message and generate a response
-   */
-  public async handleChat(request: ChatRequest): Promise<ChatResponse> {
-    await this.initialize();
-
-    const conversationId =
-      request.conversationId ??
-      `conv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-
-    logger.info(`Processing message for conversation ${conversationId}`);
-
-    // Build messages for OpenAI
-    const messages: OpenAIChatMessage[] = [
-      {
-        role: "system",
-        content: this.character.system,
-      },
-      {
-        role: "user",
-        content: request.message,
-      },
-    ];
-
-    // Call OpenAI API
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.openaiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages,
-        max_tokens: 1024,
-        temperature: 0.7,
-      }),
+    const newRuntime = new AgentRuntime({
+      character,
+      plugins: [openaiPlugin as Plugin],
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      logger.error("OpenAI API error:", errorText);
-      throw new Error(`OpenAI API error: ${response.status}`);
-    }
+    await newRuntime.initialize();
 
-    const data = await response.json();
-    const responseText =
-      data.choices[0]?.message?.content ??
-      "I apologize, but I could not generate a response.";
+    console.log("[elizaOS] Runtime initialized successfully");
+    runtime = newRuntime;
+    return newRuntime;
+  })();
 
-    logger.info("Message processed successfully");
-
-    return {
-      response: responseText,
-      conversationId,
-      timestamp: new Date().toISOString(),
-    };
-  }
-
-  /**
-   * Health check
-   */
-  public getHealth(): HealthResponse {
-    return {
-      status: "healthy",
-      runtime: "elizaos-deno",
-      version: "1.0.0",
-    };
-  }
-
-  /**
-   * Get character configuration
-   */
-  public getCharacter(): Character {
-    return this.character;
-  }
-
-  /**
-   * Get agent ID
-   */
-  public getAgentId(): UUID {
-    return this.agentId;
+  try {
+    return await initPromise;
+  } catch (error) {
+    initError = error instanceof Error ? error.message : "Unknown error";
+    console.error("[elizaOS] Runtime initialization failed:", initError);
+    throw error;
   }
 }
 
@@ -223,13 +100,14 @@ class ElizaRuntimeManager {
 // Response Helpers
 // ============================================================================
 
-import { corsHeaders as cors } from "./types.ts";
-
 export function jsonResponse<T>(data: T, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
-      ...cors,
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers":
+        "authorization, x-client-info, apikey, content-type",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Content-Type": "application/json",
     },
   });
@@ -252,42 +130,82 @@ export function errorResponse(
 // ============================================================================
 
 /**
- * Parse and validate the incoming request body
- */
-function parseRequestBody(body: Record<string, unknown>): ChatRequest {
-  if (typeof body.message !== "string" || !body.message.trim()) {
-    throw new Error("Message is required and must be a non-empty string");
-  }
-
-  return {
-    message: body.message.trim(),
-    userId: typeof body.userId === "string" ? body.userId : undefined,
-    conversationId:
-      typeof body.conversationId === "string" ? body.conversationId : undefined,
-  };
-}
-
-/**
- * Handle POST /chat request
+ * Handle POST /chat request using the canonical elizaOS pattern
  */
 export async function handleChat(req: Request): Promise<Response> {
   try {
     const body = (await req.json()) as Record<string, unknown>;
-    const request = parseRequestBody(body);
 
-    const runtime = ElizaRuntimeManager.getInstance();
-    const response = await runtime.handleChat(request);
-
-    return jsonResponse(response);
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    logger.error("Chat error:", errorMessage);
-
-    if (errorMessage.includes("required") || errorMessage.includes("must be")) {
-      return errorResponse(errorMessage, 400, "BAD_REQUEST");
+    // Validate request
+    if (typeof body.message !== "string" || !body.message.trim()) {
+      return errorResponse(
+        "Message is required and must be a non-empty string",
+        400,
+        "BAD_REQUEST",
+      );
     }
 
+    const message = body.message.trim();
+    const userId = (
+      typeof body.userId === "string" ? body.userId : crypto.randomUUID()
+    ) as UUID;
+
+    // Get runtime
+    let rt: IAgentRuntime;
+    try {
+      rt = await getRuntime();
+    } catch {
+      return errorResponse(
+        `Runtime initialization failed: ${initError}`,
+        503,
+        "SERVICE_UNAVAILABLE",
+      );
+    }
+
+    // Ensure connection for this user
+    await rt.ensureConnection({
+      entityId: userId,
+      roomId,
+      worldId,
+      userName: "User",
+      source: "supabase",
+      channelId: "edge-function",
+      serverId: "supabase-edge",
+      type: ChannelType.API,
+    } as Parameters<typeof rt.ensureConnection>[0]);
+
+    // Create message memory using canonical helper
+    const messageMemory = createMessageMemory({
+      id: crypto.randomUUID() as UUID,
+      entityId: userId,
+      roomId,
+      content: {
+        text: message,
+        source: "supabase_edge",
+        channelType: ChannelType.API,
+      },
+    });
+
+    // Process through the FULL elizaOS pipeline
+    let responseText = "";
+    await rt.messageService?.handleMessage(rt, messageMemory, async (content) => {
+      if (content?.text) {
+        responseText += content.text;
+      }
+      return [];
+    });
+
+    const response: ChatResponse = {
+      response: responseText || "I could not generate a response.",
+      conversationId: `${userId}-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+    };
+
+    console.log("[elizaOS] Message processed successfully");
+    return jsonResponse(response);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("[elizaOS] Chat error:", errorMessage);
     return errorResponse("Internal server error", 500, "INTERNAL_ERROR");
   }
 }
@@ -296,10 +214,10 @@ export async function handleChat(req: Request): Promise<Response> {
  * Handle GET /health request
  */
 export function handleHealth(): Response {
-  const runtime = ElizaRuntimeManager.getInstance();
-  const health = runtime.getHealth();
+  const health: HealthResponse = {
+    status: runtime ? "healthy" : initError ? "unhealthy" : "initializing",
+    runtime: "elizaos-supabase",
+    version: "2.0.0",
+  };
   return jsonResponse(health);
 }
-
-// Export the runtime manager for advanced use cases
-export { ElizaRuntimeManager };
