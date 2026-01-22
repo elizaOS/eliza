@@ -15,17 +15,17 @@
  * - Integration with form plugin for conversational scheduling
  */
 
-import type { Plugin } from '@elizaos/core';
-import { SchedulingService } from './src/services/scheduling-service.js';
-import { scheduleMeetingAction } from './src/actions/schedule-meeting.js';
-import { confirmMeetingAction } from './src/actions/confirm-meeting.js';
-import { setAvailabilityAction } from './src/actions/set-availability.js';
-import { schedulingContextProvider } from './src/providers/scheduling-context.js';
+import type { Plugin } from "@elizaos/core";
+import { confirmMeetingAction } from "./src/actions/confirm-meeting.js";
+import { scheduleMeetingAction } from "./src/actions/schedule-meeting.js";
+import { setAvailabilityAction } from "./src/actions/set-availability.js";
+import { schedulingContextProvider } from "./src/providers/scheduling-context.js";
+import { SchedulingService } from "./src/services/scheduling-service.js";
 
-export * from './src/types.js';
-export * from './src/services/scheduling-service.js';
-export * from './src/utils/ical.js';
-export * from './src/storage.js';
+export * from "./src/services/scheduling-service.js";
+export * from "./src/storage.js";
+export * from "./src/types.js";
+export * from "./src/utils/ical.js";
 
 /**
  * Scheduling plugin for ElizaOS
@@ -44,8 +44,8 @@ export * from './src/storage.js';
  * ```
  */
 export const schedulingPlugin: Plugin = {
-  name: 'scheduling',
-  description: 'Scheduling and calendar coordination for multi-party meetings',
+  name: "scheduling",
+  description: "Scheduling and calendar coordination for multi-party meetings",
 
   // Register the scheduling service
   services: [SchedulingService],

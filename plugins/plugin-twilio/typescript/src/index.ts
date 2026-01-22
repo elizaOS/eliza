@@ -1,16 +1,15 @@
-import { type IAgentRuntime, type Plugin, logger } from "@elizaos/core";
-import sendSmsAction from "./actions/sendSms";
+import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import makeCallAction from "./actions/makeCall";
 import sendMmsAction from "./actions/sendMms";
-import conversationHistoryProvider from "./providers/conversationHistory";
+import sendSmsAction from "./actions/sendSms";
 import callStateProvider from "./providers/callState";
+import conversationHistoryProvider from "./providers/conversationHistory";
 import { TwilioService } from "./service";
 import { TwilioTestSuite } from "./tests";
 
 const twilioPlugin: Plugin = {
   name: "twilio",
-  description:
-    "Twilio plugin for bidirectional voice and text messaging integration",
+  description: "Twilio plugin for bidirectional voice and text messaging integration",
   services: [TwilioService],
   actions: [sendSmsAction, makeCallAction, sendMmsAction],
   providers: [conversationHistoryProvider, callStateProvider],
@@ -23,40 +22,40 @@ const twilioPlugin: Plugin = {
 
     if (!accountSid || accountSid.trim() === "") {
       logger.warn(
-        "Twilio Account SID not provided - Twilio plugin is loaded but will not be functional",
+        "Twilio Account SID not provided - Twilio plugin is loaded but will not be functional"
       );
       logger.warn(
-        "To enable Twilio functionality, please provide TWILIO_ACCOUNT_SID in your .env file",
+        "To enable Twilio functionality, please provide TWILIO_ACCOUNT_SID in your .env file"
       );
       return;
     }
 
     if (!authToken || authToken.trim() === "") {
       logger.warn(
-        "Twilio Auth Token not provided - Twilio plugin is loaded but will not be functional",
+        "Twilio Auth Token not provided - Twilio plugin is loaded but will not be functional"
       );
       logger.warn(
-        "To enable Twilio functionality, please provide TWILIO_AUTH_TOKEN in your .env file",
+        "To enable Twilio functionality, please provide TWILIO_AUTH_TOKEN in your .env file"
       );
       return;
     }
 
     if (!phoneNumber || phoneNumber.trim() === "") {
       logger.warn(
-        "Twilio Phone Number not provided - Twilio plugin is loaded but will not be functional",
+        "Twilio Phone Number not provided - Twilio plugin is loaded but will not be functional"
       );
       logger.warn(
-        "To enable Twilio functionality, please provide TWILIO_PHONE_NUMBER in your .env file",
+        "To enable Twilio functionality, please provide TWILIO_PHONE_NUMBER in your .env file"
       );
       return;
     }
 
     if (!webhookUrl || webhookUrl.trim() === "") {
       logger.warn(
-        "Twilio Webhook URL not provided - Twilio will not be able to receive incoming messages or calls",
+        "Twilio Webhook URL not provided - Twilio will not be able to receive incoming messages or calls"
       );
       logger.warn(
-        "To enable incoming communication, please provide TWILIO_WEBHOOK_URL in your .env file",
+        "To enable incoming communication, please provide TWILIO_WEBHOOK_URL in your .env file"
       );
     }
 

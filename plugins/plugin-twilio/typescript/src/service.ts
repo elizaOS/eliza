@@ -1,21 +1,21 @@
 import {
   ChannelType,
   ContentType,
-  EventType,
-  Service,
   createMessageMemory,
   createUniqueUuid,
-  logger,
-  stringToUuid,
+  EventType,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Media,
   type Memory,
+  Service,
+  stringToUuid,
   type UUID,
 } from "@elizaos/core";
-// @ts-ignore - Twilio types not available in workspace
+// @ts-expect-error - Twilio types not available in workspace
 import bodyParser from "body-parser";
-import express, { Express } from "express";
+import express, { type Express } from "express";
 import NodeCache from "node-cache";
 import twilio from "twilio";
 import { WebSocketServer } from "ws";
@@ -26,17 +26,17 @@ import {
 } from "./constants";
 import {
   CACHE_KEYS,
-  TwilioCall,
-  TwilioConfig,
+  type TwilioCall,
+  type TwilioConfig,
   TwilioError,
   TwilioEventType,
-  TwilioMessage,
-  TwilioMedia,
-  TwilioServiceInterface,
-  TwilioSmsWebhook,
-  TwilioStatusWebhook,
-  TwilioVoiceStream,
-  TwilioVoiceWebhook,
+  type TwilioMedia,
+  type TwilioMessage,
+  type TwilioServiceInterface,
+  type TwilioSmsWebhook,
+  type TwilioStatusWebhook,
+  type TwilioVoiceStream,
+  type TwilioVoiceWebhook,
 } from "./types";
 import {
   formatMessagingAddress,

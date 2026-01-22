@@ -26,7 +26,6 @@ vi.mock("@elizaos/core", () => ({
   createMessageMemory: vi.fn((payload: object) => payload),
   Service: class Service {
     runtime: object | null = null;
-    constructor() {}
     async initialize(runtime: object) {
       this.runtime = runtime;
     }

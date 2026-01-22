@@ -9,13 +9,13 @@
  * - CalendarEvent: An ICS-compatible event for calendar invites
  */
 
-import type { UUID } from '@elizaos/core';
+import type { UUID } from "@elizaos/core";
 
 // ============================================================================
 // TIME AND AVAILABILITY
 // ============================================================================
 
-export type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+export type DayOfWeek = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
 
 export interface AvailabilityWindow {
   day: DayOfWeek;
@@ -75,7 +75,7 @@ export interface Participant {
   priority?: number;
 }
 
-export type ParticipantRole = 'organizer' | 'required' | 'optional';
+export type ParticipantRole = "organizer" | "required" | "optional";
 
 export interface MeetingParticipant {
   entityId: UUID;
@@ -95,7 +95,7 @@ export interface MeetingParticipant {
 // MEETING LOCATION
 // ============================================================================
 
-export type LocationType = 'in_person' | 'virtual' | 'phone';
+export type LocationType = "in_person" | "virtual" | "phone";
 
 export interface MeetingLocation {
   type: LocationType;
@@ -119,7 +119,7 @@ export interface MeetingLocation {
 // SCHEDULING REQUEST
 // ============================================================================
 
-export type SchedulingUrgency = 'flexible' | 'soon' | 'urgent';
+export type SchedulingUrgency = "flexible" | "soon" | "urgent";
 
 export interface SchedulingConstraints {
   /** Minimum meeting duration in minutes */
@@ -129,7 +129,7 @@ export interface SchedulingConstraints {
   /** Maximum days in the future to search */
   maxDaysOut: number;
   /** Preferred times of day */
-  preferredTimes?: ('morning' | 'afternoon' | 'evening')[];
+  preferredTimes?: ("morning" | "afternoon" | "evening")[];
   /** Preferred days of week */
   preferredDays?: DayOfWeek[];
   /** Location type preference */
@@ -163,14 +163,14 @@ export interface SchedulingRequest {
 // ============================================================================
 
 export type MeetingStatus =
-  | 'proposed' // Time proposed, awaiting confirmations
-  | 'confirmed' // All required participants confirmed
-  | 'scheduled' // Confirmed and calendar invites sent
-  | 'in_progress' // Meeting is happening now
-  | 'completed' // Meeting finished
-  | 'cancelled' // Meeting was cancelled
-  | 'rescheduling' // Being rescheduled
-  | 'no_show'; // One or more participants didn't show
+  | "proposed" // Time proposed, awaiting confirmations
+  | "confirmed" // All required participants confirmed
+  | "scheduled" // Confirmed and calendar invites sent
+  | "in_progress" // Meeting is happening now
+  | "completed" // Meeting finished
+  | "cancelled" // Meeting was cancelled
+  | "rescheduling" // Being rescheduled
+  | "no_show"; // One or more participants didn't show
 
 export interface Meeting {
   id: string;
@@ -255,8 +255,8 @@ export interface CalendarInvite {
 // REMINDERS
 // ============================================================================
 
-export type ReminderType = 'sms' | 'email' | 'whatsapp' | 'push';
-export type ReminderStatus = 'pending' | 'sent' | 'failed' | 'cancelled';
+export type ReminderType = "sms" | "email" | "whatsapp" | "push";
+export type ReminderStatus = "pending" | "sent" | "failed" | "cancelled";
 
 export interface Reminder {
   id: string;

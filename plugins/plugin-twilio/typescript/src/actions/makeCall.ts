@@ -1,19 +1,15 @@
 import {
-  Action,
+  type Action,
+  type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  type HandlerCallback,
-  logger,
 } from "@elizaos/core";
-import { MakeCallSchema } from "../types";
-import { TwilioService } from "../service";
 import { TWILIO_SERVICE_NAME } from "../constants";
-import {
-  validatePhoneNumber,
-  generateTwiML,
-  extractPhoneNumber,
-} from "../utils";
+import type { TwilioService } from "../service";
+import { MakeCallSchema } from "../types";
+import { extractPhoneNumber, generateTwiML, validatePhoneNumber } from "../utils";
 
 const makeCallAction: Action = {
   name: "MAKE_CALL",
@@ -41,12 +37,10 @@ const makeCallAction: Action = {
     message: Memory,
     state?: State,
     options?: any,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ) => {
     try {
-      const twilioService = runtime.getService(
-        TWILIO_SERVICE_NAME,
-      ) as unknown as TwilioService;
+      const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
       if (!twilioService) {
         throw new Error("Twilio service not available");
       }
@@ -73,8 +67,7 @@ const makeCallAction: Action = {
 
       // If no message content extracted, use a default
       if (!callMessage) {
-        callMessage =
-          "Hello, this is an automated call from your AI assistant.";
+        callMessage = "Hello, this is an automated call from your AI assistant.";
       }
 
       // Validate phone number
@@ -137,14 +130,7 @@ const makeCallAction: Action = {
       },
     ],
   ],
-  similes: [
-    "make call",
-    "phone call",
-    "call phone",
-    "dial number",
-    "voice call",
-    "ring phone",
-  ],
+  similes: ["make call", "phone call", "call phone", "dial number", "voice call", "ring phone"],
 };
 
 export default makeCallAction;

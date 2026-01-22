@@ -1,4 +1,4 @@
-import { type IAgentRuntime, type Plugin, logger } from "@elizaos/core";
+import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import sendMessageAction from "./actions/sendMessage";
 import conversationHistoryProvider from "./providers/conversationHistory";
 import { BlooioService } from "./service";
@@ -18,28 +18,24 @@ const blooioPlugin: Plugin = {
 
     if (!apiKey || apiKey.trim() === "") {
       logger.warn(
-        "Blooio API key not provided - Blooio plugin is loaded but will not be functional",
+        "Blooio API key not provided - Blooio plugin is loaded but will not be functional"
       );
       logger.warn(
-        "To enable Blooio functionality, please provide BLOOIO_API_KEY in your .env file",
+        "To enable Blooio functionality, please provide BLOOIO_API_KEY in your .env file"
       );
       return;
     }
 
     if (!webhookUrl || webhookUrl.trim() === "") {
+      logger.warn("Blooio webhook URL not provided - Blooio will not receive incoming messages");
       logger.warn(
-        "Blooio webhook URL not provided - Blooio will not receive incoming messages",
-      );
-      logger.warn(
-        "To enable incoming communication, please provide BLOOIO_WEBHOOK_URL in your .env file",
+        "To enable incoming communication, please provide BLOOIO_WEBHOOK_URL in your .env file"
       );
       return;
     }
 
     if (!webhookSecret || webhookSecret.trim() === "") {
-      logger.warn(
-        "Blooio webhook secret not provided - signature verification is disabled",
-      );
+      logger.warn("Blooio webhook secret not provided - signature verification is disabled");
     }
 
     logger.info("Blooio plugin initialized successfully");

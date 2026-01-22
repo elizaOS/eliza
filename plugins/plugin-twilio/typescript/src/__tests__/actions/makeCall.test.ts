@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import makeCallAction from "../../actions/makeCall";
-import type { IAgentRuntime, Memory, HandlerCallback } from "@elizaos/core";
 
 // Mock the dependencies
 vi.mock("../../utils", () => ({
@@ -42,7 +42,7 @@ describe("makeCallAction", () => {
     it("should have correct name and description", () => {
       expect(makeCallAction.name).toBe("MAKE_CALL");
       expect(makeCallAction.description).toBe(
-        "Make a phone call via Twilio with a message or custom TwiML",
+        "Make a phone call via Twilio with a message or custom TwiML"
       );
     });
 
@@ -117,17 +117,11 @@ describe("makeCallAction", () => {
         },
       } as Memory;
 
-      await makeCallAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await makeCallAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockTwilioService.makeCall).toHaveBeenCalledWith(
         "+18885551234",
-        "<Response><Say>This is an important reminder</Say></Response>",
+        "<Response><Say>This is an important reminder</Say></Response>"
       );
       expect(mockCallback).toHaveBeenCalledWith({
         text: "Call initiated successfully to +18885551234. Call ID: CA123",
@@ -157,13 +151,7 @@ describe("makeCallAction", () => {
           content: { text: testCase.input },
         } as Memory;
 
-        await makeCallAction.handler(
-          mockRuntime,
-          message,
-          undefined,
-          undefined,
-          mockCallback,
-        );
+        await makeCallAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
         const { generateTwiML } = await import("../../utils");
         expect(generateTwiML.say).toHaveBeenCalledWith(testCase.expected);
@@ -175,13 +163,7 @@ describe("makeCallAction", () => {
         content: { text: `Call +18885551234 and say "Hello world"` },
       } as Memory;
 
-      await makeCallAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await makeCallAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       const { generateTwiML } = await import("../../utils");
       expect(generateTwiML.say).toHaveBeenCalledWith("Hello world");
@@ -194,13 +176,7 @@ describe("makeCallAction", () => {
         content: { text: "Call +18885551234" },
       } as Memory;
 
-      await makeCallAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await makeCallAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockCallback).toHaveBeenCalledWith({
         text: "Failed to make call: API Error",
@@ -215,13 +191,7 @@ describe("makeCallAction", () => {
         content: { text: "Call +18885551234" },
       } as Memory;
 
-      await makeCallAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await makeCallAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockCallback).toHaveBeenCalledWith({
         text: "Failed to make call: Twilio service not available",
@@ -237,13 +207,7 @@ describe("makeCallAction", () => {
         content: { text: "Make a call" },
       } as Memory;
 
-      await makeCallAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await makeCallAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockCallback).toHaveBeenCalledWith({
         text: "Failed to make call: No phone number found in message",
@@ -252,9 +216,7 @@ describe("makeCallAction", () => {
     });
 
     it("should handle invalid phone number", async () => {
-      const { validatePhoneNumber, extractPhoneNumber } = await import(
-        "../../utils"
-      );
+      const { validatePhoneNumber, extractPhoneNumber } = await import("../../utils");
       (extractPhoneNumber as any).mockReturnValue("+18885551234");
       (validatePhoneNumber as any).mockReturnValue(false);
 
@@ -262,13 +224,7 @@ describe("makeCallAction", () => {
         content: { text: "Call +18885551234" },
       } as Memory;
 
-      await makeCallAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await makeCallAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockCallback).toHaveBeenCalledWith({
         text: "Failed to make call: Invalid phone number format",

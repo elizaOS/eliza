@@ -1,14 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  validatePhoneNumber,
-  formatPhoneNumber,
-  generateTwiML,
-  parseMediaFromWebhook,
-  extractPhoneNumber,
-  validateWebhookSignature,
   chunkTextForSms,
   convertAudioFormat,
+  extractPhoneNumber,
+  formatPhoneNumber,
+  generateTwiML,
   getWebhookUrl,
+  parseMediaFromWebhook,
+  validatePhoneNumber,
+  validateWebhookSignature,
 } from "../../utils";
 
 describe("Utils", () => {
@@ -169,9 +169,7 @@ describe("Utils", () => {
     });
 
     it("should extract and format US numbers", () => {
-      expect(extractPhoneNumber("My number is (888) 555-1234")).toBe(
-        "+18885551234",
-      );
+      expect(extractPhoneNumber("My number is (888) 555-1234")).toBe("+18885551234");
       expect(extractPhoneNumber("Call 888-555-1234")).toBe("+18885551234");
       expect(extractPhoneNumber("Phone: 8885551234")).toBe("+18885551234");
     });
@@ -199,13 +197,7 @@ describe("Utils", () => {
 
     it("should chunk long messages at word boundaries", () => {
       const text =
-        "a".repeat(50) +
-        " " +
-        "b".repeat(50) +
-        " " +
-        "c".repeat(50) +
-        " " +
-        "d".repeat(50);
+        "a".repeat(50) + " " + "b".repeat(50) + " " + "c".repeat(50) + " " + "d".repeat(50);
       const chunks = chunkTextForSms(text, 160);
       expect(chunks.length).toBeGreaterThan(1);
       chunks.forEach((chunk) => {
@@ -233,18 +225,10 @@ describe("Utils", () => {
 
   describe("getWebhookUrl", () => {
     it("should combine base URL and path correctly", () => {
-      expect(getWebhookUrl("https://example.com", "/webhook")).toBe(
-        "https://example.com/webhook",
-      );
-      expect(getWebhookUrl("https://example.com/", "/webhook")).toBe(
-        "https://example.com/webhook",
-      );
-      expect(getWebhookUrl("https://example.com", "webhook")).toBe(
-        "https://example.com/webhook",
-      );
-      expect(getWebhookUrl("https://example.com/", "webhook")).toBe(
-        "https://example.com/webhook",
-      );
+      expect(getWebhookUrl("https://example.com", "/webhook")).toBe("https://example.com/webhook");
+      expect(getWebhookUrl("https://example.com/", "/webhook")).toBe("https://example.com/webhook");
+      expect(getWebhookUrl("https://example.com", "webhook")).toBe("https://example.com/webhook");
+      expect(getWebhookUrl("https://example.com/", "webhook")).toBe("https://example.com/webhook");
     });
   });
 });

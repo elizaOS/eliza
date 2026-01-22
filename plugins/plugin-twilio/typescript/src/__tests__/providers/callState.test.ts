@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import callStateProvider from "../../providers/callState";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import callStateProvider from "../../providers/callState";
 
 describe("callStateProvider", () => {
   let mockRuntime: IAgentRuntime;
@@ -25,7 +25,7 @@ describe("callStateProvider", () => {
     it("should have correct name and description", () => {
       expect(callStateProvider.name).toBe("twilioCallState");
       expect(callStateProvider.description).toBe(
-        "Provides information about active voice calls and streams",
+        "Provides information about active voice calls and streams"
       );
     });
   });
@@ -46,11 +46,7 @@ describe("callStateProvider", () => {
 
       const message = {} as any as Memory;
 
-      const result = await callStateProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await callStateProvider.get(mockRuntime, message, mockState);
 
       expect(result.text).toContain("Active voice calls (2):");
       expect(result.text).toContain("Call CA123: +18885551234 → +18885555678");
@@ -77,11 +73,7 @@ describe("callStateProvider", () => {
     it("should return no active calls when voice streams is empty", async () => {
       const message = {} as any as Memory;
 
-      const result = await callStateProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await callStateProvider.get(mockRuntime, message, mockState);
 
       expect(result.text).toBe("No active voice calls");
       expect(result.data).toEqual({
@@ -94,15 +86,9 @@ describe("callStateProvider", () => {
 
       const message = {} as any as Memory;
 
-      const result = await callStateProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await callStateProvider.get(mockRuntime, message, mockState);
 
-      expect(result.text).toBe(
-        "No Twilio call state available - service not initialized",
-      );
+      expect(result.text).toBe("No Twilio call state available - service not initialized");
     });
 
     it("should handle when voiceStreams is undefined", async () => {
@@ -110,11 +96,7 @@ describe("callStateProvider", () => {
 
       const message = {} as any as Memory;
 
-      const result = await callStateProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await callStateProvider.get(mockRuntime, message, mockState);
 
       expect(result.text).toBe("No active voice calls");
       expect(result.data).toEqual({
@@ -132,11 +114,7 @@ describe("callStateProvider", () => {
 
       const message = {} as any as Memory;
 
-      const result = await callStateProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await callStateProvider.get(mockRuntime, message, mockState);
 
       expect(result.text).toBe("Error retrieving call state");
     });
@@ -150,11 +128,7 @@ describe("callStateProvider", () => {
 
       const message = {} as any as Memory;
 
-      const result = await callStateProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await callStateProvider.get(mockRuntime, message, mockState);
 
       expect(result.text).toContain("Active voice calls (1):");
       expect(result.text).toContain("Call CA789: +18885551111 → +18885552222");

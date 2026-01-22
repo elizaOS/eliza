@@ -1,11 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { HandlerCallback, IAgentRuntime, Media, Memory } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import sendMessageAction from "../../actions/sendMessage";
-import type {
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  Media,
-} from "@elizaos/core";
 import type { BlooioAttachment } from "../../types";
 
 describe("sendMessageAction", () => {
@@ -16,7 +11,7 @@ describe("sendMessageAction", () => {
       request: {
         text?: string;
         attachments?: Array<string | BlooioAttachment>;
-      },
+      }
     ) => Promise<{ status: string }>;
   };
   let mockCallback: HandlerCallback;
@@ -59,13 +54,7 @@ describe("sendMessageAction", () => {
       content: { text: "Send a message to +15551234567 saying 'Hello there'" },
     } as Memory;
 
-    await sendMessageAction.handler(
-      mockRuntime,
-      message,
-      undefined,
-      undefined,
-      mockCallback,
-    );
+    await sendMessageAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
     expect(mockBlooioService.sendMessage).toHaveBeenCalledWith("+15551234567", {
       text: "Hello there",
@@ -84,13 +73,7 @@ describe("sendMessageAction", () => {
       },
     } as Memory;
 
-    await sendMessageAction.handler(
-      mockRuntime,
-      message,
-      undefined,
-      undefined,
-      mockCallback,
-    );
+    await sendMessageAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
     expect(mockBlooioService.sendMessage).toHaveBeenCalledWith("+15551234567", {
       text: undefined,
@@ -99,20 +82,12 @@ describe("sendMessageAction", () => {
   });
 
   it("should handle errors gracefully", async () => {
-    mockBlooioService.sendMessage = vi
-      .fn()
-      .mockRejectedValue(new Error("API Error"));
+    mockBlooioService.sendMessage = vi.fn().mockRejectedValue(new Error("API Error"));
     const message: Memory = {
       content: { text: "Send a message to +15551234567" },
     } as Memory;
 
-    await sendMessageAction.handler(
-      mockRuntime,
-      message,
-      undefined,
-      undefined,
-      mockCallback,
-    );
+    await sendMessageAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
     expect(mockCallback).toHaveBeenCalledWith({
       text: "Failed to send message: API Error",
@@ -136,13 +111,7 @@ describe("sendMessageAction", () => {
       },
     } as Memory;
 
-    await sendMessageAction.handler(
-      mockRuntime,
-      message,
-      undefined,
-      undefined,
-      mockCallback,
-    );
+    await sendMessageAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
     // When attachments are present but text is empty, text should be undefined (not the default message)
     expect(mockBlooioService.sendMessage).toHaveBeenCalledWith("+15551234567", {
@@ -165,13 +134,7 @@ describe("sendMessageAction", () => {
       },
     } as Memory;
 
-    await sendMessageAction.handler(
-      mockRuntime,
-      message,
-      undefined,
-      undefined,
-      mockCallback,
-    );
+    await sendMessageAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
     expect(mockBlooioService.sendMessage).toHaveBeenCalledWith("+15551234567", {
       text: undefined,

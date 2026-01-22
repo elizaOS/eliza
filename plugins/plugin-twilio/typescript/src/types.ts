@@ -140,7 +140,7 @@ export class TwilioError extends Error {
   constructor(
     message: string,
     public code?: number,
-    public twilioCode?: string,
+    public twilioCode?: string
   ) {
     super(message);
     this.name = "TwilioError";
@@ -148,12 +148,7 @@ export class TwilioError extends Error {
 }
 
 export interface TwilioServiceInterface {
-  sendSms(
-    to: string,
-    body: string,
-    mediaUrl?: string[],
-    from?: string,
-  ): Promise<TwilioMessage>;
+  sendSms(to: string, body: string, mediaUrl?: string[], from?: string): Promise<TwilioMessage>;
   makeCall(to: string, twiml?: string, url?: string): Promise<TwilioCall>;
   handleIncomingSms(webhook: TwilioSmsWebhook): Promise<void>;
   handleIncomingCall(webhook: TwilioVoiceWebhook): Promise<string>; // Returns TwiML

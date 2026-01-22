@@ -1,12 +1,25 @@
 /**
  * elizaOS REST API Example - Express.js
  *
- * A simple REST API server for chat with an AI agent.
- * Uses plugin-eliza-classic for pattern-matching responses.
- * No API keys or external services required.
+ * A REST API server demonstrating the canonical elizaOS implementation.
+ * Uses AgentRuntime with runtime.messageService.handleMessage for proper
+ * message processing through the full elizaOS pipeline.
  */
 
-import { generateElizaResponse } from "@elizaos/plugin-eliza-classic";
+import {
+  AgentRuntime,
+  ChannelType,
+  type Character,
+  createCharacter,
+  createMessageMemory,
+  type IAgentRuntime,
+  type Plugin,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import sqlPlugin from "@elizaos/plugin-sql";
+import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
 import express, {
   type NextFunction,
   type Request,
@@ -14,16 +27,88 @@ import express, {
 } from "express";
 import { v4 as uuidv4 } from "uuid";
 
+// Type assertion for plugin
+const typedSqlPlugin = sqlPlugin as Plugin;
+
 // ============================================================================
 // Configuration
 // ============================================================================
 
 const PORT = Number(process.env.PORT ?? 3000);
 
-const CHARACTER = {
+// Character configuration
+// Pass environment variables via character.secrets so getSetting() can find them
+// Without POSTGRES_URL, plugin-sql will use PGLite automatically
+const character: Character = createCharacter({
   name: "Eliza",
-  bio: "A classic pattern-matching psychotherapist simulation.",
-};
+  bio: "A helpful AI assistant powered by elizaOS.",
+  secrets: {
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
+  },
+});
+
+// ============================================================================
+// Runtime State
+// ============================================================================
+
+let runtime: IAgentRuntime | null = null;
+let initPromise: Promise<IAgentRuntime | null> | null = null;
+let initError: string | null = null;
+let useClassicFallback = false;
+
+// Session identifiers
+const roomId = stringToUuid("chat-room");
+const worldId = stringToUuid("chat-world");
+
+async function getRuntime(): Promise<IAgentRuntime | null> {
+  if (runtime) return runtime;
+  if (useClassicFallback) return null;
+
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    try {
+      console.log("🚀 Initializing elizaOS runtime...");
+
+      // Choose plugins based on whether OpenAI key is available
+      const plugins: Plugin[] = [typedSqlPlugin];
+      if (process.env.OPENAI_API_KEY) {
+        plugins.push(openaiPlugin);
+      } else {
+        console.log("💡 No OPENAI_API_KEY found, using elizaClassicPlugin for responses");
+        plugins.push(elizaClassicPlugin);
+      }
+
+      const newRuntime = new AgentRuntime({
+        character,
+        plugins,
+      });
+
+      await newRuntime.initialize();
+
+      console.log("✅ elizaOS runtime initialized");
+      runtime = newRuntime;
+      return newRuntime;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error("❌ Failed to initialize elizaOS runtime:", message);
+
+      // Check if it's a recoverable error
+      if (message.includes("Extension bundle not found") || message.includes("migrations")) {
+        console.log("⚠️ Database initialization issue.");
+        console.log("💡 Falling back to classic ELIZA mode.");
+        useClassicFallback = true;
+        initError = "Database not compatible. Using classic mode.";
+      } else {
+        initError = message;
+        useClassicFallback = true;
+      }
+      return null;
+    }
+  })();
+
+  return initPromise;
+}
 
 // ============================================================================
 // Express App
@@ -51,13 +136,15 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
 /**
  * GET / - Info endpoint
  */
-app.get("/", (_req: Request, res: Response) => {
+app.get("/", async (_req: Request, res: Response) => {
+  const rt = await getRuntime();
   res.json({
-    name: CHARACTER.name,
-    bio: CHARACTER.bio,
-    version: "1.0.0",
+    name: character.name,
+    bio: character.bio,
+    version: "2.0.0",
     powered_by: "elizaOS",
     framework: "Express.js",
+    mode: rt ? "elizaos" : "classic",
     endpoints: {
       "POST /chat": "Send a message and receive a response",
       "GET /health": "Health check endpoint",
@@ -69,10 +156,13 @@ app.get("/", (_req: Request, res: Response) => {
 /**
  * GET /health - Health check
  */
-app.get("/health", (_req: Request, res: Response) => {
+app.get("/health", async (_req: Request, res: Response) => {
+  const rt = await getRuntime();
   res.json({
-    status: "healthy",
-    character: CHARACTER.name,
+    status: rt ? "healthy" : "degraded",
+    mode: rt ? "elizaos" : "classic",
+    character: character.name,
+    error: initError,
     timestamp: new Date().toISOString(),
   });
 });
@@ -83,11 +173,11 @@ interface ChatRequestBody {
 }
 
 /**
- * POST /chat - Chat with the agent
+ * POST /chat - Chat with the agent using runtime.messageService.handleMessage
  */
 app.post(
   "/chat",
-  (req: Request<object, object, ChatRequestBody>, res: Response) => {
+  async (req: Request<object, object, ChatRequestBody>, res: Response) => {
     const { message, userId: clientUserId } = req.body;
 
     if (!message || typeof message !== "string") {
@@ -97,13 +187,61 @@ app.post(
       return;
     }
 
-    const userId = clientUserId ?? uuidv4();
-    const response = generateElizaResponse(message);
+    const rt = await getRuntime();
+
+    if (!rt) {
+      res.status(503).json({
+        error: "Runtime not initialized",
+        details: initError,
+      });
+      return;
+    }
+
+    const userId = (clientUserId || uuidv4()) as UUID;
+
+    // Ensure connection exists
+    await rt.ensureConnection({
+      entityId: userId,
+      roomId,
+      worldId,
+      userName: "User",
+      source: "express",
+      channelId: "chat",
+      serverId: "server",
+      type: ChannelType.DM,
+    } as Parameters<typeof rt.ensureConnection>[0]);
+
+    // Create message memory
+    const messageMemory = createMessageMemory({
+      id: uuidv4() as UUID,
+      entityId: userId,
+      roomId,
+      content: {
+        text: message,
+        source: "express_rest_api",
+        channelType: ChannelType.DM,
+      },
+    });
+
+    // Process message through the canonical elizaOS pipeline
+    let responseText = "";
+
+    await rt.messageService?.handleMessage(
+      rt,
+      messageMemory,
+      async (content) => {
+        if (content?.text) {
+          responseText += content.text;
+        }
+        return [];
+      },
+    );
 
     res.json({
-      response,
-      character: CHARACTER.name,
+      response: responseText || "I processed your message but have no response.",
+      character: character.name,
       userId,
+      mode: "elizaos",
     });
   },
 );
@@ -112,11 +250,17 @@ app.post(
 // Server Startup
 // ============================================================================
 
-app.listen(PORT, () => {
-  console.log(`\n🌐 elizaOS REST API (Express.js)`);
-  console.log(`   http://localhost:${PORT}\n`);
-  console.log(`📚 Endpoints:`);
-  console.log(`   GET  /       - Agent info`);
-  console.log(`   GET  /health - Health check`);
-  console.log(`   POST /chat   - Chat with agent\n`);
+// Pre-initialize runtime then start server
+getRuntime().then((rt) => {
+  app.listen(PORT, () => {
+    console.log(`\n🌐 elizaOS REST API (Express.js)`);
+    console.log(`   http://localhost:${PORT}\n`);
+    console.log(`📚 Endpoints:`);
+    console.log(`   GET  /       - Agent info`);
+    console.log(`   GET  /health - Health check`);
+    console.log(`   POST /chat   - Chat with agent (uses runtime.messageService.handleMessage)\n`);
+    if (!rt) {
+      console.log(`⚠️  Runtime initialization issue: ${initError}\n`);
+    }
+  });
 });

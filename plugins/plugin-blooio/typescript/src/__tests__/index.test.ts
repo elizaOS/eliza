@@ -1,14 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import blooioPlugin from "../index";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import blooioPlugin from "../index";
 
 describe("blooioPlugin", () => {
   it("should have correct metadata", () => {
     expect(blooioPlugin.name).toBe("blooio");
-    expect(blooioPlugin.description).toBe(
-      "Blooio plugin for iMessage/SMS messaging integration",
-    );
+    expect(blooioPlugin.description).toBe("Blooio plugin for iMessage/SMS messaging integration");
   });
 
   it("should export all actions", () => {
@@ -61,9 +59,7 @@ describe("blooioPlugin", () => {
 
       await blooioPlugin.init?.({}, mockRuntime);
 
-      expect(logger.info).toHaveBeenCalledWith(
-        "Blooio plugin initialized successfully",
-      );
+      expect(logger.info).toHaveBeenCalledWith("Blooio plugin initialized successfully");
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
@@ -76,7 +72,7 @@ describe("blooioPlugin", () => {
       await blooioPlugin.init?.({}, mockRuntime);
 
       expect(logger.warn).toHaveBeenCalledWith(
-        "Blooio API key not provided - Blooio plugin is loaded but will not be functional",
+        "Blooio API key not provided - Blooio plugin is loaded but will not be functional"
       );
     });
 
@@ -90,7 +86,7 @@ describe("blooioPlugin", () => {
       await blooioPlugin.init?.({}, mockRuntime);
 
       expect(logger.warn).toHaveBeenCalledWith(
-        "Blooio webhook URL not provided - Blooio will not receive incoming messages",
+        "Blooio webhook URL not provided - Blooio will not receive incoming messages"
       );
     });
   });

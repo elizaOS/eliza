@@ -1,19 +1,15 @@
 import {
-  Action,
+  type Action,
+  type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  type HandlerCallback,
-  logger,
 } from "@elizaos/core";
-import { SendSmsSchema } from "../types";
-import { TwilioService } from "../service";
 import { TWILIO_SERVICE_NAME } from "../constants";
-import {
-  validateMessagingAddress,
-  chunkTextForSms,
-  extractPhoneNumber,
-} from "../utils";
+import type { TwilioService } from "../service";
+import { SendSmsSchema } from "../types";
+import { chunkTextForSms, extractPhoneNumber, validateMessagingAddress } from "../utils";
 
 const sendSmsAction: Action = {
   name: "SEND_SMS",
@@ -41,12 +37,10 @@ const sendSmsAction: Action = {
     message: Memory,
     state?: State,
     options?: any,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ) => {
     try {
-      const twilioService = runtime.getService(
-        TWILIO_SERVICE_NAME,
-      ) as unknown as TwilioService;
+      const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
       if (!twilioService) {
         throw new Error("Twilio service not available");
       }
@@ -63,10 +57,7 @@ const sendSmsAction: Action = {
       // Remove the phone number and command keywords from the text
       let messageContent = text
         .replace(phoneNumber, "")
-        .replace(
-          /^(send\s*(an?\s*)?(sms|text|message)\s*(to\s*)?|text\s+)/gi,
-          "",
-        )
+        .replace(/^(send\s*(an?\s*)?(sms|text|message)\s*(to\s*)?|text\s+)/gi, "")
         .replace(/\b(saying|with\s*(the\s*)?(message|text))\b/gi, "")
         .trim();
 
@@ -140,14 +131,7 @@ const sendSmsAction: Action = {
       },
     ],
   ],
-  similes: [
-    "send sms",
-    "send text",
-    "text message",
-    "sms to",
-    "text to",
-    "message phone",
-  ],
+  similes: ["send sms", "send text", "text message", "sms to", "text to", "message phone"],
 };
 
 export default sendSmsAction;

@@ -2,23 +2,69 @@
 
 This directory contains REST API examples for elizaOS using various web frameworks across TypeScript, Python, and Rust.
 
-**No API keys or external services required!** All examples use:
+All examples use the **canonical elizaOS implementation pattern**:
 
-- `plugin-localdb` for local JSON-based storage (TypeScript examples)
-- `plugin-eliza-classic` for pattern-matching responses (no LLM needed)
+```
+runtime.messageService.handleMessage(runtime, messageMemory, callback)
+```
+
+## The Canonical Pattern
+
+Every example follows the same core pattern:
+
+1. **Create an AgentRuntime** with plugins (sql, openai, etc.)
+2. **Initialize the runtime** with `await runtime.initialize()`
+3. **Ensure connection** for the user session
+4. **Create a message memory** with the user's message
+5. **Call `messageService.handleMessage()`** to process the message
+
+### TypeScript Example
+
+```typescript
+import {
+  AgentRuntime,
+  ChannelType,
+  createCharacter,
+  createMessageMemory,
+  stringToUuid,
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import sqlPlugin from "@elizaos/plugin-sql";
+
+// Create runtime
+const runtime = new AgentRuntime({
+  character: createCharacter({ name: "Eliza", bio: "A helpful AI assistant." }),
+  plugins: [sqlPlugin, openaiPlugin],
+});
+
+await runtime.initialize();
+
+// Handle a message
+const messageMemory = createMessageMemory({
+  id: uuidv4(),
+  entityId: userId,
+  roomId: stringToUuid("room"),
+  content: { text: "Hello!", source: "api", channelType: ChannelType.API },
+});
+
+await runtime.messageService?.handleMessage(runtime, messageMemory, async (content) => {
+  console.log("Response:", content.text);
+  return [];
+});
+```
 
 ## Available Examples
 
-| Framework             | Language   | Directory  |
-| --------------------- | ---------- | ---------- |
-| [Express](./express/) | TypeScript | `express/` |
-| [Hono](./hono/)       | TypeScript | `hono/`    |
-| [Elysia](./elysia/)   | TypeScript | `elysia/`  |
-| [FastAPI](./fastapi/) | Python     | `fastapi/` |
-| [Flask](./flask/)     | Python     | `flask/`   |
-| [Actix Web](./actix/) | Rust       | `actix/`   |
-| [Axum](./axum/)       | Rust       | `axum/`    |
-| [Rocket](./rocket/)   | Rust       | `rocket/`  |
+| Framework             | Language   | Directory  | Full Runtime |
+| --------------------- | ---------- | ---------- | ------------ |
+| [Express](./express/) | TypeScript | `express/` | ✅ Yes       |
+| [Hono](./hono/)       | TypeScript | `hono/`    | ✅ Yes       |
+| [Elysia](./elysia/)   | TypeScript | `elysia/`  | ✅ Yes       |
+| [FastAPI](./fastapi/) | Python     | `fastapi/` | ✅ Yes       |
+| [Flask](./flask/)     | Python     | `flask/`   | ✅ Yes       |
+| [Actix Web](./actix/) | Rust       | `actix/`   | ✅ Yes       |
+| [Axum](./axum/)       | Rust       | `axum/`    | ✅ Yes       |
+| [Rocket](./rocket/)   | Rust       | `rocket/`  | ✅ Yes       |
 
 ## Common API
 
@@ -54,10 +100,20 @@ Response:
 
 ```json
 {
-  "response": "How do you do. Please state your problem.",
+  "response": "Hello! I'm doing well. How can I help you today?",
   "character": "Eliza",
   "userId": "generated-uuid"
 }
+```
+
+### `POST /chat/stream` (TypeScript only)
+
+Send a message and receive a streaming response via Server-Sent Events.
+
+```bash
+curl -X POST http://localhost:3000/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Tell me a story"}'
 ```
 
 ## Quick Start
@@ -67,7 +123,7 @@ Response:
 ```bash
 cd express  # or hono, elysia
 bun install
-bun run start
+OPENAI_API_KEY=your-key bun run start
 ```
 
 ### Python (FastAPI, Flask)
@@ -77,42 +133,45 @@ cd fastapi  # or flask
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-python server.py
+OPENAI_API_KEY=your-key python server.py
 ```
 
 ### Rust (Actix, Axum, Rocket)
 
 ```bash
 cd actix  # or axum, rocket
-cargo run --release
+OPENAI_API_KEY=your-key cargo run --release
 ```
 
-## Configuration
+## Environment Variables
 
-All examples support the `PORT` environment variable:
+| Variable         | Description             | Required |
+| ---------------- | ----------------------- | -------- |
+| `OPENAI_API_KEY` | OpenAI API key          | Yes      |
+| `PORT`           | Server port (default: 3000) | No   |
+| `CHARACTER_NAME` | Agent name              | No       |
+| `CHARACTER_BIO`  | Agent bio/description   | No       |
 
-```bash
-PORT=8080 bun run start        # TypeScript
-PORT=8080 python server.py     # Python
-PORT=8080 cargo run --release  # Rust
+## Important: Never Call Plugins Directly
+
+**DO NOT** do this:
+
+```typescript
+// ❌ WRONG - Never call plugin functions directly
+import { generateElizaResponse } from "@elizaos/plugin-eliza-classic";
+const response = generateElizaResponse(message);
 ```
 
-## About ELIZA
+**DO** this instead:
 
-These examples use the classic ELIZA pattern-matching algorithm from Joseph Weizenbaum's 1966 program. ELIZA simulates a Rogerian psychotherapist and responds using pattern matching and pronoun reflection - no LLM required!
-
-Example conversation:
-
-```
-You: I am feeling sad today
-Eliza: I am sorry to hear that you are feeling that way.
-
-You: My mother doesn't understand me
-Eliza: Tell me more about your family.
-
-You: I think computers are taking over
-Eliza: Do computers worry you?
+```typescript
+// ✅ CORRECT - Always use the runtime's message service
+await runtime.messageService?.handleMessage(runtime, messageMemory, callback);
 ```
 
-
-
+The message service:
+- Manages conversation context and memory
+- Runs evaluators to check if the agent should respond
+- Invokes providers to gather context
+- Executes actions based on the conversation
+- Handles all model calls through the plugin system

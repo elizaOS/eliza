@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { BlooioService } from "../service";
 import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BlooioService } from "../service";
 import { BlooioError } from "../types";
 
 vi.mock("express", () => ({
@@ -56,9 +56,7 @@ describe("BlooioService", () => {
         return "value";
       });
 
-      await expect(service.initialize(mockRuntime)).rejects.toThrow(
-        BlooioError,
-      );
+      await expect(service.initialize(mockRuntime)).rejects.toThrow(BlooioError);
     });
 
     it("should handle duplicate initialization gracefully", async () => {
@@ -98,14 +96,12 @@ describe("BlooioService", () => {
       expect(result.status).toBe("queued");
       expect(fetchMock).toHaveBeenCalledWith(
         "https://backend.blooio.com/v2/api/chats/%2B15551234567/messages",
-        expect.objectContaining({ method: "POST" }),
+        expect.objectContaining({ method: "POST" })
       );
     });
 
     it("should throw for invalid chat id", async () => {
-      await expect(
-        service.sendMessage("invalid", { text: "Test" }),
-      ).rejects.toThrow(BlooioError);
+      await expect(service.sendMessage("invalid", { text: "Test" })).rejects.toThrow(BlooioError);
     });
 
     it("should throw for API errors", async () => {
@@ -116,9 +112,9 @@ describe("BlooioService", () => {
         text: async () => "Unauthorized",
       } as Response);
 
-      await expect(
-        service.sendMessage("+15551234567", { text: "Test" }),
-      ).rejects.toThrow(BlooioError);
+      await expect(service.sendMessage("+15551234567", { text: "Test" })).rejects.toThrow(
+        BlooioError
+      );
     });
 
     it("should send message with attachments", async () => {
@@ -192,8 +188,7 @@ describe("BlooioService", () => {
       fetchMock.mockResolvedValue({
         ok: true,
         status: 200,
-        text: async () =>
-          JSON.stringify({ message_id: "msg_123", status: "queued" }),
+        text: async () => JSON.stringify({ message_id: "msg_123", status: "queued" }),
       } as Response);
 
       await service.sendMessage("+15551234567", { text: "Test" });

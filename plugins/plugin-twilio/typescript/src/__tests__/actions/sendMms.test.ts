@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import sendMmsAction from "../../actions/sendMms";
-import type { IAgentRuntime, Memory, HandlerCallback } from "@elizaos/core";
 
 // Mock the dependencies
 vi.mock("../../utils", () => ({
@@ -40,7 +40,7 @@ describe("sendMmsAction", () => {
     it("should have correct name and description", () => {
       expect(sendMmsAction.name).toBe("SEND_MMS");
       expect(sendMmsAction.description).toBe(
-        "Send an MMS (multimedia message) with images, audio, or video via Twilio",
+        "Send an MMS (multimedia message) with images, audio, or video via Twilio"
       );
     });
 
@@ -124,18 +124,12 @@ describe("sendMmsAction", () => {
         },
       } as Memory;
 
-      await sendMmsAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await sendMmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockTwilioService.sendSms).toHaveBeenCalledWith(
         "+18885551234",
         "with   'Check this out!",
-        ["https://example.com/image.jpg"],
+        ["https://example.com/image.jpg"]
       );
       expect(mockCallback).toHaveBeenCalledWith({
         text: "MMS sent successfully to +18885551234 with 1 media attachment(s)",
@@ -150,19 +144,12 @@ describe("sendMmsAction", () => {
         },
       } as Memory;
 
-      await sendMmsAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await sendMmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
-      expect(mockTwilioService.sendSms).toHaveBeenCalledWith(
-        "+18885551234",
-        "with  and",
-        ["https://example.com/image1.jpg", "https://example.com/image2.jpg"],
-      );
+      expect(mockTwilioService.sendSms).toHaveBeenCalledWith("+18885551234", "with  and", [
+        "https://example.com/image1.jpg",
+        "https://example.com/image2.jpg",
+      ]);
     });
 
     it("should use default demo image when no URLs provided", async () => {
@@ -170,18 +157,12 @@ describe("sendMmsAction", () => {
         content: { text: "Send a picture to +18885551234" },
       } as Memory;
 
-      await sendMmsAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await sendMmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockTwilioService.sendSms).toHaveBeenCalledWith(
         "+18885551234",
         "Here's the media you requested",
-        ["https://demo.twilio.com/owl.png"],
+        ["https://demo.twilio.com/owl.png"]
       );
     });
 
@@ -193,8 +174,7 @@ describe("sendMmsAction", () => {
           expectedMessage: "with   'Look  this!",
         },
         {
-          input:
-            "Send an MMS to +18885551234 with the image https://example.com/img.jpg",
+          input: "Send an MMS to +18885551234 with the image https://example.com/img.jpg",
           expectedMessage: "Here's the media you requested",
         },
       ];
@@ -205,18 +185,12 @@ describe("sendMmsAction", () => {
           content: { text: testCase.input },
         } as Memory;
 
-        await sendMmsAction.handler(
-          mockRuntime,
-          message,
-          undefined,
-          undefined,
-          mockCallback,
-        );
+        await sendMmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
         expect(mockTwilioService.sendSms).toHaveBeenCalledWith(
           "+18885551234",
           testCase.expectedMessage,
-          expect.any(Array),
+          expect.any(Array)
         );
       }
     });
@@ -228,13 +202,7 @@ describe("sendMmsAction", () => {
         content: { text: "Send picture to +18885551234" },
       } as Memory;
 
-      await sendMmsAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await sendMmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockCallback).toHaveBeenCalledWith({
         text: "Failed to send MMS: API Error",
@@ -249,13 +217,7 @@ describe("sendMmsAction", () => {
         content: { text: "Send picture to +18885551234" },
       } as Memory;
 
-      await sendMmsAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await sendMmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockCallback).toHaveBeenCalledWith({
         text: "Failed to send MMS: Twilio service not available",
@@ -271,13 +233,7 @@ describe("sendMmsAction", () => {
         content: { text: "Send picture to +18885551234" },
       } as Memory;
 
-      await sendMmsAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await sendMmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockCallback).toHaveBeenCalledWith({
         text: "Failed to send MMS: Invalid phone number format",

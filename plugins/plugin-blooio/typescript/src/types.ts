@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 export type BlooioProtocol = "imessage" | "sms" | "rcs" | "non-imessage";
 
@@ -135,7 +135,7 @@ export class BlooioError extends Error {
   constructor(
     message: string,
     public statusCode?: number,
-    public details?: string,
+    public details?: string
   ) {
     super(message);
     this.name = "BlooioError";
@@ -145,7 +145,7 @@ export class BlooioError extends Error {
 export interface BlooioServiceInterface {
   sendMessage(
     chatId: string,
-    request: BlooioSendMessageRequest,
+    request: BlooioSendMessageRequest
   ): Promise<BlooioSendMessageResponse>;
 }
 

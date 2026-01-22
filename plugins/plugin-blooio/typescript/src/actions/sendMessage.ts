@@ -1,14 +1,15 @@
 import {
-  Action,
+  type Action,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Media,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
 import { BLOOIO_SERVICE_NAME } from "../constants";
-import { BlooioService } from "../service";
+import type { BlooioService } from "../service";
 import type { BlooioAttachment } from "../types";
 import {
   extractAttachmentUrls,
@@ -27,8 +28,7 @@ const sendMessageAction: Action = {
       return false;
     }
 
-    const text =
-      typeof message.content?.text === "string" ? message.content.text : "";
+    const text = typeof message.content?.text === "string" ? message.content.text : "";
     const candidates = extractChatIdCandidates(text);
     return candidates.some((candidate) => validateChatId(candidate));
   },
@@ -37,30 +37,23 @@ const sendMessageAction: Action = {
     message: Memory,
     _state?: State,
     _options?: { [key: string]: unknown },
-    callback?: HandlerCallback,
-  ) => {
+    callback?: HandlerCallback
+  ): Promise<ActionResult> => {
     try {
-      const blooioService = runtime.getService(
-        BLOOIO_SERVICE_NAME,
-      ) as BlooioService | null;
+      const blooioService = runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
       if (!blooioService) {
         throw new Error("Blooio service not available");
       }
 
-      const text =
-        typeof message.content?.text === "string" ? message.content.text : "";
+      const text = typeof message.content?.text === "string" ? message.content.text : "";
       const candidates = extractChatIdCandidates(text);
-      const validRecipients = candidates.filter((candidate) =>
-        validateChatId(candidate),
-      );
+      const validRecipients = candidates.filter((candidate) => validateChatId(candidate));
 
       if (validRecipients.length === 0) {
         throw new Error("No valid chat identifier found in message");
       }
 
-      const chatId = validRecipients
-        .map((recipient) => recipient.trim())
-        .join(",");
+      const chatId = validRecipients.map((recipient) => recipient.trim()).join(",");
 
       // Collect attachments from multiple sources
       const outboundAttachments: Array<string | BlooioAttachment> = [];
@@ -106,11 +99,7 @@ const sendMessageAction: Action = {
         .trim();
 
       // Clear if only command keywords remain
-      if (
-        /^(send|message|text|imessage|sms|saying|with|to)?$/i.test(
-          messageContent,
-        )
-      ) {
+      if (/^(send|message|text|imessage|sms|saying|with|to)?$/i.test(messageContent)) {
         messageContent = "";
       }
 
@@ -120,27 +109,27 @@ const sendMessageAction: Action = {
 
       await blooioService.sendMessage(chatId, {
         text: messageContent || undefined,
-        attachments:
-          outboundAttachments.length > 0 ? outboundAttachments : undefined,
+        attachments: outboundAttachments.length > 0 ? outboundAttachments : undefined,
       });
 
+      const successText = `Message sent successfully to ${chatId}`;
       if (callback) {
         await callback({
-          text: `Message sent successfully to ${chatId}`,
+          text: successText,
           success: true,
         });
       }
+      return { success: true, text: successText };
     } catch (error) {
-      logger.error(
-        { error: String(error) },
-        "Error sending message via Blooio",
-      );
+      logger.error({ error: String(error) }, "Error sending message via Blooio");
+      const errorText = `Failed to send message: ${error instanceof Error ? error.message : "Unknown error"}`;
       if (callback) {
         await callback({
-          text: `Failed to send message: ${error instanceof Error ? error.message : "Unknown error"}`,
+          text: errorText,
           success: false,
         });
       }
+      return { success: false, text: errorText };
     }
   },
   examples: [

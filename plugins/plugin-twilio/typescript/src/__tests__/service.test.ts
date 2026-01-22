@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { TwilioService } from "../service";
 import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TwilioService } from "../service";
 import { TwilioError } from "../types";
 
 // Mock dependencies first before any other code
@@ -49,7 +49,7 @@ const createMockTwilioClient = () => {
     })),
     {
       list: vi.fn(),
-    },
+    }
   );
 
   return mockClient;
@@ -99,9 +99,7 @@ describe("TwilioService", () => {
 
   describe("initialization", () => {
     it("should initialize successfully with valid configuration", async () => {
-      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([
-        { sid: "PN123" },
-      ]);
+      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([{ sid: "PN123" }]);
 
       await service.initialize(mockRuntime);
 
@@ -115,15 +113,11 @@ describe("TwilioService", () => {
         return "value";
       });
 
-      await expect(service.initialize(mockRuntime)).rejects.toThrow(
-        TwilioError,
-      );
+      await expect(service.initialize(mockRuntime)).rejects.toThrow(TwilioError);
     });
 
     it("should handle duplicate initialization gracefully", async () => {
-      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([
-        { sid: "PN123" },
-      ]);
+      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([{ sid: "PN123" }]);
 
       await service.initialize(mockRuntime);
       await service.initialize(mockRuntime); // Second call
@@ -134,9 +128,7 @@ describe("TwilioService", () => {
 
   describe("sendSms", () => {
     beforeEach(async () => {
-      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([
-        { sid: "PN123" },
-      ]);
+      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([{ sid: "PN123" }]);
       await service.initialize(mockRuntime);
     });
 
@@ -178,11 +170,7 @@ describe("TwilioService", () => {
       mockTwilioClient.messages.create.mockResolvedValue(mockMessage);
 
       const mediaUrls = ["https://example.com/image.jpg"];
-      const result = await service.sendSms(
-        "+18885551234",
-        "Test MMS",
-        mediaUrls,
-      );
+      const result = await service.sendSms("+18885551234", "Test MMS", mediaUrls);
 
       expect(result.sid).toBe("MM123");
       expect(mockTwilioClient.messages.create).toHaveBeenCalledWith({
@@ -195,19 +183,13 @@ describe("TwilioService", () => {
     });
 
     it("should throw error for invalid phone number", async () => {
-      await expect(service.sendSms("invalid", "Test")).rejects.toThrow(
-        TwilioError,
-      );
+      await expect(service.sendSms("invalid", "Test")).rejects.toThrow(TwilioError);
     });
 
     it("should handle API errors", async () => {
-      mockTwilioClient.messages.create.mockRejectedValue(
-        new Error("API Error"),
-      );
+      mockTwilioClient.messages.create.mockRejectedValue(new Error("API Error"));
 
-      await expect(service.sendSms("+18885551234", "Test")).rejects.toThrow(
-        TwilioError,
-      );
+      await expect(service.sendSms("+18885551234", "Test")).rejects.toThrow(TwilioError);
     });
 
     it("should emit SMS_SENT event", async () => {
@@ -226,16 +208,14 @@ describe("TwilioService", () => {
 
       expect(mockRuntime.emitEvent).toHaveBeenCalledWith(
         "sms:sent",
-        expect.objectContaining({ sid: "SM123" }),
+        expect.objectContaining({ sid: "SM123" })
       );
     });
   });
 
   describe("makeCall", () => {
     beforeEach(async () => {
-      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([
-        { sid: "PN123" },
-      ]);
+      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([{ sid: "PN123" }]);
       await service.initialize(mockRuntime);
     });
 
@@ -278,9 +258,7 @@ describe("TwilioService", () => {
       const result = await service.makeCall("+18885551234", undefined, url);
 
       expect(result.sid).toBe("CA123");
-      expect(mockTwilioClient.calls.create).toHaveBeenCalledWith(
-        expect.objectContaining({ url }),
-      );
+      expect(mockTwilioClient.calls.create).toHaveBeenCalledWith(expect.objectContaining({ url }));
     });
 
     it("should use default TwiML when no TwiML or URL provided", async () => {
@@ -299,7 +277,7 @@ describe("TwilioService", () => {
       expect(mockTwilioClient.calls.create).toHaveBeenCalledWith(
         expect.objectContaining({
           twiml: expect.stringContaining("Hello from Eliza AI assistant"),
-        }),
+        })
       );
     });
 
@@ -310,9 +288,7 @@ describe("TwilioService", () => {
 
   describe("conversation history", () => {
     beforeEach(async () => {
-      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([
-        { sid: "PN123" },
-      ]);
+      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([{ sid: "PN123" }]);
       await service.initialize(mockRuntime);
     });
 
@@ -366,9 +342,7 @@ describe("TwilioService", () => {
 
   describe("call state", () => {
     beforeEach(async () => {
-      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([
-        { sid: "PN123" },
-      ]);
+      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([{ sid: "PN123" }]);
       await service.initialize(mockRuntime);
     });
 
@@ -398,9 +372,7 @@ describe("TwilioService", () => {
 
   describe("cleanup", () => {
     it("should clean up resources", async () => {
-      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([
-        { sid: "PN123" },
-      ]);
+      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([{ sid: "PN123" }]);
 
       await service.initialize(mockRuntime);
       await service.cleanup();
@@ -415,9 +387,7 @@ describe("TwilioService", () => {
     });
 
     it("should start service", async () => {
-      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([
-        { sid: "PN123" },
-      ]);
+      mockTwilioClient.incomingPhoneNumbers.list.mockResolvedValue([{ sid: "PN123" }]);
 
       const newService = await TwilioService.start(mockRuntime);
 

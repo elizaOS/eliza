@@ -1,13 +1,8 @@
-import {
-  type IAgentRuntime,
-  type TestSuite,
-  type TestCase,
-  logger,
-} from "@elizaos/core";
-import { TwilioService } from "./service";
-import { TWILIO_SERVICE_NAME } from "./constants";
-import * as readline from "readline";
+import { type IAgentRuntime, logger, type TestCase, type TestSuite } from "@elizaos/core";
 import axios from "axios";
+import * as readline from "readline";
+import { TWILIO_SERVICE_NAME } from "./constants";
+import type { TwilioService } from "./service";
 
 export class TwilioTestSuite implements TestSuite {
   name = "Twilio Plugin Test Suite";
@@ -17,9 +12,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Service Initialization Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(
-          TWILIO_SERVICE_NAME,
-        ) as unknown as TwilioService;
+        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -33,17 +26,13 @@ export class TwilioTestSuite implements TestSuite {
           throw new Error("Twilio phone number not configured");
         }
 
-        logger.info(
-          `✅ Service initialized with phone number: ${twilioService.phoneNumber}`,
-        );
+        logger.info(`✅ Service initialized with phone number: ${twilioService.phoneNumber}`);
       },
     },
     {
       name: "Send SMS Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(
-          TWILIO_SERVICE_NAME,
-        ) as unknown as TwilioService;
+        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -54,10 +43,7 @@ export class TwilioTestSuite implements TestSuite {
           return;
         }
 
-        const result = await twilioService.sendSms(
-          testNumber,
-          "Test SMS from Eliza Twilio plugin",
-        );
+        const result = await twilioService.sendSms(testNumber, "Test SMS from Eliza Twilio plugin");
 
         logger.info(`✅ SMS test successful. Message SID: ${result.sid}`);
       },
@@ -65,9 +51,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Send MMS Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(
-          TWILIO_SERVICE_NAME,
-        ) as unknown as TwilioService;
+        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -81,7 +65,7 @@ export class TwilioTestSuite implements TestSuite {
         const result = await twilioService.sendSms(
           testNumber,
           "Test MMS from Eliza Twilio plugin",
-          ["https://demo.twilio.com/owl.png"], // Twilio's demo image
+          ["https://demo.twilio.com/owl.png"] // Twilio's demo image
         );
 
         logger.info(`✅ MMS test successful. Message SID: ${result.sid}`);
@@ -90,9 +74,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Make Call Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(
-          TWILIO_SERVICE_NAME,
-        ) as unknown as TwilioService;
+        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -117,9 +99,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Webhook Server Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(
-          TWILIO_SERVICE_NAME,
-        ) as unknown as TwilioService;
+        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -149,7 +129,7 @@ export class TwilioTestSuite implements TestSuite {
                 headers: {
                   "Content-Type": "application/x-www-form-urlencoded",
                 },
-              },
+              }
             );
 
             if (smsResponse.status === 200) {
@@ -169,17 +149,14 @@ export class TwilioTestSuite implements TestSuite {
                 headers: {
                   "Content-Type": "application/x-www-form-urlencoded",
                 },
-              },
+              }
             );
 
             if (voiceResponse.status === 200) {
               logger.info("✅ Voice webhook endpoint is responding");
             }
           } catch (error) {
-            logger.warn(
-              { error: String(error) },
-              "Could not test webhook endpoints locally",
-            );
+            logger.warn({ error: String(error) }, "Could not test webhook endpoints locally");
           }
         }
       },
@@ -187,18 +164,14 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Conversation History Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(
-          TWILIO_SERVICE_NAME,
-        ) as unknown as TwilioService;
+        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
 
         const testNumber = runtime.getSetting("TWILIO_TEST_PHONE_NUMBER");
         if (!testNumber) {
-          logger.warn(
-            "TWILIO_TEST_PHONE_NUMBER not set, skipping conversation history test",
-          );
+          logger.warn("TWILIO_TEST_PHONE_NUMBER not set, skipping conversation history test");
           return;
         }
 
@@ -209,23 +182,17 @@ export class TwilioTestSuite implements TestSuite {
         const history = twilioService.getConversationHistory(testNumber, 5);
 
         if (history.length > 0) {
-          logger.info(
-            `✅ Conversation history retrieved: ${history.length} messages`,
-          );
+          logger.info(`✅ Conversation history retrieved: ${history.length} messages`);
           logger.info(`   Latest message: ${history[history.length - 1].body}`);
         } else {
-          logger.info(
-            "✅ Conversation history is empty (expected for new number)",
-          );
+          logger.info("✅ Conversation history is empty (expected for new number)");
         }
       },
     },
     {
       name: "Error Handling Test",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(
-          TWILIO_SERVICE_NAME,
-        ) as unknown as TwilioService;
+        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -255,9 +222,7 @@ export class TwilioTestSuite implements TestSuite {
     {
       name: "Interactive Test Mode",
       fn: async (runtime: IAgentRuntime) => {
-        const twilioService = runtime.getService(
-          TWILIO_SERVICE_NAME,
-        ) as unknown as TwilioService;
+        const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
         if (!twilioService) {
           throw new Error("Twilio service not initialized");
         }
@@ -267,7 +232,7 @@ export class TwilioTestSuite implements TestSuite {
 
         if (!phoneNumber || !testNumber) {
           throw new Error(
-            "TWILIO_PHONE_NUMBER and TWILIO_TEST_PHONE_NUMBER must be set for interactive testing",
+            "TWILIO_PHONE_NUMBER and TWILIO_TEST_PHONE_NUMBER must be set for interactive testing"
           );
         }
 
@@ -276,12 +241,8 @@ export class TwilioTestSuite implements TestSuite {
         logger.info(`📱 Your Twilio Number: ${phoneNumber}`);
         logger.info(`📱 Test Target Number: ${testNumber}`);
         logger.info("\n📋 Instructions:");
-        logger.info(
-          "1. The webhook server is running and listening for incoming messages",
-        );
-        logger.info(
-          "2. Text or call your Twilio number to test incoming messages",
-        );
+        logger.info("1. The webhook server is running and listening for incoming messages");
+        logger.info("2. Text or call your Twilio number to test incoming messages");
         logger.info("3. The test will send a test SMS and make a test call");
         logger.info("4. Watch the console for incoming message logs");
         logger.info("\nPress Enter to start the interactive test...");
@@ -303,7 +264,7 @@ export class TwilioTestSuite implements TestSuite {
         try {
           const smsResult = await twilioService.sendSms(
             testNumber,
-            "🎉 Interactive test SMS from ElizaOS! Reply to test two-way messaging.",
+            "🎉 Interactive test SMS from ElizaOS! Reply to test two-way messaging."
           );
           logger.info(`✅ SMS sent! SID: ${smsResult.sid}`);
           logger.info(`   Status: ${smsResult.status}`);

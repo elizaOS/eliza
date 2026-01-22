@@ -1,11 +1,6 @@
-import {
-  type IAgentRuntime,
-  type TestCase,
-  type TestSuite,
-  logger,
-} from "@elizaos/core";
-import { BlooioService } from "./service";
+import { type IAgentRuntime, logger, type TestCase, type TestSuite } from "@elizaos/core";
 import { BLOOIO_SERVICE_NAME } from "./constants";
+import type { BlooioService } from "./service";
 
 export class BlooioTestSuite implements TestSuite {
   name = "Blooio Plugin Test Suite";
@@ -15,9 +10,7 @@ export class BlooioTestSuite implements TestSuite {
     {
       name: "Service Initialization Test",
       fn: async (runtime: IAgentRuntime) => {
-        const blooioService = runtime.getService(
-          BLOOIO_SERVICE_NAME,
-        ) as BlooioService | null;
+        const blooioService = runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
         if (!blooioService) {
           throw new Error("Blooio service not initialized");
         }
@@ -32,9 +25,7 @@ export class BlooioTestSuite implements TestSuite {
     {
       name: "Send Message Test",
       fn: async (runtime: IAgentRuntime) => {
-        const blooioService = runtime.getService(
-          BLOOIO_SERVICE_NAME,
-        ) as BlooioService | null;
+        const blooioService = runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
         if (!blooioService) {
           throw new Error("Blooio service not initialized");
         }
@@ -55,9 +46,7 @@ export class BlooioTestSuite implements TestSuite {
     {
       name: "Conversation History Test",
       fn: async (runtime: IAgentRuntime) => {
-        const blooioService = runtime.getService(
-          BLOOIO_SERVICE_NAME,
-        ) as BlooioService | null;
+        const blooioService = runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
         if (!blooioService) {
           throw new Error("Blooio service not initialized");
         }
@@ -74,25 +63,17 @@ export class BlooioTestSuite implements TestSuite {
 
         const history = blooioService.getConversationHistory(testChatId, 5);
         if (history.length > 0) {
-          logger.info(
-            `✅ Conversation history retrieved: ${history.length} messages`,
-          );
-          logger.info(
-            `   Latest message: ${history[history.length - 1].text ?? "(no text)"}`,
-          );
+          logger.info(`✅ Conversation history retrieved: ${history.length} messages`);
+          logger.info(`   Latest message: ${history[history.length - 1].text ?? "(no text)"}`);
         } else {
-          logger.info(
-            "✅ Conversation history is empty (expected for new chat)",
-          );
+          logger.info("✅ Conversation history is empty (expected for new chat)");
         }
       },
     },
     {
       name: "Error Handling Test",
       fn: async (runtime: IAgentRuntime) => {
-        const blooioService = runtime.getService(
-          BLOOIO_SERVICE_NAME,
-        ) as BlooioService | null;
+        const blooioService = runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
         if (!blooioService) {
           throw new Error("Blooio service not initialized");
         }
@@ -100,7 +81,7 @@ export class BlooioTestSuite implements TestSuite {
         try {
           await blooioService.sendMessage("invalid-chat-id", { text: "Test" });
           throw new Error("Expected error for invalid chat id");
-        } catch (error) {
+        } catch (_error) {
           logger.info("✅ Invalid chat id error handled correctly");
         }
       },
