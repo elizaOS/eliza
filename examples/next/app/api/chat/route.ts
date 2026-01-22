@@ -1,3 +1,12 @@
+/**
+ * elizaOS Next.js API Route
+ *
+ * Uses the canonical elizaOS runtime with messageService.handleMessage pattern.
+ *
+ * NOTE: If PGLite bundling fails with Next.js, set POSTGRES_URL for external database,
+ * or run `elizaos start` separately and connect to its API.
+ */
+
 import {
   AgentRuntime,
   ChannelType,
@@ -12,36 +21,35 @@ import {
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
 
+import { v4 as uuidv4 } from "uuid";
+
 // Type assertion needed due to namespace import inference
 const typedSqlPlugin = sqlPlugin as Plugin;
 
-import { v4 as uuidv4 } from "uuid";
-import { generateElizaResponse } from "@/lib/eliza-classic";
-
-// Character configuration (same as chat.ts)
+// Character configuration
 // Pass environment variables via character.secrets so getSetting() can find them
-// Without POSTGRES_URL, plugin-sql will use PGLite automatically
 const character: Character = createCharacter({
   name: "Eliza",
-  bio: "A helpful AI assistant.",
+  bio: "A helpful AI assistant powered by elizaOS.",
+  system:
+    "You are Eliza, a helpful AI assistant. Be friendly, knowledgeable, and conversational.",
   secrets: {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
+    POSTGRES_URL: process.env.POSTGRES_URL || "",
   },
 });
 
-// Runtime state
+// Runtime state (singleton for the Next.js server)
 let runtime: IAgentRuntime | null = null;
-let initPromise: Promise<IAgentRuntime | null> | null = null;
+let initPromise: Promise<IAgentRuntime> | null = null;
 let initError: string | null = null;
-let useClassicFallback = false;
 
 // Session info
 const roomId = stringToUuid("chat-room");
 const worldId = stringToUuid("chat-world");
 
-async function getRuntime(): Promise<IAgentRuntime | null> {
+async function getRuntime(): Promise<IAgentRuntime> {
   if (runtime) return runtime;
-  if (useClassicFallback) return null;
 
   if (initPromise) return initPromise;
 
@@ -68,20 +76,15 @@ async function getRuntime(): Promise<IAgentRuntime | null> {
         message.includes("Extension bundle not found") ||
         message.includes("migrations")
       ) {
-        console.log(
-          "⚠️ PGLite extensions not compatible with Next.js bundling.",
-        );
-        console.log("💡 Falling back to classic ELIZA mode.");
-        console.log(
-          "💡 For full LLM mode, set POSTGRES_URL or run `elizaos start` separately.",
-        );
-        useClassicFallback = true;
         initError =
-          "PGLite extensions not compatible with Next.js. Using classic mode.";
+          "PGLite extensions not compatible with Next.js bundling. " +
+          "Please set POSTGRES_URL environment variable for external database, " +
+          "or run `elizaos start` separately.";
       } else {
         initError = message;
       }
-      return null;
+
+      throw new Error(initError);
     }
   })();
 
@@ -97,14 +100,20 @@ export async function POST(request: Request) {
 
   // Handle initialization request
   if (body.action === "init") {
-    const rt = await getRuntime();
-    return Response.json({
-      success: true,
-      mode: rt ? "elizaos" : "classic",
-      message: rt
-        ? "elizaOS runtime initialized"
-        : initError || "Using classic ELIZA mode",
-    });
+    try {
+      await getRuntime();
+      return Response.json({
+        success: true,
+        mode: "elizaos",
+        message: "elizaOS runtime initialized",
+      });
+    } catch (error) {
+      return Response.json({
+        success: false,
+        mode: "error",
+        message: initError || "Failed to initialize runtime",
+      });
+    }
   }
 
   // Handle chat message
@@ -114,16 +123,30 @@ export async function POST(request: Request) {
     return Response.json({ error: "Message is required" }, { status: 400 });
   }
 
-  const rt = await getRuntime();
+  // Get or initialize runtime
+  let rt: IAgentRuntime;
+  try {
+    rt = await getRuntime();
+  } catch {
+    return Response.json(
+      {
+        error: "elizaOS runtime not available",
+        details: initError,
+        suggestion:
+          "Set POSTGRES_URL environment variable or run `elizaos start` separately",
+      },
+      { status: 503 },
+    );
+  }
+
+  const userId = (clientUserId || uuidv4()) as UUID;
 
   // Create streaming response
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      if (rt) {
-        // Use elizaOS runtime
-        const userId = (clientUserId || uuidv4()) as UUID;
-
+      try {
+        // Ensure connection for this user
         await rt.ensureConnection({
           entityId: userId,
           roomId,
@@ -135,17 +158,19 @@ export async function POST(request: Request) {
           type: ChannelType.DM,
         } as Parameters<typeof rt.ensureConnection>[0]);
 
+        // Create message memory using canonical helper
         const messageMemory = createMessageMemory({
           id: uuidv4() as UUID,
           entityId: userId,
           roomId,
           content: {
             text: message,
-            source: "client_chat",
+            source: "next_app",
             channelType: ChannelType.DM,
           },
         });
 
+        // Process through the FULL elizaOS pipeline
         await rt.messageService?.handleMessage(
           rt,
           messageMemory,
@@ -160,30 +185,19 @@ export async function POST(request: Request) {
             return [];
           },
         );
-      } else {
-        // Use classic ELIZA fallback
-        await new Promise((resolve) =>
-          setTimeout(resolve, 300 + Math.random() * 500),
+
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`),
         );
-        const response = generateElizaResponse(message);
-
-        // Stream word by word
-        const words = response.split(" ");
-        for (let i = 0; i < words.length; i++) {
-          const word = words[i] + (i < words.length - 1 ? " " : "");
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ text: word })}\n\n`),
-          );
-          await new Promise((resolve) =>
-            setTimeout(resolve, 20 + Math.random() * 40),
-          );
-        }
+        controller.close();
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ error: errorMessage })}\n\n`),
+        );
+        controller.close();
       }
-
-      controller.enqueue(
-        encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`),
-      );
-      controller.close();
     },
   });
 
@@ -198,11 +212,20 @@ export async function POST(request: Request) {
 
 // Health check
 export async function GET() {
-  const rt = await getRuntime();
-  return Response.json({
-    status: "ready",
-    mode: rt ? "elizaos" : "classic",
-    character: character.name,
-    error: initError,
-  });
+  try {
+    const rt = await getRuntime();
+    return Response.json({
+      status: "ready",
+      mode: "elizaos",
+      character: rt.character.name,
+      messageServiceAvailable: !!rt.messageService,
+    });
+  } catch {
+    return Response.json({
+      status: "error",
+      mode: "unavailable",
+      character: character.name,
+      error: initError,
+    });
+  }
 }
