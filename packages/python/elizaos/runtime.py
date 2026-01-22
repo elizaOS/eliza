@@ -271,7 +271,14 @@ class AgentRuntime(IAgentRuntime):
         plugin_to_register = plugin
 
         if plugin.name == "bootstrap":
-            char_settings: dict[str, object] = self._character.settings or {}
+            char_settings_obj = self._character.settings
+            char_settings: dict[str, object] = {}
+            if hasattr(char_settings_obj, "DESCRIPTOR"):
+                from google.protobuf.json_format import MessageToDict
+                char_settings = MessageToDict(char_settings_obj, preserving_proto_field_name=True)
+            elif isinstance(char_settings_obj, dict):
+                 char_settings = char_settings_obj
+
             disable_basic = self._capability_disable_basic or (
                 char_settings.get("DISABLE_BASIC_CAPABILITIES") in (True, "true")
             )
@@ -986,11 +993,16 @@ class AgentRuntime(IAgentRuntime):
             if result.text:
                 text_parts.append(result.text)
             if result.values:
-                state.values.update(result.values)
+                for k, v in result.values.items():
+                    if hasattr(state.values, k):
+                        setattr(state.values, k, v)
+                    else:
+                        state.values.extra[k] = v
             if result.data:
-                if not state.data.providers:
-                    state.data.providers = {}
-                state.data.providers[provider.name] = result.data
+                # Access map entry to create it, then update its data struct
+                entry = state.data.providers[provider.name]
+                for k, v in result.data.items():
+                    entry.data[k] = v
 
             # Log provider access to trajectory service (if available)
             if traj_step_id and traj_logger is not None:
@@ -1009,7 +1021,7 @@ class AgentRuntime(IAgentRuntime):
 
         state.text = "\n".join(text_parts)
         # Match TypeScript behavior: expose providers text under {{providers}}.
-        state.values["providers"] = state.text
+        state.values.providers = state.text
 
         if not skip_cache:
             self._state_cache[cache_key] = state

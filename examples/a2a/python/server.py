@@ -117,7 +117,7 @@ async def handle_chat(
     content_kwargs: dict[str, object] = {
         "text": message,
         "source": "a2a",
-        "channelType": ChannelType.DM.value,
+        "channel_type": ChannelType.DM.value,
     }
     if metadata:
         content_kwargs.update(metadata)

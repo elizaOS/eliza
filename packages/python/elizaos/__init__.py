@@ -107,6 +107,7 @@ from elizaos.types import (
     string_to_uuid,
 )
 from elizaos.types.database import IDatabaseAdapter  # noqa: E402
+from elizaos.types.primitives import ChannelType, Content, ContentType, Media, Metadata # noqa: E402
 from elizaos.types.runtime import IAgentRuntime  # noqa: E402
 from elizaos.utils import compose_prompt, compose_prompt_from_state, get_current_time_ms
 
@@ -141,7 +142,9 @@ __all__ = [
     "UUID",
     "as_uuid",
     "string_to_uuid",
+    "ChannelType",
     "Content",
+    "ContentType",
     "Media",
     "Metadata",
     "MentionContext",

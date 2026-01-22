@@ -7,4 +7,3 @@ elizaos-plugin-inmemorydb>=1.0.0
 uuid6>=2024.7.10
 python-dotenv>=1.0.0
 httpx>=0.25.0
-sse-starlette>=1.6.0
