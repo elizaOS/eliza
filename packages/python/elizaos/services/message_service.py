@@ -12,7 +12,7 @@ from google.protobuf.struct_pb2 import Struct
 from elizaos.types.memory import Memory
 from elizaos.types.model import ModelType
 from elizaos.types.primitives import Content, as_uuid
-from elizaos.types.state import State
+from elizaos.types.state import SchemaRow, State
 
 if TYPE_CHECKING:
     from elizaos.types.runtime import IAgentRuntime
@@ -464,29 +464,102 @@ class DefaultMessageService(IMessageService):
                     compose_prompt_from_state=compose_prompt_from_state,
                 )
 
-            # Step 3: Build prompt using template (custom or default MESSAGE_HANDLER_TEMPLATE)
-            prompt = self._build_canonical_prompt(runtime, message, state, template)
+            # Step 3-5: Use dynamicPromptExecFromState for structured message response
+            schema = [
+                SchemaRow(
+                    field="thought",
+                    description="Your internal reasoning about the message and what to do",
+                    required=True,
+                    validate_field=False,
+                    stream_field=False,
+                ),
+                SchemaRow(
+                    field="providers",
+                    description="List of providers to use for additional context (comma-separated)",
+                    validate_field=False,
+                    stream_field=False,
+                ),
+                SchemaRow(
+                    field="actions",
+                    description="List of actions to take (comma-separated)",
+                    required=True,
+                    validate_field=False,
+                    stream_field=False,
+                ),
+                SchemaRow(
+                    field="params",
+                    description="JSON object with action parameters, e.g. {\"ACTION_NAME\": {\"param\": \"value\"}}",
+                    validate_field=False,
+                    stream_field=False,
+                ),
+                SchemaRow(
+                    field="text",
+                    description="The text response to send to the user",
+                    stream_field=True,
+                ),
+                SchemaRow(
+                    field="simple",
+                    description="Whether this is a simple response (true/false)",
+                    validate_field=False,
+                    stream_field=False,
+                ),
+            ]
 
-            # Step 4: Generate response using the model
-            # Use protobuf enum name (MODEL_TYPE_TEXT_LARGE not TEXT_LARGE)
-            raw_response = await runtime.use_model(
-                str(ModelType.MODEL_TYPE_TEXT_LARGE),
-                {
-                    "prompt": prompt,
-                    "system": runtime.character.system,
-                    "temperature": 0.7,
-                },
+            from elizaos.runtime import DynamicPromptOptions
+            parsed_response = await runtime.dynamic_prompt_exec_from_state(
+                state=state,
+                prompt=template,
+                schema=schema,
+                options=DynamicPromptOptions(
+                    model_size="large",
+                    force_format="xml",
+                    required_fields=["thought", "actions"],
+                ),
             )
-            raw_response_str = str(raw_response)
-            # Note: model calls are logged centrally in `AgentRuntime.use_model` when a
-            # trajectory step is bound (see `elizaos.trajectory_context`).
 
-            # Step 5: Parse XML response
-            actions = _parse_actions_from_xml(raw_response_str)
-            providers = _parse_providers_from_xml(raw_response_str)
-            response_text = _parse_text_from_xml(raw_response_str)
-            thought = _parse_thought_from_xml(raw_response_str)
-            params = _parse_params_from_xml(raw_response_str)
+            # Handle complete generation failure
+            if parsed_response is None:
+                runtime.logger.error("Generation failed completely - returning did_respond=False")
+                return MessageProcessingResult(
+                    did_respond=False,
+                    response_content=None,
+                    response_messages=[],
+                    state=state,
+                )
+
+            # Extract parsed fields
+            thought = str(parsed_response.get("thought", ""))
+            actions_raw = str(parsed_response.get("actions", "REPLY"))
+            providers_raw = str(parsed_response.get("providers", ""))
+            response_text = str(parsed_response.get("text", ""))
+            
+            # Parse actions and providers from comma-separated strings
+            actions = [a.strip().upper() for a in actions_raw.split(",") if a.strip()]
+            providers = [p.strip() for p in providers_raw.split(",") if p.strip()]
+            
+            # Parse params from response if available
+            import json as json_module
+            params: dict[str, list[dict[str, str]]] = {}
+            if parsed_response:
+                params_raw = parsed_response.get("params", "")
+                if params_raw:
+                    # Try to parse as JSON if it's a string
+                    if isinstance(params_raw, str):
+                        try:
+                            params_parsed = json_module.loads(params_raw)
+                            if isinstance(params_parsed, dict):
+                                # Convert to expected format: {ACTION: [{param: value}]}
+                                for action_name, action_params in params_parsed.items():
+                                    if isinstance(action_params, dict):
+                                        params[action_name] = [action_params]
+                        except json_module.JSONDecodeError:
+                            pass
+                    elif isinstance(params_raw, dict):
+                        # Already a dict, convert to expected format
+                        for action_name, action_params in params_raw.items():
+                            if isinstance(action_params, dict):
+                                params[action_name] = [action_params]
+            raw_response_str = json_module.dumps(parsed_response) if parsed_response else ""
 
             # Step 5b: If actions require params but none were provided, run a parameter-repair pass
             # using the SAME model. This keeps behavior canonical while preventing "action without params"
@@ -725,22 +798,69 @@ class DefaultMessageService(IMessageService):
             state.data.action_results = list(trace_results)
             state.values["actionResults"] = _format_action_results(trace_results)
 
-            decision_prompt = compose_prompt_from_state(state=state, template=decision_template)
-            decision_raw = await runtime.use_model(
-                ModelType.TEXT_LARGE.value,
-                {
-                    "prompt": decision_prompt,
-                    "system": runtime.character.system,
-                    "temperature": 0.7,
-                },
-            )
-            decision_str = str(decision_raw)
+            # Use dynamicPromptExecFromState for multi-step decision
+            decision_schema = [
+                SchemaRow(
+                    field="thought",
+                    description="Your reasoning for the selected providers and/or action",
+                    validate_field=False,
+                    stream_field=False,
+                ),
+                SchemaRow(
+                    field="providers",
+                    description="Comma-separated list of providers to call",
+                    validate_field=False,
+                    stream_field=False,
+                ),
+                SchemaRow(
+                    field="action",
+                    description="Name of the action to execute (can be empty)",
+                    validate_field=False,
+                    stream_field=False,
+                ),
+                SchemaRow(
+                    field="parameters",
+                    description="JSON object with parameter names and values",
+                    validate_field=False,
+                    stream_field=False,
+                ),
+                SchemaRow(
+                    field="isFinish",
+                    description="true if task is complete, false otherwise",
+                    validate_field=False,
+                    stream_field=False,
+                ),
+            ]
 
-            thought = _parse_tag(decision_str, "thought") or ""
-            action_name = (_parse_tag(decision_str, "action") or "").strip()
-            providers_csv = (_parse_tag(decision_str, "providers") or "").strip()
-            is_finish_raw = (_parse_tag(decision_str, "isFinish") or "").strip().lower()
+            decision_result = await runtime.dynamic_prompt_exec_from_state(
+                state=state,
+                prompt=decision_template,
+                schema=decision_schema,
+                options=DynamicPromptOptions(
+                    model_size="large",
+                    force_format="xml",
+                ),
+            )
+
+            thought = str(decision_result.get("thought", "")) if decision_result else ""
+            action_name = str(decision_result.get("action", "")).strip() if decision_result else ""
+            providers_csv = str(decision_result.get("providers", "")).strip() if decision_result else ""
+            parameters_raw = decision_result.get("parameters", "") if decision_result else ""
+            is_finish_raw = str(decision_result.get("isFinish", "")).strip().lower() if decision_result else ""
             is_finish = is_finish_raw in ("true", "yes", "1")
+            
+            # Parse parameters (may be JSON string or dict)
+            action_params: dict[str, Any] = {}
+            if parameters_raw:
+                if isinstance(parameters_raw, str):
+                    try:
+                        parsed_params = json.loads(parameters_raw)
+                        if isinstance(parsed_params, dict):
+                            action_params = parsed_params
+                    except json.JSONDecodeError:
+                        pass
+                elif isinstance(parameters_raw, dict):
+                    action_params = parameters_raw
 
             last_thought = thought
 
@@ -765,6 +885,7 @@ class DefaultMessageService(IMessageService):
                     thought=thought if thought else None,
                     actions=[action_name],
                     providers=providers if providers else None,
+                    params=json.dumps(action_params) if action_params else None,
                 )
                 response_memory = Memory(
                     id=response_id,
@@ -799,18 +920,55 @@ class DefaultMessageService(IMessageService):
         state.values["system"] = runtime.character.system or ""
         state.values["messageDirections"] = ""
 
-        summary_prompt = compose_prompt_from_state(state=state, template=summary_template)
-        summary_raw = await runtime.use_model(
-            ModelType.TEXT_LARGE.value,
-            {
-                "prompt": summary_prompt,
-                "system": runtime.character.system,
-                "temperature": 0.7,
-            },
+        # Use dynamicPromptExecFromState for final summary
+        summary_schema = [
+            SchemaRow(
+                field="thought",
+                description="Your internal reasoning about the summary",
+                validate_field=False,
+                stream_field=False,
+            ),
+            SchemaRow(
+                field="text",
+                description="The final summary message to send to the user",
+                required=True,
+                stream_field=True,
+            ),
+        ]
+
+        summary_result = await runtime.dynamic_prompt_exec_from_state(
+            state=state,
+            prompt=summary_template,
+            schema=summary_schema,
+            options=DynamicPromptOptions(
+                model_size="large",
+                force_format="xml",
+                required_fields=["text"],
+            ),
         )
-        summary_str = str(summary_raw)
-        final_thought = _parse_tag(summary_str, "thought") or ""
-        final_text = _parse_tag(summary_str, "text") or summary_str
+
+        # Handle summary generation failure
+        if summary_result is None:
+            runtime.logger.error("Multi-step summary generation failed - returning did_respond=False")
+            return MessageProcessingResult(
+                did_respond=False,
+                response_content=None,
+                response_messages=[],
+                state=state,
+            )
+
+        final_thought = str(summary_result.get("thought", ""))
+        final_text = str(summary_result.get("text", ""))
+
+        # If text is empty, treat as failure
+        if not final_text.strip():
+            runtime.logger.error("Multi-step summary returned empty text - returning did_respond=False")
+            return MessageProcessingResult(
+                did_respond=False,
+                response_content=None,
+                response_messages=[],
+                state=state,
+            )
 
         final_content = Content(text=final_text, thought=final_thought)
         if callback:

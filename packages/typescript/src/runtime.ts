@@ -82,11 +82,17 @@ import {
   type World,
 } from "./types";
 import type { IMessageService } from "./types/message-service";
-import { stringToUuid } from "./utils";
+import {
+  stringToUuid,
+  parseKeyValueXml,
+  parseJSONObjectFromText,
+} from "./utils";
 import { BufferUtils } from "./utils/buffer";
 import { getNumberEnv } from "./utils/environment";
-import { ActionStreamFilter } from "./utils/streaming";
+import { ActionStreamFilter, ValidationStreamExtractor } from "./utils/streaming";
 import { isPlainObject } from "./utils/type-guards";
+import type { SchemaRow, StreamEvent, RetryBackoffConfig } from "./types/state";
+import Handlebars from "handlebars";
 
 const environmentSettings: RuntimeSettings = {};
 
@@ -3355,6 +3361,771 @@ export class AgentRuntime implements IAgentRuntime {
     return {
       text: response as string,
     };
+  }
+
+  // ============================================================================
+  // Dynamic Prompt Execution with Validation-Aware Streaming
+  // ============================================================================
+
+  /**
+   * Performance metrics for dynamic prompt execution.
+   * Tracks success/failure rates per model+schema combination.
+   *
+   * Uses LRU-style eviction to prevent unbounded growth:
+   * - Max 100 entries (sufficient for typical model+schema combinations)
+   * - Entries older than 1 hour are pruned on access
+   */
+  private static dynamicPromptMetrics = new Map<
+    string,
+    {
+      lowestFailedTokenCount: number | null;
+      highestSuccessTokenCount: number | null;
+      totalAttempts: number;
+      successfulAttempts: number;
+      failedAttempts: number;
+      lastUpdated: number;
+    }
+  >();
+
+  private static readonly METRICS_MAX_ENTRIES = 100;
+  private static readonly METRICS_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+  /**
+   * Get or create metrics entry with LRU eviction.
+   */
+  private static getOrCreateMetrics(key: string) {
+    const now = Date.now();
+
+    // Prune stale entries periodically (when we access)
+    if (AgentRuntime.dynamicPromptMetrics.size > AgentRuntime.METRICS_MAX_ENTRIES / 2) {
+      for (const [k, v] of AgentRuntime.dynamicPromptMetrics) {
+        if (now - v.lastUpdated > AgentRuntime.METRICS_TTL_MS) {
+          AgentRuntime.dynamicPromptMetrics.delete(k);
+        }
+      }
+    }
+
+    // Evict oldest if still at max capacity
+    if (AgentRuntime.dynamicPromptMetrics.size >= AgentRuntime.METRICS_MAX_ENTRIES) {
+      let oldestKey: string | null = null;
+      let oldestTime = Infinity;
+      for (const [k, v] of AgentRuntime.dynamicPromptMetrics) {
+        if (v.lastUpdated < oldestTime) {
+          oldestTime = v.lastUpdated;
+          oldestKey = k;
+        }
+      }
+      if (oldestKey) {
+        AgentRuntime.dynamicPromptMetrics.delete(oldestKey);
+      }
+    }
+
+    let metric = AgentRuntime.dynamicPromptMetrics.get(key);
+    if (!metric) {
+      metric = {
+        lowestFailedTokenCount: null,
+        highestSuccessTokenCount: null,
+        totalAttempts: 0,
+        successfulAttempts: 0,
+        failedAttempts: 0,
+        lastUpdated: now,
+      };
+      AgentRuntime.dynamicPromptMetrics.set(key, metric);
+    }
+    return metric;
+  }
+
+  /**
+   * Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
+   *
+   * WHY THIS EXISTS:
+   * LLMs are powerful but unreliable for structured outputs. They can:
+   * - Silently truncate output when hitting token limits
+   * - Skip fields or produce malformed structures
+   * - Hallucinate or ignore parts of the prompt
+   *
+   * This method addresses these issues by:
+   * 1. Validation codes: Injects UUID codes the LLM must echo back
+   * 2. Streaming with safety: Enables streaming while detecting truncation
+   * 3. Performance tracking: Tracks success/failure rates per model+schema
+   */
+  async dynamicPromptExecFromState({
+    state,
+    params,
+    schema,
+    options = {},
+  }: {
+    state: State;
+    params: Omit<GenerateTextParams, "prompt"> & {
+      prompt: string | ((ctx: { state: State }) => string);
+    };
+    schema: SchemaRow[];
+    options?: {
+      key?: string;
+      modelSize?: "small" | "large";
+      model?: string;
+      preferredEncapsulation?: "json" | "xml";
+      forceFormat?: "json" | "xml";
+      requiredFields?: string[];
+      contextCheckLevel?: 0 | 1 | 2 | 3;
+      maxRetries?: number;
+      retryBackoff?: number | RetryBackoffConfig;
+      disableCache?: boolean;
+      cacheTTL?: number;
+      onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
+      onStreamEvent?: (event: StreamEvent, messageId?: string) => void | Promise<void>;
+      abortSignal?: AbortSignal;
+    };
+  }): Promise<Record<string, unknown> | null> {
+    // Validate schema input
+    if (!schema || schema.length === 0) {
+      this.logger.error("dynamicPromptExecFromState: schema must have at least one entry");
+      return null;
+    }
+
+    // Validate field names are valid identifiers
+    const invalidFields = schema.filter((row) => {
+      if (!row.field || typeof row.field !== "string") return true;
+      // Field names should be valid identifiers: start with letter/underscore, contain only alphanumeric/underscore
+      return !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(row.field);
+    });
+
+    if (invalidFields.length > 0) {
+      this.logger.error(
+        `dynamicPromptExecFromState: invalid field names in schema: ${invalidFields.map((f) => f.field || "(empty)").join(", ")}`,
+      );
+      return null;
+    }
+
+    // Generate keys for metrics
+    const modelIdentifier =
+      options.model || (options.modelSize === "small" ? "TEXT_SMALL" : "TEXT_LARGE");
+    const schemaKey = schema.map((s) => s.field).join(",");
+    const modelSchemaKey = `${modelIdentifier}:${schemaKey}`;
+
+    // Get validation level from settings or options
+    const validationLevelRaw = this.getSetting("VALIDATION_LEVEL");
+    const validationLevel =
+      typeof validationLevelRaw === "string" ? validationLevelRaw.toLowerCase() : undefined;
+
+    // Map VALIDATION_LEVEL to contextCheckLevel and default retries
+    let defaultContextCheckLevel: 0 | 1 | 2 | 3 = 2;
+    let defaultRetries = 1;
+
+    if (validationLevel === "trusted" || validationLevel === "fast") {
+      defaultContextCheckLevel = 0;
+      defaultRetries = 0;
+    } else if (validationLevel === "progressive") {
+      defaultContextCheckLevel = 1;
+      defaultRetries = 2;
+    } else if (validationLevel === "strict" || validationLevel === "safe") {
+      defaultContextCheckLevel = 3;
+      defaultRetries = 3;
+    } else if (validationLevel !== undefined) {
+      // Warn about unrecognized validation level
+      this.logger.warn(
+        `Unrecognized VALIDATION_LEVEL "${validationLevel}". ` +
+          `Valid values: trusted, fast, progressive, strict, safe. ` +
+          `Falling back to default (level 2).`,
+      );
+    }
+
+    const maxRetries = options.maxRetries ?? defaultRetries;
+    let currentRetry = 0;
+
+    // Initialize metrics with LRU eviction
+    const metric = AgentRuntime.getOrCreateMetrics(modelSchemaKey);
+
+    // Extractor is created once and persists across retries
+    let extractor: ValidationStreamExtractor | undefined;
+    let contextLevel: 0 | 1 | 2 | 3 = defaultContextCheckLevel;
+    const perFieldCodes = new Map<string, string>();
+
+    while (currentRetry <= maxRetries) {
+      const template = params.prompt;
+      const templateStr = typeof template === "function" ? template({ state }) : template;
+
+      // Get keys from state (excluding text, values, data)
+      const stateKeys = Object.keys(state);
+      const filteredKeys = stateKeys.filter((key) => !["text", "values", "data"].includes(key));
+      const filteredState = filteredKeys.reduce(
+        (acc: Record<string, unknown>, key) => {
+          acc[key] = state[key];
+          return acc;
+        },
+        {},
+      );
+
+      // Compile template
+      const templateFunction = Handlebars.compile(this.upgradeDoubleToTriple(templateStr));
+      const output = templateFunction({ ...filteredState, ...state.values });
+
+      // Process format options
+      let format = "XML";
+      if (options.forceFormat) {
+        format = options.forceFormat.toUpperCase();
+      } else if (options.preferredEncapsulation === "json") {
+        format = "JSON";
+      }
+
+      /**
+       * Rough token count estimate for logging/debugging purposes only.
+       *
+       * NOTE: This is a heuristic approximation, not an accurate tokenizer.
+       * Modern LLMs use subword tokenization (BPE, WordPiece, SentencePiece)
+       * where actual token counts vary significantly by model and content.
+       *
+       * The 1.3x multiplier accounts for:
+       * - Subword splitting of longer/uncommon words
+       * - Punctuation and special characters as separate tokens
+       * - Whitespace handling differences
+       *
+       * For accurate counts, use model-specific tokenizers (e.g., tiktoken).
+       * This estimate is sufficient for logging and rough capacity planning.
+       */
+      const estToken = (text: string) => {
+        const words = text
+          .trim()
+          .split(/\s+|\b/)
+          .filter((w) => /\w+/.test(w));
+        return Math.ceil(words.length * 1.3);
+      };
+
+      this.logger.debug(
+        `dynamicPromptExecFromState: using format ${format}, ~${estToken(output).toLocaleString()} tokens`,
+      );
+
+      // Set context level on first iteration
+      if (currentRetry === 0) {
+        contextLevel = options.contextCheckLevel ?? defaultContextCheckLevel;
+
+        // Generate per-field validation codes for levels 0-1
+        if (contextLevel <= 1) {
+          for (const row of schema) {
+            const defaultValidate = contextLevel === 1;
+            const needsValidation = row.validateField ?? defaultValidate;
+            if (needsValidation) {
+              perFieldCodes.set(row.field, uuidv4().slice(0, 8));
+            }
+          }
+        }
+      }
+
+      // Checkpoint codes: level 2+ gets first codes, level 3 gets both
+      const first = contextLevel >= 2;
+      const last = contextLevel >= 3;
+
+      // Build extended schema with validation codes
+      const extSchema: Array<{ field: string; description: string; required?: boolean }> = [];
+
+      const codesSchema = (prefix: string) => [
+        { field: prefix + "initial_code", description: "echo the initial UUID code from prompt" },
+        { field: prefix + "middle_code", description: "echo the middle UUID code from prompt" },
+        { field: prefix + "end_code", description: "echo the end UUID code from prompt" },
+      ];
+
+      if (first) {
+        extSchema.push(...codesSchema("one_"));
+      }
+
+      // Add schema fields with per-field codes for levels 0-1
+      for (const row of schema) {
+        const fieldCode = perFieldCodes.get(row.field);
+        if (fieldCode) {
+          extSchema.push({
+            field: `code_${row.field}_start`,
+            description: `output exactly: ${fieldCode}`,
+          });
+        }
+        extSchema.push(row);
+        if (fieldCode) {
+          extSchema.push({
+            field: `code_${row.field}_end`,
+            description: `output exactly: ${fieldCode}`,
+          });
+        }
+      }
+
+      if (last) {
+        extSchema.push(...codesSchema("two_"));
+      }
+
+      // Generate prompt with format example
+      const isXML = format === "XML";
+      const CONTAINER_START = isXML ? "<response>" : "{";
+      const CONTAINER_END = isXML ? "</response>" : "}";
+
+      let EXAMPLE = CONTAINER_START + "\n";
+      for (let i = 0; i < extSchema.length; i++) {
+        const s = extSchema[i];
+        const isLast = i === extSchema.length - 1;
+        if (isXML) {
+          EXAMPLE += `  <${s.field}>${s.description}</${s.field}>\n`;
+        } else {
+          // No trailing comma on last field for valid JSON
+          EXAMPLE += `  "${s.field}": "${s.description}"${isLast ? "" : ","}\n`;
+        }
+      }
+      EXAMPLE += CONTAINER_END + "\n";
+
+      const initCode = uuidv4();
+      const midCode = uuidv4();
+      const finalCode = uuidv4();
+
+      // Check for smart retry context (set by previous retry iteration)
+      const smartRetryContext = (state as Record<string, unknown>)._smartRetryContext || "";
+
+      const section_start = isXML ? "<output>" : "# Strict Output instructions";
+      const section_end = isXML ? "</output>" : "";
+
+      const prompt =
+        "initial code: " +
+        initCode +
+        "\n" +
+        output +
+        smartRetryContext +
+        "middle code: " +
+        midCode +
+        "\n" +
+        section_start +
+        `
+Do NOT include any thinking, reasoning, or <think> sections in your response.
+Go directly to the ${format} response format without any preamble or explanation.
+
+Respond using ${format} format like this:
+${EXAMPLE}
+
+IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END} ${format} block above. Do not include any text, thinking, or reasoning before or after this ${format} block. Start your response immediately with ${CONTAINER_START} and end with ${CONTAINER_END}.
+` +
+        section_end +
+        "\nend code: " +
+        finalCode +
+        "\n";
+
+      // Token estimate used for:
+      // 1. Debug logging of prompt size
+      // 2. Metrics tracking: highestSuccessTokenCount / lowestFailedTokenCount
+      //    (useful for identifying token-count-related failure patterns)
+      const outputTokenEst = estToken(prompt);
+      this.logger.debug(`dynamicPromptExecFromState prompt ~${outputTokenEst.toLocaleString()} tokens`);
+
+      // Create ValidationStreamExtractor on first iteration if streaming
+      // Only use ValidationStreamExtractor for XML format - it parses XML tags
+      // JSON streaming should bypass this extractor (or use a JSON-specific one later)
+      if (currentRetry === 0 && options.onStreamChunk && !extractor && isXML) {
+        const hasRichConsumer = !!options.onStreamEvent;
+
+        const streamFields = schema
+          .filter((row) => {
+            if (row.streamField !== undefined) return row.streamField;
+            return row.field === "text";
+          })
+          .map((row) => row.field);
+
+        // Only use fallback if no explicit streamField settings exist
+        // Don't override explicit streamField: false on "text" field
+        const hasExplicitStreamSettings = schema.some((r) => r.streamField !== undefined);
+        const finalStreamFields =
+          streamFields.length > 0
+            ? streamFields
+            : !hasExplicitStreamSettings && schema.some((r) => r.field === "text")
+              ? ["text"]
+              : [];
+
+        const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        extractor = new ValidationStreamExtractor({
+          level: contextLevel,
+          schema,
+          streamFields: finalStreamFields,
+          expectedCodes: perFieldCodes,
+          onChunk: (chunk) => {
+            options.onStreamChunk!(chunk, streamMessageId);
+          },
+          onEvent: options.onStreamEvent
+            ? (event) => options.onStreamEvent!(event, streamMessageId)
+            : undefined,
+          abortSignal: options.abortSignal,
+          hasRichConsumer,
+        });
+      }
+
+      const modelType = options.modelSize === "small" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
+
+      const modelParams = {
+        ...params,
+        prompt,
+        providerOptions: {
+          agentName: this.character.name,
+        },
+        ...(extractor
+          ? {
+              onStreamChunk: (chunk: string) => {
+                extractor!.push(chunk);
+              },
+            }
+          : options.onStreamChunk
+            ? { onStreamChunk: options.onStreamChunk }
+            : {}),
+      };
+
+      // Check for cancellation before request
+      if (options.abortSignal?.aborted) {
+        extractor?.signalError("Cancelled by user");
+        delete (state as Record<string, unknown>)._smartRetryContext;
+        return null;
+      }
+
+      let response: string;
+      try {
+        response = await this.useModel<typeof modelType, string>(
+          modelType,
+          modelParams,
+          options.model,
+        );
+      } catch (modelError) {
+        this.logger.error(`Model call failed: ${String(modelError)}`);
+        currentRetry++;
+
+        if (options.abortSignal?.aborted) {
+          extractor?.signalError("Cancelled by user");
+          delete (state as Record<string, unknown>)._smartRetryContext;
+          return null;
+        }
+
+        if (currentRetry <= maxRetries) {
+          // Apply retry backoff for model errors
+          if (options.retryBackoff) {
+            const delayMs = this.calculateBackoffDelay(options.retryBackoff, currentRetry);
+            this.logger.debug(`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`);
+
+            // Abortable sleep - check signal during wait, not just after
+            const aborted = await this.abortableSleep(delayMs, options.abortSignal);
+            if (aborted) {
+              extractor?.signalError("Cancelled by user");
+              delete (state as Record<string, unknown>)._smartRetryContext;
+              return null;
+            }
+          }
+
+          // Signal retry to extractor if it exists
+          if (extractor) {
+            extractor.signalRetry(currentRetry);
+            extractor.reset();
+          }
+        }
+        continue;
+      }
+
+      // Clean response (remove <think> blocks)
+      const cleanResponse = response.replace(/<think>[\s\S]*?<\/think>/g, "");
+
+      let responseContent: Record<string, unknown> | null = null;
+      try {
+        responseContent = isXML
+          ? parseKeyValueXml(cleanResponse)
+          : parseJSONObjectFromText(cleanResponse);
+        this.logger.debug(`dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`);
+      } catch (e) {
+        this.logger.error(`dynamicPromptExecFromState parse error: ${String(e)}`);
+      }
+
+      responseContent = this.normalizeStructuredResponse(responseContent);
+
+      // Validate response
+      let allGood = true;
+      if (!responseContent) {
+        this.logger.warn(`dynamicPromptExecFromState parse problem: ${cleanResponse}`);
+        allGood = false;
+      } else {
+        // Validate codes based on context level
+        if (contextLevel <= 1) {
+          // Per-field validation
+          for (const [field, expectedCode] of perFieldCodes) {
+            const startCodeField = `code_${field}_start`;
+            const endCodeField = `code_${field}_end`;
+            const startCode = responseContent[startCodeField];
+            const endCode = responseContent[endCodeField];
+
+            if (startCode !== expectedCode || endCode !== expectedCode) {
+              this.logger.warn(
+                `Per-field validation failed for ${field}: expected=${expectedCode}, start=${startCode}, end=${endCode}`,
+              );
+              allGood = false;
+            }
+
+            delete responseContent[startCodeField];
+            delete responseContent[endCodeField];
+          }
+        } else {
+          // Checkpoint validation
+          const validationCodes: [string, string][] = [
+            ...(first
+              ? [
+                  ["one_initial_code", initCode] as [string, string],
+                  ["one_middle_code", midCode] as [string, string],
+                  ["one_end_code", finalCode] as [string, string],
+                ]
+              : []),
+            ...(last
+              ? [
+                  ["two_initial_code", initCode] as [string, string],
+                  ["two_middle_code", midCode] as [string, string],
+                  ["two_end_code", finalCode] as [string, string],
+                ]
+              : []),
+          ];
+
+          for (const [field, expected] of validationCodes) {
+            if (responseContent[field] !== expected) {
+              this.logger.warn(`Checkpoint ${field} mismatch: expected ${expected}`);
+              allGood = false;
+            }
+          }
+
+          if (first) {
+            delete responseContent.one_initial_code;
+            delete responseContent.one_middle_code;
+            delete responseContent.one_end_code;
+          }
+          if (last) {
+            delete responseContent.two_initial_code;
+            delete responseContent.two_middle_code;
+            delete responseContent.two_end_code;
+          }
+        }
+
+        // Validate required fields
+        if (options.requiredFields && options.requiredFields.length > 0) {
+          const isMissingField = (value: unknown): boolean => {
+            if (value === undefined || value === null) return true;
+            if (typeof value === "string") return value.trim().length === 0;
+            if (Array.isArray(value)) return value.length === 0;
+            if (typeof value === "object") return Object.keys(value).length === 0;
+            return false;
+          };
+
+          const missingFields = options.requiredFields.filter(
+            (field) => !responseContent || !(field in responseContent) || isMissingField(responseContent[field]),
+          );
+          if (missingFields.length > 0) {
+            this.logger.warn(`Missing required fields: ${missingFields.join(", ")}`);
+            allGood = false;
+          }
+        }
+      }
+
+      // Update metrics
+      metric.totalAttempts++;
+
+      if (allGood && responseContent) {
+        // Success - flush buffered content for levels 2-3
+        if (extractor) {
+          extractor.flush();
+        }
+
+        metric.successfulAttempts++;
+        if (metric.highestSuccessTokenCount === null || outputTokenEst > metric.highestSuccessTokenCount) {
+          metric.highestSuccessTokenCount = outputTokenEst;
+        }
+        metric.lastUpdated = Date.now();
+
+        this.logger.debug(
+          `dynamicPromptExecFromState success [${modelSchemaKey}]: ${outputTokenEst} tokens`,
+        );
+
+        // Clean up smart retry context from state
+        delete (state as Record<string, unknown>)._smartRetryContext;
+        return responseContent;
+      }
+
+      // Failure - update metrics
+      metric.failedAttempts++;
+      if (metric.lowestFailedTokenCount === null || outputTokenEst < metric.lowestFailedTokenCount) {
+        metric.lowestFailedTokenCount = outputTokenEst;
+      }
+
+      currentRetry++;
+
+      if (options.abortSignal?.aborted) {
+        extractor?.signalError("Cancelled by user");
+        delete (state as Record<string, unknown>)._smartRetryContext;
+        return null;
+      }
+
+      if (currentRetry <= maxRetries) {
+        // Apply retry backoff
+        if (options.retryBackoff) {
+          const delayMs = this.calculateBackoffDelay(options.retryBackoff, currentRetry);
+          this.logger.debug(`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`);
+
+          // Abortable sleep - check signal during wait, not just after
+          const aborted = await this.abortableSleep(delayMs, options.abortSignal);
+          if (aborted) {
+            extractor?.signalError("Cancelled by user");
+            delete (state as Record<string, unknown>)._smartRetryContext;
+            return null;
+          }
+        }
+
+        // Signal retry to extractor
+        let smartRetryContextNext: string | undefined;
+        if (extractor) {
+          const { validatedFields } = extractor.signalRetry(currentRetry);
+          const diagnosis = extractor.diagnose();
+
+          this.logger.warn(
+            `dynamicPromptExecFromState retry ${currentRetry}/${maxRetries}`,
+            `validated=${validatedFields.join(",") || "none"}`,
+            `missing=${diagnosis.missingFields.join(",") || "none"}`,
+          );
+
+          // For level 1, build smart retry context
+          if (contextLevel === 1 && validatedFields.length > 0) {
+            const validatedContent = extractor.getValidatedFields();
+            const validatedParts: string[] = [];
+            for (const [field, content] of validatedContent) {
+              const truncated = content.length > 500 ? content.slice(0, 500) + "..." : content;
+              validatedParts.push(`<${field}>${truncated}</${field}>`);
+            }
+            if (validatedParts.length > 0) {
+              smartRetryContextNext = `\n\n[RETRY CONTEXT]\nYou previously produced these valid fields:\n${validatedParts.join("\n")}\n\nPlease complete: ${diagnosis.missingFields.concat(diagnosis.invalidFields, diagnosis.incompleteFields).join(", ") || "all fields"}`;
+            }
+          }
+
+          extractor.reset();
+        }
+
+        if (smartRetryContextNext) {
+          (state as Record<string, unknown>)._smartRetryContext = smartRetryContextNext;
+        }
+      }
+    }
+
+    // Max retries exceeded
+    if (extractor) {
+      const diagnosis = extractor.diagnose();
+      const diagnosticParts: string[] = [];
+      if (diagnosis.missingFields.length > 0) {
+        diagnosticParts.push(`missing: ${diagnosis.missingFields.join(", ")}`);
+      }
+      if (diagnosis.invalidFields.length > 0) {
+        diagnosticParts.push(`invalid: ${diagnosis.invalidFields.join(", ")}`);
+      }
+      if (diagnosis.incompleteFields.length > 0) {
+        diagnosticParts.push(`incomplete: ${diagnosis.incompleteFields.join(", ")}`);
+      }
+      extractor.signalError(
+        `Failed after ${maxRetries} retries. ${diagnosticParts.length > 0 ? diagnosticParts.join("; ") : "unknown error"}`,
+      );
+    }
+
+    this.logger.error(
+      `dynamicPromptExecFromState failed after ${maxRetries} retries [${modelSchemaKey}]`,
+      `${metric.successfulAttempts}/${metric.totalAttempts} successful`,
+    );
+
+    // Clean up smart retry context from state
+    delete (state as Record<string, unknown>)._smartRetryContext;
+    return null;
+  }
+
+  /**
+   * Calculate retry backoff delay.
+   */
+  private calculateBackoffDelay(config: number | RetryBackoffConfig, retryCount: number): number {
+    if (typeof config === "number") {
+      return config;
+    }
+    const { initialMs = 1000, multiplier = 2, maxMs = 30000 } = config;
+    const delay = initialMs * Math.pow(multiplier, retryCount - 1);
+    return Math.min(delay, maxMs);
+  }
+
+  /**
+   * Sleep for a duration that can be interrupted by an abort signal.
+   * Returns true if aborted, false if sleep completed normally.
+   */
+  private abortableSleep(ms: number, signal?: AbortSignal): Promise<boolean> {
+    if (signal?.aborted) return Promise.resolve(true);
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve(false);
+      }, ms);
+
+      const onAbort = () => {
+        clearTimeout(timeout);
+        resolve(true);
+      };
+
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  /**
+   * Convert double-brace Handlebars bindings to triple-brace (non-escaping).
+   *
+   * Handlebars uses:
+   * - `{{var}}` for HTML-escaped output
+   * - `{{{var}}}` for raw/unescaped output
+   *
+   * This function upgrades simple variable bindings to triple-brace so that
+   * special characters in state values don't get HTML-encoded in prompts.
+   *
+   * The regex preserves Handlebars helpers and special syntax:
+   * - `{{#if}}`, `{{/if}}` - block helpers (start with # or /)
+   * - `{{! comment }}` - comments (start with !)
+   * - `{{> partial}}` - partials (start with >)
+   * - `{{{already_raw}}}` - already triple-braced
+   * - `{{else}}` - else blocks
+   */
+  private upgradeDoubleToTriple(tpl: string): string {
+    // Pattern breakdown:
+    // (?<!\{)      - not preceded by { (avoids matching inside {{{ )
+    // \{\{         - match opening {{
+    // (?!...)      - not followed by Handlebars special chars: # / ! > { else
+    // (\s*)        - capture leading whitespace
+    // (\S+?)       - capture variable name (non-greedy, non-whitespace)
+    // (\s*)        - capture trailing whitespace
+    // \}\}         - match closing }}
+    // (?!\})       - not followed by } (avoids matching {{{ }}}
+    const DOUBLE_BRACE_VAR = /(?<!\{)\{\{(?!#|\/|!|>|\{|else\b)(\s*)(\S+?)(\s*)\}\}(?!\})/g;
+
+    return tpl.replace(DOUBLE_BRACE_VAR, "{{{$1$2$3}}}");
+  }
+
+  /**
+   * Normalize structured response (handle nested response objects).
+   *
+   * Some LLMs wrap their output in extra `{response: {...}}` layers.
+   * This recursively unwraps them up to a reasonable depth limit.
+   */
+  private normalizeStructuredResponse(
+    responseContent: Record<string, unknown> | null,
+    depth = 0,
+  ): Record<string, unknown> | null {
+    if (!responseContent) return null;
+
+    // Safety limit to prevent infinite recursion on pathological input
+    const MAX_UNWRAP_DEPTH = 3;
+    if (depth >= MAX_UNWRAP_DEPTH) return responseContent;
+
+    // If there's a nested 'response' object with the actual fields, unwrap it
+    if (
+      "response" in responseContent &&
+      typeof responseContent.response === "object" &&
+      responseContent.response !== null
+    ) {
+      const nested = responseContent.response as Record<string, unknown>;
+      // Only unwrap if nested has fields (not empty)
+      if (Object.keys(nested).length > 0) {
+        // Recursively unwrap in case of multiple nesting levels
+        return this.normalizeStructuredResponse(nested, depth + 1);
+      }
+    }
+    return responseContent;
   }
 
   registerEvent<T extends keyof EventPayloadMap>(

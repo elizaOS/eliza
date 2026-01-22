@@ -245,8 +245,12 @@ from elizaos.types.service_interfaces import (
 from elizaos.types.state import (
     ActionPlan,
     ActionPlanStep,
+    RetryBackoffConfig,
+    SchemaRow,
     State,
     StateData,
+    StreamEvent,
+    StreamEventType,
     WorkingMemoryItem,
 )
 from elizaos.types.task import (
@@ -331,6 +335,11 @@ __all__ = [
     "WorkingMemoryItem",
     "ActionPlan",
     "ActionPlanStep",
+    # Dynamic prompt execution types
+    "SchemaRow",
+    "RetryBackoffConfig",
+    "StreamEventType",
+    "StreamEvent",
     # Events
     "EventType",
     "EventPayload",
