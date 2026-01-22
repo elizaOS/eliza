@@ -18,7 +18,7 @@ The plugin requires these environment variables (can be set in .env file or char
 "settings": {
   "ELEVENLABS_API_KEY": "your_elevenlabs_api_key",
   "ELEVENLABS_VOICE_ID": "EXAVITQu4vr4xnSDxMaL",
-  "ELEVENLABS_MODEL_ID": "eleven_monolingual_v1",
+  "ELEVENLABS_MODEL_ID": "eleven_multilingual_v2",
   "ELEVENLABS_VOICE_STABILITY": "0.5",
   "ELEVENLABS_OPTIMIZE_STREAMING_LATENCY": "0",
   "ELEVENLABS_OUTPUT_FORMAT": "pcm_16000",
@@ -34,7 +34,7 @@ Or in `.env` file:
 ELEVENLABS_API_KEY=your_elevenlabs_api_key
 # Optional overrides:
 ELEVENLABS_VOICE_ID=EXAVITQu4vr4xnSDxMaL
-ELEVENLABS_MODEL_ID=eleven_monolingual_v1
+ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 ELEVENLABS_VOICE_STABILITY=0.5
 ELEVENLABS_OPTIMIZE_STREAMING_LATENCY=0
 ELEVENLABS_OUTPUT_FORMAT=pcm_16000
@@ -47,7 +47,7 @@ ELEVENLABS_VOICE_USE_SPEAKER_BOOST=true
 
 - `ELEVENLABS_API_KEY` (required): Your ElevenLabs API credentials.
 - `ELEVENLABS_VOICE_ID`: Optional. Voice selection ID. Defaults to `EXAVITQu4vr4xnSDxMaL`.
-- `ELEVENLABS_MODEL_ID`: Optional. Speech model ID. Defaults to `eleven_monolingual_v1`.
+- `ELEVENLABS_MODEL_ID`: Optional. Speech model ID. Defaults to `eleven_multilingual_v2`.
 - `ELEVENLABS_VOICE_STABILITY`: Optional. Controls voice stability. Defaults to `0.5`.
 - `ELEVENLABS_OPTIMIZE_STREAMING_LATENCY`: Optional. Adjusts streaming latency. Defaults to `0`.
 - `ELEVENLABS_OUTPUT_FORMAT`: Optional. Output format (e.g., pcm_16000). Defaults to `pcm_16000`.

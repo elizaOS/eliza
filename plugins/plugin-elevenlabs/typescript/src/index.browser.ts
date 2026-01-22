@@ -71,7 +71,7 @@ function getVoiceSettings(runtime: IAgentRuntime): VoiceSettings {
   return {
     apiKey: getApiKey(runtime),
     voiceId: getSetting(runtime, "ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL"),
-    model: getSetting(runtime, "ELEVENLABS_MODEL_ID", "eleven_monolingual_v1"),
+    model: getSetting(runtime, "ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"),
     stability: getSetting(runtime, "ELEVENLABS_VOICE_STABILITY", "0.5"),
     latency: getSetting(runtime, "ELEVENLABS_OPTIMIZE_STREAMING_LATENCY", "0"),
     outputFormat: getSetting(

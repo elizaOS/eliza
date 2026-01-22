@@ -38,7 +38,7 @@ transcript = await service.speech_to_text(audio_file)
 |---------------------|-------------|---------|
 | `ELEVENLABS_API_KEY` | ElevenLabs API key | Required |
 | `ELEVENLABS_VOICE_ID` | Voice ID for TTS | `EXAVITQu4vr4xnSDxMaL` |
-| `ELEVENLABS_MODEL_ID` | TTS model ID | `eleven_monolingual_v1` |
+| `ELEVENLABS_MODEL_ID` | TTS model ID | `eleven_multilingual_v2` |
 | `ELEVENLABS_VOICE_STABILITY` | Voice stability (0-1) | `0.5` |
 | `ELEVENLABS_VOICE_SIMILARITY_BOOST` | Similarity boost (0-1) | `0.75` |
 | `ELEVENLABS_OUTPUT_FORMAT` | Audio output format | `mp3_44100_128` |

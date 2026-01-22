@@ -91,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 |---------------------|-------------|---------|
 | `ELEVENLABS_API_KEY` | ElevenLabs API key | **Required** |
 | `ELEVENLABS_VOICE_ID` | Voice ID for TTS | `EXAVITQu4vr4xnSDxMaL` |
-| `ELEVENLABS_MODEL_ID` | TTS model ID | `eleven_monolingual_v1` |
+| `ELEVENLABS_MODEL_ID` | TTS model ID | `eleven_multilingual_v2` |
 | `ELEVENLABS_VOICE_STABILITY` | Voice stability (0-1) | `0.5` |
 | `ELEVENLABS_VOICE_SIMILARITY_BOOST` | Similarity boost (0-1) | `0.75` |
 | `ELEVENLABS_VOICE_STYLE` | Voice style intensity (0-1) | `0` |
@@ -193,8 +193,6 @@ Converts audio/video into text transcripts. Supports:
 ## Supported Models
 
 ### TTS Models
-- `eleven_monolingual_v1`
-- `eleven_multilingual_v1`
 - `eleven_multilingual_v2`
 - `eleven_turbo_v2`
 - `eleven_turbo_v2_5`

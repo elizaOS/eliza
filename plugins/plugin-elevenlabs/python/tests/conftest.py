@@ -25,7 +25,7 @@ def tts_options(mock_api_key: str) -> ElevenLabsTTSOptions:
     return ElevenLabsTTSOptions(
         api_key=mock_api_key,
         voice_id="test-voice-id",
-        model_id="eleven_monolingual_v1",
+        model_id="eleven_multilingual_v2",
         output_format="mp3_44100_128",
         voice_settings=VoiceSettings(
             stability=0.5,

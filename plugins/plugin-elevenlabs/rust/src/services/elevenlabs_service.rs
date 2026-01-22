@@ -73,7 +73,7 @@ impl ElevenLabsService {
             voice_id: env::var("ELEVENLABS_VOICE_ID")
                 .unwrap_or_else(|_| "EXAVITQu4vr4xnSDxMaL".to_string()),
             model_id: env::var("ELEVENLABS_MODEL_ID")
-                .unwrap_or_else(|_| "eleven_monolingual_v1".to_string()),
+                .unwrap_or_else(|_| "eleven_multilingual_v2".to_string()),
             output_format: env::var("ELEVENLABS_OUTPUT_FORMAT")
                 .unwrap_or_else(|_| "mp3_44100_128".to_string()),
             optimize_streaming_latency: env::var("ELEVENLABS_OPTIMIZE_STREAMING_LATENCY")

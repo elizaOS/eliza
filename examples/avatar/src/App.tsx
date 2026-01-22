@@ -50,6 +50,10 @@ function modeLabel(mode: DemoMode): string {
 export default function App() {
   const [config, setConfig] = useLocalStorageState<DemoConfig>("eliza-vrm-demo:config", DEFAULT_DEMO_CONFIG);
   const effectiveMode = getEffectiveMode(config);
+  const latestConfigRef = useRef<DemoConfig>(config);
+  useEffect(() => {
+    latestConfigRef.current = config;
+  }, [config]);
 
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [input, setInput] = useState("");
@@ -194,6 +198,16 @@ export default function App() {
     [setConfig]
   );
 
+  const handleCloseSettings = useCallback(() => {
+    setSettingsOpen(false);
+    // Apply settings to the live runtime after state/localStorage has settled.
+    setTimeout(() => {
+      void getOrCreateRuntime(latestConfigRef.current).catch(() => {
+        // ignore
+      });
+    }, 0);
+  }, []);
+
   const speakText = useCallback(
     async (text: string) => {
       const bundle = await getOrCreateRuntime(config);
@@ -222,30 +236,38 @@ export default function App() {
             // Ensure runtime has the latest key (applySettings also does this).
             bundle.runtime.setSetting("ELEVENLABS_API_KEY", apiKey, true);
 
-            const stream = (await bundle.runtime.useModel(
+            let buffer: ArrayBuffer;
+
+            const response = await bundle.runtime.useModel(
               ModelType.TEXT_TO_SPEECH,
               chunk,
-            )) as ReadableStream<Uint8Array>;
+            );
 
-            const reader = stream.getReader();
-            const chunks: Uint8Array[] = [];
-            let total = 0;
-            while (true) {
-              const res = await reader.read();
-              if (res.done) break;
-              chunks.push(res.value);
-              total += res.value.byteLength;
+            if (response instanceof Uint8Array || response instanceof ArrayBuffer) {
+                buffer = response instanceof Uint8Array ? response.buffer : response;
+            } else {
+                const stream = response as ReadableStream<Uint8Array>;
+                const reader = stream.getReader();
+                const chunks: Uint8Array[] = [];
+                let total = 0;
+                while (true) {
+                  const res = await reader.read();
+                  if (res.done) break;
+                  chunks.push(res.value);
+                  total += res.value.byteLength;
+                }
+                reader.releaseLock();
+
+                const merged = new Uint8Array(total);
+                let offset = 0;
+                for (const c of chunks) {
+                  merged.set(c, offset);
+                  offset += c.byteLength;
+                }
+                buffer = merged.buffer;
             }
-            reader.releaseLock();
 
-            const merged = new Uint8Array(total);
-            let offset = 0;
-            for (const c of chunks) {
-              merged.set(c, offset);
-              offset += c.byteLength;
-            }
-
-            await lipSyncPlayerRef.current.playWav(merged.buffer);
+            await lipSyncPlayerRef.current.playWav(buffer);
           } else {
             const wav = synthesizeSamWav(bundle.runtime, chunk, config.sam);
             await lipSyncPlayerRef.current.playWav(wav);
@@ -571,7 +593,7 @@ export default function App() {
       {/* Settings Modal */}
       <SettingsModal
         isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={handleCloseSettings}
         config={config}
         onConfigChange={updateConfig}
         effectiveMode={effectiveMode}
