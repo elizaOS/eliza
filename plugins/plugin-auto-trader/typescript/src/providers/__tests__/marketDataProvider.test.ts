@@ -19,7 +19,7 @@ describe("marketDataProvider", () => {
         if (key === "MARKET_DATA_DAYS") return "7";
         return null;
       }),
-    } as unknown as IAgentRuntime;
+    } as any;
 
     message = {
       id: "test-message-id" as UUID,
@@ -36,11 +36,7 @@ describe("marketDataProvider", () => {
 
   describe("get", () => {
     it("should return formatted market data", async () => {
-      const result = await marketDataProvider.get(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-      );
+      const result = await marketDataProvider.get(runtime, message, state);
 
       expect(result).toBeDefined();
       expect(result.text).toBeDefined();
@@ -52,11 +48,7 @@ describe("marketDataProvider", () => {
     });
 
     it("should return market data text", async () => {
-      const result = await marketDataProvider.get(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-      );
+      const result = await marketDataProvider.get(runtime, message, state);
 
       expect(result.text).toBeDefined();
       expect(result.text).toContain("Market Sentiment");
@@ -68,11 +60,7 @@ describe("marketDataProvider", () => {
       // Mock an error scenario
       vi.spyOn(console, "error").mockImplementation(() => {});
 
-      const result = await marketDataProvider.get(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-      );
+      const result = await marketDataProvider.get(runtime, message, state);
 
       // Since it returns mock data, it should still work
       expect(result.text).toBeDefined();
@@ -80,11 +68,7 @@ describe("marketDataProvider", () => {
     });
 
     it("should include volume data", async () => {
-      const result = await marketDataProvider.get(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-      );
+      const result = await marketDataProvider.get(runtime, message, state);
 
       expect(result.text).toBeDefined();
       expect(result.text).toContain("Vol:");
@@ -92,22 +76,14 @@ describe("marketDataProvider", () => {
     });
 
     it("should include price change percentages", async () => {
-      const result = await marketDataProvider.get(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-      );
+      const result = await marketDataProvider.get(runtime, message, state);
 
       expect(result.text).toBeDefined();
       expect(result.text).toMatch(/\+[\d.]+%/); // Matches positive percentage
     });
 
     it("should include market statistics", async () => {
-      const result = await marketDataProvider.get(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-      );
+      const result = await marketDataProvider.get(runtime, message, state);
 
       expect(result.text).toBeDefined();
       expect(result.text).toContain("Active DEX Pairs");

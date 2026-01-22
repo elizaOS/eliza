@@ -177,7 +177,7 @@ export const joinChannel: Action = {
 
     if (!state) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "State is not available.",
           source: "discord",
         });
@@ -192,7 +192,7 @@ export const joinChannel: Action = {
         "Could not parse channel information from message"
       );
       if (callback) {
-        await callback({
+        await callback?.({
           text: "I couldn't understand which channel you want me to join. Please specify the channel name or ID.",
           source: "discord",
         });
@@ -244,7 +244,7 @@ export const joinChannel: Action = {
 
       if (!targetChannel) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: `I couldn't find a channel with the identifier "${channelInfo.channelIdentifier}". Please make sure the channel name or ID is correct and I have access to it.`,
             source: "discord",
           });
@@ -259,7 +259,7 @@ export const joinChannel: Action = {
 
         if (!voiceManager) {
           if (callback) {
-            await callback({
+            await callback?.({
               text: "Voice functionality is not available at the moment.",
               source: "discord",
             });
@@ -294,7 +294,7 @@ export const joinChannel: Action = {
         };
 
         if (callback) {
-          await callback(response);
+          await callback?.(response);
         }
         return { success: true, text: response.text };
       } else {
@@ -305,7 +305,7 @@ export const joinChannel: Action = {
         const currentChannels = discordService.getAllowedChannels();
         if (currentChannels.includes(textChannel.id)) {
           if (callback) {
-            await callback({
+            await callback?.({
               text: `I'm already listening to ${textChannel.name} (<#${textChannel.id}>).`,
               source: "discord",
             });
@@ -324,12 +324,12 @@ export const joinChannel: Action = {
           };
 
           if (callback) {
-            await callback(response);
+            await callback?.(response);
           }
           return { success: true, text: response.text };
         } else {
           if (callback) {
-            await callback({
+            await callback?.({
               text: `I couldn't add ${textChannel.name} to my listening list. Please try again.`,
               source: "discord",
             });
@@ -347,7 +347,7 @@ export const joinChannel: Action = {
         "Error joining channel"
       );
       if (callback) {
-        await callback({
+        await callback?.({
           text: "I encountered an error while trying to join the channel. Please make sure I have the necessary permissions.",
           source: "discord",
         });

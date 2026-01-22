@@ -3,14 +3,7 @@ import moment from "moment";
 import Loader from "./loader.js";
 import { Badge } from "./ui/badge.js";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.js";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./ui/table.js";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.js";
 
 const getSentimentColor = (sentiment: number) => {
   if (sentiment >= 75) return "text-green-600 bg-green-50";
@@ -52,15 +45,12 @@ export default function Sentiment() {
   const allTokens = sentiments.flatMap((s) => s.occuringTokens || []);
   const avgSentiment =
     allTokens.length > 0
-      ? allTokens.reduce((sum, token) => sum + token.sentiment, 0) /
-        allTokens.length
+      ? allTokens.reduce((sum, token) => sum + token.sentiment, 0) / allTokens.length
       : 0;
 
   const bullishCount = allTokens.filter((t) => t.sentiment > 25).length;
   const bearishCount = allTokens.filter((t) => t.sentiment < -25).length;
-  const _neutralCount = allTokens.filter(
-    (t) => t.sentiment >= -25 && t.sentiment <= 25,
-  ).length;
+  const _neutralCount = allTokens.filter((t) => t.sentiment >= -25 && t.sentiment <= 25).length;
 
   return (
     <div className="space-y-6">
@@ -68,67 +58,45 @@ export default function Sentiment() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Overall Sentiment
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Overall Sentiment</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{avgSentiment.toFixed(1)}</div>
-            <p className="text-xs text-muted-foreground">
-              {getSentimentLabel(avgSentiment)}
-            </p>
+            <p className="text-xs text-muted-foreground">{getSentimentLabel(avgSentiment)}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Bullish Tokens
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Bullish Tokens</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {bullishCount}
-            </div>
+            <div className="text-2xl font-bold text-green-600">{bullishCount}</div>
             <p className="text-xs text-muted-foreground">
-              {allTokens.length > 0
-                ? ((bullishCount / allTokens.length) * 100).toFixed(1)
-                : 0}
-              %
+              {allTokens.length > 0 ? ((bullishCount / allTokens.length) * 100).toFixed(1) : 0}%
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Bearish Tokens
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Bearish Tokens</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              {bearishCount}
-            </div>
+            <div className="text-2xl font-bold text-red-600">{bearishCount}</div>
             <p className="text-xs text-muted-foreground">
-              {allTokens.length > 0
-                ? ((bearishCount / allTokens.length) * 100).toFixed(1)
-                : 0}
-              %
+              {allTokens.length > 0 ? ((bearishCount / allTokens.length) * 100).toFixed(1) : 0}%
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total Analysis
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Total Analysis</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{sentiments.length}</div>
-            <p className="text-xs text-muted-foreground">
-              {allTokens.length} tokens analyzed
-            </p>
+            <p className="text-xs text-muted-foreground">{allTokens.length} tokens analyzed</p>
           </CardContent>
         </Card>
       </div>
@@ -165,9 +133,7 @@ export default function Sentiment() {
                           key={`${item.timeslot}-${token.token}-${tokenIndex}`}
                           className="flex items-center gap-2 p-2 rounded-lg border bg-card"
                         >
-                          <div className="font-medium text-sm">
-                            {token.token}
-                          </div>
+                          <div className="font-medium text-sm">{token.token}</div>
                           <Badge
                             className={`${getSentimentColor(token.sentiment)} border-0`}
                             variant="secondary"

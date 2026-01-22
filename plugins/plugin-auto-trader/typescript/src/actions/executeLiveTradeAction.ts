@@ -8,6 +8,7 @@
 import type {
   Action,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -61,10 +62,7 @@ async function parseTradeParams(
 
   for (const pattern of tokenPatterns) {
     const match = text.match(pattern);
-    if (
-      match?.[1] &&
-      !["sol", "usd", "usdc", "dollars"].includes(match[1].toLowerCase())
-    ) {
+    if (match?.[1] && !["sol", "usd", "usdc", "dollars"].includes(match[1].toLowerCase())) {
       tokenQuery = match[1];
       break;
     }
@@ -113,8 +111,9 @@ async function parseTradeParams(
 }
 
 /** Helper to send callback response */
-function respond(callback: HandlerCallback | undefined, text: string): void {
+function respond(callback: HandlerCallback | undefined, text: string): undefined {
   callback?.({ text });
+  return undefined;
 }
 
 export const executeLiveTradeAction: Action = {
@@ -129,8 +128,7 @@ export const executeLiveTradeAction: Action = {
     "BUY_TOKEN",
     "SELL_TOKEN",
   ],
-  description:
-    "Execute a live token swap on Solana using Jupiter DEX. Supports ANY Solana token.",
+  description: "Execute a live token swap on Solana using Jupiter DEX. Supports ANY Solana token.",
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
     const text = message.content.text?.toLowerCase() || "";
@@ -143,22 +141,17 @@ export const executeLiveTradeAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ) => {
     const text = message.content.text?.toLowerCase() || "";
 
     // Get services
-    const swapService = runtime.getService("SwapService") as
-      | SwapService
-      | undefined;
-    const resolver = runtime.getService("TokenResolverService") as
-      | TokenResolverService
-      | undefined;
+    const swapService = runtime.getService("SwapService") as SwapService | undefined;
+    const resolver = runtime.getService("TokenResolverService") as TokenResolverService | undefined;
 
     // Parse trade parameters with dynamic resolution
-    const { isSell, amount, tokenSymbol, tokenAddress } =
-      await parseTradeParams(text, resolver);
+    const { isSell, amount, tokenSymbol, tokenAddress } = await parseTradeParams(text, resolver);
 
     // Validate amount
     if (amount <= 0) {

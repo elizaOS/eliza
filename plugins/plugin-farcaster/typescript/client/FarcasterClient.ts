@@ -186,7 +186,7 @@ export class FarcasterClient {
         target: params.target,
       });
 
-      return { success: result.success };
+      return { success: result.success ?? false };
     } catch (err) {
       if (isApiErrorResponse(err)) {
         elizaLogger.error(`Neynar error publishing reaction: ${JSON.stringify(err.response.data)}`);
@@ -208,7 +208,7 @@ export class FarcasterClient {
         target: params.target,
       });
 
-      return { success: result.success };
+      return { success: result.success ?? false };
     } catch (err) {
       if (isApiErrorResponse(err)) {
         elizaLogger.error(`Neynar error deleting reaction: ${JSON.stringify(err.response.data)}`);

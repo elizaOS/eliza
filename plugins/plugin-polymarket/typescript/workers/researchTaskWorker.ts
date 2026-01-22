@@ -47,7 +47,7 @@ export const TRADE_EVALUATION_TASK_NAME = "POLYMARKET_EVALUATE_TRADE";
 async function generateTradingSummary(
   runtime: IAgentRuntime,
   marketQuestion: string,
-  researchText: string
+  researchText: string,
 ): Promise<{
   summary: string;
   recommendation: ResearchRecommendation;
@@ -113,11 +113,11 @@ Consider:
 async function triggerTradeEvaluation(
   runtime: IAgentRuntime,
   metadata: ResearchTaskMetadata,
-  recommendation: ResearchRecommendation
+  recommendation: ResearchRecommendation,
 ): Promise<void> {
   if (!recommendation.shouldTrade || recommendation.confidence < 70) {
     logger.info(
-      `[ResearchTask] Not triggering trade - shouldTrade: ${recommendation.shouldTrade}, confidence: ${recommendation.confidence}`
+      `[ResearchTask] Not triggering trade - shouldTrade: ${recommendation.shouldTrade}, confidence: ${recommendation.confidence}`,
     );
     return;
   }
@@ -154,7 +154,7 @@ async function notifyResearchComplete(
   _runtime: IAgentRuntime,
   metadata: ResearchTaskMetadata,
   summary: string,
-  recommendation: ResearchRecommendation
+  recommendation: ResearchRecommendation,
 ): Promise<void> {
   const direction = recommendation.direction ?? "N/A";
   const tradeStr = recommendation.shouldTrade ? `TRADE ${direction}` : "NO TRADE";
@@ -163,7 +163,7 @@ async function notifyResearchComplete(
     `[ResearchTask] ✅ Research completed for market: ${metadata.marketQuestion}\n` +
       `  Summary: ${summary.substring(0, 100)}...\n` +
       `  Recommendation: ${tradeStr} (${recommendation.confidence}% confidence)\n` +
-      `  Reasoning: ${recommendation.reasoning}`
+      `  Reasoning: ${recommendation.reasoning}`,
   );
 
   // Note: Custom events could be emitted here if the event system is extended
@@ -195,7 +195,7 @@ export const researchTaskWorker: TaskWorker = {
   execute: async (
     runtime: IAgentRuntime,
     _options: Record<string, unknown>,
-    task: Task
+    task: Task,
   ): Promise<void> => {
     const metadata = task.metadata as unknown as ResearchTaskMetadata;
     const storage = new ResearchStorageService(runtime);
@@ -235,14 +235,14 @@ Provide a detailed, balanced analysis with citations to your sources.`,
       const researchResult = rawResult as ResearchModelResult;
 
       logger.info(
-        `[ResearchTask] Research API returned. Processing ${researchResult.text.length} characters...`
+        `[ResearchTask] Research API returned. Processing ${researchResult.text.length} characters...`,
       );
 
       // Generate a trading recommendation summary
       const { summary, recommendation } = await generateTradingSummary(
         runtime,
         metadata.marketQuestion,
-        researchResult.text
+        researchResult.text,
       );
 
       // Build the result object

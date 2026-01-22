@@ -52,7 +52,7 @@ async function main(): Promise<void> {
   });
 
   const runAction = async (actionName: string, text: string): Promise<void> => {
-    const action = runtime.getAction(actionName) as Action | undefined;
+    const action = runtime.actions.find(a => a.name === actionName);
     if (!action) return;
     await action.handler(runtime, makeMemory(text), undefined, {}, undefined);
   };

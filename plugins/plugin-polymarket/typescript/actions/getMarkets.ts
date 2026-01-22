@@ -20,7 +20,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { GAMMA_API_URL, POLYMARKET_SERVICE_NAME } from "../constants";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { PolymarketService } from "../services/polymarket";
 import { retrieveAllMarketsTemplate } from "../templates";
 import type { MarketsActivityData, SimplifiedMarket } from "../types";
@@ -132,67 +131,6 @@ function formatVolume(volume: string | number): string {
   return `$${num.toFixed(0)}`;
 }
 
-const CARD_MAX_WIDTH = 88;
-
-function wrapCardLines(text: string, maxWidth: number): string[] {
-  if (text.length <= maxWidth) return [text];
-  const words = text.split(" ");
-  const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const next = current.length > 0 ? `${current} ${word}` : word;
-    if (next.length <= maxWidth) {
-      current = next;
-      continue;
-    }
-    if (current.length > 0) {
-      lines.push(current);
-    }
-    if (word.length > maxWidth) {
-      let remaining = word;
-      while (remaining.length > maxWidth) {
-        lines.push(remaining.slice(0, maxWidth));
-        remaining = remaining.slice(maxWidth);
-      }
-      current = remaining;
-    } else {
-      current = word;
-    }
-  }
-  if (current.length > 0) lines.push(current);
-  return lines.length > 0 ? lines : [""];
-}
-
-function buildCard(title: string, lines: string[]): string {
-  const titleLines = wrapCardLines(title, CARD_MAX_WIDTH);
-  const bodyLines = lines.flatMap((line) => wrapCardLines(line, CARD_MAX_WIDTH));
-  const allLines = [...titleLines, ...bodyLines];
-  const contentWidth = Math.max(20, ...allLines.map((line) => line.length));
-  const border = `+${"-".repeat(contentWidth + 2)}+`;
-  const divider = `| ${"-".repeat(contentWidth)} |`;
-  const renderLine = (line: string) => `| ${line.padEnd(contentWidth)} |`;
-  const rows = [
-    border,
-    ...titleLines.map(renderLine),
-    divider,
-    ...bodyLines.map(renderLine),
-    border,
-  ];
-  return rows.join("\n");
-}
-
-function getMarketUrl(market: GammaMarket): string | null {
-  const slug = market.slug?.trim();
-  if (slug) return `https://polymarket.com/market/${slug}`;
-  const id = market.conditionId || market.id;
-  return id ? `https://polymarket.com/market/${id}` : null;
-}
-
-function getEventUrl(event: GammaEvent): string | null {
-  const slug = event.slug?.trim();
-  return slug ? `https://polymarket.com/event/${slug}` : null;
-}
-
 /**
  * Filter markets to only include those matching the search term.
  * Used to filter multi-option events (like "2026 NBA Champion") to just the relevant option.
@@ -217,7 +155,7 @@ function filterMarketsBySearchTerm(markets: GammaMarket[], searchTerm: string): 
  * Returns a map of eventTitle -> markets[]
  */
 function _groupMarketsByEvent(
-  markets: Array<GammaMarket & { _eventTitle?: string }>
+  markets: Array<GammaMarket & { _eventTitle?: string }>,
 ): Map<string, GammaMarket[]> {
   const grouped = new Map<string, GammaMarket[]>();
 
@@ -272,7 +210,7 @@ async function fetchGammaSearch(
   runtime: IAgentRuntime,
   query: string,
   limit: number,
-  activeOnly: boolean
+  activeOnly: boolean,
 ): Promise<{ events: GammaEvent[]; tags: GammaTag[] }> {
   const params = new URLSearchParams({
     q: query,
@@ -305,7 +243,7 @@ async function fetchGammaSearch(
 
 async function fetchGammaEvents(
   runtime: IAgentRuntime,
-  options: { tagId?: string; limit: number; activeOnly: boolean }
+  options: { tagId?: string; limit: number; activeOnly: boolean },
 ): Promise<GammaEvent[]> {
   const params = new URLSearchParams({
     closed: "false",
@@ -341,7 +279,7 @@ async function fetchGammaTags(runtime: IAgentRuntime): Promise<GammaTag[]> {
 
 async function findTagByName(
   runtime: IAgentRuntime,
-  categoryName: string
+  categoryName: string,
 ): Promise<GammaTag | null> {
   const tags = await fetchGammaTags(runtime);
   const normalized = categoryName.toLowerCase().trim();
@@ -352,7 +290,7 @@ async function findTagByName(
 
   // Partial match
   const partial = tags.find(
-    (t) => t.label.toLowerCase().includes(normalized) || normalized.includes(t.label.toLowerCase())
+    (t) => t.label.toLowerCase().includes(normalized) || normalized.includes(t.label.toLowerCase()),
   );
   return partial || null;
 }
@@ -385,104 +323,107 @@ function filterActiveEvents(events: GammaEvent[]): GammaEvent[] {
 }
 
 function formatMarketResult(market: GammaMarket, index: number, eventTitle?: string): string {
-  const status = market.active && !market.closed ? "Active" : "Closed";
-  const title = `Market #${index + 1}: ${market.question}`;
+  const statusEmoji = market.active && !market.closed ? "🟢" : "🔴";
+  let text = `**${index + 1}. ${market.question}** ${statusEmoji}\n`;
+
   const outcomes = parseOutcomes(market.outcomes);
   const prices = parseOutcomePrices(market.outcomePrices);
-  const lines: string[] = [`Status: ${status}`];
 
   if (outcomes.length > 0 && prices.length > 0) {
     const priceStr = outcomes
       .map((outcome, i) => `${outcome}: ${formatPrice(prices[i] || 0)}`)
       .join(" | ");
-    lines.push(`Prices: ${priceStr}`);
+    text += `   📊 ${priceStr}\n`;
   }
 
   const vol = formatVolume(market.volume);
   if (vol) {
-    let volumeLine = `Volume: ${vol}`;
+    text += `   💰 Volume: ${vol}`;
     if (market.volume24hr) {
-      volumeLine += ` (24h: ${formatVolume(market.volume24hr)})`;
+      text += ` (24h: ${formatVolume(market.volume24hr)})`;
     }
-    lines.push(volumeLine);
+    text += `\n`;
   }
 
   if (eventTitle && eventTitle !== market.question) {
-    lines.push(`Event: ${eventTitle}`);
+    text += `   📁 Event: ${eventTitle}\n`;
   }
 
   if (market.endDate) {
-    lines.push(`Ends: ${new Date(market.endDate).toLocaleDateString()}`);
+    text += `   ⏰ Ends: ${new Date(market.endDate).toLocaleDateString()}\n`;
   }
 
   // Show token IDs if available (these are what you need for trading)
   if (market.clobTokenIds) {
     try {
       const tokenIds = JSON.parse(market.clobTokenIds) as string[];
-      const tokenOutcomes = parseOutcomes(market.outcomes);
+      const outcomes = parseOutcomes(market.outcomes);
       if (tokenIds.length > 0) {
-        const tokens = tokenIds.map((tid, i) => {
-          const outcomeName = tokenOutcomes[i] || (i === 0 ? "Yes" : "No");
-          return `${outcomeName}=${tid.slice(0, 12)}...`;
+        text += `   🔑 Tokens: `;
+        tokenIds.forEach((tid, i) => {
+          const outcomeName = outcomes[i] || (i === 0 ? "Yes" : "No");
+          text += `${outcomeName}=\`${tid.slice(0, 12)}...\` `;
         });
-        lines.push(`Tokens: ${tokens.join(" ")}`);
+        text += `\n`;
       }
     } catch {
       // Fallback to condition ID if token parsing fails
       if (market.conditionId) {
-        lines.push(`ID: ${market.conditionId.slice(0, 16)}...`);
+        text += `   🔑 ID: \`${market.conditionId.slice(0, 16)}...\`\n`;
       }
     }
   } else if (market.conditionId) {
-    lines.push(`ID: ${market.conditionId.slice(0, 16)}...`);
+    text += `   🔑 ID: \`${market.conditionId.slice(0, 16)}...\`\n`;
   }
 
-  const betUrl = getMarketUrl(market);
-  if (betUrl) {
-    lines.push(`Bet: ${betUrl}`);
-  }
-
-  return buildCard(title, lines);
+  return text;
 }
 
 function formatEventResult(event: GammaEvent, index: number): string {
-  const status = event.active && !event.closed ? "Active" : "Closed";
-  const title = `Event #${index + 1}: ${event.title}`;
-  const lines: string[] = [`Status: ${status}`];
+  const statusEmoji = event.active && !event.closed ? "🟢" : "🔴";
+  let text = `**${index + 1}. ${event.title}** ${statusEmoji}\n`;
 
   const vol = formatVolume(event.volume || 0);
   if (vol) {
-    lines.push(`Volume: ${vol}`);
+    text += `   💰 Volume: ${vol}\n`;
   }
 
   if (event.endDate) {
-    lines.push(`Ends: ${new Date(event.endDate).toLocaleDateString()}`);
+    text += `   ⏰ Ends: ${new Date(event.endDate).toLocaleDateString()}\n`;
   }
 
   const marketCount = event.markets?.length || 0;
   if (marketCount > 0) {
-    lines.push(`Markets: ${marketCount}`);
+    text += `   📊 ${marketCount} market(s)\n`;
   }
 
-  const eventUrl = getEventUrl(event);
-  if (eventUrl) {
-    lines.push(`Event page: ${eventUrl}`);
-  }
-
-  return buildCard(title, lines);
+  return text;
 }
 
 // =============================================================================
 // Unified Markets Action
 // =============================================================================
 
-const spec = requireActionSpec("GET_MARKETS");
-
 export const retrieveAllMarketsAction: Action = {
-  name: spec.name,
-  similes: spec.similes ? [...spec.similes] : [],
+  name: "POLYMARKET_GET_MARKETS",
+  similes: [
+    "GET_MARKETS",
+    "LIST_MARKETS",
+    "SHOW_MARKETS",
+    "FETCH_MARKETS",
+    "POLYMARKET_MARKETS",
+    "ALL_MARKETS",
+    "BROWSE_MARKETS",
+    "VIEW_MARKETS",
+    "SEARCH_MARKETS",
+    "FIND_MARKETS",
+    "SEARCH_POLYMARKET",
+    "LOOKUP_MARKETS",
+    "QUERY_MARKETS",
+    "MARKET_SEARCH",
+  ],
   description:
-    `${spec.description} Use for specific queries (e.g. 'find miami heat markets'), ` +
+    "Find or browse Polymarket prediction markets. Use for keyword searches ('find miami heat markets'), " +
     "category browsing ('show sports markets'), or general listing. Supports: query (search term), " +
     "category (tag filter), active (boolean), limit (number), simplified (boolean), " +
     "sampling (boolean), sampling_mode (random|rewards).",
@@ -529,7 +470,7 @@ export const retrieveAllMarketsAction: Action = {
     message: Memory,
     state?: State,
     options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     runtime.logger.info("[getMarkets] Handler started");
 
@@ -576,7 +517,7 @@ export const retrieveAllMarketsAction: Action = {
           runtime,
           state,
           retrieveAllMarketsTemplate,
-          "retrieveAllMarketsAction"
+          "retrieveAllMarketsAction",
         );
 
         if (llmResult && !isLLMError(llmResult)) {
@@ -615,7 +556,7 @@ export const retrieveAllMarketsAction: Action = {
       }
 
       runtime.logger.info(
-        `[getMarkets] Resolved params: query=${query}, category=${category}, limit=${limit}`
+        `[getMarkets] Resolved params: query=${query}, category=${category}, limit=${limit}`,
       );
 
       const service = runtime.getService(POLYMARKET_SERVICE_NAME) as PolymarketService | undefined;
@@ -634,14 +575,11 @@ export const retrieveAllMarketsAction: Action = {
           const activeMarkets = markets.filter((m) => m.active && !m.closed);
           const limitedMarkets = activeMarkets.slice(0, limit);
 
-          let responseText = `🎯 Sampling Markets (Rewards Enabled) (${limitedMarkets.length} results)\n\n`;
+          let responseText = `🎯 **Sampling Markets (Rewards Enabled)** (${limitedMarkets.length} results)\n\n`;
           limitedMarkets.forEach((market, index) => {
-            const lines = [
-              `Condition: ${market.condition_id.slice(0, 16)}...`,
-              `Min Incentive Size: ${market.min_incentive_size}`,
-              `Max Incentive Spread: ${market.max_incentive_spread}`,
-            ];
-            responseText += `${buildCard(`Sampling Market #${index + 1}`, lines)}\n\n`;
+            responseText += `${index + 1}. Condition: \`${market.condition_id.slice(0, 16)}...\`\n`;
+            responseText += `   Min Incentive Size: ${market.min_incentive_size}\n`;
+            responseText += `   Max Incentive Spread: ${market.max_incentive_spread}\n\n`;
           });
 
           const responseContent: Content = {
@@ -689,7 +627,7 @@ export const retrieveAllMarketsAction: Action = {
 
       try {
         runtime.logger.info(
-          `[getMarkets] Starting fetch. mode=${useKeywordSearch ? "search" : "browse"}, term=${searchTerm}`
+          `[getMarkets] Starting fetch. mode=${useKeywordSearch ? "search" : "browse"}, term=${searchTerm}`,
         );
 
         let responseText = "";
@@ -702,7 +640,7 @@ export const retrieveAllMarketsAction: Action = {
           runtime.logger.info(`[getMarkets] Calling fetchGammaSearch for: ${searchTerm}`);
           const searchResult = await fetchGammaSearch(runtime, searchTerm, limit, activeOnly);
           runtime.logger.info(
-            `[getMarkets] fetchGammaSearch returned ${searchResult.events?.length || 0} events`
+            `[getMarkets] fetchGammaSearch returned ${searchResult.events?.length || 0} events`,
           );
           events = filterActiveEvents(searchResult.events);
           relatedTags = searchResult.tags;
@@ -715,8 +653,8 @@ export const retrieveAllMarketsAction: Action = {
               allMarketsFromEvents.push(
                 ...filtered.map(
                   (m) =>
-                    ({ ...m, _eventTitle: event.title }) as GammaMarket & { _eventTitle?: string }
-                )
+                    ({ ...m, _eventTitle: event.title }) as GammaMarket & { _eventTitle?: string },
+                ),
               );
             }
           }
@@ -733,7 +671,7 @@ export const retrieveAllMarketsAction: Action = {
             const eventTitle = (event.title || "").toLowerCase();
             const titleWords = eventTitle.split(/\s+/).filter((w) => w.length > 2);
             const matchCount = searchWords.filter((sw) =>
-              titleWords.some((tw) => tw.includes(sw) || sw.includes(tw))
+              titleWords.some((tw) => tw.includes(sw) || sw.includes(tw)),
             ).length;
             if (matchCount > bestMatchScore) {
               bestMatchScore = matchCount;
@@ -751,18 +689,18 @@ export const retrieveAllMarketsAction: Action = {
                 ({
                   ...m,
                   _eventTitle: bestMatchingEvent?.title,
-                }) as GammaMarket & { _eventTitle?: string }
+                }) as GammaMarket & { _eventTitle?: string },
             );
 
             // Find words in search that AREN'T in the event title (these are market-specific)
             const eventTitle = (bestMatchingEvent.title || "").toLowerCase();
             const eventTitleWords = eventTitle.split(/\s+/).filter((w) => w.length > 2);
             const marketSpecificWords = searchWords.filter(
-              (sw) => !eventTitleWords.some((tw) => tw.includes(sw) || sw.includes(tw))
+              (sw) => !eventTitleWords.some((tw) => tw.includes(sw) || sw.includes(tw)),
             );
 
             runtime.logger.info(
-              `[getMarkets] Event "${bestMatchingEvent.title}" matches. Market-specific words: [${marketSpecificWords.join(", ")}]`
+              `[getMarkets] Event "${bestMatchingEvent.title}" matches. Market-specific words: [${marketSpecificWords.join(", ")}]`,
             );
 
             if (marketSpecificWords.length > 0) {
@@ -771,17 +709,17 @@ export const retrieveAllMarketsAction: Action = {
                 const question = (m.question || "").toLowerCase();
                 const groupTitle = (m.groupItemTitle || "").toLowerCase();
                 return marketSpecificWords.some(
-                  (word) => question.includes(word) || groupTitle.includes(word)
+                  (word) => question.includes(word) || groupTitle.includes(word),
                 );
               });
               runtime.logger.info(
-                `[getMarkets] Filtered to ${matchingMarkets.length} markets matching market-specific words`
+                `[getMarkets] Filtered to ${matchingMarkets.length} markets matching market-specific words`,
               );
             } else {
               // No market-specific words - show all from this event
               matchingMarkets = eventMarketsWithTitle;
               runtime.logger.info(
-                `[getMarkets] No market-specific words, showing all ${matchingMarkets.length} markets from event`
+                `[getMarkets] No market-specific words, showing all ${matchingMarkets.length} markets from event`,
               );
             }
           }
@@ -790,18 +728,18 @@ export const retrieveAllMarketsAction: Action = {
           if (matchingMarkets.length === 0) {
             matchingMarkets = filterMarketsBySearchTerm(allMarketsFromEvents, searchTerm);
             runtime.logger.info(
-              `[getMarkets] Fallback: filtered ${allMarketsFromEvents.length} markets down to ${matchingMarkets.length}`
+              `[getMarkets] Fallback: filtered ${allMarketsFromEvents.length} markets down to ${matchingMarkets.length}`,
             );
           }
 
           // If filtering removed all results, show a few from the events for context
           if (matchingMarkets.length === 0 && allMarketsFromEvents.length > 0) {
             // Show the event-level info instead of individual markets
-            responseText = `🔍 Search Results for "${searchTerm}"\n\n`;
+            responseText = `🔍 **Search Results for "${searchTerm}"**\n\n`;
             responseText += `Found ${events.length} related event(s), but no exact market match for "${searchTerm}".\n\n`;
 
             events.slice(0, limit).forEach((event, index) => {
-              responseText += `${formatEventResult(event, index)}\n\n`;
+              responseText += `${formatEventResult(event, index)}\n`;
             });
 
             if (relatedTags.length > 0) {
@@ -825,7 +763,7 @@ export const retrieveAllMarketsAction: Action = {
 
           markets = matchingMarkets;
 
-          responseText = `🔍 Search Results for "${searchTerm}"\n\n`;
+          responseText = `🔍 **Search Results for "${searchTerm}"**\n\n`;
 
           if (markets.length === 0 && events.length === 0) {
             responseText += `No markets found matching "${searchTerm}".\n\n`;
@@ -842,13 +780,13 @@ export const retrieveAllMarketsAction: Action = {
             const limited = markets.slice(0, limit);
             limited.forEach((market, index) => {
               const eventTitle = (market as GammaMarket & { _eventTitle?: string })._eventTitle;
-              responseText += `${formatMarketResult(market, index, eventTitle)}\n\n`;
+              responseText += `${formatMarketResult(market, index, eventTitle)}\n`;
             });
           } else {
             // Show events if no individual markets
             responseText += `Found ${events.length} event(s):\n\n`;
             events.slice(0, limit).forEach((event, index) => {
-              responseText += `${formatEventResult(event, index)}\n\n`;
+              responseText += `${formatEventResult(event, index)}\n`;
             });
           }
         } else {
@@ -873,7 +811,7 @@ export const retrieveAllMarketsAction: Action = {
           }
 
           if (category && tagId) {
-            responseText = `📊 ${category.charAt(0).toUpperCase() + category.slice(1)} Markets\n\n`;
+            responseText = `📊 **${category.charAt(0).toUpperCase() + category.slice(1)} Markets**\n\n`;
           } else if (category) {
             // Tag not found, try search instead
             const searchResult = await fetchGammaSearch(runtime, category, limit, activeOnly);
@@ -884,9 +822,9 @@ export const retrieveAllMarketsAction: Action = {
                 markets.push(...filterActiveMarkets(event.markets));
               }
             }
-            responseText = `🔍 Markets matching "${category}"\n\n`;
+            responseText = `🔍 **Markets matching "${category}"**\n\n`;
           } else {
-            responseText = `📊 Active Polymarket Markets (Top by Volume)\n\n`;
+            responseText = `📊 **Active Polymarket Markets** (Top by Volume)\n\n`;
           }
 
           if (events.length === 0 && markets.length === 0) {
@@ -903,12 +841,12 @@ export const retrieveAllMarketsAction: Action = {
           } else if (simplified || markets.length === 0) {
             // Show events in simplified view
             events.slice(0, limit).forEach((event, index) => {
-              responseText += `${formatEventResult(event, index)}\n\n`;
+              responseText += `${formatEventResult(event, index)}\n`;
             });
           } else {
             // Show individual markets
             markets.slice(0, limit).forEach((market, index) => {
-              responseText += `${formatMarketResult(market, index)}\n\n`;
+              responseText += `${formatMarketResult(market, index)}\n`;
             });
           }
         }
@@ -921,7 +859,7 @@ export const retrieveAllMarketsAction: Action = {
         }
 
         runtime.logger.info(
-          `[getMarkets] Response built, length=${responseText.length}, calling callback`
+          `[getMarkets] Response built, length=${responseText.length}, calling callback`,
         );
         const responseContent: Content = {
           text: responseText,
@@ -967,7 +905,7 @@ export const retrieveAllMarketsAction: Action = {
         await sendError(
           callback,
           `Failed to fetch markets: ${errorMessage}`,
-          searchTerm || "general listing"
+          searchTerm || "general listing",
         );
         return { success: false, text: `Markets error: ${errorMessage}`, error: errorMessage };
       }

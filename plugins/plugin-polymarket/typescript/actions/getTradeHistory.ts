@@ -9,7 +9,6 @@ import type {
 } from "@elizaos/core";
 import type { ClobClient } from "@polymarket/clob-client";
 import { POLYMARKET_SERVICE_NAME } from "../constants";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { PolymarketService } from "../services/polymarket";
 import { getTradeHistoryTemplate } from "../templates";
 import type { GetTradesParams, TradeEntry, TradeHistoryActivityData } from "../types";
@@ -35,20 +34,17 @@ interface LLMTradeHistoryResult {
  * Get Trade History Action for Polymarket.
  * Retrieves the authenticated user's trade history.
  */
-const spec = requireActionSpec("GET_TRADE_HISTORY");
-
 export const getTradeHistoryAction: Action = {
-  name: spec.name,
-  similes: spec.similes ? spec.similes.map((s) => `POLYMARKET_${s}`) : [],
+  name: "POLYMARKET_GET_TRADE_HISTORY",
+  similes: ["MY_TRADES", "TRADE_LOG", "FILLED_ORDERS", "PAST_TRADES", "TRADING_HISTORY"].map(
+    (s) => `POLYMARKET_${s}`,
+  ),
   description:
-    `${spec.description} Retrieves filled trade history, optionally filtered by market or asset. ` +
-    "Use when the user asks for past trades or fills. Do not use for open orders or a specific " +
-    "order status; use getActiveOrdersAction or getOrderDetailsAction. Parameters: market (optional slug), " +
-    "assetId (optional token ID), limit (optional). Requires full CLOB credentials.",
+    "Retrieves the authenticated user's filled trade history, optionally filtered by market or asset. Use when the user asks for past trades or fills. Do not use for open orders or a specific order status; use getActiveOrdersAction or getOrderDetailsAction. Parameters: market (optional slug), assetId (optional token ID), limit (optional). Requires full CLOB credentials.",
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     runtime.logger.info(
-      `[getTradeHistoryAction] Validate called for message: "${message.content?.text}"`
+      `[getTradeHistoryAction] Validate called for message: "${message.content?.text}"`,
     );
     const clobApiUrl = runtime.getSetting("CLOB_API_URL");
     const clobApiKey = runtime.getSetting("CLOB_API_KEY");
@@ -67,7 +63,7 @@ export const getTradeHistoryAction: Action = {
     }
     if (!privateKey) {
       runtime.logger.warn(
-        "[getTradeHistoryAction] A private key (WALLET_PRIVATE_KEY, PRIVATE_KEY, or POLYMARKET_PRIVATE_KEY) is required."
+        "[getTradeHistoryAction] A private key (WALLET_PRIVATE_KEY, PRIVATE_KEY, or POLYMARKET_PRIVATE_KEY) is required.",
       );
       return false;
     }
@@ -77,7 +73,7 @@ export const getTradeHistoryAction: Action = {
       if (!clobApiSecret) missing.push("CLOB_API_SECRET or CLOB_SECRET");
       if (!clobApiPassphrase) missing.push("CLOB_API_PASSPHRASE or CLOB_PASS_PHRASE");
       runtime.logger.warn(
-        `[getTradeHistoryAction] Missing required API credentials for L2 authentication: ${missing.join(", ")}.`
+        `[getTradeHistoryAction] Missing required API credentials for L2 authentication: ${missing.join(", ")}.`,
       );
       return false;
     }
@@ -90,7 +86,7 @@ export const getTradeHistoryAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     runtime.logger.info("[getTradeHistoryAction] Handler called!");
 
@@ -98,7 +94,7 @@ export const getTradeHistoryAction: Action = {
       runtime,
       state,
       getTradeHistoryTemplate,
-      "getTradeHistoryAction"
+      "getTradeHistoryAction",
     );
     let llmResult: LLMTradeHistoryResult = {};
     if (result && !isLLMError(result)) {
@@ -115,7 +111,7 @@ export const getTradeHistoryAction: Action = {
     if (assetId) apiParams.asset_id = assetId;
 
     runtime.logger.info(
-      `[getTradeHistoryAction] Fetching trade history with params: ${JSON.stringify(apiParams)}`
+      `[getTradeHistoryAction] Fetching trade history with params: ${JSON.stringify(apiParams)}`,
     );
 
     const client = (await initializeClobClientWithCreds(runtime)) as ClobClient;

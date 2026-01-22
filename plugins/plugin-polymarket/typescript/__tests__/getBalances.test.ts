@@ -104,7 +104,7 @@ describe("getBalancesAction", () => {
       testMessage,
       testState,
       { parameters: { tokenIds: ["token-1"], includeCollateral: true } },
-      callback
+      callback,
     );
 
     expect(result.success).toBe(true);

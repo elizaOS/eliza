@@ -610,7 +610,7 @@ export class PolymarketError extends Error {
   constructor(
     public readonly code: PolymarketErrorCode,
     message: string,
-    public readonly cause?: Error
+    public readonly cause?: Error,
   ) {
     super(message);
     this.name = "PolymarketError";

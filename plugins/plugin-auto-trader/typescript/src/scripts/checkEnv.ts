@@ -59,12 +59,8 @@ if (fs.existsSync(envPath)) {
   console.log(`   Contains ${lines.length} non-comment lines`);
 
   // Check for common issues
-  const hasPrivateKey = lines.some((line: string) =>
-    line.startsWith("SOLANA_PRIVATE_KEY="),
-  );
-  const hasBirdeyeKey = lines.some((line: string) =>
-    line.startsWith("BIRDEYE_API_KEY="),
-  );
+  const hasPrivateKey = lines.some((line: string) => line.startsWith("SOLANA_PRIVATE_KEY="));
+  const hasBirdeyeKey = lines.some((line: string) => line.startsWith("BIRDEYE_API_KEY="));
 
   if (hasPrivateKey) {
     console.log("   ✅ SOLANA_PRIVATE_KEY line found in .env");

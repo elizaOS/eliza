@@ -9,6 +9,7 @@
 import type {
   Action,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -22,16 +23,14 @@ export const runBacktestAction: Action = {
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
     const text = message.content.text?.toLowerCase() || "";
-    return ["backtest", "simulation", "test strategy", "simulate"].some((kw) =>
-      text.includes(kw),
-    );
+    return ["backtest", "simulation", "test strategy", "simulate"].some((kw) => text.includes(kw));
   },
 
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ) => {
     const tradingManager = runtime.getService("AutoTradingManager") as
@@ -39,9 +38,7 @@ export const runBacktestAction: Action = {
       | undefined;
     const strategies = tradingManager?.getStrategies() || [];
 
-    const strategyList = strategies
-      .map((s) => `• **${s.name}** (${s.id})`)
-      .join("\n");
+    const strategyList = strategies.map((s) => `• **${s.name}** (${s.id})`).join("\n");
 
     const response = `📊 **Backtesting Information**
 
@@ -75,6 +72,7 @@ ${strategyList || "• No strategies loaded"}
 Would you like to start paper trading with a specific strategy?`;
 
     callback?.({ text: response });
+    return undefined;
   },
 
   examples: [

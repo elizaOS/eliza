@@ -32,6 +32,25 @@ def _to_str_list(value: str | Iterable[str] | None) -> list[str]:
     return list(value)
 
 
+def _to_str_list(value: str | Iterable[str] | None) -> list[str]:
+    """
+    Normalize a value to list[str].
+
+    Handles str, list, tuple, set, or any Iterable[str].
+    Returns empty list for None.
+
+    WHY: Character fields can be str | list[str] | tuple[str] depending on
+    how they're defined. This helper ensures consistent handling regardless
+    of the input type, avoiding issues like tuples being treated as scalars.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    # Any other iterable (list, tuple, set, etc.) - convert to list
+    return list(value)
+
+
 async def get_character_context(
     runtime: IAgentRuntime,
     message: Memory,

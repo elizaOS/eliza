@@ -70,7 +70,7 @@ async function runBuild(): Promise<boolean> {
       `export * from "./index";
 export { default } from "./index";
 `,
-      "utf8"
+      "utf8",
     );
   }
 

@@ -23,9 +23,7 @@ function extractPublicKey() {
     console.log(`SOLANA_ADDRESS=${publicKey}`);
   } catch (error) {
     console.error("❌ Failed to decode private key:", error);
-    console.log(
-      "\nMake sure your SOLANA_PRIVATE_KEY is a valid base58 encoded private key",
-    );
+    console.log("\nMake sure your SOLANA_PRIVATE_KEY is a valid base58 encoded private key");
   }
 }
 

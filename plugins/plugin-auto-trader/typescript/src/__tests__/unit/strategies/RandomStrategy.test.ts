@@ -1,24 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RandomStrategy } from "../../../strategies/RandomStrategy.ts";
-import type {
-  AgentState,
-  PortfolioSnapshot,
-  StrategyContextMarketData,
-} from "../../../types.ts";
+import type { AgentState, PortfolioSnapshot, StrategyContextMarketData } from "../../../types.ts";
 import { OrderType, TradeType } from "../../../types.ts";
-
-/** Interface for accessing internal strategy parameters during testing */
-interface RandomStrategyParams {
-  tradeAttemptProbability: number;
-  buyProbability: number;
-  maxTradeSizePercentage: number;
-  fixedTradeQuantity?: number;
-}
-
-/** Extended interface to access private params property for testing */
-interface TestableRandomStrategy extends RandomStrategy {
-  params: RandomStrategyParams;
-}
 
 describe("RandomStrategy", () => {
   let strategy: RandomStrategy;
@@ -93,7 +76,7 @@ describe("RandomStrategy", () => {
     });
 
     it("should have default parameters", () => {
-      const params = (strategy as TestableRandomStrategy).params;
+      const params = (strategy as any).params;
       expect(params.tradeAttemptProbability).toBe(0.1);
       expect(params.buyProbability).toBe(0.5);
       expect(params.maxTradeSizePercentage).toBe(0.01);
@@ -108,7 +91,7 @@ describe("RandomStrategy", () => {
         maxTradeSizePercentage: 0.2,
       });
 
-      const params = (strategy as TestableRandomStrategy).params;
+      const params = (strategy as any).params;
       expect(params.tradeAttemptProbability).toBe(0.8);
       expect(params.buyProbability).toBe(0.6);
       expect(params.maxTradeSizePercentage).toBe(0.2);
@@ -119,7 +102,7 @@ describe("RandomStrategy", () => {
         tradeAttemptProbability: 0.9,
       });
 
-      const params = (strategy as TestableRandomStrategy).params;
+      const params = (strategy as any).params;
       expect(params.tradeAttemptProbability).toBe(0.9);
       expect(params.buyProbability).toBe(0.5);
       expect(params.maxTradeSizePercentage).toBe(0.01);
@@ -144,9 +127,7 @@ describe("RandomStrategy", () => {
       // Mock Math.random sequence:
       // 1st call: 0.05 (< 0.1, passes trade attempt)
       // 2nd call: 0.3 (< 0.5, chooses BUY)
-      vi.spyOn(Math, "random")
-        .mockReturnValueOnce(0.05)
-        .mockReturnValueOnce(0.3);
+      vi.spyOn(Math, "random").mockReturnValueOnce(0.05).mockReturnValueOnce(0.3);
 
       const decision = await strategy.decide({
         marketData: mockMarketData,
@@ -165,9 +146,7 @@ describe("RandomStrategy", () => {
       // Mock Math.random sequence:
       // 1st call: 0.05 (< 0.1, passes trade attempt)
       // 2nd call: 0.7 (> 0.5, chooses SELL)
-      vi.spyOn(Math, "random")
-        .mockReturnValueOnce(0.05)
-        .mockReturnValueOnce(0.7);
+      vi.spyOn(Math, "random").mockReturnValueOnce(0.05).mockReturnValueOnce(0.7);
 
       const decision = await strategy.decide({
         marketData: mockMarketData,
@@ -234,7 +213,7 @@ describe("RandomStrategy", () => {
         fixedTradeQuantity: 50,
       });
 
-      const params = (strategy as TestableRandomStrategy).params;
+      const params = (strategy as any).params;
       expect(params.fixedTradeQuantity).toBe(50);
     });
   });

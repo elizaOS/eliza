@@ -264,7 +264,7 @@ function testWasmBindings(wasm: WasmModule): TestResult[] {
 // OPENAI MODEL HANDLER
 // ============================================================================
 
-function _createModelHandler(apiKey: string, model: string) {
+function createModelHandler(apiKey: string, model: string) {
   return async (paramsJson: string): Promise<string> => {
     const params: { prompt: string; system?: string; temperature?: number } =
       JSON.parse(paramsJson);
@@ -296,6 +296,14 @@ function _createModelHandler(apiKey: string, model: string) {
     const data = await response.json();
     return data.choices[0].message.content;
   };
+}
+
+function createOpenAIModelHandler(apiKey: string, model: string) {
+  return createModelHandler(apiKey, model);
+}
+
+function createSmallModelHandler(apiKey: string) {
+  return createModelHandler(apiKey, "gpt-4o-mini");
 }
 
 // ============================================================================

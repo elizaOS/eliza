@@ -1,6 +1,7 @@
 import type {
   Action,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -45,22 +46,18 @@ export const stopTradingAction: Action = {
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
     const text = (message.content.text || "").toLowerCase();
-    return (
-      text.includes("stop") || text.includes("pause") || text.includes("halt")
-    );
+    return text.includes("stop") || text.includes("pause") || text.includes("halt");
   },
 
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ) => {
     try {
-      const autoTradingManager = runtime.getService(
-        "AutoTradingManager",
-      ) as AutoTradingManager;
+      const autoTradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
       if (!autoTradingManager) {
         throw new Error("AutoTradingManager not found");
       }
@@ -95,7 +92,7 @@ Your open positions will remain active. You can:
         });
       }
 
-      return;
+      return undefined;
     } catch (error) {
       logger.error(
         "Error stopping trading:",
@@ -109,7 +106,7 @@ Your open positions will remain active. You can:
         });
       }
 
-      return;
+      return undefined;
     }
   },
 };

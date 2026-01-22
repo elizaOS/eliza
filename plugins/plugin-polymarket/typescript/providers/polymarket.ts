@@ -8,7 +8,6 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { DEFAULT_CLOB_API_URL, POLYGON_CHAIN_ID, POLYMARKET_SERVICE_NAME } from "../constants";
-import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { PolymarketService } from "../services/polymarket";
 import type {
   ActivityContext,
@@ -189,10 +188,8 @@ function formatActivityContextText(activityContext: ActivityContext): string {
   return lines.join("\n");
 }
 
-const spec = requireProviderSpec("polymarket");
-
 export const polymarketProvider: Provider = {
-  name: spec.name,
+  name: "POLYMARKET_PROVIDER",
   description:
     "Provides current Polymarket account state and trading context from the service cache",
 
@@ -201,10 +198,10 @@ export const polymarketProvider: Provider = {
     const hasPrivateKey = Boolean(
       runtime.getSetting("POLYMARKET_PRIVATE_KEY") ||
         runtime.getSetting("EVM_PRIVATE_KEY") ||
-        runtime.getSetting("WALLET_PRIVATE_KEY")
+        runtime.getSetting("WALLET_PRIVATE_KEY"),
     );
     const hasEnvApiCreds = Boolean(
-      runtime.getSetting("CLOB_API_KEY") && runtime.getSetting("CLOB_API_SECRET")
+      runtime.getSetting("CLOB_API_KEY") && runtime.getSetting("CLOB_API_SECRET"),
     );
     const allowCreateSetting = runtime.getSetting("POLYMARKET_ALLOW_CREATE_API_KEY");
     const canDeriveOrCreateCreds =
@@ -229,13 +226,13 @@ export const polymarketProvider: Provider = {
     if (strictMode && !hasApiCreds) {
       throw new Error(
         "Polymarket provider strict mode: API credentials required to fetch trading context. " +
-          "Set CLOB_API_KEY/SECRET/PASSPHRASE or enable POLYMARKET_ALLOW_CREATE_API_KEY with a private key."
+          "Set CLOB_API_KEY/SECRET/PASSPHRASE or enable POLYMARKET_ALLOW_CREATE_API_KEY with a private key.",
       );
     }
 
     if (hasApiCreds && strictMode && !hasPrivateKey) {
       throw new Error(
-        "Polymarket provider strict mode: private key required when API credentials are set."
+        "Polymarket provider strict mode: private key required when API credentials are set.",
       );
     }
 

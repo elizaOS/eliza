@@ -79,7 +79,7 @@ export const createPoll: Action = {
 
     if (!discordService || !discordService.client) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "Discord service is not available.",
           source: "discord",
         });
@@ -89,7 +89,7 @@ export const createPoll: Action = {
 
     if (!state) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "State is not available.",
           source: "discord",
         });
@@ -100,7 +100,7 @@ export const createPoll: Action = {
     const pollInfo = await getPollInfo(runtime, message, state);
     if (!pollInfo) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "I couldn't understand the poll details. Please specify a question and at least 2 options.",
           source: "discord",
         });
@@ -113,7 +113,7 @@ export const createPoll: Action = {
       const room = stateData?.room || (await runtime.getRoom(message.roomId));
       if (!room || !room.channelId) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: "I couldn't determine the current channel.",
             source: "discord",
           });
@@ -124,7 +124,7 @@ export const createPoll: Action = {
       const channel = await discordService.client.channels.fetch(room.channelId);
       if (!channel || !channel.isTextBased()) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: "I can only create polls in text channels.",
             source: "discord",
           });
@@ -185,7 +185,7 @@ export const createPoll: Action = {
       };
 
       if (callback) {
-        await callback(response);
+        await callback?.(response);
       }
       return { success: true, text: response.text };
     } catch (error) {
@@ -198,7 +198,7 @@ export const createPoll: Action = {
         "Error creating poll"
       );
       if (callback) {
-        await callback({
+        await callback?.({
           text: "I encountered an error while creating the poll. Please make sure I have permission to send messages and add reactions.",
           source: "discord",
         });

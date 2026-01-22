@@ -9,27 +9,8 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { checkPortfolioAction } from "../checkPortfolioAction.ts";
 
-/** Portfolio asset type */
-interface PortfolioAsset {
-  address?: string;
-  symbol?: string;
-  name?: string;
-  uiAmount: number;
-  valueUsd: number;
-}
-
-/** Wallet service mock type */
-interface MockWalletService {
-  getPortfolio: ReturnType<typeof vi.fn>;
-}
-
-/** Mock runtime type for testing */
-type MockRuntime = Pick<IAgentRuntime, "agentId"> & {
-  getService: ReturnType<typeof vi.fn>;
-};
-
 describe("checkPortfolioAction", () => {
-  let runtime: MockRuntime;
+  let runtime: IAgentRuntime;
   let message: Memory;
   let state: State;
   let callbackResult: Content | null;
@@ -46,36 +27,31 @@ describe("checkPortfolioAction", () => {
 
     runtime = {
       agentId: "test-agent-id",
-      getService: vi.fn(
-        (serviceName: string | symbol): MockWalletService | null => {
-          if (
-            serviceName === ServiceType.WALLET ||
-            serviceName === "WalletService"
-          ) {
-            return {
-              getPortfolio: vi.fn().mockResolvedValue({
-                totalValueUsd: 28000,
-                assets: [
-                  {
-                    symbol: "SOL",
-                    name: "Solana",
-                    uiAmount: 100,
-                    valueUsd: 6000,
-                  },
-                  {
-                    symbol: "ETH",
-                    name: "Ethereum",
-                    uiAmount: 10,
-                    valueUsd: 22000,
-                  },
-                ] as PortfolioAsset[],
-              }),
-            };
-          }
-          return null;
-        },
-      ),
-    };
+      getService: vi.fn((serviceName: string | symbol) => {
+        if (serviceName === ServiceType.WALLET || serviceName === "WalletService") {
+          return {
+            getPortfolio: vi.fn().mockResolvedValue({
+              totalValueUsd: 28000,
+              assets: [
+                {
+                  symbol: "SOL",
+                  name: "Solana",
+                  uiAmount: 100,
+                  valueUsd: 6000,
+                },
+                {
+                  symbol: "ETH",
+                  name: "Ethereum",
+                  uiAmount: 10,
+                  valueUsd: 22000,
+                },
+              ],
+            }),
+          };
+        }
+        return null;
+      }) as any,
+    } as any;
 
     message = {
       content: {
@@ -97,10 +73,7 @@ describe("checkPortfolioAction", () => {
 
   describe("validate", () => {
     it("should validate when message contains portfolio keywords", async () => {
-      const result = await checkPortfolioAction.validate(
-        runtime as unknown as IAgentRuntime,
-        message,
-      );
+      const result = await checkPortfolioAction.validate(runtime, message);
       expect(result).toBe(true);
     });
 
@@ -108,33 +81,21 @@ describe("checkPortfolioAction", () => {
       const keywords = ["holdings", "positions", "balance", "wallet", "my"];
       for (const keyword of keywords) {
         message.content.text = `Show ${keyword}`;
-        const result = await checkPortfolioAction.validate(
-          runtime as unknown as IAgentRuntime,
-          message,
-        );
+        const result = await checkPortfolioAction.validate(runtime, message);
         expect(result).toBe(true);
       }
     });
 
     it("should not validate when message lacks portfolio keywords", async () => {
       message.content.text = "Hello, how are you?";
-      const result = await checkPortfolioAction.validate(
-        runtime as unknown as IAgentRuntime,
-        message,
-      );
+      const result = await checkPortfolioAction.validate(runtime, message);
       expect(result).toBe(false);
     });
   });
 
   describe("handler", () => {
     it("should display portfolio with multiple positions", async () => {
-      await checkPortfolioAction.handler(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-        {},
-        callback,
-      );
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
 
       expect(callbackResult).toBeDefined();
       expect(callbackResult?.text).toContain("Portfolio Status");
@@ -153,33 +114,17 @@ describe("checkPortfolioAction", () => {
         }),
       });
 
-      await checkPortfolioAction.handler(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-        {},
-        callback,
-      );
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
 
-      expect(callbackResult?.text).toContain(
-        "Your portfolio is currently empty",
-      );
+      expect(callbackResult?.text).toContain("Your portfolio is currently empty");
     });
 
     it("should handle wallet service not available", async () => {
       runtime.getService = vi.fn().mockReturnValue(null);
 
-      await checkPortfolioAction.handler(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-        {},
-        callback,
-      );
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
 
-      expect(callbackResult?.text).toContain(
-        "No wallet services are currently available",
-      );
+      expect(callbackResult?.text).toContain("No wallet services are currently available");
     });
 
     it("should handle wallet service error gracefully", async () => {
@@ -187,13 +132,7 @@ describe("checkPortfolioAction", () => {
         getPortfolio: vi.fn().mockRejectedValue(new Error("Wallet error")),
       });
 
-      await checkPortfolioAction.handler(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-        {},
-        callback,
-      );
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
 
       expect(callbackResult?.text).toContain("Failed to fetch portfolio data");
     });
@@ -219,13 +158,7 @@ describe("checkPortfolioAction", () => {
         }),
       });
 
-      await checkPortfolioAction.handler(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-        {},
-        callback,
-      );
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
 
       expect(callbackResult?.text).toContain("SOL");
       expect(callbackResult?.text).not.toContain("USDC");
@@ -245,13 +178,7 @@ describe("checkPortfolioAction", () => {
         }),
       });
 
-      await checkPortfolioAction.handler(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-        {},
-        callback,
-      );
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
 
       expect(callbackResult?.text).toContain("Unknown Token");
       expect(callbackResult?.text).toContain("50.0000");
@@ -271,13 +198,7 @@ describe("checkPortfolioAction", () => {
         }),
       });
 
-      await checkPortfolioAction.handler(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-        {},
-        callback,
-      );
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
 
       expect(callbackResult?.text).toContain("0.0%");
     });
@@ -286,20 +207,12 @@ describe("checkPortfolioAction", () => {
       // All services return null
       runtime.getService = vi.fn().mockReturnValue(null);
 
-      await checkPortfolioAction.handler(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-        {},
-        callback,
-      );
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
 
       expect(runtime.getService).toHaveBeenCalledWith(ServiceType.WALLET);
       expect(runtime.getService).toHaveBeenCalledWith("WalletService");
       expect(runtime.getService).toHaveBeenCalledWith("DummyWalletService");
-      expect(callbackResult?.text).toContain(
-        "No wallet services are currently available",
-      );
+      expect(callbackResult?.text).toContain("No wallet services are currently available");
     });
 
     it("should format fractional amounts correctly", async () => {
@@ -315,28 +228,20 @@ describe("checkPortfolioAction", () => {
         ],
       });
 
-      runtime.getService = vi.fn(
-        (serviceName: string): MockWalletService | null => {
-          if (
-            serviceName === ServiceType.WALLET ||
-            serviceName === "WalletService" ||
-            serviceName === "DummyWalletService"
-          ) {
-            return {
-              getPortfolio: mockGetPortfolio,
-            };
-          }
-          return null;
-        },
-      );
+      runtime.getService = vi.fn((serviceName: string) => {
+        if (
+          serviceName === ServiceType.WALLET ||
+          serviceName === "WalletService" ||
+          serviceName === "DummyWalletService"
+        ) {
+          return {
+            getPortfolio: mockGetPortfolio,
+          };
+        }
+        return null;
+      }) as any;
 
-      await checkPortfolioAction.handler(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-        {},
-        callback,
-      );
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
 
       expect(callbackResult).toBeDefined();
       // First check if there was an error
@@ -349,18 +254,10 @@ describe("checkPortfolioAction", () => {
     });
 
     it("should include timestamp in response", async () => {
-      await checkPortfolioAction.handler(
-        runtime as unknown as IAgentRuntime,
-        message,
-        state,
-        {},
-        callback,
-      );
+      await checkPortfolioAction.handler(runtime, message, state, {}, callback);
 
       expect(callbackResult?.text).toContain("Last updated:");
-      expect(callbackResult?.text).toMatch(
-        /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
-      );
+      expect(callbackResult?.text).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
     });
   });
 });

@@ -1,9 +1,4 @@
-import {
-  type IAgentRuntime,
-  logger,
-  parseJSONObjectFromText,
-  Service,
-} from "@elizaos/core";
+import { type IAgentRuntime, logger, parseJSONObjectFromText, Service } from "@elizaos/core";
 import {
   Connection,
   Keypair,
@@ -107,8 +102,7 @@ export interface WalletBalance {
  */
 const CONFIRMATION_CONFIG = {
   MAX_ATTEMPTS: 12,
-  getDelayForAttempt: (attempt: number): number =>
-    Math.min(2000 * 1.5 ** attempt, 20000),
+  getDelayForAttempt: (attempt: number): number => Math.min(2000 * 1.5 ** attempt, 20000),
 };
 
 /**
@@ -147,19 +141,13 @@ export class SwapService extends Service {
   private async initialize(): Promise<void> {
     logger.info(`[${SwapService.serviceType}] Initializing swap service...`);
 
-    const rpcUrlSetting = this.runtime.getSetting("SOLANA_RPC_URL");
     const rpcUrl =
-      typeof rpcUrlSetting === "string" && rpcUrlSetting.trim().length > 0
-        ? rpcUrlSetting
-        : "https://api.mainnet-beta.solana.com";
+      this.runtime.getSetting("SOLANA_RPC_URL") || "https://api.mainnet-beta.solana.com";
     this.connection = new Connection(rpcUrl, "confirmed");
 
-    const privateKeySetting = this.runtime.getSetting("SOLANA_PRIVATE_KEY");
-    if (
-      typeof privateKeySetting === "string" &&
-      privateKeySetting.trim().length > 0
-    ) {
-      const privateKeyBytes = bs58.decode(privateKeySetting);
+    const privateKeyString = this.runtime.getSetting("SOLANA_PRIVATE_KEY");
+    if (privateKeyString) {
+      const privateKeyBytes = bs58.decode(privateKeyString);
       this.walletKeypair = Keypair.fromSecretKey(privateKeyBytes);
       logger.info(
         `[${SwapService.serviceType}] Wallet configured: ${this.walletKeypair.publicKey.toBase58()}`,
@@ -195,9 +183,8 @@ export class SwapService extends Service {
    * Get token decimals from chain or cache
    */
   private async getTokenDecimals(mint: string): Promise<number> {
-    const cachedDecimals = this.decimalsCache.get(mint);
-    if (cachedDecimals !== undefined) {
-      return cachedDecimals;
+    if (this.decimalsCache.has(mint)) {
+      return this.decimalsCache.get(mint)!;
     }
 
     if (!this.connection) {
@@ -219,37 +206,24 @@ export class SwapService extends Service {
   /**
    * Convert token amount to smallest unit (lamports equivalent)
    */
-  private async amountToSmallestUnit(
-    mint: string,
-    amount: number,
-  ): Promise<string> {
+  private async amountToSmallestUnit(mint: string, amount: number): Promise<string> {
     const decimals = await this.getTokenDecimals(mint);
-    const smallest = new BigNumber(amount).multipliedBy(
-      new BigNumber(10).pow(decimals),
-    );
+    const smallest = new BigNumber(amount).multipliedBy(new BigNumber(10).pow(decimals));
     return smallest.integerValue(BigNumber.ROUND_FLOOR).toString();
   }
 
   /**
    * Convert smallest unit back to token amount
    */
-  private async smallestUnitToAmount(
-    mint: string,
-    smallest: string,
-  ): Promise<string> {
+  private async smallestUnitToAmount(mint: string, smallest: string): Promise<string> {
     const decimals = await this.getTokenDecimals(mint);
-    return new BigNumber(smallest)
-      .dividedBy(new BigNumber(10).pow(decimals))
-      .toString();
+    return new BigNumber(smallest).dividedBy(new BigNumber(10).pow(decimals)).toString();
   }
 
   /**
    * Calculate dynamic slippage based on trade size and market conditions
    */
-  private calculateDynamicSlippage(
-    amount: string,
-    quoteData: SwapQuote,
-  ): number {
+  private calculateDynamicSlippage(amount: string, quoteData: SwapQuote): number {
     const baseSlippage = 100; // 1% base
     const priceImpact = Number.parseFloat(quoteData.priceImpactPct || "0");
     const amountNum = Number(amount);
@@ -275,10 +249,7 @@ export class SwapService extends Service {
    */
   public async getQuote(params: SwapParams): Promise<SwapQuote | null> {
     try {
-      const amountSmallest = await this.amountToSmallestUnit(
-        params.inputMint,
-        params.amount,
-      );
+      const amountSmallest = await this.amountToSmallestUnit(params.inputMint, params.amount);
       const slippageBps = params.slippageBps ?? 100;
 
       const queryParams = new URLSearchParams({
@@ -292,42 +263,33 @@ export class SwapService extends Service {
         `[SwapService] Quote: ${params.amount} ${params.inputMint.slice(0, 8)}... → ${params.outputMint.slice(0, 8)}...`,
       );
 
-      const response = await fetch(
-        `${this.JUPITER_QUOTE_API}?${queryParams.toString()}`,
-      );
+      const response = await fetch(`${this.JUPITER_QUOTE_API}?${queryParams.toString()}`);
 
       if (!response.ok) {
         const errorText = await response.text();
         const parsedError = parseJSONObjectFromText(errorText);
 
         if (parsedError?.errorCode === "TOKEN_NOT_TRADABLE") {
-          logger.error(
-            { error: parsedError.error },
-            `[${SwapService.serviceType}] Token not tradable`,
-          );
+          logger.error(`[${SwapService.serviceType}] Token not tradable:`, parsedError.error);
           return null;
         }
 
-        logger.error(
-          { status: response.status, error: errorText },
-          `[${SwapService.serviceType}] Quote request failed`,
-        );
+        logger.error(`[${SwapService.serviceType}] Quote request failed:`, {
+          status: response.status,
+          error: errorText,
+        });
         return null;
       }
 
       const quote = (await response.json()) as SwapQuote;
 
-      const outputAmount = await this.smallestUnitToAmount(
-        params.outputMint,
-        quote.outAmount,
-      );
+      const outputAmount = await this.smallestUnitToAmount(params.outputMint, quote.outAmount);
       logger.info(
         `[SwapService] Quote: ${params.amount} → ${outputAmount} (${quote.priceImpactPct}% impact, ${quote.routePlan.length} routes)`,
       );
       return quote;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(message, `[${SwapService.serviceType}] Quote fetch error`);
+      logger.error(`[${SwapService.serviceType}] Quote fetch error:`, error);
       return null;
     }
   }
@@ -356,13 +318,8 @@ export class SwapService extends Service {
         return errorResult("Failed to get quote from Jupiter");
       }
 
-      const dynamicSlippage = this.calculateDynamicSlippage(
-        quote.inAmount,
-        quote,
-      );
-      logger.info(
-        `[${SwapService.serviceType}] Using dynamic slippage: ${dynamicSlippage} bps`,
-      );
+      const dynamicSlippage = this.calculateDynamicSlippage(quote.inAmount, quote);
+      logger.info(`[${SwapService.serviceType}] Using dynamic slippage: ${dynamicSlippage} bps`);
 
       // Get swap transaction from Jupiter
       const swapResponse = await fetch(this.JUPITER_SWAP_API, {
@@ -375,24 +332,20 @@ export class SwapService extends Service {
           },
           userPublicKey: this.walletKeypair?.publicKey.toString(),
           wrapAndUnwrapSol: true,
-          computeUnitPriceMicroLamports:
-            params.priorityFeeMicroLamports ?? 5000000,
+          computeUnitPriceMicroLamports: params.priorityFeeMicroLamports ?? 5000000,
           dynamicComputeUnitLimit: true,
         }),
       });
 
       if (!swapResponse.ok) {
         const errorText = await swapResponse.text();
-        logger.error(
-          { status: swapResponse.status, error: errorText },
-          `[${SwapService.serviceType}] Swap request failed`,
-        );
+        logger.error(`[${SwapService.serviceType}] Swap request failed:`, {
+          status: swapResponse.status,
+          error: errorText,
+        });
         return {
           ...errorResult(`Jupiter swap request failed: ${errorText}`),
-          outputAmount: await this.smallestUnitToAmount(
-            params.outputMint,
-            quote.outAmount,
-          ),
+          outputAmount: await this.smallestUnitToAmount(params.outputMint, quote.outAmount),
           priceImpact: quote.priceImpactPct,
         };
       }
@@ -402,15 +355,10 @@ export class SwapService extends Service {
       };
 
       if (!swapData?.swapTransaction) {
-        logger.error(
-          `[${SwapService.serviceType}] No swap transaction returned`,
-        );
+        logger.error(`[${SwapService.serviceType}] No swap transaction returned`);
         return {
           ...errorResult("No swap transaction returned from Jupiter"),
-          outputAmount: await this.smallestUnitToAmount(
-            params.outputMint,
-            quote.outAmount,
-          ),
+          outputAmount: await this.smallestUnitToAmount(params.outputMint, quote.outAmount),
           priceImpact: quote.priceImpactPct,
         };
       }
@@ -420,28 +368,19 @@ export class SwapService extends Service {
       const transaction = VersionedTransaction.deserialize(transactionBuf);
 
       // Get fresh blockhash
-      const latestBlockhash =
-        await this.connection?.getLatestBlockhash("processed");
-      if (!latestBlockhash) throw new Error("Failed to get latest blockhash");
+      const latestBlockhash = await this.connection?.getLatestBlockhash("processed");
       transaction.message.recentBlockhash = latestBlockhash.blockhash;
 
       // Sign the transaction
-      if (!this.walletKeypair) {
-        throw new Error("Wallet keypair not available");
-      }
-      transaction.sign([this.walletKeypair]);
+      transaction.sign([this.walletKeypair!]);
 
       // Send the transaction
-      const signature = await this.connection?.sendRawTransaction(
-        transaction.serialize(),
-        {
-          skipPreflight: true,
-          maxRetries: 5,
-          preflightCommitment: "processed",
-        },
-      );
+      const signature = await this.connection?.sendRawTransaction(transaction.serialize(), {
+        skipPreflight: true,
+        maxRetries: 5,
+        preflightCommitment: "processed",
+      });
 
-      if (!signature) throw new Error("Failed to send transaction");
       logger.info(
         `[SwapService] Tx sent: ${signature.slice(0, 16)}... (https://solscan.io/tx/${signature})`,
       );
@@ -454,10 +393,7 @@ export class SwapService extends Service {
           success: false,
           signature,
           inputAmount: params.amount.toString(),
-          outputAmount: await this.smallestUnitToAmount(
-            params.outputMint,
-            quote.outAmount,
-          ),
+          outputAmount: await this.smallestUnitToAmount(params.outputMint, quote.outAmount),
           inputMint: params.inputMint,
           outputMint: params.outputMint,
           priceImpact: quote.priceImpactPct,
@@ -474,22 +410,15 @@ export class SwapService extends Service {
         success: true,
         signature,
         inputAmount: params.amount.toString(),
-        outputAmount: await this.smallestUnitToAmount(
-          params.outputMint,
-          quote.outAmount,
-        ),
+        outputAmount: await this.smallestUnitToAmount(params.outputMint, quote.outAmount),
         inputMint: params.inputMint,
         outputMint: params.outputMint,
         priceImpact: quote.priceImpactPct,
         explorerUrl: `https://solscan.io/tx/${signature}`,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(
-        message,
-        `[${SwapService.serviceType}] Swap execution error`,
-      );
-      return errorResult(message || "Unknown swap error");
+      logger.error(`[${SwapService.serviceType}] Swap execution error:`, error);
+      return errorResult(error instanceof Error ? error.message : "Unknown swap error");
     }
   }
 
@@ -497,21 +426,13 @@ export class SwapService extends Service {
    * Confirm a transaction with exponential backoff
    */
   private async confirmTransaction(signature: string): Promise<boolean> {
-    for (
-      let attempt = 0;
-      attempt < CONFIRMATION_CONFIG.MAX_ATTEMPTS;
-      attempt++
-    ) {
+    for (let attempt = 0; attempt < CONFIRMATION_CONFIG.MAX_ATTEMPTS; attempt++) {
       const status = await this.connection?.getSignatureStatus(signature);
-      if (!status) continue;
 
       const confirmationStatus = status.value?.confirmationStatus as
         | TransactionConfirmationStatus
         | undefined;
-      if (
-        confirmationStatus === "confirmed" ||
-        confirmationStatus === "finalized"
-      ) {
+      if (confirmationStatus === "confirmed" || confirmationStatus === "finalized") {
         logger.info(
           `[SwapService] Confirmed: ${signature.slice(0, 16)}... (${confirmationStatus})`,
         );
@@ -525,10 +446,7 @@ export class SwapService extends Service {
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
 
-    logger.error(
-      `[${SwapService.serviceType}] Transaction confirmation timed out:`,
-      signature,
-    );
+    logger.error(`[${SwapService.serviceType}] Transaction confirmation timed out:`, signature);
     return false;
   }
 
@@ -540,24 +458,13 @@ export class SwapService extends Service {
       return { solBalance: 0, tokens: [] };
     }
 
-    if (!this.walletKeypair?.publicKey) {
-      return { solBalance: 0, tokens: [] };
-    }
-    const solBalance = await this.connection?.getBalance(
-      this.walletKeypair.publicKey,
-    );
-    const tokenProgramId = new PublicKey(
-      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    );
+    const solBalance = await this.connection?.getBalance(this.walletKeypair?.publicKey);
+    const tokenProgramId = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
     const tokenAccounts = await this.connection?.getParsedTokenAccountsByOwner(
-      this.walletKeypair.publicKey,
+      this.walletKeypair?.publicKey,
       { programId: tokenProgramId },
     );
-
-    if (!tokenAccounts || !solBalance) {
-      return { solBalance: 0, tokens: [] };
-    }
 
     const tokens = tokenAccounts.value.map((account) => {
       const parsed = account.account.data.parsed.info;
@@ -585,9 +492,7 @@ export class SwapService extends Service {
       return balances.solBalance;
     }
 
-    const token = balances.tokens.find(
-      (t) => t.mint.toLowerCase() === mint.toLowerCase(),
-    );
+    const token = balances.tokens.find((t) => t.mint.toLowerCase() === mint.toLowerCase());
     return token?.uiAmount ?? 0;
   }
 

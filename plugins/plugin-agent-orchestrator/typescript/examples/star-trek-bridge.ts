@@ -1,6 +1,5 @@
-import { AgentRuntime, createCharacter } from "@elizaos/core";
+import { AgentRuntime, type Character } from "@elizaos/core";
 import {
-  type AgentOrchestratorService,
   type AgentProvider,
   agentOrchestratorPlugin,
   configureAgentOrchestratorPlugin,
@@ -21,10 +20,10 @@ import {
  *   bun plugins/plugin-agent-orchestrator/typescript/examples/star-trek-bridge.ts
  */
 
-const character = createCharacter({
+const character: Character = {
   name: "BridgeOrchestrator",
   bio: "A demo orchestrator managing a starship bridge crew.",
-});
+};
 
 type CrewRole =
   | "captain"
@@ -119,23 +118,30 @@ async function main(): Promise<void> {
   const runtime = new AgentRuntime({
     character,
     plugins: [agentOrchestratorPlugin],
+    logLevel: "info",
   });
   await runtime.initialize();
 
-  const service = runtime.getService("CODE_TASK");
-  if (!service) throw new Error("CODE_TASK service missing");
+  const svc = runtime.getService("CODE_TASK");
+  if (!svc) throw new Error("CODE_TASK service missing");
 
-  (service as AgentOrchestratorService).on("task", (e) => {
+  const service = svc as {
+    createTask: (name: string, desc: string) => Promise<{ id?: string }>;
+    startTaskExecution: (taskId: string) => Promise<void>;
+    on: (event: string, handler: (e: { type: string; taskId: string }) => void) => void;
+  };
+
+  service.on("task", (e) => {
     process.stdout.write(`[event] ${e.type} ${e.taskId.slice(0, 8)}\n`);
   });
 
   const role = pickRoleFromText(process.env.ORCHESTRATOR_ACTIVE_PROVIDER ?? "");
-  const task = await (service as AgentOrchestratorService).createTask(
+  const task = await service.createTask(
     "Bridge command",
     `Crew=${role}. Run a basic ship action: raise shields, scan, set course, or report status.`,
   );
 
-  await (service as AgentOrchestratorService).startTaskExecution(task.id ?? "");
+  await service.startTaskExecution(task.id ?? "");
   await runtime.stop();
 }
 

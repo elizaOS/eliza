@@ -2,6 +2,22 @@
 // See: https://github.com/vadimdemedes/ink/issues/666
 import type { FC, ReactNode } from "react";
 
+declare module "ink-text-input" {
+  export interface TextInputProps {
+    value: string;
+    onChange: (value: string) => void;
+    onSubmit?: (value: string) => void;
+    placeholder?: string;
+    focus?: boolean;
+    mask?: string;
+    showCursor?: boolean;
+    highlightPastedText?: boolean;
+  }
+
+  const TextInput: FC<TextInputProps>;
+  export default TextInput;
+}
+
 declare module "ink" {
   export interface BoxProps {
     children?: ReactNode;

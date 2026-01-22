@@ -1,14 +1,8 @@
 import type { TestSuite } from "@elizaos/core";
 import type { AutoTradingManager } from "../../services/AutoTradingManager.ts";
-import {
-  monitorTrades,
-  type TradeLogEntry,
-  validateTradingResult,
-  waitForTrading,
-} from "./test-utils.ts";
+import { monitorTrades, validateTradingResult, waitForTrading } from "./test-utils.ts";
 
-const _sleep = (ms: number) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+const _sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * E2E test suite for autonomous trading functionality
@@ -21,9 +15,7 @@ export const autoTradingScenarios: TestSuite = {
       fn: async (runtime) => {
         console.log("\n🚀 Testing momentum strategy trading...\n");
 
-        const tradingManager = runtime.getService(
-          "AutoTradingManager",
-        ) as AutoTradingManager;
+        const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
         if (!tradingManager) {
           throw new Error("AutoTradingManager service not found");
         }
@@ -63,9 +55,7 @@ export const autoTradingScenarios: TestSuite = {
       fn: async (runtime) => {
         console.log("\n🔄 Testing strategy switching...\n");
 
-        const tradingManager = runtime.getService(
-          "AutoTradingManager",
-        ) as AutoTradingManager;
+        const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
 
         // Start with rule-based strategy
         await tradingManager.startTrading({
@@ -99,9 +89,7 @@ export const autoTradingScenarios: TestSuite = {
       fn: async (runtime) => {
         console.log("\n🛡️ Testing risk management...\n");
 
-        const tradingManager = runtime.getService(
-          "AutoTradingManager",
-        ) as AutoTradingManager;
+        const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
 
         // Start with tight risk limits
         await tradingManager.startTrading({
@@ -121,7 +109,7 @@ export const autoTradingScenarios: TestSuite = {
         // Check that positions respect limits
         const maxPositionValue = Math.max(
           ...result.tradeLog.map(
-            (log: TradeLogEntry) => log.positions * 50, // Assuming rough position value
+            (log: any) => log.positions * 50, // Assuming rough position value
           ),
         );
 
@@ -138,9 +126,7 @@ export const autoTradingScenarios: TestSuite = {
       fn: async (runtime) => {
         console.log("\n📊 Testing performance tracking...\n");
 
-        const tradingManager = runtime.getService(
-          "AutoTradingManager",
-        ) as AutoTradingManager;
+        const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
 
         // Get initial performance
         const initialPerf = tradingManager.getPerformance();
@@ -180,9 +166,7 @@ export const autoTradingScenarios: TestSuite = {
       fn: async (runtime) => {
         console.log("\n🔀 Testing concurrent operations...\n");
 
-        const tradingManager = runtime.getService(
-          "AutoTradingManager",
-        ) as AutoTradingManager;
+        const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
 
         // Try to start multiple trading sessions
         const promises = [
@@ -203,10 +187,8 @@ export const autoTradingScenarios: TestSuite = {
         try {
           await Promise.all(promises);
           throw new Error("Should not allow concurrent trading sessions");
-        } catch (error: unknown) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          if (!errorMessage.includes("Already trading")) {
+        } catch (error: any) {
+          if (!error.message.includes("Already trading")) {
             throw error;
           }
           console.log("✅ Correctly prevented concurrent trading sessions");

@@ -1,8 +1,4 @@
-import {
-  QueryClient,
-  QueryClientProvider,
-  useQuery,
-} from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import type { UUID } from "@elizaos/core";
@@ -47,8 +43,7 @@ function TimeDisplay({ apiBase }: { apiBase: string }) {
   if (error) {
     return (
       <div className="text-red-600">
-        Error fetching time:{" "}
-        {error instanceof Error ? error.message : "Unknown error"}
+        Error fetching time: {error instanceof Error ? error.message : "Unknown error"}
       </div>
     );
   }
@@ -97,9 +92,7 @@ function ExampleRoute() {
   if (!agentId) {
     return (
       <div className="p-4 text-center">
-        <div className="text-red-600 font-medium">
-          Error: Agent ID not found
-        </div>
+        <div className="text-red-600 font-medium">Error: Agent ID not found</div>
         <div className="text-sm text-gray-600 mt-2">
           The server should inject the agent ID configuration.
         </div>
@@ -113,21 +106,13 @@ function ExampleRoute() {
 /**
  * Example provider component
  */
-function ExampleProvider({
-  agentId,
-  apiBase,
-}: {
-  agentId: UUID;
-  apiBase: string;
-}) {
+function ExampleProvider({ agentId, apiBase }: { agentId: UUID; apiBase: string }) {
   return (
     <QueryClientProvider client={queryClient}>
       <div className="p-6 space-y-6">
         <div>
           <h1 className="text-2xl font-bold mb-2">Plugin Starter Example</h1>
-          <div className="text-sm text-muted-foreground">
-            Agent ID: {agentId}
-          </div>
+          <div className="text-sm text-muted-foreground">Agent ID: {agentId}</div>
         </div>
         <TimeDisplay apiBase={apiBase} />
       </div>
@@ -145,14 +130,14 @@ if (rootElement) {
 export interface AgentPanel {
   name: string;
   path: string;
-  component: React.ComponentType<Record<string, unknown>>;
+  component: React.ComponentType<{ agentId?: string } & Record<string, unknown>>;
   icon?: string;
   public?: boolean;
   shortLabel?: string; // Optional short label for mobile
 }
 
 interface PanelProps {
-  agentId: string;
+  agentId?: string;
 }
 
 /**

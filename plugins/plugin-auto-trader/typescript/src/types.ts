@@ -1,32 +1,13 @@
-import type { IAgentRuntime as AgentRuntime, UUID } from "@elizaos/core";
-
-export interface TokenBalance {
-  tokenAddress: string;
-  amount: string;
-  decimals?: number;
-}
-
-export interface TokenData {
-  address: string;
-  symbol?: string;
-  name?: string;
-  decimals?: number;
-}
-
-export interface ITokenDataService {
-  getTokenData(address: string): Promise<TokenData | null>;
-  getTokenBalance?(address: string): Promise<TokenBalance | null>;
-}
-
-export interface WalletAsset {
-  tokenAddress: string;
-  amount: number;
-  usdValue?: number;
-}
-
-export interface IWalletService {
-  getPortfolio?(agentId: UUID): Promise<WalletPortfolio | null>;
-}
+// Import core wallet and token types
+import type {
+  IAgentRuntime as AgentRuntime,
+  WalletPortfolio as CoreWalletPortfolio,
+  IWalletService,
+  TokenBalance,
+  TokenData,
+  UUID,
+  WalletAsset,
+} from "@elizaos/core";
 
 // #region --- Portfolio and Trading Data Interfaces ---
 
@@ -71,7 +52,7 @@ export interface TradingStrategy {
   }): Promise<TradeOrder | null>;
   initialize?(agentRuntime?: AgentRuntime): Promise<void>;
   isReady(): boolean;
-  configure?(params: Record<string, unknown>): void;
+  configure?(params: any): void;
 }
 
 export enum TradeType {
@@ -161,10 +142,12 @@ export interface TradeSimulationResult {
   updatedPortfolio?: { [assetSymbol: string]: PortfolioAssetHolding };
 }
 
-// Portfolio view for strategy contexts
-export interface WalletPortfolio {
-  items: PortfolioAssetHolding[];
-  totalValue?: number;
+// Use core wallet types where possible, add custom extensions as needed
+export type { IWalletService, TokenData, TokenBalance };
+
+// Extend core types for plugin-specific needs
+export interface WalletPortfolio extends CoreWalletPortfolio {
+  // Any additional fields specific to auto-trader
 }
 
 export interface PortfolioAssetHolding extends WalletAsset {
@@ -242,7 +225,7 @@ export interface LLMStrategyParams {
   temperature?: number;
   defaultTradeSizePercentage?: number;
   defaultFixedTradeQuantity?: number;
-  structuredOutputSchema?: Record<string, unknown>;
+  structuredOutputSchema?: any;
   systemPrompt?: string;
 }
 

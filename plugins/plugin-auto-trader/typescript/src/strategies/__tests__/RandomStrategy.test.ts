@@ -5,10 +5,7 @@ import {
   type StrategyContextMarketData,
   TradeType,
 } from "../../types.ts";
-import {
-  RandomStrategy,
-  type RandomStrategyParams,
-} from "../RandomStrategy.ts";
+import { RandomStrategy, type RandomStrategyParams } from "../RandomStrategy.ts";
 
 const _MOCK_SYMBOL = "SOL/USDC";
 const MIN_TRADE_QUANTITY_THRESHOLD = 1e-8;
@@ -108,24 +105,12 @@ describe("RandomStrategy", () => {
     });
 
     it.each([
-      [
-        { tradeAttemptProbability: -0.1 },
-        "tradeAttemptProbability must be between 0 and 1.",
-      ],
-      [
-        { tradeAttemptProbability: 1.1 },
-        "tradeAttemptProbability must be between 0 and 1.",
-      ],
+      [{ tradeAttemptProbability: -0.1 }, "tradeAttemptProbability must be between 0 and 1."],
+      [{ tradeAttemptProbability: 1.1 }, "tradeAttemptProbability must be between 0 and 1."],
       [{ buyProbability: -0.1 }, "buyProbability must be between 0 and 1."],
       [{ buyProbability: 1.1 }, "buyProbability must be between 0 and 1."],
-      [
-        { maxTradeSizePercentage: -0.1 },
-        "maxTradeSizePercentage must be between 0 and 1.",
-      ],
-      [
-        { maxTradeSizePercentage: 1.1 },
-        "maxTradeSizePercentage must be between 0 and 1.",
-      ],
+      [{ maxTradeSizePercentage: -0.1 }, "maxTradeSizePercentage must be between 0 and 1."],
+      [{ maxTradeSizePercentage: 1.1 }, "maxTradeSizePercentage must be between 0 and 1."],
       [{ fixedTradeQuantity: 0 }, "fixedTradeQuantity must be positive."],
       [{ fixedTradeQuantity: -10 }, "fixedTradeQuantity must be positive."],
     ])("should throw error for invalid param %s", (invalidParams, expectedError) => {

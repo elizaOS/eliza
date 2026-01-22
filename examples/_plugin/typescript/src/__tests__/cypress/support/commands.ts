@@ -34,10 +34,7 @@ declare global {
   namespace Cypress {
     interface Chainable {
       shouldBeDarkMode(): Chainable<JQuery<HTMLElement>>;
-      setElizaConfig(config: {
-        agentId: string;
-        apiBase?: string;
-      }): Chainable<Window>;
+      setElizaConfig(config: { agentId: string; apiBase?: string }): Chainable<Window>;
       mount(component: React.ReactElement): Chainable<unknown>;
     }
   }

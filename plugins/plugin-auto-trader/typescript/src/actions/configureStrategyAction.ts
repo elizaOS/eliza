@@ -7,6 +7,7 @@
 import type {
   Action,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -16,31 +17,21 @@ import type { TokenValidationService } from "../services/TokenValidationService.
 
 export const configureStrategyAction: Action = {
   name: "CONFIGURE_STRATEGY",
-  similes: [
-    "CONFIG_STRATEGY",
-    "SET_STRATEGY",
-    "ADJUST_SETTINGS",
-    "CHANGE_PARAMS",
-  ],
+  similes: ["CONFIG_STRATEGY", "SET_STRATEGY", "ADJUST_SETTINGS", "CHANGE_PARAMS"],
   description: "Configure trading strategy parameters",
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
     const text = message.content.text?.toLowerCase() || "";
-    return [
-      "configure",
-      "config",
-      "set",
-      "adjust",
-      "parameter",
-      "setting",
-    ].some((kw) => text.includes(kw));
+    return ["configure", "config", "set", "adjust", "parameter", "setting"].some((kw) =>
+      text.includes(kw),
+    );
   },
 
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ) => {
     const tradingManager = runtime.getService("AutoTradingManager") as
@@ -138,7 +129,7 @@ export const configureStrategyAction: Action = {
 • "Set paper mode" or "Set live mode"`;
 
       callback?.({ text: currentSettings });
-      return;
+      return undefined;
     }
 
     const response = `✅ **Settings Updated**
@@ -150,6 +141,7 @@ ${changes.some((c) => c.includes("LIVE")) ? "\n⚠️ **WARNING:** Live mode ena
 Use "configure" to see current settings.`;
 
     callback?.({ text: response });
+    return undefined;
   },
 
   examples: [

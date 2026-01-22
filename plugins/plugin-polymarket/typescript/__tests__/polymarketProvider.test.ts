@@ -113,7 +113,7 @@ describe("polymarketProvider", () => {
     const result = await polymarketProvider.get(
       runtime,
       { id: "1", content: { text: "" } } as never,
-      {} as never
+      {} as never,
     );
 
     expect(result.values?.recentTrades?.length).toBe(1);
@@ -132,7 +132,7 @@ describe("polymarketProvider", () => {
     });
 
     await expect(
-      polymarketProvider.get(runtime, { id: "1", content: { text: "" } } as never, {} as never)
+      polymarketProvider.get(runtime, { id: "1", content: { text: "" } } as never, {} as never),
     ).rejects.toThrow("private key required");
   });
 
@@ -152,7 +152,7 @@ describe("polymarketProvider", () => {
     const result = await polymarketProvider.get(
       runtime,
       { id: "1", content: { text: "" } } as never,
-      {} as never
+      {} as never,
     );
 
     expect(result.values?.providerError).toBe("boom");

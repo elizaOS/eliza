@@ -133,7 +133,7 @@ export const searchMessages: Action = {
     const discordService = runtime.getService(DISCORD_SERVICE_NAME) as DiscordService;
 
     if (!discordService || !discordService.client) {
-      await callback({
+      await callback?.({
         text: "Discord service is not available.",
         source: "discord",
       });
@@ -142,7 +142,7 @@ export const searchMessages: Action = {
 
     const searchParams = await getSearchParams(runtime, message, state);
     if (!searchParams) {
-      await callback({
+      await callback?.({
         text: "I couldn't understand what you want to search for. Please specify what to search.",
         source: "discord",
       });
@@ -169,7 +169,7 @@ export const searchMessages: Action = {
         // It's a channel name - search in the current server
         const serverId = room?.messageServerId;
         if (!serverId) {
-          await callback({
+          await callback?.({
             text: "I couldn't determine which server to search for that channel.",
             source: "discord",
           });
@@ -186,7 +186,7 @@ export const searchMessages: Action = {
       }
 
       if (!targetChannel || !targetChannel.isTextBased()) {
-        await callback({
+        await callback?.({
           text: "I couldn't find that channel or I don't have access to it.",
           source: "discord",
         });
@@ -232,7 +232,7 @@ export const searchMessages: Action = {
       const limitedResults = sortedResults.slice(0, searchParams.limit);
 
       if (limitedResults.length === 0) {
-        await callback({
+        await callback?.({
           text: `No messages found matching "${searchParams.query}" in <#${targetChannel.id}>.`,
           source: "discord",
         });
@@ -257,7 +257,7 @@ export const searchMessages: Action = {
         source: message.content.source,
       };
 
-      await callback(response);
+      await callback?.(response);
     } catch (error) {
       runtime.logger.error(
         {
@@ -267,7 +267,7 @@ export const searchMessages: Action = {
         },
         "Error searching messages"
       );
-      await callback({
+      await callback?.({
         text: "I encountered an error while searching for messages. Please try again.",
         source: "discord",
       });

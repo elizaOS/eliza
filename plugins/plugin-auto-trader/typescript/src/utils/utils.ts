@@ -1,14 +1,4 @@
 import { type IAgentRuntime, logger } from "@elizaos/core";
-
-// JsonValue is not directly exported from @elizaos/core, define locally
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
 import { PublicKey } from "@solana/web3.js";
 
 /**
@@ -31,15 +21,15 @@ export async function fetchWithRetry(
   options: RequestInit = {},
   chain: "solana" | "base" = "solana",
   maxRetries = 3,
-): Promise<JsonValue> {
+): Promise<any> {
   let lastError: Error = new Error("No attempts made");
 
   for (let i = 0; i < maxRetries; i++) {
     try {
-      logger.log(
-        { url, attempt: i + 1 },
-        `API request attempt ${i + 1} for ${chain}`,
-      );
+      logger.log(`API request attempt ${i + 1} for ${chain}:`, {
+        url,
+        attempt: i + 1,
+      });
 
       const headers = {
         Accept: "application/json",
@@ -55,22 +45,17 @@ export async function fetchWithRetry(
       const responseText = await response.text();
 
       if (!response.ok) {
-        throw new Error(
-          `HTTP error! status: ${response.status}, message: ${responseText}`,
-        );
+        throw new Error(`HTTP error! status: ${response.status}, message: ${responseText}`);
       }
 
-      return JSON.parse(responseText) as JsonValue;
+      return JSON.parse(responseText);
     } catch (error) {
-      logger.error(
-        {
-          error: error instanceof Error ? error.message : String(error),
-          url,
-          chain,
-          attempt: i + 1,
-        },
-        `Request attempt ${i + 1} failed`,
-      );
+      logger.error(`Request attempt ${i + 1} failed:`, {
+        error: error instanceof Error ? error.message : String(error),
+        url,
+        chain,
+        attempt: i + 1,
+      });
 
       lastError = error instanceof Error ? error : new Error(String(error));
 
@@ -88,9 +73,7 @@ export async function fetchWithRetry(
  */
 export function decodeBase58(str: string): Uint8Array {
   const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  const ALPHABET_MAP = new Map(
-    ALPHABET.split("").map((c, i) => [c, BigInt(i)]),
-  );
+  const ALPHABET_MAP = new Map(ALPHABET.split("").map((c, i) => [c, BigInt(i)]));
 
   let result = BigInt(0);
   for (const char of str) {
@@ -124,18 +107,12 @@ export interface AnalyzedToken {
   symbol: string;
 }
 
-/** State object that may contain analyzed tokens history */
-interface TokenHistoryState {
-  analyzed_tokens_history?: string;
-  [key: string]: unknown;
-}
-
 /**
  * Manages analyzed token history
  */
 export async function manageAnalyzedTokens(
   _runtime: IAgentRuntime,
-  state: TokenHistoryState | null | undefined,
+  state: any,
   newToken?: AnalyzedToken,
 ): Promise<AnalyzedToken[]> {
   try {
@@ -149,27 +126,22 @@ export async function manageAnalyzedTokens(
           history = parsed;
         }
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        logger.warn({ error: message }, "Failed to parse token history");
+        logger.warn("Failed to parse token history:", e);
       }
     }
 
     const now = Date.now();
     history = history.filter(
-      (token) =>
-        token?.timestamp && now - token.timestamp < 24 * 60 * 60 * 1000, // 24 hours
+      (token) => token?.timestamp && now - token.timestamp < 24 * 60 * 60 * 1000, // 24 hours
     );
 
     if (newToken) {
       history.push(newToken);
-      logger.log(
-        {
-          address: newToken.address,
-          symbol: newToken.symbol,
-          historySize: history.length,
-        },
-        "Added new token to analysis history",
-      );
+      logger.log("Added new token to analysis history:", {
+        address: newToken.address,
+        symbol: newToken.symbol,
+        historySize: history.length,
+      });
     }
 
     // Note: State updates should be handled by the caller
@@ -177,13 +149,10 @@ export async function manageAnalyzedTokens(
 
     return history;
   } catch (error) {
-    logger.error(
-      {
-        error: error instanceof Error ? error.message : "Unknown error",
-        errorStack: error instanceof Error ? error.stack : undefined,
-      },
-      "Failed to manage token history",
-    );
+    logger.error("Failed to manage token history:", {
+      error: error instanceof Error ? error.message : "Unknown error",
+      errorStack: error instanceof Error ? error.stack : undefined,
+    });
     return [];
   }
 }

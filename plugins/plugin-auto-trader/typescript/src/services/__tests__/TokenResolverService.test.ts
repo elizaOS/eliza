@@ -2,12 +2,9 @@ import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TokenResolverService } from "../TokenResolverService.ts";
 
-/** Mock runtime type for testing */
-type MockRuntime = Pick<IAgentRuntime, "agentId" | "getSetting" | "getService">;
-
 describe("TokenResolverService", () => {
   let service: TokenResolverService;
-  let runtime: MockRuntime;
+  let runtime: IAgentRuntime;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -16,9 +13,9 @@ describe("TokenResolverService", () => {
       agentId: "test-agent-id" as UUID,
       getSetting: vi.fn(),
       getService: vi.fn(),
-    };
+    } as any;
 
-    service = new TokenResolverService(runtime as unknown as IAgentRuntime);
+    service = new TokenResolverService(runtime as any);
   });
 
   describe("start", () => {
@@ -28,9 +25,7 @@ describe("TokenResolverService", () => {
     });
 
     it("should create instance with static start method", async () => {
-      const instance = await TokenResolverService.start(
-        runtime as unknown as IAgentRuntime,
-      );
+      const instance = await TokenResolverService.start(runtime as any);
       expect(instance).toBeDefined();
       expect(instance).toBeInstanceOf(TokenResolverService);
     });
@@ -257,9 +252,7 @@ describe("TokenResolverService", () => {
     it("should have correct USDC address on Solana", () => {
       // The test showed a different address than what's in the code
       const usdcInfo = service.getTokenInfo("USDC");
-      expect(usdcInfo?.addresses.solana).toBe(
-        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyB7uH3",
-      );
+      expect(usdcInfo?.addresses.solana).toBe("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyB7uH3");
     });
   });
 });

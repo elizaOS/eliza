@@ -4,14 +4,7 @@ import Loader from "./loader.js";
 import { Badge } from "./ui/badge.js";
 import { Button } from "./ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.js";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./ui/table.js";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.js";
 import { cn } from "./utils.js";
 
 const formatUSD = (value: number): string => {
@@ -36,10 +29,8 @@ const _formatNumber = (value: number): string => {
   return value.toFixed(2);
 };
 
-type ChainFilter = "all" | "solana" | "base" | "ethereum";
-
 export default function Trending() {
-  const [selectedChain, setSelectedChain] = useState<ChainFilter>("all");
+  const [selectedChain, setSelectedChain] = useState<"all" | "solana" | "base" | "ethereum">("all");
 
   const query = useQuery({
     queryKey: ["trending"],
@@ -48,9 +39,7 @@ export default function Trending() {
         method: "GET",
       });
       const result = await response.json();
-      return result.success
-        ? result.data
-        : { solana: [], base: [], ethereum: [] };
+      return result.success ? result.data : { solana: [], base: [], ethereum: [] };
     },
     refetchInterval: 5_000,
   });
@@ -80,25 +69,17 @@ export default function Trending() {
       ? allTokens
       : allTokens.filter((token) => token.chain === selectedChain);
 
-  const sortedTokens = filteredTokens.sort(
-    (a, b) => (a.rank || 999) - (b.rank || 999),
-  );
+  const sortedTokens = filteredTokens.sort((a, b) => (a.rank || 999) - (b.rank || 999));
 
   // Calculate stats
   const totalTokens = allTokens.length;
   const avgChange =
     allTokens.length > 0
-      ? allTokens.reduce(
-          (sum, token) => sum + (token.price24hChangePercent || 0),
-          0,
-        ) / allTokens.length
+      ? allTokens.reduce((sum, token) => sum + (token.price24hChangePercent || 0), 0) /
+        allTokens.length
       : 0;
-  const gainers = allTokens.filter(
-    (t) => (t.price24hChangePercent || 0) > 0,
-  ).length;
-  const losers = allTokens.filter(
-    (t) => (t.price24hChangePercent || 0) < 0,
-  ).length;
+  const gainers = allTokens.filter((t) => (t.price24hChangePercent || 0) > 0).length;
+  const losers = allTokens.filter((t) => (t.price24hChangePercent || 0) < 0).length;
 
   return (
     <div className="space-y-6">
@@ -116,9 +97,7 @@ export default function Trending() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Avg 24h Change
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Avg 24h Change</CardTitle>
           </CardHeader>
           <CardContent>
             <div
@@ -138,8 +117,7 @@ export default function Trending() {
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{gainers}</div>
             <p className="text-xs text-muted-foreground">
-              {totalTokens > 0 ? ((gainers / totalTokens) * 100).toFixed(1) : 0}
-              % positive
+              {totalTokens > 0 ? ((gainers / totalTokens) * 100).toFixed(1) : 0}% positive
             </p>
           </CardContent>
         </Card>
@@ -151,8 +129,7 @@ export default function Trending() {
           <CardContent>
             <div className="text-2xl font-bold text-red-600">{losers}</div>
             <p className="text-xs text-muted-foreground">
-              {totalTokens > 0 ? ((losers / totalTokens) * 100).toFixed(1) : 0}%
-              negative
+              {totalTokens > 0 ? ((losers / totalTokens) * 100).toFixed(1) : 0}% negative
             </p>
           </CardContent>
         </Card>
@@ -164,12 +141,12 @@ export default function Trending() {
           <CardTitle className="flex items-center justify-between">
             Trending Tokens
             <div className="flex gap-2">
-              {(["all", "solana", "base", "ethereum"] as const).map((chain) => (
+              {["all", "solana", "base", "ethereum"].map((chain) => (
                 <Button
                   key={chain}
                   variant={selectedChain === chain ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setSelectedChain(chain)}
+                  onClick={() => setSelectedChain(chain as any)}
                   className="capitalize"
                 >
                   {chain === "all" ? "All Chains" : chain}
@@ -200,9 +177,7 @@ export default function Trending() {
             </TableHeader>
             <TableBody>
               {sortedTokens.map((item, index) => (
-                <TableRow
-                  key={`${item._id || item.address || index}_${item.price}`}
-                >
+                <TableRow key={`${item._id || item.address || index}_${item.price}`}>
                   <TableCell className="font-medium">
                     <Badge variant="outline">#{item.rank || index + 1}</Badge>
                   </TableCell>
@@ -233,23 +208,15 @@ export default function Trending() {
                       )}
                       <div>
                         <div className="font-semibold">{item.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {item.symbol}
-                        </div>
+                        <div className="text-sm text-muted-foreground">{item.symbol}</div>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatUSD(item.price)}
-                  </TableCell>
+                  <TableCell className="text-right font-medium">{formatUSD(item.price)}</TableCell>
                   <TableCell className="text-right">
                     {item?.price24hChangePercent !== undefined ? (
                       <Badge
-                        variant={
-                          item.price24hChangePercent >= 0
-                            ? "default"
-                            : "destructive"
-                        }
+                        variant={item.price24hChangePercent >= 0 ? "default" : "destructive"}
                         className={cn(
                           item.price24hChangePercent >= 0
                             ? "bg-green-100 text-green-800 hover:bg-green-100"
@@ -322,9 +289,7 @@ export default function Trending() {
 
           {sortedTokens.length === 0 && (
             <div className="text-center py-8">
-              <p className="text-muted-foreground">
-                No trending tokens available
-              </p>
+              <p className="text-muted-foreground">No trending tokens available</p>
               <p className="text-sm text-muted-foreground mt-2">
                 Token data will appear here once the data sources are active
               </p>

@@ -1,6 +1,7 @@
 import type {
   Action,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -51,16 +52,14 @@ export const checkPortfolioAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ) => {
     // Get services
     const tradingManager = runtime.getService("AutoTradingManager") as
       | AutoTradingManager
       | undefined;
-    const swapService = runtime.getService("SwapService") as
-      | SwapService
-      | undefined;
+    const swapService = runtime.getService("SwapService") as SwapService | undefined;
 
     let walletSection = "";
     let tradingSection = "";
@@ -106,8 +105,7 @@ ${status.strategy ? `**Strategy:** ${status.strategy}` : ""}`;
         positionsSection = `\n\n📊 **Open Positions** (${status.positions.length})
 ${status.positions
   .map((p) => {
-    const pnl =
-      (((p.currentPrice || p.entryPrice) - p.entryPrice) / p.entryPrice) * 100;
+    const pnl = (((p.currentPrice || p.entryPrice) - p.entryPrice) / p.entryPrice) * 100;
     const pnlEmoji = pnl >= 0 ? "🟢" : "🔴";
     return `${pnlEmoji} **${p.tokenAddress.slice(0, 8)}...**
    Entry: $${p.entryPrice.toFixed(6)} | Current: $${(p.currentPrice || p.entryPrice).toFixed(6)}
@@ -153,7 +151,7 @@ ${recentTrades
     }
 
     logger.info("[checkPortfolioAction] Portfolio check completed");
-    return;
+    return undefined;
   },
 
   examples: [

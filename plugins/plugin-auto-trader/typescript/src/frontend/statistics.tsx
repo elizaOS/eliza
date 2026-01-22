@@ -15,12 +15,9 @@ export default function Statistics() {
 
   const summary = query?.data?.summary;
 
-  const formatPortfolioValue = (value: string | number | null | undefined) => {
+  const formatPortfolioValue = (value: any) => {
     if (!value) return "$0.00";
-    const numValue =
-      typeof value === "string"
-        ? parseFloat(value.replace("$", ""))
-        : Number(value);
+    const numValue = typeof value === "string" ? parseFloat(value.replace("$", "")) : Number(value);
     return `$${numValue.toFixed(2)}`;
   };
 
@@ -33,15 +30,11 @@ export default function Statistics() {
           <div className="flex items-center gap-4 text-sm">
             <span>📚 Tweets {summary?.totalTweets || 0}</span>
             <span className="text-muted">•</span>
-            <span>
-              🌍 Sentiment {summary?.averageSentiment?.toFixed(1) || "N/A"}
-            </span>
+            <span>🌍 Sentiment {summary?.averageSentiment?.toFixed(1) || "N/A"}</span>
             <span>•</span>
             <span>💸 Tokens {summary?.trendingTokensCount || 0}</span>
             <span>•</span>
-            <span>
-              💰 Portfolio {formatPortfolioValue(summary?.portfolioValue)}
-            </span>
+            <span>💰 Portfolio {formatPortfolioValue(summary?.portfolioValue)}</span>
             <span>•</span>
             <span>📈 Buy? {summary?.hasActiveBuySignal ? "✅" : "❌"}</span>
             <span>•</span>

@@ -57,10 +57,7 @@ export class RandomStrategy implements TradingStrategy {
 
   configure(params: RandomStrategyParams): void {
     if (params.tradeAttemptProbability !== undefined) {
-      if (
-        params.tradeAttemptProbability < 0 ||
-        params.tradeAttemptProbability > 1
-      ) {
+      if (params.tradeAttemptProbability < 0 || params.tradeAttemptProbability > 1) {
         throw new Error("tradeAttemptProbability must be between 0 and 1.");
       }
       this.params.tradeAttemptProbability = params.tradeAttemptProbability;
@@ -72,10 +69,7 @@ export class RandomStrategy implements TradingStrategy {
       this.params.buyProbability = params.buyProbability;
     }
     if (params.maxTradeSizePercentage !== undefined) {
-      if (
-        params.maxTradeSizePercentage < 0 ||
-        params.maxTradeSizePercentage > 1
-      ) {
+      if (params.maxTradeSizePercentage < 0 || params.maxTradeSizePercentage > 1) {
         throw new Error("maxTradeSizePercentage must be between 0 and 1.");
       }
       this.params.maxTradeSizePercentage = params.maxTradeSizePercentage;
@@ -102,13 +96,12 @@ export class RandomStrategy implements TradingStrategy {
     marketData: StrategyContextMarketData;
     agentState: AgentState;
     portfolioSnapshot: PortfolioSnapshot;
-    agentRuntime?: unknown;
+    agentRuntime?: any;
   }): Promise<TradeOrder | null> {
-    const { marketData, portfolioSnapshot } = params;
+    const { marketData, agentState, portfolioSnapshot } = params;
 
     if (
-      Math.random() >=
-      (this.params.tradeAttemptProbability ?? DEFAULT_TRADE_ATTEMPT_PROBABILITY)
+      Math.random() >= (this.params.tradeAttemptProbability ?? DEFAULT_TRADE_ATTEMPT_PROBABILITY)
     ) {
       return null; // No trade attempt this time
     }
@@ -135,17 +128,13 @@ export class RandomStrategy implements TradingStrategy {
       marketData.currentPrice > 0
     ) {
       // Calculate percentage-based quantity
-      const tradeValue =
-        portfolioSnapshot.totalValue * this.params.maxTradeSizePercentage;
+      const tradeValue = portfolioSnapshot.totalValue * this.params.maxTradeSizePercentage;
       quantity = tradeValue / marketData.currentPrice;
     } else {
       // Default: 1% of portfolio or minimal amount
       const defaultPercentage = 0.01;
       const tradeValue = portfolioSnapshot.totalValue * defaultPercentage;
-      quantity =
-        marketData.currentPrice > 0
-          ? tradeValue / marketData.currentPrice
-          : 0.01;
+      quantity = marketData.currentPrice > 0 ? tradeValue / marketData.currentPrice : 0.01;
     }
 
     // Check minimum quantity threshold
