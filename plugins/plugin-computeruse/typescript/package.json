@@ -9,7 +9,15 @@
   "packageType": "plugin",
   "platform": "node",
   "license": "MIT",
-  "keywords": ["plugin", "elizaos", "computeruse", "automation", "desktop", "gui", "mcp"],
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "computeruse",
+    "automation",
+    "desktop",
+    "gui",
+    "mcp"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos/eliza"
@@ -24,7 +32,11 @@
       }
     }
   },
-  "files": ["dist", "README.md", "package.json"],
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.0",
     "zod": "^4.3.5"

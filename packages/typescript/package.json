@@ -75,7 +75,7 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.10.2",
-    "@elizaos/prompts": "2.0.0-alpha.1",
+    "@elizaos/prompts": "workspace:*",
     "@langchain/core": "^1.1.12",
     "@langchain/textsplitters": "^1.0.1",
     "adze": "^2.2.5",
