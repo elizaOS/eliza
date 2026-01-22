@@ -15,9 +15,12 @@ bun.lock
 .zed
 .DS_Store
 
-# Xcode
+# Xcode (user data)
 xcuserdata/
 *.xcuserstate
+
+# Tauri-generated Xcode project
+examples/browser-extension/safari/
 
 dist/
 

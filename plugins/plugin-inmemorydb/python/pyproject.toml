@@ -4,13 +4,12 @@ version = "2.0.0"
 description = "Pure in-memory, ephemeral database storage for elizaOS"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "elizaOS Contributors" }]
 keywords = ["elizaos", "database", "in-memory", "ephemeral"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",

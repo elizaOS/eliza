@@ -7,7 +7,7 @@ name = "elizaos-plugin-eliza-classic"
 version = "2.0.0"
 description = "Classic ELIZA pattern matching plugin for elizaOS - no LLM required"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.10"
 authors = [
     { name = "elizaOS Contributors" }
@@ -15,7 +15,6 @@ authors = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
