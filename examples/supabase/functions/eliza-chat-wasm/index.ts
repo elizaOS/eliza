@@ -22,8 +22,8 @@ import {
   type Plugin,
   stringToUuid,
   type UUID,
-} from "npm:@elizaos/core@latest";
-import { openaiPlugin } from "npm:@elizaos/plugin-openai@latest";
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
 
 // ============================================================================
 // Types

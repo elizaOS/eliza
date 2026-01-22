@@ -18,19 +18,14 @@ import {
   type Plugin,
   stringToUuid,
   type UUID,
-} from "npm:@elizaos/core@latest";
-import { openaiPlugin } from "npm:@elizaos/plugin-openai@latest";
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
 
 import type {
-  ChatRequest,
   ChatResponse,
   ErrorResponse,
   HealthResponse,
-  corsHeaders as cors,
 } from "./types.ts";
-
-// Re-export corsHeaders
-export { corsHeaders } from "./types.ts";
 
 // ============================================================================
 // Configuration
