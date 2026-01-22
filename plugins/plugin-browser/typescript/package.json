@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-browser",
   "description": "Browser automation plugin for ElizaOS - enables AI agents to browse websites, interact with elements, and extract data",
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.2",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -37,17 +37,17 @@
     "package.json"
   ],
   "dependencies": {
-    "ws": "^8.18.0",
     "axios": "^1.7.7",
+    "ws": "^8.18.0",
     "zod": "^4.3.5"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/ws": "^8.5.10",
-    "typescript": "^5.9.3",
-    "@biomejs/biome": "^2.3.11"
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "dev": "bun --hot build.ts",

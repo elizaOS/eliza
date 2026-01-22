@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-instagram",
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.2",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -23,8 +23,8 @@
     "typescript": "^5.9.3"
   },
   "devDependencies": {
-    "vitest": "^4.0.0",
-    "@biomejs/biome": "^2.3.11"
+    "@biomejs/biome": "^2.3.11",
+    "vitest": "^4.0.0"
   },
   "scripts": {
     "build": "bun run build.ts",
