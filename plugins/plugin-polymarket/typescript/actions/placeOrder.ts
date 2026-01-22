@@ -18,7 +18,6 @@ import {
   POLYMARKET_PROVIDER_CACHE_KEY,
   POLYMARKET_SERVICE_NAME,
 } from "../constants";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { PolymarketService } from "../services/polymarket";
 import { orderTemplate } from "../templates";
 import type { OrderResponse } from "../types";
@@ -91,7 +90,7 @@ interface SearchMarketResult {
 async function searchMarketByName(
   runtime: IAgentRuntime,
   marketName: string,
-  outcome?: string
+  outcome?: string,
 ): Promise<SearchMarketResult> {
   const params = new URLSearchParams({
     q: marketName,
@@ -129,16 +128,16 @@ async function searchMarketByName(
 
       // Words from search that match the event title
       const eventMatchWords = searchWords.filter((sw) =>
-        eventTitleWords.some((tw) => tw.includes(sw) || sw.includes(tw))
+        eventTitleWords.some((tw) => tw.includes(sw) || sw.includes(tw)),
       );
 
       // Words from search that DON'T match event title (market-specific)
       const marketSpecificWords = searchWords.filter(
-        (sw) => !eventTitleWords.some((tw) => tw.includes(sw) || sw.includes(tw))
+        (sw) => !eventTitleWords.some((tw) => tw.includes(sw) || sw.includes(tw)),
       );
 
       runtime.logger.info(
-        `[placeOrder] Event "${event.title}": eventMatch=[${eventMatchWords.join(",")}], marketSpecific=[${marketSpecificWords.join(",")}]`
+        `[placeOrder] Event "${event.title}": eventMatch=[${eventMatchWords.join(",")}], marketSpecific=[${marketSpecificWords.join(",")}]`,
       );
 
       // If we have market-specific words, find matching market in this event
@@ -151,7 +150,7 @@ async function searchMarketByName(
 
           // Check if market-specific words match this market
           const marketMatches = marketSpecificWords.some(
-            (word) => question.includes(word) || groupTitle.includes(word)
+            (word) => question.includes(word) || groupTitle.includes(word),
           );
 
           if (marketMatches && market.clobTokenIds) {
@@ -173,7 +172,7 @@ async function searchMarketByName(
 
         // Check if all search words match
         const allMatch = searchWords.every(
-          (word) => question.includes(word) || groupTitle.includes(word)
+          (word) => question.includes(word) || groupTitle.includes(word),
         );
 
         if (allMatch && market.clobTokenIds) {
@@ -196,7 +195,7 @@ async function searchMarketByName(
         const groupTitle = (market.groupItemTitle || "").toLowerCase();
 
         const matchCount = searchWords.filter(
-          (word) => question.includes(word) || groupTitle.includes(word)
+          (word) => question.includes(word) || groupTitle.includes(word),
         ).length;
 
         if (matchCount > bestScore) {
@@ -208,7 +207,7 @@ async function searchMarketByName(
 
     if (bestMatch && bestScore >= Math.ceil(searchWords.length * 0.5)) {
       runtime.logger.info(
-        `[placeOrder] Best partial match (${bestScore}/${searchWords.length}): ${bestMatch.question}`
+        `[placeOrder] Best partial match (${bestScore}/${searchWords.length}): ${bestMatch.question}`,
       );
       return { match: extractTokenFromMarket(bestMatch, outcome, runtime) ?? undefined };
     }
@@ -223,11 +222,10 @@ async function searchMarketByName(
 function extractTokenFromMarket(
   market: GammaMarket,
   outcome: string | undefined,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): { tokenId: string; question: string; price: number } | null {
   try {
-    if (!market.clobTokenIds) return null;
-    const tokenIds = JSON.parse(market.clobTokenIds) as string[];
+    const tokenIds = JSON.parse(market.clobTokenIds!) as string[];
     const pricesStr = JSON.parse(market.outcomePrices) as string[];
     const prices = pricesStr.map((p) => parseFloat(p));
 
@@ -249,7 +247,7 @@ function extractTokenFromMarket(
     const tokenId = tokenIds[tokenIndex];
     if (tokenId) {
       runtime.logger.info(
-        `[placeOrder] Found market: "${market.question}" token=${tokenId.slice(0, 16)}...`
+        `[placeOrder] Found market: "${market.question}" token=${tokenId.slice(0, 16)}...`,
       );
       return {
         tokenId,
@@ -283,7 +281,7 @@ function buildCandidates(events: GammaEvent[]): MarketCandidate[] {
 
 function createCandidateFromMarket(
   market: GammaMarket,
-  eventTitle?: string
+  eventTitle?: string,
 ): MarketCandidate | null {
   try {
     const tokenIds = JSON.parse(market.clobTokenIds ?? "[]") as string[];
@@ -309,7 +307,7 @@ function createCandidateFromMarket(
 
 function selectTokenForOutcome(
   candidate: MarketCandidate,
-  outcome: string | undefined
+  outcome: string | undefined,
 ): { tokenId: string; outcomeLabel: string; price: number } | null {
   let tokenIndex = 0;
   let outcomeLabel = candidate.outcomes[0] || "Yes";
@@ -336,12 +334,40 @@ function selectTokenForOutcome(
   return { tokenId, outcomeLabel, price };
 }
 
-const spec = requireActionSpec("PLACE_ORDER");
-
 export const placeOrderAction: Action = {
-  name: spec.name,
-  similes: spec.similes ? [...spec.similes] : [],
-  description: spec.description,
+  name: "POLYMARKET_PLACE_ORDER",
+  similes: [
+    "PLACE_ORDER",
+    "CREATE_ORDER",
+    "BUY_TOKEN",
+    "SELL_TOKEN",
+    "LIMIT_ORDER",
+    "MARKET_ORDER",
+    "TRADE",
+    "ORDER",
+    "BUY",
+    "SELL",
+    "PURCHASE",
+    "SUBMIT_ORDER",
+    "EXECUTE_ORDER",
+    "BET",
+    "WAGER",
+    "PUT_MONEY",
+    "PLACE_BET",
+    "MAKE_BET",
+    // Confirmation flow similes - when user confirms a pending order
+    "CONFIRM",
+    "CONFIRM_ORDER",
+    "CONFIRM_BET",
+    "CONFIRM_TRADE",
+    "YES_EXECUTE",
+    "EXECUTE",
+    "DO_IT",
+    "GO_AHEAD",
+    "PROCEED",
+  ],
+  description:
+    "Places a buy/sell order (bet) on Polymarket. Use when user says buy, sell, bet, wager, put money on, or confirms a trade. Will search for market by name if tokenId not provided. Executes immediately without asking for confirmation. Parameters: tokenId or marketName (required), outcome (yes/no), side (buy/sell, default buy), price (0.01-0.99, uses best available if omitted), size (dollar amount or shares, required), orderType (GTC/FOK/FAK, default GTC). Requires CLOB API credentials and private key.",
 
   parameters: [
     {
@@ -407,7 +433,7 @@ export const placeOrderAction: Action = {
     if (!hasEnvCreds && !canCreateCreds) {
       runtime.logger.warn(
         "[placeOrderAction] CLOB API credentials are required for trading. " +
-          "Set CLOB_API_KEY/SECRET/PASSPHRASE or enable POLYMARKET_ALLOW_CREATE_API_KEY."
+          "Set CLOB_API_KEY/SECRET/PASSPHRASE or enable POLYMARKET_ALLOW_CREATE_API_KEY.",
       );
       return false;
     }
@@ -420,21 +446,21 @@ export const placeOrderAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, string | number | boolean>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     // Parse order parameters from LLM
     const llmResult = await callLLMWithTimeout<PlaceOrderParams>(
       runtime,
       state,
       orderTemplate,
-      "placeOrderAction"
+      "placeOrderAction",
     );
 
     if (isLLMError(llmResult)) {
       await sendError(
         callback,
         "Could not parse order parameters from your request",
-        "LLM parsing"
+        "LLM parsing",
       );
       return {
         success: false,
@@ -475,7 +501,7 @@ export const placeOrderAction: Action = {
           }
           await sendUpdate(
             callback,
-            `✓ Found token for ${selectedToken.outcome || (tokenIndex === 0 ? "Yes" : "No")}`
+            `✓ Found token for ${selectedToken.outcome || (tokenIndex === 0 ? "Yes" : "No")}`,
           );
         } else {
           throw new Error("Market has no tokens");
@@ -485,7 +511,7 @@ export const placeOrderAction: Action = {
         await sendError(
           callback,
           `Could not find market with condition ID ${tokenId.slice(0, 16)}...`,
-          "The market may not exist or be inactive"
+          "The market may not exist or be inactive",
         );
         return {
           success: false,
@@ -510,7 +536,7 @@ export const placeOrderAction: Action = {
         }
         await sendUpdate(
           callback,
-          `✓ Found: "${marketQuestion.slice(0, 50)}..." at ${(searchResult.match.price * 100).toFixed(0)}%`
+          `✓ Found: "${marketQuestion.slice(0, 50)}..." at ${(searchResult.match.price * 100).toFixed(0)}%`,
         );
       } else if (searchResult.candidates && searchResult.candidates.length > 0) {
         const bestCandidate = searchResult.candidates[0];
@@ -526,7 +552,7 @@ export const placeOrderAction: Action = {
           await sendError(
             callback,
             `Could not select a tradeable token for "${bestCandidate.question}"`,
-            "Please specify the exact market name"
+            "Please specify the exact market name",
           );
           return {
             success: false,
@@ -567,7 +593,7 @@ export const placeOrderAction: Action = {
         await sendError(
           callback,
           `Could not find an active market matching "${marketName}"`,
-          "Try searching for markets first"
+          "Try searching for markets first",
         );
         return {
           success: false,
@@ -586,7 +612,7 @@ export const placeOrderAction: Action = {
       if (price > 0) {
         size = Math.floor(dollarAmount / price);
         runtime.logger.info(
-          `[placeOrderAction] Converting $${dollarAmount} to ${size} shares at $${price.toFixed(4)}/share`
+          `[placeOrderAction] Converting $${dollarAmount} to ${size} shares at $${price.toFixed(4)}/share`,
         );
       } else {
         // If we don't have a price yet, estimate with 0.5
@@ -601,7 +627,7 @@ export const placeOrderAction: Action = {
       await sendError(
         callback,
         "No token ID or market name provided",
-        "Please specify a market name or token ID to trade"
+        "Please specify a market name or token ID to trade",
       );
       return { success: false, text: "Missing token ID or market name", error: "missing_token" };
     }
@@ -610,7 +636,7 @@ export const placeOrderAction: Action = {
       await sendError(
         callback,
         "Invalid order size",
-        "Please specify how many shares or dollars to bet"
+        "Please specify how many shares or dollars to bet",
       );
       return { success: false, text: "Invalid order size", error: "invalid_size" };
     }
@@ -658,7 +684,7 @@ export const placeOrderAction: Action = {
       await sendError(
         callback,
         `Order value ($${orderValue.toFixed(2)}) is too small. Minimum order is typically $1.`,
-        "Try increasing the size"
+        "Try increasing the size",
       );
       return {
         success: false,
@@ -681,12 +707,12 @@ export const placeOrderAction: Action = {
       const orderBook = await client.getOrderBook(tokenId);
       if (!orderBook || (!orderBook.bids?.length && !orderBook.asks?.length)) {
         runtime.logger.warn(
-          `[placeOrderAction] Token ${tokenId.slice(0, 20)}... has no order book data`
+          `[placeOrderAction] Token ${tokenId.slice(0, 20)}... has no order book data`,
         );
         await sendError(
           callback,
           `Token not found or has no liquidity. The token ID may be invalid.`,
-          `Token: ${tokenId.slice(0, 20)}...`
+          `Token: ${tokenId.slice(0, 20)}...`,
         );
         return {
           success: false,
@@ -712,7 +738,7 @@ export const placeOrderAction: Action = {
       await sendError(
         callback,
         `Could not validate token. It may not exist or there's an API issue.`,
-        `Token: ${tokenId.slice(0, 20)}...`
+        `Token: ${tokenId.slice(0, 20)}...`,
       );
       return {
         success: false,
@@ -733,7 +759,7 @@ export const placeOrderAction: Action = {
     // Log order details before submission
     runtime.logger.info(
       `[placeOrderAction] Submitting order: tokenID=${tokenId.slice(0, 20)}..., ` +
-        `side=${side}, price=${price}, size=${size}, orderType=${orderType}`
+        `side=${side}, price=${price}, size=${size}, orderType=${orderType}`,
     );
 
     const orderArgs: UserOrder = {
@@ -763,7 +789,7 @@ export const placeOrderAction: Action = {
         orderResponse = (await client.createAndPostOrder(
           orderArgs,
           undefined,
-          clobOrderType
+          clobOrderType,
         )) as OrderResponse;
       }
     } catch (error) {
@@ -788,7 +814,7 @@ export const placeOrderAction: Action = {
       await sendError(
         callback,
         `Order submission failed: ${errMsg}`,
-        `${side} ${size} @ $${price.toFixed(4)}`
+        `${side} ${size} @ $${price.toFixed(4)}`,
       );
       return {
         success: false,
@@ -843,7 +869,7 @@ export const placeOrderAction: Action = {
     } else {
       // Log the full response for debugging
       runtime.logger.error(
-        `[placeOrderAction] Order failed. Full response: ${JSON.stringify(orderResponse)}`
+        `[placeOrderAction] Order failed. Full response: ${JSON.stringify(orderResponse)}`,
       );
 
       // Extract error from various possible fields

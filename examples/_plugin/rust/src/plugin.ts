@@ -2,6 +2,7 @@ import type {
   Action,
   ActionResult,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   Plugin,
@@ -127,7 +128,7 @@ export const rustPluginStarter: Plugin = {
         _runtime: IAgentRuntime,
         message: Memory,
         state: State | undefined,
-        options: Record<string, unknown> | undefined,
+        options?: HandlerOptions,
         callback?: HandlerCallback,
       ): Promise<ActionResult> => {
         if (!wasmModule) {

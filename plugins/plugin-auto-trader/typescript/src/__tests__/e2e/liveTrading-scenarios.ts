@@ -1,34 +1,7 @@
 import type { TestSuite } from "@elizaos/core";
 import axios from "axios";
 import type { AutoTradingManager } from "../../services/AutoTradingManager.ts";
-import type { Position } from "../../types.ts";
 import { waitForTrading } from "./test-utils.ts";
-
-/** SwapService interface for wallet balance operations */
-interface SwapService {
-  getWalletBalances(): Promise<{
-    solBalance?: number;
-    tokens?: Array<{ mint: string; uiAmount?: number }>;
-  }>;
-}
-
-/** Trade log entry for tracking */
-interface TradeLogEntry {
-  timestamp: number;
-  elapsed: number;
-  trades: number;
-  pnl: number;
-  positions: number;
-}
-
-/** Trade details for single trade test */
-interface TradeDetails {
-  token: string;
-  amount: number;
-  price: number;
-  value: number;
-  time: string;
-}
 
 // Test configuration
 const _LIVE_TRADING_TEST_CONFIG = {
@@ -44,10 +17,7 @@ const _LIVE_TRADING_TEST_CONFIG = {
 // Solscan API for transaction verification
 const SOLSCAN_API = "https://public-api.solscan.io/transaction";
 
-async function verifySolscanTransaction(
-  txId: string,
-  retries = 3,
-): Promise<boolean> {
+async function verifySolscanTransaction(txId: string, retries = 3): Promise<boolean> {
   for (let i = 0; i < retries; i++) {
     try {
       await new Promise((resolve) => setTimeout(resolve, 2000 * (i + 1))); // Wait before checking
@@ -75,28 +45,21 @@ export const liveTradingScenarios: TestSuite = {
       name: "LIVE MAINNET: Trade real tokens for 2 minutes",
       fn: async (runtime) => {
         const testStartTime = Date.now();
-        console.log(
-          "\n💸 STARTING LIVE MAINNET TRADING TEST - REAL MONEY INVOLVED! 💸",
-        );
+        console.log("\n💸 STARTING LIVE MAINNET TRADING TEST - REAL MONEY INVOLVED! 💸");
         console.log(`⏰ Start time: ${new Date().toLocaleTimeString()}`);
         console.log("⏱️ Duration: 2 minutes (120 seconds)\n");
 
         // Check if live trading is enabled
         const tradingMode = runtime.getSetting("TRADING_MODE");
         if (tradingMode !== "live") {
-          console.log(
-            '⚠️ TRADING_MODE is not set to "live". Skipping live trading test.',
-          );
-          console.log(
-            "Set TRADING_MODE=live in your .env file to enable this test.",
-          );
+          console.log('⚠️ TRADING_MODE is not set to "live". Skipping live trading test.');
+          console.log("Set TRADING_MODE=live in your .env file to enable this test.");
           return;
         }
 
         // Check for wallet
         const walletAddress =
-          runtime.getSetting("SOLANA_ADDRESS") ||
-          runtime.getSetting("WALLET_PUBLIC_KEY");
+          runtime.getSetting("SOLANA_ADDRESS") || runtime.getSetting("WALLET_PUBLIC_KEY");
         const privateKey = runtime.getSetting("SOLANA_PRIVATE_KEY");
 
         if (!walletAddress || !privateKey) {
@@ -110,16 +73,13 @@ export const liveTradingScenarios: TestSuite = {
 
         // Check wallet balance first
         try {
-          const swapService = runtime.getService("SwapService") as unknown as
-            | SwapService
-            | undefined;
+          const swapService = runtime.getService("SwapService") as any;
           if (swapService?.getWalletBalances) {
             const balance = await swapService.getWalletBalances();
             console.log(`💰 Current Balance:`);
             console.log(`   SOL: ${balance.solBalance?.toFixed(4) || "0"} SOL`);
             const usdcToken = balance.tokens?.find(
-              (t: { mint: string }) =>
-                t.mint === "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              (t: { mint: string }) => t.mint === "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
             );
             console.log(`   USDC: $${usdcToken?.uiAmount?.toFixed(2) || "0"}`);
           }
@@ -127,9 +87,7 @@ export const liveTradingScenarios: TestSuite = {
           console.log("⚠️ Could not fetch wallet balance");
         }
 
-        const tradingManager = runtime.getService(
-          "AutoTradingManager",
-        ) as AutoTradingManager;
+        const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
         if (!tradingManager) {
           throw new Error("AutoTradingManager service not found");
         }
@@ -159,9 +117,7 @@ export const liveTradingScenarios: TestSuite = {
           maxDailyLoss: 20,
         };
 
-        console.log(
-          "\n🚨 LIVE TRADING WILL START IN 5 SECONDS... Press Ctrl+C to cancel",
-        );
+        console.log("\n🚨 LIVE TRADING WILL START IN 5 SECONDS... Press Ctrl+C to cancel");
         for (let i = 5; i > 0; i--) {
           console.log(`   ${i}...`);
           await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -178,7 +134,7 @@ export const liveTradingScenarios: TestSuite = {
         }
 
         // Track trades in real-time
-        const tradeLog: TradeLogEntry[] = [];
+        const tradeLog: any[] = [];
         const executedTxs: string[] = [];
         let lastLogTime = Date.now();
         let lastTradeCount = 0;
@@ -199,15 +155,9 @@ export const liveTradingScenarios: TestSuite = {
 
           // Log progress every 5 seconds
           if (Date.now() - lastLogTime >= monitoringInterval) {
-            const timeRemaining = Math.ceil(
-              (monitoringDuration - elapsedTime) / 1000,
-            );
-            console.log(
-              `⏱️ [${new Date().toLocaleTimeString()}] Time remaining: ${timeRemaining}s`,
-            );
-            console.log(
-              `   📈 Status: ${status.isTrading ? "TRADING" : "STOPPED"}`,
-            );
+            const timeRemaining = Math.ceil((monitoringDuration - elapsedTime) / 1000);
+            console.log(`⏱️ [${new Date().toLocaleTimeString()}] Time remaining: ${timeRemaining}s`);
+            console.log(`   📈 Status: ${status.isTrading ? "TRADING" : "STOPPED"}`);
             console.log(`   📊 Trades: ${performance.totalTrades}`);
             console.log(`   💵 P&L: $${performance.totalPnL.toFixed(2)}`);
             console.log(`   📍 Positions: ${status.positions.length}`);
@@ -222,16 +172,13 @@ export const liveTradingScenarios: TestSuite = {
               );
               for (const tx of latestTxs) {
                 const tokenSymbol =
-                  Object.keys(tokenAddresses).find(
-                    (k) => tokenAddresses[k] === tx.token,
-                  ) || tx.token;
+                  Object.keys(tokenAddresses).find((k) => tokenAddresses[k] === tx.token) ||
+                  tx.token;
                 console.log(`      Token: ${tokenSymbol}`);
                 console.log(`      Amount: ${tx.quantity}`);
                 console.log(`      Price: $${tx.price}`);
                 console.log(`      TX ID: ${tx.id}`);
-                console.log(
-                  `      🔍 View on Solscan: https://solscan.io/tx/${tx.id}`,
-                );
+                console.log(`      🔍 View on Solscan: https://solscan.io/tx/${tx.id}`);
 
                 executedTxs.push(tx.id);
               }
@@ -283,42 +230,31 @@ export const liveTradingScenarios: TestSuite = {
 
         if (finalStatus.positions.length > 0) {
           console.log(`\n📍 Open Positions:`);
-          finalStatus.positions.forEach((pos: Position) => {
+          finalStatus.positions.forEach((pos: any) => {
             const tokenSymbol =
-              Object.keys(tokenAddresses).find(
-                (k) => tokenAddresses[k] === pos.tokenAddress,
-              ) || "Unknown";
-            console.log(
-              `   ${tokenSymbol}: ${pos.amount} @ $${pos.entryPrice}`,
-            );
+              Object.keys(tokenAddresses).find((k) => tokenAddresses[k] === pos.tokenAddress) ||
+              "Unknown";
+            console.log(`   ${tokenSymbol}: ${pos.amount} @ $${pos.entryPrice}`);
             if (pos.currentPrice) {
               const pnl = (pos.currentPrice - pos.entryPrice) * pos.amount;
-              console.log(
-                `      Current: $${pos.currentPrice} (P&L: $${pnl.toFixed(2)})`,
-              );
+              console.log(`      Current: $${pos.currentPrice} (P&L: $${pnl.toFixed(2)})`);
             }
           });
         }
 
         // Transaction verification
         if (executedTxs.length > 0) {
-          console.log(
-            `\n🔍 Executed Transactions (${executedTxs.length} total):`,
-          );
+          console.log(`\n🔍 Executed Transactions (${executedTxs.length} total):`);
 
           // Get full transaction history for more details
           const txHistory = tradingManager.getTransactionHistory();
 
           for (const tx of txHistory) {
             const tokenSymbol =
-              Object.keys(tokenAddresses).find(
-                (k) => tokenAddresses[k] === tx.token,
-              ) || "Unknown";
+              Object.keys(tokenAddresses).find((k) => tokenAddresses[k] === tx.token) || "Unknown";
             const time = new Date(tx.timestamp).toLocaleTimeString();
 
-            console.log(
-              `\n   ${tx.action} ${tx.quantity} ${tokenSymbol} @ $${tx.price}`,
-            );
+            console.log(`\n   ${tx.action} ${tx.quantity} ${tokenSymbol} @ $${tx.price}`);
             console.log(`   Time: ${time}`);
             console.log(`   TX: ${tx.id}`);
             console.log(`   View: https://solscan.io/tx/${tx.id}`);
@@ -326,9 +262,7 @@ export const liveTradingScenarios: TestSuite = {
             // Try to verify on Solscan (only for real-looking TXs)
             if (!tx.id.startsWith("mock_") && tx.id.length > 40) {
               const verified = await verifySolscanTransaction(tx.id, 1);
-              console.log(
-                `   Status: ${verified ? "✅ Verified" : "⏳ Pending"}`,
-              );
+              console.log(`   Status: ${verified ? "✅ Verified" : "⏳ Pending"}`);
             }
           }
         }
@@ -337,13 +271,9 @@ export const liveTradingScenarios: TestSuite = {
         console.log(`\n📋 Test Summary:`);
         if (finalPerf.totalTrades === 0) {
           console.log("   ⚠️ No trades were executed during the test period");
-          console.log(
-            "   💡 This could be due to market conditions or strategy parameters",
-          );
+          console.log("   💡 This could be due to market conditions or strategy parameters");
         } else {
-          console.log(
-            `   ✅ Successfully executed ${finalPerf.totalTrades} live trades`,
-          );
+          console.log(`   ✅ Successfully executed ${finalPerf.totalTrades} live trades`);
           console.log(
             `   💰 Net result: $${finalPerf.totalPnL >= 0 ? "+" : ""}${finalPerf.totalPnL.toFixed(2)}`,
           );
@@ -368,9 +298,7 @@ export const liveTradingScenarios: TestSuite = {
           return;
         }
 
-        const tradingManager = runtime.getService(
-          "AutoTradingManager",
-        ) as AutoTradingManager;
+        const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
         const bonkAddress = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
 
         // Start with very tight risk parameters
@@ -425,12 +353,8 @@ export const liveTradingScenarios: TestSuite = {
 
           // Log every 10 seconds
           if (Date.now() - lastLogTime >= logInterval) {
-            const timeRemaining = Math.ceil(
-              (monitoringDuration - elapsedTime) / 1000,
-            );
-            console.log(
-              `⏱️ [${new Date().toLocaleTimeString()}] Time remaining: ${timeRemaining}s`,
-            );
+            const timeRemaining = Math.ceil((monitoringDuration - elapsedTime) / 1000);
+            console.log(`⏱️ [${new Date().toLocaleTimeString()}] Time remaining: ${timeRemaining}s`);
             console.log(`   📊 Trades: ${perf.totalTrades}`);
             console.log(
               `   💵 Daily P&L: $${perf.dailyPnL.toFixed(2)} (Max Loss: $${maxLoss.toFixed(2)})`,
@@ -442,12 +366,9 @@ export const liveTradingScenarios: TestSuite = {
 
             if (status.positions.length > 0) {
               const pos = status.positions[0];
-              console.log(
-                `   📍 Position: ${pos.amount} BONK @ $${pos.entryPrice}`,
-              );
+              console.log(`   📍 Position: ${pos.amount} BONK @ $${pos.entryPrice}`);
               if (pos.currentPrice) {
-                const pnlPercent =
-                  ((pos.currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
+                const pnlPercent = ((pos.currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
                 console.log(`      Current P&L: ${pnlPercent.toFixed(2)}%`);
 
                 if (pnlPercent <= -1) {
@@ -485,20 +406,12 @@ export const liveTradingScenarios: TestSuite = {
         console.log(`   Daily P&L: $${finalPerf.dailyPnL.toFixed(2)}`);
         console.log(`   Max Drawdown: $${maxLoss.toFixed(2)}`);
         console.log(`   Daily Loss Limit: $5.00`);
-        console.log(
-          `   Limit Used: ${Math.abs((finalPerf.dailyPnL / 5) * 100).toFixed(1)}%`,
-        );
+        console.log(`   Limit Used: ${Math.abs((finalPerf.dailyPnL / 5) * 100).toFixed(1)}%`);
 
         console.log(`\n🎯 Risk Events:`);
-        console.log(
-          `   Stop Loss Triggered: ${stopLossTriggered ? "✅ Yes" : "❌ No"}`,
-        );
-        console.log(
-          `   Take Profit Triggered: ${takeProfitTriggered ? "✅ Yes" : "❌ No"}`,
-        );
-        console.log(
-          `   Daily Limit Hit: ${finalPerf.dailyPnL <= -5 ? "✅ Yes" : "❌ No"}`,
-        );
+        console.log(`   Stop Loss Triggered: ${stopLossTriggered ? "✅ Yes" : "❌ No"}`);
+        console.log(`   Take Profit Triggered: ${takeProfitTriggered ? "✅ Yes" : "❌ No"}`);
+        console.log(`   Daily Limit Hit: ${finalPerf.dailyPnL <= -5 ? "✅ Yes" : "❌ No"}`);
 
         // Verify risk limits
         if (finalPerf.dailyPnL < -5.5) {
@@ -529,11 +442,8 @@ export const liveTradingScenarios: TestSuite = {
         }
 
         const walletAddress =
-          runtime.getSetting("SOLANA_ADDRESS") ||
-          runtime.getSetting("WALLET_PUBLIC_KEY");
-        const tradingManager = runtime.getService(
-          "AutoTradingManager",
-        ) as AutoTradingManager;
+          runtime.getSetting("SOLANA_ADDRESS") || runtime.getSetting("WALLET_PUBLIC_KEY");
+        const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
         const wifAddress = "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm";
 
         // Configure for high-probability single trade
@@ -554,19 +464,14 @@ export const liveTradingScenarios: TestSuite = {
         // Get initial balance if available
         let initialUsdcBalance = 0;
         try {
-          const swapService = runtime.getService("SwapService") as unknown as
-            | SwapService
-            | undefined;
+          const swapService = runtime.getService("SwapService") as any;
           if (swapService?.getWalletBalances) {
             const balance = await swapService.getWalletBalances();
             const usdcToken = balance.tokens?.find(
-              (t: { mint: string }) =>
-                t.mint === "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              (t: { mint: string }) => t.mint === "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
             );
             initialUsdcBalance = usdcToken?.uiAmount || 0;
-            console.log(
-              `\n💵 Initial USDC Balance: $${initialUsdcBalance.toFixed(2)}`,
-            );
+            console.log(`\n💵 Initial USDC Balance: $${initialUsdcBalance.toFixed(2)}`);
           }
         } catch (_e) {
           // Ignore if service not available
@@ -579,7 +484,7 @@ export const liveTradingScenarios: TestSuite = {
         const startPerf = tradingManager.getPerformance();
         let traded = false;
         let executedTx: string | null = null;
-        let tradeDetails: TradeDetails | null = null;
+        let tradeDetails: any = null;
 
         console.log("⏳ Waiting for trade execution...");
 
@@ -591,9 +496,7 @@ export const liveTradingScenarios: TestSuite = {
 
           if (currentPerf.totalTrades > startPerf.totalTrades) {
             traded = true;
-            const elapsedTime = ((Date.now() - testStartTime) / 1000).toFixed(
-              1,
-            );
+            const elapsedTime = ((Date.now() - testStartTime) / 1000).toFixed(1);
 
             console.log(`\n🎉 TRADE EXECUTED! (after ${elapsedTime} seconds)`);
 
@@ -650,18 +553,13 @@ export const liveTradingScenarios: TestSuite = {
 
           // Show balance change
           try {
-            const swapService = runtime.getService("SwapService") as unknown as
-              | SwapService
-              | undefined;
+            const swapService = runtime.getService("SwapService") as any;
             if (swapService?.getWalletBalances) {
               const balance = await swapService.getWalletBalances();
               const usdcToken = balance.tokens?.find(
-                (t: { mint: string }) =>
-                  t.mint === "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                (t: { mint: string }) => t.mint === "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
               );
-              const wifToken = balance.tokens?.find(
-                (t: { mint: string }) => t.mint === wifAddress,
-              );
+              const wifToken = balance.tokens?.find((t: { mint: string }) => t.mint === wifAddress);
               const finalUsdcBalance = usdcToken?.uiAmount || 0;
               const wifBalance = wifToken?.uiAmount || 0;
 
@@ -678,9 +576,7 @@ export const liveTradingScenarios: TestSuite = {
           console.log("\n🔍 Verification:");
           if (executedTx) {
             console.log(`   Transaction: ${executedTx}`);
-            console.log(
-              `   View on Solscan: https://solscan.io/tx/${executedTx}`,
-            );
+            console.log(`   View on Solscan: https://solscan.io/tx/${executedTx}`);
           }
           console.log(`   Wallet: https://solscan.io/account/${walletAddress}`);
 
@@ -688,9 +584,7 @@ export const liveTradingScenarios: TestSuite = {
           if (executedTx) {
             console.log("\n⏳ Verifying transaction on Solscan...");
             const verified = await verifySolscanTransaction(executedTx);
-            console.log(
-              `   Verification: ${verified ? "✅ Confirmed" : "⚠️ Not yet indexed"}`,
-            );
+            console.log(`   Verification: ${verified ? "✅ Confirmed" : "⚠️ Not yet indexed"}`);
           }
         } else {
           console.log("\n⚠️ NO TRADE EXECUTED");

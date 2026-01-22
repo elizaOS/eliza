@@ -13,7 +13,7 @@ function getPrivateKey(runtime: IAgentRuntime): `0x${string}` {
 
   if (!privateKey) {
     throw new Error(
-      "No private key found. Please set POLYMARKET_PRIVATE_KEY, EVM_PRIVATE_KEY, or WALLET_PRIVATE_KEY in your environment"
+      "No private key found. Please set POLYMARKET_PRIVATE_KEY, EVM_PRIVATE_KEY, or WALLET_PRIVATE_KEY in your environment",
     );
   }
 
@@ -46,7 +46,7 @@ function normalizeSetting(value: string | number | boolean | null | undefined): 
 }
 
 function parseSignatureType(
-  value: string | number | boolean | null | undefined
+  value: string | number | boolean | null | undefined,
 ): number | undefined {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : undefined;
@@ -88,7 +88,7 @@ async function getPolymarketService(runtime: IAgentRuntime): Promise<PolymarketS
     // The runtime implementation accepts plugin-defined service name strings,
     // but the interface only declares ServiceTypeName. Use a type assertion.
     const loadService = runtime.getServiceLoadPromise as (
-      s: string
+      s: string,
     ) => Promise<PolymarketServiceLike>;
     const loaded = await loadService(POLYMARKET_SERVICE_NAME);
     return loaded;
@@ -118,7 +118,7 @@ export async function initializeClobClient(runtime: IAgentRuntime): Promise<Clob
     signer,
     undefined,
     signatureType,
-    funderAddress
+    funderAddress,
   );
 
   return client;
@@ -130,7 +130,7 @@ export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Pro
   const privateKey = getPrivateKey(runtime);
 
   const allowCreate = parseBooleanSetting(
-    normalizeSetting(runtime.getSetting("POLYMARKET_ALLOW_CREATE_API_KEY")) ?? "true"
+    normalizeSetting(runtime.getSetting("POLYMARKET_ALLOW_CREATE_API_KEY")) ?? "true",
   );
 
   let creds: ApiKeyCreds | null = null;
@@ -169,12 +169,12 @@ export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Pro
     throw new Error(
       "Missing API credentials. The service failed to derive/create credentials and no " +
         "environment variables (CLOB_API_KEY, CLOB_API_SECRET, CLOB_API_PASSPHRASE) are set. " +
-        "Please ensure POLYMARKET_ALLOW_CREATE_API_KEY=true or set credentials manually."
+        "Please ensure POLYMARKET_ALLOW_CREATE_API_KEY=true or set credentials manually.",
     );
   }
 
   runtime.logger?.info?.(
-    `[initializeClobClientWithCreds] Using credentials from ${credsSource} (key: ${creds.key.substring(0, 8)}...)`
+    `[initializeClobClientWithCreds] Using credentials from ${credsSource} (key: ${creds.key.substring(0, 8)}...)`,
   );
 
   const signer = createClobClientSigner(privateKey);
@@ -193,7 +193,7 @@ export async function initializeClobClientWithCreds(runtime: IAgentRuntime): Pro
     signer,
     creds,
     signatureType,
-    funderAddress
+    funderAddress,
   );
 
   return client;

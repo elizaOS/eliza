@@ -1,6 +1,6 @@
 import type { AgentRuntime } from "@elizaos/core";
 import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
-import { Box, Text, useApp, useInput, useStdout } from "ink";
+import { Box, type Key, Text, useApp, useInput, useStdout } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatPane } from "./components/ChatPane.js";
 import { HelpOverlay } from "./components/HelpOverlay.js";
@@ -138,9 +138,9 @@ export function App({ runtime }: AppProps) {
       // Sync current task from session
       const storedTaskId = useStore.getState().currentTaskId;
 
-      // Initial sync - cast OrchestratedTask to CodeTask for local store compatibility
+      // Initial sync
       service.getTasks().then((tasks) => {
-        setTasks(tasks as unknown as import("./types.js").CodeTask[]);
+        setTasks(tasks);
 
         // Restore task selection from session or get from service
         if (storedTaskId && tasks.some((t) => t.id === storedTaskId)) {
@@ -156,7 +156,7 @@ export function App({ runtime }: AppProps) {
       // Listen for task events
       const handleTaskEvent = async (event: TaskEvent) => {
         const tasks = await service.getTasks();
-        setTasks(tasks as unknown as import("./types.js").CodeTask[]);
+        setTasks(tasks);
 
         if (event.type === "task:created") {
           const currentId = service.getCurrentTaskId();
@@ -682,7 +682,7 @@ Shortcuts: Tab panes, Ctrl+< > resize tasks, Ctrl+N new chat, Ctrl+C quit`,
   );
 
   // Global keyboard shortcuts
-  useInput((char, key) => {
+  useInput((char: string, key: Key) => {
     if (showHelpOverlay) {
       if (
         key.escape ||

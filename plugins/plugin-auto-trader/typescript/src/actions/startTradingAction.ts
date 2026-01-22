@@ -9,6 +9,7 @@
 import type {
   Action,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -58,12 +59,8 @@ async function extractTokens(
   for (const pattern of tokenPatterns) {
     const matches = text.matchAll(pattern);
     for (const match of matches) {
-      const symbols = match[1]
-        .split(/[\s,]+/)
-        .filter((s) => s.length >= 2 && s.length <= 12);
-      for (const s of symbols) {
-        potentialSymbols.add(s.toUpperCase());
-      }
+      const symbols = match[1].split(/[\s,]+/).filter((s) => s.length >= 2 && s.length <= 12);
+      symbols.forEach((s) => potentialSymbols.add(s.toUpperCase()));
     }
   }
 
@@ -100,14 +97,8 @@ async function extractTokens(
 
 export const startTradingAction: Action = {
   name: "START_TRADING",
-  similes: [
-    "BEGIN_TRADING",
-    "START_AUTO_TRADING",
-    "ENABLE_TRADING",
-    "TURN_ON_TRADING",
-  ],
-  description:
-    "Start automated trading with a specified strategy. Supports ANY Solana token.",
+  similes: ["BEGIN_TRADING", "START_AUTO_TRADING", "ENABLE_TRADING", "TURN_ON_TRADING"],
+  description: "Start automated trading with a specified strategy. Supports ANY Solana token.",
 
   examples: [
     [
@@ -164,33 +155,27 @@ export const startTradingAction: Action = {
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
     const text = (message.content.text || "").toLowerCase();
-    return (
-      text.includes("start") ||
-      text.includes("begin") ||
-      text.includes("enable")
-    );
+    return text.includes("start") || text.includes("begin") || text.includes("enable");
   },
 
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ) => {
     const autoTradingManager = runtime.getService("AutoTradingManager") as
       | AutoTradingManager
       | undefined;
-    const resolver = runtime.getService("TokenResolverService") as
-      | TokenResolverService
-      | undefined;
+    const resolver = runtime.getService("TokenResolverService") as TokenResolverService | undefined;
 
     if (!autoTradingManager) {
       callback?.({
         text: "❌ AutoTradingManager not found. Ensure plugin is loaded.",
         action: "START_TRADING",
       });
-      return;
+      return undefined;
     }
 
     // Check if already trading
@@ -200,7 +185,7 @@ export const startTradingAction: Action = {
         text: `⚠️ Trading is already active with the ${currentStatus.strategy} strategy.\n\nTo change strategies, first stop trading with "Stop trading" and then start again.`,
         action: "START_TRADING",
       });
-      return;
+      return undefined;
     }
 
     const text = (message.content.text || "").toLowerCase();
@@ -250,14 +235,12 @@ export const startTradingAction: Action = {
         text: '❌ No tokens specified and unable to fetch trending tokens.\n\nPlease specify tokens to trade (e.g., "start trading BONK, WIF") or configure BIRDEYE_API_KEY.',
         action: "START_TRADING",
       });
-      return;
+      return undefined;
     }
 
     // Extract position size
     let maxPositionSize = 0.1; // default 10%
-    const percentMatch = text.match(
-      /(\d+)%?\s*(?:of\s+)?(?:portfolio|position)/,
-    );
+    const percentMatch = text.match(/(\d+)%?\s*(?:of\s+)?(?:portfolio|position)/);
     if (percentMatch) {
       maxPositionSize = parseInt(percentMatch[1], 10) / 100;
     }
@@ -269,8 +252,7 @@ export const startTradingAction: Action = {
 
     // Extract risk parameters
     let stopLossPercent = Number(runtime.getSetting("STOP_LOSS_PERCENT")) || 5;
-    let takeProfitPercent =
-      Number(runtime.getSetting("TAKE_PROFIT_PERCENT")) || 15;
+    let takeProfitPercent = Number(runtime.getSetting("TAKE_PROFIT_PERCENT")) || 15;
 
     const slMatch = text.match(/stop\s*loss\s*(?:at\s*)?(\d+)%?/);
     if (slMatch) stopLossPercent = parseInt(slMatch[1], 10);
@@ -280,9 +262,7 @@ export const startTradingAction: Action = {
 
     // Extract interval
     let intervalMs = Number(runtime.getSetting("TRADING_INTERVAL_MS")) || 60000;
-    const intervalMatch = text.match(
-      /every\s*(\d+)\s*(minute|min|second|sec|hour|hr)/,
-    );
+    const intervalMatch = text.match(/every\s*(\d+)\s*(minute|min|second|sec|hour|hr)/);
     if (intervalMatch) {
       const value = parseInt(intervalMatch[1], 10);
       const unit = intervalMatch[2];
@@ -292,8 +272,7 @@ export const startTradingAction: Action = {
         intervalMs = value * 60 * 60 * 1000;
     }
 
-    const maxDailyLoss =
-      Number(runtime.getSetting("MAX_DAILY_LOSS_USD")) || 500;
+    const maxDailyLoss = Number(runtime.getSetting("MAX_DAILY_LOSS_USD")) || 500;
 
     // Start trading
     await autoTradingManager.startTrading({
@@ -341,8 +320,7 @@ export const startTradingAction: Action = {
 Use "Stop trading" to stop, or "Check portfolio" to see positions.`;
 
     callback?.({ text: response, action: "START_TRADING" });
-    logger.info(
-      `[startTradingAction] Started: ${strategyId}, tokens: ${tokenNames}`,
-    );
+    logger.info(`[startTradingAction] Started: ${strategyId}, tokens: ${tokenNames}`);
+    return undefined;
   },
 };

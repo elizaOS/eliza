@@ -62,9 +62,7 @@ export const DEFAULT_TEST_CHARACTER: Character = {
 /**
  * Creates a test character with sensible defaults
  */
-export function createTestCharacter(
-  overrides: Partial<Character> = {},
-): Character {
+export function createTestCharacter(overrides: Partial<Character> = {}): Character {
   return {
     ...DEFAULT_TEST_CHARACTER,
     id: createUUID(),
@@ -118,8 +116,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     }),
     getMemoryById: vi.fn(async (id: UUID) => memories.get(id) || null),
     getMemoriesByIds: vi.fn(
-      async (ids: UUID[]) =>
-        ids.map((id) => memories.get(id)).filter(Boolean) as Memory[],
+      async (ids: UUID[]) => ids.map((id) => memories.get(id)).filter(Boolean) as Memory[],
     ),
     getMemoriesByRoomIds: vi.fn(async (params: { roomIds: UUID[] }) => {
       const result: Memory[] = [];
@@ -151,8 +148,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
 
     getEntitiesByIds: vi.fn(
-      async (ids: UUID[]) =>
-        ids.map((id) => entities.get(id)).filter(Boolean) as Entity[],
+      async (ids: UUID[]) => ids.map((id) => entities.get(id)).filter(Boolean) as Entity[],
     ),
     getEntitiesForRoom: vi.fn().mockResolvedValue([]),
     createEntities: vi.fn(async (newEntities: Entity[]) => {
@@ -172,8 +168,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     deleteComponent: vi.fn().mockResolvedValue(undefined),
 
     getRoomsByIds: vi.fn(
-      async (ids: UUID[]) =>
-        ids.map((id) => rooms.get(id)).filter(Boolean) as Room[],
+      async (ids: UUID[]) => ids.map((id) => rooms.get(id)).filter(Boolean) as Room[],
     ),
     createRooms: vi.fn(async (newRooms: Room[]) => {
       const ids: UUID[] = [];
@@ -228,11 +223,9 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     getParticipantUserState: vi.fn(async (roomId: UUID, entityId: UUID) => {
       return participantStates.get(`${roomId}-${entityId}`) || null;
     }),
-    setParticipantUserState: vi.fn(
-      async (roomId: UUID, entityId: UUID, state: string | null) => {
-        participantStates.set(`${roomId}-${entityId}`, state);
-      },
-    ),
+    setParticipantUserState: vi.fn(async (roomId: UUID, entityId: UUID, state: string | null) => {
+      participantStates.set(`${roomId}-${entityId}`, state);
+    }),
 
     createWorld: vi.fn(async (world: World) => {
       const id = world.id || createUUID();
@@ -437,9 +430,7 @@ export async function setupActionTest(options?: {
 /**
  * Cleans up a test runtime
  */
-export async function cleanupTestRuntime(
-  runtime: IAgentRuntime,
-): Promise<void> {
+export async function cleanupTestRuntime(runtime: IAgentRuntime): Promise<void> {
   await runtime.stop();
 }
 
@@ -462,6 +453,18 @@ export async function waitFor(
 }
 
 /**
+ * Sets up spies on the logger to suppress console output during tests.
+ * Call this in beforeAll() to silence logger output.
+ */
+export function setupLoggerSpies(): void {
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "info").mockImplementation(() => {});
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "debug").mockImplementation(() => {});
+}
+
+/**
  * Test fixtures for common testing scenarios
  */
 export const testFixtures = {
@@ -478,9 +481,7 @@ export const testFixtures = {
     runtime?: IAgentRuntime;
   }) => ({
     runtime: overrides?.runtime || ({} as IAgentRuntime), // Will be set per-test
-    message: createTestMemory(
-      overrides?.content ? { content: overrides.content as Content } : {},
-    ),
+    message: createTestMemory(overrides?.content ? { content: overrides.content as Content } : {}),
     state: createTestState(),
     source: "test",
     channel: ChannelType.GROUP,

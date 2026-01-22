@@ -43,13 +43,7 @@ interface TAResults {
 // const tiLibrary: TechnicalIndicatorsLib | null = null;
 
 export interface RuleCondition {
-  type:
-    | "RSI"
-    | "SMA_CROSSOVER"
-    | "EMA_CROSSOVER"
-    | "VOLUME"
-    | "PRICE_ACTION"
-    | "MACD_CROSS";
+  type: "RSI" | "SMA_CROSSOVER" | "EMA_CROSSOVER" | "VOLUME" | "PRICE_ACTION" | "MACD_CROSS";
   // RSI
   rsiPeriod?: number;
   rsiOverbought?: number; // e.g., 70 (for sell)
@@ -133,8 +127,7 @@ export class RuleBasedStrategy implements TradingStrategy {
     return true; // Rule-based strategy is always ready
   }
 
-  configure(rawParams: Record<string, unknown>): void {
-    const params = rawParams as unknown as RuleBasedStrategyParams;
+  configure(params: RuleBasedStrategyParams): void {
     console.error(
       "[RuleBasedStrategy DIAG] configure called. Incoming params:",
       JSON.stringify(params),
@@ -157,14 +150,10 @@ export class RuleBasedStrategy implements TradingStrategy {
         throw new Error("Long MA period must be positive.");
       if (rule.type === "SMA_CROSSOVER" || rule.type === "EMA_CROSSOVER") {
         if (!rule.shortMAPeriod || !rule.longMAPeriod) {
-          throw new Error(
-            "Short and Long MA periods are required for crossover rules.",
-          );
+          throw new Error("Short and Long MA periods are required for crossover rules.");
         }
         if (rule.shortMAPeriod >= rule.longMAPeriod) {
-          throw new Error(
-            "Short MA period must be less than Long MA period for crossovers.",
-          );
+          throw new Error("Short MA period must be less than Long MA period for crossovers.");
         }
         if (!rule.maType) {
           console.warn(
@@ -173,21 +162,11 @@ export class RuleBasedStrategy implements TradingStrategy {
           rule.maType = "SMA";
         }
       }
-      if (
-        rule.rsiOverbought !== undefined &&
-        (rule.rsiOverbought <= 0 || rule.rsiOverbought > 100)
-      )
+      if (rule.rsiOverbought !== undefined && (rule.rsiOverbought <= 0 || rule.rsiOverbought > 100))
         throw new Error("RSI overbought must be between 0 and 100");
-      if (
-        rule.rsiOversold !== undefined &&
-        (rule.rsiOversold <= 0 || rule.rsiOversold > 100)
-      )
+      if (rule.rsiOversold !== undefined && (rule.rsiOversold <= 0 || rule.rsiOversold > 100))
         throw new Error("RSI oversold must be between 0 and 100");
-      if (
-        rule.rsiOversold &&
-        rule.rsiOverbought &&
-        rule.rsiOversold >= rule.rsiOverbought
-      )
+      if (rule.rsiOversold && rule.rsiOverbought && rule.rsiOversold >= rule.rsiOverbought)
         throw new Error("RSI oversold must be less than RSI overbought");
     });
 
@@ -196,21 +175,13 @@ export class RuleBasedStrategy implements TradingStrategy {
       params.tradeSizePercentage !== undefined &&
       (params.tradeSizePercentage <= 0 || params.tradeSizePercentage > 1)
     ) {
-      throw new Error(
-        "tradeSizePercentage must be between 0 (exclusive) and 1 (inclusive).",
-      );
+      throw new Error("tradeSizePercentage must be between 0 (exclusive) and 1 (inclusive).");
     }
-    if (
-      params.fixedTradeQuantity !== undefined &&
-      params.fixedTradeQuantity <= 0
-    ) {
+    if (params.fixedTradeQuantity !== undefined && params.fixedTradeQuantity <= 0) {
       throw new Error("fixedTradeQuantity must be positive.");
     }
     // Validate minIndicatorDataPoints from input params before merging params
-    if (
-      params.minIndicatorDataPoints !== undefined &&
-      params.minIndicatorDataPoints < 1
-    ) {
+    if (params.minIndicatorDataPoints !== undefined && params.minIndicatorDataPoints < 1) {
       throw new Error("minIndicatorDataPoints must be at least 1.");
     }
 
@@ -262,25 +233,17 @@ export class RuleBasedStrategy implements TradingStrategy {
     );
   }
 
-  private calculateIndicators(
-    ohlcvData: OHLCV[],
-    rules: RuleCondition[],
-  ): TAResults {
+  private calculateIndicators(ohlcvData: OHLCV[], rules: RuleCondition[]): TAResults {
     // No need to check for this.indicators, we are using the imported library directly.
 
     const minDataPointsForAnyCalc = rules.reduce((minOverall, r) => {
-      const periodReq = Math.max(
-        r.longMAPeriod || 0,
-        r.rsiPeriod || 0,
-        r.macdSlowPeriod || 0,
-      );
+      const periodReq = Math.max(r.longMAPeriod || 0, r.rsiPeriod || 0, r.macdSlowPeriod || 0);
       return Math.min(minOverall, periodReq > 0 ? periodReq + 1 : Infinity);
     }, Infinity);
 
     if (
       ohlcvData.length <
-        (this.params.minIndicatorDataPoints ??
-          DEFAULT_MIN_INDICATOR_DATA_POINTS) ||
+        (this.params.minIndicatorDataPoints ?? DEFAULT_MIN_INDICATOR_DATA_POINTS) ||
       ohlcvData.length < minDataPointsForAnyCalc
     ) {
       return {};
@@ -310,13 +273,8 @@ export class RuleBasedStrategy implements TradingStrategy {
     );
 
     for (const rule of crossoverRules) {
-      if (
-        rule.shortMAPeriod &&
-        rule.longMAPeriod &&
-        closePrices.length >= rule.longMAPeriod + 1
-      ) {
-        const maIndicator =
-          rule.maType === "EMA" ? this.indicators.ema : this.indicators.sma;
+      if (rule.shortMAPeriod && rule.longMAPeriod && closePrices.length >= rule.longMAPeriod + 1) {
+        const maIndicator = rule.maType === "EMA" ? this.indicators.ema : this.indicators.sma;
 
         const shortMA = maIndicator({
           values: closePrices,
@@ -372,18 +330,15 @@ export class RuleBasedStrategy implements TradingStrategy {
     marketData: StrategyContextMarketData;
     agentState: AgentState;
     portfolioSnapshot: PortfolioSnapshot;
-    agentRuntime?: unknown;
+    agentRuntime?: any;
   }): Promise<TradeOrder | null> {
-    const { marketData, portfolioSnapshot } = params;
+    const { marketData, agentState, portfolioSnapshot } = params;
 
     if (!marketData.priceData || marketData.priceData.length < 20) {
       return null; // Not enough data for indicators
     }
 
-    const indicators = this.calculateIndicators(
-      marketData.priceData,
-      this.params.rules,
-    );
+    const indicators = this.calculateIndicators(marketData.priceData, this.params.rules);
 
     // Check each rule to see if any conditions are met
     let shouldBuy = false;
@@ -433,10 +388,7 @@ export class RuleBasedStrategy implements TradingStrategy {
     if (shouldBuy) {
       const cashHolding = portfolioSnapshot.holdings.USDC || 0;
       if (cashHolding > 10 && marketData.currentPrice) {
-        const quantity = this.calculateTradeQuantity(
-          marketData,
-          portfolioSnapshot,
-        );
+        const quantity = this.calculateTradeQuantity(marketData, portfolioSnapshot);
 
         if (quantity && quantity > MIN_TRADE_QUANTITY_THRESHOLD) {
           return {
@@ -488,10 +440,7 @@ export class RuleBasedStrategy implements TradingStrategy {
         return null;
       }
       return quantity;
-    } else if (
-      this.params.fixedTradeQuantity &&
-      this.params.fixedTradeQuantity > 0
-    ) {
+    } else if (this.params.fixedTradeQuantity && this.params.fixedTradeQuantity > 0) {
       return this.params.fixedTradeQuantity;
     } else {
       // Default to small fixed quantity

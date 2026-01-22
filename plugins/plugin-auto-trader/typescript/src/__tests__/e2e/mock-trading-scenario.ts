@@ -2,29 +2,6 @@ import type { TestSuite } from "@elizaos/core";
 import type { AutoTradingManager } from "../../services/AutoTradingManager.ts";
 import { monitorTrades, validateTradingResult } from "./test-utils.ts";
 
-/** Mock transaction result type - exported for use in test utilities */
-export interface MockTransaction {
-  signature: string;
-  timestamp: number;
-  status: "success" | "failed";
-  type: string;
-  metadata: {
-    direction: "buy" | "sell";
-    token: string;
-    amount: number;
-    price: number;
-    usdValue: number;
-  };
-}
-
-/** Strategy comparison result type - exported for use in test utilities */
-export interface StrategyResult {
-  strategy: string;
-  trades: number;
-  winRate: number;
-  totalPnL: number;
-}
-
 // Mock trading configuration
 const MOCK_CONFIG = {
   INITIAL_BALANCE: {
@@ -48,19 +25,18 @@ function _generateMockPrice(basePrice: number, volatility: number): number {
   return basePrice * (1 + change);
 }
 
-/** Mock transaction generator - exported for potential test use */
-export function _generateMockTransaction(
+// Mock transaction generator
+function _generateMockTransaction(
   type: "buy" | "sell",
   token: string,
   amount: number,
   price: number,
-): MockTransaction {
+): any {
   const txId = `mock_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   return {
     signature: txId,
     timestamp: Date.now(),
-    status:
-      Math.random() < MOCK_CONFIG.TRADE_SUCCESS_RATE ? "success" : "failed",
+    status: Math.random() < MOCK_CONFIG.TRADE_SUCCESS_RATE ? "success" : "failed",
     type: "swap",
     metadata: {
       direction: type,
@@ -88,9 +64,7 @@ export const mockTradingScenarios: TestSuite = {
           PEPE: { price: 0.00000892, change24h: 22.1 },
         });
 
-        const tradingManager = runtime.getService(
-          "AutoTradingManager",
-        ) as AutoTradingManager;
+        const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
         if (!tradingManager) {
           throw new Error("AutoTradingManager service not found");
         }
@@ -140,15 +114,9 @@ export const mockTradingScenarios: TestSuite = {
           WIF: { price: 1.85, change24h: -5.2 },
         });
 
-        const tradingManager = runtime.getService(
-          "AutoTradingManager",
-        ) as AutoTradingManager;
-        const strategies = [
-          "random-v1",
-          "mean-reversion",
-          "momentum-breakout-v1",
-        ];
-        const results: StrategyResult[] = [];
+        const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
+        const strategies = ["random-v1", "mean-reversion", "momentum-breakout-v1"];
+        const results: any[] = [];
 
         for (const strategy of strategies) {
           console.log(`\n🔄 Testing ${strategy}...`);
@@ -210,9 +178,7 @@ export const mockTradingScenarios: TestSuite = {
           TEST3: { price: 3.0, change24h: 0 },
         });
 
-        const tradingManager = runtime.getService(
-          "AutoTradingManager",
-        ) as AutoTradingManager;
+        const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
 
         // Use random strategy with high probability for stress test
         await tradingManager.startTrading({
@@ -240,9 +206,7 @@ export const mockTradingScenarios: TestSuite = {
         const finalPerf = tradingManager.getPerformance();
         console.log(`\n✅ Stress test completed:`);
         console.log(`   Total trades: ${finalPerf.totalTrades}`);
-        console.log(
-          `   Trades per second: ${(finalPerf.totalTrades / 15).toFixed(2)}`,
-        );
+        console.log(`   Trades per second: ${(finalPerf.totalTrades / 15).toFixed(2)}`);
 
         if (finalPerf.totalTrades < 5) {
           throw new Error("Too few trades in stress test");
@@ -264,9 +228,7 @@ export const mockTradingScenarios: TestSuite = {
           RISK1: { price: 100, change24h: -10 },
         });
 
-        const tradingManager = runtime.getService(
-          "AutoTradingManager",
-        ) as AutoTradingManager;
+        const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
 
         await tradingManager.startTrading({
           strategy: "random-v1",
@@ -291,9 +253,7 @@ export const mockTradingScenarios: TestSuite = {
           const status = tradingManager.getStatus();
           const perf = tradingManager.getPerformance();
 
-          console.log(
-            `📉 Price: $${currentPrice}, Daily P&L: $${perf.dailyPnL.toFixed(2)}`,
-          );
+          console.log(`📉 Price: $${currentPrice}, Daily P&L: $${perf.dailyPnL.toFixed(2)}`);
 
           // Check if trading stopped due to risk limits
           if (!status.isTrading) {

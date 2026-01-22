@@ -14,7 +14,7 @@ import { parseActionParams, validateActionParams } from "./actions";
 import {
   type CapabilityConfig,
   createBootstrapPlugin,
-} from "./basic-capabilities/index";
+} from "./bootstrap/index";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createUniqueUuid } from "./entities";
 import { createLogger } from "./logger";

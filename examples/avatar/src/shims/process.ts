@@ -3,11 +3,6 @@ import { writeLocalStorageString } from "../utils/localStorage";
 type ProcessEnv = Record<string, string | undefined>;
 type ProcessShim = { env: ProcessEnv };
 
-declare global {
-  // eslint-disable-next-line no-var
-  var process: ProcessShim | undefined;
-}
-
 function ensureSecretSalt(env: ProcessEnv): void {
   if (env.SECRET_SALT && env.SECRET_SALT.trim()) return;
   try {
@@ -23,9 +18,9 @@ function ensureSecretSalt(env: ProcessEnv): void {
 }
 
 export function ensureProcessShim(): void {
-  const g = globalThis as typeof globalThis & { process?: ProcessShim };
+  const g = globalThis as unknown as { process?: ProcessShim };
   if (!g.process) {
-    g.process = { env: {} };
+    g.process = { env: {} as ProcessEnv };
   }
   ensureSecretSalt(g.process.env);
 }
@@ -36,13 +31,13 @@ type ProcessLike = {
   env: Record<string, string | undefined>;
 };
 
-const g = globalThis as typeof globalThis & {
+const g = globalThis as unknown as {
   process?: ProcessLike;
 };
 
 if (!g.process) {
-  g.process = { env: {} };
+  g.process = { env: {} as ProcessEnv };
 } else if (!g.process.env) {
-  g.process.env = {};
+  g.process.env = {} as ProcessEnv;
 }
 

@@ -154,6 +154,11 @@ export const RustPluginTestSuite: TestSuite = {
           );
         }
 
+        // Verify the action returned a result
+        if (!result) {
+          throw new Error("HELLO_RUST action did not return a result");
+        }
+
         // Verify the action result is successful
         if (!result.success) {
           const errorMsg =

@@ -35,9 +35,9 @@ export const teePlugin: Plugin = {
   description: "TEE integration plugin for secure key management and remote attestation",
 
   config: {
-    TEE_MODE: process.env.TEE_MODE,
-    TEE_VENDOR: process.env.TEE_VENDOR,
-    WALLET_SECRET_SALT: process.env.WALLET_SECRET_SALT,
+    TEE_MODE: process.env.TEE_MODE ?? null,
+    TEE_VENDOR: process.env.TEE_VENDOR ?? null,
+    WALLET_SECRET_SALT: process.env.WALLET_SECRET_SALT ?? null,
   },
 
   async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {

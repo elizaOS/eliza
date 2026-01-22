@@ -34,8 +34,7 @@ class RiskManager {
     if (dailyPnL < -this.maxDailyLoss) {
       return { shouldExit: true, reason: "Daily loss limit exceeded" };
     }
-    const pnlPercent =
-      (currentPrice - position.entryPrice) / position.entryPrice;
+    const pnlPercent = (currentPrice - position.entryPrice) / position.entryPrice;
     if (pnlPercent < -this.stopLossPercent) {
       return {
         shouldExit: true,
@@ -76,10 +75,7 @@ class Analytics {
   getMetrics() {
     const todayStart = new Date().setHours(0, 0, 0, 0);
     const winning = this.trades.filter((t) => (t.realizedPnL || 0) > 0);
-    const totalPnL = this.trades.reduce(
-      (sum, t) => sum + (t.realizedPnL || 0),
-      0,
-    );
+    const totalPnL = this.trades.reduce((sum, t) => sum + (t.realizedPnL || 0), 0);
     const dailyPnL = this.trades
       .filter((t) => t.timestamp >= todayStart)
       .reduce((sum, t) => sum + (t.realizedPnL || 0), 0);
@@ -146,18 +142,14 @@ export class AutoTradingManager extends Service {
   private validationService: TokenValidationService | null = null;
   private trajectoryService: TradingTrajectoryService | null = null;
 
-  public static async start(
-    runtime: IAgentRuntime,
-  ): Promise<AutoTradingManager> {
+  public static async start(runtime: IAgentRuntime): Promise<AutoTradingManager> {
     const instance = new AutoTradingManager(runtime);
     await instance.initialize();
     return instance;
   }
 
   private async initialize(): Promise<void> {
-    this.swapService = this.runtime.getService(
-      "SwapService",
-    ) as SwapService | null;
+    this.swapService = this.runtime.getService("SwapService") as SwapService | null;
     this.validationService = this.runtime.getService(
       "TokenValidationService",
     ) as TokenValidationService | null;
@@ -172,9 +164,7 @@ export class AutoTradingManager extends Service {
     );
 
     await this.registerDefaultStrategies();
-    logger.info(
-      `[AutoTradingManager] Loaded ${this.strategies.size} strategies`,
-    );
+    logger.info(`[AutoTradingManager] Loaded ${this.strategies.size} strategies`);
   }
 
   public async stop(): Promise<void> {
@@ -232,20 +222,13 @@ export class AutoTradingManager extends Service {
       });
     }
 
-    logger.info(
-      `[AutoTradingManager] Started: ${strategy.name}, interval: ${config.intervalMs}ms`,
-    );
+    logger.info(`[AutoTradingManager] Started: ${strategy.name}, interval: ${config.intervalMs}ms`);
 
     this.tradingInterval = setInterval(
-      () =>
-        this.tradingLoop().catch((e) =>
-          logger.error("[AutoTradingManager] Loop error:", e),
-        ),
+      () => this.tradingLoop().catch((e) => logger.error("[AutoTradingManager] Loop error:", e)),
       config.intervalMs,
     );
-    this.tradingLoop().catch((e) =>
-      logger.error("[AutoTradingManager] Initial loop error:", e),
-    );
+    this.tradingLoop().catch((e) => logger.error("[AutoTradingManager] Initial loop error:", e));
   }
 
   public async stopTrading(): Promise<void> {
@@ -269,10 +252,7 @@ export class AutoTradingManager extends Service {
 
     // For 'auto' mode (LLM strategy), the strategy handles token discovery
     // We call processToken once with null to trigger the strategy's internal token selection
-    if (
-      this.currentConfig.tokens.length === 1 &&
-      this.currentConfig.tokens[0] === "auto"
-    ) {
+    if (this.currentConfig.tokens.length === 1 && this.currentConfig.tokens[0] === "auto") {
       await this.processToken(null);
     } else {
       // For explicit token lists, process each token
@@ -291,9 +271,7 @@ export class AutoTradingManager extends Service {
 
     // For auto mode (token=null), LLM strategy handles its own token discovery
     // For explicit tokens, we get market data for that specific token
-    const marketData = token
-      ? await this.getMarketData(token)
-      : this.createAutoModeMarketData();
+    const marketData = token ? await this.getMarketData(token) : this.createAutoModeMarketData();
     if (!marketData) return;
 
     // Check risk limits for existing positions
@@ -390,8 +368,7 @@ export class AutoTradingManager extends Service {
 
     const [token] = order.pair.split("/");
     const isLive =
-      this.runtime.getSetting("TRADING_MODE") === "live" &&
-      this.swapService?.isReady();
+      this.runtime.getSetting("TRADING_MODE") === "live" && this.swapService?.isReady();
     const slippageBps = Number(this.runtime.getSetting("SLIPPAGE_BPS")) || 100;
     let txId: string;
     let signature: string | undefined;
@@ -401,9 +378,7 @@ export class AutoTradingManager extends Service {
       if (order.action === TradeType.BUY && this.validationService) {
         const validation = await this.validationService.validateToken(token);
         if (!validation.isValid) {
-          throw new Error(
-            `Validation failed: ${validation.rejectionReasons.join(", ")}`,
-          );
+          throw new Error(`Validation failed: ${validation.rejectionReasons.join(", ")}`);
         }
       }
 
@@ -411,24 +386,20 @@ export class AutoTradingManager extends Service {
         order.action === TradeType.BUY
           ? await this.swapService?.buy(
               token,
-              ((order.price || 0) * order.quantity) /
-                (await this.getSolPrice()),
+              ((order.price || 0) * order.quantity) / (await this.getSolPrice()),
               slippageBps,
             )
           : await this.swapService?.sell(token, order.quantity, slippageBps);
 
-      if (!result || !result.success)
-        throw new Error(`Swap failed: ${result?.error ?? "unknown error"}`);
-      txId = result.signature ?? "";
+      if (!result.success) throw new Error(`Swap failed: ${result.error}`);
+      txId = result.signature!;
       signature = result.signature;
       logger.info(
-        `[AutoTradingManager] ${order.action}: ${result.inputAmount ?? "?"} → ${result.outputAmount ?? "?"} (${result.explorerUrl ?? ""})`,
+        `[AutoTradingManager] ${order.action}: ${result.inputAmount} → ${result.outputAmount} (${result.explorerUrl})`,
       );
     } else {
       txId = `paper_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-      logger.info(
-        `[AutoTradingManager] Paper ${order.action}: ${order.quantity} ${token}`,
-      );
+      logger.info(`[AutoTradingManager] Paper ${order.action}: ${order.quantity} ${token}`);
     }
 
     this.transactionHistory.push({
@@ -466,8 +437,7 @@ export class AutoTradingManager extends Service {
       if (existing) {
         const newQty = existing.amount + order.quantity;
         existing.entryPrice =
-          (existing.entryPrice * existing.amount + price * order.quantity) /
-          newQty;
+          (existing.entryPrice * existing.amount + price * order.quantity) / newQty;
         existing.amount = newQty;
       } else {
         this.positions.set(token, {
@@ -531,9 +501,7 @@ export class AutoTradingManager extends Service {
     return this.transactionHistory.slice(-limit);
   }
 
-  private async getMarketData(
-    _token: string,
-  ): Promise<StrategyContextMarketData | null> {
+  private async getMarketData(_token: string): Promise<StrategyContextMarketData | null> {
     const basePrice = 100 + Math.random() * 10;
     const priceData: OHLCV[] = Array.from({ length: 100 }, (_, i) => ({
       timestamp: Date.now() - (100 - i) * 60000,

@@ -21,7 +21,6 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { ResearchStorageService } from "../services/researchStorage";
 import { researchMarketTemplate } from "../templates";
 import { type MarketResearch, ResearchStatus } from "../types";
@@ -129,16 +128,21 @@ function _formatFullReport(research: MarketResearch): string {
   return text;
 }
 
-const spec = requireActionSpec("RESEARCH_MARKET");
-
 export const researchMarketAction: Action = {
-  name: spec.name,
-  similes: spec.similes ? [...spec.similes] : [],
+  name: "POLYMARKET_RESEARCH_MARKET",
+  similes: [
+    "RESEARCH_MARKET",
+    "ANALYZE_MARKET",
+    "DEEP_RESEARCH",
+    "INVESTIGATE_MARKET",
+    "MARKET_RESEARCH",
+    "RESEARCH_PREDICTION",
+    "STUDY_MARKET",
+    "GET_RESEARCH",
+    "CHECK_RESEARCH",
+  ],
   description:
-    `${spec.description} Uses deep research capabilities. Takes 20-40 minutes. Returns cached results ` +
-    "if available, status if in progress, or starts new research. Use forceRefresh=true to force " +
-    "new research. Parameters: marketId (condition_id), marketQuestion (the prediction question), " +
-    "forceRefresh (optional boolean), callbackAction (optional: EVALUATE_TRADE or NOTIFY_ONLY).",
+    "Initiates or retrieves deep research on a Polymarket prediction market using OpenAI's deep research capabilities. Takes 20-40 minutes. Returns cached results if available, status if in progress, or starts new research. Use forceRefresh=true to force new research. Parameters: marketId (condition_id), marketQuestion (the prediction question), forceRefresh (optional boolean), callbackAction (optional: EVALUATE_TRADE or NOTIFY_ONLY).",
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     const openaiKey = runtime.getSetting("OPENAI_API_KEY");
@@ -155,7 +159,7 @@ export const researchMarketAction: Action = {
     _message: Memory,
     state?: State,
     options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const storage = new ResearchStorageService(runtime);
 
@@ -164,7 +168,7 @@ export const researchMarketAction: Action = {
       runtime,
       state,
       researchMarketTemplate,
-      "researchMarketAction"
+      "researchMarketAction",
     );
 
     // Extract parameters from LLM result or options
@@ -187,7 +191,7 @@ export const researchMarketAction: Action = {
       await sendError(
         callback,
         "Missing required information: market ID and question are needed",
-        "Use POLYMARKET_GET_MARKETS to find a market first"
+        "Use POLYMARKET_GET_MARKETS to find a market first",
       );
       return {
         success: false,
@@ -211,7 +215,7 @@ export const researchMarketAction: Action = {
     // CASE 1: Research completed and not expired - return cached results
     if (existingResearch?.status === ResearchStatus.COMPLETED && !forceRefresh) {
       runtime.logger.info(
-        `[researchMarketAction] Returning cached research for market: ${marketId}`
+        `[researchMarketAction] Returning cached research for market: ${marketId}`,
       );
 
       const responseText = formatResearchResults(existingResearch);

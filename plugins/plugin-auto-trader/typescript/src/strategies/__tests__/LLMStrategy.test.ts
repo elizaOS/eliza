@@ -18,32 +18,11 @@ const mockLlmService = {
   generateText: vi.fn(),
 };
 
-/** Strategy with exposed private methods for testing */
-interface StrategyWithBuildPrompt {
-  buildPrompt(
-    marketData: StrategyContextMarketData,
-    agentState: AgentState,
-  ): string;
-}
-
-/** Mock runtime type for testing */
-type MockAgentRuntime = Pick<AgentRuntime, "getSetting" | "getService"> & {
-  setSetting: ReturnType<typeof vi.fn>;
-  logger: {
-    warn: ReturnType<typeof vi.fn>;
-    error: ReturnType<typeof vi.fn>;
-    debug: ReturnType<typeof vi.fn>;
-    info: ReturnType<typeof vi.fn>;
-  };
-};
-
-const createMockRuntime = (): MockAgentRuntime => {
-  const settings = new Map<string, unknown>();
+const createMockRuntime = (): AgentRuntime => {
+  const settings = new Map<string, any>();
   return {
     getSetting: vi.fn((key: string) => settings.get(key)),
-    setSetting: vi.fn((key: string, value: unknown) =>
-      settings.set(key, value),
-    ),
+    setSetting: vi.fn((key: string, value: any) => settings.set(key, value)),
     getService: (serviceName: string) => {
       if (serviceName === "LLMService") {
         return mockLlmService;
@@ -56,7 +35,7 @@ const createMockRuntime = (): MockAgentRuntime => {
       debug: vi.fn(),
       info: vi.fn(),
     },
-  };
+  } as any;
 };
 
 const getDefaultOHLCV = (length = 50, startPrice = 100): OHLCV[] =>
@@ -124,9 +103,7 @@ describe("LLMStrategy", () => {
       } as LLMStrategyParams;
       strategy.configure(params);
 
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify({ action: "HOLD" }),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify({ action: "HOLD" }));
 
       await strategy.decide({ marketData, agentState, portfolioSnapshot });
 
@@ -150,20 +127,14 @@ describe("LLMStrategy", () => {
           defaultFixedTradeQuantity: -1,
         } as LLMStrategyParams),
       ).toThrow();
-      expect(() =>
-        strategy.configure({ maxTokens: 0 } as LLMStrategyParams),
-      ).toThrow();
-      expect(() =>
-        strategy.configure({ temperature: 3 } as LLMStrategyParams),
-      ).toThrow();
+      expect(() => strategy.configure({ maxTokens: 0 } as LLMStrategyParams)).toThrow();
+      expect(() => strategy.configure({ temperature: 3 } as LLMStrategyParams)).toThrow();
     });
   });
 
   describe("buildPrompt", () => {
     it("should construct a comprehensive prompt", () => {
-      const prompt = (
-        strategy as unknown as StrategyWithBuildPrompt
-      ).buildPrompt(marketData, agentState);
+      const prompt = (strategy as any).buildPrompt(marketData, agentState);
       expect(prompt).toContain(`Market Data:`);
       expect(prompt).toContain("Your response MUST be a single JSON object.");
     });
@@ -173,10 +144,8 @@ describe("LLMStrategy", () => {
         customPromptPrefix: "TestPrefix",
         customPromptSuffix: "TestSuffix",
       });
-      // @ts-expect-error - accessing private method for testing
-      const prompt = (
-        strategy as unknown as StrategyWithBuildPrompt
-      ).buildPrompt(marketData, agentState);
+      // @ts-expect-error
+      const prompt = (strategy as any).buildPrompt(marketData, agentState);
       expect(prompt.startsWith("TestPrefix")).toBe(true);
       expect(prompt.endsWith("TestSuffix")).toBe(true);
     });
@@ -189,25 +158,19 @@ describe("LLMStrategy", () => {
       strategy.configure({
         structuredOutputSchema: schema,
       } as LLMStrategyParams);
-      const prompt = (
-        strategy as unknown as StrategyWithBuildPrompt
-      ).buildPrompt(marketData, agentState);
+      const prompt = (strategy as any).buildPrompt(marketData, agentState);
       expect(prompt).toContain(JSON.stringify(schema));
     });
 
     it("should include current position P&L in the prompt", () => {
-      const prompt = (
-        strategy as unknown as StrategyWithBuildPrompt
-      ).buildPrompt(marketData, agentState);
+      const prompt = (strategy as any).buildPrompt(marketData, agentState);
       expect(prompt).toContain("Portfolio Value: 50000.00");
     });
 
     it("should state no holdings if portfolio is empty for symbol", () => {
       const emptyAgentState = { ...agentState, portfolioValue: 0 };
-      // @ts-expect-error - accessing private method for testing
-      const prompt = (
-        strategy as unknown as StrategyWithBuildPrompt
-      ).buildPrompt(marketData, emptyAgentState);
+      // @ts-expect-error
+      const prompt = (strategy as any).buildPrompt(marketData, emptyAgentState);
       expect(prompt).toContain("Portfolio Value: 0.00");
     });
   });
@@ -426,9 +389,7 @@ describe("LLMStrategy", () => {
     });
 
     it("should return null and log error if LLM service call fails", async () => {
-      mockLlmService.generateText.mockRejectedValueOnce(
-        new Error("Network Error"),
-      );
+      mockLlmService.generateText.mockRejectedValueOnce(new Error("Network Error"));
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -442,9 +403,7 @@ describe("LLMStrategy", () => {
     });
 
     it("should return null if LLM response is unparseable", async () => {
-      mockLlmService.generateText.mockResolvedValueOnce(
-        "invalid json response",
-      );
+      mockLlmService.generateText.mockResolvedValueOnce("invalid json response");
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -472,9 +431,7 @@ describe("LLMStrategy", () => {
         quantity: 1,
         orderType: "MARKET",
       };
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -497,9 +454,7 @@ describe("LLMStrategy", () => {
         orderType: "LIMIT",
         price: 2100,
       };
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -518,9 +473,7 @@ describe("LLMStrategy", () => {
         quantity: 1,
         orderType: "MARKET",
       };
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -541,9 +494,7 @@ describe("LLMStrategy", () => {
         quantity: 0,
         orderType: "MARKET",
       };
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -567,9 +518,7 @@ describe("LLMStrategy", () => {
         quantity: null,
         orderType: "MARKET",
       };
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -586,9 +535,7 @@ describe("LLMStrategy", () => {
         quantity: 100,
         orderType: "MARKET",
       }; // Wants to sell 100
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       // Agent only has 10 SOL
       const order = await strategy.decide({
         marketData,
@@ -609,9 +556,7 @@ describe("LLMStrategy", () => {
         quantity: 5,
         orderType: "MARKET",
       };
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       const order = await strategy.decide({
         marketData,
         agentState,

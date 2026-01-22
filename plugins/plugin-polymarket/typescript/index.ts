@@ -15,18 +15,8 @@ import { polymarketProvider } from "./providers";
 import { PolymarketService } from "./services";
 import { researchTaskWorker } from "./workers";
 
-export {
-  checkOrderScoringAction,
-  getOrderBookDepthAction,
-  getOrderDetailsAction,
-  getTokenInfoAction,
-  placeOrderAction,
-  researchMarketAction,
-  retrieveAllMarketsAction,
-} from "./actions";
 export { ACCOUNT_STATE_TTL_MS, DEFAULT_CLOB_API_URL, POLYGON_CHAIN_ID } from "./constants";
-export { polymarketProvider } from "./providers";
-export { PolymarketService, ResearchStorageService } from "./services";
+export { ResearchStorageService } from "./services";
 export type {
   AccountBalances,
   ApiKeyCreds,
@@ -95,7 +85,7 @@ export const polymarketPlugin: Plugin = {
       if (!validatedConfig.POLYMARKET_PRIVATE_KEY && !validatedConfig.EVM_PRIVATE_KEY) {
         logger.warn(
           "No private key configured (POLYMARKET_PRIVATE_KEY or EVM_PRIVATE_KEY). " +
-            "Trading features will be disabled."
+            "Trading features will be disabled.",
         );
       }
 
@@ -119,7 +109,7 @@ export const polymarketPlugin: Plugin = {
     } catch (error) {
       if (error instanceof z.ZodError) {
         throw new Error(
-          `Invalid Polymarket plugin configuration: ${error.issues.map((e) => e.message).join(", ")}`
+          `Invalid Polymarket plugin configuration: ${error.issues.map((e) => e.message).join(", ")}`,
         );
       }
       throw error;

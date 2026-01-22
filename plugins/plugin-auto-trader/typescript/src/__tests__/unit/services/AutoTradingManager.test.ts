@@ -1,37 +1,20 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  AutoTradingManager,
-  type TradingConfig,
-} from "../../../services/AutoTradingManager.ts";
-import {
-  OrderType,
-  type TradeOrder,
-  TradeType,
-  type TradingStrategy,
-} from "../../../types.ts";
-
-/** Mock runtime type for testing */
-type MockRuntime = Pick<IAgentRuntime, "getSetting" | "getService"> & {
-  logger: {
-    info: ReturnType<typeof vi.fn>;
-    error: ReturnType<typeof vi.fn>;
-    warn: ReturnType<typeof vi.fn>;
-  };
-};
+import { AutoTradingManager, type TradingConfig } from "../../../services/AutoTradingManager.ts";
+import { OrderType, type TradeOrder, TradeType, type TradingStrategy } from "../../../types.ts";
 
 describe("AutoTradingManager", () => {
   let manager: AutoTradingManager;
-  let mockRuntime: MockRuntime;
+  let mockRuntime: AgentRuntime;
 
   beforeEach(() => {
     mockRuntime = {
       getSetting: vi.fn(),
       getService: vi.fn(),
       logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
-    };
+    } as any;
 
-    manager = new AutoTradingManager(mockRuntime as unknown as IAgentRuntime);
+    manager = new AutoTradingManager(mockRuntime);
   });
 
   describe("initialization", () => {
@@ -102,9 +85,7 @@ describe("AutoTradingManager", () => {
       };
 
       await manager.startTrading(config);
-      await expect(manager.startTrading(config)).rejects.toThrow(
-        "Already trading",
-      );
+      await expect(manager.startTrading(config)).rejects.toThrow("Already trading");
     });
 
     it("should throw error for unknown strategy", async () => {
@@ -182,9 +163,7 @@ describe("AutoTradingManager", () => {
         reason: "Test trade",
       };
 
-      await expect(manager.executeTrade(order)).rejects.toThrow(
-        "Not currently trading",
-      );
+      await expect(manager.executeTrade(order)).rejects.toThrow("Not currently trading");
     });
   });
 

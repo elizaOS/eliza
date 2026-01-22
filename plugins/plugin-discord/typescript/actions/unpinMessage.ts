@@ -65,7 +65,7 @@ export const unpinMessage: Action = {
 
     if (!discordService || !discordService.client) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "Discord service is not available.",
           source: "discord",
         });
@@ -75,7 +75,7 @@ export const unpinMessage: Action = {
 
     if (!state) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "State is not available.",
           source: "discord",
         });
@@ -86,7 +86,7 @@ export const unpinMessage: Action = {
     const messageInfo = await getMessageRef(runtime, message, state);
     if (!messageInfo) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "I couldn't understand which message you want to unpin. Please be more specific.",
           source: "discord",
         });
@@ -98,7 +98,7 @@ export const unpinMessage: Action = {
       const room = state.data?.room || (await runtime.getRoom(message.roomId));
       if (!room?.channelId) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: "I couldn't determine the current channel.",
             source: "discord",
           });
@@ -109,7 +109,7 @@ export const unpinMessage: Action = {
       const channel = await discordService.client.channels.fetch(room.channelId);
       if (!channel || !channel.isTextBased()) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: "I can only unpin messages in text channels.",
             source: "discord",
           });
@@ -126,7 +126,7 @@ export const unpinMessage: Action = {
         const permissions = textChannel.permissionsFor(botMember);
         if (permissions && !permissions.has(PermissionsBitField.Flags.ManageMessages)) {
           if (callback) {
-            await callback({
+            await callback?.({
               text: "I don't have permission to unpin messages in this channel. I need the 'Manage Messages' permission.",
               source: "discord",
             });
@@ -142,7 +142,7 @@ export const unpinMessage: Action = {
 
       if (pinnedMessages.size === 0) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: "There are no pinned messages in this channel.",
             source: "discord",
           });
@@ -173,7 +173,7 @@ export const unpinMessage: Action = {
 
       if (!targetMessage) {
         if (callback) {
-          await callback({
+          await callback?.({
             text: "I couldn't find a pinned message matching your description.",
             source: "discord",
           });
@@ -191,7 +191,7 @@ export const unpinMessage: Action = {
         };
 
         if (callback) {
-          await callback(response);
+          await callback?.(response);
         }
         return { success: true, text: response.text };
       } catch (error) {
@@ -204,7 +204,7 @@ export const unpinMessage: Action = {
           "Failed to unpin message"
         );
         if (callback) {
-          await callback({
+          await callback?.({
             text: "I couldn't unpin that message. Please try again.",
             source: "discord",
           });
@@ -221,7 +221,7 @@ export const unpinMessage: Action = {
         "Error unpinning message"
       );
       if (callback) {
-        await callback({
+        await callback?.({
           text: "I encountered an error while trying to unpin the message. Please make sure I have the necessary permissions.",
           source: "discord",
         });

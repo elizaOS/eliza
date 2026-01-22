@@ -7,24 +7,21 @@
 import type {
   Action,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
 import type { AutoTradingManager } from "../services/AutoTradingManager.ts";
 
-const STRATEGY_DETAILS: Record<
-  string,
-  { description: string; bestFor: string; risk: string }
-> = {
+const STRATEGY_DETAILS: Record<string, { description: string; bestFor: string; risk: string }> = {
   llm: {
     description: "AI-powered analysis of trending tokens using language models",
     bestFor: "Dynamic markets, trending tokens, meme coins",
     risk: "Medium - AI decisions can be unpredictable",
   },
   "momentum-breakout-v1": {
-    description:
-      "Technical analysis detecting price breakouts with momentum indicators",
+    description: "Technical analysis detecting price breakouts with momentum indicators",
     bestFor: "Volatile markets with clear trends",
     risk: "Medium-High - Can get caught in false breakouts",
   },
@@ -47,30 +44,21 @@ const STRATEGY_DETAILS: Record<
 
 export const compareStrategiesAction: Action = {
   name: "COMPARE_STRATEGIES",
-  similes: [
-    "STRATEGY_COMPARISON",
-    "LIST_STRATEGIES",
-    "WHICH_STRATEGY",
-    "BEST_STRATEGY",
-  ],
+  similes: ["STRATEGY_COMPARISON", "LIST_STRATEGIES", "WHICH_STRATEGY", "BEST_STRATEGY"],
   description: "Compare available trading strategies",
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
     const text = message.content.text?.toLowerCase() || "";
-    return [
-      "compare",
-      "strategies",
-      "which strategy",
-      "best strategy",
-      "list strategy",
-    ].some((kw) => text.includes(kw));
+    return ["compare", "strategies", "which strategy", "best strategy", "list strategy"].some(
+      (kw) => text.includes(kw),
+    );
   },
 
   handler: async (
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ) => {
     const tradingManager = runtime.getService("AutoTradingManager") as
@@ -123,6 +111,7 @@ export const compareStrategiesAction: Action = {
 Would you like to start trading with a specific strategy?`;
 
     callback?.({ text: response });
+    return undefined;
   },
 
   examples: [
