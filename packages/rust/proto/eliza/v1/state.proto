@@ -1,0 +1,86 @@
+// state.proto - State and context types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "eliza/v1/components.proto";
+import "eliza/v1/environment.proto";
+import "google/protobuf/struct.proto";
+
+// Single step in an action plan
+message ActionPlanStep {
+  string action = 1;
+  string status = 2;
+  optional string error = 3;
+  optional ActionResult result = 4;
+}
+
+// Multi-step action plan
+message ActionPlan {
+  string thought = 1;
+  int32 total_steps = 2;
+  int32 current_step = 3;
+  repeated ActionPlanStep steps = 4;
+  google.protobuf.Struct metadata = 5;
+}
+
+// Provider result cache entry
+message ProviderCacheEntry {
+  optional string text = 1;
+  google.protobuf.Struct values = 2;
+  google.protobuf.Struct data = 3;
+}
+
+// Working memory item for multi-step action execution
+message WorkingMemoryItem {
+  // Name of the action that created this entry
+  string action_name = 1;
+  // Result from the action execution
+  ActionResult result = 2;
+  // Timestamp when the entry was created
+  int64 timestamp = 3;
+}
+
+// Structured data cached in state by providers and actions
+message StateData {
+  // Cached room data from providers
+  optional Room room = 1;
+  // Cached world data from providers
+  optional World world = 2;
+  // Cached entity data from providers
+  optional Entity entity = 3;
+  // Provider results cache keyed by provider name
+  map<string, ProviderCacheEntry> providers = 4;
+  // Current action plan for multi-step actions
+  optional ActionPlan action_plan = 5;
+  // Results from previous action executions
+  repeated ActionResult action_results = 6;
+  // Working memory for temporary state during multi-step action execution
+  map<string, WorkingMemoryItem> working_memory = 7;
+  // Dynamic properties for plugin extensions
+  google.protobuf.Struct extra = 8;
+}
+
+// State values populated by providers
+message StateValues {
+  // Agent name
+  optional string agent_name = 1;
+  // Action names available to the agent
+  optional string action_names = 2;
+  // Provider names used
+  optional string providers = 3;
+  // Other dynamic values
+  google.protobuf.Struct extra = 4;
+}
+
+// Represents the current state or context of a conversation or agent interaction
+message State {
+  // Key-value store for state variables populated by providers
+  StateValues values = 1;
+  // Structured data cache with typed properties
+  StateData data = 2;
+  // String representation of the current context
+  string text = 3;
+  // Dynamic properties for template expansion
+  google.protobuf.Struct extra = 4;
+}

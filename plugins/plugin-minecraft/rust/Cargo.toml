@@ -5,6 +5,9 @@ edition = "2021"
 authors = ["elizaOS Contributors"]
 license = "MIT"
 description = "Minecraft automation plugin for ElizaOS (Mineflayer bridge client)"
+repository = "https://github.com/elizaos/eliza"
+keywords = ["elizaos", "plugin", "minecraft", "mineflayer", "automation"]
+categories = ["game-development", "api-bindings"]
 
 [dependencies]
 tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros", "time", "sync"] }

@@ -439,8 +439,19 @@ jobs:
           echo "Building packages with version v${{ steps.version.outputs.version }}..."
           bun run build
 
+      # Replace workspace:* references with actual versions before publishing
+      # This is required because Bun workspaces use workspace:* protocol
+      # which npm doesn't understand when the packages are published
+      - name: Replace workspace references
+        id: replace_workspace
+        run: |
+          echo "🔄 Replacing workspace:* references with actual versions..."
+          node scripts/replace-workspace-versions.js
+          echo "✅ Workspace references replaced"
+
       # Publish to NPM (only after git operations succeed)
       - name: Publish to NPM
+        id: publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -469,6 +480,15 @@ jobs:
           fi
 
           echo "✅ Successfully published to NPM with dist-tag: ${DIST_TAG}"
+
+      # Always restore workspace:* references after publish (success or failure)
+      # This keeps the repository clean for development
+      - name: Restore workspace references
+        if: always() && steps.replace_workspace.outcome == 'success'
+        run: |
+          echo "🔄 Restoring workspace:* references..."
+          node scripts/restore-workspace-refs.js
+          echo "✅ Workspace references restored"
 
       # Create GitHub Release for alpha/beta (not for production, as it already exists)
       - name: Create GitHub release

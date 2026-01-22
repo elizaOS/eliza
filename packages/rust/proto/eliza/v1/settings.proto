@@ -1,0 +1,44 @@
+// settings.proto - Runtime and onboarding settings for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "google/protobuf/struct.proto";
+
+// Runtime settings provided as key/value strings (typically from env).
+message RuntimeSettings {
+  map<string, string> values = 1;
+}
+
+// Definition for a configurable setting (metadata only).
+message SettingDefinition {
+  string name = 1;
+  string description = 2;
+  string usage_description = 3;
+  bool required = 4;
+  optional bool public = 5;
+  optional bool secret = 6;
+  repeated string depends_on = 7;
+}
+
+// Concrete setting value (value may be string, bool, or null).
+message Setting {
+  string name = 1;
+  string description = 2;
+  string usage_description = 3;
+  bool required = 4;
+  optional bool public = 5;
+  optional bool secret = 6;
+  repeated string depends_on = 7;
+  google.protobuf.Value value = 8;
+}
+
+// World settings configuration map.
+message WorldSettings {
+  map<string, Setting> settings = 1;
+}
+
+// Onboarding configuration with setting definitions.
+message OnboardingConfig {
+  map<string, SettingDefinition> settings = 1;
+}

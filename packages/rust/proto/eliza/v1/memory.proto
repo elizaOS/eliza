@@ -1,0 +1,91 @@
+// memory.proto - Memory types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "eliza/v1/primitives.proto";
+import "google/protobuf/struct.proto";
+
+// Base memory metadata
+message BaseMetadata {
+  string type = 1;
+  optional string source = 2;
+  optional string source_id = 3;
+  optional string scope = 4;
+  optional int64 timestamp = 5;
+  repeated string tags = 6;
+}
+
+// Document-specific metadata
+message DocumentMetadata {
+  BaseMetadata base = 1;
+}
+
+// Fragment-specific metadata
+message FragmentMetadata {
+  BaseMetadata base = 1;
+  string document_id = 2;
+  int32 position = 3;
+}
+
+// Message-specific metadata
+message MessageMetadata {
+  BaseMetadata base = 1;
+  optional string trajectory_step_id = 2;
+  optional string benchmark_context = 3;
+}
+
+// Description-specific metadata
+message DescriptionMetadata {
+  BaseMetadata base = 1;
+}
+
+// Custom metadata with dynamic properties
+message CustomMetadata {
+  BaseMetadata base = 1;
+  google.protobuf.Struct custom_data = 2;
+}
+
+// Union of all memory metadata types
+message MemoryMetadata {
+  oneof metadata {
+    DocumentMetadata document = 1;
+    FragmentMetadata fragment = 2;
+    MessageMetadata message = 3;
+    DescriptionMetadata description = 4;
+    CustomMetadata custom = 5;
+  }
+}
+
+// Represents a stored memory/message
+message Memory {
+  // Optional unique identifier
+  optional string id = 1;
+  // Associated entity ID
+  string entity_id = 2;
+  // Associated agent ID
+  optional string agent_id = 3;
+  // Optional creation timestamp in milliseconds since epoch
+  optional int64 created_at = 4;
+  // Memory content
+  Content content = 5;
+  // Optional embedding vector for semantic search
+  repeated float embedding = 6;
+  // Associated room ID
+  string room_id = 7;
+  // Associated world ID (optional)
+  optional string world_id = 8;
+  // Whether memory is unique (used to prevent duplicates)
+  optional bool unique = 9;
+  // Embedding similarity score (set when retrieved via search)
+  optional float similarity = 10;
+  // Metadata for the memory
+  optional MemoryMetadata metadata = 11;
+}
+
+// Specialized memory type for messages with enhanced type checking
+message MessageMemory {
+  Memory memory = 1;
+  // Note: In proto, we can't enforce that content.text is required
+  // This should be validated at the application layer
+}

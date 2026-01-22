@@ -1,0 +1,604 @@
+name: ComputerUse Rust Crates Release
+
+# Publish ComputerUse Rust crates to crates.io on release
+#
+# Publishing Order (respecting dependencies):
+#   1. computeruse-computer-use - base crate, no internal deps
+#   2. computeruse-rs - depends on computeruse-computer-use
+#   3. computeruse-mcp-agent - depends on computeruse-rs
+#   4. computeruse-workflow-recorder - depends on computeruse-rs
+#   5. computeruse-cli - depends on computeruse-mcp-agent
+#   6. computeruse-python - binding crate (independent)
+#   7. computeruse-nodejs - binding crate (independent)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      crate:
+        description: "Crate to release"
+        required: true
+        type: choice
+        options:
+          - all
+          - computeruse-computer-use
+          - computeruse-rs
+          - computeruse-mcp-agent
+          - computeruse-workflow-recorder
+          - computeruse-cli
+          - computeruse-python
+          - computeruse-nodejs
+      dry_run:
+        description: "Dry run (do not publish)"
+        required: false
+        type: boolean
+        default: false
+      version:
+        description: "Version to publish (defaults to workspace version 0.24.20)"
+        required: false
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+
+defaults:
+  run:
+    working-directory: packages/computeruse
+
+jobs:
+  # ============================================
+  # Stage 1: computeruse-computer-use (base)
+  # ============================================
+  build-computer-use:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should_publish: ${{ steps.check.outputs.should_publish }}
+
+    steps:
+      - name: Check if crate should be built
+        id: check
+        run: |
+          CRATE="${{ github.event.inputs.crate || 'all' }}"
+          if [[ "$CRATE" == "all" ]] || [[ "$CRATE" == "computeruse-computer-use" ]]; then
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+        working-directory: .
+
+      - name: Checkout code
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        if: steps.check.outputs.should_publish == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/computeruse/target
+          key: ${{ runner.os }}-cargo-computeruse-${{ hashFiles('packages/computeruse/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-computeruse-
+
+      - name: Get version
+        if: steps.check.outputs.should_publish == 'true'
+        id: version
+        run: |
+          if [[ -n "${{ github.event.inputs.version }}" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#computeruse-v}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION=$(grep -m1 'version = ' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Publishing version: ${VERSION}"
+
+      - name: Update workspace version
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          echo "Updated workspace version to ${VERSION}"
+
+      - name: Check formatting
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo clippy -p computeruse-computer-use -- -D warnings || true
+
+      - name: Build release
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo build --release -p computeruse-computer-use
+
+      - name: Run tests
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo test -p computeruse-computer-use || true
+
+      - name: Verify publishable
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo publish --dry-run --allow-dirty -p computeruse-computer-use
+
+      - name: Publish to crates.io
+        if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --allow-dirty -p computeruse-computer-use
+
+      - name: Summary
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          echo "# computeruse-computer-use Release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Crate**: computeruse-computer-use" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Published**: ${{ github.event.inputs.dry_run != 'true' }}" >> $GITHUB_STEP_SUMMARY
+        working-directory: .
+
+  # ============================================
+  # Stage 2: computeruse-rs (depends on computer-use)
+  # ============================================
+  build-computeruse-rs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build-computer-use
+
+    outputs:
+      should_publish: ${{ steps.check.outputs.should_publish }}
+
+    steps:
+      - name: Check if crate should be built
+        id: check
+        run: |
+          CRATE="${{ github.event.inputs.crate || 'all' }}"
+          if [[ "$CRATE" == "all" ]] || [[ "$CRATE" == "computeruse-rs" ]]; then
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+        working-directory: .
+
+      - name: Checkout code
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        if: steps.check.outputs.should_publish == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/computeruse/target
+          key: ${{ runner.os }}-cargo-computeruse-${{ hashFiles('packages/computeruse/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-computeruse-
+
+      - name: Wait for crates.io to index computeruse-computer-use
+        if: steps.check.outputs.should_publish == 'true' && needs.build-computer-use.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        run: |
+          echo "Waiting 120 seconds for crates.io to index computeruse-computer-use..."
+          sleep 120
+        working-directory: .
+
+      - name: Update workspace version
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        run: |
+          VERSION="${{ needs.build-computer-use.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          # Update workspace dependency to use published version
+          sed -i "s|computeruse-computer-use = { version = \"[^\"]*\", path = \"[^\"]*\" }|computeruse-computer-use = \"${VERSION}\"|" Cargo.toml
+          echo "Updated workspace version to ${VERSION}"
+
+      - name: Build release
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo build --release -p computeruse-rs
+
+      - name: Run tests
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo test -p computeruse-rs || true
+
+      - name: Verify publishable
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo publish --dry-run --allow-dirty -p computeruse-rs
+
+      - name: Publish to crates.io
+        if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --allow-dirty -p computeruse-rs
+
+      - name: Summary
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          echo "# computeruse-rs Release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Crate**: computeruse-rs" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ needs.build-computer-use.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Published**: ${{ github.event.inputs.dry_run != 'true' }}" >> $GITHUB_STEP_SUMMARY
+        working-directory: .
+
+  # ============================================
+  # Stage 3: computeruse-mcp-agent & computeruse-workflow-recorder
+  # Both depend on computeruse-rs
+  # ============================================
+  build-mcp-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build-computer-use, build-computeruse-rs]
+
+    outputs:
+      should_publish: ${{ steps.check.outputs.should_publish }}
+
+    steps:
+      - name: Check if crate should be built
+        id: check
+        run: |
+          CRATE="${{ github.event.inputs.crate || 'all' }}"
+          if [[ "$CRATE" == "all" ]] || [[ "$CRATE" == "computeruse-mcp-agent" ]]; then
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+        working-directory: .
+
+      - name: Checkout code
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        if: steps.check.outputs.should_publish == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/computeruse/target
+          key: ${{ runner.os }}-cargo-computeruse-${{ hashFiles('packages/computeruse/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-computeruse-
+
+      - name: Wait for crates.io to index computeruse-rs
+        if: steps.check.outputs.should_publish == 'true' && needs.build-computeruse-rs.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        run: |
+          echo "Waiting 120 seconds for crates.io to index computeruse-rs..."
+          sleep 120
+        working-directory: .
+
+      - name: Update workspace version
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        run: |
+          VERSION="${{ needs.build-computer-use.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          # Update workspace dependency to use published version
+          sed -i "s|computeruse = { version = \"[^\"]*\", path = \"[^\"]*\"[^}]*}|computeruse = \"${VERSION}\"|" Cargo.toml
+          echo "Updated workspace version to ${VERSION}"
+
+      - name: Build release
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo build --release -p computeruse-mcp-agent
+
+      - name: Run tests
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo test -p computeruse-mcp-agent || true
+
+      - name: Verify publishable
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo publish --dry-run --allow-dirty -p computeruse-mcp-agent
+
+      - name: Publish to crates.io
+        if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --allow-dirty -p computeruse-mcp-agent
+
+      - name: Summary
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          echo "# computeruse-mcp-agent Release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Crate**: computeruse-mcp-agent" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ needs.build-computer-use.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Published**: ${{ github.event.inputs.dry_run != 'true' }}" >> $GITHUB_STEP_SUMMARY
+        working-directory: .
+
+  build-workflow-recorder:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build-computer-use, build-computeruse-rs]
+
+    steps:
+      - name: Check if crate should be built
+        id: check
+        run: |
+          CRATE="${{ github.event.inputs.crate || 'all' }}"
+          if [[ "$CRATE" == "all" ]] || [[ "$CRATE" == "computeruse-workflow-recorder" ]]; then
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+        working-directory: .
+
+      - name: Checkout code
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        if: steps.check.outputs.should_publish == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/computeruse/target
+          key: ${{ runner.os }}-cargo-computeruse-${{ hashFiles('packages/computeruse/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-computeruse-
+
+      - name: Wait for crates.io to index computeruse-rs
+        if: steps.check.outputs.should_publish == 'true' && needs.build-computeruse-rs.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        run: |
+          echo "Waiting 120 seconds for crates.io to index computeruse-rs..."
+          sleep 120
+        working-directory: .
+
+      - name: Update workspace version
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        run: |
+          VERSION="${{ needs.build-computer-use.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          echo "Updated workspace version to ${VERSION}"
+
+      - name: Build release
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo build --release -p computeruse-workflow-recorder
+
+      - name: Run tests
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo test -p computeruse-workflow-recorder || true
+
+      - name: Verify publishable
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo publish --dry-run --allow-dirty -p computeruse-workflow-recorder
+
+      - name: Publish to crates.io
+        if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --allow-dirty -p computeruse-workflow-recorder
+
+      - name: Summary
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          echo "# computeruse-workflow-recorder Release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Crate**: computeruse-workflow-recorder" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ needs.build-computer-use.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Published**: ${{ github.event.inputs.dry_run != 'true' }}" >> $GITHUB_STEP_SUMMARY
+        working-directory: .
+
+  # ============================================
+  # Stage 4: computeruse-cli (depends on mcp-agent)
+  # ============================================
+  build-cli:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build-computer-use, build-mcp-agent]
+
+    steps:
+      - name: Check if crate should be built
+        id: check
+        run: |
+          CRATE="${{ github.event.inputs.crate || 'all' }}"
+          if [[ "$CRATE" == "all" ]] || [[ "$CRATE" == "computeruse-cli" ]]; then
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+        working-directory: .
+
+      - name: Checkout code
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        if: steps.check.outputs.should_publish == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/computeruse/target
+          key: ${{ runner.os }}-cargo-computeruse-${{ hashFiles('packages/computeruse/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-computeruse-
+
+      - name: Wait for crates.io to index computeruse-mcp-agent
+        if: steps.check.outputs.should_publish == 'true' && needs.build-mcp-agent.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        run: |
+          echo "Waiting 120 seconds for crates.io to index computeruse-mcp-agent..."
+          sleep 120
+        working-directory: .
+
+      - name: Update workspace version
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        run: |
+          VERSION="${{ needs.build-computer-use.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          # Update dependency to use published version
+          sed -i "s|computeruse-mcp-agent = { path = \"[^\"]*\" }|computeruse-mcp-agent = \"${VERSION}\"|" crates/computeruse-cli/Cargo.toml
+          echo "Updated workspace version to ${VERSION}"
+
+      - name: Build release
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo build --release -p computeruse-cli
+
+      - name: Verify publishable
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo publish --dry-run --allow-dirty -p computeruse-cli
+
+      - name: Publish to crates.io
+        if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --allow-dirty -p computeruse-cli
+
+      - name: Summary
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          echo "# computeruse-cli Release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Crate**: computeruse-cli" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ needs.build-computer-use.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Published**: ${{ github.event.inputs.dry_run != 'true' }}" >> $GITHUB_STEP_SUMMARY
+        working-directory: .
+
+  # ============================================
+  # Stage 5: Binding crates (independent)
+  # ============================================
+  build-bindings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build-computer-use
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: computeruse-python
+            path: packages/computeruse-python
+          - name: computeruse-nodejs
+            path: packages/computeruse-nodejs
+
+    steps:
+      - name: Check if crate should be built
+        id: check
+        run: |
+          CRATE="${{ github.event.inputs.crate || 'all' }}"
+          MATRIX_NAME="${{ matrix.name }}"
+          if [[ "$CRATE" == "all" ]] || [[ "$CRATE" == "$MATRIX_NAME" ]]; then
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+        working-directory: .
+
+      - name: Checkout code
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        if: steps.check.outputs.should_publish == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/computeruse/target
+          key: ${{ runner.os }}-cargo-computeruse-${{ hashFiles('packages/computeruse/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-computeruse-
+
+      - name: Update workspace version
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        run: |
+          VERSION="${{ needs.build-computer-use.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          echo "Updated workspace version to ${VERSION}"
+
+      - name: Build release
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo build --release -p ${{ matrix.name }}
+
+      - name: Verify publishable
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo publish --dry-run --allow-dirty -p ${{ matrix.name }}
+
+      - name: Publish to crates.io
+        if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --allow-dirty -p ${{ matrix.name }}
+
+      - name: Summary
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          echo "# ${{ matrix.name }} Release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Crate**: ${{ matrix.name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ needs.build-computer-use.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Published**: ${{ github.event.inputs.dry_run != 'true' }}" >> $GITHUB_STEP_SUMMARY
+        working-directory: .
+
+  # ============================================
+  # Summary job
+  # ============================================
+  release-summary:
+    runs-on: ubuntu-latest
+    needs: [build-computer-use, build-computeruse-rs, build-mcp-agent, build-workflow-recorder, build-cli, build-bindings]
+    if: always()
+
+    steps:
+      - name: Generate release summary
+        run: |
+          echo "# ComputerUse Crates Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Crates Published" >> $GITHUB_STEP_SUMMARY
+          echo "| Crate | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| computeruse-computer-use | ${{ needs.build-computer-use.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| computeruse-rs | ${{ needs.build-computeruse-rs.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| computeruse-mcp-agent | ${{ needs.build-mcp-agent.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| computeruse-workflow-recorder | ${{ needs.build-workflow-recorder.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| computeruse-cli | ${{ needs.build-cli.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bindings (python, nodejs) | ${{ needs.build-bindings.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Total Crates: 7" >> $GITHUB_STEP_SUMMARY

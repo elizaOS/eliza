@@ -5,7 +5,9 @@ edition = "2021"
 description = "Pure in-memory, ephemeral database storage for elizaOS"
 license = "MIT"
 authors = ["elizaOS Contributors"]
+repository = "https://github.com/elizaos/eliza"
 keywords = ["elizaos", "database", "in-memory", "ephemeral"]
+categories = ["database", "data-structures"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

@@ -1,0 +1,16 @@
+// testing.proto - Test suite metadata for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+// Represents a test case definition (handler is runtime-only).
+message TestCase {
+  string name = 1;
+  optional string handler_id = 2;
+}
+
+// Represents a suite of related test cases.
+message TestSuite {
+  string name = 1;
+  repeated TestCase tests = 2;
+}

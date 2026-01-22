@@ -1,5 +1,5 @@
 [package]
-name = "eliza-plugin-elevenlabs"
+name = "elizaos-plugin-elevenlabs"
 version = "2.0.0"
 edition = "2021"
 description = "High-quality text-to-speech and speech-to-text plugin for ElizaOS using ElevenLabs API"
@@ -10,7 +10,7 @@ keywords = ["elizaos", "plugin", "tts", "stt", "text-to-speech", "speech-to-text
 categories = ["multimedia::audio", "api-bindings"]
 
 [lib]
-name = "eliza_plugin_elevenlabs"
+name = "elizaos_plugin_elevenlabs"
 path = "src/lib.rs"
 
 [dependencies]

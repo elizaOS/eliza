@@ -1,0 +1,25 @@
+// knowledge.proto - Knowledge types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "eliza/v1/memory.proto";
+import "eliza/v1/primitives.proto";
+
+// Represents a single item of knowledge stored by the agent.
+message KnowledgeRecord {
+  // Unique identifier for the knowledge item (UUID string).
+  string id = 1;
+  // Content of the knowledge item.
+  Content content = 2;
+  // Optional metadata associated with this knowledge item.
+  optional MemoryMetadata metadata = 3;
+}
+
+// Directory-based knowledge source configuration.
+message DirectoryItem {
+  // Path to a directory containing knowledge files.
+  string directory = 1;
+  // Whether this knowledge is shared across characters.
+  optional bool shared = 2;
+}

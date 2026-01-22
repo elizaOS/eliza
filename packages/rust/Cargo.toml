@@ -8,6 +8,7 @@ license = "MIT"
 repository = "https://github.com/elizaos/eliza"
 keywords = ["ai", "agent", "runtime", "wasm"]
 categories = ["wasm", "web-programming"]
+include = ["src/**/*", "Cargo.toml", "build.rs", "proto/**/*"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -90,6 +91,9 @@ web-sys = { version = "0.3", features = ["console"], optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
 getrandom = { version = "0.2", optional = true }
 once_cell = "1.21.3"
+
+[build-dependencies]
+prost-build = "0.13"
 
 [dev-dependencies]
 pretty_assertions = "1.0"

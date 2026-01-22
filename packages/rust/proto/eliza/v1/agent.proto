@@ -1,0 +1,119 @@
+// agent.proto - Agent and Character types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "eliza/v1/primitives.proto";
+import "google/protobuf/struct.proto";
+
+// Agent status enumeration
+enum AgentStatus {
+  AGENT_STATUS_UNSPECIFIED = 0;
+  AGENT_STATUS_ACTIVE = 1;
+  AGENT_STATUS_INACTIVE = 2;
+}
+
+// Example message for demonstration
+message MessageExample {
+  string name = 1;
+  Content content = 2;
+}
+
+// Knowledge item - can be a path or directory reference
+message KnowledgeItem {
+  oneof item {
+    string path = 1;
+    KnowledgeDirectory directory = 2;
+  }
+}
+
+// Knowledge directory with optional shared flag
+message KnowledgeDirectory {
+  string path = 1;
+  optional bool shared = 2;
+}
+
+// Character settings (well-known keys with expected types)
+message CharacterSettings {
+  // Model type to use for shouldRespond evaluation
+  optional string should_respond_model = 1; // "small" | "large"
+  // Whether to use multi-step workflow
+  optional bool use_multi_step = 2;
+  // Maximum iterations for multi-step
+  optional int32 max_multistep_iterations = 3;
+  // Whether LLM is off by default in rooms
+  optional bool bootstrap_defllmoff = 4;
+  // Whether to keep responses when superseded
+  optional bool bootstrap_keep_resp = 5;
+  // Provider execution timeout in ms
+  optional int32 providers_total_timeout_ms = 6;
+  // Maximum working memory entries
+  optional int32 max_working_memory_entries = 7;
+  // Channel types that always trigger response
+  optional string always_respond_channels = 8;
+  // Sources that always trigger response
+  optional string always_respond_sources = 9;
+  // Model temperature
+  optional double default_temperature = 10;
+  // Maximum tokens for text generation
+  optional int32 default_max_tokens = 11;
+  // Frequency penalty
+  optional double default_frequency_penalty = 12;
+  // Presence penalty
+  optional double default_presence_penalty = 13;
+  // Disable basic capabilities
+  optional bool disable_basic_capabilities = 14;
+  // Enable extended capabilities
+  optional bool enable_extended_capabilities = 15;
+  // Additional dynamic settings
+  google.protobuf.Struct extra = 16;
+}
+
+// Writing style guides
+message StyleGuides {
+  repeated string all = 1;
+  repeated string chat = 2;
+  repeated string post = 3;
+}
+
+// Character configuration defining personality, knowledge, and capabilities
+message Character {
+  optional string id = 1;
+  string name = 2;
+  optional string username = 3;
+  optional string system = 4;
+  // Templates as map of name to template string
+  map<string, string> templates = 5;
+  // Bio can be a single string or multiple lines
+  repeated string bio = 6;
+  // Example messages grouped in arrays
+  repeated MessageExampleGroup message_examples = 7;
+  repeated string post_examples = 8;
+  repeated string topics = 9;
+  repeated string adjectives = 10;
+  repeated KnowledgeItem knowledge = 11;
+  repeated string plugins = 12;
+  optional CharacterSettings settings = 13;
+  // Secrets as key-value pairs
+  map<string, string> secrets = 14;
+  optional StyleGuides style = 15;
+  // Enable built-in advanced planning capabilities
+  optional bool advanced_planning = 16;
+  // Enable built-in advanced memory capabilities
+  optional bool advanced_memory = 17;
+}
+
+// Group of message examples (for nested array structure)
+message MessageExampleGroup {
+  repeated MessageExample examples = 1;
+}
+
+// Represents an operational agent
+message Agent {
+  // Inherits all Character fields
+  Character character = 1;
+  optional bool enabled = 2;
+  AgentStatus status = 3;
+  int64 created_at = 4;
+  int64 updated_at = 5;
+}
