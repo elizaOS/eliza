@@ -4,7 +4,6 @@ import type {
   IAgentRuntime,
   Memory,
   Service,
-  ServiceTypeName,
   State,
   UUID,
 } from "@elizaos/core";

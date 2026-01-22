@@ -90,7 +90,7 @@ PREVIOUS PICKS:
 TRENDING TOKENS (Solana):
 {{trendingTokens}}
 
-CURRENT PORTFOLIO VALUE: ${{ portfolioValue }}
+CURRENT PORTFOLIO VALUE: $PORTFOLIO_VALUE_PLACEHOLDER
 
 Respond ONLY with a JSON object in this exact format:
 {
@@ -148,7 +148,7 @@ export class LLMStrategy implements TradingStrategy {
       this.runtime = runtime;
 
       const birdeyeKey = runtime.getSetting("BIRDEYE_API_KEY");
-      if (birdeyeKey) {
+      if (birdeyeKey && typeof birdeyeKey === "string") {
         this.config.birdeyeApiKey = birdeyeKey;
       }
 
@@ -162,7 +162,9 @@ export class LLMStrategy implements TradingStrategy {
         this.config.minLiquidity = Number(minLiquidity);
       }
 
-      logger.info(`[${this.name}] Initialized with config:`, this.config);
+      logger.info(
+        `[${this.name}] Initialized: maxBuy=${this.config.maxBuyAmountPercent}% minOpportunity=${this.config.minOpportunityScore} maxRisk=${this.config.maxRiskScore}`,
+      );
     }
   }
 
@@ -245,7 +247,7 @@ export class LLMStrategy implements TradingStrategy {
     // Validate the decision
     const tokenIndex = decision.recommendBuyIndex - 1;
     if (tokenIndex < 0 || tokenIndex >= validTokens.length) {
-      logger.warn(`[${this.name}] Invalid token index from LLM:`, decision.recommendBuyIndex);
+      logger.warn(`[${this.name}] Invalid token index from LLM: ${decision.recommendBuyIndex}`);
       return null;
     }
 
@@ -253,12 +255,12 @@ export class LLMStrategy implements TradingStrategy {
 
     // Validate opportunity and risk scores
     if (decision.opportunityScore < this.config.minOpportunityScore) {
-      logger.info(`[${this.name}] Opportunity score too low:`, decision.opportunityScore);
+      logger.info(`[${this.name}] Opportunity score too low: ${decision.opportunityScore}`);
       return null;
     }
 
     if (decision.riskScore > this.config.maxRiskScore) {
-      logger.info(`[${this.name}] Risk score too high:`, decision.riskScore);
+      logger.info(`[${this.name}] Risk score too high: ${decision.riskScore}`);
       return null;
     }
 
@@ -290,14 +292,9 @@ export class LLMStrategy implements TradingStrategy {
       this.previousPicks = this.previousPicks.slice(-10);
     }
 
-    logger.info(`[${this.name}] Generating buy signal:`, {
-      token: selectedToken.symbol,
-      address: selectedToken.address,
-      price: selectedToken.price,
-      buyPercent,
-      opportunityScore: decision.opportunityScore,
-      riskScore: decision.riskScore,
-    });
+    logger.info(
+      `[${this.name}] Generating buy signal: ${selectedToken.symbol} price=$${selectedToken.price.toFixed(6)} buyPercent=${buyPercent}% opportunity=${decision.opportunityScore} risk=${decision.riskScore}`,
+    );
 
     return {
       pair: `${selectedToken.address}/SOL`,
@@ -322,7 +319,8 @@ export class LLMStrategy implements TradingStrategy {
       return this.trendingTokensCache;
     }
 
-    const apiKey = this.config.birdeyeApiKey || runtime.getSetting("BIRDEYE_API_KEY");
+    const settingKey = runtime.getSetting("BIRDEYE_API_KEY");
+    const apiKey = this.config.birdeyeApiKey || (typeof settingKey === "string" ? settingKey : null);
     if (!apiKey) {
       logger.error(`[${this.name}] Birdeye API key not configured`);
       return [];
@@ -339,7 +337,7 @@ export class LLMStrategy implements TradingStrategy {
     );
 
     if (!response.ok) {
-      logger.error(`[${this.name}] Birdeye API error:`, response.status);
+      logger.error(`[${this.name}] Birdeye API error: ${response.status}`);
       return [];
     }
 
@@ -413,13 +411,14 @@ export class LLMStrategy implements TradingStrategy {
             .join("\n")
         : "No previous picks in this session.";
 
-    const prompt = TRADING_DECISION_PROMPT.replace("{{trendingTokens}}", tokensText)
+    const systemPrompt =
+      "You are an expert cryptocurrency trading analyst. Respond only with valid JSON.";
+    const userPrompt = TRADING_DECISION_PROMPT.replace("{{trendingTokens}}", tokensText)
       .replace("{{previousPicks}}", previousPicksText)
-      .replace("{{portfolioValue}}", portfolioValue.toFixed(2));
+      .replace("PORTFOLIO_VALUE_PLACEHOLDER", portfolioValue.toFixed(2));
 
     const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-      system: "You are an expert cryptocurrency trading analyst. Respond only with valid JSON.",
+      prompt: `${systemPrompt}\n\n${userPrompt}`,
     });
 
     if (!response) {
@@ -458,12 +457,9 @@ export class LLMStrategy implements TradingStrategy {
       takeProfitReasoning: String(parsed.takeProfitReasoning || ""),
     };
 
-    logger.debug(`[${this.name}] LLM decision:`, {
-      pickedNothing: decision.pickedNothing,
-      recommendBuyIndex: decision.recommendBuyIndex,
-      opportunityScore: decision.opportunityScore,
-      riskScore: decision.riskScore,
-    });
+    logger.debug(
+      `[${this.name}] LLM decision: pickedNothing=${decision.pickedNothing} buyIndex=${decision.recommendBuyIndex} opportunity=${decision.opportunityScore} risk=${decision.riskScore}`,
+    );
 
     return decision;
   }

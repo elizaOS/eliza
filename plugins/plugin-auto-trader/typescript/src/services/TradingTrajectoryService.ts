@@ -127,16 +127,17 @@ export class TradingTrajectoryService extends Service {
 
     this.sessionStartState = params.initialState;
 
-    this.activeTrajectoryId = this.trajectoryLogger?.startTrajectory(this.runtime.agentId, {
-      scenarioId: params.scenarioId || `trading-${params.strategy}`,
-      episodeId: `session-${Date.now()}`,
-      metadata: {
-        strategy: params.strategy,
-        initialBalance: params.initialState.solBalance,
-        initialPortfolioValue: params.initialState.portfolioValue,
-        tradingMode: this.runtime.getSetting("TRADING_MODE") || "paper",
-      },
-    });
+    this.activeTrajectoryId =
+      this.trajectoryLogger?.startTrajectory(this.runtime.agentId, {
+        scenarioId: params.scenarioId || `trading-${params.strategy}`,
+        episodeId: `session-${Date.now()}`,
+        metadata: {
+          strategy: params.strategy,
+          initialBalance: params.initialState.solBalance,
+          initialPortfolioValue: params.initialState.portfolioValue,
+          tradingMode: this.runtime.getSetting("TRADING_MODE") || "paper",
+        },
+      }) ?? null;
 
     logger.info(`[TradingTrajectoryService] Started trajectory: ${this.activeTrajectoryId}`);
     return this.activeTrajectoryId;
@@ -167,10 +168,10 @@ export class TradingTrajectoryService extends Service {
       },
     };
 
-    this.activeStepId = this.trajectoryLogger?.startStep(
-      this.activeTrajectoryId,
-      trajectoryEnvState,
-    );
+    this.activeStepId =
+      this.activeTrajectoryId && this.trajectoryLogger
+        ? (this.trajectoryLogger.startStep(this.activeTrajectoryId, trajectoryEnvState) ?? null)
+        : null;
     return this.activeStepId;
   }
 
@@ -273,7 +274,9 @@ export class TradingTrajectoryService extends Service {
 
     await this.trajectoryLogger?.endTrajectory(this.activeTrajectoryId, status, metrics);
 
-    logger.info(`[TradingTrajectoryService] Ended trajectory: ${this.activeTrajectoryId}`, metrics);
+    logger.info(
+      `[TradingTrajectoryService] Ended trajectory: ${this.activeTrajectoryId} status=${status}`,
+    );
 
     this.activeTrajectoryId = null;
     this.activeStepId = null;

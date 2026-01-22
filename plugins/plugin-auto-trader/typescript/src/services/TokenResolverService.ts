@@ -135,7 +135,7 @@ export class TokenResolverService extends Service {
       `https://public-api.birdeye.so/defi/token_overview?address=${address}`,
       {
         headers: {
-          "X-API-KEY": apiKey,
+          "X-API-KEY": String(apiKey),
           "x-chain": "solana",
         },
       },
@@ -197,7 +197,7 @@ export class TokenResolverService extends Service {
       `https://public-api.birdeye.so/defi/v3/search?chain=solana&keyword=${encodeURIComponent(query)}&target=token&sort_by=volume_24h_usd&sort_type=desc&limit=5`,
       {
         headers: {
-          "X-API-KEY": apiKey,
+          "X-API-KEY": String(apiKey),
           "x-chain": "solana",
         },
       },
@@ -266,7 +266,7 @@ export class TokenResolverService extends Service {
       `https://public-api.birdeye.so/defi/tokenlist?sort_by=v24hUSD&sort_type=desc&offset=0&limit=${limit}`,
       {
         headers: {
-          "X-API-KEY": apiKey,
+          "X-API-KEY": String(apiKey),
           "x-chain": "solana",
         },
       },

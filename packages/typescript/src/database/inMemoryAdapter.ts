@@ -7,7 +7,6 @@ import type {
   LogBody,
   Memory,
   MemoryMetadata,
-  Metadata,
   Participant,
   Relationship,
   Room,
@@ -16,10 +15,6 @@ import type {
   World,
 } from "../types";
 import { DEFAULT_UUID } from "../types/primitives";
-
-type JsonPrimitive = string | number | boolean | null;
-type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
-type JsonObject = { [key: string]: JsonValue };
 
 function asUuid(id: string): UUID {
   return id as UUID;

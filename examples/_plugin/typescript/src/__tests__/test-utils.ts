@@ -476,10 +476,7 @@ export const testFixtures = {
   userId: "test-user-id" as UUID,
   character: DEFAULT_TEST_CHARACTER,
   timestamp: Date.now(),
-  messagePayload: (overrides?: {
-    content?: Partial<Content>;
-    runtime?: IAgentRuntime;
-  }) => ({
+  messagePayload: (overrides?: { content?: Partial<Content>; runtime?: IAgentRuntime }) => ({
     runtime: overrides?.runtime || ({} as IAgentRuntime), // Will be set per-test
     message: createTestMemory(overrides?.content ? { content: overrides.content as Content } : {}),
     state: createTestState(),

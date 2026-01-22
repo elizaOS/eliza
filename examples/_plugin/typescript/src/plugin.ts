@@ -136,9 +136,6 @@ export class StarterService extends Service {
   static serviceType = "starter";
   capabilityDescription =
     "This is a starter service which is attached to the agent through the starter plugin.";
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
 
   static async start(runtime: IAgentRuntime) {
     logger.info("Starting starter service");
@@ -191,19 +188,19 @@ export const starterPlugin: Plugin = {
   models: {
     [ModelType.TEXT_SMALL]: async (
       _runtime,
-      { prompt, stopSequences = [] }: GenerateTextParams,
+      { prompt: _prompt, stopSequences: _stopSequences = [] }: GenerateTextParams,
     ) => {
       return "Never gonna give you up, never gonna let you down, never gonna run around and desert you...";
     },
     [ModelType.TEXT_LARGE]: async (
       _runtime,
       {
-        prompt,
-        stopSequences = [],
-        maxTokens = 8192,
-        temperature = 0.7,
-        frequencyPenalty = 0.7,
-        presencePenalty = 0.7,
+        prompt: _prompt,
+        stopSequences: _stopSequences = [],
+        maxTokens: _maxTokens = 8192,
+        temperature: _temperature = 0.7,
+        frequencyPenalty: _frequencyPenalty = 0.7,
+        presencePenalty: _presencePenalty = 0.7,
       }: GenerateTextParams,
     ) => {
       return "Never gonna make you cry, never gonna say goodbye, never gonna tell a lie and hurt you...";

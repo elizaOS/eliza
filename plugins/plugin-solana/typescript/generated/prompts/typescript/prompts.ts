@@ -67,3 +67,4 @@ Extract the following information about the requested transfer:
 - Amount to transfer`;
 
 export const TRANSFER_TEMPLATE = transferTemplate;
+

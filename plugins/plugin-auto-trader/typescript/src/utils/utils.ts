@@ -26,10 +26,7 @@ export async function fetchWithRetry(
 
   for (let i = 0; i < maxRetries; i++) {
     try {
-      logger.log(`API request attempt ${i + 1} for ${chain}:`, {
-        url,
-        attempt: i + 1,
-      });
+      logger.log(`API request attempt ${i + 1} for ${chain}: ${url}`);
 
       const headers = {
         Accept: "application/json",
@@ -50,12 +47,9 @@ export async function fetchWithRetry(
 
       return JSON.parse(responseText);
     } catch (error) {
-      logger.error(`Request attempt ${i + 1} failed:`, {
-        error: error instanceof Error ? error.message : String(error),
-        url,
-        chain,
-        attempt: i + 1,
-      });
+      logger.error(
+        `Request attempt ${i + 1} failed: ${error instanceof Error ? error.message : String(error)} url=${url} chain=${chain}`,
+      );
 
       lastError = error instanceof Error ? error : new Error(String(error));
 
@@ -126,7 +120,7 @@ export async function manageAnalyzedTokens(
           history = parsed;
         }
       } catch (e) {
-        logger.warn("Failed to parse token history:", e);
+        logger.warn(`Failed to parse token history: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
@@ -137,11 +131,9 @@ export async function manageAnalyzedTokens(
 
     if (newToken) {
       history.push(newToken);
-      logger.log("Added new token to analysis history:", {
-        address: newToken.address,
-        symbol: newToken.symbol,
-        historySize: history.length,
-      });
+      logger.log(
+        `Added new token to analysis history: ${newToken.symbol} (${newToken.address}) historySize=${history.length}`,
+      );
     }
 
     // Note: State updates should be handled by the caller
@@ -149,10 +141,9 @@ export async function manageAnalyzedTokens(
 
     return history;
   } catch (error) {
-    logger.error("Failed to manage token history:", {
-      error: error instanceof Error ? error.message : "Unknown error",
-      errorStack: error instanceof Error ? error.stack : undefined,
-    });
+    logger.error(
+      `Failed to manage token history: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
     return [];
   }
 }

@@ -411,8 +411,8 @@ describe("API Routes", () => {
         mockRes._jsonData = data;
         return mockRes;
       },
-      status: (code: number) => mockRes,
-      send: (data: unknown) => mockRes,
+      status: (_code: number) => mockRes,
+      send: (_data: unknown) => mockRes,
       end: () => mockRes,
       _jsonData: null as { message: string } | null,
     };
@@ -449,8 +449,8 @@ describe("API Routes", () => {
         mockRes._jsonData = data;
         return mockRes;
       },
-      status: (code: number) => mockRes,
-      send: (data: unknown) => mockRes,
+      status: (_code: number) => mockRes,
+      send: (_data: unknown) => mockRes,
       end: () => mockRes,
       _jsonData: null as { message: string } | null,
     };

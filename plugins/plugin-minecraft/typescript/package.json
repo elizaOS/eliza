@@ -25,16 +25,8 @@
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      ,
-  "publishConfig": {
-    "access": "public"
-  }
-}
-    ,
-  "publishConfig": {
-    "access": "public"
-  }
-}
+      }
+    }
   },
   "files": [
     "dist",
@@ -62,12 +54,7 @@
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"
-  ,
-  "publishConfig": {
-    "access": "public"
-  }
-}
-,
+  },
   "publishConfig": {
     "access": "public"
   }

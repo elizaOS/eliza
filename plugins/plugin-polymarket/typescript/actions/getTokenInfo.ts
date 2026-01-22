@@ -39,7 +39,7 @@ interface LLMTokenInfoResult {
 
 interface PriceHistoryPoint {
   t: number;
-  p: string;
+  p: number | string;
 }
 
 interface TokenPricing {
@@ -422,7 +422,13 @@ export const getTokenInfoAction: Action = {
           endTs: now,
           fidelity: 60, // Hourly data points
         });
-        const priceHistoryData = priceHistoryResponse as PriceHistoryPoint[];
+        // Map the API response to our PriceHistoryPoint type to ensure proper typing
+        const priceHistoryData: PriceHistoryPoint[] = Array.isArray(priceHistoryResponse)
+          ? priceHistoryResponse.map((item: { t: number; p: number | string }) => ({
+              t: typeof item.t === "number" ? item.t : Number(item.t),
+              p: typeof item.p === "number" ? item.p : Number(item.p),
+            }))
+          : [];
         priceHistory24h = calculatePriceHistorySummary(priceHistoryData, 24);
       } catch (err) {
         runtime.logger.warn("[getTokenInfoAction] Failed to fetch price history:", err);
@@ -470,20 +476,22 @@ export const getTokenInfoAction: Action = {
 
       const responseText = formatTokenInfo(tokenInfo);
 
+      const responseData = {
+        tokenId,
+        conditionId: tokenInfo.market.conditionId,
+        outcome,
+        question: tokenInfo.market.question,
+        midpoint: pricing.midpoint,
+        change24h: priceHistory24h?.changePercent ?? null,
+        hasPosition: userPosition !== null,
+        activeOrdersCount: userOrders.length,
+        timestamp: new Date().toISOString(),
+      };
+
       const responseContent: Content = {
         text: responseText,
         actions: ["POLYMARKET_GET_TOKEN_INFO"],
-        data: {
-          tokenId,
-          conditionId: tokenInfo.market.conditionId,
-          outcome,
-          question: tokenInfo.market.question,
-          midpoint: pricing.midpoint,
-          change24h: priceHistory24h?.changePercent ?? null,
-          hasPosition: userPosition !== null,
-          activeOrdersCount: userOrders.length,
-          timestamp: new Date().toISOString(),
-        },
+        data: responseData,
       };
 
       if (callback) await callback(responseContent);
@@ -507,7 +515,7 @@ export const getTokenInfoAction: Action = {
       return {
         success: true,
         text: responseText,
-        data: responseContent.data,
+        data: responseData as Record<string, unknown>,
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error occurred";

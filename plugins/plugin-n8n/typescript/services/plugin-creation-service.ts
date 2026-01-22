@@ -32,10 +32,6 @@ export class PluginCreationService extends Service {
 
   public readonly capabilityDescription: string = "Plugin creation service";
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
-
   async stop(): Promise<void> {
     for (const job of this.jobs.values()) {
       if (job.status === "running" || job.status === "pending") {

@@ -391,8 +391,9 @@ export class AutoTradingManager extends Service {
             )
           : await this.swapService?.sell(token, order.quantity, slippageBps);
 
+      if (!result) throw new Error("Swap service not available");
       if (!result.success) throw new Error(`Swap failed: ${result.error}`);
-      txId = result.signature!;
+      txId = result.signature ?? `unknown_${Date.now()}`;
       signature = result.signature;
       logger.info(
         `[AutoTradingManager] ${order.action}: ${result.inputAmount} → ${result.outputAmount} (${result.explorerUrl})`,

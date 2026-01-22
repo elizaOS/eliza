@@ -241,3 +241,4 @@ Extract and return ONLY a JSON object (no markdown formatting, no code blocks) w
 Only include fields that are being updated. Return only the JSON object, no other text.`;
 
 export const UPDATE_ISSUE_TEMPLATE = updateIssueTemplate;
+

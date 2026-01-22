@@ -1,5 +1,5 @@
 """
-Auto-generated canonical action/evaluator docs.
+Auto-generated canonical action/provider/evaluator docs.
 DO NOT EDIT - Generated from packages/prompts/specs/**.
 """
 
@@ -40,12 +40,25 @@ class ActionDocExampleCall(TypedDict, total=False):
     params: dict[str, dict[str, ActionDocParameterExampleValue]]
 
 
+class ActionDocExampleMessage(TypedDict, total=False):
+    name: str
+    content: dict[str, object]
+
+
 class ActionDoc(TypedDict, total=False):
     name: str
     description: str
     similes: list[str]
     parameters: list[ActionDocParameter]
+    examples: list[list[ActionDocExampleMessage]]
     exampleCalls: list[ActionDocExampleCall]
+
+
+class ProviderDoc(TypedDict, total=False):
+    name: str
+    description: str
+    position: int
+    dynamic: bool
 
 
 class EvaluatorDocMessageContent(TypedDict, total=False):
@@ -68,11 +81,14 @@ class EvaluatorDoc(TypedDict, total=False):
     name: str
     description: str
     similes: list[str]
+    alwaysRun: bool
     examples: list[EvaluatorDocExample]
 
 
 core_actions_spec_version: str = "1.0.0"
 all_actions_spec_version: str = "1.0.0"
+core_providers_spec_version: str = "1.0.0"
+all_providers_spec_version: str = "1.0.0"
 core_evaluators_spec_version: str = "1.0.0"
 all_evaluators_spec_version: str = "1.0.0"
 
@@ -81,38 +97,299 @@ _CORE_ACTION_DOCS_JSON = """{
   "actions": [
     {
       "name": "REPLY",
-      "description": "Send a text response back to the current conversation.",
+      "description": "Replies to the current conversation with the text from the generated message. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response.",
       "similes": [
+        "GREET",
+        "REPLY_TO_MESSAGE",
+        "SEND_REPLY",
         "RESPOND",
-        "ANSWER"
+        "RESPONSE"
       ],
-      "parameters": []
+      "parameters": [],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Hello there!"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Hi! How can I help you today?",
+              "actions": [
+                "REPLY"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "What's your favorite color?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I really like deep shades of blue. They remind me of the ocean and the night sky.",
+              "actions": [
+                "REPLY"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Can you explain how neural networks work?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Let me break that down for you in simple terms...",
+              "actions": [
+                "REPLY"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Could you help me solve this math problem?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Of course! Let's work through it step by step.",
+              "actions": [
+                "REPLY"
+              ]
+            }
+          }
+        ]
+      ]
     },
     {
       "name": "IGNORE",
-      "description": "Do not respond and do not take any further action.",
+      "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
       "similes": [
-        "NO_RESPONSE",
-        "SILENT"
+        "STOP_TALKING",
+        "STOP_CHATTING",
+        "STOP_CONVERSATION"
       ],
-      "parameters": []
+      "parameters": [],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Go screw yourself"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "",
+              "actions": [
+                "IGNORE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Shut up, bot"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "",
+              "actions": [
+                "IGNORE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Gotta go"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Okay, talk to you later"
+            }
+          },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Cya"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "",
+              "actions": [
+                "IGNORE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "bye"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "cya"
+            }
+          },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "",
+              "actions": [
+                "IGNORE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "wanna cyber"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "thats inappropriate",
+              "actions": [
+                "IGNORE"
+              ]
+            }
+          }
+        ]
+      ]
     },
     {
       "name": "NONE",
-      "description": "Explicitly take no action. Use when an action list is required but nothing should be done.",
+      "description": "Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.",
       "similes": [
-        "NOOP"
+        "NO_ACTION",
+        "NO_RESPONSE",
+        "NO_REACTION",
+        "NOOP",
+        "PASS"
       ],
-      "parameters": []
+      "parameters": [],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Hey whats up"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "oh hey",
+              "actions": [
+                "NONE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "did u see some faster whisper just came out"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "yeah but its a pain to get into node.js",
+              "actions": [
+                "NONE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "u think aliens are real",
+              "actions": [
+                "NONE"
+              ]
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "ya obviously",
+              "actions": [
+                "NONE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "drop a joke on me",
+              "actions": [
+                "NONE"
+              ]
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "why dont scientists trust atoms cuz they make up everything lmao",
+              "actions": [
+                "NONE"
+              ]
+            }
+          }
+        ]
+      ]
     },
     {
       "name": "SEND_MESSAGE",
-      "description": "Send a message to a user or room other than the current one.",
+      "description": "Send a message to a user or room (other than the current one)",
       "similes": [
         "DM",
         "MESSAGE",
         "SEND_DM",
-        "POST_MESSAGE"
+        "POST_MESSAGE",
+        "DIRECT_MESSAGE",
+        "NOTIFY"
       ],
       "parameters": [
         {
@@ -168,6 +445,59 @@ _CORE_ACTION_DOCS_JSON = """{
           ]
         }
       ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Send a message to @dev_guru on telegram saying 'Hello!'"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Message sent to dev_guru on telegram.",
+              "actions": [
+                "SEND_MESSAGE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Post 'Important announcement!' in #announcements"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Message sent to announcements.",
+              "actions": [
+                "SEND_MESSAGE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "DM Jimmy and tell him 'Meeting at 3pm'"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Message sent to Jimmy.",
+              "actions": [
+                "SEND_MESSAGE"
+              ]
+            }
+          }
+        ]
+      ],
       "exampleCalls": [
         {
           "user": "Send a message to @dev_guru on telegram saying \\"Hello!\\"",
@@ -188,11 +518,24 @@ _CORE_ACTION_DOCS_JSON = """{
     },
     {
       "name": "ADD_CONTACT",
-      "description": "Add a new contact to the rolodex with basic details and notes.",
+      "description": "Add a new contact to the rolodex with categorization and preferences",
       "similes": [
+        "SAVE_CONTACT",
+        "REMEMBER_PERSON",
+        "ADD_TO_CONTACTS",
+        "SAVE_TO_ROLODEX",
         "CREATE_CONTACT",
         "NEW_CONTACT",
-        "SAVE_CONTACT"
+        "add contact",
+        "save contact",
+        "add to contacts",
+        "add to rolodex",
+        "remember this person",
+        "save their info",
+        "add them to my list",
+        "categorize as friend",
+        "mark as vip",
+        "add to address book"
       ],
       "parameters": [
         {
@@ -203,7 +546,8 @@ _CORE_ACTION_DOCS_JSON = """{
             "type": "string"
           },
           "examples": [
-            "Sarah Chen"
+            "Sarah Chen",
+            "John Smith"
           ]
         },
         {
@@ -217,6 +561,50 @@ _CORE_ACTION_DOCS_JSON = """{
             "Met at the AI meetup; interested in agents"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Add John Smith to my contacts as a colleague"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've added John Smith to your contacts as a colleague."
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Save this person as a friend in my rolodex"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've saved them as a friend in your rolodex."
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Remember Alice as a VIP contact"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've added Alice to your contacts as a VIP."
+            }
+          }
+        ]
       ]
     },
     {
@@ -224,7 +612,8 @@ _CORE_ACTION_DOCS_JSON = """{
       "description": "Update an existing contact's details in the rolodex.",
       "similes": [
         "EDIT_CONTACT",
-        "MODIFY_CONTACT"
+        "MODIFY_CONTACT",
+        "CHANGE_CONTACT_INFO"
       ],
       "parameters": [
         {
@@ -249,13 +638,33 @@ _CORE_ACTION_DOCS_JSON = """{
             "{\\"notes\\":\\"prefers email\\",\\"tags\\":[\\"friend\\"]}"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Update Sarah's contact to add the tag 'investor'"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've updated Sarah's contact with the new tag."
+            }
+          }
+        ]
       ]
     },
     {
       "name": "REMOVE_CONTACT",
       "description": "Remove a contact from the rolodex.",
       "similes": [
-        "DELETE_CONTACT"
+        "DELETE_CONTACT",
+        "REMOVE_FROM_ROLODEX",
+        "DELETE_FROM_CONTACTS",
+        "FORGET_PERSON",
+        "REMOVE_FROM_CONTACTS"
       ],
       "parameters": [
         {
@@ -269,14 +678,49 @@ _CORE_ACTION_DOCS_JSON = """{
             "Sarah Chen"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Remove John from my contacts"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Are you sure you want to remove John from your contacts?"
+            }
+          },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Yes"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've removed John from your contacts."
+            }
+          }
+        ]
       ]
     },
     {
       "name": "SEARCH_CONTACTS",
-      "description": "Search contacts in the rolodex by name or query.",
+      "description": "Search and list contacts in the rolodex by name or query.",
       "similes": [
         "FIND_CONTACTS",
-        "LOOKUP_CONTACTS"
+        "LOOKUP_CONTACTS",
+        "LIST_CONTACTS",
+        "SHOW_CONTACTS",
+        "list contacts",
+        "show contacts",
+        "search contacts",
+        "find contacts",
+        "who are my friends"
       ],
       "parameters": [
         {
@@ -291,6 +735,22 @@ _CORE_ACTION_DOCS_JSON = """{
             "AI meetup"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Show me my friends"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Here are your contacts tagged as friends: Sarah Chen, John Smith..."
+            }
+          }
+        ]
       ]
     },
     {
@@ -298,7 +758,15 @@ _CORE_ACTION_DOCS_JSON = """{
       "description": "Schedule a follow-up reminder for a contact.",
       "similes": [
         "REMIND_ME",
-        "FOLLOW_UP"
+        "FOLLOW_UP",
+        "REMIND_FOLLOW_UP",
+        "SET_REMINDER",
+        "REMIND_ABOUT",
+        "FOLLOW_UP_WITH",
+        "follow up with",
+        "remind me to contact",
+        "schedule a check-in",
+        "set a reminder for"
       ],
       "parameters": [
         {
@@ -334,6 +802,22 @@ _CORE_ACTION_DOCS_JSON = """{
             "Check in about the agent framework demo"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Remind me to follow up with Sarah next week about the demo"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've scheduled a follow-up reminder with Sarah for next week about the demo."
+            }
+          }
+        ]
       ]
     },
     {
@@ -341,7 +825,12 @@ _CORE_ACTION_DOCS_JSON = """{
       "description": "Select an option for a pending task that has multiple options.",
       "similes": [
         "SELECT_OPTION",
-        "PICK_OPTION"
+        "PICK_OPTION",
+        "SELECT_TASK",
+        "PICK_TASK",
+        "SELECT",
+        "PICK",
+        "CHOOSE"
       ],
       "parameters": [
         {
@@ -367,13 +856,39 @@ _CORE_ACTION_DOCS_JSON = """{
             "ABORT"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Select the first option"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've selected option 1 for the pending task.",
+              "actions": [
+                "CHOOSE_OPTION"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "FOLLOW_ROOM",
-      "description": "Follow a room so the agent receives and processes messages from it.",
+      "description": "Start following this channel with great interest, chiming in without needing to be explicitly mentioned. Only do this if explicitly asked to.",
       "similes": [
-        "SUBSCRIBE_ROOM"
+        "FOLLOW_CHAT",
+        "FOLLOW_CHANNEL",
+        "FOLLOW_CONVERSATION",
+        "FOLLOW_THREAD",
+        "JOIN_ROOM",
+        "SUBSCRIBE_ROOM",
+        "WATCH_ROOM",
+        "ENTER_ROOM"
       ],
       "parameters": [
         {
@@ -387,13 +902,56 @@ _CORE_ACTION_DOCS_JSON = """{
             "00000000-0000-0000-0000-000000000000"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "hey {{name2}} follow this channel"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Sure, I will now follow this room and chime in",
+              "actions": [
+                "FOLLOW_ROOM"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "{{name2}} stay in this chat pls"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "you got it, i'm here",
+              "actions": [
+                "FOLLOW_ROOM"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "UNFOLLOW_ROOM",
-      "description": "Unfollow a room so the agent stops receiving messages from it.",
+      "description": "Stop following a room and cease receiving updates. Use this when you no longer want to monitor a room's activity.",
       "similes": [
-        "UNSUBSCRIBE_ROOM"
+        "UNFOLLOW_CHAT",
+        "UNFOLLOW_CONVERSATION",
+        "UNFOLLOW_ROOM",
+        "UNFOLLOW_THREAD",
+        "LEAVE_ROOM",
+        "UNSUBSCRIBE_ROOM",
+        "STOP_WATCHING_ROOM",
+        "EXIT_ROOM"
       ],
       "parameters": [
         {
@@ -407,13 +965,39 @@ _CORE_ACTION_DOCS_JSON = """{
             "00000000-0000-0000-0000-000000000000"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "{{name2}} stop following this channel"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Okay, I'll stop following this room",
+              "actions": [
+                "UNFOLLOW_ROOM"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "MUTE_ROOM",
-      "description": "Mute a room so the agent will not respond there.",
+      "description": "Mutes a room, ignoring all messages unless explicitly mentioned. Only do this if explicitly asked to, or if you're annoying people.",
       "similes": [
-        "SILENCE_ROOM"
+        "MUTE_CHAT",
+        "MUTE_CONVERSATION",
+        "MUTE_THREAD",
+        "MUTE_CHANNEL",
+        "SILENCE_ROOM",
+        "QUIET_ROOM",
+        "DISABLE_NOTIFICATIONS",
+        "STOP_RESPONDING"
       ],
       "parameters": [
         {
@@ -427,13 +1011,56 @@ _CORE_ACTION_DOCS_JSON = """{
             "00000000-0000-0000-0000-000000000000"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "{{name2}}, please mute this channel. No need to respond here for now."
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Got it",
+              "actions": [
+                "MUTE_ROOM"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "{{name2}} plz mute this room"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "np going silent",
+              "actions": [
+                "MUTE_ROOM"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "UNMUTE_ROOM",
-      "description": "Unmute a room so the agent may respond there again.",
+      "description": "Unmute a room to resume responding and receiving notifications. Use this when you want to start interacting with a muted room again.",
       "similes": [
-        "UNSILENCE_ROOM"
+        "UNMUTE_CHAT",
+        "UNMUTE_CONVERSATION",
+        "UNMUTE_ROOM",
+        "UNMUTE_THREAD",
+        "UNSILENCE_ROOM",
+        "ENABLE_NOTIFICATIONS",
+        "RESUME_RESPONDING",
+        "START_LISTENING"
       ],
       "parameters": [
         {
@@ -447,6 +1074,25 @@ _CORE_ACTION_DOCS_JSON = """{
             "00000000-0000-0000-0000-000000000000"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "{{name2}} unmute this room please"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've unmuted this room and will respond again",
+              "actions": [
+                "UNMUTE_ROOM"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
@@ -454,7 +1100,14 @@ _CORE_ACTION_DOCS_JSON = """{
       "description": "Update agent settings by applying explicit key/value updates.",
       "similes": [
         "SET_SETTINGS",
-        "CHANGE_SETTINGS"
+        "CHANGE_SETTINGS",
+        "UPDATE_SETTING",
+        "SAVE_SETTING",
+        "SET_CONFIGURATION",
+        "CONFIGURE",
+        "MODIFY_SETTINGS",
+        "SET_PREFERENCE",
+        "UPDATE_CONFIG"
       ],
       "parameters": [
         {
@@ -468,14 +1121,38 @@ _CORE_ACTION_DOCS_JSON = """{
             "[{\\"key\\":\\"model\\",\\"value\\":\\"gpt-5\\"}]"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Change my language setting to French"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've updated your language setting to French.",
+              "actions": [
+                "UPDATE_SETTINGS"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "UPDATE_ROLE",
-      "description": "Update a user's role.",
+      "description": "Assigns a role (Admin, Owner, None) to a user or list of users in a channel.",
       "similes": [
         "SET_ROLE",
-        "CHANGE_ROLE"
+        "CHANGE_ROLE",
+        "SET_PERMISSIONS",
+        "ASSIGN_ROLE",
+        "MAKE_ADMIN",
+        "MODIFY_PERMISSIONS",
+        "GRANT_ROLE"
       ],
       "parameters": [
         {
@@ -501,14 +1178,36 @@ _CORE_ACTION_DOCS_JSON = """{
             "member"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Make Sarah an admin"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've assigned the admin role to Sarah.",
+              "actions": [
+                "UPDATE_ROLE"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "UPDATE_ENTITY",
-      "description": "Update stored entity information by applying explicit field updates.",
+      "description": "Add or edit contact details for a person you are talking to or observing. Use this to modify entity profiles, metadata, or attributes.",
       "similes": [
         "EDIT_ENTITY",
-        "MODIFY_ENTITY"
+        "MODIFY_ENTITY",
+        "CHANGE_ENTITY",
+        "UPDATE_PROFILE",
+        "SET_ENTITY_INFO"
       ],
       "parameters": [
         {
@@ -533,15 +1232,38 @@ _CORE_ACTION_DOCS_JSON = """{
             "[{\\"name\\":\\"bio\\",\\"value\\":\\"Loves Rust\\"}]"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Update my profile bio to say 'AI enthusiast'"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've updated your profile bio.",
+              "actions": [
+                "UPDATE_ENTITY"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "GENERATE_IMAGE",
-      "description": "Generate an image based on the given prompt.",
+      "description": "Generates an image based on a generated prompt reflecting the current conversation. Use GENERATE_IMAGE when the agent needs to visualize, illustrate, or demonstrate something visually for the user.",
       "similes": [
-        "IMAGE",
         "DRAW",
-        "CREATE_IMAGE"
+        "CREATE_IMAGE",
+        "RENDER_IMAGE",
+        "VISUALIZE",
+        "MAKE_IMAGE",
+        "PAINT",
+        "IMAGE"
       ],
       "parameters": [
         {
@@ -555,6 +1277,59 @@ _CORE_ACTION_DOCS_JSON = """{
             "A futuristic cityscape at sunset, cinematic lighting"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Can you show me what a futuristic city looks like?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Sure, I'll create a futuristic city image for you. One moment...",
+              "actions": [
+                "GENERATE_IMAGE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "What does a neural network look like visually?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I'll create a visualization of a neural network for you, one sec...",
+              "actions": [
+                "GENERATE_IMAGE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Can you visualize the feeling of calmness for me?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Creating an image to capture calmness for you, please wait a moment...",
+              "actions": [
+                "GENERATE_IMAGE"
+              ]
+            }
+          }
+        ]
       ]
     }
   ]
@@ -564,38 +1339,299 @@ _ALL_ACTION_DOCS_JSON = """{
   "actions": [
     {
       "name": "REPLY",
-      "description": "Send a text response back to the current conversation.",
+      "description": "Replies to the current conversation with the text from the generated message. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response.",
       "similes": [
+        "GREET",
+        "REPLY_TO_MESSAGE",
+        "SEND_REPLY",
         "RESPOND",
-        "ANSWER"
+        "RESPONSE"
       ],
-      "parameters": []
+      "parameters": [],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Hello there!"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Hi! How can I help you today?",
+              "actions": [
+                "REPLY"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "What's your favorite color?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I really like deep shades of blue. They remind me of the ocean and the night sky.",
+              "actions": [
+                "REPLY"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Can you explain how neural networks work?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Let me break that down for you in simple terms...",
+              "actions": [
+                "REPLY"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Could you help me solve this math problem?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Of course! Let's work through it step by step.",
+              "actions": [
+                "REPLY"
+              ]
+            }
+          }
+        ]
+      ]
     },
     {
       "name": "IGNORE",
-      "description": "Do not respond and do not take any further action.",
+      "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
       "similes": [
-        "NO_RESPONSE",
-        "SILENT"
+        "STOP_TALKING",
+        "STOP_CHATTING",
+        "STOP_CONVERSATION"
       ],
-      "parameters": []
+      "parameters": [],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Go screw yourself"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "",
+              "actions": [
+                "IGNORE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Shut up, bot"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "",
+              "actions": [
+                "IGNORE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Gotta go"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Okay, talk to you later"
+            }
+          },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Cya"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "",
+              "actions": [
+                "IGNORE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "bye"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "cya"
+            }
+          },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "",
+              "actions": [
+                "IGNORE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "wanna cyber"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "thats inappropriate",
+              "actions": [
+                "IGNORE"
+              ]
+            }
+          }
+        ]
+      ]
     },
     {
       "name": "NONE",
-      "description": "Explicitly take no action. Use when an action list is required but nothing should be done.",
+      "description": "Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.",
       "similes": [
-        "NOOP"
+        "NO_ACTION",
+        "NO_RESPONSE",
+        "NO_REACTION",
+        "NOOP",
+        "PASS"
       ],
-      "parameters": []
+      "parameters": [],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Hey whats up"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "oh hey",
+              "actions": [
+                "NONE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "did u see some faster whisper just came out"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "yeah but its a pain to get into node.js",
+              "actions": [
+                "NONE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "u think aliens are real",
+              "actions": [
+                "NONE"
+              ]
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "ya obviously",
+              "actions": [
+                "NONE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "drop a joke on me",
+              "actions": [
+                "NONE"
+              ]
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "why dont scientists trust atoms cuz they make up everything lmao",
+              "actions": [
+                "NONE"
+              ]
+            }
+          }
+        ]
+      ]
     },
     {
       "name": "SEND_MESSAGE",
-      "description": "Send a message to a user or room other than the current one.",
+      "description": "Send a message to a user or room (other than the current one)",
       "similes": [
         "DM",
         "MESSAGE",
         "SEND_DM",
-        "POST_MESSAGE"
+        "POST_MESSAGE",
+        "DIRECT_MESSAGE",
+        "NOTIFY"
       ],
       "parameters": [
         {
@@ -651,6 +1687,59 @@ _ALL_ACTION_DOCS_JSON = """{
           ]
         }
       ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Send a message to @dev_guru on telegram saying 'Hello!'"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Message sent to dev_guru on telegram.",
+              "actions": [
+                "SEND_MESSAGE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Post 'Important announcement!' in #announcements"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Message sent to announcements.",
+              "actions": [
+                "SEND_MESSAGE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "DM Jimmy and tell him 'Meeting at 3pm'"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Message sent to Jimmy.",
+              "actions": [
+                "SEND_MESSAGE"
+              ]
+            }
+          }
+        ]
+      ],
       "exampleCalls": [
         {
           "user": "Send a message to @dev_guru on telegram saying \\"Hello!\\"",
@@ -671,11 +1760,24 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "ADD_CONTACT",
-      "description": "Add a new contact to the rolodex with basic details and notes.",
+      "description": "Add a new contact to the rolodex with categorization and preferences",
       "similes": [
+        "SAVE_CONTACT",
+        "REMEMBER_PERSON",
+        "ADD_TO_CONTACTS",
+        "SAVE_TO_ROLODEX",
         "CREATE_CONTACT",
         "NEW_CONTACT",
-        "SAVE_CONTACT"
+        "add contact",
+        "save contact",
+        "add to contacts",
+        "add to rolodex",
+        "remember this person",
+        "save their info",
+        "add them to my list",
+        "categorize as friend",
+        "mark as vip",
+        "add to address book"
       ],
       "parameters": [
         {
@@ -686,7 +1788,8 @@ _ALL_ACTION_DOCS_JSON = """{
             "type": "string"
           },
           "examples": [
-            "Sarah Chen"
+            "Sarah Chen",
+            "John Smith"
           ]
         },
         {
@@ -700,6 +1803,50 @@ _ALL_ACTION_DOCS_JSON = """{
             "Met at the AI meetup; interested in agents"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Add John Smith to my contacts as a colleague"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've added John Smith to your contacts as a colleague."
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Save this person as a friend in my rolodex"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've saved them as a friend in your rolodex."
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Remember Alice as a VIP contact"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've added Alice to your contacts as a VIP."
+            }
+          }
+        ]
       ]
     },
     {
@@ -707,7 +1854,8 @@ _ALL_ACTION_DOCS_JSON = """{
       "description": "Update an existing contact's details in the rolodex.",
       "similes": [
         "EDIT_CONTACT",
-        "MODIFY_CONTACT"
+        "MODIFY_CONTACT",
+        "CHANGE_CONTACT_INFO"
       ],
       "parameters": [
         {
@@ -732,13 +1880,33 @@ _ALL_ACTION_DOCS_JSON = """{
             "{\\"notes\\":\\"prefers email\\",\\"tags\\":[\\"friend\\"]}"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Update Sarah's contact to add the tag 'investor'"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've updated Sarah's contact with the new tag."
+            }
+          }
+        ]
       ]
     },
     {
       "name": "REMOVE_CONTACT",
       "description": "Remove a contact from the rolodex.",
       "similes": [
-        "DELETE_CONTACT"
+        "DELETE_CONTACT",
+        "REMOVE_FROM_ROLODEX",
+        "DELETE_FROM_CONTACTS",
+        "FORGET_PERSON",
+        "REMOVE_FROM_CONTACTS"
       ],
       "parameters": [
         {
@@ -752,14 +1920,49 @@ _ALL_ACTION_DOCS_JSON = """{
             "Sarah Chen"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Remove John from my contacts"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Are you sure you want to remove John from your contacts?"
+            }
+          },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Yes"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've removed John from your contacts."
+            }
+          }
+        ]
       ]
     },
     {
       "name": "SEARCH_CONTACTS",
-      "description": "Search contacts in the rolodex by name or query.",
+      "description": "Search and list contacts in the rolodex by name or query.",
       "similes": [
         "FIND_CONTACTS",
-        "LOOKUP_CONTACTS"
+        "LOOKUP_CONTACTS",
+        "LIST_CONTACTS",
+        "SHOW_CONTACTS",
+        "list contacts",
+        "show contacts",
+        "search contacts",
+        "find contacts",
+        "who are my friends"
       ],
       "parameters": [
         {
@@ -774,6 +1977,22 @@ _ALL_ACTION_DOCS_JSON = """{
             "AI meetup"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Show me my friends"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Here are your contacts tagged as friends: Sarah Chen, John Smith..."
+            }
+          }
+        ]
       ]
     },
     {
@@ -781,7 +2000,15 @@ _ALL_ACTION_DOCS_JSON = """{
       "description": "Schedule a follow-up reminder for a contact.",
       "similes": [
         "REMIND_ME",
-        "FOLLOW_UP"
+        "FOLLOW_UP",
+        "REMIND_FOLLOW_UP",
+        "SET_REMINDER",
+        "REMIND_ABOUT",
+        "FOLLOW_UP_WITH",
+        "follow up with",
+        "remind me to contact",
+        "schedule a check-in",
+        "set a reminder for"
       ],
       "parameters": [
         {
@@ -817,6 +2044,22 @@ _ALL_ACTION_DOCS_JSON = """{
             "Check in about the agent framework demo"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Remind me to follow up with Sarah next week about the demo"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've scheduled a follow-up reminder with Sarah for next week about the demo."
+            }
+          }
+        ]
       ]
     },
     {
@@ -824,7 +2067,12 @@ _ALL_ACTION_DOCS_JSON = """{
       "description": "Select an option for a pending task that has multiple options.",
       "similes": [
         "SELECT_OPTION",
-        "PICK_OPTION"
+        "PICK_OPTION",
+        "SELECT_TASK",
+        "PICK_TASK",
+        "SELECT",
+        "PICK",
+        "CHOOSE"
       ],
       "parameters": [
         {
@@ -850,13 +2098,39 @@ _ALL_ACTION_DOCS_JSON = """{
             "ABORT"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Select the first option"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've selected option 1 for the pending task.",
+              "actions": [
+                "CHOOSE_OPTION"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "FOLLOW_ROOM",
-      "description": "Follow a room so the agent receives and processes messages from it.",
+      "description": "Start following this channel with great interest, chiming in without needing to be explicitly mentioned. Only do this if explicitly asked to.",
       "similes": [
-        "SUBSCRIBE_ROOM"
+        "FOLLOW_CHAT",
+        "FOLLOW_CHANNEL",
+        "FOLLOW_CONVERSATION",
+        "FOLLOW_THREAD",
+        "JOIN_ROOM",
+        "SUBSCRIBE_ROOM",
+        "WATCH_ROOM",
+        "ENTER_ROOM"
       ],
       "parameters": [
         {
@@ -870,13 +2144,56 @@ _ALL_ACTION_DOCS_JSON = """{
             "00000000-0000-0000-0000-000000000000"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "hey {{name2}} follow this channel"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Sure, I will now follow this room and chime in",
+              "actions": [
+                "FOLLOW_ROOM"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "{{name2}} stay in this chat pls"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "you got it, i'm here",
+              "actions": [
+                "FOLLOW_ROOM"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "UNFOLLOW_ROOM",
-      "description": "Unfollow a room so the agent stops receiving messages from it.",
+      "description": "Stop following a room and cease receiving updates. Use this when you no longer want to monitor a room's activity.",
       "similes": [
-        "UNSUBSCRIBE_ROOM"
+        "UNFOLLOW_CHAT",
+        "UNFOLLOW_CONVERSATION",
+        "UNFOLLOW_ROOM",
+        "UNFOLLOW_THREAD",
+        "LEAVE_ROOM",
+        "UNSUBSCRIBE_ROOM",
+        "STOP_WATCHING_ROOM",
+        "EXIT_ROOM"
       ],
       "parameters": [
         {
@@ -890,13 +2207,39 @@ _ALL_ACTION_DOCS_JSON = """{
             "00000000-0000-0000-0000-000000000000"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "{{name2}} stop following this channel"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Okay, I'll stop following this room",
+              "actions": [
+                "UNFOLLOW_ROOM"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "MUTE_ROOM",
-      "description": "Mute a room so the agent will not respond there.",
+      "description": "Mutes a room, ignoring all messages unless explicitly mentioned. Only do this if explicitly asked to, or if you're annoying people.",
       "similes": [
-        "SILENCE_ROOM"
+        "MUTE_CHAT",
+        "MUTE_CONVERSATION",
+        "MUTE_THREAD",
+        "MUTE_CHANNEL",
+        "SILENCE_ROOM",
+        "QUIET_ROOM",
+        "DISABLE_NOTIFICATIONS",
+        "STOP_RESPONDING"
       ],
       "parameters": [
         {
@@ -910,13 +2253,56 @@ _ALL_ACTION_DOCS_JSON = """{
             "00000000-0000-0000-0000-000000000000"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "{{name2}}, please mute this channel. No need to respond here for now."
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Got it",
+              "actions": [
+                "MUTE_ROOM"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "{{name2}} plz mute this room"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "np going silent",
+              "actions": [
+                "MUTE_ROOM"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "UNMUTE_ROOM",
-      "description": "Unmute a room so the agent may respond there again.",
+      "description": "Unmute a room to resume responding and receiving notifications. Use this when you want to start interacting with a muted room again.",
       "similes": [
-        "UNSILENCE_ROOM"
+        "UNMUTE_CHAT",
+        "UNMUTE_CONVERSATION",
+        "UNMUTE_ROOM",
+        "UNMUTE_THREAD",
+        "UNSILENCE_ROOM",
+        "ENABLE_NOTIFICATIONS",
+        "RESUME_RESPONDING",
+        "START_LISTENING"
       ],
       "parameters": [
         {
@@ -930,6 +2316,25 @@ _ALL_ACTION_DOCS_JSON = """{
             "00000000-0000-0000-0000-000000000000"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "{{name2}} unmute this room please"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've unmuted this room and will respond again",
+              "actions": [
+                "UNMUTE_ROOM"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
@@ -937,7 +2342,14 @@ _ALL_ACTION_DOCS_JSON = """{
       "description": "Update agent settings by applying explicit key/value updates.",
       "similes": [
         "SET_SETTINGS",
-        "CHANGE_SETTINGS"
+        "CHANGE_SETTINGS",
+        "UPDATE_SETTING",
+        "SAVE_SETTING",
+        "SET_CONFIGURATION",
+        "CONFIGURE",
+        "MODIFY_SETTINGS",
+        "SET_PREFERENCE",
+        "UPDATE_CONFIG"
       ],
       "parameters": [
         {
@@ -951,14 +2363,38 @@ _ALL_ACTION_DOCS_JSON = """{
             "[{\\"key\\":\\"model\\",\\"value\\":\\"gpt-5\\"}]"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Change my language setting to French"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've updated your language setting to French.",
+              "actions": [
+                "UPDATE_SETTINGS"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "UPDATE_ROLE",
-      "description": "Update a user's role.",
+      "description": "Assigns a role (Admin, Owner, None) to a user or list of users in a channel.",
       "similes": [
         "SET_ROLE",
-        "CHANGE_ROLE"
+        "CHANGE_ROLE",
+        "SET_PERMISSIONS",
+        "ASSIGN_ROLE",
+        "MAKE_ADMIN",
+        "MODIFY_PERMISSIONS",
+        "GRANT_ROLE"
       ],
       "parameters": [
         {
@@ -984,14 +2420,36 @@ _ALL_ACTION_DOCS_JSON = """{
             "member"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Make Sarah an admin"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've assigned the admin role to Sarah.",
+              "actions": [
+                "UPDATE_ROLE"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "UPDATE_ENTITY",
-      "description": "Update stored entity information by applying explicit field updates.",
+      "description": "Add or edit contact details for a person you are talking to or observing. Use this to modify entity profiles, metadata, or attributes.",
       "similes": [
         "EDIT_ENTITY",
-        "MODIFY_ENTITY"
+        "MODIFY_ENTITY",
+        "CHANGE_ENTITY",
+        "UPDATE_PROFILE",
+        "SET_ENTITY_INFO"
       ],
       "parameters": [
         {
@@ -1016,15 +2474,38 @@ _ALL_ACTION_DOCS_JSON = """{
             "[{\\"name\\":\\"bio\\",\\"value\\":\\"Loves Rust\\"}]"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Update my profile bio to say 'AI enthusiast'"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've updated your profile bio.",
+              "actions": [
+                "UPDATE_ENTITY"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
       "name": "GENERATE_IMAGE",
-      "description": "Generate an image based on the given prompt.",
+      "description": "Generates an image based on a generated prompt reflecting the current conversation. Use GENERATE_IMAGE when the agent needs to visualize, illustrate, or demonstrate something visually for the user.",
       "similes": [
-        "IMAGE",
         "DRAW",
-        "CREATE_IMAGE"
+        "CREATE_IMAGE",
+        "RENDER_IMAGE",
+        "VISUALIZE",
+        "MAKE_IMAGE",
+        "PAINT",
+        "IMAGE"
       ],
       "parameters": [
         {
@@ -1038,6 +2519,59 @@ _ALL_ACTION_DOCS_JSON = """{
             "A futuristic cityscape at sunset, cinematic lighting"
           ]
         }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Can you show me what a futuristic city looks like?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Sure, I'll create a futuristic city image for you. One moment...",
+              "actions": [
+                "GENERATE_IMAGE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "What does a neural network look like visually?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I'll create a visualization of a neural network for you, one sec...",
+              "actions": [
+                "GENERATE_IMAGE"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Can you visualize the feeling of calmness for me?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Creating an image to capture calmness for you, please wait a moment...",
+              "actions": [
+                "GENERATE_IMAGE"
+              ]
+            }
+          }
+        ]
       ]
     },
     {
@@ -1130,65 +2664,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "CANCEL_FORM",
-      "description": "Cancels an active form",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        },
-        {
-          "name": "values",
-          "description": "The values to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "ABORT_FORM",
-        "STOP_FORM",
-        "QUIT_FORM",
-        "EXIT_FORM"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use CANCEL_FORM with the provided parameters.",
-          "actions": [
-            "CANCEL_FORM"
-          ],
-          "params": {
-            "CANCEL_FORM": {
-              "data": "example",
-              "values": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "CANCEL_GOAL",
-      "description": "Cancels and deletes a goal item from the user's task list immediately.",
-      "parameters": [],
-      "similes": [
-        "DELETE_GOAL",
-        "REMOVE_TASK",
-        "DELETE_TASK",
-        "REMOVE_GOAL"
-      ]
-    },
-    {
       "name": "CANCEL_TASK",
       "description": "Cancel a task.",
       "parameters": [],
@@ -1196,58 +2671,6 @@ _ALL_ACTION_DOCS_JSON = """{
         "DELETE_TASK",
         "REMOVE_TASK",
         "ABORT_TASK"
-      ]
-    },
-    {
-      "name": "CANCEL_TODO",
-      "description": "Cancels and deletes a todo item from the user's task list immediately.",
-      "parameters": [],
-      "similes": [
-        "DELETE_TODO",
-        "REMOVE_TASK",
-        "DELETE_TASK",
-        "REMOVE_TODO"
-      ]
-    },
-    {
-      "name": "cancelPluginCreation",
-      "description": "Cancel the current plugin creation job",
-      "parameters": [],
-      "similes": [
-        "stop plugin creation",
-        "abort plugin creation",
-        "cancel plugin"
-      ]
-    },
-    {
-      "name": "CHANGE_DIRECTORY",
-      "description": "Change the working directory (restricted to allowed directory).",
-      "parameters": [],
-      "similes": [
-        "CD",
-        "CWD"
-      ]
-    },
-    {
-      "name": "CHAT_WITH_ATTACHMENTS",
-      "description": "Answer a user request informed by specific attachments based on their IDs. If a user asks to chat with a PDF, or wants more specific information about a link or video or anything else they've attached, this is the action to use.",
-      "parameters": [],
-      "similes": [
-        "CHAT_WITH_ATTACHMENT",
-        "SUMMARIZE_FILES",
-        "SUMMARIZE_FILE",
-        "SUMMARIZE_ATACHMENT",
-        "CHAT_WITH_PDF",
-        "ATTACHMENT_SUMMARY",
-        "RECAP_ATTACHMENTS",
-        "SUMMARIZE_FILE",
-        "SUMMARIZE_VIDEO",
-        "SUMMARIZE_AUDIO",
-        "SUMMARIZE_IMAGE",
-        "SUMMARIZE_DOCUMENT",
-        "SUMMARIZE_LINK",
-        "ATTACHMENT_SUMMARY",
-        "FILE_SUMMARY"
       ]
     },
     {
@@ -1269,17 +2692,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "checkPluginCreationStatus",
-      "description": "Check the status of a plugin creation job",
-      "parameters": [],
-      "similes": [
-        "plugin status",
-        "check plugin progress",
-        "plugin creation status",
-        "get plugin status"
-      ]
-    },
-    {
       "name": "CLEAR_LINEAR_ACTIVITY",
       "description": "Clear the Linear activity log",
       "parameters": [],
@@ -1287,17 +2699,6 @@ _ALL_ACTION_DOCS_JSON = """{
         "clear-linear-activity",
         "reset-linear-activity",
         "delete-linear-activity"
-      ]
-    },
-    {
-      "name": "CLEAR_SHELL_HISTORY",
-      "description": "Clears the recorded history of shell commands for the current conversation",
-      "parameters": [],
-      "similes": [
-        "RESET_SHELL",
-        "CLEAR_TERMINAL",
-        "CLEAR_HISTORY",
-        "RESET_HISTORY"
       ]
     },
     {
@@ -1309,29 +2710,6 @@ _ALL_ACTION_DOCS_JSON = """{
         "LIST_STRATEGIES",
         "WHICH_STRATEGY",
         "BEST_STRATEGY"
-      ]
-    },
-    {
-      "name": "COMPLETE_GOAL",
-      "description": "Marks a goal as completed/achieved.",
-      "parameters": [],
-      "similes": [
-        "ACHIEVE_GOAL",
-        "FINISH_GOAL",
-        "CHECK_OFF_GOAL",
-        "ACCOMPLISH_GOAL"
-      ]
-    },
-    {
-      "name": "COMPLETE_TODO",
-      "description": "Marks a todo item as completed.",
-      "parameters": [],
-      "similes": [
-        "MARK_COMPLETE",
-        "FINISH_TASK",
-        "DONE",
-        "TASK_DONE",
-        "TASK_COMPLETED"
       ]
     },
     {
@@ -1396,91 +2774,20 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "CONFIRM_GOAL",
-      "description": "Confirms or cancels a pending goal creation after user review.",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "CONFIRM_TASK",
-        "APPROVE_GOAL",
-        "APPROVE_TASK",
-        "GOAL_CONFIRM"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use CONFIRM_GOAL with the provided parameters.",
-          "actions": [
-            "CONFIRM_GOAL"
-          ],
-          "params": {
-            "CONFIRM_GOAL": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "CONFIRM_TODO",
-      "description": "Confirms or cancels a pending todo creation after user review.",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "CONFIRM_TASK",
-        "APPROVE_TODO",
-        "APPROVE_TASK",
-        "TODO_CONFIRM"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use CONFIRM_TODO with the provided parameters.",
-          "actions": [
-            "CONFIRM_TODO"
-          ],
-          "params": {
-            "CONFIRM_TODO": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "CREATE_FORM",
-      "description": "Creates a new form from a template or custom definition",
+      "name": "CONFIRM_MEETING",
+      "description": "Confirm or decline attendance for a scheduled meeting",
       "parameters": [],
       "similes": [
-        "START_FORM",
-        "NEW_FORM",
-        "INIT_FORM",
-        "BEGIN_FORM"
+        "ACCEPT_MEETING",
+        "CONFIRM_ATTENDANCE",
+        "RSVP_YES",
+        "DECLINE_MEETING",
+        "CANCEL_ATTENDANCE"
       ]
     },
     {
       "name": "CREATE_GITHUB_BRANCH",
-      "description": "Creates a new branch in a GitHub repository from an existing branch or commit.",
+      "description": "",
       "parameters": [
         {
           "name": "branchName",
@@ -1527,12 +2834,6 @@ _ALL_ACTION_DOCS_JSON = """{
           ]
         }
       ],
-      "similes": [
-        "NEW_BRANCH",
-        "BRANCH_FROM",
-        "FORK_BRANCH",
-        "CREATE_FEATURE_BRANCH"
-      ],
       "exampleCalls": [
         {
           "user": "Use CREATE_GITHUB_BRANCH with the provided parameters.",
@@ -1552,7 +2853,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "CREATE_GITHUB_COMMENT",
-      "description": "Creates a comment on a GitHub issue or pull request.",
+      "description": "",
       "parameters": [
         {
           "name": "body",
@@ -1599,13 +2900,6 @@ _ALL_ACTION_DOCS_JSON = """{
           ]
         }
       ],
-      "similes": [
-        "COMMENT_ON_ISSUE",
-        "COMMENT_ON_PR",
-        "ADD_COMMENT",
-        "REPLY_TO_ISSUE",
-        "POST_COMMENT"
-      ],
       "exampleCalls": [
         {
           "user": "Use CREATE_GITHUB_COMMENT with the provided parameters.",
@@ -1625,7 +2919,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "CREATE_GITHUB_ISSUE",
-      "description": "Creates a new issue in a GitHub repository. Use this to report bugs, request features, or track tasks.",
+      "description": "",
       "parameters": [
         {
           "name": "assignees",
@@ -1694,14 +2988,6 @@ _ALL_ACTION_DOCS_JSON = """{
           ]
         }
       ],
-      "similes": [
-        "OPEN_ISSUE",
-        "NEW_ISSUE",
-        "FILE_ISSUE",
-        "REPORT_BUG",
-        "CREATE_BUG_REPORT",
-        "SUBMIT_ISSUE"
-      ],
       "exampleCalls": [
         {
           "user": "Use CREATE_GITHUB_ISSUE with the provided parameters.",
@@ -1723,7 +3009,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "CREATE_GITHUB_PULL_REQUEST",
-      "description": "Creates a new pull request in a GitHub repository to merge changes from one branch to another.",
+      "description": "",
       "parameters": [
         {
           "name": "base",
@@ -1803,14 +3089,6 @@ _ALL_ACTION_DOCS_JSON = """{
           ]
         }
       ],
-      "similes": [
-        "OPEN_PR",
-        "CREATE_PR",
-        "NEW_PULL_REQUEST",
-        "SUBMIT_PR",
-        "OPEN_PULL_REQUEST",
-        "MERGE_REQUEST"
-      ],
       "exampleCalls": [
         {
           "user": "Use CREATE_GITHUB_PULL_REQUEST with the provided parameters.",
@@ -1829,17 +3107,6 @@ _ALL_ACTION_DOCS_JSON = """{
             }
           }
         }
-      ]
-    },
-    {
-      "name": "CREATE_GOAL",
-      "description": "Creates a new long-term achievable goal for the agent or a user.",
-      "parameters": [],
-      "similes": [
-        "ADD_GOAL",
-        "NEW_GOAL",
-        "SET_GOAL",
-        "TRACK_GOAL"
       ]
     },
     {
@@ -1889,20 +3156,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "CREATE_POLL",
-      "description": "Create a poll in Discord with emoji reactions for voting.",
-      "parameters": [],
-      "similes": [
-        "CREATE_POLL",
-        "MAKE_POLL",
-        "START_POLL",
-        "CREATE_VOTE",
-        "MAKE_VOTE",
-        "START_VOTE",
-        "CREATE_SURVEY"
-      ]
-    },
-    {
       "name": "CREATE_TASK",
       "description": "Create an orchestrated background task to be executed by a selected agent provider.",
       "parameters": [],
@@ -1914,41 +3167,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "CREATE_TODO",
-      "description": "Creates a new todo item from a user description (daily, one-off, or aspirational) immediately.",
-      "parameters": [],
-      "similes": [
-        "ADD_TODO",
-        "NEW_TASK",
-        "ADD_TASK",
-        "CREATE_TASK"
-      ]
-    },
-    {
-      "name": "createPlugin",
-      "description": "Create a new plugin from a specification using AI assistance",
-      "parameters": [],
-      "similes": [
-        "generate plugin",
-        "build plugin",
-        "make plugin",
-        "develop plugin",
-        "create extension",
-        "build extension"
-      ]
-    },
-    {
-      "name": "createPluginFromDescription",
-      "description": "Create a plugin from a natural language description",
-      "parameters": [],
-      "similes": [
-        "describe plugin",
-        "plugin from description",
-        "explain plugin",
-        "I need a plugin that"
-      ]
-    },
-    {
       "name": "DELETE_LINEAR_ISSUE",
       "description": "Delete (archive) an issue in Linear",
       "parameters": [],
@@ -1957,59 +3175,6 @@ _ALL_ACTION_DOCS_JSON = """{
         "archive-linear-issue",
         "remove-linear-issue",
         "close-linear-issue"
-      ]
-    },
-    {
-      "name": "DOWNLOAD_MEDIA",
-      "description": "Downloads a video or audio file from a URL and attaches it to the response message.",
-      "parameters": [],
-      "similes": [
-        "DOWNLOAD_VIDEO",
-        "DOWNLOAD_AUDIO",
-        "GET_MEDIA",
-        "DOWNLOAD_PODCAST",
-        "DOWNLOAD_YOUTUBE"
-      ]
-    },
-    {
-      "name": "EDIT_FILE",
-      "description": "Replace a substring in a file (single replacement).",
-      "parameters": [],
-      "similes": [
-        "REPLACE_IN_FILE",
-        "PATCH_FILE",
-        "MODIFY_FILE"
-      ]
-    },
-    {
-      "name": "EVM_TRANSFER_TOKENS",
-      "description": "Transfer tokens between addresses on the same chain",
-      "parameters": [],
-      "similes": [
-        "EVM_TRANSFER",
-        "EVM_SEND_TOKENS",
-        "EVM_TOKEN_TRANSFER",
-        "EVM_MOVE_TOKENS"
-      ]
-    },
-    {
-      "name": "EXECUTE_COMMAND",
-      "description": "Execute shell commands including brew install, npm install, apt-get, system commands, file operations, directory navigation, and scripts.",
-      "parameters": [],
-      "similes": [
-        "RUN_COMMAND",
-        "SHELL_COMMAND",
-        "TERMINAL_COMMAND",
-        "EXEC",
-        "RUN",
-        "EXECUTE",
-        "CREATE_FILE",
-        "WRITE_FILE",
-        "MAKE_FILE",
-        "INSTALL",
-        "BREW_INSTALL",
-        "NPM_INSTALL",
-        "APT_INSTALL"
       ]
     },
     {
@@ -2028,61 +3193,12 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "EXECUTE_ROBLOX_ACTION",
-      "description": "Execute a custom action in a Roblox game, such as spawning entities, giving rewards, or triggering events.",
-      "parameters": [
-        {
-          "name": "message",
-          "description": "Message text to send.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "Hello! How can I help?"
-          ]
-        }
-      ],
-      "similes": [
-        "ROBLOX_ACTION",
-        "GAME_ACTION",
-        "DO_IN_GAME",
-        "TRIGGER_EVENT",
-        "RUN_GAME_COMMAND"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use EXECUTE_ROBLOX_ACTION with the provided parameters.",
-          "actions": [
-            "EXECUTE_ROBLOX_ACTION"
-          ],
-          "params": {
-            "EXECUTE_ROBLOX_ACTION": {
-              "message": "Hello! How can I help?"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "EXECUTE_SHELL",
-      "description": "Execute a shell command in the current working directory (restricted).",
+      "name": "FORM_RESTORE",
+      "description": "Restore a previously stashed form session",
       "parameters": [],
       "similes": [
-        "SHELL",
-        "RUN_COMMAND",
-        "EXEC",
-        "TERMINAL"
-      ]
-    },
-    {
-      "name": "generate-response",
-      "description": "Generate an ELIZA response for user input using classic pattern matching.",
-      "parameters": [],
-      "similes": [
-        "ELIZA_RESPOND",
-        "ELIZA_CHAT",
-        "CLASSIC_ELIZA"
+        "RESUME_FORM",
+        "CONTINUE_FORM"
       ]
     },
     {
@@ -2145,142 +3261,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "GET_NEWSFEED",
-      "description": "Download and parse an RSS/Atom feed from a URL",
-      "parameters": [],
-      "similes": [
-        "FETCH_RSS",
-        "READ_FEED",
-        "DOWNLOAD_FEED"
-      ]
-    },
-    {
-      "name": "GET_ROBLOX_PLAYER",
-      "description": "Look up information about a Roblox player by their user ID or username.",
-      "parameters": [
-        {
-          "name": "message",
-          "description": "Message text to send.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "Hello! How can I help?"
-          ]
-        }
-      ],
-      "similes": [
-        "LOOKUP_PLAYER",
-        "FIND_PLAYER",
-        "PLAYER_INFO",
-        "WHO_IS_PLAYER",
-        "ROBLOX_USER_INFO"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use GET_ROBLOX_PLAYER with the provided parameters.",
-          "actions": [
-            "GET_ROBLOX_PLAYER"
-          ],
-          "params": {
-            "GET_ROBLOX_PLAYER": {
-              "message": "Hello! How can I help?"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "GET_USER_INFO",
-      "description": "Get detailed information about a Discord user including their roles, join date, and permissions.",
-      "parameters": [],
-      "similes": [
-        "GET_USER_INFO",
-        "USER_INFO",
-        "WHO_IS",
-        "ABOUT_USER",
-        "USER_DETAILS",
-        "MEMBER_INFO",
-        "CHECK_USER"
-      ]
-    },
-    {
-      "name": "GIT",
-      "description": "Run a git command (restricted).",
-      "parameters": [],
-      "similes": [
-        "GIT_COMMAND",
-        "GIT_RUN"
-      ]
-    },
-    {
-      "name": "JOIN_CHANNEL",
-      "description": "Join a Discord channel - either text (to monitor messages) or voice (to participate in voice chat). You have full voice capabilities!",
-      "parameters": [],
-      "similes": [
-        "START_LISTENING_CHANNEL",
-        "LISTEN_TO_CHANNEL",
-        "ADD_CHANNEL",
-        "WATCH_CHANNEL",
-        "MONITOR_CHANNEL",
-        "JOIN_TEXT_CHANNEL",
-        "JOIN_VOICE",
-        "JOIN_VC",
-        "JOIN_VOICE_CHAT",
-        "JOIN_VOICE_CHANNEL",
-        "HOP_IN_VOICE",
-        "ENTER_VOICE_CHANNEL"
-      ]
-    },
-    {
-      "name": "LEAVE_CHANNEL",
-      "description": "Leave a Discord channel - either text (stop monitoring messages) or voice (disconnect from voice chat). Use this when asked to leave, exit, or disconnect from any Discord channel.",
-      "parameters": [],
-      "similes": [
-        "LEAVE_CHANNEL",
-        "STOP_LISTENING_CHANNEL",
-        "STOP_MONITORING_CHANNEL",
-        "REMOVE_CHANNEL",
-        "UNWATCH_CHANNEL",
-        "LEAVE_TEXT_CHANNEL",
-        "IGNORE_CHANNEL",
-        "LEAVE_VOICE",
-        "LEAVE_VC",
-        "LEAVE_VOICE_CHAT",
-        "LEAVE_VOICE_CHANNEL",
-        "LEAVE_CALL",
-        "EXIT_VOICE",
-        "DISCONNECT_VOICE",
-        "LEAVE_DISCORD_CHANNEL",
-        "EXIT_CHANNEL"
-      ]
-    },
-    {
-      "name": "LIST_CHANNELS",
-      "description": "Lists all Discord channels the bot is currently listening to and responding in.",
-      "parameters": [],
-      "similes": [
-        "SHOW_CHANNELS",
-        "LIST_LISTENING_CHANNELS",
-        "SHOW_MONITORED_CHANNELS",
-        "GET_CHANNELS",
-        "WHICH_CHANNELS",
-        "CHANNELS_LIST"
-      ]
-    },
-    {
-      "name": "LIST_FILES",
-      "description": "List files in a directory.",
-      "parameters": [],
-      "similes": [
-        "LS",
-        "LIST_DIR",
-        "LIST_DIRECTORY",
-        "DIR"
-      ]
-    },
-    {
       "name": "LIST_LINEAR_PROJECTS",
       "description": "List projects in Linear with optional filters",
       "parameters": [
@@ -2325,16 +3305,6 @@ _ALL_ACTION_DOCS_JSON = """{
         "show-linear-teams",
         "get-linear-teams",
         "view-linear-teams"
-      ]
-    },
-    {
-      "name": "LIST_RSS_FEEDS",
-      "description": "List all subscribed RSS/Atom feeds",
-      "parameters": [],
-      "similes": [
-        "SHOW_RSS_FEEDS",
-        "GET_RSS_FEEDS",
-        "RSS_SUBSCRIPTIONS"
       ]
     },
     {
@@ -2518,7 +3488,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "MERGE_GITHUB_PULL_REQUEST",
-      "description": "Merges a GitHub pull request using merge, squash, or rebase strategy.",
+      "description": "",
       "parameters": [
         {
           "name": "commitMessage",
@@ -2587,13 +3557,6 @@ _ALL_ACTION_DOCS_JSON = """{
           ]
         }
       ],
-      "similes": [
-        "MERGE_PR",
-        "SQUASH_MERGE",
-        "REBASE_MERGE",
-        "COMPLETE_PR",
-        "ACCEPT_PR"
-      ],
       "exampleCalls": [
         {
           "user": "Use MERGE_GITHUB_PULL_REQUEST with the provided parameters.",
@@ -2620,19 +3583,6 @@ _ALL_ACTION_DOCS_JSON = """{
       "similes": [
         "STOP_TASK",
         "HALT_TASK"
-      ]
-    },
-    {
-      "name": "PIN_MESSAGE",
-      "description": "Pin an important message in a Discord channel.",
-      "parameters": [],
-      "similes": [
-        "PIN_MESSAGE",
-        "PIN_MSG",
-        "PIN_THIS",
-        "PIN_THAT",
-        "MAKE_PINNED",
-        "ADD_PIN"
       ]
     },
     {
@@ -2676,17 +3626,6 @@ _ALL_ACTION_DOCS_JSON = """{
         "MARKET_DEPTH",
         "LIQUIDITY",
         "COMPARE_DEPTH"
-      ]
-    },
-    {
-      "name": "POLYMARKET_GET_ORDER_DETAILS",
-      "description": "Retrieves detailed information about a specific order by order ID. Use when the user asks about a particular order’s status, size, or fills. Do not use for listing all open orders or trade history; use getActiveOrdersAction or getTradeHistoryAction. Parameters: orderId (required). Requires full CLOB credentials.",
-      "parameters": [],
-      "similes": [
-        "ORDER_INFO",
-        "VIEW_ORDER",
-        "SHOW_ORDER",
-        "ORDER_STATUS"
       ]
     },
     {
@@ -2767,17 +3706,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "POST",
-      "description": "Post content on X (formerly Twitter)",
-      "parameters": [],
-      "similes": [
-        "POST_TO_X",
-        "POST",
-        "SEND_POST",
-        "SHARE_ON_X"
-      ]
-    },
-    {
       "name": "POST_INSTAGRAM_COMMENT",
       "description": "Post a comment on an Instagram post",
       "parameters": [
@@ -2832,7 +3760,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "PUSH_GITHUB_CODE",
-      "description": "Creates a commit with file changes and pushes to a GitHub branch.",
+      "description": "",
       "parameters": [
         {
           "name": "authorEmail",
@@ -2912,14 +3840,6 @@ _ALL_ACTION_DOCS_JSON = """{
           ]
         }
       ],
-      "similes": [
-        "COMMIT_CODE",
-        "PUSH_CHANGES",
-        "COMMIT_FILES",
-        "PUSH_FILES",
-        "GIT_PUSH",
-        "SAVE_CODE"
-      ],
       "exampleCalls": [
         {
           "user": "Use PUSH_GITHUB_CODE with the provided parameters.",
@@ -2941,44 +3861,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "REACT_TO_MESSAGE",
-      "description": "Add an emoji reaction to a Discord message.",
-      "parameters": [],
-      "similes": [
-        "REACT_TO_MESSAGE",
-        "ADD_REACTION",
-        "REACT_MESSAGE",
-        "ADD_EMOJI",
-        "EMOJI_REACT",
-        "MESSAGE_REACTION"
-      ]
-    },
-    {
-      "name": "READ_CHANNEL",
-      "description": "Reads recent messages from a Discord channel and either returns them or provides a summary. Can focus on messages from a specific user.",
-      "parameters": [],
-      "similes": [
-        "READ_MESSAGES",
-        "GET_CHANNEL_MESSAGES",
-        "FETCH_MESSAGES",
-        "SHOW_CHANNEL_HISTORY",
-        "GET_CHAT_HISTORY",
-        "READ_CHAT"
-      ]
-    },
-    {
-      "name": "READ_FILE",
-      "description": "Read and return a file's contents.",
-      "parameters": [],
-      "similes": [
-        "VIEW_FILE",
-        "OPEN_FILE",
-        "CAT_FILE",
-        "SHOW_FILE",
-        "GET_FILE"
-      ]
-    },
-    {
       "name": "READ_MCP_RESOURCE",
       "description": "Reads a resource from an MCP server",
       "parameters": [],
@@ -2991,36 +3873,6 @@ _ALL_ACTION_DOCS_JSON = """{
         "FETCH_MCP_RESOURCE",
         "ACCESS_RESOURCE",
         "ACCESS_MCP_RESOURCE"
-      ]
-    },
-    {
-      "name": "RECORD_EXPERIENCE",
-      "description": "Manually record a learning experience",
-      "parameters": [
-        {
-          "name": "text",
-          "description": "The text to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use RECORD_EXPERIENCE with the provided parameters.",
-          "actions": [
-            "RECORD_EXPERIENCE"
-          ],
-          "params": {
-            "RECORD_EXPERIENCE": {
-              "text": "example"
-            }
-          }
-        }
       ]
     },
     {
@@ -3039,48 +3891,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "REPLY_TO_CAST",
-      "description": "Replies to a cast on Farcaster",
-      "parameters": [
-        {
-          "name": "parentCastHash",
-          "description": "The parent cast hash to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        },
-        {
-          "name": "replyContent",
-          "description": "The reply content to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use REPLY_TO_CAST with the provided parameters.",
-          "actions": [
-            "REPLY_TO_CAST"
-          ],
-          "params": {
-            "REPLY_TO_CAST": {
-              "parentCastHash": "example",
-              "replyContent": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "RESUME_TASK",
       "description": "Resume a paused task.",
       "parameters": [],
@@ -3092,7 +3902,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "REVIEW_GITHUB_PULL_REQUEST",
-      "description": "Creates a review on a GitHub pull request. Can approve, request changes, or add comments.",
+      "description": "",
       "parameters": [
         {
           "name": "body",
@@ -3150,14 +3960,6 @@ _ALL_ACTION_DOCS_JSON = """{
           ]
         }
       ],
-      "similes": [
-        "APPROVE_PR",
-        "REQUEST_CHANGES",
-        "COMMENT_ON_PR",
-        "REVIEW_PR",
-        "PR_REVIEW",
-        "CODE_REVIEW"
-      ],
       "exampleCalls": [
         {
           "user": "Use REVIEW_GITHUB_PULL_REQUEST with the provided parameters.",
@@ -3187,14 +3989,15 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "SEARCH_FILES",
-      "description": "Search for text across files under a directory.",
+      "name": "SCHEDULE_MEETING",
+      "description": "Schedule a meeting between multiple participants by finding a suitable time slot",
       "parameters": [],
       "similes": [
-        "GREP",
-        "RG",
-        "FIND_IN_FILES",
-        "SEARCH"
+        "BOOK_MEETING",
+        "ARRANGE_MEETING",
+        "SET_UP_MEETING",
+        "PLAN_MEETING",
+        "CREATE_MEETING"
       ]
     },
     {
@@ -3247,70 +4050,12 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "SEARCH_MESSAGES",
-      "description": "Search for messages in Discord channels based on keywords, author, or time range.",
-      "parameters": [],
-      "similes": [
-        "SEARCH_MESSAGES",
-        "FIND_MESSAGES",
-        "SEARCH_CHAT",
-        "LOOK_FOR_MESSAGES",
-        "FIND_IN_CHAT",
-        "SEARCH_CHANNEL",
-        "SEARCH_DISCORD"
-      ]
-    },
-    {
       "name": "SEARCH_TASKS",
       "description": "Search tasks by query.",
       "parameters": [],
       "similes": [
         "FIND_TASK",
         "LOOKUP_TASK"
-      ]
-    },
-    {
-      "name": "SEND_CAST",
-      "description": "Posts a cast (message) on Farcaster",
-      "parameters": [
-        {
-          "name": "castContent",
-          "description": "The cast content to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SEND_CAST with the provided parameters.",
-          "actions": [
-            "SEND_CAST"
-          ],
-          "params": {
-            "SEND_CAST": {
-              "castContent": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SEND_DM",
-      "description": "Sends a direct message to a specific Discord user.",
-      "parameters": [],
-      "similes": [
-        "SEND_DIRECT_MESSAGE",
-        "DM_USER",
-        "MESSAGE_USER",
-        "PRIVATE_MESSAGE",
-        "SEND_PRIVATE_MESSAGE",
-        "DM",
-        "SEND_MESSAGE_TO_USER"
       ]
     },
     {
@@ -3363,54 +4108,20 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "SEND_ROBLOX_MESSAGE",
-      "description": "Send a message to players in a Roblox game. Can target all players or specific player IDs.",
-      "parameters": [
-        {
-          "name": "message",
-          "description": "Message text to send.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "Hello! How can I help?"
-          ]
-        }
-      ],
-      "similes": [
-        "ROBLOX_MESSAGE",
-        "GAME_MESSAGE",
-        "SEND_TO_GAME",
-        "BROADCAST_MESSAGE",
-        "TELL_PLAYERS"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SEND_ROBLOX_MESSAGE with the provided parameters.",
-          "actions": [
-            "SEND_ROBLOX_MESSAGE"
-          ],
-          "params": {
-            "SEND_ROBLOX_MESSAGE": {
-              "message": "Hello! How can I help?"
-            }
-          }
-        }
-      ]
+      "name": "SEND_MMS",
+      "description": "Send an MMS (multimedia message) with images, audio, or video via Twilio",
+      "parameters": []
     },
     {
-      "name": "SERVER_INFO",
-      "description": "Get information about the current Discord server including member count, creation date, and other statistics.",
+      "name": "SET_AVAILABILITY",
+      "description": "Set the user's availability for scheduling meetings",
       "parameters": [],
       "similes": [
-        "SERVER_INFO",
-        "GUILD_INFO",
-        "SERVER_STATS",
-        "SERVER_DETAILS",
-        "ABOUT_SERVER",
-        "SERVER_INFORMATION",
-        "CHECK_SERVER"
+        "UPDATE_AVAILABILITY",
+        "SET_SCHEDULE",
+        "UPDATE_SCHEDULE",
+        "SET_FREE_TIME",
+        "WHEN_FREE"
       ]
     },
     {
@@ -3430,41 +4141,6 @@ _ALL_ACTION_DOCS_JSON = """{
       "parameters": []
     },
     {
-      "name": "SUBSCRIBE_RSS_FEED",
-      "description": "Subscribe to an RSS/Atom feed for automatic monitoring",
-      "parameters": [],
-      "similes": [
-        "ADD_RSS_FEED",
-        "FOLLOW_RSS_FEED",
-        "SUBSCRIBE_TO_RSS"
-      ]
-    },
-    {
-      "name": "SUMMARIZE_CONVERSATION",
-      "description": "Summarizes the conversation and attachments.",
-      "parameters": [],
-      "similes": [
-        "RECAP",
-        "RECAP_CONVERSATION",
-        "SUMMARIZE_CHAT",
-        "SUMMARIZATION",
-        "CHAT_SUMMARY",
-        "CONVERSATION_SUMMARY"
-      ]
-    },
-    {
-      "name": "SWAP_SOLANA",
-      "description": "Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens.",
-      "parameters": [],
-      "similes": [
-        "SWAP_SOL",
-        "SWAP_TOKENS_SOLANA",
-        "TOKEN_SWAP_SOLANA",
-        "TRADE_TOKENS_SOLANA",
-        "EXCHANGE_TOKENS_SOLANA"
-      ]
-    },
-    {
       "name": "SWITCH_TASK",
       "description": "Switch the current task context to a different task.",
       "parameters": [],
@@ -3474,122 +4150,266 @@ _ALL_ACTION_DOCS_JSON = """{
         "CHANGE_TASK",
         "GO_TO_TASK"
       ]
+    }
+  ]
+}"""
+_CORE_PROVIDER_DOCS_JSON = """{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "ACTIONS",
+      "description": "Possible response actions",
+      "position": -1,
+      "dynamic": false
     },
     {
-      "name": "TRANSCRIBE_MEDIA",
-      "description": "Transcribe the full text of an audio or video file that the user has attached.",
-      "parameters": [],
-      "similes": [
-        "TRANSCRIBE_AUDIO",
-        "TRANSCRIBE_VIDEO",
-        "MEDIA_TRANSCRIPT",
-        "VIDEO_TRANSCRIPT",
-        "AUDIO_TRANSCRIPT"
-      ]
+      "name": "CHARACTER",
+      "description": "Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
+      "dynamic": false
     },
     {
-      "name": "UNPIN_MESSAGE",
-      "description": "Unpin a message in a Discord channel.",
-      "parameters": [],
-      "similes": [
-        "UNPIN_MESSAGE",
-        "UNPIN_MSG",
-        "UNPIN_THIS",
-        "UNPIN_THAT",
-        "REMOVE_PIN",
-        "DELETE_PIN"
-      ]
+      "name": "RECENT_MESSAGES",
+      "description": "Provides recent message history from the current conversation including formatted messages, posts, action results, and recent interactions",
+      "position": 100,
+      "dynamic": true
     },
     {
-      "name": "UNSUBSCRIBE_RSS_FEED",
-      "description": "Unsubscribe from an RSS/Atom feed",
-      "parameters": [],
-      "similes": [
-        "REMOVE_RSS_FEED",
-        "UNFOLLOW_RSS_FEED",
-        "DELETE_RSS_FEED"
-      ]
+      "name": "ACTION_STATE",
+      "description": "Provides information about the current action state and available actions",
+      "dynamic": true
     },
     {
-      "name": "UPDATE_FORM",
-      "description": "Updates an active form with values extracted from the user message",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        },
-        {
-          "name": "values",
-          "description": "The values to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "FILL_FORM",
-        "SUBMIT_FORM",
-        "COMPLETE_FORM",
-        "FORM_INPUT"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use UPDATE_FORM with the provided parameters.",
-          "actions": [
-            "UPDATE_FORM"
-          ],
-          "params": {
-            "UPDATE_FORM": {
-              "data": "example",
-              "values": "example"
-            }
-          }
-        }
-      ]
+      "name": "ATTACHMENTS",
+      "description": "Media attachments in the current message",
+      "dynamic": true
     },
     {
-      "name": "UPDATE_GOAL",
-      "description": "Updates an existing goal's name or description.",
-      "parameters": [],
-      "similes": [
-        "EDIT_GOAL",
-        "MODIFY_GOAL",
-        "CHANGE_GOAL",
-        "REVISE_GOAL"
-      ]
+      "name": "CAPABILITIES",
+      "description": "Agent capabilities including models, services, and features",
+      "dynamic": false
     },
     {
-      "name": "UPDATE_TODO",
-      "description": "Updates an existing todo item immediately based on user description.",
-      "parameters": [],
-      "similes": [
-        "EDIT_TODO",
-        "MODIFY_TASK",
-        "CHANGE_TASK",
-        "MODIFY_TODO",
-        "EDIT_TASK"
-      ]
+      "name": "CHOICE",
+      "description": "Available choice options for selection when there are pending tasks or decisions",
+      "dynamic": true
     },
     {
-      "name": "WRITE_FILE",
-      "description": "Create or overwrite a file with given content.",
-      "parameters": [],
-      "similes": [
-        "CREATE_FILE",
-        "SAVE_FILE",
-        "OUTPUT_FILE"
-      ]
+      "name": "CONTACTS",
+      "description": "Provides contact information from the rolodex including categories and preferences",
+      "dynamic": true
+    },
+    {
+      "name": "CONTEXT_BENCH",
+      "description": "Benchmark/task context injected by a benchmark harness",
+      "position": 5,
+      "dynamic": true
+    },
+    {
+      "name": "ENTITIES",
+      "description": "Provides information about entities in the current context including users, agents, and participants",
+      "dynamic": true
+    },
+    {
+      "name": "EVALUATORS",
+      "description": "Available evaluators for assessing agent behavior",
+      "dynamic": false
+    },
+    {
+      "name": "FACTS",
+      "description": "Provides known facts about entities learned through conversation",
+      "dynamic": true
+    },
+    {
+      "name": "FOLLOW_UPS",
+      "description": "Provides information about upcoming follow-ups and reminders scheduled for contacts",
+      "dynamic": true
+    },
+    {
+      "name": "KNOWLEDGE",
+      "description": "Provides relevant knowledge from the agent's knowledge base based on semantic similarity",
+      "dynamic": true
+    },
+    {
+      "name": "PROVIDERS",
+      "description": "Available context providers",
+      "dynamic": false
+    },
+    {
+      "name": "RELATIONSHIPS",
+      "description": "Relationships between entities observed by the agent including tags and metadata",
+      "dynamic": true
+    },
+    {
+      "name": "ROLES",
+      "description": "Roles assigned to entities in the current context (Admin, Owner, Member, None)",
+      "dynamic": true
+    },
+    {
+      "name": "SETTINGS",
+      "description": "Current settings for the agent/server (filtered for security, excludes sensitive keys)",
+      "dynamic": true
+    },
+    {
+      "name": "TIME",
+      "description": "Provides the current date and time in UTC for time-based operations or responses",
+      "dynamic": true
+    },
+    {
+      "name": "WORLD",
+      "description": "Provides information about the current world context including settings and members",
+      "dynamic": true
+    },
+    {
+      "name": "LONG_TERM_MEMORY",
+      "description": "Persistent facts and preferences about the user learned and remembered across conversations",
+      "position": 50,
+      "dynamic": false
+    },
+    {
+      "name": "SUMMARIZED_CONTEXT",
+      "description": "Provides summarized context from previous conversations for optimized context usage",
+      "position": 96,
+      "dynamic": false
+    },
+    {
+      "name": "AGENT_SETTINGS",
+      "description": "Provides the agent's current configuration settings (filtered for security)",
+      "dynamic": true
+    },
+    {
+      "name": "CURRENT_TIME",
+      "description": "Provides current time and date information in various formats",
+      "dynamic": true
+    }
+  ]
+}"""
+_ALL_PROVIDER_DOCS_JSON = """{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "ACTIONS",
+      "description": "Possible response actions",
+      "position": -1,
+      "dynamic": false
+    },
+    {
+      "name": "CHARACTER",
+      "description": "Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
+      "dynamic": false
+    },
+    {
+      "name": "RECENT_MESSAGES",
+      "description": "Provides recent message history from the current conversation including formatted messages, posts, action results, and recent interactions",
+      "position": 100,
+      "dynamic": true
+    },
+    {
+      "name": "ACTION_STATE",
+      "description": "Provides information about the current action state and available actions",
+      "dynamic": true
+    },
+    {
+      "name": "ATTACHMENTS",
+      "description": "Media attachments in the current message",
+      "dynamic": true
+    },
+    {
+      "name": "CAPABILITIES",
+      "description": "Agent capabilities including models, services, and features",
+      "dynamic": false
+    },
+    {
+      "name": "CHOICE",
+      "description": "Available choice options for selection when there are pending tasks or decisions",
+      "dynamic": true
+    },
+    {
+      "name": "CONTACTS",
+      "description": "Provides contact information from the rolodex including categories and preferences",
+      "dynamic": true
+    },
+    {
+      "name": "CONTEXT_BENCH",
+      "description": "Benchmark/task context injected by a benchmark harness",
+      "position": 5,
+      "dynamic": true
+    },
+    {
+      "name": "ENTITIES",
+      "description": "Provides information about entities in the current context including users, agents, and participants",
+      "dynamic": true
+    },
+    {
+      "name": "EVALUATORS",
+      "description": "Available evaluators for assessing agent behavior",
+      "dynamic": false
+    },
+    {
+      "name": "FACTS",
+      "description": "Provides known facts about entities learned through conversation",
+      "dynamic": true
+    },
+    {
+      "name": "FOLLOW_UPS",
+      "description": "Provides information about upcoming follow-ups and reminders scheduled for contacts",
+      "dynamic": true
+    },
+    {
+      "name": "KNOWLEDGE",
+      "description": "Provides relevant knowledge from the agent's knowledge base based on semantic similarity",
+      "dynamic": true
+    },
+    {
+      "name": "PROVIDERS",
+      "description": "Available context providers",
+      "dynamic": false
+    },
+    {
+      "name": "RELATIONSHIPS",
+      "description": "Relationships between entities observed by the agent including tags and metadata",
+      "dynamic": true
+    },
+    {
+      "name": "ROLES",
+      "description": "Roles assigned to entities in the current context (Admin, Owner, Member, None)",
+      "dynamic": true
+    },
+    {
+      "name": "SETTINGS",
+      "description": "Current settings for the agent/server (filtered for security, excludes sensitive keys)",
+      "dynamic": true
+    },
+    {
+      "name": "TIME",
+      "description": "Provides the current date and time in UTC for time-based operations or responses",
+      "dynamic": true
+    },
+    {
+      "name": "WORLD",
+      "description": "Provides information about the current world context including settings and members",
+      "dynamic": true
+    },
+    {
+      "name": "LONG_TERM_MEMORY",
+      "description": "Persistent facts and preferences about the user learned and remembered across conversations",
+      "position": 50,
+      "dynamic": false
+    },
+    {
+      "name": "SUMMARIZED_CONTEXT",
+      "description": "Provides summarized context from previous conversations for optimized context usage",
+      "position": 96,
+      "dynamic": false
+    },
+    {
+      "name": "AGENT_SETTINGS",
+      "description": "Provides the agent's current configuration settings (filtered for security)",
+      "dynamic": true
+    },
+    {
+      "name": "CURRENT_TIME",
+      "description": "Provides current time and date information in various formats",
+      "dynamic": true
     }
   ]
 }"""
@@ -3598,13 +4418,14 @@ _CORE_EVALUATOR_DOCS_JSON = """{
   "evaluators": [
     {
       "name": "REFLECTION",
-      "description": "Reflects on agent behavior and provides feedback for improvement.",
+      "description": "Generate a self-reflective thought on the conversation, then extract facts and relationships between entities in the conversation. Reflects on agent behavior and provides feedback for improvement.",
       "similes": [
         "REFLECT",
         "SELF_REFLECT",
         "EVALUATE_INTERACTION",
         "ASSESS_SITUATION"
       ],
+      "alwaysRun": false,
       "examples": [
         {
           "prompt": "Agent Name: Sarah\\nAgent Role: Community Manager\\nRoom Type: group\\nCurrent Room: general-chat\\nMessage Sender: John (user-123)",
@@ -3620,20 +4441,93 @@ _CORE_EVALUATOR_DOCS_JSON = """{
               "content": {
                 "text": "Welcome John! How did you find our community?"
               }
+            },
+            {
+              "name": "John",
+              "content": {
+                "text": "Through a friend who's really into AI"
+              }
             }
           ],
-          "outcome": "<response>\\n  <thought>I'm engaging appropriately with a new community member, maintaining a welcoming and professional tone.</thought>\\n  <quality_score>85</quality_score>\\n  <strengths>Welcoming tone and helpful follow-up question.</strengths>\\n  <improvements>Ask a slightly more specific question to learn John's goals.</improvements>\\n  <learnings>Balance warmth with clarity and next steps.</learnings>\\n</response>"
+          "outcome": "<response>\\n  <thought>I'm engaging appropriately with a new community member, maintaining a welcoming and professional tone. My questions are helping to learn more about John and make him feel welcome.</thought>\\n  <facts>\\n    <fact>\\n      <claim>John is new to the community</claim>\\n      <type>fact</type>\\n      <in_bio>false</in_bio>\\n      <already_known>false</already_known>\\n    </fact>\\n    <fact>\\n      <claim>John found the community through a friend interested in AI</claim>\\n      <type>fact</type>\\n      <in_bio>false</in_bio>\\n      <already_known>false</already_known>\\n    </fact>\\n  </facts>\\n  <relationships>\\n    <relationship>\\n      <sourceEntityId>sarah-agent</sourceEntityId>\\n      <targetEntityId>user-123</targetEntityId>\\n      <tags>group_interaction</tags>\\n    </relationship>\\n  </relationships>\\n</response>"
+        },
+        {
+          "prompt": "Agent Name: Alex\\nAgent Role: Tech Support\\nRoom Type: group\\nCurrent Room: tech-help\\nMessage Sender: Emma (user-456)",
+          "messages": [
+            {
+              "name": "Emma",
+              "content": {
+                "text": "My app keeps crashing when I try to upload files"
+              }
+            },
+            {
+              "name": "Alex",
+              "content": {
+                "text": "Have you tried clearing your cache?"
+              }
+            },
+            {
+              "name": "Emma",
+              "content": {
+                "text": "No response..."
+              }
+            },
+            {
+              "name": "Alex",
+              "content": {
+                "text": "Emma, are you still there? We can try some other troubleshooting steps."
+              }
+            }
+          ],
+          "outcome": "<response>\\n  <thought>I'm not sure if I'm being helpful or if Emma is frustrated with my suggestions. The lack of response is concerning - maybe I should have asked for more details about the issue first before jumping to solutions.</thought>\\n  <facts>\\n    <fact>\\n      <claim>Emma is having technical issues with file uploads</claim>\\n      <type>fact</type>\\n      <in_bio>false</in_bio>\\n      <already_known>false</already_known>\\n    </fact>\\n    <fact>\\n      <claim>Emma stopped responding after the first troubleshooting suggestion</claim>\\n      <type>fact</type>\\n      <in_bio>false</in_bio>\\n      <already_known>false</already_known>\\n    </fact>\\n  </facts>\\n  <relationships>\\n    <relationship>\\n      <sourceEntityId>alex-agent</sourceEntityId>\\n      <targetEntityId>user-456</targetEntityId>\\n      <tags>group_interaction,support_interaction,incomplete_interaction</tags>\\n    </relationship>\\n  </relationships>\\n</response>"
+        },
+        {
+          "prompt": "Agent Name: Max\\nAgent Role: Discussion Facilitator\\nRoom Type: group\\nCurrent Room: book-club\\nMessage Sender: Lisa (user-789)",
+          "messages": [
+            {
+              "name": "Lisa",
+              "content": {
+                "text": "What did everyone think about chapter 5?"
+              }
+            },
+            {
+              "name": "Max",
+              "content": {
+                "text": "The symbolism was fascinating! The red door clearly represents danger."
+              }
+            },
+            {
+              "name": "Max",
+              "content": {
+                "text": "And did anyone notice how the author used weather to reflect the protagonist's mood?"
+              }
+            },
+            {
+              "name": "Max",
+              "content": {
+                "text": "Plus the foreshadowing in the first paragraph was brilliant!"
+              }
+            },
+            {
+              "name": "Max",
+              "content": {
+                "text": "I also have thoughts about the character development..."
+              }
+            }
+          ],
+          "outcome": "<response>\\n  <thought>I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate.</thought>\\n  <facts>\\n    <fact>\\n      <claim>The discussion is about chapter 5 of a book</claim>\\n      <type>fact</type>\\n      <in_bio>false</in_bio>\\n      <already_known>false</already_known>\\n    </fact>\\n    <fact>\\n      <claim>Max has sent 4 consecutive messages without user responses</claim>\\n      <type>fact</type>\\n      <in_bio>false</in_bio>\\n      <already_known>false</already_known>\\n    </fact>\\n  </facts>\\n  <relationships>\\n    <relationship>\\n      <sourceEntityId>max-agent</sourceEntityId>\\n      <targetEntityId>user-789</targetEntityId>\\n      <tags>group_interaction,excessive_interaction</tags>\\n    </relationship>\\n  </relationships>\\n</response>"
         }
       ]
     },
     {
       "name": "RELATIONSHIP_EXTRACTION",
-      "description": "Passively extracts and updates relationship information from conversations.",
+      "description": "Passively extracts and updates relationship information from conversations. Identifies platform identities, relationship indicators, and mentioned third parties.",
       "similes": [
         "RELATIONSHIP_ANALYZER",
         "SOCIAL_GRAPH_BUILDER",
         "CONTACT_EXTRACTOR"
       ],
+      "alwaysRun": false,
       "examples": [
         {
           "prompt": "User introduces themselves with social media",
@@ -3649,6 +4543,28 @@ _CORE_EVALUATOR_DOCS_JSON = """{
           "outcome": "Extracts X handle and creates/updates the entity with a platform identity."
         }
       ]
+    },
+    {
+      "name": "MEMORY_SUMMARIZATION",
+      "description": "Automatically summarizes conversations to optimize context usage. Compresses conversation history while preserving important information.",
+      "similes": [
+        "CONVERSATION_SUMMARY",
+        "CONTEXT_COMPRESSION",
+        "MEMORY_OPTIMIZATION"
+      ],
+      "alwaysRun": true,
+      "examples": []
+    },
+    {
+      "name": "LONG_TERM_MEMORY_EXTRACTION",
+      "description": "Extracts long-term facts about users from conversations. Identifies and stores persistent information like preferences, interests, and personal details.",
+      "similes": [
+        "MEMORY_EXTRACTION",
+        "FACT_LEARNING",
+        "USER_PROFILING"
+      ],
+      "alwaysRun": true,
+      "examples": []
     }
   ]
 }"""
@@ -3657,13 +4573,14 @@ _ALL_EVALUATOR_DOCS_JSON = """{
   "evaluators": [
     {
       "name": "REFLECTION",
-      "description": "Reflects on agent behavior and provides feedback for improvement.",
+      "description": "Generate a self-reflective thought on the conversation, then extract facts and relationships between entities in the conversation. Reflects on agent behavior and provides feedback for improvement.",
       "similes": [
         "REFLECT",
         "SELF_REFLECT",
         "EVALUATE_INTERACTION",
         "ASSESS_SITUATION"
       ],
+      "alwaysRun": false,
       "examples": [
         {
           "prompt": "Agent Name: Sarah\\nAgent Role: Community Manager\\nRoom Type: group\\nCurrent Room: general-chat\\nMessage Sender: John (user-123)",
@@ -3679,20 +4596,93 @@ _ALL_EVALUATOR_DOCS_JSON = """{
               "content": {
                 "text": "Welcome John! How did you find our community?"
               }
+            },
+            {
+              "name": "John",
+              "content": {
+                "text": "Through a friend who's really into AI"
+              }
             }
           ],
-          "outcome": "<response>\\n  <thought>I'm engaging appropriately with a new community member, maintaining a welcoming and professional tone.</thought>\\n  <quality_score>85</quality_score>\\n  <strengths>Welcoming tone and helpful follow-up question.</strengths>\\n  <improvements>Ask a slightly more specific question to learn John's goals.</improvements>\\n  <learnings>Balance warmth with clarity and next steps.</learnings>\\n</response>"
+          "outcome": "<response>\\n  <thought>I'm engaging appropriately with a new community member, maintaining a welcoming and professional tone. My questions are helping to learn more about John and make him feel welcome.</thought>\\n  <facts>\\n    <fact>\\n      <claim>John is new to the community</claim>\\n      <type>fact</type>\\n      <in_bio>false</in_bio>\\n      <already_known>false</already_known>\\n    </fact>\\n    <fact>\\n      <claim>John found the community through a friend interested in AI</claim>\\n      <type>fact</type>\\n      <in_bio>false</in_bio>\\n      <already_known>false</already_known>\\n    </fact>\\n  </facts>\\n  <relationships>\\n    <relationship>\\n      <sourceEntityId>sarah-agent</sourceEntityId>\\n      <targetEntityId>user-123</targetEntityId>\\n      <tags>group_interaction</tags>\\n    </relationship>\\n  </relationships>\\n</response>"
+        },
+        {
+          "prompt": "Agent Name: Alex\\nAgent Role: Tech Support\\nRoom Type: group\\nCurrent Room: tech-help\\nMessage Sender: Emma (user-456)",
+          "messages": [
+            {
+              "name": "Emma",
+              "content": {
+                "text": "My app keeps crashing when I try to upload files"
+              }
+            },
+            {
+              "name": "Alex",
+              "content": {
+                "text": "Have you tried clearing your cache?"
+              }
+            },
+            {
+              "name": "Emma",
+              "content": {
+                "text": "No response..."
+              }
+            },
+            {
+              "name": "Alex",
+              "content": {
+                "text": "Emma, are you still there? We can try some other troubleshooting steps."
+              }
+            }
+          ],
+          "outcome": "<response>\\n  <thought>I'm not sure if I'm being helpful or if Emma is frustrated with my suggestions. The lack of response is concerning - maybe I should have asked for more details about the issue first before jumping to solutions.</thought>\\n  <facts>\\n    <fact>\\n      <claim>Emma is having technical issues with file uploads</claim>\\n      <type>fact</type>\\n      <in_bio>false</in_bio>\\n      <already_known>false</already_known>\\n    </fact>\\n    <fact>\\n      <claim>Emma stopped responding after the first troubleshooting suggestion</claim>\\n      <type>fact</type>\\n      <in_bio>false</in_bio>\\n      <already_known>false</already_known>\\n    </fact>\\n  </facts>\\n  <relationships>\\n    <relationship>\\n      <sourceEntityId>alex-agent</sourceEntityId>\\n      <targetEntityId>user-456</targetEntityId>\\n      <tags>group_interaction,support_interaction,incomplete_interaction</tags>\\n    </relationship>\\n  </relationships>\\n</response>"
+        },
+        {
+          "prompt": "Agent Name: Max\\nAgent Role: Discussion Facilitator\\nRoom Type: group\\nCurrent Room: book-club\\nMessage Sender: Lisa (user-789)",
+          "messages": [
+            {
+              "name": "Lisa",
+              "content": {
+                "text": "What did everyone think about chapter 5?"
+              }
+            },
+            {
+              "name": "Max",
+              "content": {
+                "text": "The symbolism was fascinating! The red door clearly represents danger."
+              }
+            },
+            {
+              "name": "Max",
+              "content": {
+                "text": "And did anyone notice how the author used weather to reflect the protagonist's mood?"
+              }
+            },
+            {
+              "name": "Max",
+              "content": {
+                "text": "Plus the foreshadowing in the first paragraph was brilliant!"
+              }
+            },
+            {
+              "name": "Max",
+              "content": {
+                "text": "I also have thoughts about the character development..."
+              }
+            }
+          ],
+          "outcome": "<response>\\n  <thought>I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate.</thought>\\n  <facts>\\n    <fact>\\n      <claim>The discussion is about chapter 5 of a book</claim>\\n      <type>fact</type>\\n      <in_bio>false</in_bio>\\n      <already_known>false</already_known>\\n    </fact>\\n    <fact>\\n      <claim>Max has sent 4 consecutive messages without user responses</claim>\\n      <type>fact</type>\\n      <in_bio>false</in_bio>\\n      <already_known>false</already_known>\\n    </fact>\\n  </facts>\\n  <relationships>\\n    <relationship>\\n      <sourceEntityId>max-agent</sourceEntityId>\\n      <targetEntityId>user-789</targetEntityId>\\n      <tags>group_interaction,excessive_interaction</tags>\\n    </relationship>\\n  </relationships>\\n</response>"
         }
       ]
     },
     {
       "name": "RELATIONSHIP_EXTRACTION",
-      "description": "Passively extracts and updates relationship information from conversations.",
+      "description": "Passively extracts and updates relationship information from conversations. Identifies platform identities, relationship indicators, and mentioned third parties.",
       "similes": [
         "RELATIONSHIP_ANALYZER",
         "SOCIAL_GRAPH_BUILDER",
         "CONTACT_EXTRACTOR"
       ],
+      "alwaysRun": false,
       "examples": [
         {
           "prompt": "User introduces themselves with social media",
@@ -3708,31 +4698,61 @@ _ALL_EVALUATOR_DOCS_JSON = """{
           "outcome": "Extracts X handle and creates/updates the entity with a platform identity."
         }
       ]
+    },
+    {
+      "name": "MEMORY_SUMMARIZATION",
+      "description": "Automatically summarizes conversations to optimize context usage. Compresses conversation history while preserving important information.",
+      "similes": [
+        "CONVERSATION_SUMMARY",
+        "CONTEXT_COMPRESSION",
+        "MEMORY_OPTIMIZATION"
+      ],
+      "alwaysRun": true,
+      "examples": []
+    },
+    {
+      "name": "LONG_TERM_MEMORY_EXTRACTION",
+      "description": "Extracts long-term facts about users from conversations. Identifies and stores persistent information like preferences, interests, and personal details.",
+      "similes": [
+        "MEMORY_EXTRACTION",
+        "FACT_LEARNING",
+        "USER_PROFILING"
+      ],
+      "alwaysRun": true,
+      "examples": []
     }
   ]
 }"""
 
 core_action_docs: dict[str, object] = json.loads(_CORE_ACTION_DOCS_JSON)
 all_action_docs: dict[str, object] = json.loads(_ALL_ACTION_DOCS_JSON)
+core_provider_docs: dict[str, object] = json.loads(_CORE_PROVIDER_DOCS_JSON)
+all_provider_docs: dict[str, object] = json.loads(_ALL_PROVIDER_DOCS_JSON)
 core_evaluator_docs: dict[str, object] = json.loads(_CORE_EVALUATOR_DOCS_JSON)
 all_evaluator_docs: dict[str, object] = json.loads(_ALL_EVALUATOR_DOCS_JSON)
 
 __all__ = [
     "ActionDoc",
     "ActionDocExampleCall",
+    "ActionDocExampleMessage",
     "ActionDocParameter",
     "ActionDocParameterSchema",
     "ActionDocParameterExampleValue",
+    "ProviderDoc",
     "EvaluatorDoc",
     "EvaluatorDocExample",
     "EvaluatorDocMessage",
     "EvaluatorDocMessageContent",
     "core_actions_spec_version",
     "all_actions_spec_version",
+    "core_providers_spec_version",
+    "all_providers_spec_version",
     "core_evaluators_spec_version",
     "all_evaluators_spec_version",
     "core_action_docs",
     "all_action_docs",
+    "core_provider_docs",
+    "all_provider_docs",
     "core_evaluator_docs",
     "all_evaluator_docs",
 ]
