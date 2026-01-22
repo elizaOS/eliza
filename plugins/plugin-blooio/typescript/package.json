@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-blooio",
   "description": "Blooio plugin for iMessage/SMS messaging integration",
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.2",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -44,9 +44,9 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/express": "^4.17.21",
-    "typescript": "^5.9.3",
-    "@biomejs/biome": "^2.3.11"
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "dev": "bun --hot build.ts",

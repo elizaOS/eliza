@@ -373,10 +373,12 @@ export class SweAgentSubAgent implements SubAgent {
       customTokenizer: null,
     };
 
-    const model = new RuntimeModel(runtime, modelConfig, toolConfig);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const model = new RuntimeModel(runtime, modelConfig, toolConfig as any);
     const agent = new DefaultAgent({
       templates: DEFAULT_TEMPLATES,
-      tools: new ToolHandler(toolConfig),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tools: new ToolHandler(toolConfig) as any,
       historyProcessors: [],
       model,
       maxRequeries: 3,

@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-auto-trader",
   "description": "Autonomous trading plugin with LLM-powered strategies for Solana",
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.2",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -33,8 +33,8 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-solana": "workspace:*",
-    "@solana/web3.js": "^1.95.0",
     "@solana/spl-token": "^0.4.0",
+    "@solana/web3.js": "^1.95.0",
     "bignumber.js": "^9.1.0",
     "bs58": "^6.0.0",
     "technicalindicators": "^3.1.0",

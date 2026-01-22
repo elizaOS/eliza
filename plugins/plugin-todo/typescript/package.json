@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-todo",
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.2",
   "description": "Multi-language Todo list plugin for elizaOS with TypeScript, Python, and Rust implementations",
   "type": "module",
   "main": "dist/node/index.node.js",
@@ -58,13 +58,13 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/node": "^25.0.3",
-    "typescript": "^5.9.3",
-    "@biomejs/biome": "^2.3.11"
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "zod": "^3.24.2",
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "zod": "^3.24.2"
   },
   "publishConfig": {
     "access": "public"

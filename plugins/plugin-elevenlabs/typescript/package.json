@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-elevenlabs",
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.2",
   "type": "module",
   "main": "dist/cjs/index.node.cjs",
   "module": "dist/node/index.node.js",
