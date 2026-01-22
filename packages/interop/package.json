@@ -28,7 +28,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
