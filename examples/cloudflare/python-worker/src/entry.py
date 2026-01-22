@@ -1,15 +1,26 @@
 """
 elizaOS Cloudflare Worker (Python)
 
-A serverless AI agent running on Cloudflare Workers using Python.
+A serverless AI agent running on Cloudflare Workers using Python/Pyodide.
+
+NOTE: Due to Cloudflare Workers Python (Pyodide) limitations, the full elizaOS
+runtime cannot be used directly. This example provides a simplified REST API
+that demonstrates the same pattern but uses direct OpenAI API calls.
+
+For production Python agents, consider:
+- Running the full elizaOS Python runtime on a proper server
+- Using Cloudflare Durable Objects with the TypeScript runtime
 """
 
 from js import Response, Headers, fetch, JSON, crypto
 from pyodide.ffi import to_js
 import json
 
-# In-memory conversation storage
-conversations: dict = {}
+# ============================================================================
+# Configuration
+# ============================================================================
+
+VERSION = "2.0.0"
 
 
 def generate_uuid() -> str:
@@ -30,14 +41,25 @@ def get_character(env) -> dict:
     }
 
 
+# ============================================================================
+# OpenAI API Integration
+# ============================================================================
+
+
 async def call_openai(messages: list, env) -> str:
-    """Call OpenAI API and return the response text."""
+    """
+    Call OpenAI API and return the response text.
+    
+    NOTE: In a full elizaOS implementation, this would go through
+    runtime.messageService.handleMessage() which handles the model
+    call, context building, and response generation automatically.
+    """
     api_key = getattr(env, "OPENAI_API_KEY", None)
     if not api_key:
         raise ValueError("OPENAI_API_KEY is not configured")
     
     base_url = getattr(env, "OPENAI_BASE_URL", None) or "https://api.openai.com/v1"
-    model = getattr(env, "OPENAI_MODEL", None) or "gpt-5-mini"
+    model = getattr(env, "OPENAI_MODEL", None) or "gpt-4o-mini"
     
     headers = Headers.new()
     headers.set("Authorization", f"Bearer {api_key}")
@@ -70,6 +92,11 @@ async def call_openai(messages: list, env) -> str:
     return ""
 
 
+# ============================================================================
+# Response Helpers
+# ============================================================================
+
+
 def json_response(data: dict, status: int = 200) -> Response:
     """Create a JSON response with CORS headers."""
     headers = Headers.new()
@@ -82,6 +109,11 @@ def json_response(data: dict, status: int = 200) -> Response:
     )
 
 
+# ============================================================================
+# Route Handlers
+# ============================================================================
+
+
 def handle_info(env) -> Response:
     """Handle GET / - return worker info."""
     character = get_character(env)
@@ -89,9 +121,10 @@ def handle_info(env) -> Response:
     return json_response({
         "name": character["name"],
         "bio": character["bio"],
-        "version": "2.0.0-alpha",
+        "version": VERSION,
         "powered_by": "elizaOS",
-        "runtime": "Python",
+        "runtime": "Python (Pyodide)",
+        "note": "Limited runtime - for full elizaOS features, use TypeScript worker or dedicated server",
         "endpoints": {
             "POST /chat": "Send a message and receive a response",
             "GET /health": "Health check endpoint",
@@ -107,12 +140,23 @@ def handle_health(env) -> Response:
     return json_response({
         "status": "healthy",
         "character": character["name"],
-        "activeConversations": len(conversations)
+        "mode": "simplified",
+        "note": "Pyodide runtime - full elizaOS runtime not available"
     })
 
 
 async def handle_chat(request, env) -> Response:
-    """Handle POST /chat - process a chat message."""
+    """
+    Handle POST /chat - process a chat message.
+    
+    NOTE: This is a simplified implementation. The canonical elizaOS pattern would:
+    1. Create an AgentRuntime with plugins
+    2. Call runtime.ensureConnection() 
+    3. Create a messageMemory using createMessageMemory()
+    4. Call runtime.messageService.handleMessage()
+    
+    Due to Pyodide limitations, we directly call the OpenAI API here.
+    """
     try:
         body_text = await request.text()
         body = json.loads(body_text)
@@ -123,47 +167,25 @@ async def handle_chat(request, env) -> Response:
     if not message:
         return json_response({"error": "Message is required"}, 400)
     
-    conversation_id = body.get("conversationId") or generate_uuid()
+    user_id = body.get("userId") or generate_uuid()
     character = get_character(env)
     
-    # Get or create conversation
-    if conversation_id not in conversations:
-        conversations[conversation_id] = {
-            "messages": [
-                {"role": "system", "content": character["system"]}
-            ]
-        }
+    # Build messages for OpenAI
+    # In full elizaOS, this context would be built by providers
+    messages = [
+        {"role": "system", "content": character["system"]},
+        {"role": "user", "content": message}
+    ]
     
-    state = conversations[conversation_id]
-    
-    # Add user message
-    state["messages"].append({
-        "role": "user",
-        "content": message
-    })
-    
-    # Call OpenAI
     try:
-        response_text = await call_openai(state["messages"], env)
+        response_text = await call_openai(messages, env)
     except Exception as e:
         return json_response({"error": str(e)}, 500)
     
-    # Add assistant response
-    state["messages"].append({
-        "role": "assistant",
-        "content": response_text
-    })
-    
-    # Prune old conversations
-    if len(conversations) > 100:
-        oldest_keys = list(conversations.keys())[:-100]
-        for key in oldest_keys:
-            del conversations[key]
-    
     return json_response({
         "response": response_text,
-        "conversationId": conversation_id,
-        "character": character["name"]
+        "character": character["name"],
+        "userId": user_id
     })
 
 
@@ -178,6 +200,11 @@ def handle_cors() -> Response:
         None,
         to_js({"status": 204, "headers": headers}, dict_converter=lambda d: to_js(d))
     )
+
+
+# ============================================================================
+# Main Handler
+# ============================================================================
 
 
 async def on_fetch(request, env):
@@ -207,13 +234,3 @@ async def on_fetch(request, env):
         return await handle_chat(request, env)
     
     return json_response({"error": "Not found"}, 404)
-
-
-
-
-
-
-
-
-
-

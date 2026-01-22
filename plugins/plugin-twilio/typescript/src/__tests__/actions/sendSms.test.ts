@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import sendSmsAction from "../../actions/sendSms";
-import type { IAgentRuntime, Memory, HandlerCallback } from "@elizaos/core";
 
 // Mock the dependencies
 vi.mock("../../utils", () => ({
@@ -40,9 +40,7 @@ describe("sendSmsAction", () => {
   describe("metadata", () => {
     it("should have correct name and description", () => {
       expect(sendSmsAction.name).toBe("SEND_SMS");
-      expect(sendSmsAction.description).toBe(
-        "Send an SMS message to a phone number via Twilio",
-      );
+      expect(sendSmsAction.description).toBe("Send an SMS message to a phone number via Twilio");
     });
 
     it("should have examples", () => {
@@ -113,17 +111,11 @@ describe("sendSmsAction", () => {
         },
       } as Memory;
 
-      await sendSmsAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await sendSmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockTwilioService.sendSms).toHaveBeenCalledWith(
         "+18885551234",
-        "Hello, this is a test!",
+        "Hello, this is a test!"
       );
       expect(mockCallback).toHaveBeenCalledWith({
         text: "SMS message sent successfully to +18885551234",
@@ -157,17 +149,11 @@ describe("sendSmsAction", () => {
           content: { text: testCase.input },
         } as Memory;
 
-        await sendSmsAction.handler(
-          mockRuntime,
-          message,
-          undefined,
-          undefined,
-          mockCallback,
-        );
+        await sendSmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
         expect(mockTwilioService.sendSms).toHaveBeenCalledWith(
           "+18885551234",
-          testCase.expectedMessage,
+          testCase.expectedMessage
         );
       }
     });
@@ -179,13 +165,7 @@ describe("sendSmsAction", () => {
         content: { text: "Send SMS to +18885551234 saying 'Test'" },
       } as Memory;
 
-      await sendSmsAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await sendSmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockCallback).toHaveBeenCalledWith({
         text: "Failed to send SMS: API Error",
@@ -200,13 +180,7 @@ describe("sendSmsAction", () => {
         content: { text: "Send SMS to +18885551234" },
       } as Memory;
 
-      await sendSmsAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await sendSmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockCallback).toHaveBeenCalledWith({
         text: "Failed to send SMS: Twilio service not available",
@@ -222,13 +196,7 @@ describe("sendSmsAction", () => {
         content: { text: "Send SMS to +18885551234" },
       } as Memory;
 
-      await sendSmsAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await sendSmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       expect(mockCallback).toHaveBeenCalledWith({
         text: "Failed to send SMS: Invalid phone number format",
@@ -238,30 +206,20 @@ describe("sendSmsAction", () => {
 
     it("should handle long messages", async () => {
       const longMessage =
-        "This is a very long message that exceeds the typical SMS character limit. ".repeat(
-          10,
-        );
+        "This is a very long message that exceeds the typical SMS character limit. ".repeat(10);
       const message: Memory = {
         content: { text: `Send SMS to +18885551234 saying '${longMessage}'` },
       } as Memory;
 
       // Mock chunkTextForSms to return chunks
-      const { chunkTextForSms, validatePhoneNumber } = await import(
-        "../../utils"
-      );
+      const { chunkTextForSms, validatePhoneNumber } = await import("../../utils");
       (chunkTextForSms as any).mockReturnValue([
         longMessage.substring(0, 160),
         longMessage.substring(160, 320),
       ]);
       (validatePhoneNumber as any).mockReturnValue(true);
 
-      await sendSmsAction.handler(
-        mockRuntime,
-        message,
-        undefined,
-        undefined,
-        mockCallback,
-      );
+      await sendSmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 
       // The sendSms should be called multiple times due to chunking
       expect(mockTwilioService.sendSms).toHaveBeenCalledTimes(2);

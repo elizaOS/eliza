@@ -1,20 +1,19 @@
 import {
-  Action,
+  type Action,
+  type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  type HandlerCallback,
-  logger,
 } from "@elizaos/core";
+import { SUPPORTED_MEDIA_TYPES, TWILIO_SERVICE_NAME } from "../constants";
+import type { TwilioService } from "../service";
 import { SendMmsSchema } from "../types";
-import { TwilioService } from "../service";
-import { TWILIO_SERVICE_NAME, SUPPORTED_MEDIA_TYPES } from "../constants";
-import { validateMessagingAddress, extractPhoneNumber } from "../utils";
+import { extractPhoneNumber, validateMessagingAddress } from "../utils";
 
 const sendMmsAction: Action = {
   name: "SEND_MMS",
-  description:
-    "Send an MMS (multimedia message) with images, audio, or video via Twilio",
+  description: "Send an MMS (multimedia message) with images, audio, or video via Twilio",
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     // Check if Twilio service is available
     const twilioService = runtime.getService(TWILIO_SERVICE_NAME);
@@ -45,12 +44,10 @@ const sendMmsAction: Action = {
     message: Memory,
     state?: State,
     options?: any,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ) => {
     try {
-      const twilioService = runtime.getService(
-        TWILIO_SERVICE_NAME,
-      ) as unknown as TwilioService;
+      const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
       if (!twilioService) {
         throw new Error("Twilio service not available");
       }
@@ -75,10 +72,7 @@ const sendMmsAction: Action = {
       // Extract the message content
       let messageContent = text
         .replace(phoneNumber, "")
-        .replace(
-          /send\s*(an?\s*)?(mms|picture|photo|image|video|media)\s*(to\s*)?/gi,
-          "",
-        )
+        .replace(/send\s*(an?\s*)?(mms|picture|photo|image|video|media)\s*(to\s*)?/gi, "")
         .replace(/with\s*(the\s*)?(image|photo|picture|video|media|mms)/gi, "")
         .replace(/at|from/gi, "")
         .replace(urlPattern, "") // Remove URLs from message
@@ -99,14 +93,8 @@ const sendMmsAction: Action = {
       }
 
       // Send the MMS
-      const sentMessage = await twilioService.sendSms(
-        phoneNumber,
-        messageContent,
-        mediaUrls,
-      );
-      logger.info(
-        `MMS sent to ${phoneNumber} with ${mediaUrls.length} media attachment(s)`,
-      );
+      const sentMessage = await twilioService.sendSms(phoneNumber, messageContent, mediaUrls);
+      logger.info(`MMS sent to ${phoneNumber} with ${mediaUrls.length} media attachment(s)`);
 
       if (callback) {
         callback({

@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import conversationHistoryProvider from "../../providers/conversationHistory";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import conversationHistoryProvider from "../../providers/conversationHistory";
 
 describe("conversationHistoryProvider", () => {
   let mockRuntime: IAgentRuntime;
@@ -23,11 +23,9 @@ describe("conversationHistoryProvider", () => {
 
   describe("metadata", () => {
     it("should have correct name and description", () => {
-      expect(conversationHistoryProvider.name).toBe(
-        "twilioConversationHistory",
-      );
+      expect(conversationHistoryProvider.name).toBe("twilioConversationHistory");
       expect(conversationHistoryProvider.description).toBe(
-        "Provides recent SMS/MMS conversation history with a phone number",
+        "Provides recent SMS/MMS conversation history with a phone number"
       );
     });
   });
@@ -56,19 +54,10 @@ describe("conversationHistoryProvider", () => {
         },
       } as any as Memory;
 
-      const result = await conversationHistoryProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await conversationHistoryProvider.get(mockRuntime, message, mockState);
 
-      expect(mockTwilioService.getConversationHistory).toHaveBeenCalledWith(
-        "+18885551234",
-        10,
-      );
-      expect(result.text).toContain(
-        "Recent SMS conversation with +18885551234:",
-      );
+      expect(mockTwilioService.getConversationHistory).toHaveBeenCalledWith("+18885551234", 10);
+      expect(result.text).toContain("Recent SMS conversation with +18885551234:");
       expect(result.text).toContain("From +18885551234: Hello");
       expect(result.text).toContain("To +18885551234: Hi there");
       expect(result.data).toEqual({
@@ -87,19 +76,10 @@ describe("conversationHistoryProvider", () => {
         },
       } as any as Memory;
 
-      const result = await conversationHistoryProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await conversationHistoryProvider.get(mockRuntime, message, mockState);
 
-      expect(mockTwilioService.getConversationHistory).toHaveBeenCalledWith(
-        "+18885551234",
-        10,
-      );
-      expect(result.text).toBe(
-        "No recent conversation history with +18885551234",
-      );
+      expect(mockTwilioService.getConversationHistory).toHaveBeenCalledWith("+18885551234", 10);
+      expect(result.text).toBe("No recent conversation history with +18885551234");
     });
 
     it("should handle when service is not initialized", async () => {
@@ -111,14 +91,10 @@ describe("conversationHistoryProvider", () => {
         },
       } as any as Memory;
 
-      const result = await conversationHistoryProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await conversationHistoryProvider.get(mockRuntime, message, mockState);
 
       expect(result.text).toBe(
-        "No Twilio conversation history available - service not initialized",
+        "No Twilio conversation history available - service not initialized"
       );
     });
 
@@ -127,11 +103,7 @@ describe("conversationHistoryProvider", () => {
         content: "Just a string",
       } as any as Memory;
 
-      const result = await conversationHistoryProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await conversationHistoryProvider.get(mockRuntime, message, mockState);
 
       expect(result.text).toBe("No phone number found in context");
     });
@@ -143,11 +115,7 @@ describe("conversationHistoryProvider", () => {
         },
       } as any as Memory;
 
-      const result = await conversationHistoryProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await conversationHistoryProvider.get(mockRuntime, message, mockState);
 
       expect(result.text).toBe("No phone number found in context");
     });
@@ -159,11 +127,7 @@ describe("conversationHistoryProvider", () => {
         },
       } as any as Memory;
 
-      const result = await conversationHistoryProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await conversationHistoryProvider.get(mockRuntime, message, mockState);
 
       expect(result.text).toBe("No phone number found in context");
     });
@@ -177,15 +141,9 @@ describe("conversationHistoryProvider", () => {
         },
       } as any as Memory;
 
-      const result = await conversationHistoryProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await conversationHistoryProvider.get(mockRuntime, message, mockState);
 
-      expect(result.text).toBe(
-        "No recent conversation history with +18885551234",
-      );
+      expect(result.text).toBe("No recent conversation history with +18885551234");
     });
 
     it("should handle errors gracefully", async () => {
@@ -199,11 +157,7 @@ describe("conversationHistoryProvider", () => {
         },
       } as any as Memory;
 
-      const result = await conversationHistoryProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await conversationHistoryProvider.get(mockRuntime, message, mockState);
 
       expect(result.text).toBe("Error retrieving conversation history");
     });
@@ -225,11 +179,7 @@ describe("conversationHistoryProvider", () => {
         },
       } as any as Memory;
 
-      const result = await conversationHistoryProvider.get(
-        mockRuntime,
-        message,
-        mockState,
-      );
+      const result = await conversationHistoryProvider.get(mockRuntime, message, mockState);
 
       // The exact format depends on the locale, but it should contain the message
       expect(result.text).toContain("Test message");

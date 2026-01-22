@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import crypto from "crypto";
+import crypto from "node:crypto";
+import { describe, expect, it } from "vitest";
 import {
   extractAttachmentUrls,
   extractChatIdCandidates,
@@ -32,19 +32,13 @@ describe("Utils", () => {
     it("should extract chat id candidates", () => {
       const text = "Message +15551234567 and jane@example.com in grp_abc123";
       const candidates = extractChatIdCandidates(text);
-      expect(candidates).toEqual([
-        "+15551234567",
-        "jane@example.com",
-        "grp_abc123",
-      ]);
+      expect(candidates).toEqual(["+15551234567", "jane@example.com", "grp_abc123"]);
     });
   });
 
   describe("extractAttachmentUrls", () => {
     it("should extract URLs", () => {
-      const urls = extractAttachmentUrls(
-        "Check https://example.com/a.png and http://test.com/b",
-      );
+      const urls = extractAttachmentUrls("Check https://example.com/a.png and http://test.com/b");
       expect(urls).toEqual(["https://example.com/a.png", "http://test.com/b"]);
     });
   });
@@ -55,10 +49,7 @@ describe("Utils", () => {
       const rawBody = JSON.stringify({ event: "message.sent" });
       const timestamp = Math.floor(Date.now() / 1000).toString();
       const payload = `${timestamp}.${rawBody}`;
-      const signature = crypto
-        .createHmac("sha256", secret)
-        .update(payload)
-        .digest("hex");
+      const signature = crypto.createHmac("sha256", secret).update(payload).digest("hex");
       const header = `t=${timestamp},v1=${signature}`;
 
       expect(verifyWebhookSignature(secret, header, rawBody, 300)).toBe(true);

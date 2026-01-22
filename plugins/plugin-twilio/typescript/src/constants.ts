@@ -90,9 +90,7 @@ export const TWILIO_CONSTANTS = {
     <Pause length="1"/>
 </Response>`,
 
-    STREAM_RESPONSE: (
-      streamUrl: string,
-    ) => `<?xml version="1.0" encoding="UTF-8"?>
+    STREAM_RESPONSE: (streamUrl: string) => `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Start>
         <Stream url="${streamUrl}" />
@@ -138,8 +136,7 @@ export const SUPPORTED_MEDIA_TYPES = [
 
 // Error messages
 export const ERROR_MESSAGES = {
-  INVALID_PHONE_NUMBER:
-    "Invalid phone number format. Please use E.164 format (e.g., +18885551212)",
+  INVALID_PHONE_NUMBER: "Invalid phone number format. Please use E.164 format (e.g., +18885551212)",
   MISSING_CREDENTIALS: "Twilio credentials not configured",
   WEBHOOK_VALIDATION_FAILED: "Failed to validate Twilio webhook signature",
   RATE_LIMIT_EXCEEDED: "Rate limit exceeded. Please try again later.",

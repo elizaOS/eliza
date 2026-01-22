@@ -16,62 +16,37 @@
       "name": "BROWSER_CLICK",
       "description": "Click on an element on the webpage",
       "parameters": [],
-      "similes": [
-        "CLICK_ELEMENT",
-        "TAP",
-        "PRESS_BUTTON"
-      ]
+      "similes": ["CLICK_ELEMENT", "TAP", "PRESS_BUTTON"]
     },
     {
       "name": "BROWSER_EXTRACT",
       "description": "Extract data from the webpage",
       "parameters": [],
-      "similes": [
-        "EXTRACT_DATA",
-        "GET_TEXT",
-        "SCRAPE"
-      ]
+      "similes": ["EXTRACT_DATA", "GET_TEXT", "SCRAPE"]
     },
     {
       "name": "BROWSER_NAVIGATE",
       "description": "Navigate the browser to a specified URL",
       "parameters": [],
-      "similes": [
-        "GO_TO_URL",
-        "OPEN_WEBSITE",
-        "VISIT_PAGE",
-        "NAVIGATE_TO"
-      ]
+      "similes": ["GO_TO_URL", "OPEN_WEBSITE", "VISIT_PAGE", "NAVIGATE_TO"]
     },
     {
       "name": "BROWSER_SCREENSHOT",
       "description": "Take a screenshot of the current page",
       "parameters": [],
-      "similes": [
-        "TAKE_SCREENSHOT",
-        "CAPTURE_PAGE",
-        "SCREENSHOT"
-      ]
+      "similes": ["TAKE_SCREENSHOT", "CAPTURE_PAGE", "SCREENSHOT"]
     },
     {
       "name": "BROWSER_SELECT",
       "description": "Select an option from a dropdown on the webpage",
       "parameters": [],
-      "similes": [
-        "SELECT_OPTION",
-        "CHOOSE",
-        "PICK"
-      ]
+      "similes": ["SELECT_OPTION", "CHOOSE", "PICK"]
     },
     {
       "name": "BROWSER_TYPE",
       "description": "Type text into an input field on the webpage",
       "parameters": [],
-      "similes": [
-        "TYPE_TEXT",
-        "INPUT",
-        "ENTER_TEXT"
-      ]
+      "similes": ["TYPE_TEXT", "INPUT", "ENTER_TEXT"]
     },
     {
       "name": "CALL_MCP_TOOL",
@@ -94,11 +69,7 @@
       "name": "CANCEL_TASK",
       "description": "Cancel a task.",
       "parameters": [],
-      "similes": [
-        "DELETE_TASK",
-        "REMOVE_TASK",
-        "ABORT_TASK"
-      ]
+      "similes": ["DELETE_TASK", "REMOVE_TASK", "ABORT_TASK"]
     },
     {
       "name": "CHECK_PORTFOLIO",
@@ -143,51 +114,31 @@
       "name": "COMPUTERUSE_CLICK",
       "description": "Clicks a UI element on the computer using a ComputerUse selector.",
       "parameters": [],
-      "similes": [
-        "CLICK_UI",
-        "CLICK_ELEMENT",
-        "TAP_UI"
-      ]
+      "similes": ["CLICK_UI", "CLICK_ELEMENT", "TAP_UI"]
     },
     {
       "name": "COMPUTERUSE_GET_APPLICATIONS",
       "description": "Lists currently running applications on the target machine.",
       "parameters": [],
-      "similes": [
-        "LIST_APPS",
-        "LIST_APPLICATIONS",
-        "SHOW_RUNNING_APPS"
-      ]
+      "similes": ["LIST_APPS", "LIST_APPLICATIONS", "SHOW_RUNNING_APPS"]
     },
     {
       "name": "COMPUTERUSE_GET_WINDOW_TREE",
       "description": "Gets the UI tree for a running application (useful for understanding what is currently on screen).",
       "parameters": [],
-      "similes": [
-        "GET_UI_TREE",
-        "WINDOW_TREE",
-        "DUMP_UI_TREE"
-      ]
+      "similes": ["GET_UI_TREE", "WINDOW_TREE", "DUMP_UI_TREE"]
     },
     {
       "name": "COMPUTERUSE_OPEN_APPLICATION",
       "description": "Opens an application on the target machine (local or MCP).",
       "parameters": [],
-      "similes": [
-        "OPEN_APP",
-        "LAUNCH_APP",
-        "START_APPLICATION"
-      ]
+      "similes": ["OPEN_APP", "LAUNCH_APP", "START_APPLICATION"]
     },
     {
       "name": "COMPUTERUSE_TYPE",
       "description": "Types text into a UI element on the computer using a ComputerUse selector (optionally clearing the field).",
       "parameters": [],
-      "similes": [
-        "TYPE_UI",
-        "ENTER_TEXT",
-        "FILL_FIELD"
-      ]
+      "similes": ["TYPE_UI", "ENTER_TEXT", "FILL_FIELD"]
     },
     {
       "name": "CONFIGURE_STRATEGY",
@@ -223,9 +174,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "fromRef",
@@ -234,9 +183,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "owner",
@@ -245,9 +192,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "repo",
@@ -256,17 +201,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use CREATE_GITHUB_BRANCH with the provided parameters.",
-          "actions": [
-            "CREATE_GITHUB_BRANCH"
-          ],
+          "actions": ["CREATE_GITHUB_BRANCH"],
           "params": {
             "CREATE_GITHUB_BRANCH": {
               "branchName": "example",
@@ -289,9 +230,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Implements dark mode and updates docs."
-          ]
+          "examples": ["Implements dark mode and updates docs."]
         },
         {
           "name": "issueNumber",
@@ -300,9 +239,7 @@
           "schema": {
             "type": "number"
           },
-          "examples": [
-            1
-          ]
+          "examples": [1]
         },
         {
           "name": "owner",
@@ -311,9 +248,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "repo",
@@ -322,17 +257,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use CREATE_GITHUB_COMMENT with the provided parameters.",
-          "actions": [
-            "CREATE_GITHUB_COMMENT"
-          ],
+          "actions": ["CREATE_GITHUB_COMMENT"],
           "params": {
             "CREATE_GITHUB_COMMENT": {
               "body": "Implements dark mode and updates docs.",
@@ -355,9 +286,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "body",
@@ -366,9 +295,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Implements dark mode and updates docs."
-          ]
+          "examples": ["Implements dark mode and updates docs."]
         },
         {
           "name": "labels",
@@ -377,9 +304,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "owner",
@@ -388,9 +313,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "repo",
@@ -399,9 +322,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         },
         {
           "name": "title",
@@ -410,17 +331,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Add dark mode support"
-          ]
+          "examples": ["Add dark mode support"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use CREATE_GITHUB_ISSUE with the provided parameters.",
-          "actions": [
-            "CREATE_GITHUB_ISSUE"
-          ],
+          "actions": ["CREATE_GITHUB_ISSUE"],
           "params": {
             "CREATE_GITHUB_ISSUE": {
               "assignees": "example",
@@ -445,9 +362,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "main"
-          ]
+          "examples": ["main"]
         },
         {
           "name": "body",
@@ -456,9 +371,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Implements dark mode and updates docs."
-          ]
+          "examples": ["Implements dark mode and updates docs."]
         },
         {
           "name": "draft",
@@ -467,9 +380,7 @@
           "schema": {
             "type": "boolean"
           },
-          "examples": [
-            false
-          ]
+          "examples": [false]
         },
         {
           "name": "head",
@@ -478,9 +389,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "feature/dark-mode"
-          ]
+          "examples": ["feature/dark-mode"]
         },
         {
           "name": "owner",
@@ -489,9 +398,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "repo",
@@ -500,9 +407,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         },
         {
           "name": "title",
@@ -511,17 +416,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Add dark mode support"
-          ]
+          "examples": ["Add dark mode support"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use CREATE_GITHUB_PULL_REQUEST with the provided parameters.",
-          "actions": [
-            "CREATE_GITHUB_PULL_REQUEST"
-          ],
+          "actions": ["CREATE_GITHUB_PULL_REQUEST"],
           "params": {
             "CREATE_GITHUB_PULL_REQUEST": {
               "base": "main",
@@ -547,9 +448,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -561,9 +460,7 @@
       "exampleCalls": [
         {
           "user": "Use CREATE_LINEAR_COMMENT with the provided parameters.",
-          "actions": [
-            "CREATE_LINEAR_COMMENT"
-          ],
+          "actions": ["CREATE_LINEAR_COMMENT"],
           "params": {
             "CREATE_LINEAR_COMMENT": {
               "name": "example"
@@ -576,22 +473,13 @@
       "name": "CREATE_LINEAR_ISSUE",
       "description": "Create a new issue in Linear",
       "parameters": [],
-      "similes": [
-        "create-linear-issue",
-        "new-linear-issue",
-        "add-linear-issue"
-      ]
+      "similes": ["create-linear-issue", "new-linear-issue", "add-linear-issue"]
     },
     {
       "name": "CREATE_TASK",
       "description": "Create an orchestrated background task to be executed by a selected agent provider.",
       "parameters": [],
-      "similes": [
-        "START_TASK",
-        "SPAWN_TASK",
-        "NEW_TASK",
-        "BEGIN_TASK"
-      ]
+      "similes": ["START_TASK", "SPAWN_TASK", "NEW_TASK", "BEGIN_TASK"]
     },
     {
       "name": "DELETE_LINEAR_ISSUE",
@@ -623,10 +511,7 @@
       "name": "FORM_RESTORE",
       "description": "Restore a previously stashed form session",
       "parameters": [],
-      "similes": [
-        "RESUME_FORM",
-        "CONTINUE_FORM"
-      ]
+      "similes": ["RESUME_FORM", "CONTINUE_FORM"]
     },
     {
       "name": "GET_LINEAR_ACTIVITY",
@@ -650,9 +535,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -665,9 +548,7 @@
       "exampleCalls": [
         {
           "user": "Use GET_LINEAR_ISSUE with the provided parameters.",
-          "actions": [
-            "GET_LINEAR_ISSUE"
-          ],
+          "actions": ["GET_LINEAR_ISSUE"],
           "params": {
             "GET_LINEAR_ISSUE": {
               "name": "example"
@@ -698,9 +579,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -712,9 +591,7 @@
       "exampleCalls": [
         {
           "user": "Use LIST_LINEAR_PROJECTS with the provided parameters.",
-          "actions": [
-            "LIST_LINEAR_PROJECTS"
-          ],
+          "actions": ["LIST_LINEAR_PROJECTS"],
           "params": {
             "LIST_LINEAR_PROJECTS": {
               "toLowerCase": "example"
@@ -738,12 +615,7 @@
       "name": "LIST_TASKS",
       "description": "List tasks managed by the orchestrator.",
       "parameters": [],
-      "similes": [
-        "SHOW_TASKS",
-        "GET_TASKS",
-        "TASKS",
-        "VIEW_TASKS"
-      ]
+      "similes": ["SHOW_TASKS", "GET_TASKS", "TASKS", "VIEW_TASKS"]
     },
     {
       "name": "lp_management",
@@ -771,107 +643,67 @@
       "name": "MC_ATTACK",
       "description": "Attack an entity by numeric entityId (from MC_WORLD_STATE.nearbyEntities).",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_ATTACK",
-        "HIT_ENTITY"
-      ]
+      "similes": ["MINECRAFT_ATTACK", "HIT_ENTITY"]
     },
     {
       "name": "MC_CHAT",
       "description": "Send a chat message in Minecraft as the bot",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_CHAT",
-        "SAY_IN_MINECRAFT",
-        "CHAT"
-      ]
+      "similes": ["MINECRAFT_CHAT", "SAY_IN_MINECRAFT", "CHAT"]
     },
     {
       "name": "MC_CONNECT",
       "description": "Connect the Mineflayer bot to a Minecraft server",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_CONNECT",
-        "JOIN_SERVER",
-        "CONNECT_TO_MINECRAFT"
-      ]
+      "similes": ["MINECRAFT_CONNECT", "JOIN_SERVER", "CONNECT_TO_MINECRAFT"]
     },
     {
       "name": "MC_CONTROL",
       "description": "Set a control state (e.g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control,state,durationMs?} or 'forward true 1000'.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_CONTROL",
-        "SET_CONTROL_STATE"
-      ]
+      "similes": ["MINECRAFT_CONTROL", "SET_CONTROL_STATE"]
     },
     {
       "name": "MC_DIG",
       "description": "Dig/break the block at (x y z). Provide coordinates like '10 64 -20' or JSON {\"x\":10,\"y\":64,\"z\":-20}.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_DIG",
-        "MINE_BLOCK",
-        "BREAK_BLOCK"
-      ]
+      "similes": ["MINECRAFT_DIG", "MINE_BLOCK", "BREAK_BLOCK"]
     },
     {
       "name": "MC_DISCONNECT",
       "description": "Disconnect the Mineflayer bot from the Minecraft server",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_DISCONNECT",
-        "LEAVE_SERVER",
-        "QUIT_MINECRAFT"
-      ]
+      "similes": ["MINECRAFT_DISCONNECT", "LEAVE_SERVER", "QUIT_MINECRAFT"]
     },
     {
       "name": "MC_GOTO",
       "description": "Pathfind to a target (x y z). Provide coordinates like '10 64 -20' or JSON {\"x\":10,\"y\":64,\"z\":-20}.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_GOTO",
-        "WALK_TO",
-        "MOVE_TO_COORDS"
-      ]
+      "similes": ["MINECRAFT_GOTO", "WALK_TO", "MOVE_TO_COORDS"]
     },
     {
       "name": "MC_LOOK",
       "description": "Look to yaw/pitch (radians). Provide 'yaw pitch' or JSON {yaw,pitch}.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_LOOK",
-        "TURN_HEAD"
-      ]
+      "similes": ["MINECRAFT_LOOK", "TURN_HEAD"]
     },
     {
       "name": "MC_PLACE",
       "description": "Place the currently-held block onto a reference block face. Provide 'x y z face' (face=up/down/north/south/east/west) or JSON {x,y,z,face}.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_PLACE",
-        "PLACE_BLOCK"
-      ]
+      "similes": ["MINECRAFT_PLACE", "PLACE_BLOCK"]
     },
     {
       "name": "MC_SCAN",
       "description": "Scan nearby blocks. Optional JSON input: {\"blocks\":[\"oak_log\"],\"radius\":16,\"maxResults\":32}. If omitted, scans for any non-air blocks.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_SCAN",
-        "FIND_BLOCKS",
-        "SCAN_BLOCKS"
-      ]
+      "similes": ["MINECRAFT_SCAN", "FIND_BLOCKS", "SCAN_BLOCKS"]
     },
     {
       "name": "MC_STOP",
       "description": "Stop pathfinding / movement goals.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_STOP",
-        "STOP_PATHFINDER",
-        "STOP_MOVING"
-      ]
+      "similes": ["MINECRAFT_STOP", "STOP_PATHFINDER", "STOP_MOVING"]
     },
     {
       "name": "MC_WAYPOINT_DELETE",
@@ -897,21 +729,13 @@
       "name": "MC_WAYPOINT_LIST",
       "description": "List saved waypoints.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_WAYPOINT_LIST",
-        "LIST_WAYPOINTS",
-        "SHOW_WAYPOINTS"
-      ]
+      "similes": ["MINECRAFT_WAYPOINT_LIST", "LIST_WAYPOINTS", "SHOW_WAYPOINTS"]
     },
     {
       "name": "MC_WAYPOINT_SET",
       "description": "Save the bot's current position as a named waypoint (message text is the name).",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_WAYPOINT_SET",
-        "SET_WAYPOINT",
-        "SAVE_WAYPOINT"
-      ]
+      "similes": ["MINECRAFT_WAYPOINT_SET", "SET_WAYPOINT", "SAVE_WAYPOINT"]
     },
     {
       "name": "MERGE_GITHUB_PULL_REQUEST",
@@ -924,9 +748,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "commitTitle",
@@ -935,9 +757,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "mergeMethod",
@@ -946,9 +766,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "owner",
@@ -957,9 +775,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "pullNumber",
@@ -968,9 +784,7 @@
           "schema": {
             "type": "number"
           },
-          "examples": [
-            1
-          ]
+          "examples": [1]
         },
         {
           "name": "repo",
@@ -979,17 +793,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use MERGE_GITHUB_PULL_REQUEST with the provided parameters.",
-          "actions": [
-            "MERGE_GITHUB_PULL_REQUEST"
-          ],
+          "actions": ["MERGE_GITHUB_PULL_REQUEST"],
           "params": {
             "MERGE_GITHUB_PULL_REQUEST": {
               "commitMessage": "example",
@@ -1007,10 +817,7 @@
       "name": "PAUSE_TASK",
       "description": "Pause a running task.",
       "parameters": [],
-      "similes": [
-        "STOP_TASK",
-        "HALT_TASK"
-      ]
+      "similes": ["STOP_TASK", "HALT_TASK"]
     },
     {
       "name": "POLYMARKET_CHECK_ORDER_SCORING",
@@ -1143,9 +950,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "mediaId",
@@ -1154,9 +959,7 @@
           "schema": {
             "type": "number"
           },
-          "examples": [
-            1
-          ]
+          "examples": [1]
         }
       ],
       "similes": [
@@ -1168,9 +971,7 @@
       "exampleCalls": [
         {
           "user": "Use POST_INSTAGRAM_COMMENT with the provided parameters.",
-          "actions": [
-            "POST_INSTAGRAM_COMMENT"
-          ],
+          "actions": ["POST_INSTAGRAM_COMMENT"],
           "params": {
             "POST_INSTAGRAM_COMMENT": {
               "commentText": "example",
@@ -1196,9 +997,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "authorName",
@@ -1207,9 +1006,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "branch",
@@ -1218,9 +1015,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "main"
-          ]
+          "examples": ["main"]
         },
         {
           "name": "files",
@@ -1229,9 +1024,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "message",
@@ -1240,9 +1033,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Hello! How can I help?"
-          ]
+          "examples": ["Hello! How can I help?"]
         },
         {
           "name": "owner",
@@ -1251,9 +1042,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "repo",
@@ -1262,17 +1051,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use PUSH_GITHUB_CODE with the provided parameters.",
-          "actions": [
-            "PUSH_GITHUB_CODE"
-          ],
+          "actions": ["PUSH_GITHUB_CODE"],
           "params": {
             "PUSH_GITHUB_CODE": {
               "authorEmail": "example",
@@ -1321,11 +1106,7 @@
       "name": "RESUME_TASK",
       "description": "Resume a paused task.",
       "parameters": [],
-      "similes": [
-        "CONTINUE_TASK",
-        "RESTART_TASK",
-        "RUN_TASK"
-      ]
+      "similes": ["CONTINUE_TASK", "RESTART_TASK", "RUN_TASK"]
     },
     {
       "name": "REVIEW_GITHUB_PULL_REQUEST",
@@ -1338,9 +1119,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Implements dark mode and updates docs."
-          ]
+          "examples": ["Implements dark mode and updates docs."]
         },
         {
           "name": "event",
@@ -1349,9 +1128,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "owner",
@@ -1360,9 +1137,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "pullNumber",
@@ -1371,9 +1146,7 @@
           "schema": {
             "type": "number"
           },
-          "examples": [
-            1
-          ]
+          "examples": [1]
         },
         {
           "name": "repo",
@@ -1382,17 +1155,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use REVIEW_GITHUB_PULL_REQUEST with the provided parameters.",
-          "actions": [
-            "REVIEW_GITHUB_PULL_REQUEST"
-          ],
+          "actions": ["REVIEW_GITHUB_PULL_REQUEST"],
           "params": {
             "REVIEW_GITHUB_PULL_REQUEST": {
               "body": "Implements dark mode and updates docs.",
@@ -1409,11 +1178,7 @@
       "name": "RUN_BACKTEST",
       "description": "Get information about backtesting strategies",
       "parameters": [],
-      "similes": [
-        "BACKTEST",
-        "TEST_STRATEGY",
-        "SIMULATE_TRADING"
-      ]
+      "similes": ["BACKTEST", "TEST_STRATEGY", "SIMULATE_TRADING"]
     },
     {
       "name": "SCHEDULE_MEETING",
@@ -1451,9 +1216,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -1465,9 +1228,7 @@
       "exampleCalls": [
         {
           "user": "Use SEARCH_LINEAR_ISSUES with the provided parameters.",
-          "actions": [
-            "SEARCH_LINEAR_ISSUES"
-          ],
+          "actions": ["SEARCH_LINEAR_ISSUES"],
           "params": {
             "SEARCH_LINEAR_ISSUES": {
               "name": "example"
@@ -1480,10 +1241,7 @@
       "name": "SEARCH_TASKS",
       "description": "Search tasks by query.",
       "parameters": [],
-      "similes": [
-        "FIND_TASK",
-        "LOOKUP_TASK"
-      ]
+      "similes": ["FIND_TASK", "LOOKUP_TASK"]
     },
     {
       "name": "SEND_INSTAGRAM_DM",
@@ -1496,9 +1254,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "threadId",
@@ -1507,9 +1263,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -1522,9 +1276,7 @@
       "exampleCalls": [
         {
           "user": "Use SEND_INSTAGRAM_DM with the provided parameters.",
-          "actions": [
-            "SEND_INSTAGRAM_DM"
-          ],
+          "actions": ["SEND_INSTAGRAM_DM"],
           "params": {
             "SEND_INSTAGRAM_DM": {
               "responseText": "example",
@@ -1571,12 +1323,7 @@
       "name": "SWITCH_TASK",
       "description": "Switch the current task context to a different task.",
       "parameters": [],
-      "similes": [
-        "SELECT_TASK",
-        "SET_TASK",
-        "CHANGE_TASK",
-        "GO_TO_TASK"
-      ]
+      "similes": ["SELECT_TASK", "SET_TASK", "CHANGE_TASK", "GO_TO_TASK"]
     }
   ]
 }

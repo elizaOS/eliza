@@ -1,13 +1,13 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import twilioPlugin from "../index";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import twilioPlugin from "../index";
 
 describe("twilioPlugin", () => {
   it("should have correct metadata", () => {
     expect(twilioPlugin.name).toBe("twilio");
     expect(twilioPlugin.description).toBe(
-      "Twilio plugin for bidirectional voice and text messaging integration",
+      "Twilio plugin for bidirectional voice and text messaging integration"
     );
   });
 
@@ -65,9 +65,7 @@ describe("twilioPlugin", () => {
 
       await twilioPlugin.init?.({}, mockRuntime);
 
-      expect(logger.info).toHaveBeenCalledWith(
-        "Twilio plugin initialized successfully",
-      );
+      expect(logger.info).toHaveBeenCalledWith("Twilio plugin initialized successfully");
       expect(logger.warn).not.toHaveBeenCalled();
     });
 
@@ -80,7 +78,7 @@ describe("twilioPlugin", () => {
       await twilioPlugin.init?.({}, mockRuntime);
 
       expect(logger.warn).toHaveBeenCalledWith(
-        "Twilio Account SID not provided - Twilio plugin is loaded but will not be functional",
+        "Twilio Account SID not provided - Twilio plugin is loaded but will not be functional"
       );
     });
 
@@ -94,7 +92,7 @@ describe("twilioPlugin", () => {
       await twilioPlugin.init?.({}, mockRuntime);
 
       expect(logger.warn).toHaveBeenCalledWith(
-        "Twilio Auth Token not provided - Twilio plugin is loaded but will not be functional",
+        "Twilio Auth Token not provided - Twilio plugin is loaded but will not be functional"
       );
     });
 
@@ -109,7 +107,7 @@ describe("twilioPlugin", () => {
       await twilioPlugin.init?.({}, mockRuntime);
 
       expect(logger.warn).toHaveBeenCalledWith(
-        "Twilio Phone Number not provided - Twilio plugin is loaded but will not be functional",
+        "Twilio Phone Number not provided - Twilio plugin is loaded but will not be functional"
       );
     });
 
@@ -125,7 +123,7 @@ describe("twilioPlugin", () => {
       await twilioPlugin.init?.({}, mockRuntime);
 
       expect(logger.warn).toHaveBeenCalledWith(
-        "Twilio Webhook URL not provided - Twilio will not be able to receive incoming messages or calls",
+        "Twilio Webhook URL not provided - Twilio will not be able to receive incoming messages or calls"
       );
     });
   });

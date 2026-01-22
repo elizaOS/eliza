@@ -35,9 +35,7 @@ export function isWhatsAppAddress(address: string): boolean {
  * Remove WhatsApp prefix if present.
  */
 export function stripWhatsAppPrefix(address: string): string {
-  return isWhatsAppAddress(address)
-    ? address.slice("whatsapp:".length)
-    : address;
+  return isWhatsAppAddress(address) ? address.slice("whatsapp:".length) : address;
 }
 
 /**
@@ -45,13 +43,10 @@ export function stripWhatsAppPrefix(address: string): string {
  */
 export function formatMessagingAddress(
   address: string,
-  defaultCountryCode: string = "+1",
+  defaultCountryCode: string = "+1"
 ): string | null {
   const hasPrefix = isWhatsAppAddress(address);
-  const formatted = formatPhoneNumber(
-    stripWhatsAppPrefix(address),
-    defaultCountryCode,
-  );
+  const formatted = formatPhoneNumber(stripWhatsAppPrefix(address), defaultCountryCode);
   if (!formatted) {
     return null;
   }
@@ -66,7 +61,7 @@ export function formatMessagingAddress(
  */
 export function formatPhoneNumber(
   phoneNumber: string,
-  defaultCountryCode: string = "+1",
+  defaultCountryCode: string = "+1"
 ): string | null {
   // Remove all non-numeric characters except +
   let cleaned = phoneNumber.replace(/[^\d+]/g, "");
@@ -122,14 +117,9 @@ export const generateTwiML = {
       timeout?: number;
       action?: string;
       method?: string;
-    } = {},
+    } = {}
   ): string => {
-    const {
-      numDigits = 1,
-      timeout = 5,
-      action = "",
-      method = "POST",
-    } = options;
+    const { numDigits = 1, timeout = 5, action = "", method = "POST" } = options;
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Gather numDigits="${numDigits}" timeout="${timeout}" action="${action}" method="${method}">
@@ -144,17 +134,11 @@ export const generateTwiML = {
    * @param customParameters Optional custom parameters
    * @returns TwiML string
    */
-  stream: (
-    streamUrl: string,
-    customParameters?: Record<string, string>,
-  ): string => {
+  stream: (streamUrl: string, customParameters?: Record<string, string>): string => {
     let params = "";
     if (customParameters) {
       params = Object.entries(customParameters)
-        .map(
-          ([key, value]) =>
-            `<Parameter name="${key}" value="${escapeXml(value)}" />`,
-        )
+        .map(([key, value]) => `<Parameter name="${key}" value="${escapeXml(value)}" />`)
         .join("\n        ");
     }
 
@@ -176,19 +160,9 @@ export const generateTwiML = {
    * @returns TwiML string
    */
   record: (
-    options: {
-      maxLength?: number;
-      timeout?: number;
-      transcribe?: boolean;
-      action?: string;
-    } = {},
+    options: { maxLength?: number; timeout?: number; transcribe?: boolean; action?: string } = {}
   ): string => {
-    const {
-      maxLength = 3600,
-      timeout = 5,
-      transcribe = false,
-      action = "",
-    } = options;
+    const { maxLength = 3600, timeout = 5, transcribe = false, action = "" } = options;
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Record maxLength="${maxLength}" timeout="${timeout}" transcribe="${transcribe}" action="${action}" />
@@ -229,7 +203,7 @@ function escapeXml(str: string): string {
  */
 export function parseMediaFromWebhook(
   webhookData: any,
-  numMedia: number,
+  numMedia: number
 ): Array<{
   url: string;
   contentType: string;
@@ -298,7 +272,7 @@ export function validateWebhookSignature(
   authToken: string,
   signature: string,
   url: string,
-  params: Record<string, string>,
+  params: Record<string, string>
 ): boolean {
   try {
     // Note: In production, you should use the twilio.validateRequest method
@@ -306,10 +280,7 @@ export function validateWebhookSignature(
     logger.warn("Webhook signature validation not fully implemented");
     return true; // TODO: Implement proper validation
   } catch (error) {
-    logger.error(
-      { error: String(error) },
-      "Error validating webhook signature",
-    );
+    logger.error({ error: String(error) }, "Error validating webhook signature");
     return false;
   }
 }
@@ -320,10 +291,7 @@ export function validateWebhookSignature(
  * @param maxLength Maximum length per chunk (default: 160)
  * @returns Array of text chunks
  */
-export function chunkTextForSms(
-  text: string,
-  maxLength: number = 160,
-): string[] {
+export function chunkTextForSms(text: string, maxLength: number = 160): string[] {
   if (text.length <= maxLength) {
     return [text];
   }
@@ -360,7 +328,7 @@ export function chunkTextForSms(
 export async function convertAudioFormat(
   audioBuffer: Buffer,
   fromFormat: string,
-  toFormat: string,
+  toFormat: string
 ): Promise<Buffer> {
   // TODO: Implement audio conversion using fluent-ffmpeg
   logger.warn("Audio conversion not implemented yet");

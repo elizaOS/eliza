@@ -1,19 +1,23 @@
 /** Component-based persistence for scheduling data using ElizaOS Components */
 
-import type { IAgentRuntime, UUID, Component, Metadata } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import type { Availability, Meeting, Reminder, SchedulingRequest } from './types.js';
+import type { Component, IAgentRuntime, Metadata, UUID } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import type { Availability, Meeting, Reminder, SchedulingRequest } from "./types.js";
 
-const SCHEDULING_AVAILABILITY = 'scheduling_availability';
-const SCHEDULING_MEETING = 'scheduling_meeting';
-const SCHEDULING_REMINDER = 'scheduling_reminder';
-const SCHEDULING_REQUEST = 'scheduling_request';
-const SCHEDULING_MEETING_INDEX_ROOM = 'scheduling_meeting_index:room';
-const SCHEDULING_MEETING_INDEX_PARTICIPANT = 'scheduling_meeting_index:participant';
-const SCHEDULING_REMINDER_INDEX_MEETING = 'scheduling_reminder_index:meeting';
+const SCHEDULING_AVAILABILITY = "scheduling_availability";
+const SCHEDULING_MEETING = "scheduling_meeting";
+const SCHEDULING_REMINDER = "scheduling_reminder";
+const SCHEDULING_REQUEST = "scheduling_request";
+const SCHEDULING_MEETING_INDEX_ROOM = "scheduling_meeting_index:room";
+const SCHEDULING_MEETING_INDEX_PARTICIPANT = "scheduling_meeting_index:participant";
+const SCHEDULING_REMINDER_INDEX_MEETING = "scheduling_reminder_index:meeting";
 
-interface MeetingIndex { meetingIds: string[] }
-interface ReminderIndex { reminderIds: string[] }
+interface MeetingIndex {
+  meetingIds: string[];
+}
+interface ReminderIndex {
+  reminderIds: string[];
+}
 
 async function getMeetingIndex(
   runtime: IAgentRuntime,
@@ -87,7 +91,11 @@ async function getReminderIndex(runtime: IAgentRuntime, meetingId: string): Prom
   return component ? (component.data as unknown as ReminderIndex) : { reminderIds: [] };
 }
 
-async function saveReminderIndex(runtime: IAgentRuntime, meetingId: string, index: ReminderIndex): Promise<void> {
+async function saveReminderIndex(
+  runtime: IAgentRuntime,
+  meetingId: string,
+  index: ReminderIndex
+): Promise<void> {
   const componentType = `${SCHEDULING_REMINDER_INDEX_MEETING}:${meetingId}`;
   const existing = await runtime.getComponent(runtime.agentId, componentType);
 
@@ -275,7 +283,12 @@ export const getMeetingStorage = (runtime: IAgentRuntime): MeetingStorage => ({
       const meeting = existing.data as unknown as Meeting;
 
       // Remove from room index
-      await removeFromMeetingIndex(runtime, SCHEDULING_MEETING_INDEX_ROOM, meeting.roomId, meetingId);
+      await removeFromMeetingIndex(
+        runtime,
+        SCHEDULING_MEETING_INDEX_ROOM,
+        meeting.roomId,
+        meetingId
+      );
 
       // Remove from participant indices
       for (const participant of meeting.participants) {
@@ -317,7 +330,7 @@ export const getMeetingStorage = (runtime: IAgentRuntime): MeetingStorage => ({
       if (component) {
         const meeting = component.data as unknown as Meeting;
         // Only include upcoming, non-cancelled meetings
-        if (new Date(meeting.slot.start).getTime() > now && meeting.status !== 'cancelled') {
+        if (new Date(meeting.slot.start).getTime() > now && meeting.status !== "cancelled") {
           meetings.push(meeting);
         }
       }
@@ -338,8 +351,10 @@ export interface ReminderStorage {
   getDue(): Promise<Reminder[]>;
 }
 
-const REMINDER_REGISTRY = 'scheduling_reminder_registry';
-interface ReminderRegistry { reminderIds: string[] }
+const REMINDER_REGISTRY = "scheduling_reminder_registry";
+interface ReminderRegistry {
+  reminderIds: string[];
+}
 
 async function getReminderRegistry(runtime: IAgentRuntime): Promise<ReminderRegistry> {
   const component = await runtime.getComponent(runtime.agentId, REMINDER_REGISTRY);
@@ -349,7 +364,10 @@ async function getReminderRegistry(runtime: IAgentRuntime): Promise<ReminderRegi
   return component.data as unknown as ReminderRegistry;
 }
 
-async function saveReminderRegistry(runtime: IAgentRuntime, registry: ReminderRegistry): Promise<void> {
+async function saveReminderRegistry(
+  runtime: IAgentRuntime,
+  registry: ReminderRegistry
+): Promise<void> {
   const existing = await runtime.getComponent(runtime.agentId, REMINDER_REGISTRY);
 
   const component: Component = {
@@ -463,7 +481,7 @@ export const getReminderStorage = (runtime: IAgentRuntime): ReminderStorage => (
 
       if (component) {
         const reminder = component.data as unknown as Reminder;
-        if (reminder.status === 'pending' && new Date(reminder.scheduledFor).getTime() <= now) {
+        if (reminder.status === "pending" && new Date(reminder.scheduledFor).getTime() <= now) {
           dueReminders.push(reminder);
         }
       }

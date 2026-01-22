@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generatedAt": "2026-01-22T01:36:13.472Z",
+  "generatedAt": "2026-01-22T03:19:46.042Z",
   "repoUrl": "https://github.com/elizaos/eliza",
   "examples": [
     {
@@ -285,7 +285,7 @@
     },
     {
       "name": "cloudflare",
-      "description": "Serverless AI agents running on Cloudflare Workers, powered by elizaOS.",
+      "description": "Deploy elizaOS agents as serverless functions on Cloudflare Workers.",
       "path": "/Users/shawwalters/eliza-ok/examples/cloudflare",
       "languages": [
         {

@@ -1,7 +1,13 @@
 /** Core scheduling service for multi-party coordination, availability intersection, and calendar management */
 
-import { Service, type IAgentRuntime, type UUID, logger } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
+import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import {
+  getAvailabilityStorage,
+  getMeetingStorage,
+  getReminderStorage,
+  getSchedulingRequestStorage,
+} from "../storage.js";
 import type {
   Availability,
   CalendarEvent,
@@ -19,35 +25,35 @@ import type {
   SchedulingResult,
   SchedulingServiceConfig,
   TimeSlot,
-} from '../types.js';
-import { DEFAULT_CONFIG } from '../types.js';
-import { generateIcs } from '../utils/ical.js';
-import {
-  getAvailabilityStorage,
-  getMeetingStorage,
-  getReminderStorage,
-  getSchedulingRequestStorage,
-} from '../storage.js';
+} from "../types.js";
+import { DEFAULT_CONFIG } from "../types.js";
+import { generateIcs } from "../utils/ical.js";
 
 const DAY_INDEX: Record<string, DayOfWeek> = {
-  Mon: 'mon', Tue: 'tue', Wed: 'wed', Thu: 'thu', Fri: 'fri', Sat: 'sat', Sun: 'sun',
+  Mon: "mon",
+  Tue: "tue",
+  Wed: "wed",
+  Thu: "thu",
+  Fri: "fri",
+  Sat: "sat",
+  Sun: "sun",
 };
 
 const getZonedParts = (date: Date, timeZone: string): Record<string, string> => {
-  const formatter = new Intl.DateTimeFormat('en-US', {
+  const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
     hour12: false,
   });
   const parts = formatter.formatToParts(date);
   const out: Record<string, string> = {};
   for (const part of parts) {
-    if (part.type !== 'literal') {
+    if (part.type !== "literal") {
       out[part.type] = part.value;
     }
   }
@@ -56,7 +62,7 @@ const getZonedParts = (date: Date, timeZone: string): Record<string, string> => 
 
 const getDayOfWeek = (date: Date, timeZone: string): DayOfWeek => {
   const parts = getZonedParts(date, timeZone);
-  return DAY_INDEX[parts.weekday] ?? 'mon';
+  return DAY_INDEX[parts.weekday] ?? "mon";
 };
 
 const getMinutesOfDay = (date: Date, timeZone: string): number => {
@@ -70,30 +76,30 @@ const getDateString = (date: Date, timeZone: string): string => {
 };
 
 const dateFromMinutes = (dateStr: string, minutes: number, timeZone: string): Date => {
-  const [year, month, day] = dateStr.split('-').map(Number);
+  const [year, month, day] = dateStr.split("-").map(Number);
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
 
   // Create a date string in the target time zone
-  const localDateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:00`;
+  const localDateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:00`;
 
   // Use Intl to get the offset for this time zone
-  const formatter = new Intl.DateTimeFormat('en-US', {
+  const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone,
-    timeZoneName: 'longOffset',
+    timeZoneName: "longOffset",
   });
 
   // Create a temporary date to get the offset
-  const tempDate = new Date(localDateStr + 'Z');
+  const tempDate = new Date(localDateStr + "Z");
   const offsetParts = formatter.formatToParts(tempDate);
-  const offsetPart = offsetParts.find((p) => p.type === 'timeZoneName');
+  const offsetPart = offsetParts.find((p) => p.type === "timeZoneName");
 
   // Parse the offset (e.g., "GMT-05:00" -> -300)
   let offsetMinutes = 0;
   if (offsetPart) {
     const match = /GMT([+-])(\d{2}):(\d{2})/.exec(offsetPart.value);
     if (match) {
-      const sign = match[1] === '+' ? 1 : -1;
+      const sign = match[1] === "+" ? 1 : -1;
       offsetMinutes = sign * (Number(match[2]) * 60 + Number(match[3]));
     }
   }
@@ -110,8 +116,9 @@ const addDays = (date: Date, days: number): Date => {
 };
 
 export class SchedulingService extends Service {
-  static serviceType = 'SCHEDULING';
-  capabilityDescription = 'Coordinates scheduling and calendar management across multiple participants';
+  static serviceType = "SCHEDULING";
+  capabilityDescription =
+    "Coordinates scheduling and calendar management across multiple participants";
 
   private schedulingConfig: SchedulingServiceConfig;
 
@@ -125,7 +132,7 @@ export class SchedulingService extends Service {
     const healthStatus = await service.healthCheck();
 
     if (!healthStatus.healthy) {
-      logger.warn(`[SchedulingService] Started with warnings: ${healthStatus.issues.join(', ')}`);
+      logger.warn(`[SchedulingService] Started with warnings: ${healthStatus.issues.join(", ")}`);
     } else {
       logger.info(`[SchedulingService] Started for agent ${runtime.agentId}`);
     }
@@ -134,22 +141,22 @@ export class SchedulingService extends Service {
   }
 
   async stop(): Promise<void> {
-    logger.info('[SchedulingService] Stopped');
+    logger.info("[SchedulingService] Stopped");
   }
 
   async healthCheck(): Promise<{ healthy: boolean; issues: string[] }> {
     const issues: string[] = [];
 
     if (!this.runtime.getComponent) {
-      issues.push('Runtime missing getComponent method');
+      issues.push("Runtime missing getComponent method");
     }
     if (!this.runtime.createComponent) {
-      issues.push('Runtime missing createComponent method');
+      issues.push("Runtime missing createComponent method");
     }
 
-    const emailService = this.runtime.getService('EMAIL');
+    const emailService = this.runtime.getService("EMAIL");
     if (!emailService) {
-      issues.push('EMAIL service not available');
+      issues.push("EMAIL service not available");
     }
 
     return { healthy: issues.length === 0, issues };
@@ -184,7 +191,8 @@ export class SchedulingService extends Service {
 
     // Check weekly availability
     return availability.weekly.some(
-      (window) => window.day === day && minutes >= window.startMinutes && minutes < window.endMinutes
+      (window) =>
+        window.day === day && minutes >= window.startMinutes && minutes < window.endMinutes
     );
   }
 
@@ -195,7 +203,7 @@ export class SchedulingService extends Service {
     constraints: Partial<SchedulingConstraints> = {},
     options?: {
       description?: string;
-      urgency?: 'flexible' | 'soon' | 'urgent';
+      urgency?: "flexible" | "soon" | "urgent";
     }
   ): Promise<SchedulingRequest> {
     const request: SchedulingRequest = {
@@ -205,15 +213,17 @@ export class SchedulingService extends Service {
       description: options?.description,
       participants,
       constraints: {
-        minDurationMinutes: constraints.minDurationMinutes ?? this.schedulingConfig.minMeetingDuration,
-        preferredDurationMinutes: constraints.preferredDurationMinutes ?? this.schedulingConfig.defaultMeetingDuration,
+        minDurationMinutes:
+          constraints.minDurationMinutes ?? this.schedulingConfig.minMeetingDuration,
+        preferredDurationMinutes:
+          constraints.preferredDurationMinutes ?? this.schedulingConfig.defaultMeetingDuration,
         maxDaysOut: constraints.maxDaysOut ?? this.schedulingConfig.defaultMaxDaysOut,
         preferredTimes: constraints.preferredTimes,
         preferredDays: constraints.preferredDays,
         locationType: constraints.locationType,
         locationConstraint: constraints.locationConstraint,
       },
-      urgency: options?.urgency ?? 'flexible',
+      urgency: options?.urgency ?? "flexible",
       createdAt: Date.now(),
       maxProposals: this.schedulingConfig.maxProposals,
     };
@@ -232,7 +242,7 @@ export class SchedulingService extends Service {
       return {
         success: false,
         proposedSlots: [],
-        failureReason: 'No participants specified',
+        failureReason: "No participants specified",
       };
     }
 
@@ -261,7 +271,12 @@ export class SchedulingService extends Service {
       const dateStr = getDateString(date, referenceTimeZone);
 
       // Find intersection of all weekly windows for this day
-      const dayWindows = this.findDayIntersection(availabilities, day, dateStr, constraints.minDurationMinutes);
+      const dayWindows = this.findDayIntersection(
+        availabilities,
+        day,
+        dateStr,
+        constraints.minDurationMinutes
+      );
 
       for (const window of dayWindows) {
         // Generate slots within this window
@@ -299,7 +314,7 @@ export class SchedulingService extends Service {
       return {
         success: false,
         proposedSlots: [],
-        failureReason: 'No available time slots found within constraints',
+        failureReason: "No available time slots found within constraints",
         conflictingParticipants: conflicting,
       };
     }
@@ -428,7 +443,7 @@ export class SchedulingService extends Service {
     const day = getDayOfWeek(startDate, slot.timeZone);
 
     // Time of day scoring
-    const timeOfDay = minutes < 12 * 60 ? 'morning' : minutes < 17 * 60 ? 'afternoon' : 'evening';
+    const timeOfDay = minutes < 12 * 60 ? "morning" : minutes < 17 * 60 ? "afternoon" : "evening";
 
     if (constraints.preferredTimes?.includes(timeOfDay)) {
       score += 20;
@@ -444,28 +459,28 @@ export class SchedulingService extends Service {
     // Urgency scoring - earlier is better for urgent meetings
     const daysFromNow = (startDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
 
-    if (urgency === 'urgent') {
+    if (urgency === "urgent") {
       score -= daysFromNow * 10;
       if (daysFromNow < 2) {
-        reasons.push('Soon (urgent meeting)');
+        reasons.push("Soon (urgent meeting)");
       }
-    } else if (urgency === 'soon') {
+    } else if (urgency === "soon") {
       score -= daysFromNow * 5;
     }
 
     // Penalize very early or very late times
     if (minutes < 9 * 60) {
       score -= 15;
-      concerns.push('Early morning');
+      concerns.push("Early morning");
     } else if (minutes > 18 * 60) {
       score -= 10;
-      concerns.push('Evening time');
+      concerns.push("Evening time");
     }
 
     // Bonus for standard business hours
     if (minutes >= 10 * 60 && minutes <= 16 * 60) {
       score += 10;
-      reasons.push('Standard business hours');
+      reasons.push("Standard business hours");
     }
 
     return {
@@ -480,7 +495,7 @@ export class SchedulingService extends Service {
     request: SchedulingRequest,
     slot: TimeSlot,
     location: {
-      type: 'in_person' | 'virtual' | 'phone';
+      type: "in_person" | "virtual" | "phone";
       name?: string;
       address?: string;
       city?: string;
@@ -494,7 +509,7 @@ export class SchedulingService extends Service {
       name: p.name,
       email: p.email,
       phone: p.phone,
-      role: index === 0 ? 'organizer' : 'required',
+      role: index === 0 ? "organizer" : "required",
       confirmed: false,
     }));
 
@@ -515,7 +530,7 @@ export class SchedulingService extends Service {
         notes: location.notes,
       },
       participants,
-      status: 'proposed',
+      status: "proposed",
       rescheduleCount: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -563,17 +578,17 @@ export class SchedulingService extends Service {
 
     // Check if all required participants have confirmed
     const allConfirmed = meeting.participants
-      .filter((p) => p.role !== 'optional')
+      .filter((p) => p.role !== "optional")
       .every((p) => p.confirmed);
 
-    if (allConfirmed && meeting.status === 'proposed') {
-      meeting.status = 'confirmed';
+    if (allConfirmed && meeting.status === "proposed") {
+      meeting.status = "confirmed";
       logger.info(`[SchedulingService] Meeting ${meetingId} confirmed by all participants`);
 
       // Send calendar invites if configured
       if (this.schedulingConfig.autoSendCalendarInvites) {
         await this.sendCalendarInvites(meeting);
-        meeting.status = 'scheduled';
+        meeting.status = "scheduled";
       }
     }
 
@@ -599,9 +614,9 @@ export class SchedulingService extends Service {
     meeting.updatedAt = Date.now();
 
     // If a required participant declines, mark meeting for rescheduling
-    if (participant.role !== 'optional') {
-      meeting.status = 'rescheduling';
-      meeting.cancellationReason = `${participant.name} declined: ${reason || 'No reason given'}`;
+    if (participant.role !== "optional") {
+      meeting.status = "rescheduling";
+      meeting.cancellationReason = `${participant.name} declined: ${reason || "No reason given"}`;
       logger.info(`[SchedulingService] Meeting ${meetingId} needs rescheduling`);
     }
 
@@ -617,7 +632,7 @@ export class SchedulingService extends Service {
       throw new Error(`Meeting not found: ${meetingId}`);
     }
 
-    meeting.status = 'cancelled';
+    meeting.status = "cancelled";
     meeting.cancellationReason = reason;
     meeting.updatedAt = Date.now();
 
@@ -657,7 +672,7 @@ export class SchedulingService extends Service {
     await this.cancelReminders(meetingId);
 
     meeting.slot = newSlot;
-    meeting.status = 'proposed';
+    meeting.status = "proposed";
     meeting.rescheduleCount += 1;
     meeting.cancellationReason = reason;
     meeting.updatedAt = Date.now();
@@ -676,13 +691,19 @@ export class SchedulingService extends Service {
       await this.scheduleReminders(meeting);
     }
 
-    logger.info(`[SchedulingService] Meeting ${meetingId} rescheduled (count: ${meeting.rescheduleCount})`);
+    logger.info(
+      `[SchedulingService] Meeting ${meetingId} rescheduled (count: ${meeting.rescheduleCount})`
+    );
 
     return meeting;
   }
 
-  generateCalendarInvite(meeting: Meeting, recipientEmail: string, recipientName: string): CalendarInvite {
-    const organizer = meeting.participants.find((p) => p.role === 'organizer');
+  generateCalendarInvite(
+    meeting: Meeting,
+    recipientEmail: string,
+    recipientName: string
+  ): CalendarInvite {
+    const organizer = meeting.participants.find((p) => p.role === "organizer");
 
     const event: CalendarEvent = {
       uid: meeting.id,
@@ -692,12 +713,10 @@ export class SchedulingService extends Service {
       end: meeting.slot.end,
       timeZone: meeting.slot.timeZone,
       location:
-        meeting.location.type === 'in_person'
+        meeting.location.type === "in_person"
           ? `${meeting.location.name}, ${meeting.location.address}`
           : meeting.location.videoUrl,
-      organizer: organizer?.email
-        ? { name: organizer.name, email: organizer.email }
-        : undefined,
+      organizer: organizer?.email ? { name: organizer.name, email: organizer.email } : undefined,
       attendees: meeting.participants
         .filter((p) => p.email)
         .map((p) => ({
@@ -734,19 +753,28 @@ export class SchedulingService extends Service {
       const invite = this.generateCalendarInvite(meeting, participant.email, participant.name);
       invites.push(invite);
 
-      const emailService = this.runtime.getService('EMAIL');
-      const emailServiceAny = emailService as unknown as { sendEmail?: (to: string, subject: string, body: string, attachments?: Array<{filename: string; content: string; contentType: string}>) => Promise<void> };
-      if (emailService && typeof emailServiceAny.sendEmail === 'function') {
+      const emailService = this.runtime.getService("EMAIL");
+      const emailServiceAny = emailService as unknown as {
+        sendEmail?: (
+          to: string,
+          subject: string,
+          body: string,
+          attachments?: Array<{ filename: string; content: string; contentType: string }>
+        ) => Promise<void>;
+      };
+      if (emailService && typeof emailServiceAny.sendEmail === "function") {
         try {
           await emailServiceAny.sendEmail(
             participant.email,
             `Meeting Invite: ${meeting.title}`,
             this.formatInviteEmail(meeting, participant.name),
-            [{
-              filename: 'invite.ics',
-              content: invite.ics,
-              contentType: 'text/calendar',
-            }]
+            [
+              {
+                filename: "invite.ics",
+                content: invite.ics,
+                contentType: "text/calendar",
+              },
+            ]
           );
           logger.info(
             `[SchedulingService] Sent calendar invite to ${participant.email} for meeting ${meeting.id}`
@@ -760,7 +788,7 @@ export class SchedulingService extends Service {
         // No email service - log the limitation
         logger.warn(
           `[SchedulingService] No EMAIL service available - calendar invite for ${participant.email} generated but not sent. ` +
-          `ICS content available in returned invite object.`
+            `ICS content available in returned invite object.`
         );
       }
     }
@@ -772,27 +800,27 @@ export class SchedulingService extends Service {
     const startDate = new Date(meeting.slot.start);
     const endDate = new Date(meeting.slot.end);
 
-    const dateFormatter = new Intl.DateTimeFormat('en-US', {
+    const dateFormatter = new Intl.DateTimeFormat("en-US", {
       timeZone: meeting.slot.timeZone,
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
     });
 
-    const timeFormatter = new Intl.DateTimeFormat('en-US', {
+    const timeFormatter = new Intl.DateTimeFormat("en-US", {
       timeZone: meeting.slot.timeZone,
-      hour: 'numeric',
-      minute: '2-digit',
-      timeZoneName: 'short',
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
     });
 
-    let locationText = '';
-    if (meeting.location.type === 'virtual' && meeting.location.videoUrl) {
+    let locationText = "";
+    if (meeting.location.type === "virtual" && meeting.location.videoUrl) {
       locationText = `Join online: ${meeting.location.videoUrl}`;
-    } else if (meeting.location.type === 'in_person') {
+    } else if (meeting.location.type === "in_person") {
       locationText = `Location: ${meeting.location.name}, ${meeting.location.address}`;
-    } else if (meeting.location.type === 'phone' && meeting.location.phoneNumber) {
+    } else if (meeting.location.type === "phone" && meeting.location.phoneNumber) {
       locationText = `Call: ${meeting.location.phoneNumber}`;
     }
 
@@ -804,7 +832,7 @@ When: ${dateFormatter.format(startDate)}
 Time: ${timeFormatter.format(startDate)} - ${timeFormatter.format(endDate)}
 ${locationText}
 
-${meeting.description || ''}
+${meeting.description || ""}
 
 Please add the attached calendar invite to your calendar.
 
@@ -823,7 +851,7 @@ See you there!`;
 
       for (const participant of meeting.participants) {
         // Determine reminder type based on participant info
-        const type: ReminderType = participant.phone ? 'sms' : participant.email ? 'email' : 'push';
+        const type: ReminderType = participant.phone ? "sms" : participant.email ? "email" : "push";
 
         const timeLabel =
           minutesBefore >= 1440
@@ -839,7 +867,7 @@ See you there!`;
           scheduledFor: scheduledFor.toISOString(),
           type,
           message: `Reminder: "${meeting.title}" is in ${timeLabel}`,
-          status: 'pending',
+          status: "pending",
           createdAt: Date.now(),
         };
 
@@ -852,7 +880,9 @@ See you there!`;
       await storage.save(reminder);
     }
 
-    logger.debug(`[SchedulingService] Scheduled ${reminders.length} reminders for meeting ${meeting.id}`);
+    logger.debug(
+      `[SchedulingService] Scheduled ${reminders.length} reminders for meeting ${meeting.id}`
+    );
 
     return reminders;
   }
@@ -866,7 +896,7 @@ See you there!`;
     const reminder = await storage.get(reminderId);
     if (!reminder) return;
 
-    reminder.status = 'sent';
+    reminder.status = "sent";
     reminder.sentAt = Date.now();
     await storage.save(reminder);
   }
@@ -876,28 +906,28 @@ See you there!`;
     const reminders = await storage.getByMeeting(meetingId);
 
     for (const reminder of reminders) {
-      if (reminder.status === 'pending') {
-        reminder.status = 'cancelled';
+      if (reminder.status === "pending") {
+        reminder.status = "cancelled";
         await storage.save(reminder);
       }
     }
   }
 
-  formatSlot(slot: TimeSlot, locale: string = 'en-US'): string {
+  formatSlot(slot: TimeSlot, locale: string = "en-US"): string {
     const start = new Date(slot.start);
     const end = new Date(slot.end);
 
     const dateFormatter = new Intl.DateTimeFormat(locale, {
       timeZone: slot.timeZone,
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
+      weekday: "short",
+      month: "short",
+      day: "numeric",
     });
 
     const timeFormatter = new Intl.DateTimeFormat(locale, {
       timeZone: slot.timeZone,
-      hour: 'numeric',
-      minute: '2-digit',
+      hour: "numeric",
+      minute: "2-digit",
     });
 
     return `${dateFormatter.format(start)}, ${timeFormatter.format(start)} - ${timeFormatter.format(end)}`;

@@ -1,28 +1,23 @@
+import type { Server } from "node:http";
 import {
   ChannelType,
   ContentType,
-  EventType,
-  Service,
   createMessageMemory,
   createUniqueUuid,
-  logger,
-  stringToUuid,
+  EventType,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Media,
   type Memory,
+  Service,
+  stringToUuid,
 } from "@elizaos/core";
 import bodyParser from "body-parser";
 import express, { type Express, type Request, type Response } from "express";
-import type { Server } from "http";
 import NodeCache from "node-cache";
+import { BLOOIO_CONSTANTS, BLOOIO_SERVICE_NAME, ERROR_MESSAGES } from "./constants";
 import {
-  BLOOIO_CONSTANTS,
-  BLOOIO_SERVICE_NAME,
-  ERROR_MESSAGES,
-} from "./constants";
-import {
-  CACHE_KEYS,
   type BlooioConfig,
   BlooioError,
   type BlooioMessage,
@@ -35,6 +30,7 @@ import {
   type BlooioSendMessageResponse,
   type BlooioServiceInterface,
   type BlooioWebhookEvent,
+  CACHE_KEYS,
 } from "./types";
 import {
   extractAttachmentUrls,
@@ -48,7 +44,7 @@ type MessageService = {
   handleMessage: (
     runtime: IAgentRuntime,
     message: Memory,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ) => Promise<void>;
 };
 
@@ -100,25 +96,17 @@ export class BlooioService extends Service implements BlooioServiceInterface {
     const webhookUrl = runtime.getSetting("BLOOIO_WEBHOOK_URL") as string;
     const webhookSecret = runtime.getSetting("BLOOIO_WEBHOOK_SECRET") as string;
     const baseUrlSetting = runtime.getSetting("BLOOIO_BASE_URL") as string;
-    const webhookPortSetting = runtime.getSetting(
-      "BLOOIO_WEBHOOK_PORT",
-    ) as string;
+    const webhookPortSetting = runtime.getSetting("BLOOIO_WEBHOOK_PORT") as string;
     const fromNumber = runtime.getSetting("BLOOIO_FROM_NUMBER") as string;
     const signatureToleranceSetting = runtime.getSetting(
-      "BLOOIO_SIGNATURE_TOLERANCE_SEC",
+      "BLOOIO_SIGNATURE_TOLERANCE_SEC"
     ) as string;
-    const webhookPathSetting = runtime.getSetting(
-      "BLOOIO_WEBHOOK_PATH",
-    ) as string;
+    const webhookPathSetting = runtime.getSetting("BLOOIO_WEBHOOK_PATH") as string;
 
     const webhookPort = Number.parseInt(webhookPortSetting || "3001", 10);
-    const signatureToleranceSeconds = Number.parseInt(
-      signatureToleranceSetting || "",
-      10,
-    );
+    const signatureToleranceSeconds = Number.parseInt(signatureToleranceSetting || "", 10);
     const resolvedSignatureTolerance =
-      Number.isFinite(signatureToleranceSeconds) &&
-      signatureToleranceSeconds > 0
+      Number.isFinite(signatureToleranceSeconds) && signatureToleranceSeconds > 0
         ? signatureToleranceSeconds
         : BLOOIO_CONSTANTS.SIGNATURE_TOLERANCE_SECONDS;
 
@@ -134,9 +122,7 @@ export class BlooioService extends Service implements BlooioServiceInterface {
       webhookPathSetting && webhookPathSetting.trim() !== ""
         ? webhookPathSetting
         : getWebhookPath(webhookUrl);
-    const webhookPath = webhookPathRaw.startsWith("/")
-      ? webhookPathRaw
-      : `/${webhookPathRaw}`;
+    const webhookPath = webhookPathRaw.startsWith("/") ? webhookPathRaw : `/${webhookPathRaw}`;
 
     this.blooioConfig = {
       apiKey,
@@ -144,17 +130,13 @@ export class BlooioService extends Service implements BlooioServiceInterface {
       webhookPath,
       webhookPort: Number.isFinite(webhookPort) ? webhookPort : 3001,
       webhookSecret: webhookSecret?.trim() ? webhookSecret : undefined,
-      baseUrl: baseUrlSetting?.trim()
-        ? baseUrlSetting.trim()
-        : BLOOIO_CONSTANTS.API_BASE_URL,
+      baseUrl: baseUrlSetting?.trim() ? baseUrlSetting.trim() : BLOOIO_CONSTANTS.API_BASE_URL,
       fromNumber: fromNumber?.trim() ? fromNumber.trim() : undefined,
       signatureToleranceSeconds: resolvedSignatureTolerance,
     };
 
     if (!this.blooioConfig.webhookSecret) {
-      logger.warn(
-        "Blooio webhook secret not set; signature validation disabled",
-      );
+      logger.warn("Blooio webhook secret not set; signature validation disabled");
     }
 
     await this.setupWebhookServer();
@@ -180,7 +162,7 @@ export class BlooioService extends Service implements BlooioServiceInterface {
           const typed = req as RawBodyRequest;
           typed.rawBody = buf.toString("utf8");
         },
-      }),
+      })
     );
 
     // Health check endpoint
@@ -188,90 +170,81 @@ export class BlooioService extends Service implements BlooioServiceInterface {
       res.json({ status: "ok", service: "blooio" });
     });
 
-    this.app.post(
-      this.blooioConfig.webhookPath,
-      async (req: RawBodyRequest, res: Response) => {
-        logger.info(
-          {
-            path: req.path,
-            method: req.method,
-            headers: {
-              "X-Blooio-Event": req.header("X-Blooio-Event"),
-              "X-Blooio-Message-Id": req.header("X-Blooio-Message-Id"),
-              "Content-Type": req.header("Content-Type"),
-            },
+    this.app.post(this.blooioConfig.webhookPath, async (req: RawBodyRequest, res: Response) => {
+      logger.info(
+        {
+          path: req.path,
+          method: req.method,
+          headers: {
+            "X-Blooio-Event": req.header("X-Blooio-Event"),
+            "X-Blooio-Message-Id": req.header("X-Blooio-Message-Id"),
+            "Content-Type": req.header("Content-Type"),
           },
-          "Blooio webhook request received",
-        );
+        },
+        "Blooio webhook request received"
+      );
 
-        try {
-          const signatureHeader = req.header("X-Blooio-Signature") ?? "";
-          const eventHeader = req.header("X-Blooio-Event") ?? "";
-          const rawBody = typeof req.rawBody === "string" ? req.rawBody : "";
+      try {
+        const signatureHeader = req.header("X-Blooio-Signature") ?? "";
+        const eventHeader = req.header("X-Blooio-Event") ?? "";
+        const rawBody = typeof req.rawBody === "string" ? req.rawBody : "";
 
-          if (this.blooioConfig.webhookSecret) {
-            const valid = verifyWebhookSignature(
-              this.blooioConfig.webhookSecret,
-              signatureHeader,
-              rawBody,
-              this.blooioConfig.signatureToleranceSeconds,
-            );
-            if (!valid) {
-              logger.warn("Blooio webhook signature validation failed");
-              res.status(401).send(ERROR_MESSAGES.WEBHOOK_VALIDATION_FAILED);
-              return;
-            }
-          }
-
-          const payload = req.body as BlooioWebhookEvent;
-          if (!payload || typeof payload.event !== "string") {
-            logger.warn({ body: req.body }, "Invalid webhook payload received");
-            res.status(400).send("Invalid webhook payload");
+        if (this.blooioConfig.webhookSecret) {
+          const valid = verifyWebhookSignature(
+            this.blooioConfig.webhookSecret,
+            signatureHeader,
+            rawBody,
+            this.blooioConfig.signatureToleranceSeconds
+          );
+          if (!valid) {
+            logger.warn("Blooio webhook signature validation failed");
+            res.status(401).send(ERROR_MESSAGES.WEBHOOK_VALIDATION_FAILED);
             return;
           }
-
-          logger.info(
-            {
-              event: payload.event,
-              message_id: payload.message_id,
-              external_id: payload.external_id,
-            },
-            "Processing Blooio webhook event",
-          );
-
-          if (eventHeader && payload.event !== eventHeader) {
-            logger.warn(
-              { eventHeader, payloadEvent: payload.event },
-              "Blooio webhook event header mismatch",
-            );
-          }
-
-          await this.handleWebhookEvent(payload);
-          logger.info(
-            { event: payload.event },
-            "Blooio webhook processed successfully",
-          );
-          res.sendStatus(200);
-        } catch (error) {
-          logger.error(
-            { error: String(error) },
-            "Error handling Blooio webhook",
-          );
-          res.sendStatus(500);
         }
-      },
-    );
+
+        const payload = req.body as BlooioWebhookEvent;
+        if (!payload || typeof payload.event !== "string") {
+          logger.warn({ body: req.body }, "Invalid webhook payload received");
+          res.status(400).send("Invalid webhook payload");
+          return;
+        }
+
+        logger.info(
+          {
+            event: payload.event,
+            message_id: payload.message_id,
+            external_id: payload.external_id,
+          },
+          "Processing Blooio webhook event"
+        );
+
+        if (eventHeader && payload.event !== eventHeader) {
+          logger.warn(
+            { eventHeader, payloadEvent: payload.event },
+            "Blooio webhook event header mismatch"
+          );
+        }
+
+        await this.handleWebhookEvent(payload);
+        logger.info({ event: payload.event }, "Blooio webhook processed successfully");
+        res.sendStatus(200);
+      } catch (error) {
+        logger.error({ error: String(error) }, "Error handling Blooio webhook");
+        res.sendStatus(500);
+      }
+    });
 
     this.server = this.app.listen(this.blooioConfig.webhookPort, () => {
       logger.info(
-        `Blooio webhook server listening on port ${this.blooioConfig.webhookPort} (${this.blooioConfig.webhookPath})`,
+        `Blooio webhook server listening on port ${this.blooioConfig.webhookPort} (${this.blooioConfig.webhookPath})`
       );
     });
   }
 
   async sendMessage(
     chatId: string,
-    request: BlooioSendMessageRequest,
+    request: BlooioSendMessageRequest
   ): Promise<BlooioSendMessageResponse> {
     const normalizedChatId = chatId
       .split(",")
@@ -292,7 +265,7 @@ export class BlooioService extends Service implements BlooioServiceInterface {
       fromNumber: request.fromNumber ?? this.blooioConfig.fromNumber,
     };
     const cleanedPayload = Object.fromEntries(
-      Object.entries(payload).filter(([, value]) => value !== undefined),
+      Object.entries(payload).filter(([, value]) => value !== undefined)
     );
 
     const idempotencyKey = request.idempotencyKey?.trim();
@@ -311,36 +284,24 @@ export class BlooioService extends Service implements BlooioServiceInterface {
 
     const responseText = await response.text();
     if (!response.ok) {
-      throw new BlooioError(
-        `Blooio API error (${response.status})`,
-        response.status,
-        responseText,
-      );
+      throw new BlooioError(`Blooio API error (${response.status})`, response.status, responseText);
     }
 
     let data: BlooioSendMessageResponse;
     try {
       data = JSON.parse(responseText) as BlooioSendMessageResponse;
-    } catch (error) {
-      throw new BlooioError(
-        "Invalid JSON response from Blooio",
-        response.status,
-      );
+    } catch (_error) {
+      throw new BlooioError("Invalid JSON response from Blooio", response.status);
     }
 
-    const messageId =
-      data.message_id || (data.message_ids ? data.message_ids[0] : undefined);
+    const messageId = data.message_id || (data.message_ids ? data.message_ids[0] : undefined);
     const message: BlooioMessage = {
-      messageId:
-        messageId ??
-        createUniqueUuid(this.runtime, `${normalizedChatId}:${Date.now()}`),
+      messageId: messageId ?? createUniqueUuid(this.runtime, `${normalizedChatId}:${Date.now()}`),
       chatId: normalizedChatId,
       sender: fromNumber ?? "blooio",
       text: typeof request.text === "string" ? request.text : undefined,
       attachments: Array.isArray(request.attachments)
-        ? request.attachments.map((item) =>
-            typeof item === "string" ? item : item.url,
-          )
+        ? request.attachments.map((item) => (typeof item === "string" ? item : item.url))
         : undefined,
       direction: "outbound",
       status: data.status,
@@ -349,7 +310,10 @@ export class BlooioService extends Service implements BlooioServiceInterface {
 
     this.cacheMessage(normalizedChatId, message);
     if (this.runtime) {
-      this.runtime.emitEvent("blooio:message:sent", message);
+      this.runtime.emitEvent("blooio:message:sent", {
+        runtime: this.runtime,
+        ...message,
+      });
     }
 
     return data;
@@ -375,7 +339,10 @@ export class BlooioService extends Service implements BlooioServiceInterface {
       case "group.name_changed":
       case "group.icon_changed":
         if (this.runtime) {
-          this.runtime.emitEvent(`blooio:${event.event}`, event);
+          this.runtime.emitEvent(`blooio:${event.event}`, {
+            runtime: this.runtime,
+            ...event,
+          });
         }
         break;
       default:
@@ -385,31 +352,41 @@ export class BlooioService extends Service implements BlooioServiceInterface {
 
   private handleMessageSent(event: BlooioMessageSentEvent): void {
     if (this.runtime) {
-      this.runtime.emitEvent("blooio:message:sent", event);
+      this.runtime.emitEvent("blooio:message:sent", {
+        runtime: this.runtime,
+        ...event,
+      });
     }
   }
 
   private handleMessageDelivered(event: BlooioMessageDeliveredEvent): void {
     if (this.runtime) {
-      this.runtime.emitEvent("blooio:message:delivered", event);
+      this.runtime.emitEvent("blooio:message:delivered", {
+        runtime: this.runtime,
+        ...event,
+      });
     }
   }
 
   private handleMessageFailed(event: BlooioMessageFailedEvent): void {
     if (this.runtime) {
-      this.runtime.emitEvent("blooio:message:failed", event);
+      this.runtime.emitEvent("blooio:message:failed", {
+        runtime: this.runtime,
+        ...event,
+      });
     }
   }
 
   private handleMessageRead(event: BlooioMessageReadEvent): void {
     if (this.runtime) {
-      this.runtime.emitEvent("blooio:message:read", event);
+      this.runtime.emitEvent("blooio:message:read", {
+        runtime: this.runtime,
+        ...event,
+      });
     }
   }
 
-  private async handleIncomingMessage(
-    webhook: BlooioMessageReceivedEvent,
-  ): Promise<void> {
+  private async handleIncomingMessage(webhook: BlooioMessageReceivedEvent): Promise<void> {
     const chatId = webhook.external_id ?? webhook.sender;
     if (!chatId) {
       logger.warn("Blooio webhook missing chat identifier");
@@ -417,9 +394,7 @@ export class BlooioService extends Service implements BlooioServiceInterface {
     }
 
     const inboundMessage: BlooioMessage = {
-      messageId:
-        webhook.message_id ??
-        createUniqueUuid(this.runtime, `${chatId}:${Date.now()}`),
+      messageId: webhook.message_id ?? createUniqueUuid(this.runtime, `${chatId}:${Date.now()}`),
       chatId,
       sender: webhook.sender,
       text: webhook.text,
@@ -433,7 +408,10 @@ export class BlooioService extends Service implements BlooioServiceInterface {
     this.cacheMessage(chatId, inboundMessage);
 
     if (this.runtime) {
-      this.runtime.emitEvent("blooio:message:received", inboundMessage);
+      this.runtime.emitEvent("blooio:message:received", {
+        runtime: this.runtime,
+        ...inboundMessage,
+      });
     }
 
     await this.processIncomingMessage(webhook, inboundMessage);
@@ -441,12 +419,11 @@ export class BlooioService extends Service implements BlooioServiceInterface {
 
   private async processIncomingMessage(
     webhook: BlooioMessageReceivedEvent,
-    message: BlooioMessage,
+    message: BlooioMessage
   ): Promise<void> {
     try {
       const text = message.text?.trim();
-      const hasAttachments =
-        message.attachments && message.attachments.length > 0;
+      const hasAttachments = message.attachments && message.attachments.length > 0;
       if (!text && !hasAttachments) {
         return;
       }
@@ -454,10 +431,7 @@ export class BlooioService extends Service implements BlooioServiceInterface {
       const channelType = webhook.is_group ? ChannelType.GROUP : ChannelType.DM;
       const entityId = createUniqueUuid(this.runtime, webhook.sender);
       const roomId = createUniqueUuid(this.runtime, `blooio:${message.chatId}`);
-      const worldId = createUniqueUuid(
-        this.runtime,
-        `blooio:${webhook.internal_id ?? "unknown"}`,
-      );
+      const worldId = createUniqueUuid(this.runtime, `blooio:${webhook.internal_id ?? "unknown"}`);
 
       await this.runtime.ensureConnection({
         entityId,
@@ -470,9 +444,7 @@ export class BlooioService extends Service implements BlooioServiceInterface {
       });
 
       // Use original webhook attachments to preserve names
-      const attachments = this.buildMediaFromBlooioAttachments(
-        webhook.attachments,
-      );
+      const attachments = this.buildMediaFromBlooioAttachments(webhook.attachments);
       const memory = createMessageMemory({
         id: stringToUuid(message.messageId),
         entityId,
@@ -489,13 +461,10 @@ export class BlooioService extends Service implements BlooioServiceInterface {
       });
 
       const callback: HandlerCallback = async (content) => {
-        const responseText =
-          typeof content.text === "string" ? content.text.trim() : "";
+        const responseText = typeof content.text === "string" ? content.text.trim() : "";
 
         // Collect attachments from content.attachments (Media[]) and URLs in text
-        const outboundAttachments: Array<
-          string | { url: string; name?: string }
-        > = [];
+        const outboundAttachments: Array<string | { url: string; name?: string }> = [];
 
         // Add attachments from content.attachments (images, video, audio, etc.)
         if (content.attachments && Array.isArray(content.attachments)) {
@@ -525,8 +494,7 @@ export class BlooioService extends Service implements BlooioServiceInterface {
 
         await this.sendMessage(message.chatId, {
           text: responseText || undefined,
-          attachments:
-            outboundAttachments.length > 0 ? outboundAttachments : undefined,
+          attachments: outboundAttachments.length > 0 ? outboundAttachments : undefined,
           fromNumber: this.blooioConfig.fromNumber ?? webhook.internal_id,
         });
         return [];
@@ -538,6 +506,7 @@ export class BlooioService extends Service implements BlooioServiceInterface {
       } else {
         logger.warn("messageService unavailable; falling back to event emit");
         await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+          runtime: this.runtime,
           message: memory,
           callback,
           source: "blooio",
@@ -548,23 +517,11 @@ export class BlooioService extends Service implements BlooioServiceInterface {
     }
   }
 
-  private buildMediaAttachments(attachments?: string[]): Media[] {
-    if (!attachments || attachments.length === 0) {
-      return [];
-    }
-
-    return attachments.map((url) => ({
-      id: createUniqueUuid(this.runtime, url),
-      url,
-      contentType: this.resolveContentType(url),
-    }));
-  }
-
   /**
    * Build Media attachments from Blooio webhook attachments (preserves names)
    */
   private buildMediaFromBlooioAttachments(
-    attachments: Array<string | { url: string; name?: string }> | undefined,
+    attachments: Array<string | { url: string; name?: string }> | undefined
   ): Media[] {
     if (!attachments || attachments.length === 0) {
       return [];
@@ -583,7 +540,7 @@ export class BlooioService extends Service implements BlooioServiceInterface {
   }
 
   private normalizeAttachmentUrls(
-    attachments: Array<string | { url: string; name?: string }> | undefined,
+    attachments: Array<string | { url: string; name?: string }> | undefined
   ): string[] | undefined {
     if (!attachments || attachments.length === 0) {
       return undefined;
@@ -609,25 +566,6 @@ export class BlooioService extends Service implements BlooioServiceInterface {
       return ContentType.AUDIO;
     }
     // Document/other
-    return ContentType.DOCUMENT;
-  }
-
-  /**
-   * Resolve ContentType from a MIME type string (e.g., from webhook payload)
-   */
-  private resolveContentTypeFromMime(
-    mimeType: string,
-  ): ContentType | undefined {
-    const lower = mimeType.toLowerCase();
-    if (lower.startsWith("image/")) {
-      return ContentType.IMAGE;
-    }
-    if (lower.startsWith("video/")) {
-      return ContentType.VIDEO;
-    }
-    if (lower.startsWith("audio/")) {
-      return ContentType.AUDIO;
-    }
     return ContentType.DOCUMENT;
   }
 

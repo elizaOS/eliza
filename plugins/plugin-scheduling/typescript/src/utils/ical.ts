@@ -5,24 +5,20 @@
  * Generates RFC 5545 compliant iCalendar files for calendar invites.
  */
 
-import type { CalendarEvent, ParticipantRole } from '../types.ts';
+import type { CalendarEvent, ParticipantRole } from "../types.ts";
 
 /**
  * Escape special characters for ICS format
  */
 const escapeIcs = (str: string): string => {
-  return str
-    .replace(/\\/g, '\\\\')
-    .replace(/;/g, '\\;')
-    .replace(/,/g, '\\,')
-    .replace(/\n/g, '\\n');
+  return str.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
 };
 
 /**
  * Format a date for ICS (YYYYMMDDTHHMMSSZ)
  */
 const formatIcsDate = (isoString: string): string => {
-  return isoString.replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  return isoString.replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 };
 
 /**
@@ -30,14 +26,14 @@ const formatIcsDate = (isoString: string): string => {
  */
 const icsRole = (role: ParticipantRole): string => {
   switch (role) {
-    case 'organizer':
-      return 'REQ-PARTICIPANT';
-    case 'required':
-      return 'REQ-PARTICIPANT';
-    case 'optional':
-      return 'OPT-PARTICIPANT';
+    case "organizer":
+      return "REQ-PARTICIPANT";
+    case "required":
+      return "REQ-PARTICIPANT";
+    case "optional":
+      return "OPT-PARTICIPANT";
     default:
-      return 'REQ-PARTICIPANT';
+      return "REQ-PARTICIPANT";
   }
 };
 
@@ -59,12 +55,12 @@ const foldLine = (line: string): string => {
       remaining = remaining.slice(maxLength);
     } else {
       // Continuation lines start with a space
-      lines.push(' ' + remaining.slice(0, maxLength - 1));
+      lines.push(" " + remaining.slice(0, maxLength - 1));
       remaining = remaining.slice(maxLength - 1);
     }
   }
 
-  return lines.join('\r\n');
+  return lines.join("\r\n");
 };
 
 /**
@@ -74,14 +70,14 @@ export const generateIcs = (event: CalendarEvent): string => {
   const lines: string[] = [];
 
   // Begin calendar
-  lines.push('BEGIN:VCALENDAR');
-  lines.push('VERSION:2.0');
-  lines.push('PRODID:-//ElizaOS//SchedulingPlugin//EN');
-  lines.push('CALSCALE:GREGORIAN');
-  lines.push('METHOD:REQUEST');
+  lines.push("BEGIN:VCALENDAR");
+  lines.push("VERSION:2.0");
+  lines.push("PRODID:-//ElizaOS//SchedulingPlugin//EN");
+  lines.push("CALSCALE:GREGORIAN");
+  lines.push("METHOD:REQUEST");
 
   // Begin event
-  lines.push('BEGIN:VEVENT');
+  lines.push("BEGIN:VEVENT");
 
   // Required properties
   lines.push(`UID:${event.uid}`);
@@ -121,26 +117,26 @@ export const generateIcs = (event: CalendarEvent): string => {
   // Reminders/Alarms
   if (event.reminderMinutes) {
     for (const minutes of event.reminderMinutes) {
-      lines.push('BEGIN:VALARM');
-      lines.push('ACTION:DISPLAY');
+      lines.push("BEGIN:VALARM");
+      lines.push("ACTION:DISPLAY");
       lines.push(`DESCRIPTION:${escapeIcs(event.title)}`);
       lines.push(`TRIGGER:-PT${minutes}M`);
-      lines.push('END:VALARM');
+      lines.push("END:VALARM");
     }
   }
 
   // Status
-  lines.push('STATUS:CONFIRMED');
-  lines.push('SEQUENCE:0');
+  lines.push("STATUS:CONFIRMED");
+  lines.push("SEQUENCE:0");
 
   // End event
-  lines.push('END:VEVENT');
+  lines.push("END:VEVENT");
 
   // End calendar
-  lines.push('END:VCALENDAR');
+  lines.push("END:VCALENDAR");
 
   // Fold long lines and join with CRLF
-  return lines.map(foldLine).join('\r\n');
+  return lines.map(foldLine).join("\r\n");
 };
 
 /**
@@ -151,11 +147,11 @@ export const parseIcs = (ics: string): CalendarEvent[] => {
   const lines = ics.split(/\r?\n/);
 
   let currentEvent: Partial<CalendarEvent> | null = null;
-  let currentLine = '';
+  let currentLine = "";
 
   for (const line of lines) {
     // Handle line folding (continuation lines start with space or tab)
-    if (line.startsWith(' ') || line.startsWith('\t')) {
+    if (line.startsWith(" ") || line.startsWith("\t")) {
       currentLine += line.slice(1);
       continue;
     }
@@ -168,9 +164,9 @@ export const parseIcs = (ics: string): CalendarEvent[] => {
     currentLine = line;
 
     // Check for event boundaries
-    if (line === 'BEGIN:VEVENT') {
+    if (line === "BEGIN:VEVENT") {
       currentEvent = {};
-    } else if (line === 'END:VEVENT' && currentEvent) {
+    } else if (line === "END:VEVENT" && currentEvent) {
       if (currentEvent.uid && currentEvent.start && currentEvent.end && currentEvent.title) {
         events.push(currentEvent as CalendarEvent);
       }
@@ -185,36 +181,36 @@ export const parseIcs = (ics: string): CalendarEvent[] => {
  * Process a single ICS property line
  */
 const processLine = (line: string, event: Partial<CalendarEvent>): void => {
-  const colonIndex = line.indexOf(':');
+  const colonIndex = line.indexOf(":");
   if (colonIndex === -1) return;
 
   const keyPart = line.slice(0, colonIndex);
   const value = line.slice(colonIndex + 1);
 
   // Handle properties with parameters (e.g., DTSTART;TZID=America/New_York)
-  const semiIndex = keyPart.indexOf(';');
+  const semiIndex = keyPart.indexOf(";");
   const key = semiIndex === -1 ? keyPart : keyPart.slice(0, semiIndex);
 
   switch (key) {
-    case 'UID':
+    case "UID":
       event.uid = value;
       break;
-    case 'SUMMARY':
+    case "SUMMARY":
       event.title = unescapeIcs(value);
       break;
-    case 'DESCRIPTION':
+    case "DESCRIPTION":
       event.description = unescapeIcs(value);
       break;
-    case 'DTSTART':
+    case "DTSTART":
       event.start = parseIcsDate(value);
       break;
-    case 'DTEND':
+    case "DTEND":
       event.end = parseIcsDate(value);
       break;
-    case 'LOCATION':
+    case "LOCATION":
       event.location = unescapeIcs(value);
       break;
-    case 'URL':
+    case "URL":
       event.url = value;
       break;
   }
@@ -224,11 +220,7 @@ const processLine = (line: string, event: Partial<CalendarEvent>): void => {
  * Unescape ICS special characters
  */
 const unescapeIcs = (str: string): string => {
-  return str
-    .replace(/\\n/g, '\n')
-    .replace(/\\,/g, ',')
-    .replace(/\\;/g, ';')
-    .replace(/\\\\/g, '\\');
+  return str.replace(/\\n/g, "\n").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\");
 };
 
 /**
