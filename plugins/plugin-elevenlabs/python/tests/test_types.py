@@ -77,7 +77,7 @@ class TestElevenLabsTTSOptions:
         options = ElevenLabsTTSOptions()
         assert options.api_key == ""
         assert options.voice_id == "EXAVITQu4vr4xnSDxMaL"
-        assert options.model_id == "eleven_monolingual_v1"
+        assert options.model_id == "eleven_multilingual_v2"
         assert options.output_format == "mp3_44100_128"
         assert options.optimize_streaming_latency == 0
         assert isinstance(options.voice_settings, VoiceSettings)
@@ -106,7 +106,7 @@ class TestDefaultOptions:
     def test_default_tts_options(self) -> None:
         """Test DEFAULT_TTS_OPTIONS is properly configured."""
         assert DEFAULT_TTS_OPTIONS.voice_id == "EXAVITQu4vr4xnSDxMaL"
-        assert DEFAULT_TTS_OPTIONS.model_id == "eleven_monolingual_v1"
+        assert DEFAULT_TTS_OPTIONS.model_id == "eleven_multilingual_v2"
 
     def test_default_stt_options(self) -> None:
         """Test DEFAULT_STT_OPTIONS is properly configured."""
@@ -128,5 +128,4 @@ class TestSupportedFormats:
 
     def test_tts_models(self) -> None:
         """Test TTS models list."""
-        assert "eleven_monolingual_v1" in TTS_MODELS
         assert "eleven_multilingual_v2" in TTS_MODELS

@@ -20,7 +20,7 @@ class ElevenLabsTTSOptions:
 
     api_key: str = ""
     voice_id: str = "EXAVITQu4vr4xnSDxMaL"
-    model_id: str = "eleven_monolingual_v1"
+    model_id: str = "eleven_multilingual_v2"
     output_format: str = "mp3_44100_128"
     optimize_streaming_latency: int = 0
     voice_settings: VoiceSettings = field(default_factory=VoiceSettings)
@@ -75,8 +75,6 @@ STT_MODELS = [
 
 # Supported TTS models
 TTS_MODELS = [
-    "eleven_monolingual_v1",
-    "eleven_multilingual_v1",
     "eleven_multilingual_v2",
     "eleven_turbo_v2",
     "eleven_turbo_v2_5",
