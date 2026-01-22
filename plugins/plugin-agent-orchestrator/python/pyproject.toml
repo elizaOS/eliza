@@ -7,7 +7,7 @@ name = "elizaos-plugin-agent-orchestrator"
 version = "2.0.0"
 description = "Agent Orchestrator Plugin for ElizaOS - orchestrates tasks across agent providers"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "elizaOS Contributors"}
 ]
@@ -15,7 +15,6 @@ requires-python = ">=3.11"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
