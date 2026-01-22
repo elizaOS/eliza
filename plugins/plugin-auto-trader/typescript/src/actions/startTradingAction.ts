@@ -60,7 +60,9 @@ async function extractTokens(
     const matches = text.matchAll(pattern);
     for (const match of matches) {
       const symbols = match[1].split(/[\s,]+/).filter((s) => s.length >= 2 && s.length <= 12);
-      symbols.forEach((s) => potentialSymbols.add(s.toUpperCase()));
+      for (const s of symbols) {
+        potentialSymbols.add(s.toUpperCase());
+      }
     }
   }
 

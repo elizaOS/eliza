@@ -332,7 +332,7 @@ export class RuleBasedStrategy implements TradingStrategy {
     portfolioSnapshot: PortfolioSnapshot;
     agentRuntime?: any;
   }): Promise<TradeOrder | null> {
-    const { marketData, agentState, portfolioSnapshot } = params;
+    const { marketData, portfolioSnapshot } = params;
 
     if (!marketData.priceData || marketData.priceData.length < 20) {
       return null; // Not enough data for indicators

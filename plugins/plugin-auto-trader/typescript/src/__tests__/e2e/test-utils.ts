@@ -44,11 +44,12 @@ export async function setupScenario(
 
   // 2. Create a World and assign the user as the owner.
   // This is critical for providers that check for ownership.
+  const testServerId = asUUID(uuid());
   const world: World = {
     id: asUUID(uuid()),
     agentId: runtime.agentId,
     name: "E2E Test World",
-    serverId: "e2e-test-server",
+    serverId: testServerId,
     metadata: {
       ownership: {
         ownerId: user.id,
@@ -130,8 +131,9 @@ export function sendMessageAndWaitForResponse(
 
     // The callback function that the message handler will invoke with the agent's final response.
     // We use this callback to resolve our promise.
-    const callback = (responseContent: Content) => {
+    const callback = async (responseContent: Content): Promise<Memory[]> => {
       resolve(responseContent);
+      return [];
     };
 
     // Emit the event to trigger the agent's message processing logic.
@@ -139,7 +141,7 @@ export function sendMessageAndWaitForResponse(
       runtime,
       message,
       callback,
-    });
+    } as unknown as Parameters<typeof runtime.emitEvent>[1]);
   });
 }
 
@@ -190,10 +192,9 @@ export async function monitorTrades(runtime: IAgentRuntime, durationMs: number):
 
     // Log every 10 seconds
     if ((Date.now() - startTime) % 10000 < 1000) {
-      elizaLogger.info(`[Test] Trading status:`, {
-        elapsed: `${Math.floor((Date.now() - startTime) / 1000)}s`,
-        ...tradeLog[tradeLog.length - 1],
-      });
+      elizaLogger.info(
+        `[Test] Trading status: elapsed=${Math.floor((Date.now() - startTime) / 1000)}s positions=${tradeLog[tradeLog.length - 1]?.positions ?? 0}`,
+      );
     }
 
     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -217,14 +218,9 @@ export function validateTradingResult(result: any): void {
   }
 
   // Log summary
-  elizaLogger.info(`[Test] Trading Summary:`, {
-    duration: `${result.duration / 1000}s`,
-    totalTrades: result.finalPerformance.totalTrades,
-    winRate: `${(result.finalPerformance.winRate * 100).toFixed(1)}%`,
-    totalPnL: result.finalPerformance.totalPnL.toFixed(2),
-    dailyPnL: result.finalPerformance.dailyPnL.toFixed(2),
-    finalPositions: result.finalStatus.positions.length,
-  });
+  elizaLogger.info(
+    `[Test] Trading Summary: duration=${result.duration / 1000}s trades=${result.finalPerformance.totalTrades} winRate=${(result.finalPerformance.winRate * 100).toFixed(1)}% totalPnL=${result.finalPerformance.totalPnL.toFixed(2)} dailyPnL=${result.finalPerformance.dailyPnL.toFixed(2)} positions=${result.finalStatus.positions.length}`,
+  );
 }
 
 export async function simulateConversation(

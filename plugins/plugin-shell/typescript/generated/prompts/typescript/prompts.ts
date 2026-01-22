@@ -58,3 +58,4 @@ Your response must be formatted as a JSON block:
 \`\`\``;
 
 export const COMMAND_EXTRACTION_TEMPLATE = commandExtractionTemplate;
+

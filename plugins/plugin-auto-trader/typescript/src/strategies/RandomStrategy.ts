@@ -98,7 +98,7 @@ export class RandomStrategy implements TradingStrategy {
     portfolioSnapshot: PortfolioSnapshot;
     agentRuntime?: any;
   }): Promise<TradeOrder | null> {
-    const { marketData, agentState, portfolioSnapshot } = params;
+    const { marketData, portfolioSnapshot } = params;
 
     if (
       Math.random() >= (this.params.tradeAttemptProbability ?? DEFAULT_TRADE_ATTEMPT_PROBABILITY)

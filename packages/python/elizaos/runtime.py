@@ -271,17 +271,17 @@ class AgentRuntime(IAgentRuntime):
         plugin_to_register = plugin
 
         if plugin.name == "bootstrap":
-            settings = self._character.settings or {}
+            char_settings: dict[str, object] = self._character.settings or {}
             disable_basic = self._capability_disable_basic or (
-                settings.get("DISABLE_BASIC_CAPABILITIES") in (True, "true")
+                char_settings.get("DISABLE_BASIC_CAPABILITIES") in (True, "true")
             )
             enable_extended = self._capability_enable_extended or (
-                settings.get("ENABLE_EXTENDED_CAPABILITIES") in (True, "true")
+                char_settings.get("ENABLE_EXTENDED_CAPABILITIES") in (True, "true")
             )
             skip_character_provider = self._is_anonymous_character
 
             enable_autonomy = self._capability_enable_autonomy or (
-                settings.get("ENABLE_AUTONOMY") in (True, "true")
+                char_settings.get("ENABLE_AUTONOMY") in (True, "true")
             )
 
             if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
@@ -761,7 +761,23 @@ class AgentRuntime(IAgentRuntime):
                     options_obj.parameter_errors = errors
 
                 if validated_params:
-                    options_obj.parameters = validated_params
+                    from google.protobuf import struct_pb2
+
+                    from elizaos.types.components import ActionParameters
+
+                    struct_values = struct_pb2.Struct()
+                    for k, v in validated_params.items():
+                        if v is None:
+                            struct_values.fields[k].null_value = 0
+                        elif isinstance(v, bool):
+                            struct_values.fields[k].bool_value = v
+                        elif isinstance(v, (int, float)):
+                            struct_values.fields[k].number_value = float(v)
+                        elif isinstance(v, str):
+                            struct_values.fields[k].string_value = v
+                        else:
+                            struct_values.fields[k].string_value = str(v)
+                    options_obj.parameters.CopyFrom(ActionParameters(values=struct_values))
 
                 result = await action.handler(
                     self,
@@ -809,7 +825,7 @@ class AgentRuntime(IAgentRuntime):
 
             if should_run:
                 try:
-                    is_valid = await evaluator.validate_fn(self, message, state)
+                    is_valid = await evaluator.validate(self, message, state)
                     if is_valid:
                         await evaluator.handler(
                             self,
@@ -1540,7 +1556,7 @@ class AgentRuntime(IAgentRuntime):
 
     async def get_agent_run_summaries(self, params: dict[str, Any]) -> AgentRunSummaryResult:
         if not self._adapter:
-            return AgentRunSummaryResult(runs=[], total=0, hasMore=False)
+            return AgentRunSummaryResult(runs=[], total=0, has_more=False)
         return await self._adapter.get_agent_run_summaries(params)
 
     async def search_memories(self, params: dict[str, Any]) -> list[Any]:
@@ -1548,7 +1564,13 @@ class AgentRuntime(IAgentRuntime):
             return []
         return await self._adapter.search_memories(params)
 
-    async def create_memory(self, memory: Any, table_name: str, unique: bool = False) -> UUID:
+    async def create_memory(
+        self,
+        memory: dict[str, object] | None = None,
+        table_name: str | None = None,
+        unique: bool | None = None,
+        **kwargs: object,
+    ) -> UUID:
         if not self._adapter:
             raise RuntimeError("Database adapter not set")
         return await self._adapter.create_memory(memory, table_name, unique)
@@ -1702,10 +1724,10 @@ class AgentRuntime(IAgentRuntime):
             return False
         return await self._adapter.set_cache(key, value)
 
-    async def delete_cache(self, key: str) -> bool:
+    async def delete_cache(self, key: str) -> None:
         if not self._adapter:
-            return False
-        return await self._adapter.delete_cache(key)
+            return
+        await self._adapter.delete_cache(key)
 
     async def create_task(self, task: Any) -> UUID:
         if not self._adapter:
@@ -1739,3 +1761,9 @@ class AgentRuntime(IAgentRuntime):
         if not self._adapter:
             return []
         return await self._adapter.get_memories_by_world_id(params)
+
+    async def search_knowledge(self, query: str, limit: int = 5) -> list[object]:
+        """Search for knowledge matching the given query."""
+        if not self._adapter:
+            return []
+        return await self._adapter.search_memories({"query": query, "limit": limit})

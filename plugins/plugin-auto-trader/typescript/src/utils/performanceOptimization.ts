@@ -50,7 +50,9 @@ export class BatchDataProcessor {
       }
 
       const batchResults = await Promise.all(batchPromises);
-      batchResults.forEach((res) => results.push(...res));
+      for (const res of batchResults) {
+        results.push(...res);
+      }
 
       processed += batchPromises.length;
       if (onProgress) {

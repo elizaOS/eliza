@@ -14,7 +14,7 @@ import { decodeBase58 } from "./utils.ts"; // decodeBase58 is imported from util
  */
 export function getWalletKeypair(runtime?: IAgentRuntime): Keypair {
   const privateKeyString = runtime?.getSetting("SOLANA_PRIVATE_KEY");
-  if (!privateKeyString) {
+  if (!privateKeyString || typeof privateKeyString !== "string") {
     // It's important to distinguish this error source if multiple getWalletKeypair functions exist.
     throw new Error("No wallet private key configured (invoked from degenTrader/utils/wallet.ts)");
   }
@@ -23,7 +23,9 @@ export function getWalletKeypair(runtime?: IAgentRuntime): Keypair {
     const privateKeyBytes = decodeBase58(privateKeyString);
     return Keypair.fromSecretKey(privateKeyBytes);
   } catch (error) {
-    logger.error("Failed to create wallet keypair (in degenTrader/utils/wallet.ts):", error);
+    logger.error(
+      `Failed to create wallet keypair (in degenTrader/utils/wallet.ts): ${error instanceof Error ? error.message : String(error)}`,
+    );
     throw error;
   }
 }

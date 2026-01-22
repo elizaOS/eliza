@@ -1,13 +1,35 @@
-// Import core wallet and token types
-import type {
-  IAgentRuntime as AgentRuntime,
-  WalletPortfolio as CoreWalletPortfolio,
-  IWalletService,
-  TokenBalance,
-  TokenData,
-  UUID,
-  WalletAsset,
-} from "@elizaos/core";
+// Import core types
+import type { IAgentRuntime as AgentRuntime, UUID } from "@elizaos/core";
+
+// Define wallet and token types locally since they're not exported from @elizaos/core
+export interface TokenBalance {
+  mint: string;
+  balance: string;
+  decimals: number;
+  uiAmount: number;
+}
+
+export interface TokenData {
+  address: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  price?: number;
+  volume24h?: number;
+  liquidity?: number;
+}
+
+export interface WalletAsset {
+  mint: string;
+  balance: number;
+  decimals: number;
+  uiAmount: number;
+}
+
+export interface IWalletService {
+  getBalance(): Promise<number>;
+  getTokenBalances(): Promise<TokenBalance[]>;
+}
 
 // #region --- Portfolio and Trading Data Interfaces ---
 
@@ -142,15 +164,28 @@ export interface TradeSimulationResult {
   updatedPortfolio?: { [assetSymbol: string]: PortfolioAssetHolding };
 }
 
-// Use core wallet types where possible, add custom extensions as needed
-export type { IWalletService, TokenData, TokenBalance };
-
-// Extend core types for plugin-specific needs
-export interface WalletPortfolio extends CoreWalletPortfolio {
-  // Any additional fields specific to auto-trader
+// Wallet portfolio for auto-trader
+export interface WalletPortfolio {
+  totalUsd: string;
+  totalSol?: string;
+  items: Array<{
+    name: string;
+    address: string;
+    symbol: string;
+    decimals: number;
+    balance: string;
+    uiAmount: string;
+    priceUsd: string;
+    valueUsd: string;
+    valueSol?: string;
+  }>;
 }
 
-export interface PortfolioAssetHolding extends WalletAsset {
+export interface PortfolioAssetHolding {
+  mint: string;
+  balance: number;
+  decimals: number;
+  uiAmount: number;
   averagePrice: number;
   symbol?: string;
   assetAddress: string;

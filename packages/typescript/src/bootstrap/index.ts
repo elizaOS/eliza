@@ -1183,8 +1183,10 @@ const events: PluginEvents = {
 export interface CapabilityConfig {
   /** Disable basic capabilities (default: false) */
   disableBasic?: boolean;
-  /** Enable extended capabilities (default: false) */
+  /** Enable extended/advanced capabilities (default: false) */
   enableExtended?: boolean;
+  /** Alias for enableExtended - Enable advanced capabilities (default: false) */
+  advancedCapabilities?: boolean;
   /** Skip the character provider (used for anonymous agents without a character file) */
   skipCharacterProvider?: boolean;
   /** Enable autonomy capabilities (default: false) */

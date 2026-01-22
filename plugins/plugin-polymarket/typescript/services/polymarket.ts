@@ -1594,7 +1594,9 @@ export class PolymarketService extends Service {
           this.getSubscriptionKey(message.channel, message.assets_ids ?? [], false),
         ),
       );
-      pending.forEach((message) => this.sendWebsocketMessage(message));
+      for (const message of pending) {
+        this.sendWebsocketMessage(message);
+      }
 
       this.wsSubscriptions.forEach((subscription) => {
         const key = this.getSubscriptionKey(
@@ -1747,7 +1749,9 @@ export class PolymarketService extends Service {
         keysToDelete.push(key);
       }
     });
-    keysToDelete.forEach((key) => this.wsSubscriptions.delete(key));
+    for (const key of keysToDelete) {
+      this.wsSubscriptions.delete(key);
+    }
     this.sendWebsocketMessage({
       type: "unsubscribe",
       channel,

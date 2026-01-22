@@ -120,12 +120,16 @@ async function downloadAllData() {
 
   if (results.successful.length > 0) {
     console.log(`\n✅ Successfully downloaded:`);
-    results.successful.forEach((symbol) => console.log(`   - ${symbol}`));
+    for (const symbol of results.successful) {
+      console.log(`   - ${symbol}`);
+    }
   }
 
   if (results.failed.length > 0) {
     console.log(`\n❌ Failed to download:`);
-    results.failed.forEach(({ symbol, error }) => console.log(`   - ${symbol}: ${error}`));
+    for (const { symbol, error } of results.failed) {
+      console.log(`   - ${symbol}: ${error}`);
+    }
   }
 
   // Save final report

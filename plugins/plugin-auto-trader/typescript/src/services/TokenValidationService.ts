@@ -149,7 +149,8 @@ export class TokenValidationService extends Service {
     const enabledSetting = this.runtime.getSetting("RUGCHECK_ENABLED");
     this.enabled = enabledSetting !== "false";
 
-    this.birdeyeApiKey = this.runtime.getSetting("BIRDEYE_API_KEY") || null;
+    const birdeyeKeySetting = this.runtime.getSetting("BIRDEYE_API_KEY");
+    this.birdeyeApiKey = typeof birdeyeKeySetting === "string" ? birdeyeKeySetting : null;
 
     const minLiquidity = this.runtime.getSetting("MIN_LIQUIDITY_USD");
     if (minLiquidity) {
@@ -171,11 +172,9 @@ export class TokenValidationService extends Service {
       this.requirements.maxBuySellRatio = Number(maxBuySellRatio);
     }
 
-    logger.info(`[${TokenValidationService.serviceType}] Initialized:`, {
-      enabled: this.enabled,
-      hasBirdeyeKey: !!this.birdeyeApiKey,
-      requirements: this.requirements,
-    });
+    logger.info(
+      `[${TokenValidationService.serviceType}] Initialized: enabled=${this.enabled} hasBirdeyeKey=${!!this.birdeyeApiKey}`,
+    );
   }
 
   public async stop(): Promise<void> {
@@ -188,7 +187,9 @@ export class TokenValidationService extends Service {
    */
   public setRequirements(requirements: Partial<TradingRequirements>): void {
     this.requirements = { ...this.requirements, ...requirements };
-    logger.info(`[${TokenValidationService.serviceType}] Requirements updated:`, this.requirements);
+    logger.info(
+      `[${TokenValidationService.serviceType}] Requirements updated: minLiquidity=$${this.requirements.minLiquidityUsd}`,
+    );
   }
 
   /**
@@ -229,10 +230,9 @@ export class TokenValidationService extends Service {
         );
         return this.createUnknownReport(tokenAddress);
       }
-      logger.error(`[${TokenValidationService.serviceType}] RugCheck API error:`, {
-        status: response.status,
-        tokenAddress,
-      });
+      logger.error(
+        `[${TokenValidationService.serviceType}] RugCheck API error: status=${response.status} token=${tokenAddress}`,
+      );
       return null;
     }
 
@@ -312,13 +312,9 @@ export class TokenValidationService extends Service {
       cacheExpiry: Date.now() + CACHE_DURATION_MS,
     };
 
-    logger.info(`[${TokenValidationService.serviceType}] RugCheck report received:`, {
-      token: report.tokenInfo.symbol,
-      riskLevel: report.riskLevel,
-      score: report.score,
-      liquidity: report.liquidity.totalLiquidityUsd,
-      topHoldersPercent: report.holders.topHoldersPercent,
-    });
+    logger.info(
+      `[${TokenValidationService.serviceType}] RugCheck report: ${report.tokenInfo.symbol} risk=${report.riskLevel} score=${report.score} liquidity=$${report.liquidity.totalLiquidityUsd.toFixed(0)}`,
+    );
 
     return report;
   }
@@ -441,12 +437,9 @@ export class TokenValidationService extends Service {
       expiry: Date.now() + 5 * 60 * 1000,
     });
 
-    logger.info(`[${TokenValidationService.serviceType}] Trading activity for ${tokenAddress}:`, {
-      volume24h: activity.volume24h,
-      buys: activity.buyCount24h,
-      sells: activity.sellCount24h,
-      uniqueTraders: activity.uniqueTraders24h,
-    });
+    logger.info(
+      `[${TokenValidationService.serviceType}] Trading activity for ${tokenAddress}: vol=$${activity.volume24h.toFixed(0)} buys=${activity.buyCount24h} sells=${activity.sellCount24h} traders=${activity.uniqueTraders24h}`,
+    );
 
     return activity;
   }
@@ -632,11 +625,9 @@ export class TokenValidationService extends Service {
 
     const isValid = rejectionReasons.length === 0;
 
-    logger.info(`[${TokenValidationService.serviceType}] Validation result for ${tokenAddress}:`, {
-      isValid,
-      rejectionReasons,
-      warningsCount: warnings.length,
-    });
+    logger.info(
+      `[${TokenValidationService.serviceType}] Validation result for ${tokenAddress}: valid=${isValid} rejections=${rejectionReasons.length} warnings=${warnings.length}`,
+    );
 
     return {
       isValid,
@@ -678,9 +669,8 @@ export class TokenValidationService extends Service {
       });
       report.cacheExpiry = Date.now() + CACHE_DURATION_MS * 4; // Extend cache for flagged tokens
     }
-    logger.warn(`[${TokenValidationService.serviceType}] Token flagged:`, {
-      tokenAddress,
-      reason,
-    });
+    logger.warn(
+      `[${TokenValidationService.serviceType}] Token flagged: ${tokenAddress} reason=${reason}`,
+    );
   }
 }

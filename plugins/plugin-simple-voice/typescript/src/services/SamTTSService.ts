@@ -11,10 +11,6 @@ export class SamTTSService extends Service {
   static serviceType = SAMServiceType.SAM_TTS;
   protected declare runtime: IAgentRuntime;
 
-  constructor(runtime: IAgentRuntime) {
-    super(runtime);
-  }
-
   static async start(runtime: IAgentRuntime): Promise<SamTTSService> {
     logger.info("[SAM-TTS] Service initialized");
     return new SamTTSService(runtime);

@@ -14,7 +14,6 @@ import {
 } from "./src/config.js";
 import { taskContextProvider } from "./src/providers/task-context.js";
 import { AgentOrchestratorService } from "./src/services/agent-orchestrator-service.js";
-import type { AgentOrchestratorPluginOptions } from "./src/types.js";
 
 export { configureAgentOrchestratorPlugin, getConfiguredAgentOrchestratorOptions };
 

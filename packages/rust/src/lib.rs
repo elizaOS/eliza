@@ -141,10 +141,9 @@ pub use sync_runtime::{
     UnifiedService,
 };
 
-// Re-export generated action/provider/evaluator docs from centralized specs
+// Re-export generated action/evaluator docs from centralized specs
 pub use generated::action_docs::{
-    ALL_ACTION_DOCS_JSON, ALL_EVALUATOR_DOCS_JSON, ALL_PROVIDER_DOCS_JSON, CORE_ACTION_DOCS_JSON,
-    CORE_EVALUATOR_DOCS_JSON, CORE_PROVIDER_DOCS_JSON,
+    ALL_ACTION_DOCS_JSON, ALL_EVALUATOR_DOCS_JSON, CORE_ACTION_DOCS_JSON, CORE_EVALUATOR_DOCS_JSON,
 };
 
 /// Initialize the library (sets up panic hooks for WASM, logging, etc.)
