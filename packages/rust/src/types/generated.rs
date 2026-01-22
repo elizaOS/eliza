@@ -7,6 +7,6 @@
 pub mod eliza {
     #[allow(missing_docs)]
     pub mod v1 {
-        include!("generated/eliza.v1.rs");
+        include!(concat!(env!("OUT_DIR"), "/eliza.v1.rs"));
     }
 }

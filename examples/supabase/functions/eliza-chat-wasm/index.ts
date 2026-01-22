@@ -11,6 +11,14 @@
  *   wasm-pack build --target web --out-dir ../functions/eliza-chat-wasm/wasm
  */
 
+// Deno runtime types for Supabase Edge Functions
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+  serve(handler: (req: Request) => Promise<Response> | Response): void;
+};
+
 // Import elizaOS packages via npm specifiers (Deno-compatible)
 import {
   AgentRuntime,

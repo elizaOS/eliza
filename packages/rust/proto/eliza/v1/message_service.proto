@@ -1,0 +1,48 @@
+// message_service.proto - Message processing types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "eliza/v1/memory.proto";
+import "eliza/v1/primitives.proto";
+import "eliza/v1/state.proto";
+
+// Model type configuration for shouldRespond evaluation.
+enum ShouldRespondModelType {
+  SHOULD_RESPOND_MODEL_TYPE_UNSPECIFIED = 0;
+  SHOULD_RESPOND_MODEL_TYPE_SMALL = 1;
+  SHOULD_RESPOND_MODEL_TYPE_LARGE = 2;
+}
+
+// Configuration options for message processing.
+message MessageProcessingOptions {
+  optional int32 max_retries = 1;
+  optional int64 timeout_duration = 2;
+  optional bool use_multi_step = 3;
+  optional int32 max_multi_step_iterations = 4;
+  optional ShouldRespondModelType should_respond_model = 5;
+}
+
+// Processing mode used by message handler.
+enum MessageProcessingMode {
+  MESSAGE_PROCESSING_MODE_UNSPECIFIED = 0;
+  MESSAGE_PROCESSING_MODE_SIMPLE = 1;
+  MESSAGE_PROCESSING_MODE_ACTIONS = 2;
+  MESSAGE_PROCESSING_MODE_NONE = 3;
+}
+
+// Result of message processing.
+message MessageProcessingResult {
+  bool did_respond = 1;
+  optional Content response_content = 2;
+  repeated Memory response_messages = 3;
+  State state = 4;
+  optional MessageProcessingMode mode = 5;
+}
+
+// Response decision from the shouldRespond logic.
+message ResponseDecision {
+  bool should_respond = 1;
+  bool skip_evaluation = 2;
+  string reason = 3;
+}

@@ -13,7 +13,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-// @ts-expect-error - Twilio types not available in workspace
 import bodyParser from "body-parser";
 import express, { type Express } from "express";
 import NodeCache from "node-cache";
