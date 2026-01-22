@@ -50,10 +50,6 @@ function modeLabel(mode: DemoMode): string {
 export default function App() {
   const [config, setConfig] = useLocalStorageState<DemoConfig>("eliza-vrm-demo:config", DEFAULT_DEMO_CONFIG);
   const effectiveMode = getEffectiveMode(config);
-  const latestConfigRef = useRef<DemoConfig>(config);
-  useEffect(() => {
-    latestConfigRef.current = config;
-  }, [config]);
 
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [input, setInput] = useState("");
@@ -61,6 +57,7 @@ export default function App() {
   const [mouthOpen, setMouthOpen] = useState(0);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsVersion, setSettingsVersion] = useState(0);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [agentSpeaking, setAgentSpeaking] = useState(false);
 
@@ -198,14 +195,15 @@ export default function App() {
     [setConfig]
   );
 
+  // Sync settings to runtime when settings modal closes
+  useEffect(() => {
+    if (settingsVersion === 0) return; // Skip initial render
+    void getOrCreateRuntime(config).catch(() => {});
+  }, [settingsVersion, config]);
+
   const handleCloseSettings = useCallback(() => {
     setSettingsOpen(false);
-    // Apply settings to the live runtime after state/localStorage has settled.
-    setTimeout(() => {
-      void getOrCreateRuntime(latestConfigRef.current).catch(() => {
-        // ignore
-      });
-    }, 0);
+    setSettingsVersion((v) => v + 1);
   }, []);
 
   const speakText = useCallback(
