@@ -7,9 +7,11 @@ import {
   validateUuid,
   type Content,
   type IAgentRuntime,
+  type Memory,
   type Plugin,
   type UUID,
   ElizaOS,
+  EventType,
 } from '@elizaos/core';
 import type { AgentServer } from '../index.js';
 import type {
@@ -677,17 +679,19 @@ export class MessageBusService extends Service {
               'Agent generated response, sending to bus'
             );
 
-            await this.runtime.createMemory(
-              {
-                id: responseContent.responseId as UUID | undefined,
-                entityId: this.runtime.agentId,
-                content: responseContent,
-                roomId: agentRoomId,
-                worldId: agentWorldId,
-                agentId: this.runtime.agentId,
-              },
-              'messages'
-            );
+            // Create the message memory object for event emission
+            const memoryData: Memory = {
+              id: responseContent.responseId as UUID | undefined || createUniqueUuid(this.runtime, `response-${Date.now()}`),
+              entityId: this.runtime.agentId,
+              roomId: agentRoomId,
+              worldId: agentWorldId,
+              content: responseContent,
+              agentId: this.runtime.agentId,
+              createdAt: Date.now(),
+            };
+
+            // Create memory in database and get its ID
+            const memoryId = await this.runtime.createMemory(memoryData, 'messages');
 
             // Send response to central bus
             await this.sendAgentResponseToBus(
@@ -695,7 +699,8 @@ export class MessageBusService extends Service {
               agentWorldId,
               responseContent,
               uniqueMemoryId,
-              message
+              message,
+              { ...memoryData, id: memoryId }
             );
           },
           onError: async (error: Error) => {
@@ -833,7 +838,8 @@ export class MessageBusService extends Service {
     agentWorldId: UUID,
     content: Content,
     inReplyToAgentMemoryId?: UUID,
-    originalMessage?: MessageServiceMessage
+    originalMessage?: MessageServiceMessage,
+    messageMemory?: Memory
   ) {
     try {
       const room = await this.runtime.getRoom(agentRoomId);
@@ -931,6 +937,16 @@ export class MessageBusService extends Service {
           },
           'Error sending response to central server'
         );
+        return;
+      }
+
+      // Emit MESSAGE_SENT event after successfully sending to central server
+      if (messageMemory) {
+        await this.runtime.emitEvent(EventType.MESSAGE_SENT, {
+          runtime: this.runtime,
+          source: 'central-bus',
+          message: messageMemory,
+        });
       }
     } catch (error) {
       logger.error(
