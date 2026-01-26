@@ -82,8 +82,6 @@ describe('Template Path Resolution', () => {
     it('should find plugin-starter template in monorepo fallback paths', async () => {
       const targetDir = join(testTmpDir, 'plugin-test');
 
-      // This test verifies that the template can be found using the fallback paths
-      // added in the fix (paths 6 and 7 in copy-template.ts)
       try {
         await copyTemplate('plugin', targetDir);
 
@@ -92,12 +90,10 @@ describe('Template Path Resolution', () => {
         expect(existsSync(join(targetDir, 'package.json'))).toBe(true);
         expect(existsSync(join(targetDir, 'src'))).toBe(true);
       } catch (error) {
-        // If template not found, verify the error message includes all searched paths
         if (error instanceof Error) {
           expect(error.message).toContain('Template');
           expect(error.message).toContain('not found');
           expect(error.message).toContain('Searched in:');
-          // Should include monorepo fallback paths (6 and 7)
           expect(error.message).toContain('packages');
         } else {
           throw error;
@@ -110,11 +106,9 @@ describe('Template Path Resolution', () => {
 
       try {
         await copyTemplate('plugin-quick', targetDir);
-
         expect(existsSync(targetDir)).toBe(true);
         expect(existsSync(join(targetDir, 'package.json'))).toBe(true);
       } catch (error) {
-        // Verify error includes search paths if template not found
         if (error instanceof Error) {
           expect(error.message).toContain('plugin-quick-starter');
           expect(error.message).toContain('not found');
@@ -217,6 +211,40 @@ describe('Template Path Resolution', () => {
       }
     });
 
+    it('should always set @elizaos dependencies to "latest" for npm installability', async () => {
+      const targetDir = join(testTmpDir, 'project-version-test');
+
+      try {
+        await copyTemplate('project', targetDir);
+
+        const packageJsonPath = join(targetDir, 'package.json');
+        if (existsSync(packageJsonPath)) {
+          const packageJson = JSON.parse(await Bun.file(packageJsonPath).text());
+
+          // All @elizaos dependencies should be "latest"
+          if (packageJson.dependencies) {
+            for (const [name, version] of Object.entries(packageJson.dependencies)) {
+              if (name.startsWith('@elizaos/')) {
+                expect(version).toBe('latest');
+              }
+            }
+          }
+
+          if (packageJson.devDependencies) {
+            for (const [name, version] of Object.entries(packageJson.devDependencies)) {
+              if (name.startsWith('@elizaos/')) {
+                expect(version).toBe('latest');
+              }
+            }
+          }
+        }
+      } catch (error) {
+        if (error instanceof Error && !error.message.includes('not found')) {
+          throw error;
+        }
+      }
+    });
+
     it('should remove private field from package.json', async () => {
       const targetDir = join(testTmpDir, 'project-private-test');
 
@@ -240,24 +268,14 @@ describe('Template Path Resolution', () => {
     it('should list all searched paths in error message when template not found', async () => {
       const targetDir = join(testTmpDir, 'nonexistent-template-test');
 
-      // Create a mock scenario where we know the template won't be found
-      // by using a non-existent template type (but we need to bypass TypeScript)
       try {
         await copyTemplate('plugin' as any, targetDir);
       } catch (error) {
         if (error instanceof Error) {
-          // Error message should list all paths that were checked
           expect(error.message).toContain('Searched in:');
-
-          // Should include the new monorepo fallback paths
-          // These are the paths added in the fix (lines 129-132 in copy-template.ts)
-          const errorMessage = error.message;
-
-          // Count the number of paths listed (should be 7 total)
-          const pathCount = (errorMessage.match(/\//g) || []).length;
+          const pathCount = (error.message.match(/\//g) || []).length;
           expect(pathCount).toBeGreaterThan(0);
         } else {
-          // If we got here, template was found which is also acceptable
           expect(existsSync(targetDir)).toBe(true);
         }
       }

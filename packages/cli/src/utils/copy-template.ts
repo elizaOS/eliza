@@ -5,21 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
 import { isQuietMode } from './spinner-utils';
 
-// Define __dirname for ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Copy a directory recursively
- */
-/**
- * Asynchronously copies the contents of a directory from a source path to a destination path, excluding specified files and directories.
- * If the destination directory does not exist, it will be created.
- *
- * @param {string} src - The path to the source directory.
- * @param {string} dest - The path to the destination directory.
- * @param {string[]} [exclude=[]] - An array of file and directory names to exclude from the copy operation.
- * @returns {Promise<void>} A Promise that resolves when the copy operation is complete.
+ * Copies a directory recursively from source to destination, excluding specified files and directories.
  */
 export async function copyDir(src: string, dest: string, exclude: string[] = []) {
   // Ensure paths are properly resolved as absolute paths
@@ -116,19 +105,11 @@ export async function copyTemplate(
 
   // Try multiple locations to find templates, handling different runtime environments
   const possibleTemplatePaths = [
-    // 1. Direct path from source directory (for tests and development)
     path.resolve(__dirname, '../../templates', packageName),
-    // 2. Production: when running from dist, templates are at the same level
     path.resolve(__dirname, '../templates', packageName),
-    // 3. Alternative production path (if utils is nested in dist)
-    path.resolve(__dirname, '../../templates', packageName),
-    // 4. Development: templates at package root
     path.resolve(__dirname, '../../../templates', packageName),
-    // 5. Fallback for various directory structures
     path.resolve(__dirname, 'templates', packageName),
-    // 6. Fallback to monorepo packages (when templates haven't been copied yet)
     path.resolve(__dirname, '../../../..', packageName),
-    // 7. Alternative monorepo package path (from utils to packages directory)
     path.resolve(__dirname, '../../../../packages', packageName),
   ];
 
@@ -175,49 +156,28 @@ export async function copyTemplate(
       );
     }
 
-    // Normalize workspace references only; do not pin versions to CLI version
-    const normalizeElizaDep = (currentVersion: string): string => {
-      // Convert workspace:* or workspace:^ to public registry 'latest'
-      if (typeof currentVersion === 'string' && currentVersion.startsWith('workspace:')) {
-        return 'latest';
+    // Set @elizaos dependencies to 'latest' for npm installability
+    // For local development testing, use `elizaos create --local` which links packages after creation
+    const normalizeElizaDeps = (deps: Record<string, string>, isDevDeps = false): void => {
+      for (const depName of Object.keys(deps)) {
+        if (depName.startsWith('@elizaos/') && deps[depName] !== 'latest') {
+          if (!isQuietMode()) {
+            logger.info(
+              { src: 'cli', util: 'copy-template', depName, version: 'latest' },
+              isDevDeps ? 'Setting dev dependency version' : 'Setting dependency version'
+            );
+          }
+          deps[depName] = 'latest';
+        }
       }
-      return currentVersion;
     };
 
     if (packageJson.dependencies) {
-      for (const depName of Object.keys(packageJson.dependencies)) {
-        if (depName.startsWith('@elizaos/')) {
-          const before = packageJson.dependencies[depName];
-          const after = normalizeElizaDep(before);
-          if (after !== before) {
-            if (!isQuietMode()) {
-              logger.info(
-                { src: 'cli', util: 'copy-template', depName, version: after },
-                'Setting dependency version'
-              );
-            }
-            packageJson.dependencies[depName] = after;
-          }
-        }
-      }
+      normalizeElizaDeps(packageJson.dependencies);
     }
 
     if (packageJson.devDependencies) {
-      for (const depName of Object.keys(packageJson.devDependencies)) {
-        if (depName.startsWith('@elizaos/')) {
-          const before = packageJson.devDependencies[depName];
-          const after = normalizeElizaDep(before);
-          if (after !== before) {
-            if (!isQuietMode()) {
-              logger.info(
-                { src: 'cli', util: 'copy-template', depName, version: after },
-                'Setting dev dependency version'
-              );
-            }
-            packageJson.devDependencies[depName] = after;
-          }
-        }
-      }
+      normalizeElizaDeps(packageJson.devDependencies, true);
     }
 
     // Update the package name to use the actual name provided by the user
