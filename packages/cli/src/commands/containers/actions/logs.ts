@@ -11,13 +11,13 @@ export async function getContainerLogsAction(
   options: ContainerLogsOptions
 ) {
   try {
-    const apiKey = options.apiKey || process.env.ELIZA_SERVER_AUTH_TOKEN;
+    const apiKey = options.apiKey || process.env.ELIZAOS_API_KEY;
     const apiUrl = options.apiUrl || 'https://www.elizacloud.ai';
 
     if (!apiKey) {
       logger.error(
         { src: 'cli', command: 'containers-logs' },
-        'API key is required. Use --api-key or set ELIZA_SERVER_AUTH_TOKEN environment variable'
+        'API key is required. Use --api-key or set ELIZAOS_API_KEY environment variable'
       );
       process.exit(1);
     }

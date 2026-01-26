@@ -27,11 +27,12 @@ describe('Streaming Context', () => {
   describe('runWithStreamingContext', () => {
     it('should make context available within the callback', async () => {
       const chunks: string[] = [];
+      const testMessageId = 'test-test-test-test-test' as any;
       const context: StreamingContext = {
-        onStreamChunk: async (chunk) => {
+        onStreamChunk: async (chunk): Promise<void> => {
           chunks.push(chunk);
         },
-        messageId: 'test-message-id' as any,
+        messageId: testMessageId,
       };
 
       let capturedContext: StreamingContext | undefined;
@@ -41,7 +42,7 @@ describe('Streaming Context', () => {
       });
 
       expect(capturedContext).toBeDefined();
-      expect(capturedContext?.messageId).toBe('test-message-id');
+      expect(capturedContext?.messageId).toBe(testMessageId);
       expect(capturedContext?.onStreamChunk).toBe(context.onStreamChunk);
     });
 
@@ -97,13 +98,17 @@ describe('Streaming Context', () => {
       const chunks2: string[] = [];
 
       const context1: StreamingContext = {
-        onStreamChunk: async (chunk) => chunks1.push(chunk),
-        messageId: 'msg1' as any,
+        onStreamChunk: async (chunk): Promise<void> => {
+          chunks1.push(chunk);
+        },
+        messageId: 'msg1-msg1-msg1-msg1-msg1' as any,
       };
 
       const context2: StreamingContext = {
-        onStreamChunk: async (chunk) => chunks2.push(chunk),
-        messageId: 'msg2' as any,
+        onStreamChunk: async (chunk): Promise<void> => {
+          chunks2.push(chunk);
+        },
+        messageId: 'msg2-msg2-msg2-msg2-msg2' as any,
       };
 
       // Run two contexts in parallel
@@ -123,8 +128,8 @@ describe('Streaming Context', () => {
       ]);
 
       // Each context should have its own isolated data
-      expect(result1).toBe('msg1');
-      expect(result2).toBe('msg2');
+      expect(result1).toBe('msg1-msg1-msg1-msg1-msg1');
+      expect(result2).toBe('msg2-msg2-msg2-msg2-msg2');
       expect(chunks1).toEqual(['from-context-1']);
       expect(chunks2).toEqual(['from-context-2']);
     });
@@ -134,24 +139,28 @@ describe('Streaming Context', () => {
       const innerChunks: string[] = [];
 
       const outerContext: StreamingContext = {
-        onStreamChunk: async (chunk) => outerChunks.push(chunk),
-        messageId: 'outer' as any,
+        onStreamChunk: async (chunk): Promise<void> => {
+          outerChunks.push(chunk);
+        },
+        messageId: 'outer-outer-outer-outer-outer' as any,
       };
 
       const innerContext: StreamingContext = {
-        onStreamChunk: async (chunk) => innerChunks.push(chunk),
-        messageId: 'inner' as any,
+        onStreamChunk: async (chunk): Promise<void> => {
+          innerChunks.push(chunk);
+        },
+        messageId: 'inner-inner-inner-inner-inner' as any,
       };
 
       runWithStreamingContext(outerContext, () => {
-        expect(getStreamingContext()?.messageId).toBe('outer');
+        expect(getStreamingContext()?.messageId).toBe('outer-outer-outer-outer-outer');
 
         runWithStreamingContext(innerContext, () => {
-          expect(getStreamingContext()?.messageId).toBe('inner');
+          expect(getStreamingContext()?.messageId).toBe('inner-inner-inner-inner-inner');
         });
 
         // Back to outer context
-        expect(getStreamingContext()?.messageId).toBe('outer');
+        expect(getStreamingContext()?.messageId).toBe('outer-outer-outer-outer-outer');
       });
     });
   });

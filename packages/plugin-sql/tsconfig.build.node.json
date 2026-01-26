@@ -13,6 +13,7 @@
     "src/pg/**/*.ts",
     "src/neon/**/*.ts",
     "src/schema/**/*.ts",
+    "src/stores/**/*.ts",
     "src/base.ts",
     "src/rls.ts",
     "src/types.ts",

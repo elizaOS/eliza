@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import type { Metadata } from '@elizaos/core';
 import { agentTable } from './agent';
 
 /**
@@ -23,6 +24,7 @@ export const entityTable = pgTable(
       .default(sql`'{}'::text[]`)
       .notNull(),
     metadata: jsonb('metadata')
+      .$type<Metadata>()
       .default(sql`'{}'::jsonb`)
       .notNull(),
   },

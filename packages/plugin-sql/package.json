@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "1.7.1-alpha.14",
+  "version": "1.7.3-alpha.1",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -64,7 +64,7 @@
   "devDependencies": {
     "@elizaos/config": "workspace:*",
     "@eslint/js": "^9.28.0",
-    "@types/node": "^24.10.1",
+    "@types/node": "^25.0.9",
     "@types/pg": "^8.15.6",
     "eslint": "^9.28.0",
     "prettier": "^3.7.4",

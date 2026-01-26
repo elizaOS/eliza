@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/client",
-  "version": "1.7.1-alpha.14",
+  "version": "1.7.3-alpha.1",
   "description": "Web client interface for ElizaOS agents",
   "repository": {
     "type": "git",
@@ -94,7 +94,7 @@
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.13",
     "evt": "^2.5.9",
-    "lucide-react": "^0.556.0",
+    "lucide-react": "^0.562.0",
     "react": "^19.1.0",
     "react-aiwriter": "^1.0.0",
     "react-dom": "^19.1.0",
@@ -108,7 +108,7 @@
     "semver": "^7.7.1",
     "shiki": "^3.6.0",
     "socket.io-client": "^4.8.1",
-    "streamdown": "^1.4.0",
+    "streamdown": "^2.0.1",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "use-stick-to-bottom": "^1.1.1",
@@ -131,7 +131,7 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/react-hooks": "^8.0.1",
     "@types/cypress": "^1.1.6",
-    "@types/node": "^24.10.1",
+    "@types/node": "^25.0.9",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.0.4",
     "@types/semver": "^7.5.8",
@@ -149,7 +149,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.19",
     "evp_bytestokey": "^1.0.3",
-    "globals": "^16.4.0",
+    "globals": "^17.0.0",
     "jsdom": "^27.0.0",
     "postcss": "^8.5.3",
     "prettier": "^3.7.4",
@@ -159,7 +159,7 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.48.1",
     "vite": "^7.2.6",
-    "vite-tsconfig-paths": "^5.1.4",
+    "vite-tsconfig-paths": "^6.0.4",
     "wait-on": "^9.0.1"
   }
 }

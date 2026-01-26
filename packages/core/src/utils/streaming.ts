@@ -11,10 +11,12 @@
  * Implementations can use these or create their own extractors.
  */
 
-import type { IStreamExtractor } from '../types/streaming';
+import type { IStreamExtractor, IStreamingRetryState } from '../types/streaming';
+import type { StreamingContext } from '../streaming-context';
+import type { UUID } from '../types';
 
-// Re-export interface for convenience
-export type { IStreamExtractor } from '../types/streaming';
+// Re-export interfaces for convenience
+export type { IStreamExtractor, IStreamingRetryState } from '../types/streaming';
 
 // ============================================================================
 // StreamError - Standardized error handling for streaming
@@ -50,6 +52,105 @@ export class StreamError extends Error {
 }
 
 // ============================================================================
+// Streaming Retry State - For intelligent retry handling
+// ============================================================================
+
+/**
+ * Creates a streaming retry state from an extractor.
+ * Use this to track streaming state for intelligent retry logic.
+ *
+ * @example
+ * ```ts
+ * const extractor = new ResponseStreamExtractor();
+ * const retryState = createStreamingRetryState(extractor);
+ *
+ * // After streaming fails...
+ * if (retryState.isComplete()) {
+ *   // Text extraction finished - use streamedText, no retry needed
+ *   return retryState.getStreamedText();
+ * } else {
+ *   // Text was cut - retry with continuation prompt
+ *   retryState.reset();
+ *   // ... retry with: "You started: '${streamedText}', continue..."
+ * }
+ * ```
+ */
+export function createStreamingRetryState(
+  extractor: IStreamExtractor
+): IStreamingRetryState & { _appendText: (text: string) => void } {
+  let streamedText = '';
+
+  return {
+    getStreamedText: () => {
+      // Include any buffered content that wasn't returned yet (SAFE_MARGIN)
+      // Accumulate flushed content into streamedText to ensure consistent results
+      const buffered = extractor.flush?.() ?? '';
+      if (buffered) {
+        streamedText += buffered;
+      }
+      return streamedText;
+    },
+    isComplete: () => extractor.done,
+    reset: () => {
+      extractor.reset();
+      streamedText = '';
+    },
+    // Internal: called by streaming callback to accumulate text
+    _appendText: (text: string) => {
+      streamedText += text;
+    },
+  };
+}
+
+/**
+ * Creates a complete streaming context with retry state management.
+ * Use this to avoid duplicating streaming context creation logic.
+ *
+ * @param extractor - The stream extractor to use (e.g., ResponseStreamExtractor, XmlTagExtractor)
+ * @param onStreamChunk - Callback to send chunks to the client
+ * @param messageId - Optional message ID for the streaming context
+ * @returns A complete StreamingContext with retry state methods
+ *
+ * @example
+ * ```ts
+ * const ctx = createStreamingContext(
+ *   new ResponseStreamExtractor(),
+ *   async (chunk) => res.write(chunk),
+ *   responseId
+ * );
+ *
+ * await runWithStreamingContext(ctx, () => runtime.useModel(...));
+ *
+ * // After streaming, check retry state
+ * if (ctx.isComplete()) {
+ *   return ctx.getStreamedText();
+ * }
+ * ```
+ */
+export function createStreamingContext(
+  extractor: IStreamExtractor,
+  onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>,
+  messageId?: UUID
+): StreamingContext {
+  const retryState = createStreamingRetryState(extractor);
+
+  return {
+    onStreamChunk: async (chunk: string, msgId?: UUID) => {
+      if (extractor.done) return;
+      const textToStream = extractor.push(chunk);
+      if (textToStream) {
+        retryState._appendText(textToStream);
+        await onStreamChunk(textToStream, msgId);
+      }
+    },
+    messageId,
+    reset: retryState.reset,
+    getStreamedText: retryState.getStreamedText,
+    isComplete: retryState.isComplete,
+  };
+}
+
+// ============================================================================
 // Shared constants and utilities
 // ============================================================================
 
@@ -61,9 +162,6 @@ const MAX_BUFFER = 100 * 1024;
 
 /** Maximum chunk size to prevent DoS (1MB) */
 const MAX_CHUNK_SIZE = 1024 * 1024;
-
-/** Pre-compiled regex for actions tag extraction */
-const ACTIONS_REGEX = /<actions>([\s\S]*?)<\/actions>/;
 
 /**
  * Result of attempting to extract content from an XML tag.
@@ -245,6 +343,18 @@ export class XmlTagExtractor implements IStreamExtractor {
     this.insideTag = false;
     this.finished = false;
   }
+
+  /**
+   * Flush remaining buffered content when stream ends unexpectedly.
+   */
+  flush(): string {
+    if (this.insideTag && this.buffer.length > 0) {
+      const content = this.buffer;
+      this.buffer = '';
+      return content;
+    }
+    return '';
+  }
 }
 
 // ============================================================================
@@ -286,6 +396,19 @@ export class ResponseStreamExtractor implements IStreamExtractor {
     this.currentTag = null;
     this.finished = false;
     this.responseStrategy = 'pending';
+  }
+
+  /**
+   * Flush remaining buffered content when stream ends unexpectedly.
+   * Returns content that was held back due to SAFE_MARGIN.
+   */
+  flush(): string {
+    if (this.insideTag && this.buffer.length > 0) {
+      const content = this.buffer;
+      this.buffer = '';
+      return content;
+    }
+    return '';
   }
 
   push(chunk: string): string {
@@ -353,13 +476,20 @@ export class ResponseStreamExtractor implements IStreamExtractor {
     return '';
   }
 
-  /** Detect response strategy from <actions> tag using pre-compiled regex */
+  /** Detect response strategy from <actions> tag using indexOf (ReDoS-safe) */
   private detectResponseStrategy(): void {
-    const match = this.buffer.match(ACTIONS_REGEX);
-    if (match) {
-      const actions = this.parseActions(match[1]);
-      this.responseStrategy = this.isDirectReply(actions) ? 'direct' : 'delegated';
-    }
+    const openTag = '<actions>';
+    const closeTag = '</actions>';
+    const startIdx = this.buffer.indexOf(openTag);
+    if (startIdx === -1) return;
+
+    const contentStart = startIdx + openTag.length;
+    const endIdx = this.buffer.indexOf(closeTag, contentStart);
+    if (endIdx === -1) return;
+
+    const actionsContent = this.buffer.substring(contentStart, endIdx);
+    const actions = this.parseActions(actionsContent);
+    this.responseStrategy = this.isDirectReply(actions) ? 'direct' : 'delegated';
   }
 
   /** Parse comma-separated actions */
@@ -414,6 +544,19 @@ export class ActionStreamFilter implements IStreamExtractor {
     this.contentType = null;
     this.insideTextTag = false;
     this.finished = false;
+  }
+
+  /**
+   * Flush remaining buffered content when stream ends unexpectedly.
+   */
+  flush(): string {
+    // Only flush if inside XML text tag (text content is buffered)
+    if (this.contentType === 'xml' && this.insideTextTag && this.buffer.length > 0) {
+      const content = this.buffer;
+      this.buffer = '';
+      return content;
+    }
+    return '';
   }
 
   push(chunk: string): string {

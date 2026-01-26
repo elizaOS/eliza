@@ -1,4 +1,4 @@
-import { type UUID, logger, Agent, Entity, Memory, Component } from '@elizaos/core';
+import { type UUID, logger, type Agent, type Entity, type Memory } from '@elizaos/core';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { BaseDrizzleAdapter } from '../base';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
@@ -20,6 +20,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     super(agentId);
     this.manager = manager;
     this.db = manager.getDatabase();
+    this.initStores();
   }
 
   getManager(): PostgresConnectionManager {
@@ -132,70 +133,5 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
    */
   async getConnection() {
     return this.manager.getConnection();
-  }
-
-  async createAgent(agent: Agent): Promise<boolean> {
-    return super.createAgent(agent);
-  }
-
-  getAgent(agentId: UUID): Promise<Agent | null> {
-    return super.getAgent(agentId);
-  }
-
-  updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
-    return super.updateAgent(agentId, agent);
-  }
-
-  deleteAgent(agentId: UUID): Promise<boolean> {
-    return super.deleteAgent(agentId);
-  }
-
-  createEntities(entities: Entity[]): Promise<boolean> {
-    return super.createEntities(entities);
-  }
-
-  getEntitiesByIds(entityIds: UUID[]): Promise<Entity[]> {
-    return super.getEntitiesByIds(entityIds).then((result) => result || []);
-  }
-
-  updateEntity(entity: Entity): Promise<void> {
-    return super.updateEntity(entity);
-  }
-
-  createMemory(memory: Memory, tableName: string): Promise<UUID> {
-    return super.createMemory(memory, tableName);
-  }
-
-  getMemoryById(memoryId: UUID): Promise<Memory | null> {
-    return super.getMemoryById(memoryId);
-  }
-
-  updateMemory(memory: Partial<Memory> & { id: UUID }): Promise<boolean> {
-    return super.updateMemory(memory);
-  }
-
-  deleteMemory(memoryId: UUID): Promise<void> {
-    return super.deleteMemory(memoryId);
-  }
-
-  createComponent(component: Component): Promise<boolean> {
-    return super.createComponent(component);
-  }
-
-  getComponent(
-    entityId: UUID,
-    type: string,
-    worldId?: UUID,
-    sourceEntityId?: UUID
-  ): Promise<Component | null> {
-    return super.getComponent(entityId, type, worldId, sourceEntityId);
-  }
-
-  updateComponent(component: Component): Promise<void> {
-    return super.updateComponent(component);
-  }
-
-  deleteComponent(componentId: UUID): Promise<void> {
-    return super.deleteComponent(componentId);
   }
 }

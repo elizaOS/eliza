@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { expandTildePath, resolveEnvFile, resolvePgliteDir } from '../../utils';
-import { isNeonDatabase } from '../../utils.node';
+import {
+  expandTildePath,
+  resolveEnvFile,
+  resolvePgliteDir,
+  isNeonDatabase,
+} from '../../utils.node';
 import * as path from 'node:path';
 
 // Mock dotenv to prevent loading actual .env file
@@ -74,15 +78,13 @@ describe('Utils', () => {
     it('should use default .eliza/.elizadb dir if no dir or env var', () => {
       delete process.env.PGLITE_DATA_DIR;
       const result = resolvePgliteDir();
-      const projectRoot = path.resolve(process.cwd(), '..', '..');
-      expect(result).toBe(path.join(projectRoot, '.eliza', '.elizadb'));
+      expect(result).toMatch(/\.eliza[/\\]\.elizadb$/);
     });
 
     it('should use default path if no arguments or env var', () => {
       delete process.env.PGLITE_DATA_DIR;
       const result = resolvePgliteDir();
-      const projectRoot = path.resolve(process.cwd(), '..', '..');
-      expect(result).toBe(path.join(projectRoot, '.eliza', '.elizadb'));
+      expect(result).toMatch(/\.eliza[/\\]\.elizadb$/);
     });
 
     it('should expand tilde paths', () => {

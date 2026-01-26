@@ -424,7 +424,7 @@ async function checkQuotaAndCredits(apiClient: CloudApiClient): Promise<Deployme
   const quotaResponse = await apiClient.getQuota();
 
   if (quotaResponse.success && quotaResponse.data) {
-    const { quota, credits, pricing } = quotaResponse.data;
+    const { quota, credits, pricing, billing } = quotaResponse.data;
 
     logger.info(
       {
@@ -437,6 +437,46 @@ async function checkQuotaAndCredits(apiClient: CloudApiClient): Promise<Deployme
       'Container quota'
     );
     logger.info({ src: 'cli', command: 'deploy-ecs', balance: credits.balance }, 'Credit balance');
+
+    // Display daily billing information if available
+    if (billing) {
+      logger.info(
+        {
+          src: 'cli',
+          command: 'deploy-ecs',
+          billingModel: billing.model,
+          dailyCost: `$${billing.dailyCostPerContainer.toFixed(2)}/day`,
+          monthlyCost: `$${billing.monthlyEquivalent.toFixed(2)}/month`,
+        },
+        'Container billing'
+      );
+
+      if (billing.runningContainers > 0) {
+        logger.info(
+          {
+            src: 'cli',
+            command: 'deploy-ecs',
+            runningContainers: billing.runningContainers,
+            currentDailyBurn: `$${billing.currentDailyBurn.toFixed(2)}/day`,
+            daysOfRunway: billing.daysOfRunway ?? 'unlimited',
+          },
+          'Current usage'
+        );
+      }
+
+      // Warn if low on runway
+      if (billing.daysOfRunway !== null && billing.daysOfRunway < 7) {
+        logger.warn(
+          {
+            src: 'cli',
+            command: 'deploy-ecs',
+            daysRemaining: billing.daysOfRunway,
+            recommendedTopUp: `$${(billing.dailyCostPerContainer * 30).toFixed(2)}`,
+          },
+          'Low credit runway - consider adding funds'
+        );
+      }
+    }
 
     if (quota.remaining === 0) {
       logger.warn(
@@ -465,6 +505,21 @@ async function checkQuotaAndCredits(apiClient: CloudApiClient): Promise<Deployme
       { src: 'cli', command: 'deploy-ecs', estimatedCost: totalCost },
       'Estimated deployment cost'
     );
+
+    // Show ongoing costs after deployment
+    if (billing) {
+      const newDailyBurn = billing.currentDailyBurn + billing.dailyCostPerContainer;
+      const newDaysOfRunway = Math.floor((credits.balance - totalCost) / newDailyBurn);
+      logger.info(
+        {
+          src: 'cli',
+          command: 'deploy-ecs',
+          ongoingDailyCost: `$${newDailyBurn.toFixed(2)}/day`,
+          projectedRunway: `${newDaysOfRunway} days`,
+        },
+        'Post-deployment costs'
+      );
+    }
   }
 
   return { success: true };
