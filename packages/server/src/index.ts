@@ -21,7 +21,7 @@ import path, { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api/index';
-import { apiKeyAuthMiddleware } from './middleware/index';
+import { apiKeyAuthMiddleware, createEntityAuthMiddleware } from './middleware/index';
 import {
   messageBusConnectorPlugin,
   setGlobalElizaOS,
@@ -773,6 +773,9 @@ export class AgentServer {
 
       // Active if ELIZA_SERVER_AUTH_TOKEN is configured
       this.app.use('/api', apiKeyAuthMiddleware);
+
+      // Entity authentication middleware (JWT or header based on ENABLE_DATA_ISOLATION)
+      this.app.use('/api', createEntityAuthMiddleware());
 
       if (serverAuthToken) {
         logger.info({ src: 'http' }, 'Authentication middleware configured - API Key: ENABLED');

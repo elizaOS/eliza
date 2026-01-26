@@ -11,7 +11,7 @@ import {
   type UUID,
   ElizaOS,
 } from '@elizaos/core';
-import type { AgentServer } from '../index.js';
+import type { AgentServer } from '../index';
 import type {
   ServerAgentUpdatePayload,
   MessageDeletedPayload,
@@ -19,6 +19,7 @@ import type {
   MessageServiceStructure,
 } from '../types/server';
 import internalMessageBus from './message-bus';
+import { getInternalServiceSecret } from '../middleware/entity-auth';
 
 /**
  * Global ElizaOS instance for MessageBusService
@@ -1183,6 +1184,8 @@ export class MessageBusService extends Service {
   private getAuthHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      // Internal service secret to bypass JWT auth (same process only)
+      'X-Internal-Service-Secret': getInternalServiceSecret(),
     };
 
     // Add authentication header if ELIZA_SERVER_AUTH_TOKEN is configured

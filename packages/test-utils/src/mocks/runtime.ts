@@ -288,6 +288,13 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     // Room Participant Checks
     isRoomParticipant: mock().mockResolvedValue(false),
 
+    // User Management (for JWT authentication)
+    getUserByEmail: mock().mockResolvedValue(null),
+    getUserByUsername: mock().mockResolvedValue(null),
+    getUserById: mock().mockResolvedValue(null),
+    createUser: mock().mockResolvedValue(null),
+    updateUserLastLogin: mock().mockResolvedValue(undefined),
+
     // Apply overrides
     ...overrides,
   };
