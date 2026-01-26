@@ -181,6 +181,9 @@ export async function getElizaDirectories(targetProjectDir?: string) {
  * @param dirPath Path to the directory
  */
 async function ensureDir(dirPath: string) {
+  if (!dirPath || dirPath.trim() === '') {
+    throw new Error('Directory path cannot be empty');
+  }
   if (!existsSync(dirPath)) {
     await fs.mkdir(dirPath, { recursive: true });
     logger.debug({ src: 'cli', util: 'get-config', dirPath }, 'Created directory');
