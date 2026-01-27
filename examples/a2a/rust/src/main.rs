@@ -40,6 +40,10 @@ use tracing::info;
 
 const CHARACTER_JSON: &str = r#"{
     "name": "Eliza",
+    "settings": {
+        "model": "gpt-4o",
+        "embeddingModel": "text-embedding-3-small"
+    },
     "bio": "A helpful AI assistant powered by elizaOS, available via A2A protocol.",
     "system": "You are a helpful, friendly AI assistant participating in agent-to-agent communication. Be concise, informative, and cooperative."
 }"#;
@@ -92,13 +96,20 @@ fn storage_err(e: impl std::fmt::Display) -> anyhow::Error {
 
 fn insert_table_name(mut value: serde_json::Value, table_name: &str) -> serde_json::Value {
     if let Some(obj) = value.as_object_mut() {
-        obj.insert("__tableName".to_string(), serde_json::Value::String(table_name.to_string()));
+        // Store table_name in metadata.type for compatibility with plugin-inmemorydb
+        let metadata = obj.entry("metadata".to_string())
+            .or_insert_with(|| serde_json::json!({}));
+        if let Some(meta_obj) = metadata.as_object_mut() {
+            meta_obj.insert("type".to_string(), serde_json::Value::String(table_name.to_string()));
+        }
     }
     value
 }
 
 fn get_table_name(value: &serde_json::Value) -> Option<&str> {
-    value.get("__tableName").and_then(|v| v.as_str())
+    value.get("metadata")
+        .and_then(|m| m.get("type"))
+        .and_then(|v| v.as_str())
 }
 
 #[async_trait::async_trait]
@@ -211,8 +222,54 @@ impl DatabaseAdapter for InMemoryDbAdapter {
         Ok(out)
     }
 
-    async fn search_memories(&self, _params: SearchMemoriesParams) -> Result<Vec<Memory>> {
-        Ok(Vec::new())
+    async fn search_memories(&self, params: SearchMemoriesParams) -> Result<Vec<Memory>> {
+        // Basic fallback search: filter by table_name and other params, return most recent
+        // Note: This is a simplified implementation without vector similarity search.
+        // For production, integrate with a proper vector index.
+        let mut values = self
+            .storage
+            .get_all(IM_COLLECTIONS::MEMORIES)
+            .await
+            .map_err(storage_err)?;
+
+        // Filter by table_name
+        values.retain(|v| get_table_name(v) == Some(params.table_name.as_str()));
+
+        // Apply filters
+        if let Some(room_id) = &params.room_id {
+            values.retain(|v| v.get("roomId").and_then(|x| x.as_str()) == Some(&room_id.to_string()));
+        }
+        if let Some(world_id) = &params.world_id {
+            values.retain(|v| v.get("worldId").and_then(|x| x.as_str()) == Some(&world_id.to_string()));
+        }
+        if let Some(entity_id) = &params.entity_id {
+            values.retain(|v| v.get("entityId").and_then(|x| x.as_str()) == Some(&entity_id.to_string()));
+        }
+        if params.unique == Some(true) {
+            values.retain(|v| v.get("unique").and_then(|x| x.as_bool()) == Some(true));
+        }
+
+        // Sort by creation time (most recent first)
+        values.sort_by(|a, b| {
+            let a_time = a.get("createdAt").and_then(|v| v.as_i64()).unwrap_or(0);
+            let b_time = b.get("createdAt").and_then(|v| v.as_i64()).unwrap_or(0);
+            b_time.cmp(&a_time)
+        });
+
+        // Limit results
+        let count = params.count.unwrap_or(10) as usize;
+        let values = values.into_iter().take(count);
+
+        let mut out: Vec<Memory> = Vec::new();
+        for mut v in values {
+            if let Some(obj) = v.as_object_mut() {
+                obj.remove("__tableName"); // Clean up legacy field if present
+            }
+            if let Ok(mem) = serde_json::from_value(v) {
+                out.push(mem);
+            }
+        }
+        Ok(out)
     }
 
     async fn create_memory(&self, memory: &Memory, table_name: &str) -> Result<UUID> {
@@ -235,7 +292,14 @@ impl DatabaseAdapter for InMemoryDbAdapter {
         let Some(id) = &memory.id else {
             return Ok(false);
         };
-        let value = insert_table_name(serde_json::to_value(memory)?, "messages");
+        // Preserve the existing table name from metadata, default to "messages" if not present
+        let table_name = memory.metadata
+            .as_ref()
+            .and_then(|m| match m {
+                elizaos::MemoryMetadata::Custom(v) => v.get("type").and_then(|t| t.as_str()),
+            })
+            .unwrap_or("messages");
+        let value = insert_table_name(serde_json::to_value(memory)?, table_name);
         self.storage
             .set(IM_COLLECTIONS::MEMORIES, &id.to_string(), value)
             .await
@@ -490,11 +554,32 @@ impl AppState {
 
                 let adapter: Arc<dyn DatabaseAdapter> = Arc::new(InMemoryDbAdapter::default());
 
-                let plugins = if has_openai_key() {
-                    vec![create_openai_elizaos_plugin()?]
-                } else {
-                    vec![]
-                };
+                let mut plugins: Vec<elizaos::Plugin> = Vec::new();
+                
+                if has_openai_key() {
+                   if let Ok(plugin) = create_openai_elizaos_plugin() {
+                       // The OpenAI plugin might return struct or impl Plugin. 
+                       // We assume it's compatible or we need Arc<dyn Plugin>?
+                       // NOTE: AgentRuntime likely takes concrete struct if possible, or we need to be careful.
+                       // create_openai_elizaos_plugin returns elizaos::Plugin struct usually.
+                       plugins.push(plugin);
+                   }
+                }
+
+                // Register local bootstrap actions
+                let mut bootstrap = elizaos::Plugin::new("local-bootstrap", "Core actions");
+                bootstrap = bootstrap
+                    .with_action(std::sync::Arc::new(local_bootstrap::SimpleAction {
+                        name: "REPLY".to_string(),
+                        description: "Reply to the user".to_string(),
+                        similes: vec!["RESPOND".to_string(), "ANSWER".to_string()],
+                    }))
+                    .with_action(std::sync::Arc::new(local_bootstrap::SimpleAction {
+                        name: "NONE".to_string(),
+                        description: "No action".to_string(),
+                        similes: vec!["IGNORE".to_string(), "NO_ACTION".to_string()],
+                    }));
+                plugins.push(bootstrap);
 
                 let runtime = AgentRuntime::new(RuntimeOptions {
                     character: Some(character),
@@ -522,7 +607,13 @@ impl AppState {
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("");
                                     let user_text = extract_user_text(prompt);
-                                    Ok(eliza.generate_response(user_text))
+                                    let response = eliza.generate_response(user_text);
+                                    // Wrap in JSON as the runtime typically expects structured output for chat
+                                    let json_response = serde_json::json!({
+                                        "text": response, // The actual message content
+                                        "action": "NONE"  // Explicitly telling runtime: "Just output the text, take no other action"
+                                    });
+                                    Ok(json_response.to_string())
                                 })
                             }),
                         )
@@ -540,7 +631,13 @@ impl AppState {
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("");
                                     let user_text = extract_user_text(prompt);
-                                    Ok(eliza.generate_response(user_text))
+                                    let response = eliza.generate_response(user_text);
+                                    // Wrap in JSON as the runtime typically expects structured output for chat
+                                    let json_response = serde_json::json!({
+                                        "text": response, // The actual message content
+                                        "action": "NONE"  // Explicitly telling runtime: "Just output the text, take no other action"
+                                    });
+                                    Ok(json_response.to_string())
                                 })
                             }),
                         )
@@ -548,7 +645,7 @@ impl AppState {
                 }
 
                 info!("✅ elizaOS runtime initialized");
-                Ok(Arc::new(runtime))
+                Ok(runtime)
             })
             .await
             .cloned()
@@ -728,10 +825,20 @@ async fn chat(
         }
     };
 
-    let response_text = result
+    let raw_text = result
         .response_content
         .and_then(|c| c.text)
         .unwrap_or_else(|| "No response generated.".to_string());
+
+    // Clean up response: if it's a JSON string (from local model handler), extract the text.
+    let response_text = if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw_text) {
+        v.get("text")
+            .and_then(|t| t.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or(raw_text)
+    } else {
+        raw_text
+    };
 
     Json(ChatResponse {
         response: response_text,
@@ -819,13 +926,13 @@ async fn chat_stream(
 
     let (tx, rx) = mpsc::channel::<StreamMsg>(32);
     let tx_cb = tx.clone();
-    let callback: HandlerCallback = Arc::new(move |content: Content| {
+    let callback: HandlerCallback = Box::new(move |content: Content| {
         let tx = tx_cb.clone();
         async move {
             if let Some(text) = content.text {
                 let _ = tx.send(StreamMsg::Text(text)).await;
             }
-            Ok::<Vec<Memory>, anyhow::Error>(Vec::new())
+            Vec::new()
         }
         .boxed()
     });
@@ -875,12 +982,68 @@ async fn chat_stream(
 }
 
 // ============================================================================
+// Local Bootstrap Implementation
+// ============================================================================
+
+mod local_bootstrap {
+    use async_trait::async_trait;
+    use elizaos::types::components::{ActionHandler, ActionDefinition, ActionResult, HandlerOptions};
+    use elizaos::types::{Memory, State};
+    use anyhow::Result;
+
+    pub struct SimpleAction {
+        pub name: String,
+        pub description: String,
+        pub similes: Vec<String>,
+    }
+
+    #[async_trait]
+    impl ActionHandler for SimpleAction {
+        fn definition(&self) -> ActionDefinition {
+            ActionDefinition {
+                name: self.name.clone(),
+                description: self.description.clone(),
+                similes: Some(self.similes.clone()),
+                ..Default::default()
+            }
+        }
+
+        async fn validate(&self, _message: &Memory, _state: Option<&State>) -> bool {
+            true
+        }
+
+        async fn handle(
+            &self,
+            _message: &Memory,
+            _state: Option<&State>,
+            options: Option<&HandlerOptions>,
+        ) -> Result<Option<ActionResult>, anyhow::Error> {
+            let text = options
+                .and_then(|o| o.parameters.as_ref())
+                .and_then(|p| p.get("text"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("No content generated");
+
+            Ok(Some(ActionResult::success_with_text(text)))
+        }
+    }
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let _ = dotenvy::dotenv();
+
+    // Default OpenAI models to valid ones to prevent gpt-5 usage
+    if std::env::var("OPENAI_LARGE_MODEL").is_err() {
+        std::env::set_var("OPENAI_LARGE_MODEL", "gpt-4o");
+    }
+    if std::env::var("OPENAI_SMALL_MODEL").is_err() {
+        std::env::set_var("OPENAI_SMALL_MODEL", "gpt-4o-mini");
+    }
 
     tracing_subscriber::fmt()
         .with_env_filter(
