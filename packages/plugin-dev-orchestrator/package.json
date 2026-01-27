@@ -1,0 +1,92 @@
+{
+  "name": "@elizaos/plugin-dev-orchestrator",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "description": "Chat-driven development orchestration with AI coding agents, git safety, and build automation for elizaOS",
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "puppeteer": "^23.11.1",
+    "zod": "^3.24.1"
+  },
+  "peerDependencies": {
+    "@elizaos/plugin-git": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@elizaos/plugin-git": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "@types/node": "^20.0.0",
+    "vitest": "^2.1.8"
+  },
+  "scripts": {
+    "build": "tsup --format esm --dts",
+    "dev": "tsup --format esm --dts --watch",
+    "clean": "rm -rf dist",
+    "lint": "prettier --write ./src",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git",
+    "directory": "packages/plugin-dev-orchestrator"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "DEV_ORCHESTRATOR_MODE": {
+        "type": "string",
+        "description": "Concurrency mode: 'trust' (default) or 'isolated'",
+        "required": false,
+        "default": "trust"
+      },
+      "DEV_ORCHESTRATOR_BUILD_CMD": {
+        "type": "string",
+        "description": "Override auto-detected build command",
+        "required": false
+      },
+      "DEV_ORCHESTRATOR_RESTART_DEBOUNCE_MS": {
+        "type": "number",
+        "description": "Debounce time in milliseconds for PM2 restarts",
+        "required": false,
+        "default": 10000
+      },
+      "DEV_ORCHESTRATOR_COMMAND_ALLOWLIST": {
+        "type": "string",
+        "description": "JSON array of safe commands that don't require approval",
+        "required": false
+      },
+      "DEV_ORCHESTRATOR_AUTHORIZED_USERS": {
+        "type": "string",
+        "description": "JSON array of authorized user IDs or usernames",
+        "required": false
+      },
+      "DEV_ORCHESTRATOR_AUTHORIZED_ROLES": {
+        "type": "string",
+        "description": "JSON array of authorized role names",
+        "required": false,
+        "default": "[\"admin\", \"developer\"]"
+      },
+      "DEV_ORCHESTRATOR_ADMIN_USERS": {
+        "type": "string",
+        "description": "JSON array of admin user IDs or usernames (can approve/reject tasks)",
+        "required": false
+      },
+      "DEV_ORCHESTRATOR_REQUIRE_APPROVAL": {
+        "type": "string",
+        "description": "Require approval for all actions (true/false)",
+        "required": false,
+        "default": "false"
+      }
+    }
+  }
+}
+

@@ -1,0 +1,191 @@
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { logger } from '@elizaos/core';
+import type {
+    IVersionControl,
+    SnapshotInfo,
+    DiffInfo,
+} from '../interfaces/IVersionControl';
+
+const execAsync = promisify(exec);
+
+export class GitService implements IVersionControl {
+    async createSnapshot(repoPath: string, taskId: string): Promise<SnapshotInfo> {
+        const timestamp = Date.now();
+        const originalBranch = await this.getCurrentBranch(repoPath);
+        const isDirty = !(await this.isClean(repoPath));
+
+        let stashId: string | undefined;
+
+        if (isDirty) {
+            const stashMessage = `elizaos-task-${taskId}-${timestamp}`;
+            try {
+                await execAsync(`git stash push -m "${stashMessage}"`, { cwd: repoPath });
+                // Get the stash ID (stash@{0})
+                const { stdout } = await execAsync('git stash list', { cwd: repoPath });
+                const stashLine = stdout.split('\n').find(line => line.includes(stashMessage));
+                if (stashLine) {
+                    stashId = stashLine.split(':')[0].trim();
+                }
+                logger.info(`[GitService] Created stash: ${stashId}`);
+            } catch (error) {
+                logger.error('[GitService] Failed to create stash:', error);
+                throw new Error(`Failed to stash changes: ${error}`);
+            }
+        }
+
+        return {
+            stashId,
+            originalBranch,
+            isDirty,
+            timestamp,
+        };
+    }
+
+    async restoreSnapshot(repoPath: string, snapshot: SnapshotInfo): Promise<void> {
+        try {
+            // First, checkout the original branch
+            await this.checkoutBranch(repoPath, snapshot.originalBranch);
+
+            // Then restore the stash if it exists
+            if (snapshot.stashId) {
+                try {
+                    await execAsync(`git stash pop ${snapshot.stashId}`, { cwd: repoPath });
+                    logger.info(`[GitService] Restored stash: ${snapshot.stashId}`);
+                } catch (error) {
+                    // If pop fails, try apply instead
+                    logger.warn('[GitService] Stash pop failed, trying apply:', error);
+                    await execAsync(`git stash apply ${snapshot.stashId}`, { cwd: repoPath });
+                }
+            }
+        } catch (error) {
+            logger.error('[GitService] Failed to restore snapshot:', error);
+            throw new Error(`Failed to restore snapshot: ${error}`);
+        }
+    }
+
+    async getDiff(repoPath: string): Promise<DiffInfo> {
+        try {
+            const { stdout: diff } = await execAsync('git diff HEAD', { cwd: repoPath });
+            const { stdout: filesOutput } = await execAsync('git diff --name-only HEAD', { cwd: repoPath });
+            const files = filesOutput.trim().split('\n').filter(f => f);
+
+            // Count additions and deletions
+            const { stdout: statOutput } = await execAsync('git diff --stat HEAD', { cwd: repoPath });
+            const statMatch = statOutput.match(/(\d+) insertion.*?(\d+) deletion/);
+            const additions = statMatch ? parseInt(statMatch[1]) : 0;
+            const deletions = statMatch ? parseInt(statMatch[2]) : 0;
+
+            return {
+                files,
+                additions,
+                deletions,
+                diff,
+            };
+        } catch (error) {
+            logger.error('[GitService] Failed to get diff:', error);
+            return {
+                files: [],
+                additions: 0,
+                deletions: 0,
+                diff: '',
+            };
+        }
+    }
+
+    async commit(repoPath: string, message: string): Promise<void> {
+        try {
+            await execAsync('git add .', { cwd: repoPath });
+            await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: repoPath });
+            logger.info(`[GitService] Committed changes: ${message}`);
+        } catch (error) {
+            logger.error('[GitService] Failed to commit:', error);
+            throw new Error(`Failed to commit: ${error}`);
+        }
+    }
+
+    async getCurrentBranch(repoPath: string): Promise<string> {
+        try {
+            const { stdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath });
+            return stdout.trim();
+        } catch (error) {
+            logger.error('[GitService] Failed to get current branch:', error);
+            throw new Error(`Failed to get current branch: ${error}`);
+        }
+    }
+
+    async createBranch(repoPath: string, branchName: string): Promise<void> {
+        try {
+            await execAsync(`git checkout -b ${branchName}`, { cwd: repoPath });
+            logger.info(`[GitService] Created and checked out branch: ${branchName}`);
+        } catch (error) {
+            logger.error('[GitService] Failed to create branch:', error);
+            throw new Error(`Failed to create branch: ${error}`);
+        }
+    }
+
+    async checkoutBranch(repoPath: string, branchName: string): Promise<void> {
+        try {
+            await execAsync(`git checkout ${branchName}`, { cwd: repoPath });
+            logger.info(`[GitService] Checked out branch: ${branchName}`);
+        } catch (error) {
+            logger.error('[GitService] Failed to checkout branch:', error);
+            throw new Error(`Failed to checkout branch: ${error}`);
+        }
+    }
+
+    async mergeBranch(repoPath: string, branchName: string): Promise<{ success: boolean; conflicts?: string[] }> {
+        try {
+            await execAsync(`git merge ${branchName} --no-ff`, { cwd: repoPath });
+            logger.info(`[GitService] Merged branch: ${branchName}`);
+            return { success: true };
+        } catch (error) {
+            // Check if it's a merge conflict
+            try {
+                const { stdout } = await execAsync('git diff --name-only --diff-filter=U', { cwd: repoPath });
+                const conflicts = stdout.trim().split('\n').filter(f => f);
+                if (conflicts.length > 0) {
+                    logger.warn(`[GitService] Merge conflicts detected: ${conflicts.join(', ')}`);
+                    // Abort the merge
+                    await execAsync('git merge --abort', { cwd: repoPath });
+                    return { success: false, conflicts };
+                }
+            } catch (diffError) {
+                logger.error('[GitService] Failed to check for conflicts:', diffError);
+            }
+            logger.error('[GitService] Failed to merge branch:', error);
+            throw new Error(`Failed to merge branch: ${error}`);
+        }
+    }
+
+    async deleteBranch(repoPath: string, branchName: string): Promise<void> {
+        try {
+            await execAsync(`git branch -d ${branchName}`, { cwd: repoPath });
+            logger.info(`[GitService] Deleted branch: ${branchName}`);
+        } catch (error) {
+            logger.error('[GitService] Failed to delete branch:', error);
+            throw new Error(`Failed to delete branch: ${error}`);
+        }
+    }
+
+    async getRepoRoot(path: string): Promise<string> {
+        try {
+            const { stdout } = await execAsync('git rev-parse --show-toplevel', { cwd: path });
+            return stdout.trim();
+        } catch (error) {
+            logger.error('[GitService] Failed to get repo root:', error);
+            throw new Error(`Failed to get repo root: ${error}`);
+        }
+    }
+
+    async isClean(repoPath: string): Promise<boolean> {
+        try {
+            const { stdout } = await execAsync('git status --porcelain', { cwd: repoPath });
+            return stdout.trim() === '';
+        } catch (error) {
+            logger.error('[GitService] Failed to check if clean:', error);
+            return false;
+        }
+    }
+}
+
