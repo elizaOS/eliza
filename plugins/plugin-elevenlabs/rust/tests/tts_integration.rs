@@ -40,7 +40,7 @@ mod plugin_structure {
     fn should_have_default_options() {
         let plugin = ElevenLabsPlugin::new();
         assert_eq!(plugin.tts_options.voice_id, "EXAVITQu4vr4xnSDxMaL");
-        assert_eq!(plugin.tts_options.model_id, "eleven_monolingual_v1");
+        assert_eq!(plugin.tts_options.model_id, "eleven_multilingual_v2");
         assert_eq!(plugin.stt_options.model_id, "scribe_v1");
     }
 }

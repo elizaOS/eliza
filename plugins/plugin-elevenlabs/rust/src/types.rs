@@ -75,7 +75,7 @@ impl Default for ElevenLabsTTSOptions {
         Self {
             api_key: String::new(),
             voice_id: "EXAVITQu4vr4xnSDxMaL".to_string(),
-            model_id: "eleven_monolingual_v1".to_string(),
+            model_id: "eleven_multilingual_v2".to_string(),
             output_format: "mp3_44100_128".to_string(),
             optimize_streaming_latency: 0,
             voice_settings: VoiceSettings::default(),
@@ -184,8 +184,6 @@ pub const STT_MODELS: &[&str] = &["scribe_v1"];
 
 /// Supported TTS models.
 pub const TTS_MODELS: &[&str] = &[
-    "eleven_monolingual_v1",
-    "eleven_multilingual_v1",
     "eleven_multilingual_v2",
     "eleven_turbo_v2",
     "eleven_turbo_v2_5",

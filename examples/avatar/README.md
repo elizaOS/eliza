@@ -6,7 +6,7 @@ This is a simple, browser-only demo that renders a VRM avatar and chats with an 
 
 From repo root:
 
-- `cd examples/vrm`
+- `cd examples/avatar`
 - `bun install`
 - `bun run dev`
 
@@ -24,4 +24,3 @@ From repo root:
 
 - Conversations are persisted locally via `@elizaos/plugin-localdb`.
 - API keys are stored in browser `localStorage` for this demo.
-
