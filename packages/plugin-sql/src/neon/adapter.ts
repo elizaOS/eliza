@@ -24,6 +24,7 @@ export class NeonDatabaseAdapter extends BaseDrizzleAdapter {
     // Cast to any because NeonDatabase and NodePgDatabase have compatible APIs
     // but TypeScript doesn't know that
     this.db = manager.getDatabase() as any;
+    this.initStores();
   }
 
   getManager(): NeonConnectionManager {

@@ -367,9 +367,8 @@ export function getApiCredentials(): {
   apiKey: string;
   apiUrl: string;
 } | null {
-  const apiKey = process.env.ELIZAOS_API_KEY || process.env.ELIZAOS_CLOUD_API_KEY;
-  const apiUrl =
-    process.env.ELIZAOS_API_URL || process.env.ELIZA_CLOUD_API_URL || 'https://www.elizacloud.ai';
+  const apiKey = process.env.ELIZAOS_API_KEY;
+  const apiUrl = process.env.ELIZAOS_API_URL || 'https://www.elizacloud.ai';
 
   if (!apiKey) {
     return null;
