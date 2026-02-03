@@ -1126,12 +1126,12 @@ export async function storeElizaCloudKey(key: string, envFilePath: string): Prom
       content = await fs.readFile(envFilePath, 'utf8');
     }
 
-    // Remove existing ELIZAOS_CLOUD_API_KEY line if present
-    const lines = content.split('\n').filter((line) => !line.startsWith('ELIZAOS_CLOUD_API_KEY='));
-    lines.push(`ELIZAOS_CLOUD_API_KEY=${key}`);
+    // Remove existing ELIZAOS_API_KEY line if present
+    const lines = content.split('\n').filter((line) => !line.startsWith('ELIZAOS_API_KEY='));
+    lines.push(`ELIZAOS_API_KEY=${key}`);
 
     await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
-    process.env.ELIZAOS_CLOUD_API_KEY = key;
+    process.env.ELIZAOS_API_KEY = key;
 
     logger.success(
       { src: 'cli', util: 'get-config' },
@@ -1157,10 +1157,7 @@ export async function storeElizaCloudKey(key: string, envFilePath: string): Prom
  */
 export async function hasExistingElizaCloudKey(envFilePath: string): Promise<boolean> {
   // Check environment variable first
-  if (
-    process.env.ELIZAOS_CLOUD_API_KEY &&
-    isValidElizaCloudKey(process.env.ELIZAOS_CLOUD_API_KEY)
-  ) {
+  if (process.env.ELIZAOS_API_KEY && isValidElizaCloudKey(process.env.ELIZAOS_API_KEY)) {
     return true;
   }
 
@@ -1168,7 +1165,7 @@ export async function hasExistingElizaCloudKey(envFilePath: string): Promise<boo
   if (existsSync(envFilePath)) {
     try {
       const content = await fs.readFile(envFilePath, 'utf8');
-      const match = content.match(/^ELIZAOS_CLOUD_API_KEY=(.+)$/m);
+      const match = content.match(/^ELIZAOS_API_KEY=(.+)$/m);
       if (match && match[1] && isValidElizaCloudKey(match[1].trim())) {
         return true;
       }
@@ -1188,7 +1185,7 @@ export async function hasExistingElizaCloudKey(envFilePath: string): Promise<boo
 export async function promptAndStoreElizaCloudKey(envFilePath: string): Promise<string | null> {
   // Check if user already has a valid API key
   if (await hasExistingElizaCloudKey(envFilePath)) {
-    const existingKey = process.env.ELIZAOS_CLOUD_API_KEY;
+    const existingKey = process.env.ELIZAOS_API_KEY;
     clack.log.success('Found existing elizaOS Cloud API key');
     return existingKey || null;
   }
@@ -1240,14 +1237,14 @@ export async function promptAndStoreElizaCloudKey(envFilePath: string): Promise<
     if (existsSync(envFilePath)) {
       content = await fs.readFile(envFilePath, 'utf8');
     }
-    if (!content.includes('ELIZAOS_CLOUD_API_KEY=')) {
+    if (!content.includes('ELIZAOS_API_KEY=')) {
       if (content && !content.endsWith('\n')) {
         content += '\n';
       }
       content += '\n# elizaOS Cloud Configuration\n';
       content += '# Get your API key by running: elizaos login\n';
       content += '# Or visit: https://www.elizacloud.ai/dashboard/api-keys\n';
-      content += 'ELIZAOS_CLOUD_API_KEY=\n';
+      content += 'ELIZAOS_API_KEY=\n';
       await fs.writeFile(envFilePath, content, 'utf8');
     }
     clack.outro('Run "elizaos login" to complete authentication');
@@ -1264,19 +1261,20 @@ export async function promptAndStoreElizaCloudKey(envFilePath: string): Promise<
         cloudUrl,
         browser: true,
         timeout: '300',
+        envFilePath, // Pass the target .env path so it writes to the correct location
       });
 
       // After login, the API key should be in the .env file
       // Re-read it to return it
       if (existsSync(envFilePath)) {
         const content = await fs.readFile(envFilePath, 'utf8');
-        const match = content.match(/^ELIZAOS_CLOUD_API_KEY=(.+)$/m);
+        const match = content.match(/^ELIZAOS_API_KEY=(.+)$/m);
         if (match && match[1]) {
           return match[1].trim();
         }
       }
 
-      return process.env.ELIZAOS_CLOUD_API_KEY || null;
+      return process.env.ELIZAOS_API_KEY || null;
     } catch (error) {
       clack.log.error('Login failed. You can try again later with "elizaos login"');
       return null;

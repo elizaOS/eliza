@@ -10,6 +10,7 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
+import type { Content, Metadata } from '@elizaos/core';
 import { agentTable } from './agent';
 import { embeddingTable } from './embedding';
 import { entityTable } from './entity';
@@ -31,7 +32,7 @@ export const memoryTable = pgTable(
     createdAt: timestamp('created_at')
       .default(sql`now()`)
       .notNull(),
-    content: jsonb('content').notNull(),
+    content: jsonb('content').$type<Content>().notNull(),
     entityId: uuid('entity_id').references(() => entityTable.id, {
       onDelete: 'cascade',
     }),
@@ -48,7 +49,7 @@ export const memoryTable = pgTable(
     //   onDelete: 'set null',
     // }),
     unique: boolean('unique').default(true).notNull(),
-    metadata: jsonb('metadata').default({}).notNull(),
+    metadata: jsonb('metadata').$type<Metadata>().default({}).notNull(),
   },
   (table) => [
     index('idx_memories_type_room').on(table.type, table.roomId),

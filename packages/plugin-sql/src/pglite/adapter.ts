@@ -36,6 +36,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     this.manager = manager;
     // drizzle-orm/pglite expects PGlite instance directly
     this.db = drizzle(this.manager.getConnection());
+    this.initStores();
   }
 
   /**

@@ -17,7 +17,7 @@ describe('elizaOS Cloud Configuration', () => {
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-cloud-test-'));
     testEnvPath = join(testTmpDir, '.env');
     // Clear any existing env vars
-    delete process.env.ELIZAOS_CLOUD_API_KEY;
+    delete process.env.ELIZAOS_API_KEY;
   });
 
   afterEach(async () => {
@@ -29,7 +29,7 @@ describe('elizaOS Cloud Configuration', () => {
       }
     }
     // Clean up env vars
-    delete process.env.ELIZAOS_CLOUD_API_KEY;
+    delete process.env.ELIZAOS_API_KEY;
   });
 
   describe('isValidElizaCloudKey', () => {
@@ -65,7 +65,7 @@ describe('elizaOS Cloud Configuration', () => {
 
       expect(existsSync(testEnvPath)).toBe(true);
       const content = await readFile(testEnvPath, 'utf8');
-      expect(content).toContain('ELIZAOS_CLOUD_API_KEY=eliza_test123456789');
+      expect(content).toContain('ELIZAOS_API_KEY=eliza_test123456789');
     });
 
     it('should append API key to existing .env file', async () => {
@@ -75,23 +75,23 @@ describe('elizaOS Cloud Configuration', () => {
 
       const content = await readFile(testEnvPath, 'utf8');
       expect(content).toContain('EXISTING_VAR=value');
-      expect(content).toContain('ELIZAOS_CLOUD_API_KEY=eliza_test123456789');
+      expect(content).toContain('ELIZAOS_API_KEY=eliza_test123456789');
     });
 
     it('should replace existing API key in .env file', async () => {
-      await writeFile(testEnvPath, 'ELIZAOS_CLOUD_API_KEY=eliza_old_key\n');
+      await writeFile(testEnvPath, 'ELIZAOS_API_KEY=eliza_old_key\n');
 
       await storeElizaCloudKey('eliza_new_key12345', testEnvPath);
 
       const content = await readFile(testEnvPath, 'utf8');
       expect(content).not.toContain('eliza_old_key');
-      expect(content).toContain('ELIZAOS_CLOUD_API_KEY=eliza_new_key12345');
+      expect(content).toContain('ELIZAOS_API_KEY=eliza_new_key12345');
     });
 
-    it('should set process.env.ELIZAOS_CLOUD_API_KEY', async () => {
+    it('should set process.env.ELIZAOS_API_KEY', async () => {
       await storeElizaCloudKey('eliza_test123456789', testEnvPath);
 
-      expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe('eliza_test123456789');
+      expect(process.env.ELIZAOS_API_KEY).toBe('eliza_test123456789');
     });
 
     it('should not store empty key', async () => {
@@ -103,7 +103,7 @@ describe('elizaOS Cloud Configuration', () => {
 
   describe('hasExistingElizaCloudKey', () => {
     it('should return true if valid key exists in process.env', async () => {
-      process.env.ELIZAOS_CLOUD_API_KEY = 'eliza_valid_key123';
+      process.env.ELIZAOS_API_KEY = 'eliza_valid_key123';
 
       const result = await hasExistingElizaCloudKey(testEnvPath);
 
@@ -111,7 +111,7 @@ describe('elizaOS Cloud Configuration', () => {
     });
 
     it('should return true if valid key exists in .env file', async () => {
-      await writeFile(testEnvPath, 'ELIZAOS_CLOUD_API_KEY=eliza_from_file123\n');
+      await writeFile(testEnvPath, 'ELIZAOS_API_KEY=eliza_from_file123\n');
 
       const result = await hasExistingElizaCloudKey(testEnvPath);
 
@@ -119,7 +119,7 @@ describe('elizaOS Cloud Configuration', () => {
     });
 
     it('should return false if key is invalid format', async () => {
-      process.env.ELIZAOS_CLOUD_API_KEY = 'invalid_key';
+      process.env.ELIZAOS_API_KEY = 'invalid_key';
 
       const result = await hasExistingElizaCloudKey(testEnvPath);
 
@@ -133,7 +133,7 @@ describe('elizaOS Cloud Configuration', () => {
     });
 
     it('should return false if .env file has empty key', async () => {
-      await writeFile(testEnvPath, 'ELIZAOS_CLOUD_API_KEY=\n');
+      await writeFile(testEnvPath, 'ELIZAOS_API_KEY=\n');
 
       const result = await hasExistingElizaCloudKey(testEnvPath);
 

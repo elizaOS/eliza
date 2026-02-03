@@ -10,6 +10,7 @@ import {
   initBrowserEnvironment,
   loadEnvFile,
   findEnvFile,
+  resetEnvironmentCache,
 } from '../../utils/environment';
 
 describe('Environment Abstraction', () => {
@@ -62,6 +63,9 @@ describe('Environment Abstraction', () => {
       // Save original values
       const originalProcess = (global as any).process;
       const originalWindow = (global as any).window;
+
+      // Reset the module-level environment cache before mocking
+      resetEnvironmentCache();
 
       // Mock browser environment
       delete (global as any).process;

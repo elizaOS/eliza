@@ -105,20 +105,23 @@ export interface QuotaInfo {
   credits: {
     balance: number;
   };
+  billing?: {
+    model: 'daily';
+    dailyCostPerContainer: number;
+    monthlyEquivalent: number;
+    currentDailyBurn: number;
+    runningContainers: number;
+    daysOfRunway: number | null;
+    warningThreshold: number;
+    shutdownWarningHours: number;
+  };
   pricing: {
     totalForNewContainer: number;
     imageUpload?: number;
     containerDeployment?: number;
+    perDay?: number;
+    perMonth?: number;
   };
-}
-
-/**
- * Image upload response data
- */
-export interface ImageUploadData {
-  imageId: string;
-  digest: string;
-  size: number;
 }
 
 /**
