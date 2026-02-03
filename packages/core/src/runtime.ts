@@ -13,6 +13,7 @@ import { isPlainObject } from './utils/type-guards';
 import { decryptSecret, getSalt } from './index';
 import { ActionStreamFilter } from './utils/streaming';
 import { getStreamingContext, runWithStreamingContext } from './streaming-context';
+import { getRequestContext } from './request-context';
 import { createLogger } from './logger';
 import { DefaultMessageService } from './services/default-message-service';
 import type { IMessageService } from './services/message-service';
@@ -664,6 +665,22 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   getSetting(key: string): string | boolean | number | null {
+    // 1. Check request context FIRST (per-entity settings, highest priority)
+    // This enables multi-tenant deployments where users share the same runtime
+    // but have different API keys, OAuth tokens, etc.
+    const requestCtx = getRequestContext();
+    if (requestCtx?.entitySettings) {
+      const entityValue = requestCtx.entitySettings.get(key);
+      // Only use if explicitly set in entity settings
+      // undefined means "not set, fall through to agent settings"
+      // null means "explicitly unset, return null"
+      if (entityValue !== undefined) {
+        // Entity settings are pre-decrypted during prefetch, return as-is
+        return entityValue;
+      }
+    }
+
+    // 2. Existing resolution chain (agent-level settings)
     const settings = this.character.settings;
     const secrets = this.character.secrets;
     const nestedSecrets =
