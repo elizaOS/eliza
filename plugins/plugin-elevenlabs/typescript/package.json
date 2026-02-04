@@ -86,7 +86,7 @@
         "type": "string",
         "description": "Model identifier to use for TTS generation",
         "required": false,
-        "default": "eleven_monolingual_v1",
+        "default": "eleven_multilingual_v2",
         "sensitive": false
       },
       "ELEVENLABS_VOICE_STABILITY": {
