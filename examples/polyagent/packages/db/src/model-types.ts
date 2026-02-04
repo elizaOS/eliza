@@ -5,7 +5,7 @@
  * Use these types when you need to explicitly type variables holding database records.
  *
  * Example:
- *   import type { User, Post, Market } from '@babylon/db';
+ *   import type { User, Post, Market } from '@polyagent/db';
  *
  *   const user: User = await db.user.findUnique({ where: { id } });
  *   const posts: Post[] = await db.post.findMany({ where: { authorId: user.id } });

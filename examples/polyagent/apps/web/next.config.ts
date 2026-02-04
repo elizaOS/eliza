@@ -3,18 +3,20 @@ import { config } from "dotenv";
 import type { NextConfig } from "next";
 
 // Use process.cwd() which works reliably in Next.js config context
-// This is the app directory (apps/web), so go up two levels to get monorepo root
-const monorepoRoot = path.resolve(process.cwd(), "../..");
+// This is the app directory (apps/web), so go up two levels to get polyagent root
+const polyagentRoot = path.resolve(process.cwd(), "../..");
+// Go up four levels to get the eliza-ok monorepo root (for turbopack workspace resolution)
+const elizaRoot = path.resolve(process.cwd(), "../../../..");
 
 // Capture any Sentry auth token explicitly provided by the environment before dotenv runs.
 // We intentionally ignore tokens sourced from local `.env` files to avoid stale/invalid tokens
 // breaking developer builds when CI is set in the environment (common in some shells/CI runners).
 const sentryAuthTokenFromProcessEnv = process.env.SENTRY_AUTH_TOKEN;
 
-// Load .env files from monorepo root before Next.js processes them
+// Load .env files from polyagent root before Next.js processes them
 // This ensures env vars are available during config evaluation and at runtime
-config({ path: path.join(monorepoRoot, ".env") });
-config({ path: path.join(monorepoRoot, ".env.local") });
+config({ path: path.join(polyagentRoot, ".env") });
+config({ path: path.join(polyagentRoot, ".env.local") });
 
 const waitlistFlag =
   process.env.WAITLIST_MODE ?? process.env.NEXT_PUBLIC_WAITLIST_MODE ?? "false";
@@ -25,18 +27,18 @@ const waitlistEnabled = ["true", "1", "yes", "on"].includes(
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Specify workspace root for monorepo
-  outputFileTracingRoot: monorepoRoot,
+  outputFileTracingRoot: elizaRoot,
   // Use standalone output for dynamic routes and API endpoints
   // Temporarily disabled for Next.js 16 compatibility
   // output: 'standalone',
   // Transpile internal workspace packages to resolve TypeScript imports properly
   // This is necessary because these packages are not pre-built and use TypeScript source directly
   transpilePackages: [
-    "@babylon/shared",
-    "@babylon/agents",
-    "@babylon/api",
-    "@babylon/db",
-    "@babylon/contracts",
+    "@polyagent/shared",
+    "@polyagent/agents",
+    "@polyagent/api",
+    "@polyagent/db",
+    "@polyagent/contracts",
   ],
   experimental: {
     optimizePackageImports: ["lucide-react"],
@@ -78,7 +80,7 @@ const nextConfig: NextConfig = {
     ];
   },
   // Externalize packages with native Node.js dependencies for server-side
-  // Note: @babylon/* packages are in transpilePackages, so they can't be here
+  // Note: @polyagent/* packages are in transpilePackages, so they can't be here
   serverExternalPackages: [
     "ipfs-http-client",
     "@helia/unixfs",
@@ -107,7 +109,7 @@ const nextConfig: NextConfig = {
       {
         protocol: "http",
         hostname: "localhost",
-        port: "9000",
+        port: "9002",
         pathname: "/**",
       },
       {
@@ -122,7 +124,7 @@ const nextConfig: NextConfig = {
   // Nested packages (apps/docs, packages/examples) may have their own lockfiles, but this
   // is the correct root for the web app's workspace.
   turbopack: {
-    root: monorepoRoot,
+    root: elizaRoot,
   },
   // Webpack configuration for backward compatibility
   webpack: (config, { isServer, webpack }) => {
@@ -203,7 +205,7 @@ const nextConfig: NextConfig = {
       config.plugins.push(
         // Ignore server-only Babylon packages in client builds
         new webpack.IgnorePlugin({
-          resourceRegExp: /^@babylon\/(api|db|contracts|agents)$/,
+          resourceRegExp: /^@polyagent\/(api|db|contracts|agents)$/,
         }),
         // Ignore server-only npm packages
         new webpack.IgnorePlugin({
@@ -253,7 +255,7 @@ const nextConfig: NextConfig = {
       // For server-side, ensure packages in serverExternalPackages are externalized
       // They're already in serverExternalPackages, but we also configure webpack
       // to externalize them so they're resolved at runtime from node_modules
-      // NOTE: Do NOT externalize @babylon/* packages - they are TypeScript source files
+      // NOTE: Do NOT externalize @polyagent/* packages - they are TypeScript source files
       // and must be transpiled by webpack via transpilePackages
       // NOTE: @elizaos/core intentionally excluded - it's ESM-only and must be bundled
       const serverExternalPackagesList = [
@@ -320,17 +322,17 @@ const nextConfig: NextConfig = {
       // Externalize agent0-sdk and related packages to prevent bundling electron-fetch
       // Also externalize postgres and Node.js-only packages
       // These should only be loaded server-side via dynamic imports
-      // CRITICAL: Externalize @babylon/api and @babylon/db to prevent bundling server-only code in client
+      // CRITICAL: Externalize @polyagent/api and @polyagent/db to prevent bundling server-only code in client
       const serverOnlyPackages = [
         "agent0-sdk",
-        "@babylon/agents/agent0",
+        "@polyagent/agents/agent0",
         "ipfs-http-client",
         "electron-fetch",
         "postgres",
         "ioredis",
-        "@babylon/db",
-        "@babylon/api",
-        "@babylon/contracts",
+        "@polyagent/db",
+        "@polyagent/api",
+        "@polyagent/contracts",
         "swagger-jsdoc",
       ];
 

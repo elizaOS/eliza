@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@babylon/shared";
+import { cn } from "@polyagent/shared";
 import { ArrowRight, Bot } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";

@@ -7,7 +7,7 @@ const isLocalDev =
   !process.env.DIRECT_DATABASE_URL;
 
 const LOCAL_DATABASE_URL =
-  "postgresql://polyagent:polyagent_dev_password@localhost:5433/polyagent";
+  "postgresql://polyagent:polyagent_dev_password@localhost:5434/polyagent";
 
 // In non-local environments, require explicit database URL - never fall back to localhost
 const databaseUrl = isLocalDev

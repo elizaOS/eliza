@@ -9,8 +9,8 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { verifyApiKey } from "@babylon/api";
-import type { JsonValue } from "@babylon/db";
+import { verifyApiKey } from "@polyagent/api";
+import type { JsonValue } from "@polyagent/db";
 import {
   type AgentRegistry,
   agentCapabilities,
@@ -28,8 +28,8 @@ import {
   or,
   type User,
   users,
-} from "@babylon/db";
-import { logger } from "@babylon/shared";
+} from "@polyagent/db";
+import { logger } from "@polyagent/shared";
 import type {
   AgentCapabilities,
   AgentDiscoveryFilter,

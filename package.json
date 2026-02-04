@@ -60,7 +60,9 @@
     "examples/*/*",
     "examples/app/*",
     "examples/app/*/*",
-    "examples/app/*/*/*"
+    "examples/app/*/*/*",
+    "examples/polyagent/apps/*",
+    "examples/polyagent/packages/*"
   ],
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",

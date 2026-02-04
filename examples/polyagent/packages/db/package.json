@@ -22,12 +22,12 @@
   "scripts": {
     "lint": "biome lint .",
     "typecheck": "tsc -b .",
-    "db:generate": "tsx ../../node_modules/drizzle-kit/bin.cjs generate",
-    "db:migrate": "tsx ../../node_modules/drizzle-kit/bin.cjs migrate",
-    "db:push": "tsx ../../node_modules/drizzle-kit/bin.cjs push",
-    "db:pull": "tsx ../../node_modules/drizzle-kit/bin.cjs pull",
-    "db:studio": "tsx ../../node_modules/drizzle-kit/bin.cjs studio",
-    "db:check": "tsx ../../node_modules/drizzle-kit/bin.cjs check"
+    "db:generate": "bunx drizzle-kit generate",
+    "db:migrate": "bunx drizzle-kit migrate",
+    "db:push": "bunx drizzle-kit push",
+    "db:pull": "bunx drizzle-kit pull",
+    "db:studio": "bunx drizzle-kit studio",
+    "db:check": "bunx drizzle-kit check"
   },
   "dependencies": {
     "@polyagent/shared": "workspace:*",

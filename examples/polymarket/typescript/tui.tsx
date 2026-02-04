@@ -2,6 +2,40 @@ import type { ReactNode } from "react";
 import { Box, Text, render, useApp, useInput, useStdout } from "ink";
 import TextInput from "ink-text-input";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+// Global error state for fatal errors that need to be displayed
+let globalFatalError: string | null = null;
+let fatalErrorCallbacks: Array<(error: string) => void> = [];
+
+/**
+ * Set a fatal error to be displayed in the TUI.
+ * This is called from error handlers when a crash occurs.
+ */
+export function setFatalError(message: string): void {
+  globalFatalError = message;
+  fatalErrorCallbacks.forEach((cb) => cb(message));
+}
+
+/**
+ * Hook to subscribe to fatal errors in the TUI.
+ */
+function useFatalError(): string | null {
+  const [error, setError] = useState<string | null>(globalFatalError);
+  
+  useEffect(() => {
+    const callback = (msg: string) => setError(msg);
+    fatalErrorCallbacks.push(callback);
+    // Check if there's already an error
+    if (globalFatalError) {
+      setError(globalFatalError);
+    }
+    return () => {
+      fatalErrorCallbacks = fatalErrorCallbacks.filter((cb) => cb !== callback);
+    };
+  }, []);
+  
+  return error;
+}
 import {
   ChannelType,
   type AgentRuntime,
@@ -664,9 +698,70 @@ function SidebarPanel(props: {
 // Layout modes: chat-only, split view, sidebar-only
 type LayoutMode = "chat" | "split" | "sidebar";
 
+function FatalErrorDisplay({ error, columns, rows }: { error: string; columns: number; rows: number }): ReactNode {
+  const { exit } = useApp();
+  
+  useInput((_, key) => {
+    if (key.return || key.escape || (key.ctrl && key.name === "c")) {
+      exit();
+    }
+  });
+  
+  // Provide helpful context for common errors
+  let helpText = "";
+  if (error.includes("No output generated") || error.includes("AI_NoOutputGeneratedError")) {
+    helpText = "This usually means your API key is missing, invalid, or rate-limited. Check your .env file.";
+  } else if (error.includes("API key") || error.includes("api_key") || error.includes("Unauthorized")) {
+    helpText = "Check that your API key is set correctly in .env (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)";
+  } else if (error.includes("ECONNREFUSED") || error.includes("network")) {
+    helpText = "Network error - check your internet connection and API endpoint URLs.";
+  }
+  
+  const lines = error.split("\n");
+  const maxLines = Math.max(1, rows - (helpText ? 12 : 10));
+  const displayLines = lines.slice(0, maxLines);
+  
+  return (
+    <Box flexDirection="column" width={columns} height={rows} padding={1}>
+      <Box marginBottom={1}>
+        <Text color="red" bold>{"═".repeat(Math.min(50, columns - 4))}</Text>
+      </Box>
+      <Box marginBottom={1}>
+        <Text color="red" bold>❌ FATAL ERROR</Text>
+      </Box>
+      <Box marginBottom={1}>
+        <Text color="red" bold>{"═".repeat(Math.min(50, columns - 4))}</Text>
+      </Box>
+      <Box flexDirection="column" marginBottom={1}>
+        {displayLines.map((line, idx) => (
+          <Text key={idx} color="white" wrap="truncate">{line}</Text>
+        ))}
+        {lines.length > maxLines && (
+          <Text color="gray" italic>... {lines.length - maxLines} more lines</Text>
+        )}
+      </Box>
+      {helpText && (
+        <Box marginBottom={1}>
+          <Text color="yellow">💡 {helpText}</Text>
+        </Box>
+      )}
+      <Box marginTop={1}>
+        <Text color="red" bold>{"═".repeat(Math.min(50, columns - 4))}</Text>
+      </Box>
+      <Box marginTop={1} flexDirection="column">
+        <Text color="cyan">📄 Full log: polymarket-error.log</Text>
+        <Text color="gray">Press Enter or Escape to exit</Text>
+      </Box>
+    </Box>
+  );
+}
+
 function PolymarketTuiApp({ runtime, roomId, userId, messageService }: TuiSession): ReactNode {
   const { exit } = useApp();
   const { stdout } = useStdout();
+  
+  // Fatal error state
+  const fatalError = useFatalError();
   
   // Core state - simplified
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1241,9 +1336,31 @@ function PolymarketTuiApp({ runtime, roomId, userId, messageService }: TuiSessio
           appendMessage({
             id: uuidv4(),
             role: "system",
-            content: "Commands: /clear, /account, /markets, /logs, /autonomy true|false, /help, /exit",
+            content: "Commands: /clear, /account, /markets, /logs, /autonomy true|false, /error, /help, /exit",
             timestamp: Date.now(),
           });
+          return;
+        }
+        if (trimmed === "/error") {
+          // Show recent errors from logs
+          const errorLogs = logs.filter((log) => 
+            log.includes("ERROR") || log.includes("Error") || log.includes("error")
+          ).slice(-10);
+          if (errorLogs.length === 0) {
+            appendMessage({
+              id: uuidv4(),
+              role: "system",
+              content: "No recent errors found. Check polymarket-error.log for crash logs.",
+              timestamp: Date.now(),
+            });
+          } else {
+            appendMessage({
+              id: uuidv4(),
+              role: "system",
+              content: `Recent errors (${errorLogs.length}):\n${errorLogs.join("\n")}`,
+              timestamp: Date.now(),
+            });
+          }
           return;
         }
         if (trimmed === "/clear") {
@@ -1434,6 +1551,25 @@ function PolymarketTuiApp({ runtime, roomId, userId, messageService }: TuiSessio
           updateMessage(assistantId, finalText);
           appendLog(`Eliza: ${finalText}`);
         }
+      } catch (error) {
+        // Display errors in the chat so they're visible
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        appendMessage({
+          id: uuidv4(),
+          role: "system",
+          content: `❌ Error: ${errorMessage}`,
+          timestamp: Date.now(),
+        });
+        appendLog(`ERROR: ${errorMessage}`);
+        if (errorStack) {
+          appendLog(`Stack: ${errorStack}`);
+        }
+        // Re-throw if it's a fatal error that should crash the app
+        if (errorMessage.includes("FATAL") || errorMessage.includes("Cannot read") || 
+            errorMessage.includes("undefined is not") || errorMessage.includes("null is not")) {
+          throw error;
+        }
       } finally {
         setIsProcessing(false);
       }
@@ -1545,6 +1681,11 @@ function PolymarketTuiApp({ runtime, roomId, userId, messageService }: TuiSessio
   );
   const headerText = truncateText(statusText, Math.max(0, columns - 2));
 
+  // Show fatal error display if there's an unrecoverable error
+  if (fatalError) {
+    return <FatalErrorDisplay error={fatalError} columns={columns} rows={rows} />;
+  }
+
   return (
     <Box flexDirection="column" width={columns} height={rows}>
       {headerHeight > 0 ? (
@@ -1590,10 +1731,27 @@ function PolymarketTuiApp({ runtime, roomId, userId, messageService }: TuiSessio
 }
 
 export async function runPolymarketTui(session: TuiSession): Promise<void> {
-  const { waitUntilExit } = render(<PolymarketTuiApp {...session} />);
-  await waitUntilExit();
-  if (process.stdout?.write) {
-    process.stdout.write("\x1b[?1000l\x1b[?1006l\x1b[?1015l\x1b[?1007l");
+  let instance: ReturnType<typeof render> | null = null;
+  
+  try {
+    instance = render(<PolymarketTuiApp {...session} />);
+    await instance.waitUntilExit();
+  } catch (error) {
+    // Unmount the TUI if it's still running
+    if (instance) {
+      try {
+        instance.unmount();
+      } catch {
+        // Ignore unmount errors
+      }
+    }
+    // Re-throw to be handled by global error handlers
+    throw error;
+  } finally {
+    // Always clean up terminal state
+    if (process.stdout?.write) {
+      process.stdout.write("\x1b[?1000l\x1b[?1006l\x1b[?1015l\x1b[?1007l");
+    }
   }
 }
 

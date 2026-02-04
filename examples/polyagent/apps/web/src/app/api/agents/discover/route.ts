@@ -8,9 +8,9 @@
  * Discovers agents based on filters including skills and domains.
  */
 
-import type { AgentDiscoveryFilter } from "@babylon/agents";
-import { AgentStatus, AgentType, agentRegistry } from "@babylon/agents";
-import { logger } from "@babylon/shared";
+import type { AgentDiscoveryFilter } from "@polyagent/agents";
+import { AgentStatus, AgentType, agentRegistry } from "@polyagent/agents";
+import { logger } from "@polyagent/shared";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 

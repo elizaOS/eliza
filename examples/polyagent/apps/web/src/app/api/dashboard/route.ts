@@ -5,7 +5,7 @@ import {
   agentTrades,
   db,
   users,
-} from "@babylon/db";
+} from "@polyagent/db";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 

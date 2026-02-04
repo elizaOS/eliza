@@ -5,7 +5,7 @@
  * 100% Drizzle ORM under the hood.
  *
  * Usage:
- *   import { db } from '@babylon/db';
+ *   import { db } from '@polyagent/db';
  *   const user = await db.user.findUnique({ where: { id: '123' } });
  *   const users = await db.user.findMany({ where: { isActive: true } });
  */

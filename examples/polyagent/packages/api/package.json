@@ -1,5 +1,5 @@
 {
-  "name": "@babylon/api",
+  "name": "@polyagent/api",
   "version": "0.1.0",
   "private": true,
   "description": "Polyagent API Middleware and Utilities",
@@ -18,8 +18,8 @@
     "graphql-request": "^7.2.0",
     "@aws-sdk/client-s3": "^3.943.0",
     "@aws-sdk/lib-storage": "^3.943.0",
-    "@babylon/contracts": "workspace:*",
-    "@babylon/shared": "workspace:*",
+    "@polyagent/contracts": "workspace:*",
+    "@polyagent/shared": "workspace:*",
     "@privy-io/server-auth": "^1.18.4",
     "@vercel/blob": "^2.0.0",
     "ioredis": "^5.6.1",
@@ -27,7 +27,7 @@
     "viem": "^2.41.2"
   },
   "peerDependencies": {
-    "@babylon/db": "workspace:*",
+    "@polyagent/db": "workspace:*",
     "next": "^16.0.7"
   },
   "devDependencies": {

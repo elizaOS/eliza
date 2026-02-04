@@ -16,7 +16,7 @@ import {
   type JsonValue,
   type User,
   users,
-} from "@babylon/db";
+} from "@polyagent/db";
 import { logger } from "../shared/logger";
 import { generateSnowflakeId } from "../shared/snowflake";
 import { agentWalletService } from "./AgentWalletService";

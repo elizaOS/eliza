@@ -1,5 +1,5 @@
 {
-  "name": "@babylon/agents",
+  "name": "@polyagent/agents",
   "version": "0.1.0",
   "private": true,
   "description": "Polyagent - Autonomous Polymarket trading agents",
@@ -23,16 +23,16 @@
   },
   "dependencies": {
     "@elizaos/plugin-polymarket": "workspace:*",
-    "@polymarket/clob-client": "^7.9.0",
+    "@polymarket/clob-client": "^5.2.1",
     "@ethersproject/wallet": "^5.7.0"
   },
   "peerDependencies": {
     "@a2a-js/sdk": "^0.3.5",
     "@ai-sdk/groq": "^2.0.32",
     "@anthropic-ai/sdk": "^0.71.0",
-    "@babylon/api": "workspace:*",
-    "@babylon/db": "workspace:*",
-    "@babylon/shared": "workspace:*",
+    "@polyagent/api": "workspace:*",
+    "@polyagent/db": "workspace:*",
+    "@polyagent/shared": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",

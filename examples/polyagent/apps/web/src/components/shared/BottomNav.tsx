@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@babylon/shared";
+import { cn } from "@polyagent/shared";
 import { Bot, Home, Plus, Settings, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";

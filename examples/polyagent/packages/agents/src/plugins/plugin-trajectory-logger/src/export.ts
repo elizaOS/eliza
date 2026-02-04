@@ -18,7 +18,7 @@ import {
   lte,
   sql,
   trajectories,
-} from "@babylon/db";
+} from "@polyagent/db";
 import type { JsonValue } from "../../../types/common";
 
 /**

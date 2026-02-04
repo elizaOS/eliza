@@ -21,13 +21,13 @@ import {
   referrals,
   sql,
   users,
-} from "@babylon/db";
+} from "@polyagent/db";
 import {
   generateSnowflakeId,
   logger,
   POINTS,
   type PointsReason,
-} from "@babylon/shared";
+} from "@polyagent/shared";
 
 /**
  * Maximum number of unqualified referrals that can earn signup points at any time.

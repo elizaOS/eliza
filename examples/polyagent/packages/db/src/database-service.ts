@@ -7,13 +7,13 @@
  *
  * @usage
  * ```typescript
- * import { getDbInstance } from '@babylon/db'
+ * import { getDbInstance } from '@polyagent/db'
  * await getDbInstance().createPost({...})
  * const posts = await getDbInstance().getRecentPosts(100)
  * ```
  */
 
-import { generateSnowflakeId } from "@babylon/shared";
+import { generateSnowflakeId } from "@polyagent/shared";
 import {
   and,
   count,

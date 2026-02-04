@@ -4,7 +4,7 @@ services:
     container_name: polyagent-postgres
     restart: unless-stopped
     ports:
-      - "5433:5432"
+      - "5434:5432"
     environment:
       POSTGRES_USER: polyagent
       POSTGRES_PASSWORD: polyagent_dev_password
@@ -88,7 +88,7 @@ services:
     container_name: polyagent-redis
     restart: unless-stopped
     ports:
-      - "6380:6379"
+      - "6381:6379"
     volumes:
       - redis_data:/data
     command: >
@@ -114,8 +114,8 @@ services:
     container_name: polyagent-minio
     restart: unless-stopped
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9002:9000"
+      - "9003:9001"
     environment:
       MINIO_ROOT_USER: polyagent
       MINIO_ROOT_PASSWORD: polyagent_dev_password

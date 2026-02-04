@@ -5,7 +5,7 @@ import {
   desc,
   eq,
   users,
-} from "@babylon/db";
+} from "@polyagent/db";
 import { NextResponse } from "next/server";
 
 interface PublicAgent {

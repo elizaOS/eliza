@@ -63,8 +63,8 @@ const ALLOWED_SCREENSHOT_DOMAINS = [
   // Vercel Blob Storage (production)
   ".public.blob.vercel-storage.com",
   // MinIO (local development)
-  "localhost:9000",
-  "127.0.0.1:9000",
+  "localhost:9002",
+  "127.0.0.1:9002",
 ];
 
 /**

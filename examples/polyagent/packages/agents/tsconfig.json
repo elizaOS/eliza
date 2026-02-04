@@ -7,12 +7,12 @@
     "types": ["bun-types"],
     "baseUrl": ".",
     "paths": {
-      "@babylon/shared": ["../shared/src/index.ts"],
-      "@babylon/shared/*": ["../shared/src/*"],
-      "@babylon/db": ["../db/src/index.ts"],
-      "@babylon/db/*": ["../db/src/*"],
-      "@babylon/api": ["../api/src/index.ts"],
-      "@babylon/api/*": ["../api/src/*"]
+      "@polyagent/shared": ["../shared/src/index.ts"],
+      "@polyagent/shared/*": ["../shared/src/*"],
+      "@polyagent/db": ["../db/src/index.ts"],
+      "@polyagent/db/*": ["../db/src/*"],
+      "@polyagent/api": ["../api/src/index.ts"],
+      "@polyagent/api/*": ["../api/src/*"]
     }
   },
   "include": ["src/**/*"],

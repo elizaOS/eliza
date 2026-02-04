@@ -8,8 +8,8 @@
  * @packageDocumentation
  */
 
-import { db, eq, users } from "@babylon/db";
-import { GROQ_MODELS } from "@babylon/shared";
+import { db, eq, users } from "@polyagent/db";
+import { GROQ_MODELS } from "@polyagent/shared";
 import {
   AgentRuntime,
   type Character,

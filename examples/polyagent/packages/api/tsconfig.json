@@ -6,12 +6,12 @@
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "baseUrl": ".",
     "paths": {
-      "@babylon/shared": ["../shared/src/index.ts"],
-      "@babylon/shared/*": ["../shared/src/*"],
-      "@babylon/db": ["../db/src/index.ts"],
-      "@babylon/db/*": ["../db/src/*"],
-      "@babylon/contracts": ["../contracts/src/index.ts"],
-      "@babylon/contracts/*": ["../contracts/src/*"]
+      "@polyagent/shared": ["../shared/src/index.ts"],
+      "@polyagent/shared/*": ["../shared/src/*"],
+      "@polyagent/db": ["../db/src/index.ts"],
+      "@polyagent/db/*": ["../db/src/*"],
+      "@polyagent/contracts": ["../contracts/src/index.ts"],
+      "@polyagent/contracts/*": ["../contracts/src/*"]
     }
   },
   "include": ["src/**/*", "src/**/*.d.ts"],

@@ -1,5 +1,5 @@
-import { authenticateUser } from "@babylon/api";
-import { db, notifications } from "@babylon/db";
+import { authenticateUser } from "@polyagent/api";
+import { db, notifications } from "@polyagent/db";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
