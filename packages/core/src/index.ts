@@ -53,6 +53,9 @@ export * from './elizaos';
 // Export streaming context utilities
 export * from './streaming-context';
 
+// Export request context utilities for per-entity settings
+export * from './request-context';
+
 // Environment detection utilities
 interface GlobalWithWindow {
   window?: Window;

@@ -5,10 +5,17 @@
  * This is the full API surface of the core package.
  */
 
-// Configure Node.js-specific streaming context manager (AsyncLocalStorage)
+// Configure Node.js-specific context managers (AsyncLocalStorage)
 import { setStreamingContextManager } from './streaming-context';
 import { createNodeStreamingContextManager } from './streaming-context.node';
+import { setRequestContextManager } from './request-context';
+import { createNodeRequestContextManager } from './request-context.node';
+
+// Initialize streaming context for automatic streaming in useModel calls
 setStreamingContextManager(createNodeStreamingContextManager());
+
+// Initialize request context for per-entity settings in multi-tenant deployments
+setRequestContextManager(createNodeRequestContextManager());
 
 // Export everything from types
 export * from './types';
@@ -43,6 +50,7 @@ export * from './services/default-message-service';
 export * from './search';
 export * from './elizaos';
 export * from './streaming-context';
+export * from './request-context';
 
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from './character';
