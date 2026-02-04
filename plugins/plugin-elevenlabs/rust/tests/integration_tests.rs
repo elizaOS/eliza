@@ -33,7 +33,7 @@ fn test_tts_options_default() {
     let options = ElevenLabsTTSOptions::default();
     assert!(options.api_key.is_empty());
     assert_eq!(options.voice_id, "EXAVITQu4vr4xnSDxMaL");
-    assert_eq!(options.model_id, "eleven_monolingual_v1");
+    assert_eq!(options.model_id, "eleven_multilingual_v2");
     assert_eq!(options.output_format, "mp3_44100_128");
     assert_eq!(options.optimize_streaming_latency, 0);
 }
