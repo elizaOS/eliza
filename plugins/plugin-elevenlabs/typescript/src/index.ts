@@ -86,7 +86,7 @@ function getVoiceSettings(runtime: IAgentRuntime): VoiceSettings {
   return {
     apiKey: getApiKey(runtime) || "",
     voiceId: getSetting(runtime, "ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL"),
-    model: getSetting(runtime, "ELEVENLABS_MODEL_ID", "eleven_monolingual_v1"),
+    model: getSetting(runtime, "ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"),
     stability: getSetting(runtime, "ELEVENLABS_VOICE_STABILITY", "0.5"),
     latency: getSetting(runtime, "ELEVENLABS_OPTIMIZE_STREAMING_LATENCY", "0"),
     // Use mp3 by default to be browser-safe and align with OpenAI plugin behavior
@@ -296,7 +296,7 @@ async function fetchTranscription(
  *
  * Optional TTS environment variables:
  * - ELEVENLABS_VOICE_ID: Voice ID to use (default: EXAVITQu4vr4xnSDxMaL)
- * - ELEVENLABS_MODEL_ID: Model to use (default: eleven_monolingual_v1)
+ * - ELEVENLABS_MODEL_ID: Model to use (default: eleven_multilingual_v2)
  * - ELEVENLABS_VOICE_STABILITY: Voice stability 0-1 (default: 0.5)
  * - ELEVENLABS_VOICE_SIMILARITY_BOOST: Voice similarity 0-1 (default: 0.75)
  * - ELEVENLABS_VOICE_STYLE: Voice style 0-1 (default: 0)

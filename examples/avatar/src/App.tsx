@@ -57,6 +57,7 @@ export default function App() {
   const [mouthOpen, setMouthOpen] = useState(0);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsVersion, setSettingsVersion] = useState(0);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [agentSpeaking, setAgentSpeaking] = useState(false);
 
@@ -194,6 +195,17 @@ export default function App() {
     [setConfig]
   );
 
+  // Sync settings to runtime when settings modal closes
+  useEffect(() => {
+    if (settingsVersion === 0) return; // Skip initial render
+    void getOrCreateRuntime(config).catch(() => {});
+  }, [settingsVersion, config]);
+
+  const handleCloseSettings = useCallback(() => {
+    setSettingsOpen(false);
+    setSettingsVersion((v) => v + 1);
+  }, []);
+
   const speakText = useCallback(
     async (text: string) => {
       const bundle = await getOrCreateRuntime(config);
@@ -222,30 +234,38 @@ export default function App() {
             // Ensure runtime has the latest key (applySettings also does this).
             bundle.runtime.setSetting("ELEVENLABS_API_KEY", apiKey, true);
 
-            const stream = (await bundle.runtime.useModel(
+            let buffer: ArrayBuffer;
+
+            const response = await bundle.runtime.useModel(
               ModelType.TEXT_TO_SPEECH,
               chunk,
-            )) as ReadableStream<Uint8Array>;
+            );
 
-            const reader = stream.getReader();
-            const chunks: Uint8Array[] = [];
-            let total = 0;
-            while (true) {
-              const res = await reader.read();
-              if (res.done) break;
-              chunks.push(res.value);
-              total += res.value.byteLength;
+            if (response instanceof Uint8Array || response instanceof ArrayBuffer) {
+                buffer = response instanceof Uint8Array ? response.buffer : response;
+            } else {
+                const stream = response as ReadableStream<Uint8Array>;
+                const reader = stream.getReader();
+                const chunks: Uint8Array[] = [];
+                let total = 0;
+                while (true) {
+                  const res = await reader.read();
+                  if (res.done) break;
+                  chunks.push(res.value);
+                  total += res.value.byteLength;
+                }
+                reader.releaseLock();
+
+                const merged = new Uint8Array(total);
+                let offset = 0;
+                for (const c of chunks) {
+                  merged.set(c, offset);
+                  offset += c.byteLength;
+                }
+                buffer = merged.buffer;
             }
-            reader.releaseLock();
 
-            const merged = new Uint8Array(total);
-            let offset = 0;
-            for (const c of chunks) {
-              merged.set(c, offset);
-              offset += c.byteLength;
-            }
-
-            await lipSyncPlayerRef.current.playWav(merged.buffer);
+            await lipSyncPlayerRef.current.playWav(buffer);
           } else {
             const wav = synthesizeSamWav(bundle.runtime, chunk, config.sam);
             await lipSyncPlayerRef.current.playWav(wav);
@@ -571,7 +591,7 @@ export default function App() {
       {/* Settings Modal */}
       <SettingsModal
         isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={handleCloseSettings}
         config={config}
         onConfigChange={updateConfig}
         effectiveMode={effectiveMode}
