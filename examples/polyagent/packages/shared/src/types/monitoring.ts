@@ -17,7 +17,7 @@ export interface MonitoringAgentProfile {
 
 /**
  * Agent reputation for monitoring (subset of full AgentReputation)
- * Full AgentReputation available from @babylon/a2a
+ * Full AgentReputation available from @polyagent/a2a
  */
 export interface MonitoringAgentReputation {
   totalBets: number;

@@ -24,7 +24,7 @@ const useVercelBlob =
   (isProduction && process.env.BLOB_READ_WRITE_TOKEN);
 
 // MinIO configuration (local development)
-const MINIO_ENDPOINT = process.env.MINIO_ENDPOINT || "http://localhost:9000";
+const MINIO_ENDPOINT = process.env.MINIO_ENDPOINT || "http://localhost:9002";
 const MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY || "polyagent";
 const MINIO_SECRET_KEY =
   process.env.MINIO_SECRET_KEY || "polyagent_dev_password";
@@ -151,7 +151,7 @@ class S3StorageClient {
     // Generate public URL
     const url = this.publicUrl
       ? `${this.publicUrl}/${this.bucket}/${pathname}`
-      : `http://localhost:9000/${this.bucket}/${pathname}`;
+      : `http://localhost:9002/${this.bucket}/${pathname}`;
 
     logger.info("Image uploaded successfully to MinIO", {
       key: pathname,
@@ -183,7 +183,7 @@ class S3StorageClient {
       // Extract key from URL if full URL is provided
       let key = url;
       if (url.startsWith("http")) {
-        // URL format: http://localhost:9000/polyagent-uploads/folder/file.jpg
+        // URL format: http://localhost:9002/polyagent-uploads/folder/file.jpg
         // Extract: folder/file.jpg
         const urlParts = url.split(`/${this.bucket}/`);
         key = urlParts.length > 1 ? urlParts[1] || url : url;

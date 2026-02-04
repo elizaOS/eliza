@@ -48,6 +48,7 @@ export class AutonomyService extends Service {
   protected intervalMs: number;
   protected autonomousRoomId: UUID;
   protected autonomousWorldId: UUID;
+  protected autonomyEntityId: UUID; // Dedicated entity ID for autonomy prompts (not the agent's ID)
 
   private getAutonomyMode(): "continuous" | "task" {
     const raw = this.runtime.getSetting("AUTONOMY_MODE");
@@ -180,6 +181,11 @@ export class AutonomyService extends Service {
     this.autonomousWorldId = stringToUuid(
       "00000000-0000-0000-0000-000000000001",
     );
+    // Generate a dedicated entity ID for autonomy prompts
+    // This is different from the agent's ID to avoid "skipping message from self"
+    this.autonomyEntityId = stringToUuid(
+      "00000000-0000-0000-0000-000000000002",
+    );
   }
 
   /**
@@ -269,10 +275,20 @@ export class AutonomyService extends Service {
         this.runtime.agentId,
         this.autonomousRoomId,
       );
+      // Also add the autonomy entity as a participant
+      await this.runtime.addParticipant(
+        this.autonomyEntityId,
+        this.autonomousRoomId,
+      );
     }
     if (this.runtime.ensureParticipantInRoom) {
       await this.runtime.ensureParticipantInRoom(
         this.runtime.agentId,
+        this.autonomousRoomId,
+      );
+      // Also ensure the autonomy entity is in the room
+      await this.runtime.ensureParticipantInRoom(
+        this.autonomyEntityId,
         this.autonomousRoomId,
       );
     }
@@ -505,11 +521,10 @@ export class AutonomyService extends Service {
           });
 
     // Create the autonomous message for the full agent pipeline
+    // Use autonomyEntityId (not agentId) to avoid "skipping message from self"
     const autonomousMessage: Memory = {
       id: stringToUuid(uuidv4()),
-      entityId: agentEntity.id
-        ? stringToUuid(String(agentEntity.id))
-        : this.runtime.agentId,
+      entityId: this.autonomyEntityId,
       content: {
         text: autonomyPrompt,
         source: "autonomy-service",
@@ -758,6 +773,40 @@ export class AutonomyService extends Service {
     this.runtime.enableAutonomy = false;
     if (this.isRunning) {
       await this.stopLoop();
+    }
+  }
+
+  /**
+   * Trigger an autonomous thinking cycle immediately.
+   * Useful for testing or manual intervention without waiting for the interval.
+   * @returns true if thinking was triggered, false if already thinking or an error occurred
+   */
+  async triggerThinkNow(): Promise<boolean> {
+    if (this.isThinking) {
+      this.runtime.logger.info(
+        { src: "autonomy", agentId: this.runtime.agentId },
+        "Already thinking, skipping manual trigger",
+      );
+      return false;
+    }
+
+    this.runtime.logger.info(
+      { src: "autonomy", agentId: this.runtime.agentId },
+      "Manually triggered autonomous thinking",
+    );
+
+    this.isThinking = true;
+    try {
+      await this.performAutonomousThink();
+      return true;
+    } catch (error) {
+      this.runtime.logger.error(
+        { src: "autonomy", agentId: this.runtime.agentId, error },
+        "Error during manually triggered autonomous think",
+      );
+      return false;
+    } finally {
+      this.isThinking = false;
     }
   }
 

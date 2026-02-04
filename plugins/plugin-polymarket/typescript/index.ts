@@ -16,7 +16,7 @@ import { PolymarketService } from "./services";
 import { researchTaskWorker } from "./workers";
 
 export { ACCOUNT_STATE_TTL_MS, DEFAULT_CLOB_API_URL, POLYGON_CHAIN_ID } from "./constants";
-export { ResearchStorageService } from "./services";
+export { PolymarketService, ResearchStorageService } from "./services";
 export type {
   AccountBalances,
   ApiKeyCreds,

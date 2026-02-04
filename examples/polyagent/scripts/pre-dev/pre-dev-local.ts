@@ -150,11 +150,11 @@ if (!existsSync(envPath) && isLocalnet) {
     // Replace placeholder values with localnet defaults
     envContent = envContent.replace(
       /DATABASE_URL=.*/,
-      'DATABASE_URL="postgresql://polyagent:polyagent_dev_password@localhost:5433/polyagent"',
+      'DATABASE_URL="postgresql://polyagent:polyagent_dev_password@localhost:5434/polyagent"',
     );
     envContent = envContent.replace(
       /REDIS_URL=.*/,
-      'REDIS_URL="redis://localhost:6380"',
+      'REDIS_URL="redis://localhost:6381"',
     );
     envContent = envContent.replace(
       /NEXT_PUBLIC_CHAIN_ID=.*/,
@@ -170,8 +170,8 @@ if (!existsSync(envPath) && isLocalnet) {
     );
   } else {
     // Fallback to minimal template if .env.example is missing
-    envContent = `DATABASE_URL="postgresql://polyagent:polyagent_dev_password@localhost:5433/polyagent"
-REDIS_URL="redis://localhost:6380"
+    envContent = `DATABASE_URL="postgresql://polyagent:polyagent_dev_password@localhost:5434/polyagent"
+REDIS_URL="redis://localhost:6381"
 DEPLOYMENT_ENV=localnet
 NEXT_PUBLIC_CHAIN_ID=31337
 NEXT_PUBLIC_RPC_URL=http://localhost:8545
@@ -294,7 +294,7 @@ if (minioRunning.trim() !== MINIO_CONTAINER) {
 // 9. Run database migrations and seed
 // Force local database URL for local development (overrides .env.local if present)
 const LOCAL_DATABASE_URL =
-  "postgresql://polyagent:polyagent_dev_password@localhost:5433/polyagent";
+  "postgresql://polyagent:polyagent_dev_password@localhost:5434/polyagent";
 process.env.DATABASE_URL = LOCAL_DATABASE_URL;
 process.env.DIRECT_DATABASE_URL = LOCAL_DATABASE_URL; // Also override DIRECT_DATABASE_URL to prevent Neon connection
 
@@ -312,9 +312,9 @@ async function runMigrations(): Promise<void> {
     // Run with --force to skip interactive prompts (safe for development)
     // The --force flag auto-accepts all changes without confirmation
     // Explicitly set DATABASE_URL and DIRECT_DATABASE_URL to local for the subprocess
-    // Using tsx to run drizzle-kit for proper ESM support
+    // Using bunx drizzle-kit to properly resolve the package location
     const result =
-      await $`DATABASE_URL=${LOCAL_DATABASE_URL} DIRECT_DATABASE_URL=${LOCAL_DATABASE_URL} DEPLOYMENT_ENV=localnet npx tsx ../../node_modules/drizzle-kit/bin.cjs push --force --config=drizzle.config.ts`
+      await $`DATABASE_URL=${LOCAL_DATABASE_URL} DIRECT_DATABASE_URL=${LOCAL_DATABASE_URL} DEPLOYMENT_ENV=localnet bunx drizzle-kit push --force --config=drizzle.config.ts`
         .cwd("packages/db")
         .nothrow();
     if (result.exitCode !== 0) {
@@ -373,8 +373,19 @@ if (needsMigrations) {
 if (needsSeed || userCount === 0) {
   console.info("Running database seed...");
   // Explicitly set DATABASE_URL and DIRECT_DATABASE_URL to local for the seed subprocess
-  await $`DATABASE_URL=${LOCAL_DATABASE_URL} DIRECT_DATABASE_URL=${LOCAL_DATABASE_URL} DEPLOYMENT_ENV=localnet bun run db:seed`;
-  console.info("✅ Database seeded");
+  // Run from the polyagent root directory (two levels up from this script)
+  const polyagentRoot = join(import.meta.dir, "../..");
+  const seedResult =
+    await $`DATABASE_URL=${LOCAL_DATABASE_URL} DIRECT_DATABASE_URL=${LOCAL_DATABASE_URL} DEPLOYMENT_ENV=localnet bun run db:seed`
+      .cwd(polyagentRoot)
+      .nothrow();
+  if (seedResult.exitCode === 0) {
+    console.info("✅ Database seeded");
+  } else {
+    console.warn(
+      "⚠️  Database seed failed (non-critical for development, continuing...)",
+    );
+  }
 }
 
 // 10. Validate environment
@@ -394,9 +405,9 @@ if (isLocalnet) {
     "  Hardhat:    http://localhost:8545 (will be started automatically)",
   );
 }
-console.info("  PostgreSQL: localhost:5433");
-console.info("  Redis:      localhost:6380");
-console.info("  MinIO:      http://localhost:9000 (console: :9001)");
+console.info("  PostgreSQL: localhost:5434");
+console.info("  Redis:      localhost:6381");
+console.info("  MinIO:      http://localhost:9002 (console: :9003)");
 console.info("");
 console.info("App Routes:");
 console.info("  Main:       http://localhost:3000");

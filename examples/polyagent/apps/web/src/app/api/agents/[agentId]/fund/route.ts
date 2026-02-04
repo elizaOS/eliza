@@ -4,9 +4,9 @@
  * Transfer funds to an agent's wallet.
  */
 
-import { agentWalletService } from "@babylon/agents";
-import { authenticateUser } from "@babylon/api";
-import { db, eq, users } from "@babylon/db";
+import { agentWalletService } from "@polyagent/agents";
+import { authenticateUser } from "@polyagent/api";
+import { db, eq, users } from "@polyagent/db";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 

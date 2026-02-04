@@ -6,7 +6,7 @@
  * @packageDocumentation
  */
 
-import { agentLogs, db, eq, users } from "@babylon/db";
+import { agentLogs, db, eq, users } from "@polyagent/db";
 import { PrivyClient } from "@privy-io/server-auth";
 import { ethers } from "ethers";
 import { v4 as uuidv4 } from "uuid";

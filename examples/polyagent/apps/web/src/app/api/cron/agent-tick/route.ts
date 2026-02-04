@@ -16,16 +16,16 @@ import {
   agentRuntimeManager,
   agentService,
   releaseAgentLock,
-} from "@babylon/agents";
+} from "@polyagent/agents";
 import {
   DistributedLockService,
   recordCronExecution,
   relayCronToStaging,
   verifyCronAuth,
-} from "@babylon/api";
-import type { User, UserAgentConfig } from "@babylon/db";
-import { db, eq, inArray, userAgentConfigs, users } from "@babylon/db";
-import { logger } from "@babylon/shared";
+} from "@polyagent/api";
+import type { User, UserAgentConfig } from "@polyagent/db";
+import { db, eq, inArray, userAgentConfigs, users } from "@polyagent/db";
+import { logger } from "@polyagent/shared";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 

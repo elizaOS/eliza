@@ -1,6 +1,6 @@
 "use client";
 
-import { getDisplayReferralUrl, getReferralUrl } from "@babylon/shared";
+import { getDisplayReferralUrl, getReferralUrl } from "@polyagent/shared";
 import { Check, Copy, Key, LogOut, Settings } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";

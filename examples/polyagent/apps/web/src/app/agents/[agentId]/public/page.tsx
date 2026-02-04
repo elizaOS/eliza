@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@babylon/shared";
+import { cn } from "@polyagent/shared";
 import type { ISeriesApi, LineData } from "lightweight-charts";
 import { ColorType } from "lightweight-charts";
 import { ArrowLeft, Bot, Share2 } from "lucide-react";

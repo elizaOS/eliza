@@ -4,7 +4,7 @@
  * @description Utilities for finding users by various identifiers (ID, privyId, username).
  */
 
-import { db, eq, or, users } from "@babylon/db";
+import { db, eq, or, users } from "@polyagent/db";
 import type { InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import type { SelectedFields } from "drizzle-orm/pg-core";

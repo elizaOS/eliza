@@ -34,14 +34,13 @@ import {
   userAgentConfigs,
   users,
   withTransaction,
-} from "@babylon/db";
-import type { AgentCapabilities } from "@babylon/shared";
+} from "@polyagent/db";
+import type { AgentCapabilities } from "@polyagent/shared";
 import {
-  BABYLON_POINTS_SYMBOL,
   getCurrentChainId,
   IDENTITY_REGISTRY_BASE_SEPOLIA,
   REPUTATION_SYSTEM_BASE_SEPOLIA,
-} from "@babylon/shared";
+} from "@polyagent/shared";
 import { AuthorizationError } from "../errors";
 import { agentIdentityService } from "../identity/AgentIdentityService";
 import { agentRuntimeManager } from "../runtime/AgentRuntimeManager";
@@ -691,12 +690,6 @@ export class AgentServiceV2 {
       });
     });
 
-    logger.info(
-      `Deposited ${BABYLON_POINTS_SYMBOL}${amount} trading balance to agent ${agentUserId}`,
-      undefined,
-      "AgentService",
-    );
-
     const finalResult = await db
       .select()
       .from(users)
@@ -804,13 +797,6 @@ export class AgentServiceV2 {
         description: `Withdrawal from agent: ${agentWithConfig.displayName}`,
       });
     });
-
-    logger.info(
-      `Withdrew ${BABYLON_POINTS_SYMBOL}${amount} trading balance from agent ${agentUserId}`,
-      undefined,
-      "AgentService",
-    );
-
     const finalResult = await db
       .select()
       .from(users)

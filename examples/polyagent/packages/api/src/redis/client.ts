@@ -5,7 +5,7 @@
  * using the standard Redis protocol via ioredis.
  *
  * Configuration:
- * - In development mode: Automatically connects to redis://localhost:6380 (Docker Compose)
+ * - In development mode: Automatically connects to redis://localhost:6381 (Docker Compose)
  * - Set REDIS_URL environment variable to connect to any Redis server
  * - Works with local Redis: redis://localhost:6379
  * - Works with Upstash: redis://default:token@hostname:port
@@ -29,7 +29,7 @@ const isTestEnv = process.env.NODE_ENV === "test";
 const isDev = process.env.NODE_ENV === "development";
 
 // Default Redis URL for local development (Docker Compose uses port 6380)
-const DEFAULT_DEV_REDIS_URL = "redis://localhost:6380";
+const DEFAULT_DEV_REDIS_URL = "redis://localhost:6381";
 
 /**
  * Initialize Redis client

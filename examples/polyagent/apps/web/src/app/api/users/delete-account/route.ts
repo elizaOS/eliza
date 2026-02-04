@@ -77,7 +77,7 @@
  * @see GDPR Article 17 - Right to erasure
  */
 
-import { authenticate, successResponse, withErrorHandling } from "@babylon/api";
+import { authenticate, successResponse, withErrorHandling } from "@polyagent/api";
 import {
   db,
   eq,
@@ -93,8 +93,8 @@ import {
   userInteractions,
   users,
   withTransaction,
-} from "@babylon/db";
-import { logger } from "@babylon/shared";
+} from "@polyagent/db";
+import { logger } from "@polyagent/shared";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 

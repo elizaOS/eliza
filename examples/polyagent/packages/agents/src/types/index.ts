@@ -1,5 +1,5 @@
 /**
- * Type Exports for @babylon/agents
+ * Type Exports for @polyagent/agents
  */
 
 export * from "./agent-registry";

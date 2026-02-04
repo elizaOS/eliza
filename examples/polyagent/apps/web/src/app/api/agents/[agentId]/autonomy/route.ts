@@ -4,8 +4,8 @@
  * Toggle agent autonomous trading on/off.
  */
 
-import { authenticateUser } from "@babylon/api";
-import { db, eq, users } from "@babylon/db";
+import { authenticateUser } from "@polyagent/api";
+import { db, eq, users } from "@polyagent/db";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 

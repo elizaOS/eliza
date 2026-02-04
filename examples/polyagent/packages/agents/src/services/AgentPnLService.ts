@@ -10,7 +10,7 @@
  * @packageDocumentation
  */
 
-import { broadcastAgentActivity, type TradeActivityData } from "@babylon/api";
+import { broadcastAgentActivity, type TradeActivityData } from "@polyagent/api";
 import {
   agentLogs,
   agentTrades,
@@ -21,7 +21,7 @@ import {
   markets,
   users,
   withTransaction,
-} from "@babylon/db";
+} from "@polyagent/db";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../shared/logger";
 import { generateSnowflakeId } from "../shared/snowflake";

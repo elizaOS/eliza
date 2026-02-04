@@ -8,7 +8,7 @@
  *
  * @usage
  * ```typescript
- * import { cachedDb } from '@babylon/api'
+ * import { cachedDb } from '@polyagent/api'
  * const posts = await cachedDb.getRecentPosts(100)
  * ```
  */
@@ -36,8 +36,8 @@ import {
   trendingTags,
   userActorFollows,
   users,
-} from "@babylon/db";
-import { logger } from "@babylon/shared";
+} from "@polyagent/db";
+import { logger } from "@polyagent/shared";
 import {
   CACHE_KEYS,
   DEFAULT_TTLS,

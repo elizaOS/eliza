@@ -86,7 +86,7 @@
  * @see {@link /lib/onboarding/types} Onboarding types
  */
 
-import type { JsonValue } from "@babylon/api";
+import type { JsonValue } from "@polyagent/api";
 import {
   authenticate,
   ConflictError,
@@ -97,7 +97,7 @@ import {
   PointsService,
   successResponse,
   withErrorHandling,
-} from "@babylon/api";
+} from "@polyagent/api";
 import {
   and,
   db,
@@ -110,8 +110,8 @@ import {
   users,
   withRetry,
   withTransaction,
-} from "@babylon/db";
-import type { OnboardingProfilePayload } from "@babylon/shared";
+} from "@polyagent/db";
+import type { OnboardingProfilePayload } from "@polyagent/shared";
 import {
   checkForAdminEmail,
   generateSnowflakeId,
@@ -119,7 +119,7 @@ import {
   OnboardingProfileSchema,
   POINTS,
   type PrivyUserWithEmails,
-} from "@babylon/shared";
+} from "@polyagent/shared";
 import type { User as PrivyUser } from "@privy-io/server-auth";
 import type { NextRequest } from "next/server";
 import { z } from "zod";

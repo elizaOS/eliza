@@ -54,13 +54,13 @@ export * from "./types";
 // Drizzle Query Operators
 // ============================================================================
 
-// Re-export snowflake utilities from @babylon/shared
+// Re-export snowflake utilities from @polyagent/shared
 export {
   generateSnowflakeId,
   isValidSnowflakeId,
   parseSnowflakeId,
   SnowflakeGenerator,
-} from "@babylon/shared";
+} from "@polyagent/shared";
 export type { SQL } from "drizzle-orm";
 export {
   aliasedTable,
