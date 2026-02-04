@@ -296,6 +296,9 @@ class InMemoryDatabaseAdapter:
             memory_dict = memory.model_dump(exclude_none=True, by_alias=True)
         elif hasattr(memory, "dict"):
             memory_dict = memory.dict(exclude_none=True, by_alias=True)
+        elif hasattr(memory, "DESCRIPTOR"):
+            from google.protobuf.json_format import MessageToDict
+            memory_dict = MessageToDict(memory, preserving_proto_field_name=True)
         elif isinstance(memory, dict):
             memory_dict = memory
         else:

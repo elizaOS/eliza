@@ -468,9 +468,9 @@ class DefaultMessageService(IMessageService):
             prompt = self._build_canonical_prompt(runtime, message, state, template)
 
             # Step 4: Generate response using the model
-            # Use protobuf enum name (MODEL_TYPE_TEXT_LARGE not TEXT_LARGE)
+            # Use protobuf enum name (TEXT_LARGE)
             raw_response = await runtime.use_model(
-                str(ModelType.MODEL_TYPE_TEXT_LARGE),
+                ModelType.TEXT_LARGE.value,
                 {
                     "prompt": prompt,
                     "system": runtime.character.system,
