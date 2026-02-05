@@ -242,7 +242,7 @@ describe("skills-cli", () => {
     });
 
     it("formats info for a real bundled skill (peekaboo)", () => {
-      const bundledDir = resolveBundledSkillsDir();
+      const bundledDir = getSkillsDir();
       if (!bundledDir) {
         return;
       }
