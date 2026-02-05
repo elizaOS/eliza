@@ -120,9 +120,10 @@ class TestTicTacToe:
 
         env = TicTacToeEnvironment()
 
-        # Check horizontal win
+        # Check horizontal win for Player X (value = 1)
+        from elizaos_art.games.tic_tac_toe.types import Player
         board = [1, 1, 1, 0, 0, 0, 0, 0, 0]
-        assert env._is_winner(board, env._current_state.current_player if env._current_state else None) or True
+        assert env._is_winner(board, Player.X)
 
     @pytest.mark.asyncio
     async def test_full_game(self):
@@ -250,9 +251,11 @@ class TestTemporalClue:
 
         state = await env.reset(seed=42)
 
-        # Place all events
-        while state.unplaced_events and not state.submitted:
+        # Place all events and submit
+        while not state.submitted:
             actions = env.get_available_actions(state)
+            if not actions:
+                break
             action = await agent.decide(state, actions)
             state, _, _ = await env.step(action)
 
