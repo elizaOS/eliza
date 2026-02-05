@@ -287,9 +287,16 @@ def train(
 def pipeline(
     steps: int = typer.Option(50, help="Training steps"),
     eval_episodes: int = typer.Option(50, help="Evaluation episodes"),
+    rollouts: int = typer.Option(8, help="Rollouts per group"),
+    groups: int = typer.Option(4, help="Groups per step"),
+    lr: float = typer.Option(1e-5, help="Learning rate"),
     model: str = typer.Option(
         "meta-llama/Llama-3.2-3B-Instruct",
         help="Model to train",
+    ),
+    judge: str = typer.Option(
+        "openai/gpt-5-mini",
+        help="RULER judge model",
     ),
     resume: bool = typer.Option(False, help="Resume from checkpoint"),
 ) -> None:
@@ -303,6 +310,10 @@ def pipeline(
             model_name=model,
             max_steps=steps,
             eval_episodes=eval_episodes,
+            rollouts_per_group=rollouts,
+            groups_per_step=groups,
+            learning_rate=lr,
+            judge_model=judge,
             resume_from="./checkpoints/game_2048" if resume else None,
         )
 

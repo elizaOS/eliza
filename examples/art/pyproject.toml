@@ -42,6 +42,9 @@ dependencies = [
     "transformers>=4.36.0",
     "torch>=2.0.0",
     "accelerate>=0.25.0",
+    "peft>=0.7.0",
+    "unsloth>=2024.2",
+    "trl>=0.7.10",
 ]
 
 [project.optional-dependencies]

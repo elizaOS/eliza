@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Generic, TypeVar
 
 import art
+import art.local
 from art.rewards import ruler_score_group
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -167,14 +168,32 @@ class GRPOTrainer(Generic[S, A]):
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize ART model
-        self.model = art.Model(
-            self.config.model_name,
+        self.model = art.TrainableModel(
+            name=self.config.model_name,
+            base_model=self.config.model_name,
             project=f"elizaos-art-{self.env.name}",
         )
 
         # Register with backend
-        backend = art.LocalBackend() if self.config.backend == "vllm" else art.HFBackend()
+
+        
+        # Use LocalBackend for vLLM (default)
+        if self.config.backend == "vllm":
+            backend = art.local.LocalBackend()
+        else:
+            # Fallback or TODO for HFBackend if it differs
+            console.print("[yellow]Warning: HFBackend not found, using LocalBackend[/yellow]")
+            backend = art.local.LocalBackend()
+            
         await self.model.register(backend)
+
+        # Configure local inference if needed
+        if not self.model.inference_base_url and self.config.backend == "vllm":
+            # Explicitly start the OpenAI server for local backend
+            base_url, api_key = await backend._prepare_backend_for_training(self.model)
+            self.model.inference_base_url = base_url
+            self.model.inference_api_key = api_key
+            console.print(f"[green]Started inference server at {base_url}[/green]")
 
         # Load checkpoint if resuming
         if self.config.resume_from:
@@ -252,8 +271,13 @@ class GRPOTrainer(Generic[S, A]):
         if self.model is None:
             raise RuntimeError("Trainer not initialized")
 
-        # Use ART's chat completion
-        response = await self.model.chat(messages)
+        # Use ART's chat completion via OpenAI client
+        client = self.model.openai_client()
+        response = await client.chat.completions.create(
+            model=self.model.name,
+            messages=messages,
+            temperature=0.7,  # Default temp
+        )
         return response.choices[0].message.content or ""
 
     async def gather_trajectory_groups(
@@ -331,10 +355,15 @@ class GRPOTrainer(Generic[S, A]):
         # 3. Train with GRPO
         console.print("Training...")
         if self.model is not None:
-            await self.model.train(
+             # Get backend (accessed via model registration)
+             async for _ in self.model.backend._train_model(
+                self.model,
                 scored_groups,
                 config=art.TrainConfig(learning_rate=self.config.learning_rate),
-            )
+                dev_config={},
+                verbose=False
+            ):
+                pass
 
         # Calculate metrics
         all_rewards = [t.reward for g in groups for t in g.trajectories]
