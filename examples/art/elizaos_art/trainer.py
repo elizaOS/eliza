@@ -176,7 +176,6 @@ class GRPOTrainer(Generic[S, A]):
 
         # Register with backend
 
-        
         # Use LocalBackend for vLLM (default)
         if self.config.backend == "vllm":
             backend = art.local.LocalBackend()
@@ -187,13 +186,9 @@ class GRPOTrainer(Generic[S, A]):
             
         await self.model.register(backend)
 
-        # Configure local inference if needed
-        if not self.model.inference_base_url and self.config.backend == "vllm":
-            # Explicitly start the OpenAI server for local backend
-            base_url, api_key = await backend._prepare_backend_for_training(self.model)
-            self.model.inference_base_url = base_url
-            self.model.inference_api_key = api_key
-            console.print(f"[green]Started inference server at {base_url}[/green]")
+        # Log inference server info if available (set by register())
+        if self.model.inference_base_url:
+            console.print(f"[green]Inference server available at {self.model.inference_base_url}[/green]")
 
         # Load checkpoint if resuming
         if self.config.resume_from:
@@ -353,10 +348,10 @@ class GRPOTrainer(Generic[S, A]):
             scored_groups.append(scored)
 
         # 3. Train with GRPO
+        # TODO: Using private _train_model API - monitor art library for public alternative
         console.print("Training...")
         if self.model is not None:
-             # Get backend (accessed via model registration)
-             async for _ in self.model.backend._train_model(
+            async for _ in self.model.backend._train_model(
                 self.model,
                 scored_groups,
                 config=art.TrainConfig(learning_rate=self.config.learning_rate),
