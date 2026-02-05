@@ -1,4 +1,4 @@
-import type { Skill, SkillEntry, SkillCommandSpec } from "./types.js";
+import type { Skill, SkillCommandSpec, SkillEntry } from "./types.js";
 
 /**
  * Escape special XML characters
@@ -7,12 +7,12 @@ import type { Skill, SkillEntry, SkillCommandSpec } from "./types.js";
  * @returns XML-escaped string
  */
 function escapeXml(str: string): string {
-	return str
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&apos;");
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 /**
@@ -27,31 +27,33 @@ function escapeXml(str: string): string {
  * @returns Formatted skills prompt section
  */
 export function formatSkillsForPrompt(skills: Skill[]): string {
-	const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
+  const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
 
-	if (visibleSkills.length === 0) {
-		return "";
-	}
+  if (visibleSkills.length === 0) {
+    return "";
+  }
 
-	const lines = [
-		"\n\nThe following skills provide specialized instructions for specific tasks.",
-		"Use the read tool to load a skill's file when the task matches its description.",
-		"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
-		"",
-		"<available_skills>",
-	];
+  const lines = [
+    "\n\nThe following skills provide specialized instructions for specific tasks.",
+    "Use the read tool to load a skill's file when the task matches its description.",
+    "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+    "",
+    "<available_skills>",
+  ];
 
-	for (const skill of visibleSkills) {
-		lines.push("  <skill>");
-		lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-		lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-		lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
-		lines.push("  </skill>");
-	}
+  for (const skill of visibleSkills) {
+    lines.push("  <skill>");
+    lines.push(`    <name>${escapeXml(skill.name)}</name>`);
+    lines.push(
+      `    <description>${escapeXml(skill.description)}</description>`,
+    );
+    lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
+    lines.push("  </skill>");
+  }
 
-	lines.push("</available_skills>");
+  lines.push("</available_skills>");
 
-	return lines.join("\n");
+  return lines.join("\n");
 }
 
 /**
@@ -61,11 +63,11 @@ export function formatSkillsForPrompt(skills: Skill[]): string {
  * @returns Formatted skills prompt section
  */
 export function formatSkillEntriesForPrompt(entries: SkillEntry[]): string {
-	const visibleSkills = entries
-		.filter((entry) => entry.invocation?.disableModelInvocation !== true)
-		.map((entry) => entry.skill);
+  const visibleSkills = entries
+    .filter((entry) => entry.invocation?.disableModelInvocation !== true)
+    .map((entry) => entry.skill);
 
-	return formatSkillsForPrompt(visibleSkills);
+  return formatSkillsForPrompt(visibleSkills);
 }
 
 /** Maximum length for skill command names */
@@ -85,13 +87,13 @@ const SKILL_COMMAND_DESCRIPTION_MAX_LENGTH = 100;
  * @returns Sanitized command name
  */
 function sanitizeSkillCommandName(raw: string): string {
-	const normalized = raw
-		.toLowerCase()
-		.replace(/[^a-z0-9_]+/g, "_")
-		.replace(/_+/g, "_")
-		.replace(/^_+|_+$/g, "");
-	const trimmed = normalized.slice(0, SKILL_COMMAND_MAX_LENGTH);
-	return trimmed || SKILL_COMMAND_FALLBACK;
+  const normalized = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const trimmed = normalized.slice(0, SKILL_COMMAND_MAX_LENGTH);
+  return trimmed || SKILL_COMMAND_FALLBACK;
 }
 
 /**
@@ -101,23 +103,26 @@ function sanitizeSkillCommandName(raw: string): string {
  * @param used - Set of already-used command names (lowercase)
  * @returns Unique command name
  */
-function resolveUniqueSkillCommandName(base: string, used: Set<string>): string {
-	const normalizedBase = base.toLowerCase();
-	if (!used.has(normalizedBase)) {
-		return base;
-	}
-	for (let index = 2; index < 1000; index += 1) {
-		const suffix = `_${index}`;
-		const maxBaseLength = Math.max(1, SKILL_COMMAND_MAX_LENGTH - suffix.length);
-		const trimmedBase = base.slice(0, maxBaseLength);
-		const candidate = `${trimmedBase}${suffix}`;
-		const candidateKey = candidate.toLowerCase();
-		if (!used.has(candidateKey)) {
-			return candidate;
-		}
-	}
-	const fallback = `${base.slice(0, Math.max(1, SKILL_COMMAND_MAX_LENGTH - 2))}_x`;
-	return fallback;
+function resolveUniqueSkillCommandName(
+  base: string,
+  used: Set<string>,
+): string {
+  const normalizedBase = base.toLowerCase();
+  if (!used.has(normalizedBase)) {
+    return base;
+  }
+  for (let index = 2; index < 1000; index += 1) {
+    const suffix = `_${index}`;
+    const maxBaseLength = Math.max(1, SKILL_COMMAND_MAX_LENGTH - suffix.length);
+    const trimmedBase = base.slice(0, maxBaseLength);
+    const candidate = `${trimmedBase}${suffix}`;
+    const candidateKey = candidate.toLowerCase();
+    if (!used.has(candidateKey)) {
+      return candidate;
+    }
+  }
+  const fallback = `${base.slice(0, Math.max(1, SKILL_COMMAND_MAX_LENGTH - 2))}_x`;
+  return fallback;
 }
 
 /**
@@ -129,70 +134,72 @@ function resolveUniqueSkillCommandName(base: string, used: Set<string>): string 
  * @returns Array of skill command specifications
  */
 export function buildSkillCommandSpecs(
-	entries: SkillEntry[],
-	reservedNames?: Set<string>,
+  entries: SkillEntry[],
+  reservedNames?: Set<string>,
 ): SkillCommandSpec[] {
-	// Filter to user-invocable skills
-	const userInvocable = entries.filter((entry) => entry.invocation?.userInvocable !== false);
+  // Filter to user-invocable skills
+  const userInvocable = entries.filter(
+    (entry) => entry.invocation?.userInvocable !== false,
+  );
 
-	const used = new Set<string>();
-	for (const reserved of reservedNames ?? []) {
-		used.add(reserved.toLowerCase());
-	}
+  const used = new Set<string>();
+  for (const reserved of reservedNames ?? []) {
+    used.add(reserved.toLowerCase());
+  }
 
-	const specs: SkillCommandSpec[] = [];
+  const specs: SkillCommandSpec[] = [];
 
-	for (const entry of userInvocable) {
-		const rawName = entry.skill.name;
-		const base = sanitizeSkillCommandName(rawName);
-		const unique = resolveUniqueSkillCommandName(base, used);
-		used.add(unique.toLowerCase());
+  for (const entry of userInvocable) {
+    const rawName = entry.skill.name;
+    const base = sanitizeSkillCommandName(rawName);
+    const unique = resolveUniqueSkillCommandName(base, used);
+    used.add(unique.toLowerCase());
 
-		const rawDescription = entry.skill.description?.trim() || rawName;
-		const description =
-			rawDescription.length > SKILL_COMMAND_DESCRIPTION_MAX_LENGTH
-				? rawDescription.slice(0, SKILL_COMMAND_DESCRIPTION_MAX_LENGTH - 1) + "…"
-				: rawDescription;
+    const rawDescription = entry.skill.description?.trim() || rawName;
+    const description =
+      rawDescription.length > SKILL_COMMAND_DESCRIPTION_MAX_LENGTH
+        ? `${rawDescription.slice(0, SKILL_COMMAND_DESCRIPTION_MAX_LENGTH - 1)}…`
+        : rawDescription;
 
-		// Parse dispatch configuration from frontmatter
-		const dispatch = (() => {
-			const kindRaw = (
-				entry.frontmatter?.["command-dispatch"] ??
-				entry.frontmatter?.["command_dispatch"] ??
-				""
-			)
-				.toString()
-				.trim()
-				.toLowerCase();
+    // Parse dispatch configuration from frontmatter
+    const dispatch = (() => {
+      const kindRaw = (
+        entry.frontmatter?.["command-dispatch"] ??
+        entry.frontmatter?.command_dispatch ??
+        ""
+      )
+        .toString()
+        .trim()
+        .toLowerCase();
 
-			if (!kindRaw || kindRaw !== "tool") {
-				return undefined;
-			}
+      if (!kindRaw || kindRaw !== "tool") {
+        return undefined;
+      }
 
-			const toolName = (
-				entry.frontmatter?.["command-tool"] ??
-				entry.frontmatter?.["command_tool"] ??
-				""
-			)
-				.toString()
-				.trim();
+      const toolName = (
+        entry.frontmatter?.["command-tool"] ??
+        entry.frontmatter?.command_tool ??
+        ""
+      )
+        .toString()
+        .trim();
 
-			if (!toolName) {
-				return undefined;
-			}
+      if (!toolName) {
+        return undefined;
+      }
 
-			return { kind: "tool" as const, toolName, argMode: "raw" as const };
-		})();
+      return { kind: "tool" as const, toolName, argMode: "raw" as const };
+    })();
 
-		specs.push({
-			name: unique,
-			skillName: rawName,
-			description,
-			...(dispatch ? { dispatch } : {}),
-		});
-	}
+    specs.push({
+      name: unique,
+      skillName: rawName,
+      description,
+      ...(dispatch ? { dispatch } : {}),
+    });
+  }
 
-	return specs;
+  return specs;
 }
 
 /**
@@ -202,7 +209,7 @@ export function buildSkillCommandSpecs(
  * @returns Formatted skill string
  */
 export function formatSkillSummary(skill: Skill): string {
-	return `${skill.name}: ${skill.description}`;
+  return `${skill.name}: ${skill.description}`;
 }
 
 /**
@@ -212,5 +219,5 @@ export function formatSkillSummary(skill: Skill): string {
  * @returns Newline-separated list of skills
  */
 export function formatSkillsList(skills: Skill[]): string {
-	return skills.map(formatSkillSummary).join("\n");
+  return skills.map(formatSkillSummary).join("\n");
 }
