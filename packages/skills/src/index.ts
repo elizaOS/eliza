@@ -22,40 +22,37 @@
  * ```
  */
 
-// Types
-export type {
-	Skill,
-	SkillFrontmatter,
-	SkillDiagnostic,
-	SkillEntry,
-	SkillMetadata,
-	SkillInvocationPolicy,
-	SkillCommandSpec,
-	LoadSkillsFromDirOptions,
-	LoadSkillsOptions,
-	LoadSkillsResult,
-} from "./types.js";
-
-// Path resolution
-export { getSkillsDir, clearSkillsDirCache } from "./resolver.js";
-
-// Skill loading
-export { loadSkillsFromDir, loadSkills, loadSkillEntries } from "./loader.js";
-
-// Frontmatter parsing
-export {
-	parseFrontmatter,
-	stripFrontmatter,
-	resolveSkillMetadata,
-	resolveSkillInvocationPolicy,
-	type ParsedFrontmatter,
-} from "./frontmatter.js";
-
 // Prompt formatting
 export {
-	formatSkillsForPrompt,
-	formatSkillEntriesForPrompt,
-	formatSkillSummary,
-	formatSkillsList,
-	buildSkillCommandSpecs,
+  buildSkillCommandSpecs,
+  formatSkillEntriesForPrompt,
+  formatSkillSummary,
+  formatSkillsForPrompt,
+  formatSkillsList,
 } from "./formatter.js";
+// Frontmatter parsing
+export {
+  type ParsedFrontmatter,
+  parseFrontmatter,
+  resolveSkillInvocationPolicy,
+  resolveSkillMetadata,
+  stripFrontmatter,
+} from "./frontmatter.js";
+
+// Skill loading
+export { loadSkillEntries, loadSkills, loadSkillsFromDir } from "./loader.js";
+// Path resolution
+export { clearSkillsDirCache, getSkillsDir } from "./resolver.js";
+// Types
+export type {
+  LoadSkillsFromDirOptions,
+  LoadSkillsOptions,
+  LoadSkillsResult,
+  Skill,
+  SkillCommandSpec,
+  SkillDiagnostic,
+  SkillEntry,
+  SkillFrontmatter,
+  SkillInvocationPolicy,
+  SkillMetadata,
+} from "./types.js";
