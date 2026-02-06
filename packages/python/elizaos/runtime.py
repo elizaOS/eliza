@@ -647,16 +647,16 @@ class AgentRuntime(IAgentRuntime):
                         f"Parameter '{param_def.name}' expected string, got {type(extracted_value).__name__}"
                     )
                     continue
-                if param_def.schema_def.enum and extracted_value not in param_def.schema_def.enum:
+                if param_def.schema.enum_values and extracted_value not in param_def.schema.enum_values:
                     errors.append(
-                        f"Parameter '{param_def.name}' value '{extracted_value}' not in allowed values: {', '.join(param_def.schema_def.enum)}"
+                        f"Parameter '{param_def.name}' value '{extracted_value}' not in allowed values: {', '.join(param_def.schema.enum_values)}"
                     )
                     continue
-                if param_def.schema_def.pattern and not re.fullmatch(
-                    param_def.schema_def.pattern, extracted_value
+                if param_def.schema.pattern and not re.fullmatch(
+                    param_def.schema.pattern, extracted_value
                 ):
                     errors.append(
-                        f"Parameter '{param_def.name}' value '{extracted_value}' does not match pattern: {param_def.schema_def.pattern}"
+                        f"Parameter '{param_def.name}' value '{extracted_value}' does not match pattern: {param_def.schema.pattern}"
                     )
                     continue
                 validated[param_def.name] = extracted_value
@@ -670,18 +670,18 @@ class AgentRuntime(IAgentRuntime):
                         f"Parameter '{param_def.name}' expected number, got {type(extracted_value).__name__}"
                     )
                     continue
-                if param_def.schema_def.minimum is not None and float(extracted_value) < float(
-                    param_def.schema_def.minimum
+                if param_def.schema.minimum is not None and float(extracted_value) < float(
+                    param_def.schema.minimum
                 ):
                     errors.append(
-                        f"Parameter '{param_def.name}' value {extracted_value} is below minimum {param_def.schema_def.minimum}"
+                        f"Parameter '{param_def.name}' value {extracted_value} is below minimum {param_def.schema.minimum}"
                     )
                     continue
-                if param_def.schema_def.maximum is not None and float(extracted_value) > float(
-                    param_def.schema_def.maximum
+                if param_def.schema.maximum is not None and float(extracted_value) > float(
+                    param_def.schema.maximum
                 ):
                     errors.append(
-                        f"Parameter '{param_def.name}' value {extracted_value} is above maximum {param_def.schema_def.maximum}"
+                        f"Parameter '{param_def.name}' value {extracted_value} is above maximum {param_def.schema.maximum}"
                     )
                     continue
                 validated[param_def.name] = extracted_value

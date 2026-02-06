@@ -242,8 +242,9 @@ describe("Cast Formatting and Validation", () => {
     });
 
     it("should split long text into multiple chunks", () => {
-      // Default maxLength in TS splitPostContent is 1024, so use that
-      const longText = "A".repeat(2000);
+      // Build text with paragraph breaks that exceeds 1024 chars total
+      const paragraph = "This is a test paragraph with some content. ";
+      const longText = Array(30).fill(paragraph).join("") + "\n\n" + Array(30).fill(paragraph).join("");
       const result = splitPostContent(longText);
       expect(result.length).toBeGreaterThan(1);
       for (const chunk of result) {

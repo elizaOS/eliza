@@ -519,6 +519,15 @@ describe("Agent Runtime E2E", () => {
         JSON.stringify({ agent: { name: "SubprocessAgent", bio: "test" } }),
       );
 
+      // Also create a minimal workspace dir so ensureAgentWorkspace doesn't
+      // need template files (they're not packaged in dev)
+      const subWorkspace = path.join(subHome, ".milaidy", "workspace");
+      fs.mkdirSync(subWorkspace, { recursive: true });
+      // Write minimal bootstrap files so startEliza doesn't try to load templates
+      for (const fname of ["AGENTS.md", "TOOLS.md", "IDENTITY.md", "USER.md", "HEARTBEAT.md", "BOOTSTRAP.md"]) {
+        fs.writeFileSync(path.join(subWorkspace, fname), `# ${fname}\nTest placeholder.`);
+      }
+
       // Build env: inherit everything, override HOME + PGLITE + XDG dirs
       const env: Record<string, string> = {};
       for (const [k, v] of Object.entries(process.env)) {
