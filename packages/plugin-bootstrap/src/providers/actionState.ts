@@ -100,7 +100,7 @@ export const actionStateProvider: Provider = {
             resultText += `\n   Error: ${errorMsg}`;
           }
 
-          if (result.values && Object.keys(result.values).length > 0) {
+          if (result.values && typeof result.values === 'object' && Object.keys(result.values).length > 0) {
             const values = Object.entries(result.values)
               .map(([key, value]) => `   - ${key}: ${JSON.stringify(value)}`)
               .join('\n');
@@ -118,7 +118,7 @@ export const actionStateProvider: Provider = {
 
     // Format working memory
     let memoryText = '';
-    if (Object.keys(workingMemory).length > 0) {
+    if (workingMemory && typeof workingMemory === 'object' && Object.keys(workingMemory).length > 0) {
       const memoryEntries = Object.entries(workingMemory)
         .sort((a, b) => {
           const aTimestamp =

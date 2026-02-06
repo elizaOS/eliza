@@ -44,6 +44,9 @@ async function formatRelationships(runtime: IAgentRuntime, relationships: Relati
   });
 
   const formatMetadata = (metadata: Record<string, unknown>) => {
+    if (!metadata || typeof metadata !== 'object') {
+      return '{}';
+    }
     return JSON.stringify(
       Object.entries(metadata)
         .map(
