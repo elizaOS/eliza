@@ -9,43 +9,11 @@ import {
   elizaLogger,
   type IAgentRuntime,
   type Memory,
-  type MessagePayload,
   type Room,
   type World,
 } from "@elizaos/core";
 import { v4 as uuid } from "uuid";
 import type { AutoTradingManager } from "../../services/AutoTradingManager.ts";
-
-/** Trade log entry for monitoring */
-export interface TradeLogEntry {
-  timestamp: number;
-  isTrading: boolean;
-  strategy: string | undefined;
-  positions: number;
-  performance: {
-    totalPnL: number;
-    dailyPnL: number;
-    totalTrades: number;
-    winRate: number;
-  };
-}
-
-/** Trading monitoring result */
-export interface TradingMonitorResult {
-  duration: number;
-  tradeLog: TradeLogEntry[];
-  finalStatus: {
-    isTrading: boolean;
-    strategy?: string;
-    positions: { tokenAddress: string; amount: number }[];
-  };
-  finalPerformance: {
-    totalPnL: number;
-    dailyPnL: number;
-    totalTrades: number;
-    winRate: number;
-  };
-}
 
 /**
  * Sets up a standard scenario environment for an E2E test.
@@ -76,15 +44,16 @@ export async function setupScenario(
 
   // 2. Create a World and assign the user as the owner.
   // This is critical for providers that check for ownership.
+  const testServerId = asUUID(uuid());
   const world: World = {
     id: asUUID(uuid()),
     agentId: runtime.agentId,
     name: "E2E Test World",
-    messageServerId: asUUID(uuid()),
+    serverId: testServerId,
     metadata: {
       ownership: {
         ownerId: user.id,
-      } as unknown as { ownerId: string },
+      },
     },
   };
   await runtime.ensureWorldExists(world);
@@ -162,8 +131,9 @@ export function sendMessageAndWaitForResponse(
 
     // The callback function that the message handler will invoke with the agent's final response.
     // We use this callback to resolve our promise.
-    const callback = (responseContent: Content) => {
+    const callback = async (responseContent: Content): Promise<Memory[]> => {
       resolve(responseContent);
+      return [];
     };
 
     // Emit the event to trigger the agent's message processing logic.
@@ -171,7 +141,7 @@ export function sendMessageAndWaitForResponse(
       runtime,
       message,
       callback,
-    } as unknown as MessagePayload);
+    } as unknown as Parameters<typeof runtime.emitEvent>[1]);
   });
 }
 
@@ -181,13 +151,8 @@ export interface TestContext {
   startTime: number;
 }
 
-export async function waitForTrading(
-  runtime: IAgentRuntime,
-  maxWaitMs = 30000,
-): Promise<boolean> {
-  const tradingManager = runtime.getService(
-    "AutoTradingManager",
-  ) as AutoTradingManager;
+export async function waitForTrading(runtime: IAgentRuntime, maxWaitMs = 30000): Promise<boolean> {
+  const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
   const startTime = Date.now();
 
   while (Date.now() - startTime < maxWaitMs) {
@@ -201,19 +166,12 @@ export async function waitForTrading(
   return false;
 }
 
-export async function monitorTrades(
-  runtime: IAgentRuntime,
-  durationMs: number,
-): Promise<TradingMonitorResult> {
-  const tradingManager = runtime.getService(
-    "AutoTradingManager",
-  ) as AutoTradingManager;
+export async function monitorTrades(runtime: IAgentRuntime, durationMs: number): Promise<any> {
+  const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
   const startTime = Date.now();
-  const tradeLog: TradeLogEntry[] = [];
+  const tradeLog: any[] = [];
 
-  elizaLogger.info(
-    `[Test] Monitoring trades for ${durationMs / 1000} seconds...`,
-  );
+  elizaLogger.info(`[Test] Monitoring trades for ${durationMs / 1000} seconds...`);
 
   while (Date.now() - startTime < durationMs) {
     const status = tradingManager.getStatus();
@@ -234,11 +192,8 @@ export async function monitorTrades(
 
     // Log every 10 seconds
     if ((Date.now() - startTime) % 10000 < 1000) {
-      const lastEntry = tradeLog[tradeLog.length - 1];
       elizaLogger.info(
-        `[Test] Trading status: elapsed=${Math.floor((Date.now() - startTime) / 1000)}s, ` +
-          `isTrading=${lastEntry.isTrading}, positions=${lastEntry.positions}, ` +
-          `totalPnL=${lastEntry.performance.totalPnL.toFixed(2)}`,
+        `[Test] Trading status: elapsed=${Math.floor((Date.now() - startTime) / 1000)}s positions=${tradeLog[tradeLog.length - 1]?.positions ?? 0}`,
       );
     }
 
@@ -253,7 +208,7 @@ export async function monitorTrades(
   };
 }
 
-export function validateTradingResult(result: TradingMonitorResult): void {
+export function validateTradingResult(result: any): void {
   if (!result.finalStatus) {
     throw new Error("No final status in trading result");
   }
@@ -264,15 +219,7 @@ export function validateTradingResult(result: TradingMonitorResult): void {
 
   // Log summary
   elizaLogger.info(
-    {
-      duration: `${result.duration / 1000}s`,
-      totalTrades: result.finalPerformance.totalTrades,
-      winRate: `${(result.finalPerformance.winRate * 100).toFixed(1)}%`,
-      totalPnL: result.finalPerformance.totalPnL.toFixed(2),
-      dailyPnL: result.finalPerformance.dailyPnL.toFixed(2),
-      finalPositions: result.finalStatus.positions.length,
-    },
-    `[Test] Trading Summary`,
+    `[Test] Trading Summary: duration=${result.duration / 1000}s trades=${result.finalPerformance.totalTrades} winRate=${(result.finalPerformance.winRate * 100).toFixed(1)}% totalPnL=${result.finalPerformance.totalPnL.toFixed(2)} dailyPnL=${result.finalPerformance.dailyPnL.toFixed(2)} positions=${result.finalStatus.positions.length}`,
   );
 }
 

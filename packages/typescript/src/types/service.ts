@@ -125,7 +125,7 @@ export const ServiceType = {
   PAIRING: "pairing",
   AGENT_EVENT: "agent_event",
   UNKNOWN: "unknown",
-} as const satisfies ServiceTypeRegistry;
+} as const;
 
 /**
  * Client instance

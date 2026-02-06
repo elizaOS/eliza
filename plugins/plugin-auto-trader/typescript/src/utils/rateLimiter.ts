@@ -1,5 +1,5 @@
 export class RateLimiter {
-  private queue: Array<() => Promise<void>> = [];
+  private queue: Array<() => Promise<any>> = [];
   private processing = false;
   private lastRequestTime = 0;
 
@@ -21,26 +21,18 @@ export class RateLimiter {
             const now = Date.now();
             const timeSinceLastRequest = now - this.lastRequestTime;
             if (timeSinceLastRequest < this.minDelay) {
-              await new Promise((res) =>
-                setTimeout(res, this.minDelay - timeSinceLastRequest),
-              );
+              await new Promise((res) => setTimeout(res, this.minDelay - timeSinceLastRequest));
             }
 
             this.lastRequestTime = Date.now();
             const result = await fn();
             resolve(result);
             return;
-          } catch (error: unknown) {
+          } catch (error: any) {
             retries++;
 
             // Check if it's a rate limit error
-            const errorMessage =
-              error instanceof Error ? error.message : String(error);
-            const errorStatus =
-              error && typeof error === "object" && "status" in error
-                ? (error as { status: number }).status
-                : undefined;
-            if (errorMessage?.includes("429") || errorStatus === 429) {
+            if (error.message?.includes("429") || error.status === 429) {
               console.log(
                 `Rate limited. Waiting ${delay}ms before retry ${retries}/${this.maxRetries}...`,
               );

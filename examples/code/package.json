@@ -8,16 +8,16 @@
     "eliza-code": "./dist/index.js"
   },
   "scripts": {
-    "start": "bun src/index.ts",
-    "dev": "bun --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun",
+    "start": "bun src/index.tsx",
+    "dev": "bun --watch src/index.tsx",
+    "build": "bun build src/index.tsx --outdir dist --target bun --external @elizaos/core --external @elizaos/plugin-* --external @elizaos/sweagent-root",
     "build:deps": "bunx turbo run build --filter=@elizaos/sweagent-root --filter=@elizaos/plugin-mcp --filter=@elizaos/plugin-goals --filter=@elizaos/plugin-todo --filter=@elizaos/plugin-trajectory-logger",
     "test": "bun run build:deps && vitest run",
     "e2e:subagents": "bun src/e2e/subagents.ts",
     "e2e:games": "bun src/e2e/game-generation.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "cli": "bun src/index.ts",
+    "cli": "bun src/index.tsx",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check . || true",
     "typecheck": "tsc --noEmit || true"
@@ -41,6 +41,9 @@
     "@types/three": "^0.182.0",
     "chalk": "^5.3.0",
     "dotenv": "^17.2.3",
+    "ink": "^6.6.0",
+    "ink-text-input": "^6.0.0",
+    "react": "19.2.3",
     "three": "^0.182.0",
     "uuid": "^13.0.0",
     "zod": "^4.3.6",
@@ -48,7 +51,9 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
+    "@types/react": "19.2.3",
     "@vitest/coverage-v8": "^4.0.0",
+    "react-devtools-core": "^7.0.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
   }

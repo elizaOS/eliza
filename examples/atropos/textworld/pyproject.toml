@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-atropos-textworld"
 version = "2.0.0"
-description = "TextWorld environment for ElizaOS RL training with Atropos"
+description = "TextWorld environment for elizaOS RL training with Atropos"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -16,7 +16,6 @@ keywords = ["elizaos", "atropos", "reinforcement-learning", "textworld", "intera
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

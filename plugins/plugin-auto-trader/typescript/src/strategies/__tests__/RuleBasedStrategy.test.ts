@@ -15,11 +15,6 @@ import {
 const _MOCK_SYMBOL = "SOL/USDC";
 const _MIN_TRADE_QUANTITY_THRESHOLD = 1e-8;
 
-/** Strategy with exposed params for testing */
-type RuleBasedStrategyWithParams = RuleBasedStrategy & {
-  params: RuleBasedStrategyParams;
-};
-
 // Explicit interface for the results object passed to mockCalculateIndicators
 interface MockTestTAResults {
   rsi?: number;
@@ -44,10 +39,7 @@ describe("RuleBasedStrategy", () => {
   let portfolioSnapshot: PortfolioSnapshot;
 
   // Helper to generate price data
-  const generatePriceData = (
-    basePrice: number,
-    length: number = 30,
-  ): OHLCV[] => {
+  const generatePriceData = (basePrice: number, length: number = 30): OHLCV[] => {
     const data: OHLCV[] = [];
     const now = Date.now();
     for (let i = 0; i < length; i++) {
@@ -139,43 +131,37 @@ describe("RuleBasedStrategy", () => {
       );
     });
     it("should throw for invalid tradeSizePercentage", () => {
-      const rules: RuleCondition[] = [
-        { type: "VOLUME", action: TradeType.BUY },
-      ];
-      expect(() =>
-        strategy.configure({ rules, tradeSizePercentage: 0 }),
-      ).toThrow("tradeSizePercentage");
-      expect(() =>
-        strategy.configure({ rules, tradeSizePercentage: 1.1 }),
-      ).toThrow("tradeSizePercentage");
+      const rules: RuleCondition[] = [{ type: "VOLUME", action: TradeType.BUY }];
+      expect(() => strategy.configure({ rules, tradeSizePercentage: 0 })).toThrow(
+        "tradeSizePercentage",
+      );
+      expect(() => strategy.configure({ rules, tradeSizePercentage: 1.1 })).toThrow(
+        "tradeSizePercentage",
+      );
     });
     it("should throw for invalid fixedTradeQuantity", () => {
-      const rules: RuleCondition[] = [
-        { type: "VOLUME", action: TradeType.BUY },
-      ];
-      expect(() =>
-        strategy.configure({ rules, fixedTradeQuantity: 0 }),
-      ).toThrow("fixedTradeQuantity must be positive.");
+      const rules: RuleCondition[] = [{ type: "VOLUME", action: TradeType.BUY }];
+      expect(() => strategy.configure({ rules, fixedTradeQuantity: 0 })).toThrow(
+        "fixedTradeQuantity must be positive.",
+      );
     });
     it("should throw for invalid minIndicatorDataPoints", () => {
-      const rules: RuleCondition[] = [
-        { type: "VOLUME", action: TradeType.BUY },
-      ];
-      expect(() =>
-        strategy.configure({ rules, minIndicatorDataPoints: 0 }),
-      ).toThrow("minIndicatorDataPoints must be at least 1.");
+      const rules: RuleCondition[] = [{ type: "VOLUME", action: TradeType.BUY }];
+      expect(() => strategy.configure({ rules, minIndicatorDataPoints: 0 })).toThrow(
+        "minIndicatorDataPoints must be at least 1.",
+      );
     });
     it("should throw for invalid RSI periods or thresholds", () => {
       const baseRule: RuleCondition = { type: "RSI", action: TradeType.BUY };
-      expect(() =>
-        strategy.configure({ rules: [{ ...baseRule, rsiPeriod: 0 }] }),
-      ).toThrow("RSI period must be positive.");
-      expect(() =>
-        strategy.configure({ rules: [{ ...baseRule, rsiOversold: 101 }] }),
-      ).toThrow("RSI oversold must be between 0 and 100");
-      expect(() =>
-        strategy.configure({ rules: [{ ...baseRule, rsiOverbought: -1 }] }),
-      ).toThrow("RSI overbought must be between 0 and 100");
+      expect(() => strategy.configure({ rules: [{ ...baseRule, rsiPeriod: 0 }] })).toThrow(
+        "RSI period must be positive.",
+      );
+      expect(() => strategy.configure({ rules: [{ ...baseRule, rsiOversold: 101 }] })).toThrow(
+        "RSI oversold must be between 0 and 100",
+      );
+      expect(() => strategy.configure({ rules: [{ ...baseRule, rsiOverbought: -1 }] })).toThrow(
+        "RSI overbought must be between 0 and 100",
+      );
       expect(() =>
         strategy.configure({
           rules: [{ ...baseRule, rsiOversold: 70, rsiOverbought: 30 }],
@@ -202,12 +188,10 @@ describe("RuleBasedStrategy", () => {
         strategy.configure({
           rules: [{ ...baseRule, shortMAPeriod: 10, longMAPeriod: 5 }],
         }),
-      ).toThrow(
-        "Short MA period must be less than Long MA period for crossovers.",
+      ).toThrow("Short MA period must be less than Long MA period for crossovers.");
+      expect(() => strategy.configure({ rules: [{ ...baseRule, longMAPeriod: 10 }] })).toThrow(
+        "Short and Long MA periods are required for crossover rules.",
       );
-      expect(() =>
-        strategy.configure({ rules: [{ ...baseRule, longMAPeriod: 10 }] }),
-      ).toThrow("Short and Long MA periods are required for crossover rules.");
     });
     it("should default maType to SMA if not specified for crossover and log a warning", () => {
       const params: RuleBasedStrategyParams = {
@@ -222,9 +206,7 @@ describe("RuleBasedStrategy", () => {
       };
       strategy.configure(params);
       expect(console.warn).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "maType not specified for crossover rule, defaulting to SMA",
-        ),
+        expect.stringContaining("maType not specified for crossover rule, defaulting to SMA"),
       );
       expect(params.rules[0].maType).toBe("SMA");
     });
@@ -275,44 +257,31 @@ describe("RuleBasedStrategy", () => {
         ],
         minIndicatorDataPoints: 5,
       });
-      expect(
-        (testStrategy as unknown as RuleBasedStrategyWithParams).params
-          .minIndicatorDataPoints,
-      ).toBe(21);
+      expect((testStrategy as any).params.minIndicatorDataPoints).toBe(21);
 
       testStrategy = new RuleBasedStrategy(); // Fresh instance
       testStrategy.configure({
         rules: [{ type: "RSI", action: TradeType.BUY, rsiPeriod: 7 }],
         minIndicatorDataPoints: 25,
       });
-      expect(
-        (testStrategy as unknown as RuleBasedStrategyWithParams).params
-          .minIndicatorDataPoints,
-      ).toBe(25);
+      expect((testStrategy as any).params.minIndicatorDataPoints).toBe(25);
 
       testStrategy = new RuleBasedStrategy(); // Fresh instance
       testStrategy.configure({
         rules: [{ type: "RSI", action: TradeType.BUY, rsiPeriod: 22 }],
         // No minIndicatorDataPoints from user
       });
-      expect(
-        (testStrategy as unknown as RuleBasedStrategyWithParams).params
-          .minIndicatorDataPoints,
-      ).toBe(23);
+      expect((testStrategy as any).params.minIndicatorDataPoints).toBe(23);
     });
   });
 
   // Updated mockCalculateIndicators helper
   const mockCalculateIndicators = (results: Partial<MockTestTAResults>) => {
-    // Spy on the prototype's method
+    // Spy on the prototype's method, cast to any to manage complex spy typings if necessary,
+    // then use mockReturnValue with the results cast to any to satisfy the spy if types are misaligned.
     return vi
-      .spyOn(
-        RuleBasedStrategy.prototype as unknown as {
-          calculateIndicators: () => MockTestTAResults;
-        },
-        "calculateIndicators",
-      )
-      .mockReturnValue(results as MockTestTAResults);
+      .spyOn(RuleBasedStrategy.prototype as any, "calculateIndicators")
+      .mockReturnValue(results as any);
   };
 
   describe("decide - General", () => {
@@ -378,9 +347,7 @@ describe("RuleBasedStrategy", () => {
       },
     };
     const sltpParams: RuleBasedStrategyParams = {
-      rules: [
-        { type: "VOLUME", minVolume24h: 999999999, action: TradeType.BUY },
-      ], // Rule designed NOT to fire
+      rules: [{ type: "VOLUME", minVolume24h: 999999999, action: TradeType.BUY }], // Rule designed NOT to fire
       stopLossTakeProfit: {
         stopLossPercentage: 0.1,
         takeProfitPercentage: 0.2,
@@ -517,9 +484,7 @@ describe("RuleBasedStrategy", () => {
     it("should return null if RSI is neutral", async () => {
       strategy.configure({ rules: [rsiRuleBuy, rsiRuleSell] });
       mockCalculateIndicators({ rsi: 50 });
-      expect(
-        await strategy.decide({ marketData, agentState, portfolioSnapshot }),
-      ).toBeNull();
+      expect(await strategy.decide({ marketData, agentState, portfolioSnapshot })).toBeNull();
     });
   });
 
@@ -546,9 +511,7 @@ describe("RuleBasedStrategy", () => {
     });
     it("should return null if volume is not high enough", async () => {
       strategy.configure({ rules: [volumeRuleBuy] });
-      expect(
-        await strategy.decide({ marketData, agentState, portfolioSnapshot }),
-      ).toBeNull();
+      expect(await strategy.decide({ marketData, agentState, portfolioSnapshot })).toBeNull();
     });
   });
 
@@ -646,12 +609,9 @@ describe("RuleBasedStrategy", () => {
         ],
         minIndicatorDataPoints: 15,
       });
-      const calcIndSpy = mockStrategyInstanceCalculateIndicators(
-        currentStrategyInstance,
-        {
-          rsi: 75,
-        },
-      );
+      const calcIndSpy = mockStrategyInstanceCalculateIndicators(currentStrategyInstance, {
+        rsi: 75,
+      });
 
       const order = await currentStrategyInstance.decide({
         marketData,
@@ -675,10 +635,5 @@ const mockStrategyInstanceCalculateIndicators = (
   instance: RuleBasedStrategy,
   results: Partial<MockTestTAResults>,
 ) => {
-  return vi
-    .spyOn(
-      instance as unknown as { calculateIndicators: () => MockTestTAResults },
-      "calculateIndicators",
-    )
-    .mockReturnValue(results as MockTestTAResults);
+  return vi.spyOn(instance as any, "calculateIndicators").mockReturnValue(results as any);
 };

@@ -90,7 +90,7 @@ export const downloadMedia: Action = {
 
     if (!state) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "State is not available.",
           source: "discord",
         });
@@ -141,7 +141,7 @@ export const downloadMedia: Action = {
 
     while (retries < maxRetries) {
       try {
-        await callback({
+        await callback?.({
           ...response,
           attachments: [
             ...(response.attachments || []),

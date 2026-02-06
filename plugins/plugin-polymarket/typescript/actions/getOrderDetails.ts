@@ -34,7 +34,7 @@ export const getOrderDetailsAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     runtime.logger.info(
-      `[getOrderDetailsAction] Validate called for message: "${message.content?.text}"`
+      `[getOrderDetailsAction] Validate called for message: "${message.content?.text}"`,
     );
     const clobApiUrl = runtime.getSetting("CLOB_API_URL");
     const clobApiKey = runtime.getSetting("CLOB_API_KEY");
@@ -53,7 +53,7 @@ export const getOrderDetailsAction: Action = {
     }
     if (!privateKey) {
       runtime.logger.warn(
-        "[getOrderDetailsAction] A private key (WALLET_PRIVATE_KEY, PRIVATE_KEY, or POLYMARKET_PRIVATE_KEY) is required."
+        "[getOrderDetailsAction] A private key (WALLET_PRIVATE_KEY, PRIVATE_KEY, or POLYMARKET_PRIVATE_KEY) is required.",
       );
       return false;
     }
@@ -63,7 +63,7 @@ export const getOrderDetailsAction: Action = {
       if (!clobApiSecret) missing.push("CLOB_API_SECRET or CLOB_SECRET");
       if (!clobApiPassphrase) missing.push("CLOB_API_PASSPHRASE or CLOB_PASS_PHRASE");
       runtime.logger.warn(
-        `[getOrderDetailsAction] Missing required API credentials for L2 authentication: ${missing.join(", ")}.`
+        `[getOrderDetailsAction] Missing required API credentials for L2 authentication: ${missing.join(", ")}.`,
       );
       return false;
     }
@@ -76,7 +76,7 @@ export const getOrderDetailsAction: Action = {
     _message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     runtime.logger.info("[getOrderDetailsAction] Handler called!");
 
@@ -84,7 +84,7 @@ export const getOrderDetailsAction: Action = {
       runtime,
       state,
       getOrderDetailsTemplate,
-      "getOrderDetailsAction"
+      "getOrderDetailsAction",
     );
     let llmResult: LLMOrderDetailsResult = {};
     if (result && !isLLMError(result)) {

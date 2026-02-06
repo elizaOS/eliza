@@ -495,7 +495,6 @@ dependencies = [
  "handlebars",
  "hex",
  "lazy_static",
- "once_cell",
  "prost",
  "prost-types",
  "regex",
@@ -512,7 +511,7 @@ dependencies = [
 
 [[package]]
 name = "elizaos-plugin-bluesky"
-version = "2.0.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -530,7 +529,7 @@ dependencies = [
 
 [[package]]
 name = "elizaos-plugin-openai"
-version = "2.0.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",

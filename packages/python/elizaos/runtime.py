@@ -273,40 +273,25 @@ class AgentRuntime(IAgentRuntime):
         plugin_to_register = plugin
 
         if plugin.name == "bootstrap":
-            settings = self._character.settings
-            # Handle both dict-style and protobuf-style settings access
-            if settings is not None:
-                if hasattr(settings, "disable_basic_capabilities"):
-                    # Protobuf message
-                    settings_disable_basic = getattr(settings, "disable_basic_capabilities", False)
-                    settings_enable_extended = getattr(
-                        settings, "enable_extended_capabilities", False
-                    )
-                    settings_enable_autonomy = False  # Not in protobuf
-                elif isinstance(settings, dict):
-                    # Dict-style
-                    settings_disable_basic = settings.get("DISABLE_BASIC_CAPABILITIES") in (
-                        True,
-                        "true",
-                    )
-                    settings_enable_extended = settings.get("ENABLE_EXTENDED_CAPABILITIES") in (
-                        True,
-                        "true",
-                    )
-                    settings_enable_autonomy = settings.get("ENABLE_AUTONOMY") in (True, "true")
-                else:
-                    settings_disable_basic = False
-                    settings_enable_extended = False
-                    settings_enable_autonomy = False
-            else:
-                settings_disable_basic = False
-                settings_enable_extended = False
-                settings_enable_autonomy = False
+            char_settings_obj = self._character.settings
+            char_settings: dict[str, object] = {}
+            if hasattr(char_settings_obj, "DESCRIPTOR"):
+                from google.protobuf.json_format import MessageToDict
+                char_settings = MessageToDict(char_settings_obj, preserving_proto_field_name=True)
+            elif isinstance(char_settings_obj, dict):
+                char_settings = char_settings_obj
 
-            disable_basic = self._capability_disable_basic or settings_disable_basic
-            enable_extended = self._capability_enable_extended or settings_enable_extended
+            disable_basic = self._capability_disable_basic or (
+                char_settings.get("DISABLE_BASIC_CAPABILITIES") in (True, "true")
+            )
+            enable_extended = self._capability_enable_extended or (
+                char_settings.get("ENABLE_EXTENDED_CAPABILITIES") in (True, "true")
+            )
             skip_character_provider = self._is_anonymous_character
-            enable_autonomy = self._capability_enable_autonomy or settings_enable_autonomy
+
+            enable_autonomy = self._capability_enable_autonomy or (
+                char_settings.get("ENABLE_AUTONOMY") in (True, "true")
+            )
 
             if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
                 from elizaos.bootstrap import CapabilityConfig, create_bootstrap_plugin
@@ -462,14 +447,14 @@ class AgentRuntime(IAgentRuntime):
         if setting is not None and isinstance(setting, str):
             upper = setting.upper()
             if upper == "SMALL":
-                return LLMMode.LLM_MODE_SMALL
+                return LLMMode.SMALL
             elif upper == "LARGE":
-                return LLMMode.LLM_MODE_LARGE
+                return LLMMode.LARGE
             elif upper == "DEFAULT":
-                return LLMMode.LLM_MODE_DEFAULT
+                return LLMMode.DEFAULT
 
         # Default to DEFAULT (no override)
-        return LLMMode.LLM_MODE_DEFAULT
+        return LLMMode.DEFAULT
 
     def is_check_should_respond_enabled(self) -> bool:
         """
@@ -534,17 +519,6 @@ class AgentRuntime(IAgentRuntime):
         """
         if params_raw is None:
             return {}
-
-        if hasattr(params_raw, "fields"):
-            try:
-                from google.protobuf.json_format import MessageToDict
-            except Exception:
-                return {}
-            parsed_struct = MessageToDict(params_raw)
-            if isinstance(parsed_struct, dict):
-                params_raw = parsed_struct
-            else:
-                return {}
 
         if isinstance(params_raw, str):
             xml_text = params_raw if "<params" in params_raw else f"<params>{params_raw}</params>"
@@ -777,19 +751,6 @@ class AgentRuntime(IAgentRuntime):
 
                 if action.parameters:
                     params_raw = getattr(response.content, "params", None)
-                    if params_raw is None and hasattr(response.content, "data"):
-                        data = response.content.data
-                        if hasattr(data, "get"):
-                            params_raw = data.get("params")
-                        elif hasattr(data, "fields"):
-                            try:
-                                from google.protobuf.json_format import MessageToDict
-                            except Exception:
-                                params_raw = None
-                            else:
-                                data_dict = MessageToDict(data)
-                                if isinstance(data_dict, dict):
-                                    params_raw = data_dict.get("params")
                     params_by_action = self._parse_action_params(params_raw)
                     action_key = response_action.upper()
                     extracted_list = params_by_action.get(action_key) or params_by_action.get(
@@ -816,23 +777,26 @@ class AgentRuntime(IAgentRuntime):
                         actionName=action.name,
                         errors=errors,
                     )
-                    if hasattr(options_obj, "parameter_errors"):
-                        options_obj.parameter_errors = errors
+                    options_obj.parameter_errors = errors
 
                 if validated_params:
-                    if hasattr(options_obj, "parameters"):
-                        try:
-                            from google.protobuf.struct_pb2 import Struct
+                    from google.protobuf import struct_pb2
 
-                            from elizaos.types.components import ActionParameters
-                        except Exception:
-                            pass
+                    from elizaos.types.components import ActionParameters
+
+                    struct_values = struct_pb2.Struct()
+                    for k, v in validated_params.items():
+                        if v is None:
+                            struct_values.fields[k].null_value = 0
+                        elif isinstance(v, bool):
+                            struct_values.fields[k].bool_value = v
+                        elif isinstance(v, (int, float)):
+                            struct_values.fields[k].number_value = float(v)
+                        elif isinstance(v, str):
+                            struct_values.fields[k].string_value = v
                         else:
-                            params_struct = Struct()
-                            params_struct.update(validated_params)
-                            action_params = ActionParameters()
-                            action_params.values.CopyFrom(params_struct)
-                            options_obj.parameters.CopyFrom(action_params)
+                            struct_values.fields[k].string_value = str(v)
+                    options_obj.parameters.CopyFrom(ActionParameters(values=struct_values))
 
                 # Ensure options_obj.parameters is always a plain dict for action
                 # handlers.  Benchmark (and many plugin) handlers call
@@ -902,10 +866,7 @@ class AgentRuntime(IAgentRuntime):
 
             if should_run:
                 try:
-                    validate_fn = getattr(evaluator, "validate", None) or getattr(
-                        evaluator, "validate_fn", None
-                    )
-                    is_valid = await validate_fn(self, message, state) if validate_fn else True
+                    is_valid = await evaluator.validate(self, message, state)
                     if is_valid:
                         await evaluator.handler(
                             self,
@@ -1065,9 +1026,17 @@ class AgentRuntime(IAgentRuntime):
             result = await provider.get(self, message, state)
             if result.text:
                 text_parts.append(result.text)
-            # Note: Protobuf State messages have fixed schemas, so dynamic values/data
-            # storage is limited. We skip storing values/data for now as the text_parts
-            # already capture the essential provider information for context.
+            if result.values:
+                for k, v in result.values.items():
+                    if hasattr(state.values, k):
+                        setattr(state.values, k, v)
+                    else:
+                        state.values.extra[k] = v
+            if result.data:
+                # Access map entry to create it, then update its data struct
+                entry = state.data.providers[provider.name]
+                for k, v in result.data.items():
+                    entry.data[k] = v
 
             # Log provider access to trajectory service (if available)
             if traj_step_id and traj_logger is not None:
@@ -1085,8 +1054,7 @@ class AgentRuntime(IAgentRuntime):
                     pass
 
         state.text = "\n".join(text_parts)
-        # Match TypeScript behavior: expose providers text.
-        # For protobuf State, use the providers field in values
+        # Match TypeScript behavior: expose providers text under {{providers}}.
         state.values.providers = state.text
 
         if not skip_cache:
@@ -1097,13 +1065,8 @@ class AgentRuntime(IAgentRuntime):
     # Model usage
     def has_model(self, model_type: str | ModelType) -> bool:
         """Check if a model handler is registered for the given model type."""
-        # Handle both string and enum model types (protobuf enums aren't standard Python types)
-        if isinstance(model_type, int):
-            key = str(model_type)
-        elif isinstance(model_type, str):
-            key = model_type
-        else:
-            key = str(model_type)
+
+        key = model_type.value if isinstance(model_type, ModelType) else model_type
         handlers = self._models.get(key, [])
         return len(handlers) > 0
 
@@ -1114,13 +1077,7 @@ class AgentRuntime(IAgentRuntime):
         provider: str | None = None,
         **kwargs: Any,
     ) -> Any:
-        # Handle both string and enum model types
-        if isinstance(model_type, int):
-            effective_model_type = str(model_type)
-        elif isinstance(model_type, str):
-            effective_model_type = model_type
-        else:
-            effective_model_type = str(model_type)
+        effective_model_type = model_type.value if isinstance(model_type, ModelType) else model_type
         if params is None:
             params = dict(kwargs)
         elif kwargs:
@@ -1128,7 +1085,7 @@ class AgentRuntime(IAgentRuntime):
 
         # Apply LLM mode override for text generation models
         llm_mode = self.get_llm_mode()
-        if llm_mode != LLMMode.LLM_MODE_DEFAULT:
+        if llm_mode != LLMMode.DEFAULT:
             # List of text generation model types that can be overridden
             text_generation_models = [
                 ModelType.TEXT_SMALL,
@@ -1139,9 +1096,9 @@ class AgentRuntime(IAgentRuntime):
             ]
             if effective_model_type in text_generation_models:
                 override_model_type = (
-                    ModelType.TEXT_SMALL
-                    if llm_mode == LLMMode.LLM_MODE_SMALL
-                    else ModelType.TEXT_LARGE
+                    ModelType.TEXT_SMALL.value
+                    if llm_mode == LLMMode.SMALL
+                    else ModelType.TEXT_LARGE.value
                 )
                 if effective_model_type != override_model_type:
                     self.logger.debug(
@@ -1227,15 +1184,7 @@ class AgentRuntime(IAgentRuntime):
         provider: str,
         priority: int = 0,
     ) -> None:
-        # Handle both string and enum model types
-        # For protobuf enums, we can't use isinstance() with the enum type
-        if isinstance(model_type, int):
-            key = str(model_type)
-        elif isinstance(model_type, str):
-            key = model_type
-        else:
-            # For enums or other types, convert to string
-            key = str(model_type)
+        key = model_type.value if isinstance(model_type, ModelType) else model_type
         if key not in self._models:
             self._models[key] = []
 
@@ -1260,12 +1209,7 @@ class AgentRuntime(IAgentRuntime):
         priority: int = 0,
     ) -> None:
         """Register a streaming model handler."""
-        if isinstance(model_type, int):
-            key = str(model_type)
-        elif isinstance(model_type, str):
-            key = model_type
-        else:
-            key = str(model_type)
+        key = model_type.value if isinstance(model_type, ModelType) else model_type
         if key not in self._streaming_models:
             self._streaming_models[key] = []
 
@@ -1281,12 +1225,7 @@ class AgentRuntime(IAgentRuntime):
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Internal implementation for streaming model calls."""
-        if isinstance(model_type, int):
-            effective_model_type = str(model_type)
-        elif isinstance(model_type, str):
-            effective_model_type = model_type
-        else:
-            effective_model_type = str(model_type)
+        effective_model_type = model_type.value if isinstance(model_type, ModelType) else model_type
         if params is None:
             params = dict(kwargs)
         elif kwargs:
@@ -1294,17 +1233,16 @@ class AgentRuntime(IAgentRuntime):
 
         # Apply LLM mode override for streaming text generation models
         llm_mode = self.get_llm_mode()
-        if llm_mode != LLMMode.LLM_MODE_DEFAULT:
-            # TODO: Align streaming model type names with TypeScript - use same types with streaming callback
+        if llm_mode != LLMMode.DEFAULT:
             streaming_text_models = [
-                "TEXT_SMALL_STREAM",
-                "TEXT_LARGE_STREAM",
+                ModelType.TEXT_SMALL_STREAM.value,
+                ModelType.TEXT_LARGE_STREAM.value,
             ]
             if effective_model_type in streaming_text_models:
                 override_model_type = (
-                    "TEXT_SMALL_STREAM"
-                    if llm_mode == LLMMode.LLM_MODE_SMALL
-                    else "TEXT_LARGE_STREAM"
+                    ModelType.TEXT_SMALL_STREAM.value
+                    if llm_mode == LLMMode.SMALL
+                    else ModelType.TEXT_LARGE_STREAM.value
                 )
                 if effective_model_type != override_model_type:
                     self.logger.debug(
@@ -1444,12 +1382,6 @@ class AgentRuntime(IAgentRuntime):
         entities = await self._adapter.get_entities_by_ids([entity_id])
         return entities[0] if entities else None
 
-    async def get_entity(self, entity_id: UUID | str) -> Entity | None:
-        """Alias for get_entity_by_id, accepts UUID or string."""
-        if isinstance(entity_id, str):
-            entity_id = as_uuid(entity_id)
-        return await self.get_entity_by_id(entity_id)
-
     async def get_room(self, room_id: UUID) -> Room | None:
         if not self._adapter:
             return None
@@ -1530,6 +1462,13 @@ class AgentRuntime(IAgentRuntime):
     async def ensure_embedding_dimension(self, dimension: int) -> None:
         if self._adapter:
             await self._adapter.ensure_embedding_dimension(dimension)
+
+    async def get_entity(self, entity_id: UUID) -> Any | None:
+        """Get a single entity by ID."""
+        if not self._adapter:
+            return None
+        entities = await self._adapter.get_entities_by_ids([entity_id])
+        return entities[0] if entities else None
 
     async def get_entities_by_ids(self, entity_ids: list[UUID]) -> list[Any] | None:
         if not self._adapter:
@@ -1675,47 +1614,12 @@ class AgentRuntime(IAgentRuntime):
         self,
         memory: dict[str, object] | None = None,
         table_name: str | None = None,
-        unique: bool | None = False,
+        unique: bool | None = None,
         **kwargs: object,
-    ) -> object:
+    ) -> UUID:
         if not self._adapter:
             raise RuntimeError("Database adapter not set")
-        if memory is None:
-            memory = {}
-
-            content = kwargs.get("content")
-            if content is not None:
-                memory["content"] = content
-
-            room_id = kwargs.get("room_id")
-            if room_id is not None:
-                memory["roomId"] = str(room_id)
-
-            entity_id = kwargs.get("entity_id")
-            if entity_id is not None:
-                memory["entityId"] = str(entity_id)
-
-            agent_id = kwargs.get("agent_id", self._agent_id)
-            if agent_id is not None:
-                memory["agentId"] = str(agent_id)
-
-            world_id = kwargs.get("world_id")
-            if world_id is not None:
-                memory["worldId"] = str(world_id)
-
-            memory_type = kwargs.get("memory_type")
-            metadata = kwargs.get("metadata")
-            if memory_type is not None or metadata is not None:
-                meta: dict[str, object] = {}
-                if isinstance(metadata, dict):
-                    meta.update(metadata)
-                if memory_type is not None:
-                    meta["type"] = memory_type
-                memory["metadata"] = meta
-
-        resolved_table = table_name or "memories"
-        resolved_unique = unique if unique is not None else False
-        return await self._adapter.create_memory(memory, resolved_table, resolved_unique)
+        return await self._adapter.create_memory(memory, table_name, unique)
 
     async def update_memory(self, memory: Memory | dict[str, Any]) -> bool:
         if not self._adapter:
@@ -1856,16 +1760,6 @@ class AgentRuntime(IAgentRuntime):
             return []
         return await self._adapter.get_relationships(params)
 
-    async def search_knowledge(self, query: str, limit: int = 5) -> list[Any]:
-        service = self.get_service("knowledge")
-        if service is None:
-            return []
-        search = getattr(service, "search_knowledge", None)
-        if search is None:
-            return []
-        results = await search(query=query, limit=limit)
-        return results if isinstance(results, list) else []
-
     async def get_cache(self, key: str) -> Any | None:
         if not self._adapter:
             return None
@@ -1877,8 +1771,9 @@ class AgentRuntime(IAgentRuntime):
         return await self._adapter.set_cache(key, value)
 
     async def delete_cache(self, key: str) -> None:
-        if self._adapter:
-            await self._adapter.delete_cache(key)
+        if not self._adapter:
+            return
+        await self._adapter.delete_cache(key)
 
     async def create_task(self, task: Any) -> UUID:
         if not self._adapter:
@@ -2485,6 +2380,12 @@ end code: {final_code}
             # Otherwise parse the whole text
             result = parse_nested(xml_text)
             return result if result else None
+
+    async def search_knowledge(self, query: str, limit: int = 5) -> list[object]:
+        """Search for knowledge matching the given query."""
+        if not self._adapter:
+            return []
+        return await self._adapter.search_memories({"query": query, "limit": limit})
 
 
 @dataclass

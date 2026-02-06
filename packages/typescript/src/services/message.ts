@@ -331,8 +331,13 @@ export class DefaultMessageService implements IMessageService {
     const agentResponses = latestResponseIds.get(runtime.agentId);
     if (!agentResponses) throw new Error("Agent responses map not found");
 
-    // Skip messages from self
-    if (message.entityId === runtime.agentId) {
+    // Skip messages from self (unless it's an autonomous message)
+    const isAutonomousMessage =
+      message.content?.metadata &&
+      typeof message.content.metadata === "object" &&
+      (message.content.metadata as Record<string, unknown>).isAutonomous === true;
+    
+    if (message.entityId === runtime.agentId && !isAutonomousMessage) {
       runtime.logger.debug(
         { src: "service:message", agentId: runtime.agentId },
         "Skipping message from self",

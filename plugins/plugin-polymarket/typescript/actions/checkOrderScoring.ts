@@ -9,7 +9,6 @@ import type {
 } from "@elizaos/core";
 import type { ClobClient } from "@polymarket/clob-client";
 import { POLYMARKET_SERVICE_NAME } from "../constants";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { PolymarketService } from "../services/polymarket";
 import { checkOrderScoringTemplate } from "../templates";
 import type { AreOrdersScoringResponse, OrderScoringActivityData } from "../types";
@@ -28,16 +27,17 @@ interface LLMScoringResult {
 /**
  * Check if an order is scoring (eligible for rewards) action for Polymarket.
  */
-const spec = requireActionSpec("CHECK_ORDER_SCORING");
-
 export const checkOrderScoringAction: Action = {
-  name: spec.name,
-  similes: spec.similes ? [...spec.similes] : [].map((s) => `POLYMARKET_${s}`),
-  description: spec.description,
+  name: "POLYMARKET_CHECK_ORDER_SCORING",
+  similes: ["ORDERS_ELIGIBLE_FOR_REWARDS", "SCORING_STATUS", "ARE_MY_ORDERS_SCORING"].map(
+    (s) => `POLYMARKET_${s}`,
+  ),
+  description:
+    "Checks whether specific Polymarket order IDs are scoring (eligible for liquidity rewards). Use when user provides order ID(s) and asks about scoring/rewards status. Requires CLOB API credentials. Parameters: orderIds (array of order ID strings, required).",
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     runtime.logger.info(
-      `[checkOrderScoringAction] Validate called for message: "${message.content?.text}"`
+      `[checkOrderScoringAction] Validate called for message: "${message.content?.text}"`,
     );
     const clobApiUrl = runtime.getSetting("CLOB_API_URL");
     const clobApiKey = runtime.getSetting("CLOB_API_KEY");
@@ -56,7 +56,7 @@ export const checkOrderScoringAction: Action = {
     }
     if (!privateKey) {
       runtime.logger.warn(
-        "[checkOrderScoringAction] A private key (WALLET_PRIVATE_KEY, PRIVATE_KEY, or POLYMARKET_PRIVATE_KEY) is required."
+        "[checkOrderScoringAction] A private key (WALLET_PRIVATE_KEY, PRIVATE_KEY, or POLYMARKET_PRIVATE_KEY) is required.",
       );
       return false;
     }
@@ -66,7 +66,7 @@ export const checkOrderScoringAction: Action = {
       if (!clobApiSecret) missing.push("CLOB_API_SECRET or CLOB_SECRET");
       if (!clobApiPassphrase) missing.push("CLOB_API_PASSPHRASE or CLOB_PASS_PHRASE");
       runtime.logger.warn(
-        `[checkOrderScoringAction] Missing required API credentials for L2 authentication: ${missing.join(", ")}.`
+        `[checkOrderScoringAction] Missing required API credentials for L2 authentication: ${missing.join(", ")}.`,
       );
       return false;
     }
@@ -79,7 +79,7 @@ export const checkOrderScoringAction: Action = {
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     runtime.logger.info("[checkOrderScoringAction] Handler called!");
 
@@ -89,7 +89,7 @@ export const checkOrderScoringAction: Action = {
         runtime,
         state,
         checkOrderScoringTemplate,
-        "checkOrderScoringAction"
+        "checkOrderScoringAction",
       );
       if (result) {
         llmResult = result;
@@ -102,7 +102,7 @@ export const checkOrderScoringAction: Action = {
     } catch (error) {
       runtime.logger.warn(
         "[checkOrderScoringAction] LLM extraction failed, trying regex fallback",
-        error
+        error,
       );
       const text = message.content?.text || "";
       const orderIdRegex =
@@ -121,7 +121,7 @@ export const checkOrderScoringAction: Action = {
       } else {
         const errorMessage = "Please specify one or more Order IDs to check scoring status.";
         runtime.logger.error(
-          `[checkOrderScoringAction] Order ID extraction failed. Text: "${text}"`
+          `[checkOrderScoringAction] Order ID extraction failed. Text: "${text}"`,
         );
         const errorContent: Content = {
           text: `❌ **Error**: ${errorMessage}`,
@@ -132,7 +132,7 @@ export const checkOrderScoringAction: Action = {
         return { success: false, text: errorMessage, error: errorMessage };
       }
       runtime.logger.info(
-        `[checkOrderScoringAction] Regex extracted Order IDs: ${JSON.stringify(llmResult.orderIds)}`
+        `[checkOrderScoringAction] Regex extracted Order IDs: ${JSON.stringify(llmResult.orderIds)}`,
       );
     }
 
@@ -142,13 +142,13 @@ export const checkOrderScoringAction: Action = {
     };
 
     runtime.logger.info(
-      `[checkOrderScoringAction] Checking scoring for Order IDs: ${orderIdsToScore.join(", ")}`
+      `[checkOrderScoringAction] Checking scoring for Order IDs: ${orderIdsToScore.join(", ")}`,
     );
 
     try {
       const client = (await initializeClobClientWithCreds(runtime)) as ClobClient;
       const scoringResponse = (await client.areOrdersScoring(
-        apiParams
+        apiParams,
       )) as AreOrdersScoringResponse;
 
       let responseText = `📊 **Order Scoring Status**:\n\n`;
@@ -195,7 +195,7 @@ export const checkOrderScoringAction: Action = {
     } catch (error) {
       runtime.logger.error(
         `[checkOrderScoringAction] Error checking order scoring for IDs ${orderIdsToScore.join(", ")}:`,
-        error
+        error,
       );
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred.";
       const errorContent: Content = {

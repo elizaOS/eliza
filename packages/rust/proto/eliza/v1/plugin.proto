@@ -1,0 +1,94 @@
+// plugin.proto - Plugin types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "eliza/v1/agent.proto";
+import "eliza/v1/components.proto";
+import "eliza/v1/service.proto";
+import "google/protobuf/struct.proto";
+import "eliza/v1/payment.proto";
+
+// HTTP method enumeration for routes
+enum HttpMethod {
+  HTTP_METHOD_UNSPECIFIED = 0;
+  HTTP_METHOD_GET = 1;
+  HTTP_METHOD_POST = 2;
+  HTTP_METHOD_PUT = 3;
+  HTTP_METHOD_PATCH = 4;
+  HTTP_METHOD_DELETE = 5;
+  HTTP_METHOD_STATIC = 6;
+}
+
+// Route manifest for plugin routes
+message RouteManifest {
+  HttpMethod method = 1;
+  string path = 2;
+  optional string name = 3;
+  optional bool public = 4;
+  optional bool is_multipart = 5;
+  optional string file_path = 6;
+  optional X402Config x402 = 7;
+}
+
+// JSON Schema type definition for component validation
+message JSONSchemaDefinition {
+  string type = 1; // "string" | "number" | "boolean" | "object" | "array" | "null"
+  map<string, JSONSchemaDefinition> properties = 2;
+  optional JSONSchemaDefinition items = 3;
+  repeated string required = 4;
+  repeated string enum_values = 5;
+  optional string description = 6;
+}
+
+// Component type definition for entity components
+message ComponentTypeDefinition {
+  string name = 1;
+  JSONSchemaDefinition schema = 2;
+}
+
+// Plugin manifest (metadata for cross-language interop)
+message PluginManifest {
+  string name = 1;
+  string description = 2;
+
+  // Plugin configuration
+  map<string, string> config = 3;
+
+  // Component definitions
+  repeated ActionManifest actions = 4;
+  repeated ProviderManifest providers = 5;
+  repeated EvaluatorManifest evaluators = 6;
+  repeated ServiceManifest services = 7;
+  repeated RouteManifest routes = 8;
+  repeated ComponentTypeDefinition component_types = 9;
+
+  // Event handlers keyed by event type
+  map<string, EventHandlerList> events = 10;
+
+  // Dependencies
+  repeated string dependencies = 11;
+  repeated string test_dependencies = 12;
+
+  // Priority for plugin ordering
+  optional int32 priority = 13;
+
+  // Custom schema for plugin-specific configuration
+  google.protobuf.Struct schema = 14;
+}
+
+// List of event handler names
+message EventHandlerList {
+  repeated string handlers = 1;
+}
+
+// Project agent configuration
+message ProjectAgentManifest {
+  Character character = 1;
+  repeated string plugins = 2;
+}
+
+// Project manifest
+message ProjectManifest {
+  repeated ProjectAgentManifest agents = 1;
+}

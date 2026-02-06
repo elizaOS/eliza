@@ -267,8 +267,7 @@ export { formEvaluator } from "./evaluators/extractor";
 export { formRestoreAction } from "./actions/restore";
 
 // Tasks - background processing for nudges and cleanup
-// Note: Tasks module not implemented yet
-// export { formNudgeWorker, processEntityNudges } from "./tasks/nudge";
+export { formNudgeWorker, processEntityNudges } from "./tasks/nudge";
 
 // ============================================================================
 // PLUGIN DEFINITION
@@ -306,7 +305,7 @@ export const formPlugin: Plugin = {
         const { FormService } = await import("./service");
         return FormService.start(runtime);
       },
-    } as unknown as ServiceClass,
+    } as ServiceClass,
   ],
 
   // Provider for form context

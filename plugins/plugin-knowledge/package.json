@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/plugin-knowledge-root",
+  "private": true,
   "version": "2.0.0-alpha.1",
   "description": "Knowledge and RAG plugin for elizaOS - provides retrieval augmented generation capabilities",
   "type": "module",

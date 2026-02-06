@@ -3,14 +3,14 @@ import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   AbstractModel,
-  type AgentToolConfig,
-  AgentToolHandler,
   DefaultAgent,
   type History,
   type ModelConfig,
   type ModelOutput,
   type TemplateConfig,
   TextProblemStatement,
+  type ToolConfig,
+  ToolHandler,
 } from "@elizaos/sweagent-root";
 import type {
   CodeTask,
@@ -142,20 +142,15 @@ async function buildPatch(shellTool: SubAgentTool): Promise<string> {
 
 class RuntimeModel extends AbstractModel {
   private readonly runtime: IAgentRuntime;
-  private readonly modelType: "REASONING_LARGE" | "TEXT_LARGE";
+  private readonly modelType: string;
   stats = { apiCalls: 0, inputTokens: 0, outputTokens: 0 };
 
-  constructor(
-    runtime: IAgentRuntime,
-    config: ModelConfig,
-    tools: AgentToolConfig,
-  ) {
+  constructor(runtime: IAgentRuntime, config: ModelConfig, tools: ToolConfig) {
     super(config, tools);
     this.runtime = runtime;
     // Prefer reasoning model when available, but keep this implementation generic.
-    // ModelType.TEXT_REASONING_LARGE maps to "REASONING_LARGE"
-    this.modelType = runtime.getModel("REASONING_LARGE")
-      ? "REASONING_LARGE"
+    this.modelType = runtime.getModel("TEXT_REASONING_LARGE")
+      ? "TEXT_REASONING_LARGE"
       : "TEXT_LARGE";
   }
 
@@ -233,12 +228,12 @@ class LocalToolEnvironment implements SweAgentEnvironment {
     return result.output;
   }
 
-  async readFile(p: string, encoding: string = "utf-8"): Promise<string> {
+  async readFile(p: string, encoding: BufferEncoding = "utf-8"): Promise<string> {
     const resolved =
       p === "/root/model.patch"
         ? this.patchPath
         : path.resolve(this.workingDirectory, p);
-    return await fs.readFile(resolved, encoding as BufferEncoding);
+    return await fs.readFile(resolved, encoding);
   }
 
   async writeFile(p: string, content: string): Promise<void> {
@@ -345,7 +340,7 @@ export class SweAgentSubAgent implements SubAgent {
       submitCommand: "submit",
     });
 
-    const toolConfig: AgentToolConfig = {
+    const toolConfig: ToolConfig = {
       commands: [],
       parseFunction: "thought_action",
       executionTimeout: 55,
@@ -387,10 +382,12 @@ export class SweAgentSubAgent implements SubAgent {
       customTokenizer: null,
     };
 
-    const model = new RuntimeModel(runtime, modelConfig, toolConfig);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const model = new RuntimeModel(runtime, modelConfig, toolConfig as any);
     const agent = new DefaultAgent({
       templates: DEFAULT_TEMPLATES,
-      tools: new AgentToolHandler(toolConfig),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tools: new ToolHandler(toolConfig) as any,
       historyProcessors: [],
       model,
       maxRequeries: 3,

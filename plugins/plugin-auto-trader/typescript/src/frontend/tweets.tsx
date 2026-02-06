@@ -7,20 +7,11 @@ import { Badge } from "./ui/badge.js";
 import { Button } from "./ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.js";
 import { Input } from "./ui/input.js";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./ui/table.js";
-
-type SortByOption = "timestamp" | "likes" | "retweets";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table.js";
 
 export default function Tweets() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortBy, setSortBy] = useState<SortByOption>("timestamp");
+  const [sortBy, setSortBy] = useState<"timestamp" | "likes" | "retweets">("timestamp");
 
   const query = useQuery({
     queryKey: ["tweets"],
@@ -51,19 +42,13 @@ export default function Tweets() {
     .sort((a, b) => {
       switch (sortBy) {
         case "likes":
-          return (
-            (b.likes || b.metadata?.likes || 0) -
-            (a.likes || a.metadata?.likes || 0)
-          );
+          return (b.likes || b.metadata?.likes || 0) - (a.likes || a.metadata?.likes || 0);
         case "retweets":
           return (
-            (b.retweets || b.metadata?.retweets || 0) -
-            (a.retweets || a.metadata?.retweets || 0)
+            (b.retweets || b.metadata?.retweets || 0) - (a.retweets || a.metadata?.retweets || 0)
           );
         default:
-          return (
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          );
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
       }
     });
 
@@ -77,8 +62,7 @@ export default function Tweets() {
     (sum, tweet) => sum + (tweet.retweets || tweet.metadata?.retweets || 0),
     0,
   );
-  const avgEngagement =
-    totalTweets > 0 ? (totalLikes + totalRetweets) / totalTweets : 0;
+  const avgEngagement = totalTweets > 0 ? (totalLikes + totalRetweets) / totalTweets : 0;
 
   const getEngagementColor = (likes: number, retweets: number) => {
     const total = likes + retweets;
@@ -107,32 +91,24 @@ export default function Tweets() {
             <CardTitle className="text-sm font-medium">Total Likes</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              {totalLikes.toLocaleString()}
-            </div>
+            <div className="text-2xl font-bold text-red-600">{totalLikes.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">Across all tweets</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total Retweets
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Total Retweets</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {totalRetweets.toLocaleString()}
-            </div>
+            <div className="text-2xl font-bold text-blue-600">{totalRetweets.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">Across all tweets</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Avg Engagement
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Avg Engagement</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{avgEngagement.toFixed(1)}</div>
@@ -163,18 +139,16 @@ export default function Tweets() {
 
               {/* Sort Options */}
               <div className="flex gap-1">
-                {(
-                  [
-                    { key: "timestamp", label: "Recent" },
-                    { key: "likes", label: "Likes" },
-                    { key: "retweets", label: "Retweets" },
-                  ] as const
-                ).map((option) => (
+                {[
+                  { key: "timestamp", label: "Recent" },
+                  { key: "likes", label: "Likes" },
+                  { key: "retweets", label: "Retweets" },
+                ].map((option) => (
                   <Button
                     key={option.key}
                     variant={sortBy === option.key ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setSortBy(option.key)}
+                    onClick={() => setSortBy(option.key as any)}
                   >
                     {option.label}
                   </Button>
@@ -199,8 +173,7 @@ export default function Tweets() {
               {filteredTweets.map((item, index) => {
                 const likes = item.likes || item.metadata?.likes || 0;
                 const retweets = item.retweets || item.metadata?.retweets || 0;
-                const username =
-                  item.username || item.metadata?.username || "Unknown";
+                const username = item.username || item.metadata?.username || "Unknown";
                 const tweetId = item.id || item.metadata?.id;
 
                 return (
@@ -220,9 +193,7 @@ export default function Tweets() {
                     </TableCell>
                     <TableCell>
                       <div className="max-w-md">
-                        <p className="text-sm leading-relaxed line-clamp-3">
-                          {item.text}
-                        </p>
+                        <p className="text-sm leading-relaxed line-clamp-3">{item.text}</p>
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
@@ -247,10 +218,7 @@ export default function Tweets() {
                           size="sm"
                           variant="ghost"
                           onClick={() => {
-                            window.open(
-                              `https://x.com/${username}/status/${tweetId}`,
-                              "_blank",
-                            );
+                            window.open(`https://x.com/${username}/status/${tweetId}`, "_blank");
                           }}
                         >
                           <ExternalLink className="h-4 w-4" />
@@ -266,9 +234,7 @@ export default function Tweets() {
           {filteredTweets.length === 0 && (
             <div className="text-center py-8">
               <p className="text-muted-foreground">
-                {searchTerm
-                  ? "No tweets match your search"
-                  : "No tweets available"}
+                {searchTerm ? "No tweets match your search" : "No tweets available"}
               </p>
               <p className="text-sm text-muted-foreground mt-2">
                 {searchTerm

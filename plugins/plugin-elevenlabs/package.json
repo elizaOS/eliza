@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/plugin-elevenlabs-root",
+  "private": true,
   "version": "2.0.0-alpha.1",
   "description": "High-quality text-to-speech and speech-to-text plugin for ElizaOS using ElevenLabs API",
   "type": "module",

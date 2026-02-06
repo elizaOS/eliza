@@ -1,0 +1,199 @@
+// database.proto - Database and logging types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "eliza/v1/memory.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// Run status enumeration
+enum DbRunStatus {
+  DB_RUN_STATUS_UNSPECIFIED = 0;
+  DB_RUN_STATUS_STARTED = 1;
+  DB_RUN_STATUS_COMPLETED = 2;
+  DB_RUN_STATUS_TIMEOUT = 3;
+  DB_RUN_STATUS_ERROR = 4;
+}
+
+// Base log body type
+message BaseLogBody {
+  optional string run_id = 1;
+  optional string parent_run_id = 2;
+  optional string status = 3;
+  optional string message_id = 4;
+  optional string room_id = 5;
+  optional string entity_id = 6;
+  google.protobuf.Struct metadata = 7;
+}
+
+// Action log content structure
+message ActionLogContent {
+  repeated string actions = 1;
+  optional string text = 2;
+  optional string thought = 3;
+}
+
+// Action result for logging
+message ActionLogResult {
+  optional bool success = 1;
+  google.protobuf.Struct data = 2;
+  optional string text = 3;
+  optional string error = 4;
+}
+
+// Prompt tracking for action logs
+message ActionLogPrompt {
+  string model_type = 1;
+  string prompt = 2;
+  int64 timestamp = 3;
+}
+
+// Action log body
+message ActionLogBody {
+  BaseLogBody base = 1;
+  optional string action = 2;
+  optional string action_id = 3;
+  optional string message = 4;
+  google.protobuf.Struct state = 5;
+  repeated google.protobuf.Struct responses = 6;
+  optional ActionLogContent content = 7;
+  optional ActionLogResult result = 8;
+  repeated ActionLogPrompt prompts = 9;
+  optional int32 prompt_count = 11;
+  optional string plan_step = 12;
+  optional string plan_thought = 13;
+}
+
+// Evaluator log body
+message EvaluatorLogBody {
+  BaseLogBody base = 1;
+  optional string evaluator = 2;
+  optional string message = 3;
+  google.protobuf.Struct state = 4;
+}
+
+// Model action context
+message ModelActionContext {
+  string action_name = 1;
+  string action_id = 2;
+}
+
+// Model log body
+message ModelLogBody {
+  BaseLogBody base = 1;
+  optional string model_type = 2;
+  optional string model_key = 3;
+  google.protobuf.Struct params = 4;
+  optional string prompt = 5;
+  optional string system_prompt = 6;
+  optional int64 timestamp = 7;
+  optional int64 execution_time = 8;
+  optional string provider = 9;
+  optional ModelActionContext action_context = 10;
+  google.protobuf.Value response = 11;
+}
+
+// Embedding log body
+message EmbeddingLogBody {
+  BaseLogBody base = 1;
+  optional string memory_id = 2;
+  optional int64 duration = 3;
+}
+
+// Union of all log body types
+message LogBody {
+  oneof body {
+    BaseLogBody base = 1;
+    ActionLogBody action = 2;
+    EvaluatorLogBody evaluator = 3;
+    ModelLogBody model = 4;
+    EmbeddingLogBody embedding = 5;
+  }
+}
+
+// Log entry
+message Log {
+  optional string id = 1;
+  string entity_id = 2;
+  optional string room_id = 3;
+  LogBody body = 4;
+  string type = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+// Agent run counts
+message AgentRunCounts {
+  int32 actions = 1;
+  int32 model_calls = 2;
+  int32 errors = 3;
+  int32 evaluators = 4;
+}
+
+// Agent run summary
+message AgentRunSummary {
+  string run_id = 1;
+  DbRunStatus status = 2;
+  optional int64 started_at = 3;
+  optional int64 ended_at = 4;
+  optional int64 duration_ms = 5;
+  optional string message_id = 6;
+  optional string room_id = 7;
+  optional string entity_id = 8;
+  google.protobuf.Struct metadata = 9;
+  optional AgentRunCounts counts = 10;
+}
+
+// Agent run summary result
+message AgentRunSummaryResult {
+  repeated AgentRunSummary runs = 1;
+  int32 total = 2;
+  bool has_more = 3;
+}
+
+// Embedding search result
+message EmbeddingSearchResult {
+  repeated float embedding = 1;
+  int32 levenshtein_score = 2;
+}
+
+// Memory retrieval options
+message MemoryRetrievalOptions {
+  string room_id = 1;
+  optional int32 count = 2;
+  optional bool unique = 3;
+  optional int64 start = 4;
+  optional int64 end = 5;
+  optional string agent_id = 6;
+}
+
+// Memory search options
+message MemorySearchOptions {
+  repeated float embedding = 1;
+  optional float match_threshold = 2;
+  optional int32 count = 3;
+  string room_id = 4;
+  optional string agent_id = 5;
+  optional bool unique = 6;
+  optional MemoryMetadata metadata = 7;
+}
+
+// Multi-room memory options
+message MultiRoomMemoryOptions {
+  repeated string room_ids = 1;
+  optional int32 limit = 2;
+  optional string agent_id = 3;
+}
+
+// Vector dimensions constants
+// Note: Proto doesn't have const, so this is just for documentation
+// SMALL: 384, MEDIUM: 512, LARGE: 768, XL: 1024, XXL: 1536, XXXL: 3072
+enum VectorDimension {
+  VECTOR_DIMENSION_UNSPECIFIED = 0;
+  VECTOR_DIMENSION_SMALL = 384;
+  VECTOR_DIMENSION_MEDIUM = 512;
+  VECTOR_DIMENSION_LARGE = 768;
+  VECTOR_DIMENSION_XL = 1024;
+  VECTOR_DIMENSION_XXL = 1536;
+  VECTOR_DIMENSION_XXXL = 3072;
+}

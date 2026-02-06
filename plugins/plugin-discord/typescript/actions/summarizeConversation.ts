@@ -259,7 +259,7 @@ export const summarize: Action = {
   ): Promise<ActionResult | undefined> => {
     if (!state) {
       if (callback) {
-        await callback({
+        await callback?.({
           text: "State is not available.",
           source: "discord",
         });
@@ -408,7 +408,7 @@ ${currentSummary.trim()}
 \`\`\`
 `;
       if (callback) {
-        await callback(callbackData);
+        await callback?.(callbackData);
       }
       return { success: true, text: callbackData.text };
     } else if (currentSummary.trim()) {
@@ -420,7 +420,7 @@ ${currentSummary.trim()}
       await fs.promises.writeFile(summaryFilename, currentSummary, "utf8");
       // save the summary to a file
       if (callback) {
-        await callback({
+        await callback?.({
           ...callbackData,
           text: `I've attached the summary of the conversation from \`${new Date(start).toString()}\` to \`${new Date(end).toString()}\` as a text file.`,
           attachments: [

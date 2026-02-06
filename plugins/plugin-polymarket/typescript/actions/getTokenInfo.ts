@@ -17,7 +17,6 @@ import type {
 } from "@elizaos/core";
 import type { ClobClient } from "@polymarket/clob-client";
 import { POLYMARKET_SERVICE_NAME } from "../constants";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { PolymarketService } from "../services/polymarket";
 import type { Market, OpenOrder, OrderBook, Position } from "../types";
 import { initializeClobClient } from "../utils/clobClient";
@@ -40,7 +39,7 @@ interface LLMTokenInfoResult {
 
 interface PriceHistoryPoint {
   t: number;
-  p: string;
+  p: number | string;
 }
 
 interface TokenPricing {
@@ -132,7 +131,7 @@ function calculatePricing(orderBook: OrderBook): TokenPricing {
 
 function calculatePriceHistorySummary(
   priceHistory: PriceHistoryPoint[],
-  periodHours: number
+  periodHours: number,
 ): PriceHistorySummary | null {
   if (!priceHistory || priceHistory.length === 0) {
     return null;
@@ -170,7 +169,7 @@ function formatTokenInfo(tokenInfo: TokenInfo): string {
   const tagsDisplay = tokenInfo.market.tags?.length > 0 ? tokenInfo.market.tags.join(", ") : "N/A";
   lines.push(`• Tags: ${tagsDisplay}`);
   lines.push(
-    `• Status: ${tokenInfo.market.active ? "Active" : "Inactive"}, ${tokenInfo.market.closed ? "Closed" : "Open"}`
+    `• Status: ${tokenInfo.market.active ? "Active" : "Inactive"}, ${tokenInfo.market.closed ? "Closed" : "Open"}`,
   );
   if (tokenInfo.market.endDate) {
     lines.push(`• End Date: ${new Date(tokenInfo.market.endDate).toLocaleDateString()}`);
@@ -183,12 +182,12 @@ function formatTokenInfo(tokenInfo: TokenInfo): string {
   if (tokenInfo.pricing.bestBid || tokenInfo.pricing.bestAsk) {
     if (tokenInfo.pricing.bestBid) {
       lines.push(
-        `• Best Bid: $${tokenInfo.pricing.bestBid} (${tokenInfo.pricing.bestBidSize} shares)`
+        `• Best Bid: $${tokenInfo.pricing.bestBid} (${tokenInfo.pricing.bestBidSize} shares)`,
       );
     }
     if (tokenInfo.pricing.bestAsk) {
       lines.push(
-        `• Best Ask: $${tokenInfo.pricing.bestAsk} (${tokenInfo.pricing.bestAskSize} shares)`
+        `• Best Ask: $${tokenInfo.pricing.bestAsk} (${tokenInfo.pricing.bestAskSize} shares)`,
       );
     }
     if (tokenInfo.pricing.midpoint) {
@@ -198,7 +197,7 @@ function formatTokenInfo(tokenInfo: TokenInfo): string {
       lines.push(`• Spread: $${tokenInfo.pricing.spread}`);
     }
     lines.push(
-      `• Order Book Depth: ${tokenInfo.pricing.bidLevels} bids, ${tokenInfo.pricing.askLevels} asks`
+      `• Order Book Depth: ${tokenInfo.pricing.bidLevels} bids, ${tokenInfo.pricing.askLevels} asks`,
     );
   } else {
     lines.push("• No order book data available");
@@ -235,7 +234,7 @@ function formatTokenInfo(tokenInfo: TokenInfo): string {
     tokenInfo.userOrders.slice(0, 5).forEach((order) => {
       const sideEmoji = order.side === "BUY" ? "🟢" : "🔴";
       lines.push(
-        `${sideEmoji} ${order.side} ${order.original_size} @ $${parseFloat(order.price).toFixed(4)} (${order.status})`
+        `${sideEmoji} ${order.side} ${order.original_size} @ $${parseFloat(order.price).toFixed(4)} (${order.status})`,
       );
     });
     if (tokenInfo.userOrders.length > 5) {
@@ -275,14 +274,20 @@ User's current request:
 // Action Definition
 // =============================================================================
 
-const spec = requireActionSpec("GET_TOKEN_INFO");
-
 export const getTokenInfoAction: Action = {
-  name: spec.name,
-  similes: spec.similes ? [...spec.similes] : [],
+  name: "POLYMARKET_GET_TOKEN_INFO",
+  similes: [
+    "TOKEN_INFO",
+    "TOKEN_DETAILS",
+    "MARKET_INFO",
+    "SHOW_TOKEN",
+    "ABOUT_TOKEN",
+    "TOKEN_SUMMARY",
+    "PRICE_INFO",
+    "MARKET_SUMMARY",
+  ],
   description:
-    `${spec.description} Returns position and active orders for that token. ` +
-    "Parameters: tokenId (condition token ID) or conditionId (market condition ID).",
+    "Retrieves comprehensive information about a single Polymarket token including market details (question, status, end date), current pricing (bid/ask, spread, midpoint), 24h price history (OHLC, change %), and user's position and active orders for that token. Parameters: tokenId (condition token ID) or conditionId (market condition ID).",
 
   parameters: [
     {
@@ -311,7 +316,7 @@ export const getTokenInfoAction: Action = {
     _message: Memory,
     state?: State,
     options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     runtime.logger.info("[getTokenInfoAction] Handler called");
 
@@ -330,7 +335,7 @@ export const getTokenInfoAction: Action = {
         runtime,
         state,
         getTokenInfoTemplate,
-        "getTokenInfoAction"
+        "getTokenInfoAction",
       );
 
       if (!isLLMError(llmResult)) {
@@ -377,7 +382,7 @@ export const getTokenInfoAction: Action = {
       } catch (err) {
         runtime.logger.error(
           `[getTokenInfoAction] Failed to fetch order book for token ${tokenId.slice(0, 20)}...`,
-          err
+          err,
         );
         throw new Error(`Token not found or invalid. Please check the token ID and try again.`);
       }
@@ -386,7 +391,7 @@ export const getTokenInfoAction: Action = {
       const hasLiquidity = (orderBook.bids?.length ?? 0) > 0 || (orderBook.asks?.length ?? 0) > 0;
       if (!hasLiquidity && !orderBook.market) {
         runtime.logger.warn(
-          `[getTokenInfoAction] Token ${tokenId.slice(0, 20)}... has no order book data and no market reference`
+          `[getTokenInfoAction] Token ${tokenId.slice(0, 20)}... has no order book data and no market reference`,
         );
         // Don't throw - continue but warn the user in the response
       }
@@ -398,7 +403,7 @@ export const getTokenInfoAction: Action = {
         } catch (err) {
           runtime.logger.warn(
             `[getTokenInfoAction] Failed to fetch market for ${orderBook.market}:`,
-            err
+            err,
           );
         }
       }
@@ -417,7 +422,13 @@ export const getTokenInfoAction: Action = {
           endTs: now,
           fidelity: 60, // Hourly data points
         });
-        const priceHistoryData = priceHistoryResponse as unknown as PriceHistoryPoint[];
+        // Map the API response to our PriceHistoryPoint type to ensure proper typing
+        const priceHistoryData: PriceHistoryPoint[] = Array.isArray(priceHistoryResponse)
+          ? priceHistoryResponse.map((item: { t: number; p: number | string }) => ({
+              t: typeof item.t === "number" ? item.t : Number(item.t),
+              p: typeof item.p === "number" ? item.p : Number(item.p),
+            }))
+          : [];
         priceHistory24h = calculatePriceHistorySummary(priceHistoryData, 24);
       } catch (err) {
         runtime.logger.warn("[getTokenInfoAction] Failed to fetch price history:", err);
@@ -465,20 +476,22 @@ export const getTokenInfoAction: Action = {
 
       const responseText = formatTokenInfo(tokenInfo);
 
+      const responseData = {
+        tokenId,
+        conditionId: tokenInfo.market.conditionId,
+        outcome,
+        question: tokenInfo.market.question,
+        midpoint: pricing.midpoint,
+        change24h: priceHistory24h?.changePercent ?? null,
+        hasPosition: userPosition !== null,
+        activeOrdersCount: userOrders.length,
+        timestamp: new Date().toISOString(),
+      };
+
       const responseContent: Content = {
         text: responseText,
         actions: ["POLYMARKET_GET_TOKEN_INFO"],
-        data: {
-          tokenId,
-          conditionId: tokenInfo.market.conditionId,
-          outcome,
-          question: tokenInfo.market.question,
-          midpoint: pricing.midpoint,
-          change24h: priceHistory24h?.changePercent ?? null,
-          hasPosition: userPosition !== null,
-          activeOrdersCount: userOrders.length,
-          timestamp: new Date().toISOString(),
-        },
+        data: responseData,
       };
 
       if (callback) await callback(responseContent);
@@ -502,7 +515,7 @@ export const getTokenInfoAction: Action = {
       return {
         success: true,
         text: responseText,
-        data: responseContent.data as Record<string, string | number | boolean | string[]>,
+        data: responseData as Record<string, unknown>,
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error occurred";

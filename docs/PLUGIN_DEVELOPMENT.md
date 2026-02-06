@@ -175,4 +175,5 @@ This repository contains TypeScript unit tests for the core runtime under:
 
 - `packages/typescript/src/__tests__/`
 
-For plugin development examples, see the various plugins in the `plugins/` directory.
+For plugin development examples, see the various plugins in the `plugins/` directory. For plugin starter templates, follow the patterns in `examples/_plugin/`.
+

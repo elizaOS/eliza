@@ -46,28 +46,7 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
-import type { FormControl } from "./types";
-
-/**
- * Type handler for custom field types (internal to validation module).
- *
- * Used by the validation system to support custom types registered
- * via registerTypeHandler(). For new code, use ControlType via
- * FormService.registerControlType() instead.
- */
-interface TypeHandler {
-  /** Validate field value */
-  validate?: (
-    value: JsonValue,
-    control: FormControl,
-  ) => { valid: boolean; error?: string };
-  /** Parse string to typed value */
-  parse?: (value: string) => JsonValue;
-  /** Format value for display */
-  format?: (value: JsonValue) => string;
-  /** LLM prompt hint for extraction */
-  extractionPrompt?: string;
-}
+import type { FormControl, TypeHandler } from "./types";
 
 /**
  * Validation result.

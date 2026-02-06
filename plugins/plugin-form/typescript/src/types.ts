@@ -829,6 +829,39 @@ export interface FormSubmission {
 }
 
 // ============================================================================
+// TYPE HANDLER - Custom type validation & formatting (Legacy)
+// ============================================================================
+
+/**
+ * TypeHandler - Custom type behavior (Legacy interface)
+ *
+ * @deprecated Use ControlType instead for new code. TypeHandler is maintained
+ * for backwards compatibility but ControlType offers more features.
+ *
+ * Allows registering custom field types with their own validation,
+ * parsing, formatting, and extraction hints.
+ */
+export interface TypeHandler {
+  /** Validate a value. Return { valid: true } or { valid: false, error: '...' } */
+  validate?: (
+    value: JsonValue,
+    control: FormControl,
+  ) => { valid: boolean; error?: string };
+  /** Parse string input to appropriate type */
+  parse?: (value: string) => JsonValue;
+  /** Format value for display */
+  format?: (value: JsonValue) => string;
+  /**
+   * Description for LLM extraction.
+   *
+   * WHY extraction prompt:
+   * - Helps LLM understand what to look for
+   * - "a US phone number (10 digits)" vs just "phone"
+   */
+  extractionPrompt?: string;
+}
+
+// ============================================================================
 // CONTROL TYPE - Unified widget/type registry
 // ============================================================================
 

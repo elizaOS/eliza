@@ -26,24 +26,11 @@ type StrategyWithBuildPrompt = LLMStrategy & {
   ): string;
 };
 
-/** Mock runtime type for testing */
-type MockAgentRuntime = Pick<AgentRuntime, "getSetting" | "getService"> & {
-  setSetting: ReturnType<typeof vi.fn>;
-  logger: {
-    warn: ReturnType<typeof vi.fn>;
-    error: ReturnType<typeof vi.fn>;
-    debug: ReturnType<typeof vi.fn>;
-    info: ReturnType<typeof vi.fn>;
-  };
-};
-
-const createMockRuntime = (): MockAgentRuntime => {
-  const settings = new Map<string, unknown>();
+const createMockRuntime = (): AgentRuntime => {
+  const settings = new Map<string, string>();
   return {
     getSetting: vi.fn((key: string) => settings.get(key)),
-    setSetting: vi.fn((key: string, value: unknown) =>
-      settings.set(key, value),
-    ),
+    setSetting: vi.fn((key: string, value: string) => settings.set(key, value)),
     getService: (serviceName: string) => {
       if (serviceName === "LLMService") {
         return mockLlmService;
@@ -56,7 +43,7 @@ const createMockRuntime = (): MockAgentRuntime => {
       debug: vi.fn(),
       info: vi.fn(),
     },
-  };
+  } as AgentRuntime;
 };
 
 const getDefaultOHLCV = (length = 50, startPrice = 100): OHLCV[] =>
@@ -124,9 +111,7 @@ describe("LLMStrategy", () => {
       } as LLMStrategyParams;
       strategy.configure(params);
 
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify({ action: "HOLD" }),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify({ action: "HOLD" }));
 
       await strategy.decide({ marketData, agentState, portfolioSnapshot });
 
@@ -150,12 +135,8 @@ describe("LLMStrategy", () => {
           defaultFixedTradeQuantity: -1,
         } as LLMStrategyParams),
       ).toThrow();
-      expect(() =>
-        strategy.configure({ maxTokens: 0 } as LLMStrategyParams),
-      ).toThrow();
-      expect(() =>
-        strategy.configure({ temperature: 3 } as LLMStrategyParams),
-      ).toThrow();
+      expect(() => strategy.configure({ maxTokens: 0 } as LLMStrategyParams)).toThrow();
+      expect(() => strategy.configure({ temperature: 3 } as LLMStrategyParams)).toThrow();
     });
   });
 
@@ -429,9 +410,7 @@ describe("LLMStrategy", () => {
     });
 
     it("should return null and log error if LLM service call fails", async () => {
-      mockLlmService.generateText.mockRejectedValueOnce(
-        new Error("Network Error"),
-      );
+      mockLlmService.generateText.mockRejectedValueOnce(new Error("Network Error"));
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -445,9 +424,7 @@ describe("LLMStrategy", () => {
     });
 
     it("should return null if LLM response is unparseable", async () => {
-      mockLlmService.generateText.mockResolvedValueOnce(
-        "invalid json response",
-      );
+      mockLlmService.generateText.mockResolvedValueOnce("invalid json response");
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -475,9 +452,7 @@ describe("LLMStrategy", () => {
         quantity: 1,
         orderType: "MARKET",
       };
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -500,9 +475,7 @@ describe("LLMStrategy", () => {
         orderType: "LIMIT",
         price: 2100,
       };
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -521,9 +494,7 @@ describe("LLMStrategy", () => {
         quantity: 1,
         orderType: "MARKET",
       };
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -544,9 +515,7 @@ describe("LLMStrategy", () => {
         quantity: 0,
         orderType: "MARKET",
       };
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -570,9 +539,7 @@ describe("LLMStrategy", () => {
         quantity: null,
         orderType: "MARKET",
       };
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       const order = await strategy.decide({
         marketData,
         agentState,
@@ -589,9 +556,7 @@ describe("LLMStrategy", () => {
         quantity: 100,
         orderType: "MARKET",
       }; // Wants to sell 100
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       // Agent only has 10 SOL
       const order = await strategy.decide({
         marketData,
@@ -612,9 +577,7 @@ describe("LLMStrategy", () => {
         quantity: 5,
         orderType: "MARKET",
       };
-      mockLlmService.generateText.mockResolvedValueOnce(
-        JSON.stringify(llmResponse),
-      );
+      mockLlmService.generateText.mockResolvedValueOnce(JSON.stringify(llmResponse));
       const order = await strategy.decide({
         marketData,
         agentState,

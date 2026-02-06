@@ -8,6 +8,7 @@
 import type {
   Action,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -17,12 +18,7 @@ import type { TokenValidationService } from "../services/TokenValidationService.
 
 export const getMarketAnalysisAction: Action = {
   name: "GET_MARKET_ANALYSIS",
-  similes: [
-    "MARKET_ANALYSIS",
-    "ANALYZE_MARKET",
-    "MARKET_OVERVIEW",
-    "TRENDING_TOKENS",
-  ],
+  similes: ["MARKET_ANALYSIS", "ANALYZE_MARKET", "MARKET_OVERVIEW", "TRENDING_TOKENS"],
   description: "Get market analysis and trending token information",
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
@@ -43,12 +39,10 @@ export const getMarketAnalysisAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ) => {
-    const resolver = runtime.getService("TokenResolverService") as
-      | TokenResolverService
-      | undefined;
+    const resolver = runtime.getService("TokenResolverService") as TokenResolverService | undefined;
     const validator = runtime.getService("TokenValidationService") as
       | TokenValidationService
       | undefined;
@@ -57,7 +51,7 @@ export const getMarketAnalysisAction: Action = {
       callback?.({
         text: "❌ Market data service not available. Configure BIRDEYE_API_KEY.",
       });
-      return;
+      return undefined;
     }
 
     // Check if user asked about a specific token
@@ -106,12 +100,8 @@ export const getMarketAnalysisAction: Action = {
       response += "**📈 Top Trending Tokens (by 24h Volume)**\n\n";
 
       trending.slice(0, 10).forEach((token, i) => {
-        const vol = token.volume24h
-          ? `$${(token.volume24h / 1e6).toFixed(1)}M`
-          : "N/A";
-        const liq = token.liquidity
-          ? `$${(token.liquidity / 1e6).toFixed(1)}M`
-          : "N/A";
+        const vol = token.volume24h ? `$${(token.volume24h / 1e6).toFixed(1)}M` : "N/A";
+        const liq = token.liquidity ? `$${(token.liquidity / 1e6).toFixed(1)}M` : "N/A";
         response += `${i + 1}. **${token.symbol}** - $${token.price?.toFixed(6) || "N/A"} | Vol: ${vol} | Liq: ${liq}\n`;
       });
 
@@ -125,6 +115,7 @@ export const getMarketAnalysisAction: Action = {
     }
 
     callback?.({ text: response });
+    return undefined;
   },
 
   examples: [

@@ -1,9 +1,4 @@
-import {
-  type IAgentRuntime,
-  logger,
-  ModelType,
-  parseJSONObjectFromText,
-} from "@elizaos/core";
+import { type IAgentRuntime, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import type { TokenValidationService } from "../services/TokenValidationService.ts";
 import type {
   AgentState,
@@ -95,7 +90,7 @@ PREVIOUS PICKS:
 TRENDING TOKENS (Solana):
 {{trendingTokens}}
 
-CURRENT PORTFOLIO VALUE: ${"$"}{{portfolioValue}}
+CURRENT PORTFOLIO VALUE: $PORTFOLIO_VALUE_PLACEHOLDER
 
 Respond ONLY with a JSON object in this exact format:
 {
@@ -153,26 +148,22 @@ export class LLMStrategy implements TradingStrategy {
       this.runtime = runtime;
 
       const birdeyeKey = runtime.getSetting("BIRDEYE_API_KEY");
-      if (typeof birdeyeKey === "string" && birdeyeKey.trim().length > 0) {
+      if (birdeyeKey && typeof birdeyeKey === "string") {
         this.config.birdeyeApiKey = birdeyeKey;
       }
 
       const maxBuy = runtime.getSetting("MAX_PORTFOLIO_ALLOCATION");
-      if (typeof maxBuy === "string" || typeof maxBuy === "number") {
+      if (maxBuy) {
         this.config.maxBuyAmountPercent = Number(maxBuy) * 100;
       }
 
       const minLiquidity = runtime.getSetting("MIN_LIQUIDITY_USD");
-      if (
-        typeof minLiquidity === "string" ||
-        typeof minLiquidity === "number"
-      ) {
+      if (minLiquidity) {
         this.config.minLiquidity = Number(minLiquidity);
       }
 
       logger.info(
-        this.config as unknown as Record<string, unknown>,
-        `[${this.name}] Initialized with config`,
+        `[${this.name}] Initialized: maxBuy=${this.config.maxBuyAmountPercent}% minOpportunity=${this.config.minOpportunityScore} maxRisk=${this.config.maxRiskScore}`,
       );
     }
   }
@@ -221,9 +212,7 @@ export class LLMStrategy implements TradingStrategy {
         })),
       );
 
-      validTokens = validationResults
-        .filter((r) => r.validation.isValid)
-        .map((r) => r.token);
+      validTokens = validationResults.filter((r) => r.validation.isValid).map((r) => r.token);
 
       const rejected = validationResults.filter((r) => !r.validation.isValid);
       if (rejected.length > 0) {
@@ -239,9 +228,7 @@ export class LLMStrategy implements TradingStrategy {
     }
 
     if (validTokens.length === 0) {
-      logger.info(
-        `[${this.name}] All trending tokens failed safety validation`,
-      );
+      logger.info(`[${this.name}] All trending tokens failed safety validation`);
       return null;
     }
 
@@ -252,23 +239,15 @@ export class LLMStrategy implements TradingStrategy {
       params.portfolioSnapshot.totalValue,
     );
 
-    if (
-      !decision ||
-      decision.pickedNothing ||
-      decision.recommendBuyIndex === null
-    ) {
-      logger.info(
-        `[${this.name}] LLM decided not to trade: ${decision?.marketAssessment ?? "no assessment"}`,
-      );
+    if (!decision || decision.pickedNothing || decision.recommendBuyIndex === null) {
+      logger.info(`[${this.name}] LLM decided not to trade:`, decision?.marketAssessment);
       return null;
     }
 
     // Validate the decision
     const tokenIndex = decision.recommendBuyIndex - 1;
     if (tokenIndex < 0 || tokenIndex >= validTokens.length) {
-      logger.warn(
-        `[${this.name}] Invalid token index from LLM: ${decision.recommendBuyIndex}`,
-      );
+      logger.warn(`[${this.name}] Invalid token index from LLM: ${decision.recommendBuyIndex}`);
       return null;
     }
 
@@ -276,9 +255,7 @@ export class LLMStrategy implements TradingStrategy {
 
     // Validate opportunity and risk scores
     if (decision.opportunityScore < this.config.minOpportunityScore) {
-      logger.info(
-        `[${this.name}] Opportunity score too low: ${decision.opportunityScore}`,
-      );
+      logger.info(`[${this.name}] Opportunity score too low: ${decision.opportunityScore}`);
       return null;
     }
 
@@ -289,26 +266,18 @@ export class LLMStrategy implements TradingStrategy {
 
     // Validate exit prices
     if (decision.stopLossPrice >= selectedToken.price) {
-      logger.warn(
-        `[${this.name}] Invalid stop loss price - must be below current price`,
-      );
+      logger.warn(`[${this.name}] Invalid stop loss price - must be below current price`);
       return null;
     }
 
     if (decision.takeProfitPrice <= selectedToken.price) {
-      logger.warn(
-        `[${this.name}] Invalid take profit price - must be above current price`,
-      );
+      logger.warn(`[${this.name}] Invalid take profit price - must be above current price`);
       return null;
     }
 
     // Calculate trade amount
-    const buyPercent = Math.min(
-      decision.buyAmountPercent,
-      this.config.maxBuyAmountPercent,
-    );
-    const tradeValueUsd =
-      params.portfolioSnapshot.totalValue * (buyPercent / 100);
+    const buyPercent = Math.min(decision.buyAmountPercent, this.config.maxBuyAmountPercent);
+    const tradeValueUsd = params.portfolioSnapshot.totalValue * (buyPercent / 100);
     const tradeQuantity = tradeValueUsd / selectedToken.price;
 
     // Record this pick
@@ -324,15 +293,7 @@ export class LLMStrategy implements TradingStrategy {
     }
 
     logger.info(
-      {
-        token: selectedToken.symbol,
-        address: selectedToken.address,
-        price: selectedToken.price,
-        buyPercent,
-        opportunityScore: decision.opportunityScore,
-        riskScore: decision.riskScore,
-      },
-      `[${this.name}] Generating buy signal`,
+      `[${this.name}] Generating buy signal: ${selectedToken.symbol} price=$${selectedToken.price.toFixed(6)} buyPercent=${buyPercent}% opportunity=${decision.opportunityScore} risk=${decision.riskScore}`,
     );
 
     return {
@@ -349,9 +310,7 @@ export class LLMStrategy implements TradingStrategy {
   /**
    * Fetch trending tokens from Birdeye API
    */
-  private async fetchTrendingTokens(
-    runtime: IAgentRuntime,
-  ): Promise<TrendingToken[]> {
+  private async fetchTrendingTokens(runtime: IAgentRuntime): Promise<TrendingToken[]> {
     // Check cache
     if (
       Date.now() - this.lastTrendingFetch < this.TRENDING_CACHE_TTL &&
@@ -360,9 +319,8 @@ export class LLMStrategy implements TradingStrategy {
       return this.trendingTokensCache;
     }
 
-    const apiKeySetting =
-      this.config.birdeyeApiKey ?? runtime.getSetting("BIRDEYE_API_KEY");
-    const apiKey = typeof apiKeySetting === "string" ? apiKeySetting : null;
+    const settingKey = runtime.getSetting("BIRDEYE_API_KEY");
+    const apiKey = this.config.birdeyeApiKey || (typeof settingKey === "string" ? settingKey : null);
     if (!apiKey) {
       logger.error(`[${this.name}] Birdeye API key not configured`);
       return [];
@@ -379,10 +337,7 @@ export class LLMStrategy implements TradingStrategy {
     );
 
     if (!response.ok) {
-      logger.error(
-        `[${this.name}] Birdeye API error:`,
-        String(response.status),
-      );
+      logger.error(`[${this.name}] Birdeye API error: ${response.status}`);
       return [];
     }
 
@@ -411,9 +366,7 @@ export class LLMStrategy implements TradingStrategy {
     // Filter tokens by liquidity and volume
     const filteredTokens = data.data.tokens
       .filter(
-        (t) =>
-          t.liquidity >= this.config.minLiquidity &&
-          t.v24hUSD >= this.config.minVolume24h,
+        (t) => t.liquidity >= this.config.minLiquidity && t.v24hUSD >= this.config.minVolume24h,
       )
       .map((t) => ({
         address: t.address,
@@ -430,9 +383,7 @@ export class LLMStrategy implements TradingStrategy {
     this.trendingTokensCache = filteredTokens;
     this.lastTrendingFetch = Date.now();
 
-    logger.info(
-      `[${this.name}] Fetched ${filteredTokens.length} trending tokens`,
-    );
+    logger.info(`[${this.name}] Fetched ${filteredTokens.length} trending tokens`);
     return filteredTokens;
   }
 
@@ -456,22 +407,18 @@ export class LLMStrategy implements TradingStrategy {
     const previousPicksText =
       this.previousPicks.length > 0
         ? this.previousPicks
-            .map(
-              (p) =>
-                `${new Date(p.timestamp).toISOString()}: ${p.token} - ${p.reason}`,
-            )
+            .map((p) => `${new Date(p.timestamp).toISOString()}: ${p.token} - ${p.reason}`)
             .join("\n")
         : "No previous picks in this session.";
 
-    const prompt = TRADING_DECISION_PROMPT.replace(
-      "{{trendingTokens}}",
-      tokensText,
-    )
+    const systemPrompt =
+      "You are an expert cryptocurrency trading analyst. Respond only with valid JSON.";
+    const userPrompt = TRADING_DECISION_PROMPT.replace("{{trendingTokens}}", tokensText)
       .replace("{{previousPicks}}", previousPicksText)
-      .replace("{{portfolioValue}}", portfolioValue.toFixed(2));
+      .replace("PORTFOLIO_VALUE_PLACEHOLDER", portfolioValue.toFixed(2));
 
     const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
+      prompt: `${systemPrompt}\n\n${userPrompt}`,
     });
 
     if (!response) {
@@ -479,10 +426,7 @@ export class LLMStrategy implements TradingStrategy {
       return null;
     }
 
-    const parsed = parseJSONObjectFromText(response) as Record<
-      string,
-      unknown
-    > | null;
+    const parsed = parseJSONObjectFromText(response) as Record<string, unknown> | null;
     if (!parsed) {
       logger.warn(`[${this.name}] Failed to parse LLM response`);
       return null;
@@ -493,9 +437,7 @@ export class LLMStrategy implements TradingStrategy {
       marketAssessment: String(parsed.marketAssessment || ""),
       pickedNothing: Boolean(parsed.pickedNothing),
       recommendBuyIndex:
-        parsed.recommendBuyIndex !== null
-          ? Number(parsed.recommendBuyIndex)
-          : null,
+        parsed.recommendBuyIndex !== null ? Number(parsed.recommendBuyIndex) : null,
       reason: String(parsed.reason || ""),
       opportunityScore: Number(parsed.opportunityScore || 0),
       riskScore: Number(parsed.riskScore || 100),
@@ -506,12 +448,8 @@ export class LLMStrategy implements TradingStrategy {
       tokenStrengths: String(parsed.tokenStrengths || ""),
       tokenWeaknesses: String(parsed.tokenWeaknesses || ""),
       exitConditions: String(parsed.exitConditions || ""),
-      exitLiquidityThreshold: Number(
-        parsed.exitLiquidityThreshold || this.config.minLiquidity,
-      ),
-      exitVolumeThreshold: Number(
-        parsed.exitVolumeThreshold || this.config.minVolume24h,
-      ),
+      exitLiquidityThreshold: Number(parsed.exitLiquidityThreshold || this.config.minLiquidity),
+      exitVolumeThreshold: Number(parsed.exitVolumeThreshold || this.config.minVolume24h),
       currentPrice: Number(parsed.currentPrice || 0),
       stopLossPrice: Number(parsed.stopLossPrice || 0),
       takeProfitPrice: Number(parsed.takeProfitPrice || 0),
@@ -520,13 +458,7 @@ export class LLMStrategy implements TradingStrategy {
     };
 
     logger.debug(
-      {
-        pickedNothing: decision.pickedNothing,
-        recommendBuyIndex: decision.recommendBuyIndex,
-        opportunityScore: decision.opportunityScore,
-        riskScore: decision.riskScore,
-      },
-      `[${this.name}] LLM decision`,
+      `[${this.name}] LLM decision: pickedNothing=${decision.pickedNothing} buyIndex=${decision.recommendBuyIndex} opportunity=${decision.opportunityScore} risk=${decision.riskScore}`,
     );
 
     return decision;

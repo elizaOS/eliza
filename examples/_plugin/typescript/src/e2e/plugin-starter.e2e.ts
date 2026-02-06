@@ -1,10 +1,4 @@
-import type {
-  Content,
-  HandlerCallback,
-  IAgentRuntime,
-  State,
-  TestSuite,
-} from "@elizaos/core";
+import type { Content, HandlerCallback, IAgentRuntime, State, TestSuite } from "@elizaos/core";
 
 /**
  * E2E (End-to-End) Test Suite for elizaOS Plugins
@@ -115,9 +109,7 @@ export const StarterPluginTestSuite: TestSuite = {
       name: "should_have_hello_world_action",
       fn: async (runtime: IAgentRuntime) => {
         // Access actions through runtime.actions instead of getPlugin
-        const actionExists = runtime.actions.some(
-          (a) => a.name === "HELLO_WORLD",
-        );
+        const actionExists = runtime.actions.some((a) => a.name === "HELLO_WORLD");
         if (!actionExists) {
           throw new Error("Hello world action not found in runtime actions");
         }
@@ -160,9 +152,7 @@ export const StarterPluginTestSuite: TestSuite = {
         let responseReceived = false;
 
         // Find the hello world action in runtime.actions
-        const helloWorldAction = runtime.actions.find(
-          (a) => a.name === "HELLO_WORLD",
-        );
+        const helloWorldAction = runtime.actions.find((a) => a.name === "HELLO_WORLD");
         if (!helloWorldAction) {
           throw new Error("Hello world action not found in runtime actions");
         }
@@ -184,13 +174,7 @@ export const StarterPluginTestSuite: TestSuite = {
         };
 
         // Execute the action - this simulates the runtime calling the action
-        await helloWorldAction.handler(
-          runtime,
-          testMessage,
-          testState,
-          {},
-          callback,
-        );
+        await helloWorldAction.handler(runtime, testMessage, testState, {}, callback);
 
         // Verify we received a response
         if (!responseReceived) {
@@ -199,9 +183,7 @@ export const StarterPluginTestSuite: TestSuite = {
 
         // Verify the response contains "hello world" (case-insensitive)
         if (!responseText.toLowerCase().includes("hello world")) {
-          throw new Error(
-            `Expected response to contain "hello world" but got: "${responseText}"`,
-          );
+          throw new Error(`Expected response to contain "hello world" but got: "${responseText}"`);
         }
 
         // Success! The agent responded with "hello world" as expected
@@ -235,26 +217,16 @@ export const StarterPluginTestSuite: TestSuite = {
         };
 
         // Find the hello world provider in runtime.providers
-        const helloWorldProvider = runtime.providers.find(
-          (p) => p.name === "HELLO_WORLD_PROVIDER",
-        );
+        const helloWorldProvider = runtime.providers.find((p) => p.name === "HELLO_WORLD_PROVIDER");
         if (!helloWorldProvider) {
-          throw new Error(
-            "Hello world provider not found in runtime providers",
-          );
+          throw new Error("Hello world provider not found in runtime providers");
         }
 
         // Test the provider
-        const result = await helloWorldProvider.get(
-          runtime,
-          testMessage,
-          testState,
-        );
+        const result = await helloWorldProvider.get(runtime, testMessage, testState);
 
         if (result.text !== "I am a provider") {
-          throw new Error(
-            `Expected provider to return "I am a provider", got "${result.text}"`,
-          );
+          throw new Error(`Expected provider to return "I am a provider", got "${result.text}"`);
         }
       },
     },

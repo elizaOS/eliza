@@ -1,6 +1,5 @@
-import { AgentRuntime, createCharacter } from "@elizaos/core";
+import { AgentRuntime, type Character } from "@elizaos/core";
 import {
-  type AgentOrchestratorService,
   type AgentProvider,
   agentOrchestratorPlugin,
   configureAgentOrchestratorPlugin,
@@ -16,10 +15,10 @@ import {
  *   bun plugins/plugin-agent-orchestrator/typescript/examples/agent-team.ts
  */
 
-const character = createCharacter({
+const character: Character = {
   name: "OrchestratorDemo",
   bio: "A demo orchestrator that delegates tasks to tiny local providers.",
-});
+};
 
 function makeSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -85,27 +84,32 @@ async function main(): Promise<void> {
   const runtime = new AgentRuntime({
     character,
     plugins: [agentOrchestratorPlugin],
+    logLevel: "info",
   });
 
   await runtime.initialize();
 
-  const service = runtime.getService("CODE_TASK");
-  if (!service) throw new Error("CODE_TASK service missing");
+  const svc = runtime.getService("CODE_TASK");
+  if (!svc) throw new Error("CODE_TASK service missing");
 
-  (service as AgentOrchestratorService).on("task", (e) => {
+  const service = svc as {
+    createTask: (name: string, desc: string) => Promise<{ id?: string }>;
+    addStep: (taskId: string, description: string) => Promise<void>;
+    startTaskExecution: (taskId: string) => Promise<void>;
+    on: (event: string, handler: (e: { type: string; taskId: string }) => void) => void;
+  };
+
+  service.on("task", (e) => {
     process.stdout.write(`[event] ${e.type} ${e.taskId.slice(0, 8)}\n`);
   });
 
-  const t = await (service as AgentOrchestratorService).createTask(
-    "Demo task",
-    "Demonstrate orchestration",
-  );
+  const t = await service.createTask("Demo task", "Demonstrate orchestration");
   const id = t.id ?? "";
-  await (service as AgentOrchestratorService).addStep(id, "Step 1: plan");
-  await (service as AgentOrchestratorService).addStep(id, "Step 2: execute");
-  await (service as AgentOrchestratorService).addStep(id, "Step 3: review");
+  await service.addStep(id, "Step 1: plan");
+  await service.addStep(id, "Step 2: execute");
+  await service.addStep(id, "Step 3: review");
 
-  await (service as AgentOrchestratorService).startTaskExecution(id);
+  await service.startTaskExecution(id);
   await runtime.stop();
 }
 

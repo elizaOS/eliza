@@ -4,6 +4,8 @@
 
 ElizaOS agents can be deployed to a variety of platforms. This repository includes **production-ready examples** in the `examples/` directory, with implementations in **TypeScript, Python, and Rust** for each deployment target.
 
+The TypeScript runtime (`AgentRuntime`) is designed to run in both long-lived and serverless contexts.
+
 | Platform              | Directory              | Languages                    | Runtime Type       |
 | --------------------- | ---------------------- | ---------------------------- | ------------------ |
 | **Cloudflare Workers** | `examples/cloudflare/` | TypeScript, Rust (WASM), Python | Edge/Serverless    |
@@ -284,7 +286,7 @@ bun run chat.ts  # Uses WASM-compiled Rust
 
 ## Environment variables and secrets
 
-Secrets/config are accessed through `runtime.getSetting(...)` and/or character settings/secrets.
+Secrets/config are accessed through `runtime.getSetting(...)` and/or character settings/secrets. In the TypeScript runtime initialization, persisted settings from the database are merged back into the runtime's character (see `AgentRuntime.initialize()` in `packages/typescript/src/runtime.ts`).
 
 ### Best practices
 
@@ -371,6 +373,12 @@ The `examples/` directory contains many more deployment scenarios:
 | `examples/app/`         | Desktop apps (Electron, Tauri)           |
 
 ---
+
+## Getting started via templates
+
+The `elizaos` package in this repo is an **example scaffolder** (commands: `create`, `info`, `version`) located at `packages/elizaos/`.
+
+Use it to copy an example project into a new directory, then follow that example's `package.json` scripts (for instance, the chat example uses `bun run chat.ts`).
 
 ## Getting help
 

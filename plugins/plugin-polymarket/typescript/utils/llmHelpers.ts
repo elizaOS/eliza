@@ -19,7 +19,7 @@ import { LLM_CALL_TIMEOUT_MS } from "../constants";
 export async function sendAcknowledgement(
   callback: HandlerCallback | undefined,
   message: string,
-  params?: Record<string, string | number | boolean | undefined>
+  params?: Record<string, string | number | boolean | undefined>,
 ): Promise<void> {
   if (!callback) return;
 
@@ -44,7 +44,7 @@ export async function sendAcknowledgement(
 export async function sendError(
   callback: HandlerCallback | undefined,
   errorMessage: string,
-  context?: string
+  context?: string,
 ): Promise<void> {
   if (!callback) return;
 
@@ -62,7 +62,7 @@ export async function sendError(
  */
 export async function sendUpdate(
   callback: HandlerCallback | undefined,
-  message: string
+  message: string,
 ): Promise<void> {
   if (!callback) return;
   await callback({ text: message });
@@ -73,7 +73,7 @@ export async function callLLMWithTimeout<T>(
   state: State | undefined,
   template: string,
   _actionName: string,
-  timeoutMs: number = LLM_CALL_TIMEOUT_MS
+  timeoutMs: number = LLM_CALL_TIMEOUT_MS,
 ): Promise<T | null> {
   const composedPrompt = composePromptFromState({
     state: state ?? ({} as State),
@@ -117,13 +117,13 @@ export async function extractFieldFromLLM<T>(
   state: State | undefined,
   template: string,
   fieldName: string,
-  actionName: string
+  actionName: string,
 ): Promise<T | null> {
   const result = await callLLMWithTimeout<Record<string, unknown>>(
     runtime,
     state,
     template,
-    actionName
+    actionName,
   );
 
   if (!result) {
@@ -138,7 +138,7 @@ export async function extractFieldFromLLM<T>(
 }
 
 export function isLLMError<T extends object>(
-  response: T | null
+  response: T | null,
 ): response is T & { error: string } {
   return (
     response !== null &&

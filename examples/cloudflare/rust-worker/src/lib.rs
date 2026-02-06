@@ -1,12 +1,29 @@
 //! elizaOS Cloudflare Worker (Rust)
 //!
 //! A serverless AI agent running on Cloudflare Workers using Rust/WASM.
+//!
+//! NOTE: Due to WASM limitations in Cloudflare Workers, the full elizaOS
+//! runtime may have limited functionality. This example provides a REST API
+//! that demonstrates the pattern but uses direct OpenAI API calls.
+//!
+//! For production Rust agents, consider:
+//! - Running the full elizaOS Rust runtime on a proper server
+//! - Using Cloudflare Durable Objects with the TypeScript runtime
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::RwLock;
 use uuid::Uuid;
 use worker::*;
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
+const VERSION: &str = "2.0.0";
+
+// ============================================================================
+// Types
+// ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ChatMessage {
@@ -17,15 +34,15 @@ struct ChatMessage {
 #[derive(Debug, Deserialize)]
 struct ChatRequest {
     message: String,
-    #[serde(rename = "conversationId")]
-    conversation_id: Option<String>,
+    #[serde(rename = "userId")]
+    user_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct ChatResponse {
     response: String,
-    #[serde(rename = "conversationId")]
-    conversation_id: String,
+    #[serde(rename = "userId")]
+    user_id: String,
     character: String,
 }
 
@@ -35,6 +52,8 @@ struct InfoResponse {
     bio: String,
     version: String,
     powered_by: String,
+    runtime: String,
+    note: String,
     endpoints: HashMap<String, String>,
 }
 
@@ -42,7 +61,8 @@ struct InfoResponse {
 struct HealthResponse {
     status: String,
     character: String,
-    timestamp: String,
+    mode: String,
+    note: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -57,28 +77,23 @@ struct Character {
     system: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ConversationState {
-    messages: Vec<ChatMessage>,
-    created_at: u64,
+// ============================================================================
+// OpenAI API
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+struct OpenAIChoice {
+    message: OpenAIMessage,
 }
 
-// Thread-safe conversation store
-static CONVERSATIONS: RwLock<Option<HashMap<String, ConversationState>>> = RwLock::new(None);
-
-fn get_conversations() -> HashMap<String, ConversationState> {
-    let guard = CONVERSATIONS.read().unwrap();
-    guard.clone().unwrap_or_default()
+#[derive(Debug, Deserialize)]
+struct OpenAIMessage {
+    content: String,
 }
 
-fn set_conversation(id: String, state: ConversationState) {
-    let mut guard = CONVERSATIONS.write().unwrap();
-    if guard.is_none() {
-        *guard = Some(HashMap::new());
-    }
-    if let Some(ref mut map) = *guard {
-        map.insert(id, state);
-    }
+#[derive(Debug, Deserialize)]
+struct OpenAIResponse {
+    choices: Vec<OpenAIChoice>,
 }
 
 fn get_character(env: &Env) -> Character {
@@ -106,21 +121,11 @@ fn get_character(env: &Env) -> Character {
     Character { name, bio, system }
 }
 
-#[derive(Debug, Deserialize)]
-struct OpenAIChoice {
-    message: OpenAIMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAIMessage {
-    content: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAIResponse {
-    choices: Vec<OpenAIChoice>,
-}
-
+/// Call OpenAI API and return the response text.
+///
+/// NOTE: In a full elizaOS implementation, this would go through
+/// runtime.message_service().handle_message() which handles the model
+/// call, context building, and response generation automatically.
 async fn call_openai(
     messages: &[ChatMessage],
     env: &Env,
@@ -138,7 +143,7 @@ async fn call_openai(
     let model = env
         .var("OPENAI_MODEL")
         .map(|v| v.to_string())
-        .unwrap_or_else(|_| "gpt-5-mini".to_string());
+        .unwrap_or_else(|_| "gpt-4o-mini".to_string());
 
     let url = format!("{}/chat/completions", base_url);
 
@@ -179,6 +184,10 @@ async fn call_openai(
         .ok_or_else(|| Error::RustError("No response from OpenAI".to_string()))
 }
 
+// ============================================================================
+// Response Helpers
+// ============================================================================
+
 fn json_response<T: Serialize>(data: &T, status: u16) -> Result<Response> {
     let json = serde_json::to_string(data)?;
     let mut headers = Headers::new();
@@ -188,6 +197,10 @@ fn json_response<T: Serialize>(data: &T, status: u16) -> Result<Response> {
     Response::from_body(ResponseBody::Body(json.into_bytes()))
         .map(|r| r.with_headers(headers).with_status(status))
 }
+
+// ============================================================================
+// Route Handlers
+// ============================================================================
 
 fn handle_info(env: &Env) -> Result<Response> {
     let character = get_character(env);
@@ -206,8 +219,10 @@ fn handle_info(env: &Env) -> Result<Response> {
     let info = InfoResponse {
         name: character.name,
         bio: character.bio,
-        version: "1.0.0".to_string(),
+        version: VERSION.to_string(),
         powered_by: "elizaOS".to_string(),
+        runtime: "Rust (WASM)".to_string(),
+        note: "Limited runtime - for full elizaOS features, use TypeScript worker or dedicated server".to_string(),
         endpoints,
     };
 
@@ -220,12 +235,21 @@ fn handle_health(env: &Env) -> Result<Response> {
     let health = HealthResponse {
         status: "healthy".to_string(),
         character: character.name,
-        timestamp: Date::now().to_string(),
+        mode: "simplified".to_string(),
+        note: "WASM runtime - full elizaOS runtime may have limited functionality".to_string(),
     };
 
     json_response(&health, 200)
 }
 
+/// Handle POST /chat - process a chat message.
+///
+/// NOTE: This is a simplified implementation. The canonical elizaOS pattern would:
+/// 1. Create an AgentRuntime with plugins
+/// 2. Create a Memory with the message content
+/// 3. Call runtime.message_service().handle_message()
+///
+/// Due to WASM limitations, we directly call the OpenAI API here.
 async fn handle_chat(mut req: Request, env: Env) -> Result<Response> {
     let body: ChatRequest = req.json().await?;
 
@@ -239,42 +263,28 @@ async fn handle_chat(mut req: Request, env: Env) -> Result<Response> {
     }
 
     let character = get_character(&env);
-    let conversation_id = body
-        .conversation_id
+    let user_id = body
+        .user_id
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    let mut conversations = get_conversations();
-    let state = conversations
-        .entry(conversation_id.clone())
-        .or_insert_with(|| ConversationState {
-            messages: vec![ChatMessage {
-                role: "system".to_string(),
-                content: character.system.clone(),
-            }],
-            created_at: Date::now().as_millis(),
-        });
+    // Build messages for OpenAI
+    // In full elizaOS, this context would be built by providers
+    let messages = vec![
+        ChatMessage {
+            role: "system".to_string(),
+            content: character.system.clone(),
+        },
+        ChatMessage {
+            role: "user".to_string(),
+            content: body.message,
+        },
+    ];
 
-    // Add user message
-    state.messages.push(ChatMessage {
-        role: "user".to_string(),
-        content: body.message,
-    });
-
-    // Call OpenAI
-    let response_text = call_openai(&state.messages, &env).await?;
-
-    // Add assistant response
-    state.messages.push(ChatMessage {
-        role: "assistant".to_string(),
-        content: response_text.clone(),
-    });
-
-    // Save conversation
-    set_conversation(conversation_id.clone(), state.clone());
+    let response_text = call_openai(&messages, &env).await?;
 
     let response = ChatResponse {
         response: response_text,
-        conversation_id,
+        user_id,
         character: character.name,
     };
 
@@ -290,6 +300,10 @@ fn handle_cors() -> Result<Response> {
     Response::empty()
         .map(|r| r.with_headers(headers).with_status(204))
 }
+
+// ============================================================================
+// Main Handler
+// ============================================================================
 
 #[event(fetch)]
 async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
@@ -315,13 +329,3 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         ),
     }
 }
-
-
-
-
-
-
-
-
-
-

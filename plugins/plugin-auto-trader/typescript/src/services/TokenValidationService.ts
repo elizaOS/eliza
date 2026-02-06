@@ -122,16 +122,12 @@ export interface TradingActivity {
  */
 export class TokenValidationService extends Service {
   public static readonly serviceType = "TokenValidationService";
-  public readonly capabilityDescription =
-    "Validates token safety using RugCheck before trading";
+  public readonly capabilityDescription = "Validates token safety using RugCheck before trading";
 
   private readonly RUGCHECK_API = "https://api.rugcheck.xyz/v1/tokens";
   private readonly BIRDEYE_API = "https://public-api.birdeye.so/defi";
   private cache = new Map<string, RugCheckReport>();
-  private activityCache = new Map<
-    string,
-    { data: TradingActivity; expiry: number }
-  >();
+  private activityCache = new Map<string, { data: TradingActivity; expiry: number }>();
   private requirements: TradingRequirements;
   private enabled: boolean;
   private birdeyeApiKey: string | null = null;
@@ -142,9 +138,7 @@ export class TokenValidationService extends Service {
     this.enabled = true;
   }
 
-  public static async start(
-    runtime: IAgentRuntime,
-  ): Promise<TokenValidationService> {
+  public static async start(runtime: IAgentRuntime): Promise<TokenValidationService> {
     logger.info(`[${TokenValidationService.serviceType}] Starting...`);
     const instance = new TokenValidationService(runtime);
     await instance.initialize();
@@ -155,11 +149,8 @@ export class TokenValidationService extends Service {
     const enabledSetting = this.runtime.getSetting("RUGCHECK_ENABLED");
     this.enabled = enabledSetting !== "false";
 
-    const apiKeySetting = this.runtime.getSetting("BIRDEYE_API_KEY");
-    this.birdeyeApiKey =
-      typeof apiKeySetting === "string" && apiKeySetting.trim().length > 0
-        ? apiKeySetting
-        : null;
+    const birdeyeKeySetting = this.runtime.getSetting("BIRDEYE_API_KEY");
+    this.birdeyeApiKey = typeof birdeyeKeySetting === "string" ? birdeyeKeySetting : null;
 
     const minLiquidity = this.runtime.getSetting("MIN_LIQUIDITY_USD");
     if (minLiquidity) {
@@ -182,12 +173,7 @@ export class TokenValidationService extends Service {
     }
 
     logger.info(
-      {
-        enabled: this.enabled,
-        hasBirdeyeKey: !!this.birdeyeApiKey,
-        requirements: this.requirements,
-      },
-      `[${TokenValidationService.serviceType}] Initialized`,
+      `[${TokenValidationService.serviceType}] Initialized: enabled=${this.enabled} hasBirdeyeKey=${!!this.birdeyeApiKey}`,
     );
   }
 
@@ -202,17 +188,14 @@ export class TokenValidationService extends Service {
   public setRequirements(requirements: Partial<TradingRequirements>): void {
     this.requirements = { ...this.requirements, ...requirements };
     logger.info(
-      this.requirements as unknown as Record<string, unknown>,
-      `[${TokenValidationService.serviceType}] Requirements updated`,
+      `[${TokenValidationService.serviceType}] Requirements updated: minLiquidity=$${this.requirements.minLiquidityUsd}`,
     );
   }
 
   /**
    * Get RugCheck report for a token (with caching)
    */
-  public async getRugCheckReport(
-    tokenAddress: string,
-  ): Promise<RugCheckReport | null> {
+  public async getRugCheckReport(tokenAddress: string): Promise<RugCheckReport | null> {
     // Check cache first
     const cached = this.cache.get(tokenAddress);
     if (cached && cached.cacheExpiry > Date.now()) {
@@ -233,9 +216,7 @@ export class TokenValidationService extends Service {
   /**
    * Fetch fresh report from RugCheck API
    */
-  private async fetchRugCheckReport(
-    tokenAddress: string,
-  ): Promise<RugCheckReport | null> {
+  private async fetchRugCheckReport(tokenAddress: string): Promise<RugCheckReport | null> {
     logger.info(
       `[${TokenValidationService.serviceType}] Fetching RugCheck report for ${tokenAddress}`,
     );
@@ -250,8 +231,7 @@ export class TokenValidationService extends Service {
         return this.createUnknownReport(tokenAddress);
       }
       logger.error(
-        { status: response.status, tokenAddress },
-        `[${TokenValidationService.serviceType}] RugCheck API error`,
+        `[${TokenValidationService.serviceType}] RugCheck API error: status=${response.status} token=${tokenAddress}`,
       );
       return null;
     }
@@ -283,9 +263,7 @@ export class TokenValidationService extends Service {
       }>;
     };
 
-    const topHoldersPercent = data.topHolders
-      .slice(0, 10)
-      .reduce((sum, h) => sum + h.pct, 0);
+    const topHoldersPercent = data.topHolders.slice(0, 10).reduce((sum, h) => sum + h.pct, 0);
 
     const totalLiquidityUsd = data.markets.reduce((sum, m) => {
       const liqA = Number.parseFloat(m.liquidityA || "0");
@@ -325,8 +303,7 @@ export class TokenValidationService extends Service {
         pools: data.markets.map((m) => ({
           dex: m.marketType,
           liquidityUsd:
-            Number.parseFloat(m.liquidityA || "0") +
-            Number.parseFloat(m.liquidityB || "0"),
+            Number.parseFloat(m.liquidityA || "0") + Number.parseFloat(m.liquidityB || "0"),
           lpLocked: m.lp.lpLocked,
           lpLockPercent: m.lp.lpLockedPct,
         })),
@@ -336,14 +313,7 @@ export class TokenValidationService extends Service {
     };
 
     logger.info(
-      {
-        token: report.tokenInfo.symbol,
-        riskLevel: report.riskLevel,
-        score: report.score,
-        liquidity: report.liquidity.totalLiquidityUsd,
-        topHoldersPercent: report.holders.topHoldersPercent,
-      },
-      `[${TokenValidationService.serviceType}] RugCheck report received`,
+      `[${TokenValidationService.serviceType}] RugCheck report: ${report.tokenInfo.symbol} risk=${report.riskLevel} score=${report.score} liquidity=$${report.liquidity.totalLiquidityUsd.toFixed(0)}`,
     );
 
     return report;
@@ -399,9 +369,7 @@ export class TokenValidationService extends Service {
   /**
    * Fetch trading activity from Birdeye for honeypot detection
    */
-  public async getTradingActivity(
-    tokenAddress: string,
-  ): Promise<TradingActivity | null> {
+  public async getTradingActivity(tokenAddress: string): Promise<TradingActivity | null> {
     // Check cache first
     const cached = this.activityCache.get(tokenAddress);
     if (cached && cached.expiry > Date.now()) {
@@ -416,10 +384,9 @@ export class TokenValidationService extends Service {
     }
 
     // Fetch token overview for volume and creation time
-    const overviewResp = await fetch(
-      `${this.BIRDEYE_API}/token_overview?address=${tokenAddress}`,
-      { headers: { "X-API-KEY": this.birdeyeApiKey, "x-chain": "solana" } },
-    );
+    const overviewResp = await fetch(`${this.BIRDEYE_API}/token_overview?address=${tokenAddress}`, {
+      headers: { "X-API-KEY": this.birdeyeApiKey, "x-chain": "solana" },
+    });
 
     if (!overviewResp.ok) {
       logger.warn(
@@ -471,13 +438,7 @@ export class TokenValidationService extends Service {
     });
 
     logger.info(
-      {
-        volume24h: activity.volume24h,
-        buys: activity.buyCount24h,
-        sells: activity.sellCount24h,
-        uniqueTraders: activity.uniqueTraders24h,
-      },
-      `[${TokenValidationService.serviceType}] Trading activity for ${tokenAddress}`,
+      `[${TokenValidationService.serviceType}] Trading activity for ${tokenAddress}: vol=$${activity.volume24h.toFixed(0)} buys=${activity.buyCount24h} sells=${activity.sellCount24h} traders=${activity.uniqueTraders24h}`,
     );
 
     return activity;
@@ -495,9 +456,7 @@ export class TokenValidationService extends Service {
 
     const activity = await this.getTradingActivity(tokenAddress);
     if (!activity) {
-      warnings.push(
-        "Could not fetch trading activity - honeypot check skipped",
-      );
+      warnings.push("Could not fetch trading activity - honeypot check skipped");
       return { isHoneypot: false, reasons, warnings };
     }
 
@@ -535,9 +494,7 @@ export class TokenValidationService extends Service {
     } else if (activity.buyVolume24h > 0) {
       const volumeRatio = activity.buyVolume24h / (activity.sellVolume24h || 1);
       if (volumeRatio > 10) {
-        warnings.push(
-          `Buy volume 10x+ higher than sell volume: ${volumeRatio.toFixed(1)}x`,
-        );
+        warnings.push(`Buy volume 10x+ higher than sell volume: ${volumeRatio.toFixed(1)}x`);
       }
     }
 
@@ -554,9 +511,7 @@ export class TokenValidationService extends Service {
       if (ageSeconds < requirements.minTokenAgeSeconds) {
         const ageHours = ageSeconds / 3600;
         const minHours = requirements.minTokenAgeSeconds / 3600;
-        reasons.push(
-          `Token too new: ${ageHours.toFixed(1)}h old (min: ${minHours}h)`,
-        );
+        reasons.push(`Token too new: ${ageHours.toFixed(1)}h old (min: ${minHours}h)`);
       }
     }
 
@@ -565,9 +520,7 @@ export class TokenValidationService extends Service {
       const timeSinceLastTrade = Date.now() - activity.lastTradeAt;
       if (timeSinceLastTrade > 30 * 60 * 1000) {
         // 30 minutes
-        warnings.push(
-          `No trades in ${(timeSinceLastTrade / 60000).toFixed(0)} minutes`,
-        );
+        warnings.push(`No trades in ${(timeSinceLastTrade / 60000).toFixed(0)} minutes`);
       }
     }
 
@@ -607,10 +560,7 @@ export class TokenValidationService extends Service {
     const warnings: string[] = [];
 
     // === HONEYPOT DETECTION (CRITICAL) ===
-    const honeypotCheck = await this.checkHoneypotIndicators(
-      tokenAddress,
-      requirements,
-    );
+    const honeypotCheck = await this.checkHoneypotIndicators(tokenAddress, requirements);
     if (honeypotCheck.isHoneypot) {
       rejectionReasons.push(...honeypotCheck.reasons);
     }
@@ -619,9 +569,7 @@ export class TokenValidationService extends Service {
     // === RUG CHECK VALIDATION ===
     // Check risk level
     if (report.riskLevel === "danger") {
-      rejectionReasons.push(
-        `Token flagged as dangerous (risk score: ${report.score})`,
-      );
+      rejectionReasons.push(`Token flagged as dangerous (risk score: ${report.score})`);
     }
 
     // Check rug pull score
@@ -660,37 +608,25 @@ export class TokenValidationService extends Service {
     for (const risk of report.risks) {
       if (risk.level === "warning") {
         warnings.push(`${risk.name}: ${risk.description}`);
-      } else if (
-        risk.level === "danger" &&
-        !rejectionReasons.includes(`RugCheck: ${risk.name}`)
-      ) {
+      } else if (risk.level === "danger" && !rejectionReasons.includes(`RugCheck: ${risk.name}`)) {
         rejectionReasons.push(`RugCheck: ${risk.name} - ${risk.description}`);
       }
     }
 
     // Check mint authority
     if (report.tokenInfo.mintAuthority) {
-      warnings.push(
-        "Mint authority is not renounced - token supply can be increased",
-      );
+      warnings.push("Mint authority is not renounced - token supply can be increased");
     }
 
     // Check freeze authority
     if (report.tokenInfo.freezeAuthority) {
-      warnings.push(
-        "Freeze authority is not renounced - accounts can be frozen",
-      );
+      warnings.push("Freeze authority is not renounced - accounts can be frozen");
     }
 
     const isValid = rejectionReasons.length === 0;
 
     logger.info(
-      {
-        isValid,
-        rejectionReasons,
-        warningsCount: warnings.length,
-      },
-      `[${TokenValidationService.serviceType}] Validation result for ${tokenAddress}`,
+      `[${TokenValidationService.serviceType}] Validation result for ${tokenAddress}: valid=${isValid} rejections=${rejectionReasons.length} warnings=${warnings.length}`,
     );
 
     return {
@@ -734,8 +670,7 @@ export class TokenValidationService extends Service {
       report.cacheExpiry = Date.now() + CACHE_DURATION_MS * 4; // Extend cache for flagged tokens
     }
     logger.warn(
-      { tokenAddress, reason },
-      `[${TokenValidationService.serviceType}] Token flagged`,
+      `[${TokenValidationService.serviceType}] Token flagged: ${tokenAddress} reason=${reason}`,
     );
   }
 }

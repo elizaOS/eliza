@@ -39,7 +39,6 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import { getOrderBookDepthTemplate } from "../templates";
 import type { OrderBook } from "../types";
 import {
@@ -86,12 +85,11 @@ interface DepthData {
  * - For actual prices → use `getTokenInfoAction`
  * - For trading → use `placeOrderAction`
  */
-const spec = requireActionSpec("ORDER_BOOK");
-
 export const getOrderBookDepthAction: Action = {
-  name: spec.name,
-  similes: spec.similes ? [...spec.similes] : [],
-  description: spec.description,
+  name: "POLYMARKET_GET_ORDER_BOOK_DEPTH",
+  similes: ["ORDER_BOOK_DEPTH", "DEPTH", "MARKET_DEPTH", "LIQUIDITY", "COMPARE_DEPTH"],
+  description:
+    "Retrieves order book depth (number of bid/ask levels) for multiple tokens to compare liquidity across markets. Use when comparing depth across multiple markets or finding markets with sufficient liquidity for large trades. Parameters: tokenIds (array of condition token IDs, required).",
 
   parameters: [
     {
@@ -116,7 +114,7 @@ export const getOrderBookDepthAction: Action = {
     _message: Memory,
     state?: State,
     options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     runtime.logger.info("[getOrderBookDepthAction] Handler called");
 
@@ -131,7 +129,7 @@ export const getOrderBookDepthAction: Action = {
           runtime,
           state,
           getOrderBookDepthTemplate,
-          "getOrderBookDepthAction"
+          "getOrderBookDepthAction",
         );
 
         if (isLLMError(llmResult) || !llmResult?.tokenIds?.length) {
@@ -149,7 +147,7 @@ export const getOrderBookDepthAction: Action = {
         {
           tokenCount: tokenIds.length,
           tokens: tokenIds.map((t) => `${t.slice(0, 12)}...`).join(", "),
-        }
+        },
       );
 
       const clobClient = await initializeClobClient(runtime);
@@ -160,7 +158,7 @@ export const getOrderBookDepthAction: Action = {
         { token_id: tid, side: "SELL" as const },
       ]);
       const orderBooks = await clobClient.getOrderBooks(
-        bookParams as Parameters<typeof clobClient.getOrderBooks>[0]
+        bookParams as Parameters<typeof clobClient.getOrderBooks>[0],
       );
       const depths: Record<string, DepthData> = {};
       // Process results - orderBooks is an array matching bookParams order
@@ -205,7 +203,7 @@ export const getOrderBookDepthAction: Action = {
       await sendError(
         callback,
         `Failed to fetch order book depth: ${errorMessage}`,
-        `${tokenIds.length} token(s)`
+        `${tokenIds.length} token(s)`,
       );
       return { success: false, text: `Order book error: ${errorMessage}`, error: errorMessage };
     }

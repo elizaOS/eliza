@@ -45,19 +45,11 @@ const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 export class TokenResolverService extends Service {
   public static readonly serviceType = "TokenResolverService";
-  public readonly capabilityDescription =
-    "Resolves token symbols to addresses dynamically";
+  public readonly capabilityDescription = "Resolves token symbols to addresses dynamically";
 
   private cache = new Map<string, TokenInfo>();
   private cacheExpiry = new Map<string, number>();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-  private getBirdeyeApiKey(): string | null {
-    const apiKey = this.runtime.getSetting("BIRDEYE_API_KEY");
-    return typeof apiKey === "string" && apiKey.trim().length > 0
-      ? apiKey
-      : null;
-  }
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
@@ -68,9 +60,7 @@ export class TokenResolverService extends Service {
     }
   }
 
-  public static async start(
-    runtime: IAgentRuntime,
-  ): Promise<TokenResolverService> {
+  public static async start(runtime: IAgentRuntime): Promise<TokenResolverService> {
     const instance = new TokenResolverService(runtime);
     logger.info("[TokenResolverService] Started");
     return instance;
@@ -113,9 +103,7 @@ export class TokenResolverService extends Service {
   /**
    * Resolve multiple tokens at once
    */
-  public async resolveMany(
-    inputs: string[],
-  ): Promise<Map<string, TokenInfo | null>> {
+  public async resolveMany(inputs: string[]): Promise<Map<string, TokenInfo | null>> {
     const results = new Map<string, TokenInfo | null>();
 
     await Promise.all(
@@ -137,7 +125,7 @@ export class TokenResolverService extends Service {
       return cached;
     }
 
-    const apiKey = this.getBirdeyeApiKey();
+    const apiKey = this.runtime.getSetting("BIRDEYE_API_KEY");
     if (!apiKey) {
       logger.warn("[TokenResolverService] No Birdeye API key configured");
       return null;
@@ -147,7 +135,7 @@ export class TokenResolverService extends Service {
       `https://public-api.birdeye.so/defi/token_overview?address=${address}`,
       {
         headers: {
-          "X-API-KEY": apiKey,
+          "X-API-KEY": String(apiKey),
           "x-chain": "solana",
         },
       },
@@ -199,7 +187,7 @@ export class TokenResolverService extends Service {
    * Search for a token by symbol or name
    */
   public async searchToken(query: string): Promise<TokenInfo | null> {
-    const apiKey = this.getBirdeyeApiKey();
+    const apiKey = this.runtime.getSetting("BIRDEYE_API_KEY");
     if (!apiKey) {
       logger.warn("[TokenResolverService] No Birdeye API key configured");
       return null;
@@ -209,16 +197,14 @@ export class TokenResolverService extends Service {
       `https://public-api.birdeye.so/defi/v3/search?chain=solana&keyword=${encodeURIComponent(query)}&target=token&sort_by=volume_24h_usd&sort_type=desc&limit=5`,
       {
         headers: {
-          "X-API-KEY": apiKey,
+          "X-API-KEY": String(apiKey),
           "x-chain": "solana",
         },
       },
     );
 
     if (!response.ok) {
-      logger.warn(
-        `[TokenResolverService] Search failed for "${query}": ${response.status}`,
-      );
+      logger.warn(`[TokenResolverService] Search failed for "${query}": ${response.status}`);
       return null;
     }
 
@@ -244,9 +230,7 @@ export class TokenResolverService extends Service {
     }
 
     // Find best match - exact symbol match preferred
-    const exactMatch = data.data.items.find(
-      (t) => t.symbol.toUpperCase() === query.toUpperCase(),
-    );
+    const exactMatch = data.data.items.find((t) => t.symbol.toUpperCase() === query.toUpperCase());
     const token = exactMatch || data.data.items[0];
 
     const tokenInfo: TokenInfo = {
@@ -273,7 +257,7 @@ export class TokenResolverService extends Service {
    * Get trending tokens from Birdeye
    */
   public async getTrendingTokens(limit = 20): Promise<TokenInfo[]> {
-    const apiKey = this.getBirdeyeApiKey();
+    const apiKey = this.runtime.getSetting("BIRDEYE_API_KEY");
     if (!apiKey) {
       return [];
     }
@@ -282,7 +266,7 @@ export class TokenResolverService extends Service {
       `https://public-api.birdeye.so/defi/tokenlist?sort_by=v24hUSD&sort_type=desc&offset=0&limit=${limit}`,
       {
         headers: {
-          "X-API-KEY": apiKey,
+          "X-API-KEY": String(apiKey),
           "x-chain": "solana",
         },
       },

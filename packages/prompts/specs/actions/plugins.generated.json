@@ -2,17 +2,6 @@
   "version": "1.0.0",
   "actions": [
     {
-      "name": "ACTIVATE_N8N_WORKFLOW",
-      "description": "Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
-      "parameters": [],
-      "similes": [
-        "ACTIVATE_WORKFLOW",
-        "ENABLE_WORKFLOW",
-        "START_WORKFLOW",
-        "TURN_ON_WORKFLOW"
-      ]
-    },
-    {
       "name": "ANALYZE_PERFORMANCE",
       "description": "Analyze trading performance and show metrics",
       "parameters": [],
@@ -24,75 +13,40 @@
       ]
     },
     {
-      "name": "BLUEBUBBLES_SEND_REACTION",
-      "description": "Add or remove a reaction on a message via BlueBubbles",
-      "parameters": [],
-      "similes": [
-        "BLUEBUBBLES_REACT",
-        "BB_REACTION",
-        "IMESSAGE_REACT"
-      ]
-    },
-    {
       "name": "BROWSER_CLICK",
       "description": "Click on an element on the webpage",
       "parameters": [],
-      "similes": [
-        "CLICK_ELEMENT",
-        "TAP",
-        "PRESS_BUTTON"
-      ]
+      "similes": ["CLICK_ELEMENT", "TAP", "PRESS_BUTTON"]
     },
     {
       "name": "BROWSER_EXTRACT",
       "description": "Extract data from the webpage",
       "parameters": [],
-      "similes": [
-        "EXTRACT_DATA",
-        "GET_TEXT",
-        "SCRAPE"
-      ]
+      "similes": ["EXTRACT_DATA", "GET_TEXT", "SCRAPE"]
     },
     {
       "name": "BROWSER_NAVIGATE",
       "description": "Navigate the browser to a specified URL",
       "parameters": [],
-      "similes": [
-        "GO_TO_URL",
-        "OPEN_WEBSITE",
-        "VISIT_PAGE",
-        "NAVIGATE_TO"
-      ]
+      "similes": ["GO_TO_URL", "OPEN_WEBSITE", "VISIT_PAGE", "NAVIGATE_TO"]
     },
     {
       "name": "BROWSER_SCREENSHOT",
       "description": "Take a screenshot of the current page",
       "parameters": [],
-      "similes": [
-        "TAKE_SCREENSHOT",
-        "CAPTURE_PAGE",
-        "SCREENSHOT"
-      ]
+      "similes": ["TAKE_SCREENSHOT", "CAPTURE_PAGE", "SCREENSHOT"]
     },
     {
       "name": "BROWSER_SELECT",
       "description": "Select an option from a dropdown on the webpage",
       "parameters": [],
-      "similes": [
-        "SELECT_OPTION",
-        "CHOOSE",
-        "PICK"
-      ]
+      "similes": ["SELECT_OPTION", "CHOOSE", "PICK"]
     },
     {
       "name": "BROWSER_TYPE",
       "description": "Type text into an input field on the webpage",
       "parameters": [],
-      "similes": [
-        "TYPE_TEXT",
-        "INPUT",
-        "ENTER_TEXT"
-      ]
+      "similes": ["TYPE_TEXT", "INPUT", "ENTER_TEXT"]
     },
     {
       "name": "CALL_MCP_TOOL",
@@ -115,11 +69,7 @@
       "name": "CANCEL_TASK",
       "description": "Cancel a task.",
       "parameters": [],
-      "similes": [
-        "DELETE_TASK",
-        "REMOVE_TASK",
-        "ABORT_TASK"
-      ]
+      "similes": ["DELETE_TASK", "REMOVE_TASK", "ABORT_TASK"]
     },
     {
       "name": "CHECK_PORTFOLIO",
@@ -150,16 +100,6 @@
       ]
     },
     {
-      "name": "COMMANDS_LIST",
-      "description": "List all available commands with their aliases",
-      "parameters": [],
-      "similes": [
-        "/commands",
-        "/cmds",
-        "list all commands"
-      ]
-    },
-    {
       "name": "COMPARE_STRATEGIES",
       "description": "Compare available trading strategies",
       "parameters": [],
@@ -174,51 +114,31 @@
       "name": "COMPUTERUSE_CLICK",
       "description": "Clicks a UI element on the computer using a ComputerUse selector.",
       "parameters": [],
-      "similes": [
-        "CLICK_UI",
-        "CLICK_ELEMENT",
-        "TAP_UI"
-      ]
+      "similes": ["CLICK_UI", "CLICK_ELEMENT", "TAP_UI"]
     },
     {
       "name": "COMPUTERUSE_GET_APPLICATIONS",
       "description": "Lists currently running applications on the target machine.",
       "parameters": [],
-      "similes": [
-        "LIST_APPS",
-        "LIST_APPLICATIONS",
-        "SHOW_RUNNING_APPS"
-      ]
+      "similes": ["LIST_APPS", "LIST_APPLICATIONS", "SHOW_RUNNING_APPS"]
     },
     {
       "name": "COMPUTERUSE_GET_WINDOW_TREE",
       "description": "Gets the UI tree for a running application (useful for understanding what is currently on screen).",
       "parameters": [],
-      "similes": [
-        "GET_UI_TREE",
-        "WINDOW_TREE",
-        "DUMP_UI_TREE"
-      ]
+      "similes": ["GET_UI_TREE", "WINDOW_TREE", "DUMP_UI_TREE"]
     },
     {
       "name": "COMPUTERUSE_OPEN_APPLICATION",
       "description": "Opens an application on the target machine (local or MCP).",
       "parameters": [],
-      "similes": [
-        "OPEN_APP",
-        "LAUNCH_APP",
-        "START_APPLICATION"
-      ]
+      "similes": ["OPEN_APP", "LAUNCH_APP", "START_APPLICATION"]
     },
     {
       "name": "COMPUTERUSE_TYPE",
       "description": "Types text into a UI element on the computer using a ComputerUse selector (optionally clearing the field).",
       "parameters": [],
-      "similes": [
-        "TYPE_UI",
-        "ENTER_TEXT",
-        "FILL_FIELD"
-      ]
+      "similes": ["TYPE_UI", "ENTER_TEXT", "FILL_FIELD"]
     },
     {
       "name": "CONFIGURE_STRATEGY",
@@ -254,9 +174,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "fromRef",
@@ -265,9 +183,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "owner",
@@ -276,9 +192,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "repo",
@@ -287,17 +201,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use CREATE_GITHUB_BRANCH with the provided parameters.",
-          "actions": [
-            "CREATE_GITHUB_BRANCH"
-          ],
+          "actions": ["CREATE_GITHUB_BRANCH"],
           "params": {
             "CREATE_GITHUB_BRANCH": {
               "branchName": "example",
@@ -320,9 +230,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Implements dark mode and updates docs."
-          ]
+          "examples": ["Implements dark mode and updates docs."]
         },
         {
           "name": "issueNumber",
@@ -331,9 +239,7 @@
           "schema": {
             "type": "number"
           },
-          "examples": [
-            1
-          ]
+          "examples": [1]
         },
         {
           "name": "owner",
@@ -342,9 +248,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "repo",
@@ -353,17 +257,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use CREATE_GITHUB_COMMENT with the provided parameters.",
-          "actions": [
-            "CREATE_GITHUB_COMMENT"
-          ],
+          "actions": ["CREATE_GITHUB_COMMENT"],
           "params": {
             "CREATE_GITHUB_COMMENT": {
               "body": "Implements dark mode and updates docs.",
@@ -386,9 +286,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "body",
@@ -397,9 +295,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Implements dark mode and updates docs."
-          ]
+          "examples": ["Implements dark mode and updates docs."]
         },
         {
           "name": "labels",
@@ -408,9 +304,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "owner",
@@ -419,9 +313,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "repo",
@@ -430,9 +322,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         },
         {
           "name": "title",
@@ -441,17 +331,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Add dark mode support"
-          ]
+          "examples": ["Add dark mode support"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use CREATE_GITHUB_ISSUE with the provided parameters.",
-          "actions": [
-            "CREATE_GITHUB_ISSUE"
-          ],
+          "actions": ["CREATE_GITHUB_ISSUE"],
           "params": {
             "CREATE_GITHUB_ISSUE": {
               "assignees": "example",
@@ -476,9 +362,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "main"
-          ]
+          "examples": ["main"]
         },
         {
           "name": "body",
@@ -487,9 +371,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Implements dark mode and updates docs."
-          ]
+          "examples": ["Implements dark mode and updates docs."]
         },
         {
           "name": "draft",
@@ -498,9 +380,7 @@
           "schema": {
             "type": "boolean"
           },
-          "examples": [
-            false
-          ]
+          "examples": [false]
         },
         {
           "name": "head",
@@ -509,9 +389,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "feature/dark-mode"
-          ]
+          "examples": ["feature/dark-mode"]
         },
         {
           "name": "owner",
@@ -520,9 +398,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "repo",
@@ -531,9 +407,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         },
         {
           "name": "title",
@@ -542,17 +416,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Add dark mode support"
-          ]
+          "examples": ["Add dark mode support"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use CREATE_GITHUB_PULL_REQUEST with the provided parameters.",
-          "actions": [
-            "CREATE_GITHUB_PULL_REQUEST"
-          ],
+          "actions": ["CREATE_GITHUB_PULL_REQUEST"],
           "params": {
             "CREATE_GITHUB_PULL_REQUEST": {
               "base": "main",
@@ -578,9 +448,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -592,9 +460,7 @@
       "exampleCalls": [
         {
           "user": "Use CREATE_LINEAR_COMMENT with the provided parameters.",
-          "actions": [
-            "CREATE_LINEAR_COMMENT"
-          ],
+          "actions": ["CREATE_LINEAR_COMMENT"],
           "params": {
             "CREATE_LINEAR_COMMENT": {
               "name": "example"
@@ -607,51 +473,13 @@
       "name": "CREATE_LINEAR_ISSUE",
       "description": "Create a new issue in Linear",
       "parameters": [],
-      "similes": [
-        "create-linear-issue",
-        "new-linear-issue",
-        "add-linear-issue"
-      ]
-    },
-    {
-      "name": "CREATE_N8N_WORKFLOW",
-      "description": "Generate, preview, and deploy n8n workflows from natural language. ",
-      "parameters": [],
-      "similes": [
-        "CREATE_WORKFLOW",
-        "BUILD_WORKFLOW",
-        "GENERATE_WORKFLOW",
-        "MAKE_AUTOMATION",
-        "CREATE_AUTOMATION",
-        "BUILD_N8N_WORKFLOW",
-        "SETUP_WORKFLOW",
-        "CONFIRM_WORKFLOW",
-        "DEPLOY_WORKFLOW",
-        "CANCEL_WORKFLOW"
-      ]
+      "similes": ["create-linear-issue", "new-linear-issue", "add-linear-issue"]
     },
     {
       "name": "CREATE_TASK",
       "description": "Create an orchestrated background task to be executed by a selected agent provider.",
       "parameters": [],
-      "similes": [
-        "START_TASK",
-        "SPAWN_TASK",
-        "NEW_TASK",
-        "BEGIN_TASK"
-      ]
-    },
-    {
-      "name": "DEACTIVATE_N8N_WORKFLOW",
-      "description": "Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
-      "parameters": [],
-      "similes": [
-        "DEACTIVATE_WORKFLOW",
-        "DISABLE_WORKFLOW",
-        "STOP_WORKFLOW",
-        "PAUSE_WORKFLOW",
-        "TURN_OFF_WORKFLOW"
-      ]
+      "similes": ["START_TASK", "SPAWN_TASK", "NEW_TASK", "BEGIN_TASK"]
     },
     {
       "name": "DELETE_LINEAR_ISSUE",
@@ -662,16 +490,6 @@
         "archive-linear-issue",
         "remove-linear-issue",
         "close-linear-issue"
-      ]
-    },
-    {
-      "name": "DELETE_N8N_WORKFLOW",
-      "description": "Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.",
-      "parameters": [],
-      "similes": [
-        "DELETE_WORKFLOW",
-        "REMOVE_WORKFLOW",
-        "DESTROY_WORKFLOW"
       ]
     },
     {
@@ -693,20 +511,7 @@
       "name": "FORM_RESTORE",
       "description": "Restore a previously stashed form session",
       "parameters": [],
-      "similes": [
-        "RESUME_FORM",
-        "CONTINUE_FORM"
-      ]
-    },
-    {
-      "name": "GENERATE_ENV_VAR",
-      "description": "Automatically generates environment variables that can be created programmatically",
-      "parameters": [],
-      "similes": [
-        "AUTO_GENERATE_ENV",
-        "CREATE_ENV_VAR",
-        "GENERATE_VARIABLE"
-      ]
+      "similes": ["RESUME_FORM", "CONTINUE_FORM"]
     },
     {
       "name": "GET_LINEAR_ACTIVITY",
@@ -730,9 +535,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -745,9 +548,7 @@
       "exampleCalls": [
         {
           "user": "Use GET_LINEAR_ISSUE with the provided parameters.",
-          "actions": [
-            "GET_LINEAR_ISSUE"
-          ],
+          "actions": ["GET_LINEAR_ISSUE"],
           "params": {
             "GET_LINEAR_ISSUE": {
               "name": "example"
@@ -768,130 +569,6 @@
       ]
     },
     {
-      "name": "GET_N8N_EXECUTIONS",
-      "description": "Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in any language.",
-      "parameters": [],
-      "similes": [
-        "GET_EXECUTIONS",
-        "SHOW_EXECUTIONS",
-        "EXECUTION_HISTORY",
-        "WORKFLOW_RUNS",
-        "WORKFLOW_EXECUTIONS"
-      ]
-    },
-    {
-      "name": "GET_SKILL_DETAILS",
-      "description": "Get detailed information about a specific skill including version, owner, and stats.",
-      "parameters": [],
-      "similes": [
-        "SKILL_INFO",
-        "SKILL_DETAILS"
-      ]
-    },
-    {
-      "name": "GET_SKILL_GUIDANCE",
-      "description": "Search for and get skill instructions. Use when user asks to find a skill or when you need instructions for a capability.",
-      "parameters": [],
-      "similes": [
-        "FIND_SKILL",
-        "SEARCH_SKILLS",
-        "SKILL_HELP",
-        "HOW_TO",
-        "GET_INSTRUCTIONS",
-        "LEARN_SKILL",
-        "LOOKUP_SKILL"
-      ]
-    },
-    {
-      "name": "GOOGLE_CHAT_LIST_SPACES",
-      "description": "List all Google Chat spaces the bot is a member of",
-      "parameters": [],
-      "similes": [
-        "LIST_GOOGLE_CHAT_SPACES",
-        "GCHAT_SPACES",
-        "SHOW_GOOGLE_CHAT_SPACES"
-      ]
-    },
-    {
-      "name": "GOOGLE_CHAT_SEND_MESSAGE",
-      "description": "Send a message to a Google Chat space",
-      "parameters": [],
-      "similes": [
-        "SEND_GOOGLE_CHAT_MESSAGE",
-        "MESSAGE_GOOGLE_CHAT",
-        "GCHAT_SEND",
-        "GOOGLE_CHAT_TEXT"
-      ]
-    },
-    {
-      "name": "GOOGLE_CHAT_SEND_REACTION",
-      "description": "Add or remove an emoji reaction to a Google Chat message",
-      "parameters": [],
-      "similes": [
-        "REACT_GOOGLE_CHAT",
-        "GCHAT_REACT",
-        "GOOGLE_CHAT_EMOJI",
-        "ADD_GOOGLE_CHAT_REACTION"
-      ]
-    },
-    {
-      "name": "HELP_COMMAND",
-      "description": "Show available commands and their descriptions",
-      "parameters": [],
-      "similes": [
-        "/help",
-        "/h",
-        "/?",
-        "help",
-        "show help",
-        "list commands"
-      ]
-    },
-    {
-      "name": "IMESSAGE_SEND_MESSAGE",
-      "description": "Send a text message via iMessage (macOS only)",
-      "parameters": [],
-      "similes": [
-        "SEND_IMESSAGE",
-        "IMESSAGE_TEXT",
-        "TEXT_IMESSAGE",
-        "SEND_IMSG"
-      ]
-    },
-    {
-      "name": "LINE_SEND_FLEX_MESSAGE",
-      "description": "Send a rich flex message/card via LINE",
-      "parameters": [],
-      "similes": [
-        "SEND_LINE_CARD",
-        "LINE_FLEX",
-        "LINE_CARD",
-        "SEND_LINE_FLEX"
-      ]
-    },
-    {
-      "name": "LINE_SEND_LOCATION",
-      "description": "Send a location message via LINE",
-      "parameters": [],
-      "similes": [
-        "SEND_LINE_LOCATION",
-        "LINE_LOCATION",
-        "LINE_MAP",
-        "SHARE_LOCATION_LINE"
-      ]
-    },
-    {
-      "name": "LINE_SEND_MESSAGE",
-      "description": "Send a text message via LINE",
-      "parameters": [],
-      "similes": [
-        "SEND_LINE_MESSAGE",
-        "LINE_MESSAGE",
-        "LINE_TEXT",
-        "MESSAGE_LINE"
-      ]
-    },
-    {
       "name": "LIST_LINEAR_PROJECTS",
       "description": "List projects in Linear with optional filters",
       "parameters": [
@@ -902,9 +579,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -916,9 +591,7 @@
       "exampleCalls": [
         {
           "user": "Use LIST_LINEAR_PROJECTS with the provided parameters.",
-          "actions": [
-            "LIST_LINEAR_PROJECTS"
-          ],
+          "actions": ["LIST_LINEAR_PROJECTS"],
           "params": {
             "LIST_LINEAR_PROJECTS": {
               "toLowerCase": "example"
@@ -942,12 +615,7 @@
       "name": "LIST_TASKS",
       "description": "List tasks managed by the orchestrator.",
       "parameters": [],
-      "similes": [
-        "SHOW_TASKS",
-        "GET_TASKS",
-        "TASKS",
-        "VIEW_TASKS"
-      ]
+      "similes": ["SHOW_TASKS", "GET_TASKS", "TASKS", "VIEW_TASKS"]
     },
     {
       "name": "lp_management",
@@ -962,23 +630,6 @@
       ]
     },
     {
-      "name": "MANAGE_PROCESS",
-      "description": "Manage running shell/exec sessions: list, poll, log, write, send-keys, submit, paste, kill, clear, remove",
-      "parameters": [],
-      "similes": [
-        "PROCESS_LIST",
-        "PROCESS_POLL",
-        "PROCESS_LOG",
-        "PROCESS_WRITE",
-        "PROCESS_KILL",
-        "LIST_SESSIONS",
-        "POLL_SESSION",
-        "KILL_SESSION",
-        "CHECK_PROCESS",
-        "SEND_KEYS"
-      ]
-    },
-    {
       "name": "manage_raydium_positions",
       "description": "Automatically manage Raydium positions by rebalancing them when they drift too far from the pool price",
       "parameters": [],
@@ -989,205 +640,70 @@
       ]
     },
     {
-      "name": "MANAGE_SECRET",
-      "description": "Manage secrets at different levels (global, world, user) with get, set, delete, and list operations",
-      "parameters": []
-    },
-    {
-      "name": "MATRIX_JOIN_ROOM",
-      "description": "Join a Matrix room by ID or alias",
-      "parameters": [],
-      "similes": [
-        "JOIN_MATRIX_ROOM",
-        "ENTER_ROOM"
-      ]
-    },
-    {
-      "name": "MATRIX_LIST_ROOMS",
-      "description": "List all Matrix rooms the bot has joined",
-      "parameters": [],
-      "similes": [
-        "LIST_MATRIX_ROOMS",
-        "SHOW_ROOMS",
-        "GET_ROOMS",
-        "MY_ROOMS"
-      ]
-    },
-    {
-      "name": "MATRIX_SEND_MESSAGE",
-      "description": "Send a message to a Matrix room",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "SEND_MATRIX_MESSAGE",
-        "MESSAGE_MATRIX",
-        "MATRIX_TEXT"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use MATRIX_SEND_MESSAGE with the provided parameters.",
-          "actions": [
-            "MATRIX_SEND_MESSAGE"
-          ],
-          "params": {
-            "MATRIX_SEND_MESSAGE": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "MATRIX_SEND_REACTION",
-      "description": "React to a Matrix message with an emoji",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "REACT_MATRIX",
-        "MATRIX_REACT",
-        "ADD_MATRIX_REACTION"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use MATRIX_SEND_REACTION with the provided parameters.",
-          "actions": [
-            "MATRIX_SEND_REACTION"
-          ],
-          "params": {
-            "MATRIX_SEND_REACTION": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "MC_ATTACK",
       "description": "Attack an entity by numeric entityId (from MC_WORLD_STATE.nearbyEntities).",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_ATTACK",
-        "HIT_ENTITY"
-      ]
+      "similes": ["MINECRAFT_ATTACK", "HIT_ENTITY"]
     },
     {
       "name": "MC_CHAT",
       "description": "Send a chat message in Minecraft as the bot",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_CHAT",
-        "SAY_IN_MINECRAFT",
-        "CHAT"
-      ]
+      "similes": ["MINECRAFT_CHAT", "SAY_IN_MINECRAFT", "CHAT"]
     },
     {
       "name": "MC_CONNECT",
       "description": "Connect the Mineflayer bot to a Minecraft server",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_CONNECT",
-        "JOIN_SERVER",
-        "CONNECT_TO_MINECRAFT"
-      ]
+      "similes": ["MINECRAFT_CONNECT", "JOIN_SERVER", "CONNECT_TO_MINECRAFT"]
     },
     {
       "name": "MC_CONTROL",
       "description": "Set a control state (e.g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control,state,durationMs?} or 'forward true 1000'.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_CONTROL",
-        "SET_CONTROL_STATE"
-      ]
+      "similes": ["MINECRAFT_CONTROL", "SET_CONTROL_STATE"]
     },
     {
       "name": "MC_DIG",
       "description": "Dig/break the block at (x y z). Provide coordinates like '10 64 -20' or JSON {\"x\":10,\"y\":64,\"z\":-20}.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_DIG",
-        "MINE_BLOCK",
-        "BREAK_BLOCK"
-      ]
+      "similes": ["MINECRAFT_DIG", "MINE_BLOCK", "BREAK_BLOCK"]
     },
     {
       "name": "MC_DISCONNECT",
       "description": "Disconnect the Mineflayer bot from the Minecraft server",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_DISCONNECT",
-        "LEAVE_SERVER",
-        "QUIT_MINECRAFT"
-      ]
+      "similes": ["MINECRAFT_DISCONNECT", "LEAVE_SERVER", "QUIT_MINECRAFT"]
     },
     {
       "name": "MC_GOTO",
       "description": "Pathfind to a target (x y z). Provide coordinates like '10 64 -20' or JSON {\"x\":10,\"y\":64,\"z\":-20}.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_GOTO",
-        "WALK_TO",
-        "MOVE_TO_COORDS"
-      ]
+      "similes": ["MINECRAFT_GOTO", "WALK_TO", "MOVE_TO_COORDS"]
     },
     {
       "name": "MC_LOOK",
       "description": "Look to yaw/pitch (radians). Provide 'yaw pitch' or JSON {yaw,pitch}.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_LOOK",
-        "TURN_HEAD"
-      ]
+      "similes": ["MINECRAFT_LOOK", "TURN_HEAD"]
     },
     {
       "name": "MC_PLACE",
       "description": "Place the currently-held block onto a reference block face. Provide 'x y z face' (face=up/down/north/south/east/west) or JSON {x,y,z,face}.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_PLACE",
-        "PLACE_BLOCK"
-      ]
+      "similes": ["MINECRAFT_PLACE", "PLACE_BLOCK"]
     },
     {
       "name": "MC_SCAN",
       "description": "Scan nearby blocks. Optional JSON input: {\"blocks\":[\"oak_log\"],\"radius\":16,\"maxResults\":32}. If omitted, scans for any non-air blocks.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_SCAN",
-        "FIND_BLOCKS",
-        "SCAN_BLOCKS"
-      ]
+      "similes": ["MINECRAFT_SCAN", "FIND_BLOCKS", "SCAN_BLOCKS"]
     },
     {
       "name": "MC_STOP",
       "description": "Stop pathfinding / movement goals.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_STOP",
-        "STOP_PATHFINDER",
-        "STOP_MOVING"
-      ]
+      "similes": ["MINECRAFT_STOP", "STOP_PATHFINDER", "STOP_MOVING"]
     },
     {
       "name": "MC_WAYPOINT_DELETE",
@@ -1213,21 +729,13 @@
       "name": "MC_WAYPOINT_LIST",
       "description": "List saved waypoints.",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_WAYPOINT_LIST",
-        "LIST_WAYPOINTS",
-        "SHOW_WAYPOINTS"
-      ]
+      "similes": ["MINECRAFT_WAYPOINT_LIST", "LIST_WAYPOINTS", "SHOW_WAYPOINTS"]
     },
     {
       "name": "MC_WAYPOINT_SET",
       "description": "Save the bot's current position as a named waypoint (message text is the name).",
       "parameters": [],
-      "similes": [
-        "MINECRAFT_WAYPOINT_SET",
-        "SET_WAYPOINT",
-        "SAVE_WAYPOINT"
-      ]
+      "similes": ["MINECRAFT_WAYPOINT_SET", "SET_WAYPOINT", "SAVE_WAYPOINT"]
     },
     {
       "name": "MERGE_GITHUB_PULL_REQUEST",
@@ -1240,9 +748,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "commitTitle",
@@ -1251,9 +757,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "mergeMethod",
@@ -1262,9 +766,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "owner",
@@ -1273,9 +775,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "pullNumber",
@@ -1284,9 +784,7 @@
           "schema": {
             "type": "number"
           },
-          "examples": [
-            1
-          ]
+          "examples": [1]
         },
         {
           "name": "repo",
@@ -1295,17 +793,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use MERGE_GITHUB_PULL_REQUEST with the provided parameters.",
-          "actions": [
-            "MERGE_GITHUB_PULL_REQUEST"
-          ],
+          "actions": ["MERGE_GITHUB_PULL_REQUEST"],
           "params": {
             "MERGE_GITHUB_PULL_REQUEST": {
               "commitMessage": "example",
@@ -1320,102 +814,129 @@
       ]
     },
     {
-      "name": "MODELS_COMMAND",
-      "description": "List available AI models and providers",
-      "parameters": [],
-      "similes": [
-        "/models",
-        "list models",
-        "show models",
-        "available models"
-      ]
-    },
-    {
-      "name": "MOLTBOOK_BROWSE",
-      "description": "Browse posts on Moltbook to see what other AI agents are discussing.",
-      "parameters": [],
-      "similes": [
-        "BROWSE_MOLTBOOK",
-        "READ_MOLTBOOK",
-        "CHECK_MOLTBOOK",
-        "VIEW_MOLTBOOK",
-        "EXPLORE_MOLTBOOK"
-      ]
-    },
-    {
-      "name": "MOLTBOOK_COMMENT",
-      "description": "Comment on a Moltbook post to engage with the community.",
-      "parameters": [],
-      "similes": [
-        "COMMENT_MOLTBOOK",
-        "REPLY_MOLTBOOK",
-        "RESPOND_MOLTBOOK"
-      ]
-    },
-    {
-      "name": "MOLTBOOK_POST",
-      "description": "Create a post on Moltbook, a Reddit-like platform for AI agents. Great for sharing ideas and engaging with the community.",
-      "parameters": [],
-      "similes": [
-        "POST_MOLTBOOK",
-        "CREATE_MOLTBOOK_POST",
-        "WRITE_MOLTBOOK",
-        "SHARE_MOLTBOOK",
-        "PUBLISH_MOLTBOOK"
-      ]
-    },
-    {
-      "name": "MOLTBOOK_READ",
-      "description": "Read a specific Moltbook post with its comments to see the full discussion.",
-      "parameters": [],
-      "similes": [
-        "READ_MOLTBOOK_POST",
-        "VIEW_MOLTBOOK_POST",
-        "GET_MOLTBOOK_POST",
-        "OPEN_MOLTBOOK_POST"
-      ]
-    },
-    {
-      "name": "MOLTBOOK_SUBMOLTS",
-      "description": "List available submolts (communities) on Moltbook or get details about a specific submolt.",
-      "parameters": [],
-      "similes": [
-        "LIST_SUBMOLTS",
-        "SHOW_SUBMOLTS",
-        "MOLTBOOK_COMMUNITIES",
-        "EXPLORE_SUBMOLTS",
-        "GET_SUBMOLT",
-        "EXAMINE_SUBMOLT"
-      ]
-    },
-    {
-      "name": "NOSTR_PUBLISH_PROFILE",
-      "description": "Publish or update the bot's Nostr profile (kind:0 metadata)",
-      "parameters": [],
-      "similes": [
-        "UPDATE_NOSTR_PROFILE",
-        "SET_NOSTR_PROFILE",
-        "NOSTR_PROFILE"
-      ]
-    },
-    {
-      "name": "NOSTR_SEND_DM",
-      "description": "Send an encrypted direct message via Nostr (NIP-04)",
-      "parameters": [],
-      "similes": [
-        "SEND_NOSTR_DM",
-        "NOSTR_MESSAGE",
-        "NOSTR_TEXT",
-        "DM_NOSTR"
-      ]
-    },
-    {
       "name": "PAUSE_TASK",
       "description": "Pause a running task.",
       "parameters": [],
+      "similes": ["STOP_TASK", "HALT_TASK"]
+    },
+    {
+      "name": "POLYMARKET_CHECK_ORDER_SCORING",
+      "description": "Checks whether specific Polymarket order IDs are scoring (eligible for liquidity rewards). Use when user provides order ID(s) and asks about scoring/rewards status. Requires CLOB API credentials. Parameters: orderIds (array of order ID strings, required).",
+      "parameters": [],
       "similes": [
-        "STOP_TASK",
-        "HALT_TASK"
+        "ORDERS_ELIGIBLE_FOR_REWARDS",
+        "SCORING_STATUS",
+        "ARE_MY_ORDERS_SCORING"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_MARKETS",
+      "description": "Find or browse Polymarket prediction markets. Use for keyword searches ('find miami heat markets'), ",
+      "parameters": [],
+      "similes": [
+        "GET_MARKETS",
+        "LIST_MARKETS",
+        "SHOW_MARKETS",
+        "FETCH_MARKETS",
+        "POLYMARKET_MARKETS",
+        "ALL_MARKETS",
+        "BROWSE_MARKETS",
+        "VIEW_MARKETS",
+        "SEARCH_MARKETS",
+        "FIND_MARKETS",
+        "SEARCH_POLYMARKET",
+        "LOOKUP_MARKETS",
+        "QUERY_MARKETS",
+        "MARKET_SEARCH"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_ORDER_BOOK_DEPTH",
+      "description": "Retrieves order book depth (number of bid/ask levels) for multiple tokens to compare liquidity across markets. Use when comparing depth across multiple markets or finding markets with sufficient liquidity for large trades. Parameters: tokenIds (array of condition token IDs, required).",
+      "parameters": [],
+      "similes": [
+        "ORDER_BOOK_DEPTH",
+        "DEPTH",
+        "MARKET_DEPTH",
+        "LIQUIDITY",
+        "COMPARE_DEPTH"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_TOKEN_INFO",
+      "description": "Retrieves comprehensive information about a single Polymarket token including market details (question, status, end date), current pricing (bid/ask, spread, midpoint), 24h price history (OHLC, change %), and user's position and active orders for that token. Parameters: tokenId (condition token ID) or conditionId (market condition ID).",
+      "parameters": [],
+      "similes": [
+        "TOKEN_INFO",
+        "TOKEN_DETAILS",
+        "MARKET_INFO",
+        "SHOW_TOKEN",
+        "ABOUT_TOKEN",
+        "TOKEN_SUMMARY",
+        "PRICE_INFO",
+        "MARKET_SUMMARY"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_TRADE_HISTORY",
+      "description": "Retrieves the authenticated user's filled trade history, optionally filtered by market or asset. Use when the user asks for past trades or fills. Do not use for open orders or a specific order status; use getActiveOrdersAction or getOrderDetailsAction. Parameters: market (optional slug), assetId (optional token ID), limit (optional). Requires full CLOB credentials.",
+      "parameters": [],
+      "similes": [
+        "MY_TRADES",
+        "TRADE_LOG",
+        "FILLED_ORDERS",
+        "PAST_TRADES",
+        "TRADING_HISTORY"
+      ]
+    },
+    {
+      "name": "POLYMARKET_PLACE_ORDER",
+      "description": "Places a buy/sell order (bet) on Polymarket. Use when user says buy, sell, bet, wager, put money on, or confirms a trade. Will search for market by name if tokenId not provided. Executes immediately without asking for confirmation. Parameters: tokenId or marketName (required), outcome (yes/no), side (buy/sell, default buy), price (0.01-0.99, uses best available if omitted), size (dollar amount or shares, required), orderType (GTC/FOK/FAK, default GTC). Requires CLOB API credentials and private key.",
+      "parameters": [],
+      "similes": [
+        "PLACE_ORDER",
+        "CREATE_ORDER",
+        "BUY_TOKEN",
+        "SELL_TOKEN",
+        "LIMIT_ORDER",
+        "MARKET_ORDER",
+        "TRADE",
+        "ORDER",
+        "BUY",
+        "SELL",
+        "PURCHASE",
+        "SUBMIT_ORDER",
+        "EXECUTE_ORDER",
+        "BET",
+        "WAGER",
+        "PUT_MONEY",
+        "PLACE_BET",
+        "MAKE_BET",
+        "CONFIRM",
+        "CONFIRM_ORDER",
+        "CONFIRM_BET",
+        "CONFIRM_TRADE",
+        "YES_EXECUTE",
+        "EXECUTE",
+        "DO_IT",
+        "GO_AHEAD",
+        "PROCEED"
+      ]
+    },
+    {
+      "name": "POLYMARKET_RESEARCH_MARKET",
+      "description": "Initiates or retrieves deep research on a Polymarket prediction market using OpenAI's deep research capabilities. Takes 20-40 minutes. Returns cached results if available, status if in progress, or starts new research. Use forceRefresh=true to force new research. Parameters: marketId (condition_id), marketQuestion (the prediction question), forceRefresh (optional boolean), callbackAction (optional: EVALUATE_TRADE or NOTIFY_ONLY).",
+      "parameters": [],
+      "similes": [
+        "RESEARCH_MARKET",
+        "ANALYZE_MARKET",
+        "DEEP_RESEARCH",
+        "INVESTIGATE_MARKET",
+        "MARKET_RESEARCH",
+        "RESEARCH_PREDICTION",
+        "STUDY_MARKET",
+        "GET_RESEARCH",
+        "CHECK_RESEARCH"
       ]
     },
     {
@@ -1429,9 +950,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "mediaId",
@@ -1440,9 +959,7 @@
           "schema": {
             "type": "number"
           },
-          "examples": [
-            1
-          ]
+          "examples": [1]
         }
       ],
       "similes": [
@@ -1454,9 +971,7 @@
       "exampleCalls": [
         {
           "user": "Use POST_INSTAGRAM_COMMENT with the provided parameters.",
-          "actions": [
-            "POST_INSTAGRAM_COMMENT"
-          ],
+          "actions": ["POST_INSTAGRAM_COMMENT"],
           "params": {
             "POST_INSTAGRAM_COMMENT": {
               "commentText": "example",
@@ -1482,9 +997,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "authorName",
@@ -1493,9 +1006,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "branch",
@@ -1504,9 +1015,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "main"
-          ]
+          "examples": ["main"]
         },
         {
           "name": "files",
@@ -1515,9 +1024,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "message",
@@ -1526,9 +1033,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Hello! How can I help?"
-          ]
+          "examples": ["Hello! How can I help?"]
         },
         {
           "name": "owner",
@@ -1537,9 +1042,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "repo",
@@ -1548,17 +1051,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use PUSH_GITHUB_CODE with the provided parameters.",
-          "actions": [
-            "PUSH_GITHUB_CODE"
-          ],
+          "actions": ["PUSH_GITHUB_CODE"],
           "params": {
             "PUSH_GITHUB_CODE": {
               "authorEmail": "example",
@@ -1604,19 +1103,10 @@
       ]
     },
     {
-      "name": "REQUEST_SECRET_FORM",
-      "description": "Create a secure web form for collecting secrets from users",
-      "parameters": []
-    },
-    {
       "name": "RESUME_TASK",
       "description": "Resume a paused task.",
       "parameters": [],
-      "similes": [
-        "CONTINUE_TASK",
-        "RESTART_TASK",
-        "RUN_TASK"
-      ]
+      "similes": ["CONTINUE_TASK", "RESTART_TASK", "RUN_TASK"]
     },
     {
       "name": "REVIEW_GITHUB_PULL_REQUEST",
@@ -1629,9 +1119,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Implements dark mode and updates docs."
-          ]
+          "examples": ["Implements dark mode and updates docs."]
         },
         {
           "name": "event",
@@ -1640,9 +1128,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "owner",
@@ -1651,9 +1137,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "octocat"
-          ]
+          "examples": ["octocat"]
         },
         {
           "name": "pullNumber",
@@ -1662,9 +1146,7 @@
           "schema": {
             "type": "number"
           },
-          "examples": [
-            1
-          ]
+          "examples": [1]
         },
         {
           "name": "repo",
@@ -1673,17 +1155,13 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "my-repo"
-          ]
+          "examples": ["my-repo"]
         }
       ],
       "exampleCalls": [
         {
           "user": "Use REVIEW_GITHUB_PULL_REQUEST with the provided parameters.",
-          "actions": [
-            "REVIEW_GITHUB_PULL_REQUEST"
-          ],
+          "actions": ["REVIEW_GITHUB_PULL_REQUEST"],
           "params": {
             "REVIEW_GITHUB_PULL_REQUEST": {
               "body": "Implements dark mode and updates docs.",
@@ -1700,20 +1178,7 @@
       "name": "RUN_BACKTEST",
       "description": "Get information about backtesting strategies",
       "parameters": [],
-      "similes": [
-        "BACKTEST",
-        "TEST_STRATEGY",
-        "SIMULATE_TRADING"
-      ]
-    },
-    {
-      "name": "RUN_SKILL_SCRIPT",
-      "description": "Execute a script bundled with an installed skill. Provide skill slug and script name.",
-      "parameters": [],
-      "similes": [
-        "EXECUTE_SKILL_SCRIPT",
-        "SKILL_SCRIPT"
-      ]
+      "similes": ["BACKTEST", "TEST_STRATEGY", "SIMULATE_TRADING"]
     },
     {
       "name": "SCHEDULE_MEETING",
@@ -1751,9 +1216,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -1765,9 +1228,7 @@
       "exampleCalls": [
         {
           "user": "Use SEARCH_LINEAR_ISSUES with the provided parameters.",
-          "actions": [
-            "SEARCH_LINEAR_ISSUES"
-          ],
+          "actions": ["SEARCH_LINEAR_ISSUES"],
           "params": {
             "SEARCH_LINEAR_ISSUES": {
               "name": "example"
@@ -1777,35 +1238,10 @@
       ]
     },
     {
-      "name": "SEARCH_SKILLS",
-      "description": "Search the skill registry for available skills by keyword or category.",
-      "parameters": [],
-      "similes": [
-        "BROWSE_SKILLS",
-        "LIST_SKILLS",
-        "FIND_SKILLS"
-      ]
-    },
-    {
       "name": "SEARCH_TASKS",
       "description": "Search tasks by query.",
       "parameters": [],
-      "similes": [
-        "FIND_TASK",
-        "LOOKUP_TASK"
-      ]
-    },
-    {
-      "name": "SEND_BLUEBUBBLES_MESSAGE",
-      "description": "Send a message via iMessage through BlueBubbles",
-      "parameters": [],
-      "similes": [
-        "SEND_IMESSAGE",
-        "TEXT_MESSAGE",
-        "IMESSAGE_REPLY",
-        "BLUEBUBBLES_SEND",
-        "APPLE_MESSAGE"
-      ]
+      "similes": ["FIND_TASK", "LOOKUP_TASK"]
     },
     {
       "name": "SEND_INSTAGRAM_DM",
@@ -1818,9 +1254,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         },
         {
           "name": "threadId",
@@ -1829,9 +1263,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "example"
-          ]
+          "examples": ["example"]
         }
       ],
       "similes": [
@@ -1844,9 +1276,7 @@
       "exampleCalls": [
         {
           "user": "Use SEND_INSTAGRAM_DM with the provided parameters.",
-          "actions": [
-            "SEND_INSTAGRAM_DM"
-          ],
+          "actions": ["SEND_INSTAGRAM_DM"],
           "params": {
             "SEND_INSTAGRAM_DM": {
               "responseText": "example",
@@ -1874,451 +1304,6 @@
       ]
     },
     {
-      "name": "SET_ENV_VAR",
-      "description": "Sets environment variables for plugins based on user input",
-      "parameters": [],
-      "similes": [
-        "UPDATE_ENV_VAR",
-        "CONFIGURE_ENV",
-        "SET_ENVIRONMENT",
-        "UPDATE_ENVIRONMENT"
-      ]
-    },
-    {
-      "name": "SET_SECRET",
-      "description": "Set a secret value (API key, token, password, etc.) for the agent to use",
-      "parameters": [],
-      "similes": [
-        "STORE_SECRET",
-        "SAVE_SECRET",
-        "SET_API_KEY",
-        "CONFIGURE_SECRET",
-        "SET_ENV_VAR",
-        "STORE_API_KEY",
-        "SET_TOKEN",
-        "SAVE_KEY"
-      ]
-    },
-    {
-      "name": "SIGNAL_LIST_CONTACTS",
-      "description": "List Signal contacts",
-      "parameters": [],
-      "similes": [
-        "LIST_SIGNAL_CONTACTS",
-        "SHOW_CONTACTS",
-        "GET_CONTACTS",
-        "SIGNAL_CONTACTS"
-      ]
-    },
-    {
-      "name": "SIGNAL_LIST_GROUPS",
-      "description": "List Signal groups",
-      "parameters": [],
-      "similes": [
-        "LIST_SIGNAL_GROUPS",
-        "SHOW_GROUPS",
-        "GET_GROUPS",
-        "SIGNAL_GROUPS"
-      ]
-    },
-    {
-      "name": "SIGNAL_SEND_MESSAGE",
-      "description": "Send a message to a Signal contact or group",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "SEND_SIGNAL_MESSAGE",
-        "TEXT_SIGNAL",
-        "MESSAGE_SIGNAL",
-        "SIGNAL_TEXT"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SIGNAL_SEND_MESSAGE with the provided parameters.",
-          "actions": [
-            "SIGNAL_SEND_MESSAGE"
-          ],
-          "params": {
-            "SIGNAL_SEND_MESSAGE": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SIGNAL_SEND_REACTION",
-      "description": "React to a Signal message with an emoji",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "REACT_SIGNAL",
-        "SIGNAL_REACT",
-        "ADD_SIGNAL_REACTION",
-        "SIGNAL_EMOJI"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SIGNAL_SEND_REACTION with the provided parameters.",
-          "actions": [
-            "SIGNAL_SEND_REACTION"
-          ],
-          "params": {
-            "SIGNAL_SEND_REACTION": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SLACK_DELETE_MESSAGE",
-      "description": "Delete a Slack message",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "REMOVE_SLACK_MESSAGE",
-        "DELETE_MESSAGE",
-        "SLACK_REMOVE"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SLACK_DELETE_MESSAGE with the provided parameters.",
-          "actions": [
-            "SLACK_DELETE_MESSAGE"
-          ],
-          "params": {
-            "SLACK_DELETE_MESSAGE": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SLACK_EDIT_MESSAGE",
-      "description": "Edit an existing Slack message",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "UPDATE_SLACK_MESSAGE",
-        "MODIFY_MESSAGE",
-        "CHANGE_MESSAGE",
-        "SLACK_UPDATE"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SLACK_EDIT_MESSAGE with the provided parameters.",
-          "actions": [
-            "SLACK_EDIT_MESSAGE"
-          ],
-          "params": {
-            "SLACK_EDIT_MESSAGE": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SLACK_EMOJI_LIST",
-      "description": "List custom emoji available in the Slack workspace",
-      "parameters": [],
-      "similes": [
-        "LIST_SLACK_EMOJI",
-        "SHOW_EMOJI",
-        "GET_CUSTOM_EMOJI",
-        "CUSTOM_EMOJI",
-        "WORKSPACE_EMOJI"
-      ]
-    },
-    {
-      "name": "SLACK_GET_USER_INFO",
-      "description": "Get information about a Slack user",
-      "parameters": [],
-      "similes": [
-        "GET_SLACK_USER",
-        "USER_INFO",
-        "SLACK_USER",
-        "MEMBER_INFO",
-        "WHO_IS"
-      ]
-    },
-    {
-      "name": "SLACK_LIST_CHANNELS",
-      "description": "List available Slack channels in the workspace",
-      "parameters": [],
-      "similes": [
-        "LIST_SLACK_CHANNELS",
-        "SHOW_CHANNELS",
-        "GET_CHANNELS",
-        "CHANNELS_LIST"
-      ]
-    },
-    {
-      "name": "SLACK_LIST_PINS",
-      "description": "List pinned messages in a Slack channel",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "LIST_SLACK_PINS",
-        "SHOW_PINS",
-        "GET_PINNED_MESSAGES",
-        "PINNED_MESSAGES"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SLACK_LIST_PINS with the provided parameters.",
-          "actions": [
-            "SLACK_LIST_PINS"
-          ],
-          "params": {
-            "SLACK_LIST_PINS": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SLACK_PIN_MESSAGE",
-      "description": "Pin a message in a Slack channel",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "PIN_SLACK_MESSAGE",
-        "PIN_MESSAGE",
-        "SLACK_PIN",
-        "SAVE_MESSAGE"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SLACK_PIN_MESSAGE with the provided parameters.",
-          "actions": [
-            "SLACK_PIN_MESSAGE"
-          ],
-          "params": {
-            "SLACK_PIN_MESSAGE": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SLACK_REACT_TO_MESSAGE",
-      "description": "Add or remove an emoji reaction to a Slack message",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "ADD_SLACK_REACTION",
-        "REACT_SLACK",
-        "SLACK_EMOJI",
-        "ADD_EMOJI",
-        "REMOVE_REACTION"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SLACK_REACT_TO_MESSAGE with the provided parameters.",
-          "actions": [
-            "SLACK_REACT_TO_MESSAGE"
-          ],
-          "params": {
-            "SLACK_REACT_TO_MESSAGE": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SLACK_READ_CHANNEL",
-      "description": "Read message history from a Slack channel",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "READ_SLACK_MESSAGES",
-        "GET_CHANNEL_HISTORY",
-        "SLACK_HISTORY",
-        "FETCH_MESSAGES",
-        "LIST_MESSAGES"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SLACK_READ_CHANNEL with the provided parameters.",
-          "actions": [
-            "SLACK_READ_CHANNEL"
-          ],
-          "params": {
-            "SLACK_READ_CHANNEL": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SLACK_SEND_MESSAGE",
-      "description": "Send a message to a Slack channel or thread",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "SEND_SLACK_MESSAGE",
-        "POST_TO_SLACK",
-        "MESSAGE_SLACK",
-        "SLACK_POST",
-        "SEND_TO_CHANNEL"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SLACK_SEND_MESSAGE with the provided parameters.",
-          "actions": [
-            "SLACK_SEND_MESSAGE"
-          ],
-          "params": {
-            "SLACK_SEND_MESSAGE": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SLACK_UNPIN_MESSAGE",
-      "description": "Unpin a message from a Slack channel",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "UNPIN_SLACK_MESSAGE",
-        "UNPIN_MESSAGE",
-        "SLACK_UNPIN",
-        "REMOVE_PIN"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SLACK_UNPIN_MESSAGE with the provided parameters.",
-          "actions": [
-            "SLACK_UNPIN_MESSAGE"
-          ],
-          "params": {
-            "SLACK_UNPIN_MESSAGE": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "START_TRADING",
       "description": "Start automated trading with a specified strategy. Supports ANY Solana token.",
       "parameters": [],
@@ -2330,31 +1315,6 @@
       ]
     },
     {
-      "name": "STATUS_COMMAND",
-      "description": "Show current session status, model, and settings",
-      "parameters": [],
-      "similes": [
-        "/status",
-        "/s",
-        "status",
-        "show status",
-        "what's my status"
-      ]
-    },
-    {
-      "name": "STOP_COMMAND",
-      "description": "Stop current operation or abort running tasks",
-      "parameters": [],
-      "similes": [
-        "/stop",
-        "/abort",
-        "/cancel",
-        "stop",
-        "abort",
-        "cancel"
-      ]
-    },
-    {
       "name": "STOP_TRADING",
       "description": "Stop automated trading",
       "parameters": []
@@ -2363,211 +1323,7 @@
       "name": "SWITCH_TASK",
       "description": "Switch the current task context to a different task.",
       "parameters": [],
-      "similes": [
-        "SELECT_TASK",
-        "SET_TASK",
-        "CHANGE_TASK",
-        "GO_TO_TASK"
-      ]
-    },
-    {
-      "name": "SYNC_SKILL_CATALOG",
-      "description": "Sync the skill catalog from the registry to discover new skills.",
-      "parameters": [],
-      "similes": [
-        "REFRESH_SKILLS",
-        "UPDATE_CATALOG"
-      ]
-    },
-    {
-      "name": "TWITCH_JOIN_CHANNEL",
-      "description": "Join a Twitch channel to listen and send messages",
-      "parameters": [],
-      "similes": [
-        "JOIN_TWITCH_CHANNEL",
-        "ENTER_CHANNEL",
-        "CONNECT_CHANNEL"
-      ]
-    },
-    {
-      "name": "TWITCH_LEAVE_CHANNEL",
-      "description": "Leave a Twitch channel",
-      "parameters": [],
-      "similes": [
-        "LEAVE_TWITCH_CHANNEL",
-        "EXIT_CHANNEL",
-        "PART_CHANNEL",
-        "DISCONNECT_CHANNEL"
-      ]
-    },
-    {
-      "name": "TWITCH_LIST_CHANNELS",
-      "description": "List all Twitch channels the bot is currently in",
-      "parameters": [],
-      "similes": [
-        "LIST_TWITCH_CHANNELS",
-        "SHOW_CHANNELS",
-        "GET_CHANNELS",
-        "CURRENT_CHANNELS"
-      ]
-    },
-    {
-      "name": "TWITCH_SEND_MESSAGE",
-      "description": "Send a message to a Twitch channel",
-      "parameters": [],
-      "similes": [
-        "SEND_TWITCH_MESSAGE",
-        "TWITCH_CHAT",
-        "CHAT_TWITCH",
-        "SAY_IN_TWITCH"
-      ]
-    },
-    {
-      "name": "VOICE_CALL_END",
-      "description": "End an active voice call",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "HANG_UP",
-        "END_CALL",
-        "DISCONNECT_CALL",
-        "HANGUP"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use VOICE_CALL_END with the provided parameters.",
-          "actions": [
-            "VOICE_CALL_END"
-          ],
-          "params": {
-            "VOICE_CALL_END": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "VOICE_CALL_INITIATE",
-      "description": "Initiate an outbound voice call",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "MAKE_CALL",
-        "PHONE_CALL",
-        "CALL_USER",
-        "DIAL"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use VOICE_CALL_INITIATE with the provided parameters.",
-          "actions": [
-            "VOICE_CALL_INITIATE"
-          ],
-          "params": {
-            "VOICE_CALL_INITIATE": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "VOICE_CALL_MAKE",
-      "description": "Make an outbound voice call to a phone number",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "MAKE_PHONE_CALL",
-        "PLACE_CALL",
-        "DIAL_NUMBER",
-        "CALL_PHONE",
-        "VOICE_DIAL",
-        "PHONE_DIAL",
-        "RING",
-        "INITIATE_VOICE_CALL"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use VOICE_CALL_MAKE with the provided parameters.",
-          "actions": [
-            "VOICE_CALL_MAKE"
-          ],
-          "params": {
-            "VOICE_CALL_MAKE": {
-              "data": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "VOICE_CALL_STATUS",
-      "description": "Get the status of a voice call",
-      "parameters": [
-        {
-          "name": "data",
-          "description": "The data to use.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": [
-            "example"
-          ]
-        }
-      ],
-      "similes": [
-        "CALL_STATUS",
-        "CHECK_CALL",
-        "CALL_INFO"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use VOICE_CALL_STATUS with the provided parameters.",
-          "actions": [
-            "VOICE_CALL_STATUS"
-          ],
-          "params": {
-            "VOICE_CALL_STATUS": {
-              "data": "example"
-            }
-          }
-        }
-      ]
+      "similes": ["SELECT_TASK", "SET_TASK", "CHANGE_TASK", "GO_TO_TASK"]
     }
   ]
 }
