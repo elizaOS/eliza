@@ -20,7 +20,7 @@ export const providersProvider: Provider = {
   name: 'PROVIDERS',
   description: 'List of all data providers the agent can use to get additional information',
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
-    const allProviders = runtime.providers;
+    const allProviders = runtime.providers || [];
 
     // Filter providers with dynamic: true
     const dynamicProviders = allProviders.filter((provider) => provider.dynamic === true);
