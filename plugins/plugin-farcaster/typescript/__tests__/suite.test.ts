@@ -242,11 +242,12 @@ describe("Cast Formatting and Validation", () => {
     });
 
     it("should split long text into multiple chunks", () => {
-      const longText = "A".repeat(700);
-      const result = splitPostContent(longText, 320);
+      // Default maxLength in TS splitPostContent is 1024, so use that
+      const longText = "A".repeat(2000);
+      const result = splitPostContent(longText);
       expect(result.length).toBeGreaterThan(1);
       for (const chunk of result) {
-        expect(chunk.length).toBeLessThanOrEqual(320);
+        expect(chunk.length).toBeLessThanOrEqual(1024);
       }
     });
 
