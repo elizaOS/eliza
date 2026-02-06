@@ -1,108 +1,124 @@
-import type { Entity, IAgentRuntime, Memory, Provider, Relationship, UUID } from '@elizaos/core';
 /**
- * Formats the provided relationships based on interaction strength and returns a string.
- * @param {IAgentRuntime} runtime - The runtime object to interact with the agent.
- * @param {Relationship[]} relationships - The relationships to format.
- * @returns {string} The formatted relationships as a string.
- */
-/**
- * Asynchronously formats relationships based on their interaction strength.
+ * Relationships Provider — enriched with entity links and decay.
  *
- * @param {IAgentRuntime} runtime The runtime instance.
- * @param {Relationship[]} relationships The relationships to be formatted.
- * @returns {Promise<string>} A formatted string of the relationships.
+ * Injects relationship context into the agent's state, including:
+ *  - Relationships sorted by decayed strength
+ *  - Cross-platform identity links
+ *  - Relationship evolution history
  */
+
+import type { Entity, IAgentRuntime, Memory, Provider, Relationship, UUID } from '@elizaos/core';
+import { computeRelationshipDecay } from '../utils/timeWeighting';
+import { DEFAULT_RELATIONSHIP_DECAY_MS } from '../types/index';
+import type { EntityResolutionService } from '../services/EntityResolutionService';
+
 async function formatRelationships(runtime: IAgentRuntime, relationships: Relationship[]) {
-  // Sort relationships by interaction strength (descending)
-  const sortedRelationships = relationships
-    .filter((rel) => rel.metadata?.interactions)
-    .sort(
-      (a, b) =>
-        ((b.metadata?.interactions as number | undefined) || 0) -
-        ((a.metadata?.interactions as number | undefined) || 0)
-    )
-    .slice(0, 30); // Get top 30
+  // Compute decayed strength for each relationship
+  const withDecay = relationships
+    .filter((rel) => rel.metadata?.interactionCount || rel.metadata?.strength)
+    .map((rel) => {
+      const baseStrength = (rel.metadata?.baseStrength as number) ?? (rel.metadata?.strength as number) ?? 50;
+      const lastInteractionAt = rel.metadata?.lastInteractionAt as string | undefined;
+      const halfLifeMs = (rel.metadata?.decayHalfLifeMs as number) ?? DEFAULT_RELATIONSHIP_DECAY_MS;
 
-  if (sortedRelationships.length === 0) {
-    return '';
-  }
+      const decayedStrength = computeRelationshipDecay(
+        baseStrength,
+        lastInteractionAt,
+        halfLifeMs
+      );
 
-  // Deduplicate target entity IDs to avoid redundant fetches
+      return { rel, decayedStrength };
+    })
+    .sort((a, b) => b.decayedStrength - a.decayedStrength)
+    .slice(0, 30);
+
+  if (withDecay.length === 0) return '';
+
+  // Batch fetch all target entities
   const uniqueEntityIds = Array.from(
-    new Set(sortedRelationships.map((rel) => rel.targetEntityId as UUID))
+    new Set(withDecay.map(({ rel }) => rel.targetEntityId as UUID))
   );
-
-  // Fetch all required entities in a single batch operation
   const entities = await Promise.all(uniqueEntityIds.map((id) => runtime.getEntityById(id)));
-
-  // Create a lookup map for efficient access
   const entityMap = new Map<string, Entity | null>();
   entities.forEach((entity, index) => {
-    if (entity) {
-      entityMap.set(uniqueEntityIds[index], entity);
-    }
+    if (entity) entityMap.set(uniqueEntityIds[index], entity);
   });
 
-  const formatMetadata = (metadata: any) => {
-    return JSON.stringify(
-      Object.entries(metadata)
-        .map(
-          ([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`
-        )
-        .join('\n')
-    );
-  };
+  // Check for entity links
+  const resolutionService = runtime.getService('entity_resolution') as EntityResolutionService | null;
 
-  // Format relationships using the entity map
-  const formattedRelationships = sortedRelationships
-    .map((rel) => {
-      const targetEntityId = rel.targetEntityId as UUID;
-      const entity = entityMap.get(targetEntityId);
+  const formatted = [];
+  for (const { rel, decayedStrength } of withDecay) {
+    const entity = entityMap.get(rel.targetEntityId as UUID);
+    if (!entity) continue;
 
-      if (!entity) {
-        return null;
+    const names = entity.names.join(' aka ');
+    const relType = (rel.metadata?.relationshipType as string) ?? 'unknown';
+    const sentiment = (rel.metadata?.sentiment as string) ?? 'neutral';
+    const interactions = (rel.metadata?.interactionCount as number) ?? 0;
+    const lastAt = (rel.metadata?.lastInteractionAt as string) ?? 'unknown';
+
+    let line = `${names} [${relType}, ${sentiment}] strength: ${decayedStrength}/100, interactions: ${interactions}, last: ${lastAt}`;
+
+    // Add cross-platform links if available
+    if (resolutionService) {
+      const links = await resolutionService.getLinks(entity.id as UUID);
+      const confirmedLinks = links.filter((l) => l.status === 'confirmed' || l.status === 'proposed');
+      if (confirmedLinks.length > 0) {
+        const linkedNames: string[] = [];
+        for (const link of confirmedLinks) {
+          const otherId = link.entityA === entity.id ? link.entityB : link.entityA;
+          const otherEntity = await runtime.getEntityById(otherId);
+          if (otherEntity) {
+            linkedNames.push(
+              `${otherEntity.names[0]} (${link.status}, confidence: ${link.confidence.toFixed(2)})`
+            );
+          }
+        }
+        if (linkedNames.length > 0) {
+          line += `\n  Possible same person as: ${linkedNames.join(', ')}`;
+        }
       }
+    }
 
-      const names = entity.names.join(' aka ');
-      return `${names}\n${
-        rel.tags ? rel.tags.join(', ') : ''
-      }\n${formatMetadata(entity.metadata)}\n`;
-    })
-    .filter(Boolean);
+    // Add platform identities
+    const identities = entity.metadata?.platformIdentities;
+    if (Array.isArray(identities) && identities.length > 0) {
+      const idStrs = identities.map((pi) => {
+        const rec = pi as Record<string, unknown>;
+        return `${rec.platform}:${rec.handle}`;
+      });
+      line += `\n  Identities: ${idStrs.join(', ')}`;
+    }
 
-  return formattedRelationships.join('\n');
+    // Add evolution history snippet
+    const history = rel.metadata?.history;
+    if (Array.isArray(history) && history.length > 1) {
+      const first = history[0] as Record<string, unknown>;
+      const last = history[history.length - 1] as Record<string, unknown>;
+      line += `\n  Evolution: ${first.type} -> ${last.type} (${history.length} transitions)`;
+    }
+
+    formatted.push(line);
+  }
+
+  return formatted.join('\n\n');
 }
 
-/**
- * Provider for fetching relationships data.
- *
- * @type {Provider}
- * @property {string} name - The name of the provider ("RELATIONSHIPS").
- * @property {string} description - Description of the provider.
- * @property {Function} get - Asynchronous function to fetch relationships data.
- * @param {IAgentRuntime} runtime - The agent runtime object.
- * @param {Memory} message - The message object containing entity ID.
- * @returns {Promise<Object>} Object containing relationships data or error message.
- */
 const relationshipsProvider: Provider = {
   name: 'RELATIONSHIPS',
   description:
-    'Relationships between {{agentName}} and other people, or between other people that {{agentName}} has observed interacting with',
+    'Relationships between {{agentName}} and other people, including cross-platform identity links and relationship evolution',
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory) => {
-    // Get all relationships for the current user
     const relationships = await runtime.getRelationships({
       entityId: message.entityId,
     });
 
     if (!relationships || relationships.length === 0) {
       return {
-        data: {
-          relationships: [],
-        },
-        values: {
-          relationships: 'No relationships found.',
-        },
+        data: { relationships: [] },
+        values: { relationships: 'No relationships found.' },
         text: 'No relationships found.',
       };
     }
@@ -111,23 +127,16 @@ const relationshipsProvider: Provider = {
 
     if (!formattedRelationships) {
       return {
-        data: {
-          relationships: [],
-        },
-        values: {
-          relationships: 'No relationships found.',
-        },
+        data: { relationships: [] },
+        values: { relationships: 'No relationships found.' },
         text: 'No relationships found.',
       };
     }
+
     return {
-      data: {
-        relationships: formattedRelationships,
-      },
-      values: {
-        relationships: formattedRelationships,
-      },
-      text: `# ${runtime.character.name} has observed ${message.content.senderName || message.content.name} interacting with these people:\n${formattedRelationships}`,
+      data: { relationships: formattedRelationships },
+      values: { relationships: formattedRelationships },
+      text: `# ${runtime.character.name}'s relationship context for ${message.content?.senderName ?? message.content?.name ?? 'this person'}:\n${formattedRelationships}`,
     };
   },
 };

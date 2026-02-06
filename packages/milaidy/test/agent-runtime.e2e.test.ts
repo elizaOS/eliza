@@ -519,14 +519,28 @@ describe("Agent Runtime E2E", () => {
         JSON.stringify({ agent: { name: "SubprocessAgent", bio: "test" } }),
       );
 
-      const env: Record<string, string> = {
-        ...process.env as Record<string, string>,
-        HOME: subHome,
-        PGLITE_DATA_DIR: subPglite,
-        LOG_LEVEL: "warn", // quiet output
-      };
+      // Build env: inherit everything, override HOME + PGLITE + XDG dirs
+      const env: Record<string, string> = {};
+      for (const [k, v] of Object.entries(process.env)) {
+        if (v !== undefined) env[k] = v;
+      }
+      env.HOME = subHome;
+      env.USERPROFILE = subHome;
+      env.PGLITE_DATA_DIR = subPglite;
+      env.LOG_LEVEL = "warn";
+      // Point XDG dirs to subHome to avoid touching real state
+      env.XDG_CONFIG_HOME = path.join(subHome, ".config");
+      env.XDG_DATA_HOME = path.join(subHome, ".local/share");
+      env.XDG_STATE_HOME = path.join(subHome, ".local/state");
+      env.XDG_CACHE_HOME = path.join(subHome, ".cache");
+      // Remove test-isolation vars that might confuse the subprocess
+      delete env.MILAIDY_CONFIG_PATH;
+      delete env.MILAIDY_STATE_DIR;
+      delete env.MILAIDY_TEST_HOME;
+      delete env.VITEST;
 
-      const result = await new Promise<{ stdout: string; exitCode: number }>((resolve) => {
+      const result = await new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
+        // Use node --import tsx to run the TypeScript source directly
         const child = spawn("node", ["--import", "tsx", "src/eliza.ts"], {
           cwd: packageRoot,
           env,
@@ -537,34 +551,53 @@ describe("Agent Runtime E2E", () => {
         let stderr = "";
         let resolved = false;
 
+        const finish = (code: number) => {
+          if (resolved) return;
+          resolved = true;
+          resolve({ stdout, stderr, exitCode: code });
+        };
+
         child.stdout.on("data", (d: Buffer) => {
           stdout += d.toString();
           // Once we see the chat prompt, startup succeeded — send exit
-          if (!resolved && stdout.includes("Chat with")) {
+          if (stdout.includes("Chat with")) {
             child.stdin.write("exit\n");
           }
         });
-        child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-
-        child.on("close", (code) => {
-          resolved = true;
-          resolve({ stdout, exitCode: code ?? 1 });
+        child.stderr.on("data", (d: Buffer) => {
+          stderr += d.toString();
+          // Some runtimes print the chat prompt to stderr
+          if (stderr.includes("Chat with")) {
+            child.stdin.write("exit\n");
+          }
         });
 
-        // Safety timeout: kill after 150s if it hasn't finished
+        child.on("close", (code) => finish(code ?? 1));
+        child.on("error", (err) => {
+          stderr += `\nspawn error: ${err.message}`;
+          finish(1);
+        });
+
+        // Safety timeout
         setTimeout(() => {
           if (!resolved) {
-            resolved = true;
             child.kill("SIGKILL");
-            resolve({ stdout, exitCode: -1 });
+            finish(-1);
           }
         }, 150_000);
       });
 
-      logger.info(`[e2e] startEliza subprocess exited with code ${result.exitCode}`);
+      // Log full output for diagnostics
+      if (result.exitCode !== 0) {
+        logger.warn(`[e2e] startEliza subprocess failed (code ${result.exitCode})`);
+        if (result.stderr) logger.warn(`[e2e] stderr (last 500 chars): ${result.stderr.slice(-500)}`);
+        if (result.stdout) logger.info(`[e2e] stdout (last 500 chars): ${result.stdout.slice(-500)}`);
+      }
 
-      // The subprocess should have printed the chat prompt
-      expect(result.stdout).toContain("Chat with");
+      const allOutput = result.stdout + result.stderr;
+
+      // The subprocess should have printed the chat prompt somewhere
+      expect(allOutput, "startEliza() should print 'Chat with' on successful boot").toContain("Chat with");
       expect(result.exitCode).toBe(0);
 
       // Cleanup
