@@ -4,7 +4,8 @@
  */
 
 import type { Provider, IAgentRuntime, Memory, State } from '@elizaos/core';
-import type { CharacterSheet } from '../../../types';
+import type { CharacterSheet, EquipmentSet } from '../../../types';
+import { getHP, getAC, getAbilityMod, getAbilityScore, getConditionName } from '../../../types';
 
 export const characterSheetProvider: Provider = {
   name: 'characterSheet',
@@ -25,23 +26,25 @@ export const characterSheetProvider: Provider = {
     context += '\n\n';
     
     // HP Status
-    const hpPercent = Math.round((sheet.hp.current / sheet.hp.max) * 100);
+    const hp = getHP(sheet);
+    const hpPercent = Math.round((hp.current / hp.max) * 100);
     context += `### Health\n`;
-    context += `**HP:** ${sheet.hp.current}/${sheet.hp.max} (${hpPercent}%)`;
-    if (sheet.hp.temp > 0) {
-      context += ` [+${sheet.hp.temp} temp]`;
+    context += `**HP:** ${hp.current}/${hp.max} (${hpPercent}%)`;
+    if ((hp.temporary ?? 0) > 0) {
+      context += ` [+${hp.temporary} temp]`;
     }
     context += '\n';
-    context += `**AC:** ${sheet.ac}\n`;
+    context += `**AC:** ${getAC(sheet)}\n`;
     context += `**Speed:** ${sheet.speed}ft\n\n`;
     
     // Ability Scores
     context += `### Abilities\n`;
     const abilities = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const;
     for (const ability of abilities) {
-      const mod = sheet.abilities[ability].modifier;
+      const mod = getAbilityMod(sheet.abilities[ability]);
+      const score = getAbilityScore(sheet.abilities[ability]);
       const sign = mod >= 0 ? '+' : '';
-      context += `**${ability.substring(0, 3).toUpperCase()}:** ${sheet.abilities[ability].score} (${sign}${mod})\n`;
+      context += `**${ability.substring(0, 3).toUpperCase()}:** ${score} (${sign}${mod})\n`;
     }
     context += '\n';
     
@@ -74,30 +77,36 @@ export const characterSheetProvider: Provider = {
     // Active Conditions
     if (sheet.conditions && sheet.conditions.length > 0) {
       context += `### Conditions\n`;
-      context += sheet.conditions.map(c => `⚠️ ${c.name}`).join(', ');
+      context += sheet.conditions.map(c => `⚠️ ${getConditionName(c)}`).join(', ');
       context += '\n\n';
     }
     
     // Equipment highlights
     context += `### Equipment\n`;
-    if (sheet.equipment.weapons?.length) {
-      context += `**Weapons:** ${sheet.equipment.weapons.map(w => w.name).join(', ')}\n`;
-    }
-    if (sheet.equipment.armor) {
-      context += `**Armor:** ${sheet.equipment.armor.name}\n`;
-    }
-    
-    // Currency
-    const currency = sheet.equipment.currency;
-    if (currency) {
-      const coins: string[] = [];
-      if (currency.pp) coins.push(`${currency.pp}pp`);
-      if (currency.gp) coins.push(`${currency.gp}gp`);
-      if (currency.sp) coins.push(`${currency.sp}sp`);
-      if (currency.cp) coins.push(`${currency.cp}cp`);
-      if (coins.length > 0) {
-        context += `**Coin:** ${coins.join(', ')}\n`;
+    const equip = sheet.equipment;
+    if (equip && !Array.isArray(equip)) {
+      const equipSet = equip as EquipmentSet;
+      if (equipSet.weapons?.length) {
+        context += `**Weapons:** ${equipSet.weapons.map(w => w.name).join(', ')}\n`;
       }
+      if (equipSet.armor) {
+        context += `**Armor:** ${equipSet.armor.name}\n`;
+      }
+      
+      // Currency
+      const currency = equipSet.currency ?? sheet.currency;
+      if (currency) {
+        const coins: string[] = [];
+        if (currency.pp) coins.push(`${currency.pp}pp`);
+        if (currency.gp) coins.push(`${currency.gp}gp`);
+        if (currency.sp) coins.push(`${currency.sp}sp`);
+        if (currency.cp) coins.push(`${currency.cp}cp`);
+        if (coins.length > 0) {
+          context += `**Coin:** ${coins.join(', ')}\n`;
+        }
+      }
+    } else if (Array.isArray(equip) && equip.length > 0) {
+      context += equip.map(item => `${item.name}${item.equipped ? ' (equipped)' : ''}`).join(', ') + '\n';
     }
     
     return context;

@@ -10,6 +10,7 @@ import type {
   State, 
   HandlerCallback 
 } from '@elizaos/core';
+import { ModelType } from '@elizaos/core';
 import type { NPC } from '../../../types';
 
 export interface ControlNPCParams {
@@ -35,14 +36,14 @@ export const controlNPCAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'I ask the bartender about the strange noises coming from the basement.',
           action: 'CONTROL_NPC',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'The dwarven bartender\'s polishing slows, and her jovial expression tightens almost imperceptibly. She glances toward the "Private" door before meeting your eyes.\n\n"Noises? Can\'t say I\'ve heard anything unusual," she says, her voice dropping lower. "Though if I were you, I\'d be more concerned with the road ahead than what might be in someone\'s cellar. Storm\'s coming, and the mountain passes get treacherous this time of year."\n\nShe resumes her polishing with renewed vigor, but you notice her knuckles have gone white around the tankard.',
         },
@@ -58,11 +59,11 @@ export const controlNPCAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    options: Record<string, unknown>,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
-    const params = options as ControlNPCParams;
+  ) => {
+    const params = (options ?? {}) as unknown as ControlNPCParams;
     
     // Get NPC data
     const npc = await getNPCData(runtime, params.npcId);
@@ -71,45 +72,39 @@ export const controlNPCAction: Action = {
       if (callback) {
         await callback({
           text: 'Unable to find NPC information.',
-          type: 'error',
         });
       }
-      return false;
+      return { success: false };
     }
     
     // Build the NPC roleplay prompt
     const prompt = buildNPCPrompt(npc, params);
     
     // Generate NPC response
-    const response = await runtime.useModel({
+    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt,
-      context: state,
       maxTokens: 400,
     });
     
     if (callback) {
       await callback({
-        text: response.text,
-        type: 'npc_dialogue',
-        metadata: {
-          npcId: params.npcId,
-          npcName: npc.name,
-          interactionType: params.interactionType,
-        },
+        text: response,
       });
     }
     
     // Log the interaction
-    await runtime.emit('npc_interaction', {
+    const interactionPayload = {
+      runtime,
       npcId: params.npcId,
       npcName: npc.name,
       interactionType: params.interactionType,
       playerMessage: params.playerMessage,
-      npcResponse: response.text,
+      npcResponse: response,
       timestamp: new Date(),
-    });
+    };
+    await runtime.emitEvent('npc_interaction', interactionPayload);
     
-    return true;
+    return undefined;
   },
 };
 
@@ -117,10 +112,14 @@ async function getNPCData(
   runtime: IAgentRuntime,
   npcId: string
 ): Promise<NPC | null> {
-  const campaignState = await runtime.getSetting('campaignState');
-  if (campaignState && typeof campaignState === 'object') {
-    const state = campaignState as { npcs?: Record<string, NPC> };
-    return state.npcs?.[npcId] || null;
+  const raw = runtime.getSetting('campaignState');
+  if (raw && typeof raw === 'string') {
+    try {
+      const state = JSON.parse(raw) as { npcs?: Record<string, NPC> };
+      return state.npcs?.[npcId] || null;
+    } catch {
+      return null;
+    }
   }
   return null;
 }
@@ -137,10 +136,11 @@ function buildNPCPrompt(npc: NPC, params: ControlNPCParams): string {
   if (npc.motivation) prompt += `Motivation: ${npc.motivation}\n`;
   
   // Disposition affects tone
-  const dispositionDesc = npc.partyDisposition > 50 ? 'friendly toward the party' 
-    : npc.partyDisposition < -50 ? 'hostile toward the party'
-    : npc.partyDisposition > 0 ? 'somewhat positive toward the party'
-    : npc.partyDisposition < 0 ? 'somewhat wary of the party'
+  const disposition = npc.partyDisposition ?? 50;
+  const dispositionDesc = disposition > 50 ? 'friendly toward the party' 
+    : disposition < -50 ? 'hostile toward the party'
+    : disposition > 0 ? 'somewhat positive toward the party'
+    : disposition < 0 ? 'somewhat wary of the party'
     : 'neutral toward the party';
   prompt += `Current disposition: ${dispositionDesc}\n`;
   

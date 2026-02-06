@@ -142,7 +142,7 @@ class InMemoryDatabaseAdapter(IDatabaseAdapter):
 
     # Memory methods - these are the key ones for message handling
     async def get_memories(self, params: dict[str, Any]) -> list[Any]:
-        room_id = params.get("roomId") or params.get("room_id")
+        room_id = params.get("room_id") or params.get("room_id")
         table_name = params.get("tableName") or params.get("table_name")
         
         results = []

@@ -52,30 +52,15 @@ export const loadPluginAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> {
+    // Precondition: plugin manager service must be available
     const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
-
     if (!pluginManager) {
-      logger.warn('[loadPluginAction] Plugin Manager service not available');
       return false;
     }
 
-    // Check if the message is asking to load a plugin
-    const text = message.content?.text?.toLowerCase() || '';
-    const isLoadRequest =
-      (text.includes('load') && text.includes('plugin')) ||
-      (text.includes('enable') && text.includes('plugin')) ||
-      (text.includes('activate') && text.includes('plugin')) ||
-      (text.includes('start') && text.includes('plugin'));
-
-    if (!isLoadRequest) {
-      return false;
-    }
-
-    // Check if there are any plugins that can be loaded
+    // Precondition: at least one plugin must be in a loadable state
     const plugins = pluginManager.getAllPlugins();
-    const loadablePlugins = plugins.filter((p) => p.status === 'ready' || p.status === 'unloaded');
-
-    return loadablePlugins.length > 0;
+    return plugins.some((p) => p.status === 'ready' || p.status === 'unloaded');
   },
 
   async handler(
@@ -124,17 +109,6 @@ export const loadPluginAction: Action = {
       if (callback) {
         await callback({
           text: 'No plugins are available to load. All plugins are either already loaded or have errors.',
-          actions: ['LOAD_PLUGIN'],
-        });
-      }
-      return;
-    }
-
-    // Check for missing environment variables
-    if (pluginToLoad.missingEnvVars && pluginToLoad.missingEnvVars.length > 0) {
-      if (callback) {
-        await callback({
-          text: `Cannot load plugin ${pluginToLoad.name} because it's missing environment variables: ${pluginToLoad.missingEnvVars.join(', ')}. Please set these variables first.`,
           actions: ['LOAD_PLUGIN'],
         });
       }

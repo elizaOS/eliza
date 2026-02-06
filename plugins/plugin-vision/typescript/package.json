@@ -92,5 +92,14 @@
       }
     }
   },
-  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7",
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js only (platform: node)"
+    }
+  }
 }

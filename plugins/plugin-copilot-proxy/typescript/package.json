@@ -40,5 +40,14 @@
   },
   "peerDependencies": {
     "@elizaos/core": "2.0.0-alpha.1"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Default export (Node.js)"
+    }
   }
 }

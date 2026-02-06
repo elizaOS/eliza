@@ -362,7 +362,11 @@ async function handleRequest(
   if (method === "POST" && pathname === "/api/agent/start") {
     state.agentState = "running";
     state.startedAt = Date.now();
-    state.model = "anthropic/claude-opus-4-5"; // detected from config
+    // Detect model from runtime plugins or fall back to "unknown"
+    const detectedModel = state.runtime
+      ? (state.runtime.plugins.find((p) => p.name.includes("anthropic") || p.name.includes("openai") || p.name.includes("groq"))?.name ?? "unknown")
+      : "unknown";
+    state.model = detectedModel;
     json(res, {
       ok: true,
       status: {

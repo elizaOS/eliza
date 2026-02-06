@@ -633,7 +633,7 @@ async def _init_vending_plugin(
     runtime.logger.info(
         "Initializing Vending-Bench plugin",
         src="plugin:vending-bench",
-        agentId=str(runtime.agent_id),
+        agent_id=str(runtime.agent_id),
     )
 
     # Initialize a fresh environment using module-level storage
@@ -642,7 +642,7 @@ async def _init_vending_plugin(
     runtime.logger.info(
         "Vending-Bench plugin initialized",
         src="plugin:vending-bench",
-        agentId=str(runtime.agent_id),
+        agent_id=str(runtime.agent_id),
         actionCount=len(VENDING_ACTIONS),
         providerCount=len(VENDING_PROVIDERS),
     )

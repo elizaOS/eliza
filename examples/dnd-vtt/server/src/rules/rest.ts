@@ -6,8 +6,9 @@
 import {
   type CharacterSheet,
   type ActiveCondition,
-  calculateModifier,
   executeDiceRoll,
+  getHP,
+  getAbilityMod,
 } from '../types';
 
 export interface ShortRestParams {
@@ -83,13 +84,13 @@ export function takeShortRest(params: ShortRestParams): ShortRestResult {
       hpRestored: 0,
       hitDiceUsed: 0,
       hitDiceRolls: [],
-      newCurrentHP: character.hitPoints.current,
+      newCurrentHP: getHP(character).current,
       newHitDiceRemaining: currentHitDice,
       description: `${character.name} has no hit dice remaining to spend.`,
     };
   }
   
-  const conMod = calculateModifier(character.abilities.constitution);
+  const conMod = getAbilityMod(character.abilities.constitution);
   const hitDiceRolls: number[] = [];
   let totalHealing = 0;
   
@@ -111,20 +112,21 @@ export function takeShortRest(params: ShortRestParams): ShortRestResult {
   }
   
   // Calculate new HP (can't exceed max)
+  const hp = getHP(character);
   const newHP = Math.min(
-    character.hitPoints.max,
-    character.hitPoints.current + totalHealing
+    hp.max,
+    hp.current + totalHealing
   );
   
   const newHitDiceRemaining = currentHitDice - diceToRoll;
   
   return {
-    hpRestored: newHP - character.hitPoints.current,
+    hpRestored: newHP - hp.current,
     hitDiceUsed: diceToRoll,
     hitDiceRolls,
     newCurrentHP: newHP,
     newHitDiceRemaining,
-    description: `${character.name} takes a short rest, spending ${diceToRoll} hit ${diceToRoll === 1 ? 'die' : 'dice'} (${hitDiceRolls.join(', ')}) and restoring ${newHP - character.hitPoints.current} HP.`,
+    description: `${character.name} takes a short rest, spending ${diceToRoll} hit ${diceToRoll === 1 ? 'die' : 'dice'} (${hitDiceRolls.join(', ')}) and restoring ${newHP - hp.current} HP.`,
   };
 }
 
@@ -136,13 +138,15 @@ export function takeLongRest(params: LongRestParams): LongRestResult {
   
   // Long rest requires at least 6 hours of sleep and 2 hours of light activity
   // If interrupted for more than 1 hour, must restart
+  const charHP = getHP(character);
+  
   if (wasInterrupted && interruptionDuration > 1) {
     return {
       hpRestored: 0,
       hitDiceRecovered: 0,
       spellSlotsRestored: false,
       conditionsRemoved: [],
-      newCurrentHP: character.hitPoints.current,
+      newCurrentHP: charHP.current,
       newHitDiceRemaining: character.hitDice?.current ?? character.level,
       wasSuccessful: false,
       description: `${character.name}'s long rest was interrupted for too long (${interruptionDuration} hours). The rest must be restarted.`,
@@ -150,7 +154,7 @@ export function takeLongRest(params: LongRestParams): LongRestResult {
   }
   
   // Restore all HP
-  const hpRestored = character.hitPoints.max - character.hitPoints.current;
+  const hpRestored = charHP.max - charHP.current;
   
   // Recover half of max hit dice (minimum 1)
   const maxHitDice = character.level;
@@ -180,7 +184,7 @@ export function takeLongRest(params: LongRestParams): LongRestResult {
     hitDiceRecovered: actualHitDiceRecovered,
     spellSlotsRestored: true,
     conditionsRemoved,
-    newCurrentHP: character.hitPoints.max,
+    newCurrentHP: charHP.max,
     newHitDiceRemaining,
     wasSuccessful: true,
     description,

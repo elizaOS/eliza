@@ -41,7 +41,7 @@ export interface CanvasTextStyle {
   size: number;
   color: CanvasColor | string;
   align?: "left" | "center" | "right";
-  baseline?: "top" | "middle" | "bmilaidym" | "alphabetic";
+  baseline?: "top" | "middle" | "bottom" | "alphabetic";
   maxWidth?: number;
 }
 

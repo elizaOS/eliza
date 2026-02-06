@@ -94,5 +94,14 @@
         "required": false
       }
     }
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js only (platform: node)"
+    }
   }
 }

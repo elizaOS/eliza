@@ -1,7 +1,6 @@
 import { WebPlugin } from "@capacitor/core";
 
 import type {
-  LocationPlugin,
   LocationOptions,
   LocationResult,
   WatchLocationOptions,

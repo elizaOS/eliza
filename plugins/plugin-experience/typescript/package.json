@@ -75,5 +75,14 @@
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {},
     "description": "Records and recalls transferable agent learnings."
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js only (platform: node)"
+    }
   }
 }

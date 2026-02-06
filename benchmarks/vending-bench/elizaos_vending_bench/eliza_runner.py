@@ -199,8 +199,8 @@ class ElizaVendingRunner:
         Returns: (response_text, actions_taken, tokens_used)
         """
         message = Memory(
-            entityId=str(self._user_id),
-            roomId=str(self._room_id),
+            entity_id=str(self._user_id),
+            room_id=str(self._room_id),
             content=Content(
                 text=text,
                 source="benchmark",

@@ -1,74 +1,69 @@
 /**
- * Tests for @milaidy/capacitor-screencapture plugin
- *
- * Verifies:
- * - Module exports (ScreenCaptureWeb class + definition types)
- * - ScreenCaptureWeb class instantiation and method signatures
- * - Recording state management
- * - Error handling for operations without active recording
- * - Listener registration and cleanup
+ * Tests for @milaidy/capacitor-screencapture — feature detection, state, errors, events.
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { ScreenCaptureWeb } from "../../plugins/screencapture/src/web";
 
 describe("@milaidy/capacitor-screencapture", () => {
-  let screencapture: InstanceType<Awaited<typeof import("../../plugins/screencapture/src/web")>["ScreenCaptureWeb"]>;
+  let sc: ScreenCaptureWeb;
 
-  beforeEach(async () => {
-    const { ScreenCaptureWeb } = await import("../../plugins/screencapture/src/web");
-    screencapture = new ScreenCaptureWeb();
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    sc = new ScreenCaptureWeb();
   });
 
-  describe("module exports", () => {
-    it("exports ScreenCaptureWeb class", async () => {
-      const mod = await import("../../plugins/screencapture/src/web");
-      expect(mod.ScreenCaptureWeb).toBeDefined();
-      expect(typeof mod.ScreenCaptureWeb).toBe("function");
-    });
-  });
+  // -- Feature detection --
 
-  describe("method signatures", () => {
-    it("has all required plugin methods", () => {
-      expect(typeof screencapture.isSupported).toBe("function");
-      expect(typeof screencapture.captureScreenshot).toBe("function");
-      expect(typeof screencapture.startRecording).toBe("function");
-      expect(typeof screencapture.stopRecording).toBe("function");
-      expect(typeof screencapture.pauseRecording).toBe("function");
-      expect(typeof screencapture.resumeRecording).toBe("function");
-      expect(typeof screencapture.getRecordingState).toBe("function");
-      expect(typeof screencapture.checkPermissions).toBe("function");
-      expect(typeof screencapture.requestPermissions).toBe("function");
-      expect(typeof screencapture.addListener).toBe("function");
-      expect(typeof screencapture.removeAllListeners).toBe("function");
+  describe("isSupported", () => {
+    it("returns supported=true with features when getDisplayMedia exists", async () => {
+      const r = await sc.isSupported();
+      expect(r.supported).toBe(true);
+      expect(r.features).toContain("screenshot");
+      expect(r.features).toContain("recording");
+      expect(r.features).toContain("system_audio");
     });
   });
 
-  describe("recording state", () => {
-    it("reports not recording by default", async () => {
-      const state = await screencapture.getRecordingState();
-      expect(state.isRecording).toBe(false);
-      expect(state.duration).toBe(0);
-      expect(state.fileSize).toBe(0);
-    });
+  // -- Recording state --
+
+  it("reports not recording by default", async () => {
+    expect(await sc.getRecordingState()).toEqual({ isRecording: false, duration: 0, fileSize: 0 });
   });
 
-  describe("error handling", () => {
-    it("throws when stopping recording when not recording", async () => {
-      await expect(screencapture.stopRecording()).rejects.toThrow();
-    });
+  // -- Error paths --
 
-    it("throws when pausing when not recording", async () => {
-      await expect(screencapture.pauseRecording()).rejects.toThrow();
-    });
-
-    it("throws when resuming when not recording", async () => {
-      await expect(screencapture.resumeRecording()).rejects.toThrow();
-    });
+  describe("errors when not recording", () => {
+    it.each(["stopRecording", "pauseRecording", "resumeRecording"] as const)(
+      "%s throws", async (method) => { await expect((sc as Record<string, () => Promise<unknown>>)[method]()).rejects.toThrow(); },
+    );
   });
 
-  describe("definition types", () => {
-    it("definitions module loads without error", async () => {
-      const mod = await import("../../plugins/screencapture/src/definitions");
-      expect(mod).toBeDefined();
+  // -- Event listeners --
+
+  describe("event listeners", () => {
+    it.each(["recordingState", "error"] as const)(
+      "registers/removes %s listener", async (event) => {
+        const h = await sc.addListener(event, vi.fn());
+        await h.remove();
+      },
+    );
+
+    it("removeAllListeners clears all", async () => {
+      await sc.addListener("recordingState", vi.fn());
+      await sc.addListener("error", vi.fn());
+      await sc.removeAllListeners();
+    });
+
+    it("notifyListeners dispatches to correct event type", async () => {
+      const rec = vi.fn(), err = vi.fn();
+      await sc.addListener("recordingState", rec);
+      await sc.addListener("error", err);
+
+      (sc as unknown as { notifyListeners: (n: string, d: unknown) => void })
+        .notifyListeners("recordingState", { isRecording: true, duration: 5, fileSize: 1000 });
+
+      expect(rec).toHaveBeenCalledWith({ isRecording: true, duration: 5, fileSize: 1000 });
+      expect(err).not.toHaveBeenCalled();
     });
   });
 });

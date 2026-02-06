@@ -203,7 +203,7 @@ class BenchmarkDatabaseAdapter:
     async def get_memories(self, params: dict) -> list:
         """Get memories matching params."""
         table_name = params.get("tableName", "messages")
-        room_id = params.get("roomId")
+        room_id = params.get("room_id")
 
         if table_name not in self._memories:
             return []
@@ -639,7 +639,7 @@ def create_benchmark_plugin() -> "Plugin":
         """Initialize the benchmark plugin."""
         runtime.logger.info(
             "AgentBench plugin initialized",
-            agentId=runtime.agent_id,
+            agent_id=runtime.agent_id,
             src="plugin:agentbench",
         )
 

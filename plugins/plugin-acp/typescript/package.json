@@ -28,5 +28,14 @@
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Default export (Node.js)"
+    }
   }
 }

@@ -61,7 +61,7 @@ export async function retrieveRelevantMemories(
           relevanceScore: relevance,
           metadata: {
             memoryType: memory.type,
-            emotionalImpact: memory.emotionalImpact,
+            emotionalValence: memory.emotionalValence,
             createdAt: memory.createdAt,
           },
         });
@@ -106,7 +106,7 @@ export async function retrieveRelevantMemories(
         results.push({
           type: 'npc',
           content: `${npc.name} (${npc.race} ${npc.occupation || npc.type}): ${npc.personality}`,
-          importance: npc.interactionCount > 3 ? 7 : 4,
+          importance: (npc.interactionCount ?? 0) > 3 ? 7 : 4,
           relevanceScore: relevance,
           metadata: {
             npcId: npc.id,
@@ -130,7 +130,7 @@ export async function retrieveRelevantMemories(
         results.push({
           type: 'location',
           content: `${location.name} (${location.type}): ${location.description.substring(0, 200)}`,
-          importance: location.visitCount > 2 ? 6 : 4,
+          importance: (location.visitCount ?? 0) > 2 ? 6 : 4,
           relevanceScore: relevance,
           metadata: {
             locationId: location.id,
@@ -232,7 +232,7 @@ export async function getSceneContext(
     locationContext = `**${location.name}** (${location.type})\n`;
     locationContext += location.description;
     
-    if (location.pointsOfInterest.length > 0) {
+    if (location.pointsOfInterest && location.pointsOfInterest.length > 0) {
       locationContext += '\n\nPoints of Interest: ';
       locationContext += location.pointsOfInterest.map(p => p.name).join(', ');
     }
@@ -251,7 +251,10 @@ export async function getSceneContext(
     const char = await characterRepository.getById(charId);
     if (char) {
       let context = `**${char.name}** (${char.race} ${char.class} ${char.level})`;
-      context += `\nHP: ${char.hp.current}/${char.hp.max}`;
+      const hp = char.hp ?? char.hitPoints;
+      if (hp) {
+        context += `\nHP: ${hp.current}/${hp.max}`;
+      }
       
       // Get recent memories
       const memories = await characterRepository.getRecentMemories(charId, 3);

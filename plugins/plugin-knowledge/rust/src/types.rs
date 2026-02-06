@@ -28,6 +28,8 @@ pub enum MemoryType {
     Document,
     Fragment,
     Message,
+    Description,
+    Custom,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,6 +181,9 @@ pub struct KnowledgeDocument {
     pub filename: String,
     pub content_type: String,
     pub file_size: usize,
+    /// SHA-256 hash of content for deduplication
+    #[serde(default)]
+    pub content_hash: String,
     #[serde(default)]
     pub fragments: Vec<KnowledgeFragment>,
     #[serde(default)]
@@ -277,6 +282,91 @@ pub struct ProcessingResult {
     pub error: Option<String>,
 }
 
+// ---------------------------------------------------------------------------
+// RAG enrichment types – match TypeScript's RAG metadata structures
+// ---------------------------------------------------------------------------
+
+/// Metadata about a single fragment retrieved during RAG.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetrievedFragmentInfo {
+    pub fragment_id: String,
+    pub document_title: String,
+    pub similarity_score: Option<f64>,
+    #[serde(default)]
+    pub content_preview: String,
+}
+
+/// Full RAG retrieval metadata attached to a conversation memory.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RAGMetadata {
+    #[serde(default)]
+    pub retrieved_fragments: Vec<RetrievedFragmentInfo>,
+    #[serde(default)]
+    pub query_text: String,
+    #[serde(default)]
+    pub total_fragments: usize,
+    #[serde(default)]
+    pub retrieval_timestamp: u64,
+    #[serde(default = "default_true")]
+    pub used_in_response: bool,
+}
+
+/// Internal bookkeeping for pending RAG enrichment.
+#[derive(Debug, Clone)]
+pub struct PendingRAGEntry {
+    pub rag_metadata: RAGMetadata,
+    pub timestamp: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Contextual knowledge enrichment constants
+// ---------------------------------------------------------------------------
+
+pub const DEFAULT_CHUNK_TOKEN_SIZE: usize = 500;
+pub const DEFAULT_CHUNK_OVERLAP_TOKENS: usize = 100;
+pub const DEFAULT_CHARS_PER_TOKEN: f64 = 3.5;
+
+#[derive(Debug, Clone)]
+pub struct ContextTargets {
+    pub min_tokens: usize,
+    pub max_tokens: usize,
+}
+
+impl Default for ContextTargets {
+    fn default() -> Self {
+        Self {
+            min_tokens: 60,
+            max_tokens: 120,
+        }
+    }
+}
+
+pub fn context_targets_for(key: &str) -> ContextTargets {
+    match key {
+        "PDF" => ContextTargets {
+            min_tokens: 80,
+            max_tokens: 150,
+        },
+        "MATH_PDF" => ContextTargets {
+            min_tokens: 100,
+            max_tokens: 180,
+        },
+        "CODE" => ContextTargets {
+            min_tokens: 100,
+            max_tokens: 200,
+        },
+        "TECHNICAL" => ContextTargets {
+            min_tokens: 80,
+            max_tokens: 160,
+        },
+        _ => ContextTargets::default(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Error types
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, thiserror::Error)]
 pub enum KnowledgeError {
     #[error("Document not found: {0}")]
@@ -293,6 +383,9 @@ pub enum KnowledgeError {
 
     #[error("Configuration error: {0}")]
     ConfigError(String),
+
+    #[error("PDF extraction error: {0}")]
+    PdfError(String),
 
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
@@ -331,5 +424,64 @@ mod tests {
         assert!(options.content.is_empty());
         assert!(options.content_type.is_empty());
         assert!(options.metadata.is_empty());
+    }
+
+    #[test]
+    fn test_rag_metadata_default() {
+        let rag = RAGMetadata::default();
+        assert!(rag.retrieved_fragments.is_empty());
+        assert!(rag.query_text.is_empty());
+        assert_eq!(rag.total_fragments, 0);
+    }
+
+    #[test]
+    fn test_rag_metadata_serialization() {
+        let rag = RAGMetadata {
+            retrieved_fragments: vec![RetrievedFragmentInfo {
+                fragment_id: "frag-1".to_string(),
+                document_title: "doc.txt".to_string(),
+                similarity_score: Some(0.95),
+                content_preview: "preview...".to_string(),
+            }],
+            query_text: "test query".to_string(),
+            total_fragments: 1,
+            retrieval_timestamp: 1234567890,
+            used_in_response: true,
+        };
+
+        let json = serde_json::to_string(&rag).unwrap();
+        assert!(json.contains("frag-1"));
+        assert!(json.contains("doc.txt"));
+        assert!(json.contains("0.95"));
+    }
+
+    #[test]
+    fn test_context_targets() {
+        let default_targets = context_targets_for("DEFAULT");
+        assert_eq!(default_targets.min_tokens, 60);
+        assert_eq!(default_targets.max_tokens, 120);
+
+        let pdf_targets = context_targets_for("PDF");
+        assert_eq!(pdf_targets.min_tokens, 80);
+        assert_eq!(pdf_targets.max_tokens, 150);
+
+        let code_targets = context_targets_for("CODE");
+        assert_eq!(code_targets.min_tokens, 100);
+        assert_eq!(code_targets.max_tokens, 200);
+    }
+
+    #[test]
+    fn test_memory_type_serialization() {
+        let t = MemoryType::Document;
+        let json = serde_json::to_string(&t).unwrap();
+        assert_eq!(json, "\"document\"");
+
+        let t = MemoryType::Fragment;
+        let json = serde_json::to_string(&t).unwrap();
+        assert_eq!(json, "\"fragment\"");
+
+        let t = MemoryType::Custom;
+        let json = serde_json::to_string(&t).unwrap();
+        assert_eq!(json, "\"custom\"");
     }
 }

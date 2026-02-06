@@ -41,19 +41,19 @@ export const playerEngagementEvaluator: Evaluator = {
   
   examples: [
     {
-      context: 'One player has not taken action in 10 minutes',
+      prompt: 'One player has not taken action in 10 minutes',
       messages: [],
       outcome: 'Flag player as potentially disengaged, suggest involving them.',
     },
     {
-      context: 'One player has taken 80% of recent actions',
+      prompt: 'One player has taken 80% of recent actions',
       messages: [],
       outcome: 'Suggest giving other players opportunities to shine.',
     },
   ],
   
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    const role = await runtime.getSetting('role');
+    const role = runtime.getSetting('role');
     return role === 'dm';
   },
   
@@ -61,12 +61,20 @@ export const playerEngagementEvaluator: Evaluator = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State
-  ): Promise<EngagementMetrics | null> => {
+  ) => {
     // Get player activity data
-    const playerActivity = await runtime.getSetting('playerActivity') as Record<string, PlayerActivity> | null;
+    const raw = runtime.getSetting('playerActivity');
+    let playerActivity: Record<string, PlayerActivity> | null = null;
+    if (raw && typeof raw === 'string') {
+      try {
+        playerActivity = JSON.parse(raw) as Record<string, PlayerActivity>;
+      } catch {
+        playerActivity = null;
+      }
+    }
     
     if (!playerActivity || Object.keys(playerActivity).length === 0) {
-      return null;
+      return undefined;
     }
     
     const now = new Date();
@@ -146,17 +154,22 @@ export const playerEngagementEvaluator: Evaluator = {
     
     // Emit event if engagement is low
     if (overallEngagement < 50 || disengagedPlayers.length >= players.length / 2) {
-      await runtime.emit('low_engagement_warning', {
+      const engagementPayload = {
+        runtime,
         engagement: overallEngagement,
         disengaged: disengagedPlayers,
         suggestion: suggestedFocus 
           ? `Consider directing action toward ${suggestedFocus}`
           : 'Consider introducing an engaging event for the whole party',
         timestamp: new Date(),
-      });
+      };
+      await runtime.emitEvent('low_engagement_warning', engagementPayload);
     }
     
-    return metrics;
+    return {
+      success: true,
+      data: { metrics },
+    };
   },
 };
 
@@ -183,7 +196,15 @@ export async function recordPlayerAction(
   characterName: string,
   actionType: string
 ): Promise<void> {
-  const playerActivity = await runtime.getSetting('playerActivity') as Record<string, PlayerActivity> || {};
+  const raw = runtime.getSetting('playerActivity');
+  let playerActivity: Record<string, PlayerActivity> = {};
+  if (raw && typeof raw === 'string') {
+    try {
+      playerActivity = JSON.parse(raw) as Record<string, PlayerActivity>;
+    } catch {
+      playerActivity = {};
+    }
+  }
   
   if (!playerActivity[characterId]) {
     playerActivity[characterId] = {
@@ -205,7 +226,7 @@ export async function recordPlayerAction(
   
   playerActivity[characterId].isEngaged = true;
   
-  await runtime.setSetting('playerActivity', playerActivity);
+  runtime.setSetting('playerActivity', JSON.stringify(playerActivity));
 }
 
 export default playerEngagementEvaluator;

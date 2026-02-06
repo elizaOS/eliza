@@ -10,8 +10,8 @@ import type {
   State, 
   HandlerCallback 
 } from '@elizaos/core';
-import type { Monster, CharacterSheet, CombatState, Combatant } from '../../../types';
-import { executeDiceRoll, calculateModifier } from '../../../types';
+import type { Monster, CharacterSheet, CombatState, Combatant, CombatantType } from '../../../types';
+import { executeDiceRoll, calculateModifier, getAC, getHP, getAbilityScore, createFreshTurnResources } from '../../../types';
 import { SRD_MONSTERS, cloneMonster } from '../../../data';
 import { v4 as uuid } from 'uuid';
 
@@ -43,14 +43,14 @@ export const startCombatAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'Three goblins burst from the underbrush!',
           action: 'START_COMBAT',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: '⚔️ **COMBAT BEGINS!** ⚔️\n\nThree goblins crash through the underbrush, their yellow eyes gleaming with malice as they raise rusty scimitars!\n\n**Initiative Order:**\n1. Goblin 1 - 18\n2. Thoric (Fighter) - 15\n3. Goblin 2 - 14\n4. Elara (Cleric) - 12\n5. Goblin 3 - 10\n6. Vex (Rogue) - 8\n\nThe goblins got the jump on you! Goblin 1 acts first.\n\n*Round 1 begins.*',
         },
@@ -63,24 +63,30 @@ export const startCombatAction: Action = {
     if (role !== 'dm') return false;
     
     // Check we're not already in combat
-    const combatState = await runtime.getSetting('combatState');
-    return !combatState || (combatState as { phase: string }).phase === 'none';
+    const combatStateRaw = await runtime.getSetting('combatState');
+    if (!combatStateRaw || typeof combatStateRaw !== 'string') return true;
+    try {
+      const combatState = JSON.parse(combatStateRaw) as { isActive?: boolean };
+      return !combatState.isActive;
+    } catch {
+      return true;
+    }
   },
   
   handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state: State,
-    options: Record<string, unknown>,
-    callback?: HandlerCallback
-  ): Promise<boolean> => {
-    const params = options as StartCombatParams;
+    runtime,
+    message,
+    state,
+    options,
+    callback
+  ) => {
+    const params = options as unknown as StartCombatParams;
     
     // Get party members
-    const partyMembers = await getPartyMembers(runtime);
+    const partyMembers = await getPartyMembers(runtime as IAgentRuntime);
     
     // Get enemy monsters
-    const enemies = await getEnemyMonsters(runtime, params.enemies);
+    const enemies = await getEnemyMonsters(runtime as IAgentRuntime, params.enemies);
     
     // Roll initiative for everyone
     const initiatives = await rollAllInitiatives(partyMembers, enemies);
@@ -92,23 +98,34 @@ export const startCombatAction: Action = {
       return b.dexMod - a.dexMod;
     });
     
+    // Get campaign context from settings
+    const campaignId = String(await (runtime as IAgentRuntime).getSetting('campaignId') ?? '');
+    const sessionId = String(await (runtime as IAgentRuntime).getSetting('sessionId') ?? '');
+    const locationId = String(await (runtime as IAgentRuntime).getSetting('locationId') ?? '');
+    
     // Create combat state
     const combatState: CombatState = {
       id: uuid(),
-      phase: 'active',
+      campaignId,
+      sessionId,
+      locationId,
+      isActive: true,
       round: 1,
-      turnIndex: 0,
-      initiativeOrder: sortedInitiatives.map((i, index) => ({
-        id: i.id,
+      currentTurnIndex: 0,
+      initiativeOrder: sortedInitiatives.map((i) => ({
+        id: uuid(),
+        entityId: i.id,
+        entityType: i.type,
         name: i.name,
-        type: i.type,
         initiative: i.initiative,
-        isCurrentTurn: index === 0,
+        dexterity: i.dexMod,
         hasActed: false,
-        conditions: [],
+        isDelaying: false,
       })),
-      combatants: createCombatants(partyMembers, enemies),
-      startedAt: new Date(),
+      combatants: createCombatants(partyMembers, enemies, sortedInitiatives),
+      startTime: new Date(),
+      rounds: [],
+      readiedActions: [],
     };
     
     // Apply surprise if applicable
@@ -116,8 +133,8 @@ export const startCombatAction: Action = {
       // Surprised creatures skip their first turn
       for (const entry of combatState.initiativeOrder) {
         const isSurprised = 
-          (params.surpriseRound.surprisedSide === 'party' && entry.type === 'character') ||
-          (params.surpriseRound.surprisedSide === 'enemies' && entry.type === 'monster');
+          (params.surpriseRound.surprisedSide === 'party' && entry.entityType === 'pc') ||
+          (params.surpriseRound.surprisedSide === 'enemies' && entry.entityType === 'monster');
         
         if (isSurprised) {
           entry.hasActed = true; // They "acted" by being surprised
@@ -126,11 +143,11 @@ export const startCombatAction: Action = {
     }
     
     // Save combat state
-    await runtime.setSetting('combatState', combatState);
+    await (runtime as IAgentRuntime).setSetting('combatState', JSON.stringify(combatState));
     
     // Generate combat start narrative
     const narrative = await generateCombatStartNarrative(
-      runtime,
+      runtime as IAgentRuntime,
       state,
       enemies,
       sortedInitiatives,
@@ -155,22 +172,29 @@ export const startCombatAction: Action = {
     }
     
     // Emit combat started event
-    await runtime.emit('combat_started', {
+    const combatStartPayload = {
+      runtime: runtime as IAgentRuntime,
+      source: 'dm-agent',
       combatId: combatState.id,
       enemies: enemies.map(e => ({ id: e.id, name: e.name })),
       initiativeOrder: sortedInitiatives,
       timestamp: new Date(),
-    });
+    };
+    await (runtime as IAgentRuntime).emitEvent('combat_started', combatStartPayload);
     
-    return true;
+    return undefined;
   },
 };
 
 async function getPartyMembers(runtime: IAgentRuntime): Promise<CharacterSheet[]> {
-  const campaignState = await runtime.getSetting('campaignState');
-  if (campaignState && typeof campaignState === 'object') {
-    const state = campaignState as { partyMembers?: CharacterSheet[] };
-    return state.partyMembers || [];
+  const campaignStateRaw = await runtime.getSetting('campaignState');
+  if (campaignStateRaw && typeof campaignStateRaw === 'string') {
+    try {
+      const state = JSON.parse(campaignStateRaw) as { partyMembers?: CharacterSheet[] };
+      return state.partyMembers || [];
+    } catch {
+      return [];
+    }
   }
   return [];
 }
@@ -208,7 +232,7 @@ async function getEnemyMonsters(
 interface InitiativeRoll {
   id: string;
   name: string;
-  type: 'character' | 'monster';
+  type: CombatantType;
   initiative: number;
   dexMod: number;
 }
@@ -221,16 +245,19 @@ async function rollAllInitiatives(
   
   // Roll for party members
   for (const char of party) {
-    const dexMod = calculateModifier(char.abilities.dexterity);
+    const dexMod = calculateModifier(getAbilityScore(char.abilities.dexterity));
     const roll = executeDiceRoll({
-      dice: [{ type: 'd20', count: 1, modifier: 0 }],
-      description: `${char.name} initiative`,
+      count: 1,
+      die: 'd20',
+      modifier: 0,
+      advantage: false,
+      disadvantage: false,
     });
     
     results.push({
-      id: char.id,
+      id: char.id ?? uuid(),
       name: char.name,
-      type: 'character',
+      type: 'pc',
       initiative: roll.total + dexMod,
       dexMod,
     });
@@ -240,8 +267,11 @@ async function rollAllInitiatives(
   for (const monster of enemies) {
     const dexMod = calculateModifier(monster.abilities.dex);
     const roll = executeDiceRoll({
-      dice: [{ type: 'd20', count: 1, modifier: 0 }],
-      description: `${monster.name} initiative`,
+      count: 1,
+      die: 'd20',
+      modifier: 0,
+      advantage: false,
+      disadvantage: false,
     });
     
     results.push({
@@ -258,33 +288,50 @@ async function rollAllInitiatives(
 
 function createCombatants(
   party: CharacterSheet[],
-  enemies: Monster[]
+  enemies: Monster[],
+  initiatives: InitiativeRoll[]
 ): Map<string, Combatant> {
   const combatants = new Map<string, Combatant>();
   
+  // Build initiative lookup
+  const initiativeMap = new Map<string, number>();
+  for (const init of initiatives) {
+    initiativeMap.set(init.id, init.initiative);
+  }
+  
   for (const char of party) {
-    combatants.set(char.id, {
-      id: char.id,
+    const charId = char.id ?? uuid();
+    const hp = getHP(char);
+    combatants.set(charId, {
+      id: uuid(),
+      entityId: charId,
+      entityType: 'pc',
       name: char.name,
-      type: 'character',
-      hp: { current: char.hitPoints.current, max: char.hitPoints.max, temp: char.hitPoints.temporary },
-      ac: char.armorClass,
+      currentHP: hp.current,
+      maxHP: hp.max,
+      temporaryHP: hp.temporary ?? 0,
+      armorClass: getAC(char),
       position: { x: 0, y: 0 },
-      conditions: [],
-      isAlive: true,
+      initiative: initiativeMap.get(charId) ?? 0,
+      hasActed: false,
+      availableResources: createFreshTurnResources(char.speed ?? 30),
     });
   }
   
   for (const monster of enemies) {
     combatants.set(monster.id, {
-      id: monster.id,
+      id: uuid(),
+      entityId: monster.id,
+      entityType: 'monster',
       name: monster.name,
-      type: 'monster',
-      hp: { current: monster.hp.current, max: monster.hp.max, temp: 0 },
-      ac: monster.ac,
+      currentHP: monster.hp.current,
+      maxHP: monster.hp.max,
+      temporaryHP: monster.hp.temp,
+      armorClass: monster.ac,
       position: { x: 0, y: 0 },
-      conditions: [],
-      isAlive: true,
+      initiative: initiativeMap.get(monster.id) ?? 0,
+      hasActed: false,
+      availableResources: createFreshTurnResources(monster.speed.walk),
     });
   }
   
@@ -292,14 +339,14 @@ function createCombatants(
 }
 
 async function generateCombatStartNarrative(
-  runtime: IAgentRuntime,
-  state: State,
+  _runtime: IAgentRuntime,
+  _state: State | undefined,
   enemies: Monster[],
   initiatives: InitiativeRoll[],
   environment?: string,
   surprise?: StartCombatParams['surpriseRound']
 ): Promise<string> {
-  const enemyNames = enemies.map(e => e.name).join(', ');
+  const _enemyNames = enemies.map(e => e.name).join(', ');
   
   let narrative = `⚔️ **COMBAT BEGINS!** ⚔️\n\n`;
   

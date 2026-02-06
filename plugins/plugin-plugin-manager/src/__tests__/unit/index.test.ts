@@ -10,10 +10,10 @@ describe('Plugin Manager Plugin', () => {
 
   it('should have required services', () => {
     expect(pluginManagerPlugin.services).toBeDefined();
-    expect(pluginManagerPlugin.services?.length).toBeGreaterThan(0);
+    expect(pluginManagerPlugin.services?.length).toBe(2);
 
-    // Check for core services by their serviceType property
-    const serviceTypes = pluginManagerPlugin.services?.map((s: any) => s.serviceType) || [];
+    const serviceTypes =
+      pluginManagerPlugin.services?.map((s) => (s as { serviceType: string }).serviceType) || [];
     expect(serviceTypes).toContain('plugin_manager');
     expect(serviceTypes).toContain('plugin_configuration');
   });
@@ -25,20 +25,19 @@ describe('Plugin Manager Plugin', () => {
     const actionNames = pluginManagerPlugin.actions?.map((a) => a.name) || [];
     expect(actionNames).toContain('LOAD_PLUGIN');
     expect(actionNames).toContain('UNLOAD_PLUGIN');
+    expect(actionNames).toContain('INSTALL_PLUGIN_FROM_REGISTRY');
     expect(actionNames).toContain('SEARCH_PLUGINS');
     expect(actionNames).toContain('CLONE_PLUGIN');
     expect(actionNames).toContain('PUBLISH_PLUGIN');
-    expect(actionNames).toContain('installPluginFromRegistry');
     expect(actionNames).toContain('GET_PLUGIN_DETAILS');
   });
 
   it('should have required providers', () => {
     expect(pluginManagerPlugin.providers).toBeDefined();
-    expect(pluginManagerPlugin.providers?.length).toBeGreaterThan(0);
+    expect(pluginManagerPlugin.providers?.length).toBe(3);
 
     const providerNames = pluginManagerPlugin.providers?.map((p) => p.name) || [];
     expect(providerNames).toContain('pluginState');
-    expect(providerNames).toContain('pluginKnowledge');
     expect(providerNames).toContain('registryPlugins');
     expect(providerNames).toContain('pluginConfigurationStatus');
   });

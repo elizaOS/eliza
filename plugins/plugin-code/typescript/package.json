@@ -57,5 +57,14 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Default export (Node.js)"
+    }
   }
 }

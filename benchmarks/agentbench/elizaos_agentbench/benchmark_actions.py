@@ -472,7 +472,7 @@ def create_benchmark_plugin() -> "Plugin":
         runtime.logger.info(
             "AgentBench plugin initialized",
             src="plugin:agentbench",
-            agentId=str(runtime.agent_id),
+            agent_id=str(runtime.agent_id),
         )
 
     return Plugin(

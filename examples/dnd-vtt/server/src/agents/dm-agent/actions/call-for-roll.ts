@@ -44,31 +44,31 @@ export const callForRollAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'I want to sneak past the guards.',
           action: 'CALL_FOR_ROLL',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
-          text: 'The torchlight casts long shadows along the corridor, and the guards seem distracted by their conversation.\n\n**Make a Stealth check.** The guards\' passive Perception is 12.\n\n🎲 Roll a d20 and add your Stealth modifier.',
+          text: 'The torchlight casts long shadows along the corridor, and the guards seem distracted by their conversation.\n\n**Make a Stealth check.** The guards\' passive Perception is 12.\n\n Roll a d20 and add your Stealth modifier.',
         },
       },
     ],
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'The trap triggers!',
           action: 'CALL_FOR_ROLL',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
-          text: 'A pressure plate clicks beneath your foot, and you hear a sharp hiss from the wall!\n\n**Everyone in the hallway: Make a Dexterity saving throw, DC 14!**\n\n🎲 Roll quickly - poison darts are about to fly!',
+          text: 'A pressure plate clicks beneath your foot, and you hear a sharp hiss from the wall!\n\n**Everyone in the hallway: Make a Dexterity saving throw, DC 14!**\n\nRoll quickly - poison darts are about to fly!',
         },
       },
     ],
@@ -82,11 +82,11 @@ export const callForRollAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    options: Record<string, unknown>,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
-    const params = options as CallForRollParams;
+  ) => {
+    const params = (options ?? {}) as unknown as CallForRollParams;
     
     // Determine DC if difficulty level provided
     const dc = params.dc ?? (params.difficulty ? getDCByDifficulty(params.difficulty) : undefined);
@@ -97,22 +97,12 @@ export const callForRollAction: Action = {
     if (callback) {
       await callback({
         text: rollRequest,
-        type: 'roll_request',
-        metadata: {
-          rollType: params.rollType,
-          ability: params.ability,
-          skill: params.skill,
-          dc,
-          targets: params.targetCharacters,
-          advantage: params.advantage,
-          disadvantage: params.disadvantage,
-          secret: params.secret,
-        },
       });
     }
     
     // Track pending rolls
-    await runtime.emit('roll_requested', {
+    const rollPayload = {
+      runtime,
       rollType: params.rollType,
       ability: params.ability,
       skill: params.skill,
@@ -120,9 +110,10 @@ export const callForRollAction: Action = {
       targets: params.targetCharacters,
       reason: params.reason,
       timestamp: new Date(),
-    });
+    };
+    await runtime.emitEvent('roll_requested', rollPayload);
     
-    return true;
+    return undefined;
   },
 };
 
@@ -188,7 +179,7 @@ function buildRollRequest(params: CallForRollParams, dc?: number): string {
   }
   
   // Add dice instructions
-  request += '\n\n🎲 Roll a d20 and add your modifier.';
+  request += '\n\nRoll a d20 and add your modifier.';
   
   return request;
 }

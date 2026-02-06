@@ -10,6 +10,7 @@ import type {
   Monster,
   DamageType,
 } from '../types';
+import { getAbilityMod, getConditionName } from '../types';
 
 /**
  * A participant in combat
@@ -225,17 +226,26 @@ export function createCombatantFromCharacter(
   character: CharacterSheet,
   initiative: number
 ): Combatant {
+  const hp = character.hp ?? character.hitPoints;
+  const ac = character.ac ?? character.armorClass ?? 10;
+  const speed = character.speed ?? 30;
+  const charId = character.id ?? `char-${character.name}`;
+
   return {
-    id: `combat-${character.id}`,
+    id: `combat-${charId}`,
     name: character.name,
-    type: character.isAI ? 'pc' : 'pc', // All party members are PCs
+    type: 'pc', // All party members are PCs
     initiative,
-    dexterityModifier: character.abilities.dexterity.modifier,
-    wisdomModifier: character.abilities.wisdom?.modifier ?? 0,
-    constitutionModifier: character.abilities.constitution?.modifier ?? 0,
-    hp: { ...character.hp },
-    ac: character.ac,
-    speed: character.speed,
+    dexterityModifier: getAbilityMod(character.abilities.dexterity),
+    wisdomModifier: getAbilityMod(character.abilities.wisdom),
+    constitutionModifier: getAbilityMod(character.abilities.constitution),
+    hp: {
+      current: hp?.current ?? 1,
+      max: hp?.max ?? 1,
+      temp: hp?.temporary ?? hp?.temp ?? 0,
+    },
+    ac,
+    speed,
     position: undefined,
     conditions: character.conditions ? [...character.conditions] : [],
     concentratingOn: undefined,
@@ -247,10 +257,10 @@ export function createCombatantFromCharacter(
       actionUsed: false,
       bonusActionUsed: false,
       reactionUsed: false,
-      movementRemaining: character.speed,
+      movementRemaining: speed,
       freeObjectInteraction: true,
     },
-    sourceId: character.id,
+    sourceId: charId,
     sourceType: 'character',
     resistances: character.resistances,
     immunities: character.immunities,
@@ -273,9 +283,9 @@ export function createCombatantFromMonster(
     name: `${monster.name}${suffix}`,
     type: 'monster',
     initiative,
-    dexterityModifier: Math.floor((monster.abilities.dexterity - 10) / 2),
-    wisdomModifier: Math.floor(((monster.abilities.wisdom ?? monster.abilities.wis ?? 10) - 10) / 2),
-    constitutionModifier: Math.floor(((monster.abilities.constitution ?? monster.abilities.con ?? 10) - 10) / 2),
+    dexterityModifier: Math.floor((monster.abilities.dex - 10) / 2),
+    wisdomModifier: Math.floor((monster.abilities.wis - 10) / 2),
+    constitutionModifier: Math.floor((monster.abilities.con - 10) / 2),
     hp: { ...monster.hp },
     ac: monster.ac,
     speed: monster.speed.walk || 30,
@@ -326,9 +336,10 @@ export function isIncapacitated(combatant: Combatant): boolean {
     'Unconscious',
   ];
   
-  return combatant.conditions.some(c => 
-    incapacitatingConditions.includes(c.name)
-  );
+  return combatant.conditions.some(c => {
+    const name = getConditionName(c);
+    return incapacitatingConditions.includes(name);
+  });
 }
 
 /**
@@ -340,16 +351,17 @@ export function canTakeReaction(combatant: Combatant): boolean {
   
   // Check for conditions that prevent reactions
   const noReactionConditions: ConditionName[] = [
-    'Surprised',
+    'Incapacitated',
     'Unconscious',
     'Paralyzed',
     'Petrified',
     'Stunned',
   ];
   
-  return !combatant.conditions.some(c => 
-    noReactionConditions.includes(c.name)
-  );
+  return !combatant.conditions.some(c => {
+    const name = getConditionName(c);
+    return noReactionConditions.includes(name);
+  });
 }
 
 /**

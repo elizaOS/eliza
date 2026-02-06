@@ -11,148 +11,91 @@ import { PluginManagerServiceType } from '../types';
 
 export const pluginConfigurationStatusProvider: Provider = {
   name: 'pluginConfigurationStatus',
-  description: 'Provides basic plugin configuration status and missing environment variables',
+  description: 'Provides plugin configuration status based on actual plugin config schemas',
 
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     const configService = runtime.getService(
       PluginManagerServiceType.PLUGIN_CONFIGURATION
-    ) as PluginConfigurationService;
-    const pluginManagerService = runtime.getService(PluginManagerServiceType.PLUGIN_MANAGER) as PluginManagerService | null;
+    ) as PluginConfigurationService | null;
+    const pluginManagerService = runtime.getService(
+      PluginManagerServiceType.PLUGIN_MANAGER
+    ) as PluginManagerService | null;
 
-    if (!configService) {
+    if (!configService || !pluginManagerService) {
       return {
-        text: 'Configuration service not available',
+        text: 'Configuration or plugin manager service not available',
         data: { available: false },
         values: { configurationServicesAvailable: false },
       };
     }
 
-    interface PluginConfigStatus {
+    const allPlugins = pluginManagerService.getAllPlugins();
+
+    let configuredCount = 0;
+    let needsConfigCount = 0;
+    const pluginStatuses: Array<{
       name: string;
       status: string;
-      requiredVars: number;
-      missingVars: number;
       configured: boolean;
-      variables: Array<{
-        name: string;
-        description: string;
-        required: boolean;
-        sensitive: boolean;
-        configured: boolean;
-      }>;
-    }
+      missingKeys: string[];
+      totalKeys: number;
+    }> = [];
 
-    const statusData: {
-      available: boolean;
-      plugins: PluginConfigStatus[];
-      totalPlugins: number;
-      configuredPlugins: number;
-      needsConfiguration: number;
-    } = {
-      available: true,
-      plugins: [],
-      totalPlugins: 0,
-      configuredPlugins: 0,
-      needsConfiguration: 0,
-    };
+    for (const pluginState of allPlugins) {
+      if (!pluginState.plugin) {
+        // Plugin not loaded, can't check config
+        pluginStatuses.push({
+          name: pluginState.name,
+          status: pluginState.status,
+          configured: true, // Unknown - can't check
+          missingKeys: [],
+          totalKeys: 0,
+        });
+        configuredCount++;
+        continue;
+      }
 
-    let statusText = '';
+      const configStatus = configService.getPluginConfigStatus(pluginState.plugin);
+      pluginStatuses.push({
+        name: pluginState.name,
+        status: pluginState.status,
+        configured: configStatus.configured,
+        missingKeys: configStatus.missingKeys,
+        totalKeys: configStatus.totalKeys,
+      });
 
-    // Get all plugins if plugin manager is available
-    if (pluginManagerService) {
-      const allPlugins = pluginManagerService.getAllPlugins();
-      statusData.totalPlugins = allPlugins.length;
-
-      for (const plugin of allPlugins) {
-        try {
-          // Try to parse plugin requirements
-          const result = await configService.parsePluginRequirements(`./plugins/${plugin.name}`);
-
-          if (result && result.requiredVars.length > 0) {
-            // Check configuration status
-            const missingVars = await configService.getMissingEnvVars(
-              plugin.name,
-              `./plugins/${plugin.name}`
-            );
-
-            const pluginStatus = {
-              name: plugin.name,
-              status: plugin.status,
-              requiredVars: result.requiredVars.length,
-              missingVars: missingVars.length,
-              configured: missingVars.length === 0,
-              variables: result.requiredVars.map((v) => ({
-                name: v.name,
-                description: v.description,
-                required: v.required,
-                sensitive: v.sensitive,
-                configured: !missingVars.includes(v.name),
-              })),
-            };
-
-            statusData.plugins.push(pluginStatus);
-
-            if (pluginStatus.configured) {
-              statusData.configuredPlugins++;
-            } else {
-              statusData.needsConfiguration++;
-            }
-          } else {
-            // Plugin doesn't require configuration
-            statusData.plugins.push({
-              name: plugin.name,
-              status: plugin.status,
-              requiredVars: 0,
-              missingVars: 0,
-              configured: true,
-              variables: [],
-            });
-            statusData.configuredPlugins++;
-          }
-        } catch (error) {
-          logger.warn(`[pluginConfigurationStatus] Failed to check ${plugin.name}:`, error);
-          // Assume configured if we can't check
-          statusData.plugins.push({
-            name: plugin.name,
-            status: plugin.status,
-            requiredVars: 0,
-            missingVars: 0,
-            configured: true,
-            variables: [],
-          });
-          statusData.configuredPlugins++;
-        }
+      if (configStatus.configured) {
+        configuredCount++;
+      } else {
+        needsConfigCount++;
       }
     }
 
     // Build status text
-    if (statusData.totalPlugins === 0) {
-      statusText = 'No plugins are currently installed.';
+    let statusText = '';
+    if (allPlugins.length === 0) {
+      statusText = 'No plugins registered.';
     } else {
       statusText += `Plugin Configuration Status:\n`;
-      statusText += `• Total plugins: ${statusData.totalPlugins}\n`;
-      statusText += `• Fully configured: ${statusData.configuredPlugins}\n`;
-      statusText += `• Need configuration: ${statusData.needsConfiguration}\n`;
+      statusText += `Total: ${allPlugins.length}, Configured: ${configuredCount}, Needs config: ${needsConfigCount}\n`;
 
-      if (statusData.needsConfiguration > 0) {
+      if (needsConfigCount > 0) {
         statusText += `\nPlugins needing configuration:\n`;
-        statusData.plugins
-          .filter((p) => !p.configured)
-          .forEach((plugin) => {
-            statusText += `• ${plugin.name}: ${plugin.missingVars} missing variables\n`;
-          });
+        for (const ps of pluginStatuses.filter((p) => !p.configured)) {
+          statusText += `- ${ps.name}: missing ${ps.missingKeys.join(', ')}\n`;
+        }
       }
     }
 
     return {
       text: statusText,
-      data: statusData,
+      data: { plugins: pluginStatuses },
       values: {
         configurationServicesAvailable: true,
-        totalPlugins: statusData.totalPlugins,
-        configuredPlugins: statusData.configuredPlugins,
-        needsConfiguration: statusData.needsConfiguration,
-        hasUnconfiguredPlugins: statusData.needsConfiguration > 0,
+        totalPlugins: allPlugins.length,
+        configuredPlugins: configuredCount,
+        needsConfiguration: needsConfigCount,
+        hasUnconfiguredPlugins: needsConfigCount > 0,
       },
     };
   },

@@ -67,7 +67,7 @@ const thordak: CharacterSheet = {
   hitDice: { current: 1, max: 1 },
   equipment: {
     weapons: [
-      { name: 'Battleaxe', damage: '1d8', damageType: 'slashing', properties: ['versatile'] },
+      { name: 'Battleaxe', type: 'weapon', damage: '1d8', damageType: 'slashing', properties: ['versatile'] },
     ],
   },
 };
@@ -99,7 +99,7 @@ const lyria: CharacterSheet = {
     { name: 'Shield', level: 1, school: 'Abjuration', castingTime: '1 reaction', range: 'Self' },
   ],
   equipment: {
-    weapons: [{ name: 'Quarterstaff', damage: '1d6', damageType: 'bludgeoning', properties: ['versatile'] }],
+    weapons: [{ name: 'Quarterstaff', type: 'weapon', damage: '1d6', damageType: 'bludgeoning', properties: ['versatile'] }],
   },
 };
 

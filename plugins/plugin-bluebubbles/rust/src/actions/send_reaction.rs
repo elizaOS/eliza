@@ -80,3 +80,146 @@ Respond with a JSON object:
 }
 ```
 "#;
+
+/// Action struct for send reaction, implementing the Action trait.
+pub struct SendReactionAction;
+
+impl SendReactionAction {
+    /// Creates a new send reaction action.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for SendReactionAction {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait::async_trait]
+impl elizaos::Action for SendReactionAction {
+    fn name(&self) -> &str {
+        SEND_REACTION_ACTION
+    }
+
+    fn description(&self) -> &str {
+        SEND_REACTION_DESCRIPTION
+    }
+
+    fn similes(&self) -> Vec<&str> {
+        SEND_REACTION_SIMILES.to_vec()
+    }
+
+    fn examples(&self) -> Vec<Vec<elizaos::ActionExample>> {
+        vec![
+            vec![
+                elizaos::ActionExample {
+                    name: "{{user1}}".to_string(),
+                    content: elizaos::Content {
+                        text: Some("React to that message with a heart".to_string()),
+                        ..Default::default()
+                    },
+                },
+                elizaos::ActionExample {
+                    name: "{{agentName}}".to_string(),
+                    content: elizaos::Content {
+                        text: Some("I'll add a heart reaction.".to_string()),
+                        action: Some(SEND_REACTION_ACTION.to_string()),
+                        ..Default::default()
+                    },
+                },
+            ],
+            vec![
+                elizaos::ActionExample {
+                    name: "{{user1}}".to_string(),
+                    content: elizaos::Content {
+                        text: Some("Give a thumbs up to the last message".to_string()),
+                        ..Default::default()
+                    },
+                },
+                elizaos::ActionExample {
+                    name: "{{agentName}}".to_string(),
+                    content: elizaos::Content {
+                        text: Some("I'll react with a thumbs up.".to_string()),
+                        action: Some(SEND_REACTION_ACTION.to_string()),
+                        ..Default::default()
+                    },
+                },
+            ],
+        ]
+    }
+
+    async fn validate(&self, runtime: &dyn elizaos::IAgentRuntime, _message: &elizaos::Memory) -> bool {
+        runtime
+            .get_service::<BlueBubblesService>(crate::BLUEBUBBLES_SERVICE_NAME)
+            .is_some()
+    }
+
+    async fn handler(
+        &self,
+        runtime: &dyn elizaos::IAgentRuntime,
+        message: &elizaos::Memory,
+        state: Option<&elizaos::State>,
+        _options: Option<&serde_json::Value>,
+    ) -> elizaos::Result<Option<elizaos::Content>> {
+        let service = runtime
+            .get_service::<BlueBubblesService>(crate::BLUEBUBBLES_SERVICE_NAME)
+            .ok_or_else(|| {
+                elizaos::Error::ServiceError("BlueBubbles service not available".to_string())
+            })?;
+
+        // Get chat context from state
+        let state_data = state
+            .and_then(|s| s.data.as_ref())
+            .and_then(|d| d.as_object());
+
+        let chat_guid = state_data
+            .and_then(|d| d.get("chatGuid"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                elizaos::Error::ValidationError("Could not determine chat".to_string())
+            })?;
+
+        let message_guid = state_data
+            .and_then(|d| d.get("lastMessageGuid"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                elizaos::Error::ValidationError("Could not find message to react to".to_string())
+            })?;
+
+        // Default emoji
+        let emoji = "❤️";
+        let remove = false;
+
+        let params = SendReactionParams {
+            chat_guid: chat_guid.to_string(),
+            message_guid: message_guid.to_string(),
+            emoji: emoji.to_string(),
+            remove,
+        };
+
+        let result = execute_send_reaction(service, params).await;
+
+        if !result.success {
+            return Err(elizaos::Error::ServiceError(
+                result.error.unwrap_or_else(|| "Failed to send reaction".to_string()),
+            ));
+        }
+
+        Ok(Some(elizaos::Content {
+            text: Some(if remove {
+                "Reaction removed.".to_string()
+            } else {
+                format!("Reacted with {}.", emoji)
+            }),
+            source: Some("bluebubbles".to_string()),
+            metadata: Some(serde_json::json!({
+                "emoji": emoji,
+                "messageGuid": message_guid,
+                "removed": remove,
+            })),
+            ..Default::default()
+        }))
+    }
+}

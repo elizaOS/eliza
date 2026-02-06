@@ -254,10 +254,10 @@ class SWEAgent:
             # Initial message to start the agent
             initial_message = Memory(
                 id=as_uuid(str(uuid.uuid4())),
-                entityId=self._user_id,
-                agentId=self.runtime.agent_id,
-                roomId=self._room_id,
-                createdAt=int(time.time() * 1000),
+                entity_id=self._user_id,
+                agent_id=self.runtime.agent_id,
+                room_id=self._room_id,
+                created_at=int(time.time() * 1000),
                 content=Content(
                     text="Please analyze this issue and fix it. Start by understanding the problem and locating relevant code.",
                     source="swebench",
@@ -531,10 +531,10 @@ class SWEAgent:
         """Create a continuation message for the next step."""
         return Memory(
             id=as_uuid(str(uuid.uuid4())),
-            entityId=self._user_id,
-            agentId=self.runtime.agent_id,
-            roomId=self._room_id,
-            createdAt=int(time.time() * 1000),
+            entity_id=self._user_id,
+            agent_id=self.runtime.agent_id,
+            room_id=self._room_id,
+            created_at=int(time.time() * 1000),
             content=Content(
                 text="Continue with your analysis. Take the next action.",
                 source="swebench",
@@ -584,10 +584,10 @@ class SWEAgent:
 
             message = Memory(
                 id=message_id,
-                entityId=self.runtime.agent_id,
-                agentId=self.runtime.agent_id,
-                roomId=self._room_id,
-                createdAt=int(time.time() * 1000),
+                entity_id=self.runtime.agent_id,
+                agent_id=self.runtime.agent_id,
+                room_id=self._room_id,
+                created_at=int(time.time() * 1000),
                 content=Content(text="SWE-bench action execution"),
             )
 
@@ -601,10 +601,10 @@ class SWEAgent:
 
             response = Memory(
                 id=as_uuid(str(uuid.uuid4())),
-                entityId=self.runtime.agent_id,
-                agentId=self.runtime.agent_id,
-                roomId=self._room_id,
-                createdAt=int(time.time() * 1000),
+                entity_id=self.runtime.agent_id,
+                agent_id=self.runtime.agent_id,
+                room_id=self._room_id,
+                created_at=int(time.time() * 1000),
                 content=response_content,
             )
 

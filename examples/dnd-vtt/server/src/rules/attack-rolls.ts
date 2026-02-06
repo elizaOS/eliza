@@ -5,18 +5,22 @@
 
 import {
   type AbilityName,
-  type AbilityScores,
   type CharacterSheet,
   type Monster,
   type ActiveCondition,
   type DamageType,
-  type DamageModifiers,
+  type DamageModifier,
+  type DamageInstance,
   calculateModifier,
   getProficiencyBonus,
   executeDiceRoll,
   parseDiceNotation,
+  rollDamage,
   calculateFinalDamage,
-  CONDITIONS,
+  getAC,
+  getAbilityMod,
+  normalizeCondition,
+  getConditionName,
 } from '../types';
 
 export type AttackType = 'melee_weapon' | 'ranged_weapon' | 'melee_spell' | 'ranged_spell';
@@ -71,41 +75,40 @@ function getAttackerConditionModifiers(
   let autoCrit = false;
   
   for (const active of conditions) {
-    const conditionDef = CONDITIONS[active.condition];
-    if (!conditionDef) continue;
+    const condName = normalizeCondition(getConditionName(active));
     
     // Blinded - disadvantage on attack rolls
-    if (active.condition === 'Blinded') {
+    if (condName === 'blinded') {
       grantsDisadvantage = true;
     }
     
     // Frightened - disadvantage if source is in sight (simplified to always)
-    if (active.condition === 'Frightened') {
+    if (condName === 'frightened') {
       grantsDisadvantage = true;
     }
     
     // Poisoned - disadvantage on attack rolls
-    if (active.condition === 'Poisoned') {
+    if (condName === 'poisoned') {
       grantsDisadvantage = true;
     }
     
     // Prone - disadvantage on attack rolls
-    if (active.condition === 'Prone') {
+    if (condName === 'prone') {
       grantsDisadvantage = true;
     }
     
     // Restrained - disadvantage on attack rolls
-    if (active.condition === 'Restrained') {
+    if (condName === 'restrained') {
       grantsDisadvantage = true;
     }
     
     // Exhaustion level 3+ - disadvantage on attack rolls
-    if (active.condition === 'Exhaustion' && (active.stacks || 1) >= 3) {
+    if (condName === 'exhaustion' && (active.exhaustionLevel ?? active.level ?? 1) >= 3) {
       grantsDisadvantage = true;
     }
     
     // Invisible - advantage on attack rolls
-    if (active.condition === 'Invisible') {
+    if (condName === 'invisible') {
       grantsAdvantage = true;
     }
   }
@@ -130,18 +133,20 @@ function getTargetConditionModifiers(
   const isRanged = attackType === 'ranged_weapon' || attackType === 'ranged_spell';
   
   for (const active of conditions) {
+    const condName = normalizeCondition(getConditionName(active));
+    
     // Blinded - attacks against have advantage
-    if (active.condition === 'Blinded') {
+    if (condName === 'blinded') {
       grantsAdvantageToAttacker = true;
     }
     
     // Invisible - attacks against have disadvantage
-    if (active.condition === 'Invisible') {
+    if (condName === 'invisible') {
       grantsDisadvantageToAttacker = true;
     }
     
     // Paralyzed - attacks have advantage, auto-crit if within 5 feet
-    if (active.condition === 'Paralyzed') {
+    if (condName === 'paralyzed') {
       grantsAdvantageToAttacker = true;
       if (isMelee && isAdjacent) {
         autoCrit = true;
@@ -149,12 +154,12 @@ function getTargetConditionModifiers(
     }
     
     // Petrified - attacks have advantage
-    if (active.condition === 'Petrified') {
+    if (condName === 'petrified') {
       grantsAdvantageToAttacker = true;
     }
     
     // Prone - melee has advantage, ranged has disadvantage
-    if (active.condition === 'Prone') {
+    if (condName === 'prone') {
       if (isMelee && isAdjacent) {
         grantsAdvantageToAttacker = true;
       } else if (isRanged) {
@@ -163,17 +168,17 @@ function getTargetConditionModifiers(
     }
     
     // Restrained - attacks have advantage
-    if (active.condition === 'Restrained') {
+    if (condName === 'restrained') {
       grantsAdvantageToAttacker = true;
     }
     
     // Stunned - attacks have advantage
-    if (active.condition === 'Stunned') {
+    if (condName === 'stunned') {
       grantsAdvantageToAttacker = true;
     }
     
     // Unconscious - attacks have advantage, auto-crit if within 5 feet
-    if (active.condition === 'Unconscious') {
+    if (condName === 'unconscious') {
       grantsAdvantageToAttacker = true;
       if (isMelee && isAdjacent) {
         autoCrit = true;
@@ -254,7 +259,7 @@ function calculateAttackBonus(
   
   const char = attacker as CharacterSheet;
   const ability = getAttackAbility(char, 'character', attackType);
-  const abilityMod = calculateModifier(char.abilities[ability.toLowerCase() as keyof AbilityScores]);
+  const abilityMod = getAbilityMod(char.abilities[ability]);
   const profBonus = getProficiencyBonus(char.level);
   
   return abilityMod + profBonus + weaponBonus;
@@ -270,7 +275,7 @@ function getTargetAC(
   if (targetType === 'monster') {
     return (target as Monster).ac;
   }
-  return (target as CharacterSheet).armorClass;
+  return getAC(target as CharacterSheet);
 }
 
 /**
@@ -279,21 +284,22 @@ function getTargetAC(
 function getTargetDamageModifiers(
   target: CharacterSheet | Monster,
   targetType: 'character' | 'monster'
-): DamageModifiers {
+): DamageModifier[] {
+  const modifiers: DamageModifier[] = [];
   if (targetType === 'monster') {
     const monster = target as Monster;
-    return {
-      resistances: monster.resistances || [],
-      immunities: monster.immunities || [],
-      vulnerabilities: monster.vulnerabilities || [],
-    };
+    for (const r of (monster.resistances || [])) {
+      modifiers.push({ type: 'resistance', damageType: r });
+    }
+    for (const i of (monster.immunities || [])) {
+      modifiers.push({ type: 'immunity', damageType: i });
+    }
+    for (const v of (monster.vulnerabilities || [])) {
+      modifiers.push({ type: 'vulnerability', damageType: v });
+    }
   }
   // Characters rarely have innate resistances (usually from magic items/spells)
-  return {
-    resistances: [],
-    immunities: [],
-    vulnerabilities: [],
-  };
+  return modifiers;
 }
 
 /**
@@ -339,13 +345,14 @@ export function makeAttackRoll(params: AttackParams): AttackResult {
   const targetAC = getTargetAC(target, targetType) + coverBonus;
   
   const attackDiceResult = executeDiceRoll({
-    dice: [{ type: 'd20', count: 1, modifier: 0 }],
+    count: 1,
+    die: 'd20',
+    modifier: 0,
     advantage: hasAdvantage,
     disadvantage: hasDisadvantage,
-    description: 'Attack roll',
   });
   
-  const naturalRoll = attackDiceResult.individualRolls[0]?.[0] || 0;
+  const naturalRoll = attackDiceResult.naturalRoll;
   const attackRoll = attackDiceResult.total + attackBonus;
   
   // Determine hit/miss
@@ -361,42 +368,40 @@ export function makeAttackRoll(params: AttackParams): AttackResult {
   if (hit) {
     // Roll primary damage
     const primaryDice = parseDiceNotation(damageNotation);
-    const primaryDamageResult = executeDiceRoll({
-      dice: primaryDice.dice,
-      criticalHit: critical,
-      description: 'Damage roll',
-    });
+    const primaryDamageResult = rollDamage(primaryDice.count, primaryDice.die, primaryDice.modifier, critical);
     
-    const baseDamage = primaryDamageResult.total + primaryDice.modifier;
-    const { finalDamage, modifier } = calculateFinalDamage(baseDamage, damageType, targetDamageMods);
+    const baseDamage = primaryDamageResult.total;
+    const primaryDamageInstance: DamageInstance = { amount: baseDamage, type: damageType, isMagical: false };
+    const finalDmg = calculateFinalDamage(primaryDamageInstance, targetDamageMods);
+    const primaryModLabel: 'normal' | 'resistant' | 'immune' | 'vulnerable' =
+      finalDmg === 0 && baseDamage > 0 ? 'immune' : finalDmg < baseDamage ? 'resistant' : finalDmg > baseDamage ? 'vulnerable' : 'normal';
     
     damageBreakdown.push({
       type: damageType,
       baseDamage,
-      finalDamage,
-      modifier,
+      finalDamage: finalDmg,
+      modifier: primaryModLabel,
     });
-    totalDamage += finalDamage;
+    totalDamage += finalDmg;
     
     // Roll additional damage (e.g., sneak attack, smite)
     for (const addDmg of additionalDamage) {
       const addDice = parseDiceNotation(addDmg.notation);
-      const addResult = executeDiceRoll({
-        dice: addDice.dice,
-        criticalHit: critical,
-        description: `Additional ${addDmg.type} damage`,
-      });
+      const addDamageResult = rollDamage(addDice.count, addDice.die, addDice.modifier, critical);
       
-      const addBase = addResult.total + addDice.modifier;
-      const addFinal = calculateFinalDamage(addBase, addDmg.type, targetDamageMods);
+      const addBase = addDamageResult.total;
+      const addInstance: DamageInstance = { amount: addBase, type: addDmg.type, isMagical: false };
+      const addFinal = calculateFinalDamage(addInstance, targetDamageMods);
+      const addModLabel: 'normal' | 'resistant' | 'immune' | 'vulnerable' =
+        addFinal === 0 && addBase > 0 ? 'immune' : addFinal < addBase ? 'resistant' : addFinal > addBase ? 'vulnerable' : 'normal';
       
       damageBreakdown.push({
         type: addDmg.type,
         baseDamage: addBase,
-        finalDamage: addFinal.finalDamage,
-        modifier: addFinal.modifier,
+        finalDamage: addFinal,
+        modifier: addModLabel,
       });
-      totalDamage += addFinal.finalDamage;
+      totalDamage += addFinal;
     }
   }
   

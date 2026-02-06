@@ -1,148 +1,167 @@
 /**
- * Tests for @milaidy/capacitor-camera plugin
- *
- * Verifies:
- * - Module exports (Camera instance + definition types)
- * - CameraWeb class instantiation and method signatures
- * - State management (settings, recording state)
- * - Listener registration and cleanup
- * - Error handling for operations without active preview
+ * Tests for @milaidy/capacitor-camera — settings, state, direction inference, errors, events.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { CameraWeb } from "../../plugins/camera/src/web";
 
+type Internals = CameraWeb & {
+  inferDirection: (label: string) => string;
+  notifyListeners: (name: string, data: unknown) => void;
+};
+
 describe("@milaidy/capacitor-camera", () => {
-  let camera: CameraWeb;
+  let cam: CameraWeb;
+  let priv: Internals;
 
   beforeEach(() => {
-    camera = new CameraWeb();
+    cam = new CameraWeb();
+    priv = cam as unknown as Internals;
   });
 
-  describe("module exports", () => {
-    it("exports CameraWeb class", () => {
-      expect(CameraWeb).toBeDefined();
-      expect(typeof CameraWeb).toBe("function");
-    });
+  // -- Settings --
 
-    it("creates an instance with expected methods", () => {
-      expect(typeof camera.getDevices).toBe("function");
-      expect(typeof camera.startPreview).toBe("function");
-      expect(typeof camera.stopPreview).toBe("function");
-      expect(typeof camera.switchCamera).toBe("function");
-      expect(typeof camera.capturePhoto).toBe("function");
-      expect(typeof camera.startRecording).toBe("function");
-      expect(typeof camera.stopRecording).toBe("function");
-      expect(typeof camera.getRecordingState).toBe("function");
-      expect(typeof camera.getSettings).toBe("function");
-      expect(typeof camera.setSettings).toBe("function");
-      expect(typeof camera.setZoom).toBe("function");
-      expect(typeof camera.setFocusPoint).toBe("function");
-      expect(typeof camera.setExposurePoint).toBe("function");
-      expect(typeof camera.checkPermissions).toBe("function");
-      expect(typeof camera.requestPermissions).toBe("function");
-      expect(typeof camera.addListener).toBe("function");
-      expect(typeof camera.removeAllListeners).toBe("function");
-    });
-  });
-
-  describe("settings management", () => {
-    it("returns default settings", async () => {
-      const { settings } = await camera.getSettings();
-      expect(settings).toEqual({
-        flash: "off",
-        zoom: 1,
-        focusMode: "continuous",
-        exposureMode: "continuous",
-        exposureCompensation: 0,
-        whiteBalance: "auto",
+  describe("settings", () => {
+    it("returns correct defaults", async () => {
+      expect((await cam.getSettings()).settings).toEqual({
+        flash: "off", zoom: 1, focusMode: "continuous",
+        exposureMode: "continuous", exposureCompensation: 0, whiteBalance: "auto",
       });
     });
 
-    it("updates settings partially", async () => {
-      await camera.setSettings({ settings: { flash: "on", zoom: 2 } });
-      const { settings } = await camera.getSettings();
+    it("partial update preserves other fields", async () => {
+      await cam.setSettings({ settings: { flash: "torch" } });
+      const { settings } = await cam.getSettings();
+      expect(settings.flash).toBe("torch");
+      expect(settings.zoom).toBe(1);
+      expect(settings.focusMode).toBe("continuous");
+    });
+
+    it("chained updates accumulate", async () => {
+      await cam.setSettings({ settings: { flash: "on" } });
+      await cam.setSettings({ settings: { zoom: 3 } });
+      await cam.setSettings({ settings: { whiteBalance: "daylight" } });
+      const { settings } = await cam.getSettings();
       expect(settings.flash).toBe("on");
-      expect(settings.zoom).toBe(2);
-      expect(settings.focusMode).toBe("continuous"); // unchanged
+      expect(settings.zoom).toBe(3);
+      expect(settings.whiteBalance).toBe("daylight");
+    });
+
+    it("getSettings returns a copy, not a reference", async () => {
+      const a = (await cam.getSettings()).settings;
+      const b = (await cam.getSettings()).settings;
+      expect(a).toEqual(b);
+      expect(a).not.toBe(b);
+    });
+
+    it("setZoom updates zoom setting", async () => {
+      await cam.setZoom({ zoom: 5 });
+      expect((await cam.getSettings()).settings.zoom).toBe(5);
+    });
+
+    it.each([0, 0.01, 100])("setZoom handles boundary value %s", async (z) => {
+      await cam.setZoom({ zoom: z });
+      expect((await cam.getSettings()).settings.zoom).toBe(z);
     });
   });
 
-  describe("recording state", () => {
-    it("reports not recording by default", async () => {
-      const state = await camera.getRecordingState();
-      expect(state.isRecording).toBe(false);
-      expect(state.duration).toBe(0);
-      expect(state.fileSize).toBe(0);
+  // -- Direction inference --
+
+  describe("inferDirection", () => {
+    it.each([
+      ["Front Camera", "front"],
+      ["FaceTime HD Camera", "front"],
+      ["User Camera", "front"],
+      ["FRONT CAMERA", "front"],
+    ])('"%s" → %s', (label, expected) => {
+      expect(priv.inferDirection(label)).toBe(expected);
+    });
+
+    it.each([
+      ["Back Camera", "back"],
+      ["Rear Camera 1", "back"],
+      ["Environment Camera", "back"],
+    ])('"%s" → %s', (label, expected) => {
+      expect(priv.inferDirection(label)).toBe(expected);
+    });
+
+    it.each(["USB Webcam", "Logitech C920", ""])(
+      '"%s" → external',
+      (label) => { expect(priv.inferDirection(label)).toBe("external"); },
+    );
+  });
+
+  // -- Recording state --
+
+  it("reports not recording by default", async () => {
+    expect(await cam.getRecordingState()).toEqual({ isRecording: false, duration: 0, fileSize: 0 });
+  });
+
+  // -- Error paths (no preview) --
+
+  describe("errors without preview", () => {
+    it.each([
+      ["capturePhoto", () => cam.capturePhoto()],
+      ["capturePhoto with opts", () => cam.capturePhoto({ quality: 90, format: "png" })],
+      ["switchCamera", () => cam.switchCamera({ direction: "front" })],
+      ["startRecording", () => cam.startRecording()],
+      ["setFocusPoint", () => cam.setFocusPoint({ x: 0.5, y: 0.5 })],
+      ["setExposurePoint", () => cam.setExposurePoint({ x: 0.5, y: 0.5 })],
+    ])("%s throws 'Preview not started'", async (_name, fn) => {
+      await expect(fn()).rejects.toThrow("Preview not started");
+    });
+
+    it("stopRecording throws 'Not recording'", async () => {
+      await expect(cam.stopRecording()).rejects.toThrow("Not recording");
     });
   });
 
-  describe("error handling", () => {
-    it("throws when capturing photo without preview", async () => {
-      await expect(camera.capturePhoto()).rejects.toThrow("Preview not started");
-    });
-
-    it("throws when switching camera without preview", async () => {
-      await expect(camera.switchCamera({ direction: "front" })).rejects.toThrow(
-        "Preview not started"
-      );
-    });
-
-    it("throws when starting recording without preview", async () => {
-      await expect(camera.startRecording()).rejects.toThrow("Preview not started");
-    });
-
-    it("throws when stopping recording when not recording", async () => {
-      await expect(camera.stopRecording()).rejects.toThrow("Not recording");
-    });
-
-    it("throws when setting focus without preview", async () => {
-      await expect(camera.setFocusPoint({ x: 0.5, y: 0.5 })).rejects.toThrow(
-        "Preview not started"
-      );
-    });
-
-    it("throws when setting exposure without preview", async () => {
-      await expect(camera.setExposurePoint({ x: 0.5, y: 0.5 })).rejects.toThrow(
-        "Preview not started"
-      );
-    });
-  });
+  // -- Event listeners --
 
   describe("event listeners", () => {
-    it("registers and removes a listener", async () => {
-      let called = false;
-      const handle = await camera.addListener("frame", () => {
-        called = true;
-      });
-      expect(handle).toBeDefined();
-      expect(typeof handle.remove).toBe("function");
+    it("dispatches events to registered listener", async () => {
+      const received: unknown[] = [];
+      await cam.addListener("frame", (e) => received.push(e));
 
-      // Notify should call the listener
-      (camera as unknown as { notifyListeners: (name: string, data: unknown) => void }).notifyListeners(
-        "frame",
-        { timestamp: 1, width: 1920, height: 1080 }
-      );
-      expect(called).toBe(true);
-
-      // After remove, should not be called again
-      called = false;
-      await handle.remove();
-      (camera as unknown as { notifyListeners: (name: string, data: unknown) => void }).notifyListeners(
-        "frame",
-        { timestamp: 2, width: 1920, height: 1080 }
-      );
-      expect(called).toBe(false);
+      priv.notifyListeners("frame", { timestamp: 1, width: 1920, height: 1080 });
+      expect(received).toEqual([{ timestamp: 1, width: 1920, height: 1080 }]);
     });
 
-    it("removes all listeners", async () => {
-      let callCount = 0;
-      await camera.addListener("frame", () => callCount++);
-      await camera.addListener("error", () => callCount++);
-      await camera.removeAllListeners();
+    it("multiple listeners on same event all fire", async () => {
+      let count = 0;
+      await cam.addListener("frame", () => count++);
+      await cam.addListener("frame", () => count++);
+      priv.notifyListeners("frame", {});
+      expect(count).toBe(2);
+    });
 
-      (camera as unknown as { notifyListeners: (name: string, data: unknown) => void }).notifyListeners("frame", {});
-      (camera as unknown as { notifyListeners: (name: string, data: unknown) => void }).notifyListeners("error", {});
-      expect(callCount).toBe(0);
+    it("remove only removes the specific listener", async () => {
+      let a = 0, b = 0;
+      const h = await cam.addListener("frame", () => a++);
+      await cam.addListener("frame", () => b++);
+      await h.remove();
+
+      priv.notifyListeners("frame", {});
+      expect(a).toBe(0);
+      expect(b).toBe(1);
+    });
+
+    it("events don't cross between event names", async () => {
+      let frames = 0, errors = 0;
+      await cam.addListener("frame", () => frames++);
+      await cam.addListener("error", () => errors++);
+      priv.notifyListeners("frame", {});
+      expect(frames).toBe(1);
+      expect(errors).toBe(0);
+    });
+
+    it("removeAllListeners clears everything", async () => {
+      let count = 0;
+      await cam.addListener("frame", () => count++);
+      await cam.addListener("error", () => count++);
+      await cam.removeAllListeners();
+      priv.notifyListeners("frame", {});
+      priv.notifyListeners("error", {});
+      expect(count).toBe(0);
     });
   });
 });

@@ -11,6 +11,7 @@ import type {
   HandlerCallback,
 } from '@elizaos/core';
 import type { CharacterSheet } from '../../../types';
+import { getAbilityScore } from '../../../types';
 
 export type InteractionType = 
   | 'talk'
@@ -45,13 +46,13 @@ export const interactWithNPCAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'The merchant eyes you suspiciously. "What do you want?"',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'I put on my most charming smile and lean against the counter. "Just a humble traveler looking for supplies, friend. I heard you have the finest goods in town - and I have coin to spend."',
           action: 'INTERACT_WITH_NPC',
@@ -68,12 +69,12 @@ export const interactWithNPCAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    options: Record<string, unknown>,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<boolean> => {
-    const params = options as InteractWithNPCParams;
-    const characterSheet = await runtime.getSetting('characterSheet') as CharacterSheet | null;
+    const params = (options ?? {}) as InteractWithNPCParams;
+    const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     const personality = await runtime.getSetting('personality');
     
     if (!characterSheet) {
@@ -96,9 +97,10 @@ export const interactWithNPCAction: Action = {
     });
     
     // Determine if this requires a roll
-    const rollNeeded = detectRollNeeded(response.text, params.interactionType);
+    const responseText = (response as any)?.text ?? String(response ?? '');
+    const rollNeeded = detectRollNeeded(responseText, params.interactionType);
     
-    let finalResponse = response.text;
+    let finalResponse = responseText;
     
     if (rollNeeded) {
       finalResponse += `\n\n*[${rollNeeded.skillName} check may be required]*`;
@@ -111,18 +113,18 @@ export const interactWithNPCAction: Action = {
         metadata: {
           characterId: characterSheet.id,
           characterName: characterSheet.name,
-          interactionType: params.interactionType || detectInteractionType(response.text),
+          interactionType: params.interactionType || detectInteractionType(responseText),
           npcName: params.npcName,
           rollNeeded,
         },
       });
     }
     
-    await runtime.emit('npc_interaction', {
+    runtime.emitEvent?.('npc_interaction' as any, {
       characterId: characterSheet.id,
       characterName: characterSheet.name,
       interactionType: params.interactionType,
-      dialogue: response.text,
+      dialogue: responseText,
       timestamp: new Date(),
     });
     
@@ -140,7 +142,7 @@ function buildSocialPrompt(
     ? message.content
     : message.content?.text || '';
   
-  const charismaScore = sheet.abilities.charisma.score;
+  const charismaScore = getAbilityScore(sheet.abilities.charisma);
   const charismaDesc = charismaScore >= 16 ? 'naturally charming'
     : charismaScore >= 12 ? 'reasonably likeable'
     : charismaScore >= 8 ? 'average in social situations'

@@ -3,6 +3,7 @@
 pub mod issue_context;
 pub mod repository_state;
 
+pub use issue_context::extract_issue_number;
 pub use issue_context::GitHubIssueContextProvider;
 pub use issue_context::IssueContextProvider;
 pub use repository_state::GitHubRepositoryStateProvider;

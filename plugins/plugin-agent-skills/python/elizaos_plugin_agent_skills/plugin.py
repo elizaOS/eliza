@@ -22,6 +22,14 @@ from elizaos.types.plugin import Plugin
 from .service import AgentSkillsService
 from .types import Skill, SkillCatalogEntry
 
+from .actions import (
+    search_skills_action,
+    get_skill_details_action,
+    get_skill_guidance_action,
+    sync_catalog_action,
+    run_skill_script_action,
+)
+
 if TYPE_CHECKING:
     from elizaos.types.memory import Memory
     from elizaos.types.runtime import IAgentRuntime
@@ -250,7 +258,13 @@ plugin = Plugin(
         "SKILLS_AUTO_LOAD": os.getenv("SKILLS_AUTO_LOAD", "true"),
         "SKILLS_REGISTRY": os.getenv("SKILLS_REGISTRY", "https://clawhub.ai"),
     },
-    actions=[],
+    actions=[
+        search_skills_action,
+        get_skill_details_action,
+        get_skill_guidance_action,
+        sync_catalog_action,
+        run_skill_script_action,
+    ],
     providers=[skills_summary_provider, skill_instructions_provider],
     services=[],
     models={},

@@ -1,81 +1,109 @@
 /**
- * Tests for @milaidy/capacitor-talkmode plugin
- *
- * Verifies:
- * - Module exports (TalkModeWeb class + definition types)
- * - TalkModeWeb class instantiation and method signatures
- * - State management (idle by default)
- * - Speaking state
- * - Listener registration and cleanup
+ * Tests for @milaidy/capacitor-talkmode — state machine, speak, config, permissions.
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { TalkModeWeb } from "../../plugins/talkmode/src/web";
 
 describe("@milaidy/capacitor-talkmode", () => {
-  let talkmode: InstanceType<Awaited<typeof import("../../plugins/talkmode/src/web")>["TalkModeWeb"]>;
+  let tm: TalkModeWeb;
 
-  beforeEach(async () => {
-    const { TalkModeWeb } = await import("../../plugins/talkmode/src/web");
-    talkmode = new TalkModeWeb();
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    tm = new TalkModeWeb();
   });
 
-  describe("module exports", () => {
-    it("exports TalkModeWeb class", async () => {
-      const mod = await import("../../plugins/talkmode/src/web");
-      expect(mod.TalkModeWeb).toBeDefined();
-      expect(typeof mod.TalkModeWeb).toBe("function");
-    });
+  // -- Initial state --
+
+  it("starts idle, disabled, not speaking", async () => {
+    expect((await tm.isEnabled()).enabled).toBe(false);
+    expect((await tm.getState())).toEqual({ state: "idle", statusText: "Off" });
+    expect((await tm.isSpeaking()).speaking).toBe(false);
   });
 
-  describe("method signatures", () => {
-    it("has all required plugin methods", () => {
-      expect(typeof talkmode.start).toBe("function");
-      expect(typeof talkmode.stop).toBe("function");
-      expect(typeof talkmode.isEnabled).toBe("function");
-      expect(typeof talkmode.getState).toBe("function");
-      expect(typeof talkmode.updateConfig).toBe("function");
-      expect(typeof talkmode.speak).toBe("function");
-      expect(typeof talkmode.stopSpeaking).toBe("function");
-      expect(typeof talkmode.isSpeaking).toBe("function");
-      expect(typeof talkmode.checkPermissions).toBe("function");
-      expect(typeof talkmode.requestPermissions).toBe("function");
-      expect(typeof talkmode.addListener).toBe("function");
-      expect(typeof talkmode.removeAllListeners).toBe("function");
-    });
-  });
+  // -- Start --
 
-  describe("state management", () => {
-    it("reports not enabled by default", async () => {
-      const result = await talkmode.isEnabled();
-      expect(result.enabled).toBe(false);
+  describe("start", () => {
+    it("returns error when SpeechRecognition unavailable", async () => {
+      const r = await tm.start();
+      expect(r.started).toBe(false);
+      expect(r.error).toContain("not supported");
     });
 
-    it("reports idle state by default", async () => {
-      const result = await talkmode.getState();
-      expect(result.state).toBe("idle");
-      expect(typeof result.statusText).toBe("string");
-    });
-
-    it("reports not speaking by default", async () => {
-      const result = await talkmode.isSpeaking();
-      expect(result.speaking).toBe(false);
+    it("stays disabled after failed start", async () => {
+      await tm.start({ config: { silenceWindowMs: 500 } });
+      expect((await tm.isEnabled()).enabled).toBe(false);
     });
   });
 
-  describe("stop when not started", () => {
-    it("stop completes without error when not enabled", async () => {
-      await expect(talkmode.stop()).resolves.toBeUndefined();
+  // -- Stop --
+
+  describe("stop", () => {
+    it("resets to idle/Off/disabled", async () => {
+      await tm.stop();
+      expect(await tm.getState()).toEqual({ state: "idle", statusText: "Off" });
+      expect((await tm.isEnabled()).enabled).toBe(false);
     });
 
-    it("stopSpeaking completes when not speaking", async () => {
-      const result = await talkmode.stopSpeaking();
-      expect(result).toBeDefined();
+    it("is idempotent", async () => {
+      await tm.stop();
+      await tm.stop();
+      expect((await tm.isEnabled()).enabled).toBe(false);
     });
   });
 
-  describe("definition types", () => {
-    it("definitions module loads without error", async () => {
-      const mod = await import("../../plugins/talkmode/src/definitions");
-      expect(mod).toBeDefined();
+  // -- Speak --
+
+  describe("speak", () => {
+    it("returns synthesis-unavailable error", async () => {
+      const r = await tm.speak({ text: "Hello" });
+      expect(r).toEqual({ completed: false, interrupted: false, usedSystemTts: false, error: "Speech synthesis not available" });
+    });
+
+    it.each(["", "   "])("empty/whitespace text ('%s') also returns synthesis error", async (text) => {
+      expect((await tm.speak({ text })).completed).toBe(false);
+    });
+  });
+
+  // -- Stop speaking --
+
+  it("stopSpeaking returns empty when not speaking", async () => {
+    expect(await tm.stopSpeaking()).toEqual({});
+  });
+
+  // -- Config --
+
+  describe("config", () => {
+    it("updateConfig merges without error", async () => {
+      await tm.updateConfig({ config: { silenceWindowMs: 500 } });
+      await tm.updateConfig({ config: { tts: { voiceId: "v1" }, stt: { engine: "web" } } });
+    });
+
+    it("updateConfig with empty config is safe", async () => {
+      await expect(tm.updateConfig({ config: {} })).resolves.toBeUndefined();
+    });
+  });
+
+  // -- Permissions --
+
+  describe("permissions", () => {
+    it("checkPermissions reports not_supported without SpeechRecognition", async () => {
+      vi.spyOn(navigator.permissions, "query").mockResolvedValueOnce({ state: "granted" } as PermissionStatus);
+      const r = await tm.checkPermissions();
+      expect(r.microphone).toBe("granted");
+      expect(r.speechRecognition).toBe("not_supported");
+    });
+
+    it("checkPermissions falls back to prompt on query failure", async () => {
+      vi.spyOn(navigator.permissions, "query").mockRejectedValueOnce(new Error("nope"));
+      expect((await tm.checkPermissions()).microphone).toBe("prompt");
+    });
+
+    it("requestPermissions calls getUserMedia for mic access", async () => {
+      const stream = { getTracks: () => [{ stop: vi.fn() }] };
+      const spy = vi.spyOn(navigator.mediaDevices, "getUserMedia").mockResolvedValueOnce(stream as unknown as MediaStream);
+      vi.spyOn(navigator.permissions, "query").mockResolvedValue({ state: "granted" } as PermissionStatus);
+      await tm.requestPermissions();
+      expect(spy).toHaveBeenCalledWith({ audio: true });
     });
   });
 });

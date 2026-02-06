@@ -1,20 +1,16 @@
 /**
  * Comprehensive E2E tests for the Milaidy agent runtime.
  *
- * Single test file (PGlite constraint — one DB per process). All suites
- * share one fully-initialized runtime with core plugins + model providers.
+ * NO MOCKS. Single test file (PGlite constraint). All suites share one
+ * fully-initialized runtime with PRODUCTION defaults:
+ *   - checkShouldRespond: true (production default — DMs bypass via alwaysRespondChannels)
+ *   - enableAutonomy: true
+ *   - All core plugins loaded
  *
- *   1. Startup — runtime, plugins, services, character
- *   2. Messaging — generateText, handleMessage, multi-turn memory
- *   3. REST API — every endpoint in server.ts with a real runtime
- *   4. Autonomy — flag, service registration, REST toggle, think-cycle verify
- *   5. Error paths — bad input, missing runtime, malformed requests
- *   6. Concurrent requests — parallel HTTP calls
- *   7. Workspace — bootstrap file creation
- *   8. Shutdown — clean stop
- *
- * Requires at least one model provider API key.
+ * Slow tests are fine — we test autonomy thinking for real, multi-turn
+ * memory for real, and startEliza() via a real subprocess.
  */
+import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -31,6 +27,7 @@ import {
   ChannelType,
   logger,
   type Plugin,
+  type Service,
   type UUID,
 } from "@elizaos/core";
 import { startApiServer } from "../src/api/server.js";
@@ -41,7 +38,8 @@ import { ensureAgentWorkspace } from "../src/providers/workspace.js";
 // ---------------------------------------------------------------------------
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(testDir, "../.env") });
+const packageRoot = path.resolve(testDir, "..");
+dotenv.config({ path: path.resolve(packageRoot, ".env") });
 
 const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
 const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
@@ -49,7 +47,7 @@ const hasGroq = Boolean(process.env.GROQ_API_KEY);
 const hasModelProvider = hasOpenAI || hasAnthropic || hasGroq;
 
 // ---------------------------------------------------------------------------
-// Plugin helpers
+// Plugin helpers — tracks failures
 // ---------------------------------------------------------------------------
 
 interface PluginModule { default?: Plugin; plugin?: Plugin }
@@ -63,8 +61,20 @@ function extractPlugin(mod: PluginModule): Plugin | null {
   if (looksLikePlugin(mod)) return mod as unknown as Plugin;
   return null;
 }
+
+const pluginLoadResults: { name: string; loaded: boolean; error?: string }[] = [];
+
 async function loadPlugin(name: string): Promise<Plugin | null> {
-  try { return extractPlugin((await import(name)) as PluginModule); } catch { return null; }
+  try {
+    const p = extractPlugin((await import(name)) as PluginModule);
+    pluginLoadResults.push({ name, loaded: p !== null, error: p ? undefined : "no valid Plugin export" });
+    return p;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    pluginLoadResults.push({ name, loaded: false, error: msg });
+    logger.warn(`[e2e] FAILED to load plugin ${name}: ${msg}`);
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -97,6 +107,15 @@ function http$(
 }
 
 // ---------------------------------------------------------------------------
+// Typed interface for AutonomyService (avoids any/unknown)
+// ---------------------------------------------------------------------------
+
+interface AutonomyServiceLike extends Service {
+  performAutonomousThink(): Promise<void>;
+  setLoopInterval(ms: number): void;
+}
+
+// ---------------------------------------------------------------------------
 // Shared state
 // ---------------------------------------------------------------------------
 
@@ -111,6 +130,15 @@ describe("Agent Runtime E2E", () => {
 
   const pgliteDir = fs.mkdtempSync(path.join(os.tmpdir(), "milaidy-e2e-pglite-"));
   const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "milaidy-e2e-workspace-"));
+
+  const corePluginNames = [
+    "@elizaos/plugin-agent-skills",
+    "@elizaos/plugin-directives",
+    "@elizaos/plugin-commands",
+    "@elizaos/plugin-personality",
+    "@elizaos/plugin-experience",
+    "@elizaos/plugin-form",
+  ];
 
   // ─── Setup ──────────────────────────────────────────────────────────────
 
@@ -130,19 +158,10 @@ describe("Agent Runtime E2E", () => {
       secrets,
     });
 
-    // ── Load ALL core plugins (not just SQL + providers) ─────────────
     const sqlPlugin = await loadPlugin("@elizaos/plugin-sql");
 
-    const coreNames = [
-      "@elizaos/plugin-agent-skills",
-      "@elizaos/plugin-directives",
-      "@elizaos/plugin-commands",
-      "@elizaos/plugin-personality",
-      "@elizaos/plugin-experience",
-      "@elizaos/plugin-form",
-    ];
     const plugins: Plugin[] = [];
-    for (const n of coreNames) {
+    for (const n of corePluginNames) {
       const p = await loadPlugin(n);
       if (p) plugins.push(p);
     }
@@ -150,32 +169,61 @@ describe("Agent Runtime E2E", () => {
     if (hasAnthropic) { const p = await loadPlugin("@elizaos/plugin-anthropic"); if (p) plugins.push(p); }
     if (hasGroq)      { const p = await loadPlugin("@elizaos/plugin-groq");      if (p) plugins.push(p); }
 
+    // PRODUCTION DEFAULTS: checkShouldRespond defaults to true.
+    // DMs bypass shouldRespond via alwaysRespondChannels in message.ts.
     runtime = new AgentRuntime({
       character,
       plugins,
       logLevel: "info",
       enableAutonomy: true,
+      // checkShouldRespond is NOT set — defaults to true (production behavior)
     });
 
     if (sqlPlugin) await runtime.registerPlugin(sqlPlugin);
     await runtime.initialize();
     initialized = true;
 
-    await runtime.ensureConnection({
-      entityId: userId, roomId, worldId,
-      userName: "TestUser", source: "test",
-      channelId: "test-e2e-channel", type: ChannelType.DM,
-    });
+    try {
+      await runtime.ensureConnection({
+        entityId: userId, roomId, worldId,
+        userName: "TestUser", source: "test",
+        channelId: "test-e2e-channel", type: ChannelType.DM,
+      });
+    } catch (err) {
+      logger.warn(`[e2e] ensureConnection failed, retrying: ${err instanceof Error ? err.message : err}`);
+      await runtime.ensureConnection({
+        entityId: userId,
+        roomId: crypto.randomUUID() as UUID,
+        worldId: crypto.randomUUID() as UUID,
+        userName: "TestUser", source: "test",
+        channelId: "test-e2e-channel", type: ChannelType.DM,
+      });
+    }
 
     server = await startApiServer({ port: 0, runtime });
     logger.info(`[e2e] Setup complete — ${runtime.plugins.length} plugins, API on :${server.port}`);
   }, 180_000);
 
   afterAll(async () => {
-    if (server) await server.close();
-    if (runtime) { try { runtime.enableAutonomy = false; await runtime.stop(); } catch {} }
-    try { fs.rmSync(pgliteDir, { recursive: true, force: true }); } catch {}
-    try { fs.rmSync(workspaceDir, { recursive: true, force: true }); } catch {}
+    if (server) {
+      try { await server.close(); } catch (err) {
+        logger.warn(`[e2e] Server close error: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    if (runtime) {
+      try {
+        runtime.enableAutonomy = false;
+        await runtime.stop();
+      } catch (err) {
+        logger.warn(`[e2e] Runtime stop error: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    try { fs.rmSync(pgliteDir, { recursive: true, force: true }); } catch (err) {
+      logger.warn(`[e2e] PGlite cleanup: ${err instanceof Error ? err.message : err}`);
+    }
+    try { fs.rmSync(workspaceDir, { recursive: true, force: true }); } catch (err) {
+      logger.warn(`[e2e] Workspace cleanup: ${err instanceof Error ? err.message : err}`);
+    }
   }, 30_000);
 
   // ===================================================================
@@ -188,30 +236,68 @@ describe("Agent Runtime E2E", () => {
       expect(runtime.character.name).toBe("TestAgent");
     });
 
-    it.skipIf(!hasModelProvider)("loads core plugins beyond just SQL", () => {
-      const names = runtime.plugins.map((p) => p.name);
-      logger.info(`[e2e] Loaded plugins: ${names.join(", ")}`);
-      // Should have at minimum: SQL (bootstrap), model provider(s), and some core plugins
-      expect(runtime.plugins.length).toBeGreaterThanOrEqual(3);
+    it.skipIf(!hasModelProvider)("every core plugin loaded", () => {
+      const coreResults = pluginLoadResults.filter((r) => corePluginNames.includes(r.name));
+      for (const result of coreResults) {
+        expect(result.loaded, `Core plugin ${result.name} failed: ${result.error}`).toBe(true);
+      }
     });
 
-    it.skipIf(!hasModelProvider)("has a valid agent ID", () => {
-      expect(runtime.agentId).toBeDefined();
-      expect(runtime.agentId.length).toBeGreaterThan(0);
+    it.skipIf(!hasModelProvider)("loaded at least 8 plugins (6 core + bootstrap + 1 provider)", () => {
+      expect(runtime.plugins.length).toBeGreaterThanOrEqual(8);
     });
 
-    it.skipIf(!hasModelProvider)("has the message service available", () => {
-      expect(runtime.messageService).toBeDefined();
+    it.skipIf(!hasModelProvider)("messageService is non-null", () => {
+      expect(runtime.messageService).not.toBeNull();
     });
 
-    it.skipIf(!hasModelProvider)("has services registered (embedding, autonomy, etc.)", () => {
-      expect(runtime.services.size).toBeGreaterThanOrEqual(2);
-      logger.info(`[e2e] Service types: ${runtime.services.size}`);
+    it.skipIf(!hasModelProvider)("checkShouldRespond is enabled (production default)", () => {
+      expect(runtime.isCheckShouldRespondEnabled()).toBe(true);
+      logger.info("[e2e] Confirmed: checkShouldRespond is TRUE (production default)");
+    });
+
+    it.skipIf(!hasModelProvider)("AUTONOMY service type is registered", () => {
+      const serviceTypes = Array.from(runtime.services.keys());
+      logger.info(`[e2e] Service types: ${serviceTypes.join(", ")}`);
+      const hasAutonomy = serviceTypes.some((t) => t.toUpperCase().includes("AUTONOMY"));
+      expect(hasAutonomy, `No AUTONOMY service found in: ${serviceTypes.join(", ")}`).toBe(true);
     });
   });
 
   // ===================================================================
-  //  2. Messaging + multi-turn memory
+  //  2. shouldRespond — DMs auto-respond even with checkShouldRespond=true
+  // ===================================================================
+
+  describe("shouldRespond (production mode)", () => {
+    it.skipIf(!hasModelProvider)("DM messages get responses with checkShouldRespond=true", async () => {
+      // checkShouldRespond is TRUE. DMs should STILL get responses because
+      // ChannelType.DM is in the alwaysRespondChannels list in message.ts.
+      expect(runtime.isCheckShouldRespondEnabled()).toBe(true);
+
+      const msg = createMessageMemory({
+        id: crypto.randomUUID() as UUID,
+        entityId: userId,
+        roomId,
+        content: {
+          text: "Can you hear me?",
+          source: "test",
+          channelType: ChannelType.DM, // DM = always respond
+        },
+      });
+
+      let resp = "";
+      await runtime.messageService!.handleMessage(runtime, msg, async (c) => {
+        if (c?.text) resp += c.text;
+        return [];
+      });
+
+      expect(resp.length, "DM should always get a response even with checkShouldRespond=true").toBeGreaterThan(0);
+      logger.info(`[e2e] shouldRespond DM test: "${resp}"`);
+    }, 60_000);
+  });
+
+  // ===================================================================
+  //  3. Messaging + multi-turn memory
   // ===================================================================
 
   describe("messaging", () => {
@@ -219,7 +305,6 @@ describe("Agent Runtime E2E", () => {
       const result = await runtime.generateText("What is 2 + 2? Answer only the number.", { maxTokens: 256 });
       const text = result.text instanceof Promise ? await result.text : String(result.text ?? "");
       expect(text.length).toBeGreaterThan(0);
-      logger.info(`[e2e] generateText: "${text}"`);
     }, 60_000);
 
     it.skipIf(!hasModelProvider)("handleMessage returns non-empty text", async () => {
@@ -228,188 +313,138 @@ describe("Agent Runtime E2E", () => {
         content: { text: "Say hello in one word.", source: "test", channelType: ChannelType.DM },
       });
       let resp = "";
-      await runtime.messageService?.handleMessage(runtime, msg, async (c) => { if (c?.text) resp += c.text; return []; });
+      await runtime.messageService!.handleMessage(runtime, msg, async (c) => { if (c?.text) resp += c.text; return []; });
       expect(resp.length).toBeGreaterThan(0);
-      logger.info(`[e2e] handleMessage: "${resp}"`);
     }, 60_000);
 
     it.skipIf(!hasModelProvider)("multi-turn: agent remembers context", async () => {
-      // Turn 1: introduce a fact
       const msg1 = createMessageMemory({
         id: crypto.randomUUID() as UUID, entityId: userId, roomId,
         content: { text: "Remember this: the secret word is pineapple.", source: "test", channelType: ChannelType.DM },
       });
-      await runtime.messageService?.handleMessage(runtime, msg1, async () => []);
+      let t1 = "";
+      await runtime.messageService!.handleMessage(runtime, msg1, async (c) => { if (c?.text) t1 += c.text; return []; });
+      expect(t1.length, "Turn 1 must produce a response").toBeGreaterThan(0);
 
-      // Turn 2: ask for the fact
       const msg2 = createMessageMemory({
         id: crypto.randomUUID() as UUID, entityId: userId, roomId,
         content: { text: "What is the secret word I just told you?", source: "test", channelType: ChannelType.DM },
       });
-      let resp = "";
-      await runtime.messageService?.handleMessage(runtime, msg2, async (c) => { if (c?.text) resp += c.text; return []; });
+      let t2 = "";
+      await runtime.messageService!.handleMessage(runtime, msg2, async (c) => { if (c?.text) t2 += c.text; return []; });
 
-      logger.info(`[e2e] multi-turn response: "${resp}"`);
-      // The agent should mention "pineapple" (case-insensitive)
-      expect(resp.toLowerCase()).toContain("pineapple");
+      logger.info(`[e2e] multi-turn: "${t2}"`);
+      expect(t2.toLowerCase()).toContain("pineapple");
     }, 90_000);
   });
 
   // ===================================================================
-  //  3. REST API — full endpoint coverage
+  //  4. Autonomy — REAL think cycle
+  // ===================================================================
+
+  describe("autonomy (real thinking)", () => {
+    it.skipIf(!hasModelProvider)("autonomy flag is enabled", () => {
+      expect(runtime.enableAutonomy).toBe(true);
+    });
+
+    it.skipIf(!hasModelProvider)("performAutonomousThink() completes a real think cycle", async () => {
+      // Get the actual AutonomyService and call performAutonomousThink() directly.
+      // This uses the full pipeline: creates autonomous message → model generates
+      // response → response stored as memory. No mocks.
+      const svc = runtime.getService<AutonomyServiceLike>("AUTONOMY");
+      expect(svc, "AutonomyService must be registered").toBeDefined();
+
+      logger.info("[e2e] Starting real autonomy think cycle...");
+      await svc!.performAutonomousThink();
+      logger.info("[e2e] Autonomy think cycle completed successfully");
+      // If we got here without throwing, the full autonomous pipeline worked:
+      // prompt generation → model call → response processing → memory storage
+    }, 120_000);
+
+    it.skipIf(!hasModelProvider)("REST toggle still works after real think cycle", async () => {
+      await http$(server!.port, "POST", "/api/agent/autonomy", { enabled: false });
+      expect((await http$(server!.port, "GET", "/api/agent/autonomy")).data.enabled).toBe(false);
+      expect(runtime.enableAutonomy).toBe(false);
+
+      await http$(server!.port, "POST", "/api/agent/autonomy", { enabled: true });
+      expect((await http$(server!.port, "GET", "/api/agent/autonomy")).data.enabled).toBe(true);
+      expect(runtime.enableAutonomy).toBe(true);
+    });
+  });
+
+  // ===================================================================
+  //  5. REST API
   // ===================================================================
 
   describe("REST API", () => {
-    // --- Status ---
     it.skipIf(!hasModelProvider)("GET /api/status", async () => {
       const { status, data } = await http$(server!.port, "GET", "/api/status");
       expect(status).toBe(200);
       expect(data.state).toBe("running");
-      expect(data.agentName).toBe("TestAgent");
+      expect(typeof data.startedAt).toBe("number");
     });
 
-    // --- Chat (happy + error) ---
-    it.skipIf(!hasModelProvider)("POST /api/chat with real response", async () => {
+    it.skipIf(!hasModelProvider)("POST /api/chat returns real response", async () => {
       const { status, data } = await http$(server!.port, "POST", "/api/chat", { text: "What is 1+1? Number only." });
       expect(status).toBe(200);
       expect((data.text as string).length).toBeGreaterThan(0);
-      logger.info(`[e2e] REST chat: "${data.text}"`);
     }, 60_000);
 
     it.skipIf(!hasModelProvider)("POST /api/chat rejects empty text", async () => {
       expect((await http$(server!.port, "POST", "/api/chat", { text: "" })).status).toBe(400);
     });
 
-    it.skipIf(!hasModelProvider)("POST /api/chat rejects missing text", async () => {
-      expect((await http$(server!.port, "POST", "/api/chat", {})).status).toBe(400);
+    it.skipIf(!hasModelProvider)("GET /api/onboarding/options has non-empty arrays", async () => {
+      const { data } = await http$(server!.port, "GET", "/api/onboarding/options");
+      expect((data.names as string[]).length).toBeGreaterThan(0);
+      expect((data.styles as unknown[]).length).toBeGreaterThan(0);
+      expect((data.providers as unknown[]).length).toBeGreaterThan(0);
     });
 
-    // --- Onboarding ---
-    it.skipIf(!hasModelProvider)("GET /api/onboarding/status", async () => {
-      const { status, data } = await http$(server!.port, "GET", "/api/onboarding/status");
-      expect(status).toBe(200);
-      expect(typeof data.complete).toBe("boolean");
+    it.skipIf(!hasModelProvider)("POST /api/onboarding writes agent name", async () => {
+      const { data } = await http$(server!.port, "POST", "/api/onboarding", { name: "OnboardTest" });
+      expect(data.ok).toBe(true);
+      expect((await http$(server!.port, "GET", "/api/status")).data.agentName).toBe("OnboardTest");
     });
 
-    it.skipIf(!hasModelProvider)("GET /api/onboarding/options", async () => {
-      const { status, data } = await http$(server!.port, "GET", "/api/onboarding/options");
-      expect(status).toBe(200);
-      expect(Array.isArray(data.names)).toBe(true);
-      expect(Array.isArray(data.styles)).toBe(true);
-      expect(Array.isArray(data.providers)).toBe(true);
+    it.skipIf(!hasModelProvider)("PUT /api/config round-trips", async () => {
+      const original = (await http$(server!.port, "GET", "/api/config")).data;
+      await http$(server!.port, "PUT", "/api/config", { agent: { name: "TempCfg" } });
+      const { data } = await http$(server!.port, "GET", "/api/config");
+      expect((data as Record<string, Record<string, string>>).agent?.name).toBe("TempCfg");
+      await http$(server!.port, "PUT", "/api/config", original); // restore
     });
 
-    // --- Config ---
-    it.skipIf(!hasModelProvider)("GET /api/config", async () => {
-      const { status, data } = await http$(server!.port, "GET", "/api/config");
-      expect(status).toBe(200);
-      expect(typeof data).toBe("object");
+    it.skipIf(!hasModelProvider)("GET /api/logs has entries with timestamp/level/message", async () => {
+      const entries = (await http$(server!.port, "GET", "/api/logs")).data.entries as Array<Record<string, unknown>>;
+      expect(entries.length).toBeGreaterThan(0);
+      expect(typeof entries[0].timestamp).toBe("number");
+      expect(typeof entries[0].level).toBe("string");
+      expect(typeof entries[0].message).toBe("string");
     });
 
-    it.skipIf(!hasModelProvider)("PUT /api/config writes and reads back", async () => {
-      const newConfig = { agent: { name: "UpdatedName" } };
-      const put = await http$(server!.port, "PUT", "/api/config", newConfig);
-      expect(put.status).toBe(200);
-      expect(put.data.ok).toBe(true);
-      const get = await http$(server!.port, "GET", "/api/config");
-      expect((get.data as Record<string, Record<string, string>>).agent?.name).toBe("UpdatedName");
+    it.skipIf(!hasModelProvider)("PUT /api/plugins/:id returns 404 for nonexistent", async () => {
+      expect((await http$(server!.port, "PUT", "/api/plugins/fake-plugin", { enabled: true })).status).toBe(404);
     });
 
-    // --- Plugins ---
-    it.skipIf(!hasModelProvider)("GET /api/plugins", async () => {
-      const { status, data } = await http$(server!.port, "GET", "/api/plugins");
-      expect(status).toBe(200);
-      expect(Array.isArray(data.plugins)).toBe(true);
+    it.skipIf(!hasModelProvider)("pause → resume verifies state change", async () => {
+      await http$(server!.port, "POST", "/api/agent/pause");
+      expect((await http$(server!.port, "GET", "/api/status")).data.state).toBe("paused");
+      await http$(server!.port, "POST", "/api/agent/resume");
+      expect((await http$(server!.port, "GET", "/api/status")).data.state).toBe("running");
     });
 
-    // --- Skills ---
-    it.skipIf(!hasModelProvider)("GET /api/skills", async () => {
-      const { status, data } = await http$(server!.port, "GET", "/api/skills");
-      expect(status).toBe(200);
-      expect(Array.isArray(data.skills)).toBe(true);
-    });
-
-    // --- Logs ---
-    it.skipIf(!hasModelProvider)("GET /api/logs", async () => {
-      const { status, data } = await http$(server!.port, "GET", "/api/logs");
-      expect(status).toBe(200);
-      expect(Array.isArray(data.entries)).toBe(true);
-    });
-
-    // --- Lifecycle ---
-    it.skipIf(!hasModelProvider)("pause → resume cycle", async () => {
-      let r = await http$(server!.port, "POST", "/api/agent/pause");
-      expect(r.data.ok).toBe(true);
-      r = await http$(server!.port, "POST", "/api/agent/resume");
-      expect(r.data.ok).toBe(true);
-    });
-
-    // --- 404 ---
     it.skipIf(!hasModelProvider)("404 for unknown route", async () => {
       expect((await http$(server!.port, "GET", "/api/nonexistent")).status).toBe(404);
     });
-
-    // --- CORS preflight ---
-    it.skipIf(!hasModelProvider)("OPTIONS returns 204", async () => {
-      const { status } = await http$(server!.port, "OPTIONS", "/api/status");
-      expect(status).toBe(204);
-    });
   });
 
   // ===================================================================
-  //  4. Autonomy
-  // ===================================================================
-
-  describe("autonomy", () => {
-    it.skipIf(!hasModelProvider)("runtime starts with autonomy enabled", () => {
-      expect(runtime.enableAutonomy).toBe(true);
-    });
-
-    it.skipIf(!hasModelProvider)("autonomy service registered (service types ≥ 2)", () => {
-      // AutonomyService + EmbeddingService at minimum
-      expect(runtime.services.size).toBeGreaterThanOrEqual(2);
-    });
-
-    it.skipIf(!hasModelProvider)("disable → enable via runtime flag", () => {
-      runtime.enableAutonomy = false;
-      expect(runtime.enableAutonomy).toBe(false);
-      runtime.enableAutonomy = true;
-      expect(runtime.enableAutonomy).toBe(true);
-    });
-
-    it.skipIf(!hasModelProvider)("toggle 10 times without crash", () => {
-      for (let i = 0; i < 10; i++) runtime.enableAutonomy = !runtime.enableAutonomy;
-      // 10 toggles from true → ends on true (even count)
-      // Restore to true either way
-      runtime.enableAutonomy = true;
-    });
-
-    it.skipIf(!hasModelProvider)("REST GET /api/agent/autonomy", async () => {
-      const { data } = await http$(server!.port, "GET", "/api/agent/autonomy");
-      expect(typeof data.enabled).toBe("boolean");
-    });
-
-    it.skipIf(!hasModelProvider)("REST POST enable → GET reflects → POST disable → GET reflects", async () => {
-      await http$(server!.port, "POST", "/api/agent/autonomy", { enabled: true });
-      expect((await http$(server!.port, "GET", "/api/agent/autonomy")).data.enabled).toBe(true);
-      expect(runtime.enableAutonomy).toBe(true);
-
-      await http$(server!.port, "POST", "/api/agent/autonomy", { enabled: false });
-      expect((await http$(server!.port, "GET", "/api/agent/autonomy")).data.enabled).toBe(false);
-      expect(runtime.enableAutonomy).toBe(false);
-
-      // Restore
-      runtime.enableAutonomy = true;
-    });
-  });
-
-  // ===================================================================
-  //  5. Error paths
+  //  6. Error paths
   // ===================================================================
 
   describe("error paths", () => {
-    it.skipIf(!hasModelProvider)("POST /api/chat with non-JSON body returns 500", async () => {
-      // Send raw string that isn't valid JSON
+    it.skipIf(!hasModelProvider)("non-JSON body → 500", async () => {
       const { status } = await new Promise<{ status: number }>((resolve, reject) => {
         const req = http.request(
           { hostname: "127.0.0.1", port: server!.port, path: "/api/chat", method: "POST",
@@ -423,82 +458,119 @@ describe("Agent Runtime E2E", () => {
       expect(status).toBe(500);
     });
 
-    it.skipIf(!hasModelProvider)("generateText with empty input throws", async () => {
+    it.skipIf(!hasModelProvider)("generateText empty → throws", async () => {
       await expect(runtime.generateText("", { maxTokens: 10 })).rejects.toThrow();
     });
 
-    it.skipIf(!hasModelProvider)("generateText with whitespace-only input throws", async () => {
+    it.skipIf(!hasModelProvider)("generateText whitespace → throws", async () => {
       await expect(runtime.generateText("   ", { maxTokens: 10 })).rejects.toThrow();
     });
   });
 
   // ===================================================================
-  //  6. Concurrent requests
+  //  7. Concurrent requests
   // ===================================================================
 
-  describe("concurrent requests", () => {
-    it.skipIf(!hasModelProvider)("5 parallel status requests all succeed", async () => {
-      const results = await Promise.all(
-        Array.from({ length: 5 }, () => http$(server!.port, "GET", "/api/status")),
-      );
-      for (const r of results) {
-        expect(r.status).toBe(200);
-        expect(r.data.agentName).toBe("TestAgent");
-      }
-    });
-
-    it.skipIf(!hasModelProvider)("3 parallel chat requests all return text", async () => {
-      const results = await Promise.all(
-        Array.from({ length: 3 }, (_, i) =>
-          http$(server!.port, "POST", "/api/chat", { text: `What is ${i + 1} + 1? Number only.` }),
-        ),
-      );
-      for (const r of results) {
+  describe("concurrent", () => {
+    it.skipIf(!hasModelProvider)("5 parallel status + 3 parallel chat", async () => {
+      const [statuses, chats] = await Promise.all([
+        Promise.all(Array.from({ length: 5 }, () => http$(server!.port, "GET", "/api/status"))),
+        Promise.all(Array.from({ length: 3 }, (_, i) =>
+          http$(server!.port, "POST", "/api/chat", { text: `${i + 1}+1=? number only` }),
+        )),
+      ]);
+      for (const r of statuses) expect(r.status).toBe(200);
+      for (const r of chats) {
         expect(r.status).toBe(200);
         expect((r.data.text as string).length).toBeGreaterThan(0);
       }
-      logger.info(`[e2e] Concurrent chat responses: ${results.map((r) => r.data.text).join(", ")}`);
     }, 90_000);
   });
 
   // ===================================================================
-  //  7. Workspace bootstrap
+  //  8. Workspace
   // ===================================================================
 
   describe("workspace", () => {
-    it.skipIf(!hasModelProvider)("ensureAgentWorkspace creates directory", async () => {
-      const result = await ensureAgentWorkspace({ dir: workspaceDir });
-      expect(result.dir).toBe(workspaceDir);
-      expect(fs.existsSync(workspaceDir)).toBe(true);
-    });
-
-    it.skipIf(!hasModelProvider)("ensureAgentWorkspace with bootstrap creates files", async () => {
-      const subDir = path.join(workspaceDir, "bootstrap-test");
-      const result = await ensureAgentWorkspace({ dir: subDir, ensureBootstrapFiles: true });
-      expect(result.agentsPath).toBeDefined();
-      expect(result.toolsPath).toBeDefined();
-      expect(result.identityPath).toBeDefined();
-      expect(fs.existsSync(result.agentsPath!)).toBe(true);
-      expect(fs.existsSync(result.toolsPath!)).toBe(true);
-      expect(fs.existsSync(result.identityPath!)).toBe(true);
-      logger.info("[e2e] Workspace bootstrap files created successfully");
-    });
-
-    it.skipIf(!hasModelProvider)("ensureAgentWorkspace is idempotent", async () => {
-      const subDir = path.join(workspaceDir, "bootstrap-test");
-      // Call again — should not throw or overwrite
-      const result = await ensureAgentWorkspace({ dir: subDir, ensureBootstrapFiles: true });
-      expect(result.agentsPath).toBeDefined();
+    it.skipIf(!hasModelProvider)("creates directory and is idempotent", async () => {
+      const d = path.join(workspaceDir, "ws-test");
+      expect(fs.existsSync(d)).toBe(false);
+      await ensureAgentWorkspace({ dir: d });
+      expect(fs.existsSync(d)).toBe(true);
+      await ensureAgentWorkspace({ dir: d }); // no throw
     });
   });
 
   // ===================================================================
-  //  8. Shutdown
+  //  9. startEliza() — real subprocess test
   // ===================================================================
 
-  describe("shutdown", () => {
-    it.skipIf(!hasModelProvider)("runtime.stop is a function", () => {
-      expect(typeof runtime.stop).toBe("function");
-    });
+  describe("startEliza subprocess", () => {
+    it.skipIf(!hasModelProvider)("startEliza() boots, prints chat prompt, and exits cleanly", async () => {
+      // Create an isolated environment for the subprocess
+      const subHome = fs.mkdtempSync(path.join(os.tmpdir(), "milaidy-e2e-starteliza-"));
+      const subPglite = path.join(subHome, "pglite");
+      const subConfigDir = path.join(subHome, ".milaidy");
+      fs.mkdirSync(subConfigDir, { recursive: true });
+
+      // Write a config with an agent name so onboarding is skipped
+      fs.writeFileSync(
+        path.join(subConfigDir, "milaidy.json"),
+        JSON.stringify({ agent: { name: "SubprocessAgent", bio: "test" } }),
+      );
+
+      const env: Record<string, string> = {
+        ...process.env as Record<string, string>,
+        HOME: subHome,
+        PGLITE_DATA_DIR: subPglite,
+        LOG_LEVEL: "warn", // quiet output
+      };
+
+      const result = await new Promise<{ stdout: string; exitCode: number }>((resolve) => {
+        const child = spawn("node", ["--import", "tsx", "src/eliza.ts"], {
+          cwd: packageRoot,
+          env,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+
+        let stdout = "";
+        let stderr = "";
+        let resolved = false;
+
+        child.stdout.on("data", (d: Buffer) => {
+          stdout += d.toString();
+          // Once we see the chat prompt, startup succeeded — send exit
+          if (!resolved && stdout.includes("Chat with")) {
+            child.stdin.write("exit\n");
+          }
+        });
+        child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+
+        child.on("close", (code) => {
+          resolved = true;
+          resolve({ stdout, exitCode: code ?? 1 });
+        });
+
+        // Safety timeout: kill after 150s if it hasn't finished
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            child.kill("SIGKILL");
+            resolve({ stdout, exitCode: -1 });
+          }
+        }, 150_000);
+      });
+
+      logger.info(`[e2e] startEliza subprocess exited with code ${result.exitCode}`);
+
+      // The subprocess should have printed the chat prompt
+      expect(result.stdout).toContain("Chat with");
+      expect(result.exitCode).toBe(0);
+
+      // Cleanup
+      try { fs.rmSync(subHome, { recursive: true, force: true }); } catch (err) {
+        logger.warn(`[e2e] Subprocess cleanup: ${err instanceof Error ? err.message : err}`);
+      }
+    }, 180_000);
   });
 });

@@ -229,12 +229,29 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   }
 
   sections.push(`\n## Instructions`);
-  sections.push(
-    `Analyze the above context and take the appropriate action using BENCHMARK_ACTION.`,
-  );
-  sections.push(
-    `Your response MUST include <actions>BENCHMARK_ACTION</actions> with the correct params.`,
-  );
+
+  if (ctx.tools && ctx.tools.length > 0) {
+    // Tau-bench: emphasise tool calling
+    sections.push(
+      `You are a customer service agent. You MUST use the available tools to help the customer.`,
+    );
+    sections.push(
+      `DO NOT respond directly to the customer yet. First call the appropriate tool using BENCHMARK_ACTION.`,
+    );
+    sections.push(
+      `Your response MUST include <actions>BENCHMARK_ACTION</actions> with <tool_name> and <arguments> params.`,
+    );
+    sections.push(
+      `Only use REPLY after you have gathered all needed information via tool calls.`,
+    );
+  } else {
+    sections.push(
+      `Analyze the above context and take the appropriate action using BENCHMARK_ACTION.`,
+    );
+    sections.push(
+      `Your response MUST include <actions>BENCHMARK_ACTION</actions> with the correct params.`,
+    );
+  }
 
   return sections.join("\n");
 }

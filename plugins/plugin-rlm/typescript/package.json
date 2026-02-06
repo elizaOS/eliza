@@ -11,7 +11,10 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -52,5 +55,14 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "ESM build available via exports.import"
+    }
   }
 }

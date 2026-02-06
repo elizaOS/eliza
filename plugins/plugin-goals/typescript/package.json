@@ -81,5 +81,14 @@
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {},
     "description": "Goals management plugin for tracking and achieving objectives"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js only (platform: node)"
+    }
   }
 }

@@ -10,7 +10,6 @@ import { publishPluginAction } from './actions/publishPluginAction';
 import { pluginStateProvider } from './providers/pluginStateProvider';
 import { pluginConfigurationStatusProvider } from './providers/pluginConfigurationStatus';
 import { registryPluginsProvider } from './providers/registryPluginsProvider';
-import { pluginKnowledgeProvider } from './providers/pluginKnowledgeProvider';
 import './types'; // Ensure module augmentation is loaded
 
 /**
@@ -60,7 +59,6 @@ export const pluginManagerPlugin: Plugin = {
     pluginStateProvider,
     pluginConfigurationStatusProvider,
     registryPluginsProvider,
-    pluginKnowledgeProvider,
   ],
 
   evaluators: [],

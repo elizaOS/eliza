@@ -5,17 +5,16 @@
 
 import {
   type AbilityName,
-  type AbilityScores,
   type SkillName,
   type CharacterSheet,
   type ActiveCondition,
-  calculateModifier,
   getProficiencyBonus,
   calculateSkillModifier,
   SKILLS,
   executeDiceRoll,
-  formatDiceRollResult,
-  CONDITIONS,
+  normalizeCondition,
+  getConditionName,
+  getAbilityMod,
 } from '../types';
 
 export interface AbilityCheckParams {
@@ -83,19 +82,20 @@ function getConditionModifiers(conditions: ActiveCondition[]): {
   let grantsDisadvantage = false;
   
   for (const active of conditions) {
-    const conditionDef = CONDITIONS[active.condition];
-    if (!conditionDef) continue;
+    const condName = normalizeCondition(getConditionName(active));
     
-    // Check for disadvantage on ability checks
-    if (conditionDef.mechanicalEffects.some(e => 
-      e.includes('disadvantage on ability checks') ||
-      e.includes('Disadvantage on ability checks')
-    )) {
+    // Poisoned - disadvantage on ability checks
+    if (condName === 'poisoned') {
+      grantsDisadvantage = true;
+    }
+    
+    // Frightened - disadvantage on ability checks (when source visible, simplified)
+    if (condName === 'frightened') {
       grantsDisadvantage = true;
     }
     
     // Exhaustion level 1+ gives disadvantage on ability checks
-    if (active.condition === 'Exhaustion' && (active.stacks || 1) >= 1) {
+    if (condName === 'exhaustion' && (active.exhaustionLevel ?? active.level ?? 1) >= 1) {
       grantsDisadvantage = true;
     }
   }
@@ -133,18 +133,18 @@ export function makeAbilityCheck(params: AbilityCheckParams): AbilityCheckResult
   );
   
   // Get ability modifier
-  const abilityScore = character.abilities[ability.toLowerCase() as keyof AbilityScores];
-  const modifier = calculateModifier(abilityScore) + bonusModifiers;
+  const modifier = getAbilityMod(character.abilities[ability]) + bonusModifiers;
   
   // Roll the d20
   const rollResult = executeDiceRoll({
-    dice: [{ type: 'd20', count: 1, modifier: 0 }],
+    count: 1,
+    die: 'd20',
+    modifier: 0,
     advantage: hasAdvantage,
     disadvantage: hasDisadvantage,
-    description: `${ability} check`,
   });
   
-  const naturalRoll = rollResult.individualRolls[0]?.[0] || 0;
+  const naturalRoll = rollResult.naturalRoll;
   const total = rollResult.total + modifier;
   const success = total >= dc;
   
@@ -192,13 +192,13 @@ export function makeSkillCheck(params: SkillCheckParams): SkillCheckResult {
   const ability = skillDef.ability;
   
   // Check proficiency and expertise
-  const proficient = character.proficiencies.skills.includes(skill);
-  const expertise = character.expertise?.includes(skill) || false;
+  const proficient = character.proficiencies?.skills?.includes(skill) ?? false;
+  const expertise = character.expertise?.includes(skill) ?? false;
   
   // Calculate skill modifier
-  const abilityScore = character.abilities[ability.toLowerCase() as keyof AbilityScores];
+  const abilityMod = getAbilityMod(character.abilities[ability]);
   const proficiencyBonus = getProficiencyBonus(character.level);
-  const skillMod = calculateSkillModifier(abilityScore, proficiencyBonus, proficient, expertise);
+  const skillMod = calculateSkillModifier(abilityMod, proficiencyBonus, { skill, proficient, expertise });
   
   // Get condition modifiers
   const conditionMods = getConditionModifiers(activeConditions);
@@ -211,13 +211,14 @@ export function makeSkillCheck(params: SkillCheckParams): SkillCheckResult {
   
   // Roll the d20
   const rollResult = executeDiceRoll({
-    dice: [{ type: 'd20', count: 1, modifier: 0 }],
+    count: 1,
+    die: 'd20',
+    modifier: 0,
     advantage: hasAdvantage,
     disadvantage: hasDisadvantage,
-    description: `${skill} check`,
   });
   
-  const naturalRoll = rollResult.individualRolls[0]?.[0] || 0;
+  const naturalRoll = rollResult.naturalRoll;
   const totalModifier = skillMod + bonusModifiers;
   const total = rollResult.total + totalModifier;
   const success = total >= dc;
@@ -304,12 +305,12 @@ export function getPassiveScore(
   const skillDef = SKILLS[skill];
   const ability = skillDef.ability;
   
-  const proficient = character.proficiencies.skills.includes(skill);
-  const expertise = character.expertise?.includes(skill) || false;
+  const proficient = character.proficiencies?.skills?.includes(skill) ?? false;
+  const expertise = character.expertise?.includes(skill) ?? false;
   
-  const abilityScore = character.abilities[ability.toLowerCase() as keyof AbilityScores];
+  const abilityMod = getAbilityMod(character.abilities[ability]);
   const proficiencyBonus = getProficiencyBonus(character.level);
-  const skillMod = calculateSkillModifier(abilityScore, proficiencyBonus, proficient, expertise);
+  const skillMod = calculateSkillModifier(abilityMod, proficiencyBonus, { skill, proficient, expertise });
   
   // Base passive is 10 + modifier
   let passive = 10 + skillMod;

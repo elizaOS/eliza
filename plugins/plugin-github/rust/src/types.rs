@@ -221,6 +221,43 @@ pub enum PullRequestState {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+pub enum PullRequestStateFilter {
+    #[default]
+    Open,
+    Closed,
+    All,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PullRequestSort {
+    #[default]
+    Created,
+    Updated,
+    Popularity,
+    LongRunning,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListPullRequestsParams {
+    pub owner: String,
+    pub repo: String,
+    #[serde(default)]
+    pub state: PullRequestStateFilter,
+    pub head: Option<String>,
+    pub base: Option<String>,
+    #[serde(default)]
+    pub sort: PullRequestSort,
+    #[serde(default)]
+    pub direction: SortDirection,
+    #[serde(default = "default_per_page")]
+    pub per_page: u8,
+    #[serde(default = "default_page")]
+    pub page: u32,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum MergeableState {
     Mergeable,
     Conflicting,

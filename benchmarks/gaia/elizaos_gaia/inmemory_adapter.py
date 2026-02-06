@@ -95,13 +95,13 @@ class InMemoryBenchmarkAdapter:
     async def get_memories(self, params: dict[str, object]) -> list[Memory]:
         """
         Params shape follows AgentRuntime.get_memories() packing:
-        - roomId: str
+        - room_id: str
         - limit: int
-        - orderBy: str (created_at / createdAt)
+        - orderBy: str (created_at / created_at)
         - orderDirection: "asc"/"desc"
         - tableName: str
         """
-        room_id = params.get("roomId")
+        room_id = params.get("room_id")
         limit = params.get("limit")
         order_dir = params.get("orderDirection")
         table_name = params.get("tableName")

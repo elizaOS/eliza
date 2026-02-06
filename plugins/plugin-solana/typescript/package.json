@@ -130,5 +130,14 @@
         "sensitive": true
       }
     }
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Default export (Node.js)"
+    }
   }
 }

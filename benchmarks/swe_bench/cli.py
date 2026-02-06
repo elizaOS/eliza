@@ -360,11 +360,18 @@ async def run_benchmark(args: argparse.Namespace) -> None:
                     messages.append({"role": "system", "content": system})
                 messages.append({"role": "user", "content": prompt})
 
+                # gpt-5/o1/o3 reasoning models: max_completion_tokens, no temperature
+                extra: dict[str, object] = {}
+                if max_tokens is not None:
+                    extra["max_completion_tokens"] = max_tokens
+                is_reasoning = any(model_name.startswith(p) for p in ("gpt-5", "o1", "o3"))
+                if not is_reasoning:
+                    extra["temperature"] = temperature
+
                 resp = await client.chat.completions.create(
                     model=model_name,
                     messages=messages,  # type: ignore[arg-type]
-                    temperature=temperature,
-                    max_tokens=max_tokens,
+                    **extra,
                 )
                 content = resp.choices[0].message.content
                 return content or ""

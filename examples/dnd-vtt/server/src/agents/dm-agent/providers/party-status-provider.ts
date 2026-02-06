@@ -4,18 +4,19 @@
  */
 
 import type { Provider, IAgentRuntime, Memory, State } from '@elizaos/core';
-import type { CharacterSheet } from '../../../types';
+import type { CharacterSheet, HitPoints, EquipmentSet } from '../../../types';
+import { getHP, getAC, getAbilityMod } from '../../../types';
 import { characterRepository } from '../../../persistence';
 
 export const partyStatusProvider: Provider = {
   name: 'partyStatus',
   description: 'Provides current status of all player characters',
   
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<string> => {
-    const campaignId = await runtime.getSetting('campaignId') as string;
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    const campaignId = runtime.getSetting('campaignId') as string;
     
     if (!campaignId) {
-      return 'No active campaign.';
+      return { text: 'No active campaign.' };
     }
     
     try {
@@ -23,7 +24,7 @@ export const partyStatusProvider: Provider = {
       const characters = await characterRepository.getByCampaign(campaignId);
       
       if (characters.length === 0) {
-        return 'No characters in the party.';
+        return { text: 'No characters in the party.' };
       }
       
       let context = `## Party Status\n\n`;
@@ -36,9 +37,9 @@ export const partyStatusProvider: Provider = {
       context += `**Average Level:** ${avgLevel}\n\n`;
       
       // Resource status
-      const totalHp = characters.reduce((sum, c) => sum + c.hp.current, 0);
-      const maxHp = characters.reduce((sum, c) => sum + c.hp.max, 0);
-      const hpPercentage = Math.round((totalHp / maxHp) * 100);
+      const totalHp = characters.reduce((sum, c) => sum + getHP(c).current, 0);
+      const maxHp = characters.reduce((sum, c) => sum + getHP(c).max, 0);
+      const hpPercentage = maxHp > 0 ? Math.round((totalHp / maxHp) * 100) : 100;
       context += `**Party Health:** ${hpPercentage}% (${totalHp}/${maxHp} HP)\n\n`;
       
       // Individual character details
@@ -52,8 +53,14 @@ export const partyStatusProvider: Provider = {
       // Party resources summary
       context += '### Party Resources\n';
       const totalGold = characters.reduce((sum, c) => {
-        const gold = c.equipment.currency?.gp || 0;
-        return sum + gold;
+        const equip = c.equipment;
+        // equipment can be Item[] or EquipmentSet
+        if (equip && !Array.isArray(equip)) {
+          const equipSet = equip as EquipmentSet;
+          return sum + (equipSet.currency?.gp ?? equipSet.currency?.gold ?? 0);
+        }
+        // Also check top-level currency
+        return sum + (c.currency?.gp ?? c.currency?.gold ?? 0);
       }, 0);
       context += `**Combined Gold:** ${totalGold} gp\n`;
       
@@ -70,16 +77,19 @@ export const partyStatusProvider: Provider = {
         }
       }
       
-      return context;
+      return { text: context };
       
     } catch (error) {
       console.error('Error fetching party status:', error);
-      return 'Error loading party status.';
+      return { text: 'Error loading party status.' };
     }
   },
 };
 
 function formatCharacterStatus(character: CharacterSheet): string {
+  const hp = getHP(character);
+  const ac = getAC(character);
+  
   let status = `#### ${character.name}\n`;
   status += `**${character.race} ${character.class} ${character.level}**`;
   
@@ -90,26 +100,30 @@ function formatCharacterStatus(character: CharacterSheet): string {
   status += '\n';
   
   // Health
-  const hpPercent = Math.round((character.hp.current / character.hp.max) * 100);
+  const hpPercent = hp.max > 0 ? Math.round((hp.current / hp.max) * 100) : 100;
   const hpBar = getHealthBar(hpPercent);
-  status += `HP: ${character.hp.current}/${character.hp.max} ${hpBar}`;
+  status += `HP: ${hp.current}/${hp.max} ${hpBar}`;
   
-  if (character.hp.temp > 0) {
-    status += ` (+${character.hp.temp} temp)`;
+  if ((hp.temporary ?? 0) > 0) {
+    status += ` (+${hp.temporary} temp)`;
   }
   status += '\n';
   
   // Active conditions
   if (character.conditions && character.conditions.length > 0) {
-    const conditionNames = character.conditions.map(c => c.name);
+    const conditionNames = character.conditions.map(c => c.condition ?? c.name ?? 'unknown');
     status += `**Conditions:** ${conditionNames.join(', ')}\n`;
   }
   
   // Key stats for DM reference
-  status += `AC: ${character.ac} | `;
-  status += `Init: ${character.abilities.dexterity.modifier >= 0 ? '+' : ''}${character.abilities.dexterity.modifier} | `;
-  status += `Speed: ${character.speed}ft | `;
-  status += `PP: ${10 + (character.skills?.perception || character.abilities.wisdom.modifier)}\n`;
+  const dexMod = getAbilityMod(character.abilities.dexterity);
+  const wisMod = getAbilityMod(character.abilities.wisdom);
+  const passivePerception = 10 + (character.skills?.perception ?? wisMod);
+  
+  status += `AC: ${ac} | `;
+  status += `Init: ${dexMod >= 0 ? '+' : ''}${dexMod} | `;
+  status += `Speed: ${character.speed ?? 30}ft | `;
+  status += `PP: ${passivePerception}\n`;
   
   return status;
 }
@@ -119,12 +133,12 @@ function getHealthBar(percentage: number): string {
   const empty = 10 - filled;
   
   let color: string;
-  if (percentage >= 75) color = '🟩';
-  else if (percentage >= 50) color = '🟨';
-  else if (percentage >= 25) color = '🟧';
-  else color = '🟥';
+  if (percentage >= 75) color = '\u{1F7E9}';
+  else if (percentage >= 50) color = '\u{1F7E8}';
+  else if (percentage >= 25) color = '\u{1F7E7}';
+  else color = '\u{1F7E5}';
   
-  return color.repeat(filled) + '⬜'.repeat(empty);
+  return color.repeat(filled) + '\u{2B1C}'.repeat(empty);
 }
 
 export default partyStatusProvider;

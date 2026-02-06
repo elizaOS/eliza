@@ -11,12 +11,17 @@
 
 #![warn(missing_docs)]
 
+pub mod actions;
 pub mod error;
 pub mod parser;
 pub mod service;
 pub mod storage;
 pub mod types;
 
+pub use actions::{
+    ActionResult as SkillActionResult, GetSkillDetailsAction, GetSkillGuidanceAction,
+    RunSkillScriptAction, SearchSkillsAction, SyncCatalogAction,
+};
 pub use error::{Error, Result};
 pub use parser::{
     estimate_tokens, extract_body, generate_skills_xml, parse_frontmatter, validate_frontmatter,

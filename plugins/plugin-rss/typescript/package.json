@@ -104,5 +104,14 @@
       }
     },
     "description": "RSS and Atom feed integration plugin for elizaOS"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js build available via exports.node"
+    }
   }
 }

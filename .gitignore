@@ -313,6 +313,8 @@ packages/elizaos/examples/
 /the-org/
 /rs-sdk/
 /openclaw-classic/
+/examples/runescape2004/
+/plugins/plugin-social-alpha/
 
 # Database files
 *.db
@@ -324,6 +326,7 @@ packages/elizaos/examples/
 
 # Cache directories (local)
 skills/.cache/
+**/skills/.cache/
 .cache/
 
 # Local vendored experiments (do not commit)

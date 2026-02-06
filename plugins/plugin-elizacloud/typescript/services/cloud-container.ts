@@ -32,12 +32,11 @@ export class CloudContainerService extends Service {
   capabilityDescription = "ElizaCloud container provisioning and lifecycle management";
 
   private authService!: CloudAuthService;
-  private config: CloudPluginConfig;
+  private readonly containerDefaults = DEFAULT_CLOUD_CONFIG.container;
   private tracked: Map<string, TrackedContainer> = new Map();
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    this.config = DEFAULT_CLOUD_CONFIG;
   }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
@@ -101,7 +100,7 @@ export class CloudContainerService extends Service {
 
   async createContainer(request: CreateContainerRequest): Promise<CreateContainerResponse> {
     const client = this.getClient();
-    const defaults = this.config.container;
+    const defaults = this.containerDefaults;
 
     const payload: Record<string, unknown> = {
       name: request.name,
@@ -271,13 +270,14 @@ export class CloudContainerService extends Service {
 
     const interval = 60_000; // Check every 60 seconds
 
-    tracked.healthTimer = setInterval(async () => {
-      const health = await this.getContainerHealth(containerId);
-      if (!health.data.healthy) {
-        logger.warn(
-          `[CloudContainer] Container ${containerId} health check failed: ${health.data.status}`,
-        );
-      }
+    tracked.healthTimer = setInterval(() => {
+      this.getContainerHealth(containerId).then((health) => {
+        if (!health.data.healthy) {
+          logger.warn(`[CloudContainer] Container ${containerId} unhealthy: ${health.data.status}`);
+        }
+      }).catch((err: Error) => {
+        logger.error(`[CloudContainer] Health check failed for ${containerId}: ${err.message}`);
+      });
     }, interval);
   }
 

@@ -29,5 +29,14 @@
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "ESM build available via exports.import"
+    }
   }
 }

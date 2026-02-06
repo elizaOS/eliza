@@ -21,11 +21,11 @@ export const campaignStateProvider: Provider = {
   name: 'campaignState',
   description: 'Provides current campaign and session information',
   
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<string> => {
-    const campaignId = await runtime.getSetting('campaignId') as string;
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    const campaignId = runtime.getSetting('campaignId') as string;
     
     if (!campaignId) {
-      return 'No active campaign.';
+      return { text: 'No active campaign.' };
     }
     
     try {
@@ -33,14 +33,23 @@ export const campaignStateProvider: Provider = {
       const campaign = await campaignRepository.getById(campaignId);
       
       if (!campaign) {
-        return 'Campaign not found.';
+        return { text: 'Campaign not found.' };
       }
       
       // Get current session
       const currentSession = await campaignRepository.getLatestSession(campaignId);
       
       // Get stored game time
-      const storedState = await runtime.getSetting('campaignState') as CampaignState | null;
+      const storedRaw = runtime.getSetting('campaignState');
+      let storedState: CampaignState | null = null;
+      if (storedRaw && typeof storedRaw === 'string') {
+        try {
+          storedState = JSON.parse(storedRaw) as CampaignState;
+        } catch {
+          storedState = null;
+        }
+      }
+      
       const currentTime = storedState?.currentTime || {
         year: 1490,
         month: 1,
@@ -51,10 +60,11 @@ export const campaignStateProvider: Provider = {
       
       // Build context string
       let context = `## Campaign: ${campaign.name}\n`;
-      context += `**Setting:** ${campaign.setting}\n`;
-      context += `**Tone:** ${campaign.tone}\n`;
-      context += `**Session:** ${campaign.sessionCount}${currentSession ? ` (current: #${currentSession.sessionNumber})` : ''}\n`;
-      context += `**Total Play Time:** ${Math.floor(campaign.totalPlayTime / 60)}h ${campaign.totalPlayTime % 60}m\n\n`;
+      context += `**Setting:** ${campaign.setting ?? 'Not specified'}\n`;
+      context += `**Tone:** ${campaign.tone ?? 'Not specified'}\n`;
+      context += `**Session:** ${campaign.sessionCount ?? 0}${currentSession ? ` (current: #${currentSession.sessionNumber})` : ''}\n`;
+      const totalPlayTime = campaign.totalPlayTime ?? 0;
+      context += `**Total Play Time:** ${Math.floor(totalPlayTime / 60)}h ${totalPlayTime % 60}m\n\n`;
       
       // In-game time
       context += `### Current Time\n`;
@@ -62,7 +72,7 @@ export const campaignStateProvider: Provider = {
       context += `**Time of Day:** ${getTimeOfDay(currentTime.hour)}\n\n`;
       
       // Campaign themes and content warnings
-      if (campaign.themes.length > 0) {
+      if (campaign.themes && campaign.themes.length > 0) {
         context += `### Themes\n`;
         context += campaign.themes.map(t => `- ${t}`).join('\n');
         context += '\n\n';
@@ -78,7 +88,7 @@ export const campaignStateProvider: Provider = {
       // Session-specific info
       if (currentSession) {
         context += `### This Session\n`;
-        context += `**Started:** ${currentSession.startedAt.toLocaleString()}\n`;
+        context += `**Started:** ${new Date(currentSession.startedAt).toLocaleString()}\n`;
         
         if (currentSession.summary) {
           if (currentSession.summary.keyEvents?.length > 0) {
@@ -89,11 +99,11 @@ export const campaignStateProvider: Provider = {
         }
       }
       
-      return context;
+      return { text: context };
       
     } catch (error) {
       console.error('Error fetching campaign state:', error);
-      return 'Error loading campaign state.';
+      return { text: 'Error loading campaign state.' };
     }
   },
 };

@@ -1,0 +1,44 @@
+[package]
+name = "elizaos-plugin-gmail-watch"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "Gmail Pub/Sub watcher plugin for elizaOS - spawns gog gmail watch serve and auto-renews"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+keywords = ["ai", "agent", "gmail", "pubsub", "watch"]
+categories = ["asynchronous", "web-programming"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "sync", "time", "process"], optional = true }
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+
+# Which binary lookup
+which = "7.0"
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "time", "process"] }
+pretty_assertions = "1.0"
+tokio-test = "0.4"
+
+[profile.release]
+lto = true
+opt-level = "z"

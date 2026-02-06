@@ -44,7 +44,7 @@ describe('AI Dungeon Master Integration', () => {
       let sqlPlugin;
       try {
         const sqlMod = await import('@elizaos/plugin-sql');
-        sqlPlugin = sqlMod.default ?? sqlMod.plugin;
+        sqlPlugin = sqlMod.default;
       } catch {
         // OK without it
       }
@@ -57,7 +57,7 @@ describe('AI Dungeon Master Integration', () => {
         settings: {
           ...dmCharacter.settings,
           secrets: {
-            OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+            OPENAI_API_KEY: process.env.OPENAI_API_KEY!,
           },
         },
       };
@@ -83,7 +83,7 @@ describe('AI Dungeon Master Integration', () => {
       const result = await runtime.generateText(
         `You are the Dungeon Master. The party has just entered a dark cave. ` +
         `Describe what they see in 2-3 sentences. Be vivid and atmospheric.`,
-        { maxTokens: 200, temperature: 0.7 },
+        { maxTokens: 200, temperature: 0.7, stopSequences: [] },
       );
 
       console.log('\n📖 DM Narration:', result.text, '\n');
@@ -111,6 +111,7 @@ Give the innkeeper a distinct personality.`;
       const result = await runtime.generateText(prompt, {
         maxTokens: 300,
         temperature: 0.8,
+        stopSequences: [],
       });
 
       console.log('\n🎭 DM Response to social action:', result.text, '\n');
@@ -140,6 +141,7 @@ Keep it to 2-4 sentences.`;
       const result = await runtime.generateText(prompt, {
         maxTokens: 250,
         temperature: 0.8,
+        stopSequences: [],
       });
 
       console.log('\n🔍 DM Response to investigation:', result.text, '\n');
@@ -161,6 +163,7 @@ Narrate this attack cinematically in 2-3 sentences. Describe the weapon strike a
       const result = await runtime.generateText(prompt, {
         maxTokens: 200,
         temperature: 0.9,
+        stopSequences: [],
       });
 
       console.log('\n⚔️ DM Combat narration:', result.text, '\n');
@@ -174,7 +177,7 @@ Narrate this attack cinematically in 2-3 sentences. Describe the weapon strike a
       const result = await runtime.generateText(
         `The party asks you to describe what happens next after they defeated the goblins ` +
         `and found a mysterious amulet glowing with purple light.`,
-        { maxTokens: 250, temperature: 0.8, includeCharacter: true },
+        { maxTokens: 250, temperature: 0.8, stopSequences: [], includeCharacter: true },
       );
 
       console.log('\n🔮 DM with full character context:', result.text, '\n');

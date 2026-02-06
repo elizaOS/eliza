@@ -72,6 +72,9 @@ export {
 // Damage
 export {
   type DamageType,
+  type DamageModifier,
+  type DamageModifierType,
+  type DamageInstance,
   DAMAGE_TYPE_DEFINITIONS,
   calculateFinalDamage,
 } from './damage';

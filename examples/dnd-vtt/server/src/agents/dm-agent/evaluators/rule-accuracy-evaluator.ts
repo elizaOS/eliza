@@ -34,36 +34,24 @@ export const ruleAccuracyEvaluator: Evaluator = {
   
   examples: [
     {
-      context: 'DM resolved an attack roll',
+      prompt: 'DM resolved an attack roll',
       messages: [
         {
-          user: 'dm',
+          name: 'dm',
           content: {
             text: 'The fighter rolls a 15, adding their +7 modifier for a total of 22.',
-            metadata: {
-              rollType: 'attack',
-              baseRoll: 15,
-              modifier: 7,
-              total: 22,
-            },
           },
         },
       ],
       outcome: 'Valid - math checks out (15 + 7 = 22)',
     },
     {
-      context: 'DM applied damage incorrectly',
+      prompt: 'DM applied damage incorrectly',
       messages: [
         {
-          user: 'dm',
+          name: 'dm',
           content: {
             text: 'The goblin takes 2d6+3 slashing damage... that\'s 15 damage!',
-            metadata: {
-              damageRoll: '2d6+3',
-              diceResults: [4, 3],
-              modifier: 3,
-              total: 15, // Should be 10
-            },
           },
         },
       ],
@@ -73,7 +61,8 @@ export const ruleAccuracyEvaluator: Evaluator = {
   
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Validate mechanical resolutions
-    const metadata = message.content?.metadata;
+    const content = message.content as Record<string, unknown> | undefined;
+    const metadata = content?.metadata as Record<string, unknown> | undefined;
     return Boolean(
       metadata?.rollType ||
       metadata?.damageRoll ||
@@ -86,11 +75,11 @@ export const ruleAccuracyEvaluator: Evaluator = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State
-  ): Promise<RuleAccuracyMetrics | null> => {
+  ) => {
     const metadata = message.content?.metadata as Record<string, unknown> | undefined;
     
     if (!metadata) {
-      return null;
+      return undefined;
     }
     
     const checks: RuleCheckResult[] = [];
@@ -136,24 +125,37 @@ export const ruleAccuracyEvaluator: Evaluator = {
       console.warn('Rule accuracy issues detected:', errors);
       
       // Emit event for potential correction
-      await runtime.emit('rule_error_detected', {
+      const errorPayload = {
+        runtime,
         errors,
         messageId: message.id,
         timestamp: new Date(),
-      });
+      };
+      await runtime.emitEvent('rule_error_detected', errorPayload);
     }
     
     // Track metrics over time
-    const history = await runtime.getSetting('ruleAccuracyHistory') as RuleAccuracyMetrics[] || [];
+    const raw = runtime.getSetting('ruleAccuracyHistory');
+    let history: RuleAccuracyMetrics[] = [];
+    if (raw && typeof raw === 'string') {
+      try {
+        history = JSON.parse(raw) as RuleAccuracyMetrics[];
+      } catch {
+        history = [];
+      }
+    }
     history.push(metrics);
     
     if (history.length > 100) {
       history.shift();
     }
     
-    await runtime.setSetting('ruleAccuracyHistory', history);
+    runtime.setSetting('ruleAccuracyHistory', JSON.stringify(history));
     
-    return metrics;
+    return {
+      success: true,
+      data: { metrics },
+    };
   },
 };
 

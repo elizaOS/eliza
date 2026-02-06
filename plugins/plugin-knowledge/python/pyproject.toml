@@ -42,6 +42,8 @@ google = [
 ]
 pdf = [
     "pypdf>=3.0.0",
+    "pymupdf>=1.23.0",
+    "pdfplumber>=0.9.0",
 ]
 docx = [
     "python-docx>=0.8.11",
@@ -51,6 +53,8 @@ all = [
     "anthropic>=0.18.0",
     "google-generativeai>=0.4.0",
     "pypdf>=3.0.0",
+    "pymupdf>=1.23.0",
+    "pdfplumber>=0.9.0",
     "python-docx>=0.8.11",
 ]
 dev = [

@@ -11,7 +11,8 @@ import type {
   HandlerCallback,
 } from '@elizaos/core';
 import type { CharacterSheet, Spell } from '../../../types';
-import { rollD20, rollDice } from '../../../dice';
+import { getAbilityMod } from '../../../types';
+import { rollD20, rollDiceArray } from '../../../dice';
 
 export interface CastSpellParams {
   spellName: string;
@@ -35,13 +36,13 @@ export const castSpellAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'You see the goblins charging toward you.',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'I raise my hand and speak the words of power. "By the flames of the Weave!" I cast Burning Hands at the charging goblins!',
           action: 'CAST_SPELL',
@@ -54,7 +55,7 @@ export const castSpellAction: Action = {
     const role = await runtime.getSetting('role');
     if (role !== 'player') return false;
     
-    const characterSheet = await runtime.getSetting('characterSheet') as CharacterSheet | null;
+    const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     // Check if character can cast spells
     return Boolean(characterSheet?.spellSlots || characterSheet?.class === 'Warlock');
   },
@@ -62,12 +63,12 @@ export const castSpellAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    options: Record<string, unknown>,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<boolean> => {
-    const params = options as CastSpellParams;
-    const characterSheet = await runtime.getSetting('characterSheet') as CharacterSheet | null;
+    const params = (options ?? {}) as CastSpellParams;
+    const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     
     if (!characterSheet) {
       if (callback) {
@@ -130,8 +131,11 @@ async function castCantrip(
   target: string | undefined,
   callback?: HandlerCallback
 ): Promise<boolean> {
-  const spellDC = 8 + sheet.proficiencyBonus + (sheet.abilities[getSpellcastingAbility(sheet.class)]?.modifier || 0);
-  const spellAttack = sheet.proficiencyBonus + (sheet.abilities[getSpellcastingAbility(sheet.class)]?.modifier || 0);
+  const abilityValue = sheet.abilities[getSpellcastingAbility(sheet.class)];
+  const abilityMod = getAbilityMod(abilityValue);
+  const profBonus = sheet.proficiencyBonus ?? 0;
+  const spellDC = 8 + profBonus + abilityMod;
+  const spellAttack = profBonus + abilityMod;
   
   let result = generateSpellFlavor(sheet.name, spell);
   
@@ -180,7 +184,7 @@ async function castCantrip(
     });
   }
   
-  await runtime.emit('spell_cast', {
+  runtime.emitEvent?.('spell_cast' as any, {
     characterId: sheet.id,
     characterName: sheet.name,
     spell: spell.name,
@@ -229,13 +233,16 @@ async function castLeveledSpell(
   target: string | undefined,
   callback?: HandlerCallback
 ): Promise<boolean> {
-  const spellDC = 8 + sheet.proficiencyBonus + (sheet.abilities[getSpellcastingAbility(sheet.class)]?.modifier || 0);
-  const spellAttack = sheet.proficiencyBonus + (sheet.abilities[getSpellcastingAbility(sheet.class)]?.modifier || 0);
+  const abilityValue = sheet.abilities[getSpellcastingAbility(sheet.class)];
+  const abilityMod = getAbilityMod(abilityValue);
+  const profBonus = sheet.proficiencyBonus ?? 0;
+  const spellDC = 8 + profBonus + abilityMod;
+  const spellAttack = profBonus + abilityMod;
   
   // Deduct spell slot
   if (sheet.spellSlots?.[castLevel]) {
     sheet.spellSlots[castLevel].current -= 1;
-    await runtime.setSetting('characterSheet', sheet);
+    await runtime.setSetting('characterSheet', JSON.stringify(sheet));
   }
   
   let result = generateSpellFlavor(sheet.name, spell);
@@ -295,7 +302,7 @@ async function castLeveledSpell(
     });
   }
   
-  await runtime.emit('spell_cast', {
+  runtime.emitEvent?.('spell_cast' as any, {
     characterId: sheet.id,
     characterName: sheet.name,
     spell: spell.name,
@@ -357,10 +364,7 @@ function rollDamageFromString(damageString: string, multiplier: number = 1): { t
   const dieSize = parseInt(match[2]);
   const modifier = parseInt(match[3] || '0');
   
-  const rolls: number[] = [];
-  for (let i = 0; i < numDice; i++) {
-    rolls.push(rollDice(1, dieSize));
-  }
+  const rolls = rollDiceArray(numDice, dieSize);
   
   return {
     total: rolls.reduce((a, b) => a + b, 0) + modifier,

@@ -16,26 +16,10 @@ export const PluginManagerServiceType = {
 } as const;
 
 export enum PluginStatus {
-  BUILDING = 'building',
   READY = 'ready',
   LOADED = 'loaded',
   ERROR = 'error',
   UNLOADED = 'unloaded',
-  NEEDS_CONFIGURATION = 'needs_configuration',
-}
-
-export interface PluginEnvironmentVariable {
-  name: string;
-  description: string;
-  sensitive: boolean;
-  required: boolean;
-  defaultValue?: string;
-  validation?: {
-    pattern?: string;
-    minLength?: number;
-    maxLength?: number;
-    enum?: string[];
-  };
 }
 
 export interface PluginComponents {
@@ -58,20 +42,11 @@ export interface PluginState {
   name: string;
   status: PluginStatus;
   plugin?: ElizaPlugin;
-  missingEnvVars: string[];
-  buildLog: string[];
-  sourceCode?: string;
-  packageJson?: Record<string, unknown>;
   error?: string;
   createdAt: number;
   loadedAt?: number;
   unloadedAt?: number;
   version?: string;
-  dependencies?: Record<string, string>;
-  // Configuration-related fields
-  configurationStatus?: 'unconfigured' | 'partial' | 'complete';
-  requiredConfiguration?: PluginEnvironmentVariable[];
-  configurationErrors?: string[];
   // Component tracking
   components?: PluginComponents;
 }
@@ -94,15 +69,11 @@ export interface UnloadPluginParams {
 }
 
 export interface PluginManagerConfig {
-  maxBuildAttempts?: number;
-  buildTimeout?: number;
   pluginDirectory?: string;
-  enableHotReload?: boolean;
 }
 
 export interface InstallProgress {
-  phase: 'downloading' | 'extracting' | 'installing' | 'validating' | 'complete';
-  progress: number; // 0-100
+  phase: 'fetching-registry' | 'downloading' | 'extracting' | 'installing-deps' | 'validating' | 'complete';
   message: string;
 }
 

@@ -84,12 +84,24 @@ export const searchPluginAction: Action = {
 
     try {
       // Search using the API-based registry service
-      const results = await searchPluginsByContent(query);
+      const searchResult = await searchPluginsByContent(query);
+
+      if (!searchResult.fromApi) {
+        if (callback) {
+          await callback({
+            text: `Could not reach the plugin registry: ${searchResult.error}\n\nCheck that ELIZAOS_API_URL is configured correctly.`,
+            actions: ['SEARCH_PLUGINS'],
+          });
+        }
+        return;
+      }
+
+      const results = searchResult.data;
 
       if (results.length === 0) {
         if (callback) {
           await callback({
-            text: `🔍 No plugins found matching "${query}".\n\n💡 Try using different keywords like:\n• Functionality: "database", "api", "blockchain", "ai"\n• Technology: "twitter", "discord", "solana", "ethereum"\n• Purpose: "authentication", "monitoring", "trading"`,
+            text: `No plugins found matching "${query}".\n\nTry different keywords like: "database", "api", "blockchain", "twitter", "discord", "solana"`,
             actions: ['SEARCH_PLUGINS'],
           });
         }
@@ -262,12 +274,23 @@ export const getPluginDetailsAction: Action = {
     }
 
     try {
-      const details = await getPluginDetails(pluginName);
+      const detailsResult = await getPluginDetails(pluginName);
+
+      if (!detailsResult.fromApi) {
+        if (callback) {
+          await callback({
+            text: `Could not reach the plugin registry: ${detailsResult.error}\n\nCheck that ELIZAOS_API_URL is configured correctly.`,
+          });
+        }
+        return;
+      }
+
+      const details = detailsResult.data;
 
       if (!details) {
         if (callback) {
           await callback({
-            text: `❌ Plugin "${pluginName}" not found in the registry.\n\nTry searching for plugins first: "search for [functionality]"`,
+            text: `Plugin "${pluginName}" not found in the registry.\n\nTry searching for plugins first: "search for [functionality]"`,
           });
         }
         return;

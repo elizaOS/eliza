@@ -30,8 +30,8 @@ const thordak: CharacterSheet = {
   skills: { athletics: 5, intimidation: 1, perception: 3 },
   equipment: {
     weapons: [
-      { name: 'Battleaxe', damage: '1d8', damageType: 'slashing', properties: ['versatile'] },
-      { name: 'Handaxe', damage: '1d6', damageType: 'slashing', properties: ['light', 'thrown'] },
+      { name: 'Battleaxe', type: 'weapon', damage: '1d8', damageType: 'slashing', properties: ['versatile'] },
+      { name: 'Handaxe', type: 'weapon', damage: '1d6', damageType: 'slashing', properties: ['light', 'thrown'] },
     ],
   },
 };
@@ -57,9 +57,9 @@ const whisper: CharacterSheet = {
   expertise: ['stealth', 'sleight_of_hand'],
   equipment: {
     weapons: [
-      { name: 'Shortsword', damage: '1d6', damageType: 'piercing', properties: ['finesse', 'light'] },
-      { name: 'Shortbow', damage: '1d6', damageType: 'piercing', properties: ['ammunition', 'two-handed'], range: '80/320' },
-      { name: 'Dagger', damage: '1d4', damageType: 'piercing', properties: ['finesse', 'light', 'thrown'] },
+      { name: 'Shortsword', type: 'weapon', damage: '1d6', damageType: 'piercing', properties: ['finesse', 'light'] },
+      { name: 'Shortbow', type: 'weapon', damage: '1d6', damageType: 'piercing', properties: ['ammunition', 'two-handed'], range: '80/320' },
+      { name: 'Dagger', type: 'weapon', damage: '1d4', damageType: 'piercing', properties: ['finesse', 'light', 'thrown'] },
     ],
   },
 };
@@ -90,7 +90,7 @@ const lyria: CharacterSheet = {
   ],
   equipment: {
     weapons: [
-      { name: 'Quarterstaff', damage: '1d6', damageType: 'bludgeoning', properties: ['versatile'] },
+      { name: 'Quarterstaff', type: 'weapon', damage: '1d6', damageType: 'bludgeoning', properties: ['versatile'] },
     ],
   },
 };
@@ -121,7 +121,7 @@ const aldwin: CharacterSheet = {
   ],
   equipment: {
     weapons: [
-      { name: 'Mace', damage: '1d6', damageType: 'bludgeoning' },
+      { name: 'Mace', type: 'weapon', damage: '1d6', damageType: 'bludgeoning' },
     ],
   },
 };
@@ -390,7 +390,7 @@ describe('Stat Resolver', () => {
           charisma: 10 as unknown as { score: number; modifier: number },
         },
         equipment: {
-          weapons: [{ name: 'Sword', damage: '1d8', damageType: 'slashing' }],
+          weapons: [{ name: 'Sword', type: 'weapon', damage: '1d8', damageType: 'slashing' }],
         },
       };
       const stats = resolveCombatStats(rawAbilities);
@@ -513,7 +513,7 @@ describe('Stat Resolver', () => {
           charisma: { score: 10, modifier: 0 },
         },
         equipment: {
-          weapons: [{ name: 'Club', damage: '1d4', damageType: 'bludgeoning' }],
+          weapons: [{ name: 'Club', type: 'weapon', damage: '1d4', damageType: 'bludgeoning' }],
         },
       };
       const stats = resolveCombatStats(weakChar);
