@@ -4,7 +4,7 @@ import type { FarcasterService } from "../services/FarcasterService";
 import { FARCASTER_SERVICE_NAME } from "../types";
 import { getFarcasterFid } from "../utils/config";
 
-const spec = requireProviderSpec("profileProvider");
+const spec = requireProviderSpec("farcasterProfile");
 
 export const farcasterProfileProvider: Provider = {
   name: spec.name,
