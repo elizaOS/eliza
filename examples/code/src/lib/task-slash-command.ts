@@ -66,15 +66,25 @@ Aliases:
         return true;
       }
       const taskList = tasks
-        .map((t) => {
-          const isCurrent = t.id === service.getCurrentTaskId();
-          const status = t.metadata?.status ?? "pending";
-          const progress = t.metadata?.progress ?? 0;
-          const userStatus = t.metadata?.userStatus ?? "open";
-          const marker = isCurrent ? "→ " : "  ";
-          const doneMark = userStatus === "done" ? " ✓" : "";
-          return `${marker}[${status}] ${t.name} (${progress}%)${doneMark}`;
-        })
+        .map(
+          (t: {
+            id: string;
+            name: string;
+            metadata?: {
+              status?: string;
+              progress?: number;
+              userStatus?: string;
+            };
+          }) => {
+            const isCurrent = t.id === service.getCurrentTaskId();
+            const status = t.metadata?.status ?? "pending";
+            const progress = t.metadata?.progress ?? 0;
+            const userStatus = t.metadata?.userStatus ?? "open";
+            const marker = isCurrent ? "→ " : "  ";
+            const doneMark = userStatus === "done" ? " ✓" : "";
+            return `${marker}[${status}] ${t.name} (${progress}%)${doneMark}`;
+          },
+        )
         .join("\n");
       addMessage(currentRoomId, "system", `Tasks:\n${taskList}`);
       return true;

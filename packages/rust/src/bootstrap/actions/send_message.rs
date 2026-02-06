@@ -9,7 +9,9 @@ use uuid::Uuid;
 use crate::error::{PluginError, PluginResult};
 use crate::generated::spec_helpers::require_action_spec;
 use crate::runtime::IAgentRuntime;
+use crate::types::events::{EventPayload, EventType};
 use crate::types::{ActionResult, Content, Memory, MemoryType, State};
+use std::collections::HashMap;
 
 use super::Action;
 
@@ -81,6 +83,25 @@ impl Action for SendMessageAction {
             );
         }
 
+        // Create the message memory for event emission
+        let message_memory = Memory {
+            id: Some(crate::types::primitives::UUID::new_v4()),
+            entity_id: runtime.agent_id(),
+            agent_id: Some(runtime.agent_id()),
+            room_id: target_room_id,
+            content: Content {
+                text: message_text.clone(),
+                actions: vec!["SEND_MESSAGE".to_string()],
+                ..Default::default()
+            },
+            created_at: Some(chrono::Utc::now().timestamp_millis()),
+            embedding: None,
+            world_id: None,
+            unique: Some(true),
+            similarity: None,
+            metadata: None,
+        };
+
         runtime
             .create_memory(
                 Content {
@@ -94,6 +115,21 @@ impl Action for SendMessageAction {
                 metadata,
             )
             .await?;
+
+        // Emit MESSAGE_SENT event
+        let mut extra = HashMap::new();
+        if let Ok(message_json) = serde_json::to_value(&message_memory) {
+            extra.insert("message".to_string(), message_json);
+        }
+        let _ = runtime
+            .emit_event(
+                EventType::MessageSent,
+                EventPayload {
+                    source: "send-message-action".to_string(),
+                    extra,
+                },
+            )
+            .await;
 
         let preview = if message_text.len() > 50 {
             format!("{}...", &message_text[..50])

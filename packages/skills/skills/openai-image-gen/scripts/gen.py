@@ -29,7 +29,7 @@ def default_out_dir() -> Path:
 
 def pick_prompts(count: int) -> list[str]:
     subjects = [
-        "a lobster astronaut",
+        "a futuristic cityscape",
         "a brutalist lighthouse",
         "a cozy reading nook",
         "a cyberpunk noodle shop",

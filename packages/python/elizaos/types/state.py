@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 from elizaos.types.generated.eliza.v1 import state_pb2
 
@@ -46,7 +45,7 @@ class SchemaRow:
     required: bool = False
     """If true, validation fails when field is empty/missing"""
 
-    validate_field: Optional[bool] = None
+    validate_field: bool | None = None
     """Control per-field validation codes for streaming (levels 0-1 only).
 
     WHY: Validation codes are UUID snippets that surround each field. If the LLM
@@ -59,7 +58,7 @@ class SchemaRow:
     - Levels 2-3: ignored (uses checkpoint codes at start/end of response instead).
     """
 
-    stream_field: Optional[bool] = None
+    stream_field: bool | None = None
     """Control whether this field's content is streamed to the consumer.
 
     WHY: Not all fields should be shown to users in real-time:
@@ -135,40 +134,40 @@ class StreamEvent:
     timestamp: int = field(default_factory=lambda: int(time.time() * 1000))
     """Timestamp of the event (milliseconds since epoch)"""
 
-    field: Optional[str] = None
+    field: str | None = None
     """Field name (for chunk and field_validated events)"""
 
-    chunk: Optional[str] = None
+    chunk: str | None = None
     """Content chunk (for chunk events)"""
 
-    retry_count: Optional[int] = None
+    retry_count: int | None = None
     """Retry attempt number (for retry_start events)"""
 
-    error: Optional[str] = None
+    error: str | None = None
     """Error message (for error events)"""
 
     @classmethod
-    def chunk_event(cls, field: str, chunk: str) -> "StreamEvent":
+    def chunk_event(cls, field: str, chunk: str) -> StreamEvent:
         """Create a chunk event."""
         return cls(event_type=StreamEventType.CHUNK, field=field, chunk=chunk)
 
     @classmethod
-    def field_validated_event(cls, field: str) -> "StreamEvent":
+    def field_validated_event(cls, field: str) -> StreamEvent:
         """Create a field_validated event."""
         return cls(event_type=StreamEventType.FIELD_VALIDATED, field=field)
 
     @classmethod
-    def retry_start_event(cls, retry_count: int) -> "StreamEvent":
+    def retry_start_event(cls, retry_count: int) -> StreamEvent:
         """Create a retry_start event."""
         return cls(event_type=StreamEventType.RETRY_START, retry_count=retry_count)
 
     @classmethod
-    def error_event(cls, message: str) -> "StreamEvent":
+    def error_event(cls, message: str) -> StreamEvent:
         """Create an error event."""
         return cls(event_type=StreamEventType.ERROR, error=message)
 
     @classmethod
-    def complete_event(cls) -> "StreamEvent":
+    def complete_event(cls) -> StreamEvent:
         """Create a complete event."""
         return cls(event_type=StreamEventType.COMPLETE)
 

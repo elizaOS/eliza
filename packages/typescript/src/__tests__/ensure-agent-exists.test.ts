@@ -48,7 +48,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
       plugins: [],
       secrets: {},
       settings: {
-        MODEL: "gpt-4",
+        MODEL: "gpt-5",
         TEMPERATURE: "0.7",
       },
     };
@@ -165,7 +165,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
       id: agentId,
       name: "TestAgent",
       settings: {
-        MODEL: "gpt-4",
+        MODEL: "gpt-5",
       },
     };
 
@@ -202,7 +202,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
       ...existingAgentInDB,
       settings: {
         SOLANA_PUBLIC_KEY: "CioDPgLA1o8cuuhXZ7M3Fi1Lzqo2Cr8VudjY6ErtvYp4",
-        MODEL: "gpt-4",
+        MODEL: "gpt-5",
         TEMPERATURE: "0.7",
         secrets: {
           SOLANA_PRIVATE_KEY: "4zkwqei5hFqtHvqGTMFC6FDCBSPoJqTqN3v7pNDYrqFY...",
@@ -216,7 +216,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
       id: agentId,
       name: "TestAgent",
       settings: {
-        MODEL: "gpt-4",
+        MODEL: "gpt-5",
         TEMPERATURE: "0.7",
       },
     };
@@ -239,7 +239,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     expect(updatedAgent.settings?.OLD_SETTING).toBe("should_be_kept");
 
     // Check that character.json settings were applied
-    expect(updatedAgent.settings?.MODEL).toBe("gpt-4");
+    expect(updatedAgent.settings?.MODEL).toBe("gpt-5");
     expect(updatedAgent.settings?.TEMPERATURE).toBe("0.7");
 
     // Check that secrets were preserved
@@ -276,7 +276,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     ).mockResolvedValueOnce({
       ...existingAgentInDB,
       settings: {
-        MODEL: "gpt-4", // Updated by character.json
+        MODEL: "gpt-5", // Updated by character.json
         SOLANA_PUBLIC_KEY: "wallet123", // Preserved from DB
         secrets: {
           SOLANA_PRIVATE_KEY: "4zkwqei5hFqtHvqGTMFC6FDCBSPoJqTqN3v7pNDYrqFY...",
@@ -289,7 +289,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
       id: agentId,
       name: "TestAgent",
       settings: {
-        MODEL: "gpt-4", // This should override DB value
+        MODEL: "gpt-5", // This should override DB value
       },
     };
 
@@ -301,7 +301,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     const updatedAgent = updateCall[1] as Partial<Agent>;
 
     // MODEL should be overridden by character.json
-    expect(updatedAgent.settings?.MODEL).toBe("gpt-4");
+    expect(updatedAgent.settings?.MODEL).toBe("gpt-5");
 
     // But SOLANA_PUBLIC_KEY should be preserved from DB
     expect(updatedAgent.settings?.SOLANA_PUBLIC_KEY).toBe("wallet123");
@@ -380,7 +380,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     ).mockResolvedValueOnce({
       ...existingAgentInDB,
       settings: {
-        MODEL: "gpt-4",
+        MODEL: "gpt-5",
       },
     });
 
@@ -388,7 +388,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
       id: agentId,
       name: "TestAgent",
       settings: {
-        MODEL: "gpt-4",
+        MODEL: "gpt-5",
       },
     };
 
@@ -400,7 +400,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     const updatedAgent = updateCall[1] as Partial<Agent>;
 
     // Should have character settings even though DB had none
-    expect(updatedAgent.settings?.MODEL).toBe("gpt-4");
+    expect(updatedAgent.settings?.MODEL).toBe("gpt-5");
   });
 
   it("should handle character with no settings", async () => {
@@ -482,7 +482,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
           ...dbAgent,
           settings: {
             ...dbAgent.settings,
-            MODEL: "gpt-4", // Added from character file
+            MODEL: "gpt-5", // Added from character file
           },
         });
 
@@ -502,7 +502,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
         plugins: [],
         secrets: {},
         settings: {
-          MODEL: "gpt-4", // New setting from character file
+          MODEL: "gpt-5", // New setting from character file
         },
       };
 
@@ -514,7 +514,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
       // Before initialize, character should only have file settings
       expect(testRuntime.character.settings?.SOLANA_PUBLIC_KEY).toBeUndefined();
-      expect(testRuntime.character.settings?.MODEL).toBe("gpt-4");
+      expect(testRuntime.character.settings?.MODEL).toBe("gpt-5");
 
       // Mock the services that initialize() expects
       (
@@ -559,7 +559,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
       expect(testRuntimeCharacterSettings?.RUNTIME_SETTING).toBe(
         "from_previous_run",
       );
-      expect(testRuntimeCharacterSettings?.MODEL).toBe("gpt-4"); // Character file wins
+      expect(testRuntimeCharacterSettings?.MODEL).toBe("gpt-5"); // Character file wins
       expect(testRuntime.character.secrets?.SOLANA_PRIVATE_KEY).toBe(
         "secret_from_db",
       );
@@ -594,7 +594,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
         .mockResolvedValueOnce({
           ...dbAgent,
           settings: {
-            MODEL: "gpt-4", // Updated by character file
+            MODEL: "gpt-5", // Updated by character file
             DB_ONLY_SETTING: "keep_me",
           },
         });
@@ -610,7 +610,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
         style: { all: [], chat: [], post: [] },
         adjectives: [],
         settings: {
-          MODEL: "gpt-4", // New value in character file
+          MODEL: "gpt-5", // New value in character file
         },
       };
 
@@ -653,7 +653,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
       await testRuntime.initialize();
 
       // Character file value should override DB
-      expect(testRuntime.getSetting("MODEL")).toBe("gpt-4");
+      expect(testRuntime.getSetting("MODEL")).toBe("gpt-5");
       // DB-only setting should be preserved
       expect(testRuntime.getSetting("DB_ONLY_SETTING")).toBe("keep_me");
     });

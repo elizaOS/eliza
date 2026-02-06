@@ -653,8 +653,8 @@ def create_vending_bench_plugin() -> Plugin:
         actions=actions,
         providers=[provider],
         models={
-            ModelType.TEXT_LARGE.value: openai_model_handler,
-            ModelType.TEXT_SMALL.value: openai_model_handler,
+            ModelType.TEXT_LARGE: openai_model_handler,
+            ModelType.TEXT_SMALL: openai_model_handler,
         },
     )
 

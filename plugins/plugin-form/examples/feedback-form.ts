@@ -13,7 +13,7 @@
  * 2. Call formService.startSession('feedback', entityId, roomId)
  */
 
-import type { Plugin, IAgentRuntime } from '@elizaos/core';
+import type { Plugin, IAgentRuntime, UUID } from '@elizaos/core';
 import { Form, C, FormService, type FormSubmission } from '../src/index';
 
 // ============================================================================
@@ -155,13 +155,25 @@ export const feedbackForm = Form.create('feedback')
 // ============================================================================
 
 /**
+ * Worker options type for feedback processing.
+ */
+interface ProcessFeedbackOptions {
+  submission: FormSubmission;
+}
+
+/**
  * Process submitted feedback.
  */
 export const processFeedbackWorker = {
   name: 'process_feedback',
-  validate: async () => true,
-  execute: async (runtime: IAgentRuntime, options: any) => {
-    const { submission } = options as { submission: FormSubmission };
+  validate: async (_runtime: IAgentRuntime, options: ProcessFeedbackOptions) => {
+    // Validate that we have required feedback fields
+    const values = options?.submission?.values;
+    if (!values) return false;
+    return !!(values.satisfaction && values.recommend);
+  },
+  execute: async (runtime: IAgentRuntime, options: ProcessFeedbackOptions) => {
+    const { submission } = options;
     const values = submission.values;
 
     const satisfaction = parseInt(values.satisfaction as string, 10);
@@ -283,7 +295,7 @@ export const feedbackPlugin: Plugin = {
         }
 
         try {
-          await formService.startSession('feedback', entityId as any, roomId as any);
+          await formService.startSession('feedback', entityId as UUID, roomId as UUID);
 
           await callback?.({
             text: "I'd love to hear your feedback! It only takes a minute.\n\nFirst, how would you rate your overall experience?\n\n😍 Excellent | 😊 Good | 😐 Okay | 😕 Poor | 😞 Terrible",

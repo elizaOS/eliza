@@ -33,6 +33,7 @@ import type { JsonValue } from "./proto.js";
 import type { Service, ServiceTypeName } from "./service";
 import type { State } from "./state";
 import type { TaskWorker } from "./task";
+import type { ToolPolicyConfig, ToolProfileId } from "./tools";
 
 /**
  * Represents the core runtime environment for an agent.
@@ -149,6 +150,45 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
   registerProvider(provider: Provider): void;
 
   registerAction(action: Action): void;
+
+  /**
+   * Get all registered actions.
+   */
+  getAllActions(): Action[];
+
+  /**
+   * Get actions filtered by tool policy.
+   *
+   * @param context - Optional policy context for filtering
+   * @returns Filtered actions based on policy
+   */
+  getFilteredActions(context?: {
+    profile?: ToolProfileId;
+    characterPolicy?: ToolPolicyConfig;
+    channelPolicy?: ToolPolicyConfig;
+    providerPolicy?: ToolPolicyConfig;
+    worldPolicy?: ToolPolicyConfig;
+    roomPolicy?: ToolPolicyConfig;
+  }): Action[];
+
+  /**
+   * Check if a specific action is allowed by tool policy.
+   *
+   * @param actionName - The action name to check
+   * @param context - Optional policy context
+   * @returns Whether the action is allowed
+   */
+  isActionAllowed(
+    actionName: string,
+    context?: {
+      profile?: ToolProfileId;
+      characterPolicy?: ToolPolicyConfig;
+      channelPolicy?: ToolPolicyConfig;
+      providerPolicy?: ToolPolicyConfig;
+      worldPolicy?: ToolPolicyConfig;
+      roomPolicy?: ToolPolicyConfig;
+    },
+  ): { allowed: boolean; reason: string };
 
   registerEvaluator(evaluator: Evaluator): void;
 
@@ -335,7 +375,10 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
       retryBackoff?: number | import("./state").RetryBackoffConfig;
       disableCache?: boolean;
       cacheTTL?: number;
-      onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
+      onStreamChunk?: (
+        chunk: string,
+        messageId?: string,
+      ) => void | Promise<void>;
       onStreamEvent?: (
         event: import("./state").StreamEvent,
         messageId?: string,
@@ -393,4 +436,11 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
   registerSendHandler(source: string, handler: SendHandlerFunction): void;
   sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
   updateWorld(world: World): Promise<void>;
+
+  /**
+   * Redact secrets from a text string.
+   * @param text - The text to redact secrets from
+   * @returns The text with secrets redacted
+   */
+  redactSecrets(text: string): string;
 }

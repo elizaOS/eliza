@@ -564,11 +564,7 @@ export class MarkableExtractor implements IStreamExtractor {
 // ValidationStreamExtractor - Validation-aware streaming
 // ============================================================================
 
-import type {
-  SchemaRow,
-  StreamEvent,
-  StreamEventType,
-} from "../types/state";
+import type { SchemaRow, StreamEvent } from "../types/state";
 import type { IStreamingRetryState } from "../types/streaming";
 
 /**
@@ -665,7 +661,11 @@ export class ValidationStreamExtractor implements IStreamExtractor {
     if (this.config.abortSignal?.aborted) {
       if (this.state !== "complete" && this.state !== "failed") {
         this.state = "failed";
-        this.emitEvent({ eventType: "error", error: "Cancelled by user", timestamp: Date.now() });
+        this.emitEvent({
+          eventType: "error",
+          error: "Cancelled by user",
+          timestamp: Date.now(),
+        });
       }
       return "";
     }
@@ -728,7 +728,11 @@ export class ValidationStreamExtractor implements IStreamExtractor {
       this.config.onChunk("\n-- that's not right, let me start again:\n");
     }
 
-    this.emitEvent({ eventType: "retry_start", retryCount, timestamp: Date.now() });
+    this.emitEvent({
+      eventType: "retry_start",
+      retryCount,
+      timestamp: Date.now(),
+    });
 
     return { validatedFields: Array.from(this.validatedFields) };
   }
@@ -738,7 +742,11 @@ export class ValidationStreamExtractor implements IStreamExtractor {
    */
   signalError(message: string): void {
     this.state = "failed";
-    this.emitEvent({ eventType: "error", error: message, timestamp: Date.now() });
+    this.emitEvent({
+      eventType: "error",
+      error: message,
+      timestamp: Date.now(),
+    });
   }
 
   /**
@@ -842,14 +850,26 @@ export class ValidationStreamExtractor implements IStreamExtractor {
       // Check validation codes if required
       const expectedCode = this.config.expectedCodes.get(field);
       if (expectedCode) {
-        const startCodeValid = this.checkValidationCode(field, "start", expectedCode);
-        const endCodeValid = this.checkValidationCode(field, "end", expectedCode);
+        const startCodeValid = this.checkValidationCode(
+          field,
+          "start",
+          expectedCode,
+        );
+        const endCodeValid = this.checkValidationCode(
+          field,
+          "end",
+          expectedCode,
+        );
 
         if (state === "complete") {
           if (startCodeValid && endCodeValid) {
             this.validatedFields.add(field);
             this.emitFieldContent(field, content);
-            this.emitEvent({ eventType: "field_validated", field, timestamp: Date.now() });
+            this.emitEvent({
+              eventType: "field_validated",
+              field,
+              timestamp: Date.now(),
+            });
           } else if (startCodeValid && !endCodeValid) {
             // Start valid but end invalid
             this.fieldStates.set(field, "invalid");
@@ -914,7 +934,12 @@ export class ValidationStreamExtractor implements IStreamExtractor {
       this.emittedContent.set(field, content);
       if (content) {
         this.config.onChunk(content, field);
-        this.emitEvent({ eventType: "chunk", field, chunk: content, timestamp: Date.now() });
+        this.emitEvent({
+          eventType: "chunk",
+          field,
+          chunk: content,
+          timestamp: Date.now(),
+        });
       }
       return;
     }
@@ -923,7 +948,12 @@ export class ValidationStreamExtractor implements IStreamExtractor {
 
     if (newContent) {
       this.config.onChunk(newContent, field);
-      this.emitEvent({ eventType: "chunk", field, chunk: newContent, timestamp: Date.now() });
+      this.emitEvent({
+        eventType: "chunk",
+        field,
+        chunk: newContent,
+        timestamp: Date.now(),
+      });
       this.emittedContent.set(field, content);
     }
   }

@@ -6,12 +6,14 @@ import {
 } from "@elizaos/core";
 import { TwilioService } from "./service";
 import { TWILIO_SERVICE_NAME } from "./constants";
+import { VOICE_CALL_SERVICE_NAME } from "./voicecall/constants";
+import type { VoiceCallService } from "./voicecall/service";
 import * as readline from "readline";
 import axios from "axios";
 
 export class TwilioTestSuite implements TestSuite {
   name = "Twilio Plugin Test Suite";
-  description = "Tests for Twilio voice and SMS functionality";
+  description = "Tests for Twilio voice/SMS and advanced voice call functionality";
 
   tests: TestCase[] = [
     {
@@ -250,6 +252,66 @@ export class TwilioTestSuite implements TestSuite {
         } catch (error) {
           logger.info("✅ Empty message error handled correctly");
         }
+      },
+    },
+    {
+      name: "Voice Call Service Initialization Test",
+      fn: async (runtime: IAgentRuntime) => {
+        const voiceCallService = runtime.getService(
+          VOICE_CALL_SERVICE_NAME,
+        ) as unknown as VoiceCallService;
+
+        if (!voiceCallService) {
+          logger.warn(
+            "Voice Call service not initialized - VOICE_CALL_PROVIDER may not be set",
+          );
+          logger.info(
+            "✅ Voice Call service correctly not initialized when no provider configured",
+          );
+          return;
+        }
+
+        if (voiceCallService.isConnected()) {
+          const settings = voiceCallService.getSettings();
+          logger.info(
+            `✅ Voice Call service initialized with provider: ${settings?.provider}`,
+          );
+          logger.info(`   From number: ${settings?.fromNumber}`);
+          logger.info(
+            `   Max concurrent calls: ${settings?.maxConcurrentCalls}`,
+          );
+        } else {
+          logger.info(
+            "✅ Voice Call service loaded but not connected (expected when provider is not fully configured)",
+          );
+        }
+      },
+    },
+    {
+      name: "Voice Call State Management Test",
+      fn: async (runtime: IAgentRuntime) => {
+        const voiceCallService = runtime.getService(
+          VOICE_CALL_SERVICE_NAME,
+        ) as unknown as VoiceCallService;
+
+        if (!voiceCallService || !voiceCallService.isConnected()) {
+          logger.warn(
+            "Voice Call service not connected, skipping state management test",
+          );
+          return;
+        }
+
+        // Test that we can query active calls
+        const activeCalls = voiceCallService.getActiveCalls();
+        logger.info(`✅ Active calls query works: ${activeCalls.length} active`);
+
+        // Test call history
+        const history = voiceCallService.getCallHistory(5);
+        logger.info(`✅ Call history query works: ${history.length} records`);
+
+        // Test service probe
+        const probe = await voiceCallService.probeService();
+        logger.info(`✅ Service probe: ok=${probe.ok}, provider=${probe.provider}`);
       },
     },
     {

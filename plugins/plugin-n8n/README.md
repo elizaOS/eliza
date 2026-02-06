@@ -1,21 +1,34 @@
 # 🤖 elizaOS N8n Plugin
 
-> **AI-powered plugin creation for ElizaOS** - Transform natural language into production-ready plugins using Claude models.
+> **Comprehensive n8n integration for ElizaOS** - Create ElizaOS plugins and manage n8n workflows using AI-powered natural language processing.
 
 [![npm version](https://img.shields.io/npm/v/@elizaos/plugin-n8n.svg)](https://www.npmjs.com/package/@elizaos/plugin-n8n)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## 🌟 Overview
 
-The N8n plugin enables AI agents to autonomously create, build, test, and deploy ElizaOS plugins. Available in **TypeScript**, **Python**, and **Rust** with full feature parity.
+The N8n plugin provides two powerful capabilities:
+
+1. **AI-Powered ElizaOS Plugin Creation** - Transform natural language into production-ready ElizaOS plugins using Claude models
+2. **n8n Workflow Management** - Generate and manage n8n workflows from natural language using a RAG pipeline
+
+Available in **TypeScript**, **Python**, and **Rust** with full feature parity.
 
 ### Key Features
 
+#### Plugin Creation
 - 🧠 **AI-Powered Generation** - Claude models generate complete plugin implementations
 - 🔄 **Iterative Refinement** - Automatic error fixing through build/lint/test cycles
 - ✅ **Quality Assurance** - Built-in testing and validation
 - 🚀 **Production Ready** - Generated code follows ElizaOS best practices
 - 🌐 **Multi-Language** - Use from TypeScript, Python, or Rust
+
+#### Workflow Management
+- 🔄 **RAG Pipeline** - Intelligent workflow generation from natural language
+- 📦 **450+ Native Nodes** - Support for Gmail, Slack, Stripe, and more
+- 🔐 **Credential Resolution** - Intelligent credential management with OAuth support
+- 🎯 **Full Lifecycle** - Create, activate, deactivate, delete, and monitor workflows
+- 💬 **Conversational Interface** - Natural language workflow creation and modification
 
 ## 📦 Installation
 
@@ -44,13 +57,43 @@ elizaos-plugin-n8n = "1.0"
 
 ## ⚙️ Configuration
 
-Set the following environment variables:
+### Plugin Creation Features
 
 | Variable            | Required | Description                | Default                  |
 | ------------------- | -------- | -------------------------- | ------------------------ |
 | `ANTHROPIC_API_KEY` | ✅       | Anthropic API key          | -                        |
 | `PLUGIN_DATA_DIR`   | ❌       | Plugin workspace directory | `./data`                 |
 | `CLAUDE_MODEL`      | ❌       | Claude model to use        | `claude-3-opus-20240229` |
+
+### Workflow Management Features
+
+| Variable       | Required | Description                    | Example                    |
+|----------------|----------|--------------------------------|----------------------------|
+| `N8N_API_KEY`  | ✅*      | Your n8n instance API key      | `n8n_api_abc123...`        |
+| `N8N_HOST`     | ✅*      | Your n8n instance URL           | `https://your.n8n.cloud`  |
+
+*Required only for workflow management features
+
+### Optional: Pre-configured Credentials
+
+For workflow features, you can pre-configure credential IDs:
+
+```json
+{
+  "name": "AI Workflow Builder",
+  "plugins": ["@elizaos/plugin-n8n"],
+  "settings": {
+    "N8N_API_KEY": "env:N8N_API_KEY",
+    "N8N_HOST": "https://your.n8n.cloud",
+    "workflows": {
+      "credentials": {
+        "gmailOAuth2": "cred_gmail_123",
+        "stripeApi": "cred_stripe_456"
+      }
+    }
+  }
+}
+```
 
 ## 🚀 Quick Start
 
@@ -65,8 +108,9 @@ const agent = new Agent({
   plugins: [n8nPlugin],
 });
 
-// The agent can now create plugins via conversation:
-// "Create a weather plugin that fetches current conditions"
+// The agent can now:
+// 1. Create ElizaOS plugins: "Create a weather plugin that fetches current conditions"
+// 2. Create n8n workflows: "Create a workflow that sends me Stripe payment summaries every Monday via Gmail"
 ```
 
 ### Python
@@ -115,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
 
 ## 💬 Conversational Usage
 
-Once the plugin is registered with an agent, users can create plugins through natural conversation:
+### Creating ElizaOS Plugins
 
 ```
 User: Create a plugin that helps manage todo lists with add, remove, and list functionality
@@ -133,7 +177,28 @@ Components to be created:
 Use 'check plugin status' to monitor progress.
 ```
 
+### Creating n8n Workflows
+
+```
+User: Send me Stripe payment summaries every Monday via Gmail
+
+Agent: I'll create a workflow for you!
+
+📋 Workflow Preview: Daily Stripe Summary via Gmail
+Nodes:
+- Schedule Trigger (runs every Monday)
+- Stripe (fetches payments)
+- Gmail (sends summary email)
+
+Flow: Schedule Trigger → Stripe → Gmail
+Credentials needed: stripeApi, gmailOAuth2
+
+Say "deploy" to create this workflow, or "modify" to make changes.
+```
+
 ## 🛠️ Actions
+
+### Plugin Creation Actions
 
 | Action                        | Description                           |
 | ----------------------------- | ------------------------------------- |
@@ -142,7 +207,19 @@ Use 'check plugin status' to monitor progress.
 | `checkPluginCreationStatus`   | Check job progress                    |
 | `cancelPluginCreation`        | Cancel active job                     |
 
+### Workflow Management Actions
+
+| Action                    | Similes                                            | Description                                       |
+|---------------------------|----------------------------------------------------|----------------------------------------------------|
+| `CREATE_N8N_WORKFLOW`     | create, build, generate, confirm, deploy, cancel   | Full lifecycle: generate, preview, modify, deploy  |
+| `ACTIVATE_N8N_WORKFLOW`   | activate, enable, start, turn on                   | Activate a workflow (+ draft redirect)             |
+| `DEACTIVATE_N8N_WORKFLOW` | deactivate, disable, stop, pause, turn off         | Deactivate a running workflow                      |
+| `DELETE_N8N_WORKFLOW`     | delete, remove, destroy                            | Permanently delete a workflow                      |
+| `GET_N8N_EXECUTIONS`      | executions, history, runs                          | Show execution history (last 10 runs)              |
+
 ## 📊 Providers
+
+### Plugin Creation Providers
 
 | Provider                       | Description            |
 | ------------------------------ | ---------------------- |
@@ -151,11 +228,21 @@ Use 'check plugin status' to monitor progress.
 | `plugin_registry`              | Created plugins list   |
 | `plugin_exists_check`          | Check if plugin exists |
 
+### Workflow Providers
+
+| Provider                 | Name                     | Runs On       | Description                                               |
+|--------------------------|--------------------------|---------------|-----------------------------------------------------------|
+| `pendingDraftProvider`   | `PENDING_WORKFLOW_DRAFT` | Every message | Injects draft context into LLM state for action routing   |
+| `activeWorkflowsProvider`| `ACTIVE_N8N_WORKFLOWS`   | Every message | User's workflow list (up to 20) for semantic matching     |
+| `workflowStatusProvider` | `n8n_workflow_status`    | Every message | Workflow status with last execution info (up to 10)       |
+
 ## 🏗️ Architecture
+
+### Plugin Creation Pipeline
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     N8n Plugin System                        │
+│                  Plugin Creation System                      │
 ├─────────────────────────────────────────────────────────────┤
 │                                                               │
 │  ┌─────────────┐    ┌──────────────┐    ┌───────────────┐   │
@@ -181,18 +268,72 @@ Use 'check plugin status' to monitor progress.
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### Workflow Management Pipeline
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│                         ElizaOS Runtime                           │
+│                                                                   │
+│  ┌─────────────┐  ┌──────────────────┐  ┌──────────────────────┐ │
+│  │  Services    │  │  Actions          │  │  Providers           │ │
+│  │             │  │                  │  │                      │ │
+│  │ N8nWorkflow │  │ CREATE_N8N_WF    │  │ PENDING_DRAFT        │ │
+│  │ Service     │  │ ACTIVATE_N8N_WF  │  │ ACTIVE_WORKFLOWS     │ │
+│  │             │  │ DEACTIVATE_N8N_WF│  │ WORKFLOW_STATUS       │ │
+│  │ N8nCred     │  │ DELETE_N8N_WF    │  │                      │ │
+│  │ Store (DB)  │  │ GET_N8N_EXECS    │  │                      │ │
+│  └──────┬──────┘  └──────────────────┘  └──────────────────────┘ │
+│         │                                                         │
+│  ┌──────┴──────────────────────────────────────────────────────┐  │
+│  │                    runtime.getCache()                       │  │
+│  │              Per-user draft state machine                   │  │
+│  │         Key: workflow_draft:{userId} — TTL: 30 min          │  │
+│  └─────────────────────────────────────────────────────────────┘  │
+│                                                                   │
+│  ┌──────────────────┐  ┌────────────────────────────────────────┐ │
+│  │  Database         │  │  LLM (via runtime.useModel)            │ │
+│  │  PostgreSQL       │  │                                        │ │
+│  │  n8n_workflow     │  │  TEXT_LARGE ─── workflow generation     │ │
+│  │  .credential_     │  │  TEXT_SMALL ─── response formatting    │ │
+│  │   mappings        │  │  OBJECT_SMALL ─ classification/extract │ │
+│  └──────────────────┘  └────────────────────────────────────────┘ │
+└───────────────────────────────────────────────────────────────────┘
+         │                              │
+         ▼                              ▼
+┌──────────────────┐         ┌────────────────────────┐
+│  n8n REST API    │         │ External CredProvider   │
+│  /api/v1/        │         │ (optional, e.g. OAuth)  │
+│  workflows       │         │                         │
+│  executions      │         │ resolve(userId, type)   │
+│  tags            │         │ → resolved / needs_auth │
+│  credentials     │         │                         │
+└──────────────────┘         └────────────────────────┘
+```
+
 ## 📁 Project Structure
 
 ```
 plugin-n8n/
 ├── typescript/           # TypeScript implementation
 │   ├── index.ts         # Main plugin export
-│   ├── actions/         # Action implementations
-│   ├── providers/       # Provider implementations
-│   ├── services/        # Service classes
+│   ├── actions/         # Plugin creation actions
+│   ├── providers/       # Plugin creation providers
+│   ├── services/        # Plugin creation services
+│   ├── workflow/        # Workflow management features
+│   │   ├── actions/     # Workflow actions
+│   │   ├── providers/   # Workflow providers
+│   │   ├── services/    # Workflow services
+│   │   ├── utils/       # Workflow utilities
+│   │   ├── types/       # Workflow types
+│   │   ├── prompts/     # LLM prompts
+│   │   ├── schemas/     # JSON schemas
+│   │   └── db/          # Database schema
 │   ├── types/           # Type definitions
 │   ├── utils/           # Utilities
 │   └── __tests__/       # Tests
+│       ├── unit/        # Unit tests
+│       ├── integration/ # Integration tests
+│       └── workflow/    # Workflow tests
 ├── python/              # Python implementation
 │   ├── elizaos_plugin_n8n/
 │   │   ├── __init__.py

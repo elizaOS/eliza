@@ -488,7 +488,7 @@ class DefaultMessageService(IMessageService):
                 ),
                 SchemaRow(
                     field="params",
-                    description="JSON object with action parameters, e.g. {\"ACTION_NAME\": {\"param\": \"value\"}}",
+                    description='JSON object with action parameters, e.g. {"ACTION_NAME": {"param": "value"}}',
                     validate_field=False,
                     stream_field=False,
                 ),
@@ -506,6 +506,7 @@ class DefaultMessageService(IMessageService):
             ]
 
             from elizaos.runtime import DynamicPromptOptions
+
             parsed_response = await runtime.dynamic_prompt_exec_from_state(
                 state=state,
                 prompt=template,
@@ -532,13 +533,14 @@ class DefaultMessageService(IMessageService):
             actions_raw = str(parsed_response.get("actions", "REPLY"))
             providers_raw = str(parsed_response.get("providers", ""))
             response_text = str(parsed_response.get("text", ""))
-            
+
             # Parse actions and providers from comma-separated strings
             actions = [a.strip().upper() for a in actions_raw.split(",") if a.strip()]
             providers = [p.strip() for p in providers_raw.split(",") if p.strip()]
-            
+
             # Parse params from response if available
             import json as json_module
+
             params: dict[str, list[dict[str, str]]] = {}
             if parsed_response:
                 params_raw = parsed_response.get("params", "")
@@ -655,6 +657,16 @@ class DefaultMessageService(IMessageService):
             except RuntimeError:
                 # No database adapter - skip persistence (benchmark mode)
                 runtime.logger.debug("No database adapter, skipping response persistence")
+
+            # Emit MESSAGE_SENT event after successfully creating response memory
+            await runtime.emit_event(
+                "MESSAGE_SENT",
+                {
+                    "runtime": runtime,
+                    "source": "message-service",
+                    "message": response_memory,
+                },
+            )
 
             responses = [response_memory]
 
@@ -844,11 +856,15 @@ class DefaultMessageService(IMessageService):
 
             thought = str(decision_result.get("thought", "")) if decision_result else ""
             action_name = str(decision_result.get("action", "")).strip() if decision_result else ""
-            providers_csv = str(decision_result.get("providers", "")).strip() if decision_result else ""
+            providers_csv = (
+                str(decision_result.get("providers", "")).strip() if decision_result else ""
+            )
             parameters_raw = decision_result.get("parameters", "") if decision_result else ""
-            is_finish_raw = str(decision_result.get("isFinish", "")).strip().lower() if decision_result else ""
+            is_finish_raw = (
+                str(decision_result.get("isFinish", "")).strip().lower() if decision_result else ""
+            )
             is_finish = is_finish_raw in ("true", "yes", "1")
-            
+
             # Parse parameters (may be JSON string or dict)
             action_params: dict[str, Any] = {}
             if parameters_raw:
@@ -949,7 +965,9 @@ class DefaultMessageService(IMessageService):
 
         # Handle summary generation failure
         if summary_result is None:
-            runtime.logger.error("Multi-step summary generation failed - returning did_respond=False")
+            runtime.logger.error(
+                "Multi-step summary generation failed - returning did_respond=False"
+            )
             return MessageProcessingResult(
                 did_respond=False,
                 response_content=None,
@@ -962,7 +980,9 @@ class DefaultMessageService(IMessageService):
 
         # If text is empty, treat as failure
         if not final_text.strip():
-            runtime.logger.error("Multi-step summary returned empty text - returning did_respond=False")
+            runtime.logger.error(
+                "Multi-step summary returned empty text - returning did_respond=False"
+            )
             return MessageProcessingResult(
                 did_respond=False,
                 response_content=None,

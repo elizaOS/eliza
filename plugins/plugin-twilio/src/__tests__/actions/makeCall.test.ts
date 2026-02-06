@@ -14,9 +14,16 @@ vi.mock("../../utils", () => ({
   }),
 }));
 
+/**
+ * Interface for mock Twilio service
+ */
+interface MockTwilioService {
+  makeCall: ReturnType<typeof vi.fn>;
+}
+
 describe("makeCallAction", () => {
   let mockRuntime: IAgentRuntime;
-  let mockTwilioService: any;
+  let mockTwilioService: MockTwilioService;
   let mockCallback: HandlerCallback;
 
   beforeEach(() => {
@@ -33,7 +40,7 @@ describe("makeCallAction", () => {
 
     mockRuntime = {
       getService: vi.fn().mockReturnValue(mockTwilioService),
-    } as any;
+    } as unknown as IAgentRuntime;
 
     mockCallback = vi.fn();
   });
@@ -231,7 +238,7 @@ describe("makeCallAction", () => {
 
     it("should handle missing phone number", async () => {
       const { extractPhoneNumber } = await import("../../utils");
-      (extractPhoneNumber as any).mockReturnValue(null);
+      vi.mocked(extractPhoneNumber).mockReturnValue(null);
 
       const message: Memory = {
         content: { text: "Make a call" },
@@ -255,8 +262,8 @@ describe("makeCallAction", () => {
       const { validatePhoneNumber, extractPhoneNumber } = await import(
         "../../utils"
       );
-      (extractPhoneNumber as any).mockReturnValue("+18885551234");
-      (validatePhoneNumber as any).mockReturnValue(false);
+      vi.mocked(extractPhoneNumber).mockReturnValue("+18885551234");
+      vi.mocked(validatePhoneNumber).mockReturnValue(false);
 
       const message: Memory = {
         content: { text: "Call +18885551234" },

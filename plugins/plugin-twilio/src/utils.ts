@@ -1,4 +1,5 @@
 import { logger } from "@elizaos/core";
+import twilio from "twilio";
 import { TWILIO_CONSTANTS } from "./constants";
 
 /**
@@ -301,10 +302,8 @@ export function validateWebhookSignature(
   params: Record<string, string>,
 ): boolean {
   try {
-    // Note: In production, you should use the twilio.validateRequest method
-    // This is a simplified version for demonstration
-    logger.warn("Webhook signature validation not fully implemented");
-    return true; // TODO: Implement proper validation
+    // Use Twilio's built-in request validation
+    return twilio.validateRequest(authToken, signature, url, params);
   } catch (error) {
     logger.error(
       { error: String(error) },
@@ -362,9 +361,18 @@ export async function convertAudioFormat(
   fromFormat: string,
   toFormat: string,
 ): Promise<Buffer> {
-  // TODO: Implement audio conversion using fluent-ffmpeg
-  logger.warn("Audio conversion not implemented yet");
-  return audioBuffer;
+  // If formats are the same, no conversion needed
+  if (fromFormat.toLowerCase() === toFormat.toLowerCase()) {
+    return audioBuffer;
+  }
+
+  // Audio conversion requires external dependencies (ffmpeg)
+  // Throw an error to make it clear this needs to be handled at a higher level
+  throw new Error(
+    `Audio conversion from ${fromFormat} to ${toFormat} requires ffmpeg. ` +
+      `Install ffmpeg and use the fluent-ffmpeg library for format conversion, ` +
+      `or handle audio in its native format.`
+  );
 }
 
 /**

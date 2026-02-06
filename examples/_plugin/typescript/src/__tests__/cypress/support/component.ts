@@ -1,4 +1,3 @@
-// @ts-nocheck
 // ***********************************************************
 // This file is processed and loaded automatically before your test files.
 // You can change the location of this file or turn off processing using the
@@ -14,6 +13,11 @@ import "@testing-library/cypress/add-commands";
 // Import styles
 import "../../../frontend/index.css";
 
+import { mount } from "@cypress/react";
+import type { ReactElement } from "react";
+
+type MountReturn = ReturnType<typeof mount>;
+
 // Add custom TypeScript types
 declare global {
   namespace Cypress {
@@ -22,13 +26,10 @@ declare global {
        * Custom command to mount React components
        * @example cy.mount(<Component />)
        */
-      mount(component: React.ReactElement): Chainable<unknown>;
+      mount(component: ReactElement): MountReturn;
     }
   }
 }
-
-// Import React mount function
-import { mount } from "@cypress/react";
 
 // Make mount available globally
 Cypress.Commands.add("mount", mount);

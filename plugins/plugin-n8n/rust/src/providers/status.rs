@@ -21,7 +21,7 @@ impl Default for PluginCreationStatusProvider {
 #[async_trait]
 impl N8nProvider for PluginCreationStatusProvider {
     fn name(&self) -> &'static str {
-        "plugin_creation_status"
+        "n8n_plugin_status"
     }
 
     fn description(&self) -> &'static str {

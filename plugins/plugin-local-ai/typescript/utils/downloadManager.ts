@@ -25,6 +25,9 @@ export class DownloadManager {
   }
 
   private ensureCacheDirectory(): void {
+    if (!this.cacheDir || this.cacheDir.trim() === "") {
+      throw new Error("Cache directory path cannot be empty");
+    }
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir, { recursive: true });
       logger.debug("Created cache directory");
@@ -32,6 +35,9 @@ export class DownloadManager {
   }
 
   private ensureModelsDirectory(): void {
+    if (!this.modelsDir || this.modelsDir.trim() === "") {
+      throw new Error("Models directory path cannot be empty");
+    }
     logger.debug("Ensuring models directory exists:", this.modelsDir);
     if (!fs.existsSync(this.modelsDir)) {
       fs.mkdirSync(this.modelsDir, { recursive: true });
@@ -359,7 +365,15 @@ export class DownloadManager {
     return this.downloadFile(url, destPath);
   }
 
+  /**
+   * Ensures a directory exists, creating it and parent directories if necessary.
+   * @param dirPath - The directory path to ensure exists
+   * @throws Error if the directory path is empty or whitespace-only
+   */
   public ensureDirectoryExists(dirPath: string): void {
+    if (!dirPath || dirPath.trim() === "") {
+      throw new Error("Directory path cannot be empty");
+    }
     if (!fs.existsSync(dirPath)) {
       fs.mkdirSync(dirPath, { recursive: true });
       logger.info(`Created directory: ${dirPath}`);

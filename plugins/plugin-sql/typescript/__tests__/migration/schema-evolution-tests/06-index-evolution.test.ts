@@ -302,9 +302,7 @@ describe("Schema Evolution Test: Index Evolution", () => {
         index("idx_status_priority_created").on(table.status, table.priority, table.createdAt),
 
         // Partial indexes for specific status values
-        index("idx_pending")
-          .on(table.createdAt)
-          .where(sql`status = 'pending'`),
+        index("idx_pending").on(table.createdAt).where(sql`status = 'pending'`),
 
         index("idx_active_high_priority")
           .on(table.createdAt)

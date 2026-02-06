@@ -10,7 +10,6 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from elizaos.types.environment import ChannelType
 from elizaos.types.memory import Memory
 from elizaos.types.primitives import Content, as_uuid, string_to_uuid
 from elizaos.types.memory import MemoryType, MessageMetadata
@@ -262,7 +261,7 @@ class SWEAgent:
                 content=Content(
                     text="Please analyze this issue and fix it. Start by understanding the problem and locating relevant code.",
                     source="swebench",
-                    channelType=ChannelType.API.value,
+                    channel_type="API",
                 ),
             )
 
@@ -539,7 +538,7 @@ class SWEAgent:
             content=Content(
                 text="Continue with your analysis. Take the next action.",
                 source="swebench",
-                channelType=ChannelType.API.value,
+                channel_type="API",
             ),
         )
 

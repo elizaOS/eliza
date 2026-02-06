@@ -169,7 +169,7 @@ runtime.registerModelHandler("TEXT_LARGE", async (paramsJson) => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "gpt-4",
+      model: "gpt-5",
       messages: [{ role: "user", content: params.prompt }],
     }),
   });

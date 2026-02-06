@@ -127,8 +127,7 @@ function createToolConfig(overrides?: Partial<ToolConfig>): ToolConfig {
 }
 
 // Helper function to create a valid DefaultAgentConfig for tests.
-// Use "default" (not "shell") to avoid switching into interactive human mode.
-function createShellAgentConfig(
+function createDefaultAgentConfig(
   overrides?: Partial<DefaultAgentConfig>,
 ): DefaultAgentConfig {
   return {
@@ -173,7 +172,7 @@ describe("Run Single", () => {
   describe("RunSingleConfig", () => {
     it("should create config with agent and environment", () => {
       const config: RunSingleConfig = {
-        agent: createShellAgentConfig(),
+        agent: createDefaultAgentConfig(),
         env: createEnvironmentConfig(),
         problemStatement: new EmptyProblemStatement(),
         outputDir: tmpDir,
@@ -191,7 +190,7 @@ describe("Run Single", () => {
 
     conditionalIt("should raise exception when hook throws", async () => {
       const config: RunSingleConfig = {
-        agent: createShellAgentConfig(),
+        agent: createDefaultAgentConfig(),
         env: createEnvironmentConfig(),
         problemStatement: new EmptyProblemStatement(),
         outputDir: tmpDir,
@@ -209,7 +208,7 @@ describe("Run Single", () => {
     conditionalIt("should run with instant empty submit model", async () => {
       const config: RunSingleConfig = {
         env: createEnvironmentConfig(),
-        agent: createShellAgentConfig(),
+        agent: createDefaultAgentConfig(),
         problemStatement: new EmptyProblemStatement(),
         outputDir: tmpDir,
         actions: createActionConfig(),
@@ -228,7 +227,7 @@ describe("Run Single", () => {
     conditionalIt("should handle hidden tools", async () => {
       const config: RunSingleConfig = {
         env: createEnvironmentConfig(),
-        agent: createShellAgentConfig(),
+        agent: createDefaultAgentConfig(),
         problemStatement: new EmptyProblemStatement(),
         outputDir: tmpDir,
         actions: createActionConfig(),
@@ -249,7 +248,7 @@ describe("Run Single", () => {
 
     conditionalIt("should generate trajectory file", async () => {
       const config: RunSingleConfig = {
-        agent: createShellAgentConfig(),
+        agent: createDefaultAgentConfig(),
         env: createEnvironmentConfig(),
         problemStatement: new EmptyProblemStatement(),
         outputDir: tmpDir,
@@ -280,7 +279,7 @@ describe("Run Single", () => {
 
     conditionalIt("should handle missing problem statement", async () => {
       const config: RunSingleConfig = {
-        agent: createShellAgentConfig(),
+        agent: createDefaultAgentConfig(),
         env: createEnvironmentConfig(),
         problemStatement: new EmptyProblemStatement(),
         outputDir: tmpDir,
@@ -297,7 +296,7 @@ describe("Run Single", () => {
 
     conditionalIt("should handle environment setup failure", async () => {
       const config: RunSingleConfig = {
-        agent: createShellAgentConfig(),
+        agent: createDefaultAgentConfig(),
         env: createEnvironmentConfig({
           repo: {
             type: "github",
@@ -355,7 +354,7 @@ describe("Run Single", () => {
 
     conditionalIt("should call hooks in correct order", async () => {
       const config: RunSingleConfig = {
-        agent: createShellAgentConfig(),
+        agent: createDefaultAgentConfig(),
         env: createEnvironmentConfig(),
         problemStatement: new EmptyProblemStatement(),
         outputDir: tmpDir,

@@ -89,7 +89,7 @@ function createMockRuntime(modelProvider: string, model: string): MockRuntime {
 // Minimal runtime objects for testing model detection
 // These are intentionally minimal - they only need modelProvider and model properties
 const testRuntimes = {
-  openai: createMockRuntime("openai", "gpt-4"),
+  openai: createMockRuntime("openai", "gpt-5"),
   openaiReasoning: createMockRuntime("openai", "o3-mini"),
   anthropic: createMockRuntime("anthropic", "claude-3"),
   google: createMockRuntime("google", "gemini-pro"),

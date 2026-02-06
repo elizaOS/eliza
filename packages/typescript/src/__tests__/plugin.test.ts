@@ -116,18 +116,18 @@ describe("Plugin Functions", () => {
 
     test("should load valid plugin object successfully", async () => {
       // Test with a mock plugin object instead of requiring external package
-      const mockBootstrapPlugin: Plugin = {
-        name: "bootstrap",
-        description: "Core bootstrap functionality",
+      const mockCorePlugin: Plugin = {
+        name: "core",
+        description: "Core functionality",
         actions: [],
         providers: [],
         services: [],
       };
 
-      const result = await loadPlugin(mockBootstrapPlugin);
+      const result = await loadPlugin(mockCorePlugin);
 
       expect(result).toBeDefined();
-      expect(result?.name).toBe("bootstrap");
+      expect(result?.name).toBe("core");
     });
   });
 
@@ -259,32 +259,32 @@ describe("Plugin Functions", () => {
       };
 
       // Plugin that depends on it using short name
-      const pluginBootstrap: Plugin = {
-        name: "bootstrap",
-        description: "Bootstrap plugin",
+      const pluginSetup: Plugin = {
+        name: "setup",
+        description: "Setup plugin",
         dependencies: ["discord"], // Short name reference
         actions: [],
         services: [],
       };
 
       // Resolve plugins - discord should be loaded first due to dependency
-      const resolved = await resolvePlugins([pluginBootstrap, pluginDiscord]);
+      const resolved = await resolvePlugins([pluginSetup, pluginDiscord]);
 
       // Should have both plugins
       expect(resolved).toHaveLength(2);
 
-      // Discord should come before bootstrap due to dependency
+      // Discord should come before setup due to dependency
       const indexDiscord = resolved.findIndex(
         (p) => p.name === "@elizaos/plugin-discord",
       );
-      const indexBootstrap = resolved.findIndex((p) => p.name === "bootstrap");
-      expect(indexDiscord).toBeLessThan(indexBootstrap);
+      const indexSetup = resolved.findIndex((p) => p.name === "setup");
+      expect(indexDiscord).toBeLessThan(indexSetup);
 
       // Verify both plugins are present
       expect(resolved.some((p) => p.name === "@elizaos/plugin-discord")).toBe(
         true,
       );
-      expect(resolved.some((p) => p.name === "bootstrap")).toBe(true);
+      expect(resolved.some((p) => p.name === "setup")).toBe(true);
     });
 
     test("should not queue dependency twice when plugin has scoped name", async () => {
@@ -332,9 +332,7 @@ describe("Plugin Functions", () => {
     test("should extract short name from @elizaos scoped packages", () => {
       expect(normalizePluginName("@elizaos/plugin-discord")).toBe("discord");
       expect(normalizePluginName("@elizaos/plugin-sql")).toBe("sql");
-      expect(normalizePluginName("@elizaos/plugin-bootstrap")).toBe(
-        "bootstrap",
-      );
+      expect(normalizePluginName("@elizaos/plugin-telegram")).toBe("telegram");
     });
 
     test("should extract short name from other scoped packages", () => {
@@ -482,9 +480,9 @@ describe("Plugin Functions", () => {
         services: [],
       };
 
-      const pluginBootstrap: Plugin = {
-        name: "bootstrap",
-        description: "Bootstrap plugin",
+      const pluginSetup: Plugin = {
+        name: "setup",
+        description: "Setup plugin",
         dependencies: ["discord"], // Short name reference
         actions: [],
         services: [],
@@ -492,7 +490,7 @@ describe("Plugin Functions", () => {
 
       const pluginMap = new Map<string, Plugin>();
       pluginMap.set("@elizaos/plugin-discord", pluginDiscord);
-      pluginMap.set("bootstrap", pluginBootstrap);
+      pluginMap.set("setup", pluginSetup);
 
       const resolved = resolvePluginDependencies(pluginMap);
 
@@ -501,9 +499,9 @@ describe("Plugin Functions", () => {
       const indexDiscord = resolved.findIndex(
         (p) => p.name === "@elizaos/plugin-discord",
       );
-      const indexBootstrap = resolved.findIndex((p) => p.name === "bootstrap");
-      // Discord should come before bootstrap due to dependency
-      expect(indexDiscord).toBeLessThan(indexBootstrap);
+      const indexSetup = resolved.findIndex((p) => p.name === "setup");
+      // Discord should come before setup due to dependency
+      expect(indexDiscord).toBeLessThan(indexSetup);
 
       // Verify the plugin is found correctly
       expect(resolved.some((p) => p.name === "@elizaos/plugin-discord")).toBe(
@@ -520,8 +518,8 @@ describe("Plugin Functions", () => {
       };
 
       const pluginB: Plugin = {
-        name: "bootstrap",
-        description: "Bootstrap plugin",
+        name: "setup",
+        description: "Setup plugin",
         dependencies: ["@elizaos/plugin-sql"],
         actions: [],
         services: [],
@@ -530,7 +528,7 @@ describe("Plugin Functions", () => {
       const pluginC: Plugin = {
         name: "discord",
         description: "Discord plugin",
-        dependencies: ["bootstrap"],
+        dependencies: ["setup"],
         actions: [],
         services: [],
       };
@@ -538,14 +536,14 @@ describe("Plugin Functions", () => {
       const pluginD: Plugin = {
         name: "music-player",
         description: "Music player plugin",
-        dependencies: ["@elizaos/plugin-discord", "@elizaos/plugin-bootstrap"],
+        dependencies: ["@elizaos/plugin-discord", "setup"],
         actions: [],
         services: [],
       };
 
       const pluginMap = new Map<string, Plugin>();
       pluginMap.set("sql", pluginA);
-      pluginMap.set("bootstrap", pluginB);
+      pluginMap.set("setup", pluginB);
       pluginMap.set("discord", pluginC);
       pluginMap.set("music-player", pluginD);
 
@@ -553,15 +551,15 @@ describe("Plugin Functions", () => {
 
       expect(resolved).toHaveLength(4);
       const indexSql = resolved.findIndex((p) => p.name === "sql");
-      const indexBootstrap = resolved.findIndex((p) => p.name === "bootstrap");
+      const indexSetup = resolved.findIndex((p) => p.name === "setup");
       const indexDiscord = resolved.findIndex((p) => p.name === "discord");
       const indexMusicPlayer = resolved.findIndex(
         (p) => p.name === "music-player",
       );
 
       // Verify dependency order
-      expect(indexSql).toBeLessThan(indexBootstrap);
-      expect(indexBootstrap).toBeLessThan(indexDiscord);
+      expect(indexSql).toBeLessThan(indexSetup);
+      expect(indexSetup).toBeLessThan(indexDiscord);
       expect(indexDiscord).toBeLessThan(indexMusicPlayer);
     });
   });

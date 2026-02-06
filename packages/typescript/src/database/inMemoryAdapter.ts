@@ -7,6 +7,9 @@ import type {
   LogBody,
   Memory,
   MemoryMetadata,
+  PairingAllowlistEntry,
+  PairingChannel,
+  PairingRequest,
   Participant,
   Relationship,
   Room,
@@ -54,6 +57,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
   private participantsByRoom = new Map<string, Set<string>>();
   private roomsByParticipant = new Map<string, Set<string>>();
   private participantUserState = new Map<string, "FOLLOWED" | "MUTED" | null>();
+
+  // Pairing storage
+  private pairingRequests = new Map<string, PairingRequest>();
+  private pairingAllowlist = new Map<string, PairingAllowlistEntry>();
 
   async initialize(_config?: Record<string, string | number | boolean | null>) {
     this.ready = true;
@@ -180,8 +187,24 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     worldId?: UUID;
   }): Promise<Memory[]> {
     const roomId = params.roomId ?? DEFAULT_UUID;
-    const all =
+    let all =
       this.memoriesByRoom.get(roomTableKey(params.tableName, roomId)) ?? [];
+
+    // Filter by timestamp range (start/end are timestamps in milliseconds)
+    // This supports history compaction - only return messages after the compaction point
+    if (params.start !== undefined || params.end !== undefined) {
+      all = all.filter((memory) => {
+        const createdAt = memory.createdAt ?? 0;
+        if (params.start !== undefined && createdAt < params.start) {
+          return false;
+        }
+        if (params.end !== undefined && createdAt > params.end) {
+          return false;
+        }
+        return true;
+      });
+    }
+
     const offset = params.offset ?? 0;
     const count = params.count ?? all.length;
     return all.slice(offset, offset + count);
@@ -608,5 +631,83 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
         }
       }
     }
+  }
+
+  // ===============================
+  // Pairing Methods
+  // ===============================
+
+  async getPairingRequests(
+    channel: PairingChannel,
+    agentId: UUID,
+  ): Promise<PairingRequest[]> {
+    const results: PairingRequest[] = [];
+    for (const request of this.pairingRequests.values()) {
+      if (request.channel === channel && request.agentId === agentId) {
+        results.push(request);
+      }
+    }
+    return results.sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+  }
+
+  async createPairingRequest(request: PairingRequest): Promise<UUID> {
+    const gen =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const id = request.id ? String(request.id) : gen;
+    const stored: PairingRequest = { ...request, id: asUuid(id) };
+    this.pairingRequests.set(id, stored);
+    return asUuid(id);
+  }
+
+  async updatePairingRequest(request: PairingRequest): Promise<void> {
+    const existing = this.pairingRequests.get(String(request.id));
+    if (existing) {
+      this.pairingRequests.set(String(request.id), {
+        ...existing,
+        ...request,
+      });
+    }
+  }
+
+  async deletePairingRequest(id: UUID): Promise<void> {
+    this.pairingRequests.delete(String(id));
+  }
+
+  async getPairingAllowlist(
+    channel: PairingChannel,
+    agentId: UUID,
+  ): Promise<PairingAllowlistEntry[]> {
+    const results: PairingAllowlistEntry[] = [];
+    for (const entry of this.pairingAllowlist.values()) {
+      if (entry.channel === channel && entry.agentId === agentId) {
+        results.push(entry);
+      }
+    }
+    return results.sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+  }
+
+  async createPairingAllowlistEntry(
+    entry: PairingAllowlistEntry,
+  ): Promise<UUID> {
+    const gen =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const id = entry.id ? String(entry.id) : gen;
+    const stored: PairingAllowlistEntry = { ...entry, id: asUuid(id) };
+    this.pairingAllowlist.set(id, stored);
+    return asUuid(id);
+  }
+
+  async deletePairingAllowlistEntry(id: UUID): Promise<void> {
+    this.pairingAllowlist.delete(String(id));
   }
 }

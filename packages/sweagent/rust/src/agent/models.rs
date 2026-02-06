@@ -138,7 +138,7 @@ fn default_top_p() -> Option<f64> {
 impl Default for GenericApiModelConfig {
     fn default() -> Self {
         Self {
-            name: "gpt-4".to_string(),
+            name: "gpt-5".to_string(),
             per_instance_cost_limit: default_per_instance_cost_limit(),
             total_cost_limit: 0.0,
             per_instance_call_limit: 0,
@@ -250,7 +250,7 @@ impl LiteLLMModel {
     fn calculate_cost(&self, input_tokens: u64, output_tokens: u64) -> f64 {
         // Simplified pricing - in production, use actual model pricing
         let (input_price, output_price) = match self.config.name.as_str() {
-            name if name.contains("gpt-4") => (0.03 / 1000.0, 0.06 / 1000.0),
+            name if name.contains("gpt-5") => (0.03 / 1000.0, 0.06 / 1000.0),
             name if name.contains("gpt-3.5") => (0.0005 / 1000.0, 0.0015 / 1000.0),
             name if name.contains("claude-3-opus") => (0.015 / 1000.0, 0.075 / 1000.0),
             name if name.contains("claude-3-sonnet") => (0.003 / 1000.0, 0.015 / 1000.0),

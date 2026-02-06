@@ -809,7 +809,7 @@ class ElizaAgentHarness:
                     content=Content(
                         text=user_prompt,
                         source="agentbench",
-                        channel_type=ChannelType.API.value,
+                        channel_type="API",
                     ),
                     metadata=_build_agentbench_message_metadata(
                         trajectory_id=trajectory_id,

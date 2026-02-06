@@ -6,6 +6,7 @@ interface WorkingMemoryEntry {
   timestamp: number;
 }
 
+import Handlebars from "handlebars";
 import {
   withCanonicalActionDocs,
   withCanonicalEvaluatorDocs,
@@ -19,6 +20,7 @@ import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createUniqueUuid } from "./entities";
 import { createLogger } from "./logger";
 import { BM25 } from "./search";
+import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
 import { decryptSecret, getSalt } from "./settings";
 import {
@@ -59,6 +61,9 @@ import {
   type ModelResultMap,
   ModelType,
   type ModelTypeName,
+  type PairingAllowlistEntry,
+  type PairingChannel,
+  type PairingRequest,
   type Participant,
   type Plugin,
   type Provider,
@@ -82,17 +87,21 @@ import {
   type World,
 } from "./types";
 import type { IMessageService } from "./types/message-service";
+import type { RetryBackoffConfig, SchemaRow, StreamEvent } from "./types/state";
+import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
+import { ToolPolicyService } from "./services/tool-policy";
 import {
-  stringToUuid,
-  parseKeyValueXml,
   parseJSONObjectFromText,
+  parseKeyValueXml,
+  stringToUuid,
 } from "./utils";
 import { BufferUtils } from "./utils/buffer";
 import { getNumberEnv } from "./utils/environment";
-import { ActionStreamFilter, ValidationStreamExtractor } from "./utils/streaming";
+import {
+  ActionStreamFilter,
+  ValidationStreamExtractor,
+} from "./utils/streaming";
 import { isPlainObject } from "./utils/type-guards";
-import type { SchemaRow, StreamEvent, RetryBackoffConfig } from "./types/state";
-import Handlebars from "handlebars";
 
 const environmentSettings: RuntimeSettings = {};
 
@@ -142,7 +151,7 @@ function isTextStreamResult(
 }
 
 export class AgentRuntime implements IAgentRuntime {
-  readonly #conversationLength = 32 as number;
+  #conversationLength = 100 as number;
   readonly agentId: UUID;
   readonly character: Character;
   public adapter!: IDatabaseAdapter;
@@ -308,8 +317,18 @@ export class AgentRuntime implements IAgentRuntime {
       level: opts.logLevel ?? "error",
     });
 
-    this.#conversationLength =
-      opts.conversationLength ?? this.#conversationLength;
+    // Set conversation length from constructor, settings, or environment
+    if (opts.conversationLength !== undefined) {
+      this.#conversationLength = opts.conversationLength;
+    } else if (opts.settings?.CONVERSATION_LENGTH) {
+      this.#conversationLength =
+        parseInt(String(opts.settings.CONVERSATION_LENGTH), 10) || 100;
+    } else {
+      this.#conversationLength = (getNumberEnv(
+        "CONVERSATION_LENGTH",
+        100,
+      ) as number);
+    }
     if (opts.adapter) {
       this.registerDatabaseAdapter(opts.adapter);
     }
@@ -1122,6 +1141,61 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
+  getAllActions(): Action[] {
+    return [...this.actions];
+  }
+
+  /**
+   * Get actions filtered by tool policy.
+   *
+   * @param context - Optional policy context for filtering
+   * @returns Filtered actions based on policy
+   */
+  getFilteredActions(context?: {
+    profile?: ToolProfileId;
+    characterPolicy?: ToolPolicyConfig;
+    channelPolicy?: ToolPolicyConfig;
+    providerPolicy?: ToolPolicyConfig;
+    worldPolicy?: ToolPolicyConfig;
+    roomPolicy?: ToolPolicyConfig;
+  }): Action[] {
+    const policyService = this.getService<ToolPolicyService>("tool_policy");
+
+    if (!policyService || !context) {
+      return [...this.actions];
+    }
+
+    return policyService.filterActions(this.actions, context);
+  }
+
+  /**
+   * Check if a specific action is allowed by tool policy.
+   *
+   * @param actionName - The action name to check
+   * @param context - Optional policy context
+   * @returns Whether the action is allowed
+   */
+  isActionAllowed(
+    actionName: string,
+    context?: {
+      profile?: ToolProfileId;
+      characterPolicy?: ToolPolicyConfig;
+      channelPolicy?: ToolPolicyConfig;
+      providerPolicy?: ToolPolicyConfig;
+      worldPolicy?: ToolPolicyConfig;
+      roomPolicy?: ToolPolicyConfig;
+    },
+  ): { allowed: boolean; reason: string } {
+    const policyService = this.getService<ToolPolicyService>("tool_policy");
+
+    if (!policyService) {
+      return { allowed: true, reason: "No policy service available" };
+    }
+
+    const result = policyService.isToolAllowed(actionName, context);
+    return { allowed: result.allowed, reason: result.reason };
+  }
+
   registerEvaluator(evaluator: Evaluator) {
     this.evaluators.push(withCanonicalEvaluatorDocs(evaluator));
   }
@@ -1718,6 +1792,10 @@ export class AgentRuntime implements IAgentRuntime {
 
         if (callback) {
           for (const content of storedCallbackData) {
+            // Redact any secrets from callback content before sending
+            if (content.text) {
+              content.text = this.redactSecrets(content.text);
+            }
             await callback(content);
           }
         }
@@ -2384,8 +2462,13 @@ export class AgentRuntime implements IAgentRuntime {
         {}),
     };
     for (const freshResult of providerData) {
+      // Redact secrets from individual provider text results
+      const redactedText = freshResult.text
+        ? this.redactSecrets(freshResult.text)
+        : freshResult.text;
       currentProviderResults[freshResult.providerName] = {
         ...freshResult,
+        text: redactedText,
         values:
           freshResult.values && typeof freshResult.values === "object"
             ? Object.fromEntries(
@@ -2407,7 +2490,9 @@ export class AgentRuntime implements IAgentRuntime {
         orderedTexts.push(result.text);
       }
     }
-    const providersText = orderedTexts.join("\n");
+    // Redact any secrets from provider context before use
+    const rawProvidersText = orderedTexts.join("\n");
+    const providersText = this.redactSecrets(rawProvidersText);
     const aggregatedStateValues: Record<string, StateValue> = {
       ...(cachedState.values || {}),
     };
@@ -3397,7 +3482,10 @@ export class AgentRuntime implements IAgentRuntime {
     const now = Date.now();
 
     // Prune stale entries periodically (when we access)
-    if (AgentRuntime.dynamicPromptMetrics.size > AgentRuntime.METRICS_MAX_ENTRIES / 2) {
+    if (
+      AgentRuntime.dynamicPromptMetrics.size >
+      AgentRuntime.METRICS_MAX_ENTRIES / 2
+    ) {
       for (const [k, v] of AgentRuntime.dynamicPromptMetrics) {
         if (now - v.lastUpdated > AgentRuntime.METRICS_TTL_MS) {
           AgentRuntime.dynamicPromptMetrics.delete(k);
@@ -3406,7 +3494,9 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // Evict oldest if still at max capacity
-    if (AgentRuntime.dynamicPromptMetrics.size >= AgentRuntime.METRICS_MAX_ENTRIES) {
+    if (
+      AgentRuntime.dynamicPromptMetrics.size >= AgentRuntime.METRICS_MAX_ENTRIES
+    ) {
       let oldestKey: string | null = null;
       let oldestTime = Infinity;
       for (const [k, v] of AgentRuntime.dynamicPromptMetrics) {
@@ -3472,14 +3562,22 @@ export class AgentRuntime implements IAgentRuntime {
       retryBackoff?: number | RetryBackoffConfig;
       disableCache?: boolean;
       cacheTTL?: number;
-      onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
-      onStreamEvent?: (event: StreamEvent, messageId?: string) => void | Promise<void>;
+      onStreamChunk?: (
+        chunk: string,
+        messageId?: string,
+      ) => void | Promise<void>;
+      onStreamEvent?: (
+        event: StreamEvent,
+        messageId?: string,
+      ) => void | Promise<void>;
       abortSignal?: AbortSignal;
     };
   }): Promise<Record<string, unknown> | null> {
     // Validate schema input
     if (!schema || schema.length === 0) {
-      this.logger.error("dynamicPromptExecFromState: schema must have at least one entry");
+      this.logger.error(
+        "dynamicPromptExecFromState: schema must have at least one entry",
+      );
       return null;
     }
 
@@ -3499,14 +3597,17 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Generate keys for metrics
     const modelIdentifier =
-      options.model || (options.modelSize === "small" ? "TEXT_SMALL" : "TEXT_LARGE");
+      options.model ||
+      (options.modelSize === "small" ? "TEXT_SMALL" : "TEXT_LARGE");
     const schemaKey = schema.map((s) => s.field).join(",");
     const modelSchemaKey = `${modelIdentifier}:${schemaKey}`;
 
     // Get validation level from settings or options
     const validationLevelRaw = this.getSetting("VALIDATION_LEVEL");
     const validationLevel =
-      typeof validationLevelRaw === "string" ? validationLevelRaw.toLowerCase() : undefined;
+      typeof validationLevelRaw === "string"
+        ? validationLevelRaw.toLowerCase()
+        : undefined;
 
     // Map VALIDATION_LEVEL to contextCheckLevel and default retries
     let defaultContextCheckLevel: 0 | 1 | 2 | 3 = 2;
@@ -3543,11 +3644,14 @@ export class AgentRuntime implements IAgentRuntime {
 
     while (currentRetry <= maxRetries) {
       const template = params.prompt;
-      const templateStr = typeof template === "function" ? template({ state }) : template;
+      const templateStr =
+        typeof template === "function" ? template({ state }) : template;
 
       // Get keys from state (excluding text, values, data)
       const stateKeys = Object.keys(state);
-      const filteredKeys = stateKeys.filter((key) => !["text", "values", "data"].includes(key));
+      const filteredKeys = stateKeys.filter(
+        (key) => !["text", "values", "data"].includes(key),
+      );
       const filteredState = filteredKeys.reduce(
         (acc: Record<string, unknown>, key) => {
           acc[key] = state[key];
@@ -3557,7 +3661,9 @@ export class AgentRuntime implements IAgentRuntime {
       );
 
       // Compile template
-      const templateFunction = Handlebars.compile(this.upgradeDoubleToTriple(templateStr));
+      const templateFunction = Handlebars.compile(
+        this.upgradeDoubleToTriple(templateStr),
+      );
       const output = templateFunction({ ...filteredState, ...state.values });
 
       // Process format options
@@ -3616,12 +3722,25 @@ export class AgentRuntime implements IAgentRuntime {
       const last = contextLevel >= 3;
 
       // Build extended schema with validation codes
-      const extSchema: Array<{ field: string; description: string; required?: boolean }> = [];
+      const extSchema: Array<{
+        field: string;
+        description: string;
+        required?: boolean;
+      }> = [];
 
       const codesSchema = (prefix: string) => [
-        { field: prefix + "initial_code", description: "echo the initial UUID code from prompt" },
-        { field: prefix + "middle_code", description: "echo the middle UUID code from prompt" },
-        { field: prefix + "end_code", description: "echo the end UUID code from prompt" },
+        {
+          field: `${prefix}initial_code`,
+          description: "echo the initial UUID code from prompt",
+        },
+        {
+          field: `${prefix}middle_code`,
+          description: "echo the middle UUID code from prompt",
+        },
+        {
+          field: `${prefix}end_code`,
+          description: "echo the end UUID code from prompt",
+        },
       ];
 
       if (first) {
@@ -3655,7 +3774,7 @@ export class AgentRuntime implements IAgentRuntime {
       const CONTAINER_START = isXML ? "<response>" : "{";
       const CONTAINER_END = isXML ? "</response>" : "}";
 
-      let EXAMPLE = CONTAINER_START + "\n";
+      let EXAMPLE = `${CONTAINER_START}\n`;
       for (let i = 0; i < extSchema.length; i++) {
         const s = extSchema[i];
         const isLast = i === extSchema.length - 1;
@@ -3666,14 +3785,15 @@ export class AgentRuntime implements IAgentRuntime {
           EXAMPLE += `  "${s.field}": "${s.description}"${isLast ? "" : ","}\n`;
         }
       }
-      EXAMPLE += CONTAINER_END + "\n";
+      EXAMPLE += `${CONTAINER_END}\n`;
 
       const initCode = uuidv4();
       const midCode = uuidv4();
       const finalCode = uuidv4();
 
       // Check for smart retry context (set by previous retry iteration)
-      const smartRetryContext = (state as Record<string, unknown>)._smartRetryContext || "";
+      const smartRetryContext =
+        (state as Record<string, unknown>)._smartRetryContext || "";
 
       const section_start = isXML ? "<output>" : "# Strict Output instructions";
       const section_end = isXML ? "</output>" : "";
@@ -3707,7 +3827,9 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       // 2. Metrics tracking: highestSuccessTokenCount / lowestFailedTokenCount
       //    (useful for identifying token-count-related failure patterns)
       const outputTokenEst = estToken(prompt);
-      this.logger.debug(`dynamicPromptExecFromState prompt ~${outputTokenEst.toLocaleString()} tokens`);
+      this.logger.debug(
+        `dynamicPromptExecFromState prompt ~${outputTokenEst.toLocaleString()} tokens`,
+      );
 
       // Create ValidationStreamExtractor on first iteration if streaming
       // Only use ValidationStreamExtractor for XML format - it parses XML tags
@@ -3724,11 +3846,14 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
 
         // Only use fallback if no explicit streamField settings exist
         // Don't override explicit streamField: false on "text" field
-        const hasExplicitStreamSettings = schema.some((r) => r.streamField !== undefined);
+        const hasExplicitStreamSettings = schema.some(
+          (r) => r.streamField !== undefined,
+        );
         const finalStreamFields =
           streamFields.length > 0
             ? streamFields
-            : !hasExplicitStreamSettings && schema.some((r) => r.field === "text")
+            : !hasExplicitStreamSettings &&
+                schema.some((r) => r.field === "text")
               ? ["text"]
               : [];
 
@@ -3740,17 +3865,20 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
           streamFields: finalStreamFields,
           expectedCodes: perFieldCodes,
           onChunk: (chunk) => {
-            options.onStreamChunk!(chunk, streamMessageId);
+            options.onStreamChunk?.(chunk, streamMessageId);
           },
           onEvent: options.onStreamEvent
-            ? (event) => options.onStreamEvent!(event, streamMessageId)
+            ? (event) => options.onStreamEvent?.(event, streamMessageId)
             : undefined,
           abortSignal: options.abortSignal,
           hasRichConsumer,
         });
       }
 
-      const modelType = options.modelSize === "small" ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
+      const modelType =
+        options.modelSize === "small"
+          ? ModelType.TEXT_SMALL
+          : ModelType.TEXT_LARGE;
 
       const modelParams = {
         ...params,
@@ -3761,7 +3889,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         ...(extractor
           ? {
               onStreamChunk: (chunk: string) => {
-                extractor!.push(chunk);
+                extractor?.push(chunk);
               },
             }
           : options.onStreamChunk
@@ -3796,11 +3924,19 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         if (currentRetry <= maxRetries) {
           // Apply retry backoff for model errors
           if (options.retryBackoff) {
-            const delayMs = this.calculateBackoffDelay(options.retryBackoff, currentRetry);
-            this.logger.debug(`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`);
+            const delayMs = this.calculateBackoffDelay(
+              options.retryBackoff,
+              currentRetry,
+            );
+            this.logger.debug(
+              `Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`,
+            );
 
             // Abortable sleep - check signal during wait, not just after
-            const aborted = await this.abortableSleep(delayMs, options.abortSignal);
+            const aborted = await this.abortableSleep(
+              delayMs,
+              options.abortSignal,
+            );
             if (aborted) {
               extractor?.signalError("Cancelled by user");
               delete (state as Record<string, unknown>)._smartRetryContext;
@@ -3825,9 +3961,13 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         responseContent = isXML
           ? parseKeyValueXml(cleanResponse)
           : parseJSONObjectFromText(cleanResponse);
-        this.logger.debug(`dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`);
+        this.logger.debug(
+          `dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`,
+        );
       } catch (e) {
-        this.logger.error(`dynamicPromptExecFromState parse error: ${String(e)}`);
+        this.logger.error(
+          `dynamicPromptExecFromState parse error: ${String(e)}`,
+        );
       }
 
       responseContent = this.normalizeStructuredResponse(responseContent);
@@ -3835,7 +3975,9 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       // Validate response
       let allGood = true;
       if (!responseContent) {
-        this.logger.warn(`dynamicPromptExecFromState parse problem: ${cleanResponse}`);
+        this.logger.warn(
+          `dynamicPromptExecFromState parse problem: ${cleanResponse}`,
+        );
         allGood = false;
       } else {
         // Validate codes based on context level
@@ -3878,7 +4020,9 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
 
           for (const [field, expected] of validationCodes) {
             if (responseContent[field] !== expected) {
-              this.logger.warn(`Checkpoint ${field} mismatch: expected ${expected}`);
+              this.logger.warn(
+                `Checkpoint ${field} mismatch: expected ${expected}`,
+              );
               allGood = false;
             }
           }
@@ -3901,15 +4045,21 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
             if (value === undefined || value === null) return true;
             if (typeof value === "string") return value.trim().length === 0;
             if (Array.isArray(value)) return value.length === 0;
-            if (typeof value === "object") return Object.keys(value).length === 0;
+            if (typeof value === "object")
+              return Object.keys(value).length === 0;
             return false;
           };
 
           const missingFields = options.requiredFields.filter(
-            (field) => !responseContent || !(field in responseContent) || isMissingField(responseContent[field]),
+            (field) =>
+              !responseContent ||
+              !(field in responseContent) ||
+              isMissingField(responseContent[field]),
           );
           if (missingFields.length > 0) {
-            this.logger.warn(`Missing required fields: ${missingFields.join(", ")}`);
+            this.logger.warn(
+              `Missing required fields: ${missingFields.join(", ")}`,
+            );
             allGood = false;
           }
         }
@@ -3925,7 +4075,10 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         }
 
         metric.successfulAttempts++;
-        if (metric.highestSuccessTokenCount === null || outputTokenEst > metric.highestSuccessTokenCount) {
+        if (
+          metric.highestSuccessTokenCount === null ||
+          outputTokenEst > metric.highestSuccessTokenCount
+        ) {
           metric.highestSuccessTokenCount = outputTokenEst;
         }
         metric.lastUpdated = Date.now();
@@ -3941,7 +4094,10 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
 
       // Failure - update metrics
       metric.failedAttempts++;
-      if (metric.lowestFailedTokenCount === null || outputTokenEst < metric.lowestFailedTokenCount) {
+      if (
+        metric.lowestFailedTokenCount === null ||
+        outputTokenEst < metric.lowestFailedTokenCount
+      ) {
         metric.lowestFailedTokenCount = outputTokenEst;
       }
 
@@ -3956,11 +4112,19 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       if (currentRetry <= maxRetries) {
         // Apply retry backoff
         if (options.retryBackoff) {
-          const delayMs = this.calculateBackoffDelay(options.retryBackoff, currentRetry);
-          this.logger.debug(`Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`);
+          const delayMs = this.calculateBackoffDelay(
+            options.retryBackoff,
+            currentRetry,
+          );
+          this.logger.debug(
+            `Retry backoff: waiting ${delayMs}ms before retry ${currentRetry}`,
+          );
 
           // Abortable sleep - check signal during wait, not just after
-          const aborted = await this.abortableSleep(delayMs, options.abortSignal);
+          const aborted = await this.abortableSleep(
+            delayMs,
+            options.abortSignal,
+          );
           if (aborted) {
             extractor?.signalError("Cancelled by user");
             delete (state as Record<string, unknown>)._smartRetryContext;
@@ -3985,7 +4149,8 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
             const validatedContent = extractor.getValidatedFields();
             const validatedParts: string[] = [];
             for (const [field, content] of validatedContent) {
-              const truncated = content.length > 500 ? content.slice(0, 500) + "..." : content;
+              const truncated =
+                content.length > 500 ? `${content.slice(0, 500)}...` : content;
               validatedParts.push(`<${field}>${truncated}</${field}>`);
             }
             if (validatedParts.length > 0) {
@@ -3997,7 +4162,8 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         }
 
         if (smartRetryContextNext) {
-          (state as Record<string, unknown>)._smartRetryContext = smartRetryContextNext;
+          (state as Record<string, unknown>)._smartRetryContext =
+            smartRetryContextNext;
         }
       }
     }
@@ -4013,7 +4179,9 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         diagnosticParts.push(`invalid: ${diagnosis.invalidFields.join(", ")}`);
       }
       if (diagnosis.incompleteFields.length > 0) {
-        diagnosticParts.push(`incomplete: ${diagnosis.incompleteFields.join(", ")}`);
+        diagnosticParts.push(
+          `incomplete: ${diagnosis.incompleteFields.join(", ")}`,
+        );
       }
       extractor.signalError(
         `Failed after ${maxRetries} retries. ${diagnosticParts.length > 0 ? diagnosticParts.join("; ") : "unknown error"}`,
@@ -4033,12 +4201,15 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   /**
    * Calculate retry backoff delay.
    */
-  private calculateBackoffDelay(config: number | RetryBackoffConfig, retryCount: number): number {
+  private calculateBackoffDelay(
+    config: number | RetryBackoffConfig,
+    retryCount: number,
+  ): number {
     if (typeof config === "number") {
       return config;
     }
     const { initialMs = 1000, multiplier = 2, maxMs = 30000 } = config;
-    const delay = initialMs * Math.pow(multiplier, retryCount - 1);
+    const delay = initialMs * multiplier ** (retryCount - 1);
     return Math.min(delay, maxMs);
   }
 
@@ -4091,7 +4262,8 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     // (\s*)        - capture trailing whitespace
     // \}\}         - match closing }}
     // (?!\})       - not followed by } (avoids matching {{{ }}}
-    const DOUBLE_BRACE_VAR = /(?<!\{)\{\{(?!#|\/|!|>|\{|else\b)(\s*)(\S+?)(\s*)\}\}(?!\})/g;
+    const DOUBLE_BRACE_VAR =
+      /(?<!\{)\{\{(?!#|\/|!|>|\{|else\b)(\s*)(\S+?)(\s*)\}\}(?!\})/g;
 
     return tpl.replace(DOUBLE_BRACE_VAR, "{{{$1$2$3}}}");
   }
@@ -4540,12 +4712,62 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     const results = bm25.search(query, memories.length);
     return results.map((result) => memories[result.index]);
   }
+  /**
+   * Get the secrets to redact from character settings.
+   * Returns an empty object if no secrets are configured.
+   */
+  private getSecretsForRedaction(): Record<string, string> {
+    const secrets = this.character?.settings?.secrets;
+    if (!secrets || typeof secrets !== "object") {
+      return {};
+    }
+    // Filter to only include string values
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(secrets)) {
+      if (typeof value === "string" && value.length > 0) {
+        result[key] = value;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Redact secrets from text content.
+   * This prevents character secrets from appearing in outputs or memories.
+   */
+  redactSecrets(text: string): string {
+    if (!text) {
+      return text;
+    }
+    const secrets = this.getSecretsForRedaction();
+    if (Object.keys(secrets).length === 0) {
+      return text;
+    }
+    return redactWithSecrets(text, { secrets, applyPatterns: true });
+  }
+
   async createMemory(
     memory: Memory,
     tableName: string,
     unique?: boolean,
   ): Promise<UUID> {
     if (unique !== undefined) memory.unique = unique;
+
+    // Redact any secrets from memory content before storing
+    const secrets = this.getSecretsForRedaction();
+    if (Object.keys(secrets).length > 0 && memory.content?.text) {
+      memory = {
+        ...memory,
+        content: {
+          ...memory.content,
+          text: redactWithSecrets(memory.content.text, {
+            secrets,
+            applyPatterns: true,
+          }),
+        },
+      };
+    }
+
     return await this.adapter.createMemory(memory, tableName, unique);
   }
   async updateMemory(
@@ -4854,5 +5076,44 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       throw new Error("Database adapter not registered");
     }
     return await this.adapter.isReady();
+  }
+
+  // Pairing Methods
+  // ===============================
+
+  async getPairingRequests(
+    channel: PairingChannel,
+    agentId: UUID,
+  ): Promise<PairingRequest[]> {
+    return await this.adapter.getPairingRequests(channel, agentId);
+  }
+
+  async createPairingRequest(request: PairingRequest): Promise<UUID> {
+    return await this.adapter.createPairingRequest(request);
+  }
+
+  async updatePairingRequest(request: PairingRequest): Promise<void> {
+    return await this.adapter.updatePairingRequest(request);
+  }
+
+  async deletePairingRequest(id: UUID): Promise<void> {
+    return await this.adapter.deletePairingRequest(id);
+  }
+
+  async getPairingAllowlist(
+    channel: PairingChannel,
+    agentId: UUID,
+  ): Promise<PairingAllowlistEntry[]> {
+    return await this.adapter.getPairingAllowlist(channel, agentId);
+  }
+
+  async createPairingAllowlistEntry(
+    entry: PairingAllowlistEntry,
+  ): Promise<UUID> {
+    return await this.adapter.createPairingAllowlistEntry(entry);
+  }
+
+  async deletePairingAllowlistEntry(id: UUID): Promise<void> {
+    return await this.adapter.deletePairingAllowlistEntry(id);
   }
 }

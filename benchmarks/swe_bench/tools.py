@@ -101,7 +101,7 @@ search_code_action = Action(
             name="file_pattern",
             description="File pattern to search (default: *.py)",
             required=False,
-            schema=ActionParameterSchema(type="string", default="*.py"),
+            schema=ActionParameterSchema(type="string", description="default: *.py"),
         ),
     ],
 )
@@ -363,13 +363,13 @@ list_files_action = Action(
             name="directory",
             description="Directory to list files from (default: repository root)",
             required=False,
-            schema=ActionParameterSchema(type="string", default="."),
+            schema=ActionParameterSchema(type="string", description="default: ."),
         ),
         ActionParameter(
             name="pattern",
             description="File pattern to filter by (e.g., '*.py' for Python files)",
             required=False,
-            schema=ActionParameterSchema(type="string", default="*"),
+            schema=ActionParameterSchema(type="string", description="default: *"),
         ),
     ],
 )

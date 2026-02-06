@@ -6,11 +6,16 @@ T = TypeVar("T")
 
 
 class JsonFileStorage:
+    """JSON file-based storage implementation."""
+
     def __init__(self, data_dir: str):
+        if not data_dir or not data_dir.strip():
+            raise ValueError("Data directory path cannot be empty")
         self.data_dir = Path(data_dir)
         self._ready = False
 
     async def init(self) -> None:
+        """Initialize the storage by creating the data directory."""
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._ready = True
 
@@ -67,6 +72,11 @@ class JsonFileStorage:
         item_id: str,
         data: Dict[str, Any],
     ) -> None:
+        """Store an item in a collection."""
+        if not collection or not collection.strip():
+            raise ValueError("Collection name cannot be empty")
+        if not item_id or not item_id.strip():
+            raise ValueError("Item ID cannot be empty")
         collection_dir = self._get_collection_dir(collection)
         collection_dir.mkdir(parents=True, exist_ok=True)
 
@@ -122,8 +132,12 @@ class JsonFileStorage:
         return len([item for item in items if predicate(item)])
 
     async def save_raw(self, filename: str, data: str) -> None:
+        """Save raw string data to a file."""
+        if not filename or not filename.strip():
+            raise ValueError("Filename cannot be empty")
         file_path = self.data_dir / filename
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+        if file_path.parent != self.data_dir:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(data)
 

@@ -14,7 +14,7 @@
  * NO shortcuts, NO bypassing the pipeline - this is canonical elizaOS.
  */
 
-import { AgentRuntime, stringToUuid } from "@elizaos/core";
+import { AgentRuntime, stringToUuid, type Plugin } from "@elizaos/core";
 import { config } from "dotenv";
 
 import { character } from "./character";
@@ -68,8 +68,10 @@ async function main(): Promise<void> {
   // These are workspace dependencies that need to be built first
   const sqlPlugin = (await import("@elizaos/plugin-sql")).default;
   const { openaiPlugin } = await import("@elizaos/plugin-openai");
-  // @ts-expect-error - Workspace plugin resolved at runtime after build
-  const { blueSkyPlugin } = await import("@elizaos/plugin-bluesky");
+  const blueskyModuleId: string = "@elizaos/plugin-bluesky";
+  const { blueSkyPlugin } = (await import(blueskyModuleId)) as {
+    blueSkyPlugin: Plugin;
+  };
 
   // Create the runtime with all required plugins
   // Note: basicCapabilities is true by default (provides REPLY, IGNORE, NONE actions)

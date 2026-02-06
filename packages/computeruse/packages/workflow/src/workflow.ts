@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Desktop } from "@mediar-ai/computeruse";
+import { Desktop } from "@elizaos/computeruse";
 import * as fs from "fs";
 import * as path from "path";
 import type {
@@ -189,9 +189,7 @@ function createWorkflowInstance<TInput = any>(
             const validationResult = config.input.safeParse(input);
             if (!validationResult.success) {
                 log.error("❌ Input validation failed:");
-                log.error(
-                    JSON.stringify(validationResult.error.format(), null, 2),
-                );
+                log.error(z.prettifyError(validationResult.error));
                 throw new Error("Input validation failed");
             }
 

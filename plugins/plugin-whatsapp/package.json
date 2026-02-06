@@ -20,11 +20,20 @@
         "dist"
     ],
     "scripts": {
-        "build": "tsup --format esm --dts",
+        "build": "npm run build:ts && npm run build:py && npm run build:rs",
+        "build:ts": "tsup --format esm --dts",
+        "build:py": "test -n \"$SKIP_PYTHON_BUILD\" && echo 'Python build skipped (SKIP_PYTHON_BUILD set)' || (cd python && pip install -e .)",
+        "build:rs": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
         "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run",
+        "test": "npm run test:ts && npm run test:py && npm run test:rs",
+        "test:ts": "vitest run",
+        "test:py": "cd python && pytest",
+        "test:rs": "cd rust && cargo test",
         "coverage": "vitest run --coverage",
-        "lint": "biome check --apply-unsafe src/",
+        "lint": "npm run lint:ts && npm run lint:py && npm run lint:rs",
+        "lint:ts": "biome check --apply-unsafe src/",
+        "lint:py": "cd python && ruff check --fix --unsafe-fixes .",
+        "lint:rs": "cd rust && cargo clippy",
         "lint:fix": "biome check --apply src/",
         "format": "biome format src/",
         "format:fix": "biome format --write src/"

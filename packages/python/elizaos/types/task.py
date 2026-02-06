@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from elizaos.types.generated.eliza.v1 import task_pb2
 
@@ -14,6 +14,7 @@ TaskStatus = task_pb2.TaskStatus
 
 
 # Runtime worker interface (not in proto)
+@runtime_checkable
 class TaskWorker(Protocol):
     name: str
 

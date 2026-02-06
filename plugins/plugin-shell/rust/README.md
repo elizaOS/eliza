@@ -61,7 +61,6 @@ async fn main() -> anyhow::Result<()> {
 
 The plugin can be configured via environment variables:
 
-- `SHELL_ENABLED`: Enable/disable the plugin (default: false)
 - `SHELL_ALLOWED_DIRECTORY`: Directory to restrict commands to
 - `SHELL_TIMEOUT`: Command timeout in milliseconds (default: 30000)
 - `SHELL_FORBIDDEN_COMMANDS`: Comma-separated list of forbidden commands

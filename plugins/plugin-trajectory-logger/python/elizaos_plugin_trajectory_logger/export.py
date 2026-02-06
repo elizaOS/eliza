@@ -73,5 +73,9 @@ def _resolve_output_path(options: ExportOptions, filename: str) -> Path:
 
 
 def _write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    """Write text content to a file, creating parent directories as needed."""
+    if not str(path).strip():
+        raise ValueError("File path cannot be empty")
+    if path.parent and str(path.parent) != ".":
+        path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")

@@ -27,6 +27,12 @@ export const DISCORD_DEFAULTS = {
   SHOULD_IGNORE_DIRECT_MESSAGES: getEnvBoolean("DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES", false),
   SHOULD_RESPOND_ONLY_TO_MENTIONS: getEnvBoolean("DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS", false),
   ALLOWED_CHANNEL_IDS: getEnvArray("CHANNEL_IDS", []),
+  DM_POLICY: (process.env?.DISCORD_DM_POLICY || "open") as
+    | "open"
+    | "allowlist"
+    | "pairing"
+    | "disabled",
+  ALLOW_FROM: getEnvArray("DISCORD_ALLOW_FROM", []),
 } as const;
 
 export const discordEnvSchema = z.object({
@@ -111,6 +117,30 @@ export function getDiscordSettings(runtime: IAgentRuntime): DiscordSettings {
     ),
 
     allowedChannelIds: resolvedAllowedChannelIds.length > 0 ? resolvedAllowedChannelIds : undefined,
+
+    dmPolicy: resolveSetting(
+      "DISCORD_DM_POLICY",
+      characterSettings.dmPolicy,
+      DISCORD_DEFAULTS.DM_POLICY,
+      (value: string) => {
+        const normalized = value.toLowerCase().trim();
+        if (["open", "allowlist", "pairing", "disabled"].includes(normalized)) {
+          return normalized as "open" | "allowlist" | "pairing" | "disabled";
+        }
+        return DISCORD_DEFAULTS.DM_POLICY;
+      }
+    ),
+
+    allowFrom: resolveSetting<string[]>(
+      "DISCORD_ALLOW_FROM",
+      characterSettings.allowFrom,
+      DISCORD_DEFAULTS.ALLOW_FROM,
+      (value: string) =>
+        value
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+    ),
   };
 }
 

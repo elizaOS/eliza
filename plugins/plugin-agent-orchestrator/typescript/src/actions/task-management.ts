@@ -39,7 +39,13 @@ export const createTaskAction: Action = {
   similes: ["START_TASK", "SPAWN_TASK", "NEW_TASK", "BEGIN_TASK"],
   description:
     "Create an orchestrated background task to be executed by a selected agent provider.",
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    // Check if orchestrator service is available
+    const svc = runtime.getService("CODE_TASK");
+    if (!svc) {
+      return false;
+    }
+
     const text = message.content.text?.toLowerCase() ?? "";
     const hasExplicit =
       text.includes("create task") || text.includes("new task") || text.includes("start a task");
@@ -87,7 +93,11 @@ export const createTaskAction: Action = {
     const msg = `Created task: ${task.name}\nProvider: ${task.metadata.providerLabel ?? task.metadata.providerId}\nStarting execution…`;
     await callback?.({ content: { text: msg } });
 
-    svc.startTaskExecution(task.id ?? "").catch(() => {});
+    svc.startTaskExecution(task.id ?? "").catch((err) => {
+      // Log execution errors but don't block the action response
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      svc.appendOutput(task.id ?? "", `Execution error: ${errorMsg}`).catch(() => {});
+    });
 
     return { success: true, text: msg, data: { taskId: task.id ?? "" } };
   },
@@ -101,7 +111,13 @@ export const listTasksAction: Action = {
   name: "LIST_TASKS",
   similes: ["SHOW_TASKS", "GET_TASKS", "TASKS", "VIEW_TASKS"],
   description: "List tasks managed by the orchestrator.",
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    // Check if orchestrator service is available
+    const svc = runtime.getService("CODE_TASK");
+    if (!svc) {
+      return false;
+    }
+
     const t = message.content.text?.toLowerCase() ?? "";
     return (
       t.includes("list task") || t.includes("show task") || t === "tasks" || t.includes("my task")
@@ -141,7 +157,13 @@ export const switchTaskAction: Action = {
   name: "SWITCH_TASK",
   similes: ["SELECT_TASK", "SET_TASK", "CHANGE_TASK", "GO_TO_TASK"],
   description: "Switch the current task context to a different task.",
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    // Check if orchestrator service is available
+    const svc = runtime.getService("CODE_TASK");
+    if (!svc) {
+      return false;
+    }
+
     const t = message.content.text?.toLowerCase() ?? "";
     return (
       t.includes("switch to task") ||
@@ -185,7 +207,13 @@ export const searchTasksAction: Action = {
   name: "SEARCH_TASKS",
   similes: ["FIND_TASK", "LOOKUP_TASK"],
   description: "Search tasks by query.",
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    // Check if orchestrator service is available
+    const svc = runtime.getService("CODE_TASK");
+    if (!svc) {
+      return false;
+    }
+
     const t = message.content.text?.toLowerCase() ?? "";
     return t.includes("search task") || t.includes("find task") || t.includes("look for task");
   },
@@ -228,7 +256,13 @@ export const pauseTaskAction: Action = {
   name: "PAUSE_TASK",
   similes: ["STOP_TASK", "HALT_TASK"],
   description: "Pause a running task.",
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    // Check if orchestrator service is available
+    const svc = runtime.getService("CODE_TASK");
+    if (!svc) {
+      return false;
+    }
+
     const t = message.content.text?.toLowerCase() ?? "";
     return (t.includes("pause") || t.includes("stop") || t.includes("halt")) && t.includes("task");
   },
@@ -258,7 +292,13 @@ export const resumeTaskAction: Action = {
   name: "RESUME_TASK",
   similes: ["CONTINUE_TASK", "RESTART_TASK", "RUN_TASK"],
   description: "Resume a paused task.",
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    // Check if orchestrator service is available
+    const svc = runtime.getService("CODE_TASK");
+    if (!svc) {
+      return false;
+    }
+
     const t = message.content.text?.toLowerCase() ?? "";
     return (
       t.includes("task") &&
@@ -281,7 +321,12 @@ export const resumeTaskAction: Action = {
       return { success: false, text: msg };
     }
     await svc.resumeTask(task.id);
-    svc.startTaskExecution(task.id).catch(() => {});
+    const taskId = task.id;
+    svc.startTaskExecution(taskId).catch((err) => {
+      // Log execution errors but don't block the action response
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      svc.appendOutput(taskId, `Execution error: ${errorMsg}`).catch(() => {});
+    });
     const msg = `Resumed task: ${task.name}`;
     await callback?.({ content: { text: msg } });
     return { success: true, text: msg };
@@ -292,7 +337,13 @@ export const cancelTaskAction: Action = {
   name: "CANCEL_TASK",
   similes: ["DELETE_TASK", "REMOVE_TASK", "ABORT_TASK"],
   description: "Cancel a task.",
-  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    // Check if orchestrator service is available
+    const svc = runtime.getService("CODE_TASK");
+    if (!svc) {
+      return false;
+    }
+
     const t = message.content.text?.toLowerCase() ?? "";
     return (
       (t.includes("cancel") || t.includes("delete") || t.includes("remove")) && t.includes("task")

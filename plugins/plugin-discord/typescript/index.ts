@@ -1,7 +1,9 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import chatWithAttachments from "./actions/chatWithAttachments";
 import createPoll from "./actions/createPoll";
+import deleteMessage from "./actions/deleteMessage";
 import { downloadMedia } from "./actions/downloadMedia";
+import editMessage from "./actions/editMessage";
 import getUserInfo from "./actions/getUserInfo";
 import joinChannel from "./actions/joinChannel";
 import leaveChannel from "./actions/leaveChannel";
@@ -46,6 +48,8 @@ const discordPlugin: Plugin = {
     pinMessage,
     unpinMessage,
     serverInfo,
+    editMessage,
+    deleteMessage,
   ],
   providers: [channelStateProvider, voiceStateProvider, guildInfoProvider],
   tests: [new DiscordTestSuite()],
@@ -123,7 +127,119 @@ const discordPlugin: Plugin = {
 
 export default discordPlugin;
 
+// Channel configuration types (comprehensive config schema)
+export type {
+  DiscordActionConfig,
+  DiscordChannelConfig,
+  DiscordConfig,
+  DiscordExecApprovalConfig,
+  DiscordIntentsConfig,
+  DiscordPluralKitConfig,
+  DiscordReactionNotificationMode,
+} from "./config";
+
+// Re-export config types that were in accounts.ts for backward compatibility
+export type {
+  DiscordAccountConfig,
+  DiscordDmConfig,
+  DiscordGuildChannelConfig,
+  DiscordGuildEntry,
+} from "./config";
+
+// Account management exports (runtime utilities)
+export {
+  DEFAULT_ACCOUNT_ID,
+  type DiscordMultiAccountConfig,
+  type DiscordTokenResolution,
+  type DiscordTokenSource,
+  isMultiAccountEnabled,
+  listDiscordAccountIds,
+  listEnabledDiscordAccounts,
+  normalizeAccountId,
+  normalizeDiscordToken,
+  type ResolvedDiscordAccount,
+  resolveDefaultDiscordAccountId,
+  resolveDiscordAccount,
+  resolveDiscordToken,
+} from "./accounts";
+// Allowlist exports
+export {
+  type AllowListMatchSource,
+  allowListMatches,
+  type ChannelMatchSource,
+  type DiscordAllowList,
+  type DiscordAllowListMatch,
+  type DiscordChannelConfigResolved,
+  formatDiscordUserTag,
+  isDiscordAutoThreadOwnedByBot,
+  isDiscordGroupAllowedByPolicy,
+  normalizeDiscordAllowList,
+  normalizeDiscordSlug,
+  resolveDiscordAllowListMatch,
+  resolveDiscordChannelConfig,
+  resolveDiscordChannelConfigWithFallback,
+  resolveDiscordCommandAuthorized,
+  resolveDiscordGuildEntry,
+  resolveDiscordShouldRequireMention,
+  resolveDiscordUserAllowed,
+  resolveGroupDmAllow,
+  shouldEmitDiscordReactionNotification,
+  validateMessageAllowed,
+} from "./allowlist";
 export { DISCORD_SERVICE_NAME } from "./constants";
+// Messaging utilities exports
+export {
+  buildChannelLink,
+  buildMessageLink,
+  type ChunkDiscordTextOpts,
+  chunkDiscordText,
+  chunkDiscordTextWithMode,
+  escapeDiscordMarkdown,
+  extractAllChannelMentions,
+  extractAllRoleMentions,
+  extractAllUserMentions,
+  extractChannelIdFromMention,
+  extractRoleIdFromMention,
+  extractUserIdFromMention,
+  formatDiscordChannelMention,
+  formatDiscordReactionEmoji,
+  formatDiscordRoleMention,
+  formatDiscordTimestamp,
+  formatDiscordUserMention,
+  formatMessageReactionEmoji,
+  messageContainsMention,
+  parseMessageLink,
+  resolveDiscordSystemLocation,
+  resolveTimestampMs,
+  sanitizeThreadName,
+  stripDiscordFormatting,
+  truncateText,
+  truncateUtf16Safe,
+} from "./messaging";
+// Native commands utilities exports
+export {
+  type BuiltCommandOption,
+  buildCommandArgCustomId,
+  buildCommandArgMenu,
+  buildCommandText,
+  buildDiscordCommandOptions,
+  buildDiscordSlashCommand,
+  COMMAND_ARG_CUSTOM_ID_KEY,
+  type CommandArgButton,
+  type CommandArgButtonRow,
+  type CommandArgDefinition,
+  type CommandArgMenu,
+  type CommandArgs,
+  type CommandArgValues,
+  createCommandArgs,
+  decodeCommandArgValue,
+  encodeCommandArgValue,
+  isUnknownInteractionError,
+  type NativeCommandSpec,
+  parseCommandArgCustomId,
+  safeInteractionCall,
+  serializeCommandArgs,
+} from "./native-commands";
 export {
   ELEVATED_PERMISSIONS,
   hasElevatedPermissions,

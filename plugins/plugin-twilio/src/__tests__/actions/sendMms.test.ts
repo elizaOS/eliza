@@ -11,9 +11,16 @@ vi.mock("../../utils", () => ({
   }),
 }));
 
+/**
+ * Interface for mock Twilio service
+ */
+interface MockTwilioService {
+  sendSms: ReturnType<typeof vi.fn>;
+}
+
 describe("sendMmsAction", () => {
   let mockRuntime: IAgentRuntime;
-  let mockTwilioService: any;
+  let mockTwilioService: MockTwilioService;
   let mockCallback: HandlerCallback;
 
   beforeEach(() => {
@@ -31,7 +38,7 @@ describe("sendMmsAction", () => {
 
     mockRuntime = {
       getService: vi.fn().mockReturnValue(mockTwilioService),
-    } as any;
+    } as unknown as IAgentRuntime;
 
     mockCallback = vi.fn();
   });
@@ -265,7 +272,7 @@ describe("sendMmsAction", () => {
 
     it("should handle invalid phone number", async () => {
       const { validatePhoneNumber } = await import("../../utils");
-      (validatePhoneNumber as any).mockReturnValue(false);
+      vi.mocked(validatePhoneNumber).mockReturnValue(false);
 
       const message: Memory = {
         content: { text: "Send picture to +18885551234" },

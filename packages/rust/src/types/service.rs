@@ -40,6 +40,8 @@ pub mod service_type {
     pub const MESSAGE: &str = "message";
     /// Post service type
     pub const POST: &str = "post";
+    /// Hooks service type
+    pub const HOOKS: &str = "hooks";
     /// Unknown service type
     pub const UNKNOWN: &str = "unknown";
 }

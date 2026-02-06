@@ -4,7 +4,7 @@ import {
   ModelType,
   type ObjectGenerationParams,
 } from "@elizaos/core";
-import { generateObject, jsonSchema } from "ai";
+import { generateObject, jsonSchema, type LanguageModel } from "ai";
 import type { JSONSchema7 } from "json-schema";
 
 import { createOpenRouterProvider } from "../providers";
@@ -25,7 +25,7 @@ async function generateObjectWithModel(
 
   try {
     const generateParams = {
-      model: openrouter.chat(modelName),
+      model: openrouter.chat(modelName) as LanguageModel,
       ...(params.schema && {
         schema: jsonSchema(params.schema as JSONSchema7),
       }),
@@ -34,7 +34,6 @@ async function generateObjectWithModel(
       temperature: temperature,
     };
 
-    // @ts-expect-error - AI SDK type compatibility issue with OpenRouter provider
     const { object, usage } = await generateObject(generateParams);
 
     if (usage) {

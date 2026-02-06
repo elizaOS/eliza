@@ -31,8 +31,27 @@ export const coderPlugin: Plugin = {
 
 export default coderPlugin;
 
+// Actions (Eliza Action interface)
 export * from "./actions";
+// CodingAction system - Claude Code-style function-calling actions
+export { configureCodingTools } from "./configureCodingTools";
+// Providers
 export { coderStatusProvider } from "./providers/coderStatusProvider";
+// Services
 export { CoderService } from "./services/coderService";
-export * from "./types";
+// Other types and utilities
+export type {
+  CoderConfig,
+  CodingAction,
+  CodingActionAvailabilityContext,
+  CodingActionContentItem,
+  CodingActionContext,
+  CodingActionResult,
+  CodingActionUpdateCallback,
+  CodingToolsOptions,
+  CommandHistoryEntry,
+  CommandResult,
+  FileOperation,
+  FileOperationType,
+} from "./types";
 export * from "./utils";

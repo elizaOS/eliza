@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -14,18 +15,14 @@ async function buildPlugin() {
   }
 
   console.log("Compiling TypeScript...");
-  const tscProcess = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json"], {
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  await tscProcess.exited;
-
-  if (tscProcess.exitCode !== 0) {
+  try {
+    execSync("bunx tsc -p tsconfig.build.json", { stdio: "inherit" });
+  } catch {
     console.error("TypeScript compilation failed");
     process.exit(1);
   }
 
-  console.log("\nBuild complete!");
+  console.log("\n✅ Build complete!");
 }
 
 buildPlugin().catch((error) => {

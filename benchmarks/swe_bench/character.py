@@ -133,11 +133,13 @@ Key principles:
 
 Always respond with a valid action. Do not simply describe what you would do - actually do it using the available tools.""",
         settings={
-            "model": model_name,
-            # Disable check_should_respond - always respond in benchmark mode
-            "CHECK_SHOULD_RESPOND": False,
-            # Enable action planning for multi-step reasoning
-            "ACTION_PLANNING": True,
+            # Use extra field for custom benchmark settings since these
+            # are not part of the CharacterSettings proto schema.
+            "extra": {
+                "model": model_name,
+                "CHECK_SHOULD_RESPOND": False,
+                "ACTION_PLANNING": True,
+            },
         },
         templates={
             "messageHandlerTemplate": SWE_BENCH_MESSAGE_HANDLER_TEMPLATE,

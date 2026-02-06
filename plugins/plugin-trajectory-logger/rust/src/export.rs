@@ -27,7 +27,9 @@ pub fn export_for_openpipe_art<P: AsRef<Path>>(
     };
 
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
     }
 
     let mut lines = String::new();
@@ -66,7 +68,9 @@ pub fn export_grouped_for_grpo<P: AsRef<Path>>(
     };
 
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
     }
 
     let groups: Vec<TrajectoryGroup> = group_trajectories(trajectories, now_ms);

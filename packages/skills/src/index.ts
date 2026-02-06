@@ -49,10 +49,13 @@ export type {
   LoadSkillsOptions,
   LoadSkillsResult,
   Skill,
+  SkillActionDefinition,
   SkillCommandSpec,
   SkillDiagnostic,
   SkillEntry,
   SkillFrontmatter,
   SkillInvocationPolicy,
   SkillMetadata,
+  SkillProviderDefinition,
+  SkillToolDefinition,
 } from "./types.js";

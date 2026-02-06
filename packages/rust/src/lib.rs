@@ -74,6 +74,9 @@ pub mod template;
 pub mod types;
 pub mod xml;
 
+/// Media utilities (MIME detection, hybrid search)
+pub mod media;
+
 /// Auto-generated action/provider/evaluator docs from centralized specs
 #[allow(missing_docs)]
 pub mod generated;
@@ -90,6 +93,10 @@ pub use character::{
 };
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub use runtime::AgentRuntime;
+
+// Re-export model handler types for runtime extensibility
+#[cfg(all(feature = "native", not(feature = "wasm")))]
+pub use runtime::{RuntimeModelHandler, StreamingModelHandler};
 
 // Re-export agent types
 pub use types::agent::{Agent, AgentStatus, Bio, Character};
@@ -109,8 +116,26 @@ pub use types::database::{GetMemoriesParams, Log, LogBody, SearchMemoriesParams}
 // Re-export task types
 pub use types::task::{Task, TaskStatus};
 
+// Re-export streaming types for validation-aware streaming
+pub use types::streaming::{
+    ExtractorState, FieldState, IStreamExtractor, IStreamingRetryState, MarkableExtractor,
+    ValidationDiagnosis, ValidationStreamExtractor, ValidationStreamExtractorConfig,
+};
+
 // Re-export plugin types
 pub use types::plugin::Plugin;
+
+// Re-export component types (for plugin development)
+pub use types::components::{
+    ActionContext, ActionDefinition, ActionHandler, ActionResult, ProviderDefinition,
+    ProviderHandler, ProviderResult,
+};
+
+// Re-export service types
+pub use types::service::{Service, ServiceDefinition, ServiceError};
+
+// Re-export state type
+pub use types::state::State;
 
 // Re-export platform utilities
 pub use platform::{AnyArc, PlatformService};

@@ -25,7 +25,6 @@ export {
   getAgentFromConfig,
   RetryAgent,
   RetryAgentConfig,
-  ShellAgentConfig,
   TemplateConfig,
   ToolConfig as AgentToolConfig,
   ToolHandler as AgentToolHandler,

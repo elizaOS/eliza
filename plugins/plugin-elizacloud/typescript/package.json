@@ -47,7 +47,7 @@
     "@biomejs/biome": "^2.3.11"
   },
   "peerDependencies": {
-    "zod": "^4.2.1"
+    "zod": "^4.3.6"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
@@ -185,6 +185,20 @@
         "type": "string",
         "description": "Browser-only proxy endpoint base URL for ElizaOS Cloud embeddings.",
         "required": false,
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_ENABLED": {
+        "type": "boolean",
+        "description": "Enable ElizaCloud container provisioning, device auth, bridge, and backup services. When false, only inference model handlers are active.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_APP_VERSION": {
+        "type": "string",
+        "description": "Application version sent during device authentication.",
+        "required": false,
+        "default": "2.0.0-alpha",
         "sensitive": false
       }
     }

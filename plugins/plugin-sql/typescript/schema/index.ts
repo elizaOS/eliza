@@ -10,6 +10,8 @@ export { memoryTable } from "./memory";
 export { messageTable } from "./message";
 export { messageServerTable } from "./messageServer";
 export { messageServerAgentsTable } from "./messageServerAgent";
+export { pairingAllowlistTable } from "./pairingAllowlist";
+export { pairingRequestTable } from "./pairingRequest";
 export { participantTable } from "./participant";
 export { relationshipTable } from "./relationship";
 export { roomTable } from "./room";

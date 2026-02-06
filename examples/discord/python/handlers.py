@@ -1,8 +1,11 @@
 """
 Discord Event Handlers
 
-Custom handlers for Discord-specific events like messages,
-reactions, and member events.
+These handlers demonstrate custom event handling for Discord-specific features
+like slash commands, reactions, and member events.
+
+Note: Message handling is done through the elizaOS pipeline in agent.py via
+message_service.handle_message() - this file is for auxiliary Discord features.
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from elizaos.runtime import AgentRuntime
     from elizaos_plugin_discord import DiscordService
 
 from character import character
@@ -18,72 +22,57 @@ from character import character
 logger = logging.getLogger(__name__)
 
 
-async def handle_message_received(
+async def handle_slash_command(
+    runtime: "AgentRuntime",
     service: "DiscordService",
     payload: dict,
 ) -> None:
-    """Handle incoming Discord messages that mention the bot."""
-    content = payload.get("content", "")
-    author_name = payload.get("author_name", "unknown")
-    channel_id = payload.get("channel_id", "")
-
-    if not content:
+    """Handle Discord slash commands."""
+    command_name = payload.get("command_name", "")
+    interaction = payload.get("interaction")
+    
+    if not interaction:
         return
 
-    logger.info(
-        "Message from %s in channel %s: %s...",
-        author_name,
-        channel_id,
-        content[:50],
-    )
+    logger.info("Slash command received: /%s", command_name)
 
-    # Simple response logic - you can integrate with LLM here
-    # For now, just acknowledge the message
-    response = generate_response(content, author_name)
-    
-    if response:
-        try:
-            await service.send_message(channel_id, response)
-            logger.info("Sent response to channel %s", channel_id)
-        except Exception as e:
-            logger.error("Error sending message: %s", e)
+    if command_name == "ping":
+        await interaction.reply(
+            content="🏓 Pong! I'm alive and responding.",
+            ephemeral=True,
+        )
+    elif command_name == "about":
+        await interaction.reply(
+            content=f"""👋 Hi! I'm **{character.name}**, an AI assistant powered by elizaOS.
 
+I use:
+• `elizaos` runtime for intelligent message processing
+• `elizaos_plugin_discord` for Discord integration  
+• `elizaos_plugin_openai` for language understanding
+• `elizaos_plugin_sql` for memory persistence
 
-def generate_response(content: str, username: str) -> str | None:
-    """Generate a response to a message.
-    
-    This is a simple implementation. In production, you would
-    integrate with an LLM through the elizaOS runtime.
-    """
-    content_lower = content.lower()
-    
-    # Simple keyword responses
-    if "hello" in content_lower or "hi" in content_lower:
-        return f"👋 Hello, {username}! I'm {character.name}. How can I help you today?"
-    
-    if "help" in content_lower:
-        return """**How I can help:**
-• Ask me questions and I'll do my best to answer
-• Mention me (@) in any channel to chat
-• I'm here to assist with various tasks!
+Mention me or reply to my messages to chat!""",
+            ephemeral=True,
+        )
+    elif command_name == "help":
+        await interaction.reply(
+            content="""**Available Commands:**
+• `/ping` - Check if I'm online
+• `/about` - Learn about me
+• `/help` - Show this help message
 
-What would you like to know?"""
-    
-    if "ping" in content_lower:
-        return "🏓 Pong! I'm alive and responding!"
-    
-    if "about" in content_lower or "who are you" in content_lower:
-        return f"""👋 Hi! I'm **{character.name}**, an AI assistant powered by elizaOS.
-
-{character.bio}
-
-Feel free to ask me anything!"""
-    
-    # Default response for mentions
-    return f"Hello {username}! I received your message. How can I assist you?"
+You can also just @mention me in any channel to chat!""",
+            ephemeral=True,
+        )
+    else:
+        await interaction.reply(
+            content=f"Unknown command: `/{command_name}`",
+            ephemeral=True,
+        )
 
 
 async def handle_reaction_added(
+    runtime: "AgentRuntime",
     service: "DiscordService",
     payload: dict,
 ) -> None:
@@ -99,9 +88,11 @@ async def handle_reaction_added(
         message_id,
     )
     # Custom reaction handling can be implemented here
+    # For example, thumbs up reactions could trigger message saving
 
 
 async def handle_member_joined(
+    runtime: "AgentRuntime",
     service: "DiscordService",
     payload: dict,
 ) -> None:
@@ -109,8 +100,41 @@ async def handle_member_joined(
     username = payload.get("username", "unknown")
     guild_id = payload.get("guild_id", "")
     display_name = payload.get("display_name", username)
+    user_id = payload.get("user_id")
 
     logger.info("New member %s joined guild %s", username, guild_id)
     
-    # Welcome message logic can be implemented here
-    # Example: await service.send_dm(user_id, f"Welcome to the server, {display_name}!")
+    # Example: Send welcome DM (uncomment to enable)
+    # if user_id:
+    #     await service.send_dm(
+    #         user_id,
+    #         f"👋 Welcome to the server, {display_name}! "
+    #         f"I'm {character.name}, an AI assistant. "
+    #         f"Feel free to mention me if you need any help!"
+    #     )
+
+
+def register_discord_handlers(runtime: "AgentRuntime", service: "DiscordService") -> None:
+    """
+    Register Discord event handlers.
+    
+    Note: Main message handling is done through the elizaOS pipeline
+    in agent.py. This function registers auxiliary handlers for
+    slash commands and other Discord-specific features.
+    """
+    
+    async def on_slash_command(payload: dict) -> None:
+        await handle_slash_command(runtime, service, payload)
+    
+    async def on_reaction(payload: dict) -> None:
+        await handle_reaction_added(runtime, service, payload)
+    
+    async def on_member_joined(payload: dict) -> None:
+        await handle_member_joined(runtime, service, payload)
+    
+    # Register with runtime events (if supported by the Discord plugin)
+    runtime.register_event("discord.slash_command", on_slash_command)
+    runtime.register_event("discord.reaction_added", on_reaction)
+    runtime.register_event("discord.member_joined", on_member_joined)
+    
+    logger.info("Registered Discord auxiliary event handlers")

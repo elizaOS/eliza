@@ -48,7 +48,7 @@ class ShellService:
             return CommandResult(
                 success=False,
                 stdout="",
-                stderr="Shell plugin is disabled. Set SHELL_ENABLED=true to enable.",
+                stderr="Shell plugin is disabled.",
                 exit_code=1,
                 error="Shell plugin disabled",
                 executed_in=self._current_directory,

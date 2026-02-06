@@ -22,11 +22,11 @@ impl Default for CreatePluginAction {
 #[async_trait]
 impl N8nAction for CreatePluginAction {
     fn name(&self) -> &'static str {
-        "createPlugin"
+        "CREATE_PLUGIN"
     }
 
     fn description(&self) -> &'static str {
-        "Create a new plugin from a specification using AI assistance"
+        "Create an ElizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation."
     }
 
     fn similes(&self) -> Vec<&'static str> {
@@ -67,7 +67,7 @@ impl N8nAction for CreatePluginAction {
                 Ok(ActionResult {
                     success: true,
                     text: format!(
-                        "Plugin creation job started successfully!\n\nPlugin: {}\n\nUse 'checkPluginCreationStatus' to monitor progress.",
+                        "Plugin creation job started successfully!\n\nPlugin: {}\n\nUse 'CHECK_PLUGIN_STATUS' to monitor progress.",
                         name
                     ),
                     data: Some(serde_json::json!({

@@ -1,0 +1,275 @@
+{
+  "items": [
+    {
+      "id": "g5fAVbjPH4",
+      "layer": -1,
+      "type": "zone",
+      "x": -267.5,
+      "y": -290.5,
+      "label": "Navigation",
+      "width": "1070.8",
+      "height": "328.8",
+      "labelPosition": "top",
+      "locked": true
+    },
+    {
+      "id": "taBETVuRcF",
+      "type": "note",
+      "x": 124,
+      "y": -256,
+      "value": "- Utilisez deux doigts pour déplacer le plateau\n- Pincez pour zoomer",
+      "label": "Avec un pavé tactile",
+      "locked": true
+    },
+    {
+      "id": "x3wQ2rR5vS",
+      "type": "note",
+      "x": -190,
+      "y": -256,
+      "value": "- Cliquez avec le bouton de gauche pour déplacer le plateau\n- La molette permet de zoomer",
+      "label": "Avec une souris",
+      "locked": true
+    },
+    {
+      "id": "nU3xCrYnPr",
+      "type": "note",
+      "x": 439,
+      "y": -256,
+      "value": "- Utilisez deux doigts pour déplacer le plateau\n- Pincez pour zoomer",
+      "label": "Avec un écran tactile",
+      "locked": true
+    },
+    {
+      "id": "qdyg4sgfvn",
+      "type": "meeple",
+      "name": "Meeple rouge",
+      "color": "#D82735",
+      "x": 258,
+      "y": 478,
+      "actions": []
+    },
+    {
+      "id": "cFdSexMN79",
+      "type": "meeple",
+      "name": "Meeple orange",
+      "color": "#FF7435",
+      "x": 259,
+      "y": 548,
+      "actions": []
+    },
+    {
+      "id": "yGuZG5hGgE",
+      "type": "meeple",
+      "name": "Meeple jaune",
+      "color": "#F9DF00",
+      "x": 259,
+      "y": 623,
+      "actions": []
+    },
+    {
+      "id": "XSkQfZdat2",
+      "type": "note",
+      "x": 123.5,
+      "y": 862,
+      "value": "- Utilisez le menu d'action pour tous les éléments sélectionnés. Seules les actions disponibles sur tous les éléments sélectionnés sont affichées\n- Certaines actions sont visibles uniquement quand vous sélectionnez plusieurs éléments comme l'action « mélanger »\n- Vous pouvez également utiliser les raccourcis clavier\n",
+      "label": "Plusieurs éléments",
+      "width": "296.7",
+      "height": "348.3",
+      "locked": true
+    },
+    {
+      "id": "NrcuGDrmW8",
+      "type": "note",
+      "x": -190,
+      "y": 864.5,
+      "value": "- Quand un élément est sélectionné, cliquez sur le menu d'action juste au dessus de l'élément\n- Vous pouvez double-cliquez pour effectuer son action principale\n- Vous pouvez également utiliser les raccourcis clavier qui s'affichent quand vous survolez une action dans le menu",
+      "label": "Un seul élément",
+      "width": "300.0",
+      "height": "347.2",
+      "color": "#ffc",
+      "fontSize": 20,
+      "fontFamily": "Roboto",
+      "textColor": "#000",
+      "actions": [
+        { "name": "shuffle" },
+        { "name": "clone" },
+        { "name": "lock" },
+        { "name": "remove" }
+      ],
+      "locked": true
+    },
+    {
+      "id": "rHA3e6TbM2",
+      "layer": -1,
+      "type": "zone",
+      "x": -262,
+      "y": 98,
+      "label": "Déplacement des éléments",
+      "width": "726.1",
+      "height": "653.6",
+      "labelPosition": "top",
+      "locked": true
+    },
+    {
+      "id": "WE8k4Tv7BS",
+      "type": "note",
+      "x": -206,
+      "y": 146.5,
+      "value": "- Vous pouvez déplacer un élément en cliquant dessus et en maintenant le bouton.\n- Vous pouvez sélectionner un unique élément en cliquant dessus\n- Vous pouvez tout désélectionner en cliquant en dehors d'un élément",
+      "label": "Un seul élément",
+      "width": "300.0",
+      "height": "224.6",
+      "locked": true
+    },
+    {
+      "id": "6nMUFs4FZK",
+      "type": "note",
+      "x": -204,
+      "y": 452.5,
+      "value": "- Essayez de déplacer un Meeple sur la droite\n- Essayez de les sélectionner tous\n- Essayez de les déplacer tous en même temp",
+      "label": "Testez-le",
+      "width": "299.7",
+      "height": "202.5",
+      "color": "rgba(184, 233, 134, 1)",
+      "locked": true
+    },
+    {
+      "id": "5KujHvza7f",
+      "type": "note",
+      "x": 125,
+      "y": 142,
+      "value": "- Pour sélectionner plusieurs élément cliquez en dehors d'un élément et tout en maintenant le bouton droit de la souris et déplacez la. Relâchez quand vous êtes satisfait\n- Vous pouvez alors déplacer tous les éléments en même temps",
+      "label": "Plusieurs éléments",
+      "width": "300.0",
+      "height": "224.0",
+      "locked": true
+    },
+    {
+      "id": "Nv8WebDYgD",
+      "type": "image",
+      "x": 194,
+      "y": 1710.5,
+      "content": { "type": "external", "content": "/game_assets/BH.jpg" },
+      "backContent": {
+        "type": "external",
+        "content": "/game_assets/Red_back.jpg"
+      },
+      "actions": [
+        { "name": "flip" },
+        { "name": "tap" },
+        { "name": "stack" },
+        { "name": "shuffle" }
+      ],
+      "flipped": false,
+      "unflippedFor": null
+    },
+    {
+      "id": "N3xNz4ksyV",
+      "type": "image",
+      "x": 257,
+      "y": 1545.5,
+      "content": { "type": "external", "content": "/game_assets/AS.jpg" },
+      "backContent": {
+        "type": "external",
+        "content": "/game_assets/Red_back.jpg"
+      },
+      "actions": [
+        { "name": "flip" },
+        { "name": "tap" },
+        { "name": "stack" },
+        { "name": "shuffle" }
+      ],
+      "flipped": false,
+      "unflippedFor": [],
+      "rotation": 0
+    },
+    {
+      "id": "aPhbdhXuFt",
+      "type": "image",
+      "x": 321,
+      "y": 1710.5,
+      "content": { "type": "external", "content": "/game_assets/JC.jpg" },
+      "backContent": {
+        "type": "external",
+        "content": "/game_assets/Red_back.jpg"
+      },
+      "actions": [
+        { "name": "flip" },
+        { "name": "tap" },
+        { "name": "stack" },
+        { "name": "shuffle" }
+      ],
+      "flipped": false,
+      "unflippedFor": null,
+      "rotation": 0
+    },
+    {
+      "id": "rdmKGYgYqX",
+      "type": "note",
+      "x": -192.5,
+      "y": 1536.5,
+      "value": "- Cliquez pour sélectionner une carte\n- Double-cliquez pour la retourner\n- Essayez une autre action du menu\n- Essayez les raccourcis clavier\n- Sélectionnez toutes les cartes et testez les nouvelles actions\n\n",
+      "label": "Testez-le",
+      "width": "331.0",
+      "height": "255.2",
+      "color": "rgba(184, 233, 134, 1)",
+      "locked": true
+    },
+    {
+      "id": "GzxEj35Jy6",
+      "layer": -1,
+      "type": "zone",
+      "x": -261,
+      "y": 813.5,
+      "label": "Interaction avec les éléments",
+      "width": "730.4",
+      "height": "1116.9",
+      "labelPosition": "top",
+      "locked": true
+    },
+    {
+      "id": "nsYMqz673q",
+      "type": "note",
+      "x": -193.5,
+      "y": 1302.5,
+      "value": "- La dernière icône du menu d'action permet d'afficher le panneau d'édition de l'élément\n- Vous pouvez ainsi modifier tous ses aspects\n- Certaines actions ne sont disponibles que quand ce panneau est affiché\n- Vous ne devriez avoir besoin de ce panneau que rarement",
+      "label": "Modification des éléments",
+      "width": "611.3",
+      "height": "154.8",
+      "locked": true
+    }
+  ],
+  "board": {
+    "size": 2000,
+    "scale": 1,
+    "defaultName": "How to play?",
+    "bgType": "default",
+    "playerCount": [1, 9],
+    "duration": [],
+    "gridSize": 1,
+    "imageUrl": "/game_assets/default.png",
+    "keepTitle": true,
+    "initialBoardPosition": {
+      "x": 270,
+      "y": 820,
+      "radius": 1235
+    },
+    "defaultLanguage": "en",
+    "materialLanguage": "Multi-lang",
+    "defaultBaseline": "Learn how to play with Airboardgame",
+    "defaultDescription": "# Demo game\n\nThis is a demo game to learn how to play with Airboardgame.\n\nFor other games, you can find useful information about the game like the creator name or the rules.",
+    "translations": [
+      {
+        "language": "fr",
+        "name": "Comment jouer ?",
+        "baseline": "Apprenez à jouer avec Airboardgame",
+        "description": "# Démonstration\n\nCe jeu vous permet d'apprendre à jouer avec Airboardgame.\n\nPour les autres jeux, vous trouverez dans cette section différentes choses utiles comme le nom de l'auteur ou les règles."
+      }
+    ],
+    "published": true
+  },
+  "availableItems": [],
+  "messages": [],
+  "timestamp": 1654541565654,
+  "gameId": "demo"
+}

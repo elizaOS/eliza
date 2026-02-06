@@ -4,14 +4,18 @@ export { logger } from "../logger";
 // Utilities that are part of the public API.
 export { addHeader, composePromptFromState, parseKeyValueXml } from "../utils";
 export * from "./agent";
+// Channel configuration types for plugins
+export * from "./channel-config";
 export * from "./components";
 export * from "./database";
 export * from "./environment";
 export * from "./events";
+export * from "./hook";
 export * from "./knowledge";
 export * from "./memory";
 export * from "./messaging";
 export * from "./model";
+export * from "./pairing";
 export * from "./payment";
 export * from "./plugin";
 export * from "./primitives";
@@ -32,3 +36,6 @@ export * from "./streaming";
 export * from "./task";
 export * from "./tee";
 export * from "./testing";
+export * from "./tools";
+// Onboarding types
+export * from "./onboarding";

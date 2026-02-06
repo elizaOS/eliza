@@ -1,0 +1,8 @@
+{
+  "name": "variant-analysis",
+  "version": "1.0.0",
+  "description": "Find similar vulnerabilities and bugs across codebases using pattern-based analysis",
+  "author": {
+    "name": "Axel Mierczuk"
+  }
+}

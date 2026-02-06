@@ -18,10 +18,22 @@ import * as path from 'path';
 import { Desktop } from '@elizaos/computeruse';
 
 const TEMP_WORKFLOW_DIR = path.join(process.cwd(), `__test_mcp_workflows_${Date.now()}__`);
+const shouldRunMcpTests = Boolean(process.env.COMPUTERUSE_MCP_BINARY);
+const describeMcp = shouldRunMcpTests ? describe : describe.skip;
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 type JsonObject = { [key: string]: JsonValue };
+
+const getFirstTextContent = (
+  content: ReadonlyArray<TextContent | ImageContent | EmbeddedResource>
+): TextContent => {
+  const textContent = content.find((item) => item.type === 'text');
+  if (!textContent) {
+    throw new Error('Expected text content in MCP response');
+  }
+  return textContent;
+};
 
 class MCPTestHarness {
   client: Client | null = null;
@@ -63,7 +75,6 @@ class MCPTestHarness {
       },
       {
         capabilities: {
-          tools: {},
         },
       }
     );
@@ -87,7 +98,11 @@ class MCPTestHarness {
       arguments: arguments_,
     });
 
-    return result.content;
+    if (!Array.isArray(result.content)) {
+      throw new Error('Unexpected MCP tool response content');
+    }
+
+    return result.content as ReadonlyArray<TextContent | ImageContent | EmbeddedResource>;
   }
 
   async cleanup(): Promise<void> {
@@ -141,7 +156,7 @@ class MCPTestHarness {
   }
 }
 
-describe('MCP Client+Server Integration Tests - RIGOROUS', () => {
+describeMcp('MCP Client+Server Integration Tests - RIGOROUS', () => {
   let harness: MCPTestHarness;
 
   beforeAll(async () => {
@@ -278,7 +293,7 @@ export default createWorkflow({
 
       // Verify workflow succeeded
       expect(result).toBeDefined();
-      const resultText = result[0]?.text;
+      const resultText = getFirstTextContent(result).text;
       expect(resultText).toBeDefined();
       const parsedResult = JSON.parse(resultText);
       expect(parsedResult.status).toBe('success');
@@ -391,7 +406,7 @@ export default createWorkflow({
         inputs: {},
       });
 
-      const resultText = result[0]?.text;
+      const resultText = getFirstTextContent(result).text;
       const parsedResult = JSON.parse(resultText);
       expect(parsedResult.status).toBe('success');
 

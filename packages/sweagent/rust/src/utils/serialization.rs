@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn test_parse_args_to_nested_dict() {
         let args = vec![
-            "agent.model.name=gpt-4".to_string(),
+            "agent.model.name=gpt-5".to_string(),
             "env.timeout=30".to_string(),
         ];
         let dict = parse_args_to_nested_dict(&args);

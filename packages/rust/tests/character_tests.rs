@@ -141,7 +141,7 @@ fn test_build_plugins_empty_env() {
     let env = HashMap::new();
     let plugins = build_character_plugins(&env);
 
-    // Should have sql and ollama (fallback); bootstrap is now part of core
+    // Should have sql and ollama (fallback)
     assert!(plugins.contains(&"@elizaos/plugin-sql".to_string()));
     assert!(plugins.contains(&"@elizaos/plugin-ollama".to_string()));
 }
@@ -182,16 +182,6 @@ fn test_build_plugins_with_cloud() {
     // Rust should ignore these keys and follow the standard ordering.
     assert!(plugins.contains(&"@elizaos/plugin-sql".to_string()));
     assert!(!plugins.contains(&"@elizaos/plugin-elizacloud".to_string()));
-}
-
-/// Test that bootstrap is not included in plugins (it's now part of core)
-#[test]
-fn test_bootstrap_in_core_not_plugins() {
-    let env = HashMap::new();
-    let plugins = build_character_plugins(&env);
-
-    // Bootstrap is now part of core, not a separate plugin
-    assert!(!plugins.contains(&"@elizaos/plugin-bootstrap".to_string()));
 }
 
 /// Test character bio_string method

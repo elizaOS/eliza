@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generatedAt": "2026-01-21T21:49:16.545Z",
+  "generatedAt": "2026-02-05T11:07:13.661Z",
   "repoUrl": "https://github.com/elizaos/eliza",
   "examples": [
     {
@@ -620,6 +620,22 @@
       "category": "minecraft"
     },
     {
+      "name": "moltbook",
+      "description": "An autonomous Eliza agent that spreads the gospel of the original ELIZA chatbot across Moltbook.",
+      "path": "/Users/shawwalters/eliza-ok/examples/moltbook",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/Users/shawwalters/eliza-ok/examples/moltbook",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "moltbook"
+    },
+    {
       "name": "next",
       "description": "A full-stack Next.js chat application using elizaOS AgentRuntime with PGLite and OpenAI.",
       "path": "/Users/shawwalters/eliza-ok/examples/next",
@@ -634,22 +650,6 @@
         }
       ],
       "category": "next"
-    },
-    {
-      "name": "polyagent",
-      "description": "<div align=\"center\">",
-      "path": "/Users/shawwalters/eliza-ok/examples/polyagent",
-      "languages": [
-        {
-          "language": "typescript",
-          "path": "/Users/shawwalters/eliza-ok/examples/polyagent",
-          "hasPackageJson": true,
-          "hasRequirementsTxt": false,
-          "hasCargoToml": false,
-          "hasPyprojectToml": false
-        }
-      ],
-      "category": "polyagent"
     },
     {
       "name": "polymarket",
@@ -818,22 +818,6 @@
         }
       ],
       "category": "roblox"
-    },
-    {
-      "name": "soulmates",
-      "description": "soulmates example",
-      "path": "/Users/shawwalters/eliza-ok/examples/soulmates",
-      "languages": [
-        {
-          "language": "typescript",
-          "path": "/Users/shawwalters/eliza-ok/examples/soulmates",
-          "hasPackageJson": true,
-          "hasRequirementsTxt": false,
-          "hasCargoToml": false,
-          "hasPyprojectToml": false
-        }
-      ],
-      "category": "soulmates"
     },
     {
       "name": "supabase",
@@ -1060,15 +1044,14 @@
     "lp-manager",
     "mcp",
     "minecraft",
+    "moltbook",
     "next",
     "plugin",
-    "polyagent",
     "polymarket",
     "react",
     "react-wasm",
     "rest-api",
     "roblox",
-    "soulmates",
     "supabase",
     "telegram",
     "text-adventure",

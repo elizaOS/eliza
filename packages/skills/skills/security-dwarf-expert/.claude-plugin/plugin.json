@@ -1,0 +1,10 @@
+{
+  "name": "dwarf-expert",
+  "version": "1.0.0",
+  "description": "Interact with and understand the DWARF debugging format",
+  "author": {
+    "name": "Evan Hellman",
+    "email": "opensource@trailofbits.com",
+    "url": "https://github.com/trailofbits"
+  }
+}

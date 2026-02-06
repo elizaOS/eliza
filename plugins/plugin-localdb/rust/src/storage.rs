@@ -21,6 +21,9 @@ impl JsonStorage {
     }
 
     pub async fn init(&self) -> Result<()> {
+        if self.data_dir.as_os_str().is_empty() {
+            anyhow::bail!("Data directory path cannot be empty");
+        }
         fs::create_dir_all(&self.data_dir).context("Failed to create data directory")?;
         *self.ready.write().unwrap() = true;
         Ok(())
@@ -98,6 +101,9 @@ impl JsonStorage {
     }
 
     pub fn set<T: Serialize>(&self, collection: &str, id: &str, data: &T) -> Result<()> {
+        if collection.trim().is_empty() {
+            anyhow::bail!("Collection name cannot be empty");
+        }
         let dir = self.collection_dir(collection);
         fs::create_dir_all(&dir).context("Failed to create collection directory")?;
 
@@ -138,9 +144,14 @@ impl JsonStorage {
     }
 
     pub fn save_raw(&self, filename: &str, data: &str) -> Result<()> {
+        if filename.trim().is_empty() {
+            anyhow::bail!("Filename cannot be empty");
+        }
         let path = self.data_dir.join(filename);
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent)?;
+            }
         }
         fs::write(&path, data)?;
         Ok(())

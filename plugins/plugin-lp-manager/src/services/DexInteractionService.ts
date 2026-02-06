@@ -112,15 +112,15 @@ export class DexInteractionService extends Service implements IDexInteractionSer
       
       // Check if the service implements ILpService interface or is a known DEX service
       if (service) {
-        const serviceAny = service as any;
+        const serviceUnknown = service as unknown as Record<string, unknown>;
         
-        if (this.isLpService(serviceAny) || (isDexService && (
-          typeof serviceAny.getPools === 'function' || 
-          typeof serviceAny.addLiquidity === 'function'
+        if (this.isLpService(service) || (isDexService && (
+          typeof serviceUnknown.getPools === 'function' || 
+          typeof serviceUnknown.addLiquidity === 'function'
         ))) {
-          this.lpServices.push(serviceAny as ILpService);
-          const dexName = typeof serviceAny.getDexName === 'function' 
-            ? serviceAny.getDexName() 
+          this.lpServices.push(service as unknown as ILpService);
+          const dexName = typeof serviceUnknown.getDexName === 'function' 
+            ? (serviceUnknown.getDexName as () => string)() 
             : serviceType;
           console.info(`DexInteractionService: Discovered and registered LP service: ${dexName}`);
         }
@@ -130,16 +130,20 @@ export class DexInteractionService extends Service implements IDexInteractionSer
     console.info(`DexInteractionService: Found ${this.lpServices.length} LP services`);
   }
 
-  private isLpService(service: any): service is ILpService {
+  private isLpService(service: unknown): service is ILpService {
     // Check for required ILpService methods
+    if (typeof service !== 'object' || service === null) {
+      return false;
+    }
+    const s = service as Record<string, unknown>;
     return (
-      typeof service.getDexName === 'function' &&
-      typeof service.getPools === 'function' &&
-      typeof service.addLiquidity === 'function' &&
-      typeof service.removeLiquidity === 'function' &&
-      typeof service.getLpPositionDetails === 'function' &&
+      typeof s.getDexName === 'function' &&
+      typeof s.getPools === 'function' &&
+      typeof s.addLiquidity === 'function' &&
+      typeof s.removeLiquidity === 'function' &&
+      typeof s.getLpPositionDetails === 'function' &&
       // Exclude our own service type
-      service.getDexName() !== 'dex-interaction'
+      (s.getDexName as () => string)() !== 'dex-interaction'
     );
   }
 

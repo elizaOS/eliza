@@ -1,8 +1,10 @@
 use async_trait::async_trait;
 
+use super::registry::PluginRegistryProvider;
 use super::{N8nProvider, ProviderContext, ProviderResult};
 
 /// Provider that checks if a specific plugin has already been created.
+/// Delegates to `PluginRegistryProvider` for the actual lookup.
 pub struct PluginExistsProvider;
 
 impl PluginExistsProvider {
@@ -21,50 +23,20 @@ impl Default for PluginExistsProvider {
 #[async_trait]
 impl N8nProvider for PluginExistsProvider {
     fn name(&self) -> &'static str {
-        "plugin_exists"
+        "n8n_plugin_registry"
     }
 
     fn description(&self) -> &'static str {
-        "Checks if a specific plugin has already been created"
+        "Delegates to PluginRegistryProvider for plugin existence checks"
     }
 
     async fn get(&self, context: &ProviderContext) -> ProviderResult {
-        let plugin_name = context
-            .state
-            .get("checkPluginName")
-            .and_then(|n| n.as_str());
-        let registry = context
-            .state
-            .get("pluginRegistry")
-            .and_then(|r| r.as_array());
-
-        match (plugin_name, registry) {
-            (Some(name), Some(plugins)) => {
-                let exists = plugins
-                    .iter()
-                    .any(|p| p.get("name").and_then(|n| n.as_str()) == Some(name));
-
-                ProviderResult {
-                    text: if exists {
-                        format!("Plugin '{}' already exists in the registry", name)
-                    } else {
-                        format!("Plugin '{}' does not exist in the registry", name)
-                    },
-                    data: Some(serde_json::json!({
-                        "pluginName": name,
-                        "exists": exists,
-                    })),
-                }
-            }
-            _ => ProviderResult {
-                text: "No plugin name specified to check".to_string(),
-                data: None,
-            },
-        }
+        // Delegate entirely to the registry provider
+        PluginRegistryProvider.get(context).await
     }
 }
 
-/// TS-parity alias provider (name: `plugin_exists_check`).
+/// TS-parity alias provider (delegates to `PluginRegistryProvider`).
 pub struct PluginExistsCheckProvider;
 
 impl PluginExistsCheckProvider {
@@ -83,14 +55,14 @@ impl Default for PluginExistsCheckProvider {
 #[async_trait]
 impl N8nProvider for PluginExistsCheckProvider {
     fn name(&self) -> &'static str {
-        "plugin_exists_check"
+        "n8n_plugin_registry"
     }
 
     fn description(&self) -> &'static str {
-        "Checks if a specific plugin has already been created"
+        "Delegates to PluginRegistryProvider for plugin existence checks"
     }
 
     async fn get(&self, context: &ProviderContext) -> ProviderResult {
-        PluginExistsProvider.get(context).await
+        PluginRegistryProvider.get(context).await
     }
 }

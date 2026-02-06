@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { logger } from "@elizaos/core";

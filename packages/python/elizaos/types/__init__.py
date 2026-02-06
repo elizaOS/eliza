@@ -85,6 +85,7 @@ from elizaos.types.memory import (
     FragmentMetadata,
     Memory,
     MemoryMetadata,
+    MemoryType,
     MessageMemory,
     MessageMetadata,
 )

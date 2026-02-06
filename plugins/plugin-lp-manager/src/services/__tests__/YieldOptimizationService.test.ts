@@ -11,14 +11,14 @@ const SERVICE_INTERNAL_PLACEHOLDER_SOL_PRICE_USD = 150; // Mirror from service
 
 const mockDexInteractionService: Mocked<IDexInteractionService> = {
     registerDexService: vi.fn(), getPools: vi.fn(), addLiquidity: vi.fn(), removeLiquidity: vi.fn(), getLpPosition: vi.fn(), getAllUserLpPositions: vi.fn(),
-} as any;
+} as unknown as Mocked<IDexInteractionService>;
 const mockUserLpProfileService: Mocked<IUserLpProfileService> = {
     getProfile: vi.fn(), ensureProfile: vi.fn(), updateProfile: vi.fn(), getAllProfilesWithAutoRebalanceEnabled: vi.fn(), addTrackedPosition: vi.fn(), removeTrackedPosition: vi.fn(), getTrackedPositions: vi.fn(), start: vi.fn(), stop: vi.fn(),
-} as any;
+} as unknown as Mocked<IUserLpProfileService>;
 const mockRuntime = {
     getService: vi.fn(),
     getSetting: vi.fn(),
-} as any;
+} as unknown as Parameters<typeof service.start>[0];
 
 describe('YieldOptimizationService', () => {
     let service: YieldOptimizationService;

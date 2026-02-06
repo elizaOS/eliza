@@ -1,6 +1,6 @@
-import type { GenerateTextParams, IAgentRuntime, JsonValue, TextStreamResult } from "@elizaos/core";
+import type { GenerateTextParams, IAgentRuntime, TextStreamResult } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { generateText, streamText } from "ai";
+import { generateText, streamText, type LanguageModel } from "ai";
 
 import { createOpenRouterProvider } from "../providers";
 import { getLargeModel, getSmallModel } from "../utils/config";
@@ -27,7 +27,7 @@ function buildGenerateParams(
   const modelLabel = modelType === ModelType.TEXT_SMALL ? "TEXT_SMALL" : "TEXT_LARGE";
 
   const generateParams = {
-    model: openrouter.chat(modelName),
+    model: openrouter.chat(modelName) as LanguageModel,
     prompt: prompt,
     system: runtime.character?.system ?? undefined,
     temperature: temperature,
@@ -40,14 +40,15 @@ function buildGenerateParams(
   return { generateParams, modelName, modelLabel, prompt };
 }
 
+type GenerateParams = ReturnType<typeof buildGenerateParams>["generateParams"];
+
 function handleStreamingGeneration(
   runtime: IAgentRuntime,
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE,
-  generateParams: Record<string, JsonValue | object>,
+  generateParams: GenerateParams,
   prompt: string,
   _modelLabel: string
 ): TextStreamResult {
-  // @ts-expect-error - AI SDK type compatibility issue with OpenRouter provider
   const streamResult = streamText(generateParams);
 
   return {
@@ -86,7 +87,6 @@ async function generateTextWithModel(
     return handleStreamingGeneration(runtime, modelType, generateParams, prompt, modelLabel);
   }
 
-  // @ts-expect-error - AI SDK type compatibility issue with OpenRouter provider
   const response = await generateText(generateParams);
 
   if (response.usage) {

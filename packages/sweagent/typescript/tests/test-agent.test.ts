@@ -11,7 +11,6 @@ import {
   type ToolConfig,
 } from "../src/agent/agents";
 import {
-  InstanceStats,
   type ModelOutput,
   PredeterminedTestModel,
 } from "../src/agent/models";
@@ -562,8 +561,6 @@ describe("Agent Tests", () => {
     it("should handle early environment error", async () => {
       const agent = DefaultAgent.fromConfig(identityAgentConfig);
       agent.model = new PredeterminedTestModel(["raise"], defaultToolConfig);
-      // @ts-expect-error - accessing private property for testing
-      agent._catchErrors = true;
 
       // Mock communicate to throw SwerexException on 'raise' command
       jest
@@ -641,18 +638,16 @@ describe("Agent Tests", () => {
         ["action1", "action2"],
         defaultToolConfig,
       );
-      // @ts-expect-error - accessing protected property for testing
-      agent.model.stats = new InstanceStats();
+      agent.model.resetStats();
+      const stats = agent.model.getStats();
 
       await agent.setup(dummyEnv, new EmptyProblemStatement());
 
       // Simulate cost accumulation
-      // @ts-expect-error - accessing protected property for testing
-      agent.model.stats.instanceCost = 0.01;
+      stats.instanceCost = 0.01;
       await agent.step();
 
-      // @ts-expect-error - accessing protected property for testing
-      agent.model.stats.instanceCost = 0.02;
+      stats.instanceCost = 0.02;
       await agent.step();
 
       expect(agent.info.modelStats).toBeDefined();

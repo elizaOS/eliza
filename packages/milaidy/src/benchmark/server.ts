@@ -192,7 +192,9 @@ async function createBenchmarkRuntime(
   // Workspace setup
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
-  await ensureAgentWorkspace({ dir: workspaceDir, ensureBootstrapFiles: true });
+  // Skip bootstrap files for benchmarks — the benchmark plugin provides all
+  // context and the templates may not be present in development layouts.
+  await ensureAgentWorkspace({ dir: workspaceDir, ensureBootstrapFiles: false });
 
   // Create plugins
   const agentId =

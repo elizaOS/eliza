@@ -134,7 +134,7 @@ Checklist for file-by-file performance parity and cleanup (excluding tests).
 - [ ] `testing/inference-provider.ts` — review perf parity and cleanup
 - [ ] `testing/integration-runtime.ts` — review perf parity and cleanup
 - [ ] `testing/ollama-provider.ts` — review perf parity and cleanup
-- [ ] `testing/test-helpers.ts` — review perf parity and cleanup
+- [ ] `testing/test-utils.ts` — review perf parity and cleanup
 
 ## types
 - [ ] `types/agent.ts` — review perf parity and cleanup

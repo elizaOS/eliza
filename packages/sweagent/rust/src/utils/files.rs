@@ -29,8 +29,20 @@ pub fn dir_exists(path: &Path) -> bool {
     path.exists() && path.is_dir()
 }
 
-/// Create a directory and all parent directories
+/// Create a directory and all parent directories.
+///
+/// # Arguments
+/// * `path` - The directory path to create
+///
+/// # Errors
+/// Returns an error if the path is empty or if directory creation fails.
 pub fn ensure_dir(path: &Path) -> Result<()> {
+    let path_str = path.as_os_str();
+    if path_str.is_empty() {
+        return Err(SWEAgentError::IoError(
+            "Directory path cannot be empty".to_string(),
+        ));
+    }
     fs::create_dir_all(path)?;
     Ok(())
 }

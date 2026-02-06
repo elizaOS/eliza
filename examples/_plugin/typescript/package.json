@@ -45,7 +45,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.18",
     "vite": "^7.3.1",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",
@@ -61,7 +61,6 @@
     "lint": "bunx @biomejs/biome check --write --unsafe ./src",
     "lint:check": "bunx @biomejs/biome check ./src",
     "typecheck": "tsc --noEmit",
-    "postinstall": "node -e \"const fs=require('fs');const path=require('path');const zodPath=path.join('node_modules','zod');if(fs.existsSync(zodPath)){fs.writeFileSync(path.join(zodPath,'v3.js'),'module.exports=require(\\\"./lib/index.js\\\");');fs.writeFileSync(path.join(zodPath,'v3.d.ts'),'export * from \\\"./lib/index\\\";');}\" || true",
     "test:component": "bun run test:install && vitest run",
     "test:e2e": "bun run test:install && vitest run",
     "test:e2e:manual": "bun run test:install && node scripts/test-e2e-manual.js",
@@ -76,7 +75,7 @@
     "access": "public"
   },
   "resolutions": {
-    "zod": "4.3.5"
+    "zod": "^4.3.6"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

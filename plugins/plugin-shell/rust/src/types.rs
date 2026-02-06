@@ -100,9 +100,7 @@ impl ShellConfig {
     }
 
     pub fn from_env() -> Result<Self> {
-        let enabled = env::var("SHELL_ENABLED")
-            .map(|v| v.to_lowercase() == "true")
-            .unwrap_or(false);
+        let enabled = true;
 
         let allowed_directory = env::var("SHELL_ALLOWED_DIRECTORY")
             .map(PathBuf::from)

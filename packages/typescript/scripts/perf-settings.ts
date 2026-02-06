@@ -27,7 +27,10 @@ if (!Number.isFinite(iterations) || iterations <= 0) {
 
 // Use an explicit salt so this benchmark is not affected by env/production checks.
 const salt = `perf-${crypto.randomUUID()}`;
-const corpus = Array.from({ length: 256 }, (_, i) => `value-${i}-${crypto.randomUUID()}`);
+const corpus = Array.from(
+  { length: 256 },
+  (_, i) => `value-${i}-${crypto.randomUUID()}`,
+);
 
 // Quick correctness check (fail fast if crypto is broken).
 const roundtrip = decryptStringValue(encryptStringValue("hello", salt), salt);
@@ -55,4 +58,3 @@ benchmark("decryptStringValue (v2 AES-GCM)", iterations, () => {
 // Prevent dead-code elimination / ensure something observable.
 // eslint-disable-next-line no-console
 console.log(`last=${lastEncrypted.slice(0, 24)}…`);
-
