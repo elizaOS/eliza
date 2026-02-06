@@ -6,7 +6,7 @@ use elizaos_plugin_farcaster::{
 };
 use elizaos_plugin_farcaster::actions::{ActionExample, all_action_names};
 use elizaos_plugin_farcaster::client::split_post_content;
-use elizaos_plugin_farcaster::config::{FarcasterConfig as Cfg, FarcasterMode};
+use elizaos_plugin_farcaster::config::FarcasterMode;
 use elizaos_plugin_farcaster::providers::all_provider_names;
 use elizaos_plugin_farcaster::types::{
     CastEmbed, CastId, CastParent, CastStats, EmbedType, FarcasterEventType,

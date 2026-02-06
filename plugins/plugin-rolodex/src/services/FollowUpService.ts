@@ -12,7 +12,8 @@ import {
   ContentType,
   type ServiceTypeName,
 } from '@elizaos/core';
-import { RolodexService, type ContactInfo } from './RolodexService';
+import { RolodexService } from './RolodexService';
+import type { ContactInfo } from '../types/index';
 
 export interface FollowUpTask {
   entityId: UUID;
