@@ -77,7 +77,7 @@ export const castSpellAction: Action = {
           type: 'error',
         });
       }
-      return false;
+      return;
     }
     
     // Find the spell in known spells
@@ -92,7 +92,7 @@ export const castSpellAction: Action = {
           type: 'error',
         });
       }
-      return false;
+      return;
     }
     
     // Determine spell slot level
@@ -100,12 +100,14 @@ export const castSpellAction: Action = {
     
     // Check cantrips (level 0)
     if (spell.level === 0) {
-      return await castCantrip(runtime, characterSheet, spell, params.targetDescription, callback);
+      await castCantrip(runtime, characterSheet, spell, params.targetDescription, callback);
+      return;
     }
     
     // Check ritual casting
     if (params.isRitual && spell.ritual) {
-      return await castRitual(runtime, characterSheet, spell, params.targetDescription, callback);
+      await castRitual(runtime, characterSheet, spell, params.targetDescription, callback);
+      return;
     }
     
     // Check spell slot availability
@@ -116,11 +118,11 @@ export const castSpellAction: Action = {
           type: 'error',
         });
       }
-      return false;
+      return;
     }
     
     // Cast the spell
-    return await castLeveledSpell(runtime, characterSheet, spell, castLevel, params.targetDescription, callback);
+    await castLeveledSpell(runtime, characterSheet, spell, castLevel, params.targetDescription, callback);
   },
 };
 
@@ -130,7 +132,7 @@ async function castCantrip(
   spell: Spell,
   target: string | undefined,
   callback?: HandlerCallback
-): Promise<boolean> {
+): Promise<void> {
   const abilityValue = sheet.abilities[getSpellcastingAbility(sheet.class)];
   const abilityMod = getAbilityMod(abilityValue);
   const profBonus = sheet.proficiencyBonus ?? 0;
@@ -192,8 +194,6 @@ async function castCantrip(
     isCantrip: true,
     timestamp: new Date(),
   });
-  
-  return true;
 }
 
 async function castRitual(
@@ -202,7 +202,7 @@ async function castRitual(
   spell: Spell,
   target: string | undefined,
   callback?: HandlerCallback
-): Promise<boolean> {
+): Promise<void> {
   let result = `*${sheet.name} begins the ritual casting of ${spell.name}...*\n\n`;
   result += `After 10 additional minutes of concentration, the spell takes effect.\n\n`;
   result += generateSpellFlavor(sheet.name, spell);
@@ -221,8 +221,6 @@ async function castRitual(
       },
     });
   }
-  
-  return true;
 }
 
 async function castLeveledSpell(
@@ -232,7 +230,7 @@ async function castLeveledSpell(
   castLevel: number,
   target: string | undefined,
   callback?: HandlerCallback
-): Promise<boolean> {
+): Promise<void> {
   const abilityValue = sheet.abilities[getSpellcastingAbility(sheet.class)];
   const abilityMod = getAbilityMod(abilityValue);
   const profBonus = sheet.proficiencyBonus ?? 0;
@@ -309,8 +307,6 @@ async function castLeveledSpell(
     level: castLevel,
     timestamp: new Date(),
   });
-  
-  return true;
 }
 
 function getSpellcastingAbility(characterClass: string): 'intelligence' | 'wisdom' | 'charisma' {

@@ -130,7 +130,9 @@ export class ScreenCaptureWeb extends WebPlugin {
 
     this.mediaStream.getVideoTracks()[0].addEventListener("ended", () => {
       if (this.isRecording) {
-        this.stopRecording();
+        this.stopRecording().catch((err) => {
+          console.error("[ScreenCapture] Auto-stop on track end failed:", err);
+        });
       }
     });
 
@@ -140,30 +142,25 @@ export class ScreenCaptureWeb extends WebPlugin {
     this.isPaused = false;
     this.mediaRecorder.start(1000);
 
-    this.notifyListeners("recordingState", {
-      isRecording: true,
-      duration: 0,
-      fileSize: 0,
-    });
+    this.notifyListeners("recordingState", { isRecording: true, duration: 0, fileSize: 0 });
 
+    let autoStopping = false;
     this.recordingStateInterval = setInterval(() => {
-      if (this.isRecording && !this.isPaused) {
-        const duration = (Date.now() - this.recordingStartTime - this.pausedDuration) / 1000;
-        const fileSize = this.recordedChunks.reduce((acc, chunk) => acc + chunk.size, 0);
+      if (!this.isRecording || this.isPaused || autoStopping) return;
 
-        this.notifyListeners("recordingState", {
-          isRecording: true,
-          duration,
-          fileSize,
+      const duration = (Date.now() - this.recordingStartTime - this.pausedDuration) / 1000;
+      const fileSize = this.recordedChunks.reduce((acc, chunk) => acc + chunk.size, 0);
+
+      this.notifyListeners("recordingState", { isRecording: true, duration, fileSize });
+
+      const overLimit = (options?.maxDuration && duration >= options.maxDuration)
+        || (options?.maxFileSize && fileSize >= options.maxFileSize);
+
+      if (overLimit) {
+        autoStopping = true;
+        this.stopRecording().catch((err) => {
+          console.error("[ScreenCapture] Auto-stop recording failed:", err);
         });
-
-        if (options?.maxDuration && duration >= options.maxDuration) {
-          this.stopRecording();
-        }
-
-        if (options?.maxFileSize && fileSize >= options.maxFileSize) {
-          this.stopRecording();
-        }
       }
     }, 500);
   }
