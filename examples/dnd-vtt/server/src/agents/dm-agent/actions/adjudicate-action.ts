@@ -10,6 +10,7 @@ import type {
   State, 
   HandlerCallback 
 } from '@elizaos/core';
+import { ModelType } from '@elizaos/core';
 
 export interface AdjudicateActionParams {
   characterId: string;
@@ -36,14 +37,14 @@ export const adjudicateActionAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'I rolled a 15 on my Stealth check.',
           action: 'ADJUDICATE_ACTION',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'You press yourself against the cold stone wall, timing your movements with the flickering torchlight. The guards continue their idle chatter, completely unaware of your presence as you slip past. You reach the far end of the corridor undetected.\n\n**Stealth check: 15 vs DC 12 - Success!**\n\nYou now stand before an ornate wooden door, its surface carved with symbols you don\'t recognize. What do you do?',
         },
@@ -59,11 +60,11 @@ export const adjudicateActionAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    options: Record<string, unknown>,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
-    const params = options as AdjudicateActionParams;
+  ) => {
+    const params = (options ?? {}) as unknown as AdjudicateActionParams;
     
     // Determine success/failure
     const success = params.dc !== undefined ? params.rollResult >= params.dc : true;
@@ -71,26 +72,17 @@ export const adjudicateActionAction: Action = {
     const criticalFailure = params.rollResult <= 1;
     
     // Generate the outcome narrative
-    const outcome = await generateOutcome(runtime, state, params, success, criticalSuccess, criticalFailure);
+    const outcome = await generateOutcome(runtime, params, success, criticalSuccess, criticalFailure);
     
     if (callback) {
       await callback({
         text: outcome,
-        type: 'action_resolution',
-        metadata: {
-          characterId: params.characterId,
-          action: params.attemptedAction,
-          rollResult: params.rollResult,
-          dc: params.dc,
-          success,
-          criticalSuccess,
-          criticalFailure,
-        },
       });
     }
     
     // Log the resolution
-    await runtime.emit('action_resolved', {
+    const resolvedPayload = {
+      runtime,
       characterId: params.characterId,
       characterName: params.characterName,
       action: params.attemptedAction,
@@ -98,15 +90,15 @@ export const adjudicateActionAction: Action = {
       dc: params.dc,
       success,
       timestamp: new Date(),
-    });
+    };
+    await runtime.emitEvent('action_resolved', resolvedPayload);
     
-    return true;
+    return undefined;
   },
 };
 
 async function generateOutcome(
   runtime: IAgentRuntime,
-  state: State,
   params: AdjudicateActionParams,
   success: boolean,
   criticalSuccess: boolean,
@@ -141,9 +133,8 @@ async function generateOutcome(
   
   prompt += `\nWrite 1-2 paragraphs describing what happens. Be vivid but concise. End with a hook that invites the next action.`;
   
-  const response = await runtime.useModel({
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
     prompt,
-    context: state,
     maxTokens: 300,
   });
   
@@ -164,7 +155,7 @@ async function generateOutcome(
     mechanical += ` - Failure.**`;
   }
   
-  return response.text + mechanical;
+  return response + mechanical;
 }
 
 export default adjudicateActionAction;

@@ -4,7 +4,8 @@
  */
 
 import type { Provider, IAgentRuntime, Memory, State } from '@elizaos/core';
-import type { CharacterSheet, Spell } from '../../../types';
+import type { CharacterSheet, Spell, EquipmentSet } from '../../../types';
+import { getHP } from '../../../types';
 
 export const combatOptionsProvider: Provider = {
   name: 'combatOptions',
@@ -114,7 +115,8 @@ export const combatOptionsProvider: Provider = {
     context += `- Retreat if wounded\n`;
     
     // Tactical suggestions based on HP
-    const hpPercent = (characterSheet.hp.current / characterSheet.hp.max) * 100;
+    const combatHP = getHP(characterSheet);
+    const hpPercent = (combatHP.current / combatHP.max) * 100;
     context += `\n### Tactical Notes\n`;
     
     if (hpPercent <= 25) {
@@ -178,12 +180,16 @@ function getBonusActions(sheet: CharacterSheet): string[] {
   }
   
   // Two-weapon fighting
-  if (sheet.equipment.weapons && sheet.equipment.weapons.length >= 2) {
-    const lightWeapons = sheet.equipment.weapons.filter(w => 
-      w.properties?.includes('light')
-    );
-    if (lightWeapons.length >= 2) {
-      bonusActions.push('**Two-Weapon Fighting** - Attack with off-hand weapon');
+  const equipData = sheet.equipment;
+  if (equipData && !Array.isArray(equipData)) {
+    const equipSet = equipData as EquipmentSet;
+    if (equipSet.weapons && equipSet.weapons.length >= 2) {
+      const lightWeapons = equipSet.weapons.filter(w => 
+        Array.isArray(w.properties) && w.properties.includes('light')
+      );
+      if (lightWeapons.length >= 2) {
+        bonusActions.push('**Two-Weapon Fighting** - Attack with off-hand weapon');
+      }
     }
   }
   

@@ -1,6 +1,5 @@
 import { WebPlugin } from "@capacitor/core";
 import type {
-  TalkModePlugin,
   TalkModeConfig,
   TalkModeState,
   TalkModePermissionStatus,

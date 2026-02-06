@@ -27,8 +27,8 @@ export const memoryProvider: Provider = {
         context += `### Key Memories\n`;
         for (const memory of importantMemories) {
           context += `- ${memory.content}`;
-          if (memory.emotionalImpact) {
-            context += ` *(${memory.emotionalImpact})*`;
+          if (memory.emotionalValence) {
+            context += ` *(${memory.emotionalValence > 0 ? 'positive' : memory.emotionalValence < 0 ? 'negative' : 'neutral'})*`;
           }
           context += '\n';
         }

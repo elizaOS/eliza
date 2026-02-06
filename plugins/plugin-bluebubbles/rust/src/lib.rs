@@ -27,7 +27,10 @@ pub fn create_plugin() -> Plugin {
         name: BLUEBUBBLES_SERVICE_NAME.to_string(),
         description: "BlueBubbles iMessage bridge plugin for ElizaOS agents".to_string(),
         services: vec![Box::new(BlueBubblesService::new())],
-        actions: vec![Box::new(actions::SendMessageAction::new())],
+        actions: vec![
+            Box::new(actions::SendMessageAction::new()),
+            Box::new(actions::SendReactionAction::new()),
+        ],
         providers: vec![Box::new(providers::ChatStateProvider::new())],
     }
 }
@@ -42,7 +45,7 @@ mod tests {
         assert_eq!(plugin.name, BLUEBUBBLES_SERVICE_NAME);
         assert!(!plugin.description.is_empty());
         assert_eq!(plugin.services.len(), 1);
-        assert_eq!(plugin.actions.len(), 1);
+        assert_eq!(plugin.actions.len(), 2);
         assert_eq!(plugin.providers.len(), 1);
     }
 }

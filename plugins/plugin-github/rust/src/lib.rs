@@ -30,6 +30,12 @@ pub use actions::{
     ReviewPullRequestAction,
 };
 
+#[cfg(feature = "native")]
+pub use providers::{
+    GitHubIssueContextProvider, GitHubProvider, GitHubRepositoryStateProvider,
+    IssueContextProvider, ProviderContext, ProviderResult, RepositoryStateProvider,
+};
+
 pub const PLUGIN_NAME: &str = "github";
 pub const PLUGIN_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const PLUGIN_DESCRIPTION: &str = "GitHub integration for elizaOS agents";

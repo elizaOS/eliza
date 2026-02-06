@@ -10,8 +10,17 @@
   "packageType": "plugin",
   "platform": "node",
   "license": "MIT",
-  "keywords": ["plugin", "elizaos", "form", "conversational", "data-collection"],
-  "repository": { "type": "git", "url": "https://github.com/elizaos/elizaos" },
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "form",
+    "conversational",
+    "data-collection"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/elizaos"
+  },
   "homepage": "https://elizaos.ai",
   "exports": {
     "./package.json": "./package.json",
@@ -29,7 +38,10 @@
       "default": "./dist/node/index.node.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": false,
   "dependencies": {
     "@elizaos/core": "workspace:*"
@@ -51,5 +63,16 @@
     "lint": "bunx @biomejs/biome check --write .",
     "clean": "rm -rf dist .turbo node_modules"
   },
-  "publishConfig": { "access": "public" }
+  "publishConfig": {
+    "access": "public"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js only (platform: node)"
+    }
+  }
 }

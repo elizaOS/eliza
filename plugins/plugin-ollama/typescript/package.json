@@ -116,5 +116,16 @@
       }
     }
   },
-  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "milaidy": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
+    }
+  }
 }

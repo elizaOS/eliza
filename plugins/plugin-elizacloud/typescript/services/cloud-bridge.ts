@@ -14,7 +14,6 @@ import type {
   BridgeConnectionState,
   BridgeMessage,
   BridgeMessageHandler,
-  CloudPluginConfig,
 } from "../types/cloud";
 import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";
 import type { CloudAuthService } from "./cloud-auth";
@@ -41,12 +40,11 @@ export class CloudBridgeService extends Service {
   capabilityDescription = "WebSocket bridge to cloud-hosted ElizaOS agents";
 
   private authService!: CloudAuthService;
-  private config: CloudPluginConfig;
+  private readonly bridgeConfig = DEFAULT_CLOUD_CONFIG.bridge;
   private connections: Map<string, ActiveConnection> = new Map();
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    this.config = DEFAULT_CLOUD_CONFIG;
   }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
@@ -143,7 +141,7 @@ export class CloudBridgeService extends Service {
       // Start heartbeat
       conn.heartbeatTimer = setInterval(() => {
         this.sendHeartbeat(containerId);
-      }, this.config.bridge.heartbeatIntervalMs);
+      }, this.bridgeConfig.heartbeatIntervalMs);
     });
 
     conn.ws.addEventListener("message", (event: MessageEvent) => {
@@ -200,16 +198,16 @@ export class CloudBridgeService extends Service {
   }
 
   private scheduleReconnect(containerId: string, attempt: number): void {
-    if (attempt > this.config.bridge.maxReconnectAttempts) {
+    if (attempt > this.bridgeConfig.maxReconnectAttempts) {
       logger.error(
-        `[CloudBridge] Max reconnect attempts (${this.config.bridge.maxReconnectAttempts}) reached for ${containerId}`,
+        `[CloudBridge] Max reconnect attempts (${this.bridgeConfig.maxReconnectAttempts}) reached for ${containerId}`,
       );
       this.connections.delete(containerId);
       return;
     }
 
     // Exponential backoff with jitter: base * 2^attempt + random jitter
-    const base = this.config.bridge.reconnectIntervalMs;
+    const base = this.bridgeConfig.reconnectIntervalMs;
     const delay = Math.min(base * 2 ** Math.min(attempt, 5), 120_000);
     const jitter = Math.floor(Math.random() * 1000);
 

@@ -129,15 +129,15 @@ export class CloudBackupService extends Service {
 
     const interval = intervalMs ?? this.backupIntervalMs;
 
-    const timer = setInterval(async () => {
+    const timer = setInterval(() => {
       logger.debug(`[CloudBackup] Running auto-backup for container ${containerId}`);
-      await this.createSnapshot(containerId, "auto", {
+      this.createSnapshot(containerId, "auto", {
         trigger: "scheduled",
         scheduledIntervalMs: interval,
-      });
-
-      // Enforce max snapshots by pruning oldest auto snapshots
-      await this.pruneSnapshots(containerId);
+      }).then(() => this.pruneSnapshots(containerId))
+        .catch((err: Error) => {
+          logger.error(`[CloudBackup] Auto-backup failed for ${containerId}: ${err.message}`);
+        });
     }, interval);
 
     this.autoBackups.set(containerId, {

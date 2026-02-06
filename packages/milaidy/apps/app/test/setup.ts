@@ -1,7 +1,8 @@
 /**
- * Test setup for Milaidy Capacitor app and plugin tests.
+ * Test setup — mocks browser APIs for Node.js vitest environment.
  *
- * Mocks @capacitor/core since tests run in Node.js, not a browser.
+ * All navigator sub-objects (mediaDevices, geolocation, permissions, clipboard)
+ * are created here with vi.fn() stubs so tests can vi.spyOn() them freely.
  */
 import { vi } from "vitest";
 
@@ -9,34 +10,21 @@ import { vi } from "vitest";
 // Mock @capacitor/core
 // ---------------------------------------------------------------------------
 
-/**
- * Minimal WebPlugin mock that mirrors the real Capacitor WebPlugin interface.
- * All web implementations extend this class.
- */
 class MockWebPlugin {
-  private _listeners: Map<string, Set<(...args: unknown[]) => void>> = new Map();
+  private _listeners = new Map<string, Set<(...args: unknown[]) => void>>();
 
   notifyListeners(eventName: string, data: unknown): void {
-    const handlers = this._listeners.get(eventName);
-    if (handlers) {
-      for (const fn of handlers) {
-        fn(data);
-      }
-    }
+    for (const fn of this._listeners.get(eventName) ?? []) fn(data);
   }
 
   addListener(
     eventName: string,
-    listenerFunc: (...args: unknown[]) => void
+    listenerFunc: (...args: unknown[]) => void,
   ): Promise<{ remove: () => Promise<void> }> {
-    if (!this._listeners.has(eventName)) {
-      this._listeners.set(eventName, new Set());
-    }
+    if (!this._listeners.has(eventName)) this._listeners.set(eventName, new Set());
     this._listeners.get(eventName)!.add(listenerFunc);
     return Promise.resolve({
-      remove: async () => {
-        this._listeners.get(eventName)?.delete(listenerFunc);
-      },
+      remove: async () => { this._listeners.get(eventName)?.delete(listenerFunc); },
     });
   }
 
@@ -48,7 +36,7 @@ class MockWebPlugin {
 
 vi.mock("@capacitor/core", () => ({
   WebPlugin: MockWebPlugin,
-  registerPlugin: vi.fn((_name: string, _opts?: Record<string, unknown>) => ({})),
+  registerPlugin: vi.fn(() => ({})),
   Capacitor: {
     getPlatform: vi.fn(() => "web"),
     isNativePlatform: vi.fn(() => false),
@@ -57,60 +45,65 @@ vi.mock("@capacitor/core", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Minimal DOM mocks for plugins that reference DOM APIs
+// Navigator mocks — always applied, writable, and spyable
 // ---------------------------------------------------------------------------
 
-if (typeof globalThis.navigator === "undefined") {
-  Object.defineProperty(globalThis, "navigator", {
-    value: {
-      mediaDevices: {
-        getUserMedia: vi.fn(),
-        enumerateDevices: vi.fn(),
-        getDisplayMedia: vi.fn(),
-      },
-      geolocation: {
-        getCurrentPosition: vi.fn(),
-        watchPosition: vi.fn(),
-        clearWatch: vi.fn(),
-      },
-      permissions: {
-        query: vi.fn(),
-      },
-      clipboard: {
-        writeText: vi.fn(),
-        readText: vi.fn(),
-        write: vi.fn(),
-      },
-      platform: "test",
-      userAgent: "test-agent",
-    },
-    writable: true,
-    configurable: true,
-  });
+function ensureObj(parent: Record<string, unknown>, key: string, value: Record<string, unknown>): void {
+  if (!parent[key]) {
+    Object.defineProperty(parent, key, { value, writable: true, configurable: true });
+  }
 }
+
+const nav: Record<string, unknown> = (typeof globalThis.navigator !== "undefined")
+  ? globalThis.navigator as unknown as Record<string, unknown>
+  : {};
+
+if (typeof globalThis.navigator === "undefined") {
+  Object.defineProperty(globalThis, "navigator", { value: nav, writable: true, configurable: true });
+}
+
+ensureObj(nav, "mediaDevices", {
+  getUserMedia: vi.fn(),
+  enumerateDevices: vi.fn(),
+  getDisplayMedia: vi.fn(),
+});
+
+ensureObj(nav, "geolocation", {
+  getCurrentPosition: vi.fn(),
+  watchPosition: vi.fn(),
+  clearWatch: vi.fn(),
+});
+
+ensureObj(nav, "permissions", { query: vi.fn() });
+
+ensureObj(nav, "clipboard", {
+  writeText: vi.fn().mockResolvedValue(undefined),
+  readText: vi.fn().mockResolvedValue(""),
+  write: vi.fn().mockResolvedValue(undefined),
+});
+
+if (!nav.platform) nav.platform = "test";
+if (!nav.userAgent) nav.userAgent = "test-agent";
+
+// ---------------------------------------------------------------------------
+// DOM mocks
+// ---------------------------------------------------------------------------
 
 if (typeof globalThis.document === "undefined") {
   Object.defineProperty(globalThis, "document", {
     value: {
       createElement: vi.fn(() => ({
-        getContext: vi.fn(() => ({
-          drawImage: vi.fn(),
-        })),
+        getContext: vi.fn(() => ({ drawImage: vi.fn() })),
         toDataURL: vi.fn(() => "data:image/jpeg;base64,dGVzdA=="),
         appendChild: vi.fn(),
         removeChild: vi.fn(),
         play: vi.fn(() => Promise.resolve()),
         style: {},
-        width: 0,
-        height: 0,
-        videoWidth: 1920,
-        videoHeight: 1080,
+        width: 0, height: 0, videoWidth: 1920, videoHeight: 1080,
       })),
       hidden: false,
       hasFocus: vi.fn(() => true),
-      documentElement: {
-        requestFullscreen: vi.fn(),
-      },
+      documentElement: { requestFullscreen: vi.fn() },
       exitFullscreen: vi.fn(),
     },
     writable: true,
@@ -125,10 +118,7 @@ if (typeof globalThis.window === "undefined") {
       focus: vi.fn(),
       open: vi.fn(),
       location: { reload: vi.fn() },
-      screenX: 0,
-      screenY: 0,
-      outerWidth: 1920,
-      outerHeight: 1080,
+      screenX: 0, screenY: 0, outerWidth: 1920, outerHeight: 1080,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     },
@@ -139,96 +129,46 @@ if (typeof globalThis.window === "undefined") {
 
 if (typeof globalThis.WebSocket === "undefined") {
   class MockWebSocket {
-    static readonly CONNECTING = 0;
     static readonly OPEN = 1;
-    static readonly CLOSING = 2;
     static readonly CLOSED = 3;
-
-    readonly CONNECTING = 0;
     readonly OPEN = 1;
-    readonly CLOSING = 2;
     readonly CLOSED = 3;
-
     url: string;
     readyState = MockWebSocket.OPEN;
-    private eventHandlers = new Map<string, ((...args: unknown[]) => void)[]>();
+    private handlers = new Map<string, ((...a: unknown[]) => void)[]>();
 
     constructor(url: string) {
       this.url = url;
-      // Simulate connection in next tick
-      setTimeout(() => {
-        this.dispatchEvent("open", {});
-      }, 0);
+      setTimeout(() => this.emit("open", {}), 0);
     }
-
-    addEventListener(event: string, handler: (...args: unknown[]) => void): void {
-      if (!this.eventHandlers.has(event)) {
-        this.eventHandlers.set(event, []);
-      }
-      this.eventHandlers.get(event)!.push(handler);
+    addEventListener(e: string, h: (...a: unknown[]) => void) {
+      (this.handlers.get(e) ?? (this.handlers.set(e, []), this.handlers.get(e)!)).push(h);
     }
-
-    removeEventListener(event: string, handler: (...args: unknown[]) => void): void {
-      const handlers = this.eventHandlers.get(event);
-      if (handlers) {
-        const idx = handlers.indexOf(handler);
-        if (idx >= 0) handlers.splice(idx, 1);
-      }
+    removeEventListener(e: string, h: (...a: unknown[]) => void) {
+      const hs = this.handlers.get(e);
+      if (hs) { const i = hs.indexOf(h); if (i >= 0) hs.splice(i, 1); }
     }
-
-    dispatchEvent(event: string, data: unknown): void {
-      const handlers = this.eventHandlers.get(event);
-      if (handlers) {
-        for (const h of handlers) {
-          h(data);
-        }
-      }
-    }
-
+    private emit(e: string, d: unknown) { for (const h of this.handlers.get(e) ?? []) h(d); }
     send = vi.fn();
-    close = vi.fn(() => {
-      this.readyState = MockWebSocket.CLOSED;
-    });
+    close = vi.fn(() => { this.readyState = MockWebSocket.CLOSED; });
   }
-
-  Object.defineProperty(globalThis, "WebSocket", {
-    value: MockWebSocket,
-    writable: true,
-    configurable: true,
-  });
+  Object.defineProperty(globalThis, "WebSocket", { value: MockWebSocket, writable: true, configurable: true });
 }
 
 if (typeof globalThis.Notification === "undefined") {
   Object.defineProperty(globalThis, "Notification", {
-    value: class MockNotification {
-      static permission = "granted";
-      static requestPermission = vi.fn(() => Promise.resolve("granted" as NotificationPermission));
-      onclick: (() => void) | null = null;
-      constructor(_title: string, _options?: NotificationOptions) {}
-    },
-    writable: true,
-    configurable: true,
+    value: class { static permission = "granted"; static requestPermission = vi.fn(() => Promise.resolve("granted")); onclick: (() => void) | null = null; },
+    writable: true, configurable: true,
   });
 }
 
 if (typeof globalThis.AudioContext === "undefined") {
   Object.defineProperty(globalThis, "AudioContext", {
-    value: class MockAudioContext {
-      currentTime = 0;
-      destination = {};
-      createOscillator = vi.fn(() => ({
-        connect: vi.fn(() => ({ connect: vi.fn() })),
-        frequency: { value: 0 },
-        type: "sine",
-        start: vi.fn(),
-        stop: vi.fn(),
-      }));
-      createGain = vi.fn(() => ({
-        connect: vi.fn(() => ({ connect: vi.fn() })),
-        gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
-      }));
+    value: class {
+      currentTime = 0; destination = {};
+      createOscillator = vi.fn(() => ({ connect: vi.fn(() => ({ connect: vi.fn() })), frequency: { value: 0 }, type: "sine", start: vi.fn(), stop: vi.fn() }));
+      createGain = vi.fn(() => ({ connect: vi.fn(() => ({ connect: vi.fn() })), gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() } }));
     },
-    writable: true,
-    configurable: true,
+    writable: true, configurable: true,
   });
 }

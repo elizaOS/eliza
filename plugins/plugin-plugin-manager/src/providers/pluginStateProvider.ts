@@ -31,15 +31,11 @@ export const pluginStateProvider: Provider = {
     const loadedPlugins = plugins.filter((p) => p.status === PluginStatus.LOADED);
     const errorPlugins = plugins.filter((p) => p.status === PluginStatus.ERROR);
     const readyPlugins = plugins.filter((p) => p.status === PluginStatus.READY);
-    const buildingPlugins = plugins.filter((p) => p.status === PluginStatus.BUILDING);
+    const unloadedPlugins = plugins.filter((p) => p.status === PluginStatus.UNLOADED);
 
     // Format plugin information
     const formatPlugin = (plugin: PluginState) => {
       const parts: string[] = [`${plugin.name} (${plugin.status})`];
-
-      if (plugin.missingEnvVars?.length > 0) {
-        parts.push(`Missing ENV vars: ${plugin.missingEnvVars.join(', ')}`);
-      }
 
       if (plugin.error) {
         parts.push(`Error: ${plugin.error}`);
@@ -72,28 +68,11 @@ export const pluginStateProvider: Provider = {
       );
     }
 
-    if (buildingPlugins.length > 0) {
+    if (unloadedPlugins.length > 0) {
       sections.push(
-        '**Building:**\n' + buildingPlugins.map((p) => `- ${formatPlugin(p)}`).join('\n')
+        '**Unloaded:**\n' + unloadedPlugins.map((p) => `- ${formatPlugin(p)}`).join('\n')
       );
     }
-
-    // Collect all missing environment variables
-    const allMissingEnvVars = new Set<string>();
-    plugins.forEach((p) => {
-      p.missingEnvVars?.forEach((v) => allMissingEnvVars.add(v));
-    });
-
-    if (allMissingEnvVars.size > 0) {
-      sections.push(
-        `**All Missing Environment Variables:**\n${Array.from(allMissingEnvVars)
-          .map((v) => `- ${v}`)
-          .join('\n')}`
-      );
-    }
-
-    // Check if user is asking about specific plugin permissions
-    const messageText = message?.content?.text?.toLowerCase() || '';
 
     // Add information about protected and original plugins
     const protectedPlugins = pluginManager.getProtectedPlugins();
@@ -117,8 +96,7 @@ export const pluginStateProvider: Provider = {
         loadedCount: loadedPlugins.length,
         errorCount: errorPlugins.length,
         readyCount: readyPlugins.length,
-        buildingCount: buildingPlugins.length,
-        missingEnvVars: Array.from(allMissingEnvVars),
+        unloadedCount: unloadedPlugins.length,
         protectedPlugins,
         originalPlugins,
       },
@@ -128,7 +106,6 @@ export const pluginStateProvider: Provider = {
           name: p.name,
           status: p.status,
           error: p.error,
-          missingEnvVars: p.missingEnvVars,
           createdAt: p.createdAt,
           loadedAt: p.loadedAt,
           unloadedAt: p.unloadedAt,

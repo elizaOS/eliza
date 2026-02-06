@@ -105,8 +105,8 @@ export const installPluginFromRegistryAction: Action = {
       if (callback) {
         await callback({
           text:
-            `Successfully installed plugin ${pluginInfo.name} v${pluginInfo.version}. ` +
-            `Use "load plugin ${pluginName}" to activate it.`,
+            `Successfully installed plugin ${pluginInfo.name} v${pluginInfo.version} and registered it. ` +
+            `Use "load plugin ${pluginInfo.name}" to activate it.`,
         });
       }
     } catch (error) {
@@ -119,29 +119,8 @@ export const installPluginFromRegistryAction: Action = {
   },
 
   async validate(runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> {
-    const text = message.content?.text?.toLowerCase() || '';
-
-    // Check for install/registry-related keywords
-    const hasInstall = text.includes('install');
-    const hasRegistry = text.includes('registry') || text.includes('npm');
-    const hasPlugin = text.includes('plugin');
-
-    // Look for plugin name patterns
-    let match: RegExpMatchArray | null = null;
-    match = text.match(/@[\w-]+\/[\w-]+/); // @scope/package format
-
-    if (!match) {
-      match = text.match(/plugin-[\w-]+/); // plugin-name format
-    }
-
-    if (!match) {
-      // Look for "install [name] plugin" pattern
-      match = text.match(/install\s+([\w-]+)\s+plugin/);
-    }
-
-    const hasPluginName = match !== null;
-
-    // Valid if it's an install command with plugin context
-    return (hasInstall && (hasRegistry || hasPlugin)) || hasPluginName;
+    // Precondition: plugin manager service must be available
+    const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
+    return pluginManager !== null;
   },
 };

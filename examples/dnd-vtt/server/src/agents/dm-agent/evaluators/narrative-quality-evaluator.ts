@@ -30,10 +30,10 @@ export const narrativeQualityEvaluator: Evaluator = {
   
   examples: [
     {
-      context: 'DM described a tavern scene',
+      prompt: 'DM described a tavern scene briefly',
       messages: [
         {
-          user: 'dm',
+          name: 'dm',
           content: {
             text: 'You enter the Rusty Anchor tavern.',
           },
@@ -42,10 +42,10 @@ export const narrativeQualityEvaluator: Evaluator = {
       outcome: 'Low descriptiveness - needs more sensory details and atmosphere.',
     },
     {
-      context: 'DM described a tavern scene with rich detail',
+      prompt: 'DM described a tavern scene with rich detail',
       messages: [
         {
-          user: 'dm',
+          name: 'dm',
           content: {
             text: 'The Rusty Anchor hits you with a wave of warmth and noise as you push through the weathered oak door. Pipe smoke hangs in lazy ribbons beneath soot-stained rafters, while the crackling hearth throws dancing shadows across faces both familiar and strange. The bartender, a scarred half-orc named Grella, looks up from polishing a tankard and gives you a nod that might be recognition or warning.',
           },
@@ -57,28 +57,37 @@ export const narrativeQualityEvaluator: Evaluator = {
   
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Only evaluate DM narrative outputs
-    const role = await runtime.getSetting('role');
-    return role === 'dm' && message.content?.type === 'narrative';
+    const role = runtime.getSetting('role');
+    const content = message.content as Record<string, unknown> | undefined;
+    return role === 'dm' && content?.type === 'narrative';
   },
   
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     state?: State
-  ): Promise<NarrativeMetrics | null> => {
+  ) => {
     const text = typeof message.content === 'string' 
       ? message.content 
       : message.content?.text;
     
     if (!text || text.length < 20) {
-      return null;
+      return undefined;
     }
     
     // Analyze the narrative
     const metrics = analyzeNarrative(text);
     
     // Store metrics for tracking over time
-    const previousMetrics = await runtime.getSetting('narrativeMetricsHistory') as NarrativeMetrics[] || [];
+    const raw = runtime.getSetting('narrativeMetricsHistory');
+    let previousMetrics: NarrativeMetrics[] = [];
+    if (raw && typeof raw === 'string') {
+      try {
+        previousMetrics = JSON.parse(raw) as NarrativeMetrics[];
+      } catch {
+        previousMetrics = [];
+      }
+    }
     previousMetrics.push(metrics);
     
     // Keep last 50 evaluations
@@ -86,14 +95,17 @@ export const narrativeQualityEvaluator: Evaluator = {
       previousMetrics.shift();
     }
     
-    await runtime.setSetting('narrativeMetricsHistory', previousMetrics);
+    runtime.setSetting('narrativeMetricsHistory', JSON.stringify(previousMetrics));
     
     // Log if quality is low
     if (metrics.overallScore < 5) {
       console.warn('Low narrative quality detected:', metrics);
     }
     
-    return metrics;
+    return {
+      success: true,
+      data: { metrics },
+    };
   },
 };
 
@@ -132,7 +144,7 @@ function analyzeNarrative(text: string): NarrativeMetrics {
   // Analyze engagement (hooks, questions, tension)
   const engagementIndicators = [
     /\?/.test(text), // Questions
-    /\.{3}|—/.test(text), // Dramatic pauses
+    /\.{3}|\u{2014}/u.test(text), // Dramatic pauses
     /\b(suddenly|but|however|yet|meanwhile)\b/i.test(text), // Tension words
     /\b(you notice|you see|you hear|catches your attention)\b/i.test(text), // Direct engagement
   ].filter(Boolean).length;

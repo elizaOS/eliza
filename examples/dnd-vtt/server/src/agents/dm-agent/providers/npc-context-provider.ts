@@ -11,12 +11,12 @@ export const npcContextProvider: Provider = {
   name: 'npcContext',
   description: 'Provides detailed NPC profiles for roleplaying interactions',
   
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<string> => {
-    const campaignId = await runtime.getSetting('campaignId') as string;
-    const activeNpcId = await runtime.getSetting('activeNpcId') as string;
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    const campaignId = runtime.getSetting('campaignId') as string;
+    const activeNpcId = runtime.getSetting('activeNpcId') as string;
     
     if (!campaignId) {
-      return 'No active campaign.';
+      return { text: 'No active campaign.' };
     }
     
     // If there's a specific NPC being interacted with
@@ -24,7 +24,7 @@ export const npcContextProvider: Provider = {
       try {
         const npc = await locationRepository.getNPCById(activeNpcId);
         if (npc) {
-          return formatDetailedNPC(npc);
+          return { text: formatDetailedNPC(npc) };
         }
       } catch (error) {
         console.error('Error fetching NPC:', error);
@@ -32,17 +32,17 @@ export const npcContextProvider: Provider = {
     }
     
     // Otherwise, provide context about nearby NPCs
-    const currentLocationId = await runtime.getSetting('currentLocationId') as string;
+    const currentLocationId = runtime.getSetting('currentLocationId') as string;
     
     if (!currentLocationId) {
-      return 'No NPCs in context.';
+      return { text: 'No NPCs in context.' };
     }
     
     try {
       const npcs = await locationRepository.getNPCsAtLocation(currentLocationId);
       
       if (npcs.length === 0) {
-        return 'No NPCs at current location.';
+        return { text: 'No NPCs at current location.' };
       }
       
       let context = `## NPCs at Current Location\n\n`;
@@ -52,11 +52,11 @@ export const npcContextProvider: Provider = {
         context += '\n';
       }
       
-      return context;
+      return { text: context };
       
     } catch (error) {
       console.error('Error fetching NPCs:', error);
-      return 'Error loading NPC information.';
+      return { text: 'Error loading NPC information.' };
     }
   },
 };
@@ -65,16 +65,20 @@ function formatDetailedNPC(npc: NPC): string {
   let context = `## NPC Profile: ${npc.name}\n\n`;
   
   // Basic info
-  context += `**Race:** ${npc.race}\n`;
+  if (npc.race) {
+    context += `**Race:** ${npc.race}\n`;
+  }
   if (npc.occupation) {
     context += `**Occupation:** ${npc.occupation}\n`;
   }
   context += `**Type:** ${npc.type}\n\n`;
   
   // Personality and motivation
-  context += `### Personality\n`;
-  context += npc.personality;
-  context += '\n\n';
+  if (npc.personality) {
+    context += `### Personality\n`;
+    context += npc.personality;
+    context += '\n\n';
+  }
   
   if (npc.motivation) {
     context += `### Motivation\n`;
@@ -83,16 +87,18 @@ function formatDetailedNPC(npc: NPC): string {
   }
   
   // Party relationship
-  const disposition = getDispositionDetail(npc.partyDisposition);
+  const dispositionValue = npc.partyDisposition ?? 50;
+  const disposition = getDispositionDetail(dispositionValue);
   context += `### Relationship with Party\n`;
-  context += `**Disposition:** ${disposition.label} (${npc.partyDisposition}/100)\n`;
+  context += `**Disposition:** ${disposition.label} (${dispositionValue}/100)\n`;
   context += `${disposition.description}\n\n`;
   
   // Interaction history
-  if (npc.interactionCount > 0) {
-    context += `*Has interacted with the party ${npc.interactionCount} time(s).*\n`;
+  const interactionCount = npc.interactionCount ?? 0;
+  if (interactionCount > 0) {
+    context += `*Has interacted with the party ${interactionCount} time(s).*\n`;
     if (npc.lastInteraction) {
-      context += `*Last interaction: ${npc.lastInteraction.toLocaleString()}*\n`;
+      context += `*Last interaction: ${new Date(npc.lastInteraction).toLocaleString()}*\n`;
     }
     context += '\n';
   } else {
@@ -100,10 +106,14 @@ function formatDetailedNPC(npc: NPC): string {
   }
   
   // Combat readiness (if relevant)
-  if (npc.isHostile || npc.partyDisposition < 25) {
+  if (npc.isHostile || dispositionValue < 25) {
     context += `### Combat Stats\n`;
-    context += `**HP:** ${npc.hp.current}/${npc.hp.max}\n`;
-    context += `**AC:** ${npc.ac}\n`;
+    if (npc.hp) {
+      context += `**HP:** ${npc.hp.current}/${npc.hp.max}\n`;
+    }
+    if (npc.ac !== undefined) {
+      context += `**AC:** ${npc.ac}\n`;
+    }
     if (npc.challengeRating !== undefined) {
       context += `**CR:** ${npc.challengeRating}\n`;
     }
@@ -111,7 +121,7 @@ function formatDetailedNPC(npc: NPC): string {
   
   // Roleplaying guidance
   context += `### Roleplaying Notes\n`;
-  context += `- Speak in a manner befitting a ${npc.race} ${npc.occupation || npc.type}\n`;
+  context += `- Speak in a manner befitting a ${npc.race ?? 'unknown'} ${npc.occupation || npc.type}\n`;
   context += `- Their ${disposition.label.toLowerCase()} disposition should color interactions\n`;
   context += `- Consider their motivation when determining responses\n`;
   
@@ -119,14 +129,17 @@ function formatDetailedNPC(npc: NPC): string {
 }
 
 function formatNPCSummary(npc: NPC): string {
-  const disposition = getDispositionDetail(npc.partyDisposition);
+  const dispositionValue = npc.partyDisposition ?? 50;
+  const disposition = getDispositionDetail(dispositionValue);
   
   let summary = `### ${npc.name}\n`;
-  summary += `${npc.race} ${npc.occupation || npc.type} | ${disposition.label}\n`;
-  summary += `*${truncate(npc.personality, 100)}*\n`;
+  summary += `${npc.race ?? 'Unknown'} ${npc.occupation || npc.type} | ${disposition.label}\n`;
+  if (npc.personality) {
+    summary += `*${truncate(npc.personality, 100)}*\n`;
+  }
   
   if (npc.isHostile) {
-    summary += `⚠️ **Hostile**\n`;
+    summary += `**Hostile**\n`;
   }
   
   return summary;

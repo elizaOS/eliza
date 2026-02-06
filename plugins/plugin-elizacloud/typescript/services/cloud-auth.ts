@@ -85,7 +85,7 @@ export class CloudAuthService extends Service {
   }
 
   private async validateApiKey(key: string): Promise<boolean> {
-    const resp = await fetch(`${this.client.buildWsUrl("").replace(/^ws/, "http")}/models`, {
+    const resp = await fetch(`${this.client.getBaseUrl()}/models`, {
       headers: { Authorization: `Bearer ${key}` },
     });
     return resp.ok;

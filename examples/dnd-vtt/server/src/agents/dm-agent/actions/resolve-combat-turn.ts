@@ -10,7 +10,7 @@ import type {
   State, 
   HandlerCallback 
 } from '@elizaos/core';
-import type { CombatState, CombatAction, Monster } from '../../../types';
+import type { CombatState, CombatAction, Combatant } from '../../../types';
 import { executeDiceRoll } from '../../../types';
 
 export interface ResolveCombatTurnParams {
@@ -35,14 +35,14 @@ export const resolveCombatTurnAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'The goblin attacks Thoric with its scimitar.',
           action: 'RESOLVE_COMBAT_TURN',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'Goblin 1 lunges at Thoric with a snarl, rusty scimitar slashing through the air!\n\n**Attack Roll:** 🎲 14 + 4 = 18 vs AC 18 - **HIT!**\n\nThe blade catches Thoric across the arm, drawing blood.\n\n**Damage:** 🎲 5 slashing damage\n\nThoric: 38/43 HP\n\n*Goblin 1 ends its turn. Thoric, you\'re up!*',
         },
@@ -51,22 +51,22 @@ export const resolveCombatTurnAction: Action = {
   ],
   
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    const role = await runtime.getSetting('role');
+    const role = runtime.getSetting('role');
     if (role !== 'dm') return false;
     
-    const combatState = await runtime.getSetting('combatState') as CombatState | null;
-    return combatState !== null && combatState.phase === 'active';
+    const combatState = runtime.getSetting('combatState') as unknown as CombatState | null;
+    return combatState !== null && combatState.isActive;
   },
   
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    options: Record<string, unknown>,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
-    const params = options as ResolveCombatTurnParams;
-    const combatState = await runtime.getSetting('combatState') as CombatState;
+  ) => {
+    const params = (options ?? {}) as unknown as ResolveCombatTurnParams;
+    const combatState = runtime.getSetting('combatState') as unknown as CombatState;
     
     const combatant = combatState.combatants.get(params.combatantId);
     if (!combatant) {
@@ -76,7 +76,7 @@ export const resolveCombatTurnAction: Action = {
           type: 'error',
         });
       }
-      return false;
+      return { success: false };
     }
     
     // Process each action
@@ -102,7 +102,7 @@ export const resolveCombatTurnAction: Action = {
     const combatOver = checkCombatEnd(combatState);
     
     if (combatOver) {
-      combatState.phase = 'ended';
+      combatState.isActive = false;
       results.push('\n\n⚔️ **COMBAT ENDS!** ⚔️');
       
       if (combatOver.winner === 'party') {
@@ -118,7 +118,7 @@ export const resolveCombatTurnAction: Action = {
     }
     
     // Save updated combat state
-    await runtime.setSetting('combatState', combatState);
+    runtime.setSetting('combatState', combatState as unknown as string);
     
     if (callback) {
       await callback({
@@ -128,7 +128,7 @@ export const resolveCombatTurnAction: Action = {
           combatId: combatState.id,
           round: combatState.round,
           combatantId: params.combatantId,
-          actions: params.actions,
+          actions: params.actions.map(a => a.description ?? a.type),
           combatOver: combatOver !== null,
         },
       });
@@ -136,30 +136,34 @@ export const resolveCombatTurnAction: Action = {
     
     // Emit events
     for (const action of params.actions) {
-      await runtime.emit('combat_action', {
+      const combatActionPayload = {
+        runtime,
         combatId: combatState.id,
         round: combatState.round,
         actorId: params.combatantId,
         action,
         timestamp: new Date(),
-      });
+      };
+      await runtime.emitEvent('combat_action', combatActionPayload);
     }
     
     if (combatOver) {
-      await runtime.emit('combat_ended', {
+      const combatEndedPayload = {
+        runtime,
         combatId: combatState.id,
         rounds: combatState.round,
         winner: combatOver.winner,
         timestamp: new Date(),
-      });
+      };
+      await runtime.emitEvent('combat_ended', combatEndedPayload);
     }
     
-    return true;
+    return { success: true };
   },
 };
 
 async function processAction(
-  runtime: IAgentRuntime,
+  _runtime: IAgentRuntime,
   combatState: CombatState,
   actorId: string,
   action: CombatAction
@@ -193,63 +197,67 @@ async function processAction(
 
 function processAttack(
   combatState: CombatState,
-  attacker: {id: string; name: string; ac: number; type: string; actions?: Array<{attackBonus?: number; damage?: string; damageType?: string; name?: string}>},
+  attacker: Combatant,
   action: CombatAction
 ): string {
-  if (!action.targetId) return `${attacker.name} attacks but has no target!`;
+  const targetId = action.targetIds?.[0];
+  if (!targetId) return `${attacker.name} attacks but has no target!`;
   
-  const target = combatState.combatants.get(action.targetId);
+  const target = combatState.combatants.get(targetId);
   if (!target) return `Target not found.`;
   
-  // Use the attacker's first action with an attack bonus, or default to +4
-  const weapon = attacker.actions?.[0];
+  // Use the attacker's first monster action with an attack bonus, or default to +4
+  const weapon = attacker.monster?.actions?.[0];
   const attackBonus = weapon?.attackBonus ?? 4;
-  const damageDice = weapon?.damage ?? '1d6+2';
   const damageType = weapon?.damageType ?? 'bludgeoning';
   
   // Roll d20 for attack using the dice system
   const attackDiceResult = executeDiceRoll({
-    dice: [{ type: 'd20', count: 1, modifier: 0 }],
-    description: `${attacker.name} attack roll`,
+    count: 1,
+    die: 'd20',
+    modifier: 0,
+    advantage: false,
+    disadvantage: false,
   });
-  const attackRoll = attackDiceResult.individualRolls[0]?.[0] ?? attackDiceResult.total;
+  const attackRoll = attackDiceResult.individualRolls[0] ?? attackDiceResult.total;
   const totalAttack = attackRoll + attackBonus;
   
-  const hit = attackRoll === 20 || (attackRoll !== 1 && totalAttack >= target.ac);
+  const hit = attackRoll === 20 || (attackRoll !== 1 && totalAttack >= target.armorClass);
   const critical = attackRoll === 20;
   
   let result = `${attacker.name} attacks ${target.name} with ${weapon?.name ?? 'a weapon'}!\n\n`;
-  result += `**Attack Roll:** 🎲 ${attackRoll} + ${attackBonus} = ${totalAttack} vs AC ${target.ac}`;
+  result += `**Attack Roll:** 🎲 ${attackRoll} + ${attackBonus} = ${totalAttack} vs AC ${target.armorClass}`;
   
   if (attackRoll === 1) {
     result += ` - **CRITICAL MISS!**`;
   } else if (critical) {
     result += ` - **CRITICAL HIT!**`;
     // Critical hit: roll damage dice twice
-    const dmgRoll = executeDiceRoll({ dice: [{ type: 'd20', count: 1, modifier: 0 }], description: 'crit damage placeholder' });
-    const normalDmg = executeDiceRoll({ dice: [{ type: 'd6', count: 1, modifier: 2 }], description: 'damage' });
-    const critDmg = executeDiceRoll({ dice: [{ type: 'd6', count: 1, modifier: 0 }], description: 'crit bonus' });
+    const normalDmg = executeDiceRoll({ count: 1, die: 'd6', modifier: 2, advantage: false, disadvantage: false });
+    const critDmg = executeDiceRoll({ count: 1, die: 'd6', modifier: 0, advantage: false, disadvantage: false });
     const damage = normalDmg.total + critDmg.total;
-    target.hp.current = Math.max(0, target.hp.current - damage);
+    target.currentHP = Math.max(0, target.currentHP - damage);
     result += `\n\n**Damage:** 🎲 ${damage} ${damageType} (critical!)`;
-    result += `\n\n${target.name}: ${target.hp.current}/${target.hp.max} HP`;
+    result += `\n\n${target.name}: ${target.currentHP}/${target.maxHP} HP`;
   } else if (hit) {
     result += ` - **HIT!**`;
     // Roll actual weapon damage
     const dmgRoll = executeDiceRoll({
-      dice: [{ type: 'd6', count: 1, modifier: 2 }],
-      description: `${weapon?.name ?? 'weapon'} damage`,
+      count: 1,
+      die: 'd6',
+      modifier: 2,
+      advantage: false,
+      disadvantage: false,
     });
     const damage = dmgRoll.total;
-    target.hp.current = Math.max(0, target.hp.current - damage);
+    target.currentHP = Math.max(0, target.currentHP - damage);
     result += `\n\n**Damage:** 🎲 ${damage} ${damageType}`;
-    result += `\n\n${target.name}: ${target.hp.current}/${target.hp.max} HP`;
+    result += `\n\n${target.name}: ${target.currentHP}/${target.maxHP} HP`;
   } else {
     result += ` - **MISS!**`;
   }
   
-  if (target.hp.current <= 0) {
-    target.isAlive = false;
+  if (target.currentHP <= 0) {
     result += `\n\n💀 ${target.name} falls!`;
   }
   
@@ -258,14 +266,15 @@ function processAttack(
 
 function processCastSpell(
   combatState: CombatState,
-  caster: {id: string; name: string},
+  caster: Combatant,
   action: CombatAction
 ): string {
-  const spellName = action.spellName || 'a spell';
+  const spellName = action.description || 'a spell';
   let result = `${caster.name} casts ${spellName}`;
   
-  if (action.targetId) {
-    const target = combatState.combatants.get(action.targetId);
+  const targetId = action.targetIds?.[0];
+  if (targetId) {
+    const target = combatState.combatants.get(targetId);
     if (target) {
       result += ` targeting ${target.name}`;
     }
@@ -273,27 +282,25 @@ function processCastSpell(
   
   result += `!`;
   
-  // Roll spell damage using the dice system
-  if (action.damage) {
-    const damageDice = action.damageDice || '1d8';
-    const damageType = action.damageType || 'force';
-    const dmgRoll = executeDiceRoll({
-      dice: [{ type: 'd8', count: 1, modifier: 0 }],
-      description: `${spellName} damage`,
-    });
-    const damage = dmgRoll.total;
-    
-    if (action.targetId) {
-      const target = combatState.combatants.get(action.targetId);
-      if (target) {
-        target.hp.current = Math.max(0, target.hp.current - damage);
-        result += `\n\n**Damage:** 🎲 ${damage} ${damageType}`;
-        result += `\n\n${target.name}: ${target.hp.current}/${target.hp.max} HP`;
-        
-        if (target.hp.current <= 0) {
-          target.isAlive = false;
-          result += `\n\n💀 ${target.name} falls!`;
-        }
+  // Roll spell damage if targeting a combatant
+  if (targetId) {
+    const target = combatState.combatants.get(targetId);
+    if (target) {
+      const dmgRoll = executeDiceRoll({
+        count: 1,
+        die: 'd8',
+        modifier: 0,
+        advantage: false,
+        disadvantage: false,
+      });
+      const damage = dmgRoll.total;
+      
+      target.currentHP = Math.max(0, target.currentHP - damage);
+      result += `\n\n**Damage:** 🎲 ${damage} force`;
+      result += `\n\n${target.name}: ${target.currentHP}/${target.maxHP} HP`;
+      
+      if (target.currentHP <= 0) {
+        result += `\n\n💀 ${target.name} falls!`;
       }
     }
   }
@@ -303,9 +310,8 @@ function processCastSpell(
 
 function checkForDefeated(combatState: CombatState): string[] {
   const defeated: string[] = [];
-  for (const [id, combatant] of combatState.combatants) {
-    if (combatant.hp.current <= 0 && combatant.isAlive) {
-      combatant.isAlive = false;
+  for (const [_id, combatant] of combatState.combatants) {
+    if (combatant.currentHP <= 0) {
       defeated.push(combatant.name);
     }
   }
@@ -316,9 +322,9 @@ function checkCombatEnd(combatState: CombatState): { winner: 'party' | 'enemies'
   let partyAlive = false;
   let enemiesAlive = false;
   
-  for (const [id, combatant] of combatState.combatants) {
-    if (combatant.isAlive) {
-      if (combatant.type === 'character') {
+  for (const [_id, combatant] of combatState.combatants) {
+    if (combatant.currentHP > 0) {
+      if (combatant.entityType === 'pc') {
         partyAlive = true;
       } else {
         enemiesAlive = true;
@@ -333,14 +339,13 @@ function checkCombatEnd(combatState: CombatState): { winner: 'party' | 'enemies'
 
 function advanceTurn(combatState: CombatState): void {
   // Mark current combatant as having acted
-  const currentInit = combatState.initiativeOrder[combatState.turnIndex];
+  const currentInit = combatState.initiativeOrder[combatState.currentTurnIndex];
   if (currentInit) {
     currentInit.hasActed = true;
-    currentInit.isCurrentTurn = false;
   }
   
   // Find next active combatant
-  let nextIndex = combatState.turnIndex + 1;
+  let nextIndex = combatState.currentTurnIndex + 1;
   let looped = false;
   
   while (true) {
@@ -357,10 +362,11 @@ function advanceTurn(combatState: CombatState): void {
     }
     
     const nextInit = combatState.initiativeOrder[nextIndex];
+    if (!nextInit) break;
     const combatant = combatState.combatants.get(nextInit.id);
     
     // Skip dead combatants
-    if (combatant && combatant.isAlive) {
+    if (combatant && combatant.currentHP > 0) {
       break;
     }
     
@@ -372,17 +378,13 @@ function advanceTurn(combatState: CombatState): void {
     }
   }
   
-  combatState.turnIndex = nextIndex;
-  const newCurrent = combatState.initiativeOrder[nextIndex];
-  if (newCurrent) {
-    newCurrent.isCurrentTurn = true;
-  }
+  combatState.currentTurnIndex = nextIndex;
 }
 
-function getCurrentCombatant(combatState: CombatState): {name: string} | null {
-  const currentInit = combatState.initiativeOrder[combatState.turnIndex];
+function getCurrentCombatant(combatState: CombatState): Combatant | null {
+  const currentInit = combatState.initiativeOrder[combatState.currentTurnIndex];
   if (currentInit) {
-    return combatState.combatants.get(currentInit.id) || null;
+    return combatState.combatants.get(currentInit.id) ?? null;
   }
   return null;
 }

@@ -93,11 +93,11 @@ export async function startSession(
   
   // Load party members
   const characters = await characterRepository.getByCampaign(campaignId);
-  state.partyMembers = characters.map(c => c.id);
+  state.partyMembers = characters.map(c => c.id).filter((id): id is string => !!id);
   
   // Load active quests
   const quests = await worldRepository.getActiveQuests(campaignId);
-  state.activeQuests = quests.map(q => q.id);
+  state.activeQuests = quests.map(q => q.id).filter((id): id is string => !!id);
   
   // Mark starting location as visited
   if (startingLocationId) {
@@ -177,15 +177,15 @@ async function generateSessionSummary(
   
   // Build summary
   const summary: SessionSummary = {
+    overview: manualNotes || `Session with ${keyEvents.length} key events across ${locationNames.length} locations`,
     keyEvents,
-    npcsEncountered: npcNames,
-    locationsVisited: locationNames,
-    combatEncounters: state.combatEncounters,
-    questsProgressed: [], // Would be calculated from quest state changes
-    lootGained: state.lootGained,
-    experienceGained: state.experienceGained,
+    npcInteractions: npcNames.map(name => ({ npcId: '', npcName: name, summary: '' })),
+    combatsResolved: state.combatEncounters,
+    xpGained: state.experienceGained,
+    goldGained: 0,
+    itemsFound: state.lootGained,
+    questsUpdated: [],
     cliffhanger: keyEvents[keyEvents.length - 1] || undefined,
-    dmNotes: manualNotes,
   };
   
   return summary;
@@ -376,12 +376,8 @@ export async function getSessionRecap(campaignId: string): Promise<string> {
     recap += '\n';
   }
   
-  if (summary.locationsVisited.length > 0) {
-    recap += `**Locations Visited:** ${summary.locationsVisited.join(', ')}\n\n`;
-  }
-  
-  if (summary.npcsEncountered.length > 0) {
-    recap += `**NPCs Encountered:** ${summary.npcsEncountered.join(', ')}\n\n`;
+  if (summary.npcInteractions.length > 0) {
+    recap += `**NPCs Encountered:** ${summary.npcInteractions.map(n => n.npcName).join(', ')}\n\n`;
   }
   
   if (summary.cliffhanger) {

@@ -23,7 +23,10 @@
       "types": "./dist/types/index.d.ts"
     }
   },
-  "files": ["dist", "skills"],
+  "files": [
+    "dist",
+    "skills"
+  ],
   "scripts": {
     "build": "bun run build.ts",
     "check": "tsc --noEmit",
@@ -74,5 +77,16 @@
     "multi-agent"
   ],
   "author": "ElizaOS",
-  "license": "MIT"
+  "license": "MIT",
+  "milaidy": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
+    }
+  }
 }

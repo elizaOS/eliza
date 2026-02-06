@@ -11,7 +11,6 @@ import { dbRead, dbWrite } from "@/db/helpers";
 import {
   agentSnapshots,
   type AgentSnapshot,
-  type NewAgentSnapshot,
 } from "@/db/schemas/agent-snapshots";
 import { eq, and, desc } from "drizzle-orm";
 import { logger } from "@/lib/utils/logger";

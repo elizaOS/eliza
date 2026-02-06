@@ -9,16 +9,34 @@
   "packageType": "plugin",
   "platform": "node",
   "license": "MIT",
-  "keywords": ["plugin", "elizaos", "computeruse", "automation", "desktop", "gui", "mcp"],
-  "repository": { "type": "git", "url": "https://github.com/elizaos/eliza" },
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "computeruse",
+    "automation",
+    "desktop",
+    "gui",
+    "mcp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza"
+  },
   "homepage": "https://elizaos.ai",
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     }
   },
-  "files": ["dist", "README.md", "package.json"],
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.0",
     "zod": "^4.3.6"
@@ -64,6 +82,14 @@
         "required": false
       }
     }
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js only (platform: node)"
+    }
   }
 }
-

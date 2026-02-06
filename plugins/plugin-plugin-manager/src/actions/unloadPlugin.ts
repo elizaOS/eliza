@@ -52,34 +52,17 @@ export const unloadPluginAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> {
+    // Precondition: plugin manager service must be available
     const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
-
     if (!pluginManager) {
-      logger.warn('[unloadPluginAction] Plugin Manager service not available');
       return false;
     }
 
-    // Check if the message is asking to unload a plugin
-    const text = message.content?.text?.toLowerCase() || '';
-    const isUnloadRequest =
-      (text.includes('unload') && text.includes('plugin')) ||
-      (text.includes('disable') && text.includes('plugin')) ||
-      (text.includes('deactivate') && text.includes('plugin')) ||
-      (text.includes('stop') && text.includes('plugin')) ||
-      (text.includes('remove') && text.includes('plugin'));
-
-    if (!isUnloadRequest) {
-      return false;
-    }
-
-    // Check if there are any plugins that can be unloaded
+    // Precondition: at least one loaded plugin can be unloaded
     const plugins = pluginManager.getAllPlugins();
-    const loadedPlugins = plugins.filter((p) => p.status === 'loaded');
-
-    // Filter out protected plugins that cannot be unloaded
-    const unloadablePlugins = loadedPlugins.filter((p) => pluginManager.canUnloadPlugin(p.name));
-
-    return unloadablePlugins.length > 0;
+    return plugins.some(
+      (p) => p.status === 'loaded' && pluginManager.canUnloadPlugin(p.name)
+    );
   },
 
   async handler(

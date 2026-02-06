@@ -539,9 +539,9 @@ async def run_benchmark_task_through_agent(
 
     message = Memory(
         id=message_id,
-        agentId=runtime.agent_id,
-        entityId=entity_id,
-        roomId=room_id,
+        agent_id=runtime.agent_id,
+        entity_id=entity_id,
+        room_id=room_id,
         content=Content(text=question),
     )
 

@@ -5,14 +5,15 @@
 
 import {
   type AbilityName,
-  type AbilityScores,
   type CharacterSheet,
   type Monster,
   type ActiveCondition,
   calculateModifier,
   getProficiencyBonus,
   executeDiceRoll,
-  CONDITIONS,
+  normalizeCondition,
+  getConditionName,
+  getAbilityMod,
 } from '../types';
 
 export interface SavingThrowParams {
@@ -62,33 +63,35 @@ function getConditionModifiers(
   let autoFail = false;
   
   for (const active of conditions) {
+    const condName = normalizeCondition(getConditionName(active));
+    
     // Restrained - disadvantage on Dexterity saves
-    if (active.condition === 'Restrained' && ability === 'dexterity') {
+    if (condName === 'restrained' && ability === 'dexterity') {
       grantsDisadvantage = true;
     }
     
     // Paralyzed - auto-fail Strength and Dexterity saves
-    if (active.condition === 'Paralyzed' && (ability === 'strength' || ability === 'dexterity')) {
+    if (condName === 'paralyzed' && (ability === 'strength' || ability === 'dexterity')) {
       autoFail = true;
     }
     
     // Stunned - auto-fail Strength and Dexterity saves
-    if (active.condition === 'Stunned' && (ability === 'strength' || ability === 'dexterity')) {
+    if (condName === 'stunned' && (ability === 'strength' || ability === 'dexterity')) {
       autoFail = true;
     }
     
     // Petrified - auto-fail Strength and Dexterity saves
-    if (active.condition === 'Petrified' && (ability === 'strength' || ability === 'dexterity')) {
+    if (condName === 'petrified' && (ability === 'strength' || ability === 'dexterity')) {
       autoFail = true;
     }
     
     // Unconscious - auto-fail Strength and Dexterity saves
-    if (active.condition === 'Unconscious' && (ability === 'strength' || ability === 'dexterity')) {
+    if (condName === 'unconscious' && (ability === 'strength' || ability === 'dexterity')) {
       autoFail = true;
     }
     
     // Exhaustion level 3+ - disadvantage on saving throws
-    if (active.condition === 'Exhaustion' && (active.stacks || 1) >= 3) {
+    if (condName === 'exhaustion' && (active.exhaustionLevel ?? active.level ?? 1) >= 3) {
       grantsDisadvantage = true;
     }
   }
@@ -106,7 +109,7 @@ function hasSaveProficiency(
 ): boolean {
   if (creatureType === 'character') {
     const char = creature as CharacterSheet;
-    return char.proficiencies.savingThrows.includes(ability);
+    return char.proficiencies?.savingThrows?.includes(ability) ?? false;
   }
   
   // Monsters have save proficiencies in their stat block
@@ -126,8 +129,6 @@ function getSaveModifier(
   creatureType: 'character' | 'monster',
   ability: AbilityName
 ): number {
-  const abilityKey = ability.toLowerCase() as keyof AbilityScores;
-  
   if (creatureType === 'monster') {
     const monster = creature as Monster;
     // Check for explicit save bonus
@@ -139,13 +140,14 @@ function getSaveModifier(
       }
     }
     // Fall back to just ability modifier
-    return calculateModifier(monster.abilities[abilityKey.slice(0, 3) as keyof typeof monster.abilities]);
+    const abilityShortKey = ability.toLowerCase().slice(0, 3) as keyof typeof monster.abilities;
+    return calculateModifier(monster.abilities[abilityShortKey]);
   }
   
   const char = creature as CharacterSheet;
-  const abilityMod = calculateModifier(char.abilities[abilityKey]);
+  const abilityMod = getAbilityMod(char.abilities[ability]);
   const profBonus = getProficiencyBonus(char.level);
-  const proficient = char.proficiencies.savingThrows.includes(ability);
+  const proficient = char.proficiencies?.savingThrows?.includes(ability) ?? false;
   
   return abilityMod + (proficient ? profBonus : 0);
 }
@@ -202,13 +204,14 @@ export function makeSavingThrow(params: SavingThrowParams): SavingThrowResult {
   
   // Roll
   const rollResult = executeDiceRoll({
-    dice: [{ type: 'd20', count: 1, modifier: 0 }],
+    count: 1,
+    die: 'd20',
+    modifier: 0,
     advantage: hasAdvantage,
     disadvantage: hasDisadvantage,
-    description: `${ability} saving throw`,
   });
   
-  const naturalRoll = rollResult.individualRolls[0]?.[0] || 0;
+  const naturalRoll = rollResult.naturalRoll;
   const total = rollResult.total + modifier;
   const success = total >= dc;
   
@@ -263,7 +266,7 @@ export function calculateSpellSaveDC(
   const profBonus = getProficiencyBonus(char.level);
   
   // Get spellcasting ability based on class
-  const classSpellAbility: Record<string, keyof AbilityScores> = {
+  const classSpellAbility: Record<string, AbilityName> = {
     wizard: 'intelligence',
     artificer: 'intelligence',
     cleric: 'wisdom',
@@ -276,8 +279,8 @@ export function calculateSpellSaveDC(
     warlock: 'charisma',
   };
   
-  const spellAbility = classSpellAbility[char.class.toLowerCase()] || 'intelligence';
-  const abilityMod = calculateModifier(char.abilities[spellAbility]);
+  const spellAbility = (classSpellAbility[char.class.toLowerCase()] || 'intelligence') as AbilityName;
+  const abilityMod = getAbilityMod(char.abilities[spellAbility]);
   
   return 8 + profBonus + abilityMod;
 }
@@ -358,8 +361,11 @@ export function makeDeathSave(): {
   description: string;
 } {
   const rollResult = executeDiceRoll({
-    dice: [{ type: 'd20', count: 1, modifier: 0 }],
-    description: 'Death saving throw',
+    count: 1,
+    die: 'd20',
+    modifier: 0,
+    advantage: false,
+    disadvantage: false,
   });
   
   const naturalRoll = rollResult.total;

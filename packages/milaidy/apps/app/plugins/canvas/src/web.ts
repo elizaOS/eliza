@@ -724,7 +724,7 @@ export class CanvasWeb extends WebPlugin {
         // Test same-origin access by touching the document
         void this.webViewIframe.contentDocument;
         // Same-origin: evaluate in iframe's global scope
-        const rawResult = String(this.webViewIframe.contentWindow.eval(options.script) ?? "");
+        const rawResult = String((this.webViewIframe.contentWindow as Window & { eval: (s: string) => unknown }).eval(options.script) ?? "");
         return { result: rawResult };
       } catch {
         // Cross-origin: fall back to postMessage protocol
@@ -736,7 +736,7 @@ export class CanvasWeb extends WebPlugin {
     if (this.webViewPopup && !this.webViewPopup.closed) {
       try {
         void this.webViewPopup.document;
-        const rawResult = String(this.webViewPopup.eval(options.script) ?? "");
+        const rawResult = String((this.webViewPopup as Window & { eval: (s: string) => unknown }).eval(options.script) ?? "");
         return { result: rawResult };
       } catch {
         return this.evalViaPostMessage(this.webViewPopup, options.script);
@@ -1013,7 +1013,17 @@ export class CanvasWeb extends WebPlugin {
     }
     
     if (options?.blendMode) {
-      ctx.globalCompositeOperation = options.blendMode;
+      const blendMap: Record<string, GlobalCompositeOperation> = {
+        "normal": "source-over",
+        "multiply": "multiply",
+        "screen": "screen",
+        "overlay": "overlay",
+        "darken": "darken",
+        "lighten": "lighten",
+        "color-dodge": "color-dodge",
+        "color-burn": "color-burn",
+      };
+      ctx.globalCompositeOperation = blendMap[options.blendMode] ?? "source-over";
     }
     
     if (options?.shadow) {

@@ -19,27 +19,7 @@ import type { CloudBackupService } from "../services/cloud-backup";
 import type { CloudAuthService } from "../services/cloud-auth";
 import type { CreateContainerRequest } from "../types/cloud";
 import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";
-
-/** Settings keys to forward into the container as env vars. */
-const FORWARDED_SETTINGS = [
-  "OPENAI_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "GROQ_API_KEY",
-  "ELIZAOS_CLOUD_API_KEY",
-  "SMALL_MODEL",
-  "LARGE_MODEL",
-  "ELIZAOS_CLOUD_SMALL_MODEL",
-  "ELIZAOS_CLOUD_LARGE_MODEL",
-];
-
-function collectEnvVars(runtime: IAgentRuntime): Record<string, string> {
-  const vars: Record<string, string> = {};
-  for (const key of FORWARDED_SETTINGS) {
-    const val = runtime.getSetting(key);
-    if (val) vars[key] = String(val);
-  }
-  return vars;
-}
+import { collectEnvVars } from "../utils/forwarded-settings";
 
 function extractParams(message: Memory, options?: Record<string, unknown>): Record<string, unknown> {
   if (options && Object.keys(options).length > 0) return options;

@@ -81,8 +81,15 @@ async def openai_llm_query(context: str, question: str) -> str:
         
         client = openai.AsyncOpenAI()
         
+        model_name = os.environ.get("OPENAI_SMALL_MODEL", "gpt-4o-mini")
+        # gpt-5 reasoning models don't support temperature; only pass it for
+        # older models.
+        extra_params: dict[str, object] = {}
+        if not model_name.startswith(("gpt-5", "o1", "o3")):
+            extra_params["temperature"] = 0.0
+
         response = await client.chat.completions.create(
-            model="gpt-5-mini",  # Use cheaper model for benchmark
+            model=model_name,
             messages=[
                 {
                     "role": "system",
@@ -93,8 +100,8 @@ async def openai_llm_query(context: str, question: str) -> str:
                     "content": f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer (be brief and precise):"
                 }
             ],
-            max_tokens=100,
-            temperature=0.0,
+            max_completion_tokens=100,
+            **extra_params,
         )
         
         return response.choices[0].message.content or ""

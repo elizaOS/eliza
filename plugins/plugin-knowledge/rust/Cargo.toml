@@ -46,13 +46,11 @@ async-trait = "0.1"
 # Regex for pattern matching
 regex = "1.10"
 
+# PDF text extraction
+pdf-extract = "0.7"
+
+# Base64 encoding/decoding
+base64 = "0.22"
+
 [dev-dependencies]
 tokio-test = "0.4"
-
-
-
-
-
-
-
-

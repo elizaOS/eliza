@@ -9,7 +9,6 @@ import type {
   ActiveCondition, 
   ConditionDuration,
   AbilityName,
-  SkillName,
 } from '../types';
 
 /**
@@ -33,7 +32,7 @@ export interface ConditionEffect {
 /**
  * SRD Condition Definitions
  */
-export const CONDITIONS: Record<ConditionName, ConditionDefinition> = {
+export const CONDITIONS: Partial<Record<ConditionName, ConditionDefinition>> = {
   Blinded: {
     name: 'Blinded',
     description: 'A blinded creature can\'t see and automatically fails any ability check that requires sight.',
@@ -96,8 +95,8 @@ export const CONDITIONS: Record<ConditionName, ConditionDefinition> = {
     effects: [
       { type: 'cant_take_action' },
       { type: 'cant_move' },
-      { type: 'auto_fail', target: 'saving_throws', ability: 'str' },
-      { type: 'auto_fail', target: 'saving_throws', ability: 'dex' },
+      { type: 'auto_fail', target: 'saving_throws', ability: 'strength' },
+      { type: 'auto_fail', target: 'saving_throws', ability: 'dexterity' },
       { type: 'advantage', target: 'attack_rolls', description: 'Attacks against have advantage' },
       { type: 'other', description: 'Attacks from within 5ft are automatic criticals' },
     ],
@@ -108,8 +107,8 @@ export const CONDITIONS: Record<ConditionName, ConditionDefinition> = {
     effects: [
       { type: 'cant_take_action' },
       { type: 'cant_move' },
-      { type: 'auto_fail', target: 'saving_throws', ability: 'str' },
-      { type: 'auto_fail', target: 'saving_throws', ability: 'dex' },
+      { type: 'auto_fail', target: 'saving_throws', ability: 'strength' },
+      { type: 'auto_fail', target: 'saving_throws', ability: 'dexterity' },
       { type: 'other', description: 'Resistance to all damage' },
       { type: 'other', description: 'Immune to poison and disease' },
     ],
@@ -138,7 +137,7 @@ export const CONDITIONS: Record<ConditionName, ConditionDefinition> = {
     effects: [
       { type: 'speed_modifier', value: 0 },
       { type: 'disadvantage', target: 'attack_rolls' },
-      { type: 'disadvantage', target: 'saving_throws', ability: 'dex' },
+      { type: 'disadvantage', target: 'saving_throws', ability: 'dexterity' },
       { type: 'advantage', target: 'attack_rolls', description: 'Attacks against have advantage' },
     ],
   },
@@ -148,8 +147,8 @@ export const CONDITIONS: Record<ConditionName, ConditionDefinition> = {
     effects: [
       { type: 'cant_take_action' },
       { type: 'cant_move' },
-      { type: 'auto_fail', target: 'saving_throws', ability: 'str' },
-      { type: 'auto_fail', target: 'saving_throws', ability: 'dex' },
+      { type: 'auto_fail', target: 'saving_throws', ability: 'strength' },
+      { type: 'auto_fail', target: 'saving_throws', ability: 'dexterity' },
       { type: 'advantage', target: 'attack_rolls', description: 'Attacks against have advantage' },
     ],
   },
@@ -160,8 +159,8 @@ export const CONDITIONS: Record<ConditionName, ConditionDefinition> = {
       { type: 'cant_take_action' },
       { type: 'cant_move' },
       { type: 'other', description: 'Drops held items and falls prone' },
-      { type: 'auto_fail', target: 'saving_throws', ability: 'str' },
-      { type: 'auto_fail', target: 'saving_throws', ability: 'dex' },
+      { type: 'auto_fail', target: 'saving_throws', ability: 'strength' },
+      { type: 'auto_fail', target: 'saving_throws', ability: 'dexterity' },
       { type: 'advantage', target: 'attack_rolls', description: 'Attacks against have advantage' },
       { type: 'other', description: 'Attacks from within 5ft are automatic criticals' },
     ],
@@ -206,7 +205,9 @@ export function applyCondition(
   if (existingIndex >= 0) {
     // Replace existing condition if new one has longer duration
     const existing = combatant.conditions[existingIndex];
-    const shouldReplace = compareDurations(duration, existing.duration) > 0;
+    const shouldReplace = typeof existing.duration === 'object' && 'type' in existing.duration && isConditionDuration(existing.duration)
+      ? compareDurations(duration, existing.duration) > 0
+      : true; // Replace if existing duration is not a standard ConditionDuration
     
     if (shouldReplace) {
       updatedConditions = [...combatant.conditions];
@@ -281,7 +282,7 @@ export function addExhaustion(combatant: Combatant, levels: number = 1): Combata
       combatant,
       'Exhaustion',
       'Exhaustion',
-      { type: 'special', description: 'Removed by long rest or spell' },
+      { type: 'permanent' },
     );
   }
   
@@ -449,27 +450,36 @@ export function getSaveModifiers(
  * Compare two durations (returns positive if a > b)
  */
 function compareDurations(a: ConditionDuration, b: ConditionDuration): number {
-  // Permanent > rounds > turns > instant
-  const typeOrder = {
-    permanent: 4,
-    special: 3,
+  // Permanent > hours > minutes > rounds > turns > until_save/until_dispelled
+  const typeOrder: Record<string, number> = {
+    permanent: 5,
+    until_dispelled: 4,
+    hours: 4,
+    minutes: 3,
     rounds: 2,
-    turn: 1,
-    instant: 0,
+    turns: 1,
+    until_save: 1,
   };
   
-  const aOrder = typeOrder[a.type] || 0;
-  const bOrder = typeOrder[b.type] || 0;
+  const aOrder = typeOrder[a.type] ?? 0;
+  const bOrder = typeOrder[b.type] ?? 0;
   
   if (aOrder !== bOrder) {
     return aOrder - bOrder;
   }
   
   // Same type - compare remaining
-  const aRemaining = a.remaining || 0;
-  const bRemaining = b.remaining || 0;
+  const aRemaining = a.roundsRemaining ?? 0;
+  const bRemaining = b.roundsRemaining ?? 0;
   
   return aRemaining - bRemaining;
+}
+
+/** Type guard to check if a duration object is a ConditionDuration */
+function isConditionDuration(duration: object): duration is ConditionDuration {
+  if (!('type' in duration)) return false;
+  const validTypes = ['rounds', 'turns', 'minutes', 'hours', 'permanent', 'until_save', 'until_dispelled'];
+  return validTypes.includes((duration as ConditionDuration).type);
 }
 
 /**
@@ -519,7 +529,7 @@ export function describeConditionApplied(
   targetName: string,
   conditionName: ConditionName
 ): string {
-  const descriptions: Record<ConditionName, string> = {
+  const descriptions: Partial<Record<ConditionName, string>> = {
     Blinded: `${targetName}'s vision goes dark - they are blinded!`,
     Charmed: `${targetName}'s expression softens - they are charmed!`,
     Deafened: `${targetName}'s ears ring with silence - they are deafened!`,

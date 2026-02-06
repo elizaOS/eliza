@@ -24,10 +24,18 @@ async function seed() {
     // Create campaign
     console.log('📜 Creating campaign...');
     const campaign = await campaignRepository.create({
-      ...starterCampaign,
-      startingLocationId: undefined, // Will be set after locations are created
+      name: starterCampaign.name,
+      description: starterCampaign.description,
+      dmAgentId: 'seed-dm-agent',
+      setting: starterCampaign.setting,
+      tone: starterCampaign.tone,
+      themes: starterCampaign.themes,
+      sessionCount: starterCampaign.sessionCount,
+      totalPlayTime: starterCampaign.totalPlayTime,
+      status: starterCampaign.status,
     });
-    console.log(`   Created campaign: ${campaign.name} (${campaign.id})`);
+    const campaignId = campaign.id!;
+    console.log(`   Created campaign: ${campaign.name} (${campaignId})`);
 
     // Create locations
     console.log('\n🗺️  Creating locations...');
@@ -35,14 +43,21 @@ async function seed() {
     
     for (const locationData of starterLocations) {
       const location = await locationRepository.create({
-        ...locationData,
-        campaignId: campaign.id,
+        name: locationData.name,
+        type: locationData.type,
+        description: locationData.description,
+        campaignId: campaignId,
         parentLocationId: undefined,
+        tags: locationData.tags,
+        npcs: locationData.npcs,
+        pointsOfInterest: locationData.pointsOfInterest,
+        availableServices: locationData.availableServices,
+        dangerLevel: locationData.dangerLevel,
       });
       
       // Map location name to ID for reference
       const key = locationData.name.toLowerCase().replace(/\s+/g, '-');
-      locationMap.set(key, location.id);
+      locationMap.set(key, location.id!);
       
       console.log(`   Created location: ${location.name} (${location.id})`);
     }
@@ -50,7 +65,7 @@ async function seed() {
     // Update campaign with starting location
     const startingLocationId = locationMap.get('millbrook-village');
     if (startingLocationId) {
-      await campaignRepository.update(campaign.id, {
+      await campaignRepository.update(campaignId, {
         currentLocationId: startingLocationId,
       });
       console.log(`   Set starting location to Millbrook Village`);
@@ -60,17 +75,24 @@ async function seed() {
     console.log('\n👤 Creating NPCs...');
     for (const npcData of starterNPCs) {
       // Map location names to IDs
-      let currentLocationId = npcData.currentLocationId;
-      if (currentLocationId === 'millbrook-village') {
-        currentLocationId = locationMap.get('millbrook-village');
-      } else if (currentLocationId === 'goblin-den') {
-        currentLocationId = locationMap.get('the-goblin-den');
+      let resolvedLocationId = npcData.currentLocationId;
+      if (resolvedLocationId === 'millbrook-village') {
+        resolvedLocationId = locationMap.get('millbrook-village');
+      } else if (resolvedLocationId === 'goblin-den') {
+        resolvedLocationId = locationMap.get('the-goblin-den');
       }
 
       const npc = await locationRepository.createNPC({
-        ...npcData,
-        campaignId: campaign.id,
-        currentLocationId: currentLocationId || undefined,
+        campaignId: campaignId,
+        name: npcData.name,
+        type: npcData.type,
+        race: npcData.race,
+        occupation: npcData.occupation,
+        personality: npcData.personality,
+        motivation: npcData.motivation,
+        secrets: npcData.secrets,
+        locationId: resolvedLocationId || undefined,
+        isHostile: npcData.isHostile,
       });
       console.log(`   Created NPC: ${npc.name} (${npc.id})`);
     }
@@ -79,9 +101,15 @@ async function seed() {
     console.log('\n⚔️  Creating quests...');
     for (const questData of starterQuests) {
       const quest = await worldRepository.createQuest({
-        ...questData,
-        campaignId: campaign.id,
+        campaignId: campaignId,
+        name: questData.name,
+        description: questData.description,
+        type: questData.type,
+        giver: questData.giver,
         locationId: locationMap.get('the-goblin-den'),
+        objectives: questData.objectives.map(o => ({ description: o.description })),
+        rewards: questData.rewards,
+        importance: questData.importance,
       });
       console.log(`   Created quest: ${quest.name} (${quest.id})`);
     }
@@ -90,8 +118,8 @@ async function seed() {
     console.log('\n🎭 Creating party members...');
     for (const characterData of starterParty) {
       const character = await characterRepository.create({
-        ...characterData,
-        campaignId: campaign.id,
+        campaignId: campaignId,
+        sheet: characterData as import('../types').CharacterSheet,
       });
       console.log(`   Created character: ${character.name} (${character.id})`);
     }

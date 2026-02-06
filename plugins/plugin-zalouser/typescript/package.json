@@ -46,5 +46,14 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaos/eliza.git"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "ESM build available via exports.import"
+    }
   }
 }

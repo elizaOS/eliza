@@ -56,6 +56,14 @@ from .storage import (
 from .service import AgentSkillsService
 from .plugin import plugin, agent_skills_plugin
 
+from .actions import (
+    search_skills_action,
+    get_skill_details_action,
+    get_skill_guidance_action,
+    sync_catalog_action,
+    run_skill_script_action,
+)
+
 __all__ = [
     # Plugin
     "plugin",
@@ -92,6 +100,12 @@ __all__ = [
     "SKILL_COMPATIBILITY_MAX_LENGTH",
     "SKILL_BODY_RECOMMENDED_TOKENS",
     "SKILL_NAME_PATTERN",
+    # Actions
+    "search_skills_action",
+    "get_skill_details_action",
+    "get_skill_guidance_action",
+    "sync_catalog_action",
+    "run_skill_script_action",
     # Parser
     "parse_frontmatter",
     "validate_frontmatter",

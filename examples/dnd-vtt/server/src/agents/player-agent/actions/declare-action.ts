@@ -48,13 +48,13 @@ export const declareActionAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'The goblin raises its weapon threateningly.',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: `I grip my sword tightly and step into a defensive stance. "You'll regret threatening us, creature!" I swing at the goblin, aiming for its weapon arm.`,
           action: 'DECLARE_ACTION',
@@ -63,13 +63,13 @@ export const declareActionAction: Action = {
     ],
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'You notice a strange symbol carved into the wall.',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: `I lean in closer, my curiosity piqued. "This marking... I've seen something similar in my studies." I try to recall what I know about this symbol.`,
           action: 'DECLARE_ACTION',
@@ -86,14 +86,14 @@ export const declareActionAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    options: Record<string, unknown>,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<boolean> => {
     // Get character context
-    const characterSheet = await runtime.getSetting('characterSheet') as CharacterSheet | null;
+    const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     const personality = await runtime.getSetting('personality');
-    const combatState = await runtime.getSetting('combatState');
+    const combatState = await runtime.getSetting('combatState') as unknown as { isActive?: boolean } | null;
     
     if (!characterSheet) {
       if (callback) {
@@ -118,11 +118,12 @@ export const declareActionAction: Action = {
     });
     
     // Parse the action from the response
-    const declaredAction = parseActionFromResponse(response.text);
+    const responseText = (response as any)?.text ?? String(response ?? '');
+    const declaredAction = parseActionFromResponse(responseText);
     
     if (callback) {
       await callback({
-        text: response.text,
+        text: responseText,
         type: 'player_action',
         metadata: {
           characterId: characterSheet.id,
@@ -134,11 +135,11 @@ export const declareActionAction: Action = {
     }
     
     // Emit event for DM to process
-    await runtime.emit('player_action_declared', {
+    runtime.emitEvent?.('player_action_declared' as any, {
       characterId: characterSheet.id,
       characterName: characterSheet.name,
       action: declaredAction,
-      rawText: response.text,
+      rawText: responseText,
       timestamp: new Date(),
     });
     
@@ -146,7 +147,7 @@ export const declareActionAction: Action = {
   },
 };
 
-function buildSituationContext(state: State, combatState: unknown): string {
+function buildSituationContext(state: State | undefined, combatState: unknown): string {
   let context = '';
   
   // Add any relevant state information

@@ -5,6 +5,7 @@
 
 import type { Character, AgentRuntime, Plugin } from '@elizaos/core';
 import type { CharacterSheet, CharacterClass, Race, Alignment } from '../../types';
+import { getAC } from '../../types';
 import { playerPlugin } from './plugin';
 
 /**
@@ -38,8 +39,8 @@ export interface PlayerPersonality {
  */
 function generatePersonality(
   archetype: PersonalityArchetype,
-  characterClass: CharacterClass,
-  alignment: Alignment
+  characterClass: CharacterClass | string,
+  alignment: Alignment | string | undefined
 ): PlayerPersonality {
   const archetypeTraits: Record<PersonalityArchetype, Partial<PlayerPersonality>> = {
     heroic: {
@@ -116,7 +117,7 @@ function generatePersonality(
     ideals: base.ideals || [],
     bonds: [`Loyalty to the adventuring party`],
     flaws: base.flaws || [],
-    quirks: classQuirks[characterClass] || [],
+    quirks: classQuirks[characterClass as CharacterClass] || [],
     speechPatterns: base.speechPatterns || [],
   };
 }
@@ -148,7 +149,7 @@ Speech style: ${personality.speechPatterns.join(', ')}
 
 ## Your Current Stats
 - HP: {{currentHp}}/{{maxHp}}
-- AC: ${sheet.ac}
+- AC: ${getAC(sheet)}
 - Level: ${sheet.level}
 - Class: ${sheet.class}
 
@@ -328,9 +329,9 @@ export async function createPlayerAgent(
   
   // Generate personality
   const personality = {
-    ...generatePersonality(selectedArchetype, sheet.class, sheet.alignment),
+    ...generatePersonality(selectedArchetype, sheet.class, sheet.alignment ?? 'true neutral'),
     ...options?.customPersonality,
-  };
+  } as PlayerPersonality;
   
   // Create ElizaOS character
   const character = createPlayerCharacter(sheet, personality);
@@ -351,7 +352,7 @@ export async function createPlayerAgent(
  * Infer personality archetype from character traits
  */
 function inferArchetype(sheet: CharacterSheet): PersonalityArchetype {
-  const alignment = sheet.alignment;
+  const alignment = (sheet.alignment ?? 'true neutral').toLowerCase();
   const characterClass = sheet.class;
   
   // Class-based defaults
@@ -366,21 +367,21 @@ function inferArchetype(sheet: CharacterSheet): PersonalityArchetype {
   };
   
   // Alignment-based modifications
-  if (alignment.includes('Chaotic')) {
+  if (alignment.includes('chaotic')) {
     if (characterClass === 'Rogue') return 'trickster';
     return 'chaotic';
   }
   
-  if (alignment.includes('Lawful')) {
-    if (alignment.includes('Good')) return 'noble';
+  if (alignment.includes('lawful')) {
+    if (alignment.includes('good')) return 'noble';
     return 'cautious';
   }
   
-  if (alignment.includes('Neutral') && !alignment.includes('Good') && !alignment.includes('Evil')) {
+  if (alignment.includes('neutral') && !alignment.includes('good') && !alignment.includes('evil')) {
     return 'mercenary';
   }
   
-  return classDefaults[characterClass] || 'heroic';
+  return classDefaults[characterClass as CharacterClass] || 'heroic';
 }
 
 export { playerPlugin };

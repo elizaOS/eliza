@@ -26,6 +26,13 @@ const PHASE_TARGETS: Record<GamePhase, { min: number; ideal: number; max: number
   travel: { min: 2, ideal: 10, max: 20 },
 };
 
+interface PacingState {
+  currentPhase: GamePhase;
+  phaseStartTime: string;
+  turnCount: number;
+  phaseHistory: Array<{ phase: GamePhase; duration: number }>;
+}
+
 export const pacingEvaluator: Evaluator = {
   name: 'pacing',
   description: 'Monitors game pacing and suggests adjustments',
@@ -41,12 +48,12 @@ export const pacingEvaluator: Evaluator = {
   
   examples: [
     {
-      context: 'Combat has been going on for 45 minutes',
+      prompt: 'Combat has been going on for 45 minutes',
       messages: [],
       outcome: 'Suggest wrapping up combat soon or introducing a dramatic end.',
     },
     {
-      context: 'Players have been shopping for 30 minutes',
+      prompt: 'Players have been shopping for 30 minutes',
       messages: [],
       outcome: 'Suggest introducing an event to move the story forward.',
     },
@@ -61,31 +68,40 @@ export const pacingEvaluator: Evaluator = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State
-  ): Promise<PacingMetrics | null> => {
+  ) => {
     // Get current pacing state
-    const pacingState = await runtime.getSetting('pacingState') as {
-      currentPhase: GamePhase;
-      phaseStartTime: string;
-      turnCount: number;
-      phaseHistory: Array<{ phase: GamePhase; duration: number }>;
-    } | null;
+    const raw = runtime.getSetting('pacingState');
+    let pacingState: PacingState | null = null;
+    if (raw && typeof raw === 'string') {
+      try {
+        pacingState = JSON.parse(raw) as PacingState;
+      } catch {
+        pacingState = null;
+      }
+    }
     
     if (!pacingState) {
       // Initialize pacing state
-      await runtime.setSetting('pacingState', {
-        currentPhase: 'exploration' as GamePhase,
+      const initialState: PacingState = {
+        currentPhase: 'exploration',
         phaseStartTime: new Date().toISOString(),
         turnCount: 1,
         phaseHistory: [],
-      });
+      };
+      runtime.setSetting('pacingState', JSON.stringify(initialState));
       
       return {
-        currentPhase: 'exploration',
-        phaseStartTime: new Date(),
-        phaseDurationMinutes: 0,
-        turnsInPhase: 1,
-        suggestedAction: 'continue',
-        reasoning: 'Session just started - establishing the scene.',
+        success: true,
+        data: {
+          metrics: {
+            currentPhase: 'exploration',
+            phaseStartTime: new Date(),
+            phaseDurationMinutes: 0,
+            turnsInPhase: 1,
+            suggestedAction: 'continue',
+            reasoning: 'Session just started - establishing the scene.',
+          } satisfies PacingMetrics,
+        },
       };
     }
     
@@ -147,10 +163,10 @@ export const pacingEvaluator: Evaluator = {
     }
     
     // Update pacing state
-    await runtime.setSetting('pacingState', {
+    runtime.setSetting('pacingState', JSON.stringify({
       ...pacingState,
       turnCount,
-    });
+    }));
     
     const metrics: PacingMetrics = {
       currentPhase,
@@ -163,15 +179,20 @@ export const pacingEvaluator: Evaluator = {
     
     // Emit warning if pacing is significantly off
     if (durationMinutes > targets.max * 1.5) {
-      await runtime.emit('pacing_warning', {
+      const warningPayload = {
+        runtime,
         phase: currentPhase,
         duration: durationMinutes,
         recommendation: suggestedAction,
         timestamp: new Date(),
-      });
+      };
+      await runtime.emitEvent('pacing_warning', warningPayload);
     }
     
-    return metrics;
+    return {
+      success: true,
+      data: { metrics },
+    };
   },
 };
 
@@ -182,12 +203,15 @@ export async function transitionPhase(
   runtime: IAgentRuntime,
   newPhase: GamePhase
 ): Promise<void> {
-  const pacingState = await runtime.getSetting('pacingState') as {
-    currentPhase: GamePhase;
-    phaseStartTime: string;
-    turnCount: number;
-    phaseHistory: Array<{ phase: GamePhase; duration: number }>;
-  } | null;
+  const raw = runtime.getSetting('pacingState');
+  let pacingState: PacingState | null = null;
+  if (raw && typeof raw === 'string') {
+    try {
+      pacingState = JSON.parse(raw) as PacingState;
+    } catch {
+      pacingState = null;
+    }
+  }
   
   if (pacingState) {
     const phaseStart = new Date(pacingState.phaseStartTime);
@@ -200,19 +224,21 @@ export async function transitionPhase(
     ].slice(-10); // Keep last 10 phases
     
     // Start new phase
-    await runtime.setSetting('pacingState', {
+    runtime.setSetting('pacingState', JSON.stringify({
       currentPhase: newPhase,
       phaseStartTime: new Date().toISOString(),
       turnCount: 0,
       phaseHistory,
-    });
+    }));
     
-    await runtime.emit('phase_transition', {
+    const transitionPayload = {
+      runtime,
       fromPhase: pacingState.currentPhase,
       toPhase: newPhase,
       previousDuration: duration,
       timestamp: new Date(),
-    });
+    };
+    await runtime.emitEvent('phase_transition', transitionPayload);
   }
 }
 

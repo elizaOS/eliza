@@ -1,10 +1,24 @@
 from elizaos_plugin_knowledge.types import (
+    CONTEXT_TARGETS,
+    CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE,
+    ContextTargets,
+    DEFAULT_CHARS_PER_TOKEN,
+    DEFAULT_CHUNK_OVERLAP_TOKENS,
+    DEFAULT_CHUNK_TOKEN_SIZE,
+    ExtendedMemoryMetadata,
+    FragmentMetadata,
     KnowledgeConfig,
+    KnowledgeDocumentMetadata,
     KnowledgeItem,
     KnowledgeFragment,
     KnowledgeDocument,
+    KnowledgeServiceConfig,
     EmbeddingResult,
+    LoadResult,
     MemoryType,
+    PendingRAGEntry,
+    RAGMetadata,
+    RetrievedFragmentInfo,
     SearchResult,
     AddKnowledgeOptions,
     TextGenerationOptions,
@@ -33,8 +47,9 @@ from elizaos_plugin_knowledge.actions import (
     knowledge_actions,
 )
 
-__version__ = "1.6.1"
+__version__ = "2.0.0"
 __all__ = [
+    # Types
     "KnowledgeConfig",
     "KnowledgeItem",
     "KnowledgeFragment",
@@ -45,14 +60,32 @@ __all__ = [
     "AddKnowledgeOptions",
     "TextGenerationOptions",
     "ProviderRateLimits",
+    "RAGMetadata",
+    "RetrievedFragmentInfo",
+    "PendingRAGEntry",
+    "FragmentMetadata",
+    "KnowledgeDocumentMetadata",
+    "KnowledgeServiceConfig",
+    "ExtendedMemoryMetadata",
+    "LoadResult",
+    "ContextTargets",
+    "CONTEXT_TARGETS",
+    "CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE",
+    "DEFAULT_CHUNK_TOKEN_SIZE",
+    "DEFAULT_CHUNK_OVERLAP_TOKENS",
+    "DEFAULT_CHARS_PER_TOKEN",
+    # Service
     "KnowledgeService",
+    # Providers
     "KnowledgeProvider",
     "DocumentsProvider",
     "KnowledgeProviderTs",
     "AvailableDocumentsProvider",
+    # Plugin
     "KnowledgePlugin",
     "create_knowledge_plugin",
     "get_knowledge_plugin",
+    # Actions
     "ActionContext",
     "KnowledgeAction",
     "ProcessKnowledgeAction",

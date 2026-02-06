@@ -38,7 +38,7 @@ pub fn generate_key() -> [u8; 32] {
 /// This method is compatible with the TypeScript implementation
 /// for cross-language interoperability.
 pub fn derive_key_from_agent_id(agent_id: &str, salt: &str) -> [u8; 32] {
-    let combined = format!("{}:{}", agent_id, salt);
+    let combined = format!("{}{}", agent_id, salt);
     let mut hasher = Sha256::new();
     hasher.update(combined.as_bytes());
     let result = hasher.finalize();
@@ -313,6 +313,24 @@ mod tests {
 
         assert_eq!(key1, key2);
         assert_ne!(key1, key3);
+    }
+
+    #[test]
+    fn test_derive_key_cross_language_compatibility() {
+        // Verify that derive_key_from_agent_id produces the same result as
+        // TypeScript/Python: SHA-256 of (agent_id + salt) with NO separator.
+        // This is the SHA-256 digest of "agent-123salt1".
+        let key = derive_key_from_agent_id("agent-123", "salt1");
+
+        let mut expected_hasher = Sha256::new();
+        expected_hasher.update(b"agent-123salt1");
+        let expected = expected_hasher.finalize();
+
+        assert_eq!(
+            key,
+            <[u8; 32]>::try_from(expected.as_slice()).unwrap(),
+            "Key derivation must match TypeScript/Python (no colon separator)"
+        );
     }
 
     #[test]

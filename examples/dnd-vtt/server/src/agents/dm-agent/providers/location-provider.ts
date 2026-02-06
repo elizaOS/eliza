@@ -11,12 +11,12 @@ export const locationProvider: Provider = {
   name: 'location',
   description: 'Provides current location details and nearby areas',
   
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<string> => {
-    const campaignId = await runtime.getSetting('campaignId') as string;
-    const currentLocationId = await runtime.getSetting('currentLocationId') as string;
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    const campaignId = runtime.getSetting('campaignId') as string;
+    const currentLocationId = runtime.getSetting('currentLocationId') as string;
     
     if (!campaignId || !currentLocationId) {
-      return 'Current location unknown.';
+      return { text: 'Current location unknown.' };
     }
     
     try {
@@ -24,12 +24,14 @@ export const locationProvider: Provider = {
       const location = await locationRepository.getById(currentLocationId);
       
       if (!location) {
-        return 'Current location not found.';
+        return { text: 'Current location not found.' };
       }
+      
+      const dangerLevel = location.dangerLevel ?? 0;
       
       let context = `## Current Location: ${location.name}\n`;
       context += `**Type:** ${formatLocationType(location.type)}\n`;
-      context += `**Danger Level:** ${'⚠️'.repeat(Math.min(location.dangerLevel, 5))} (${location.dangerLevel}/5)\n\n`;
+      context += `**Danger Level:** ${'!'.repeat(Math.min(dangerLevel, 5))} (${dangerLevel}/5)\n\n`;
       
       // Description
       context += `### Description\n`;
@@ -62,8 +64,8 @@ export const locationProvider: Provider = {
       if (npcs.length > 0) {
         context += `### NPCs Present\n`;
         for (const npc of npcs) {
-          const disposition = getDispositionDescription(npc.partyDisposition);
-          context += `- **${npc.name}** (${npc.race} ${npc.occupation || npc.type}) - ${disposition}\n`;
+          const disposition = getDispositionDescription(npc.partyDisposition ?? 50);
+          context += `- **${npc.name}** (${npc.race ?? 'Unknown'} ${npc.occupation || npc.type}) - ${disposition}\n`;
         }
         context += '\n';
       }
@@ -88,32 +90,33 @@ export const locationProvider: Provider = {
       }
       
       // Visit history
-      if (location.visitCount > 1) {
-        context += `*The party has visited here ${location.visitCount} times.*\n`;
-      } else if (location.visitCount === 1) {
+      const visitCount = location.visitCount ?? 0;
+      if (visitCount > 1) {
+        context += `*The party has visited here ${visitCount} times.*\n`;
+      } else if (visitCount === 1) {
         context += `*This is the party's first visit here.*\n`;
       }
       
-      return context;
+      return { text: context };
       
     } catch (error) {
       console.error('Error fetching location:', error);
-      return 'Error loading location information.';
+      return { text: 'Error loading location information.' };
     }
   },
 };
 
 function formatLocationType(type: string): string {
   const typeLabels: Record<string, string> = {
-    city: '🏰 City',
-    town: '🏘️ Town',
-    village: '🏠 Village',
-    wilderness: '🌲 Wilderness',
-    dungeon: '⚔️ Dungeon',
-    building: '🏛️ Building',
-    room: '🚪 Room',
-    landmark: '📍 Landmark',
-    region: '🗺️ Region',
+    city: 'City',
+    town: 'Town',
+    village: 'Village',
+    wilderness: 'Wilderness',
+    dungeon: 'Dungeon',
+    building: 'Building',
+    room: 'Room',
+    landmark: 'Landmark',
+    region: 'Region',
   };
   
   return typeLabels[type] || type;

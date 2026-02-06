@@ -7,7 +7,8 @@ import {
   type CharacterSheet,
   type Monster,
   type ActiveCondition,
-  CONDITIONS,
+  normalizeCondition,
+  getConditionName,
 } from '../types';
 
 export interface Position {
@@ -83,8 +84,10 @@ export function getModifiedSpeed(
   let canMove = true;
   
   for (const active of activeConditions) {
+    const condName = normalizeCondition(getConditionName(active));
+    
     // Grappled, Restrained - speed becomes 0
-    if (active.condition === 'Grappled' || active.condition === 'Restrained') {
+    if (condName === 'grappled' || condName === 'restrained') {
       walkSpeed = 0;
     }
     
@@ -92,14 +95,14 @@ export function getModifiedSpeed(
     // Also can't benefit from fly speed while prone
     
     // Paralyzed, Petrified, Stunned, Unconscious - speed 0
-    if (['Paralyzed', 'Petrified', 'Stunned', 'Unconscious'].includes(active.condition)) {
+    if (['paralyzed', 'petrified', 'stunned', 'unconscious'].includes(condName)) {
       walkSpeed = 0;
       canMove = false;
     }
     
     // Exhaustion effects
-    if (active.condition === 'Exhaustion') {
-      const level = active.stacks || 1;
+    if (condName === 'exhaustion') {
+      const level = active.exhaustionLevel ?? active.level ?? 1;
       if (level >= 5) {
         walkSpeed = 0;
         canMove = false;
@@ -321,7 +324,7 @@ export function calculateMovement(params: MovementParams): MovementResult {
   }
   
   // Check if prone (movement costs double)
-  const isProne = activeConditions.some(c => c.condition === 'Prone');
+  const isProne = activeConditions.some(c => normalizeCondition(getConditionName(c)) === 'prone');
   const speedMultiplier = isProne ? 0.5 : 1;
   const effectiveSpeed = Math.floor(modifiedSpeed.walk * speedMultiplier);
   

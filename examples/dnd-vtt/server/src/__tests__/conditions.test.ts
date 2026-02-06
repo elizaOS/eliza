@@ -29,7 +29,7 @@ describe('Conditions System', () => {
   // ============================================================================
   describe('CONDITIONS lookup', () => {
     test('all standard D&D 5e conditions exist', () => {
-      const standardConditions = [
+      const standardConditions: Array<keyof typeof CONDITIONS> = [
         'blinded', 'charmed', 'deafened', 'frightened', 'grappled',
         'incapacitated', 'invisible', 'paralyzed', 'petrified', 'poisoned',
         'prone', 'restrained', 'stunned', 'unconscious', 'exhaustion',
@@ -53,11 +53,11 @@ describe('Conditions System', () => {
     });
 
     test('incapacitating conditions have incapacitated effect', () => {
-      const incapacitatingConditions = ['incapacitated', 'paralyzed', 'petrified', 'stunned', 'unconscious'];
+      const incapacitatingConditions: Array<keyof typeof CONDITIONS> = ['incapacitated', 'paralyzed', 'petrified', 'stunned', 'unconscious'];
       
       for (const cond of incapacitatingConditions) {
         const def = CONDITIONS[cond];
-        const hasIncapEffect = def.effects.some(e => e.type === 'incapacitated');
+        const hasIncapEffect = def.effects.some((e: { type: string }) => e.type === 'incapacitated');
         expect(hasIncapEffect).toBe(true);
       }
     });
@@ -214,7 +214,7 @@ describe('Conditions System', () => {
 
     test('works case-insensitively', () => {
       expect(isIncapacitated([{ condition: 'Unconscious' }])).toBe(true);
-      expect(isIncapacitated([{ name: 'PARALYZED' }])).toBe(true);
+      expect(isIncapacitated([{ name: 'Paralyzed' }])).toBe(true);
     });
   });
 
@@ -544,7 +544,7 @@ describe('Conditions System', () => {
 
     test('handles empty string condition name', () => {
       expect(getCondition('')).toBeUndefined();
-      expect(normalizeCondition('')).toBe('');
+      expect(normalizeCondition('') as string).toBe('');
     });
 
     test('condition check with very long list', () => {

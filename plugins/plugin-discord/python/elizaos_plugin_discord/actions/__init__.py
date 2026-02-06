@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING, Any, Protocol
 from elizaos_plugin_discord.actions.add_reaction import AddReactionAction
 from elizaos_plugin_discord.actions.chat_with_attachments import ChatWithAttachmentsAction
 from elizaos_plugin_discord.actions.create_poll import CreatePollAction
+from elizaos_plugin_discord.actions.delete_message import DeleteMessageAction
 from elizaos_plugin_discord.actions.download_media import DownloadMediaAction
+from elizaos_plugin_discord.actions.edit_message import EditMessageAction
 from elizaos_plugin_discord.actions.get_user_info import GetUserInfoAction
 from elizaos_plugin_discord.actions.join_channel import JoinChannelAction
 from elizaos_plugin_discord.actions.leave_channel import LeaveChannelAction
@@ -139,7 +141,9 @@ def get_all_actions() -> list[DiscordAction]:
         AddReactionAction(),
         ChatWithAttachmentsAction(),
         CreatePollAction(),
+        DeleteMessageAction(),
         DownloadMediaAction(),
+        EditMessageAction(),
         GetUserInfoAction(),
         JoinChannelAction(),
         LeaveChannelAction(),
@@ -164,7 +168,9 @@ __all__ = [
     "AddReactionAction",
     "ChatWithAttachmentsAction",
     "CreatePollAction",
+    "DeleteMessageAction",
     "DownloadMediaAction",
+    "EditMessageAction",
     "GetUserInfoAction",
     "JoinChannelAction",
     "LeaveChannelAction",

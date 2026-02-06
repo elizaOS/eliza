@@ -1,128 +1,173 @@
 /**
- * Tests for @milaidy/capacitor-gateway plugin
- *
- * Verifies:
- * - Module exports (GatewayWeb class + definition types)
- * - Discovery returns empty on web (no Bonjour/mDNS)
- * - Connection state management
- * - Send returns error when not connected
- * - Connection info defaults
- * - Listener registration and cleanup
+ * Tests for @milaidy/capacitor-gateway — WebSocket RPC and discovery.
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { GatewayWeb } from "../../plugins/gateway/src/web";
 
+type Internals = GatewayWeb & {
+  pending: Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timeout: ReturnType<typeof setTimeout> }>;
+  closed: boolean;
+  backoffMs: number;
+  lastSeq: number | null;
+  options: Record<string, unknown> | null;
+  handleMessage: (raw: string) => void;
+  handleClose: (code: number, reason: string) => void;
+};
+
 describe("@milaidy/capacitor-gateway", () => {
-  let gateway: GatewayWeb;
+  let gw: GatewayWeb;
+  let priv: Internals;
 
   beforeEach(() => {
-    gateway = new GatewayWeb();
+    vi.useFakeTimers();
+    gw = new GatewayWeb();
+    priv = gw as unknown as Internals;
   });
 
-  describe("module exports", () => {
-    it("exports GatewayWeb class", () => {
-      expect(GatewayWeb).toBeDefined();
-      expect(typeof GatewayWeb).toBe("function");
+  afterEach(() => vi.useRealTimers());
+
+  // -- Discovery (web: no Bonjour/mDNS) --
+
+  describe("discovery", () => {
+    it("returns empty gateways with descriptive status", async () => {
+      const r = await gw.startDiscovery();
+      expect(r.gateways).toEqual([]);
+      expect(r.status).toMatch(/not supported/i);
     });
 
-    it("creates an instance with all expected methods", () => {
-      expect(typeof gateway.startDiscovery).toBe("function");
-      expect(typeof gateway.stopDiscovery).toBe("function");
-      expect(typeof gateway.getDiscoveredGateways).toBe("function");
-      expect(typeof gateway.connect).toBe("function");
-      expect(typeof gateway.disconnect).toBe("function");
-      expect(typeof gateway.isConnected).toBe("function");
-      expect(typeof gateway.send).toBe("function");
-      expect(typeof gateway.getConnectionInfo).toBe("function");
-      expect(typeof gateway.addListener).toBe("function");
-      expect(typeof gateway.removeAllListeners).toBe("function");
+    it("startDiscovery with options still returns empty", async () => {
+      expect((await gw.startDiscovery({ wideAreaDomain: "x", timeout: 5000 })).gateways).toEqual([]);
+    });
+
+    it("stopDiscovery/getDiscoveredGateways are no-ops", async () => {
+      await expect(gw.stopDiscovery()).resolves.toBeUndefined();
+      expect((await gw.getDiscoveredGateways()).gateways).toHaveLength(0);
     });
   });
 
-  describe("discovery (not supported on web)", () => {
-    it("startDiscovery returns empty gateways list", async () => {
-      const result = await gateway.startDiscovery();
-      expect(result.gateways).toEqual([]);
-      expect(result.status).toContain("not supported");
-    });
-
-    it("stopDiscovery completes without error", async () => {
-      await expect(gateway.stopDiscovery()).resolves.toBeUndefined();
-    });
-
-    it("getDiscoveredGateways returns empty list", async () => {
-      const result = await gateway.getDiscoveredGateways();
-      expect(result.gateways).toEqual([]);
-    });
-  });
+  // -- Connection state --
 
   describe("connection state", () => {
-    it("reports not connected initially", async () => {
-      const result = await gateway.isConnected();
-      expect(result.connected).toBe(false);
+    it("starts disconnected with null info", async () => {
+      expect((await gw.isConnected()).connected).toBe(false);
+      expect(await gw.getConnectionInfo()).toEqual({ url: null, sessionId: null, protocol: null, role: null });
     });
 
-    it("getConnectionInfo returns nulls when not connected", async () => {
-      const info = await gateway.getConnectionInfo();
-      expect(info.url).toBeNull();
-      expect(info.sessionId).toBeNull();
-      expect(info.protocol).toBeNull();
-      expect(info.role).toBeNull();
+    it("disconnect is idempotent", async () => {
+      await gw.disconnect();
+      await gw.disconnect();
+      expect((await gw.isConnected()).connected).toBe(false);
     });
   });
+
+  // -- Send without connection --
 
   describe("send without connection", () => {
-    it("returns error when not connected", async () => {
-      const result = await gateway.send({ method: "test.method" });
-      expect(result.ok).toBe(false);
-      expect(result.error).toBeDefined();
-      expect(result.error!.code).toBe("NOT_CONNECTED");
-      expect(result.error!.message).toContain("Not connected");
+    it.each([
+      ["empty method", { method: "" }],
+      ["method with params", { method: "chat.send", params: { text: "hi" } }],
+    ])("returns NOT_CONNECTED for %s", async (_label, opts) => {
+      const r = await gw.send(opts);
+      expect(r.ok).toBe(false);
+      expect(r.error?.code).toBe("NOT_CONNECTED");
     });
   });
 
-  describe("disconnect", () => {
-    it("completes without error even when not connected", async () => {
-      await expect(gateway.disconnect()).resolves.toBeUndefined();
+  // -- Message frame parsing --
+
+  describe("handleMessage", () => {
+    it.each(["not json", "{bad", "", '"string"', "42", "null", "[]"])(
+      "ignores invalid input: %s",
+      (raw) => { priv.handleMessage(raw); /* no throw */ },
+    );
+
+    it("ignores objects without type", () => {
+      priv.handleMessage(JSON.stringify({ id: "x" }));
     });
 
-    it("clears connection state after disconnect", async () => {
-      await gateway.disconnect();
-      const info = await gateway.getConnectionInfo();
-      expect(info.sessionId).toBeNull();
-      expect(info.protocol).toBeNull();
+    it("resolves pending request on response frame", () => {
+      const resolve = vi.fn();
+      priv.pending.set("r1", { resolve, reject: vi.fn(), timeout: setTimeout(() => {}, 60000) });
+
+      priv.handleMessage(JSON.stringify({ type: "res", id: "r1", ok: true, payload: { text: "hi" } }));
+
+      expect(resolve).toHaveBeenCalledWith(expect.objectContaining({ ok: true, payload: { text: "hi" } }));
+      expect(priv.pending.has("r1")).toBe(false);
+    });
+
+    it("resolves with error info on failed response", () => {
+      const resolve = vi.fn();
+      priv.pending.set("r2", { resolve, reject: vi.fn(), timeout: setTimeout(() => {}, 60000) });
+
+      priv.handleMessage(JSON.stringify({ type: "res", id: "r2", ok: false, error: { code: "BAD", message: "nope" } }));
+
+      expect(resolve.mock.calls[0][0].error).toEqual({ code: "BAD", message: "nope" });
+    });
+
+    it("silently ignores response for unknown request id", () => {
+      priv.handleMessage(JSON.stringify({ type: "res", id: "unknown", ok: true }));
+    });
+
+    it("tracks sequence and warns on gap", () => {
+      priv.lastSeq = 5;
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      priv.handleMessage(JSON.stringify({ type: "event", event: "x", seq: 8 }));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("sequence gap"));
+      expect(priv.lastSeq).toBe(8);
+
+      warn.mockClear();
+      priv.handleMessage(JSON.stringify({ type: "event", event: "x", seq: 9 }));
+      expect(warn).not.toHaveBeenCalled();
+
+      warn.mockRestore();
+    });
+
+    it("ignores event frames missing event name or response frames missing id", () => {
+      priv.handleMessage(JSON.stringify({ type: "event", payload: {} }));
+      priv.handleMessage(JSON.stringify({ type: "res", ok: true }));
     });
   });
+
+  // -- Close handling --
+
+  describe("handleClose", () => {
+    it("rejects all pending requests", () => {
+      const rej1 = vi.fn(), rej2 = vi.fn();
+      priv.pending.set("a", { resolve: vi.fn(), reject: rej1, timeout: setTimeout(() => {}, 1000) });
+      priv.pending.set("b", { resolve: vi.fn(), reject: rej2, timeout: setTimeout(() => {}, 1000) });
+      priv.closed = true;
+
+      priv.handleClose(1006, "Abnormal");
+
+      expect(rej1).toHaveBeenCalled();
+      expect(rej2).toHaveBeenCalled();
+      expect(priv.pending.size).toBe(0);
+    });
+  });
+
+  // -- Backoff --
+
+  it("initial backoff is 800ms", () => {
+    expect(priv.backoffMs).toBe(800);
+  });
+
+  // -- Event listeners --
 
   describe("event listeners", () => {
-    it("registers gatewayEvent listener", async () => {
-      let received = false;
-      const handle = await gateway.addListener("gatewayEvent", () => {
-        received = true;
-      });
-      expect(handle).toBeDefined();
-      expect(typeof handle.remove).toBe("function");
-      await handle.remove();
-    });
-
-    it("registers stateChange listener", async () => {
-      const handle = await gateway.addListener("stateChange", () => {});
-      expect(handle).toBeDefined();
-      await handle.remove();
-    });
-
-    it("registers error listener", async () => {
-      const handle = await gateway.addListener("error", () => {});
-      expect(handle).toBeDefined();
-      await handle.remove();
-    });
+    it.each(["gatewayEvent", "stateChange", "error", "discovery"] as const)(
+      "registers/removes %s listener",
+      async (event) => {
+        const h = await gw.addListener(event, vi.fn());
+        expect(typeof h.remove).toBe("function");
+        await h.remove();
+      },
+    );
 
     it("removeAllListeners clears all", async () => {
-      await gateway.addListener("gatewayEvent", () => {});
-      await gateway.addListener("stateChange", () => {});
-      await gateway.addListener("error", () => {});
-      await gateway.removeAllListeners();
-      // No error means success
+      await gw.addListener("gatewayEvent", vi.fn());
+      await gw.addListener("error", vi.fn());
+      await gw.removeAllListeners();
     });
   });
 });

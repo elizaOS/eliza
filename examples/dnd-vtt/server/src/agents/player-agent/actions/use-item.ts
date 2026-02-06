@@ -11,7 +11,7 @@ import type {
   HandlerCallback,
 } from '@elizaos/core';
 import type { CharacterSheet, InventoryItem } from '../../../types';
-import { rollDice } from '../../../dice';
+import { rollDie } from '../../../dice';
 
 export interface UseItemParams {
   itemName: string;
@@ -34,13 +34,13 @@ export const useItemAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'You are badly wounded after the battle.',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'I reach into my pack with trembling hands and pull out a healing potion. "This should help..." I uncork it and drink deeply.',
           action: 'USE_ITEM',
@@ -57,12 +57,12 @@ export const useItemAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    options: Record<string, unknown>,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<boolean> => {
-    const params = options as UseItemParams;
-    const characterSheet = await runtime.getSetting('characterSheet') as CharacterSheet | null;
+    const params = (options ?? {}) as UseItemParams;
+    const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     
     if (!characterSheet) {
       if (callback) {
@@ -93,7 +93,7 @@ export const useItemAction: Action = {
     // Remove consumable items
     if (result.consumed) {
       removeItemFromInventory(characterSheet, item);
-      await runtime.setSetting('characterSheet', characterSheet);
+      await runtime.setSetting('characterSheet', JSON.stringify(characterSheet));
     }
     
     if (callback) {
@@ -112,7 +112,7 @@ export const useItemAction: Action = {
       });
     }
     
-    await runtime.emit('item_used', {
+    runtime.emitEvent?.('item_used' as any, {
       characterId: characterSheet.id,
       characterName: characterSheet.name,
       itemName: item.name,
@@ -124,26 +124,27 @@ export const useItemAction: Action = {
   },
 };
 
+function getInventoryItems(sheet: CharacterSheet): InventoryItem[] {
+  if (!sheet.equipment) return [];
+  if (Array.isArray(sheet.equipment)) return sheet.equipment;
+  return sheet.equipment.inventory ?? [];
+}
+
 function findItem(sheet: CharacterSheet, itemName: string): InventoryItem | undefined {
   const lowerName = itemName.toLowerCase();
-  
-  // Check inventory
-  const item = sheet.equipment.inventory?.find(
-    i => i.name.toLowerCase().includes(lowerName)
-  );
-  
-  return item;
+  const items = getInventoryItems(sheet);
+  return items.find(i => i.name.toLowerCase().includes(lowerName));
 }
 
 function removeItemFromInventory(sheet: CharacterSheet, item: InventoryItem): void {
-  if (sheet.equipment.inventory) {
-    const index = sheet.equipment.inventory.findIndex(i => i.name === item.name);
-    if (index >= 0) {
-      if (sheet.equipment.inventory[index].quantity && sheet.equipment.inventory[index].quantity > 1) {
-        sheet.equipment.inventory[index].quantity--;
-      } else {
-        sheet.equipment.inventory.splice(index, 1);
-      }
+  const items = getInventoryItems(sheet);
+  const index = items.findIndex(i => i.name === item.name);
+  if (index >= 0) {
+    const qty = items[index].quantity;
+    if (qty !== undefined && qty > 1) {
+      items[index].quantity = qty - 1;
+    } else {
+      items.splice(index, 1);
     }
   }
 }
@@ -196,20 +197,20 @@ function processHealingPotion(characterName: string, item: InventoryItem): ItemU
   let diceDescription = '';
   
   if (itemLower.includes('superior')) {
-    const rolls = Array.from({ length: 8 }, () => rollDice(1, 4));
+    const rolls = Array.from({ length: 8 }, () => rollDie('d4'));
     healing = rolls.reduce((a, b) => a + b, 0) + 8;
     diceDescription = '8d4+8';
   } else if (itemLower.includes('greater')) {
-    const rolls = Array.from({ length: 4 }, () => rollDice(1, 4));
+    const rolls = Array.from({ length: 4 }, () => rollDie('d4'));
     healing = rolls.reduce((a, b) => a + b, 0) + 4;
     diceDescription = '4d4+4';
   } else if (itemLower.includes('supreme')) {
-    const rolls = Array.from({ length: 10 }, () => rollDice(1, 4));
+    const rolls = Array.from({ length: 10 }, () => rollDie('d4'));
     healing = rolls.reduce((a, b) => a + b, 0) + 20;
     diceDescription = '10d4+20';
   } else {
     // Standard healing potion
-    const rolls = Array.from({ length: 2 }, () => rollDice(1, 4));
+    const rolls = Array.from({ length: 2 }, () => rollDie('d4'));
     healing = rolls.reduce((a, b) => a + b, 0) + 2;
     diceDescription = '2d4+2';
   }

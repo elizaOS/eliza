@@ -10,6 +10,7 @@ import type {
   State, 
   HandlerCallback 
 } from '@elizaos/core';
+import { ModelType } from '@elizaos/core';
 
 export interface NarrateSceneParams {
   sceneType: 'transition' | 'discovery' | 'combat_start' | 'combat_end' | 'rest' | 'revelation' | 'custom';
@@ -40,14 +41,14 @@ export const narrateSceneAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'The party enters the abandoned temple.',
           action: 'NARRATE_SCENE',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'As you push open the heavy oak doors, a gust of stale air rushes past you, carrying the scent of centuries-old incense and something else... decay. Shafts of pale moonlight pierce through cracks in the vaulted ceiling, illuminating motes of dust that dance in the stillness. The temple\'s nave stretches before you, its stone pews overturned and scattered. At the far end, the altar stands untouched, and upon it, a faint blue glow pulses rhythmically, like a slow heartbeat.',
         },
@@ -64,42 +65,38 @@ export const narrateSceneAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    options: Record<string, unknown>,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
-    const params = options as NarrateSceneParams;
+  ) => {
+    const params = (options ?? {}) as unknown as NarrateSceneParams;
     
     // Build the narrative prompt based on scene type and context
     const narrativePrompt = buildNarrativePrompt(params);
     
     // Generate the narrative using the model
-    const response = await runtime.useModel({
+    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt: narrativePrompt,
-      context: state,
       maxTokens: 500,
     });
     
     if (callback) {
       await callback({
-        text: response.text,
-        type: 'narration',
-        metadata: {
-          sceneType: params.sceneType,
-          mood: params.mood,
-        },
+        text: response,
       });
     }
     
     // Log the scene to campaign memory
-    await runtime.emit('scene_narrated', {
+    const scenePayload = {
+      runtime,
       sceneType: params.sceneType,
       context: params.context,
-      narration: response.text,
+      narration: response,
       timestamp: new Date(),
-    });
+    };
+    await runtime.emitEvent('scene_narrated', scenePayload);
     
-    return true;
+    return undefined;
   },
 };
 

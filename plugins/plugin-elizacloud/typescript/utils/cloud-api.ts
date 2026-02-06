@@ -23,6 +23,7 @@ export class CloudApiClient {
 
   setApiKey(key: string): void { this.apiKey = key; }
   setBaseUrl(url: string): void { this.baseUrl = url.replace(/\/+$/, ""); }
+  getBaseUrl(): string { return this.baseUrl; }
   getApiKey(): string | undefined { return this.apiKey; }
 
   /** Build a WebSocket URL from the base URL, replacing http(s) with ws(s). */

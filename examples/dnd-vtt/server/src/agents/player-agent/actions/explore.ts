@@ -11,6 +11,7 @@ import type {
   HandlerCallback,
 } from '@elizaos/core';
 import type { CharacterSheet } from '../../../types';
+import { getAbilityMod } from '../../../types';
 
 export type ExploreActivity =
   | 'look_around'
@@ -43,13 +44,13 @@ export const exploreAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'You enter a dusty library filled with ancient tomes.',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'My eyes widen at the sight of so much knowledge. I run my fingers along the spines of the nearest books, searching for anything that might be relevant to our quest. "There must be something useful here..."',
           action: 'EXPLORE',
@@ -66,12 +67,12 @@ export const exploreAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    options: Record<string, unknown>,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<boolean> => {
-    const params = options as ExploreParams;
-    const characterSheet = await runtime.getSetting('characterSheet') as CharacterSheet | null;
+    const params = (options ?? {}) as ExploreParams;
+    const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     const personality = await runtime.getSetting('personality');
     
     if (!characterSheet) {
@@ -94,9 +95,10 @@ export const exploreAction: Action = {
     });
     
     // Determine what skill check might be needed
-    const suggestedCheck = determineSuggestedCheck(params.activity, response.text);
+    const responseText = (response as any)?.text ?? String(response ?? '');
+    const suggestedCheck = determineSuggestedCheck(params.activity, responseText);
     
-    let finalResponse = response.text;
+    let finalResponse = responseText;
     
     if (suggestedCheck) {
       finalResponse += `\n\n*[${suggestedCheck} check may reveal more]*`;
@@ -116,7 +118,7 @@ export const exploreAction: Action = {
       });
     }
     
-    await runtime.emit('exploration', {
+    runtime.emitEvent?.('exploration' as any, {
       characterId: characterSheet.id,
       characterName: characterSheet.name,
       activity: params.activity,
@@ -139,8 +141,8 @@ function buildExplorePrompt(
     : message.content?.text || '';
   
   // Determine character's observational strengths
-  const perception = sheet.skills?.perception || sheet.abilities.wisdom.modifier;
-  const investigation = sheet.skills?.investigation || sheet.abilities.intelligence.modifier;
+  const perception = sheet.skills?.perception ?? getAbilityMod(sheet.abilities.wisdom);
+  const investigation = sheet.skills?.investigation ?? getAbilityMod(sheet.abilities.intelligence);
   
   const observerType = perception >= investigation ? 'perceptive' : 'analytical';
   

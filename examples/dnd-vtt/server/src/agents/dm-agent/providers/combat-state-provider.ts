@@ -34,14 +34,22 @@ export const combatStateProvider: Provider = {
   name: 'combatState',
   description: 'Provides current combat encounter status and initiative order',
   
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<string> => {
-    const combatState = await runtime.getSetting('combatState') as CombatState | null;
-    
-    if (!combatState || !combatState.isActive) {
-      return 'No active combat encounter.';
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    const raw = runtime.getSetting('combatState');
+    let combatState: CombatState | null = null;
+    if (raw && typeof raw === 'string') {
+      try {
+        combatState = JSON.parse(raw) as CombatState;
+      } catch {
+        combatState = null;
+      }
     }
     
-    let context = `## ⚔️ Combat Encounter - Round ${combatState.round}\n\n`;
+    if (!combatState || !combatState.isActive) {
+      return { text: 'No active combat encounter.' };
+    }
+    
+    let context = `## Combat Encounter - Round ${combatState.round}\n\n`;
     
     // Current turn
     if (combatState.currentCombatant) {
@@ -56,8 +64,8 @@ export const combatStateProvider: Provider = {
     context += '|---|------|------------|----|----|------------|\n';
     
     combatState.initiativeOrder.forEach((combatant, index) => {
-      const isCurrent = index === combatState.turnIndex;
-      const marker = isCurrent ? '▶️' : `${index + 1}`;
+      const isCurrent = index === combatState!.turnIndex;
+      const marker = isCurrent ? '>' : `${index + 1}`;
       const hpDisplay = combatant.type === 'monster' 
         ? getHealthDescription(combatant.hp.current, combatant.hp.max)
         : `${combatant.hp.current}/${combatant.hp.max}`;
@@ -84,7 +92,7 @@ export const combatStateProvider: Provider = {
       context += '\n';
     }
     
-    return context;
+    return { text: context };
   },
 };
 
@@ -106,14 +114,14 @@ function formatCombatantStatus(combatant: Combatant): string {
   }
   
   if (combatant.deathSaves) {
-    status += `\n- **Death Saves:** ✓${combatant.deathSaves.successes} ✗${combatant.deathSaves.failures}`;
+    status += `\n- **Death Saves:** S:${combatant.deathSaves.successes} F:${combatant.deathSaves.failures}`;
   }
   
   return status;
 }
 
 function getHealthDescription(current: number, max: number): string {
-  const percentage = current / max;
+  const percentage = max > 0 ? current / max : 0;
   
   if (percentage >= 1) return 'Uninjured';
   if (percentage >= 0.75) return 'Lightly Wounded';

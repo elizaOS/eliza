@@ -2,11 +2,11 @@
   "openai/gpt-5-mini": {
     "model": "openai/gpt-5-mini",
     "provider": "openai",
-    "overall_score": 0.11111111111111112,
-    "ast_accuracy": 0.17647058823529413,
-    "exec_accuracy": 0.17647058823529413,
-    "relevance_accuracy": 0.11764705882352941,
-    "total_tests": 17,
-    "timestamp": "2026-02-05T22:34:50.438417"
+    "overall_score": 0.11111111111111113,
+    "ast_accuracy": 0.1111111111111111,
+    "exec_accuracy": 0.1111111111111111,
+    "relevance_accuracy": 0.1111111111111111,
+    "total_tests": 9,
+    "timestamp": "2026-02-05T23:14:24.285784"
   }
 }

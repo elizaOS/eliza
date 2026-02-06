@@ -70,5 +70,14 @@
         "example": "./otto/skills"
       }
     }
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js via main entry point"
+    }
   }
 }

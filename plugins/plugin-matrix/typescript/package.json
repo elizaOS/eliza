@@ -18,5 +18,14 @@
   "devDependencies": {
     "@types/bun": "^1.1.0",
     "typescript": "^5.3.0"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js via main entry point"
+    }
   }
 }

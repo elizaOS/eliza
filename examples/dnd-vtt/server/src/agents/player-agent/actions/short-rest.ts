@@ -11,7 +11,8 @@ import type {
   HandlerCallback,
 } from '@elizaos/core';
 import type { CharacterSheet } from '../../../types';
-import { rollDice } from '../../../dice';
+import { getHP, getAbilityMod } from '../../../types';
+import { rollDie } from '../../../dice';
 import { getHitDieType } from '../../../rules';
 
 export interface ShortRestParams {
@@ -33,13 +34,13 @@ export const shortRestAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'The dungeon is quiet. You have time to rest.',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'I find a defensible corner and sit down heavily, wincing at my wounds. "An hour to tend these injuries would do me good." I spend some hit dice to patch myself up.',
           action: 'SHORT_REST',
@@ -56,12 +57,12 @@ export const shortRestAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    options: Record<string, unknown>,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<boolean> => {
-    const params = options as ShortRestParams;
-    const characterSheet = await runtime.getSetting('characterSheet') as CharacterSheet | null;
+    const params = (options ?? {}) as ShortRestParams;
+    const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     
     if (!characterSheet) {
       if (callback) {
@@ -74,7 +75,8 @@ export const shortRestAction: Action = {
     }
     
     // Check if character needs healing
-    const needsHealing = characterSheet.hp.current < characterSheet.hp.max;
+    const hp = getHP(characterSheet);
+    const needsHealing = hp.current < hp.max;
     const hasHitDice = (characterSheet.hitDice?.current || 0) > 0;
     
     if (!needsHealing) {
@@ -110,14 +112,15 @@ export const shortRestAction: Action = {
     }
     
     // Calculate how many hit dice to spend
-    const hpNeeded = characterSheet.hp.max - characterSheet.hp.current;
-    const hitDieSize = getHitDieType(characterSheet.class);
-    const conMod = characterSheet.abilities.constitution.modifier;
+    const hpNeeded = hp.max - hp.current;
+    const hitDieType = getHitDieType(characterSheet.class);
+    const hitDieSize = parseInt(hitDieType.slice(1));
+    const conMod = getAbilityMod(characterSheet.abilities.constitution);
     const avgHealPerDie = (hitDieSize / 2) + 0.5 + conMod;
     
     // Spend enough dice to get close to full, or as many as requested
     const availableDice = characterSheet.hitDice?.current || 0;
-    const diceNeeded = Math.ceil(hpNeeded / avgHealPerDie);
+    const diceNeeded = Math.ceil(hpNeeded / Math.max(1, avgHealPerDie));
     const diceToSpend = params.hitDiceToSpend 
       ? Math.min(params.hitDiceToSpend, availableDice)
       : Math.min(diceNeeded, availableDice);
@@ -127,22 +130,26 @@ export const shortRestAction: Action = {
     const rolls: number[] = [];
     
     for (let i = 0; i < diceToSpend; i++) {
-      const roll = rollDice(1, hitDieSize);
+      const roll = rollDie(hitDieType);
       const healingFromDie = Math.max(1, roll + conMod); // Minimum 1 HP per die
       rolls.push(roll);
       totalHealing += healingFromDie;
     }
     
     // Apply healing
-    const newHp = Math.min(characterSheet.hp.max, characterSheet.hp.current + totalHealing);
-    const actualHealing = newHp - characterSheet.hp.current;
+    const newHp = Math.min(hp.max, hp.current + totalHealing);
+    const actualHealing = newHp - hp.current;
     
     // Update character sheet
-    characterSheet.hp.current = newHp;
+    if (characterSheet.hp) {
+      characterSheet.hp.current = newHp;
+    } else if (characterSheet.hitPoints) {
+      characterSheet.hitPoints.current = newHp;
+    }
     if (characterSheet.hitDice) {
       characterSheet.hitDice.current -= diceToSpend;
     }
-    await runtime.setSetting('characterSheet', characterSheet);
+    await runtime.setSetting('characterSheet', JSON.stringify(characterSheet));
     
     // Generate flavor text
     const rollsText = rolls.map(r => `${r}+${conMod}`).join(', ');
@@ -154,7 +161,7 @@ export const shortRestAction: Action = {
       flavorText = `${characterSheet.name} does what they can, but the wounds are stubborn...`;
     }
     
-    const response = `${flavorText}\n\n🎲 **Hit Dice Spent:** ${diceToSpend}d${hitDieSize} (${rollsText})\n💚 **HP Restored:** ${actualHealing} (${characterSheet.hp.current}/${characterSheet.hp.max})\n*Hit Dice Remaining: ${characterSheet.hitDice?.current || 0}/${characterSheet.hitDice?.max || 0}*`;
+    const response = `${flavorText}\n\n🎲 **Hit Dice Spent:** ${diceToSpend}${hitDieType} (${rollsText})\n💚 **HP Restored:** ${actualHealing} (${newHp}/${hp.max})\n*Hit Dice Remaining: ${characterSheet.hitDice?.current || 0}/${characterSheet.hitDice?.max || 0}*`;
     
     if (callback) {
       await callback({
@@ -166,12 +173,12 @@ export const shortRestAction: Action = {
           healing: actualHealing,
           hitDiceUsed: diceToSpend,
           hitDiceRemaining: characterSheet.hitDice?.current || 0,
-          newHp: characterSheet.hp.current,
+          newHp,
         },
       });
     }
     
-    await runtime.emit('short_rest', {
+    runtime.emitEvent?.('short_rest' as any, {
       characterId: characterSheet.id,
       characterName: characterSheet.name,
       healing: actualHealing,

@@ -630,11 +630,11 @@ class ElizaOSWebShopAgent:
 
             message = Memory(
                 id=as_uuid(str(uuid4())),
-                entityId=user_id,
-                agentId=self.runtime.agent_id,
-                roomId=room_id,
+                entity_id=user_id,
+                agent_id=self.runtime.agent_id,
+                room_id=room_id,
                 content=Content(text=message_text, source="webshop"),
-                createdAt=int(time.time() * 1000),
+                created_at=int(time.time() * 1000),
             )
 
             try:

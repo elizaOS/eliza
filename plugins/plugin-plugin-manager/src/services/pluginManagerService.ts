@@ -110,8 +110,7 @@ async function installPlugin(
   await fs.ensureDir(targetDir);
 
   onProgress?.({
-    phase: 'downloading',
-    progress: 10,
+    phase: 'fetching-registry',
     message: 'Fetching plugin registry...',
   });
 
@@ -152,17 +151,15 @@ async function installFromNpm(
 
   onProgress?.({
     phase: 'downloading',
-    progress: 30,
-    message: `Downloading ${packageName}@${version}...`,
+    message: `Running npm install ${packageName}@${version}...`,
   });
 
   // Install the package to the target directory
   await execAsync(`npm install ${packageName}@${version} --prefix "${targetDir}"`);
 
   onProgress?.({
-    phase: 'installing',
-    progress: 80,
-    message: 'Installing dependencies...',
+    phase: 'installing-deps',
+    message: 'npm install complete.',
   });
 }
 
@@ -182,7 +179,6 @@ async function installFromGit(
   try {
     onProgress?.({
       phase: 'downloading',
-      progress: 20,
       message: `Cloning repository ${gitRepo}...`,
     });
 
@@ -193,7 +189,6 @@ async function installFromGit(
     if (version !== 'main' && version !== 'master') {
       onProgress?.({
         phase: 'extracting',
-        progress: 40,
         message: `Checking out version ${version}...`,
       });
 
@@ -201,9 +196,8 @@ async function installFromGit(
     }
 
     onProgress?.({
-      phase: 'installing',
-      progress: 60,
-      message: 'Installing dependencies...',
+      phase: 'installing-deps',
+      message: 'Running npm install...',
     });
 
     // Install dependencies
@@ -211,8 +205,7 @@ async function installFromGit(
 
     onProgress?.({
       phase: 'extracting',
-      progress: 80,
-      message: 'Copying files...',
+      message: 'Copying files to target directory...',
     });
 
     // Copy to target directory
@@ -261,10 +254,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
   constructor(runtime: IAgentRuntime, config?: PluginManagerConfig) {
     super(runtime);
     this.pluginManagerConfig = {
-      maxBuildAttempts: 3,
-      buildTimeout: 60000,
       pluginDirectory: './plugins',
-      enableHotReload: true,
       ...config,
     };
 
@@ -330,8 +320,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
         name: plugin.name,
         status: PluginStatus.LOADED,
         plugin,
-        missingEnvVars: [],
-        buildLog: [],
         createdAt: Date.now(),
         loadedAt: Date.now(),
         components: {
@@ -505,8 +493,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
       name: plugin.name,
       status: PluginStatus.READY,
       plugin,
-      missingEnvVars: [],
-      buildLog: [],
       createdAt: Date.now(),
       components: {
         actions: new Set(),
@@ -714,7 +700,28 @@ export class PluginManagerService extends Service implements PluginRegistry {
 
   async stop(): Promise<void> {
     logger.info('[PluginManagerService] Stopping...');
-    // Clean up any resources
+
+    // Unload all dynamically loaded (non-original) plugins
+    for (const [pluginId, pluginState] of this.plugins) {
+      if (
+        pluginState.status === PluginStatus.LOADED &&
+        !this.originalPlugins.some((p) => p.name === pluginState.name)
+      ) {
+        try {
+          if (pluginState.plugin) {
+            await this.unregisterPluginComponents(pluginState.plugin);
+          }
+          this.updatePluginState(pluginId, { status: PluginStatus.UNLOADED });
+          logger.info(`[PluginManagerService] Unloaded dynamic plugin: ${pluginState.name}`);
+        } catch (error) {
+          logger.warn(`[PluginManagerService] Failed to unload ${pluginState.name} during shutdown:`, error);
+        }
+      }
+    }
+
+    this.installedPlugins.clear();
+    this.componentRegistry.clear();
+    logger.info('[PluginManagerService] Stopped');
   }
 
   /**
@@ -808,8 +815,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 
     onProgress?.({
       phase: 'validating',
-      progress: 90,
-      message: 'Validating plugin...',
+      message: 'Validating plugin metadata...',
     });
 
     // Parse plugin metadata
@@ -827,98 +833,27 @@ export class PluginManagerService extends Service implements PluginRegistry {
 
     this.installedPlugins.set(pluginName, pluginInfo);
 
+    // If the plugin doesn't need configuration, try to load the module and register it
+    // so LOAD_PLUGIN can actually find it in the plugins Map
+    if (pluginInfo.status === 'installed') {
+      try {
+        const pluginModule = await this.loadPluginModule(pluginDir);
+        if (pluginModule) {
+          await this.registerPlugin(pluginModule);
+          logger.info(`Plugin ${pluginName} registered and ready to load`);
+        }
+      } catch (error) {
+        logger.warn(`Plugin ${pluginName} installed but could not be registered for loading:`, error);
+        // Still return success - plugin is installed on disk even if we can't auto-register
+      }
+    }
+
     onProgress?.({
       phase: 'complete',
-      progress: 100,
       message: `Plugin ${pluginName} installed successfully`,
     });
 
     logger.success(`Plugin ${pluginName} installed successfully`);
-    return pluginInfo;
-  }
-
-  async installFromLocalBundle(
-    bundlePath: string,
-    onProgress?: (progress: InstallProgress) => void
-  ): Promise<DynamicPluginInfo> {
-    logger.info(`Installing plugin from local bundle: ${bundlePath}`);
-
-    onProgress?.({
-      phase: 'validating',
-      progress: 10,
-      message: 'Validating bundle...',
-    });
-
-    // Validate that the path exists
-    const bundleExists = await fs.pathExists(bundlePath);
-    if (!bundleExists) {
-      throw new Error(`Bundle path does not exist: ${bundlePath}`);
-    }
-
-    // Check if it's a directory or a tarball
-    const stats = await fs.stat(bundlePath);
-    let extractPath: string;
-
-    if (stats.isDirectory()) {
-      extractPath = bundlePath;
-    } else {
-      // Handle compressed bundles (tar.gz, zip)
-      throw new Error('Compressed bundle installation not yet implemented');
-    }
-
-    onProgress?.({
-      phase: 'validating',
-      progress: 30,
-      message: 'Reading plugin metadata...',
-    });
-
-    // Parse plugin metadata
-    const metadata = await this.parsePluginMetadata(extractPath);
-    const pluginName = metadata.name;
-
-    // Copy to installation directory
-    const pluginDir = this.getPluginInstallPath(pluginName);
-    await fs.ensureDir(path.dirname(pluginDir));
-
-    onProgress?.({
-      phase: 'installing',
-      progress: 60,
-      message: 'Copying plugin files...',
-    });
-
-    await fs.copy(extractPath, pluginDir);
-
-    // Install dependencies if needed
-    const hasNodeModules = await fs.pathExists(path.join(pluginDir, 'node_modules'));
-    if (!hasNodeModules) {
-      onProgress?.({
-        phase: 'installing',
-        progress: 80,
-        message: 'Installing dependencies...',
-      });
-
-      await execAsync('npm install', { cwd: pluginDir });
-    }
-
-    // Create plugin info
-    const pluginInfo: DynamicPluginInfo = {
-      name: metadata.name,
-      version: metadata.version,
-      status: metadata.requiredEnvVars.length > 0 ? 'needs_configuration' : 'installed',
-      path: pluginDir,
-      requiredEnvVars: metadata.requiredEnvVars,
-      installedAt: new Date(),
-    };
-
-    this.installedPlugins.set(pluginName, pluginInfo);
-
-    onProgress?.({
-      phase: 'complete',
-      progress: 100,
-      message: `Plugin ${pluginName} installed successfully from local bundle`,
-    });
-
-    logger.success(`Plugin ${pluginName} installed successfully from local bundle`);
     return pluginInfo;
   }
 
@@ -930,18 +865,35 @@ export class PluginManagerService extends Service implements PluginRegistry {
     }
 
     if (pluginInfo.status === 'needs_configuration') {
-      throw new Error(`Plugin ${pluginName} requires configuration before loading`);
+      // Check if env vars are now set
+      const stillMissing = pluginInfo.requiredEnvVars.filter((v) => !process.env[v.name]);
+      if (stillMissing.length > 0) {
+        throw new Error(
+          `Plugin ${pluginName} requires configuration. Missing: ${stillMissing.map((v) => v.name).join(', ')}`
+        );
+      }
+      // Configuration is now complete
+      pluginInfo.status = 'installed';
     }
 
-    // Load the plugin module
-    const pluginModule = await this.loadPluginModule(pluginInfo.path);
+    // Check if already registered in the plugins Map
+    const existingEntry = Array.from(this.plugins.values()).find(
+      (p) => p.name === pluginInfo.name || p.name === pluginName
+    );
 
-    if (!pluginModule) {
-      throw new Error('Failed to load plugin module');
+    let pluginId: string;
+
+    if (existingEntry) {
+      // Already registered, just load it
+      pluginId = existingEntry.id;
+    } else {
+      // Load the module and register it
+      const pluginModule = await this.loadPluginModule(pluginInfo.path);
+      if (!pluginModule) {
+        throw new Error('Failed to load plugin module');
+      }
+      pluginId = await this.registerPlugin(pluginModule);
     }
-
-    // Register with existing plugin manager
-    const pluginId = await this.registerPlugin(pluginModule);
 
     // Load the plugin
     await this.loadPlugin({ pluginId });
@@ -1013,34 +965,91 @@ export class PluginManagerService extends Service implements PluginRegistry {
   }
 
   private async loadPluginModule(pluginPath: string): Promise<ElizaPlugin> {
-    const packageJsonPath = path.join(pluginPath, 'package.json');
-    let mainEntry = pluginPath;
+    const absolutePath = path.resolve(pluginPath);
+    const packageJsonPath = path.join(absolutePath, 'package.json');
+    let mainEntry = absolutePath;
 
     if (await fs.pathExists(packageJsonPath)) {
       const packageJson = await fs.readJson(packageJsonPath);
       if (packageJson.main) {
-        mainEntry = path.resolve(pluginPath, packageJson.main);
+        mainEntry = path.resolve(absolutePath, packageJson.main);
       }
     }
 
-    if (!path.isAbsolute(mainEntry)) {
-      mainEntry = path.resolve(mainEntry);
+    // Verify the entry point exists before trying to import
+    if (!(await fs.pathExists(mainEntry)) && !(await fs.pathExists(mainEntry + '.js'))) {
+      throw new Error(`Plugin entry point not found: ${mainEntry}`);
     }
 
-    const module = await import(mainEntry);
+    // Ensure peer deps (like @elizaos/core) can be resolved.
+    // If the plugin was installed via npm --prefix, its deps are local.
+    // If installed via git clone, workspace deps may be missing.
+    // Symlink @elizaos/core from workspace if it's missing in the plugin's node_modules.
+    await this.ensurePeerDependencies(absolutePath);
+
+    // Node ESM requires file:// URLs for absolute paths
+    const { pathToFileURL } = await import('node:url');
+    const moduleUrl = pathToFileURL(mainEntry).href;
+
+    let module: Record<string, unknown>;
+    try {
+      module = await import(moduleUrl);
+    } catch (importError) {
+      // If ESM import fails, try CommonJS require as fallback
+      const { createRequire } = await import('node:module');
+      const require = createRequire(path.join(process.cwd(), 'package.json'));
+      try {
+        module = require(mainEntry);
+      } catch (requireError) {
+        throw new Error(
+          `Failed to import plugin from ${mainEntry}: ${importError instanceof Error ? importError.message : String(importError)}`
+        );
+      }
+    }
 
     // Find the plugin export
     if (module.default && this.isValidPlugin(module.default)) {
-      return module.default;
+      return module.default as ElizaPlugin;
     }
 
     for (const key of Object.keys(module)) {
       if (this.isValidPlugin(module[key])) {
-        return module[key];
+        return module[key] as ElizaPlugin;
       }
     }
 
-    throw new Error(`Could not find a valid plugin export in ${mainEntry}`);
+    throw new Error(
+      `No valid plugin export found in ${mainEntry}. Module exports: ${Object.keys(module).join(', ')}`
+    );
+  }
+
+  /**
+   * Ensures critical peer dependencies are available in the plugin's node_modules.
+   * If @elizaos/core isn't resolvable from the plugin directory, symlink it from workspace.
+   */
+  private async ensurePeerDependencies(pluginPath: string): Promise<void> {
+    const pluginNodeModules = path.join(pluginPath, 'node_modules');
+    const coreInPlugin = path.join(pluginNodeModules, '@elizaos', 'core');
+
+    if (await fs.pathExists(coreInPlugin)) {
+      return; // Already resolved
+    }
+
+    // Find @elizaos/core from the workspace
+    const workspaceCore = path.resolve(process.cwd(), 'node_modules', '@elizaos', 'core');
+    if (!(await fs.pathExists(workspaceCore))) {
+      logger.warn('[PluginManagerService] @elizaos/core not found in workspace node_modules');
+      return;
+    }
+
+    // Create symlink
+    try {
+      await fs.ensureDir(path.join(pluginNodeModules, '@elizaos'));
+      await fs.ensureSymlink(workspaceCore, coreInPlugin, 'junction');
+      logger.info(`[PluginManagerService] Symlinked @elizaos/core into plugin at ${pluginPath}`);
+    } catch (error) {
+      logger.warn(`[PluginManagerService] Failed to symlink @elizaos/core: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private isValidPlugin(obj: unknown): obj is ElizaPlugin {

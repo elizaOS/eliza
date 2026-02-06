@@ -4,18 +4,18 @@
  */
 
 import type { Provider, IAgentRuntime, Memory, State } from '@elizaos/core';
-import type { WorldEvent, Quest } from '../../../types';
+import type { WorldEvent, Quest, QuestObjective } from '../../../types';
 import { worldRepository } from '../../../persistence';
 
 export const worldEventProvider: Provider = {
   name: 'worldEvents',
   description: 'Provides recent important events and active quests',
   
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<string> => {
-    const campaignId = await runtime.getSetting('campaignId') as string;
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    const campaignId = runtime.getSetting('campaignId') as string;
     
     if (!campaignId) {
-      return 'No active campaign.';
+      return { text: 'No active campaign.' };
     }
     
     try {
@@ -86,11 +86,11 @@ export const worldEventProvider: Provider = {
         context += `*No active quests.*\n`;
       }
       
-      return context || 'No significant events or quests recorded.';
+      return { text: context || 'No significant events or quests recorded.' };
       
     } catch (error) {
       console.error('Error fetching world events:', error);
-      return 'Error loading world events.';
+      return { text: 'Error loading world events.' };
     }
   },
 };
@@ -120,12 +120,9 @@ function formatQuest(quest: Quest): string {
   if (quest.objectives && quest.objectives.length > 0) {
     formatted += `**Objectives:**\n`;
     for (const obj of quest.objectives) {
-      const checkbox = obj.completed ? '✅' : '⬜';
-      formatted += `${checkbox} ${obj.description}`;
-      if (obj.current !== undefined && obj.target !== undefined) {
-        formatted += ` (${obj.current}/${obj.target})`;
-      }
-      formatted += '\n';
+      const isComplete = obj.isComplete ?? obj.completed ?? false;
+      const checkbox = isComplete ? '[x]' : '[ ]';
+      formatted += `${checkbox} ${obj.description}\n`;
     }
   }
   
