@@ -40,6 +40,9 @@ function generateStatusMessage(
   state?: State
 ): string {
   try {
+    if (!worldSettings || typeof worldSettings !== 'object') {
+      return '';
+    }
     // Format settings for display
     const formattedSettings = Object.entries(worldSettings)
       .map(([key, setting]) => {

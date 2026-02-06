@@ -306,6 +306,9 @@ export async function updateWorldSettings(
  * Formats a list of settings for display
  */
 function formatSettingsList(worldSettings: WorldSettings): string {
+  if (!worldSettings || typeof worldSettings !== 'object') {
+    return 'No settings available';
+  }
   const settings = Object.entries(worldSettings)
     .filter(([key]) => !key.startsWith('_')) // Skip internal settings
     .map(([key, setting]: [string, Setting]) => {
@@ -326,6 +329,9 @@ function categorizeSettings(worldSettings: WorldSettings): {
   requiredUnconfigured: [string, Setting][];
   optionalUnconfigured: [string, Setting][];
 } {
+  if (!worldSettings || typeof worldSettings !== 'object') {
+    return { configured: [], requiredUnconfigured: [], optionalUnconfigured: [] };
+  }
   const configured: [string, Setting][] = [];
   const requiredUnconfigured: [string, Setting][] = [];
   const optionalUnconfigured: [string, Setting][] = [];
