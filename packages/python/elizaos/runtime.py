@@ -771,6 +771,9 @@ class AgentRuntime(IAgentRuntime):
                     continue
 
                 options_obj = HandlerOptions()
+                valid = True
+                validated_params: dict[str, object] | None = None
+                errors: list[str] = []
 
                 if action.parameters:
                     params_raw = getattr(response.content, "params", None)
@@ -830,6 +833,28 @@ class AgentRuntime(IAgentRuntime):
                             action_params = ActionParameters()
                             action_params.values.CopyFrom(params_struct)
                             options_obj.parameters.CopyFrom(action_params)
+
+                # Ensure options_obj.parameters is always a plain dict for action
+                # handlers.  Benchmark (and many plugin) handlers call
+                # ``options.parameters.get("key")`` which only works on dicts,
+                # not on protobuf ActionParameters messages.
+                if validated_params:
+                    options_obj = type("_Opts", (), {
+                        "parameters": validated_params,
+                        "parameter_errors": getattr(options_obj, "parameter_errors", []),
+                    })()  # type: ignore[assignment]
+                elif hasattr(options_obj, "parameters"):
+                    try:
+                        pv = options_obj.parameters
+                        if hasattr(pv, "values") and hasattr(pv.values, "items"):
+                            # Proto ActionParameters -> convert Struct values to dict
+                            from google.protobuf.json_format import MessageToDict
+                            options_obj = type("_Opts", (), {
+                                "parameters": MessageToDict(pv.values),
+                                "parameter_errors": getattr(options_obj, "parameter_errors", []),
+                            })()  # type: ignore[assignment]
+                    except Exception:
+                        pass
 
                 result = await action.handler(
                     self,
