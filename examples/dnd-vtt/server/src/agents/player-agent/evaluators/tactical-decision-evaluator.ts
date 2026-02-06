@@ -5,6 +5,7 @@
 
 import type { Evaluator, IAgentRuntime, Memory, State } from '@elizaos/core';
 import type { CharacterSheet } from '../../../types';
+import { getHP } from '../../../types';
 
 export interface TacticalMetrics {
   situationalAwareness: number;  // 0-10: Considers battlefield state
@@ -28,10 +29,10 @@ export const tacticalDecisionEvaluator: Evaluator = {
   
   examples: [
     {
-      context: 'Fighter at low HP charges into group of enemies',
+      prompt: 'Fighter at low HP charges into group of enemies',
       messages: [
         {
-          user: 'player',
+          name: 'player',
           content: {
             text: 'I charge into the center of the enemies!',
           },
@@ -52,19 +53,20 @@ export const tacticalDecisionEvaluator: Evaluator = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State
-  ): Promise<TacticalMetrics | null> => {
+  ) => {
     const text = typeof message.content === 'string'
       ? message.content
       : message.content?.text;
     
-    if (!text) return null;
+    if (!text) return undefined;
     
-    const characterSheet = await runtime.getSetting('characterSheet') as CharacterSheet | null;
+    const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     const combatState = await runtime.getSetting('combatState');
     
-    if (!characterSheet) return null;
+    if (!characterSheet) return undefined;
     
-    const hpPercent = (characterSheet.hp.current / characterSheet.hp.max) * 100;
+    const hp = getHP(characterSheet);
+    const hpPercent = (hp.current / hp.max) * 100;
     
     const metrics: TacticalMetrics = {
       situationalAwareness: evaluateSituationalAwareness(text),
@@ -84,15 +86,14 @@ export const tacticalDecisionEvaluator: Evaluator = {
     
     // Emit warning if making very poor tactical decisions at low HP
     if (hpPercent <= 25 && metrics.riskAssessment < 4) {
-      await runtime.emit('tactical_warning', {
+      runtime.emitEvent?.('tactical_warning' as any, {
         issue: 'high_risk_at_low_hp',
         hpPercent,
         suggestion: 'Consider defensive actions, healing, or retreat',
         timestamp: new Date(),
       });
     }
-    
-    return metrics;
+    return undefined;
   },
 };
 
@@ -145,7 +146,8 @@ function evaluateResourceManagement(text: string, sheet: CharacterSheet): number
   
   // Healing item usage
   if (/\b(potion|heal)\b/i.test(lowerText)) {
-    const hpPercent = (sheet.hp.current / sheet.hp.max) * 100;
+    const sheetHp = getHP(sheet);
+    const hpPercent = (sheetHp.current / sheetHp.max) * 100;
     if (hpPercent <= 50) {
       score += 1; // Good use of healing
     } else if (hpPercent >= 90) {

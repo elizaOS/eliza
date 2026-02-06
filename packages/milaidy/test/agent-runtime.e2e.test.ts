@@ -519,13 +519,18 @@ describe("Agent Runtime E2E", () => {
         JSON.stringify({ agent: { name: "SubprocessAgent", bio: "test" } }),
       );
 
-      // Also create a minimal workspace dir so ensureAgentWorkspace doesn't
-      // need template files (they're not packaged in dev)
-      const subWorkspace = path.join(subHome, ".milaidy", "workspace");
-      fs.mkdirSync(subWorkspace, { recursive: true });
-      // Write minimal bootstrap files so startEliza doesn't try to load templates
-      for (const fname of ["AGENTS.md", "TOOLS.md", "IDENTITY.md", "USER.md", "HEARTBEAT.md", "BOOTSTRAP.md"]) {
-        fs.writeFileSync(path.join(subWorkspace, fname), `# ${fname}\nTest placeholder.`);
+      // startEliza() calls ensureAgentWorkspace({ ensureBootstrapFiles: true })
+      // which loads templates from docs/reference/templates/ relative to the package root.
+      // These templates don't exist in a dev checkout — create them so the subprocess
+      // can proceed past workspace bootstrap. This also proves the template loading
+      // path works when templates ARE present.
+      const templateDir = path.join(packageRoot, "docs", "reference", "templates");
+      const templateDirExisted = fs.existsSync(templateDir);
+      if (!templateDirExisted) {
+        fs.mkdirSync(templateDir, { recursive: true });
+        for (const fname of ["AGENTS.md", "TOOLS.md", "IDENTITY.md", "USER.md", "HEARTBEAT.md", "BOOTSTRAP.md"]) {
+          fs.writeFileSync(path.join(templateDir, fname), `# ${fname}\nTest placeholder for E2E.`);
+        }
       }
 
       // Build env: inherit everything, override HOME + PGLITE + XDG dirs
@@ -612,6 +617,12 @@ describe("Agent Runtime E2E", () => {
       // Cleanup
       try { fs.rmSync(subHome, { recursive: true, force: true }); } catch (err) {
         logger.warn(`[e2e] Subprocess cleanup: ${err instanceof Error ? err.message : err}`);
+      }
+      // Remove test-created templates only if we created them
+      if (!templateDirExisted) {
+        try { fs.rmSync(templateDir, { recursive: true, force: true }); } catch (err) {
+          logger.warn(`[e2e] Template cleanup: ${err instanceof Error ? err.message : err}`);
+        }
       }
     }, 180_000);
   });

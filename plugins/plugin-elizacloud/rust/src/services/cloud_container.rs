@@ -1,7 +1,7 @@
 //! CloudContainerService — Manages container lifecycle through ElizaCloud API.
 
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::info;
 
 use crate::cloud_api::CloudApiClient;
 use crate::cloud_types::{

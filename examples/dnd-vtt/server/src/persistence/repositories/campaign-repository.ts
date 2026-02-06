@@ -102,7 +102,7 @@ export class CampaignRepository {
     const campaign = await this.getById(campaignId);
     if (campaign) {
       await this.db().update(this.campaigns()).set({
-        sessionCount: campaign.sessionCount + 1,
+        sessionCount: (campaign.sessionCount ?? 0) + 1,
         updatedAt: new Date(),
       }).where(eq(this.campaigns().id, campaignId));
     }
@@ -139,7 +139,7 @@ export class CampaignRepository {
       const campaign = await this.getById(session.campaignId);
       if (campaign) {
         await this.db().update(this.campaigns()).set({
-          totalPlayTime: campaign.totalPlayTime + duration,
+          totalPlayTime: (campaign.totalPlayTime ?? 0) + duration,
           updatedAt: new Date(),
         }).where(eq(this.campaigns().id, session.campaignId));
       }
@@ -153,7 +153,7 @@ export class CampaignRepository {
     const campaign = await this.getById(campaignId);
     if (!campaign) return;
     await this.db().update(this.campaigns()).set({
-      sessionCount: campaign.sessionCount + 1,
+      sessionCount: (campaign.sessionCount ?? 0) + 1,
       updatedAt: new Date(),
     }).where(eq(this.campaigns().id, campaignId));
   }
@@ -162,7 +162,7 @@ export class CampaignRepository {
     const campaign = await this.getById(campaignId);
     if (!campaign) return;
     await this.db().update(this.campaigns()).set({
-      totalPlayTime: campaign.totalPlayTime + minutes,
+      totalPlayTime: (campaign.totalPlayTime ?? 0) + minutes,
       updatedAt: new Date(),
     }).where(eq(this.campaigns().id, campaignId));
   }
@@ -177,7 +177,7 @@ export class CampaignRepository {
     id: row.id,
     name: row.name,
     description: row.description || '',
-    dmAgentId: row.dmAgentId,
+    dmAgentId: row.dmAgentId ?? undefined,
     dmCharacterName: row.dmCharacterName || 'Dungeon Master',
     settings: row.settings as CampaignSettings,
     currentTime: row.currentTime as GameTime,
@@ -195,7 +195,7 @@ export class CampaignRepository {
     startedAt: row.startedAt,
     endedAt: row.endedAt ?? undefined,
     duration: row.duration ?? undefined,
-    startingLocationId: row.startingLocationId ?? undefined,
+    startingLocationId: row.startingLocationId ?? '',
     endingLocationId: row.endingLocationId ?? undefined,
     startingTime: row.startingTime as GameTime,
     endingTime: row.endingTime as GameTime | undefined,

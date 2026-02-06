@@ -56,7 +56,7 @@ def _extract_params(
         params = message_metadata["actionParams"]
         return params if isinstance(params, dict) else {}
     # Regex fallback from free-text
-    name_match = re.search(r'name[:\s]+["\']?([^"\',]+)["\']?', message_text, re.IGNORECASE)
+    name_match = re.search(r'name[:\s]+["\']?([^"\',\s]+)["\']?', message_text, re.IGNORECASE)
     project_match = re.search(
         r'project[:\s]+["\']?([^"\',\s]+)["\']?', message_text, re.IGNORECASE
     )

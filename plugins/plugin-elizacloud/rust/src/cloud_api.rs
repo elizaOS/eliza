@@ -6,10 +6,8 @@
 #![allow(missing_docs)]
 
 use reqwest::Client;
-use std::collections::HashMap;
 use tracing::debug;
 
-use crate::cloud_types::{CloudApiError, CloudApiErrorBody, InsufficientCreditsError};
 use crate::error::ElizaCloudError;
 
 /// HTTP client for the ElizaCloud REST API.

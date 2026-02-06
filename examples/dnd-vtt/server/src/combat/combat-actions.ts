@@ -558,7 +558,7 @@ export function executeGrapple(
       target,
       'Grappled',
       attacker.name,
-      { type: 'special', description: 'Until grapple is broken' }
+      { type: 'permanent' }
     );
   }
   
@@ -636,7 +636,7 @@ export function executeShove(
       target,
       'Prone',
       attacker.name,
-      { type: 'special', description: 'Until standing up' }
+      { type: 'permanent' }
     );
   }
   // If pushing, would need to update position

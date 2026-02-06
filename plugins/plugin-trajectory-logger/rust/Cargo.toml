@@ -20,3 +20,4 @@ uuid = { version = "1.19", features = ["v4", "serde"] }
 
 [dev-dependencies]
 pretty_assertions = "1.0"
+tempfile = "3"

@@ -1,6 +1,7 @@
 //! LINE service implementation for ElizaOS.
 
 use crate::types::*;
+use crate::webhook::{self, WebhookEvent};
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -277,6 +278,72 @@ impl LineService {
         }
 
         Ok(())
+    }
+
+    // Webhook support
+
+    /// Get the channel secret for webhook validation.
+    pub async fn get_channel_secret(&self) -> Option<String> {
+        self.settings
+            .read()
+            .await
+            .as_ref()
+            .map(|s| s.channel_secret.clone())
+    }
+
+    /// Validate a webhook request signature.
+    pub async fn validate_webhook_signature(&self, body: &[u8], signature: &str) -> bool {
+        match self.get_channel_secret().await {
+            Some(secret) => webhook::validate_signature(body, signature, &secret),
+            None => false,
+        }
+    }
+
+    /// Parse and handle webhook events from a raw body.
+    pub fn parse_webhook_events(
+        &self,
+        body: &serde_json::Value,
+    ) -> Vec<WebhookEvent> {
+        webhook::parse_webhook_body(body)
+    }
+
+    /// Handle parsed webhook events (logs each event type).
+    pub async fn handle_webhook_events(&self, events: &[WebhookEvent]) {
+        for event in events {
+            self.handle_webhook_event(event).await;
+        }
+    }
+
+    async fn handle_webhook_event(&self, event: &WebhookEvent) {
+        match event {
+            WebhookEvent::Follow(e) => {
+                debug!("Follow event from user: {:?}", e.source.user_id);
+            }
+            WebhookEvent::Unfollow(e) => {
+                debug!("Unfollow event from user: {:?}", e.source.user_id);
+            }
+            WebhookEvent::Join(e) => {
+                debug!(
+                    "Join event for: {:?}",
+                    e.source.group_id.as_ref().or(e.source.room_id.as_ref())
+                );
+            }
+            WebhookEvent::Leave(e) => {
+                debug!(
+                    "Leave event for: {:?}",
+                    e.source.group_id.as_ref().or(e.source.room_id.as_ref())
+                );
+            }
+            WebhookEvent::Postback(e) => {
+                debug!("Postback event: data={}", e.data);
+            }
+            WebhookEvent::Message(e) => {
+                debug!(
+                    "Message event: id={}, type={}",
+                    e.message_id, e.message_type
+                );
+            }
+        }
     }
 
     // Private methods

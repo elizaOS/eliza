@@ -62,6 +62,10 @@ describe("@milaidy/capacitor-camera", () => {
       await cam.setZoom({ zoom: z });
       expect((await cam.getSettings()).settings.zoom).toBe(z);
     });
+
+    it.each([-1, -Infinity, NaN, Infinity])("setZoom rejects invalid value %s", async (z) => {
+      await expect(cam.setZoom({ zoom: z })).rejects.toThrow(/invalid zoom/i);
+    });
   });
 
   // -- Direction inference --

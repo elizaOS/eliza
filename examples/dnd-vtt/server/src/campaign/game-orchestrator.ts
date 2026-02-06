@@ -116,10 +116,10 @@ export async function initializeGame(
   // Configure DM agent with session context
   await dmAgent.setSetting('sessionId', session.id);
   await dmAgent.setSetting('campaignId', campaignId);
-  await dmAgent.setSetting('campaignState', {
+  await dmAgent.setSetting('campaignState', JSON.stringify({
     currentTime: sessionState.currentTime,
     currentLocationId: sessionState.currentLocationId,
-  });
+  }));
   
   // Configure player agents
   for (const [characterId, agent] of playerAgents) {
@@ -487,10 +487,10 @@ async function processCombatAction(
           actorId: currentCombatant.id, actorName: currentCombatant.name,
           actionType: 'cast_spell', actionDescription: `Cast ${spellName} on ${target.name}`,
           targetIds: [target.id], targetNames: [target.name],
-          healing: hr.amountHealed, outcome: `Healed ${hr.amountHealed} HP`,
+          healing: hr.amount, outcome: `Healed ${hr.amount} HP`,
         });
-        response = `${currentCombatant.name} casts ${spellName} on ${target.name}, healing ${hr.amountHealed} HP!`;
-        broadcastCombat(state, { actorName: currentCombatant.name, description: response, healing: hr.amountHealed });
+        response = `${currentCombatant.name} casts ${spellName} on ${target.name}, healing ${hr.amount} HP!`;
+        broadcastCombat(state, { actorName: currentCombatant.name, description: response, healing: hr.amount });
       } else {
         // Try to apply registered spell effects (Shield, Bless, Sleep, etc.)
         const allTargets = target ? [target] : [];
@@ -749,9 +749,9 @@ async function generateDMResponse(
   const context = await buildGameContext(state, characterName);
 
   // If the DM agent has generateText (real AgentRuntime), use it
-  if (state.dmAgent && typeof (state.dmAgent as Record<string, unknown>).generateText === 'function') {
+  if (state.dmAgent && typeof (state.dmAgent as unknown as Record<string, unknown>).generateText === 'function') {
     const prompt = buildDMPrompt(context, characterName, action);
-    const result = await (state.dmAgent as { generateText: (input: string, opts?: Record<string, unknown>) => Promise<{ text: string }> })
+    const result = await (state.dmAgent as unknown as { generateText: (input: string, opts?: Record<string, unknown>) => Promise<{ text: string }> })
       .generateText(prompt, { maxTokens: 300, temperature: 0.8 });
     return result.text;
   }
@@ -896,7 +896,7 @@ export async function broadcastToPlayers(
   // Broadcast to agent runtimes
   for (const [characterId, agent] of state.playerAgents) {
     if (!excludeSet.has(characterId)) {
-      await agent.emit('dm_message', {
+      (agent as unknown as { emit: (event: string, data: unknown) => void }).emit('dm_message', {
         content: message,
         timestamp: new Date(),
       });

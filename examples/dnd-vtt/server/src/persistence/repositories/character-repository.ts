@@ -243,7 +243,7 @@ export class CharacterRepository {
     campaignId: row.campaignId,
     type: row.type as CharacterMemory['type'],
     content: row.content,
-    sessionId: row.sessionId ?? undefined,
+    sessionId: row.sessionId ?? '',
     gameTime: row.gameTime as GameTime,
     locationId: row.locationId ?? undefined,
     relatedEntityIds: (row.relatedEntityIds as string[]) || [],

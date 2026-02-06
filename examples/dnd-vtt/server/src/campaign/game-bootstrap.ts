@@ -95,7 +95,7 @@ export async function bootstrapGame(
     let sqlPlugin: Plugin | null = null;
     try {
       const sqlMod = await import('@elizaos/plugin-sql');
-      sqlPlugin = sqlMod.default ?? sqlMod.plugin;
+      sqlPlugin = sqlMod.default ?? (sqlMod as Record<string, Plugin>).plugin ?? null;
     } catch {
       console.log('⚠️  plugin-sql not available, DM agent will run without database adapter');
     }
@@ -151,7 +151,7 @@ export async function bootstrapGame(
   }
 
   gameState.dmAgent = dmAgent;
-  gameState.playerAgents = playerAgents as GameState['playerAgents'];
+  gameState.playerAgents = playerAgents as unknown as GameState['playerAgents'];
   gameState.sessionState = sessionState;
   gameState.phase = 'narration';
   gameState.lastUpdate = new Date();

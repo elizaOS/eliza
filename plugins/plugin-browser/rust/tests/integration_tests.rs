@@ -1,11 +1,25 @@
 //! Integration tests for browser plugin.
 
 use elizaos_browser::{
-    ActionResult, BrowserConfig, BrowserSession, CaptchaResult, CaptchaType, ErrorCode,
-    ExtractResult, NavigationResult, RateLimitConfig, RetryConfig, ScreenshotResult,
+    ActionResult, BrowserConfig, BrowserSession, BrowserService, CaptchaResult, CaptchaType,
+    ErrorCode, ExtractResult, NavigationResult, RateLimitConfig, RetryConfig, ScreenshotResult,
     SecurityConfig,
 };
+use elizaos_browser::actions::click::CLICK_ACTION_NAME;
+use elizaos_browser::actions::extract::EXTRACT_ACTION_NAME;
+use elizaos_browser::actions::navigate::NAVIGATE_ACTION_NAME;
+use elizaos_browser::actions::screenshot::SCREENSHOT_ACTION_NAME;
+use elizaos_browser::actions::select::SELECT_ACTION_NAME;
+use elizaos_browser::actions::type_text::TYPE_ACTION_NAME;
+use elizaos_browser::providers::browser_state::{
+    get_browser_state, BROWSER_STATE_DESCRIPTION, BROWSER_STATE_NAME,
+};
+use elizaos_browser::{
+    browser_click, browser_extract, browser_navigate, browser_screenshot, browser_select,
+    browser_type,
+};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[test]
 fn test_browser_config_default() {
@@ -240,4 +254,184 @@ fn test_generate_captcha_injection_script_none() {
     let script = generate_captcha_injection_script(&CaptchaType::None, "token");
 
     assert!(script.is_empty());
+}
+
+// ===========================================================================
+// Action handler integration tests (with uninitialized service as mock)
+// ===========================================================================
+
+/// Helper: create an uninitialized BrowserService wrapped in Arc.
+/// Because the service is never started, session creation will fail with
+/// "Browser service not initialized", which lets us test error paths that
+/// occur before or during session acquisition.
+fn uninitialized_service() -> Arc<BrowserService> {
+    Arc::new(BrowserService::new(BrowserConfig::default()))
+}
+
+// ---- BROWSER_NAVIGATE ----
+
+#[tokio::test]
+async fn test_navigate_missing_url() {
+    let svc = uninitialized_service();
+    let result = browser_navigate(svc, "please navigate somewhere nice").await;
+    assert!(!result.success);
+    assert!(result.error.is_some());
+}
+
+#[tokio::test]
+async fn test_navigate_empty_message() {
+    let svc = uninitialized_service();
+    let result = browser_navigate(svc, "").await;
+    assert!(!result.success);
+    assert!(result.error.is_some());
+}
+
+#[tokio::test]
+async fn test_navigate_blocked_url() {
+    let svc = uninitialized_service();
+    let result = browser_navigate(svc, "Navigate to https://malware.com/page").await;
+    assert!(!result.success);
+    assert!(result.error.is_some());
+}
+
+#[tokio::test]
+async fn test_navigate_valid_url_uninitialized_service() {
+    // URL passes extraction + security, but session creation fails
+    let svc = uninitialized_service();
+    let result = browser_navigate(svc, "Navigate to https://example.com").await;
+    assert!(!result.success);
+    assert!(result.error.is_some());
+}
+
+// ---- BROWSER_CLICK ----
+
+#[tokio::test]
+async fn test_click_uninitialized_service() {
+    let svc = uninitialized_service();
+    let result = browser_click(svc, "Click on the submit button").await;
+    assert!(!result.success);
+    assert!(result.error.is_some());
+}
+
+// ---- BROWSER_TYPE ----
+
+#[tokio::test]
+async fn test_type_uninitialized_service() {
+    let svc = uninitialized_service();
+    let result = browser_type(svc, r#"Type "hello" in the search box"#).await;
+    assert!(!result.success);
+    assert!(result.error.is_some());
+}
+
+// ---- BROWSER_SELECT ----
+
+#[tokio::test]
+async fn test_select_uninitialized_service() {
+    let svc = uninitialized_service();
+    let result = browser_select(svc, r#"Select "USA" from the country dropdown"#).await;
+    assert!(!result.success);
+    assert!(result.error.is_some());
+}
+
+// ---- BROWSER_EXTRACT ----
+
+#[tokio::test]
+async fn test_extract_uninitialized_service() {
+    let svc = uninitialized_service();
+    let result = browser_extract(svc, "Extract the main heading").await;
+    assert!(!result.success);
+    assert!(result.error.is_some());
+}
+
+// ---- BROWSER_SCREENSHOT ----
+
+#[tokio::test]
+async fn test_screenshot_uninitialized_service() {
+    let svc = uninitialized_service();
+    let result = browser_screenshot(svc, "Take a screenshot").await;
+    assert!(!result.success);
+    assert!(result.error.is_some());
+}
+
+// ---- BROWSER_STATE provider ----
+
+#[tokio::test]
+async fn test_provider_no_session() {
+    let svc = uninitialized_service();
+    let result = get_browser_state(svc).await;
+    assert_eq!(result.text, "No active browser session");
+    assert_eq!(
+        result.values.get("hasSession"),
+        Some(&serde_json::json!(false))
+    );
+    assert!(result.data.is_empty());
+}
+
+// ---- Action name constants ----
+
+#[test]
+fn test_navigate_action_name() {
+    assert_eq!(NAVIGATE_ACTION_NAME, "BROWSER_NAVIGATE");
+}
+
+#[test]
+fn test_click_action_name() {
+    assert_eq!(CLICK_ACTION_NAME, "BROWSER_CLICK");
+}
+
+#[test]
+fn test_type_action_name() {
+    assert_eq!(TYPE_ACTION_NAME, "BROWSER_TYPE");
+}
+
+#[test]
+fn test_select_action_name() {
+    assert_eq!(SELECT_ACTION_NAME, "BROWSER_SELECT");
+}
+
+#[test]
+fn test_extract_action_name() {
+    assert_eq!(EXTRACT_ACTION_NAME, "BROWSER_EXTRACT");
+}
+
+#[test]
+fn test_screenshot_action_name() {
+    assert_eq!(SCREENSHOT_ACTION_NAME, "BROWSER_SCREENSHOT");
+}
+
+#[test]
+fn test_provider_state_name() {
+    assert_eq!(BROWSER_STATE_NAME, "BROWSER_STATE");
+}
+
+#[test]
+fn test_provider_state_description() {
+    assert!(!BROWSER_STATE_DESCRIPTION.is_empty());
+}
+
+// ---- ActionResult helpers ----
+
+#[test]
+fn test_action_result_success_has_data() {
+    let mut data = HashMap::new();
+    data.insert(
+        "actionName".to_string(),
+        serde_json::json!("BROWSER_NAVIGATE"),
+    );
+    data.insert("url".to_string(), serde_json::json!("https://example.com"));
+
+    let result = ActionResult::success(data);
+    assert!(result.success);
+    assert!(result.error.is_none());
+
+    let d = result.data.unwrap();
+    assert_eq!(d.get("url").unwrap(), &serde_json::json!("https://example.com"));
+}
+
+#[test]
+fn test_action_result_failure_has_error() {
+    let result = ActionResult::failure("service not available".to_string());
+    assert!(!result.success);
+    assert!(result.data.is_none());
+    assert_eq!(result.error.as_deref(), Some("service not available"));
 }

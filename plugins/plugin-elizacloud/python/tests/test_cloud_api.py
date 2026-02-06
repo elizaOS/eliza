@@ -67,8 +67,10 @@ class TestCloudApiClient:
 
         assert result == {"success": True, "data": []}
         mock_instance.request.assert_called_once()
-        call_kwargs = mock_instance.request.call_args
-        assert call_kwargs[1]["method"] == "GET" or call_kwargs[0][0] == "GET"
+        # Verify the method was GET (passed as positional arg)
+        call_args = mock_instance.request.call_args
+        all_args = list(call_args.args) + list(call_args.kwargs.values())
+        assert "GET" in all_args or call_args.kwargs.get("method") == "GET"
 
     @pytest.mark.asyncio
     async def test_post_sends_json_body(self) -> None:

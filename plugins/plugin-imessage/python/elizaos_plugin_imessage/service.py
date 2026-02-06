@@ -420,13 +420,108 @@ class IMessageService:
         return True
 
     def _parse_messages_result(self, result: str) -> list[IMessageMessage]:
-        """Parse AppleScript messages result."""
-        # Simplified parser - would need more robust implementation
-        messages: list[IMessageMessage] = []
-        return messages
+        """Parse AppleScript messages result (tab-delimited)."""
+        return parse_messages_from_applescript(result)
 
     def _parse_chats_result(self, result: str) -> list[IMessageChat]:
-        """Parse AppleScript chats result."""
-        # Simplified parser - would need more robust implementation
-        chats: list[IMessageChat] = []
+        """Parse AppleScript chats result (tab-delimited)."""
+        return parse_chats_from_applescript(result)
+
+
+def parse_messages_from_applescript(result: str) -> list[IMessageMessage]:
+    """Parse tab-delimited AppleScript messages output.
+
+    Expected format per line: "id\\ttext\\tdate_sent\\tis_from_me\\tchat_identifier\\tsender"
+    """
+    messages: list[IMessageMessage] = []
+    if not result or not result.strip():
+        return messages
+
+    for line in result.split("\n"):
+        trimmed = line.strip()
+        if not trimmed:
+            continue
+
+        fields = trimmed.split("\t")
+        if len(fields) < 6:
+            continue
+
+        msg_id = fields[0]
+        text = fields[1]
+        date_sent = fields[2]
+        is_from_me_str = fields[3]
+        chat_identifier = fields[4]
+        sender = fields[5]
+
+        is_from_me = is_from_me_str in ("1", "true", "True")
+
+        # Parse timestamp: try int first, then ISO format, fallback to 0
+        timestamp = 0
+        try:
+            timestamp = int(date_sent)
+        except (ValueError, TypeError):
+            try:
+                from datetime import datetime, timezone
+
+                dt = datetime.fromisoformat(date_sent)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                timestamp = int(dt.timestamp() * 1000)
+            except (ValueError, TypeError):
+                timestamp = 0
+
+        messages.append(
+            IMessageMessage(
+                id=msg_id or "",
+                text=text or "",
+                handle=sender or "",
+                chat_id=chat_identifier or "",
+                timestamp=timestamp,
+                is_from_me=is_from_me,
+                has_attachments=False,
+                attachment_paths=[],
+            )
+        )
+
+    return messages
+
+
+def parse_chats_from_applescript(result: str) -> list[IMessageChat]:
+    """Parse tab-delimited AppleScript chats output.
+
+    Expected format per line: "chat_identifier\\tdisplay_name\\tparticipant_count\\tlast_message_date"
+    """
+    chats: list[IMessageChat] = []
+    if not result or not result.strip():
         return chats
+
+    for line in result.split("\n"):
+        trimmed = line.strip()
+        if not trimmed:
+            continue
+
+        fields = trimmed.split("\t")
+        if len(fields) < 4:
+            continue
+
+        chat_identifier = fields[0]
+        display_name = fields[1]
+        participant_count_str = fields[2]
+
+        try:
+            participant_count = int(participant_count_str)
+        except (ValueError, TypeError):
+            participant_count = 0
+
+        chat_type = "group" if participant_count > 1 else "direct"
+
+        chats.append(
+            IMessageChat(
+                chat_id=chat_identifier or "",
+                chat_type=chat_type,
+                display_name=display_name if display_name else None,
+                participants=[],
+            )
+        )
+
+    return chats

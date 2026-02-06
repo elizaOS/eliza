@@ -66,7 +66,7 @@ export const castSpellAction: Action = {
     state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ) => {
     const params = (options ?? {}) as unknown as CastSpellParams;
     const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     
@@ -77,7 +77,7 @@ export const castSpellAction: Action = {
           type: 'error',
         });
       }
-      return;
+      return undefined;
     }
     
     // Find the spell in known spells
@@ -92,7 +92,7 @@ export const castSpellAction: Action = {
           type: 'error',
         });
       }
-      return;
+      return undefined;
     }
     
     // Determine spell slot level
@@ -101,13 +101,13 @@ export const castSpellAction: Action = {
     // Check cantrips (level 0)
     if (spell.level === 0) {
       await castCantrip(runtime, characterSheet, spell, params.targetDescription, callback);
-      return;
+      return undefined;
     }
     
     // Check ritual casting
     if (params.isRitual && spell.ritual) {
       await castRitual(runtime, characterSheet, spell, params.targetDescription, callback);
-      return;
+      return undefined;
     }
     
     // Check spell slot availability
@@ -118,11 +118,12 @@ export const castSpellAction: Action = {
           type: 'error',
         });
       }
-      return;
+      return undefined;
     }
     
     // Cast the spell
     await castLeveledSpell(runtime, characterSheet, spell, castLevel, params.targetDescription, callback);
+    return undefined;
   },
 };
 

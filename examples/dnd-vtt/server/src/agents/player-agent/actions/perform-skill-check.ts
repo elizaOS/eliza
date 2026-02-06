@@ -11,6 +11,7 @@ import type {
   HandlerCallback,
 } from '@elizaos/core';
 import type { CharacterSheet, SkillName, AbilityName } from '../../../types';
+import { getAbilityMod } from '../../../types';
 import { rollD20, rollWithAdvantage, rollWithDisadvantage } from '../../../dice';
 import { makeSkillCheck } from '../../../rules';
 
@@ -37,14 +38,14 @@ export const performSkillCheckAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'Make a Perception check.',
           action: 'PERFORM_SKILL_CHECK',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'I scan the area carefully, looking for anything out of place...\n\n🎲 **Perception Check:** 15 + 4 = **19**',
         },
@@ -60,12 +61,12 @@ export const performSkillCheckAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    options: Record<string, unknown>,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
-    const params = options as SkillCheckParams;
-    const characterSheet = await runtime.getSetting('characterSheet') as CharacterSheet | null;
+  ) => {
+    const params = options as unknown as SkillCheckParams;
+    const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     
     if (!characterSheet) {
       if (callback) {
@@ -74,7 +75,7 @@ export const performSkillCheckAction: Action = {
           type: 'error',
         });
       }
-      return false;
+      return undefined;
     }
     
     // Determine the skill/ability being checked
@@ -82,7 +83,7 @@ export const performSkillCheckAction: Action = {
     const ability = params.ability || (skill ? getAbilityForSkill(skill) : 'dexterity');
     
     // Get the modifier
-    let modifier = characterSheet.abilities[ability]?.modifier || 0;
+    let modifier = getAbilityMod(characterSheet.abilities[ability]);
     
     if (skill && characterSheet.skills?.[skill] !== undefined) {
       modifier = characterSheet.skills[skill];
@@ -91,7 +92,7 @@ export const performSkillCheckAction: Action = {
     // Check for expertise
     const hasExpertise = characterSheet.expertise?.includes(skill as SkillName);
     if (hasExpertise) {
-      modifier += characterSheet.proficiencyBonus; // Expertise doubles proficiency
+      modifier += characterSheet.proficiencyBonus ?? 0; // Expertise doubles proficiency
     }
     
     // Roll the check
@@ -151,7 +152,7 @@ export const performSkillCheckAction: Action = {
     }
     
     // Emit roll result
-    await runtime.emit('roll_completed', {
+    runtime.emitEvent?.('roll_completed' as any, {
       characterId: characterSheet.id,
       characterName: characterSheet.name,
       rollType: skill ? 'skill_check' : 'ability_check',
@@ -164,14 +165,14 @@ export const performSkillCheckAction: Action = {
       timestamp: new Date(),
     });
     
-    return true;
+    return undefined;
   },
 };
 
 function getAbilityForSkill(skill: SkillName): AbilityName {
   const skillAbilities: Record<SkillName, AbilityName> = {
     acrobatics: 'dexterity',
-    'animal handling': 'wisdom',
+    animalHandling: 'wisdom',
     arcana: 'intelligence',
     athletics: 'strength',
     deception: 'charisma',
@@ -185,7 +186,7 @@ function getAbilityForSkill(skill: SkillName): AbilityName {
     performance: 'charisma',
     persuasion: 'charisma',
     religion: 'intelligence',
-    'sleight of hand': 'dexterity',
+    sleightOfHand: 'dexterity',
     stealth: 'dexterity',
     survival: 'wisdom',
   };

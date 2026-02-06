@@ -31,10 +31,10 @@ export const inCharacterEvaluator: Evaluator = {
   
   examples: [
     {
-      context: 'Chaotic character makes a careful, methodical plan',
+      prompt: 'Chaotic character makes a careful, methodical plan',
       messages: [
         {
-          user: 'player',
+          name: 'player',
           content: {
             text: 'I carefully analyze the situation and create a detailed 10-step plan.',
           },
@@ -53,20 +53,20 @@ export const inCharacterEvaluator: Evaluator = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State
-  ): Promise<InCharacterMetrics | null> => {
+  ) => {
     const text = typeof message.content === 'string'
       ? message.content
       : message.content?.text;
     
     if (!text || text.length < 10) {
-      return null;
+      return undefined;
     }
     
     const characterSheet = await runtime.getSetting('characterSheet') as CharacterSheet | null;
     const personality = await runtime.getSetting('personality') as { archetype?: PersonalityArchetype } | null;
     
     if (!characterSheet) {
-      return null;
+      return undefined;
     }
     
     const metrics: InCharacterMetrics = {
@@ -130,22 +130,22 @@ export const inCharacterEvaluator: Evaluator = {
     metrics.overallScore = Math.max(0, Math.min(10, Math.round(overall * 10) / 10));
     
     // Store for tracking
-    const history = await runtime.getSetting('inCharacterHistory') as InCharacterMetrics[] || [];
+    const historyRaw = await runtime.getSetting('inCharacterHistory');
+    const history = (historyRaw ? JSON.parse(historyRaw as string) : []) as InCharacterMetrics[];
     history.push(metrics);
     if (history.length > 20) history.shift();
-    await runtime.setSetting('inCharacterHistory', history);
+    await runtime.setSetting('inCharacterHistory', JSON.stringify(history));
     
     // Warn if score is low
     if (metrics.overallScore < 5) {
-      await runtime.emit('roleplay_warning', {
+      runtime.emitEvent?.('roleplay_warning' as any, {
         issue: 'low_in_character_score',
         score: metrics.overallScore,
         suggestions: generateSuggestions(metrics),
         timestamp: new Date(),
       });
     }
-    
-    return metrics;
+    return undefined;
   },
 };
 

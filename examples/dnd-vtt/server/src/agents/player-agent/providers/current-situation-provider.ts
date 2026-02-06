@@ -12,7 +12,7 @@ export const currentSituationProvider: Provider = {
   name: 'currentSituation',
   description: 'Provides context about where the character is and what\'s happening',
   
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<string> => {
+  get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     const campaignState = await runtime.getSetting('campaignState') as {
       currentTime?: GameTime;
       currentLocationId?: string;
@@ -20,7 +20,7 @@ export const currentSituationProvider: Provider = {
     } | null;
     
     if (!campaignState) {
-      return 'The situation is unclear.';
+      return { text: 'The situation is unclear.' };
     }
     
     let context = `## Current Situation\n\n`;
@@ -44,8 +44,8 @@ export const currentSituationProvider: Provider = {
           context += '\n';
           
           // Danger level
-          if (location.dangerLevel > 2) {
-            context += `⚠️ **Danger Level:** ${location.dangerLevel}/5\n`;
+          if ((location.dangerLevel ?? 0) > 2) {
+            context += `⚠️ **Danger Level:** ${location.dangerLevel ?? 0}/5\n`;
           }
         }
       } catch (error) {
@@ -62,12 +62,12 @@ export const currentSituationProvider: Provider = {
     }
     
     // Check for combat state
-    const combatState = await runtime.getSetting('combatState');
-    if (combatState && typeof combatState === 'object' && 'isActive' in combatState && combatState.isActive) {
+    const combatState = await runtime.getSetting('combatState') as unknown as { isActive?: boolean } | null;
+    if (combatState?.isActive) {
       context += `\n⚔️ **COMBAT IS ACTIVE**\n`;
     }
     
-    return context;
+    return { text: context };
   },
 };
 

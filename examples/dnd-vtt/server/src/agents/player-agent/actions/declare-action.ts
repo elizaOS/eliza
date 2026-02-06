@@ -3,12 +3,13 @@
  * Primary action for player characters to state their intended action
  */
 
-import type {
-  Action,
-  IAgentRuntime,
-  Memory,
-  State,
-  HandlerCallback,
+import {
+  type Action,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type HandlerCallback,
+  ModelType,
 } from '@elizaos/core';
 import type { CharacterSheet } from '../../../types';
 
@@ -89,7 +90,7 @@ export const declareActionAction: Action = {
     state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ) => {
     // Get character context
     const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     const personality = await runtime.getSetting('personality');
@@ -102,7 +103,7 @@ export const declareActionAction: Action = {
           type: 'error',
         });
       }
-      return false;
+      return undefined;
     }
     
     // Analyze the situation to determine best action
@@ -111,14 +112,13 @@ export const declareActionAction: Action = {
     // Generate the character's response
     const prompt = buildActionPrompt(characterSheet, personality, situationContext, message);
     
-    const response = await runtime.useModel({
+    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt,
-      context: state,
       maxTokens: 400,
     });
     
     // Parse the action from the response
-    const responseText = (response as any)?.text ?? String(response ?? '');
+    const responseText = String(response ?? '');
     const declaredAction = parseActionFromResponse(responseText);
     
     if (callback) {
@@ -128,7 +128,8 @@ export const declareActionAction: Action = {
         metadata: {
           characterId: characterSheet.id,
           characterName: characterSheet.name,
-          action: declaredAction,
+          actionCategory: declaredAction.category,
+          actionDescription: declaredAction.description,
           inCombat: Boolean(combatState?.isActive),
         },
       });
@@ -143,7 +144,7 @@ export const declareActionAction: Action = {
       timestamp: new Date(),
     });
     
-    return true;
+    return undefined;
   },
 };
 

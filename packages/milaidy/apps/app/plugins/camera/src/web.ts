@@ -420,6 +420,9 @@ export class CameraWeb extends WebPlugin {
   }
 
   async setZoom(options: { zoom: number }): Promise<void> {
+    if (!Number.isFinite(options.zoom) || options.zoom < 0) {
+      throw new Error(`Invalid zoom value: ${options.zoom}. Must be a non-negative finite number.`);
+    }
     await this.applyZoom(options.zoom);
     this.currentSettings.zoom = options.zoom;
   }

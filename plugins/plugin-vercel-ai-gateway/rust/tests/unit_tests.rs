@@ -8,8 +8,8 @@ use elizaos_plugin_gateway::{
     ImageGenerationParams, ImageGenerationResult, TextGenerationParams,
 };
 use elizaos_plugin_gateway::types::{
-    ChatCompletionChoice, ChatCompletionResponse, ChatMessage, EmbeddingData, EmbeddingResponse,
-    ImageData, ImageGenerationResponse, ImageQuality, ImageSize, ImageStyle,
+    ChatCompletionResponse, ChatMessage, EmbeddingResponse,
+    ImageGenerationResponse, ImageQuality, ImageSize, ImageStyle,
 };
 use elizaos_plugin_gateway::config::model_supports_temperature;
 

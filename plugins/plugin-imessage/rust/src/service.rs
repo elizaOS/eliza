@@ -4,7 +4,8 @@ use crate::config::IMessageConfig;
 use crate::error::{IMessageError, Result};
 use crate::types::{
     format_phone_number, is_phone_number, split_message_for_imessage, IMessageChat,
-    IMessageMessage, IMessageSendOptions, IMessageSendResult, MAX_IMESSAGE_MESSAGE_LENGTH,
+    IMessageChatType, IMessageMessage, IMessageSendOptions, IMessageSendResult,
+    MAX_IMESSAGE_MESSAGE_LENGTH,
 };
 use crate::IMESSAGE_SERVICE_NAME;
 use async_trait::async_trait;
@@ -266,16 +267,110 @@ impl IMessageService {
         }
     }
 
-    fn parse_messages_result(&self, _result: &str) -> Vec<IMessageMessage> {
-        // Parse AppleScript list result
-        // This is a simplified implementation - real parsing would be more robust
-        Vec::new()
+    fn parse_messages_result(&self, result: &str) -> Vec<IMessageMessage> {
+        parse_messages_from_applescript(result)
     }
 
-    fn parse_chats_result(&self, _result: &str) -> Vec<IMessageChat> {
-        // Parse AppleScript list result
-        Vec::new()
+    fn parse_chats_result(&self, result: &str) -> Vec<IMessageChat> {
+        parse_chats_from_applescript(result)
     }
+}
+
+/// Parse tab-delimited AppleScript messages output.
+///
+/// Expected format per line: `"id\ttext\tdate_sent\tis_from_me\tchat_identifier\tsender"`
+pub fn parse_messages_from_applescript(result: &str) -> Vec<IMessageMessage> {
+    let mut messages = Vec::new();
+    let trimmed = result.trim();
+    if trimmed.is_empty() {
+        return messages;
+    }
+
+    for line in trimmed.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let fields: Vec<&str> = line.split('\t').collect();
+        if fields.len() < 6 {
+            continue;
+        }
+
+        let id = fields[0].to_string();
+        let text = fields[1].to_string();
+        let date_sent = fields[2];
+        let is_from_me_str = fields[3];
+        let chat_identifier = fields[4].to_string();
+        let sender = fields[5].to_string();
+
+        let is_from_me =
+            is_from_me_str == "1" || is_from_me_str.eq_ignore_ascii_case("true");
+
+        let timestamp = date_sent.parse::<i64>().unwrap_or(0);
+
+        messages.push(IMessageMessage {
+            id,
+            text,
+            handle: sender,
+            chat_id: chat_identifier,
+            timestamp,
+            is_from_me,
+            has_attachments: false,
+            attachment_paths: Vec::new(),
+        });
+    }
+
+    messages
+}
+
+/// Parse tab-delimited AppleScript chats output.
+///
+/// Expected format per line: `"chat_identifier\tdisplay_name\tparticipant_count\tlast_message_date"`
+pub fn parse_chats_from_applescript(result: &str) -> Vec<IMessageChat> {
+    let mut chats = Vec::new();
+    let trimmed = result.trim();
+    if trimmed.is_empty() {
+        return chats;
+    }
+
+    for line in trimmed.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let fields: Vec<&str> = line.split('\t').collect();
+        if fields.len() < 4 {
+            continue;
+        }
+
+        let chat_identifier = fields[0].to_string();
+        let display_name_raw = fields[1];
+        let participant_count_str = fields[2];
+
+        let participant_count: usize = participant_count_str.parse().unwrap_or(0);
+        let chat_type = if participant_count > 1 {
+            IMessageChatType::Group
+        } else {
+            IMessageChatType::Direct
+        };
+
+        let display_name = if display_name_raw.is_empty() {
+            None
+        } else {
+            Some(display_name_raw.to_string())
+        };
+
+        chats.push(IMessageChat {
+            chat_id: chat_identifier,
+            chat_type,
+            display_name,
+            participants: Vec::new(),
+        });
+    }
+
+    chats
 }
 
 impl Default for IMessageService {

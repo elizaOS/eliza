@@ -255,6 +255,105 @@ class LineService:
         """Get current settings."""
         return self.settings
 
+    def create_webhook_handler(self):
+        """Create a WebhookHandler for processing webhook events.
+
+        Returns:
+            A WebhookHandler configured with this service's channel secret.
+
+        Raises:
+            LineConfigurationError: If the service is not configured.
+        """
+        from .webhook import WebhookHandler
+
+        if not self.settings:
+            raise LineConfigurationError("Service not configured")
+        return WebhookHandler(self.settings.channel_secret)
+
+    async def handle_webhook_events(self, events) -> None:
+        """Handle a list of parsed webhook events, dispatching to runtime."""
+        for event in events:
+            await self._handle_webhook_event(event)
+
+    async def _handle_webhook_event(self, event) -> None:
+        """Handle a single webhook event, emitting runtime events."""
+        from .webhook import (
+            FollowEvent,
+            JoinEvent,
+            LeaveEvent,
+            MessageEvent,
+            PostbackEvent,
+            UnfollowEvent,
+        )
+
+        if not self.runtime:
+            return
+
+        emit = getattr(self.runtime, "emit", None)
+        if not emit:
+            return
+
+        if isinstance(event, FollowEvent):
+            emit(LineEventTypes.FOLLOW, {
+                "user_id": event.source.user_id,
+                "timestamp": event.timestamp,
+            })
+        elif isinstance(event, UnfollowEvent):
+            emit(LineEventTypes.UNFOLLOW, {
+                "user_id": event.source.user_id,
+                "timestamp": event.timestamp,
+            })
+        elif isinstance(event, JoinEvent):
+            emit(LineEventTypes.JOIN_GROUP, {
+                "group_id": event.source.group_id or event.source.room_id,
+                "type": event.source.type,
+                "timestamp": event.timestamp,
+            })
+        elif isinstance(event, LeaveEvent):
+            emit(LineEventTypes.LEAVE_GROUP, {
+                "group_id": event.source.group_id or event.source.room_id,
+                "type": event.source.type,
+                "timestamp": event.timestamp,
+            })
+        elif isinstance(event, PostbackEvent):
+            emit(LineEventTypes.POSTBACK, {
+                "user_id": event.source.user_id,
+                "data": event.data,
+                "params": event.params,
+                "timestamp": event.timestamp,
+            })
+        elif isinstance(event, MessageEvent):
+            await self._handle_message_webhook_event(event)
+
+    async def _handle_message_webhook_event(self, event) -> None:
+        """Handle a message webhook event."""
+        if not self.runtime:
+            return
+
+        message = LineMessage(
+            id=event.message_id,
+            message_type=event.message_type,
+            user_id=event.source.user_id or "",
+            timestamp=event.timestamp,
+            text=event.text,
+            group_id=event.source.group_id,
+            room_id=event.source.room_id,
+            reply_token=event.reply_token,
+        )
+
+        emit = getattr(self.runtime, "emit", None)
+        if emit:
+            emit(LineEventTypes.MESSAGE_RECEIVED, {
+                "message": message,
+                "source": {
+                    "type": event.source.type,
+                    "userId": event.source.user_id,
+                    "groupId": event.source.group_id,
+                    "roomId": event.source.room_id,
+                },
+                "reply_token": event.reply_token,
+            })
+
     # Private methods
 
     def _load_settings(self) -> LineSettings:

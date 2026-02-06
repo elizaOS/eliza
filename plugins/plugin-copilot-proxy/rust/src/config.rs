@@ -233,4 +233,72 @@ mod tests {
         assert_eq!(config.large_model, DEFAULT_LARGE_MODEL);
         assert!(config.enabled);
     }
+
+    #[test]
+    fn test_builder_methods() {
+        let config = CopilotProxyConfig::new()
+            .small_model("claude-haiku-4.5")
+            .large_model("claude-opus-4.5")
+            .enabled(false)
+            .timeout_secs(30)
+            .max_tokens(4096)
+            .context_window(64000);
+
+        assert_eq!(config.small_model, "claude-haiku-4.5");
+        assert_eq!(config.large_model, "claude-opus-4.5");
+        assert!(!config.enabled);
+        assert_eq!(config.timeout_secs, 30);
+        assert_eq!(config.max_tokens, 4096);
+        assert_eq!(config.context_window, 64000);
+    }
+
+    #[test]
+    fn test_validate_rejects_empty_base_url() {
+        let config = CopilotProxyConfig {
+            base_url: "".to_string(),
+            ..CopilotProxyConfig::new()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_rejects_empty_small_model() {
+        let config = CopilotProxyConfig {
+            small_model: "".to_string(),
+            ..CopilotProxyConfig::new()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_rejects_empty_large_model() {
+        let config = CopilotProxyConfig {
+            large_model: "".to_string(),
+            ..CopilotProxyConfig::new()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_rejects_invalid_url() {
+        let config = CopilotProxyConfig {
+            base_url: "not a url".to_string(),
+            ..CopilotProxyConfig::new()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_passes_for_valid_config() {
+        let config = CopilotProxyConfig::new();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_normalize_strips_multiple_trailing_slashes() {
+        assert_eq!(
+            normalize_base_url("http://localhost:3000///"),
+            "http://localhost:3000/v1"
+        );
+    }
 }

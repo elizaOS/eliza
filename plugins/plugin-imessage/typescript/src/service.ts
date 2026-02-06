@@ -18,6 +18,7 @@ import {
   type IIMessageService,
   IMESSAGE_SERVICE_NAME,
   type IMessageChat,
+  type IMessageChatType,
   IMessageCliError,
   IMessageConfigurationError,
   IMessageEventTypes,
@@ -488,18 +489,99 @@ export class IMessageService extends Service implements IIMessageService {
     return true;
   }
 
-  private parseMessagesResult(_result: string): IMessageMessage[] {
-    // Parse AppleScript list result
-    // This is a simplified parser - real implementation would be more robust
-    const messages: IMessageMessage[] = [];
-    // Parse logic would go here based on actual AppleScript output format
+  private parseMessagesResult(result: string): IMessageMessage[] {
+    return parseMessagesFromAppleScript(result);
+  }
+
+  private parseChatsResult(result: string): IMessageChat[] {
+    return parseChatsFromAppleScript(result);
+  }
+}
+
+/**
+ * Parse tab-delimited AppleScript messages output.
+ * Expected format per line: "id\ttext\tdate_sent\tis_from_me\tchat_identifier\tsender"
+ */
+export function parseMessagesFromAppleScript(
+  result: string,
+): IMessageMessage[] {
+  const messages: IMessageMessage[] = [];
+  if (!result || !result.trim()) {
     return messages;
   }
 
-  private parseChatsResult(_result: string): IMessageChat[] {
-    // Parse AppleScript list result
-    const chats: IMessageChat[] = [];
-    // Parse logic would go here based on actual AppleScript output format
+  for (const line of result.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    const fields = trimmed.split("\t");
+    if (fields.length < 6) {
+      continue;
+    }
+
+    const [id, text, dateSent, isFromMeStr, chatIdentifier, sender] = fields;
+
+    const isFromMe =
+      isFromMeStr === "1" || isFromMeStr.toLowerCase() === "true";
+
+    let timestamp: number;
+    const parsed = Number(dateSent);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      timestamp = parsed;
+    } else {
+      const dateObj = new Date(dateSent);
+      timestamp = Number.isNaN(dateObj.getTime()) ? 0 : dateObj.getTime();
+    }
+
+    messages.push({
+      id: id || "",
+      text: text || "",
+      handle: sender || "",
+      chatId: chatIdentifier || "",
+      timestamp,
+      isFromMe,
+      hasAttachments: false,
+    });
+  }
+
+  return messages;
+}
+
+/**
+ * Parse tab-delimited AppleScript chats output.
+ * Expected format per line: "chat_identifier\tdisplay_name\tparticipant_count\tlast_message_date"
+ */
+export function parseChatsFromAppleScript(result: string): IMessageChat[] {
+  const chats: IMessageChat[] = [];
+  if (!result || !result.trim()) {
     return chats;
   }
+
+  for (const line of result.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    const fields = trimmed.split("\t");
+    if (fields.length < 4) {
+      continue;
+    }
+
+    const [chatIdentifier, displayName, participantCountStr] = fields;
+
+    const participantCount = Number(participantCountStr) || 0;
+    const chatType: IMessageChatType = participantCount > 1 ? "group" : "direct";
+
+    chats.push({
+      chatId: chatIdentifier || "",
+      chatType,
+      displayName: displayName || undefined,
+      participants: [],
+    });
+  }
+
+  return chats;
 }

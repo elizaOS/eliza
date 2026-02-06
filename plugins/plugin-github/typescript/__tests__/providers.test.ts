@@ -1,4 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
+
+// Mock the spec helpers before importing providers, since provider modules
+// call requireProviderSpec() at the top level and the generated spec names
+// don't match the lookup keys used in the provider source.
+vi.mock("../generated/specs/spec-helpers", () => ({
+  requireProviderSpec: (_name: string) => ({
+    name: _name,
+    description: `Mock spec for ${_name}`,
+  }),
+  requireActionSpec: (_name: string) => ({
+    name: _name,
+    description: `Mock spec for ${_name}`,
+    similes: [],
+  }),
+  getActionSpec: (_name: string) => ({
+    name: _name,
+    description: `Mock spec for ${_name}`,
+    similes: [],
+  }),
+  getProviderSpec: (_name: string) => ({
+    name: _name,
+    description: `Mock spec for ${_name}`,
+  }),
+}));
+
 import { issueContextProvider } from "../providers/issueContext";
 import { repositoryStateProvider } from "../providers/repositoryState";
 import { allProviders } from "../providers";
