@@ -7,10 +7,13 @@ import {
   messageHandlerTemplate,
   postCreationTemplate,
 } from "../prompts.ts";
+import { AgentEventService } from "../services/agentEvent.ts";
+import { ApprovalService } from "../services/approval.ts";
 import { EmbeddingGenerationService } from "../services/embedding.ts";
 import { FollowUpService } from "../services/followUp.ts";
 import { RolodexService } from "../services/rolodex.ts";
 import { TaskService } from "../services/task.ts";
+import { ToolPolicyService } from "../services/tool-policy.ts";
 import { TrajectoryLoggerService } from "../services/trajectoryLogger.ts";
 import { Role } from "../types/environment.ts";
 import { EventType } from "../types/events.ts";
@@ -44,7 +47,7 @@ import { ChannelType, ContentType } from "../types/primitives.ts";
 import { getLocalServerUrl } from "../utils/node.ts";
 import { composePromptFromState, parseKeyValueXml } from "../utils.ts";
 import * as actions from "./actions/index.ts";
-import * as autonomy from "./autonomy/index.ts";
+import * as autonomy from "../autonomy/index.ts";
 import * as evaluators from "./evaluators/index.ts";
 import * as providers from "./providers/index.ts";
 
@@ -1214,8 +1217,11 @@ const basic = {
   ],
   evaluators: [],
   services: [
+    AgentEventService,
+    ApprovalService,
     TaskService,
     EmbeddingGenerationService,
+    ToolPolicyService,
     TrajectoryLoggerService,
   ] as ServiceClass[],
 };
@@ -1238,9 +1244,11 @@ const extended = {
     withCanonicalActionDocs(actions.generateImageAction),
     withCanonicalActionDocs(actions.muteRoomAction),
     withCanonicalActionDocs(actions.removeContactAction),
+    withCanonicalActionDocs(actions.resetSessionAction),
     withCanonicalActionDocs(actions.scheduleFollowUpAction),
     withCanonicalActionDocs(actions.searchContactsAction),
     withCanonicalActionDocs(actions.sendMessageAction),
+    withCanonicalActionDocs(actions.statusAction),
     withCanonicalActionDocs(actions.unfollowRoomAction),
     withCanonicalActionDocs(actions.unmuteRoomAction),
     withCanonicalActionDocs(actions.updateContactAction),
@@ -1309,4 +1317,4 @@ export {
   autonomyCapabilities,
 };
 
-export * from "./autonomy/index.ts";
+export * from "../autonomy/index.ts";

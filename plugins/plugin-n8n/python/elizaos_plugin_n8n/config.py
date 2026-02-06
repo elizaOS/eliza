@@ -42,6 +42,9 @@ class N8nConfig:
         )
 
     def get_plugins_dir(self) -> Path:
+        """Get the plugins directory, creating it if it doesn't exist."""
+        if not str(self.data_dir).strip():
+            raise ValueError("Data directory path cannot be empty")
         plugins_dir = self.data_dir / "plugins"
         plugins_dir.mkdir(parents=True, exist_ok=True)
         return plugins_dir

@@ -24,7 +24,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "typescript": "^5.9.3",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",

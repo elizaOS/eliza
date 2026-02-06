@@ -118,7 +118,7 @@ export async function demonstrateToolCompatibility() {
 
   // Test with different mock runtimes (minimal mocks for testing purposes)
   const testRuntimes = [
-    createMockRuntime("openai", "gpt-4"),
+    createMockRuntime("openai", "gpt-5"),
     createMockRuntime("openai", "o3-mini"), // Reasoning model
     createMockRuntime("anthropic", "claude-3"),
     createMockRuntime("google", "gemini-pro"),

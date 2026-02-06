@@ -204,7 +204,7 @@ class ElizaVendingRunner:
             content=Content(
                 text=text,
                 source="benchmark",
-                channelType=ChannelType.API.value,
+                channel_type="API",
             ),
         )
 

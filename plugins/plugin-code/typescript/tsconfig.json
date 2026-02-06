@@ -4,7 +4,9 @@
     "baseUrl": "../../../",
     "paths": {
       "@elizaos/core": ["packages/typescript/dist/node"],
-      "@elizaos/core/*": ["packages/typescript/dist/*"]
+      "@elizaos/core/*": ["packages/typescript/dist/*"],
+      "@elizaos/plugin-shell": ["plugins/plugin-shell/typescript/dist"],
+      "@elizaos/plugin-shell/*": ["plugins/plugin-shell/typescript/dist/*"]
     },
     "rootDir": ".",
     "outDir": "dist",

@@ -169,7 +169,7 @@ export default function App() {
               ts: m.createdAt ?? Date.now(),
             };
           })
-          .sort((a, b) => a.ts - b.ts);
+          .sort((a: { ts: number }, b: { ts: number }) => a.ts - b.ts);
 
         if (cancelled) return;
         if (msgs.length > 0) {
@@ -305,7 +305,7 @@ export default function App() {
 
       try {
         const { responseText } = await sendUserMessage(config, trimmed, {
-          onAssistantChunk: (chunk) => {
+          onAssistantChunk: (chunk: string) => {
             setMessages((prev) =>
               prev.map((m) => (m.id === assistantId ? { ...m, text: m.text + chunk } : m))
             );

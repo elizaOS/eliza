@@ -37,9 +37,10 @@
     "package.json"
   ],
   "dependencies": {
+    "@elizaos/plugin-cli": "workspace:*",
     "ws": "^8.18.0",
     "axios": "^1.7.7",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"

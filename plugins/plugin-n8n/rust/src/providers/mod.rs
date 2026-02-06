@@ -1,8 +1,9 @@
 mod capabilities;
 mod exists;
-mod registry;
+pub mod registry;
 mod status;
 
+#[allow(deprecated)]
 pub use capabilities::PluginCreationCapabilitiesProvider;
 pub use exists::PluginExistsCheckProvider;
 pub use exists::PluginExistsProvider;

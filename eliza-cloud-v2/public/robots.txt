@@ -1,0 +1,28 @@
+# Robots.txt configuration for search engine crawlers
+# Allows public pages but blocks API routes, dashboard, and auth pages
+# Specifically blocks AI crawlers (GPTBot, ChatGPT, Claude, etc.)
+
+User-agent: *
+Allow: /
+Disallow: /api/*
+Disallow: /dashboard/*
+Disallow: /auth/*
+Disallow: /actions/*
+
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+Sitemap: https://www.elizacloud.ai/sitemap.xml
+

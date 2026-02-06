@@ -112,73 +112,25 @@
     "@elizaos/plugin-whatsapp": "workspace:*",
     "@elizaos/plugin-xai": "workspace:*",
     "@elizaos/plugin-commands": "workspace:*",
-
     "@elizaos/plugin-slack": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-bluebubbles": "workspace:*",
     "@elizaos/plugin-msteams": "workspace:*",
     "@elizaos/plugin-mattermost": "workspace:*",
-    "@agentclientprotocol/sdk": "0.13.1",
-    "@aws-sdk/client-bedrock": "^3.981.0",
-    "@buape/carbon": "0.14.0",
-    "@clack/prompts": "^1.0.0",
-    "@grammyjs/runner": "^2.0.3",
-    "@grammyjs/transformer-throttler": "^1.2.1",
-    "@homebridge/ciao": "^1.3.4",
-    "@larksuiteoapi/node-sdk": "^1.42.0",
-    "@line/bot-sdk": "^10.6.0",
-    "@lydell/node-pty": "1.2.0-beta.3",
     "@elizaos/tui": "workspace:*",
-    "@mozilla/readability": "^0.6.0",
-    "@sinclair/typebox": "0.34.48",
-    "@slack/bolt": "^4.6.0",
-    "@slack/web-api": "^7.13.0",
-    "@whiskeysockets/baileys": "7.0.0-rc.9",
-    "ajv": "^8.17.1",
+
+    "@clack/prompts": "^1.0.0",
     "chalk": "^5.6.2",
-    "chokidar": "^5.0.0",
-    "cli-highlight": "^2.1.11",
     "commander": "^14.0.3",
-    "croner": "^10.0.1",
-    "discord-api-types": "^0.38.38",
     "dotenv": "^17.2.3",
-    "express": "^5.2.1",
-    "file-type": "^21.3.0",
-    "grammy": "^1.39.3",
-    "hono": "4.11.7",
-    "jiti": "^2.6.1",
     "json5": "^2.2.3",
-    "jszip": "^3.10.1",
-    "linkedom": "^0.18.12",
-    "long": "^5.3.2",
-    "markdown-it": "^14.1.0",
-    "node-edge-tts": "^1.2.9",
-    "osc-progress": "^0.3.0",
-    "pdfjs-dist": "^5.4.624",
-    "playwright-core": "1.58.1",
-    "proper-lockfile": "^4.1.2",
-    "qrcode-terminal": "^0.12.0",
-    "sharp": "^0.34.5",
-    "signal-utils": "^0.21.1",
-    "sqlite-vec": "0.1.7-alpha.2",
-    "tar": "7.5.7",
-    "tslog": "^4.10.2",
-    "undici": "^7.20.0",
-    "ws": "^8.19.0",
-    "yaml": "^2.8.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@grammyjs/types": "^3.23.0",
     "@lit-labs/signals": "^0.2.0",
     "@lit/context": "^1.1.6",
-    "@types/express": "^5.0.6",
-    "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.2.0",
-    "@types/proper-lockfile": "^4.1.4",
-    "@types/qrcode-terminal": "^0.12.2",
-    "@types/ws": "^8.18.1",
     "@typescript/native-preview": "7.0.0-dev.20260202.1",
     "@vitest/coverage-v8": "^4.0.18",
     "lit": "^3.3.2",
@@ -190,63 +142,15 @@
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },
-  "peerDependencies": {
-    "@napi-rs/canvas": "^0.1.89",
-    "node-llama-cpp": "3.15.1"
-  },
   "overrides": {
-    "fast-xml-parser": "5.3.4",
-    "form-data": "2.5.4",
-    "hono": "4.11.7",
     "qs": "6.14.1",
-    "@sinclair/typebox": "0.34.47",
-    "tar": "7.5.7",
     "tough-cookie": "4.1.3"
   },
   "engines": {
     "node": ">=22.12.0"
   },
   "trustedDependencies": [
-    "@lydell/node-pty",
-    "@matrix-org/matrix-sdk-crypto-nodejs",
-    "@napi-rs/canvas",
-    "@whiskeysockets/baileys",
-    "authenticate-pam",
     "esbuild",
-    "node-llama-cpp",
-    "protobufjs",
-    "sharp"
-  ],
-  "vitest": {
-    "coverage": {
-      "provider": "v8",
-      "reporter": [
-        "text",
-        "lcov"
-      ],
-      "thresholds": {
-        "lines": 70,
-        "functions": 70,
-        "branches": 70,
-        "statements": 70
-      },
-      "include": [
-        "src/**/*.ts"
-      ],
-      "exclude": [
-        "src/**/*.test.ts"
-      ]
-    },
-    "include": [
-      "src/**/*.test.ts"
-    ],
-    "exclude": [
-      "dist/**",
-      "apps/macos/**",
-      "apps/macos/.build/**",
-      "**/vendor/**",
-      "apps/macos/.build/**",
-      "dist/Milaidy.app/**"
-    ]
-  }
+    "protobufjs"
+  ]
 }

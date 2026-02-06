@@ -60,7 +60,7 @@
     "react-force-graph-2d": "^1.27.1",
     "tailwind-merge": "^3.3.1",
     "unpdf": "^1.4.0",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@radix-ui/react-tabs": "^1.1.12",

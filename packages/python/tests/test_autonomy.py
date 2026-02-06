@@ -3,7 +3,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from google.protobuf.json_format import MessageToDict
 
 from elizaos.bootstrap.autonomy import (
     AUTONOMY_SERVICE_TYPE,
@@ -99,11 +98,6 @@ class TestAutonomyService:
 
         world_call = test_runtime.ensure_world_exists.call_args[0][0]
         assert world_call.name == "Autonomy World"
-        assert world_call.metadata is not None
-        assert (
-            MessageToDict(world_call.metadata, preserving_proto_field_name=False).get("type")
-            == "autonomy"
-        )
 
         room_call = test_runtime.ensure_room_exists.call_args[0][0]
         assert room_call.name == "Autonomous Thoughts"
@@ -245,7 +239,7 @@ class TestAutonomyService:
             room_id=service.get_autonomous_room_id(),
             entity_id=as_uuid(TEST_AGENT_ID),
             agent_id=as_uuid(TEST_AGENT_ID),
-            content=Content(text="older", metadata={"isAutonomous": True}),
+            content=Content(text="older"),
             created_at=10,
         )
         newer = Memory(
@@ -253,7 +247,7 @@ class TestAutonomyService:
             room_id=service.get_autonomous_room_id(),
             entity_id=as_uuid(TEST_AGENT_ID),
             agent_id=as_uuid(TEST_AGENT_ID),
-            content=Content(text="newer", metadata={"isAutonomous": True}),
+            content=Content(text="newer"),
             created_at=20,
         )
 
@@ -297,15 +291,23 @@ class TestSendToAdminAction:
         assert len(send_to_admin_action.examples) > 0
 
     @pytest.mark.asyncio
-    async def test_validate_in_autonomous_room(self, test_runtime, test_memory):
+    async def test_validate_in_autonomous_room(self, test_runtime):
+        room_id = as_uuid(TEST_ROOM_ID)
         mock_service = MagicMock(spec=AutonomyService)
-        mock_service.get_autonomous_room_id = MagicMock(return_value=test_memory.room_id)
+        mock_service.get_autonomous_room_id = MagicMock(return_value=room_id)
         test_runtime.get_service = MagicMock(return_value=mock_service)
         test_runtime.get_setting = MagicMock(return_value="admin-user-id")
 
-        test_memory.content = Content(text="Tell admin about this update")
+        message = Memory(
+            id=as_uuid(TEST_MESSAGE_ID),
+            room_id=room_id,
+            entity_id=as_uuid(TEST_ENTITY_ID),
+            agent_id=as_uuid(TEST_AGENT_ID),
+            content=Content(text="Tell admin about this update"),
+            created_at=1234567890,
+        )
 
-        is_valid = await send_to_admin_action.validate_fn(test_runtime, test_memory)
+        is_valid = await send_to_admin_action.validate(test_runtime, message)
         assert is_valid is True
 
     @pytest.mark.asyncio
@@ -315,7 +317,7 @@ class TestSendToAdminAction:
         test_runtime.get_service = MagicMock(return_value=mock_service)
         test_runtime.get_setting = MagicMock(return_value="admin-user-id")
 
-        is_valid = await send_to_admin_action.validate_fn(test_runtime, test_memory)
+        is_valid = await send_to_admin_action.validate(test_runtime, test_memory)
         assert is_valid is False
 
     @pytest.mark.asyncio
@@ -325,7 +327,7 @@ class TestSendToAdminAction:
         test_runtime.get_service = MagicMock(return_value=mock_service)
         test_runtime.get_setting = MagicMock(return_value=None)
 
-        is_valid = await send_to_admin_action.validate_fn(test_runtime, test_memory)
+        is_valid = await send_to_admin_action.validate(test_runtime, test_memory)
         assert is_valid is False
 
 

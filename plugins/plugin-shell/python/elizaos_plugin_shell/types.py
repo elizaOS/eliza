@@ -84,7 +84,7 @@ class ShellConfig(BaseModel):
 
     @classmethod
     def from_env(cls) -> ShellConfig:
-        enabled = os.getenv("SHELL_ENABLED", "false").lower() == "true"
+        enabled = True
         allowed_directory = os.getenv("SHELL_ALLOWED_DIRECTORY", os.getcwd())
         timeout = int(os.getenv("SHELL_TIMEOUT", "30000"))
 

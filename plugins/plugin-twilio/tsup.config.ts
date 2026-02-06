@@ -3,22 +3,35 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: ['src/index.ts'],
   outDir: 'dist',
-  tsconfig: './tsconfig.build.json', // Use build-specific tsconfig
+  tsconfig: './tsconfig.build.json',
   sourcemap: true,
   clean: true,
-  format: ['esm'], // Ensure you're targeting CommonJS
+  format: ['esm'],
   dts: true,
   external: [
-    'dotenv', // Externalize dotenv to prevent bundling
-    'fs', // Externalize fs to use Node.js built-in module
-    'path', // Externalize other built-ins if necessary
+    'dotenv',
+    'fs',
+    'path',
+    'crypto',
+    'node:fs',
+    'node:path',
+    'node:crypto',
+    'node:http',
+    'node:url',
     '@reflink/reflink',
     '@node-llama-cpp',
+    '@elizaos/core',
     'https',
     'http',
     'agentkeepalive',
     'fluent-ffmpeg',
     'zod',
-    // Add other modules you want to externalize
+    'twilio',
+    'express',
+    'body-parser',
+    'ws',
+    'node-cache',
+    'multer',
+    'axios',
   ],
 });

@@ -52,7 +52,7 @@ impl ShellService {
         if !self.config.enabled {
             return Ok(CommandResult::error(
                 "Shell plugin disabled",
-                "Shell plugin is disabled. Set SHELL_ENABLED=true to enable.",
+                "Shell plugin is disabled.",
                 &self.current_directory.display().to_string(),
             ));
         }

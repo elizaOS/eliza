@@ -10,7 +10,7 @@ describe('VaultService', () => {
   const MOCK_VALID_PUBLIC_KEY_STRING = Keypair.generate().publicKey.toBase58();
   const mockRuntime = {
     getSetting: vi.fn(() => 'https://api.devnet.solana.com') // Use devnet for tests
-  } as any;
+  } as unknown as Parameters<typeof vaultService.start>[0];
 
   beforeEach(async () => {
     vaultService = new VaultService(); 

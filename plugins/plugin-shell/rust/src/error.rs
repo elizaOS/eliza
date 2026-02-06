@@ -5,7 +5,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum ShellError {
     /// Shell is disabled
-    #[error("Shell plugin is disabled. Set SHELL_ENABLED=true to enable.")]
+    #[error("Shell plugin is disabled.")]
     Disabled,
 
     #[error("Invalid command: {0}")]

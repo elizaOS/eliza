@@ -165,15 +165,16 @@ async function generateTypeScriptDeclarations() {
 
   // Create re-export files for conditional exports structure
   // dist/node/index.d.ts - points to the Node.js entry point
+  // Note: Use .js extension for NodeNext module resolution compatibility
   await fs.writeFile(
     "dist/node/index.d.ts",
-    `// Type definitions for @elizaos/core (Node.js)\nexport * from '../index.node';\n`,
+    `// Type definitions for @elizaos/core (Node.js)\nexport * from '../index.node.js';\n`,
   );
 
   // dist/browser/index.d.ts - points to the browser entry point
   await fs.writeFile(
     "dist/browser/index.d.ts",
-    `// Type definitions for @elizaos/core (Browser)\nexport * from '../index.browser';\n`,
+    `// Type definitions for @elizaos/core (Browser)\nexport * from '../index.browser.js';\n`,
   );
 
   // Create main index.js for runtime fallback (when conditional exports don't match)
@@ -196,9 +197,10 @@ async function generateTypeScriptDeclarations() {
 
   // Create main index.d.ts to re-export all types from node build
   // This ensures TypeScript resolves all exports when using moduleResolution: bundler
+  // Note: Use .js extension for NodeNext module resolution compatibility
   await fs.writeFile(
     "dist/index.d.ts",
-    `// Type definitions for @elizaos/core\n// Re-exports all types from the Node.js entry point\nexport * from './index.node';\n`,
+    `// Type definitions for @elizaos/core\n// Re-exports all types from the Node.js entry point\nexport * from './index.node.js';\n`,
   );
 
   // Ensure testing module directory and declarations exist

@@ -1662,3 +1662,158 @@ export class BM25 {
     }
   }
 }
+
+// =============================================================================
+// Hybrid Search Utilities
+// =============================================================================
+// Utilities for combining vector similarity search with keyword (BM25) search.
+
+/** Source identifier for hybrid search results */
+export type HybridSource = string;
+
+/** Result from vector similarity search */
+export type HybridVectorResult = {
+  id: string;
+  path: string;
+  startLine: number;
+  endLine: number;
+  source: HybridSource;
+  snippet: string;
+  vectorScore: number;
+};
+
+/** Result from keyword (BM25) search */
+export type HybridKeywordResult = {
+  id: string;
+  path: string;
+  startLine: number;
+  endLine: number;
+  source: HybridSource;
+  snippet: string;
+  textScore: number;
+};
+
+/**
+ * Build an FTS (Full-Text Search) query from a raw search string.
+ * Extracts alphanumeric tokens and joins them with AND for strict matching.
+ *
+ * @param raw - The raw search query string.
+ * @returns The FTS query string, or null if no valid tokens found.
+ */
+export function buildFtsQuery(raw: string): string | null {
+  const tokens =
+    raw
+      .match(/[A-Za-z0-9_]+/g)
+      ?.map((t) => t.trim())
+      .filter(Boolean) ?? [];
+  if (tokens.length === 0) return null;
+  const quoted = tokens.map((t) => `"${t.replaceAll('"', "")}"`);
+  return quoted.join(" AND ");
+}
+
+/**
+ * Convert BM25 rank to a normalized score between 0 and 1.
+ * Lower rank = higher score.
+ *
+ * @param rank - The BM25 rank value.
+ * @returns A normalized score where 1 is best and 0 is worst.
+ */
+export function bm25RankToScore(rank: number): number {
+  const normalized = Number.isFinite(rank) ? Math.max(0, rank) : 999;
+  return 1 / (1 + normalized);
+}
+
+/**
+ * Merge vector similarity and keyword search results using weighted scoring.
+ *
+ * This implements a hybrid search approach where results from both vector
+ * similarity search and keyword (BM25) search are combined. Results that
+ * appear in both searches get boosted scores.
+ *
+ * @param params.vector - Results from vector similarity search.
+ * @param params.keyword - Results from keyword (BM25) search.
+ * @param params.vectorWeight - Weight for vector similarity scores (default: 0.7).
+ * @param params.textWeight - Weight for keyword/text scores (default: 0.3).
+ * @returns Merged and sorted results with combined scores.
+ */
+export function mergeHybridResults(params: {
+  vector: HybridVectorResult[];
+  keyword: HybridKeywordResult[];
+  vectorWeight: number;
+  textWeight: number;
+}): Array<{
+  path: string;
+  startLine: number;
+  endLine: number;
+  score: number;
+  snippet: string;
+  source: HybridSource;
+}> {
+  const byId = new Map<
+    string,
+    {
+      id: string;
+      path: string;
+      startLine: number;
+      endLine: number;
+      source: HybridSource;
+      snippet: string;
+      vectorScore: number;
+      textScore: number;
+    }
+  >();
+
+  // Add vector search results
+  for (const r of params.vector) {
+    byId.set(r.id, {
+      id: r.id,
+      path: r.path,
+      startLine: r.startLine,
+      endLine: r.endLine,
+      source: r.source,
+      snippet: r.snippet,
+      vectorScore: r.vectorScore,
+      textScore: 0,
+    });
+  }
+
+  // Merge keyword search results
+  for (const r of params.keyword) {
+    const existing = byId.get(r.id);
+    if (existing) {
+      existing.textScore = r.textScore;
+      // Prefer keyword snippet if available (may have highlights)
+      if (r.snippet && r.snippet.length > 0) {
+        existing.snippet = r.snippet;
+      }
+    } else {
+      byId.set(r.id, {
+        id: r.id,
+        path: r.path,
+        startLine: r.startLine,
+        endLine: r.endLine,
+        source: r.source,
+        snippet: r.snippet,
+        vectorScore: 0,
+        textScore: r.textScore,
+      });
+    }
+  }
+
+  // Calculate weighted scores and sort
+  const merged = Array.from(byId.values()).map((entry) => {
+    const score =
+      params.vectorWeight * entry.vectorScore +
+      params.textWeight * entry.textScore;
+    return {
+      path: entry.path,
+      startLine: entry.startLine,
+      endLine: entry.endLine,
+      score,
+      snippet: entry.snippet,
+      source: entry.source,
+    };
+  });
+
+  return [...merged].sort((a, b) => b.score - a.score);
+}

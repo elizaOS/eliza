@@ -46,12 +46,12 @@ async def get_action_state_context(
                 completed_raw = extra.get("completedActions", "")
             elif hasattr(extra, "__getitem__"):
                 try:
-                    pending_raw = extra.get("pendingActions", "")
-                except (KeyError, TypeError):
+                    pending_raw = extra["pendingActions"]
+                except (KeyError, TypeError, ValueError):
                     pending_raw = ""
                 try:
-                    completed_raw = extra.get("completedActions", "")
-                except (KeyError, TypeError):
+                    completed_raw = extra["completedActions"]
+                except (KeyError, TypeError, ValueError):
                     completed_raw = ""
             else:
                 pending_raw = ""

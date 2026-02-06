@@ -2,11 +2,13 @@ use async_trait::async_trait;
 
 use super::{N8nProvider, ProviderContext, ProviderResult};
 
-/// Provider that returns information about plugin creation capabilities.
+/// Stubbed provider — capabilities are no longer surfaced as a standalone provider.
+/// Retained for backwards compatibility; returns a no-op result.
+#[deprecated(note = "Capabilities provider has been removed; use PluginRegistryProvider instead")]
 pub struct PluginCreationCapabilitiesProvider;
 
 impl PluginCreationCapabilitiesProvider {
-    /// Creates a new instance of the plugin creation capabilities provider.
+    /// Creates a new (stubbed) instance.
     pub fn new() -> Self {
         Self
     }
@@ -19,40 +21,20 @@ impl Default for PluginCreationCapabilitiesProvider {
 }
 
 #[async_trait]
+#[allow(deprecated)]
 impl N8nProvider for PluginCreationCapabilitiesProvider {
     fn name(&self) -> &'static str {
-        "plugin_creation_capabilities"
+        "n8n_plugin_capabilities_stub"
     }
 
     fn description(&self) -> &'static str {
-        "Provides information about plugin creation capabilities"
+        "Stubbed — capabilities provider has been removed"
     }
 
-    async fn get(&self, context: &ProviderContext) -> ProviderResult {
-        let has_api_key = context
-            .state
-            .get("hasApiKey")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        if !has_api_key {
-            return ProviderResult {
-                text: "Plugin creation is available but requires ANTHROPIC_API_KEY".to_string(),
-                data: Some(serde_json::json!({
-                    "serviceAvailable": true,
-                    "aiEnabled": false,
-                })),
-            };
-        }
-
+    async fn get(&self, _context: &ProviderContext) -> ProviderResult {
         ProviderResult {
-            text: "Plugin creation service is operational".to_string(),
-            data: Some(serde_json::json!({
-                "serviceAvailable": true,
-                "aiEnabled": true,
-                "supportedComponents": ["actions", "providers", "services", "evaluators"],
-                "maxIterations": 5,
-            })),
+            text: "Plugin creation capabilities provider has been removed.".to_string(),
+            data: None,
         }
     }
 }

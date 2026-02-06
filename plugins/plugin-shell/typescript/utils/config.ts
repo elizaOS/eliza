@@ -9,6 +9,10 @@ const configSchema = z.object({
   allowedDirectory: z.string(),
   timeout: z.number().positive().default(30000),
   forbiddenCommands: z.array(z.string()),
+  maxOutputChars: z.number().positive().default(200000),
+  pendingMaxOutputChars: z.number().positive().default(200000),
+  defaultBackgroundMs: z.number().positive().default(10000),
+  allowBackground: z.boolean().default(true),
 });
 
 export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
@@ -40,9 +44,15 @@ export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
 ] as const;
 
 export function loadShellConfig(): ShellConfig {
-  const enabled = process.env.SHELL_ENABLED === "true";
   const allowedDirectory = process.env.SHELL_ALLOWED_DIRECTORY || process.cwd();
   const timeout = parseInt(process.env.SHELL_TIMEOUT || "30000", 10);
+  const maxOutputChars = parseInt(process.env.SHELL_MAX_OUTPUT_CHARS || "200000", 10);
+  const pendingMaxOutputChars = parseInt(
+    process.env.SHELL_PENDING_MAX_OUTPUT_CHARS || "200000",
+    10
+  );
+  const defaultBackgroundMs = parseInt(process.env.SHELL_BACKGROUND_MS || "10000", 10);
+  const allowBackground = process.env.SHELL_ALLOW_BACKGROUND !== "false";
 
   const customForbidden = process.env.SHELL_FORBIDDEN_COMMANDS
     ? process.env.SHELL_FORBIDDEN_COMMANDS.split(",").map((cmd) => cmd.trim())
@@ -51,10 +61,14 @@ export function loadShellConfig(): ShellConfig {
   const forbiddenCommands = [...new Set([...DEFAULT_FORBIDDEN_COMMANDS, ...customForbidden])];
 
   const config: ShellConfig = {
-    enabled,
+    enabled: true,
     allowedDirectory,
     timeout,
     forbiddenCommands,
+    maxOutputChars,
+    pendingMaxOutputChars,
+    defaultBackgroundMs,
+    allowBackground,
   };
 
   const parseResult = configSchema.safeParse(config);
@@ -63,30 +77,25 @@ export function loadShellConfig(): ShellConfig {
     throw new Error(`Shell plugin configuration error: ${errorMessage}`);
   }
 
-  if (enabled && allowedDirectory) {
-    try {
-      const stats = fs.statSync(allowedDirectory);
-      if (!stats.isDirectory()) {
-        throw new Error(`SHELL_ALLOWED_DIRECTORY is not a directory: ${allowedDirectory}`);
-      }
-
-      config.allowedDirectory = path.resolve(allowedDirectory);
-
-      logger.info(`Shell plugin enabled with allowed directory: ${config.allowedDirectory}`);
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        "code" in error &&
-        (error as NodeJS.ErrnoException).code === "ENOENT"
-      ) {
-        throw new Error(`SHELL_ALLOWED_DIRECTORY does not exist: ${allowedDirectory}`);
-      }
-      throw error;
+  try {
+    const stats = fs.statSync(allowedDirectory);
+    if (!stats.isDirectory()) {
+      throw new Error(`SHELL_ALLOWED_DIRECTORY is not a directory: ${allowedDirectory}`);
     }
-  }
-
-  if (!enabled) {
-    logger.info("Shell plugin is disabled. Set SHELL_ENABLED=true to enable.");
+    config.allowedDirectory = path.resolve(allowedDirectory);
+    logger.info(
+      `Shell plugin enabled with allowed directory: ${config.allowedDirectory}, ` +
+        `background: ${allowBackground}, timeout: ${timeout}ms`
+    );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      throw new Error(`SHELL_ALLOWED_DIRECTORY does not exist: ${allowedDirectory}`);
+    }
+    throw error;
   }
 
   return config;

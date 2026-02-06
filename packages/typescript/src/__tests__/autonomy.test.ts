@@ -35,8 +35,14 @@ describe("autonomy service", () => {
         }
         return [makeMemory(dupId, agentId, roomId, "new", 20)];
       },
+      getRoomsForParticipant: async () => [roomId],
+      getRoomsByIds: async () => [{ id: roomId, name: "Test Room" }],
+      getMemoriesByRoomIds: async () => [
+        makeMemory(dupId, agentId, roomId, "old", 10),
+      ],
+      getEntityById: async () => null,
       logger: { info: () => undefined, debug: () => undefined },
-    } as IAgentRuntime;
+    } as unknown as IAgentRuntime;
 
     const service = new AutonomyService() as AutonomyService & {
       getTargetRoomContextText: () => Promise<string>;

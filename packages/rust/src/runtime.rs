@@ -260,6 +260,32 @@ pub type RuntimeModelHandler = Box<
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String>>>>,
 >;
 
+/// Streaming model handler for native builds (returns async iterator of chunks)
+/// Uses a channel-based approach for streaming chunks
+#[cfg(not(feature = "wasm"))]
+pub type StreamingModelHandler = Box<
+    dyn Fn(
+            serde_json::Value,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<tokio::sync::mpsc::Receiver<Result<String>>>,
+                    > + Send,
+            >,
+        > + Send
+        + Sync,
+>;
+
+/// Streaming model handler for WASM builds
+#[cfg(feature = "wasm")]
+pub type StreamingModelHandler = Box<
+    dyn Fn(
+        serde_json::Value,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<std::sync::mpsc::Receiver<Result<String>>>>>,
+    >,
+>;
+
 /// Static counter for anonymous agent naming
 static ANONYMOUS_AGENT_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -340,6 +366,8 @@ pub struct AgentRuntime {
     services: RwLock<HashMap<String, Arc<dyn Service>>>,
     /// Model handlers (maps model type like "TEXT_LARGE" to handler)
     model_handlers: RwLock<HashMap<String, RuntimeModelHandler>>,
+    /// Streaming model handlers (maps model type like "TEXT_LARGE_STREAM" to handler)
+    streaming_model_handlers: RwLock<HashMap<String, StreamingModelHandler>>,
     /// Runtime settings
     settings: RwLock<RuntimeSettings>,
     /// Current run ID (tracked for prompt/model call correlation)
@@ -366,6 +394,10 @@ pub struct AgentRuntime {
     capability_options: CapabilityOptions,
     /// Runtime flag that toggles autonomy execution.
     enable_autonomy: AtomicBool,
+    /// Task workers (maps task name to worker)
+    task_workers: RwLock<HashMap<String, Arc<dyn crate::types::task::TaskWorker>>>,
+    /// In-memory task storage (maps task ID to task)
+    tasks: RwLock<HashMap<String, crate::types::task::Task>>,
 }
 
 /// Tri-state capability options (mirrors TypeScript bootstrap capability config behavior).
@@ -432,6 +464,7 @@ impl AgentRuntime {
             events: RwLock::new(HashMap::new()),
             services: RwLock::new(HashMap::new()),
             model_handlers: RwLock::new(HashMap::new()),
+            streaming_model_handlers: RwLock::new(HashMap::new()),
             settings: RwLock::new(opts.settings.unwrap_or_default()),
             current_run_id: Mutex::new(None),
             current_room_id: Mutex::new(None),
@@ -450,6 +483,8 @@ impl AgentRuntime {
                 skip_character_provider: is_anonymous,
             },
             enable_autonomy: AtomicBool::new(opts.enable_autonomy.unwrap_or(false)),
+            task_workers: RwLock::new(HashMap::new()),
+            tasks: RwLock::new(HashMap::new()),
         };
 
         Ok(Arc::new(runtime))
@@ -838,6 +873,161 @@ impl AgentRuntime {
     /// Update the runtime autonomy flag.
     pub fn set_enable_autonomy(&self, enabled: bool) {
         self.enable_autonomy.store(enabled, Ordering::SeqCst);
+    }
+
+    // =========================================================================
+    // Task Worker Methods (parity with TypeScript)
+    // =========================================================================
+
+    /// Register a task worker.
+    pub async fn register_task_worker(&self, worker: Arc<dyn crate::types::task::TaskWorker>) {
+        let name = worker.name().to_string();
+        #[cfg(not(feature = "wasm"))]
+        {
+            let mut workers = self.task_workers.write().await;
+            if workers.contains_key(&name) {
+                warn!(
+                    target: "agent",
+                    agent_id = %self.agent_id,
+                    task = %name,
+                    "Task worker already registered, overwriting"
+                );
+            }
+            workers.insert(name.clone(), worker);
+        }
+        #[cfg(feature = "wasm")]
+        {
+            let mut workers = self.task_workers.write().unwrap();
+            workers.insert(name.clone(), worker);
+        }
+        debug!(target: "agent", agent_id = %self.agent_id, task = %name, "Task worker registered");
+    }
+
+    /// Get a task worker by name.
+    pub async fn get_task_worker(&self, name: &str) -> Option<Arc<dyn crate::types::task::TaskWorker>> {
+        #[cfg(not(feature = "wasm"))]
+        {
+            self.task_workers.read().await.get(name).cloned()
+        }
+        #[cfg(feature = "wasm")]
+        {
+            self.task_workers.read().unwrap().get(name).cloned()
+        }
+    }
+
+    /// Check if a task worker exists for the given name.
+    pub async fn has_task_worker(&self, name: &str) -> bool {
+        #[cfg(not(feature = "wasm"))]
+        {
+            self.task_workers.read().await.contains_key(name)
+        }
+        #[cfg(feature = "wasm")]
+        {
+            self.task_workers.read().unwrap().contains_key(name)
+        }
+    }
+
+    // =========================================================================
+    // Task CRUD Methods (parity with TypeScript)
+    // =========================================================================
+
+    /// Create a new task.
+    pub async fn create_task(&self, mut task: crate::types::task::Task) -> crate::types::task::Task {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        // Ensure task has an ID
+        if task.id.is_none() {
+            task.id = Some(UUID::new_v4());
+        }
+
+        // Set timestamps
+        task.created_at = Some(now);
+        task.updated_at = Some(now);
+
+        // Ensure metadata exists with timestamps
+        let mut metadata = task.metadata.take().unwrap_or_default();
+        if metadata.updated_at.is_none() {
+            metadata.updated_at = Some(now);
+        }
+        if metadata.created_at.is_none() {
+            metadata.created_at = Some(now.to_string());
+        }
+        task.metadata = Some(metadata);
+
+        let task_id = task.id.clone().unwrap().to_string();
+
+        #[cfg(not(feature = "wasm"))]
+        self.tasks.write().await.insert(task_id.clone(), task.clone());
+        #[cfg(feature = "wasm")]
+        self.tasks.write().unwrap().insert(task_id.clone(), task.clone());
+
+        debug!(
+            target: "agent",
+            agent_id = %self.agent_id,
+            task_id = %task_id,
+            task_name = %task.name,
+            "Task created"
+        );
+
+        task
+    }
+
+    /// Get a task by ID.
+    pub async fn get_task(&self, task_id: &str) -> Option<crate::types::task::Task> {
+        #[cfg(not(feature = "wasm"))]
+        {
+            self.tasks.read().await.get(task_id).cloned()
+        }
+        #[cfg(feature = "wasm")]
+        {
+            self.tasks.read().unwrap().get(task_id).cloned()
+        }
+    }
+
+    /// Get tasks matching the given filters.
+    pub async fn get_tasks(&self, tags: Option<Vec<String>>) -> Vec<crate::types::task::Task> {
+        #[cfg(not(feature = "wasm"))]
+        let tasks = self.tasks.read().await;
+        #[cfg(feature = "wasm")]
+        let tasks = self.tasks.read().unwrap();
+
+        tasks
+            .values()
+            .filter(|t| {
+                if let Some(ref filter_tags) = tags {
+                    if let Some(ref task_tags) = t.tags {
+                        filter_tags.iter().all(|tag| task_tags.contains(tag))
+                    } else {
+                        false
+                    }
+                } else {
+                    true
+                }
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// Delete a task by ID.
+    pub async fn delete_task(&self, task_id: &str) -> bool {
+        #[cfg(not(feature = "wasm"))]
+        let removed = self.tasks.write().await.remove(task_id).is_some();
+        #[cfg(feature = "wasm")]
+        let removed = self.tasks.write().unwrap().remove(task_id).is_some();
+
+        if removed {
+            debug!(
+                target: "agent",
+                agent_id = %self.agent_id,
+                task_id = %task_id,
+                "Task deleted"
+            );
+        }
+
+        removed
     }
 
     /// Set a setting value (TypeScript-compatible semantics).
@@ -1283,6 +1473,109 @@ impl AgentRuntime {
         debug!("Registered model handler for: {}", model_type);
     }
 
+    /// Register a streaming model handler for a specific model type
+    ///
+    /// Streaming model types typically end with "_STREAM" (e.g., "TEXT_LARGE_STREAM")
+    /// The handler returns a channel receiver that yields chunks of text.
+    pub async fn register_streaming_model(&self, model_type: &str, handler: StreamingModelHandler) {
+        #[cfg(not(feature = "wasm"))]
+        {
+            let mut handlers = self.streaming_model_handlers.write().await;
+            handlers.insert(model_type.to_string(), handler);
+        }
+        #[cfg(feature = "wasm")]
+        {
+            let mut handlers = self.streaming_model_handlers.write().unwrap();
+            handlers.insert(model_type.to_string(), handler);
+        }
+        debug!("Registered streaming model handler for: {}", model_type);
+    }
+
+    /// Use a streaming model to generate text chunks
+    ///
+    /// Returns a receiver that yields text chunks as they are generated.
+    /// The stream completes when the receiver returns None.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let mut rx = runtime.use_model_stream("TEXT_LARGE_STREAM", params).await?;
+    /// while let Some(chunk_result) = rx.recv().await {
+    ///     match chunk_result {
+    ///         Ok(chunk) => print!("{}", chunk),
+    ///         Err(e) => eprintln!("Error: {}", e),
+    ///     }
+    /// }
+    /// ```
+    #[cfg(not(feature = "wasm"))]
+    pub async fn use_model_stream(
+        &self,
+        model_type: &str,
+        params: serde_json::Value,
+    ) -> Result<tokio::sync::mpsc::Receiver<Result<String>>> {
+        // Apply LLM mode override for streaming text generation models
+        let llm_mode = self.get_llm_mode().await;
+        let effective_model_type = if llm_mode != LLMMode::Default {
+            // Streaming model types that can be overridden
+            let text_generation_models = [
+                "TEXT_SMALL_STREAM",
+                "TEXT_LARGE_STREAM",
+                "TEXT_REASONING_SMALL_STREAM",
+                "TEXT_REASONING_LARGE_STREAM",
+            ];
+
+            if text_generation_models.contains(&model_type) {
+                let override_model = match llm_mode {
+                    LLMMode::Small => "TEXT_SMALL_STREAM",
+                    LLMMode::Large => "TEXT_LARGE_STREAM",
+                    LLMMode::Default => model_type,
+                };
+                if model_type != override_model {
+                    debug!(
+                        "LLM mode override applied (stream): {} -> {} (mode: {:?})",
+                        model_type, override_model, llm_mode
+                    );
+                }
+                override_model
+            } else {
+                model_type
+            }
+        } else {
+            model_type
+        };
+
+        let handler_future = {
+            let handlers = self.streaming_model_handlers.read().await;
+            handlers
+                .get(effective_model_type)
+                .map(|h| h(params.clone()))
+        };
+
+        match handler_future {
+            Some(future) => future.await,
+            None => Err(anyhow::anyhow!(
+                "No streaming model handler registered for type: {}. Register a streaming model handler using register_streaming_model().",
+                effective_model_type
+            )),
+        }
+    }
+
+    /// Use a streaming model to generate text chunks (WASM version)
+    #[cfg(feature = "wasm")]
+    pub async fn use_model_stream(
+        &self,
+        model_type: &str,
+        params: serde_json::Value,
+    ) -> Result<std::sync::mpsc::Receiver<Result<String>>> {
+        let handlers = self.streaming_model_handlers.read().unwrap();
+        match handlers.get(model_type).map(|h| h(params.clone())) {
+            Some(future) => future.await,
+            None => Err(anyhow::anyhow!(
+                "No streaming model handler registered for type: {}",
+                model_type
+            )),
+        }
+    }
+
     /// Use a model to generate text
     pub async fn use_model(&self, model_type: &str, params: serde_json::Value) -> Result<String> {
         use crate::types::model::model_type;
@@ -1430,7 +1723,7 @@ impl AgentRuntime {
     // Dynamic Prompt Execution with Validation-Aware Streaming
     // ============================================================================
 
-    /// Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
+    /// Dynamic prompt execution with state injection, schema-based parsing, and validation.
     ///
     /// WHY THIS EXISTS:
     /// LLMs are powerful but unreliable for structured outputs. They can:
@@ -1443,9 +1736,25 @@ impl AgentRuntime {
     /// 2. Retry with backoff: Automatic retries on validation failure
     /// 3. Structured parsing: XML/JSON response parsing with nested support
     ///
-    /// NOTE: Streaming is not supported in the Rust implementation.
-    /// For real-time streaming with validation, use the TypeScript implementation
-    /// which includes `ValidationStreamExtractor` for incremental output.
+    /// # Streaming Support
+    ///
+    /// For streaming with validation, use `use_model_stream()` combined with
+    /// `ValidationStreamExtractor` from `crate::types::streaming`:
+    ///
+    /// ```ignore
+    /// use crate::types::streaming::{ValidationStreamExtractor, ValidationStreamExtractorConfig};
+    ///
+    /// let config = ValidationStreamExtractorConfig { /* ... */ };
+    /// let mut extractor = ValidationStreamExtractor::new(config);
+    ///
+    /// let mut rx = runtime.use_model_stream("TEXT_LARGE_STREAM", params).await?;
+    /// while let Some(chunk) = rx.recv().await {
+    ///     if let Ok(text) = chunk {
+    ///         extractor.push(&text);
+    ///     }
+    /// }
+    /// extractor.flush();
+    /// ```
     ///
     /// # Arguments
     /// * `state` - State object to inject into the prompt template
@@ -1476,13 +1785,22 @@ impl AgentRuntime {
             }
         };
 
-        let schema_key = schema.iter().map(|s| s.field.as_str()).collect::<Vec<_>>().join(",");
+        let schema_key = schema
+            .iter()
+            .map(|s| s.field.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
         let model_schema_key = format!("{}:{}", model_type_str, schema_key);
 
         // Get validation level from settings or options (mirrors TypeScript behavior)
         let (default_context_level, default_retries) = {
             let validation_setting = self.get_setting("VALIDATION_LEVEL").await;
-            match validation_setting.as_deref().map(|s| s.to_lowercase()).as_deref() {
+            // Convert SettingValue to string for matching
+            let setting_str: Option<String> = validation_setting.and_then(|sv| match sv {
+                crate::types::settings::SettingValue::String(s) => Some(s.to_lowercase()),
+                _ => None,
+            });
+            match setting_str.as_deref() {
                 Some("trusted") | Some("fast") => (0u8, 0u32),
                 Some("progressive") => (1, 2),
                 Some("strict") | Some("safe") => (3, 3),
@@ -1510,7 +1828,10 @@ impl AgentRuntime {
                 let default_validate = validation_level == 1;
                 let needs_validation = row.validate_field.unwrap_or(default_validate);
                 if needs_validation {
-                    per_field_codes.insert(row.field.clone(), Uuid::new_v4().to_string()[..8].to_string());
+                    per_field_codes.insert(
+                        row.field.clone(),
+                        Uuid::new_v4().to_string()[..8].to_string(),
+                    );
                 }
             }
         }
@@ -1540,7 +1861,11 @@ impl AgentRuntime {
             }
 
             // Build format
-            let format = options.force_format.as_deref().unwrap_or("xml").to_uppercase();
+            let format = options
+                .force_format
+                .as_deref()
+                .unwrap_or("xml")
+                .to_uppercase();
             let is_xml = format == "XML";
             let container_start = if is_xml { "<response>" } else { "{" };
             let container_end = if is_xml { "</response>" } else { "}" };
@@ -1553,9 +1878,18 @@ impl AgentRuntime {
 
             let codes_schema = |prefix: &str| -> Vec<(String, String)> {
                 vec![
-                    (format!("{}initial_code", prefix), "echo the initial UUID code from prompt".to_string()),
-                    (format!("{}middle_code", prefix), "echo the middle UUID code from prompt".to_string()),
-                    (format!("{}end_code", prefix), "echo the end UUID code from prompt".to_string()),
+                    (
+                        format!("{}initial_code", prefix),
+                        "echo the initial UUID code from prompt".to_string(),
+                    ),
+                    (
+                        format!("{}middle_code", prefix),
+                        "echo the middle UUID code from prompt".to_string(),
+                    ),
+                    (
+                        format!("{}end_code", prefix),
+                        "echo the end UUID code from prompt".to_string(),
+                    ),
                 ]
             };
 
@@ -1565,11 +1899,17 @@ impl AgentRuntime {
 
             for row in schema {
                 if let Some(code) = per_field_codes.get(&row.field) {
-                    ext_schema.push((format!("code_{}_start", row.field), format!("output exactly: {}", code)));
+                    ext_schema.push((
+                        format!("code_{}_start", row.field),
+                        format!("output exactly: {}", code),
+                    ));
                 }
                 ext_schema.push((row.field.clone(), row.description.clone()));
                 if let Some(code) = per_field_codes.get(&row.field) {
-                    ext_schema.push((format!("code_{}_end", row.field), format!("output exactly: {}", code)));
+                    ext_schema.push((
+                        format!("code_{}_end", row.field),
+                        format!("output exactly: {}", code),
+                    ));
                 }
             }
 
@@ -1596,7 +1936,11 @@ impl AgentRuntime {
             let mid_code = Uuid::new_v4().to_string();
             let final_code = Uuid::new_v4().to_string();
 
-            let section_start = if is_xml { "<output>" } else { "# Strict Output instructions" };
+            let section_start = if is_xml {
+                "<output>"
+            } else {
+                "# Strict Output instructions"
+            };
             let section_end = if is_xml { "</output>" } else { "" };
 
             let full_prompt = format!(
@@ -1608,11 +1952,21 @@ impl AgentRuntime {
                 Do not include any text, thinking, or reasoning before or after this {} block. \
                 Start your response immediately with {} and end with {}.\n\
                 {}\nend code: {}\n",
-                init_code, rendered, mid_code, section_start,
-                format, format, example,
-                container_start, container_end, format, format,
-                container_start, container_end,
-                section_end, final_code
+                init_code,
+                rendered,
+                mid_code,
+                section_start,
+                format,
+                format,
+                example,
+                container_start,
+                container_end,
+                format,
+                format,
+                container_start,
+                container_end,
+                section_end,
+                final_code
             );
 
             debug!("dynamic_prompt_exec_from_state: using format {}", format);
@@ -1633,7 +1987,10 @@ impl AgentRuntime {
                     if current_retry <= max_retries {
                         if let Some(backoff) = &options.retry_backoff {
                             let delay = backoff.delay_for_retry(current_retry);
-                            debug!("Retry backoff: waiting {}ms before retry {}", delay, current_retry);
+                            debug!(
+                                "Retry backoff: waiting {}ms before retry {}",
+                                delay, current_retry
+                            );
                             #[cfg(not(feature = "wasm"))]
                             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                         }
@@ -1675,7 +2032,9 @@ impl AgentRuntime {
                         let start_code = content.get(&start_code_field).and_then(|v| v.as_str());
                         let end_code = content.get(&end_code_field).and_then(|v| v.as_str());
 
-                        if start_code != Some(expected_code.as_str()) || end_code != Some(expected_code.as_str()) {
+                        if start_code != Some(expected_code.as_str())
+                            || end_code != Some(expected_code.as_str())
+                        {
                             warn!("Per-field validation failed for {}: expected={}, start={:?}, end={:?}",
                                 field, expected_code, start_code, end_code);
                             all_good = false;
@@ -1742,12 +2101,18 @@ impl AgentRuntime {
                     }
                 }
             } else {
-                warn!("dynamic_prompt_exec_from_state parse problem: {}", clean_response);
+                warn!(
+                    "dynamic_prompt_exec_from_state parse problem: {}",
+                    clean_response
+                );
                 all_good = false;
             }
 
             if all_good {
-                debug!("dynamic_prompt_exec_from_state success [{}]", model_schema_key);
+                debug!(
+                    "dynamic_prompt_exec_from_state success [{}]",
+                    model_schema_key
+                );
                 return Ok(parsed);
             }
 
@@ -1765,7 +2130,9 @@ impl AgentRuntime {
                         let start_code = content.get(&start_code_field).and_then(|v| v.as_str());
                         let end_code = content.get(&end_code_field).and_then(|v| v.as_str());
 
-                        if start_code == Some(expected_code.as_str()) && end_code == Some(expected_code.as_str()) {
+                        if start_code == Some(expected_code.as_str())
+                            && end_code == Some(expected_code.as_str())
+                        {
                             validated_fields.push(field.clone());
                         }
                     }
@@ -1784,15 +2151,19 @@ impl AgentRuntime {
                                 } else {
                                     content_str
                                 };
-                                validated_parts.push(format!("<{}>{}</{}>", field, truncated, field));
+                                validated_parts
+                                    .push(format!("<{}>{}</{}>", field, truncated, field));
                             }
                         }
 
                         if !validated_parts.is_empty() {
                             // Find missing/invalid fields
-                            let all_fields: std::collections::HashSet<_> = schema.iter().map(|r| r.field.clone()).collect();
-                            let validated_set: std::collections::HashSet<_> = validated_fields.iter().cloned().collect();
-                            let missing: Vec<_> = all_fields.difference(&validated_set).cloned().collect();
+                            let all_fields: std::collections::HashSet<_> =
+                                schema.iter().map(|r| r.field.clone()).collect();
+                            let validated_set: std::collections::HashSet<_> =
+                                validated_fields.iter().cloned().collect();
+                            let missing: Vec<_> =
+                                all_fields.difference(&validated_set).cloned().collect();
 
                             // Build smart retry context and append to next prompt iteration
                             // (stored in smart_retry_context variable for use in next loop)
@@ -1808,7 +2179,11 @@ impl AgentRuntime {
                         "dynamic_prompt_exec_from_state retry {}/{} validated={}",
                         current_retry,
                         max_retries,
-                        if validated_fields.is_empty() { "none".to_string() } else { validated_fields.join(",") }
+                        if validated_fields.is_empty() {
+                            "none".to_string()
+                        } else {
+                            validated_fields.join(",")
+                        }
                     );
                 }
             }
@@ -1816,7 +2191,10 @@ impl AgentRuntime {
             if current_retry <= max_retries {
                 if let Some(backoff) = &options.retry_backoff {
                     let delay = backoff.delay_for_retry(current_retry);
-                    debug!("Retry backoff: waiting {}ms before retry {}", delay, current_retry);
+                    debug!(
+                        "Retry backoff: waiting {}ms before retry {}",
+                        delay, current_retry
+                    );
                     #[cfg(not(feature = "wasm"))]
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                 }
@@ -1824,9 +2202,15 @@ impl AgentRuntime {
         }
 
         if let Some(err) = &last_error {
-            error!("dynamic_prompt_exec_from_state failed after {} retries [{}]: {}", max_retries, model_schema_key, err);
+            error!(
+                "dynamic_prompt_exec_from_state failed after {} retries [{}]: {}",
+                max_retries, model_schema_key, err
+            );
         } else {
-            error!("dynamic_prompt_exec_from_state failed after {} retries [{}]: validation errors", max_retries, model_schema_key);
+            error!(
+                "dynamic_prompt_exec_from_state failed after {} retries [{}]: validation errors",
+                max_retries, model_schema_key
+            );
         }
         Ok(None)
     }
@@ -1854,7 +2238,9 @@ pub struct DynamicPromptOptions {
 /// Model size selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelSize {
+    /// Small model for quick, less complex tasks
     Small,
+    /// Large model for complex reasoning tasks
     Large,
 }
 
@@ -1876,7 +2262,7 @@ fn parse_xml_to_json(xml: &str) -> Option<serde_json::Value> {
         const MAX_NESTING_ITERATIONS: usize = 10000;
 
         let trimmed = content.trim();
-        
+
         // Check if content has any child tags
         if !trimmed.contains('<') {
             return Value::String(trimmed.to_string());
@@ -1894,10 +2280,10 @@ fn parse_xml_to_json(xml: &str) -> Option<serde_json::Value> {
             }
 
             let after_open = &remaining[open_start + 1..];
-            
+
             if let Some(open_end) = after_open.find('>') {
                 let tag_content = &after_open[..open_end];
-                
+
                 // Skip closing tags, comments, and processing instructions
                 if tag_content.starts_with('/')
                     || tag_content.starts_with('!')
@@ -1925,7 +2311,7 @@ fn parse_xml_to_json(xml: &str) -> Option<serde_json::Value> {
                 let close_tag = format!("</{}>", tag_name);
                 let open_tag_start = format!("<{}", tag_name);
                 let content_start_idx = open_start + 1 + open_end + 1;
-                
+
                 // Count nesting depth to find correct closing tag
                 let mut depth = 1;
                 let mut search_pos = 0;
@@ -1946,8 +2332,12 @@ fn parse_xml_to_json(xml: &str) -> Option<serde_json::Value> {
                     match (next_open, next_close) {
                         (Some(o), Some(c)) if o < c => {
                             // Check if it's actually an opening tag (not just a prefix match)
-                            let after_tag = &search_content[search_pos + o + open_tag_start.len()..];
-                            if after_tag.starts_with('>') || after_tag.starts_with(' ') || after_tag.starts_with('/') {
+                            let after_tag =
+                                &search_content[search_pos + o + open_tag_start.len()..];
+                            if after_tag.starts_with('>')
+                                || after_tag.starts_with(' ')
+                                || after_tag.starts_with('/')
+                            {
                                 depth += 1;
                             }
                             search_pos += o + 1;

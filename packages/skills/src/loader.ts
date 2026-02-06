@@ -314,6 +314,15 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
   function addSkills(result: LoadSkillsResult): void {
     allDiagnostics.push(...result.diagnostics);
     for (const skill of result.skills) {
+      // Skip skills without file paths (inline skills) - they can't be deduplicated
+      if (!skill.filePath) {
+        const existing = skillMap.get(skill.name);
+        if (!existing) {
+          skillMap.set(skill.name, skill);
+        }
+        continue;
+      }
+
       // Resolve symlinks to detect duplicate files
       let realPath: string;
       try {
@@ -336,7 +345,7 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
           collision: {
             resourceType: "skill",
             name: skill.name,
-            winnerPath: existing.filePath,
+            winnerPath: existing.filePath ?? "(inline)",
             loserPath: skill.filePath,
           },
         });
@@ -416,12 +425,15 @@ export function loadSkillEntries(
 
   return skills.map((skill) => {
     let frontmatter: SkillFrontmatter = {};
-    try {
-      const raw = readFileSync(skill.filePath, "utf-8");
-      const parsed = parseFrontmatter<SkillFrontmatter>(raw);
-      frontmatter = parsed.frontmatter;
-    } catch {
-      // Use empty frontmatter if parsing fails
+    // Only parse frontmatter for file-based skills
+    if (skill.filePath) {
+      try {
+        const raw = readFileSync(skill.filePath, "utf-8");
+        const parsed = parseFrontmatter<SkillFrontmatter>(raw);
+        frontmatter = parsed.frontmatter;
+      } catch {
+        // Use empty frontmatter if parsing fails
+      }
     }
 
     return {

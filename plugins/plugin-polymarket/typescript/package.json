@@ -50,7 +50,7 @@
     "@polymarket/clob-client": "^5.2.0",
     "viem": "^2.21.0",
     "ws": "^8.17.0",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

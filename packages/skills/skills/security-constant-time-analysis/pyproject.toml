@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ct-analyzer"
+version = "0.1.0"
+description = "Constant-time assembly analyzer for detecting timing side-channel vulnerabilities"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "Scott Arciszewski", email = "opensource@trailofbits.com"}
+]
+keywords = [
+    "cryptography",
+    "security",
+    "timing-attack",
+    "side-channel",
+    "constant-time",
+    "static-analysis",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+[project.scripts]
+ct-analyzer = "ct_analyzer.analyzer:main"
+
+[project.urls]
+Homepage = "https://github.com/trailofbits/skills"
+Documentation = "https://github.com/trailofbits/skills/tree/main/plugins/constant-time-analysis#readme"
+Repository = "https://github.com/trailofbits/skills.git"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ct_analyzer"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "ct_analyzer/**/*.py",
+    "ct_analyzer/tests/test_samples/*.c",
+    "ct_analyzer/tests/test_samples/*.go",
+    "ct_analyzer/tests/test_samples/*.rs",
+]

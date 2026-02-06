@@ -24,7 +24,7 @@ class TestCreatePluginAction:
     @pytest.mark.asyncio
     async def test_name(self, action: CreatePluginAction) -> None:
         """Test action name."""
-        assert action.name == "createPlugin"
+        assert action.name == "CREATE_PLUGIN"
 
     @pytest.mark.asyncio
     async def test_validate_with_json(self, action: CreatePluginAction) -> None:
@@ -69,7 +69,7 @@ class TestCheckStatusAction:
     @pytest.mark.asyncio
     async def test_name(self, action: CheckStatusAction) -> None:
         """Test action name."""
-        assert action.name == "checkPluginCreationStatus"
+        assert action.name == "CHECK_PLUGIN_STATUS"
 
     @pytest.mark.asyncio
     async def test_validate_no_jobs(self, action: CheckStatusAction) -> None:
@@ -103,7 +103,7 @@ class TestCancelPluginAction:
     @pytest.mark.asyncio
     async def test_name(self, action: CancelPluginAction) -> None:
         """Test action name."""
-        assert action.name == "cancelPluginCreation"
+        assert action.name == "CANCEL_PLUGIN"
 
     @pytest.mark.asyncio
     async def test_validate_no_active_job(self, action: CancelPluginAction) -> None:
@@ -127,7 +127,7 @@ class TestCreateFromDescriptionAction:
     @pytest.mark.asyncio
     async def test_name(self, action: CreateFromDescriptionAction) -> None:
         """Test action name."""
-        assert action.name == "createPluginFromDescription"
+        assert action.name == "DESCRIBE_PLUGIN"
 
     @pytest.mark.asyncio
     async def test_validate_short_message(self, action: CreateFromDescriptionAction) -> None:

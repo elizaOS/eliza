@@ -5,16 +5,40 @@ import { afterEach, beforeEach, describe, expect, it, Mock, vi } from 'vitest';
 import { ILpService, LpPositionDetails, PoolInfo, TokenBalance, TransactionResult, UserLpProfile } from '../../types.ts';
 import { DexInteractionService } from '../DexInteractionService.ts';
 
+/**
+ * Interface for mock vault service
+ */
+interface MockVaultService {
+    createVault: ReturnType<typeof vi.fn>;
+    getVaultKeypair: ReturnType<typeof vi.fn>;
+    getVaultPublicKey: ReturnType<typeof vi.fn>;
+    getBalances: ReturnType<typeof vi.fn>;
+    exportPrivateKey: ReturnType<typeof vi.fn>;
+}
+
+/**
+ * Interface for mock user LP profile service
+ */
+interface MockUserLpProfileService {
+    getProfile: ReturnType<typeof vi.fn>;
+    ensureProfile: ReturnType<typeof vi.fn>;
+    updateProfile: ReturnType<typeof vi.fn>;
+    getAllProfilesWithAutoRebalanceEnabled: ReturnType<typeof vi.fn>;
+    addTrackedPosition: ReturnType<typeof vi.fn>;
+    removeTrackedPosition: ReturnType<typeof vi.fn>;
+    getTrackedPositions: ReturnType<typeof vi.fn>;
+}
+
 // Mocks
-const mockVaultService = {
+const mockVaultService: MockVaultService = {
     createVault: vi.fn(),
     getVaultKeypair: vi.fn(),
     getVaultPublicKey: vi.fn(),
     getBalances: vi.fn(),
     exportPrivateKey: vi.fn(),
-} as any;
+};
 
-const mockUserLpProfileService = {
+const mockUserLpProfileService: MockUserLpProfileService = {
   getProfile: vi.fn(),
   ensureProfile: vi.fn(),
   updateProfile: vi.fn(),
@@ -22,7 +46,7 @@ const mockUserLpProfileService = {
   addTrackedPosition: vi.fn(),
   removeTrackedPosition: vi.fn(),
   getTrackedPositions: vi.fn(),
-} as any;
+};
 
 function createMockDexLpService(name: string): ILpService {
     return {
@@ -38,7 +62,7 @@ function createMockDexLpService(name: string): ILpService {
 const mockRuntime = {
     getService: vi.fn(),
     services: new Map()
-} as any;
+} as unknown as IAgentRuntime;
 
 describe('DexInteractionService', () => {
   let dexInteractionService: DexInteractionService;
@@ -102,7 +126,9 @@ describe('DexInteractionService', () => {
     });
 
     it('should throw if trying to get an unregistered DEX service', () => {
-      expect(() => (dexInteractionService as any).getDexService('nonexistent')).toThrow(/No service registered/);
+      // Access private method for testing - cast to testable interface
+      const testable = dexInteractionService as unknown as { getDexService: (name: string) => ILpService };
+      expect(() => testable.getDexService('nonexistent')).toThrow(/No service registered/);
     });
   });
 
@@ -252,10 +278,10 @@ describe('DexInteractionService', () => {
             getLpPositionDetails: vi.fn(),
             getMarketDataForPools: vi.fn(),
             capabilityDescription: 'Dummy LP service',
-            runtime: {} as any,
+            runtime: {} as unknown as IAgentRuntime,
             start: vi.fn(),
             stop: vi.fn(),
-        } as any;
+        } as unknown as ILpService;
 
         runtime = {
             getService: vi.fn()
@@ -264,7 +290,7 @@ describe('DexInteractionService', () => {
             services: new Map([
                 ['dummyLpService', dummyLpService]
             ])
-        } as any;
+        } as unknown as IAgentRuntime;
 
         service = new DexInteractionService(runtime);
     });

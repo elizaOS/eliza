@@ -624,7 +624,7 @@ async function createOrUpdateMentionedEntity(
       const entity = await runtime.getEntityById(memory.entityId);
       if (
         entity?.names.some(
-          (name) => name.toLowerCase() === person.name.toLowerCase(),
+          (name: string) => name.toLowerCase() === person.name.toLowerCase(),
         )
       ) {
         existing = entity;
@@ -854,7 +854,9 @@ async function findEntityByName(
   const entities = await runtime.getEntitiesForRoom(roomId);
 
   for (const entity of entities) {
-    if (entity.names.some((n) => n.toLowerCase() === name.toLowerCase())) {
+    if (
+      entity.names.some((n: string) => n.toLowerCase() === name.toLowerCase())
+    ) {
       return entity;
     }
   }

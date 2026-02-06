@@ -4,7 +4,7 @@ description: Batch-generate images via OpenAI Images API. Random prompt sampler 
 homepage: https://platform.openai.com/docs/api-reference/images
 metadata:
   {
-    "openclaw":
+    "otto":
       {
         "emoji": "🖼️",
         "requires": { "bins": ["python3"], "env": ["OPENAI_API_KEY"] },
@@ -39,7 +39,7 @@ Useful flags:
 ```bash
 # GPT image models with various options
 python3 {baseDir}/scripts/gen.py --count 16 --model gpt-image-1
-python3 {baseDir}/scripts/gen.py --prompt "ultra-detailed studio photo of a lobster astronaut" --count 4
+python3 {baseDir}/scripts/gen.py --prompt "ultra-detailed studio photo of a futuristic cityscape" --count 4
 python3 {baseDir}/scripts/gen.py --size 1536x1024 --quality high --out-dir ./out/images
 python3 {baseDir}/scripts/gen.py --model gpt-image-1.5 --background transparent --output-format webp
 

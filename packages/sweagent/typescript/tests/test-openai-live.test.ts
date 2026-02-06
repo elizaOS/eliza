@@ -38,7 +38,7 @@ interface OpenAIResponse {
 
 async function callOpenAI(
   messages: OpenAIMessage[],
-  model: string = "gpt-4o-mini",
+  model: string = "gpt-5-mini",
   maxTokens: number = 100,
 ): Promise<OpenAIResponse> {
   const lastUser =
@@ -102,7 +102,7 @@ describe("OpenAI Integration Tests (Offline)", () => {
     expect(response).toBeDefined();
     expect(response.id).toBeDefined();
     expect(response.object).toBe("chat.completion");
-    expect(response.model).toContain("gpt-4o-mini");
+    expect(response.model).toContain("gpt-5-mini");
     expect(response.choices).toHaveLength(1);
     expect(response.choices[0].message.role).toBe("assistant");
     expect(response.choices[0].message.content).toBeDefined();
@@ -132,7 +132,7 @@ describe("OpenAI Integration Tests (Offline)", () => {
       { role: "user", content: "Write a very long essay about programming." },
     ];
 
-    const response = await callOpenAI(messages, "gpt-4o-mini", 100);
+    const response = await callOpenAI(messages, "gpt-5-mini", 100);
 
     // With max_tokens=100, the response should be limited
     expect(response.usage.completion_tokens).toBeLessThanOrEqual(100);

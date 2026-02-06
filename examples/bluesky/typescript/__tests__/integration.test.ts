@@ -12,11 +12,18 @@
 import { config } from "dotenv";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+type BlueSkyModule = typeof import("../../../../plugins/plugin-bluesky/typescript/client");
+
 // Load environment
 config({ path: "../../.env" });
 config();
 
 const isLiveTest = process.env.LIVE_TEST === "true";
+const blueskyModuleId: string = "@elizaos/plugin-bluesky";
+
+const loadBlueSkyClient = async (): Promise<BlueSkyModule> => {
+  return (await import(blueskyModuleId)) as BlueSkyModule;
+};
 
 // ============================================================================
 // Live Integration Tests (require credentials)
@@ -32,8 +39,7 @@ describe.skipIf(!isLiveTest)("Bluesky Agent Live Integration", () => {
   });
 
   it("should authenticate with Bluesky", async () => {
-    // @ts-expect-error - Workspace plugin resolved at runtime after build
-    const { BlueSkyClient } = await import("@elizaos/plugin-bluesky");
+    const { BlueSkyClient } = await loadBlueSkyClient();
 
     const client = new BlueSkyClient({
       service: process.env.BLUESKY_SERVICE || "https://bsky.social",
@@ -49,8 +55,7 @@ describe.skipIf(!isLiveTest)("Bluesky Agent Live Integration", () => {
   });
 
   it("should fetch timeline", async () => {
-    // @ts-expect-error - Workspace plugin resolved at runtime after build
-    const { BlueSkyClient } = await import("@elizaos/plugin-bluesky");
+    const { BlueSkyClient } = await loadBlueSkyClient();
 
     const client = new BlueSkyClient({
       service: process.env.BLUESKY_SERVICE || "https://bsky.social",
@@ -67,8 +72,7 @@ describe.skipIf(!isLiveTest)("Bluesky Agent Live Integration", () => {
   });
 
   it("should fetch notifications", async () => {
-    // @ts-expect-error - Workspace plugin resolved at runtime after build
-    const { BlueSkyClient } = await import("@elizaos/plugin-bluesky");
+    const { BlueSkyClient } = await loadBlueSkyClient();
 
     const client = new BlueSkyClient({
       service: process.env.BLUESKY_SERVICE || "https://bsky.social",
@@ -85,8 +89,7 @@ describe.skipIf(!isLiveTest)("Bluesky Agent Live Integration", () => {
   });
 
   it("should simulate post creation in dry run mode", async () => {
-    // @ts-expect-error - Workspace plugin resolved at runtime after build
-    const { BlueSkyClient } = await import("@elizaos/plugin-bluesky");
+    const { BlueSkyClient } = await loadBlueSkyClient();
 
     const client = new BlueSkyClient({
       service: process.env.BLUESKY_SERVICE || "https://bsky.social",

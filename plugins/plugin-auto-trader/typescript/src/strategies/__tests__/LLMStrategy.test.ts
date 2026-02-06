@@ -19,12 +19,12 @@ const mockLlmService = {
 };
 
 /** Strategy with exposed private methods for testing */
-interface StrategyWithBuildPrompt {
+type StrategyWithBuildPrompt = LLMStrategy & {
   buildPrompt(
     marketData: StrategyContextMarketData,
     agentState: AgentState,
   ): string;
-}
+};
 
 /** Mock runtime type for testing */
 type MockAgentRuntime = Pick<AgentRuntime, "getSetting" | "getService"> & {
@@ -161,9 +161,10 @@ describe("LLMStrategy", () => {
 
   describe("buildPrompt", () => {
     it("should construct a comprehensive prompt", () => {
-      const prompt = (
-        strategy as unknown as StrategyWithBuildPrompt
-      ).buildPrompt(marketData, agentState);
+      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
+        marketData,
+        agentState,
+      );
       expect(prompt).toContain(`Market Data:`);
       expect(prompt).toContain("Your response MUST be a single JSON object.");
     });
@@ -173,10 +174,10 @@ describe("LLMStrategy", () => {
         customPromptPrefix: "TestPrefix",
         customPromptSuffix: "TestSuffix",
       });
-      // @ts-expect-error - accessing private method for testing
-      const prompt = (
-        strategy as unknown as StrategyWithBuildPrompt
-      ).buildPrompt(marketData, agentState);
+      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
+        marketData,
+        agentState,
+      );
       expect(prompt.startsWith("TestPrefix")).toBe(true);
       expect(prompt.endsWith("TestSuffix")).toBe(true);
     });
@@ -189,25 +190,27 @@ describe("LLMStrategy", () => {
       strategy.configure({
         structuredOutputSchema: schema,
       } as LLMStrategyParams);
-      const prompt = (
-        strategy as unknown as StrategyWithBuildPrompt
-      ).buildPrompt(marketData, agentState);
+      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
+        marketData,
+        agentState,
+      );
       expect(prompt).toContain(JSON.stringify(schema));
     });
 
     it("should include current position P&L in the prompt", () => {
-      const prompt = (
-        strategy as unknown as StrategyWithBuildPrompt
-      ).buildPrompt(marketData, agentState);
+      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
+        marketData,
+        agentState,
+      );
       expect(prompt).toContain("Portfolio Value: 50000.00");
     });
 
     it("should state no holdings if portfolio is empty for symbol", () => {
       const emptyAgentState = { ...agentState, portfolioValue: 0 };
-      // @ts-expect-error - accessing private method for testing
-      const prompt = (
-        strategy as unknown as StrategyWithBuildPrompt
-      ).buildPrompt(marketData, emptyAgentState);
+      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
+        marketData,
+        emptyAgentState,
+      );
       expect(prompt).toContain("Portfolio Value: 0.00");
     });
   });

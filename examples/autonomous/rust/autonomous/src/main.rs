@@ -294,7 +294,7 @@ async fn main() -> Result<()> {
                     summary_lines.push(format!("shell: not executed (command-not-allowed): {}", command));
                     shell_json = json!({ "executed": false, "error": "command-not-allowed", "command": command });
                 } else if !shell_config.enabled {
-                    summary_lines.push("shell: not executed (SHELL_ENABLED is false)".to_string());
+                    summary_lines.push("shell: not executed (shell disabled)".to_string());
                     shell_json = json!({ "executed": false, "error": "shell-disabled", "command": command });
                 } else {
                     let result = shell_service

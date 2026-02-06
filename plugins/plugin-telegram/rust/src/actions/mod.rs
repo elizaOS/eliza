@@ -1,6 +1,10 @@
 mod send_message;
+mod send_reaction;
 
 pub use send_message::SendMessageAction;
+pub use send_reaction::{
+    execute_send_reaction, normalize_reaction, SendReactionActionParams, SEND_REACTION_ACTION,
+};
 
 use async_trait::async_trait;
 use serde_json::Value;

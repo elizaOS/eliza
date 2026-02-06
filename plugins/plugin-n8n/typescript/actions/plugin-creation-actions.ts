@@ -8,7 +8,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { z } from "zod";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { PluginCreationJob, PluginSpecification } from "../types";
 import { getPluginCreationService } from "../utils/get-plugin-creation-service";
 import { isValidJsonSpecification, validatePrompt } from "../utils/validation";
@@ -70,42 +69,71 @@ const PluginSpecificationSchema = z.object({
     .optional(),
 });
 
-const spec = requireActionSpec("PLUGIN-CREATION-ACTIONS");
+// ---------------------------------------------------------------------------
+// CREATE_PLUGIN — create from JSON specification
+// ---------------------------------------------------------------------------
 
 export const createPluginAction: Action = {
-  name: spec.name,
-  description: spec.description,
-  similes: spec.similes ? [...spec.similes] : [],
+  name: "CREATE_PLUGIN",
+  description:
+    "Create an ElizaOS plugin from a structured JSON specification that defines actions, providers, services, and evaluators. " +
+    "Use this when the user provides a complete plugin spec as JSON. " +
+    "Do NOT use this for n8n workflow creation — use CREATE_N8N_WORKFLOW instead. " +
+    "Do NOT use this for natural language plugin descriptions — use DESCRIBE_PLUGIN instead.",
+  similes: [
+    "BUILD_PLUGIN",
+    "GENERATE_PLUGIN",
+    "MAKE_PLUGIN",
+    "CREATE_ELIZA_PLUGIN",
+    "BUILD_ELIZA_PLUGIN",
+  ],
   examples: [
     [
       {
-        name: "user",
+        name: "{{user1}}",
         content: {
-          text: "Create a plugin for managing user preferences",
+          text: '{"name": "@elizaos/plugin-weather", "description": "Weather data plugin", "actions": [{"name": "getWeather", "description": "Fetch current weather"}]}',
         },
       },
       {
-        name: "agent",
+        name: "{{agent}}",
         content: {
-          text: "I'll create a user preferences management plugin for you. Let me start by generating the necessary components...",
+          text: "I'll create the @elizaos/plugin-weather plugin with a getWeather action. Starting the generation process now.",
+          actions: ["CREATE_PLUGIN"],
         },
       },
     ],
     [
       {
-        name: "user",
+        name: "{{user1}}",
+        content: {
+          text: "Create a plugin for managing user preferences with this spec: { ... }",
+        },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "I'll create a user preferences management plugin based on your specification.",
+          actions: ["CREATE_PLUGIN"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
         content: {
           text: "Build a plugin that adds weather information capabilities",
         },
       },
       {
-        name: "agent",
+        name: "{{agent}}",
         content: {
-          text: "I'll create a weather information plugin with actions for fetching current weather, forecasts, and weather alerts.",
+          text: "I'll create a weather information plugin with actions for fetching current weather, forecasts, and alerts.",
+          actions: ["CREATE_PLUGIN"],
         },
       },
     ],
-  ],
+  ] as ActionExample[][],
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = getPluginCreationService(runtime);
     if (!service) {
@@ -169,7 +197,7 @@ export const createPluginAction: Action = {
 
       return {
         success: true,
-        text: `Plugin creation job started successfully!\n\nJob ID: ${jobId}\nPlugin: ${specification.name}\n\nUse 'checkPluginCreationStatus' to monitor progress.`,
+        text: `Plugin creation started!\n\nJob ID: ${jobId}\nPlugin: ${specification.name}\n\nUse CHECK_PLUGIN_STATUS to monitor progress.`,
         data: {
           jobId,
           pluginName: specification.name,
@@ -185,13 +213,64 @@ export const createPluginAction: Action = {
   },
 };
 
-const checkStatusSpec = requireActionSpec("CHECK_PLUGIN_CREATION_STATUS");
+// ---------------------------------------------------------------------------
+// CHECK_PLUGIN_STATUS — check job progress
+// ---------------------------------------------------------------------------
 
 export const checkPluginCreationStatusAction: Action = {
-  name: checkStatusSpec.name,
-  description: checkStatusSpec.description,
-  similes: checkStatusSpec.similes ? [...checkStatusSpec.similes] : [],
-  examples: (checkStatusSpec.examples ?? []) as ActionExample[][],
+  name: "CHECK_PLUGIN_STATUS",
+  description:
+    "Check the progress of an active plugin creation job. Shows status, phase, progress percentage, and recent logs. " +
+    "Use this when the user asks about a plugin build in progress or wants to know the status of a creation job. " +
+    "Do NOT use this for n8n workflow status — use GET_N8N_EXECUTIONS instead.",
+  similes: [
+    "PLUGIN_STATUS",
+    "PLUGIN_PROGRESS",
+    "CHECK_BUILD_STATUS",
+    "PLUGIN_JOB_STATUS",
+    "CHECK_PLUGIN_CREATION",
+  ],
+  examples: [
+    [
+      {
+        name: "{{user1}}",
+        content: { text: "How is the plugin build going?" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Let me check the current status of your plugin creation job.",
+          actions: ["CHECK_PLUGIN_STATUS"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: { text: "Is the weather plugin done yet?" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "I'll check the progress of your weather plugin build.",
+          actions: ["CHECK_PLUGIN_STATUS"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: { text: "Check status of job abc-123-def" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Looking up job abc-123-def now.",
+          actions: ["CHECK_PLUGIN_STATUS"],
+        },
+      },
+    ],
+  ] as ActionExample[][],
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
     const service = getPluginCreationService(runtime);
     if (!service) {
@@ -306,13 +385,64 @@ export const checkPluginCreationStatusAction: Action = {
   },
 };
 
-const cancelSpec = requireActionSpec("CANCEL_PLUGIN_CREATION");
+// ---------------------------------------------------------------------------
+// CANCEL_PLUGIN — cancel active job
+// ---------------------------------------------------------------------------
 
 export const cancelPluginCreationAction: Action = {
-  name: cancelSpec.name,
-  description: cancelSpec.description,
-  similes: cancelSpec.similes ? [...cancelSpec.similes] : [],
-  examples: (cancelSpec.examples ?? []) as ActionExample[][],
+  name: "CANCEL_PLUGIN",
+  description:
+    "Cancel an active plugin creation job that is currently running or pending. " +
+    "Use this when the user wants to stop or abort a plugin build in progress. " +
+    "Do NOT use this to cancel n8n workflow drafts — use CREATE_N8N_WORKFLOW with a cancel message instead.",
+  similes: [
+    "STOP_PLUGIN",
+    "ABORT_PLUGIN",
+    "CANCEL_BUILD",
+    "STOP_BUILD",
+    "CANCEL_PLUGIN_CREATION",
+  ],
+  examples: [
+    [
+      {
+        name: "{{user1}}",
+        content: { text: "Cancel the plugin build" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "I'll cancel the active plugin creation job.",
+          actions: ["CANCEL_PLUGIN"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: { text: "Stop building the weather plugin" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Stopping the weather plugin creation.",
+          actions: ["CANCEL_PLUGIN"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: { text: "Abort the current job, I changed my mind" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Cancelling the plugin creation job now.",
+          actions: ["CANCEL_PLUGIN"],
+        },
+      },
+    ],
+  ] as ActionExample[][],
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
     const service = getPluginCreationService(runtime);
     if (!service) {
@@ -352,7 +482,7 @@ export const cancelPluginCreationAction: Action = {
       service.cancelJob(activeJob.id);
       return {
         success: true,
-        text: `Plugin creation job has been cancelled.\n\nJob ID: ${activeJob.id}\nPlugin: ${activeJob.specification.name}`,
+        text: `Plugin creation cancelled.\n\nJob ID: ${activeJob.id}\nPlugin: ${activeJob.specification.name}`,
         data: {
           jobId: activeJob.id,
           pluginName: activeJob.specification.name,
@@ -368,13 +498,69 @@ export const cancelPluginCreationAction: Action = {
   },
 };
 
-const createFromDescSpec = requireActionSpec("CREATE_PLUGIN_FROM_DESCRIPTION");
+// ---------------------------------------------------------------------------
+// DESCRIBE_PLUGIN — create from natural language description
+// ---------------------------------------------------------------------------
 
 export const createPluginFromDescriptionAction: Action = {
-  name: createFromDescSpec.name,
-  description: createFromDescSpec.description,
-  similes: createFromDescSpec.similes ? [...createFromDescSpec.similes] : [],
-  examples: (createFromDescSpec.examples ?? []) as ActionExample[][],
+  name: "DESCRIBE_PLUGIN",
+  description:
+    "Generate and create an ElizaOS plugin from a natural language description. " +
+    "Use this when the user describes what they want a plugin to do in plain English without providing a JSON spec. " +
+    "Do NOT use this for n8n workflow creation — use CREATE_N8N_WORKFLOW instead.",
+  similes: [
+    "CREATE_PLUGIN_FROM_DESCRIPTION",
+    "GENERATE_PLUGIN_FROM_TEXT",
+    "BUILD_PLUGIN_FROM_DESCRIPTION",
+    "MAKE_PLUGIN_FROM_DESCRIPTION",
+  ],
+  examples: [
+    [
+      {
+        name: "{{user1}}",
+        content: {
+          text: "I need a plugin that helps manage todo lists with add, remove, and list functionality",
+        },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "I'll create a todo list management plugin based on your description.",
+          actions: ["DESCRIBE_PLUGIN"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: {
+          text: "Build me a plugin that fetches crypto prices and tracks portfolio value",
+        },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "I'll generate a crypto portfolio plugin with price fetching and value tracking.",
+          actions: ["DESCRIBE_PLUGIN"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: {
+          text: "Can you make a plugin that monitors a website for changes and notifies me?",
+        },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "I'll create a website monitoring plugin with change detection and notifications.",
+          actions: ["DESCRIBE_PLUGIN"],
+        },
+      },
+    ],
+  ] as ActionExample[][],
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     const service = getPluginCreationService(runtime);
     if (!service) {
@@ -431,16 +617,16 @@ export const createPluginFromDescriptionAction: Action = {
       return {
         success: true,
         text:
-          `Creating plugin based on your description!\n\n` +
+          `Creating plugin from your description!\n\n` +
           `Plugin: ${specification.name}\n` +
           `Description: ${specification.description}\n` +
           `Job ID: ${jobId}\n\n` +
-          `Components to be created:\n` +
+          `Components:\n` +
           `${specification.actions?.length ? `- ${specification.actions.length} actions\n` : ""}` +
           `${specification.providers?.length ? `- ${specification.providers.length} providers\n` : ""}` +
           `${specification.services?.length ? `- ${specification.services.length} services\n` : ""}` +
           `${specification.evaluators?.length ? `- ${specification.evaluators.length} evaluators\n` : ""}\n` +
-          `Use 'checkPluginCreationStatus' to monitor progress.`,
+          `Use CHECK_PLUGIN_STATUS to monitor progress.`,
       };
     } catch (error) {
       return {
@@ -450,6 +636,10 @@ export const createPluginFromDescriptionAction: Action = {
     }
   },
 };
+
+// ---------------------------------------------------------------------------
+// Helper: generate a plugin spec from natural language
+// ---------------------------------------------------------------------------
 
 function generatePluginSpecification(description: string): PluginSpecification {
   const lowerDesc = description.toLowerCase();

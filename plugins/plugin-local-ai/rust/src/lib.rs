@@ -268,6 +268,16 @@ pub struct LocalAIPlugin {
 impl LocalAIPlugin {
     /// Create a new plugin with the given configuration.
     pub fn new(config: LocalAIConfig) -> Result<Self> {
+        if config.models_dir.as_os_str().is_empty() {
+            return Err(LocalAIError::ConfigError(
+                "Models directory path cannot be empty".to_string(),
+            ));
+        }
+        if config.cache_dir.as_os_str().is_empty() {
+            return Err(LocalAIError::ConfigError(
+                "Cache directory path cannot be empty".to_string(),
+            ));
+        }
         std::fs::create_dir_all(&config.models_dir)
             .map_err(|e| LocalAIError::IoError(e.to_string()))?;
         std::fs::create_dir_all(&config.cache_dir)

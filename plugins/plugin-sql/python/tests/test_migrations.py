@@ -145,7 +145,7 @@ class TestPluginSchemaNamespacing:
 
         # npm scope and plugin- prefix are removed
         assert derive_schema_name("@your-org/plugin-name") == "name"
-        assert derive_schema_name("@elizaos/plugin-bootstrap") == "bootstrap"
+        assert derive_schema_name("@elizaos/plugin-discord") == "discord"
 
     def test_simple_names(self) -> None:
         assert derive_schema_name("my-plugin") == "my_plugin"

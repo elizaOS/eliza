@@ -291,8 +291,8 @@ def _create_groq_plugin() -> Optional["Plugin"]:
             name="groq",
             description="Groq model provider for BFCL benchmark (llama-3.1-8b-instant default)",
             models={
-                ModelType.TEXT_LARGE.value: text_large_handler,
-                ModelType.TEXT_SMALL.value: text_small_handler,
+                ModelType.TEXT_LARGE: text_large_handler,
+                ModelType.TEXT_SMALL: text_small_handler,
             },
         )
     
@@ -369,8 +369,8 @@ def _create_anthropic_plugin() -> Optional["Plugin"]:
             name="anthropic",
             description="Anthropic model provider for BFCL benchmark",
             models={
-                ModelType.TEXT_LARGE.value: text_large_handler,
-                ModelType.TEXT_SMALL.value: text_small_handler,
+                ModelType.TEXT_LARGE: text_large_handler,
+                ModelType.TEXT_SMALL: text_small_handler,
             },
         )
     

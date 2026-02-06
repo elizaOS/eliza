@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://www.w3.org/2000/svg" height="181.53mm" width="181.53mm" version="1.1" xmlns:cc="http://creativecommons.org/ns#" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 643.19999 643.19998" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<defs>
+<linearGradient id="g" y2="392.36" xlink:href="#c" gradientUnits="userSpaceOnUse" x2="130" gradientTransform="translate(1e3)" y1="542.36" x1="130"/>
+<linearGradient id="c">
+<stop stop-color="#cfcfd2" offset="0"/>
+<stop stop-color="#f7f7f7" offset="1"/>
+</linearGradient>
+<linearGradient id="f" y2="467.36" xlink:href="#c" gradientUnits="userSpaceOnUse" x2="215" gradientTransform="translate(1e3)" y1="467.36" x1="55"/>
+<clipPath id="i" clipPathUnits="userSpaceOnUse">
+<rect ry="30" height="160" width="160" stroke="#000" y="387.36" x="55" stroke-width="0.8" fill="none"/>
+</clipPath>
+<filter id="d" style="color-interpolation-filters:sRGB" height="3.9618" width="1.1916" y="-1.4809" x="-.095824">
+<feGaussianBlur stdDeviation="6.7875"/>
+</filter>
+<filter id="b" style="color-interpolation-filters:sRGB" height="3.9618" width="1.1916" y="-1.4809" x="-.095824">
+<feGaussianBlur stdDeviation="6.7875"/>
+</filter>
+<linearGradient id="e" y2="532.36" gradientUnits="userSpaceOnUse" x2="140" gradientTransform="translate(1e3)" y1="402.36" x1="140">
+<stop stop-color="#e0e0e0" offset="0"/>
+<stop stop-color="#eaeaea" offset="1"/>
+</linearGradient>
+<linearGradient id="a" y2="452.36" xlink:href="#h" gradientUnits="userSpaceOnUse" x2="-170" gradientTransform="translate(300,2.1e-5)" y1="482.36" x1="-170"/>
+<linearGradient id="h">
+<stop stop-color="#787878" offset="0"/>
+<stop stop-color="#0c0c0c" offset="1"/>
+</linearGradient>
+</defs>
+<g transform="translate(1541.6 320.67)">
+<g transform="matrix(4 0 0 4 -5760 -1868.5)">
+<rect ry="30" height="160" width="160" stroke="url(#f)" y="387.36" x="1055" stroke-width="0.8" fill="url(#g)"/>
+<g transform="translate(1e3)" clip-path="url(#i)">
+<path d="m135 542.36a90.002 13 0 0 0 -85 8.77c4.8596 1.4338 10.182 2.2285 15.772 2.2285h138.46c5.5874 0 10.906-0.79421 15.764-2.2266a90.002 13 0 0 0 -84.996 -8.7734z" filter="url(#d)" fill="#666"/>
+<g fill="#fff">
+<path d="m135 393.36a90.002 13 0 0 1 -85 -8.77c4.8596-1.4338 10.182-2.2285 15.772-2.2285h138.46c5.5874 0 10.906 0.79421 15.764 2.2266a90.002 13 0 0 1 -84.996 8.7734z" filter="url(#b)"/>
+<path d="m135 393.36a90.002 13 0 0 1 -85 -8.77c4.8596-1.4338 10.182-2.2285 15.772-2.2285h138.46c5.5874 0 10.906 0.79421 15.764 2.2266a90.002 13 0 0 1 -84.996 8.7734z" filter="url(#b)"/>
+<path d="m135 393.36a90.002 13 0 0 1 -85 -8.77c4.8596-1.4338 10.182-2.2285 15.772-2.2285h138.46c5.5874 0 10.906 0.79421 15.764 2.2266a90.002 13 0 0 1 -84.996 8.7734z" filter="url(#b)"/>
+</g>
+<path d="m135 542.36a90.002 13 0 0 0 -85 8.77c4.8596 1.4338 10.182 2.2285 15.772 2.2285h138.46c5.5874 0 10.906-0.79421 15.764-2.2266a90.002 13 0 0 0 -84.996 -8.7734z" filter="url(#d)" fill="#666"/>
+</g>
+<rect ry="30" height="160" width="160" stroke="#000" y="387.36" x="1055" stroke-width="0.7" fill="none"/>
+<rect ry="40" height="130" width="130" y="402.36" x="1070" fill="url(#e)"/>
+<g transform="translate(1040,-30)">
+<circle cx="135" cy="469.32" r="15" fill="#fff"/>
+<circle cy="467.36" cx="135" r="15" fill="url(#a)"/>
+</g>
+<g transform="translate(960,30)">
+<circle cx="135" cy="469.32" r="15" fill="#fff"/>
+<circle cy="467.36" cx="135" r="15" fill="url(#a)"/>
+</g>
+<g transform="translate(1e3 -30)">
+<circle cy="469.32" cx="135" r="15" fill="#fff"/>
+<circle cx="135" cy="467.36" r="15" fill="url(#a)"/>
+</g>
+<g transform="translate(960,-30)">
+<circle cx="135" cy="469.32" r="15" fill="#fff"/>
+<circle cy="467.36" cx="135" r="15" fill="url(#a)"/>
+</g>
+<g transform="translate(1e3 30)">
+<circle cy="469.32" cx="135" r="15" fill="#fff"/>
+<circle cx="135" cy="467.36" r="15" fill="url(#a)"/>
+</g>
+<g transform="translate(1040,30)">
+<circle cx="135" cy="469.32" r="15" fill="#fff"/>
+<circle cy="467.36" cx="135" r="15" fill="url(#a)"/>
+</g>
+</g>
+</g>
+</svg>

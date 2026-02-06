@@ -47,7 +47,9 @@ export function formatSkillsForPrompt(skills: Skill[]): string {
     lines.push(
       `    <description>${escapeXml(skill.description)}</description>`,
     );
-    lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
+    if (skill.filePath) {
+      lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
+    }
     lines.push("  </skill>");
   }
 

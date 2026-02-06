@@ -39,6 +39,19 @@ function isPostView(
   );
 }
 
+function isReplyWithPostViews(
+  reply: AppBskyFeedDefs.ReplyRef | null | undefined,
+): reply is { root: AppBskyFeedDefs.PostView; parent: AppBskyFeedDefs.PostView } {
+  return (
+    typeof reply === "object" &&
+    reply !== null &&
+    "root" in reply &&
+    "parent" in reply &&
+    isPostView(reply.root) &&
+    isPostView(reply.parent)
+  );
+}
+
 function adaptPostView(postView: AppBskyFeedDefs.PostView): BlueSkyPost {
   const author = postView.author as ATProtocolProfileViewExtended;
   const record = postView.record as ATProtocolPostRecord;
@@ -153,21 +166,23 @@ export class BlueSkyClient {
 
     return {
       cursor: response.data.cursor,
-      feed: response.data.feed.map((item) => ({
-        post: adaptPostView(item.post),
-        reply:
-          // @ts-expect-error - AT Proto SDK type narrowing issue with reply posts
-          item.reply && isPostView(item.reply.root) && isPostView(item.reply.parent)
-            ? {
-                root: adaptPostView(item.reply.root as AppBskyFeedDefs.PostView),
-                parent: adaptPostView(item.reply.parent as AppBskyFeedDefs.PostView),
-              }
-            : undefined,
-        reason: item.reason as Record<
-          string,
-          string | number | boolean | object | null | undefined
-        >,
-      })),
+      feed: response.data.feed.map((item) => {
+        const reply = isReplyWithPostViews(item.reply)
+          ? {
+              root: adaptPostView(item.reply.root),
+              parent: adaptPostView(item.reply.parent),
+            }
+          : undefined;
+
+        return {
+          post: adaptPostView(item.post),
+          reply,
+          reason: item.reason as Record<
+            string,
+            string | number | boolean | object | null | undefined
+          >,
+        };
+      }),
     };
   }
 

@@ -1,0 +1,20 @@
+# Staging environment overrides for gateway-discord
+
+# Use smaller resource limits for staging
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+# Smaller scaling limits for staging
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+
+# Prometheus monitoring (enable if Prometheus Operator is installed in staging)
+prometheus:
+  enabled: false

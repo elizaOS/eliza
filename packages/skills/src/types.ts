@@ -33,21 +33,71 @@ export interface SkillFrontmatter {
 }
 
 /**
- * Loaded skill with parsed metadata
+ * Loaded skill with parsed metadata.
+ * 
+ * Core fields (filePath, baseDir, source, disableModelInvocation) are for file-based skills.
+ * Optional runtime fields (instructions, actions, providers, tools, etc.) support inline definitions.
  */
 export interface Skill {
   /** Skill name (from frontmatter or directory name) */
   name: string;
   /** Human-readable description */
   description: string;
-  /** Absolute path to the SKILL.md file */
-  filePath: string;
-  /** Absolute path to the skill's base directory */
-  baseDir: string;
-  /** Source identifier (e.g., "bundled", "workspace", "managed") */
-  source: string;
+  /** Absolute path to the SKILL.md file (optional for inline skills) */
+  filePath?: string;
+  /** Absolute path to the skill's base directory (optional for inline skills) */
+  baseDir?: string;
+  /** Source identifier (e.g., "bundled", "workspace", "managed", "inline") */
+  source?: string;
   /** If true, skill won't be included in model prompts */
-  disableModelInvocation: boolean;
+  disableModelInvocation?: boolean;
+
+  // Runtime definition fields (for inline/programmatic skills)
+  /** Unique slug identifier for the skill */
+  slug?: string;
+  /** Skill version */
+  version?: string;
+  /** Skill instructions/content */
+  instructions?: string;
+  /** System prompt for the skill */
+  systemPrompt?: string;
+  /** Example usages */
+  examples?: string[];
+  /** Whether the skill is enabled */
+  enabled?: boolean;
+  /** Actions the skill provides */
+  actions?: SkillActionDefinition[];
+  /** Providers the skill provides */
+  providers?: SkillProviderDefinition[];
+  /** Tools available to the skill */
+  tools?: SkillToolDefinition[];
+}
+
+/**
+ * Skill action definition for inline skills
+ */
+export interface SkillActionDefinition {
+  name: string;
+  description: string;
+  handler: string;
+}
+
+/**
+ * Skill provider definition for inline skills
+ */
+export interface SkillProviderDefinition {
+  name: string;
+  description: string;
+  get: string;
+}
+
+/**
+ * Skill tool definition for inline skills (generic, specific implementations can extend)
+ */
+export interface SkillToolDefinition {
+  name: string;
+  description?: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -115,14 +165,14 @@ export interface SkillEntry {
   skill: Skill;
   /** Raw parsed frontmatter */
   frontmatter: SkillFrontmatter;
-  /** Resolved OpenClaw-specific metadata */
+  /** Resolved Otto-specific metadata */
   metadata: SkillMetadata;
   /** Invocation policy */
   invocation: SkillInvocationPolicy;
 }
 
 /**
- * OpenClaw-specific skill metadata
+ * Otto-specific skill metadata
  */
 export interface SkillMetadata {
   /** Primary environment (node, python, etc.) */

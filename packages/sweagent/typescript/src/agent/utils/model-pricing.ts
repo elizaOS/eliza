@@ -17,28 +17,28 @@ export interface ModelPricing {
  */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
   // Current OpenAI Models
-  "gpt-4o": {
+  "gpt-5": {
     inputCostPer1k: 0.005,
     outputCostPer1k: 0.015,
     maxInputTokens: 128000,
     maxOutputTokens: 4096,
     provider: "openai",
   },
-  "gpt-4o-mini": {
+  "gpt-5-mini": {
     inputCostPer1k: 0.00015,
     outputCostPer1k: 0.0006,
     maxInputTokens: 128000,
     maxOutputTokens: 16384,
     provider: "openai",
   },
-  "gpt-4-turbo": {
+  "gpt-5": {
     inputCostPer1k: 0.01,
     outputCostPer1k: 0.03,
     maxInputTokens: 128000,
     maxOutputTokens: 4096,
     provider: "openai",
   },
-  "gpt-4": {
+  "gpt-5": {
     inputCostPer1k: 0.03,
     outputCostPer1k: 0.06,
     maxInputTokens: 8192,
@@ -180,30 +180,30 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   },
 
   // Azure OpenAI Models (same pricing as OpenAI)
-  "azure/gpt-4o": {
-    inputCostPer1k: 0.005, // Same as gpt-4o
-    outputCostPer1k: 0.015, // Same as gpt-4o
+  "azure/gpt-5": {
+    inputCostPer1k: 0.005, // Same as gpt-5
+    outputCostPer1k: 0.015, // Same as gpt-5
     maxInputTokens: 128000,
     maxOutputTokens: 4096,
     provider: "azure",
   },
-  "azure/gpt-4o-mini": {
-    inputCostPer1k: 0.00015, // Same as gpt-4o-mini
-    outputCostPer1k: 0.0006, // Same as gpt-4o-mini
+  "azure/gpt-5-mini": {
+    inputCostPer1k: 0.00015, // Same as gpt-5-mini
+    outputCostPer1k: 0.0006, // Same as gpt-5-mini
     maxInputTokens: 128000,
     maxOutputTokens: 16384,
     provider: "azure",
   },
-  "azure/gpt-4": {
-    inputCostPer1k: 0.03, // Same as gpt-4
-    outputCostPer1k: 0.06, // Same as gpt-4
+  "azure/gpt-5": {
+    inputCostPer1k: 0.03, // Same as gpt-5
+    outputCostPer1k: 0.06, // Same as gpt-5
     maxInputTokens: 8192,
     maxOutputTokens: 8192,
     provider: "azure",
   },
-  "azure/gpt-4-turbo": {
-    inputCostPer1k: 0.01, // Same as gpt-4-turbo
-    outputCostPer1k: 0.03, // Same as gpt-4-turbo
+  "azure/gpt-5": {
+    inputCostPer1k: 0.01, // Same as gpt-5
+    outputCostPer1k: 0.03, // Same as gpt-5
     maxInputTokens: 128000,
     maxOutputTokens: 4096,
     provider: "azure",
@@ -331,7 +331,7 @@ export function calculateCost(
 
   // If not found, try to find a matching pattern
   if (!pricing) {
-    // Handle versioned models (e.g., gpt-4-0613 -> gpt-4)
+    // Handle versioned models (e.g., gpt-5-0613 -> gpt-5)
     const baseModel = modelName.replace(/-\d{4}$/, "").replace(/-\d{6}$/, "");
     pricing = MODEL_PRICING[baseModel];
   }

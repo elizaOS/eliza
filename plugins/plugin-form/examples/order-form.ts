@@ -15,7 +15,7 @@
  * 3. The agent guides user through the order
  */
 
-import type { Plugin, IAgentRuntime } from '@elizaos/core';
+import type { Plugin, IAgentRuntime, UUID } from '@elizaos/core';
 import { Form, C, FormService, type FormSubmission } from '../src/index';
 
 // ============================================================================
@@ -229,18 +229,32 @@ function calculateTotal(product: string, quantity: number): number {
 // ============================================================================
 
 /**
+ * Worker options type for order ready event.
+ */
+interface OrderReadyOptions {
+  session: {
+    id: string;
+    entityId: string;
+    fields?: Record<string, { value?: string | number }>;
+  };
+}
+
+/**
  * Called when all required fields are filled.
  * Good place to show order summary.
  */
 export const orderReadyWorker = {
   name: 'order_ready_for_review',
-  validate: async () => true,
-  execute: async (runtime: IAgentRuntime, options: any) => {
+  validate: async (_runtime: IAgentRuntime, options: OrderReadyOptions) => {
+    // Validate that we have a valid session with product selection
+    return !!(options?.session?.fields?.product?.value);
+  },
+  execute: async (runtime: IAgentRuntime, options: OrderReadyOptions) => {
     const { session } = options;
     
     // Get current values
-    const product = session.fields?.product?.value;
-    const quantity = session.fields?.quantity?.value || 1;
+    const product = session.fields?.product?.value as string;
+    const quantity = (session.fields?.quantity?.value as number) || 1;
     const total = calculateTotal(product, quantity);
     
     runtime.logger.info('[Order] Ready for review:', {
@@ -252,13 +266,25 @@ export const orderReadyWorker = {
 };
 
 /**
+ * Worker options type for order processing.
+ */
+interface ProcessOrderOptions {
+  submission: FormSubmission;
+}
+
+/**
  * Called when order is submitted.
  */
 export const processOrderWorker = {
   name: 'process_order',
-  validate: async () => true,
-  execute: async (runtime: IAgentRuntime, options: any) => {
-    const { submission } = options as { submission: FormSubmission };
+  validate: async (_runtime: IAgentRuntime, options: ProcessOrderOptions) => {
+    // Validate that we have required order fields
+    const values = options?.submission?.values;
+    if (!values) return false;
+    return !!(values.product && values.companyName && values.billingEmail && values.paymentMethod);
+  },
+  execute: async (runtime: IAgentRuntime, options: ProcessOrderOptions) => {
+    const { submission } = options;
     const values = submission.values;
     const mappedValues = submission.mappedValues || {};
     
@@ -289,12 +315,25 @@ export const processOrderWorker = {
 };
 
 /**
+ * Worker options type for order cancellation.
+ */
+interface OrderCancelledOptions {
+  session: {
+    id: string;
+    entityId: string;
+  };
+}
+
+/**
  * Called when order is cancelled.
  */
 export const orderCancelledWorker = {
   name: 'order_cancelled',
-  validate: async () => true,
-  execute: async (runtime: IAgentRuntime, options: any) => {
+  validate: async (_runtime: IAgentRuntime, options: OrderCancelledOptions) => {
+    // Validate that we have a valid session reference
+    return !!(options?.session?.id && options?.session?.entityId);
+  },
+  execute: async (runtime: IAgentRuntime, options: OrderCancelledOptions) => {
     const { session } = options;
     runtime.logger.info('[Order] Order cancelled:', {
       sessionId: session.id,
@@ -363,7 +402,7 @@ export const orderPlugin: Plugin = {
         }
 
         try {
-          await formService.startSession('product-order', entityId as any, roomId as any);
+          await formService.startSession('product-order', entityId as UUID, roomId as UUID);
 
           await callback?.({
             text: "I'd be happy to help you place an order!\n\nWe have three plans available:\n• Basic - $9.99/mo\n• Pro - $19.99/mo\n• Enterprise - $49.99/mo\n\nWhich plan would you like?",

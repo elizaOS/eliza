@@ -35,10 +35,11 @@ from elizaos.types.runtime import (
     TargetInfo,
 )
 from elizaos.types.service import Service
-from elizaos.types.state import RetryBackoffConfig, SchemaRow, State, StateData
+from elizaos.types.state import RetryBackoffConfig, SchemaRow, State, StateData, StreamEvent
 from elizaos.types.task import TaskWorker
 from elizaos.utils import compose_prompt_from_state as _compose_prompt_from_state
 from elizaos.utils import get_current_time_ms as _get_current_time_ms
+from elizaos.utils.streaming import ValidationStreamExtractor, ValidationStreamExtractorConfig
 
 _message_service_class: type | None = None
 
@@ -363,12 +364,19 @@ class AgentRuntime(IAgentRuntime):
         if secret:
             if self._character.secrets is None:
                 self._character.secrets = {}
-            self._character.secrets[key] = value  # type: ignore[assignment]
+            if isinstance(self._character.secrets, dict):
+                self._character.secrets[key] = value  # type: ignore[assignment]
+            else:
+                # Fall back to internal settings dict for protobuf objects
+                self._settings[key] = value
             return
 
-        if self._character.settings is None:
-            self._character.settings = {}
-        self._character.settings[key] = value  # type: ignore[assignment]
+        # Try to set on character.settings if it's a dict
+        if isinstance(self._character.settings, dict):
+            self._character.settings[key] = value  # type: ignore[assignment]
+        else:
+            # Fall back to internal settings dict for protobuf objects
+            self._settings[key] = value
 
     def get_setting(self, key: str) -> object | None:
         settings = self._character.settings
@@ -1098,17 +1106,17 @@ class AgentRuntime(IAgentRuntime):
         if llm_mode != LLMMode.LLM_MODE_DEFAULT:
             # List of text generation model types that can be overridden
             text_generation_models = [
-                ModelType.TEXT_SMALL.value,
-                ModelType.TEXT_LARGE.value,
-                ModelType.TEXT_REASONING_SMALL.value,
-                ModelType.TEXT_REASONING_LARGE.value,
-                ModelType.TEXT_COMPLETION.value,
+                ModelType.TEXT_SMALL,
+                ModelType.TEXT_LARGE,
+                ModelType.TEXT_REASONING_SMALL,
+                ModelType.TEXT_REASONING_LARGE,
+                ModelType.TEXT_COMPLETION,
             ]
             if effective_model_type in text_generation_models:
                 override_model_type = (
-                    ModelType.TEXT_SMALL.value
+                    ModelType.TEXT_SMALL
                     if llm_mode == LLMMode.LLM_MODE_SMALL
-                    else ModelType.TEXT_LARGE.value
+                    else ModelType.TEXT_LARGE
                 )
                 if effective_model_type != override_model_type:
                     self.logger.debug(
@@ -1262,15 +1270,16 @@ class AgentRuntime(IAgentRuntime):
         # Apply LLM mode override for streaming text generation models
         llm_mode = self.get_llm_mode()
         if llm_mode != LLMMode.LLM_MODE_DEFAULT:
+            # TODO: Align streaming model type names with TypeScript - use same types with streaming callback
             streaming_text_models = [
-                str(ModelType.TEXT_SMALL_STREAM),
-                str(ModelType.TEXT_LARGE_STREAM),
+                "TEXT_SMALL_STREAM",
+                "TEXT_LARGE_STREAM",
             ]
             if effective_model_type in streaming_text_models:
                 override_model_type = (
-                    str(ModelType.TEXT_SMALL_STREAM)
+                    "TEXT_SMALL_STREAM"
                     if llm_mode == LLMMode.LLM_MODE_SMALL
-                    else str(ModelType.TEXT_LARGE_STREAM)
+                    else "TEXT_LARGE_STREAM"
                 )
                 if effective_model_type != override_model_type:
                     self.logger.debug(
@@ -1305,7 +1314,7 @@ class AgentRuntime(IAgentRuntime):
         Use a streaming model handler to generate text token by token.
 
         Args:
-            model_type: The model type (e.g., ModelType.TEXT_LARGE_STREAM)
+            model_type: The model type (e.g., "TEXT_LARGE_STREAM")
             params: Parameters for the model (prompt, system, temperature, etc.)
             provider: Optional specific provider to use
             **kwargs: Additional parameters merged into params
@@ -1887,8 +1896,8 @@ class AgentRuntime(IAgentRuntime):
         self,
         state: State,
         prompt: str | Callable[[dict[str, Any]], str],
-        schema: list["SchemaRow"],
-        options: "DynamicPromptOptions | None" = None,
+        schema: list[SchemaRow],
+        options: DynamicPromptOptions | None = None,
     ) -> dict[str, Any] | None:
         """Dynamic prompt execution with state injection, schema-based parsing, and validation.
 
@@ -1902,16 +1911,17 @@ class AgentRuntime(IAgentRuntime):
         1. Validation codes: Injects UUID codes the LLM must echo back
         2. Retry with backoff: Automatic retries on validation failure
         3. Structured parsing: XML/JSON response parsing with nested support
+        4. Streaming support: ValidationStreamExtractor for incremental output with validation
 
-        NOTE: Streaming is not supported in the Python implementation.
-        For real-time streaming with validation, use the TypeScript implementation
-        which includes ValidationStreamExtractor for incremental output.
+        For streaming, provide `on_stream_chunk` in options. Streaming uses
+        ValidationStreamExtractor which streams validated content in real-time
+        while detecting truncation via validation codes.
 
         Args:
             state: State object to inject into the prompt template
             prompt: Prompt template string or callable that takes state and returns string
             schema: Array of SchemaRow definitions for structured output
-            options: Configuration for model size, validation level, retries, etc.
+            options: Configuration for model size, validation level, retries, streaming, etc.
 
         Returns:
             Parsed structured response as dict, or None on failure
@@ -1923,9 +1933,9 @@ class AgentRuntime(IAgentRuntime):
         if options.model:
             model_type_str = options.model
         elif options.model_size == "small":
-            model_type_str = ModelType.TEXT_SMALL.value
+            model_type_str = ModelType.TEXT_SMALL
         else:
-            model_type_str = ModelType.TEXT_LARGE.value
+            model_type_str = ModelType.TEXT_LARGE
 
         schema_key = ",".join(s.field for s in schema)
         model_schema_key = f"{model_type_str}:{schema_key}"
@@ -1933,7 +1943,7 @@ class AgentRuntime(IAgentRuntime):
         # Get validation level from settings or options (mirrors TypeScript behavior)
         default_context_level = 2
         default_retries = 1
-        
+
         validation_setting = self.get_setting("VALIDATION_LEVEL")
         if validation_setting:
             level_str = str(validation_setting).lower()
@@ -1949,11 +1959,15 @@ class AgentRuntime(IAgentRuntime):
             else:
                 self.logger.warning(
                     f'Unrecognized VALIDATION_LEVEL "{level_str}". '
-                    f'Valid values: trusted, fast, progressive, strict, safe. '
-                    f'Falling back to default (level 2).'
+                    f"Valid values: trusted, fast, progressive, strict, safe. "
+                    f"Falling back to default (level 2)."
                 )
 
-        validation_level = options.context_check_level if options.context_check_level is not None else default_context_level
+        validation_level = (
+            options.context_check_level
+            if options.context_check_level is not None
+            else default_context_level
+        )
         max_retries = options.max_retries if options.max_retries is not None else default_retries
         current_retry = 0
 
@@ -1962,23 +1976,25 @@ class AgentRuntime(IAgentRuntime):
         if validation_level <= 1:
             for row in schema:
                 default_validate = validation_level == 1
-                needs_validation = row.validate_field if row.validate_field is not None else default_validate
+                needs_validation = (
+                    row.validate_field if row.validate_field is not None else default_validate
+                )
                 if needs_validation:
                     per_field_codes[row.field] = str(uuid.uuid4())[:8]
+
+        # Streaming extractor (created on first iteration if streaming enabled)
+        extractor: ValidationStreamExtractor | None = None
 
         while current_retry <= max_retries:
             # Compile template with state values
             # Callable signature: def my_prompt(ctx: dict) -> str:
             #   return f"Hello {ctx['state'].values.get('name')}"
-            if callable(prompt):
-                template_str = prompt({"state": state})
-            else:
-                template_str = prompt
+            template_str = prompt({"state": state}) if callable(prompt) else prompt
 
             # Template substitution (Handlebars-like)
             # Mirrors TypeScript behavior: { ...filteredState, ...state.values }
             rendered = template_str
-            
+
             # Helper to extract dict from protobuf message or dict-like object
             def extract_fields(obj: Any) -> dict[str, Any]:
                 """Extract fields from protobuf message, dict, or object."""
@@ -1991,6 +2007,7 @@ class AgentRuntime(IAgentRuntime):
                 if hasattr(obj, "DESCRIPTOR"):
                     try:
                         from google.protobuf.json_format import MessageToDict
+
                         return MessageToDict(obj, preserving_proto_field_name=True)
                     except Exception:
                         pass
@@ -2002,33 +2019,37 @@ class AgentRuntime(IAgentRuntime):
                     return result
                 # Fallback: try __dict__ for regular objects
                 if hasattr(obj, "__dict__"):
-                    return {k: v for k, v in obj.__dict__.items() if not k.startswith("_") and v is not None}
+                    return {
+                        k: v
+                        for k, v in obj.__dict__.items()
+                        if not k.startswith("_") and v is not None
+                    }
                 return {}
-            
+
             # Build context dict combining state properties and state.values
             context: dict[str, Any] = {}
-            
+
             # Add state-level properties (like filteredState in TypeScript)
             # Exclude 'text', 'values', 'data' like TypeScript does
             state_fields = extract_fields(state)
             for key, value in state_fields.items():
                 if key not in ("text", "values", "data"):
                     context[key] = value
-            
+
             # Add state.data properties
             if hasattr(state, "data"):
                 data_fields = extract_fields(state.data)
                 context.update(data_fields)
-            
+
             # Add state.values (these take precedence, like in TypeScript)
             if hasattr(state, "values"):
                 values_fields = extract_fields(state.values)
                 context.update(values_fields)
-            
+
             # Add smart retry context if present
             if "_smartRetryContext" in context:
                 rendered += str(context.pop("_smartRetryContext"))
-            
+
             # Perform substitution
             for key, value in context.items():
                 placeholder = f"{{{{{key}}}}}"
@@ -2058,10 +2079,14 @@ class AgentRuntime(IAgentRuntime):
 
             for row in schema:
                 if row.field in per_field_codes:
-                    ext_schema.append((f"code_{row.field}_start", f"output exactly: {per_field_codes[row.field]}"))
+                    ext_schema.append(
+                        (f"code_{row.field}_start", f"output exactly: {per_field_codes[row.field]}")
+                    )
                 ext_schema.append((row.field, row.description))
                 if row.field in per_field_codes:
-                    ext_schema.append((f"code_{row.field}_end", f"output exactly: {per_field_codes[row.field]}"))
+                    ext_schema.append(
+                        (f"code_{row.field}_end", f"output exactly: {per_field_codes[row.field]}")
+                    )
 
             if last:
                 ext_schema.extend(codes_schema("two_"))
@@ -2109,16 +2134,88 @@ end code: {final_code}
                 "maxTokens": 4096,
             }
 
+            # Check for cancellation before request
+            if options.abort_signal and options.abort_signal():
+                if extractor:
+                    extractor.signal_error("Cancelled by user")
+                return None
+
+            # Create ValidationStreamExtractor on first iteration if streaming enabled (XML only)
+            # JSON streaming bypasses the extractor since it parses XML tags
+            if current_retry == 0 and options.on_stream_chunk and extractor is None and is_xml:
+                has_rich_consumer = options.on_stream_event is not None
+
+                # Determine which fields to stream
+                stream_fields = [
+                    row.field
+                    for row in schema
+                    if (row.stream_field if row.stream_field is not None else row.field == "text")
+                ]
+
+                # Default to "text" if no explicit stream fields
+                if not stream_fields and any(row.field == "text" for row in schema):
+                    stream_fields = ["text"]
+
+                stream_message_id = f"stream-{uuid.uuid4().hex[:12]}"
+
+                # Capture stream_message_id in default parameter to avoid late binding
+                extractor = ValidationStreamExtractor(
+                    ValidationStreamExtractorConfig(
+                        level=validation_level,
+                        schema=schema,
+                        stream_fields=stream_fields,
+                        expected_codes=per_field_codes,
+                        on_chunk=lambda chunk,
+                        _field,
+                        msg_id=stream_message_id: options.on_stream_chunk(chunk, msg_id)
+                        if options.on_stream_chunk
+                        else None,
+                        on_event=lambda event, msg_id=stream_message_id: options.on_stream_event(
+                            event, msg_id
+                        )
+                        if options.on_stream_event
+                        else None,
+                        abort_signal=options.abort_signal,
+                        has_rich_consumer=has_rich_consumer,
+                    )
+                )
+
             try:
-                response = await self.use_model(model_type_str, params)
-                response_str = str(response) if response else ""
+                # Use streaming if extractor is active, otherwise use non-streaming
+                if extractor:
+                    # Streaming mode: use use_model_stream and feed chunks to extractor
+                    response_parts: list[str] = []
+                    stream_model_type = (
+                        f"{model_type_str}_STREAM"
+                        if not model_type_str.endswith("_STREAM")
+                        else model_type_str
+                    )
+
+                    async for chunk in self.use_model_stream(stream_model_type, params):
+                        if options.abort_signal and options.abort_signal():
+                            extractor.signal_error("Cancelled by user")
+                            return None
+                        response_parts.append(chunk)
+                        extractor.push(chunk)
+
+                    # Flush extractor and get final state
+                    extractor.flush()
+                    response_str = "".join(response_parts)
+                else:
+                    # Non-streaming mode: use use_model
+                    response = await self.use_model(model_type_str, params)
+                    response_str = str(response) if response else ""
             except Exception as e:
                 self.logger.error(f"Model call failed: {e}")
                 current_retry += 1
                 if current_retry <= max_retries and options.retry_backoff:
                     delay = options.retry_backoff.delay_for_retry(current_retry)
-                    self.logger.debug(f"Retry backoff: waiting {delay}ms before retry {current_retry}")
+                    self.logger.debug(
+                        f"Retry backoff: waiting {delay}ms before retry {current_retry}"
+                    )
                     await asyncio.sleep(delay / 1000.0)
+                if extractor:
+                    extractor.reset()
                 continue
 
             # Clean response (remove <think> blocks)
@@ -2129,13 +2226,13 @@ end code: {final_code}
             if is_xml:
                 response_content = self._parse_xml_to_dict(clean_response)
             else:
+                import contextlib
                 import json
-                try:
-                    response_content = json.loads(clean_response)
-                except json.JSONDecodeError:
-                    # JSON parse failed - response_content remains None
+
+                with contextlib.suppress(json.JSONDecodeError):
+                    # JSON parse may fail - response_content remains None if so
                     # This triggers retry logic below via the all_good = False path
-                    pass
+                    response_content = json.loads(clean_response)
 
             all_good = True
 
@@ -2165,7 +2262,9 @@ end code: {final_code}
                         if enabled:
                             actual = response_content.get(field)
                             if actual != expected:
-                                self.logger.warning(f"Checkpoint {field} mismatch: expected {expected}")
+                                self.logger.warning(
+                                    f"Checkpoint {field} mismatch: expected {expected}"
+                                )
                                 all_good = False
 
                 # Validate required fields
@@ -2194,20 +2293,27 @@ end code: {final_code}
                     response_content.pop("two_middle_code", None)
                     response_content.pop("two_end_code", None)
             else:
-                self.logger.warning(f"dynamic_prompt_exec_from_state parse problem: {clean_response[:500]}")
+                self.logger.warning(
+                    f"dynamic_prompt_exec_from_state parse problem: {clean_response[:500]}"
+                )
                 all_good = False
 
             if all_good and response_content:
                 self.logger.debug(f"dynamic_prompt_exec_from_state success [{model_schema_key}]")
                 # Clean up smart retry context from state
-                if hasattr(state, "values") and "_smartRetryContext" in getattr(state.values, "__dict__", state.values if isinstance(state.values, dict) else {}):
-                    try:
+                if hasattr(state, "values") and "_smartRetryContext" in getattr(
+                    state.values, "__dict__", state.values if isinstance(state.values, dict) else {}
+                ):
+                    with contextlib.suppress(KeyError, TypeError):
                         del state.values["_smartRetryContext"]
-                    except (KeyError, TypeError):
-                        pass
                 return response_content
 
             current_retry += 1
+
+            # Signal retry to extractor if present
+            if extractor:
+                extractor.signal_retry(current_retry)
+                extractor.reset()
 
             # Build smart retry context for level 1 (per-field validation)
             if validation_level == 1 and response_content:
@@ -2225,7 +2331,9 @@ end code: {final_code}
                     for field in validated_fields:
                         content = response_content.get(field, "")
                         if content:
-                            truncated = content[:500] + "..." if len(str(content)) > 500 else str(content)
+                            truncated = (
+                                content[:500] + "..." if len(str(content)) > 500 else str(content)
+                            )
                             validated_parts.append(f"<{field}>{truncated}</{field}>")
 
                     if validated_parts:
@@ -2240,11 +2348,11 @@ end code: {final_code}
                         )
                         # Store in state for next iteration (may fail on protobuf)
                         if hasattr(state, "values"):
-                            try:
-                                state.values["_smartRetryContext"] = smart_retry_context
-                            except TypeError:
+                            import contextlib
+
+                            with contextlib.suppress(TypeError):
                                 # Protobuf messages don't support item assignment
-                                pass
+                                state.values["_smartRetryContext"] = smart_retry_context
 
                 self.logger.warn(
                     f"dynamic_prompt_exec_from_state retry {current_retry}/{max_retries} "
@@ -2256,24 +2364,39 @@ end code: {final_code}
                 self.logger.debug(f"Retry backoff: waiting {delay}ms before retry {current_retry}")
                 await asyncio.sleep(delay / 1000.0)
 
-        self.logger.error(f"dynamic_prompt_exec_from_state failed after {max_retries} retries [{model_schema_key}]")
+        self.logger.error(
+            f"dynamic_prompt_exec_from_state failed after {max_retries} retries [{model_schema_key}]"
+        )
+
+        # Signal error to extractor if present
+        if extractor:
+            diagnosis = extractor.diagnose()
+            missing = diagnosis.missing_fields
+            invalid = diagnosis.invalid_fields
+            incomplete = diagnosis.incomplete_fields
+            extractor.signal_error(
+                f"Failed after {max_retries} retries. "
+                f"Missing: {missing}, Invalid: {invalid}, Incomplete: {incomplete}"
+            )
+
         # Clean up smart retry context from state
-        if hasattr(state, "values") and "_smartRetryContext" in getattr(state.values, "__dict__", state.values if isinstance(state.values, dict) else {}):
-            try:
+        if hasattr(state, "values") and "_smartRetryContext" in getattr(
+            state.values, "__dict__", state.values if isinstance(state.values, dict) else {}
+        ):
+            with contextlib.suppress(KeyError, TypeError):
                 del state.values["_smartRetryContext"]
-            except (KeyError, TypeError):
-                pass
         return None
 
     def _parse_xml_to_dict(self, xml_text: str) -> dict[str, Any] | None:
         """Parse XML-like response to dict using ElementTree for nested XML support."""
+
         def element_to_dict(element: ET.Element) -> dict[str, Any] | str:
             """Recursively convert an XML element to a dict."""
             children = list(element)
             if not children:
                 # Leaf node - return trimmed text
                 return (element.text or "").strip()
-            
+
             # Has children - build nested dict
             result: dict[str, Any] = {}
             for child in children:
@@ -2301,7 +2424,7 @@ end code: {final_code}
 
             root = ET.fromstring(xml_content)
             result = element_to_dict(root)
-            
+
             if isinstance(result, dict) and result:
                 return result
             return None
@@ -2361,5 +2484,16 @@ class DynamicPromptOptions:
     max_retries: int | None = None
     """Maximum retry attempts"""
 
-    retry_backoff: "RetryBackoffConfig | None" = None
+    retry_backoff: RetryBackoffConfig | None = None
     """Retry backoff configuration"""
+
+    on_stream_chunk: Callable[[str, str | None], Any] | None = None
+    """Callback for streaming chunks (chunk, message_id) -> None.
+    If provided, enables streaming with validation-aware extraction."""
+
+    on_stream_event: Callable[[StreamEvent, str | None], Any] | None = None
+    """Callback for rich streaming events (event, message_id) -> None.
+    Provides detailed events for advanced UIs (field validation, retries, errors)."""
+
+    abort_signal: Callable[[], bool] | None = None
+    """Callable returning True if the operation should be aborted."""

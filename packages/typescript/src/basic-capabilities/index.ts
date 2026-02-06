@@ -1250,6 +1250,7 @@ export const basicProviders = [
  */
 export const basicActions = [
   withCanonicalActionDocs(actions.choiceAction),
+  withCanonicalActionDocs(actions.compactSessionAction),
   withCanonicalActionDocs(actions.replyAction),
   withCanonicalActionDocs(actions.ignoreAction),
   withCanonicalActionDocs(actions.noneAction),

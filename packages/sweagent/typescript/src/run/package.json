@@ -17,7 +17,7 @@
     "axios": "^1.4.0",
     "commander": "^11.0.0",
     "js-yaml": "^4.1.0",
-    "zod": "^3.21.0"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.5",

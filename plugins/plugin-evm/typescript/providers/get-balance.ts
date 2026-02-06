@@ -7,7 +7,7 @@ import {
   parseKeyValueXml,
 } from "@elizaos/core";
 import { getToken } from "@lifi/sdk";
-import { type Address, formatUnits, parseAbi } from "viem";
+import { type Address, formatUnits, parseAbi, type ReadContractParameters } from "viem";
 import { tokenBalanceTemplate } from "../generated/prompts/typescript/prompts.js";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { EVMError, EVMErrorCode, type SupportedChain } from "../types";
@@ -49,13 +49,16 @@ export const tokenBalanceProvider: Provider = {
     const publicClient = walletProvider.getPublicClient(chain as SupportedChain);
     const balanceAbi = parseAbi(["function balanceOf(address) view returns (uint256)"]);
 
-    // @ts-expect-error - viem type narrowing issue with readContract parameters
-    const balance = (await publicClient.readContract({
+    const readBalanceParams: ReadContractParameters<
+      typeof balanceAbi,
+      "balanceOf"
+    > = {
       address: tokenData.address as Address,
       abi: balanceAbi,
       functionName: "balanceOf",
       args: [address],
-    })) as bigint;
+    };
+    const balance = await publicClient.readContract(readBalanceParams);
 
     const formattedBalance = formatUnits(balance, tokenData.decimals);
     const hasBalance = parseFloat(formattedBalance) > 0;

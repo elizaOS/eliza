@@ -199,7 +199,7 @@ export class AgentOrchestratorService extends Service {
         id.startsWith(q) ||
         t.name.toLowerCase().includes(q) ||
         (t.description ?? "").toLowerCase().includes(q) ||
-        (t.tags ?? []).some((tag) => tag.toLowerCase().includes(q))
+        (t.tags ?? []).some((tag: string) => tag.toLowerCase().includes(q))
       );
     });
   }

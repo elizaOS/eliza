@@ -77,7 +77,8 @@
     "react-dom": "19.2.3",
     "@types/react": "19.2.3",
     "typedoc-plugin-markdown": "4.2.10",
-    "typedoc": "0.27.9"
+    "typedoc": "0.27.9",
+    "zod": "^4.3.6"
   },
   "overrides": {
     "@nrwl/devkit": "19.8.4",
@@ -125,12 +126,15 @@
     "workerd"
   ],
   "dependencies": {
+    "@aws-sdk/client-bedrock": "^3.983.0",
     "@elysiajs/cors": "^1.4.1",
     "@polymarket/clob-client": "^5.2.0",
     "@sinclair/typebox": "^0.34.47",
     "elysia": "^1.4.21",
     "helmet": "^8.1.0",
     "js-yaml": "^4.1.1",
-    "zod": "^4.3.5"
+    "node-edge-tts": "^1.2.9",
+    "tslog": "^4.10.2",
+    "zod": "^4.3.6"
   }
 }

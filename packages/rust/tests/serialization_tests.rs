@@ -3,7 +3,7 @@
 //! These tests verify that Rust types serialize to JSON in a format identical to TypeScript.
 
 use elizaos::types::{
-    Agent, AgentStatus, Bio, ChannelType, Character, Content, Memory, Room, State, World, UUID,
+    Agent, AgentStatus, Bio, Character, Content, Memory, Room, State, World, UUID,
 };
 use pretty_assertions::assert_eq;
 
@@ -124,7 +124,7 @@ fn test_room_serialization() {
         name: Some("Test Room".to_string()),
         agent_id: None,
         source: "discord".to_string(),
-        room_type: ChannelType::Group,
+        room_type: "GROUP".to_string(),
         channel_id: Some("123456".to_string()),
         message_server_id: None,
         world_id: None,
@@ -155,20 +155,22 @@ fn test_world_serialization() {
     assert!(json.contains("\"agentId\""));
 }
 
-/// Test that State serializes correctly
+/// Test that State values can be set and retrieved correctly
+/// Note: State is a protobuf-generated type and uses prost serialization,
+/// not serde JSON serialization directly. Numbers are stored as f64.
 #[test]
-fn test_state_serialization() {
+fn test_state_values() {
     let mut state = State::with_text("Current context");
     state.set_value("key", serde_json::json!("value"));
     state.set_value("number", serde_json::json!(42));
     state.set_value("flag", serde_json::json!(true));
 
-    let json = serde_json::to_string(&state).unwrap();
-
-    assert!(json.contains("\"text\":\"Current context\""));
-    assert!(json.contains("\"key\":\"value\""));
-    assert!(json.contains("\"number\":42"));
-    assert!(json.contains("\"flag\":true"));
+    // Verify values can be retrieved
+    assert_eq!(state.text, "Current context");
+    assert_eq!(state.get_value("key"), Some(serde_json::json!("value")));
+    // prost stores numbers as f64, so 42 becomes 42.0
+    assert_eq!(state.get_value("number"), Some(serde_json::json!(42.0)));
+    assert_eq!(state.get_value("flag"), Some(serde_json::json!(true)));
 }
 
 /// Test that Content with nested fields serializes correctly
@@ -179,7 +181,11 @@ fn test_content_serialization() {
         thought: Some("Thinking about the response...".to_string()),
         actions: Some(vec!["REPLY".to_string(), "WAIT".to_string()]),
         source: Some("discord".to_string()),
-        in_reply_to: Some(UUID::new("550e8400-e29b-41d4-a716-446655440000").unwrap()),
+        in_reply_to: Some(
+            UUID::new("550e8400-e29b-41d4-a716-446655440000")
+                .unwrap()
+                .to_string(),
+        ),
         ..Default::default()
     };
 

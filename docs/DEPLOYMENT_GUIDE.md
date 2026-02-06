@@ -302,7 +302,7 @@ Secrets/config are accessed through `runtime.getSetting(...)` and/or character s
 | ------------------ | -------------------------- |
 | `OPENAI_API_KEY`   | OpenAI API key             |
 | `OPENAI_BASE_URL`  | Custom OpenAI-compatible endpoint |
-| `OPENAI_MODEL`     | Model to use (e.g., `gpt-4o`) |
+| `OPENAI_MODEL`     | Model to use (e.g., `gpt-5`) |
 | `CHARACTER_NAME`   | Agent character name       |
 | `CHARACTER_BIO`    | Agent biography            |
 | `CHARACTER_SYSTEM` | System prompt              |

@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class JobStatus(str, Enum):
@@ -62,6 +62,14 @@ class PluginSpecification(BaseModel):
     )
 
     model_config = {"populate_by_name": True}
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def normalize_version(cls, value: object) -> object:
+        if isinstance(value, str):
+            base = value.split("-", 1)[0]
+            return base.split("+", 1)[0]
+        return value
 
 
 class JobError(BaseModel):

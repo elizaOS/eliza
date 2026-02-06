@@ -35,7 +35,10 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "cross-spawn": "^7.0.6",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
+  },
+  "optionalDependencies": {
+    "@lydell/node-pty": "^1.1.0"
   },
   "devDependencies": {
     "@types/cross-spawn": "^6.0.6",
@@ -62,13 +65,6 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
-      "SHELL_ENABLED": {
-        "type": "boolean",
-        "description": "Enable or disable the shell plugin (disabled by default for safety)",
-        "required": false,
-        "default": false,
-        "sensitive": false
-      },
       "SHELL_ALLOWED_DIRECTORY": {
         "type": "string",
         "description": "The directory that shell commands are restricted to. Commands cannot execute outside this directory.",
@@ -86,6 +82,34 @@
         "type": "string",
         "description": "Comma-separated list of additional forbidden commands",
         "required": false,
+        "sensitive": false
+      },
+      "SHELL_MAX_OUTPUT_CHARS": {
+        "type": "number",
+        "description": "Maximum output characters to capture from commands",
+        "required": false,
+        "default": 200000,
+        "sensitive": false
+      },
+      "SHELL_BACKGROUND_MS": {
+        "type": "number",
+        "description": "Default milliseconds to wait before backgrounding commands",
+        "required": false,
+        "default": 10000,
+        "sensitive": false
+      },
+      "SHELL_ALLOW_BACKGROUND": {
+        "type": "boolean",
+        "description": "Whether to allow background command execution",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
+      "SHELL_JOB_TTL_MS": {
+        "type": "number",
+        "description": "Time-to-live for finished session records in milliseconds",
+        "required": false,
+        "default": 1800000,
         "sensitive": false
       }
     }

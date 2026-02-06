@@ -3,14 +3,18 @@
  */
 
 import { createWorkflow, createStep, z, next, retry } from "../index";
-import type { StepResult } from "../types";
+import type { DesktopLike, StepResult } from "../types";
 
+/**
+ * Mock Desktop interface for unit tests.
+ * Only includes methods used by the test steps.
+ */
 // Mock Desktop for unit tests
-const mockDesktop = {
+const mockDesktop: DesktopLike = {
     locator: jest.fn(),
     openApplication: jest.fn(),
     delay: jest.fn(),
-} as any;
+};
 
 describe("Workflow Navigation Tests", () => {
     describe("next() runtime navigation", () => {

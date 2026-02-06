@@ -7,6 +7,7 @@ import type {
   CommandHistoryEntry,
   CommandResult,
   FileOperation,
+  ShellService,
 } from "../types";
 import {
   isForbiddenCommand,
@@ -369,6 +370,49 @@ export class CoderService extends Service {
       };
     }
 
+    const cwd = this.getCurrentDirectory(conversationId);
+
+    // Use ShellService for execution if available
+    const shellService =
+      typeof this.runtime?.getService === "function"
+        ? this.runtime.getService<ShellService>("shell")
+        : null;
+    if (shellService) {
+      const execResult = await shellService.exec(trimmed, {
+        workdir: cwd,
+        timeout: Math.floor(this.coderConfig.timeoutMs / 1000),
+        conversationId,
+      });
+
+      if (execResult.status === "running") {
+        // Command is still running (backgrounded)
+        const result: CommandResult = {
+          success: true,
+          stdout: `Command running in background (session: ${execResult.sessionId})`,
+          stderr: "",
+          exitCode: 0,
+          executedIn: cwd,
+        };
+        this.addToHistory(conversationId, trimmed, result);
+        return result;
+      }
+
+      const success =
+        execResult.status === "completed" && execResult.exitCode === 0;
+      const result: CommandResult = {
+        success,
+        stdout: execResult.aggregated ?? "",
+        stderr: execResult.reason ?? "",
+        exitCode: execResult.exitCode ?? (success ? 0 : 1),
+        error: success ? undefined : "Command failed",
+        executedIn: cwd,
+      };
+      this.addToHistory(conversationId, trimmed, result);
+      return result;
+    }
+
+    // Fallback: Use execSync when ShellService is not available
+    // This maintains backward compatibility for standalone use
     if (!isSafeCommand(trimmed)) {
       return {
         success: false,
@@ -376,7 +420,7 @@ export class CoderService extends Service {
         stderr: "Command contains forbidden patterns",
         exitCode: 1,
         error: "Security policy violation",
-        executedIn: this.getCurrentDirectory(conversationId),
+        executedIn: cwd,
       };
     }
 
@@ -387,11 +431,9 @@ export class CoderService extends Service {
         stderr: "Command is forbidden by security policy",
         exitCode: 1,
         error: "Forbidden command",
-        executedIn: this.getCurrentDirectory(conversationId),
+        executedIn: cwd,
       };
     }
-
-    const cwd = this.getCurrentDirectory(conversationId);
 
     try {
       const stdout = execSync(trimmed, {

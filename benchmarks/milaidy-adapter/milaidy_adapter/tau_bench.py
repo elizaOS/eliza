@@ -18,6 +18,14 @@ from elizaos_tau_bench.executor import ToolExecutor
 logger = logging.getLogger(__name__)
 
 
+def _extract_xml_tag(text: str, tag: str) -> str | None:
+    """Extract content between <tag>...</tag> from text."""
+    import re
+
+    m = re.search(rf"<{tag}>(.*?)</{tag}>", text, re.DOTALL)
+    return m.group(1).strip() if m else None
+
+
 class MilaidyTauAgent:
     """Tau-bench agent that delegates to the milaidy TypeScript agent.
 
@@ -113,8 +121,17 @@ class MilaidyTauAgent:
 
             response = self._client.send_message(text=message_text, context=context)
 
-            # Check if milaidy wants to call a tool
+            # Check if milaidy wants to call a tool (from params or text)
             tool_name = response.params.get("tool_name")
+
+            # Fallback: try to parse tool call from XML in the response text
+            if not tool_name and response.text:
+                tool_name = _extract_xml_tag(response.text, "tool_name")
+                if tool_name and "arguments" not in response.params:
+                    args_str = _extract_xml_tag(response.text, "arguments")
+                    if args_str:
+                        response.params["arguments"] = args_str
+
             if tool_name and isinstance(tool_name, str):
                 arguments_raw = response.params.get("arguments", {})
                 if isinstance(arguments_raw, str):

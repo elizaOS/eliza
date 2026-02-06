@@ -207,7 +207,7 @@ def get_llm_query_fn(provider: str):
                 "Answer (be brief and precise):"
             )
             result = await runtime.use_model(
-                ModelType.TEXT_LARGE.value,
+                ModelType.TEXT_LARGE,
                 {"prompt": prompt, "system": system, "maxTokens": 256, "temperature": 0.0},
             )
             return str(result)
@@ -224,7 +224,7 @@ def get_llm_query_fn(provider: str):
             prompt = str(params.get("prompt", ""))
             return await mock_llm_query(prompt, "")
 
-        runtime.register_model(ModelType.TEXT_LARGE.value, model_handler, provider="eliza-mock")
+        runtime.register_model(ModelType.TEXT_LARGE, model_handler, provider="eliza-mock")
 
         async def eliza_mock_query(context: str, question: str) -> str:
             prompt = (
@@ -234,7 +234,7 @@ def get_llm_query_fn(provider: str):
                 "Answer (be brief and precise):"
             )
             result = await runtime.use_model(
-                ModelType.TEXT_LARGE.value,
+                ModelType.TEXT_LARGE,
                 {"prompt": prompt, "maxTokens": 100, "temperature": 0.0},
             )
             return str(result)

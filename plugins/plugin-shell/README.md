@@ -1,10 +1,18 @@
 # @elizaos/plugin-shell
 
-A secure shell command execution plugin for ElizaOS that allows agents to run terminal commands within a restricted directory with command history tracking.
+A comprehensive shell command execution plugin for ElizaOS with PTY support, background execution, session management, and security restrictions.
 
-**Available in three languages with full feature parity:**
+**Key Features:**
 
-- 🟦 **TypeScript** - Primary implementation for Node.js
+- 🔄 **PTY Support** - Run interactive terminal applications with full pseudo-terminal support
+- ⏱️ **Background Execution** - Long-running commands automatically background with session management
+- 📋 **Session Management** - Track, poll, and interact with running processes
+- 🔒 **Security First** - Directory restrictions, forbidden commands, and timeout protection
+- 📝 **Command History** - Per-conversation command tracking
+
+**Available in three languages:**
+
+- 🟦 **TypeScript** - Primary implementation for Node.js (full feature support)
 - 🐍 **Python** - Native Python implementation
 - 🦀 **Rust** - High-performance Rust implementation
 
@@ -22,7 +30,6 @@ A secure shell command execution plugin for ElizaOS that allows agents to run te
 2. **Create/update your `.env`**:
 
    ```bash
-   SHELL_ENABLED=true
    SHELL_ALLOWED_DIRECTORY=/path/to/safe/directory
    ```
 
@@ -41,6 +48,7 @@ A secure shell command execution plugin for ElizaOS that allows agents to run te
 
 ## Features
 
+### Core Features
 - ✅ **Cross-platform support**: Works on Linux, macOS, and Windows
 - ✅ **Directory restriction**: Commands are restricted to a specified directory for safety
 - ✅ **Command filtering**: Configurable list of forbidden commands
@@ -51,6 +59,14 @@ A secure shell command execution plugin for ElizaOS that allows agents to run te
 - ✅ **Output capture**: Returns both stdout and stderr from executed commands
 - ✅ **Safety first**: Disabled by default, requires explicit enabling
 - ✅ **Multi-language**: Available in TypeScript, Python, and Rust
+
+### Advanced Features (TypeScript)
+- ✅ **PTY Support**: Run interactive terminal applications (vim, htop, etc.) with `@lydell/node-pty`
+- ✅ **Background Execution**: Commands automatically background after configurable yield window
+- ✅ **Session Management**: Track running/finished sessions, poll output, send keys
+- ✅ **Process Control**: List, poll, log, write, send-keys, submit, paste, kill, clear, remove
+- ✅ **Output Truncation**: Configurable max output with intelligent truncation
+- ✅ **Platform-specific Shell**: Auto-detects shell (bash, sh, PowerShell on Windows)
 
 ## Project Structure
 
@@ -114,10 +130,7 @@ elizaos-plugin-shell = "1.2.0"
 Set the following environment variables:
 
 ```bash
-# REQUIRED: Enable the shell plugin (disabled by default for safety)
-SHELL_ENABLED=true
-
-# REQUIRED: Set the allowed directory (commands can only run here)
+# Set the allowed directory (commands can only run here)
 SHELL_ALLOWED_DIRECTORY=/home/user/safe-workspace
 
 # OPTIONAL: Set custom timeout in milliseconds (default: 30000)
@@ -125,6 +138,18 @@ SHELL_TIMEOUT=60000
 
 # OPTIONAL: Add additional forbidden commands (comma-separated)
 SHELL_FORBIDDEN_COMMANDS=rm,mv,cp,chmod,chown,shutdown,reboot
+
+# OPTIONAL: Maximum output characters to capture (default: 200000)
+SHELL_MAX_OUTPUT_CHARS=200000
+
+# OPTIONAL: Milliseconds before backgrounding (default: 10000)
+SHELL_BACKGROUND_MS=10000
+
+# OPTIONAL: Allow background execution (default: true)
+SHELL_ALLOW_BACKGROUND=true
+
+# OPTIONAL: Session record TTL in milliseconds (default: 1800000 = 30min)
+SHELL_JOB_TTL_MS=1800000
 ```
 
 ## Usage Examples
@@ -142,6 +167,28 @@ const character = {
 // Or use the service directly
 const service = new ShellService(runtime);
 const result = await service.executeCommand("ls -la", "conversation-123");
+
+// Advanced: Use exec with PTY and background support
+const execResult = await service.exec("npm install", {
+  pty: true,         // Run with pseudo-terminal
+  background: false, // Or yieldMs: 5000 to auto-background after 5s
+  timeout: 300,      // 5 minute timeout
+  workdir: "/project",
+});
+
+if (execResult.status === "running") {
+  console.log(`Background session: ${execResult.sessionId}`);
+  
+  // Poll for updates
+  const pollResult = await service.processAction({
+    action: "poll",
+    sessionId: execResult.sessionId,
+  });
+  console.log(pollResult.message);
+}
+
+// Get the service from an Eliza agent runtime
+const shellService = runtime.getService<ShellService>("shell");
 ```
 
 ### Python
@@ -183,6 +230,30 @@ Executes ANY shell command within the allowed directory, including file operatio
 - `execute npm test` - Run tests
 - `create a file called hello.txt` - Creates a new file
 - `check git status` - Show git repository status
+
+### MANAGE_PROCESS
+
+Manage running and finished shell sessions. Supports the following operations:
+
+| Action      | Description                                    |
+|-------------|------------------------------------------------|
+| `list`      | List all running and finished sessions         |
+| `poll`      | Get new output from a running session          |
+| `log`       | Get session output with offset/limit           |
+| `write`     | Write data to session stdin                    |
+| `send-keys` | Send terminal key sequences (arrows, ctrl, etc)|
+| `submit`    | Send carriage return (Enter)                   |
+| `paste`     | Paste text with bracketed paste mode           |
+| `kill`      | Kill a running session                         |
+| `clear`     | Clear a finished session record                |
+| `remove`    | Kill (if running) and remove session           |
+
+**Examples:**
+
+- `list all running processes`
+- `check session calm-harbor`
+- `kill the process swift-reef`
+- `send enter to session brisk-cove`
 
 ### CLEAR_SHELL_HISTORY
 
@@ -292,12 +363,57 @@ bun run test:rust      # Test Rust
 
 ### ShellConfig
 
-| Field               | Type     | Default | Description                       |
-| ------------------- | -------- | ------- | --------------------------------- |
-| `enabled`           | boolean  | false   | Whether shell is enabled          |
-| `allowedDirectory`  | string   | cwd     | Directory to restrict commands to |
-| `timeout`           | number   | 30000   | Timeout in milliseconds           |
-| `forbiddenCommands` | string[] | [...]   | List of forbidden commands        |
+| Field                   | Type     | Default  | Description                          |
+| ----------------------- | -------- | -------- | ------------------------------------ |
+| `enabled`               | boolean  | false    | Whether shell is enabled             |
+| `allowedDirectory`      | string   | cwd      | Directory to restrict commands to    |
+| `timeout`               | number   | 30000    | Timeout in milliseconds              |
+| `forbiddenCommands`     | string[] | [...]    | List of forbidden commands           |
+| `maxOutputChars`        | number   | 200000   | Max output characters to capture     |
+| `pendingMaxOutputChars` | number   | 200000   | Max pending output per stream        |
+| `defaultBackgroundMs`   | number   | 10000    | Default background yield window      |
+| `allowBackground`       | boolean  | true     | Allow background execution           |
+
+### ProcessSession
+
+| Field                 | Type                    | Description                           |
+| --------------------- | ----------------------- | ------------------------------------- |
+| `id`                  | string                  | Unique session identifier (slug)      |
+| `command`             | string                  | The executed command                  |
+| `pid`                 | number \| undefined     | Process ID                            |
+| `startedAt`           | number                  | Start timestamp                       |
+| `cwd`                 | string \| undefined     | Working directory                     |
+| `aggregated`          | string                  | Accumulated output                    |
+| `tail`                | string                  | Last 2000 chars of output             |
+| `exited`              | boolean                 | Whether process has exited            |
+| `exitCode`            | number \| null          | Exit code (if exited)                 |
+| `exitSignal`          | string \| number \| null| Exit signal (if killed)               |
+| `truncated`           | boolean                 | Whether output was truncated          |
+| `backgrounded`        | boolean                 | Whether running in background         |
+
+### ExecResult
+
+```typescript
+type ExecResult =
+  | { status: "running"; sessionId: string; pid?: number; startedAt: number; cwd?: string; tail?: string }
+  | { status: "completed" | "failed"; exitCode: number | null; durationMs: number; aggregated: string; cwd?: string; timedOut?: boolean; reason?: string }
+```
+
+### ExecuteOptions
+
+| Field           | Type                        | Description                           |
+| --------------- | --------------------------- | ------------------------------------- |
+| `workdir`       | string                      | Working directory                     |
+| `env`           | Record<string, string>      | Additional environment variables      |
+| `yieldMs`       | number                      | Yield to background after this time   |
+| `background`    | boolean                     | Run immediately in background         |
+| `timeout`       | number                      | Timeout in seconds                    |
+| `pty`           | boolean                     | Use pseudo-terminal                   |
+| `conversationId`| string                      | Conversation ID for history tracking  |
+| `scopeKey`      | string                      | Scope key for session isolation       |
+| `sessionKey`    | string                      | Session key for notifications         |
+| `notifyOnExit`  | boolean                     | Notify on background exit             |
+| `onUpdate`      | (session) => void           | Callback for output updates           |
 
 ## 🤝 Contributing
 

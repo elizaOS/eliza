@@ -32,6 +32,8 @@ import type { Task } from "../types/task";
 export class TaskService extends Service {
   private timer: NodeJS.Timeout | null = null;
   private readonly TICK_INTERVAL = 1000; // Check every second
+  /** Tracks task IDs currently being executed to prevent overlapping runs */
+  private executingTasks: Set<string> = new Set();
   static serviceType = ServiceType.TASK;
   capabilityDescription = "The agent is able to schedule and execute tasks";
 
@@ -256,6 +258,22 @@ export class TaskService extends Service {
 
       // Check if enough time has passed since last update
       if (now - taskStartTime >= updateIntervalMs) {
+        // Check if blocking is enabled (default: true)
+        // Skip if this task is already executing and blocking is enabled
+        const isBlocking = task.metadata?.blocking !== false;
+        if (isBlocking && task.id && this.executingTasks.has(task.id)) {
+          this.runtime.logger.debug(
+            {
+              src: "plugin:bootstrap:service:task",
+              agentId: this.runtime.agentId,
+              taskName: task.name,
+              taskId: task.id,
+            },
+            "Skipping task - already executing (blocking enabled)",
+          );
+          continue;
+        }
+
         this.runtime.logger.debug(
           {
             src: "plugin:bootstrap:service:task",
@@ -272,6 +290,7 @@ export class TaskService extends Service {
 
   /**
    * Executes a given task asynchronously.
+   * Tracks execution state to prevent overlapping runs of the same task.
    *
    * @param {Task} task - The task to be executed.
    */
@@ -300,15 +319,31 @@ export class TaskService extends Service {
       return;
     }
 
-    // Handle repeating vs non-repeating tasks
-    if (task.tags?.includes("repeat")) {
-      // For repeating tasks, update the updatedAt timestamp
-      await this.runtime.updateTask(task.id, {
-        metadata: {
-          ...task.metadata,
-          updatedAt: Date.now(),
-        },
-      });
+    // Mark task as executing to prevent overlapping runs
+    this.executingTasks.add(task.id);
+    const startTime = Date.now();
+
+    try {
+      // Handle repeating vs non-repeating tasks
+      if (task.tags?.includes("repeat")) {
+        // For repeating tasks, update the updatedAt timestamp
+        await this.runtime.updateTask(task.id, {
+          metadata: {
+            ...task.metadata,
+            updatedAt: Date.now(),
+          },
+        });
+        this.runtime.logger.debug(
+          {
+            src: "plugin:bootstrap:service:task",
+            agentId: this.runtime.agentId,
+            taskName: task.name,
+            taskId: task.id,
+          },
+          "Updated repeating task with new timestamp",
+        );
+      }
+
       this.runtime.logger.debug(
         {
           src: "plugin:bootstrap:service:task",
@@ -316,38 +351,41 @@ export class TaskService extends Service {
           taskName: task.name,
           taskId: task.id,
         },
-        "Updated repeating task with new timestamp",
+        "Executing task",
       );
-    }
+      const taskOptions = (task.metadata ?? {}) as Record<
+        string,
+        JsonValue | object
+      >;
+      await worker.execute(this.runtime, taskOptions, task);
 
-    this.runtime.logger.debug(
-      {
-        src: "plugin:bootstrap:service:task",
-        agentId: this.runtime.agentId,
-        taskName: task.name,
-        taskId: task.id,
-      },
-      "Executing task",
-    );
-    const taskOptions = (task.metadata ?? {}) as Record<
-      string,
-      JsonValue | object
-    >;
-    await worker.execute(this.runtime, taskOptions, task);
-    //this.runtime.logger.debug('task.tags are', task.tags);
-
-    // Handle repeating vs non-repeating tasks
-    if (!task.tags?.includes("repeat")) {
-      // For non-repeating tasks, delete the task after execution
-      await this.runtime.deleteTask(task.id);
+      // Handle repeating vs non-repeating tasks
+      if (!task.tags?.includes("repeat")) {
+        // For non-repeating tasks, delete the task after execution
+        await this.runtime.deleteTask(task.id);
+        this.runtime.logger.debug(
+          {
+            src: "plugin:bootstrap:service:task",
+            agentId: this.runtime.agentId,
+            taskName: task.name,
+            taskId: task.id,
+          },
+          "Deleted non-repeating task after execution",
+        );
+      }
+    } finally {
+      // Always remove from executing set, even if task failed
+      this.executingTasks.delete(task.id);
+      const durationMs = Date.now() - startTime;
       this.runtime.logger.debug(
         {
           src: "plugin:bootstrap:service:task",
           agentId: this.runtime.agentId,
           taskName: task.name,
           taskId: task.id,
+          durationMs,
         },
-        "Deleted non-repeating task after execution",
+        "Task execution completed",
       );
     }
   }
@@ -374,5 +412,7 @@ export class TaskService extends Service {
       clearInterval(this.timer);
       this.timer = null;
     }
+    // Clear executing tasks set on stop
+    this.executingTasks.clear();
   }
 }

@@ -21,13 +21,10 @@ export {
   DefaultAgentConfig,
   getAgentFromConfig,
   RetryAgentConfig,
-  ShellAgentConfig,
   TemplateConfig,
   ToolConfig,
   ToolHandler,
 } from "./agents";
-// Extra agent implementations
-export { ShellAgent } from "./extra";
 
 // History processors
 export {

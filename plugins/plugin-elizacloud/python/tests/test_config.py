@@ -47,9 +47,9 @@ class TestElizaCloudConfig:
     def test_config_image_description_model(self) -> None:
         config = ElizaCloudConfig(
             api_key="test-key",
-            image_description_model="gpt-4-vision",
+            image_description_model="gpt-5-vision",
         )
-        assert config.image_description_model == "gpt-4-vision"
+        assert config.image_description_model == "gpt-5-vision"
 
 
 class TestElizaCloudConfigFromEnv:

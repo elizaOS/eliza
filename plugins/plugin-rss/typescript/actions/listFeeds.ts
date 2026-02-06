@@ -13,7 +13,7 @@ import type { RssService } from "../service";
 import type { FeedSubscriptionMetadata } from "../types";
 import { createMessageReply, formatRelativeTime } from "../utils";
 
-const spec = requireActionSpec("LIST_FEEDS");
+const spec = requireActionSpec("LIST_RSS_FEEDS");
 
 export const listFeedsAction: Action = {
   name: spec.name,

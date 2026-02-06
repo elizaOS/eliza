@@ -1,10 +1,12 @@
 import {
   ChannelType,
   type Content,
+  checkPairingAllowed,
   createUniqueUuid,
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
+  isInAllowlist,
   type Media,
   type Memory,
   type Service,
@@ -70,6 +72,106 @@ export class MessageManager {
   }
 
   /**
+   * Check DM access based on the configured dmPolicy.
+   *
+   * @param message - The Discord DM message
+   * @returns Access check result with allowed status and optional reply message
+   */
+  private async checkDmAccess(message: DiscordMessage): Promise<{
+    allowed: boolean;
+    replyMessage?: string;
+  }> {
+    const policy = this.discordSettings.dmPolicy ?? "open";
+    const userId = message.author.id;
+
+    // Disabled policy - block all DMs
+    if (policy === "disabled") {
+      this.runtime.logger.debug(
+        {
+          src: "plugin:discord",
+          agentId: this.runtime.agentId,
+          userId,
+        },
+        "DM blocked: policy is disabled"
+      );
+      return { allowed: false };
+    }
+
+    // Open policy - allow all DMs
+    if (policy === "open") {
+      return { allowed: true };
+    }
+
+    // Allowlist policy - check static allowFrom list and dynamic pairing allowlist
+    if (policy === "allowlist") {
+      // Check static allowlist first
+      if (this.discordSettings.allowFrom?.includes(userId)) {
+        return { allowed: true };
+      }
+
+      // Check dynamic pairing allowlist
+      const inDynamicAllowlist = await isInAllowlist(this.runtime, "discord", userId);
+      if (inDynamicAllowlist) {
+        return { allowed: true };
+      }
+
+      this.runtime.logger.debug(
+        {
+          src: "plugin:discord",
+          agentId: this.runtime.agentId,
+          userId,
+        },
+        "DM blocked: user not in allowlist"
+      );
+      return { allowed: false };
+    }
+
+    // Pairing policy - use PairingService
+    if (policy === "pairing") {
+      // Check static allowlist first (if configured, allow bypass of pairing)
+      if (this.discordSettings.allowFrom?.includes(userId)) {
+        return { allowed: true };
+      }
+
+      // Use the PairingService for pairing workflow
+      const result = await checkPairingAllowed(this.runtime, {
+        channel: "discord",
+        senderId: userId,
+        metadata: {
+          username: message.author.username,
+          displayName: message.author.displayName ?? message.author.username,
+          discriminator: message.author.discriminator ?? "",
+        },
+      });
+
+      if (result.allowed) {
+        return { allowed: true };
+      }
+
+      // Not allowed - return pairing reply message only for new requests
+      this.runtime.logger.debug(
+        {
+          src: "plugin:discord",
+          agentId: this.runtime.agentId,
+          userId,
+          pairingCode: result.pairingCode,
+          newRequest: result.newRequest,
+        },
+        "DM blocked: pairing required"
+      );
+
+      return {
+        allowed: false,
+        // Only send reply for new pairing requests (avoid spamming on every message)
+        replyMessage: result.newRequest ? result.replyMessage : undefined,
+      };
+    }
+
+    // Default: allow
+    return { allowed: true };
+  }
+
+  /**
    * Handles incoming Discord messages and processes them accordingly.
    *
    * @param {DiscordMessage} message - The Discord message to be handled
@@ -99,6 +201,30 @@ export class MessageManager {
       message.channel.type === DiscordChannelType.DM
     ) {
       return;
+    }
+
+    // DM policy check - applies access control policies for direct messages
+    if (message.channel.type === DiscordChannelType.DM) {
+      const accessCheck = await this.checkDmAccess(message);
+      if (!accessCheck.allowed) {
+        // If a reply message was generated (new pairing request), send it
+        if (accessCheck.replyMessage) {
+          try {
+            await message.author.send(accessCheck.replyMessage);
+          } catch (err) {
+            this.runtime.logger.warn(
+              {
+                src: "plugin:discord",
+                agentId: this.runtime.agentId,
+                userId: message.author.id,
+                error: err instanceof Error ? err.message : String(err),
+              },
+              "Failed to send pairing reply"
+            );
+          }
+        }
+        return;
+      }
     }
 
     const isBotMentioned = !!(

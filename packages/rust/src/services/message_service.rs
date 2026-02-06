@@ -3,21 +3,22 @@
 //! This module provides the message handling service that processes incoming messages
 //! and generates responses using the agent's character, providers, and model handlers.
 
-use crate::runtime::AgentRuntime;
 use crate::prompts::{
     MESSAGE_HANDLER_TEMPLATE, MULTI_STEP_DECISION_TEMPLATE, MULTI_STEP_SUMMARY_TEMPLATE,
     SHOULD_RESPOND_TEMPLATE,
 };
+use crate::runtime::AgentRuntime;
+use crate::template::render_template;
+use crate::types::events::{EventPayload, EventType};
 use crate::types::memory::Memory;
 use crate::types::primitives::{Content, UUID};
 use crate::types::state::{SchemaRow, State};
-use crate::types::{HandlerCallback, HandlerOptions};
-use crate::template::render_template;
+use crate::types::HandlerCallback;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Options for message processing
 #[derive(Default, Clone)]
@@ -93,19 +94,14 @@ impl IMessageService for DefaultMessageService {
         _options: Option<MessageProcessingOptions>,
     ) -> Result<MessageProcessingResult> {
         // Bind trajectory step for benchmark/tracing (if present)
-        let trajectory_step_id = if let Some(meta) = &message.metadata {
-            if let crate::types::memory::MemoryMetadata::Custom(v) = meta {
-                v.as_object()
-                    .and_then(|obj| obj.get("trajectoryStepId"))
-                    .and_then(|x| x.as_str())
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let trajectory_step_id = message.metadata.as_ref().and_then(|meta| {
+            let crate::types::memory::MemoryMetadata::Custom(v) = meta;
+            v.as_object()
+                .and_then(|obj| obj.get("trajectoryStepId"))
+                .and_then(|x| x.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        });
         runtime.set_trajectory_step_id(trajectory_step_id);
 
         // Start run tracking
@@ -211,28 +207,31 @@ impl IMessageService for DefaultMessageService {
         // Multi-step workflow (TypeScript/Python parity)
         let use_multi_step = parse_bool_setting(runtime.get_setting("USE_MULTI_STEP").await);
         if use_multi_step {
-            let max_iters = parse_int_setting(
-                runtime.get_setting("MAX_MULTISTEP_ITERATIONS").await,
-                6,
-            );
+            let max_iters =
+                parse_int_setting(runtime.get_setting("MAX_MULTISTEP_ITERATIONS").await, 6);
             return run_multi_step(runtime, message, &state, callback, max_iters).await;
         }
 
         // Use dynamicPromptExecFromState for structured message response
         let schema = vec![
-            SchemaRow::new("thought", "Your internal reasoning about the message and what to do")
-                .required()
-                .validate(false)
-                .stream(false),
-            SchemaRow::new("providers", "List of providers to use for additional context (comma-separated)")
-                .validate(false)
-                .stream(false),
+            SchemaRow::new(
+                "thought",
+                "Your internal reasoning about the message and what to do",
+            )
+            .required()
+            .validate(false)
+            .stream(false),
+            SchemaRow::new(
+                "providers",
+                "List of providers to use for additional context (comma-separated)",
+            )
+            .validate(false)
+            .stream(false),
             SchemaRow::new("actions", "List of actions to take (comma-separated)")
                 .required()
                 .validate(false)
                 .stream(false),
-            SchemaRow::new("text", "The text response to send to the user")
-                .stream(true),
+            SchemaRow::new("text", "The text response to send to the user").stream(true),
             SchemaRow::new("simple", "Whether this is a simple response (true/false)")
                 .validate(false)
                 .stream(false),
@@ -293,12 +292,17 @@ impl IMessageService for DefaultMessageService {
         // If the model selected actions that require parameters but omitted a complete <params> block,
         // do a second pass asking for ONLY a <params> block.
         let mut params_xml = params_xml;
+        // Build the canonical prompt for repair context
+        let prompt = build_canonical_prompt(&character_name, message, &state)?;
         if !actions.is_empty() {
             let defs = runtime.list_action_definitions().await;
             let mut required_by_action: HashMap<String, Vec<String>> = HashMap::new();
             for a in &actions {
                 let a_upper = a.trim().to_uppercase();
-                if let Some(def) = defs.iter().find(|d| d.name.trim().to_uppercase() == a_upper) {
+                if let Some(def) = defs
+                    .iter()
+                    .find(|d| d.name.trim().to_uppercase() == a_upper)
+                {
                     if let Some(params) = &def.parameters {
                         let required: Vec<String> = params
                             .iter()
@@ -372,9 +376,8 @@ impl IMessageService for DefaultMessageService {
 
         // Benchmark mode: force action-based loop when benchmark context is present.
         let benchmark_mode = state
-            .values
-            .get("benchmark_has_context")
-            .and_then(Value::as_bool)
+            .get_value("benchmark_has_context")
+            .and_then(|v| v.as_bool())
             .unwrap_or(false);
         if benchmark_mode {
             if actions.is_empty() {
@@ -394,7 +397,9 @@ impl IMessageService for DefaultMessageService {
             text: Some(text.clone()),
             actions: Some(actions.clone()),
             providers: Some(providers.clone()),
-            params: params_xml.clone(),
+            data: params_xml
+                .clone()
+                .map(|p| serde_json::json!({ "params": p })),
             ..Default::default()
         };
 
@@ -421,12 +426,26 @@ impl IMessageService for DefaultMessageService {
             debug!("Saved response with ID {:?}", response_id);
         }
 
+        // Emit MESSAGE_SENT event after saving response memory
+        let mut extra = HashMap::new();
+        if let Ok(message_json) = serde_json::to_value(&response_memory) {
+            extra.insert("message".to_string(), message_json);
+        }
+        let _ = runtime
+            .emit_event(
+                EventType::MessageSent,
+                EventPayload {
+                    source: "message-service".to_string(),
+                    extra,
+                },
+            )
+            .await;
+
         let mut response_messages: Vec<Memory> = vec![response_memory.clone()];
 
         // Execute actions (canonical loop parity)
-        let is_simple_reply = actions.len() == 1
-            && actions[0].to_uppercase() == "REPLY"
-            && providers.is_empty();
+        let is_simple_reply =
+            actions.len() == 1 && actions[0].to_uppercase() == "REPLY" && providers.is_empty();
 
         if is_simple_reply && !benchmark_mode {
             // Simple chat-style response: return the model text directly.
@@ -460,7 +479,7 @@ impl IMessageService for DefaultMessageService {
                             text: Some(text.clone()),
                             ..Default::default()
                         })
-                        .await?;
+                        .await;
                         persist_outbound_memories(runtime, &outbound).await?;
                         response_messages.extend(outbound);
                     }
@@ -517,7 +536,9 @@ async fn persist_evaluator_results(
         content.source = Some("auto".to_string());
         content.thought = r.text.clone();
         if let Some(err) = &r.error {
-            content.extra.insert("error".to_string(), Value::String(err.clone()));
+            content
+                .extra
+                .insert("error".to_string(), Value::String(err.clone()));
         }
         if let Some(data) = &r.data {
             for (k, v) in data.iter() {
@@ -570,7 +591,11 @@ fn build_canonical_prompt(character_name: &str, message: &Memory, state: &State)
     render_template(MESSAGE_HANDLER_TEMPLATE, &data)
 }
 
-fn build_should_respond_prompt(character_name: &str, message: &Memory, state: &State) -> Result<String> {
+fn _build_should_respond_prompt(
+    character_name: &str,
+    message: &Memory,
+    state: &State,
+) -> Result<String> {
     let user_text = message.content.text.as_deref().unwrap_or("");
     let mut providers_text = state.text.clone();
     if !user_text.is_empty() {
@@ -601,7 +626,10 @@ fn parse_bool_setting(v: Option<crate::types::settings::SettingValue>) -> bool {
     match v {
         Some(crate::types::settings::SettingValue::Bool(b)) => b,
         Some(crate::types::settings::SettingValue::String(s)) => {
-            matches!(s.trim().to_lowercase().as_str(), "true" | "yes" | "1" | "on")
+            matches!(
+                s.trim().to_lowercase().as_str(),
+                "true" | "yes" | "1" | "on"
+            )
         }
         _ => false,
     }
@@ -631,7 +659,11 @@ fn format_action_results(results: &[crate::types::ActionResult]) -> String {
             .unwrap_or("");
         let status = if r.success { "success" } else { "failed" };
         let text = r.text.clone().unwrap_or_default();
-        lines.push(format!("- {} ({}): {}", name, status, text).trim().to_string());
+        lines.push(
+            format!("- {} ({}): {}", name, status, text)
+                .trim()
+                .to_string(),
+        );
     }
     lines.join("\n")
 }
@@ -649,26 +681,21 @@ async fn run_multi_step(
     for _ in 0..max_iters.max(1) {
         let iter_state = runtime.compose_state(message).await?;
 
-        let system_prompt = {
-            #[cfg(not(feature = "wasm"))]
-            {
-                runtime.character.read().await.system.clone()
-            }
-            #[cfg(feature = "wasm")]
-            {
-                runtime.character.read().unwrap().system.clone()
-            }
-        };
-
         // Add action results to state for template rendering
         let mut iter_state = iter_state;
-        iter_state.values.insert("actionResults".to_string(), Value::String(format_action_results(&trace_results)));
+        iter_state.set_value(
+            "actionResults",
+            Value::String(format_action_results(&trace_results)),
+        );
 
         // Use dynamicPromptExecFromState for multi-step decision
         let schema = vec![
-            SchemaRow::new("thought", "Your reasoning for the selected providers and/or action")
-                .validate(false)
-                .stream(false),
+            SchemaRow::new(
+                "thought",
+                "Your reasoning for the selected providers and/or action",
+            )
+            .validate(false)
+            .stream(false),
             SchemaRow::new("providers", "Comma-separated list of providers to call")
                 .validate(false)
                 .stream(false),
@@ -697,8 +724,16 @@ async fn run_multi_step(
             .await?;
 
         let parsed = parsed.ok_or_else(|| anyhow::anyhow!("Failed to parse multi-step result"))?;
-        let thought = parsed.get("thought").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let action = parsed.get("action").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let thought = parsed
+            .get("thought")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let action = parsed
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let parameters_raw = parsed.get("parameters");
         let is_finish = parsed
             .get("isFinish")
@@ -742,28 +777,33 @@ async fn run_multi_step(
 
         let action_name = action.trim().to_string();
         if !action_name.is_empty() {
+            // Convert action_params to the expected nested structure
+            let inner_params: HashMap<String, Value> = action_params
+                .iter()
+                .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                .collect();
+            let mut nested_params: HashMap<String, HashMap<String, Value>> = HashMap::new();
+            nested_params.insert(action_name.to_uppercase(), inner_params);
+
             let results = runtime
-                .process_selected_actions(message, &iter_state, &[action_name.clone()], &action_params)
+                .process_selected_actions(
+                    message,
+                    &iter_state,
+                    &[action_name.clone()],
+                    &nested_params,
+                )
                 .await?;
             trace_results.extend(results);
         }
     }
 
-    let system_prompt = {
-        #[cfg(not(feature = "wasm"))]
-        {
-            runtime.character.read().await.system.clone()
-        }
-        #[cfg(feature = "wasm")]
-        {
-            runtime.character.read().unwrap().system.clone()
-        }
-    };
-
     // Add context to state for final summary
     let mut final_state = state.clone();
-    final_state.values.insert("actionResults".to_string(), Value::String(format_action_results(&trace_results)));
-    final_state.values.insert("recentMessage".to_string(), Value::String(last_thought));
+    final_state.set_value(
+        "actionResults",
+        Value::String(format_action_results(&trace_results)),
+    );
+    final_state.set_value("recentMessage", Value::String(last_thought));
 
     // Use dynamicPromptExecFromState for final summary
     let schema = vec![
@@ -790,8 +830,16 @@ async fn run_multi_step(
         .await?;
 
     let parsed = parsed.ok_or_else(|| anyhow::anyhow!("Failed to parse summary result"))?;
-    let final_text = parsed.get("text").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-    let final_thought = parsed.get("thought").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let final_text = parsed
+        .get("text")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let final_thought = parsed
+        .get("thought")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
 
     let response_content = Content {
         thought: Some(final_thought),
@@ -825,6 +873,7 @@ fn chrono_timestamp() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::HandlerOptions;
 
     #[test]
     fn test_message_processing_result_default() {
@@ -860,16 +909,24 @@ mod tests {
 
         // SHOULD_RESPOND model call
         runtime
-            .register_model("TEXT_SMALL", Box::new(|_params| {
-                Box::pin(async move { Ok("<response><action>IGNORE</action></response>".to_string()) })
-            }))
+            .register_model(
+                "TEXT_SMALL",
+                Box::new(|_params| {
+                    Box::pin(async move {
+                        Ok("<response><action>IGNORE</action></response>".to_string())
+                    })
+                }),
+            )
             .await;
 
         // If called, this would mean shouldRespond didn't short-circuit.
         runtime
-            .register_model("TEXT_LARGE", Box::new(|_params| {
-                Box::pin(async move { Err(anyhow::anyhow!("TEXT_LARGE should not be called")) })
-            }))
+            .register_model(
+                "TEXT_LARGE",
+                Box::new(|_params| {
+                    Box::pin(async move { Err(anyhow::anyhow!("TEXT_LARGE should not be called")) })
+                }),
+            )
             .await;
 
         let service = DefaultMessageService::new();
@@ -890,8 +947,8 @@ mod tests {
         use crate::types::{
             ActionResult, EvaluationExample, EvaluatorDefinition, EvaluatorHandler, Plugin,
         };
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
 
         struct TestEvaluator {
             hits: Arc<AtomicUsize>,
@@ -917,19 +974,21 @@ mod tests {
                 true
             }
 
-                async fn handle(
-                    &self,
-                    _message: &Memory,
-                    _state: Option<&State>,
-                    _options: Option<&HandlerOptions>,
-                ) -> Result<Option<ActionResult>, anyhow::Error> {
+            async fn handle(
+                &self,
+                _message: &Memory,
+                _state: Option<&State>,
+                _options: Option<&HandlerOptions>,
+            ) -> Result<Option<ActionResult>, anyhow::Error> {
                 self.hits.fetch_add(1, Ordering::SeqCst);
                 Ok(Some(ActionResult::success_with_text("ok")))
             }
         }
 
         let hits = Arc::new(AtomicUsize::new(0));
-        let evaluator = Arc::new(TestEvaluator { hits: Arc::clone(&hits) });
+        let evaluator = Arc::new(TestEvaluator {
+            hits: Arc::clone(&hits),
+        });
 
         let mut plugin = Plugin::new("test", "test");
         plugin.evaluator_handlers.push(evaluator);

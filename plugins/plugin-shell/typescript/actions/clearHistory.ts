@@ -12,7 +12,7 @@ import {
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { ShellService } from "../services/shellService";
 
-const spec = requireActionSpec("CLEAR_HISTORY");
+const spec = requireActionSpec("CLEAR_SHELL_HISTORY");
 
 export const clearHistory: Action = {
   name: spec.name,

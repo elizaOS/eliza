@@ -62,7 +62,7 @@
   "dependencies": {
     "@elizaos/core": "2.0.0-alpha.1",
     "drizzle-orm": "^0.30.10",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
@@ -70,14 +70,14 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "zod": "^3.24.2"
+    "zod": "^4.3.6"
   },
   "scripts": {
     "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
     "build": "npm run build:prompts && bun run build:ts && bun run build:rust && bun run build:python",
     "build:ts": "cd typescript && bun run build.ts",
     "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
-    "build:python": "test -d python && cd python && (python3 -m build 2>/dev/null || pyproject-build) || echo 'Python build skipped - no python directory'",
+    "build:python": "test -n \"$SKIP_PYTHON_BUILD\" && echo 'Python build skipped (SKIP_PYTHON_BUILD set)' || (test -d python && cd python && (timeout 120 python3 -m build 2>/dev/null || timeout 120 pyproject-build 2>/dev/null) || echo 'Python build skipped or timed out')",
     "dev": "cd typescript && bun --hot build.ts",
     "lint": "bunx @biomejs/biome check --write ./typescript",
     "lint:check": "bunx @biomejs/biome check ./typescript",

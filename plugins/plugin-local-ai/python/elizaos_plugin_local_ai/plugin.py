@@ -13,6 +13,8 @@ from elizaos_plugin_local_ai.types import (
 
 
 class LocalAIPlugin:
+    """Plugin for running AI models locally using llama.cpp."""
+
     def __init__(self, config: LocalAIConfig) -> None:
         self.config = config
         self._small_model: object | None = None
@@ -25,6 +27,12 @@ class LocalAIPlugin:
             Path(config.models_dir) if config.models_dir else home / ".eliza" / "models"
         )
         self.cache_dir = Path(config.cache_dir) if config.cache_dir else home / ".eliza" / "cache"
+
+        # Validate directory paths are not empty after resolution
+        if not str(self.models_dir).strip():
+            raise ValueError("Models directory path cannot be empty")
+        if not str(self.cache_dir).strip():
+            raise ValueError("Cache directory path cannot be empty")
 
         self.models_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)

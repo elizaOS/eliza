@@ -2,17 +2,38 @@
  * Unit tests for WorkflowRunner - specifically state restoration edge cases
  */
 
-import { WorkflowRunner } from "../runner";
+import { WorkflowRunner, WorkflowState } from "../runner";
 import { createStep } from "../step";
 import { createWorkflow } from "../workflow";
 import { z } from "zod";
+import type { WorkflowContext } from "../types";
+
+/**
+ * Mock Desktop interface for unit tests.
+ * Only includes methods used by the test steps.
+ */
+interface MockDesktop {
+  locator: ReturnType<typeof jest.fn>;
+  openApplication: ReturnType<typeof jest.fn>;
+  delay: ReturnType<typeof jest.fn>;
+}
 
 // Mock Desktop
-const mockDesktop = {
+const mockDesktop: MockDesktop = {
   locator: jest.fn(),
   openApplication: jest.fn(),
   delay: jest.fn(),
-} as any;
+};
+
+/**
+ * Type for testing corrupted/invalid WorkflowState.
+ * Used to test edge cases where state may be malformed.
+ */
+type CorruptedWorkflowState = {
+  stepResults: Record<string, { status: string; result?: unknown }>;
+  lastStepIndex: number;
+  context: WorkflowContext | undefined | null | Partial<WorkflowContext>;
+};
 
 // Simple workflow for testing
 const simpleWorkflow = createWorkflow({
@@ -31,10 +52,10 @@ describe("WorkflowRunner", () => {
     test("handles restoredState with undefined context gracefully", () => {
       // This tests the fix for: "undefined is not an object (evaluating 'restored.data')"
       // When restoredState exists but context is undefined (stale/corrupted state)
-      const restoredState = {
+      const restoredState: CorruptedWorkflowState = {
         stepResults: {},
         lastStepIndex: 0,
-        context: undefined as any, // Simulates corrupted/stale state
+        context: undefined, // Simulates corrupted/stale state
       };
 
       // Should not throw
@@ -42,58 +63,58 @@ describe("WorkflowRunner", () => {
         new WorkflowRunner({
           workflow: simpleWorkflow,
           inputs: {},
-          restoredState,
+          restoredState: restoredState as unknown as WorkflowState,
         });
       }).not.toThrow();
     });
 
     test("handles restoredState with null context gracefully", () => {
-      const restoredState = {
+      const restoredState: CorruptedWorkflowState = {
         stepResults: {},
         lastStepIndex: 0,
-        context: null as any,
+        context: null,
       };
 
       expect(() => {
         new WorkflowRunner({
           workflow: simpleWorkflow,
           inputs: {},
-          restoredState,
+          restoredState: restoredState as unknown as WorkflowState,
         });
       }).not.toThrow();
     });
 
     test("handles restoredState with empty context object", () => {
-      const restoredState = {
+      const restoredState: CorruptedWorkflowState = {
         stepResults: {},
         lastStepIndex: 0,
-        context: {} as any, // Empty context (missing data, state, variables)
+        context: {}, // Empty context (missing data, state, variables)
       };
 
       expect(() => {
         new WorkflowRunner({
           workflow: simpleWorkflow,
           inputs: {},
-          restoredState,
+          restoredState: restoredState as unknown as WorkflowState,
         });
       }).not.toThrow();
     });
 
     test("properly restores valid context", () => {
-      const restoredState = {
+      const restoredState: CorruptedWorkflowState = {
         stepResults: { step1: { status: "success", result: { foo: "bar" } } },
         lastStepIndex: 0,
         context: {
           data: { existingData: true },
           state: { existingState: true },
           variables: { existingVar: "value" },
-        } as any,
+        },
       };
 
       const runner = new WorkflowRunner({
         workflow: simpleWorkflow,
         inputs: { newInput: "test" },
-        restoredState,
+        restoredState: restoredState as unknown as WorkflowState,
       });
 
       // Runner should be created successfully

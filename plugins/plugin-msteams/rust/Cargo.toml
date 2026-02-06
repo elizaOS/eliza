@@ -1,0 +1,71 @@
+[package]
+name = "elizaos-plugin-msteams"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "Microsoft Teams plugin for elizaOS - Rust implementation with Bot Framework support"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+keywords = ["ai", "agent", "msteams", "teams", "bot-framework", "microsoft"]
+categories = ["api-bindings", "asynchronous", "web-programming"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "sync", "time"], optional = true }
+async-trait = "0.1"
+futures = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# UUID handling
+uuid = { version = "1.19", features = ["v4", "v5", "serde"] }
+
+# HTTP client for Bot Framework and Graph API
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Environment variables
+dotenvy = "0.15"
+
+# URL handling
+url = "2.5"
+
+# Regex for HTML parsing
+regex = "1.10"
+
+# Base64 for media encoding
+base64 = "0.22"
+
+# Hyper for webhook server
+hyper = { version = "1.0", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1.5"
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+pretty_assertions = "1.0"
+mockall = "0.12"
+tokio-test = "0.4"
+
+[profile.release]
+lto = true
+opt-level = "z"

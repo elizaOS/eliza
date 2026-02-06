@@ -120,8 +120,21 @@ export const createTodoAction: Action = {
   similes: spec.similes ? [...spec.similes] : [],
   description: spec.description,
 
-  validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
-    return true;
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    // Check for task/todo creation intent in the message
+    const text = (message.content?.text ?? "").toLowerCase();
+    const hasTaskIntent =
+      text.includes("todo") ||
+      text.includes("task") ||
+      text.includes("remind") ||
+      text.includes("add") ||
+      text.includes("create") ||
+      text.includes("need to") ||
+      text.includes("have to") ||
+      text.includes("don't forget") ||
+      text.includes("schedule");
+
+    return hasTaskIntent;
   },
 
   handler: async (

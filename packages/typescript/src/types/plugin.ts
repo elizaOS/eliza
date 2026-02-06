@@ -7,7 +7,6 @@ import type {
   JsonValue,
   ComponentTypeDefinition as ProtoComponentTypeDefinition,
   JSONSchemaDefinition as ProtoJSONSchemaDefinition,
-  PluginManifest as ProtoPluginManifest,
   RouteManifest as ProtoRouteManifest,
 } from "./proto.js";
 import type { IAgentRuntime } from "./runtime";
@@ -179,5 +178,4 @@ export interface Project {
   agents: ProjectAgent[];
 }
 
-export type PluginManifest = ProtoPluginManifest;
 export type RouteManifest = ProtoRouteManifest;

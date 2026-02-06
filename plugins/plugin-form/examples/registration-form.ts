@@ -13,7 +13,7 @@
  * 3. The agent will guide the user through registration
  */
 
-import type { Plugin, IAgentRuntime } from '@elizaos/core';
+import type { Plugin, IAgentRuntime, UUID } from '@elizaos/core';
 import { Form, C, FormService, type FormSubmission } from '../src/index';
 
 // ============================================================================
@@ -88,16 +88,34 @@ export const registrationForm = Form.create('registration')
 // ============================================================================
 
 /**
+ * Worker options type for registration started event.
+ */
+interface RegistrationStartedOptions {
+  session: { entityId: string; formId: string };
+  form: { name: string };
+}
+
+/**
  * Called when a registration session starts.
  */
 export const registrationStartedWorker = {
   name: 'registration_started',
-  validate: async () => true,
-  execute: async (runtime: IAgentRuntime, options: any) => {
-    const { session, form } = options;
+  validate: async (_runtime: IAgentRuntime, options: RegistrationStartedOptions) => {
+    // Validate that we have a valid session and form
+    return !!(options?.session?.entityId && options?.session?.formId);
+  },
+  execute: async (runtime: IAgentRuntime, options: RegistrationStartedOptions) => {
+    const { session } = options;
     runtime.logger.info(`[Registration] New registration started for entity ${session.entityId}`);
   },
 };
+
+/**
+ * Worker options type for registration submission.
+ */
+interface HandleRegistrationOptions {
+  submission: FormSubmission;
+}
 
 /**
  * Called when registration form is submitted.
@@ -109,9 +127,15 @@ export const registrationStartedWorker = {
  */
 export const handleRegistrationWorker = {
   name: 'handle_registration',
-  validate: async () => true,
-  execute: async (runtime: IAgentRuntime, options: any) => {
-    const { submission } = options as { submission: FormSubmission };
+  validate: async (_runtime: IAgentRuntime, options: HandleRegistrationOptions) => {
+    // Validate that we have a valid submission with required fields
+    const { submission } = options;
+    if (!submission?.values) return false;
+    const { email, username, age } = submission.values;
+    return !!(email && username && typeof age === 'number' && age >= 13);
+  },
+  execute: async (runtime: IAgentRuntime, options: HandleRegistrationOptions) => {
+    const { submission } = options;
     const { email, username, displayName, age, newsletter } = submission.values;
 
     runtime.logger.info('[Registration] New user registration:', {
@@ -220,7 +244,7 @@ export const registrationPlugin: Plugin = {
 
         try {
           // Check for existing session
-          const existing = await formService.getActiveSession(entityId as any, roomId as any);
+          const existing = await formService.getActiveSession(entityId as UUID, roomId as UUID);
           if (existing) {
             const form = formService.getForm(existing.formId);
             await callback?.({
@@ -230,7 +254,7 @@ export const registrationPlugin: Plugin = {
           }
 
           // Start registration session
-          await formService.startSession('registration', entityId as any, roomId as any);
+          await formService.startSession('registration', entityId as UUID, roomId as UUID);
 
           await callback?.({
             text: "Great! Let's get you registered. I'll ask you a few questions.\n\nFirst, what's your email address?",

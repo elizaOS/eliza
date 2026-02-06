@@ -12,7 +12,7 @@ import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { RssService } from "../service";
 import { createMessageReply, extractUrls } from "../utils";
 
-const spec = requireActionSpec("UNSUBSCRIBE_FEED");
+const spec = requireActionSpec("UNSUBSCRIBE_RSS_FEED");
 
 export const unsubscribeFeedAction: Action = {
   name: spec.name,

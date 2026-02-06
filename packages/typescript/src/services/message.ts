@@ -1,4 +1,5 @@
 import { v4 } from "uuid";
+import { parseActionParams } from "../actions";
 import { createUniqueUuid } from "../entities";
 import { logger } from "../logger";
 import {
@@ -8,10 +9,13 @@ import {
   multiStepSummaryTemplate,
   shouldRespondTemplate,
 } from "../prompts";
-import { parseActionParams } from "../actions";
 import { runWithStreamingContext } from "../streaming-context";
 import { runWithTrajectoryContext } from "../trajectory-context";
-import type { Action, ActionResult, HandlerCallback } from "../types/components";
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+} from "../types/components";
 import type { Room } from "../types/environment";
 import type { RunEventPayload } from "../types/events";
 import { EventType } from "../types/events";
@@ -35,11 +39,10 @@ import {
   truncateToCompleteSentence,
 } from "../utils";
 import {
-  ResponseStreamExtractor,
-  MarkableExtractor,
   createStreamingContext,
+  MarkableExtractor,
+  ResponseStreamExtractor,
 } from "../utils/streaming";
-import type { SchemaRow } from "../types/state";
 
 /**
  * Escape Handlebars syntax in a string to prevent template injection.
@@ -55,7 +58,7 @@ import type { SchemaRow } from "../types/state";
  */
 function escapeHandlebars(text: string): string {
   // Single-pass replacement to avoid double-escaping triple braces.
-  return text.replace(/\{\{\{|\{\{/g, (match) => "\\" + match);
+  return text.replace(/\{\{\{|\{\{/g, (match) => `\\${match}`);
 }
 
 /**
@@ -139,8 +142,8 @@ export class DefaultMessageService implements IMessageService {
   ): Promise<MessageProcessingResult> {
     const trajectoryStepId =
       typeof message.metadata === "object" &&
-        message.metadata !== null &&
-        "trajectoryStepId" in message.metadata
+      message.metadata !== null &&
+      "trajectoryStepId" in message.metadata
         ? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
         : undefined;
 
@@ -261,9 +264,12 @@ export class DefaultMessageService implements IMessageService {
           // Use ResponseStreamExtractor to filter XML and only stream <text> (if REPLY) or <message>
           let streamingContext:
             | {
-              onStreamChunk: (chunk: string, messageId?: string) => Promise<void>;
-              messageId?: string;
-            }
+                onStreamChunk: (
+                  chunk: string,
+                  messageId?: string,
+                ) => Promise<void>;
+                messageId?: string;
+              }
             | undefined;
           if (opts.onStreamChunk) {
             const extractor = new ResponseStreamExtractor();
@@ -280,19 +286,24 @@ export class DefaultMessageService implements IMessageService {
             };
           }
 
-          const processingPromise = runWithStreamingContext(streamingContext, () =>
-            this.processMessage(
-              runtime,
-              message,
-              callback,
-              responseId,
-              runId,
-              startTime,
-              opts,
-            ),
+          const processingPromise = runWithStreamingContext(
+            streamingContext,
+            () =>
+              this.processMessage(
+                runtime,
+                message,
+                callback,
+                responseId,
+                runId,
+                startTime,
+                opts,
+              ),
           );
 
-          const result = await Promise.race([processingPromise, timeoutPromise]);
+          const result = await Promise.race([
+            processingPromise,
+            timeoutPromise,
+          ]);
 
           // Clean up timeout
           clearTimeout(timeoutId);
@@ -444,7 +455,7 @@ export class DefaultMessageService implements IMessageService {
     let shouldRespondToMessage = true;
     const metadata =
       typeof message.content.metadata === "object" &&
-        message.content.metadata !== null
+      message.content.metadata !== null
         ? (message.content.metadata as Record<string, unknown>)
         : null;
     const isAutonomous = metadata?.isAutonomous === true;
@@ -494,7 +505,7 @@ export class DefaultMessageService implements IMessageService {
         shouldRespondToMessage = responseDecision.shouldRespond;
       } else {
         // Need LLM evaluation for ambiguous case
-        const shouldRespondPrompt = composePromptFromState({
+        const _shouldRespondPrompt = composePromptFromState({
           state,
           template:
             runtime.character.templates?.shouldRespondTemplate ||
@@ -502,7 +513,7 @@ export class DefaultMessageService implements IMessageService {
         });
 
         // Select model based on configuration - "large" enables better context analysis and planning
-        const shouldRespondModelType =
+        const _shouldRespondModelType =
           opts.shouldRespondModel === "large"
             ? ModelType.TEXT_LARGE
             : ModelType.TEXT_SMALL;
@@ -548,8 +559,7 @@ export class DefaultMessageService implements IMessageService {
             },
           ],
           options: {
-            modelSize:
-              opts.shouldRespondModel === "large" ? "large" : "small",
+            modelSize: opts.shouldRespondModel === "large" ? "large" : "small",
             preferredEncapsulation: "xml",
           },
         });
@@ -575,20 +585,20 @@ export class DefaultMessageService implements IMessageService {
     if (shouldRespondToMessage) {
       const result = opts.useMultiStep
         ? await this.runMultiStepCore(
-          runtime,
-          message,
-          state,
-          callback,
-          opts,
-          responseId,
-        )
+            runtime,
+            message,
+            state,
+            callback,
+            opts,
+            responseId,
+          )
         : await this.runSingleShotCore(
-          runtime,
-          message,
-          state,
-          opts,
-          responseId,
-        );
+            runtime,
+            message,
+            state,
+            opts,
+            responseId,
+          );
 
       responseContent = result.responseContent;
       responseMessages = result.responseMessages;
@@ -654,6 +664,12 @@ export class DefaultMessageService implements IMessageService {
             );
           }
           if (callback) {
+            // Redact any secrets from response content before sending
+            if (responseContent.text) {
+              responseContent.text = runtime.redactSecrets(
+                responseContent.text,
+              );
+            }
             await callback(responseContent);
           }
         } else if (mode === "actions") {
@@ -781,6 +797,10 @@ export class DefaultMessageService implements IMessageService {
           responseContent.evalCallbacks = content;
         }
         if (callback) {
+          // Redact any secrets from evaluate callback content
+          if (content.text) {
+            content.text = runtime.redactSecrets(content.text);
+          }
           return callback(content);
         }
         return [];
@@ -913,11 +933,11 @@ export class DefaultMessageService implements IMessageService {
     // Support runtime-configurable overrides via env settings
     const customChannels = normalizeEnvList(
       runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ||
-      runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
+        runtime.getSetting("SHOULD_RESPOND_BYPASS_TYPES"),
     );
     const customSources = normalizeEnvList(
       runtime.getSetting("ALWAYS_RESPOND_SOURCES") ||
-      runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
+        runtime.getSetting("SHOULD_RESPOND_BYPASS_SOURCES"),
     );
 
     const respondChannels = new Set(
@@ -993,7 +1013,9 @@ export class DefaultMessageService implements IMessageService {
         const processedAttachment: Media = { ...attachment };
 
         const isRemote = /^(http|https):\/\//.test(attachment.url);
-        const url = isRemote ? attachment.url : getLocalServerUrl(attachment.url);
+        const url = isRemote
+          ? attachment.url
+          : getLocalServerUrl(attachment.url);
 
         // Only process images that don't already have descriptions
         if (
@@ -1047,10 +1069,8 @@ export class DefaultMessageService implements IMessageService {
               runtime.logger.debug(
                 {
                   src: "service:message",
-                  descriptionPreview: processedAttachment.description?.substring(
-                    0,
-                    100,
-                  ),
+                  descriptionPreview:
+                    processedAttachment.description?.substring(0, 100),
                 },
                 "Generated image description",
               );
@@ -1130,7 +1150,8 @@ export class DefaultMessageService implements IMessageService {
 
             const textContent = await res.text();
             processedAttachment.text = textContent;
-            processedAttachment.title = processedAttachment.title || "Text File";
+            processedAttachment.title =
+              processedAttachment.title || "Text File";
 
             runtime.logger.debug(
               {
@@ -1143,6 +1164,104 @@ export class DefaultMessageService implements IMessageService {
             runtime.logger.warn(
               { src: "service:message", contentType },
               "Skipping non-plain-text document",
+            );
+          }
+        } else if (
+          attachment.contentType === ContentType.AUDIO &&
+          !attachment.text
+        ) {
+          runtime.logger.debug(
+            { src: "service:message", audioUrl: attachment.url },
+            "Transcribing audio attachment",
+          );
+
+          try {
+            let transcriptionInput: string | Buffer = url;
+
+            // For local/internal URLs, fetch the audio as a buffer
+            if (!isRemote) {
+              const res = await fetch(url);
+              if (!res.ok)
+                throw new Error(
+                  `Failed to fetch audio: ${res.statusText}`,
+                );
+              const arrayBuffer = await res.arrayBuffer();
+              transcriptionInput = Buffer.from(arrayBuffer);
+            }
+
+            const transcript = await runtime.useModel(
+              ModelType.TRANSCRIPTION,
+              transcriptionInput,
+            );
+
+            if (typeof transcript === "string" && transcript.trim()) {
+              processedAttachment.text = transcript.trim();
+              processedAttachment.title =
+                processedAttachment.title || "Audio";
+              processedAttachment.description = `Transcript: ${transcript.trim()}`;
+
+              runtime.logger.debug(
+                {
+                  src: "service:message",
+                  transcriptPreview:
+                    processedAttachment.text?.substring(0, 100),
+                },
+                "Transcribed audio attachment",
+              );
+            }
+          } catch (err) {
+            runtime.logger.warn(
+              { src: "service:message", err },
+              "Audio transcription failed, continuing without transcript",
+            );
+          }
+        } else if (
+          attachment.contentType === ContentType.VIDEO &&
+          !attachment.text
+        ) {
+          runtime.logger.debug(
+            { src: "service:message", videoUrl: attachment.url },
+            "Transcribing video attachment",
+          );
+
+          try {
+            let transcriptionInput: string | Buffer = url;
+
+            // For local/internal URLs, fetch the video as a buffer
+            if (!isRemote) {
+              const res = await fetch(url);
+              if (!res.ok)
+                throw new Error(
+                  `Failed to fetch video: ${res.statusText}`,
+                );
+              const arrayBuffer = await res.arrayBuffer();
+              transcriptionInput = Buffer.from(arrayBuffer);
+            }
+
+            const transcript = await runtime.useModel(
+              ModelType.TRANSCRIPTION,
+              transcriptionInput,
+            );
+
+            if (typeof transcript === "string" && transcript.trim()) {
+              processedAttachment.text = transcript.trim();
+              processedAttachment.title =
+                processedAttachment.title || "Video";
+              processedAttachment.description = `Transcript: ${transcript.trim()}`;
+
+              runtime.logger.debug(
+                {
+                  src: "service:message",
+                  transcriptPreview:
+                    processedAttachment.text?.substring(0, 100),
+                },
+                "Transcribed video attachment",
+              );
+            }
+          } catch (err) {
+            runtime.logger.warn(
+              { src: "service:message", err },
+              "Video transcription failed, continuing without transcript",
             );
           }
         }
@@ -1180,9 +1299,14 @@ export class DefaultMessageService implements IMessageService {
     const streamingExtractor = opts.onStreamChunk
       ? new MarkableExtractor()
       : undefined;
-    const streamingCtx = streamingExtractor && opts.onStreamChunk
-      ? createStreamingContext(streamingExtractor, opts.onStreamChunk, responseId)
-      : undefined;
+    const streamingCtx =
+      streamingExtractor && opts.onStreamChunk
+        ? createStreamingContext(
+            streamingExtractor,
+            opts.onStreamChunk,
+            responseId,
+          )
+        : undefined;
 
     // Use dynamicPromptExecFromState for structured output with validation
     const parsedXml = await runtime.dynamicPromptExecFromState({
@@ -1275,9 +1399,9 @@ export class DefaultMessageService implements IMessageService {
         ? parsedXml.providers.filter((p): p is string => typeof p === "string")
         : typeof parsedXml.providers === "string"
           ? parsedXml.providers
-            .split(",")
-            .map((p) => String(p).trim())
-            .filter((p) => p.length > 0)
+              .split(",")
+              .map((p) => String(p).trim())
+              .filter((p) => p.length > 0)
           : [];
 
       responseContent = {
@@ -1400,9 +1524,8 @@ Output ONLY the continuation, starting immediately after the last character abov
       if (!actionName) continue;
       const actionDef = actionByName.get(actionName);
       const required =
-        actionDef?.parameters
-          ?.filter((p) => p.required)
-          .map((p) => p.name) ?? [];
+        actionDef?.parameters?.filter((p) => p.required).map((p) => p.name) ??
+        [];
       if (required.length > 0) {
         requiredByAction.set(actionName, required);
       }
@@ -1466,7 +1589,10 @@ Output ONLY the continuation, starting immediately after the last character abov
       if (!responseContent.actions || responseContent.actions.length === 0) {
         responseContent.actions = ["REPLY"];
       }
-      if (!responseContent.providers || responseContent.providers.length === 0) {
+      if (
+        !responseContent.providers ||
+        responseContent.providers.length === 0
+      ) {
         responseContent.providers = ["CONTEXT_BENCH"];
       }
       // Suppress any direct planner answer; the REPLY action should generate final output.
@@ -1707,7 +1833,11 @@ Output ONLY the continuation, starting immediately after the last character abov
             }
 
             try {
-              const providerResult = await provider.get(runtime, message, state);
+              const providerResult = await provider.get(
+                runtime,
+                message,
+                state,
+              );
               completedProviders.add(providerName);
 
               if (!providerResult) {
@@ -1880,9 +2010,9 @@ Output ONLY the continuation, starting immediately after the last character abov
               : undefined,
           values:
             result &&
-              "values" in result &&
-              typeof result.values === "object" &&
-              result.values !== null
+            "values" in result &&
+            typeof result.values === "object" &&
+            result.values !== null
               ? result.values
               : undefined,
           error: success
@@ -1925,8 +2055,7 @@ Output ONLY the continuation, starting immediately after the last character abov
         // WHY streamField: true? This is the final user-facing output
         {
           field: "text",
-          description:
-            "The final summary message to send to the user",
+          description: "The final summary message to send to the user",
           required: true,
           streamField: true,
         },
@@ -1958,15 +2087,15 @@ Output ONLY the continuation, starting immediately after the last character abov
 
     const responseMessages: Memory[] = responseContent
       ? [
-        {
-          id: responseId,
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: responseContent,
-          roomId: message.roomId,
-          createdAt: Date.now(),
-        },
-      ]
+          {
+            id: responseId,
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: responseContent,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          },
+        ]
       : [];
 
     return {

@@ -1,0 +1,55 @@
+{
+  "name": "@elizaos/plugin-form",
+  "description": "Guardrails for agent-guided user journeys - conversational forms for ElizaOS",
+  "version": "2.0.0-alpha.1",
+  "author": "Odilitime",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "keywords": ["plugin", "elizaos", "form", "conversational", "data-collection"],
+  "repository": { "type": "git", "url": "https://github.com/elizaos/elizaos" },
+  "homepage": "https://elizaos.ai",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "bun-types": "^1.2.21",
+    "typescript": "5.8.2",
+    "@biomejs/biome": "^2.3.11"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx @biomejs/biome check --write .",
+    "clean": "rm -rf dist .turbo node_modules"
+  },
+  "publishConfig": { "access": "public" }
+}

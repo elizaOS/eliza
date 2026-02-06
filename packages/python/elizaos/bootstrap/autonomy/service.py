@@ -1,3 +1,9 @@
+"""Autonomy service using the Task system (TypeScript parity).
+
+This service registers an `AUTONOMY_THINK` task worker and creates a recurring
+task that triggers autonomous thinking at a configurable interval.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -5,7 +11,7 @@ import contextlib
 import logging
 import time
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from elizaos.prompts import (
     AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE,
@@ -18,6 +24,7 @@ from elizaos.types.events import EventType
 from elizaos.types.memory import Memory
 from elizaos.types.primitives import UUID, Content, as_uuid
 from elizaos.types.service import Service
+from elizaos.bootstrap.services.task import Task, TaskMetadata
 
 from .types import AutonomyStatus
 
@@ -26,10 +33,75 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
+# Service type constant for autonomy (parity with TypeScript)
 AUTONOMY_SERVICE_TYPE = "AUTONOMY"
+
+# Task name for autonomy thinking (parity with TypeScript)
+AUTONOMY_TASK_NAME = "AUTONOMY_THINK"
+
+# Tags used for autonomy tasks (parity with TypeScript).
+# Note: TypeScript uses ["repeat", "autonomy", "internal"] without "queue".
+AUTONOMY_TASK_TAGS = ["repeat", "autonomy", "internal"]
+
+# Default interval in milliseconds
+DEFAULT_INTERVAL_MS = 30_000
+
+
+class AutonomyTaskWorker:
+    """Task worker for autonomous thinking."""
+
+    def __init__(self, service: AutonomyService) -> None:
+        self._service = service
+
+    @property
+    def name(self) -> str:
+        return AUTONOMY_TASK_NAME
+
+    async def execute(
+        self,
+        runtime: IAgentRuntime,
+        options: dict[str, Any],
+        task: Task,
+    ) -> None:
+        """Execute the autonomy task."""
+        start_time = time.time()
+
+        self._service._log(
+            "debug",
+            f"Executing autonomy task (task_id={task.id})",
+        )
+
+        try:
+            await self._service.perform_autonomous_think()
+            duration_ms = int((time.time() - start_time) * 1000)
+            self._service._log(
+                "debug",
+                f"Autonomy task completed successfully (duration={duration_ms}ms)",
+            )
+        except Exception as e:
+            duration_ms = int((time.time() - start_time) * 1000)
+            self._service._log(
+                "error",
+                f"Autonomy task failed: {e} (duration={duration_ms}ms)",
+            )
+            raise
+
+    async def validate(
+        self,
+        runtime: IAgentRuntime,
+        message: Memory,
+        state: Any,
+    ) -> bool:
+        """Validate the task (always returns True)."""
+        return True
 
 
 class AutonomyService(Service):
+    """Autonomy service using the Task system.
+
+    Provides parity with TypeScript's AutonomyService.
+    """
+
     service_type = AUTONOMY_SERVICE_TYPE
 
     def __init__(self) -> None:
@@ -37,8 +109,8 @@ class AutonomyService(Service):
         self._is_running = False
         self._is_thinking = False
         self._is_stopped = False
-        self._interval_ms = 30000
-        self._loop_task: asyncio.Task[None] | None = None
+        self._interval_ms = DEFAULT_INTERVAL_MS
+        self._task_registered = False
         self._settings_monitor_task: asyncio.Task[None] | None = None
         self._autonomous_room_id = as_uuid(str(uuid.uuid4()))
         self._autonomous_world_id = as_uuid("00000000-0000-0000-0000-000000000001")
@@ -53,6 +125,7 @@ class AutonomyService(Service):
 
     @classmethod
     async def start(cls, runtime: IAgentRuntime) -> AutonomyService:
+        """Start the autonomy service."""
         service = cls()
         service._runtime = runtime
         await service._initialize()
@@ -64,6 +137,12 @@ class AutonomyService(Service):
 
         self._log("info", f"Using autonomous room ID: {self._autonomous_room_id}")
 
+        # Ensure autonomous context exists
+        await self._ensure_autonomous_context()
+
+        # Register the task worker
+        await self._register_autonomy_task_worker()
+
         autonomy_enabled = self._is_autonomy_enabled()
 
         self._log(
@@ -71,22 +150,85 @@ class AutonomyService(Service):
             f"Autonomy enabled (setting or runtime): {autonomy_enabled}",
         )
 
-        await self._ensure_autonomous_context()
-
         # Check if autonomy should auto-start based on runtime configuration
         if autonomy_enabled:
             self._log(
-                "info", "Autonomy enabled (enable_autonomy: True), starting autonomous loop..."
+                "info",
+                "Autonomy enabled (enable_autonomy: True), creating autonomy task...",
             )
-            await self.start_loop()
+            await self._create_autonomy_task()
         else:
             self._log(
                 "info",
                 "Autonomy not enabled (enable_autonomy: False or not set). "
-                "Set enable_autonomy=True in runtime options to auto-start, or call enable_autonomy() to start manually.",
+                "Set enable_autonomy=True in runtime options to auto-start.",
             )
 
+        # Start settings monitoring
         self._settings_monitor_task = asyncio.create_task(self._settings_monitoring())
+
+    async def _register_autonomy_task_worker(self) -> None:
+        """Register the task worker for autonomous thinking."""
+        if self._task_registered or not self._runtime:
+            return
+
+        worker = AutonomyTaskWorker(self)
+        self._runtime.register_task_worker(worker)
+        self._task_registered = True
+
+        self._log("debug", "Registered autonomy task worker")
+
+    async def _create_autonomy_task(self) -> None:
+        """Create the recurring autonomy task."""
+        if not self._runtime:
+            return
+
+        # Remove any existing autonomy tasks
+        await self._remove_autonomy_task()
+
+        # Create the recurring task
+        task = Task.repeating(AUTONOMY_TASK_NAME, self._interval_ms)
+        task.description = f"Autonomous thinking for agent {self._runtime.agent_id}"
+        task.world_id = self._autonomous_world_id
+        task.room_id = self._autonomous_room_id
+        task.tags = AUTONOMY_TASK_TAGS.copy()
+
+        # Ensure metadata has blocking = true
+        if task.metadata:
+            task.metadata.blocking = True
+
+        await self._runtime.create_task(task)
+
+        self._is_running = True
+        self._runtime.enable_autonomy = True
+
+        self._log(
+            "info",
+            f"Created autonomy task (interval={self._interval_ms}ms)",
+        )
+
+    async def _remove_autonomy_task(self) -> None:
+        """Remove existing autonomy tasks.
+
+        Uses full AUTONOMY_TASK_TAGS for filtering (parity with TypeScript).
+        """
+        if not self._runtime:
+            return
+
+        try:
+            existing_tasks = await self._runtime.get_tasks({
+                "tags": list(AUTONOMY_TASK_TAGS),
+            })
+
+            for task in existing_tasks:
+                task_name = getattr(task, "name", None) or task.get("name") if isinstance(task, dict) else None
+                task_id = getattr(task, "id", None) or task.get("id") if isinstance(task, dict) else None
+
+                if task_name == AUTONOMY_TASK_NAME and task_id:
+                    await self._runtime.delete_task(task_id)
+                    self._log("debug", f"Removed existing autonomy task (id={task_id})")
+        except Exception as e:
+            self._log("debug", f"Error removing autonomy tasks: {e}")
 
     async def _ensure_autonomous_context(self) -> None:
         if not self._runtime:
@@ -96,25 +238,17 @@ class AutonomyService(Service):
             world = World(
                 id=self._autonomous_world_id,
                 name="Autonomy World",
-                agentId=self._runtime.agent_id,
-                messageServerId=as_uuid("00000000-0000-0000-0000-000000000000"),
-                metadata={
-                    "type": "autonomy",
-                    "description": "World for autonomous agent thinking",
-                },
+                agent_id=self._runtime.agent_id,
+                message_server_id=as_uuid("00000000-0000-0000-0000-000000000000"),
             )
             await self._runtime.ensure_world_exists(world)
 
             room = Room(
                 id=self._autonomous_room_id,
                 name="Autonomous Thoughts",
-                worldId=self._autonomous_world_id,
+                world_id=self._autonomous_world_id,
                 source="autonomy-service",
                 type="SELF",
-                metadata={
-                    "source": "autonomy-service",
-                    "description": "Room for autonomous agent thinking",
-                },
             )
             await self._runtime.ensure_room_exists(room)
 
@@ -171,8 +305,7 @@ class AutonomyService(Service):
         ordered = sorted(by_id.values(), key=lambda m: m.created_at or 0)
         lines: list[str] = []
         for m in ordered:
-            mem_id = m.id or ""
-            role = "Agent" if m.entityId == self._runtime.agent_id else "User"
+            role = "Agent" if m.entity_id == self._runtime.agent_id else "User"
             text = m.content.text if m.content and isinstance(m.content.text, str) else ""
             if text.strip():
                 lines.append(f"{role}: {text}")
@@ -189,81 +322,41 @@ class AutonomyService(Service):
                 should_be_running = self._is_autonomy_enabled()
 
                 if should_be_running and not self._is_running:
-                    self._log("info", "Runtime indicates autonomy should be enabled, starting...")
-                    await self.start_loop()
+                    self._log("info", "Runtime indicates autonomy should be enabled, creating task...")
+                    await self._create_autonomy_task()
                 elif not should_be_running and self._is_running:
-                    self._log("info", "Runtime indicates autonomy should be disabled, stopping...")
-                    await self.stop_loop()
+                    self._log("info", "Runtime indicates autonomy should be disabled, removing task...")
+                    await self._remove_autonomy_task()
+                    self._is_running = False
             except Exception as e:
                 self._log("error", f"Error in settings monitoring: {e}")
 
-    async def start_loop(self) -> None:
-        if self._is_running:
+    async def perform_autonomous_think(self) -> None:
+        """Perform one iteration of autonomous thinking.
+
+        This is called by the task worker when the task executes.
+        """
+        if not self._runtime:
             return
 
-        self._is_running = True
-
-        if self._runtime:
-            self._runtime.enable_autonomy = True
-            self._log("info", f"Starting autonomous loop ({self._interval_ms}ms interval)")
-
-        self._loop_task = asyncio.create_task(self._run_loop())
-
-    async def stop_loop(self) -> None:
-        if not self._is_running:
+        # Guard against overlapping think cycles
+        if self._is_thinking:
+            self._log(
+                "debug",
+                "Previous autonomous think still in progress, skipping this iteration",
+            )
             return
 
-        self._is_running = False
+        self._is_thinking = True
+        try:
+            await self._do_think()
+        except Exception as e:
+            self._log("error", f"Error in autonomous think: {e}")
+        finally:
+            self._is_thinking = False
 
-        if self._loop_task:
-            self._loop_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._loop_task
-            self._loop_task = None
-
-        if self._runtime:
-            self._runtime.enable_autonomy = False
-            self._log("info", "Stopped autonomous loop")
-
-    async def _run_loop(self) -> None:
-        while self._is_running and not self._is_stopped:
-            if self._is_thinking:
-                self._log(
-                    "debug", "Previous autonomous think still in progress, skipping this iteration"
-                )
-                await asyncio.sleep(self._interval_ms / 1000)
-                continue
-
-            if self._is_stopped or not self._is_running:
-                break
-
-            self._is_thinking = True
-            try:
-                await self._perform_autonomous_think()
-            except Exception as e:
-                self._log("error", f"Error in autonomous think: {e}")
-            finally:
-                self._is_thinking = False
-
-            await asyncio.sleep(self._interval_ms / 1000)
-
-    def is_thinking_in_progress(self) -> bool:
-        return self._is_thinking
-
-    async def _perform_autonomous_think(self) -> None:
-        """
-        Perform one iteration of autonomous thinking using the Eliza agent pipeline.
-
-        This processes the message through:
-        - All registered providers (context gathering)
-        - The LLM generation pipeline (response creation)
-        - Action processing (executing decided actions)
-        - Evaluators (post-response analysis)
-
-        Note: Python runtime uses event-based handling (MESSAGE_RECEIVED).
-        When message_service is available in Python, this should be updated
-        to use runtime.message_service.handle_message() for canonical processing.
-        """
+    async def _do_think(self) -> None:
+        """Execute the actual thinking logic."""
         if not self._runtime:
             return
 
@@ -288,13 +381,7 @@ class AutonomyService(Service):
         last_agent_thought = None
         last_created_at = None
         for m in recent_memories:
-            if (
-                m.entityId == agent_entity.id
-                and m.content
-                and m.content.text
-                and m.content.metadata
-                and m.content.metadata.get("isAutonomous") is True
-            ):
+            if m.entity_id == agent_entity.id and m.content and m.content.text:
                 created_at = m.created_at or 0
                 if last_created_at is None or created_at > last_created_at:
                     last_created_at = created_at
@@ -317,23 +404,14 @@ class AutonomyService(Service):
         current_time_ms = int(time.time() * 1000)
         autonomous_message = Memory(
             id=as_uuid(str(uuid.uuid4())),
-            entityId=as_uuid(str(entity_id)),
+            entity_id=as_uuid(str(entity_id)),
             content=Content(
                 text=autonomy_prompt,
                 source="autonomy-service",
-                metadata={
-                    "type": "autonomous-prompt",
-                    "isAutonomous": True,
-                    "isInternalThought": True,
-                    "autonomyMode": mode,
-                    "channelId": "autonomous",
-                    "timestamp": current_time_ms,
-                    "isContinuation": not is_first_thought,
-                },
             ),
-            roomId=self._autonomous_room_id,
-            agentId=self._runtime.agent_id,
-            createdAt=current_time_ms,
+            room_id=self._autonomous_room_id,
+            agent_id=self._runtime.agent_id,
+            created_at=current_time_ms,
         )
 
         self._log(
@@ -344,13 +422,9 @@ class AutonomyService(Service):
         async def callback(content: Content) -> None:
             if self._runtime:
                 self._log("debug", f"Response generated: {(content.text or '')[:100]}...")
-                # Note: When message_service is available, it handles memory storage.
-                # For event-based handling, we let the event handler manage storage.
 
-        # Emit MESSAGE_RECEIVED event for the agent pipeline to process
-        # This triggers the full agent processing: providers, LLM, actions, evaluators
         await self._runtime.emit_event(
-            EventType.MESSAGE_RECEIVED.value,
+            EventType.EVENT_TYPE_MESSAGE_RECEIVED,
             {
                 "runtime": self._runtime,
                 "message": autonomous_message,
@@ -386,13 +460,20 @@ class AutonomyService(Service):
         output = output.replace("{{lastThought}}", last_thought or "")
         return output
 
+    def is_thinking_in_progress(self) -> bool:
+        return self._is_thinking
+
     def is_loop_running(self) -> bool:
         return self._is_running
 
     def get_loop_interval(self) -> int:
         return self._interval_ms
 
-    def set_loop_interval(self, ms: int) -> None:
+    async def set_loop_interval(self, ms: int) -> None:
+        """Set loop interval (recreates the task with new interval if running).
+
+        Parity with TypeScript's setLoopInterval.
+        """
         MIN_INTERVAL = 5000
         MAX_INTERVAL = 600000
 
@@ -406,20 +487,25 @@ class AutonomyService(Service):
         self._interval_ms = ms
         self._log("info", f"Loop interval set to {ms}ms")
 
+        # Recreate the task if running (parity with TypeScript)
+        if self._is_running:
+            await self._create_autonomy_task()
+
     def get_autonomous_room_id(self) -> UUID:
         return self._autonomous_room_id
 
     async def enable_autonomy(self) -> None:
+        """Enable autonomy by creating the task."""
         if self._runtime:
             self._runtime.enable_autonomy = True
-        if not self._is_running:
-            await self.start_loop()
+        await self._create_autonomy_task()
 
     async def disable_autonomy(self) -> None:
+        """Disable autonomy by removing the task."""
         if self._runtime:
             self._runtime.enable_autonomy = False
-        if self._is_running:
-            await self.stop_loop()
+        await self._remove_autonomy_task()
+        self._is_running = False
 
     def get_status(self) -> AutonomyStatus:
         enabled = self._is_autonomy_enabled()
@@ -433,9 +519,12 @@ class AutonomyService(Service):
         )
 
     async def stop(self) -> None:
+        """Stop the autonomy service."""
         self._is_stopped = True
 
-        await self.stop_loop()
+        # Remove the autonomy task
+        await self._remove_autonomy_task()
+        self._is_running = False
 
         if self._settings_monitor_task:
             self._settings_monitor_task.cancel()
@@ -447,7 +536,7 @@ class AutonomyService(Service):
 
     @property
     def capability_description(self) -> str:
-        return "Autonomous operation loop for continuous agent thinking and actions"
+        return "Autonomous operation using the Task system for continuous agent thinking and actions"
 
     def _is_autonomy_enabled(self) -> bool:
         if not self._runtime:
