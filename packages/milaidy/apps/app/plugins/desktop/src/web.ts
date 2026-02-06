@@ -102,9 +102,9 @@ export class DesktopWeb extends WebPlugin {
           idleState: "active", // Idle detection not available on web
           idleTime: 0,
         };
-      } catch {
-        // Battery API access failed (may be restricted for privacy)
-      }
+    } catch (err) {
+      console.debug("[Desktop] Battery API access failed:", err);
+    }
     }
 
     return {

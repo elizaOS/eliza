@@ -167,8 +167,8 @@ export class GatewayWeb extends WebPlugin {
       this.handleClose(event.code, reason);
     });
 
-    this.ws.addEventListener("error", () => {
-      // Error handler - close will follow
+    this.ws.addEventListener("error", (event) => {
+      console.warn("[Gateway] WebSocket error:", event);
     });
   }
 

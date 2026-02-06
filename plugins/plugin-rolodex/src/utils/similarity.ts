@@ -124,9 +124,9 @@ export function nameVariationMatch(nameA: string, nameB: string): number {
 
   if (a === b) return 1.0;
 
-  // Split into tokens
-  const tokensA = a.split(/[\s_\-]+/).filter(Boolean);
-  const tokensB = b.split(/[\s_\-]+/).filter(Boolean);
+  // Split into tokens (including camelCase/PascalCase splitting)
+  const tokensA = splitIntoTokens(a);
+  const tokensB = splitIntoTokens(b);
 
   // Check if any token from A matches any token from B
   let matchingTokens = 0;
@@ -148,6 +148,27 @@ export function nameVariationMatch(nameA: string, nameB: string): number {
   if (maxTokens === 0) return 0;
 
   return Math.min(1, matchingTokens / maxTokens);
+}
+
+/**
+ * Split a name into tokens, handling separators and camelCase/PascalCase.
+ * "TechGuru" -> ["tech", "guru"]
+ * "dave_codes" -> ["dave", "codes"]
+ * "Tech Guru" -> ["tech", "guru"]
+ */
+function splitIntoTokens(name: string): string[] {
+  // First split on explicit separators
+  const parts = name.split(/[\s_\-]+/).filter(Boolean);
+
+  // Then split camelCase/PascalCase within each part
+  const tokens: string[] = [];
+  for (const part of parts) {
+    // Insert a space before uppercase letters that follow lowercase letters
+    const split = part.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(/\s+/);
+    tokens.push(...split.filter(Boolean));
+  }
+
+  return tokens;
 }
 
 /**

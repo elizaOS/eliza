@@ -315,24 +315,23 @@ export class CameraWeb extends WebPlugin {
       fileSize: 0,
     });
 
+    let autoStopping = false;
     this.recordingStateInterval = setInterval(() => {
-      if (this.isRecording) {
-        const duration = (Date.now() - this.recordingStartTime) / 1000;
-        const fileSize = this.recordedChunks.reduce((acc, chunk) => acc + chunk.size, 0);
+      if (!this.isRecording || autoStopping) return;
 
-        this.notifyListeners("recordingState", {
-          isRecording: true,
-          duration,
-          fileSize,
+      const duration = (Date.now() - this.recordingStartTime) / 1000;
+      const fileSize = this.recordedChunks.reduce((acc, chunk) => acc + chunk.size, 0);
+
+      this.notifyListeners("recordingState", { isRecording: true, duration, fileSize });
+
+      const overLimit = (options?.maxDuration && duration >= options.maxDuration)
+        || (options?.maxFileSize && fileSize >= options.maxFileSize);
+
+      if (overLimit) {
+        autoStopping = true;
+        this.stopRecording().catch((err) => {
+          console.error("[Camera] Auto-stop recording failed:", err);
         });
-
-        if (options?.maxDuration && duration >= options.maxDuration) {
-          this.stopRecording();
-        }
-
-        if (options?.maxFileSize && fileSize >= options.maxFileSize) {
-          this.stopRecording();
-        }
       }
     }, 500);
   }
@@ -495,15 +494,15 @@ export class CameraWeb extends WebPlugin {
     try {
       const cameraResult = await navigator.permissions.query({ name: "camera" as PermissionName });
       cameraStatus = cameraResult.state as "granted" | "denied" | "prompt";
-    } catch {
-      // Permissions API may not support camera query in this browser
+    } catch (err) {
+      console.debug("[Camera] permissions.query('camera') not supported:", err);
     }
 
     try {
       const micResult = await navigator.permissions.query({ name: "microphone" as PermissionName });
       microphoneStatus = micResult.state as "granted" | "denied" | "prompt";
-    } catch {
-      // Permissions API may not support microphone query in this browser
+    } catch (err) {
+      console.debug("[Camera] permissions.query('microphone') not supported:", err);
     }
 
     // Note: Web platform doesn't have a "photos" permission concept.
