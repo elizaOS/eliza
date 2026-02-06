@@ -179,45 +179,48 @@ Remember: You are playing a TTRPG. Have fun, be creative, and create a memorable
       `${sheet.name} is a ${sheet.race} ${sheet.class} of level ${sheet.level}.`,
       sheet.backstory || `An adventurer with much yet to be discovered about their past.`,
       `Their personality is best described as ${personality.archetype}.`,
-    ],
-
-    lore: [
       `${sheet.name} values: ${personality.ideals[0] || 'adventure and discovery'}`,
       `Their greatest flaw is: ${personality.flaws[0] || 'a tendency toward recklessness'}`,
       `They are bound by: ${personality.bonds[0] || 'loyalty to companions'}`,
     ],
 
     messageExamples: [
-      [
-        {
-          user: 'Dungeon Master',
-          content: { text: 'You see a dark corridor ahead. What do you do?' },
-        },
-        {
-          user: sheet.name,
-          content: { text: generateSampleResponse(sheet, personality, 'exploration') },
-        },
-      ],
-      [
-        {
-          user: 'Dungeon Master',
-          content: { text: 'The goblin swings at you with a rusty blade!' },
-        },
-        {
-          user: sheet.name,
-          content: { text: generateSampleResponse(sheet, personality, 'combat') },
-        },
-      ],
-      [
-        {
-          user: 'Dungeon Master',
-          content: { text: 'The innkeeper asks what brings you to town.' },
-        },
-        {
-          user: sheet.name,
-          content: { text: generateSampleResponse(sheet, personality, 'social') },
-        },
-      ],
+      {
+        examples: [
+          {
+            name: 'Dungeon Master',
+            content: { text: 'You see a dark corridor ahead. What do you do?' },
+          },
+          {
+            name: sheet.name,
+            content: { text: generateSampleResponse(sheet, personality, 'exploration') },
+          },
+        ],
+      },
+      {
+        examples: [
+          {
+            name: 'Dungeon Master',
+            content: { text: 'The goblin swings at you with a rusty blade!' },
+          },
+          {
+            name: sheet.name,
+            content: { text: generateSampleResponse(sheet, personality, 'combat') },
+          },
+        ],
+      },
+      {
+        examples: [
+          {
+            name: 'Dungeon Master',
+            content: { text: 'The innkeeper asks what brings you to town.' },
+          },
+          {
+            name: sheet.name,
+            content: { text: generateSampleResponse(sheet, personality, 'social') },
+          },
+        ],
+      },
     ],
 
     style: {
@@ -238,7 +241,7 @@ Remember: You are playing a TTRPG. Have fun, be creative, and create a memorable
         'Includes character reactions',
         'Advances personal goals when appropriate',
       ],
-    },
+    } as any,
 
     topics: [
       'adventure',
@@ -337,10 +340,10 @@ export async function createPlayerAgent(
   const character = createPlayerCharacter(sheet, personality);
   
   // Store character sheet and personality in agent settings
-  await runtime.setSetting('characterSheet', sheet);
-  await runtime.setSetting('personality', personality);
+  await runtime.setSetting('characterSheet', JSON.stringify(sheet));
+  await runtime.setSetting('personality', JSON.stringify(personality));
   await runtime.setSetting('role', 'player');
-  await runtime.setSetting('characterId', sheet.id);
+  await runtime.setSetting('characterId', sheet.id ?? '');
   
   // The runtime would need to be configured with the character
   // This depends on ElizaOS implementation details
@@ -385,4 +388,3 @@ function inferArchetype(sheet: CharacterSheet): PersonalityArchetype {
 }
 
 export { playerPlugin };
-export type { PlayerPersonality, PersonalityArchetype };

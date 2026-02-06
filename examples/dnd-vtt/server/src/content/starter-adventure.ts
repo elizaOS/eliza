@@ -231,14 +231,14 @@ export const starterParty: Array<Omit<CharacterSheet, 'id' | 'campaignId'>> = [
     },
     equipment: {
       weapons: [
-        { name: 'Battleaxe', damage: '1d8', damageType: 'slashing', properties: ['versatile'] },
-        { name: 'Handaxe', damage: '1d6', damageType: 'slashing', properties: ['light', 'thrown'] },
+        { name: 'Battleaxe', type: 'weapon', damage: '1d8', damageType: 'slashing', properties: ['versatile'] },
+        { name: 'Handaxe', type: 'weapon', damage: '1d6', damageType: 'slashing', properties: ['light', 'thrown'] },
       ],
-      armor: { name: 'Chain Mail', ac: 16, type: 'heavy' },
-      shield: { name: 'Shield', acBonus: 2 },
+      armor: { name: 'Chain Mail', type: 'armor', ac: 16 },
+      shield: { name: 'Shield', type: 'armor', acBonus: 2 },
       inventory: [
-        { name: 'Explorer\'s Pack', quantity: 1 },
-        { name: 'Torch', quantity: 5 },
+        { name: 'Explorer\'s Pack', type: 'gear', quantity: 1 },
+        { name: 'Torch', type: 'gear', quantity: 5 },
       ],
       currency: { gp: 10, sp: 5, cp: 10 },
     },
@@ -281,12 +281,12 @@ export const starterParty: Array<Omit<CharacterSheet, 'id' | 'campaignId'>> = [
     },
     equipment: {
       weapons: [
-        { name: 'Quarterstaff', damage: '1d6', damageType: 'bludgeoning', properties: ['versatile'] },
+        { name: 'Quarterstaff', type: 'weapon', damage: '1d6', damageType: 'bludgeoning', properties: ['versatile'] },
       ],
       inventory: [
-        { name: 'Spellbook', quantity: 1 },
-        { name: 'Component Pouch', quantity: 1 },
-        { name: 'Scholar\'s Pack', quantity: 1 },
+        { name: 'Spellbook', type: 'gear', quantity: 1 },
+        { name: 'Component Pouch', type: 'gear', quantity: 1 },
+        { name: 'Scholar\'s Pack', type: 'gear', quantity: 1 },
       ],
       currency: { gp: 15, sp: 0, cp: 0 },
     },
@@ -339,14 +339,14 @@ export const starterParty: Array<Omit<CharacterSheet, 'id' | 'campaignId'>> = [
     },
     equipment: {
       weapons: [
-        { name: 'Mace', damage: '1d6', damageType: 'bludgeoning' },
+        { name: 'Mace', type: 'weapon', damage: '1d6', damageType: 'bludgeoning' },
       ],
-      armor: { name: 'Chain Mail', ac: 16, type: 'heavy' },
-      shield: { name: 'Shield', acBonus: 2 },
+      armor: { name: 'Chain Mail', type: 'armor', ac: 16 },
+      shield: { name: 'Shield', type: 'armor', acBonus: 2 },
       inventory: [
-        { name: 'Holy Symbol', quantity: 1 },
-        { name: 'Priest\'s Pack', quantity: 1 },
-        { name: 'Healer\'s Kit', quantity: 1 },
+        { name: 'Holy Symbol', type: 'gear', quantity: 1 },
+        { name: 'Priest\'s Pack', type: 'gear', quantity: 1 },
+        { name: 'Healer\'s Kit', type: 'gear', quantity: 1 },
       ],
       currency: { gp: 15, sp: 0, cp: 0 },
     },
@@ -400,15 +400,15 @@ export const starterParty: Array<Omit<CharacterSheet, 'id' | 'campaignId'>> = [
     },
     equipment: {
       weapons: [
-        { name: 'Shortsword', damage: '1d6', damageType: 'piercing', properties: ['finesse', 'light'] },
-        { name: 'Shortbow', damage: '1d6', damageType: 'piercing', properties: ['ammunition', 'two-handed'], range: '80/320' },
-        { name: 'Dagger', damage: '1d4', damageType: 'piercing', properties: ['finesse', 'light', 'thrown'] },
+        { name: 'Shortsword', type: 'weapon', damage: '1d6', damageType: 'piercing', properties: ['finesse', 'light'] },
+        { name: 'Shortbow', type: 'weapon', damage: '1d6', damageType: 'piercing', properties: ['ammunition', 'two-handed'], range: '80/320' },
+        { name: 'Dagger', type: 'weapon', damage: '1d4', damageType: 'piercing', properties: ['finesse', 'light', 'thrown'] },
       ],
-      armor: { name: 'Leather Armor', ac: 11, type: 'light' },
+      armor: { name: 'Leather Armor', type: 'armor', ac: 11 },
       inventory: [
-        { name: 'Thieves\' Tools', quantity: 1 },
-        { name: 'Burglar\'s Pack', quantity: 1 },
-        { name: 'Arrows', quantity: 20 },
+        { name: 'Thieves\' Tools', type: 'tool', quantity: 1 },
+        { name: 'Burglar\'s Pack', type: 'gear', quantity: 1 },
+        { name: 'Arrows', type: 'gear', quantity: 20 },
       ],
       currency: { gp: 15, sp: 0, cp: 0 },
     },

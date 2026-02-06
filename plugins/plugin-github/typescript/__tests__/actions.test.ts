@@ -1,4 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
+
+// Mock the spec helpers before importing actions, since the action modules
+// call requireActionSpec() at the top level and the generated spec names
+// (CREATE_GITHUB_ISSUE) don't match the short lookup keys (CREATE_ISSUE).
+vi.mock("../generated/specs/spec-helpers", () => ({
+  requireActionSpec: (_name: string) => ({
+    name: _name,
+    description: `Mock spec for ${_name}`,
+    similes: [],
+  }),
+  requireProviderSpec: (_name: string) => ({
+    name: _name,
+    description: `Mock spec for ${_name}`,
+  }),
+  getActionSpec: (_name: string) => ({
+    name: _name,
+    description: `Mock spec for ${_name}`,
+    similes: [],
+  }),
+  getProviderSpec: (_name: string) => ({
+    name: _name,
+    description: `Mock spec for ${_name}`,
+  }),
+}));
+
 import { createIssueAction } from "../actions/createIssue";
 import { createPullRequestAction } from "../actions/createPullRequest";
 import { createCommentAction } from "../actions/createComment";

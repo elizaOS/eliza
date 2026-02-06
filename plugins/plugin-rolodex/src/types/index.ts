@@ -345,11 +345,11 @@ export const DEFAULT_RELATIONSHIP_DECAY_MS = 30 * 24 * 60 * 60 * 1000;
 /** Confidence thresholds for entity resolution */
 export const RESOLUTION_THRESHOLDS = {
   /** Below this, discard the candidate */
-  DISCARD: 0.3,
+  DISCARD: 0.15,
   /** Above this, create a merge task for review */
-  PROPOSE: 0.6,
+  PROPOSE: 0.35,
   /** Above this, auto-confirm the link (still creates a task for record) */
-  AUTO_CONFIRM: 0.92,
+  AUTO_CONFIRM: 0.85,
 } as const;
 
 /** Weights for each resolution signal type */

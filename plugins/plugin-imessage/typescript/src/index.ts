@@ -10,11 +10,15 @@ import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { sendMessage } from "./actions/index.js";
 import { chatContextProvider } from "./providers/index.js";
-import { IMessageService } from "./service.js";
+import {
+  IMessageService,
+  parseChatsFromAppleScript,
+  parseMessagesFromAppleScript,
+} from "./service.js";
 
 // Re-export types and service
 export * from "./types.js";
-export { IMessageService };
+export { IMessageService, parseMessagesFromAppleScript, parseChatsFromAppleScript };
 export { sendMessage };
 export { chatContextProvider };
 

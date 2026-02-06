@@ -5,18 +5,19 @@
 
 import type { Provider, IAgentRuntime, Memory, State } from '@elizaos/core';
 import type { CharacterSheet } from '../../../types';
+import { getHP } from '../../../types';
 import { characterRepository } from '../../../persistence';
 
 export const partyContextProvider: Provider = {
   name: 'partyContext',
   description: 'Provides information about other party members',
   
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<string> => {
+  get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     const campaignId = await runtime.getSetting('campaignId') as string;
     const myCharacterId = await runtime.getSetting('characterId') as string;
     
     if (!campaignId) {
-      return 'No party information available.';
+      return { text: 'No party information available.' };
     }
     
     try {
@@ -24,7 +25,7 @@ export const partyContextProvider: Provider = {
       const partyMembers = allCharacters.filter(c => c.id !== myCharacterId);
       
       if (partyMembers.length === 0) {
-        return 'You are traveling alone.';
+        return { text: 'You are traveling alone.' };
       }
       
       let context = `## Party Members\n\n`;
@@ -42,22 +43,23 @@ export const partyContextProvider: Provider = {
       context += `- **Damage:** ${roles.damage.join(', ') || 'None'}\n`;
       
       // Party health overview
-      const totalHp = partyMembers.reduce((sum, m) => sum + m.hp.current, 0);
-      const maxHp = partyMembers.reduce((sum, m) => sum + m.hp.max, 0);
+      const totalHp = partyMembers.reduce((sum, m) => sum + getHP(m).current, 0);
+      const maxHp = partyMembers.reduce((sum, m) => sum + getHP(m).max, 0);
       const healthPercent = Math.round((totalHp / maxHp) * 100);
       context += `\n**Party Health:** ${healthPercent}%\n`;
       
-      return context;
+      return { text: context };
       
     } catch (error) {
       console.error('Error fetching party context:', error);
-      return 'Error loading party information.';
+      return { text: 'Error loading party information.' };
     }
   },
 };
 
 function formatPartyMember(member: CharacterSheet): string {
-  const hpPercent = Math.round((member.hp.current / member.hp.max) * 100);
+  const hp = getHP(member);
+  const hpPercent = Math.round((hp.current / hp.max) * 100);
   const healthStatus = hpPercent >= 75 ? '🟢' 
     : hpPercent >= 50 ? '🟡'
     : hpPercent >= 25 ? '🟠'
@@ -65,7 +67,7 @@ function formatPartyMember(member: CharacterSheet): string {
   
   let status = `### ${member.name}\n`;
   status += `**${member.race} ${member.class} ${member.level}**\n`;
-  status += `${healthStatus} HP: ${member.hp.current}/${member.hp.max}\n`;
+  status += `${healthStatus} HP: ${hp.current}/${hp.max}\n`;
   
   // Show conditions if any
   if (member.conditions && member.conditions.length > 0) {

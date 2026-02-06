@@ -112,8 +112,8 @@ function discoverPluginsFromDirectory(): PluginEntry[] {
         category,
         configKeys,
       });
-    } catch {
-      // skip unparseable packages
+    } catch (err) {
+      console.debug(`[milaidy-api] Skipping plugin ${dir}: ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -557,7 +557,8 @@ export async function startApiServer(opts?: {
   let config: MilaidyConfig;
   try {
     config = loadMilaidyConfig();
-  } catch {
+  } catch (err) {
+    console.warn("[milaidy-api] Failed to load config, starting with defaults:", err instanceof Error ? err.message : err);
     config = {} as MilaidyConfig;
   }
 

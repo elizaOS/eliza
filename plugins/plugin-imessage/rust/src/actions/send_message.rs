@@ -1,10 +1,12 @@
 //! Send message action for iMessage
 
 use crate::service::IMessageService;
+use crate::types::{format_phone_number, is_email, is_phone_number};
 use crate::IMESSAGE_SERVICE_NAME;
 use async_trait::async_trait;
 use elizaos::{Action, ActionExample, Content, IAgentRuntime, Memory, State};
-use tracing::{error, info, warn};
+use regex::Regex;
+use tracing::{debug, error, info, warn};
 
 /// Action to send a message via iMessage
 pub struct SendMessageAction;
@@ -20,6 +22,32 @@ impl Default for SendMessageAction {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Extract a phone number or email address from message text.
+///
+/// Scans the text for patterns that look like phone numbers or email addresses
+/// and returns the first valid match, formatted appropriately.
+pub fn extract_target_from_text(text: &str) -> Option<String> {
+    // Try to find phone numbers (patterns like +1234567890, (123) 456-7890, etc.)
+    let phone_re = Regex::new(r"[+]?\d[\d\s\-().]{8,14}\d").unwrap();
+    for m in phone_re.find_iter(text) {
+        let candidate = m.as_str();
+        if is_phone_number(candidate) {
+            return Some(format_phone_number(candidate));
+        }
+    }
+
+    // Try to find email addresses
+    let email_re = Regex::new(r"[^\s@]+@[^\s@]+\.[^\s@]+").unwrap();
+    for m in email_re.find_iter(text) {
+        let candidate = m.as_str();
+        if is_email(candidate) {
+            return Some(candidate.to_string());
+        }
+    }
+
+    None
 }
 
 #[async_trait]
@@ -47,7 +75,9 @@ impl Action for SendMessageAction {
                 ActionExample {
                     name: "{{user1}}".to_string(),
                     content: Content {
-                        text: Some("Can you send a message to John saying I'll be late?".to_string()),
+                        text: Some(
+                            "Can you send a message to John saying I'll be late?".to_string(),
+                        ),
                         ..Default::default()
                     },
                 },
@@ -81,13 +111,9 @@ impl Action for SendMessageAction {
     }
 
     async fn validate(&self, runtime: &dyn IAgentRuntime, _message: &Memory) -> bool {
-        if let Some(service) = runtime.get_service::<IMessageService>(IMESSAGE_SERVICE_NAME) {
-            // Check if connected asynchronously would require blocking here
-            // For validation, we just check if the service exists
-            true
-        } else {
-            false
-        }
+        runtime
+            .get_service::<IMessageService>(IMESSAGE_SERVICE_NAME)
+            .is_some()
     }
 
     async fn handler(
@@ -103,16 +129,6 @@ impl Action for SendMessageAction {
                 elizaos::Error::ServiceError("iMessage service not available".to_string())
             })?;
 
-        // Get the room to find the target
-        let room = runtime
-            .get_room(&message.room_id)
-            .await?
-            .ok_or_else(|| elizaos::Error::NotFound("Room not found".to_string()))?;
-
-        let channel_id = room.channel_id.ok_or_else(|| {
-            elizaos::Error::ValidationError("No channel ID found for room".to_string())
-        })?;
-
         let text = message
             .content
             .text
@@ -124,10 +140,32 @@ impl Action for SendMessageAction {
             return Ok(None);
         }
 
-        match service.send_message(&channel_id, text, None).await {
+        // Try to extract target (phone number or email) from message content,
+        // matching the approach used in TypeScript/Python implementations.
+        let extracted_target = extract_target_from_text(text);
+
+        let target = if let Some(ref t) = extracted_target {
+            debug!("Extracted iMessage target from text: {}", t);
+            t.clone()
+        } else {
+            // Fall back to room channel_id for reply-in-current-chat
+            debug!("No target in text, falling back to room channel_id");
+            let room = runtime
+                .get_room(&message.room_id)
+                .await?
+                .ok_or_else(|| elizaos::Error::NotFound("Room not found".to_string()))?;
+
+            room.channel_id.ok_or_else(|| {
+                elizaos::Error::ValidationError(
+                    "No target found in message and no channel ID for room".to_string(),
+                )
+            })?
+        };
+
+        match service.send_message(&target, text, None).await {
             Ok(result) => {
                 if result.success {
-                    info!("Sent iMessage: {:?}", result.message_id);
+                    info!("Sent iMessage to {}: {:?}", target, result.message_id);
 
                     Ok(Some(Content {
                         text: Some(text.to_string()),
@@ -135,6 +173,7 @@ impl Action for SendMessageAction {
                         metadata: Some(serde_json::json!({
                             "messageId": result.message_id,
                             "chatId": result.chat_id,
+                            "target": target,
                         })),
                         ..Default::default()
                     }))

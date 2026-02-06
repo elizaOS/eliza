@@ -11,7 +11,7 @@ export const combatOptionsProvider: Provider = {
   name: 'combatOptions',
   description: 'Provides available combat actions and tactical options',
   
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<string> => {
+  get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     const combatState = await runtime.getSetting('combatState') as {
       isActive: boolean;
       currentCombatant?: { id: string };
@@ -21,11 +21,11 @@ export const combatOptionsProvider: Provider = {
     const characterId = await runtime.getSetting('characterId') as string;
     
     if (!combatState?.isActive) {
-      return 'Not currently in combat.';
+      return { text: 'Not currently in combat.' };
     }
     
     if (!characterSheet) {
-      return 'Character information unavailable.';
+      return { text: 'Character information unavailable.' };
     }
     
     // Check if it's this character's turn
@@ -39,7 +39,7 @@ export const combatOptionsProvider: Provider = {
       context += `- Opportunity Attack (if enemy leaves your reach)\n`;
       context += `- Shield spell (if you have it)\n`;
       context += `- Counterspell (if you have it)\n`;
-      return context;
+      return { text: context };
     }
     
     context += `**It's your turn!**\n\n`;
@@ -127,7 +127,7 @@ export const combatOptionsProvider: Provider = {
       context += `✓ **Healthy** - Aggressive options are viable\n`;
     }
     
-    return context;
+    return { text: context };
   },
 };
 

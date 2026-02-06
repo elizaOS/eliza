@@ -4,6 +4,7 @@
  */
 
 import type { Combatant, CombatEncounter } from './combat-state';
+import type { ActiveCondition } from '../types';
 import { resetTurnResources, isIncapacitated, isDead } from './combat-state';
 import { rollD20, rollDice } from '../dice';
 
@@ -200,25 +201,33 @@ export function advanceTurn(encounter: CombatEncounter): CombatEncounter {
  */
 function processRoundStart(combatants: Combatant[]): Combatant[] {
   return combatants.map(combatant => {
-    const updatedConditions = combatant.conditions
+    const updatedConditions = (combatant.conditions
       .map(condition => {
         // Decrement duration
-        if (condition.duration?.type === 'rounds' && condition.duration.remaining !== undefined) {
-          return {
-            ...condition,
-            duration: {
-              ...condition.duration,
-              remaining: condition.duration.remaining - 1,
-            },
-          };
+        if (typeof condition.duration === 'object' && 'type' in condition.duration) {
+          const dur = condition.duration as Record<string, unknown>;
+          if (dur.type === 'rounds' && typeof dur.remaining === 'number') {
+            return {
+              ...condition,
+              duration: {
+                ...(condition.duration as Record<string, unknown>),
+                remaining: dur.remaining - 1,
+              },
+            };
+          }
         }
         return condition;
-      })
+      }) as ActiveCondition[])
       // Remove expired conditions
-      .filter(condition => 
-        condition.duration?.type !== 'rounds' || 
-        (condition.duration.remaining !== undefined && condition.duration.remaining > 0)
-      );
+      .filter(condition => {
+        if (typeof condition.duration === 'object' && 'type' in condition.duration) {
+          const dur = condition.duration as Record<string, unknown>;
+          if (dur.type === 'rounds') {
+            return typeof dur.remaining === 'number' && dur.remaining > 0;
+          }
+        }
+        return true;
+      });
     
     return {
       ...combatant,

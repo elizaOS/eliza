@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
+import elizaos_plugin_prose.services.prose_service as _prose_svc_mod
 from elizaos_plugin_prose.services.prose_service import (
     ProseService,
-    _skill_content,
     generate_run_id,
     get_skill_content,
     set_skill_content,
@@ -379,21 +379,19 @@ class TestExamples:
 class TestModuleLevelHelpers:
     def test_set_skill_content(self) -> None:
         set_skill_content({"test.md": "test content"})
-        assert _skill_content.get("test.md") == "test content"
-        _skill_content.clear()  # cleanup
+        result = get_skill_content()
+        assert result.get("test.md") == "test content"
 
     def test_get_skill_content(self) -> None:
-        _skill_content["key.md"] = "value"
+        _prose_svc_mod._skill_content["key.md"] = "value"
         result = get_skill_content()
         assert result == {"key.md": "value"}
-        _skill_content.clear()  # cleanup
 
     def test_set_and_get_roundtrip(self) -> None:
         data = {"a.md": "alpha", "b.md": "beta"}
         set_skill_content(data)
         result = get_skill_content()
         assert result == data
-        _skill_content.clear()  # cleanup
 
 
 # ---------------------------------------------------------------------------

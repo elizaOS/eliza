@@ -286,7 +286,7 @@ function tickTurnConditions(
       
       return condition;
     })
-    .filter((c): c is NonNullable<typeof c> => c !== null);
+    .filter((c): c is NonNullable<typeof c> => c !== null) as import('../types').ActiveCondition[];
 }
 
 /**
@@ -516,7 +516,7 @@ export async function logCombatToDatabase(
         actionType: entry.actionType,
         actionDescription: entry.actionDescription,
         targetIds: entry.targetIds || [],
-        diceRolls: entry.diceRolls || [],
+        diceRolls: (entry.diceRolls || []).map(r => ({ notation: r.dice, result: r.total, purpose: r.type })),
         damage: entry.damage?.amount,
         healing: entry.healing,
         outcome: entry.outcome,

@@ -119,12 +119,12 @@ export function jaccardSimilarity<T>(setA: Set<T>, setB: Set<T>): number {
  * @returns Similarity score 0-1.
  */
 export function nameVariationMatch(nameA: string, nameB: string): number {
-  const a = nameA.toLowerCase().trim();
-  const b = nameB.toLowerCase().trim();
+  const a = nameA.trim();
+  const b = nameB.trim();
 
-  if (a === b) return 1.0;
+  if (a.toLowerCase() === b.toLowerCase()) return 1.0;
 
-  // Split into tokens (including camelCase/PascalCase splitting)
+  // Split into tokens BEFORE lowercasing (camelCase detection needs case info)
   const tokensA = splitIntoTokens(a);
   const tokensB = splitIntoTokens(b);
 

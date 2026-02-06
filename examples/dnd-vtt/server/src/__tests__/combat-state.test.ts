@@ -168,7 +168,7 @@ describe('Combat State', () => {
 
     test('calculates dex modifier from ability score', () => {
       const monster = createTestMonster({
-        abilities: { ...createTestMonster().abilities, dexterity: 16 },
+        abilities: { ...createTestMonster().abilities, dex: 16 },
       });
       const combatant = createCombatantFromMonster(monster, 14);
       
@@ -393,8 +393,8 @@ describe('Combat State', () => {
       expect(canTakeReaction(combatant)).toBe(false);
     });
 
-    test('returns false if Surprised', () => {
-      const combatant = makeCombatant([{ name: 'Surprised' }]);
+    test('returns false if Petrified', () => {
+      const combatant = makeCombatant([{ name: 'Petrified' }]);
       expect(canTakeReaction(combatant)).toBe(false);
     });
 

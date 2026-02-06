@@ -4,7 +4,7 @@ iMessage plugin for ElizaOS agents (macOS).
 
 from .actions import send_message_action
 from .providers import chat_context_provider
-from .service import IMessageService
+from .service import IMessageService, parse_chats_from_applescript, parse_messages_from_applescript
 from .types import (
     DEFAULT_POLL_INTERVAL_MS,
     IMESSAGE_SERVICE_NAME,
@@ -51,6 +51,9 @@ __all__ = [
     "normalize_imessage_target",
     "format_phone_number",
     "split_message_for_imessage",
+    # Parsing
+    "parse_messages_from_applescript",
+    "parse_chats_from_applescript",
     # Service
     "IMessageService",
     # Actions

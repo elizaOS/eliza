@@ -60,8 +60,8 @@ export const useItemAction: Action = {
     state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
-    const params = (options ?? {}) as UseItemParams;
+  ) => {
+    const params = (options ?? {}) as unknown as UseItemParams;
     const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     
     if (!characterSheet) {
@@ -71,7 +71,7 @@ export const useItemAction: Action = {
           type: 'error',
         });
       }
-      return false;
+      return undefined;
     }
     
     // Find the item in inventory
@@ -84,7 +84,7 @@ export const useItemAction: Action = {
           type: 'error',
         });
       }
-      return false;
+      return undefined;
     }
     
     // Process item use
@@ -120,7 +120,7 @@ export const useItemAction: Action = {
       timestamp: new Date(),
     });
     
-    return true;
+    return undefined;
   },
 };
 

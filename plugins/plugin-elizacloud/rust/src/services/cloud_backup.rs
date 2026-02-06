@@ -5,7 +5,7 @@ use tracing::{debug, info};
 
 use crate::cloud_api::CloudApiClient;
 use crate::cloud_types::{AgentSnapshot, CloudPluginConfig, SnapshotType};
-use crate::error::{ElizaCloudError, Result};
+use crate::error::Result;
 
 /// Parse a snapshot from JSON.
 pub fn parse_snapshot(data: &serde_json::Value) -> AgentSnapshot {
@@ -40,7 +40,8 @@ pub fn format_bytes(bytes: u64) -> String {
 /// ElizaCloud agent state backup and restore.
 pub struct CloudBackupService {
     auto_backups: HashMap<String, bool>,
-    max_snapshots: u32,
+    /// Maximum number of auto snapshots to keep per container.
+    pub max_snapshots: u32,
 }
 
 impl CloudBackupService {

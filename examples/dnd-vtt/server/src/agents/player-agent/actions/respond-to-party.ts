@@ -3,12 +3,13 @@
  * Handles interactions with other party members
  */
 
-import type {
-  Action,
-  IAgentRuntime,
-  Memory,
-  State,
-  HandlerCallback,
+import {
+  type Action,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type HandlerCallback,
+  ModelType,
 } from '@elizaos/core';
 import type { CharacterSheet } from '../../../types';
 
@@ -33,13 +34,13 @@ export const respondToPartyAction: Action = {
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'Thordak the Dwarf Fighter says: "I say we charge in! No plan survives contact with the enemy anyway."',
         },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'I place a cautionary hand on Thordak\'s shoulder. "My friend, your courage is admirable, but perhaps we should at least know what we\'re charging into? A quick scout could save us considerable pain."',
           action: 'RESPOND_TO_PARTY',
@@ -56,12 +57,12 @@ export const respondToPartyAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    options: Record<string, unknown>,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
-    const params = options as RespondToPartyParams;
-    const characterSheet = await runtime.getSetting('characterSheet') as CharacterSheet | null;
+  ) => {
+    const params = options as unknown as RespondToPartyParams;
+    const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     const personality = await runtime.getSetting('personality');
     
     if (!characterSheet) {
@@ -71,7 +72,7 @@ export const respondToPartyAction: Action = {
           type: 'error',
         });
       }
-      return false;
+      return undefined;
     }
     
     // Get party relationship context
@@ -85,15 +86,16 @@ export const respondToPartyAction: Action = {
       partyRelationships
     );
     
-    const response = await runtime.useModel({
+    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt,
-      context: state,
       maxTokens: 300,
     });
     
+    const responseText = String(response ?? '');
+    
     if (callback) {
       await callback({
-        text: response.text,
+        text: responseText,
         type: 'party_interaction',
         metadata: {
           characterId: characterSheet.id,
@@ -104,15 +106,15 @@ export const respondToPartyAction: Action = {
       });
     }
     
-    await runtime.emit('party_interaction', {
+    runtime.emitEvent?.('party_interaction' as any, {
       characterId: characterSheet.id,
       characterName: characterSheet.name,
       respondingTo: params.partyMemberName,
-      dialogue: response.text,
+      dialogue: responseText,
       timestamp: new Date(),
     });
     
-    return true;
+    return undefined;
   },
 };
 

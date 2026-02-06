@@ -420,7 +420,7 @@ const communityDynamics: ConversationScript = {
     },
     {
       from: 'Leader Liam',
-      content: 'Steve, everyone starts somewhere. Cora has it handled. Nate, you're welcome on the team.',
+      content: "Steve, everyone starts somewhere. Cora has it handled. Nate, you're welcome on the team.",
     },
     { from: 'Newbie Nate', content: 'Thanks Liam and Cora! I really appreciate the opportunity.' },
   ],

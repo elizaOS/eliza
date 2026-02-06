@@ -6,7 +6,6 @@ use elizaos_plugin_tee::actions::remote_attestation::{
 };
 use elizaos_plugin_tee::providers::{
     DeriveKeyProvider, PhalaDeriveKeyProvider, PhalaRemoteAttestationProvider,
-    RemoteAttestationProvider,
 };
 use elizaos_plugin_tee::types::{
     DeriveKeyAttestationData, RemoteAttestationMessage, RemoteAttestationMessageContent,
@@ -160,10 +159,12 @@ fn test_ra_provider_creates_with_production_mode() {
 
 #[test]
 fn test_ra_provider_rejects_invalid_mode() {
-    let provider = PhalaRemoteAttestationProvider::new("INVALID");
-    assert!(provider.is_err());
-    let err = provider.unwrap_err();
-    assert!(err.to_string().contains("Invalid TEE_MODE"));
+    let result = PhalaRemoteAttestationProvider::new("INVALID");
+    assert!(result.is_err());
+    match result {
+        Err(e) => assert!(e.to_string().contains("Invalid TEE_MODE")),
+        Ok(_) => panic!("Expected error for invalid mode"),
+    }
 }
 
 // ===========================================================================
@@ -181,7 +182,10 @@ fn test_derive_key_provider_creates_with_valid_modes() {
 fn test_derive_key_provider_rejects_invalid_mode() {
     let result = PhalaDeriveKeyProvider::new("BOGUS");
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Invalid TEE_MODE"));
+    match result {
+        Err(e) => assert!(e.to_string().contains("Invalid TEE_MODE")),
+        Ok(_) => panic!("Expected error for invalid mode"),
+    }
 }
 
 #[tokio::test]

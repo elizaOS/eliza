@@ -1,8 +1,21 @@
 /**
  * Tests for agent lifecycle API — state transitions, chat, plugins, onboarding.
  *
- * Spins up a lightweight HTTP server mirroring the real API server's endpoints
- * and tests actual request/response flow over the network.
+ * IMPORTANT: This tests a lightweight MOCK server that mirrors the real API
+ * server's HTTP contract (routes, status codes, response shapes). It does NOT
+ * test the real startApiServer() from src/api/server.ts, because that requires
+ * @elizaos/core runtime and filesystem config access.
+ *
+ * What this proves:
+ * - The HTTP contract (routes, methods, status codes, JSON shapes)
+ * - State transitions (not_started → running → paused → stopped)
+ * - Chat validation (empty text, agent-not-running guard)
+ *
+ * What this does NOT prove:
+ * - Real plugin/skill discovery from filesystem
+ * - Real LLM-backed chat responses (runtime.generateText)
+ * - Config persistence, onboarding side effects
+ * - The real server's error handling
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import http from "node:http";
@@ -45,6 +58,7 @@ function createTestServer(): Promise<{ port: number; close: () => Promise<void> 
     agentName: "TestAgent",
     model: undefined as string | undefined,
     startedAt: undefined as number | undefined,
+    runtime: null as object | null, // mirrors real server's runtime check
   };
 
   const json = (res: http.ServerResponse, data: unknown, status = 200) => {
@@ -56,15 +70,15 @@ function createTestServer(): Promise<{ port: number; close: () => Promise<void> 
     new Promise((ok) => { const c: Buffer[] = []; r.on("data", (d: Buffer) => c.push(d)); r.on("end", () => ok(Buffer.concat(c).toString())); });
 
   const routes: Record<string, (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void> | void> = {
-    "GET /api/status": (_r, res) => json(res, { state: state.agentState, agentName: state.agentName, model: state.model, startedAt: state.startedAt }),
-    "POST /api/agent/start": (_r, res) => { state.agentState = "running"; state.startedAt = Date.now(); state.model = "test-model"; json(res, { ok: true, status: { state: "running", agentName: state.agentName } }); },
-    "POST /api/agent/stop": (_r, res) => { state.agentState = "stopped"; state.startedAt = undefined; state.model = undefined; json(res, { ok: true, status: { state: "stopped", agentName: state.agentName } }); },
+    "GET /api/status": (_r, res) => json(res, { state: state.agentState, agentName: state.agentName, model: state.model, startedAt: state.startedAt, uptime: state.startedAt ? Date.now() - state.startedAt : undefined }),
+    "POST /api/agent/start": (_r, res) => { state.agentState = "running"; state.startedAt = Date.now(); state.model = "test-model"; state.runtime = {}; json(res, { ok: true, status: { state: "running", agentName: state.agentName } }); },
+    "POST /api/agent/stop": (_r, res) => { state.agentState = "stopped"; state.startedAt = undefined; state.model = undefined; state.runtime = null; json(res, { ok: true, status: { state: "stopped", agentName: state.agentName } }); },
     "POST /api/agent/pause": (_r, res) => { state.agentState = "paused"; json(res, { ok: true, status: { state: "paused", agentName: state.agentName } }); },
     "POST /api/agent/resume": (_r, res) => { state.agentState = "running"; json(res, { ok: true, status: { state: "running", agentName: state.agentName } }); },
     "POST /api/chat": async (r, res) => {
       const body = JSON.parse(await readBody(r)) as Record<string, unknown>;
       if (!body.text || !(body.text as string).trim()) return json(res, { error: "text is required" }, 400);
-      if (state.agentState !== "running") return json(res, { error: "Agent is not running" }, 503);
+      if (!state.runtime) return json(res, { error: "Agent is not running" }, 503);
       json(res, { text: `Echo: ${body.text}`, agentName: state.agentName });
     },
     "GET /api/plugins": (_r, res) => json(res, { plugins: [] }),
@@ -111,13 +125,14 @@ describe("Agent Lifecycle API", () => {
 
   // -- Start --
 
-  it("start transitions to running", async () => {
+  it("start transitions to running with model, startedAt, uptime", async () => {
     const { data } = await req(port, "POST", "/api/agent/start");
     expect(data.ok).toBe(true);
     const status = await req(port, "GET", "/api/status");
     expect(status.data.state).toBe("running");
     expect(status.data.model).toBeDefined();
     expect(status.data.startedAt).toBeDefined();
+    expect(typeof status.data.uptime).toBe("number");
   });
 
   // -- Chat --
@@ -140,11 +155,13 @@ describe("Agent Lifecycle API", () => {
   });
 
   // -- Pause --
+  // Note: the real server checks `!state.runtime` for chat, NOT `agentState`.
+  // When paused, runtime still exists, so chat still works. This matches production.
 
-  it("pause transitions to paused, chat rejected", async () => {
+  it("pause transitions to paused, chat still works (runtime exists)", async () => {
     expect((await req(port, "POST", "/api/agent/pause")).data.ok).toBe(true);
     expect((await req(port, "GET", "/api/status")).data.state).toBe("paused");
-    expect((await req(port, "POST", "/api/chat", { text: "hi" })).status).toBe(503);
+    expect((await req(port, "POST", "/api/chat", { text: "hi" })).status).toBe(200);
   });
 
   // -- Resume --

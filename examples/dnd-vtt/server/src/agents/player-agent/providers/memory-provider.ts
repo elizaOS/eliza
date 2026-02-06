@@ -10,11 +10,11 @@ export const memoryProvider: Provider = {
   name: 'characterMemory',
   description: 'Provides character memories and relationships',
   
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<string> => {
+  get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     const characterId = await runtime.getSetting('characterId') as string;
     
     if (!characterId) {
-      return 'No memories available.';
+      return { text: 'No memories available.' };
     }
     
     try {
@@ -65,11 +65,11 @@ export const memoryProvider: Provider = {
         }
       }
       
-      return context || 'No significant memories yet.';
+      return { text: context || 'No significant memories yet.' };
       
     } catch (error) {
       console.error('Error fetching memories:', error);
-      return 'Error loading memories.';
+      return { text: 'Error loading memories.' };
     }
   },
 };

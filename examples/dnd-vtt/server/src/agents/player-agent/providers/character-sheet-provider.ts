@@ -11,11 +11,11 @@ export const characterSheetProvider: Provider = {
   name: 'characterSheet',
   description: 'Provides the player character\'s stats and abilities',
   
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<string> => {
+  get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     const sheet = await runtime.getSetting('characterSheet') as CharacterSheet | null;
     
     if (!sheet) {
-      return 'Character information unavailable.';
+      return { text: 'Character information unavailable.' };
     }
     
     let context = `## ${sheet.name}\n`;
@@ -109,7 +109,7 @@ export const characterSheetProvider: Provider = {
       context += equip.map(item => `${item.name}${item.equipped ? ' (equipped)' : ''}`).join(', ') + '\n';
     }
     
-    return context;
+    return { text: context };
   },
 };
 

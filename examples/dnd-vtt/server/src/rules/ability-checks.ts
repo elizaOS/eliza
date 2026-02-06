@@ -239,6 +239,8 @@ export function makeSkillCheck(params: SkillCheckParams): SkillCheckResult {
     expertise,
     hasAdvantage,
     hasDisadvantage,
+    criticalSuccess,
+    criticalFail,
   });
   
   return {

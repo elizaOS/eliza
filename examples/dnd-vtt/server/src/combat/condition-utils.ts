@@ -26,7 +26,7 @@ export function normalizeHP(sheet: CharacterSheet): NormalizedHP {
   return {
     current: hp.current,
     max: hp.max,
-    temp: (hp as Record<string, number>).temporary ?? (hp as Record<string, number>).temp ?? 0,
+    temp: (hp as unknown as Record<string, number>).temporary ?? (hp as unknown as Record<string, number>).temp ?? 0,
   };
 }
 

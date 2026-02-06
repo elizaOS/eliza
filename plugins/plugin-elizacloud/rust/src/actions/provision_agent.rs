@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::cloud_api::CloudApiClient;
 use crate::cloud_types::{
-    ActionResult, CloudPluginConfig, ContainerArchitecture, CreateContainerRequest,
+    ActionResult, CloudPluginConfig, CreateContainerRequest,
     collect_env_vars,
 };
 use crate::error::Result;

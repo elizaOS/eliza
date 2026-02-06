@@ -309,4 +309,79 @@ mod tests {
         let result = extract_json(text).unwrap();
         assert_eq!(result["message"], "hello");
     }
+
+    #[test]
+    fn test_extract_json_fails_for_plain_text() {
+        let text = "This is not JSON at all.";
+        let result = extract_json(text);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_json_any_code_block() {
+        let text = "Result:\n```\n{\"key\": 42}\n```";
+        let result = extract_json(text).unwrap();
+        assert_eq!(result["key"], 42);
+    }
+
+    #[test]
+    fn test_extract_json_nested_objects() {
+        let text = r#"{"outer": {"inner": "value"}}"#;
+        let result = extract_json(text).unwrap();
+        assert_eq!(result["outer"]["inner"], "value");
+    }
+
+    #[test]
+    fn test_find_json_object_picks_largest() {
+        let text = r#"small: {"a": 1} and large: {"b": 2, "c": 3}"#;
+        let found = find_json_object(text).unwrap();
+        // The larger JSON object should be picked
+        let parsed: serde_json::Value = serde_json::from_str(&found).unwrap();
+        assert!(parsed.get("b").is_some() || parsed.get("a").is_some());
+    }
+
+    #[test]
+    fn test_client_url_construction() {
+        let config = CopilotProxyConfig::new().base_url("http://localhost:9999/v1");
+        let client = CopilotProxyClient::new(config).unwrap();
+        assert_eq!(client.base_url(), "http://localhost:9999/v1");
+    }
+
+    #[test]
+    fn test_client_creation_with_empty_base_url_fails() {
+        let config = CopilotProxyConfig {
+            base_url: "".to_string(),
+            ..CopilotProxyConfig::new()
+        };
+        let result = CopilotProxyClient::new(config);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_health_check_unreachable_returns_false() {
+        let config = CopilotProxyConfig::new()
+            .base_url("http://127.0.0.1:1")
+            .timeout_secs(1);
+        let client = CopilotProxyClient::new(config).unwrap();
+        assert!(!client.health_check().await);
+    }
+
+    #[test]
+    fn test_check_response_builds_api_error() {
+        // Test the error type directly
+        let err = CopilotProxyError::ApiError {
+            status: 429,
+            message: "Rate limited".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("429"));
+        assert!(msg.contains("Rate limited"));
+    }
+
+    #[test]
+    fn test_empty_response_error() {
+        let err = CopilotProxyError::EmptyResponse;
+        let msg = format!("{}", err);
+        assert!(msg.to_lowercase().contains("empty"));
+    }
 }

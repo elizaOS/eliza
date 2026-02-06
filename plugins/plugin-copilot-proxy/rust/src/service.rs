@@ -224,4 +224,43 @@ mod tests {
         let service = CopilotProxyService::new(config);
         assert!(!service.is_available().await);
     }
+
+    #[tokio::test]
+    async fn test_disabled_service_initialization_returns_error() {
+        let config = CopilotProxyConfig::new().enabled(false);
+        let service = CopilotProxyService::new(config);
+        let result = service.initialize().await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_model_accessors() {
+        let config = CopilotProxyConfig::new()
+            .small_model("model-small")
+            .large_model("model-large")
+            .context_window(32000)
+            .max_tokens(2048);
+        let service = CopilotProxyService::new(config);
+        assert_eq!(service.small_model(), "model-small");
+        assert_eq!(service.large_model(), "model-large");
+        assert_eq!(service.context_window(), 32000);
+        assert_eq!(service.max_tokens(), 2048);
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_resets_availability() {
+        let config = CopilotProxyConfig::new().enabled(false);
+        let service = CopilotProxyService::new(config);
+        service.shutdown().await;
+        assert!(!service.is_available().await);
+    }
+
+    #[tokio::test]
+    async fn test_generate_text_before_init_fails() {
+        let config = CopilotProxyConfig::new().enabled(true);
+        let service = CopilotProxyService::new(config);
+        // Not initialized, so generate_text_small should fail
+        let result = service.generate_text_small("hello").await;
+        assert!(result.is_err());
+    }
 }

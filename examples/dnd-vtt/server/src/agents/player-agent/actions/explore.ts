@@ -3,12 +3,13 @@
  * Handles exploration and investigation activities
  */
 
-import type {
-  Action,
-  IAgentRuntime,
-  Memory,
-  State,
-  HandlerCallback,
+import {
+  type Action,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type HandlerCallback,
+  ModelType,
 } from '@elizaos/core';
 import type { CharacterSheet } from '../../../types';
 import { getAbilityMod } from '../../../types';
@@ -70,8 +71,8 @@ export const exploreAction: Action = {
     state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
-    const params = (options ?? {}) as ExploreParams;
+  ) => {
+    const params = (options ?? {}) as unknown as ExploreParams;
     const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     const personality = await runtime.getSetting('personality');
     
@@ -82,20 +83,19 @@ export const exploreAction: Action = {
           type: 'error',
         });
       }
-      return false;
+      return undefined;
     }
     
     // Generate exploration response
     const prompt = buildExplorePrompt(characterSheet, personality, message, params);
     
-    const response = await runtime.useModel({
+    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt,
-      context: state,
       maxTokens: 300,
     });
     
     // Determine what skill check might be needed
-    const responseText = (response as any)?.text ?? String(response ?? '');
+    const responseText = String(response ?? '');
     const suggestedCheck = determineSuggestedCheck(params.activity, responseText);
     
     let finalResponse = responseText;
@@ -126,7 +126,7 @@ export const exploreAction: Action = {
       timestamp: new Date(),
     });
     
-    return true;
+    return undefined;
   },
 };
 

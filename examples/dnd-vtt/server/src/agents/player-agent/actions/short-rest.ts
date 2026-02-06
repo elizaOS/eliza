@@ -60,7 +60,7 @@ export const shortRestAction: Action = {
     state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ) => {
     const params = (options ?? {}) as ShortRestParams;
     const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     
@@ -71,7 +71,7 @@ export const shortRestAction: Action = {
           type: 'error',
         });
       }
-      return false;
+      return undefined;
     }
     
     // Check if character needs healing
@@ -92,7 +92,7 @@ export const shortRestAction: Action = {
           },
         });
       }
-      return true;
+      return undefined;
     }
     
     if (!hasHitDice) {
@@ -108,7 +108,7 @@ export const shortRestAction: Action = {
           },
         });
       }
-      return true;
+      return undefined;
     }
     
     // Calculate how many hit dice to spend
@@ -186,7 +186,7 @@ export const shortRestAction: Action = {
       timestamp: new Date(),
     });
     
-    return true;
+    return undefined;
   },
 };
 

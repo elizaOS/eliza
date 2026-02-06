@@ -6,7 +6,6 @@ build-backend = "hatchling.build"
 name = "elizaos-plugin-blooio"
 version = "1.0.0"
 description = "elizaOS Blooio Plugin - messaging via Blooio platform"
-readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [{ name = "elizaOS Contributors" }]

@@ -16,6 +16,7 @@ import {
   PermissionDeniedError,
   PullRequestNotFoundError,
   RateLimitedError,
+  RepositoryNotFoundError,
   SecondaryRateLimitError,
   TimeoutError,
   ValidationError,
@@ -35,7 +36,7 @@ describe("Error hierarchy", () => {
       new ConfigError("bad config"),
       new MissingSettingError("TOKEN"),
       new InvalidArgumentError("bad arg"),
-      new RepositoryNotFoundErrorWrapper("owner", "repo"),
+      new RepositoryNotFoundError("owner", "repo"),
       new BranchNotFoundError("branch", "owner", "repo"),
       new FileNotFoundError("path", "owner", "repo"),
       new IssueNotFoundError(1, "owner", "repo"),
@@ -73,12 +74,6 @@ describe("Error hierarchy", () => {
     expect(new WebhookVerificationError("reason").name).toBe("WebhookVerificationError");
   });
 });
-
-// Helper to avoid name conflicts with imported class
-function RepositoryNotFoundErrorWrapper(owner: string, repo: string) {
-  const { RepositoryNotFoundError } = require("../error");
-  return new RepositoryNotFoundError(owner, repo);
-}
 
 // =============================================================================
 // Error messages

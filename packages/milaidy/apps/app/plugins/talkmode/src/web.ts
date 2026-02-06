@@ -110,8 +110,11 @@ export class TalkModeWeb extends WebPlugin {
         // Restart recognition if still enabled
         try {
           this.recognition?.start();
-        } catch (_) {
-          // Ignore - may already be starting
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!msg.includes("already started")) {
+            console.warn("[TalkMode] Failed to restart recognition:", msg);
+          }
         }
       }
     };

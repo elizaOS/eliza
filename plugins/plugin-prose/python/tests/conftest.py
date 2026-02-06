@@ -6,7 +6,8 @@ from typing import Any
 
 import pytest
 
-from elizaos_plugin_prose.services.prose_service import ProseService, _skill_content
+import elizaos_plugin_prose.services.prose_service as _prose_svc_mod
+from elizaos_plugin_prose.services.prose_service import ProseService
 from elizaos_plugin_prose.types import ProseConfig, ProseStateMode
 
 
@@ -54,7 +55,7 @@ def prose_service_with_config() -> ProseService:
 @pytest.fixture(autouse=True)
 def _clear_skill_cache() -> None:
     """Ensure the module-level skill cache is empty before each test."""
-    _skill_content.clear()
+    _prose_svc_mod._skill_content.clear()
 
 
 @pytest.fixture()
@@ -72,5 +73,5 @@ def populated_skill_cache() -> dict[str, str]:
         "guidance/patterns.md": "# Patterns\nAuthoring patterns stub.",
         "guidance/antipatterns.md": "# Antipatterns\nAntipatterns stub.",
     }
-    _skill_content.update(stubs)
+    _prose_svc_mod._skill_content.update(stubs)
     return stubs

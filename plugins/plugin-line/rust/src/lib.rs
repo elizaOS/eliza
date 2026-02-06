@@ -7,6 +7,7 @@ pub mod types;
 pub mod service;
 pub mod actions;
 pub mod providers;
+pub mod webhook;
 
 // Re-export main types
 pub use types::*;

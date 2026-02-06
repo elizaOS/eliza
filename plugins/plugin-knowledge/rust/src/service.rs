@@ -361,8 +361,11 @@ impl KnowledgeService {
     }
 
     fn clean_pdf_text(text: &str) -> String {
-        let lines: Vec<&str> = text.split('\n').collect();
-        let cleaned: Vec<&str> = lines.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).copied().collect();
+        let cleaned: Vec<&str> = text
+            .split('\n')
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
         let mut result = cleaned.join("\n");
         // Collapse triple+ newlines
         while result.contains("\n\n\n") {
@@ -1028,7 +1031,7 @@ mod tests {
             },
             KnowledgeItem {
                 id: "frag-2".to_string(),
-                content: "ML content that is longer than one hundred characters to test truncation behavior in the preview".to_string(),
+                content: "ML content that is longer than one hundred characters to test the truncation behavior in the content preview field properly".to_string(),
                 similarity: Some(0.85),
                 embedding: None,
                 metadata: HashMap::new(),

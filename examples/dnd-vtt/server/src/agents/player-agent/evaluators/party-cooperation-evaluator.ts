@@ -28,10 +28,10 @@ export const partyCooperationEvaluator: Evaluator = {
   
   examples: [
     {
-      context: 'Player ignores party discussion and acts alone',
+      prompt: 'Player ignores party discussion and acts alone',
       messages: [
         {
-          user: 'player',
+          name: 'player',
           content: {
             text: 'While they\'re talking, I sneak off to explore the dungeon alone.',
           },
@@ -50,12 +50,12 @@ export const partyCooperationEvaluator: Evaluator = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State
-  ): Promise<CooperationMetrics | null> => {
+  ) => {
     const text = typeof message.content === 'string'
       ? message.content
       : message.content?.text;
     
-    if (!text) return null;
+    if (!text) return undefined;
     
     const lowerText = text.toLowerCase();
     
@@ -76,24 +76,24 @@ export const partyCooperationEvaluator: Evaluator = {
     ) / 10;
     
     // Track cooperation over time
-    const history = await runtime.getSetting('cooperationHistory') as CooperationMetrics[] || [];
+    const historyRaw = await runtime.getSetting('cooperationHistory');
+    const history = (historyRaw ? JSON.parse(historyRaw as string) : []) as CooperationMetrics[];
     history.push(metrics);
     if (history.length > 20) history.shift();
-    await runtime.setSetting('cooperationHistory', history);
+    await runtime.setSetting('cooperationHistory', JSON.stringify(history));
     
     // Calculate running average
     const avgCooperation = history.reduce((sum, m) => sum + m.overallCooperation, 0) / history.length;
     
     // Warn if consistently low cooperation
     if (history.length >= 5 && avgCooperation < 4) {
-      await runtime.emit('cooperation_warning', {
+      runtime.emitEvent?.('cooperation_warning' as any, {
         avgScore: avgCooperation,
         suggestion: 'Consider interacting more with party members and supporting group decisions',
         timestamp: new Date(),
       });
     }
-    
-    return metrics;
+    return undefined;
   },
 };
 
