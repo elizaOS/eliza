@@ -76,9 +76,9 @@ export const roleProvider: Provider = {
       };
     }
     // Get roles from world metadata
-    const roles = world.metadata.roles || {};
+    const roles = (world.metadata && world.metadata.roles) || {};
 
-    if (Object.keys(roles).length === 0) {
+    if (!roles || typeof roles !== 'object' || Object.keys(roles).length === 0) {
       logger.info(
         { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, worldId },
         'No roles found for world'
