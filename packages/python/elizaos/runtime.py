@@ -628,11 +628,11 @@ class AgentRuntime(IAgentRuntime):
                     errors.append(
                         f"Required parameter '{param_def.name}' was not provided for action {action.name}"
                     )
-                elif param_def.schema_def.default is not None:
-                    validated[param_def.name] = param_def.schema_def.default
+                elif getattr(param_def.schema, "default_value", None):
+                    validated[param_def.name] = param_def.schema.default_value
                 continue
 
-            schema_type = param_def.schema_def.type
+            schema_type = param_def.schema.type
 
             if schema_type == "string":
                 # Parameters often come from XML and may be parsed into scalars
