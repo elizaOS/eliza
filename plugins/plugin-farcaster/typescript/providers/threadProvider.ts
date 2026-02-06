@@ -12,7 +12,7 @@ const formatTimestamp = (timestamp: number): string => {
   });
 };
 
-const spec = requireProviderSpec("threadProvider");
+const spec = requireProviderSpec("farcasterThread");
 
 export const farcasterThreadProvider: Provider = {
   name: spec.name,
