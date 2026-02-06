@@ -240,6 +240,10 @@ def get_llm_query_fn(provider: str):
             return str(result)
 
         return eliza_mock_query
+    elif provider == "milaidy":
+        from milaidy_adapter.context_bench import make_milaidy_llm_query
+
+        return make_milaidy_llm_query()
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -430,9 +434,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--provider",
-        choices=["mock", "openai", "anthropic", "eliza-mock", "eliza-openai", "eliza-agent"],
+        choices=["mock", "openai", "anthropic", "eliza-mock", "eliza-openai", "eliza-agent", "milaidy"],
         default="mock",
-        help="LLM provider to use (default: mock). 'eliza-agent' runs the FULL canonical agent loop."
+        help="LLM provider to use (default: mock). 'milaidy' uses the TS milaidy agent."
     )
     parser.add_argument(
         "--quick",

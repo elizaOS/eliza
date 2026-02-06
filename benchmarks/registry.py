@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import cast
+from typing import Mapping, cast
 
 from benchmarks.bench_cli_types import (
     BenchmarkDefinition,
@@ -240,6 +240,46 @@ def _score_from_mind2web_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_rlmbench_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from RLM benchmark results.
+    
+    RLM benchmarks test Recursive Language Model performance on long-context tasks
+    including S-NIAH (Streaming Needle-in-a-Haystack) and OOLONG (long document retrieval).
+    
+    Reference: arXiv:2512.24601 - Recursive Language Models
+    """
+    root = expect_dict(data, ctx="rlm_bench:root")
+    metrics = expect_dict(get_required(root, "metrics", ctx="rlm_bench:root"), ctx="rlm_bench:metrics")
+    overall_acc = expect_float(
+        get_required(metrics, "overall_accuracy", ctx="rlm_bench:metrics"),
+        ctx="rlm_bench:overall_accuracy",
+    )
+    
+    # s_niah_by_length is a dict {length_str: accuracy}, compute average if present
+    s_niah_by_length = get_optional(metrics, "s_niah_by_length")
+    s_niah_avg = 0.0
+    if isinstance(s_niah_by_length, dict) and s_niah_by_length:
+        accuracies = [v for v in s_niah_by_length.values() if isinstance(v, (int, float))]
+        if accuracies:
+            s_niah_avg = sum(accuracies) / len(accuracies)
+    
+    return ScoreExtraction(
+        score=overall_acc,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_accuracy": overall_acc,
+            "total_tasks": get_optional(metrics, "total_tasks") or 0,
+            "passed_tasks": get_optional(metrics, "passed_tasks") or 0,
+            "s_niah_avg_accuracy": s_niah_avg,  # Computed from s_niah_by_length dict
+            "oolong_accuracy": get_optional(metrics, "oolong_accuracy") or 0,
+            "oolong_pairs_accuracy": get_optional(metrics, "oolong_pairs_accuracy") or 0,
+            "total_cost_usd": get_optional(metrics, "total_cost_usd") or 0,
+            "avg_iterations": get_optional(metrics, "avg_iterations") or 0,
+        },
+    )
+
+
 def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     python = sys.executable
 
@@ -302,9 +342,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
-        # AgentBench's ElizaOS runtime path isn't reliably wired to a model plugin yet; keep default mock unless forced.
-        use_elizaos = extra.get("elizaos")
-        if use_elizaos is True:
+        # Agent runtime selection
+        agent = extra.get("agent")
+        if agent == "milaidy":
+            args.append("--milaidy")
+        elif extra.get("elizaos") is True:
             args.append("--elizaos")
         _ = model
         return args
@@ -313,11 +355,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return output_dir / "agentbench-results.json"
 
     def _contextbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        provider = extra.get("provider")
-        provider_str = provider if isinstance(provider, str) else "mock"
+        agent = extra.get("agent")
+        if agent == "milaidy":
+            provider_str = "milaidy"
+        else:
+            provider = extra.get("provider")
+            provider_str = provider if isinstance(provider, str) else "mock"
         args = [
             python,
-            repo("benchmarks/context-bench/python/run_benchmark.py"),
+            repo("benchmarks/context-bench/run_benchmark.py"),
             "--provider",
             provider_str,
             "--output-dir",
@@ -394,12 +440,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output",
             str(output_dir),
         ]
-        # tau-bench defaults to mock unless --real-llm
-        real = extra.get("real_llm")
-        if real is True:
-            args.append("--real-llm")
-        if model.provider:
-            args.extend(["--model-provider", model.provider])
+        agent = extra.get("agent")
+        if agent == "milaidy":
+            args.extend(["--real-llm", "--model-provider", "milaidy"])
+        else:
+            real = extra.get("real_llm")
+            if real is True:
+                args.append("--real-llm")
+            if model.provider:
+                args.extend(["--model-provider", model.provider])
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
         max_tasks = extra.get("max_tasks")
@@ -447,8 +496,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _mind2web_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.mind2web", "--output", str(output_dir)]
-        if model.provider:
-            args.extend(["--provider", model.provider])
+        agent = extra.get("agent")
+        if agent == "milaidy":
+            args.extend(["--real-llm", "--provider", "milaidy"])
+        else:
+            if model.provider:
+                args.extend(["--provider", model.provider])
+            real_llm = extra.get("real_llm")
+            if real_llm is True:
+                args.append("--real-llm")
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
         max_tasks = extra.get("max_tasks")
@@ -457,13 +513,59 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         sample = extra.get("sample")
         if sample is True:
             args.append("--sample")
-        real_llm = extra.get("real_llm")
-        if real_llm is True:
-            args.append("--real-llm")
         return args
 
     def _mind2web_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="mind2web-results*.json")
+
+    def _rlm_bench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        """Build command for RLM benchmark.
+        
+        Supports S-NIAH (Streaming Needle-in-a-Haystack) and OOLONG benchmarks
+        from the RLM paper (arXiv:2512.24601).
+        """
+        args = [
+            python,
+            repo("benchmarks/rlm-bench/run_benchmark.py"),
+            "--output-dir",
+            str(output_dir),
+        ]
+        mode = extra.get("mode")
+        if isinstance(mode, str) and mode in ("stub", "rlm", "custom"):
+            args.extend(["--mode", mode])
+        else:
+            args.extend(["--mode", "stub"])  # Default to stub for testing
+        backend = extra.get("backend")
+        if isinstance(backend, str):
+            args.extend(["--backend", backend])
+        context_lengths = extra.get("context_lengths")
+        if isinstance(context_lengths, str):
+            args.extend(["--context-lengths", context_lengths])
+        elif isinstance(context_lengths, list) and all(isinstance(x, int) for x in context_lengths):
+            args.extend(["--context-lengths", ",".join(str(x) for x in cast(list[int], context_lengths))])
+        tasks_per_config = extra.get("tasks_per_config")
+        if isinstance(tasks_per_config, int) and tasks_per_config > 0:
+            args.extend(["--tasks-per-config", str(tasks_per_config)])
+        max_iterations = extra.get("max_iterations")
+        if isinstance(max_iterations, int) and max_iterations > 0:
+            args.extend(["--max-iterations", str(max_iterations)])
+        max_depth = extra.get("max_depth")
+        if isinstance(max_depth, int) and max_depth > 0:
+            args.extend(["--max-depth", str(max_depth)])
+        dual_model = extra.get("dual_model")
+        if dual_model is True:
+            args.append("--dual-model")
+        no_s_niah = extra.get("no_s_niah")
+        if no_s_niah is True:
+            args.append("--no-s-niah")
+        no_oolong = extra.get("no_oolong")
+        if no_oolong is True:
+            args.append("--no-oolong")
+        _ = model
+        return args
+
+    def _rlm_bench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="rlm_bench_results_*.json")
 
     return [
         BenchmarkDefinition(
@@ -619,6 +721,20 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_mind2web_cmd,
             locate_result=_mind2web_result,
             extract_score=_score_from_mind2web_json,
+        ),
+        BenchmarkDefinition(
+            id="rlm_bench",
+            display_name="RLM-Bench",
+            description="Recursive Language Model benchmark (S-NIAH, OOLONG) - arXiv:2512.24601",
+            cwd_rel="benchmarks/rlm-bench",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(),
+                notes="Tests long-context processing. Modes: stub (mock), rlm (full RLM). Requires RLM plugin for rlm mode.",
+            ),
+            build_command=_rlm_bench_cmd,
+            locate_result=_rlm_bench_result,
+            extract_score=_score_from_rlmbench_json,
         ),
     ]
 

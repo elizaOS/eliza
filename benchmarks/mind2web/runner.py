@@ -111,7 +111,12 @@ class Mind2WebRunner:
         """
         start_time = time.time()
 
-        agent = create_mind2web_agent(self.config)
+        if self.config.model_provider == "milaidy":
+            from milaidy_adapter.mind2web import MilaidyMind2WebAgent
+
+            agent = MilaidyMind2WebAgent(self.config)
+        else:
+            agent = create_mind2web_agent(self.config)
 
         try:
             await agent.initialize()

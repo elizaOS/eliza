@@ -140,9 +140,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["groq", "openai", "anthropic", "auto"],
+        choices=["groq", "openai", "anthropic", "auto", "milaidy"],
         default="auto",
-        help="Model provider to use (default: auto-detect from env)",
+        help="Model provider to use (default: auto-detect from env; 'milaidy' uses TS agent)",
     )
     parser.add_argument(
         "--temperature",
