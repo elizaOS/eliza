@@ -66,8 +66,8 @@ export const castSpellAction: Action = {
     state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
-    const params = (options ?? {}) as CastSpellParams;
+  ): Promise<void> => {
+    const params = (options ?? {}) as unknown as CastSpellParams;
     const characterSheet = await runtime.getSetting('characterSheet') as unknown as CharacterSheet | null;
     
     if (!characterSheet) {
