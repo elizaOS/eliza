@@ -15,6 +15,7 @@ python -m venv venv
 source venv/bin/activate
 pip install -e packages/python
 pip install -e plugins/plugin-openai/python
+pip install -e plugins/plugin-eliza-classic/python
 pip install -e plugins/plugin-inmemorydb/python
 pip install -r examples/a2a/python/requirements.txt
 

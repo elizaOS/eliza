@@ -1,10 +1,7 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { AutoTradingManager } from "../services/AutoTradingManager.ts";
 
-const STRATEGY_INFO: Record<
-  string,
-  { type: string; bestFor: string; riskLevel: string }
-> = {
+const STRATEGY_INFO: Record<string, { type: string; bestFor: string; riskLevel: string }> = {
   llm: {
     type: "AI-driven analysis",
     bestFor: "Complex market analysis",

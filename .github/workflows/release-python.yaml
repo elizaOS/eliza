@@ -3,8 +3,11 @@ name: Python Release
 # Publish Python packages to PyPI on release
 # Packages:
 #   - elizaos (packages/python)
-#   - elizaos-plugin-sql (plugins/plugin-sql/python)
 #   - elizaos-plugin-* (plugins/plugin-*/python)
+#
+# Version management:
+#   - Uses scripts/update-python-versions.py to update all versions
+#   - Supports alpha/beta releases (converted to PEP 440 format)
 
 on:
   release:
@@ -12,13 +15,10 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: "Package to release"
-        required: true
-        type: choice
-        options:
-          - all
-          - elizaos
-          - elizaos-plugin-sql
+        description: "Package to release (leave empty for all)"
+        required: false
+        type: string
+        default: "all"
       dry_run:
         description: "Dry run (do not publish)"
         required: false
@@ -26,7 +26,45 @@ on:
         default: false
 
 jobs:
+  # Discover all Python packages dynamically
+  discover-packages:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Discover Python packages
+        id: discover
+        run: |
+          # Find all Python packages with pyproject.toml
+          PACKAGES="["
+
+          # Core package
+          if [[ -f "packages/python/pyproject.toml" ]]; then
+            NAME=$(grep -m1 '^name = ' packages/python/pyproject.toml | sed 's/name = "\(.*\)"/\1/')
+            PACKAGES="$PACKAGES{\"name\":\"$NAME\",\"path\":\"packages/python\",\"pypi_name\":\"$NAME\"},"
+          fi
+
+          # Plugin packages
+          for dir in plugins/plugin-*/python; do
+            if [[ -f "$dir/pyproject.toml" ]]; then
+              NAME=$(grep -m1 '^name = ' "$dir/pyproject.toml" | sed 's/name = "\(.*\)"/\1/')
+              if [[ -n "$NAME" ]]; then
+                PACKAGES="$PACKAGES{\"name\":\"$NAME\",\"path\":\"$dir\",\"pypi_name\":\"$NAME\"},"
+              fi
+            fi
+          done
+
+          # Remove trailing comma and close array
+          PACKAGES="${PACKAGES%,}]"
+
+          echo "Found packages: $PACKAGES"
+          echo "matrix={\"include\":$PACKAGES}" >> $GITHUB_OUTPUT
+
   build-and-publish:
+    needs: discover-packages
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -36,29 +74,7 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: elizaos
-            path: packages/python
-            pypi_name: elizaos
-          - name: elizaos-plugin-sql
-            path: plugins/plugin-sql/python
-            pypi_name: elizaos-plugin-sql
-          - name: elizaos-plugin-anthropic
-            path: plugins/plugin-anthropic/python
-            pypi_name: elizaos-plugin-anthropic
-          - name: elizaos-plugin-bootstrap
-            path: plugins/plugin-bootstrap/python
-            pypi_name: elizaos-plugin-bootstrap
-          - name: elizaos-plugin-mcp
-            path: plugins/plugin-mcp/python
-            pypi_name: elizaos-plugin-mcp
-          - name: elizaos-plugin-openai
-            path: plugins/plugin-openai/python
-            pypi_name: elizaos-plugin-openai
-          - name: elizaos-plugin-solana
-            path: plugins/plugin-solana/python
-            pypi_name: elizaos-plugin-solana
+      matrix: ${{ fromJson(needs.discover-packages.outputs.matrix) }}
 
     steps:
       - name: Check if package should be built
@@ -97,27 +113,13 @@ jobs:
           VERSION="${VERSION#v}"  # Remove 'v' prefix
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Update package version
+      - name: Update all Python package versions
         if: steps.check.outputs.should_build == 'true' && github.event_name == 'release'
-        working-directory: ${{ matrix.path }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-
-          # Update version in pyproject.toml
-          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" pyproject.toml
-
-          # Update __version__ in __init__.py if it exists
-          if [[ "${{ matrix.name }}" == "elizaos" ]]; then
-            INIT_FILE="elizaos/__init__.py"
-          else
-            INIT_FILE="elizaos_plugin_sql/__init__.py"
-          fi
-
-          if [[ -f "$INIT_FILE" ]]; then
-            sed -i "s/__version__ = \".*\"/__version__ = \"${VERSION}\"/" "$INIT_FILE"
-          fi
-
-          echo "Updated version to ${VERSION}"
+          echo "🐍 Updating Python packages to version ${VERSION}..."
+          python scripts/update-python-versions.py "${VERSION}"
+          echo "✅ Python versions updated"
 
       - name: Install package dependencies
         if: steps.check.outputs.should_build == 'true'

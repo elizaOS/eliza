@@ -6,9 +6,7 @@ export const tradingProvider: Provider = {
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
-      const tradingManager = runtime.getService(
-        "AutoTradingManager",
-      ) as AutoTradingManager;
+      const tradingManager = runtime.getService("AutoTradingManager") as AutoTradingManager;
       if (!tradingManager) {
         return { text: "Trading services not available" };
       }
@@ -67,8 +65,7 @@ function formatPositions(positions: PositionData[]): string {
     .map((pos) => {
       const currentPrice = pos.currentPrice ?? pos.entryPrice;
       const pnl = (currentPrice - pos.entryPrice) * pos.amount;
-      const pnlPercent =
-        ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
+      const pnlPercent = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
       return `• ${pos.tokenAddress.slice(0, 8)}...: ${pos.amount.toFixed(4)} @ $${pos.entryPrice.toFixed(4)} (${pnlPercent.toFixed(2)}% | ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)})`;
     })
     .join("\n");

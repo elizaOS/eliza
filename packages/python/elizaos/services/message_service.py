@@ -791,6 +791,9 @@ class DefaultMessageService(IMessageService):
         - Execute selected action (optional)
         - Accumulate action results
         """
+        import json
+
+        from elizaos.runtime import DynamicPromptOptions
         from elizaos.types.components import ActionResult
 
         trace_results: list[ActionResult] = []

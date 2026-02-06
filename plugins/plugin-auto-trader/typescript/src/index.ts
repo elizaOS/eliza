@@ -62,6 +62,7 @@ const autoTraderPlugin: Plugin = {
 };
 
 export default autoTraderPlugin;
+export { autoTraderPlugin };
 
 export type {
   TradingConfig,
@@ -94,11 +95,9 @@ export { MeanReversionStrategy } from "./strategies/MeanReversionStrategy.ts";
 export { MomentumBreakoutStrategy } from "./strategies/MomentumBreakoutStrategy.ts";
 export { RandomStrategy } from "./strategies/RandomStrategy.ts";
 export { RuleBasedStrategy } from "./strategies/RuleBasedStrategy.ts";
-// Explicitly re-export to resolve ambiguity
-export type {
-  PortfolioAssetHolding,
-  WalletPortfolio,
-} from "./types/trading.ts";
-export * from "./types/trading.ts";
-// Export types
+// Export types from trading.ts (excluding TradingConfig which is also in AutoTradingManager)
+export type { RiskLimits, WalletPortfolioItem } from "./types/trading.ts";
+// Re-export TradingConfig from trading.ts as TradingSettings to avoid conflict
+export type { TradingConfig as TradingSettings } from "./types/trading.ts";
+// Export types - these include PortfolioAssetHolding and WalletPortfolio
 export * from "./types.ts";

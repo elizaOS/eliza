@@ -62,7 +62,8 @@ export function wrapActionWithLogging(
     ): Promise<ActionResult | undefined> => {
       const context = getTrajectoryContext(runtime);
       if (!context) {
-        return await originalHandler(runtime, message, state, options, callback);
+        const result = await originalHandler(runtime, message, state, options, callback);
+        return result ?? undefined;
       }
 
       const { trajectoryId, logger: loggerService } = context;
@@ -70,7 +71,8 @@ export function wrapActionWithLogging(
 
       if (!stepId) {
         logger.warn({ action: action.name, trajectoryId }, "No active step for action execution");
-        return await originalHandler(runtime, message, state, options, callback);
+        const result = await originalHandler(runtime, message, state, options, callback);
+        return result ?? undefined;
       }
 
       const successHandler = (): void => {
@@ -129,7 +131,7 @@ export function wrapActionWithLogging(
       try {
         const result = await originalHandler(runtime, message, state, options, callback);
         successHandler();
-        return result;
+        return result ?? undefined;
       } catch (err) {
         if (err instanceof Error) {
           return errorHandler(err);

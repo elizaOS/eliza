@@ -2,11 +2,7 @@
 /// <reference types="@cypress/react" />
 /// <reference types="@testing-library/cypress" />
 
-import {
-  QueryClient,
-  QueryClientProvider,
-  useQuery,
-} from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import React from "react";
 import "../../../frontend/index.css";
 
@@ -24,10 +20,9 @@ interface ElizaConfig {
   apiBase?: string; // Make optional to fix type error
 }
 
-declare global {
-  interface Window {
-    ELIZA_CONFIG: ElizaConfig | undefined;
-  }
+// Local window type extension to avoid global declaration conflicts
+interface WindowWithElizaConfig extends Window {
+  ELIZA_CONFIG?: ElizaConfig;
 }
 
 describe("ExampleRoute Component Tests", () => {
@@ -52,8 +47,7 @@ describe("ExampleRoute Component Tests", () => {
     if (error) {
       return (
         <div className="text-red-600">
-          Error fetching time:{" "}
-          {error instanceof Error ? error.message : "Unknown error"}
+          Error fetching time: {error instanceof Error ? error.message : "Unknown error"}
         </div>
       );
     }
@@ -84,7 +78,7 @@ describe("ExampleRoute Component Tests", () => {
   };
 
   const ExampleRoute = () => {
-    const [config] = React.useState(window.ELIZA_CONFIG);
+    const [config] = React.useState((window as WindowWithElizaConfig).ELIZA_CONFIG);
     const apiBase = config?.apiBase || "http://localhost:3000";
 
     React.useEffect(() => {
@@ -94,9 +88,7 @@ describe("ExampleRoute Component Tests", () => {
     if (!config?.agentId) {
       return (
         <div className="p-4 text-center">
-          <div className="text-red-600 font-medium">
-            Error: Agent ID not found
-          </div>
+          <div className="text-red-600 font-medium">Error: Agent ID not found</div>
           <div className="text-sm text-gray-600 mt-2">
             The server should inject the agent ID configuration.
           </div>
@@ -109,9 +101,7 @@ describe("ExampleRoute Component Tests", () => {
         <div className="p-6 space-y-6">
           <div>
             <h1 className="text-2xl font-bold mb-2">Plugin Starter Example</h1>
-            <div className="text-sm text-muted-foreground">
-              Agent ID: {config.agentId}
-            </div>
+            <div className="text-sm text-muted-foreground">Agent ID: {config.agentId}</div>
           </div>
           <TimeDisplay apiBase={apiBase} />
         </div>
@@ -128,16 +118,14 @@ describe("ExampleRoute Component Tests", () => {
     it("should show error when agent ID is missing", () => {
       // Clear the config before mounting
       cy.window().then((win) => {
-        win.ELIZA_CONFIG = undefined;
+        (win as WindowWithElizaConfig).ELIZA_CONFIG = undefined;
       });
 
       cy.mount(<ExampleRoute />);
 
       // Check error message is displayed
       cy.contains("Error: Agent ID not found").should("be.visible");
-      cy.contains(
-        "The server should inject the agent ID configuration.",
-      ).should("be.visible");
+      cy.contains("The server should inject the agent ID configuration.").should("be.visible");
     });
 
     it("should render correctly with agent ID", () => {
@@ -145,7 +133,7 @@ describe("ExampleRoute Component Tests", () => {
 
       // Set config before mounting
       cy.window().then((win) => {
-        win.ELIZA_CONFIG = {
+        (win as WindowWithElizaConfig).ELIZA_CONFIG = {
           agentId: testAgentId,
           apiBase: "http://localhost:3000",
         };
@@ -163,7 +151,7 @@ describe("ExampleRoute Component Tests", () => {
     beforeEach(() => {
       // Set up ELIZA_CONFIG
       cy.window().then((win) => {
-        win.ELIZA_CONFIG = {
+        (win as WindowWithElizaConfig).ELIZA_CONFIG = {
           agentId: "test-agent-123",
           apiBase: "http://localhost:3000",
         };
@@ -286,7 +274,7 @@ describe("ExampleRoute Component Tests", () => {
       const customApiBase = "https://api.example.com";
 
       cy.window().then((win) => {
-        win.ELIZA_CONFIG = {
+        (win as WindowWithElizaConfig).ELIZA_CONFIG = {
           agentId: "test-agent",
           apiBase: customApiBase,
         };
@@ -311,7 +299,7 @@ describe("ExampleRoute Component Tests", () => {
 
     it("should use default API base when not provided", () => {
       cy.window().then((win) => {
-        win.ELIZA_CONFIG = {
+        (win as WindowWithElizaConfig).ELIZA_CONFIG = {
           agentId: "test-agent",
           // No apiBase provided - this is now valid with optional apiBase
         };
@@ -338,7 +326,7 @@ describe("ExampleRoute Component Tests", () => {
   describe("Accessibility", () => {
     beforeEach(() => {
       cy.window().then((win) => {
-        win.ELIZA_CONFIG = {
+        (win as WindowWithElizaConfig).ELIZA_CONFIG = {
           agentId: "test-agent",
           apiBase: "http://localhost:3000",
         };

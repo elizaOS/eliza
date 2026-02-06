@@ -3,44 +3,6 @@ import type { Content, IAgentRuntime, TestSuite } from "@elizaos/core";
 import axios from "axios";
 import { sendMessageAndWaitForResponse, setupScenario } from "./test-utils.ts";
 
-/** Executed trade transaction type */
-interface ExecutedTrade {
-  signature: string;
-  timestamp: number;
-  metadata?: {
-    direction?: string;
-    amount?: number;
-  };
-}
-
-/** Auto trading service interface for type safety */
-interface AutoTradingService {
-  getPositions(): { tokenAddress: string; amount: number }[];
-  getDailyPnL(): number;
-  getTotalPnL(): number;
-}
-
-/** Transaction monitoring service interface for type safety */
-interface TransactionMonitoringService {
-  getTransactionLogs(options: {
-    status: string;
-    type: string;
-    limit: number;
-  }): ExecutedTrade[];
-  getTransactionMetrics(): {
-    totalTransactions: number;
-    successfulTransactions: number;
-    totalFees: number;
-  };
-}
-
-/** Risk management service interface for type safety */
-interface RiskManagementService {
-  getRiskMetrics(): {
-    dailyLoss: number;
-  };
-}
-
 // Configuration for the live trading scenario
 const SCENARIO_CONFIG = {
   // Trading parameters
@@ -62,10 +24,7 @@ const SCENARIO_CONFIG = {
 };
 
 // Helper to verify transactions on Solscan
-async function verifySolscanTransaction(
-  txId: string,
-  retries = 3,
-): Promise<boolean> {
+async function verifySolscanTransaction(txId: string, retries = 3): Promise<boolean> {
   const SOLSCAN_API = "https://public-api.solscan.io/transaction";
 
   for (let i = 0; i < retries; i++) {
@@ -104,7 +63,7 @@ export const agentLiveTradingScenario: TestSuite = {
           agent: string;
           timestamp: Date;
         }[] = [];
-        const executedTrades: ExecutedTrade[] = [];
+        const executedTrades: any[] = [];
         let _tradingActive = false;
 
         // Helper to log conversation
@@ -126,10 +85,7 @@ export const agentLiveTradingScenario: TestSuite = {
           user,
           "What's my current portfolio status?",
         );
-        logConversation(
-          "What's my current portfolio status?",
-          portfolioResponse,
-        );
+        logConversation("What's my current portfolio status?", portfolioResponse);
         assert(portfolioResponse.text, "Agent should respond about portfolio");
 
         // Step 2: Ask about market conditions
@@ -158,10 +114,7 @@ export const agentLiveTradingScenario: TestSuite = {
           `Configure the RSI strategy with max position size of $${SCENARIO_CONFIG.MAX_POSITION_SIZE}, ${SCENARIO_CONFIG.STOP_LOSS_PERCENT}% stop loss, and ${SCENARIO_CONFIG.TAKE_PROFIT_PERCENT}% take profit`,
           strategyResponse,
         );
-        assert(
-          strategyResponse.text?.includes("configured"),
-          "Strategy should be configured",
-        );
+        assert(strategyResponse.text?.includes("configured"), "Strategy should be configured");
 
         // Step 4: Start live trading
         console.log("🚀 Step 4: Starting live trading...");
@@ -176,25 +129,17 @@ export const agentLiveTradingScenario: TestSuite = {
           startResponse,
         );
         assert(
-          startResponse.text?.includes("started") ||
-            startResponse.text?.includes("trading"),
+          startResponse.text?.includes("started") || startResponse.text?.includes("trading"),
           "Trading should start",
         );
         _tradingActive = true;
 
         // Get services for monitoring
-        const autoTrading = runtime.getService(
-          "AutoTradingService",
-        ) as unknown as AutoTradingService;
-        const transactionMonitoring = runtime.getService(
-          "TransactionMonitoringService",
-        ) as unknown as TransactionMonitoringService;
+        const autoTrading = runtime.getService("AutoTradingService") as any;
+        const transactionMonitoring = runtime.getService("TransactionMonitoringService") as any;
 
         assert(autoTrading, "AutoTradingService should be available");
-        assert(
-          transactionMonitoring,
-          "TransactionMonitoringService should be available",
-        );
+        assert(transactionMonitoring, "TransactionMonitoringService should be available");
 
         // Step 5: Monitor trading for the scenario duration
         console.log(
@@ -206,9 +151,7 @@ export const agentLiveTradingScenario: TestSuite = {
         let checkCount = 0;
 
         while (Date.now() - startTime < SCENARIO_CONFIG.SCENARIO_DURATION) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, SCENARIO_CONFIG.CHECK_INTERVAL),
-          );
+          await new Promise((resolve) => setTimeout(resolve, SCENARIO_CONFIG.CHECK_INTERVAL));
           checkCount++;
 
           // Periodically ask for status updates
@@ -219,10 +162,7 @@ export const agentLiveTradingScenario: TestSuite = {
               user,
               "What's the current trading status and P&L?",
             );
-            logConversation(
-              "What's the current trading status and P&L?",
-              statusResponse,
-            );
+            logConversation("What's the current trading status and P&L?", statusResponse);
           }
 
           // Check for new transactions
@@ -243,9 +183,7 @@ export const agentLiveTradingScenario: TestSuite = {
               // Verify on Solscan
               const verified = await verifySolscanTransaction(tx.signature);
               if (verified) {
-                console.log(
-                  `   ✅ Verified on Solscan: https://solscan.io/tx/${tx.signature}`,
-                );
+                console.log(`   ✅ Verified on Solscan: https://solscan.io/tx/${tx.signature}`);
               }
 
               // Ask agent about the trade
@@ -282,10 +220,7 @@ export const agentLiveTradingScenario: TestSuite = {
           user,
           "Stop trading and give me a final report",
         );
-        logConversation(
-          "Stop trading and give me a final report",
-          stopResponse,
-        );
+        logConversation("Stop trading and give me a final report", stopResponse);
         _tradingActive = false;
 
         // Step 7: Get performance analysis
@@ -296,10 +231,7 @@ export const agentLiveTradingScenario: TestSuite = {
           user,
           "Analyze my trading performance from this session",
         );
-        logConversation(
-          "Analyze my trading performance from this session",
-          analysisResponse,
-        );
+        logConversation("Analyze my trading performance from this session", analysisResponse);
 
         // Final Report
         console.log(`\n${"=".repeat(60)}`);
@@ -311,9 +243,7 @@ export const agentLiveTradingScenario: TestSuite = {
 
         console.log("Conversation Summary:");
         console.log(`- Total interactions: ${conversationLog.length}`);
-        console.log(
-          `- Scenario duration: ${SCENARIO_CONFIG.SCENARIO_DURATION / 1000} seconds`,
-        );
+        console.log(`- Scenario duration: ${SCENARIO_CONFIG.SCENARIO_DURATION / 1000} seconds`);
 
         console.log("\nTrading Summary:");
         console.log(`- Executed trades: ${executedTrades.length}`);
@@ -322,8 +252,7 @@ export const agentLiveTradingScenario: TestSuite = {
           `- Success rate: ${
             finalMetrics.totalTransactions > 0
               ? (
-                  (finalMetrics.successfulTransactions /
-                    finalMetrics.totalTransactions) *
+                  (finalMetrics.successfulTransactions / finalMetrics.totalTransactions) *
                   100
                 ).toFixed(1)
               : 0
@@ -351,19 +280,11 @@ export const agentLiveTradingScenario: TestSuite = {
           "agent_live_trading_scenario_results.json",
           JSON.stringify(scenarioResults, null, 2),
         );
-        console.log(
-          "\n📝 Scenario results saved to: agent_live_trading_scenario_results.json",
-        );
+        console.log("\n📝 Scenario results saved to: agent_live_trading_scenario_results.json");
 
         // Assertions
-        assert(
-          conversationLog.length >= 6,
-          "Should have at least 6 conversation exchanges",
-        );
-        assert(
-          executedTrades.length > 0,
-          "Should execute at least one trade during the scenario",
-        );
+        assert(conversationLog.length >= 6, "Should have at least 6 conversation exchanges");
+        assert(executedTrades.length > 0, "Should execute at least one trade during the scenario");
 
         console.log("\n✅ SCENARIO COMPLETED SUCCESSFULLY!");
       },
@@ -397,12 +318,8 @@ export const agentLiveTradingScenario: TestSuite = {
         console.log(`🤖 Agent: ${startResponse.text}\n`);
 
         // Get services
-        const _autoTrading = runtime.getService(
-          "AutoTradingService",
-        ) as unknown as AutoTradingService;
-        const riskManagement = runtime.getService(
-          "RiskManagementService",
-        ) as unknown as RiskManagementService;
+        const _autoTrading = runtime.getService("AutoTradingService") as any;
+        const riskManagement = runtime.getService("RiskManagementService") as any;
 
         // Monitor for risk events
         console.log("📊 Monitoring for risk management events...\n");
@@ -427,8 +344,7 @@ export const agentLiveTradingScenario: TestSuite = {
             console.log(`🤖 Agent: ${riskResponse.text}\n`);
 
             assert(
-              riskResponse.text?.includes("loss limit") ||
-                riskResponse.text?.includes("risk"),
+              riskResponse.text?.includes("loss limit") || riskResponse.text?.includes("risk"),
               "Agent should explain risk management trigger",
             );
           }
@@ -439,21 +355,12 @@ export const agentLiveTradingScenario: TestSuite = {
         clearInterval(checkRisk);
 
         // Stop trading
-        await sendMessageAndWaitForResponse(
-          runtime,
-          room,
-          user,
-          "Stop all trading",
-        );
+        await sendMessageAndWaitForResponse(runtime, room, user, "Stop all trading");
 
         if (riskEventTriggered) {
-          console.log(
-            "✅ Risk management scenario completed - loss limit triggered",
-          );
+          console.log("✅ Risk management scenario completed - loss limit triggered");
         } else {
-          console.log(
-            "✅ Risk management scenario completed - no risk events triggered",
-          );
+          console.log("✅ Risk management scenario completed - no risk events triggered");
         }
       },
     },

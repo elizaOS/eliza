@@ -85,8 +85,7 @@ export class MeanReversionStrategy implements TradingStrategy {
 
     if (
       !priceData ||
-      priceData.length <
-        Math.max(this.config.bbPeriod, this.config.rsiPeriod) + 10
+      priceData.length < Math.max(this.config.bbPeriod, this.config.rsiPeriod) + 10
     ) {
       return null;
     }
@@ -109,10 +108,7 @@ export class MeanReversionStrategy implements TradingStrategy {
     const { upper, lower, middle } = bb;
 
     // Market condition checks
-    if (
-      volatility < this.config.minVolatility ||
-      volatility > this.config.maxVolatility
-    ) {
+    if (volatility < this.config.minVolatility || volatility > this.config.maxVolatility) {
       console.log(
         `[${this.name}] Volatility ${volatility.toFixed(4)} outside range [${this.config.minVolatility}, ${this.config.maxVolatility}]`,
       );
@@ -133,18 +129,12 @@ export class MeanReversionStrategy implements TradingStrategy {
 
     // Buy signal: Price near lower band + RSI oversold
     if (currentPrice <= lower * (1 + (1 - this.config.bbEntryThreshold))) {
-      const rsiCondition =
-        !this.config.rsiConfirmation || currentRSI < this.config.rsiOversold;
+      const rsiCondition = !this.config.rsiConfirmation || currentRSI < this.config.rsiOversold;
 
       if (rsiCondition) {
-        const positionSize = this.calculatePositionSize(
-          portfolioSnapshot.totalValue,
-          currentPrice,
-        );
+        const positionSize = this.calculatePositionSize(portfolioSnapshot.totalValue, currentPrice);
 
-        console.log(
-          `[${this.name}] BUY SIGNAL - Price at lower BB, RSI: ${currentRSI.toFixed(2)}`,
-        );
+        console.log(`[${this.name}] BUY SIGNAL - Price at lower BB, RSI: ${currentRSI.toFixed(2)}`);
 
         return {
           action: TradeType.BUY,
@@ -159,8 +149,7 @@ export class MeanReversionStrategy implements TradingStrategy {
 
     // Sell signal: Price near upper band + RSI overbought
     if (currentPrice >= upper * (1 - (1 - this.config.bbEntryThreshold))) {
-      const rsiCondition =
-        !this.config.rsiConfirmation || currentRSI > this.config.rsiOverbought;
+      const rsiCondition = !this.config.rsiConfirmation || currentRSI > this.config.rsiOverbought;
 
       if (rsiCondition) {
         const currentHolding = portfolioSnapshot.holdings.SOL || 0;

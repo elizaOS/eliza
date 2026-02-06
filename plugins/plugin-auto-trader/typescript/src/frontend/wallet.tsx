@@ -7,11 +7,7 @@ import { Button } from "./ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.js";
 import { Input } from "./ui/input.js";
 
-const formatCurrency = (
-  value: number,
-  minimumFractionDigits = 2,
-  maximumFractionDigits = 2,
-) => {
+const formatCurrency = (value: number, minimumFractionDigits = 2, maximumFractionDigits = 2) => {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -57,8 +53,7 @@ export default function Wallet() {
             <WalletIcon className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
             <p className="text-muted-foreground">No portfolio data available</p>
             <p className="text-sm text-muted-foreground mt-2">
-              Portfolio data will appear here once the Solana service is
-              connected
+              Portfolio data will appear here once the Solana service is connected
             </p>
           </CardContent>
         </Card>
@@ -87,9 +82,7 @@ export default function Wallet() {
             (Number(a.uiAmount) || Number(a.balance) || 0)
           );
         case "name":
-          return (a.name || a.symbol || "").localeCompare(
-            b.name || b.symbol || "",
-          );
+          return (a.name || a.symbol || "").localeCompare(b.name || b.symbol || "");
         default:
           return 0;
       }
@@ -101,9 +94,7 @@ export default function Wallet() {
   const significantTokens = portfolio.items.filter(
     (asset) => (Number(asset?.valueUsd) || 0) > 50,
   ).length;
-  const smallTokens = portfolio.items.filter(
-    (asset) => (Number(asset?.valueUsd) || 0) <= 1,
-  ).length;
+  const smallTokens = portfolio.items.filter((asset) => (Number(asset?.valueUsd) || 0) <= 1).length;
 
   return (
     <div className="space-y-6">
@@ -114,9 +105,7 @@ export default function Wallet() {
             <CardTitle className="text-sm font-medium">Total Value</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {formatCurrency(totalValue)}
-            </div>
+            <div className="text-2xl font-bold">{formatCurrency(totalValue)}</div>
             <p className="text-xs text-muted-foreground">Portfolio value</p>
           </CardContent>
         </Card>
@@ -133,28 +122,20 @@ export default function Wallet() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Significant Holdings
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Significant Holdings</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {significantTokens}
-            </div>
+            <div className="text-2xl font-bold text-green-600">{significantTokens}</div>
             <p className="text-xs text-muted-foreground">Value &gt; $50</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">
-              Small Holdings
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Small Holdings</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-muted-foreground">
-              {smallTokens}
-            </div>
+            <div className="text-2xl font-bold text-muted-foreground">{smallTokens}</div>
             <p className="text-xs text-muted-foreground">Value ≤ $1</p>
           </CardContent>
         </Card>
@@ -170,18 +151,13 @@ export default function Wallet() {
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-            <code className="text-sm font-mono">
-              {portfolio.wallet || "Unknown"}
-            </code>
+            <code className="text-sm font-mono">{portfolio.wallet || "Unknown"}</code>
             <Button
               size="sm"
               variant="outline"
               onClick={() => {
                 if (portfolio.wallet) {
-                  window.open(
-                    `https://solscan.io/account/${portfolio.wallet}`,
-                    "_blank",
-                  );
+                  window.open(`https://solscan.io/account/${portfolio.wallet}`, "_blank");
                 }
               }}
             >
@@ -232,9 +208,7 @@ export default function Wallet() {
                     key={option.key}
                     variant={sortBy === option.key ? "default" : "outline"}
                     size="sm"
-                    onClick={() =>
-                      setSortBy(option.key as "value" | "balance" | "name")
-                    }
+                    onClick={() => setSortBy(option.key as any)}
                   >
                     {option.label}
                   </Button>
@@ -247,8 +221,7 @@ export default function Wallet() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filteredTokens.map((asset, idx: number) => {
               const valueUsd = Number(asset?.valueUsd) || 0;
-              const balance =
-                Number(asset.uiAmount) || Number(asset.balance) || 0;
+              const balance = Number(asset.uiAmount) || Number(asset.balance) || 0;
               const price = Number(asset.priceUsd) || 0;
 
               return (
@@ -283,30 +256,20 @@ export default function Wallet() {
                           <h3 className="font-semibold text-sm truncate max-w-[120px]">
                             {asset.name || asset.symbol}
                           </h3>
-                          <p className="text-xs text-muted-foreground">
-                            {asset.symbol}
-                          </p>
+                          <p className="text-xs text-muted-foreground">{asset.symbol}</p>
                         </div>
                       </div>
                       {valueUsd > 100 && (
-                        <Badge
-                          variant="default"
-                          className="bg-green-100 text-green-800"
-                        >
+                        <Badge variant="default" className="bg-green-100 text-green-800">
                           Major
                         </Badge>
                       )}
                       {valueUsd > 10 && valueUsd <= 100 && (
                         <Badge variant="secondary">Medium</Badge>
                       )}
-                      {valueUsd <= 10 && valueUsd > 1 && (
-                        <Badge variant="outline">Small</Badge>
-                      )}
+                      {valueUsd <= 10 && valueUsd > 1 && <Badge variant="outline">Small</Badge>}
                       {valueUsd <= 1 && (
-                        <Badge
-                          variant="outline"
-                          className="text-muted-foreground"
-                        >
+                        <Badge variant="outline" className="text-muted-foreground">
                           Dust
                         </Badge>
                       )}
@@ -315,9 +278,7 @@ export default function Wallet() {
                     {/* Value Display */}
                     <div className="space-y-2">
                       <div>
-                        <p className="text-lg font-bold">
-                          {formatCurrency(valueUsd)}
-                        </p>
+                        <p className="text-lg font-bold">{formatCurrency(valueUsd)}</p>
                         <p className="text-sm text-muted-foreground">
                           {formatNumber(balance)} {asset.symbol}
                         </p>
@@ -327,9 +288,7 @@ export default function Wallet() {
                         <div className="pt-2 border-t border-muted">
                           <p className="text-xs text-muted-foreground">
                             Price:{" "}
-                            <span className="font-medium">
-                              {formatCurrency(price, 6, 6)}
-                            </span>
+                            <span className="font-medium">{formatCurrency(price, 6, 6)}</span>
                           </p>
                         </div>
                       )}
@@ -356,10 +315,7 @@ export default function Wallet() {
                           variant="outline"
                           className="flex-1 text-xs"
                           onClick={() => {
-                            window.open(
-                              `https://solscan.io/token/${asset.address}`,
-                              "_blank",
-                            );
+                            window.open(`https://solscan.io/token/${asset.address}`, "_blank");
                           }}
                         >
                           Solscan

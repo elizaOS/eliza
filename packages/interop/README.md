@@ -116,7 +116,7 @@ await runtime.register_plugin(plugin)
 
 ## Plugin Manifest
 
-Every cross-language plugin must include a `plugin.json` manifest:
+Cross-language plugins are described by a manifest-like metadata object (format may vary by transport and host).
 
 ```json
 {

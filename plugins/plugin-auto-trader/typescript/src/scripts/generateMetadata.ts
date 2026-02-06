@@ -7,8 +7,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const baseCacheDir =
-  process.env.ELIZA_DATA_DIR || path.join(os.homedir(), ".eliza");
+const baseCacheDir = process.env.ELIZA_DATA_DIR || path.join(os.homedir(), ".eliza");
 const CACHE_DIR = path.join(baseCacheDir, "cache/auto_trader_historical_data");
 
 // Mapping of addresses to token metadata
@@ -114,9 +113,7 @@ async function generateMetadataFiles() {
   try {
     // Get all files in the cache directory
     const files = await fs.readdir(CACHE_DIR);
-    const historicalDataFiles = files.filter((f) =>
-      f.startsWith("historicalData_"),
-    );
+    const historicalDataFiles = files.filter((f) => f.startsWith("historicalData_"));
 
     let generatedCount = 0;
 
@@ -138,9 +135,7 @@ async function generateMetadataFiles() {
         const metadataPath = path.join(CACHE_DIR, `metadata_${address}.json`);
         await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
 
-        console.log(
-          `✓ Generated metadata for ${metadata.symbol} (${metadata.name})`,
-        );
+        console.log(`✓ Generated metadata for ${metadata.symbol} (${metadata.name})`);
         generatedCount++;
       } else {
         console.log(`⚠️  No metadata mapping found for address: ${address}`);

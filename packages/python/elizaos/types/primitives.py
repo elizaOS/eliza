@@ -4,6 +4,7 @@ import hashlib
 import re
 import urllib.parse
 import uuid as uuid_module
+from enum import Enum
 
 from elizaos.types.generated.eliza.v1 import primitives_pb2
 
@@ -61,12 +62,33 @@ def string_to_uuid(target: str | int | uuid_module.UUID) -> str:
 
     return str(uuid_module.UUID(bytes=bytes(b)))
 
+class ChannelType(str, Enum):
+    SELF = "SELF"
+    DM = "DM"
+    GROUP = "GROUP"
+    VOICE_DM = "VOICE_DM"
+    VOICE_GROUP = "VOICE_GROUP"
+    FEED = "FEED"
+    THREAD = "THREAD"
+    WORLD = "WORLD"
+    FORUM = "FORUM"
+    API = "API"
+
+class ContentType(str, Enum):
+    IMAGE = "image"
+    VIDEO = "video"
+    AUDIO = "audio"
+    DOCUMENT = "document"
+    LINK = "link"
+
 
 __all__ = [
     "UUID",
     "DEFAULT_UUID",
     "UUIDMessage",
     "DefaultUUID",
+    "ChannelType",
+    "ContentType",
     "Content",
     "Media",
     "MentionContext",

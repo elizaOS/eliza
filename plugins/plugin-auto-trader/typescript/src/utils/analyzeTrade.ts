@@ -60,28 +60,13 @@ Provide an XML response in the following format. Example:
 import type { IAgentRuntime } from "@elizaos/core";
 import { ServiceTypes } from "../types/index.ts";
 
-/** Interface for trading service market data operations */
-interface DegenTradingService {
-  dataService: {
-    getTokenMarketData(address: string): Promise<{
-      price: number;
-      priceHistory?: number[];
-    }>;
-  };
-}
-
 // FIXME: change runtime to just pass the dataService in
 export async function assessMarketCondition(
   runtime: IAgentRuntime,
 ): Promise<"bullish" | "neutral" | "bearish"> {
   try {
     // might be best to move this out of this function
-    const tradeService = runtime.getService(
-      ServiceTypes.DEGEN_TRADING,
-    ) as unknown as DegenTradingService | undefined;
-    if (!tradeService) {
-      return "neutral";
-    }
+    const tradeService = runtime.getService(ServiceTypes.DEGEN_TRADING) as any;
     const solData = await tradeService.dataService.getTokenMarketData(
       "So11111111111111111111111111111111111111112", // SOL address
     );
@@ -112,8 +97,7 @@ export function calculateVolatility(priceHistory: number[]): number {
   }
 
   const mean = returns.reduce((a, b) => a + b) / returns.length;
-  const variance =
-    returns.reduce((a, b) => a + (b - mean) ** 2, 0) / returns.length;
+  const variance = returns.reduce((a, b) => a + (b - mean) ** 2, 0) / returns.length;
   return Math.sqrt(variance);
 }
 

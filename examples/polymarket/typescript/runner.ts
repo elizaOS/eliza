@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   AgentRuntime,
   ChannelType,
@@ -28,8 +31,12 @@ import {
   type EnvConfig,
   type LlmProvider,
 } from "./lib";
-import { runPolymarketTui, runSettingsWizard, type SettingsField } from "./tui";
+import { runPolymarketTui, runSettingsWizard, setFatalError, type SettingsField } from "./tui";
 import { runInkInputTest } from "./ink-input-test";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const ERROR_LOG_PATH = path.join(__dirname, "polymarket-error.log");
 
 type RuntimeSession = {
   readonly runtime: AgentRuntime;
@@ -72,6 +79,91 @@ type WriteArgs = {
 };
 
 const wrappedStreams = new WeakSet<NodeJS.WriteStream>();
+
+/**
+ * Log an error to the error log file for debugging.
+ * This persists errors even if the TUI crashes.
+ */
+function logErrorToFile(error: Error | string, context?: string): void {
+  const timestamp = new Date().toISOString();
+  const errorMessage = error instanceof Error 
+    ? `${error.message}\n${error.stack ?? ""}`
+    : String(error);
+  const logEntry = `[${timestamp}]${context ? ` [${context}]` : ""}\n${errorMessage}\n\n`;
+  
+  try {
+    fs.appendFileSync(ERROR_LOG_PATH, logEntry);
+  } catch {
+    // If we can't write to the log file, there's nothing we can do
+  }
+}
+
+/**
+ * Display an error message after cleaning up the terminal.
+ * This ensures errors are visible even when the TUI was active.
+ */
+function displayFatalError(error: Error | string, context?: string): void {
+  // Reset terminal state
+  if (process.stdout.isTTY) {
+    // Disable mouse tracking and restore terminal
+    process.stdout.write("\x1b[?1000l\x1b[?1006l\x1b[?1015l\x1b[?1007l");
+    // Clear any partial lines and move to a new line
+    process.stdout.write("\n");
+  }
+  
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack : undefined;
+  
+  console.error("\n" + "=".repeat(60));
+  console.error("❌ FATAL ERROR" + (context ? ` [${context}]` : ""));
+  console.error("=".repeat(60));
+  console.error(errorMessage);
+  if (stack) {
+    console.error("\nStack trace:");
+    console.error(stack);
+  }
+  console.error("=".repeat(60));
+  console.error(`Error log saved to: ${ERROR_LOG_PATH}`);
+  console.error("");
+}
+
+/**
+ * Handle a fatal error: log it, notify the TUI, display it, and exit.
+ */
+function handleFatalError(error: Error | string, context?: string): void {
+  logErrorToFile(error, context);
+  
+  // Try to notify the TUI first (if it's running)
+  try {
+    setFatalError(error instanceof Error ? error.message : String(error));
+  } catch {
+    // TUI might not be running, that's OK
+  }
+  
+  // Give the TUI a moment to display the error, then force display and exit
+  setTimeout(() => {
+    displayFatalError(error, context);
+    process.exit(1);
+  }, 100);
+}
+
+/**
+ * Install global error handlers for uncaught exceptions and unhandled rejections.
+ * This ensures errors are always visible, even when the TUI is active.
+ */
+function installGlobalErrorHandlers(): void {
+  process.on("uncaughtException", (error) => {
+    handleFatalError(error, "uncaughtException");
+  });
+  
+  process.on("unhandledRejection", (reason) => {
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    handleFatalError(error, "unhandledRejection");
+  });
+}
+
+// Install handlers immediately when this module loads
+installGlobalErrorHandlers();
 
 function normalizeWriteArgs(
   encoding: BufferEncoding | WriteCallback | undefined,

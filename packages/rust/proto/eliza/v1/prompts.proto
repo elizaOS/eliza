@@ -1,0 +1,43 @@
+// prompts.proto - Prompt-related data structures for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "google/protobuf/struct.proto";
+
+// Information about a field for prompt building.
+message PromptFieldInfo {
+  string id = 1;
+  string type = 2;
+  string label = 3;
+  optional string description = 4;
+  optional string criteria = 5;
+}
+
+// Options for building a prompt from a template.
+message BuildPromptOptions {
+  // Template string (function templates are runtime-only).
+  string template = 1;
+  // State values to substitute into the template.
+  google.protobuf.Struct state = 2;
+  // Optional default values for template variables.
+  map<string, string> defaults = 3;
+}
+
+// Result of building a prompt from a template.
+message BuiltPrompt {
+  string prompt = 1;
+  optional string system = 2;
+  repeated string substituted_variables = 3;
+  repeated string missing_variables = 4;
+}
+
+// Configuration for a prompt template.
+message PromptTemplateConfig {
+  string template = 1;
+  string name = 2;
+  optional string description = 3;
+  map<string, string> defaults = 4;
+  repeated string required_variables = 5;
+  repeated string optional_variables = 6;
+}

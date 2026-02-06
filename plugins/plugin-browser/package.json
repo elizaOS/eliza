@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/plugin-browser-root",
+  "private": true,
   "version": "2.0.0-alpha.1",
   "description": "Browser automation plugin for ElizaOS - enables AI agents to browse websites, interact with elements, and extract data",
   "type": "module",

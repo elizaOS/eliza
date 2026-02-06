@@ -39,7 +39,7 @@ async def get_message_classification(runtime, message, _state=None) -> ProviderR
         lines = response_text.splitlines()
 
         def _parse_list(prefix: str) -> list[str]:
-            line = next((l for l in lines if l.startswith(prefix)), "")
+            line = next((ln for ln in lines if ln.startswith(prefix)), "")
             if not line:
                 return []
             raw = line[len(prefix) :].strip()
@@ -48,15 +48,15 @@ async def get_message_classification(runtime, message, _state=None) -> ProviderR
             return [s.strip() for s in raw.split(",") if s.strip()]
 
         complexity = next(
-            (l[len("COMPLEXITY:") :].strip() for l in lines if l.startswith("COMPLEXITY:")),
+            (ln[len("COMPLEXITY:") :].strip() for ln in lines if ln.startswith("COMPLEXITY:")),
             "simple",
         )
         planning_type = next(
-            (l[len("PLANNING:") :].strip() for l in lines if l.startswith("PLANNING:")),
+            (ln[len("PLANNING:") :].strip() for ln in lines if ln.startswith("PLANNING:")),
             "direct_action",
         )
         confidence_str = next(
-            (l[len("CONFIDENCE:") :].strip() for l in lines if l.startswith("CONFIDENCE:")),
+            (ln[len("CONFIDENCE:") :].strip() for ln in lines if ln.startswith("CONFIDENCE:")),
             "0.5",
         )
         try:

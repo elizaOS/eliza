@@ -1,31 +1,34 @@
+// Import core types
 import type { IAgentRuntime as AgentRuntime, UUID } from "@elizaos/core";
 
+// Define wallet and token types locally since they're not exported from @elizaos/core
 export interface TokenBalance {
-  tokenAddress: string;
-  amount: string;
-  decimals?: number;
+  mint: string;
+  balance: string;
+  decimals: number;
+  uiAmount: number;
 }
 
 export interface TokenData {
   address: string;
-  symbol?: string;
-  name?: string;
-  decimals?: number;
-}
-
-export interface ITokenDataService {
-  getTokenData(address: string): Promise<TokenData | null>;
-  getTokenBalance?(address: string): Promise<TokenBalance | null>;
+  symbol: string;
+  name: string;
+  decimals: number;
+  price?: number;
+  volume24h?: number;
+  liquidity?: number;
 }
 
 export interface WalletAsset {
-  tokenAddress: string;
-  amount: number;
-  usdValue?: number;
+  mint: string;
+  balance: number;
+  decimals: number;
+  uiAmount: number;
 }
 
 export interface IWalletService {
-  getPortfolio?(agentId: UUID): Promise<WalletPortfolio | null>;
+  getBalance(): Promise<number>;
+  getTokenBalances(): Promise<TokenBalance[]>;
 }
 
 // #region --- Portfolio and Trading Data Interfaces ---
@@ -71,7 +74,7 @@ export interface TradingStrategy {
   }): Promise<TradeOrder | null>;
   initialize?(agentRuntime?: AgentRuntime): Promise<void>;
   isReady(): boolean;
-  configure?(params: Record<string, unknown>): void;
+  configure?(params: any): void;
 }
 
 export enum TradeType {
@@ -161,13 +164,28 @@ export interface TradeSimulationResult {
   updatedPortfolio?: { [assetSymbol: string]: PortfolioAssetHolding };
 }
 
-// Portfolio view for strategy contexts
+// Wallet portfolio for auto-trader
 export interface WalletPortfolio {
-  items: PortfolioAssetHolding[];
-  totalValue?: number;
+  totalUsd: string;
+  totalSol?: string;
+  items: Array<{
+    name: string;
+    address: string;
+    symbol: string;
+    decimals: number;
+    balance: string;
+    uiAmount: string;
+    priceUsd: string;
+    valueUsd: string;
+    valueSol?: string;
+  }>;
 }
 
-export interface PortfolioAssetHolding extends WalletAsset {
+export interface PortfolioAssetHolding {
+  mint: string;
+  balance: number;
+  decimals: number;
+  uiAmount: number;
   averagePrice: number;
   symbol?: string;
   assetAddress: string;
@@ -242,7 +260,7 @@ export interface LLMStrategyParams {
   temperature?: number;
   defaultTradeSizePercentage?: number;
   defaultFixedTradeQuantity?: number;
-  structuredOutputSchema?: Record<string, unknown>;
+  structuredOutputSchema?: any;
   systemPrompt?: string;
 }
 

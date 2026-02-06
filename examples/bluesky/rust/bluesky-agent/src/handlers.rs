@@ -11,12 +11,11 @@ use elizaos::{
 };
 use elizaos_plugin_bluesky::{
     BlueSkyClient,
-    CreatePostRequest,
-    types::BlueSkyNotification,
+    types::{BlueSkyNotification, CreatePostRequest},
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Create a unique UUID by combining base ID with agent ID.
 pub fn create_unique_uuid(agent_id: &UUID, base_id: &str) -> UUID {
@@ -130,29 +129,25 @@ pub async fn handle_mention_received(
                 }
             };
 
-            let post = {
-                let client = client.lock().await;
-                let request = CreatePostRequest::new(response_text.clone())
-                    .with_reply(notification_uri.clone(), notification_cid.clone());
-                match client.send_post(request).await {
-                    Ok(post) => post,
-                    Err(err) => {
-                        warn!(
-                            error = %err,
-                            reply_to = %author_handle,
-                            "Failed to post reply to Bluesky"
-                        );
-                        return Ok(vec![]);
-                    }
-                }
-            };
-
             info!(
                 text_preview = %&response_text[..response_text.len().min(50)],
                 reply_to = %author_handle,
-                post_uri = %post.uri,
-                "Posted reply to Bluesky"
+                "Posting reply to Bluesky"
             );
+
+            // Post the reply to Bluesky
+            let request = CreatePostRequest::new(&response_text)
+                .with_reply(notification_uri.clone(), notification_cid.clone());
+            
+            match client.lock().await.send_post(request).await {
+                Ok(post) => {
+                    info!(uri = %post.uri, "Successfully posted reply to Bluesky");
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to post reply to Bluesky");
+                    // Continue to create memory even if posting failed
+                }
+            }
 
             // Create memory for the response
             let mut response_content = Content {
@@ -161,8 +156,8 @@ pub async fn handle_mention_received(
                 in_reply_to: message_id,
                 ..Default::default()
             };
-            response_content.extra.insert("uri".to_string(), serde_json::json!(post.uri));
-            response_content.extra.insert("cid".to_string(), serde_json::json!(post.cid));
+            response_content.extra.insert("uri".to_string(), serde_json::json!(notification_uri));
+            response_content.extra.insert("cid".to_string(), serde_json::json!(notification_cid));
             response_content.extra.insert("platform".to_string(), serde_json::json!("bluesky"));
 
             let response_memory = Memory::new(agent_id, room_id, response_content);

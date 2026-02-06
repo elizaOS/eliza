@@ -28,6 +28,7 @@ export class PluginCreationService extends Service {
   private createdPlugins: Set<string> = new Set();
   private lastJobCreation: number = 0;
   private jobCreationCount: number = 0;
+  protected declare runtime: IAgentRuntime;
 
   public readonly capabilityDescription: string = "Plugin creation service";
 

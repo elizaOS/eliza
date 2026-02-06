@@ -122,3 +122,4 @@ The `packages/interop/` package defines a cross-language contract:
 - **TypeScript ↔ Python**: subprocess IPC using newline-delimited JSON messages
 
 See `INTEROP_GUIDE.md` for details.
+

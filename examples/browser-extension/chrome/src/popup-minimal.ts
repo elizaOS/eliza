@@ -180,3 +180,6 @@ init().catch((e) => {
   console.error("[Popup] Init failed:", e);
   statusText.textContent = "Error: " + (e as Error).message;
 });
+
+// Export empty object to make this a proper module (isolates global declarations)
+export {};

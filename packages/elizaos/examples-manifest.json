@@ -285,7 +285,7 @@
     },
     {
       "name": "cloudflare",
-      "description": "Serverless AI agents running on Cloudflare Workers, powered by elizaOS.",
+      "description": "Deploy elizaOS agents as serverless functions on Cloudflare Workers.",
       "path": "/Users/shawwalters/eliza-ok/examples/cloudflare",
       "languages": [
         {

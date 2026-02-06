@@ -3992,6 +3992,126 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
+      "name": "POLYMARKET_CHECK_ORDER_SCORING",
+      "description": "Checks whether specific Polymarket order IDs are scoring (eligible for liquidity rewards). Use when user provides order ID(s) and asks about scoring/rewards status. Requires CLOB API credentials. Parameters: orderIds (array of order ID strings, required).",
+      "parameters": [],
+      "similes": [
+        "ORDERS_ELIGIBLE_FOR_REWARDS",
+        "SCORING_STATUS",
+        "ARE_MY_ORDERS_SCORING"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_MARKETS",
+      "description": "Find or browse Polymarket prediction markets. Use for keyword searches ('find miami heat markets'), ",
+      "parameters": [],
+      "similes": [
+        "GET_MARKETS",
+        "LIST_MARKETS",
+        "SHOW_MARKETS",
+        "FETCH_MARKETS",
+        "POLYMARKET_MARKETS",
+        "ALL_MARKETS",
+        "BROWSE_MARKETS",
+        "VIEW_MARKETS",
+        "SEARCH_MARKETS",
+        "FIND_MARKETS",
+        "SEARCH_POLYMARKET",
+        "LOOKUP_MARKETS",
+        "QUERY_MARKETS",
+        "MARKET_SEARCH"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_ORDER_BOOK_DEPTH",
+      "description": "Retrieves order book depth (number of bid/ask levels) for multiple tokens to compare liquidity across markets. Use when comparing depth across multiple markets or finding markets with sufficient liquidity for large trades. Parameters: tokenIds (array of condition token IDs, required).",
+      "parameters": [],
+      "similes": [
+        "ORDER_BOOK_DEPTH",
+        "DEPTH",
+        "MARKET_DEPTH",
+        "LIQUIDITY",
+        "COMPARE_DEPTH"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_TOKEN_INFO",
+      "description": "Retrieves comprehensive information about a single Polymarket token including market details (question, status, end date), current pricing (bid/ask, spread, midpoint), 24h price history (OHLC, change %), and user's position and active orders for that token. Parameters: tokenId (condition token ID) or conditionId (market condition ID).",
+      "parameters": [],
+      "similes": [
+        "TOKEN_INFO",
+        "TOKEN_DETAILS",
+        "MARKET_INFO",
+        "SHOW_TOKEN",
+        "ABOUT_TOKEN",
+        "TOKEN_SUMMARY",
+        "PRICE_INFO",
+        "MARKET_SUMMARY"
+      ]
+    },
+    {
+      "name": "POLYMARKET_GET_TRADE_HISTORY",
+      "description": "Retrieves the authenticated user's filled trade history, optionally filtered by market or asset. Use when the user asks for past trades or fills. Do not use for open orders or a specific order status; use getActiveOrdersAction or getOrderDetailsAction. Parameters: market (optional slug), assetId (optional token ID), limit (optional). Requires full CLOB credentials.",
+      "parameters": [],
+      "similes": [
+        "MY_TRADES",
+        "TRADE_LOG",
+        "FILLED_ORDERS",
+        "PAST_TRADES",
+        "TRADING_HISTORY"
+      ]
+    },
+    {
+      "name": "POLYMARKET_PLACE_ORDER",
+      "description": "Places a buy/sell order (bet) on Polymarket. Use when user says buy, sell, bet, wager, put money on, or confirms a trade. Will search for market by name if tokenId not provided. Executes immediately without asking for confirmation. Parameters: tokenId or marketName (required), outcome (yes/no), side (buy/sell, default buy), price (0.01-0.99, uses best available if omitted), size (dollar amount or shares, required), orderType (GTC/FOK/FAK, default GTC). Requires CLOB API credentials and private key.",
+      "parameters": [],
+      "similes": [
+        "PLACE_ORDER",
+        "CREATE_ORDER",
+        "BUY_TOKEN",
+        "SELL_TOKEN",
+        "LIMIT_ORDER",
+        "MARKET_ORDER",
+        "TRADE",
+        "ORDER",
+        "BUY",
+        "SELL",
+        "PURCHASE",
+        "SUBMIT_ORDER",
+        "EXECUTE_ORDER",
+        "BET",
+        "WAGER",
+        "PUT_MONEY",
+        "PLACE_BET",
+        "MAKE_BET",
+        "CONFIRM",
+        "CONFIRM_ORDER",
+        "CONFIRM_BET",
+        "CONFIRM_TRADE",
+        "YES_EXECUTE",
+        "EXECUTE",
+        "DO_IT",
+        "GO_AHEAD",
+        "PROCEED"
+      ]
+    },
+    {
+      "name": "POLYMARKET_RESEARCH_MARKET",
+      "description": "Initiates or retrieves deep research on a Polymarket prediction market using OpenAI's deep research capabilities. Takes 20-40 minutes. Returns cached results if available, status if in progress, or starts new research. Use forceRefresh=true to force new research. Parameters: marketId (condition_id), marketQuestion (the prediction question), forceRefresh (optional boolean), callbackAction (optional: EVALUATE_TRADE or NOTIFY_ONLY).",
+      "parameters": [],
+      "similes": [
+        "RESEARCH_MARKET",
+        "ANALYZE_MARKET",
+        "DEEP_RESEARCH",
+        "INVESTIGATE_MARKET",
+        "MARKET_RESEARCH",
+        "RESEARCH_PREDICTION",
+        "STUDY_MARKET",
+        "GET_RESEARCH",
+        "CHECK_RESEARCH"
+      ]
+    },
+    {
       "name": "POST_INSTAGRAM_COMMENT",
       "description": "Post a comment on an Instagram post",
       "parameters": [

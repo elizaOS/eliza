@@ -78,8 +78,7 @@ export interface TradingEnvironmentState {
 
 export class TradingTrajectoryService extends Service {
   public static readonly serviceType = "TradingTrajectoryService";
-  public readonly capabilityDescription =
-    "Logs trading trajectories for RL training";
+  public readonly capabilityDescription = "Logs trading trajectories for RL training";
 
   private trajectoryLogger: TrajectoryLoggerService | null = null;
   private activeTrajectoryId: string | null = null;
@@ -87,9 +86,7 @@ export class TradingTrajectoryService extends Service {
   private sessionStartState: TradingEnvironmentState | null = null;
   private enabled = false;
 
-  public static async start(
-    runtime: IAgentRuntime,
-  ): Promise<TradingTrajectoryService> {
+  public static async start(runtime: IAgentRuntime): Promise<TradingTrajectoryService> {
     const instance = new TradingTrajectoryService(runtime);
     await instance.initialize();
     return instance;
@@ -98,16 +95,12 @@ export class TradingTrajectoryService extends Service {
   private async initialize(): Promise<void> {
     // Try to get TrajectoryLoggerService if available
     try {
-      const { TrajectoryLoggerService } = await import(
-        "@elizaos/plugin-trajectory-logger"
-      );
+      const { TrajectoryLoggerService } = await import("@elizaos/plugin-trajectory-logger");
       this.trajectoryLogger = new TrajectoryLoggerService();
       this.enabled = true;
       logger.info("[TradingTrajectoryService] Trajectory logging enabled");
     } catch {
-      logger.info(
-        "[TradingTrajectoryService] Trajectory logger not available - logging disabled",
-      );
+      logger.info("[TradingTrajectoryService] Trajectory logger not available - logging disabled");
       this.enabled = false;
     }
   }
@@ -146,9 +139,7 @@ export class TradingTrajectoryService extends Service {
         },
       }) ?? null;
 
-    logger.info(
-      `[TradingTrajectoryService] Started trajectory: ${this.activeTrajectoryId}`,
-    );
+    logger.info(`[TradingTrajectoryService] Started trajectory: ${this.activeTrajectoryId}`);
     return this.activeTrajectoryId;
   }
 
@@ -178,10 +169,9 @@ export class TradingTrajectoryService extends Service {
     };
 
     this.activeStepId =
-      this.trajectoryLogger?.startStep(
-        this.activeTrajectoryId,
-        trajectoryEnvState,
-      ) ?? null;
+      this.activeTrajectoryId && this.trajectoryLogger
+        ? (this.trajectoryLogger.startStep(this.activeTrajectoryId, trajectoryEnvState) ?? null)
+        : null;
     return this.activeStepId;
   }
 
@@ -220,8 +210,7 @@ export class TradingTrajectoryService extends Service {
     error?: string;
     pnlChange?: number;
   }): void {
-    if (!this.isEnabled() || !this.activeTrajectoryId || !this.activeStepId)
-      return;
+    if (!this.isEnabled() || !this.activeTrajectoryId || !this.activeStepId) return;
 
     const action = params.order
       ? {
@@ -252,18 +241,13 @@ export class TradingTrajectoryService extends Service {
     // Calculate reward based on outcome
     const reward = this.calculateReward(params);
 
-    this.trajectoryLogger?.completeStep(
-      this.activeTrajectoryId,
-      this.activeStepId,
-      action,
-      {
-        reward,
-        components: {
-          environmentReward: reward,
-          profitLoss: params.pnlChange || 0,
-        },
+    this.trajectoryLogger?.completeStep(this.activeTrajectoryId, this.activeStepId, action, {
+      reward,
+      components: {
+        environmentReward: reward,
+        profitLoss: params.pnlChange || 0,
       },
-    );
+    });
 
     this.activeStepId = null;
   }
@@ -282,23 +266,16 @@ export class TradingTrajectoryService extends Service {
     if (finalState && this.sessionStartState) {
       metrics.finalBalance = finalState.solBalance;
       metrics.finalPnL = finalState.totalPnL;
-      metrics.tradesExecuted =
-        finalState.totalTrades - this.sessionStartState.totalTrades;
+      metrics.tradesExecuted = finalState.totalTrades - this.sessionStartState.totalTrades;
       metrics.successRate = finalState.winRate;
-      metrics.portfolioChange =
-        finalState.portfolioValue - this.sessionStartState.portfolioValue;
+      metrics.portfolioChange = finalState.portfolioValue - this.sessionStartState.portfolioValue;
       metrics.pnlChange = finalState.totalPnL - this.sessionStartState.totalPnL;
     }
 
-    await this.trajectoryLogger?.endTrajectory(
-      this.activeTrajectoryId,
-      status,
-      metrics,
-    );
+    await this.trajectoryLogger?.endTrajectory(this.activeTrajectoryId, status, metrics);
 
     logger.info(
-      metrics,
-      `[TradingTrajectoryService] Ended trajectory: ${this.activeTrajectoryId}`,
+      `[TradingTrajectoryService] Ended trajectory: ${this.activeTrajectoryId} status=${status}`,
     );
 
     this.activeTrajectoryId = null;
@@ -334,10 +311,7 @@ export class TradingTrajectoryService extends Service {
         reward += Math.min(Math.log10(params.pnlChange + 1) * 0.5, 1.0);
       } else if (params.pnlChange < 0) {
         // Negative P&L: penalty
-        reward += Math.max(
-          Math.log10(Math.abs(params.pnlChange) + 1) * -0.3,
-          -0.5,
-        );
+        reward += Math.max(Math.log10(Math.abs(params.pnlChange) + 1) * -0.3, -0.5);
       }
     }
 

@@ -6,37 +6,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import chalk from "chalk";
 
-/** Result for a single coin backtest */
-interface CoinResult {
-  coin: { symbol: string };
-  dataAvailable: boolean;
-  marketCondition?: "trending" | "ranging" | "volatile";
-  bestStrategy: {
-    name: string;
-    pnlPercent: number;
-    trades: number;
-  };
-}
-
-/** Full backtest results structure */
-interface BacktestResults {
-  totalCoins: number;
-  withData: number;
-  profitable: number;
-  profitabilityRate: string;
-  results: CoinResult[];
-}
-
-/** Stats for a single strategy */
-interface StrategyStats {
-  count: number;
-  totalPnl: number;
-  wins: number;
-}
-
-/** Stats by strategy name */
-type StrategyStatsMap = Record<string, StrategyStats>;
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -48,10 +17,7 @@ console.log(
 `),
 );
 
-async function runCommand(
-  command: string,
-  description: string,
-): Promise<boolean> {
+async function runCommand(command: string, description: string): Promise<boolean> {
   console.log(chalk.yellow(`\n▶️  ${description}`));
   console.log(chalk.gray(`   Command: ${command}`));
 
@@ -74,17 +40,14 @@ async function checkPrerequisites(): Promise<boolean> {
   // Check for BIRDEYE_API_KEY
   if (!process.env.BIRDEYE_API_KEY) {
     console.error(chalk.red("❌ BIRDEYE_API_KEY not found in environment"));
-    console.log(
-      chalk.yellow("   Please set BIRDEYE_API_KEY in your .env file"),
-    );
+    console.log(chalk.yellow("   Please set BIRDEYE_API_KEY in your .env file"));
     return false;
   }
   console.log(chalk.green("✅ BIRDEYE_API_KEY found"));
 
   // Check cache directory
   const cacheDir = path.join(__dirname, "../../cache/birdeye");
-  const hasCache =
-    fs.existsSync(cacheDir) && fs.readdirSync(cacheDir).length > 0;
+  const hasCache = fs.existsSync(cacheDir) && fs.readdirSync(cacheDir).length > 0;
   console.log(
     hasCache
       ? chalk.green("✅ Cache directory exists with data")
@@ -114,9 +77,7 @@ async function runPipeline() {
   const downloadSummary = path.join(cacheDir, "download_summary.json");
 
   if (!fs.existsSync(downloadSummary)) {
-    console.log(
-      chalk.yellow("\n📥 No cached data found. Starting download..."),
-    );
+    console.log(chalk.yellow("\n📥 No cached data found. Starting download..."));
 
     // Use verified coins only for faster testing
     const downloadSuccess = await runCommand(
@@ -148,10 +109,7 @@ async function runPipeline() {
   }
 
   // Step 3: Analyze results
-  const resultsPath = path.join(
-    __dirname,
-    "../../backtest_results/final_backtest_results.json",
-  );
+  const resultsPath = path.join(__dirname, "../../backtest_results/final_backtest_results.json");
 
   if (fs.existsSync(resultsPath)) {
     const results = JSON.parse(fs.readFileSync(resultsPath, "utf-8"));
@@ -183,7 +141,7 @@ async function runPipeline() {
   );
 }
 
-function generateReport(results: BacktestResults) {
+function generateReport(results: any) {
   const reportPath = path.join(__dirname, "../../BACKTEST_REPORT.md");
 
   let report = `# ElizaOS Auto-Trader Backtest Report
@@ -207,14 +165,11 @@ Generated: ${new Date().toISOString()}
 
   // Add top 10 performers
   const topPerformers = results.results
-    .filter((r: CoinResult) => r.dataAvailable && r.bestStrategy.pnlPercent > 0)
-    .sort(
-      (a: CoinResult, b: CoinResult) =>
-        b.bestStrategy.pnlPercent - a.bestStrategy.pnlPercent,
-    )
+    .filter((r: any) => r.dataAvailable && r.bestStrategy.pnlPercent > 0)
+    .sort((a: any, b: any) => b.bestStrategy.pnlPercent - a.bestStrategy.pnlPercent)
     .slice(0, 10);
 
-  topPerformers.forEach((r: CoinResult, i: number) => {
+  topPerformers.forEach((r: any, i: number) => {
     report += `| ${i + 1} | ${r.coin.symbol} | +${r.bestStrategy.pnlPercent.toFixed(2)}% | ${r.bestStrategy.name} | ${r.bestStrategy.trades} |\n`;
   });
 
@@ -223,15 +178,13 @@ Generated: ${new Date().toISOString()}
 
 `;
 
-  const byCondition: Record<string, CoinResult[]> = {
+  const byCondition: any = {
     trending: results.results.filter(
-      (r: CoinResult) => r.dataAvailable && r.marketCondition === "trending",
+      (r: any) => r.dataAvailable && r.marketCondition === "trending",
     ),
-    ranging: results.results.filter(
-      (r: CoinResult) => r.dataAvailable && r.marketCondition === "ranging",
-    ),
+    ranging: results.results.filter((r: any) => r.dataAvailable && r.marketCondition === "ranging"),
     volatile: results.results.filter(
-      (r: CoinResult) => r.dataAvailable && r.marketCondition === "volatile",
+      (r: any) => r.dataAvailable && r.marketCondition === "volatile",
     ),
   };
 
@@ -244,10 +197,10 @@ Generated: ${new Date().toISOString()}
 `;
 
   // Calculate strategy stats
-  const strategyStats: StrategyStatsMap = {};
+  const strategyStats: any = {};
   results.results
-    .filter((r: CoinResult) => r.dataAvailable && r.bestStrategy.name)
-    .forEach((r: CoinResult) => {
+    .filter((r: any) => r.dataAvailable && r.bestStrategy.name)
+    .forEach((r: any) => {
       const strategy = r.bestStrategy.name;
       if (!strategyStats[strategy]) {
         strategyStats[strategy] = { count: 0, totalPnl: 0, wins: 0 };
@@ -257,13 +210,11 @@ Generated: ${new Date().toISOString()}
       if (r.bestStrategy.pnlPercent > 0) strategyStats[strategy].wins++;
     });
 
-  Object.entries(strategyStats).forEach(
-    ([strategy, stats]: [string, StrategyStats]) => {
-      const avgPnl = stats.totalPnl / stats.count;
-      const winRate = ((stats.wins / stats.count) * 100).toFixed(1);
-      report += `- **${strategy}**: Used ${stats.count} times, Avg PnL: ${avgPnl.toFixed(2)}%, Win Rate: ${winRate}%\n`;
-    },
-  );
+  Object.entries(strategyStats).forEach(([strategy, stats]: [string, any]) => {
+    const avgPnl = stats.totalPnl / stats.count;
+    const winRate = ((stats.wins / stats.count) * 100).toFixed(1);
+    report += `- **${strategy}**: Used ${stats.count} times, Avg PnL: ${avgPnl.toFixed(2)}%, Win Rate: ${winRate}%\n`;
+  });
 
   report += `
 ## Next Steps

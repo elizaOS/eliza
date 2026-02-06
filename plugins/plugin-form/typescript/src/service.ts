@@ -110,6 +110,7 @@ import type {
   FormSubmission,
   FormControl,
   FieldState,
+  TypeHandler,
   FormContextState,
   FilledFieldSummary,
   MissingFieldSummary,
@@ -134,7 +135,12 @@ import {
   getAutofillData,
   saveAutofillData,
 } from "./storage";
-import { validateField, formatValue } from "./validation";
+import {
+  validateField,
+  formatValue,
+  registerTypeHandler,
+  getTypeHandler,
+} from "./validation";
 import { registerBuiltinTypes } from "./builtins";
 
 // ============================================================================
@@ -249,6 +255,27 @@ export class FormService extends Service {
    */
   listForms(): FormDefinition[] {
     return Array.from(this.forms.values());
+  }
+
+  // ============================================================================
+  // TYPE HANDLER REGISTRY (Legacy)
+  // ============================================================================
+
+  /**
+   * Register a custom type handler (legacy API)
+   * @deprecated Use registerControlType instead
+   */
+  registerType(type: string, handler: TypeHandler): void {
+    registerTypeHandler(type, handler);
+    logger.debug(`[FormService] Registered type handler: ${type}`);
+  }
+
+  /**
+   * Get a type handler (legacy API)
+   * @deprecated Use getControlType instead
+   */
+  getTypeHandler(type: string): TypeHandler | undefined {
+    return getTypeHandler(type);
   }
 
   // ============================================================================

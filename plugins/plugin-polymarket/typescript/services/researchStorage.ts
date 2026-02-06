@@ -92,7 +92,7 @@ export class ResearchStorageService {
   async markResearchInProgress(
     marketId: string,
     marketQuestion: string,
-    taskId: UUID
+    taskId: UUID,
   ): Promise<void> {
     const key = this.getCacheKey(marketId);
     const research: MarketResearch = {
@@ -113,14 +113,14 @@ export class ResearchStorageService {
   async storeResearchResult(
     marketId: string,
     result: MarketResearch["result"],
-    researchId: string
+    researchId: string,
   ): Promise<void> {
     const key = this.getCacheKey(marketId);
     const existing = await this.getMarketResearch(marketId);
 
     if (!existing) {
       logger.warn(
-        `[ResearchStorage] Cannot store result - no existing research for market ${marketId}`
+        `[ResearchStorage] Cannot store result - no existing research for market ${marketId}`,
       );
       return;
     }
@@ -157,7 +157,7 @@ export class ResearchStorageService {
 
     await this.runtime.setCache(key, research);
     logger.error(
-      `[ResearchStorage] Marked research FAILED for market ${marketId}: ${errorMessage}`
+      `[ResearchStorage] Marked research FAILED for market ${marketId}: ${errorMessage}`,
     );
   }
 

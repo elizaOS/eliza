@@ -20,11 +20,7 @@ export class CacheManager {
     return entry.value as T;
   }
 
-  async set<T>(
-    key: string,
-    value: T,
-    ttl: number = this.defaultTTL,
-  ): Promise<void> {
+  async set<T>(key: string, value: T, ttl: number = this.defaultTTL): Promise<void> {
     const entry: CacheEntry<T> = {
       value,
       timestamp: Date.now(),

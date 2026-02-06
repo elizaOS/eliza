@@ -2,8 +2,26 @@
  * elizaOS Cloudflare Worker
  *
  * A serverless AI agent running on Cloudflare Workers.
- * Provides a REST API for chat interactions with an AI character.
+ * Uses the canonical elizaOS runtime with messageService.handleMessage pattern.
+ *
+ * NOTE: Due to Cloudflare Workers constraints (no persistent storage for PGLite),
+ * this example initializes the runtime per-request. For production use,
+ * consider using Cloudflare Durable Objects for state persistence.
  */
+
+import {
+  AgentRuntime,
+  ChannelType,
+  type Character,
+  createCharacter,
+  createMessageMemory,
+  type IAgentRuntime,
+  type Plugin,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { v4 as uuidv4 } from "uuid";
 
 export interface Env {
   OPENAI_API_KEY: string;
@@ -14,95 +32,56 @@ export interface Env {
   CHARACTER_SYSTEM?: string;
 }
 
-interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
-
 interface ChatRequest {
   message: string;
-  conversationId?: string;
+  userId?: string;
 }
 
 interface ChatResponse {
   response: string;
-  conversationId: string;
   character: string;
+  userId: string;
 }
 
-interface ConversationState {
-  messages: ChatMessage[];
-  createdAt: number;
-}
+// Session info (consistent UUIDs for the worker)
+const roomId = stringToUuid("cloudflare-room");
+const worldId = stringToUuid("cloudflare-world");
 
-// In-memory conversation store (persists during worker lifetime)
-// For production, use Cloudflare KV or Durable Objects
-const conversations = new Map<string, ConversationState>();
-
-function generateUUID(): string {
-  return crypto.randomUUID();
-}
-
-function getCharacter(env: Env) {
-  return {
+function getCharacter(env: Env): Character {
+  return createCharacter({
     name: env.CHARACTER_NAME || "Eliza",
-    bio: env.CHARACTER_BIO || "A helpful AI assistant powered by elizaOS.",
+    bio:
+      env.CHARACTER_BIO ||
+      "A helpful AI assistant powered by elizaOS on Cloudflare Workers.",
     system:
       env.CHARACTER_SYSTEM ||
       `You are ${env.CHARACTER_NAME || "Eliza"}, a helpful AI assistant. ${env.CHARACTER_BIO || "You are friendly, knowledgeable, and always eager to help."}`,
-  };
+    secrets: {
+      OPENAI_API_KEY: env.OPENAI_API_KEY,
+      OPENAI_BASE_URL: env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+      OPENAI_MODEL: env.OPENAI_MODEL || "gpt-4o-mini",
+    },
+  });
 }
 
-async function callOpenAI(messages: ChatMessage[], env: Env): Promise<string> {
-  const baseUrl = env.OPENAI_BASE_URL || "https://api.openai.com/v1";
-  const model = env.OPENAI_MODEL || "gpt-5-mini";
+async function createRuntime(env: Env): Promise<IAgentRuntime> {
+  const character = getCharacter(env);
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.7,
-      max_tokens: 1024,
-    }),
+  // Create runtime with OpenAI plugin
+  // Note: In Cloudflare Workers, we can't use persistent storage like PGLite
+  // The runtime is stateless per-request
+  const runtime = new AgentRuntime({
+    character,
+    plugins: [openaiPlugin as Plugin],
   });
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenAI API error: ${response.status} - ${error}`);
-  }
-
-  const data = (await response.json()) as {
-    choices: Array<{ message: { content: string } }>;
-  };
-  return data.choices[0]?.message?.content || "";
-}
-
-function getOrCreateConversation(conversationId: string | undefined): {
-  id: string;
-  state: ConversationState;
-} {
-  const id = conversationId || generateUUID();
-  let state = conversations.get(id);
-
-  if (!state) {
-    state = {
-      messages: [],
-      createdAt: Date.now(),
-    };
-    conversations.set(id, state);
-  }
-
-  return { id, state };
+  await runtime.initialize();
+  return runtime;
 }
 
 async function handleChat(request: Request, env: Env): Promise<Response> {
   const body = (await request.json()) as ChatRequest;
-  const { message, conversationId } = body;
+  const { message, userId: clientUserId } = body;
 
   if (!message || typeof message !== "string") {
     return Response.json(
@@ -111,54 +90,66 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     );
   }
 
-  const character = getCharacter(env);
-  const { id, state } = getOrCreateConversation(conversationId);
+  try {
+    const runtime = await createRuntime(env);
+    const userId = (clientUserId || uuidv4()) as UUID;
+    const character = getCharacter(env);
 
-  // Add system message if this is a new conversation
-  if (state.messages.length === 0) {
-    state.messages.push({
-      role: "system",
-      content: character.system,
+    // Ensure connection for this user
+    await runtime.ensureConnection({
+      entityId: userId,
+      roomId,
+      worldId,
+      userName: "User",
+      source: "cloudflare",
+      channelId: "worker-chat",
+      serverId: "cloudflare-worker",
+      type: ChannelType.API,
+    } as Parameters<typeof runtime.ensureConnection>[0]);
+
+    // Create message memory
+    const messageMemory = createMessageMemory({
+      id: uuidv4() as UUID,
+      entityId: userId,
+      roomId,
+      content: {
+        text: message,
+        source: "cloudflare_worker",
+        channelType: ChannelType.API,
+      },
     });
-  }
 
-  // Add user message
-  state.messages.push({
-    role: "user",
-    content: message,
-  });
-
-  // Get AI response
-  const responseText = await callOpenAI(state.messages, env);
-
-  // Add assistant response to conversation
-  state.messages.push({
-    role: "assistant",
-    content: responseText,
-  });
-
-  // Prune old conversations (keep last 100)
-  if (conversations.size > 100) {
-    const sortedConvos = [...conversations.entries()].sort(
-      (a, b) => a[1].createdAt - b[1].createdAt,
+    // Process message through the runtime's message service
+    let responseText = "";
+    await runtime.messageService?.handleMessage(
+      runtime,
+      messageMemory,
+      async (content) => {
+        if (content?.text) {
+          responseText += content.text;
+        }
+        return [];
+      },
     );
-    for (let i = 0; i < sortedConvos.length - 100; i++) {
-      conversations.delete(sortedConvos[i][0]);
-    }
+
+    const response: ChatResponse = {
+      response: responseText,
+      character: character.name,
+      userId,
+    };
+
+    return Response.json(response);
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error("Chat error:", errorMessage);
+    return Response.json({ error: errorMessage }, { status: 500 });
   }
-
-  const response: ChatResponse = {
-    response: responseText,
-    conversationId: id,
-    character: character.name,
-  };
-
-  return Response.json(response);
 }
 
 async function handleStreamChat(request: Request, env: Env): Promise<Response> {
   const body = (await request.json()) as ChatRequest;
-  const { message, conversationId } = body;
+  const { message, userId: clientUserId } = body;
 
   if (!message || typeof message !== "string") {
     return Response.json(
@@ -168,101 +159,72 @@ async function handleStreamChat(request: Request, env: Env): Promise<Response> {
   }
 
   const character = getCharacter(env);
-  const { id, state } = getOrCreateConversation(conversationId);
-
-  if (state.messages.length === 0) {
-    state.messages.push({
-      role: "system",
-      content: character.system,
-    });
-  }
-
-  state.messages.push({
-    role: "user",
-    content: message,
-  });
-
-  const baseUrl = env.OPENAI_BASE_URL || "https://api.openai.com/v1";
-  const model = env.OPENAI_MODEL || "gpt-5-mini";
-
-  const openaiResponse = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages: state.messages,
-      temperature: 0.7,
-      max_tokens: 1024,
-      stream: true,
-    }),
-  });
-
-  if (!openaiResponse.ok) {
-    const error = await openaiResponse.text();
-    throw new Error(`OpenAI API error: ${openaiResponse.status} - ${error}`);
-  }
+  const userId = (clientUserId || uuidv4()) as UUID;
 
   const encoder = new TextEncoder();
-  let fullResponse = "";
-
   const stream = new ReadableStream({
     async start(controller) {
-      const reader = openaiResponse.body?.getReader();
-      if (!reader) {
-        controller.close();
-        return;
-      }
+      try {
+        const runtime = await createRuntime(env);
 
-      const decoder = new TextDecoder();
+        await runtime.ensureConnection({
+          entityId: userId,
+          roomId,
+          worldId,
+          userName: "User",
+          source: "cloudflare",
+          channelId: "worker-chat",
+          serverId: "cloudflare-worker",
+          type: ChannelType.API,
+        } as Parameters<typeof runtime.ensureConnection>[0]);
 
-      // Send initial metadata
-      controller.enqueue(
-        encoder.encode(
-          `data: ${JSON.stringify({ conversationId: id, character: character.name })}\n\n`,
-        ),
-      );
+        const messageMemory = createMessageMemory({
+          id: uuidv4() as UUID,
+          entityId: userId,
+          roomId,
+          content: {
+            text: message,
+            source: "cloudflare_worker",
+            channelType: ChannelType.API,
+          },
+        });
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        // Send initial metadata
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ character: character.name, userId })}\n\n`,
+          ),
+        );
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") {
-              continue;
-            }
-
-            const parsed = JSON.parse(data) as {
-              choices: Array<{ delta: { content?: string } }>;
-            };
-            const content = parsed.choices[0]?.delta?.content;
-            if (content) {
-              fullResponse += content;
+        await runtime.messageService?.handleMessage(
+          runtime,
+          messageMemory,
+          async (content) => {
+            if (content?.text) {
               controller.enqueue(
                 encoder.encode(
-                  `data: ${JSON.stringify({ text: content })}\n\n`,
+                  `data: ${JSON.stringify({ text: content.text })}\n\n`,
                 ),
               );
             }
-          }
-        }
+            return [];
+          },
+        );
+
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`),
+        );
+        controller.close();
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ error: errorMessage })}\n\n`,
+          ),
+        );
+        controller.close();
       }
-
-      // Store the complete response
-      state.messages.push({
-        role: "assistant",
-        content: fullResponse,
-      });
-
-      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-      controller.close();
     },
   });
 
@@ -281,7 +243,7 @@ function handleHealth(env: Env): Response {
   return Response.json({
     status: "healthy",
     character: character.name,
-    activeConversations: conversations.size,
+    mode: "elizaos",
     timestamp: new Date().toISOString(),
   });
 }
@@ -291,8 +253,9 @@ function handleInfo(env: Env): Response {
   return Response.json({
     name: character.name,
     bio: character.bio,
-    version: "1.0.0",
+    version: "2.0.0",
     powered_by: "elizaOS",
+    runtime: "Cloudflare Workers",
     endpoints: {
       "POST /chat": "Send a message and receive a response",
       "POST /chat/stream": "Send a message and receive a streaming response",

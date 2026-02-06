@@ -7,6 +7,7 @@
 import type {
   Action,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -15,12 +16,7 @@ import type { AutoTradingManager } from "../services/AutoTradingManager.ts";
 
 export const analyzePerformanceAction: Action = {
   name: "ANALYZE_PERFORMANCE",
-  similes: [
-    "PERFORMANCE_ANALYSIS",
-    "CHECK_PERFORMANCE",
-    "TRADING_RESULTS",
-    "SHOW_PERFORMANCE",
-  ],
+  similes: ["PERFORMANCE_ANALYSIS", "CHECK_PERFORMANCE", "TRADING_RESULTS", "SHOW_PERFORMANCE"],
   description: "Analyze trading performance and show metrics",
 
   validate: async (_runtime: IAgentRuntime, message: Memory) => {
@@ -43,7 +39,7 @@ export const analyzePerformanceAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
   ) => {
     const tradingManager = runtime.getService("AutoTradingManager") as
@@ -83,10 +79,7 @@ export const analyzePerformanceAction: Action = {
       response += "\n**Current Positions:**\n";
       status.positions.forEach((pos) => {
         const pnl = pos.currentPrice
-          ? (
-              ((pos.currentPrice - pos.entryPrice) / pos.entryPrice) *
-              100
-            ).toFixed(2)
+          ? (((pos.currentPrice - pos.entryPrice) / pos.entryPrice) * 100).toFixed(2)
           : "0.00";
         const emoji = parseFloat(pnl) >= 0 ? "🟢" : "🔴";
         response += `${emoji} ${pos.tokenAddress.slice(0, 8)}... | Entry: $${pos.entryPrice.toFixed(4)} | P&L: ${pnl}%\n`;
@@ -122,6 +115,7 @@ ${
 Use "Check portfolio" for more details or "Stop trading" to pause.`;
 
     callback?.({ text: response });
+    return undefined;
   },
 
   examples: [
