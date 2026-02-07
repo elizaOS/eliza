@@ -1,0 +1,67 @@
+// messaging.proto - Messaging types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "eliza/v1/memory.proto";
+import "eliza/v1/primitives.proto";
+
+// Socket message type enumeration
+enum SocketMessageType {
+  SOCKET_MESSAGE_TYPE_UNSPECIFIED = 0;
+  SOCKET_MESSAGE_TYPE_ROOM_JOINING = 1;
+  SOCKET_MESSAGE_TYPE_SEND_MESSAGE = 2;
+  SOCKET_MESSAGE_TYPE_MESSAGE = 3;
+  SOCKET_MESSAGE_TYPE_ACK = 4;
+  SOCKET_MESSAGE_TYPE_THINKING = 5;
+  SOCKET_MESSAGE_TYPE_CONTROL = 6;
+}
+
+// Target information for message routing
+message TargetInfo {
+  string source = 1;
+  optional string room_id = 2;
+  optional string channel_id = 3;
+  optional string server_id = 4;
+  optional string entity_id = 5;
+  optional string thread_id = 6;
+}
+
+// Message stream chunk payload
+message MessageStreamChunkPayload {
+  string message_id = 1;
+  string chunk = 2;
+  int32 index = 3;
+  string channel_id = 4;
+  string agent_id = 5;
+}
+
+// Message stream error payload
+message MessageStreamErrorPayload {
+  string message_id = 1;
+  string channel_id = 2;
+  string agent_id = 3;
+  string error = 4;
+  optional string partial_text = 5;
+}
+
+// Handler options for async message processing
+message MessageHandlerOptions {
+  // Note: Callbacks cannot be represented in proto
+  // These should be handled at the application layer
+}
+
+// Result of sending a message to an agent
+message MessageResult {
+  string message_id = 1;
+  optional Memory user_message = 2;
+  repeated Content agent_responses = 3;
+  optional MessageUsage usage = 4;
+}
+
+// Usage information for billing
+message MessageUsage {
+  int32 input_tokens = 1;
+  int32 output_tokens = 2;
+  string model = 3;
+}

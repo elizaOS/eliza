@@ -1,0 +1,357 @@
+---
+title: "Architecture"
+description: "How plugins extend agents - the mental model"
+---
+
+## How Plugins Work
+
+A plugin is a bundle of capabilities you drop into an agent. No inheritance, no complex wiring - just a manifest that says "here are my actions, providers, and services."
+
+```typescript
+// That's the entire contract
+const myPlugin: Plugin = {
+  name: 'my-plugin',
+  actions: [...],     // What the agent can DO
+  providers: [...],   // What the agent can SEE
+  services: [...],    // What the agent can CONNECT to
+};
+```
+
+<Tip>
+  **One plugin, one concern.** X integration? Plugin. Blockchain actions?
+  Plugin. Custom memory? Plugin. Keep them focused and composable.
+</Tip>
+
+## Overview
+
+The elizaOS plugin system is a modular extension mechanism that allows developers to add functionality to agents through a well-defined interface. Plugins enhance AI agents with new capabilities, integrations, and behaviors.
+
+### What Can Plugins Do?
+
+- **Platform Integrations**: Connect to Discord, Telegram, Slack, X, etc.
+- **LLM Providers**: Integrate different AI models (OpenAI, Anthropic, Google, etc.)
+- **Blockchain/DeFi**: Execute transactions, manage wallets, interact with smart contracts
+- **Data Sources**: Connect to databases, APIs, or external services
+- **Custom Actions**: Define new agent behaviors and capabilities
+
+<Tip>**Guide**: [Create a Plugin](/guides/create-a-plugin)</Tip>
+
+## Plugin Interface
+
+Every plugin must implement the core `Plugin` interface, which defines the structure and capabilities of a plugin. The interface includes:
+
+- **Identity**: `name` and `description` to identify the plugin
+- **Initialization**: Optional `init` function for setup logic
+- **Components**: Arrays of `actions`, `providers`, `evaluators`, and `services`
+- **Configuration**: Settings and environment variables via `config`
+- **Extensions**: Optional database adapters, model handlers, routes, and event handlers
+- **Dependencies**: Other plugins this plugin requires
+- **Priority**: Loading order when multiple plugins are present
+
+For the complete TypeScript interface definition, see [Plugin Reference](/plugins/reference#plugin-interface).
+
+## Plugin Initialization Lifecycle
+
+Based on the runtime implementation, the initialization process follows a specific order:
+
+### 1. Plugin Registration (`registerPlugin` method)
+
+When a plugin is registered with the runtime:
+
+1. Validates plugin has a name
+2. Checks for duplicate plugins
+3. Adds to active plugins list
+4. Calls plugin's `init()` method if present
+5. Handles configuration errors gracefully
+
+### 2. Component Registration Order
+
+Components are registered in this specific sequence. For component details, see [Plugin Components](/plugins/components).
+
+```typescript
+// 1. Database adapter (if provided)
+if (plugin.adapter) {
+  this.registerDatabaseAdapter(plugin.adapter);
+}
+
+// 2. Actions
+if (plugin.actions) {
+  for (const action of plugin.actions) {
+    this.registerAction(action);
+  }
+}
+
+// 3. Evaluators
+if (plugin.evaluators) {
+  for (const evaluator of plugin.evaluators) {
+    this.registerEvaluator(evaluator);
+  }
+}
+
+// 4. Providers
+if (plugin.providers) {
+  for (const provider of plugin.providers) {
+    this.registerProvider(provider);
+  }
+}
+
+// 5. Models
+if (plugin.models) {
+  for (const [modelType, handler] of Object.entries(plugin.models)) {
+    this.registerModel(modelType, handler, plugin.name, plugin.priority);
+  }
+}
+
+// 6. Routes
+if (plugin.routes) {
+  for (const route of plugin.routes) {
+    this.routes.push(route);
+  }
+}
+
+// 7. Events
+if (plugin.events) {
+  for (const [eventName, eventHandlers] of Object.entries(plugin.events)) {
+    for (const eventHandler of eventHandlers) {
+      this.registerEvent(eventName, eventHandler);
+    }
+  }
+}
+
+// 8. Services (delayed if runtime not initialized)
+if (plugin.services) {
+  for (const service of plugin.services) {
+    if (this.isInitialized) {
+      await this.registerService(service);
+    } else {
+      this.servicesInitQueue.add(service);
+    }
+  }
+}
+```
+
+## Route Definitions for HTTP Endpoints
+
+Plugins can expose HTTP endpoints through the route system:
+
+```typescript
+export type Route = {
+  type: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "STATIC";
+  path: string;
+  filePath?: string; // For static files
+  public?: boolean; // Public access
+  name?: string; // Route name
+  handler?: (
+    req: RouteRequest,
+    res: RouteResponse,
+    runtime: IAgentRuntime,
+  ) => Promise<void>;
+  isMultipart?: boolean; // File uploads
+};
+```
+
+Example route implementation:
+
+```typescript
+routes: [
+  {
+    name: "hello-world-route",
+    path: "/helloworld",
+    type: "GET",
+    handler: async (_req: RouteRequest, res: RouteResponse) => {
+      res.json({ message: "Hello World!" });
+    },
+  },
+];
+```
+
+## Event System Integration
+
+Plugins can handle system events through the event system:
+
+### Event Types
+
+Standard events include:
+
+- World events: WORLD_JOINED, WORLD_CONNECTED, WORLD_LEFT
+- Entity events: ENTITY_JOINED, ENTITY_LEFT, ENTITY_UPDATED
+- Room events: ROOM_JOINED, ROOM_LEFT
+- Message events: MESSAGE_RECEIVED, MESSAGE_SENT, MESSAGE_DELETED
+- Voice events: VOICE_MESSAGE_RECEIVED, VOICE_MESSAGE_SENT
+- Run events: RUN_STARTED, RUN_ENDED, RUN_TIMEOUT
+- Action/Evaluator events: ACTION_STARTED/COMPLETED, EVALUATOR_STARTED/COMPLETED
+- Model events: MODEL_USED
+
+### Plugin Event Handlers
+
+```typescript
+export type PluginEvents = {
+  [K in keyof EventPayloadMap]?: EventHandler<K>[];
+} & {
+  [key: string]: ((params: EventPayloadMap[keyof EventPayloadMap]) => Promise<void>)[];
+};
+```
+
+## Database Adapter Plugins
+
+Plugins can provide database adapters for custom storage backends:
+
+The IDatabaseAdapter interface is extensive, including methods for:
+
+- Agents, Entities, Components
+- Memories (with embeddings)
+- Rooms, Participants
+- Relationships
+- Tasks
+- Caching
+- Logs
+
+Example database adapter plugin:
+
+```typescript
+export const plugin: Plugin = {
+  name: "@elizaos/plugin-sql",
+  description:
+    "A plugin for SQL database access with dynamic schema migrations",
+  priority: 0,
+  schema,
+  init: async (_, runtime: IAgentRuntime) => {
+    const dbAdapter = createDatabaseAdapter(config, runtime.agentId);
+    runtime.registerDatabaseAdapter(dbAdapter);
+  },
+};
+```
+
+## Plugin Priority System
+
+Plugins can specify a priority to control loading order:
+
+- Higher priority plugins are loaded first
+- Useful for plugins that provide fundamental services
+- Model handlers use priority to determine which provider handles a model type
+
+```typescript
+export const myPlugin: Plugin = {
+  name: "high-priority-plugin",
+  priority: 100, // Loads before lower priority plugins
+  // ...
+};
+```
+
+## Plugin Dependencies
+
+Plugins can declare dependencies on other plugins:
+
+```typescript
+export const myPlugin: Plugin = {
+  name: "my-plugin",
+  dependencies: ["@elizaos/plugin-sql"],
+  testDependencies: ["@elizaos/plugin-test-utils"],
+  // ...
+};
+```
+
+The runtime ensures dependencies are loaded before dependent plugins.
+
+## Plugin Configuration
+
+Plugins can accept configuration through multiple mechanisms:
+
+### 1. Environment Variables
+
+```typescript
+init: async (config, runtime) => {
+  const apiKey = runtime.getSetting("MY_API_KEY");
+  if (!apiKey) {
+    throw new Error("MY_API_KEY not configured");
+  }
+};
+```
+
+### 2. Config Object
+
+```typescript
+export const myPlugin: Plugin = {
+  name: "my-plugin",
+  config: {
+    defaultTimeout: 5000,
+    retryAttempts: 3,
+  },
+  // ...
+};
+```
+
+### 3. Runtime Settings
+
+Settings can be accessed through `runtime.getSetting()` which provides a consistent interface to environment variables and character settings.
+
+## Conditional Plugin Loading
+
+Plugins are often conditionally loaded based on environment variables:
+
+```typescript
+const plugins = [
+  // Bootstrap is automatically included - no need to add it!
+
+  // Conditionally loaded based on API keys
+  ...(process.env.ANTHROPIC_API_KEY ? ["@elizaos/plugin-anthropic"] : []),
+  ...(process.env.OPENAI_API_KEY ? ["@elizaos/plugin-openai"] : []),
+
+  // Platform plugins
+  ...(process.env.DISCORD_API_TOKEN ? ["@elizaos/plugin-discord"] : []),
+  ...(process.env.TELEGRAM_BOT_TOKEN ? ["@elizaos/plugin-telegram"] : []),
+];
+```
+
+## Core Plugins
+
+elizaOS includes essential plugins that provide foundational functionality:
+
+### Bootstrap (Built into @elizaos/core)
+
+The bootstrap plugin is built into `@elizaos/core` and automatically registered during runtime initialization. You don't need to import or configure it - it's included automatically when you create an AgentRuntime. It provides essential functionality for message processing, knowledge management, and basic agent operations:
+
+- 13 essential actions (REPLY, SEND_MESSAGE, etc.)
+- Core providers (time, character, recent messages)
+- Task service and Embedding service
+- Event handlers
+- Available in TypeScript, Python, and Rust
+
+### SQL Plugin
+
+Database integration and management for elizaOS. Features:
+
+- Automatic schema migrations
+- Multi-database support (PostgreSQL, PGLite)
+- Sophisticated plugin architecture
+
+## Best Practices
+
+1. **Plugin Dependencies**: Use the `dependencies` array to specify required plugins
+2. **Conditional Loading**: Check environment variables before loading platform-specific plugins
+3. **Service Initialization**: Handle missing API tokens gracefully in service constructors
+4. **Event Handlers**: Keep event handlers focused and delegate to specialized functions
+5. **Error Handling**: Use try-catch blocks and log errors appropriately
+6. **Type Safety**: Use TypeScript types from `@elizaos/core` for all plugin components
+7. **Priority Management**: Set appropriate priorities for plugins that need to load early
+8. **Configuration**: Use `runtime.getSetting()` for consistent configuration access
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Plugin Components" icon="cube" href="/plugins/components">
+    Learn about Actions, Providers, Evaluators, and Services
+  </Card>
+
+<Card title="Development Guide" icon="code" href="/plugins/development">
+  Build your first plugin step by step
+</Card>
+
+<Card title="Common Patterns" icon="lightbulb" href="/plugins/patterns">
+  Learn proven plugin development patterns
+</Card>
+
+  <Card title="Plugin Reference" icon="book" href="/plugins/reference">
+    Complete API reference for all interfaces
+  </Card>
+</CardGroup>

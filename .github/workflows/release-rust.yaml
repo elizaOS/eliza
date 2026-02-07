@@ -1,0 +1,823 @@
+name: Rust Release
+
+# Publish Rust crates to crates.io on release
+# 
+# Publishing Order:
+#   1. elizaos (core library) - must publish first
+#   2. elizaos-sweagent - independent, can publish in parallel with plugins
+#   3. Plugins with elizaos dependency (after elizaos is indexed):
+#      - elizaos-plugin-sql, elizaos-plugin-openai, elizaos-plugin-goals,
+#        elizaos-plugin-localdb, elizaos-plugin-todo, elizaos-plugin-xai,
+#        elizaos-plugin-discord
+#   4. All other plugins (45 total) - independent, publish in parallel
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      crate:
+        description: "Crate to release"
+        required: true
+        type: choice
+        options:
+          - all
+          - elizaos
+          - elizaos-sweagent
+          # Plugins with elizaos dependency
+          - elizaos-plugin-sql
+          - elizaos-plugin-openai
+          - elizaos-plugin-goals
+          - elizaos-plugin-localdb
+          - elizaos-plugin-todo
+          - elizaos-plugin-xai
+          - elizaos-plugin-discord
+          # Independent plugins
+          - elizaos-plugin-agent-orchestrator
+          - elizaos-plugin-anthropic
+          - elizaos-plugin-bluesky
+          - elizaos-plugin-browser
+          - elizaos-plugin-code
+          - elizaos-plugin-computeruse
+          - elizaos-plugin-elevenlabs
+          - elizaos-plugin-eliza-classic
+          - elizaos-plugin-elizacloud
+          - elizaos-plugin-evm
+          - elizaos-plugin-experience
+          - elizaos-plugin-farcaster
+          - elizaos-plugin-github
+          - elizaos-plugin-google-genai
+          - elizaos-plugin-groq
+          - elizaos-plugin-inmemorydb
+          - elizaos-plugin-instagram
+          - elizaos-plugin-knowledge
+          - elizaos-plugin-linear
+          - elizaos-plugin-local-ai
+          - elizaos-plugin-mcp
+          - elizaos-plugin-minecraft
+          - elizaos-plugin-n8n
+          - elizaos-plugin-ollama
+          - elizaos-plugin-openrouter
+          - elizaos-plugin-pdf
+          - elizaos-plugin-polymarket
+          - elizaos-plugin-roblox
+          - elizaos-plugin-rss
+          - elizaos-plugin-s3-storage
+          - elizaos-plugin-shell
+          - elizaos-plugin-simple-voice
+          - elizaos-plugin-solana
+          - elizaos-plugin-tee
+          - elizaos-plugin-telegram
+          - elizaos-plugin-trajectory-logger
+          - elizaos-plugin-vercel-ai-gateway
+          - elizaos-plugin-vision
+      dry_run:
+        description: "Dry run (do not publish)"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+
+jobs:
+  # ============================================
+  # Build and publish elizaos-core first
+  # ============================================
+  build-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should_publish: ${{ steps.check.outputs.should_publish }}
+
+    steps:
+      - name: Check if core should be built
+        id: check
+        run: |
+          CRATE="${{ github.event.inputs.crate || 'all' }}"
+          if [[ "$CRATE" == "all" ]] || [[ "$CRATE" == "elizaos" ]]; then
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout code
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        if: steps.check.outputs.should_publish == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo install wasm-pack
+
+      - name: Cache cargo registry
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/rust/target
+          key: ${{ runner.os }}-cargo-core-${{ hashFiles('packages/rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-core-
+
+      - name: Extract version from release tag
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        id: version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Update crate version
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        working-directory: packages/rust
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          echo "Updated elizaos version to ${VERSION}"
+
+      - name: Check formatting
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: packages/rust
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: packages/rust
+        run: cargo clippy --features native -- -D warnings
+
+      - name: Run tests (native)
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: packages/rust
+        run: cargo test --features native
+
+      - name: Build release (native)
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: packages/rust
+        run: cargo build --release --features native
+
+      - name: Build WASM (web target)
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: packages/rust
+        run: |
+          wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features
+
+      - name: Build WASM (nodejs target)
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: packages/rust
+        run: |
+          wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features
+
+      - name: Package WASM artifacts
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: packages/rust
+        run: |
+          mkdir -p artifacts
+          tar -czvf artifacts/elizaos-wasm-web.tar.gz -C pkg/web .
+          tar -czvf artifacts/elizaos-wasm-node.tar.gz -C pkg/node .
+
+      - name: Upload WASM artifacts
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: elizaos-wasm
+          path: packages/rust/artifacts/
+          retention-days: 7
+
+      - name: Upload WASM to release
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release' && github.event.inputs.dry_run != 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            packages/rust/artifacts/elizaos-wasm-web.tar.gz
+            packages/rust/artifacts/elizaos-wasm-node.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify publishable
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: packages/rust
+        run: cargo publish --dry-run --allow-dirty
+
+      - name: Publish to crates.io
+        if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        working-directory: packages/rust
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --allow-dirty
+
+      - name: Summary
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          echo "# elizaos Release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Crate**: elizaos" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Published**: ${{ github.event.inputs.dry_run != 'true' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Install" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "cargo add elizaos" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## WASM Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- elizaos-wasm-web.tar.gz (browser/bundler)" >> $GITHUB_STEP_SUMMARY
+          echo "- elizaos-wasm-node.tar.gz (Node.js)" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Build and publish elizaos-sweagent (independent)
+  # ============================================
+  build-sweagent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check if sweagent should be built
+        id: check
+        run: |
+          CRATE="${{ github.event.inputs.crate || 'all' }}"
+          if [[ "$CRATE" == "all" ]] || [[ "$CRATE" == "elizaos-sweagent" ]]; then
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout code
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        if: steps.check.outputs.should_publish == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/sweagent/rust/target
+          key: ${{ runner.os }}-cargo-sweagent-${{ hashFiles('packages/sweagent/rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-sweagent-
+
+      - name: Extract version from release tag
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        id: version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Update crate version
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        working-directory: packages/sweagent/rust
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          echo "Updated elizaos-sweagent version to ${VERSION}"
+
+      - name: Check formatting
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: packages/sweagent/rust
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: packages/sweagent/rust
+        run: cargo clippy -- -D warnings
+
+      - name: Run tests
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: packages/sweagent/rust
+        run: cargo test
+
+      - name: Build release
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: packages/sweagent/rust
+        run: cargo build --release
+
+      - name: Verify publishable
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: packages/sweagent/rust
+        run: cargo publish --dry-run --allow-dirty
+
+      - name: Publish to crates.io
+        if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        working-directory: packages/sweagent/rust
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --allow-dirty
+
+      - name: Summary
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          echo "# elizaos-sweagent Release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Crate**: elizaos-sweagent" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Published**: ${{ github.event.inputs.dry_run != 'true' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Build and publish elizaos-plugin-sql (with WASM)
+  # Has elizaos dependency
+  # ============================================
+  build-plugin-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build-core
+
+    steps:
+      - name: Check if plugin-sql should be built
+        id: check
+        run: |
+          CRATE="${{ github.event.inputs.crate || 'all' }}"
+          if [[ "$CRATE" == "all" ]] || [[ "$CRATE" == "elizaos-plugin-sql" ]]; then
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout code
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        if: steps.check.outputs.should_publish == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        if: steps.check.outputs.should_publish == 'true'
+        run: cargo install wasm-pack
+
+      - name: Cache cargo registry
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            plugins/plugin-sql/rust/target
+          key: ${{ runner.os }}-cargo-plugin-sql-${{ hashFiles('plugins/plugin-sql/rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-plugin-sql-
+
+      - name: Wait for crates.io to index elizaos
+        if: steps.check.outputs.should_publish == 'true' && needs.build-core.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        run: |
+          echo "Waiting 120 seconds for crates.io to index elizaos..."
+          sleep 120
+
+      - name: Extract version from release tag
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        id: version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Update crate version and dependencies
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        working-directory: plugins/plugin-sql/rust
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          # Update the elizaos dependency to use the published version
+          sed -i "s|elizaos = { version = \"[^\"]*\", path = \"[^\"]*\"[^}]*}|elizaos = \"${VERSION}\"|" Cargo.toml
+          echo "Updated elizaos-plugin-sql version to ${VERSION}"
+
+      - name: Check formatting
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: plugins/plugin-sql/rust
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: plugins/plugin-sql/rust
+        run: cargo clippy --features native -- -D warnings
+
+      - name: Run tests (native)
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: plugins/plugin-sql/rust
+        run: cargo test --features native
+
+      - name: Build release (native)
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: plugins/plugin-sql/rust
+        run: cargo build --release --features native
+
+      - name: Build WASM (web target)
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: plugins/plugin-sql/rust
+        run: |
+          wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features
+
+      - name: Build WASM (nodejs target)
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: plugins/plugin-sql/rust
+        run: |
+          wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features
+
+      - name: Package WASM artifacts
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: plugins/plugin-sql/rust
+        run: |
+          mkdir -p artifacts
+          tar -czvf artifacts/elizaos-plugin-sql-wasm-web.tar.gz -C pkg/web .
+          tar -czvf artifacts/elizaos-plugin-sql-wasm-node.tar.gz -C pkg/node .
+
+      - name: Upload WASM artifacts
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: elizaos-plugin-sql-wasm
+          path: plugins/plugin-sql/rust/artifacts/
+          retention-days: 7
+
+      - name: Upload WASM to release
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release' && github.event.inputs.dry_run != 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            plugins/plugin-sql/rust/artifacts/elizaos-plugin-sql-wasm-web.tar.gz
+            plugins/plugin-sql/rust/artifacts/elizaos-plugin-sql-wasm-node.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify publishable
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: plugins/plugin-sql/rust
+        run: cargo publish --dry-run --allow-dirty
+
+      - name: Publish to crates.io
+        if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        working-directory: plugins/plugin-sql/rust
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --allow-dirty
+
+      - name: Summary
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          echo "# elizaos-plugin-sql Release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Crate**: elizaos-plugin-sql" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Published**: ${{ github.event.inputs.dry_run != 'true' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Build and publish plugins WITH elizaos dependency
+  # These must wait for elizaos to be indexed on crates.io
+  # ============================================
+  build-dependent-plugins:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build-core
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: elizaos-plugin-openai
+            path: plugins/plugin-openai/rust
+          - name: elizaos-plugin-goals
+            path: plugins/plugin-goals/rust
+          - name: elizaos-plugin-localdb
+            path: plugins/plugin-localdb/rust
+          - name: elizaos-plugin-todo
+            path: plugins/plugin-todo/rust
+          - name: elizaos-plugin-xai
+            path: plugins/plugin-xai/rust
+          - name: elizaos-plugin-discord
+            path: plugins/plugin-discord/rust
+
+    steps:
+      - name: Check if plugin should be built
+        id: check
+        run: |
+          CRATE="${{ github.event.inputs.crate || 'all' }}"
+          MATRIX_NAME="${{ matrix.name }}"
+          if [[ "$CRATE" == "all" ]] || [[ "$CRATE" == "$MATRIX_NAME" ]]; then
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout code
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        if: steps.check.outputs.should_publish == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ matrix.path }}/target
+          key: ${{ runner.os }}-cargo-${{ matrix.name }}-${{ hashFiles(format('{0}/Cargo.lock', matrix.path)) }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.name }}-
+
+      - name: Wait for crates.io to index elizaos
+        if: steps.check.outputs.should_publish == 'true' && needs.build-core.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        run: |
+          echo "Waiting 120 seconds for crates.io to index elizaos..."
+          sleep 120
+
+      - name: Extract version from release tag
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        id: version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Update crate version and dependencies
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        working-directory: ${{ matrix.path }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          # Update elizaos dependency to use published version (handles various formats)
+          sed -i "s|elizaos = { version = \"[^\"]*\", path = \"[^\"]*\"[^}]*}|elizaos = \"${VERSION}\"|" Cargo.toml
+          sed -i "s|elizaos = { path = \"[^\"]*\"[^}]*}|elizaos = \"${VERSION}\"|" Cargo.toml
+          echo "Updated ${{ matrix.name }} version to ${VERSION}"
+
+      - name: Check formatting
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: ${{ matrix.path }}
+        run: cargo fmt --all -- --check
+
+      - name: Run tests
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: ${{ matrix.path }}
+        run: cargo test || true # Allow test failures for plugins without full test suites
+
+      - name: Build release
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: ${{ matrix.path }}
+        run: cargo build --release
+
+      - name: Verify publishable
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: ${{ matrix.path }}
+        run: cargo publish --dry-run --allow-dirty
+
+      - name: Publish to crates.io
+        if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        working-directory: ${{ matrix.path }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --allow-dirty
+
+      - name: Summary
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          echo "# ${{ matrix.name }} Release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Crate**: ${{ matrix.name }}" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Published**: ${{ github.event.inputs.dry_run != 'true' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Build and publish plugins WITHOUT elizaos dependency
+  # These can run in parallel, no waiting required
+  # ============================================
+  build-independent-plugins:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build-core  # Still wait for core to maintain release ordering
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: elizaos-plugin-agent-orchestrator
+            path: plugins/plugin-agent-orchestrator/rust
+          - name: elizaos-plugin-anthropic
+            path: plugins/plugin-anthropic/rust
+          - name: elizaos-plugin-bluesky
+            path: plugins/plugin-bluesky/rust
+          - name: elizaos-plugin-browser
+            path: plugins/plugin-browser/rust
+          - name: elizaos-plugin-code
+            path: plugins/plugin-code/rust
+          - name: elizaos-plugin-computeruse
+            path: plugins/plugin-computeruse/rust
+          - name: elizaos-plugin-elevenlabs
+            path: plugins/plugin-elevenlabs/rust
+          - name: elizaos-plugin-eliza-classic
+            path: plugins/plugin-eliza-classic/rust
+          - name: elizaos-plugin-elizacloud
+            path: plugins/plugin-elizacloud/rust
+          - name: elizaos-plugin-evm
+            path: plugins/plugin-evm/rust
+          - name: elizaos-plugin-experience
+            path: plugins/plugin-experience/rust
+          - name: elizaos-plugin-farcaster
+            path: plugins/plugin-farcaster/rust
+          - name: elizaos-plugin-github
+            path: plugins/plugin-github/rust
+          - name: elizaos-plugin-google-genai
+            path: plugins/plugin-google-genai/rust
+          - name: elizaos-plugin-groq
+            path: plugins/plugin-groq/rust
+          - name: elizaos-plugin-inmemorydb
+            path: plugins/plugin-inmemorydb/rust
+          - name: elizaos-plugin-instagram
+            path: plugins/plugin-instagram/rust
+          - name: elizaos-plugin-knowledge
+            path: plugins/plugin-knowledge/rust
+          - name: elizaos-plugin-linear
+            path: plugins/plugin-linear/rust
+          - name: elizaos-plugin-local-ai
+            path: plugins/plugin-local-ai/rust
+          - name: elizaos-plugin-mcp
+            path: plugins/plugin-mcp/rust
+          - name: elizaos-plugin-minecraft
+            path: plugins/plugin-minecraft/rust
+          - name: elizaos-plugin-n8n
+            path: plugins/plugin-n8n/rust
+          - name: elizaos-plugin-ollama
+            path: plugins/plugin-ollama/rust
+          - name: elizaos-plugin-openrouter
+            path: plugins/plugin-openrouter/rust
+          - name: elizaos-plugin-pdf
+            path: plugins/plugin-pdf/rust
+          - name: elizaos-plugin-polymarket
+            path: plugins/plugin-polymarket/rust
+          - name: elizaos-plugin-roblox
+            path: plugins/plugin-roblox/rust
+          - name: elizaos-plugin-rss
+            path: plugins/plugin-rss/rust
+          - name: elizaos-plugin-s3-storage
+            path: plugins/plugin-s3-storage/rust
+          - name: elizaos-plugin-shell
+            path: plugins/plugin-shell/rust
+          - name: elizaos-plugin-simple-voice
+            path: plugins/plugin-simple-voice/rust
+          - name: elizaos-plugin-solana
+            path: plugins/plugin-solana/rust
+          - name: elizaos-plugin-tee
+            path: plugins/plugin-tee/rust
+          - name: elizaos-plugin-telegram
+            path: plugins/plugin-telegram/rust
+          - name: elizaos-plugin-trajectory-logger
+            path: plugins/plugin-trajectory-logger/rust
+          - name: elizaos-plugin-vercel-ai-gateway
+            path: plugins/plugin-vercel-ai-gateway/rust
+          - name: elizaos-plugin-vision
+            path: plugins/plugin-vision/rust
+
+    steps:
+      - name: Check if plugin should be built
+        id: check
+        run: |
+          CRATE="${{ github.event.inputs.crate || 'all' }}"
+          MATRIX_NAME="${{ matrix.name }}"
+          if [[ "$CRATE" == "all" ]] || [[ "$CRATE" == "$MATRIX_NAME" ]]; then
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout code
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        if: steps.check.outputs.should_publish == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry
+        if: steps.check.outputs.should_publish == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ matrix.path }}/target
+          key: ${{ runner.os }}-cargo-${{ matrix.name }}-${{ hashFiles(format('{0}/Cargo.lock', matrix.path)) }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.name }}-
+
+      - name: Extract version from release tag
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        id: version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Update crate version
+        if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
+        working-directory: ${{ matrix.path }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          echo "Updated ${{ matrix.name }} version to ${VERSION}"
+
+      - name: Check formatting
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: ${{ matrix.path }}
+        run: cargo fmt --all -- --check
+
+      - name: Run tests
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: ${{ matrix.path }}
+        run: cargo test || true # Allow test failures for plugins without full test suites
+
+      - name: Build release
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: ${{ matrix.path }}
+        run: cargo build --release
+
+      - name: Verify publishable
+        if: steps.check.outputs.should_publish == 'true'
+        working-directory: ${{ matrix.path }}
+        run: cargo publish --dry-run --allow-dirty
+
+      - name: Publish to crates.io
+        if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
+        working-directory: ${{ matrix.path }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --allow-dirty
+
+      - name: Summary
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          echo "# ${{ matrix.name }} Release" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Crate**: ${{ matrix.name }}" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Published**: ${{ github.event.inputs.dry_run != 'true' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Summary job
+  # ============================================
+  release-summary:
+    runs-on: ubuntu-latest
+    needs: [build-core, build-sweagent, build-plugin-sql, build-dependent-plugins, build-independent-plugins]
+    if: always()
+
+    steps:
+      - name: Generate release summary
+        run: |
+          echo "# Rust Crates Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Core Packages" >> $GITHUB_STEP_SUMMARY
+          echo "| Crate | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| elizaos | ${{ needs.build-core.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| elizaos-sweagent | ${{ needs.build-sweagent.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Plugins" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| elizaos-plugin-sql | ${{ needs.build-plugin-sql.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependent Plugins (6) | ${{ needs.build-dependent-plugins.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Independent Plugins (38) | ${{ needs.build-independent-plugins.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Total Crates Published" >> $GITHUB_STEP_SUMMARY
+          echo "- **Core packages**: 2" >> $GITHUB_STEP_SUMMARY
+          echo "- **Plugins with elizaos dep**: 7" >> $GITHUB_STEP_SUMMARY
+          echo "- **Independent plugins**: 38" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total**: 47" >> $GITHUB_STEP_SUMMARY

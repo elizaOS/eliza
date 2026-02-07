@@ -1,0 +1,444 @@
+---
+title: "Create a Plugin"
+description: "Build a working plugin in 20 minutes - from scaffold to test"
+---
+
+**20 minutes.** That's all it takes to build a plugin that generates AI videos from text prompts. No boilerplate, no complex setup - just code that works.
+
+<Tip>
+  **Video Tutorial**: [**Plugin Power: Add Superpowers to Your
+  Agents**](https://www.youtube.com/watch?v=nC6veN2Q-ps&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS&index=4)
+</Tip>
+
+## What We'll Build
+
+This guide shows how to build a [fal.ai](https://fal.ai) plugin that lets your agent generate 6-second, 768p videos from text prompts using the MiniMax Hailuo-02 model. For architectural concepts, see [Plugin Architecture](/plugins/architecture).
+
+**You'll learn:**
+
+- **Actions** (what the agent can DO)
+- **Progressive development** (start simple, organize as you grow)
+- **Local plugin testing** (character.plugins array method)
+- **Plugin testing** (component and E2E tests)
+
+For component details and patterns, see [Plugin Components](/plugins/components) and [Plugin Patterns](/plugins/patterns).
+
+---
+
+## Step 1: Quick Start
+
+### Create Project and Plugin
+
+Create a project with a plugin inside using CLI commands:
+
+<Steps>
+  <Step title="Create project">
+    ```bash Terminal
+    elizaos create --type project my-eliza-project
+    ```
+    
+    Configure when prompted:
+    - **Database**: PgLite (perfect for local development)
+    - **Model**: OpenAI
+    
+    ```bash Terminal
+    cd my-eliza-project
+    ```
+  </Step>
+
+<Step title="Create plugin inside project">
+  ```bash Terminal elizaos create --type plugin plugin-fal-ai ``` When prompted,
+  choose **Quick Plugin** (we don't need frontend UI) Your structure now looks
+  like: ``` my-eliza-project/ ├── src/character.ts # Default Eliza character └──
+  plugin-fal-ai/ # 👈 Plugin lives alongside project ├── src/ │ ├── index.ts #
+  Plugin exports │ ├── plugin.ts # Main plugin (start here) │ └── __tests__/ #
+  Plugin tests └── package.json ```
+</Step>
+
+  <Step title="Add plugin to character">
+    In `my-eliza-project/src/character.ts`, add the local path to Eliza's plugins array:
+    
+    ```typescript src/character.ts
+    export const character: Character = {
+      name: 'Eliza',
+      plugins: [
+        '@elizaos/plugin-sql',
+        '@elizaos/plugin-openai',
+        './plugin-fal-ai'  // [!code ++]
+      ],
+    };
+    ```
+    
+    <Note>
+    The bootstrap plugin is automatically included - you don't need to add it manually.
+    </Note>
+  </Step>
+</Steps>
+
+### Connect and Test
+
+<Steps>
+  <Step title="Build plugin and test connection">
+    The plugin needs to be built first to create the `dist/` folder that ElizaOS loads from:
+    
+    ```bash Terminal
+    # Build the plugin first
+    cd plugin-fal-ai
+    bun run build
+    
+    # Go back to project and start
+    cd ..
+    elizaos start
+    ```
+    
+    **Verify it's loaded:**
+    - Check the console logs for `Successfully loaded plugin 'plugin-fal-ai'`
+    - Visit `http://localhost:3000` → click your agent → **Plugins tab**
+
+  </Step>
+</Steps>
+
+---
+
+## Step 2: Development
+
+### Research the API
+
+Let's research what we want to build by exploring [fal.ai](https://fal.ai) for a good text-to-video model. [MiniMax Hailuo-02 Text to Video](https://fal.ai/models/fal-ai/minimax/hailuo-02/standard/text-to-video) looks pretty good.
+
+4. **Navigate to the [JavaScript/Typescript section of the docs](https://docs.fal.ai/model-apis/clients/javascript)** to see how to call the API:
+   - Install: `bun add @fal-ai/client`
+   - Import: `import { fal } from "@fal-ai/client"`
+   - Use: `fal.subscribe("model-endpoint", { input: {...} })`
+   - Returns: `{ data, requestId }`
+
+Now we know exactly what to build and how to call it, so let's start developing our plugin.
+
+### Edit Default Plugin Template
+
+<Steps>
+  <Step title="Add fal.ai dependency">
+    ```bash Terminal
+    cd plugin-fal-ai
+    bun add @fal-ai/client
+    ```
+    
+    This adds the [fal.ai](https://fal.ai) client package to your plugin dependencies.
+
+  </Step>
+
+<Step title="Study the template structure">
+  Open `plugin-fal-ai/src/plugin.ts` to see the sample code patterns for
+  plugins: - `quickAction` - example Action (what agent can DO) -
+  `quickProvider` - example Provider (gives agent CONTEXT) - `StarterService` -
+  example Service (manages state/connections) - Plugin events, routes, models -
+  other comprehensive patterns
+</Step>
+
+  <Step title="Create your text-to-video action using plugin patterns">
+    Copy the plugin file and rename it to create your action:
+    
+    ```bash Terminal
+    mkdir src/actions
+    cp src/plugin.ts src/actions/generateVideo.ts
+    ```
+    
+    Now let's edit the example plugin into our generateVideo action:
+    
+    **Add the fal.ai import (from the fal.ai docs):**
+    ```typescript src/actions/generateVideo.ts
+    import {
+      Action, ActionResult, IAgentRuntime, Memory, HandlerCallback, HandlerOptions, State, logger
+    } from '@elizaos/core';
+    import { fal } from '@fal-ai/client'; // [!code ++]
+    ```
+    
+    **Update the action identity for video generation:**
+    ```typescript
+    const quickAction: Action = { // [!code --]
+    export const generateVideoAction: Action = { // [!code ++]
+      name: 'QUICK_ACTION', // [!code --]
+      name: 'TEXT_TO_VIDEO', // [!code ++]
+      similes: ['GREET', 'SAY_HELLO', 'HELLO_WORLD'], // [!code --]
+      similes: ['CREATE_VIDEO', 'MAKE_VIDEO', 'GENERATE_VIDEO', 'VIDEO_FROM_TEXT'], // [!code ++]
+      description: 'Responds with a simple hello world message', // [!code --]
+      description: 'Generate a video from text using MiniMax Hailuo-02', // [!code ++]
+    ```
+    
+    **Replace validation with API key check:**
+    ```typescript
+      validate: async (_runtime, _message, _state) => { // [!code --]
+        return true; // Always valid // [!code --]
+      }, // [!code --]
+      validate: async (runtime: IAgentRuntime, message: Memory) => { // [!code ++]
+        const falKey = runtime.getSetting('FAL_KEY'); // [!code ++]
+        if (!falKey) { // [!code ++]
+          logger.error('FAL_KEY not found in environment variables'); // [!code ++]
+          return false; // [!code ++]
+        } // [!code ++]
+        return true; // [!code ++]
+      }, // [!code ++]
+    ```
+    
+    **Replace hello world logic with video generation:**
+    ```typescript
+      handler: async (_runtime, message, _state, _options, callback) => { // [!code --]
+        const response = 'Hello world!'; // [!code --]
+        
+        if (callback) { // [!code --]
+          await callback({ // [!code --]
+            text: response, // [!code --]
+            actions: ['QUICK_ACTION'], // [!code --]
+            source: message.content.source, // [!code --]
+          }); // [!code --]
+        } // [!code --]
+        
+        return { // [!code --]
+          text: response, // [!code --]
+          success: true, // [!code --]
+          data: { actions: ['QUICK_ACTION'], source: message.content.source } // [!code --]
+        }; // [!code --]
+      }, // [!code --]
+      handler: async ( // [!code ++]
+        runtime: IAgentRuntime, // [!code ++]
+        message: Memory, // [!code ++]
+        _state: State | undefined, // [!code ++]
+        _options: HandlerOptions | undefined, // [!code ++]
+        callback?: HandlerCallback // [!code ++]
+      ): Promise<ActionResult> => { // [!code ++]
+        try { // [!code ++]
+          fal.config({ credentials: runtime.getSetting('FAL_KEY') }); // [!code ++]
+          let prompt = message.content.text.replace(/^(create video:|make video:)/i, '').trim(); // [!code ++]
+          if (!prompt) return { success: false, text: 'I need a description' }; // [!code ++]
+          
+          const result = await fal.subscribe("fal-ai/minimax/hailuo-02/standard/text-to-video", { // [!code ++]
+            input: { prompt, duration: "6" }, logs: true // [!code ++]
+          }); // [!code ++]
+          
+          const videoUrl = result.data.video.url; // [!code ++]
+          if (callback) await callback({ text: `✅ Video ready! ${videoUrl}` }); // [!code ++]
+          return { success: true, text: 'Video generated', data: { videoUrl, prompt } }; // [!code ++]
+        } catch (error) { // [!code ++]
+          return { success: false, text: `Failed: ${error.message}` }; // [!code ++]
+        } // [!code ++]
+      }, // [!code ++]
+    ```
+    
+    **Update examples for video conversations:**
+    ```typescript
+      examples: [ // [!code --]
+        [{ // [!code --]
+          name: '{{name1}}', // [!code --]
+          content: { text: 'Can you say hello?' } // [!code --]
+        }, { // [!code --]
+          name: '{{name2}}', // [!code --]
+          content: { text: 'hello world!', actions: ['QUICK_ACTION'] } // [!code --]
+        }] // [!code --]
+      ], // [!code --]
+      examples: [ // [!code ++]
+        [{ name: '{{user}}', content: { text: 'Create video: dolphins jumping' } }, // [!code ++]
+         { name: '{{agent}}', content: { text: 'Creating video!', actions: ['TEXT_TO_VIDEO'] }}] // [!code ++]
+      ], // [!code ++]
+    };
+    ```
+    
+  </Step>
+
+  <Step title="Update index.ts to use your action">
+    Finally, update `src/index.ts` to use our new plugin:
+    
+    ```typescript src/index.ts
+    import { Plugin } from '@elizaos/core';
+    import { generateVideoAction } from './actions/generateVideo'; // [!code ++]
+
+    export const falaiPlugin: Plugin = { // [!code ++]
+      name: 'fal-ai', // [!code ++]
+      description: 'Generate videos using fal.ai MiniMax Hailuo-02', // [!code ++]
+      actions: [generateVideoAction], // [!code ++]
+      providers: [], // [!code ++]
+      services: [] // [!code ++]
+    }; // [!code ++]
+
+    export default falaiPlugin; // [!code ++]
+    export { generateVideoAction }; // [!code ++]
+    ```
+
+    <Note>
+    You can reference `plugin.ts` as well as other plugins from the [Plugin Registry](/plugin-registry/overview) to see other plugin component examples (providers, services, etc.) as you expand your plugin.
+    </Note>
+
+  </Step>
+</Steps>
+
+### Add Configuration
+
+<Steps>
+  <Step title="Get your fal.ai API key">
+    Get an API key from [fal.ai](https://fal.ai) and copy/paste it into your .env:
+
+    ```bash .env
+    PGLITE_DATA_DIR=./.eliza/.elizadb
+    OPENAI_API_KEY=your_openai_key_here
+
+    FAL_KEY=your_fal_key_here # [!code ++]
+    ```
+
+  </Step>
+</Steps>
+
+---
+
+## Step 3: Testing
+
+### Test Plugin Functionality
+
+Verify your plugin works as expected:
+
+<Steps>
+  <Step title="Test the updated plugin">
+    First rebuild your plugin to effect our changes, then start from project root:
+    ```bash Terminal
+    # Build the plugin first
+    cd plugin-fal-ai
+    bun run build
+    
+    # Start from project root  
+    cd ..
+    elizaos start
+    ```
+  </Step>
+
+  <Step title="Test video generation">
+    Try your new action by chatting with Eliza in the GUI (`http://localhost:3000`):
+    
+    - `"Create video: dolphins jumping in ocean"`
+    - `"Make video: cat playing piano"`  
+    - `"Generate video: sunset over mountains"`
+    
+    You should see the video generation process and get a URL to view the result!
+
+  </Step>
+</Steps>
+
+### Plugin Component Tests
+
+Plugins come default with component and E2E tests. Let's add custom component tests:
+
+<Steps>
+  <Step title="Add a component test">
+    Update `plugin-fal-ai/src/__tests__/plugin.test.ts`:
+    
+    ```typescript src/__tests__/plugin.test.ts
+    import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+    import type { IAgentRuntime, Memory } from '@elizaos/core'; // [!code ++]
+    import { falaiPlugin, generateVideoAction } from '../index'; // [!code ++]
+    import { createTestRuntime, cleanupRuntime } from './test-utils'; // [!code ++]
+
+    describe('FAL AI Plugin', () => {
+      let runtime: IAgentRuntime; // [!code ++]
+
+      beforeEach(async () => { // [!code ++]
+        runtime = await createTestRuntime(); // [!code ++]
+      }); // [!code ++]
+
+      afterEach(async () => { // [!code ++]
+        await cleanupRuntime(runtime); // [!code ++]
+      }); // [!code ++]
+
+      it('action validates with FAL_KEY', async () => { // [!code ++]
+        // Set FAL_KEY in test runtime
+        runtime.setSetting('FAL_KEY', 'test-key'); // [!code ++]
+
+        const message = { content: { text: 'test' } } as Memory; // [!code ++]
+
+        const isValid = await generateVideoAction.validate( // [!code ++]
+          runtime, // [!code ++]
+          message // [!code ++]
+        ); // [!code ++]
+        expect(isValid).toBe(true); // [!code ++]
+      }); // [!code ++]
+    });
+    ```
+
+  </Step>
+
+  <Step title="Run component tests">
+    ```bash Terminal
+    cd plugin-fal-ai
+    elizaos test --type component
+    ```
+  </Step>
+</Steps>
+
+### Plugin E2E Tests
+
+Let's also add a custom E2E test:
+
+<Steps>
+  <Step title="Add an E2E test">
+    Update `src/__tests__/e2e/plugin-fal-ai.e2e.ts`:
+    
+    ```typescript src/__tests__/e2e/plugin-fal-ai.e2e.ts
+    export const FalAiTestSuite = { // [!code ++]
+      name: 'fal-ai-video-generation', // [!code ++]
+      tests: [{ // [!code ++]
+        name: 'should find video action in runtime', // [!code ++]
+        fn: async (runtime) => { // [!code ++]
+          const action = runtime.actions.find(a => a.name === 'TEXT_TO_VIDEO'); // [!code ++]
+          if (!action) throw new Error('TEXT_TO_VIDEO action not found'); // [!code ++]
+        } // [!code ++]
+      }] // [!code ++]
+    }; // [!code ++]
+    ```
+  </Step>
+
+  <Step title="Run E2E tests">
+    ```bash Terminal
+    cd plugin-fal-ai  
+    elizaos test --type e2e
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Step 4: Possible Next Steps
+
+Congratulations! You now have a working video generation plugin. Here are some ways you can improve it:
+
+### Enhance Your Action
+
+- **Add more similes** - Handle requests like "animate this", "video of", "show me a clip of"
+- **Better examples** - Add more conversation examples so Eliza learns different chat patterns
+- **Error handling** - Handle rate limits, invalid prompts, or API timeouts
+
+### Add Plugin Components
+
+- **Providers** - Give your agent context about recent videos or video history
+- **Evaluators** - Track analytics, log successful generations, or rate video quality
+- **Services** - Add queueing for multiple video requests or caching for common prompts
+
+The possibilities are endless!
+
+---
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Publish a Plugin" icon="upload" href="/guides/publish-a-plugin">
+    Share your plugin with the elizaOS community
+  </Card>
+  <Card
+    title="Contribute to Core"
+    icon="heart"
+    href="/guides/contribute-to-core"
+  >
+    Help improve elizaOS by contributing to the core framework
+  </Card>
+  <Card title="Plugin Registry" icon="book" href="/plugin-registry/overview">
+    Explore existing plugins and find inspiration
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">
+    Master all elizaOS CLI commands for plugin development
+  </Card>
+</CardGroup>

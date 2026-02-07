@@ -1,0 +1,143 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos"
+version = "2.0.0"
+description = "elizaOS Core - The Python runtime and types for elizaOS AI agents"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "elizaOS Contributors" }
+]
+keywords = ["ai", "agents", "llm", "runtime", "elizaos"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.12.0",
+    "protobuf>=5.29.0",
+    "uuid6>=2024.1.12",
+    "aiohttp>=3.13.3",
+    "cryptography>=42.0.0",
+    "structlog>=25.5.0",
+    "typing-extensions>=4.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "pytest-xprocess>=1.0.2",
+    "mypy>=1.19.1",
+    "ruff>=0.14.11",
+    "black>=24.1.0",
+    "isort>=5.13.0",
+    "pip-tools>=7.4.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaos/eliza"
+Documentation = "https://elizaos.ai/docs"
+Repository = "https://github.com/elizaos/eliza"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/elizaos",
+    "/tests",
+    "/README.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v -p no:anchorpy"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.mypy]
+python_version = "3.11"
+# Relaxed strict settings - to be tightened over time
+strict = false
+warn_return_any = false
+warn_unused_ignores = false
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+# Ignore generated protobuf files which have known type issues
+exclude = ["elizaos/types/generated/"]
+
+[[tool.mypy.overrides]]
+module = "elizaos.types.generated.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "google.protobuf.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "elizaos.bootstrap.*"
+# Bootstrap module has many structural mismatches that need refactoring
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "elizaos.services.*"
+# Services module uses different patterns that need alignment
+ignore_errors = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = ["elizaos/types/generated/"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E402",  # module level import not at top of file (common in __init__.py with __all__)
+    "E501",  # line too long (handled by black)
+    "E741",  # ambiguous variable name (common in list comprehensions)
+    "B008",  # do not perform function calls in argument defaults
+    "B024",  # abstract base class without abstract methods (service interfaces)
+    "ARG001",  # unused function argument (common in test fixtures and callbacks)
+    "ARG002",  # unused method argument (common in handler patterns)
+    "SIM102",  # nested if statements (sometimes clearer for readability)
+    "SIM116",  # dictionary instead of if/elif (not always cleaner)
+    "F811",  # redefinition of unused name (common in type stubs)
+    "F404",  # from __future__ imports must occur at beginning (generated code)
+    "F821",  # undefined name (some names are injected at runtime)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["elizaos"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+exclude = "elizaos/types/generated/"
+

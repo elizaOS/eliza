@@ -1,0 +1,21 @@
+{
+  "name": "recaptcha-resolver",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@google/genai": "^1.22.0",
+    "@types/node": "^24.6.2",
+    "@types/pngjs": "^6.0.5",
+    "buffer": "^6.0.3",
+    "jpeg-js": "^0.4.4",
+    "computeruse-mcp-agent": "^0.16.3",
+    "computeruse.js": "^0.16.3"
+  }
+}

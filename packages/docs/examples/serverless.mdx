@@ -1,0 +1,478 @@
+---
+title: "Serverless Examples"
+description: "Deploy elizaOS agents to AWS Lambda, GCP, Vercel, Cloudflare, and Supabase"
+---
+
+Deploy AI agents as serverless functions. These examples show how to run elizaOS on major cloud platforms with automatic scaling and pay-per-use pricing.
+
+## Overview
+
+| Platform            | Languages            | Directory              | Cold Start |
+| ------------------- | -------------------- | ---------------------- | ---------- |
+| AWS Lambda          | TS, Python, Rust     | `examples/aws/`        | 2-5s       |
+| GCP Cloud Functions | TS, Python, Rust     | `examples/gcp/`        | 2-5s       |
+| Vercel Edge         | TS, Python, Rust     | `examples/vercel/`     | <1s        |
+| Cloudflare Workers  | TS, Python, Rust     | `examples/cloudflare/` | <1s        |
+| Supabase Edge       | TS (Deno), Rust WASM | `examples/supabase/`   | <1s        |
+
+---
+
+## AWS Lambda
+
+Deploy elizaOS agents as AWS Lambda functions with API Gateway.
+
+### Architecture
+
+```
+┌──────────────┐     ┌─────────────────┐     ┌────────────────┐
+│  Client      │────▶│  API Gateway    │────▶│  Lambda        │
+│              │◀────│  (HTTP API)     │◀────│  (elizaOS)     │
+└──────────────┘     └─────────────────┘     └────────────────┘
+                                                    │
+                                                    ▼
+                                             ┌────────────────┐
+                                             │  OpenAI API    │
+                                             └────────────────┘
+```
+
+### Quick Start
+
+<Tabs>
+  <Tab title="TypeScript">
+```bash
+cd examples/aws/typescript
+bun install
+bun run build
+
+# Deploy
+
+export OPENAI_API_KEY="your-key"
+sam deploy --guided --parameter-overrides OpenAIApiKey=$OPENAI_API_KEY
+```
+  </Tab>
+  <Tab title="Python">
+```bash
+cd examples/aws/python
+pip install -r requirements.txt
+
+# Deploy
+
+export OPENAI_API_KEY="your-key"
+sam deploy --guided --parameter-overrides RuntimeLanguage=python OpenAIApiKey=$OPENAI_API_KEY
+```
+  </Tab>
+  <Tab title="Rust">
+```bash
+cd examples/aws/rust
+cargo lambda build --release
+
+# Deploy
+
+export OPENAI_API_KEY="your-key"
+sam deploy --guided --parameter-overrides RuntimeLanguage=rust OpenAIApiKey=$OPENAI_API_KEY
+```
+  </Tab>
+</Tabs>
+
+### Lambda Handler
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import { AgentRuntime } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime() {
+if (runtime) return runtime;
+
+runtime = new AgentRuntime({
+character: {
+name: process.env.CHARACTER_NAME || "Eliza",
+bio: process.env.CHARACTER_BIO || "A helpful AI assistant.",
+},
+plugins: [openaiPlugin],
+});
+
+await runtime.initialize();
+return runtime;
+}
+
+export async function handler(
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> {
+  const runtime = await getRuntime();
+  const body = JSON.parse(event.body || "{}");
+
+if (event.path === "/health") {
+return {
+statusCode: 200,
+body: JSON.stringify({ status: "healthy" }),
+};
+}
+
+const { message } = body;
+const response = await runtime.useModel("TEXT_LARGE", { prompt: message });
+
+return {
+statusCode: 200,
+body: JSON.stringify({
+response: String(response),
+timestamp: new Date().toISOString(),
+}),
+};
+}
+
+````
+  </Tab>
+  <Tab title="Python">
+```python
+import json
+import os
+from elizaos import AgentRuntime, Character
+from elizaos_plugin_openai import get_openai_plugin
+
+runtime = None
+
+async def get_runtime():
+    global runtime
+    if runtime:
+        return runtime
+
+    character = Character(
+        name=os.environ.get("CHARACTER_NAME", "Eliza"),
+        bio=os.environ.get("CHARACTER_BIO", "A helpful AI assistant."),
+    )
+
+    runtime = AgentRuntime(
+        character=character,
+        plugins=[get_openai_plugin()],
+    )
+    await runtime.initialize()
+    return runtime
+
+async def handler(event, context):
+    rt = await get_runtime()
+    body = json.loads(event.get("body", "{}"))
+
+    if event.get("path") == "/health":
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"status": "healthy"}),
+        }
+
+    message = body.get("message", "")
+    from elizaos import ChannelType, Content, Memory, string_to_uuid
+
+    msg = Memory(
+        entity_id=string_to_uuid(body.get("userId", "serverless-user")),
+        room_id=string_to_uuid(body.get("conversationId", "serverless-room")),
+        content=Content(
+            text=message,
+            source="serverless",
+            channel_type=ChannelType.DM.value,
+        ),
+    )
+    result = await rt.message_service.handle_message(rt, msg)
+    response = (
+        result.response_content.text
+        if result.response_content and result.response_content.text
+        else ""
+    )
+
+    return {
+        "statusCode": 200,
+        "body": json.dumps({
+            "response": str(response),
+            "timestamp": datetime.now().isoformat(),
+        }),
+    }
+````
+
+  </Tab>
+  <Tab title="Rust">
+```rust
+use aws_lambda_events::event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
+use elizaos::{AgentRuntime, RuntimeOptions, parse_character};
+use elizaos_plugin_openai::create_openai_plugin;
+use lambda_runtime::{service_fn, Error, LambdaEvent};
+use once_cell::sync::OnceCell;
+use serde_json::json;
+
+static RUNTIME: OnceCell<AgentRuntime> = OnceCell::new();
+
+async fn get_runtime() -> &'static AgentRuntime {
+RUNTIME.get_or_init(|| {
+let character = parse_character(r#"{"name": "Eliza", "bio": "A helpful AI."}"#).unwrap();
+let rt = AgentRuntime::new(RuntimeOptions {
+character: Some(character),
+plugins: vec![create_openai_plugin().unwrap()],
+..Default::default()
+}).await.unwrap();
+rt.initialize().await.unwrap();
+rt
+})
+}
+
+async fn handler(event: LambdaEvent<ApiGatewayProxyRequest>) -> Result<ApiGatewayProxyResponse, Error> {
+let runtime = get_runtime().await;
+let body: serde_json::Value = serde_json::from_str(
+event.payload.body.as_deref().unwrap_or("{}")
+)?;
+
+    let message = body["message"].as_str().unwrap_or("");
+    let content = elizaos::types::Content {
+        text: Some(message.to_string()),
+        source: Some("serverless".to_string()),
+        channel_type: Some(elizaos::types::ChannelType::Dm),
+        ..Default::default()
+    };
+
+    let mut msg =
+        elizaos::types::Memory::new(elizaos::types::UUID::new_v4(), elizaos::types::UUID::new_v4(), content);
+
+    let result = runtime
+        .message_service()
+        .handle_message(runtime, &mut msg, None, None)
+        .await?;
+
+    let response = result
+        .response_content
+        .and_then(|c| c.text)
+        .unwrap_or_default();
+
+    Ok(ApiGatewayProxyResponse {
+        status_code: 200,
+        body: Some(json!({ "response": response }).to_string()),
+        ..Default::default()
+    })
+
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+lambda_runtime::run(service_fn(handler)).await
+}
+
+````
+  </Tab>
+</Tabs>
+
+---
+
+## Vercel Edge Functions
+
+Deploy to Vercel's edge network for ultra-low latency.
+
+### Quick Start
+
+```bash
+cd examples/vercel
+bun install
+vercel dev  # Local testing
+vercel      # Deploy
+````
+
+### Edge Function
+
+```typescript
+// api/chat.ts
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+export const config = {
+  runtime: "edge",
+};
+
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime() {
+  if (runtime) return runtime;
+
+  runtime = new AgentRuntime({
+    character: { name: "Eliza", bio: "A helpful AI assistant." },
+    plugins: [openaiPlugin],
+  });
+
+  await runtime.initialize();
+  return runtime;
+}
+
+export default async function handler(request: Request) {
+  const runtime = await getRuntime();
+  const { message } = await request.json();
+
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt: message,
+  });
+
+  return new Response(JSON.stringify({ response: String(response) }), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+```
+
+---
+
+## Cloudflare Workers
+
+Deploy to Cloudflare's global edge network.
+
+### Quick Start
+
+```bash
+cd examples/cloudflare
+bun install
+wrangler dev   # Local testing
+wrangler deploy # Deploy
+```
+
+### Worker
+
+```typescript
+// src/worker.ts
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+export interface Env {
+  OPENAI_API_KEY: string;
+}
+
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime(env: Env) {
+  if (runtime) return runtime;
+
+  runtime = new AgentRuntime({
+    character: {
+      name: "Eliza",
+      bio: "A helpful AI assistant.",
+      secrets: { OPENAI_API_KEY: env.OPENAI_API_KEY },
+    },
+    plugins: [openaiPlugin],
+  });
+
+  await runtime.initialize();
+  return runtime;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    if (request.method !== "POST") {
+      return new Response("Method not allowed", { status: 405 });
+    }
+
+    const runtime = await getRuntime(env);
+    const { message } = await request.json();
+
+    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt: message,
+    });
+
+    return new Response(JSON.stringify({ response: String(response) }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  },
+};
+```
+
+---
+
+## Supabase Edge Functions
+
+Deploy to Supabase's Deno-based edge functions.
+
+### Quick Start
+
+```bash
+cd examples/supabase
+supabase start
+supabase functions serve eliza-chat  # Local testing
+supabase functions deploy eliza-chat # Deploy
+```
+
+### Edge Function
+
+```typescript
+// functions/eliza-chat/index.ts
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime() {
+  if (runtime) return runtime;
+
+  runtime = new AgentRuntime({
+    character: { name: "Eliza", bio: "A helpful AI assistant." },
+    plugins: [openaiPlugin],
+  });
+
+  await runtime.initialize();
+  return runtime;
+}
+
+serve(async (req) => {
+  const runtime = await getRuntime();
+  const { message } = await req.json();
+
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt: message,
+  });
+
+  return new Response(JSON.stringify({ response: String(response) }), {
+    headers: { "Content-Type": "application/json" },
+  });
+});
+```
+
+---
+
+## Performance Comparison
+
+| Platform      | Cold Start | Warm Latency | Max Timeout | Free Tier        |
+| ------------- | ---------- | ------------ | ----------- | ---------------- |
+| AWS Lambda    | 2-5s       | 50-100ms     | 15min       | 1M requests      |
+| GCP Functions | 2-5s       | 50-100ms     | 9min        | 2M invocations   |
+| Vercel Edge   | <50ms      | <50ms        | 30s         | 100K requests    |
+| Cloudflare    | <10ms      | <10ms        | 30s         | 100K requests    |
+| Supabase      | <100ms     | <50ms        | 60s         | 500K invocations |
+
+---
+
+## Cost Estimation
+
+**AWS Lambda** (512MB, 2s avg, 10K requests/month):
+
+- Requests: $0.002
+- Duration: $0.17
+- **Total: ~$0.20/month**
+
+**Vercel Edge** (10K requests/month):
+
+- Free tier covers it
+- **Total: $0/month**
+
+**Cloudflare Workers** (10K requests/month):
+
+- Free tier covers it
+- **Total: $0/month**
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Game Examples" icon="gamepad" href="/examples/game">
+    Build AI-powered games with elizaOS
+  </Card>
+  <Card title="Deploy Guide" icon="rocket" href="/guides/deploy-a-project">
+    Complete deployment documentation
+  </Card>
+</CardGroup>
+
+
+

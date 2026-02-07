@@ -1,0 +1,48 @@
+# Rust stuff 
+target/
+
+# JS stuff 
+node_modules
+dist
+
+.venv
+
+# Python stuff 
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.egg-info
+build/
+dist/
+.vagrant/
+
+.env 
+
+/workflows/
+
+# ComputerUse workflow recorder debug files
+computeruse-workflow-recorder/*.txt
+
+# Development scripts (user-specific paths)
+scripts/copy-mcp-binary.ps1
+build-and-deploy.ps1
+
+# Local logs
+/logs/
+# MCP configuration (contains sensitive keys)
+.mcp.json
+mcp.json
+.cursor/mcp.json
+
+# Workflow state files (contain sensitive execution data)
+.mediar/
+
+# Editor/IDE specific
+.history/
+
+# Windows null device file (created when running >nul in Git Bash)
+nul
+tmpclaude-*

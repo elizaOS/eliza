@@ -1,0 +1,195 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+#
+# Enhanced Vagrantfile for MCP Development with Hot Reload
+
+Vagrant.configure("2") do |config|
+  # Windows 10 box configuration
+  config.vm.box = "stromweld/windows-10"
+
+  # VM resources - Enhanced for MCP development
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = 8192  # Increased for Rust compilation and Chrome
+    vb.cpus = 4       # More cores for faster builds
+    vb.gui = true
+    # Enables a bidirectional clipboard between host and guest
+    vb.customize ["modifyvm", :id, "--clipboard", "bidirectional"]
+    vb.customize ["modifyvm", :id, "--monitorcount", "3"]
+    # Performance optimizations
+    vb.customize ["modifyvm", :id, "--paravirtprovider", "hyperv"]
+    vb.customize ["modifyvm", :id, "--nestedpaging", "on"]
+    vb.customize ["modifyvm", :id, "--largepages", "on"]
+    vb.customize ["modifyvm", :id, "--vtxux", "on"]
+  end
+
+  # Network configuration
+  config.vm.network "forwarded_port", guest: 22, host: 2222, id: "ssh"
+  config.vm.network "forwarded_port", guest: 8080, host: 8080, id: "mcp"       # MCP server
+  config.vm.network "forwarded_port", guest: 9222, host: 9222, id: "chrome"   # Chrome debugging
+
+  # WinRM configuration for initial setup
+  config.vm.communicator = "winrm"
+  config.winrm.username = "vagrant"
+  config.winrm.password = "vagrant"
+
+  # Sync the workspace - with better performance settings
+  config.vm.synced_folder "..", "C:/Users/vagrant/computeruse", type: "virtualbox",
+    SharedFoldersEnableSymlinksCreate: false
+
+  # Combined provisioning script
+  config.vm.provision "shell", name: "full_setup", inline: <<-SHELL, privileged: true
+      Write-Host "Starting VM provisioning..." -ForegroundColor Green
+
+      # Prevent shutdown: inject registry & power settings
+      Write-Host "Configuring power and shutdown settings..." -ForegroundColor Yellow
+      powercfg /change standby-timeout-ac 0
+      powercfg /change hibernate-timeout-ac 0
+      powercfg /change monitor-timeout-ac 0
+      reg add "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon" /v AutoLogonCount /t REG_DWORD /d 999 /f
+      reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power" /v HibernateEnabled /t REG_DWORD /d 0 /f
+
+      # Step 1: Disable the service
+      Start-Process -FilePath sc.exe -ArgumentList "config sppsvc start= disabled" -Wait
+      Start-Sleep -Seconds 2
+
+      # Step 2: Try stopping it up to 3 times
+      for ($i = 1; $i -le 3; $i++) {
+        try {
+          Write-Output "Try #$i: Stopping sppsvc..."
+          Stop-Service sppsvc -Force -ErrorAction Stop
+          Write-Output "sppsvc stopped successfully."
+          break
+        } catch {
+          Write-Warning "Attempt #$i failed: $($_.Exception.Message)"
+          Start-Sleep -Seconds 2
+        }
+      }
+
+      # Step 3: If still running, kill it
+      $sppsvc = Get-Process sppsvc -ErrorAction SilentlyContinue
+      if ($sppsvc) {
+        Write-Warning "sppsvc still running after 3 attempts, killing it..."
+        Stop-Process -Id $sppsvc.Id -Force
+      }
+
+      Write-Host "Power and shutdown settings configured" -ForegroundColor Green
+
+      # Install OpenSSH
+      Write-Host "Installing OpenSSH..." -ForegroundColor Yellow
+      $scriptPath = 'C:/Users/vagrant/computeruse/vagrant/scripts/install-openssh.ps1'
+      if (Test-Path $scriptPath) {
+        PowerShell -ExecutionPolicy Bypass -File $scriptPath
+      } else {
+        Write-Warning "OpenSSH install script not found at $scriptPath"
+      }
+      Write-Host "OpenSSH installation completed" -ForegroundColor Green
+
+      # Install Scoop and tools
+      Write-Host "Installing Scoop package manager..." -ForegroundColor Yellow
+      iex "& {$(irm get.scoop.sh)} -RunAsAdmin"
+      Write-Host "Scoop installation completed" -ForegroundColor Green
+
+      # Install Git
+      Write-Host "Installing Git..." -ForegroundColor Yellow
+      scoop install git
+      sleep 1
+      $gitPath = "C:\\Users\\vagrant\\scoop\\apps\\git\\current"
+      if (Test-Path "$gitPath\\install-context.reg") {
+        reg import "$gitPath\\install-context.reg"
+        reg import "$gitPath\\install-file-associations.reg"
+      }
+      Write-Host "Git installation completed" -ForegroundColor Green
+
+      # Install Python
+      Write-Host "Installing Python..." -ForegroundColor Yellow
+      scoop install python
+      sleep 1
+      $pythonPath = "C:\\Users\\vagrant\\scoop\\apps\\python\\current"
+      if (Test-Path "$pythonPath\\install-pep-514.reg") {
+        reg import "$pythonPath\\install-pep-514.reg"
+      }
+      Write-Host "Python installation completed" -ForegroundColor Green
+
+      # Install NodeJS
+      Write-Host "Installing NodeJS..." -ForegroundColor Yellow
+      scoop install nodejs
+      sleep 1
+      Write-Host "NodeJS installation completed" -ForegroundColor Green
+
+      # Install Rust for MCP development
+      Write-Host "Installing Rust..." -ForegroundColor Yellow
+      scoop install rust
+      Write-Host "Rust installation completed" -ForegroundColor Green
+
+      # Install Chrome for UI automation testing
+      Write-Host "Installing Chrome..." -ForegroundColor Yellow
+      scoop bucket add extras
+      scoop install googlechrome
+      Write-Host "Chrome installation completed" -ForegroundColor Green
+
+      # Install PSTools
+      Write-Host "Installing PSTools..." -ForegroundColor Yellow
+      scoop bucket add sysinternals
+      scoop install sysinternals/pstools
+      Write-Host "PSTools installation completed" -ForegroundColor Green
+
+      # Install gui-shell Node.js package (if exists)
+      Write-Host "Installing gui-shell Node.js package..." -ForegroundColor Yellow
+      $path = 'C:\\Users\\vagrant\\computeruse\\vagrant\\scripts\\gui-shell'
+      if (Test-Path $path) {
+        cd $path
+        npm install
+        npm install -g .
+        Write-Host "gui-shell installation completed and added to PATH" -ForegroundColor Green
+      } else {
+        Write-Host "gui-shell not found at $path, skipping..." -ForegroundColor Yellow
+      }
+
+      # Setup MCP hot reload watcher
+      Write-Host "Setting up MCP hot reload watcher..." -ForegroundColor Yellow
+      $watcherScript = 'C:\\Users\\vagrant\\computeruse\\vagrant\\scripts\\mcp-watcher.ps1'
+      if (Test-Path $watcherScript) {
+        # Create scheduled task to run on user logon
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File $watcherScript"
+        $trigger = New-ScheduledTaskTrigger -AtLogOn -User 'vagrant'
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+        $principal = New-ScheduledTaskPrincipal -UserId 'vagrant' -LogonType Interactive
+        Register-ScheduledTask -TaskName 'MCPWatcher' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force
+        Write-Host "MCP hot reload watcher scheduled task created" -ForegroundColor Green
+      } else {
+        Write-Host "MCP watcher script not found at $watcherScript" -ForegroundColor Yellow
+      }
+
+      # Setup browser extension hot reload watcher
+      $extensionWatcherScript = 'C:\\Users\\vagrant\\computeruse\\vagrant\\scripts\\extension-watcher.ps1'
+      if (Test-Path $extensionWatcherScript) {
+        # Create scheduled task for browser extension hot reload
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File $extensionWatcherScript"
+        $trigger = New-ScheduledTaskTrigger -AtLogOn -User 'vagrant'
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+        $principal = New-ScheduledTaskPrincipal -UserId 'vagrant' -LogonType Interactive
+        Register-ScheduledTask -TaskName 'ExtensionWatcher' -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force
+        Write-Host "Browser extension hot reload watcher scheduled task created" -ForegroundColor Green
+      }
+
+      Write-Host "" -ForegroundColor Cyan
+      Write-Host "=========================================" -ForegroundColor Cyan
+      Write-Host "VM provisioning completed successfully!" -ForegroundColor Green
+      Write-Host "=========================================" -ForegroundColor Cyan
+      Write-Host "" -ForegroundColor Yellow
+      Write-Host "=== Quick Start Guide ===" -ForegroundColor Cyan
+      Write-Host "1. Build MCP on host:" -ForegroundColor White
+      Write-Host "   cd /c/Users/louis/Documents/computeruse" -ForegroundColor Gray
+      Write-Host "   cargo build --release" -ForegroundColor Gray
+      Write-Host "" -ForegroundColor White
+      Write-Host "2. MCP will auto-restart in VM when binary updates" -ForegroundColor White
+      Write-Host "" -ForegroundColor White
+      Write-Host "3. Access MCP at: http://localhost:8080/mcp" -ForegroundColor White
+      Write-Host "   Health check: http://localhost:8080/health" -ForegroundColor Gray
+      Write-Host "" -ForegroundColor White
+      Write-Host "4. Chrome debugging at: http://localhost:9222" -ForegroundColor White
+      Write-Host "" -ForegroundColor White
+      Write-Host "5. SSH into VM: vagrant ssh" -ForegroundColor White
+      Write-Host "===========================================" -ForegroundColor Cyan
+    SHELL
+end

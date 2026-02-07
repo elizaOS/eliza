@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ES2022",
-    "lib": ["ES2021.String", "DOM", "DOM.Iterable"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "moduleResolution": "node",
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -15,12 +15,26 @@
     "declaration": true,
     "declarationMap": true,
     "strict": true,
+    "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@elizaos/core": ["packages/core/src"],
-      "@elizaos/core/*": ["packages/core/src/*"],
-      "@elizaos/plugin-sql": ["packages/plugin-sql/src/index.ts"],
-      "@elizaos/plugin-sql/*": ["packages/plugin-sql/src/*"]
+      "@elizaos/core": ["packages/typescript/src/index.node.ts"],
+      "@elizaos/core/*": ["packages/typescript/src/*"]
     }
-  }
+  },
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/cypress/**",
+    "**/*.cy.tsx",
+    "**/*.cy.ts",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/__tests__/**",
+    "**/scripts/**",
+    "**/e2e/**",
+    "**/testing/**",
+    "**/build.ts"
+  ]
 }

@@ -1,0 +1,16 @@
+# buf.yaml - Buf configuration for elizaOS proto schemas
+version: v2
+modules:
+  - path: .
+    name: buf.build/elizaos/eliza
+lint:
+  use:
+    - STANDARD
+  except:
+    - FIELD_NOT_REQUIRED
+    - PACKAGE_NO_IMPORT_CYCLE
+breaking:
+  use:
+    - FILE
+deps:
+  - buf.build/googleapis/googleapis

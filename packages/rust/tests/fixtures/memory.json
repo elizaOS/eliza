@@ -1,0 +1,16 @@
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "entityId": "550e8400-e29b-41d4-a716-446655440001",
+  "agentId": "550e8400-e29b-41d4-a716-446655440002",
+  "createdAt": 1704067200000,
+  "content": {
+    "text": "Hello from TypeScript!",
+    "thought": "This is a test message for compatibility verification"
+  },
+  "roomId": "550e8400-e29b-41d4-a716-446655440003",
+  "unique": true,
+  "metadata": {
+    "type": "message",
+    "source": "test"
+  }
+}

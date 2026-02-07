@@ -1,0 +1,10 @@
+{
+  "name": "spec-to-code-compliance",
+  "version": "1.0.0",
+  "description": "Specification-to-code compliance checker for blockchain audits with evidence-based alignment analysis",
+  "author": {
+    "name": "Omar Inuwa",
+    "email": "opensource@trailofbits.com",
+    "url": "https://github.com/trailofbits"
+  }
+}

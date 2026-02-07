@@ -1,0 +1,10 @@
+{
+  "name": "entry-point-analyzer",
+  "version": "1.0.0",
+  "description": "Analyzes smart contract codebases to identify state-changing entry points for security auditing. Detects externally callable functions that modify state, categorizes them by access level, and generates structured audit reports.",
+  "author": {
+    "name": "Nicolas Donboly",
+    "email": "opensource@trailofbits.com",
+    "url": "https://github.com/trailofbits"
+  }
+}

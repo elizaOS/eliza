@@ -1,0 +1,25 @@
+# Task: Generate an image prompt for {{agentName}}.
+
+{{providers}}
+
+# Instructions:
+Based on the conversation, create a detailed prompt for image generation.
+The prompt should be specific, descriptive, and suitable for AI image generation.
+
+# Recent conversation:
+{{recentMessages}}
+
+Respond using XML format like this:
+<response>
+    <thought>Your reasoning for the image prompt</thought>
+    <prompt>Detailed image generation prompt</prompt>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above.
+
+
+
+
+
+
+

@@ -1,0 +1,22 @@
+# Build outputs / caches
+python/dist/
+python/build/
+python/.venv/
+python/.pytest_cache/
+
+rust/target/
+
+typescript/dist/
+typescript/node_modules/
+typescript/.turbo/
+typescript/coverage/
+
+typescript/tools/dist/
+typescript/tools/node_modules/
+typescript/tools/.turbo/
+typescript/tools/.cache/
+
+# Large fixture corpora not required for builds
+python/tests/test_data/data_sources/ctf/
+typescript/tests/test_data/data_sources/ctf/
+

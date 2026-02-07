@@ -1,0 +1,111 @@
+// components.proto - Action, Provider, Evaluator types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "eliza/v1/primitives.proto";
+import "google/protobuf/struct.proto";
+
+// JSON Schema for action parameter validation
+message ActionParameterSchema {
+  string type = 1;
+  optional string description = 2;
+  // Default value
+  google.protobuf.Value default_value = 3;
+  // Allowed enum values
+  repeated string enum_values = 4;
+  // Nested properties for object types
+  map<string, ActionParameterSchema> properties = 5;
+  // Item schema for array types
+  optional ActionParameterSchema items = 6;
+  // Numeric constraints
+  optional double minimum = 7;
+  optional double maximum = 8;
+  // String pattern (regex)
+  optional string pattern = 9;
+}
+
+// Defines a single parameter for an action
+message ActionParameter {
+  string name = 1;
+  string description = 2;
+  optional bool required = 3;
+  ActionParameterSchema schema = 4;
+}
+
+// Example content with associated user for demonstration
+message ActionExample {
+  string name = 1;
+  Content content = 2;
+}
+
+// Validated parameters passed to an action handler
+// Represented as a Struct for flexibility with nested values
+message ActionParameters {
+  google.protobuf.Struct values = 1;
+}
+
+// Result returned by an action after execution
+message ActionResult {
+  bool success = 1;
+  optional string text = 2;
+  google.protobuf.Struct values = 3;
+  google.protobuf.Struct data = 4;
+  optional string error = 5;
+}
+
+// Context provided to actions during execution
+message ActionContext {
+  repeated ActionResult previous_results = 1;
+}
+
+// Options passed to action handlers during execution
+message HandlerOptions {
+  optional ActionContext action_context = 1;
+  // Forward reference to ActionPlan (defined in state.proto)
+  optional string action_plan_json = 2; // Serialized ActionPlan
+  optional ActionParameters parameters = 3;
+}
+
+// Action manifest (metadata only, for cross-language interop)
+message ActionManifest {
+  string name = 1;
+  string description = 2;
+  repeated string similes = 3;
+  repeated ActionExample examples = 4;
+  optional int32 priority = 5;
+  repeated string tags = 6;
+  repeated ActionParameter parameters = 7;
+}
+
+// Result returned by a provider
+message ProviderResult {
+  optional string text = 1;
+  google.protobuf.Struct values = 2;
+  google.protobuf.Struct data = 3;
+}
+
+// Provider manifest (metadata only, for cross-language interop)
+message ProviderManifest {
+  string name = 1;
+  optional string description = 2;
+  optional bool dynamic = 3;
+  optional int32 position = 4;
+  optional bool private = 5;
+}
+
+// Example for evaluating agent behavior
+message EvaluationExample {
+  string prompt = 1;
+  repeated ActionExample messages = 2;
+  string outcome = 3;
+}
+
+// Evaluator manifest (metadata only, for cross-language interop)
+message EvaluatorManifest {
+  string name = 1;
+  string description = 2;
+  optional bool always_run = 3;
+  repeated string similes = 4;
+  repeated EvaluationExample examples = 5;
+}

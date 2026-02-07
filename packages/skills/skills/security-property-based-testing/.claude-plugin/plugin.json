@@ -1,0 +1,9 @@
+{
+  "name": "property-based-testing",
+  "version": "1.0.0",
+  "description": "Property-based testing guidance for multiple languages and smart contracts",
+  "author": {
+    "name": "Henrik Brodin",
+    "url": "https://github.com/trailofbits"
+  }
+}

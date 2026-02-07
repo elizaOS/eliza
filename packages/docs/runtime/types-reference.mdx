@@ -1,0 +1,675 @@
+---
+title: "Types Reference"
+description: "Complete TypeScript types and interfaces reference for elizaOS"
+---
+
+## Overview
+
+This page documents the core TypeScript types and interfaces used throughout elizaOS. For usage examples, see the relevant feature documentation.
+
+<Tip>
+All types are exported from `@elizaos/core`. Import what you need:
+```typescript
+import { Memory, Action, State, UUID } from '@elizaos/core';
+```
+</Tip>
+
+---
+
+## Streaming Types
+
+### IStreamExtractor
+
+Interface for extracting content from LLM response streams:
+
+```typescript
+interface IStreamExtractor {
+  // True when stream processing is complete
+  readonly done: boolean;
+
+  // Process a chunk and return streamable text
+  push(chunk: string): string;
+}
+```
+
+**Built-in Extractors:**
+
+| Extractor                 | Use Case                      |
+| ------------------------- | ----------------------------- |
+| `PassthroughExtractor`    | Stream everything as-is       |
+| `XmlTagExtractor`         | Extract content from XML tags |
+| `ResponseStreamExtractor` | Action-aware extraction       |
+
+**Example:**
+
+```typescript
+import { XmlTagExtractor } from "@elizaos/core";
+
+const extractor = new XmlTagExtractor("response");
+const streamable = extractor.push("<response>Hello");
+// streamable = 'Hello'
+```
+
+---
+
+## Task System
+
+### TaskWorker
+
+Interface for background task handlers:
+
+```typescript
+interface TaskWorker {
+  // Task type identifier
+  name: string;
+
+  // Execution logic
+  execute(
+    runtime: IAgentRuntime,
+    options: Record<string, unknown>,
+    task: Task,
+  ): Promise<void>;
+
+  // Optional validation before execution
+  validate?(
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean>;
+}
+```
+
+### Task
+
+```typescript
+interface Task {
+  id: UUID;
+  name: string;
+  description?: string;
+  roomId?: UUID;
+  worldId?: UUID;
+  entityId?: UUID;
+  tags?: string[];
+  updatedAt?: number;
+  metadata?: TaskMetadata;
+}
+```
+
+### TaskMetadata
+
+```typescript
+interface TaskMetadata {
+  // Recurring task interval in milliseconds
+  updateInterval?: number;
+
+  // UI configuration options
+  options?: Record<string, unknown>;
+}
+```
+
+**Example - Recurring Task:**
+
+```typescript
+const cleanupWorker: TaskWorker = {
+  name: "CLEANUP_OLD_MESSAGES",
+
+  async execute(runtime, options, task) {
+    const threshold = Date.now() - 24 * 60 * 60 * 1000;
+    await runtime.deleteOldMessages(threshold);
+  },
+};
+
+// Register worker
+runtime.registerTaskWorker(cleanupWorker);
+
+// Create recurring task (runs every hour)
+await runtime.createTask({
+  name: "CLEANUP_OLD_MESSAGES",
+  metadata: { updateInterval: 3600000 },
+});
+```
+
+---
+
+## State & Context
+
+### State
+
+```typescript
+interface State {
+  // General state variables
+  values: Record<string, unknown>;
+
+  // Structured cache for common properties
+  data: StateData;
+
+  // Text summary of context
+  text: string;
+
+  // Dynamic properties
+  [key: string]: unknown;
+}
+```
+
+### StateData
+
+Typed cache for frequently accessed data:
+
+```typescript
+interface StateData {
+  room?: Room;
+  world?: World;
+  entity?: Entity;
+  providers?: Record<string, ProviderResult>;
+  actionPlan?: ActionPlan;
+  actionResults?: ActionResult[];
+}
+```
+
+### ActionPlan
+
+For multi-step action execution:
+
+```typescript
+interface ActionPlan {
+  thought: string;
+  totalSteps: number;
+  currentStep: number;
+  steps: ActionPlanStep[];
+}
+
+interface ActionPlanStep {
+  action: string;
+  status: "pending" | "completed" | "failed";
+  error?: string;
+  result?: ActionResult;
+}
+```
+
+**Example - Multi-step Action:**
+
+```typescript
+// The runtime creates action plans automatically
+const state = await runtime.composeState(message);
+
+if (state.data.actionPlan) {
+  console.log(
+    `Step ${state.data.actionPlan.currentStep} of ${state.data.actionPlan.totalSteps}`,
+  );
+  console.log(`Current action: ${state.data.actionPlan.steps[0].action}`);
+}
+```
+
+---
+
+## Messaging Types
+
+### ControlMessage
+
+Backend-to-frontend control messages:
+
+```typescript
+interface ControlMessage {
+  type: "control";
+  payload: {
+    action: "disable_input" | "enable_input";
+    target?: string;
+    [key: string]: unknown;
+  };
+  roomId: UUID;
+}
+```
+
+**Use Case:** Disable user input while agent is processing:
+
+```typescript
+// Emit control message to disable input
+await runtime.emit(EventType.CONTROL_MESSAGE, {
+  type: "control",
+  payload: {
+    action: "disable_input",
+  },
+  roomId: currentRoomId,
+});
+
+// ... do work ...
+
+// Re-enable input
+await runtime.emit(EventType.CONTROL_MESSAGE, {
+  type: "control",
+  payload: {
+    action: "enable_input",
+  },
+  roomId: currentRoomId,
+});
+```
+
+### MessageStreamChunkPayload
+
+Streaming response chunk data:
+
+```typescript
+interface MessageStreamChunkPayload {
+  messageId: UUID;
+  chunk: string;
+  index: number;
+  channelId: string;
+  agentId: UUID;
+}
+```
+
+### TargetInfo
+
+Message routing target:
+
+```typescript
+interface TargetInfo {
+  source: string; // Platform (discord, telegram, etc.)
+  roomId: UUID;
+  channelId?: string;
+  serverId?: string;
+  entityId?: UUID;
+  threadId?: string;
+}
+```
+
+### SOCKET_MESSAGE_TYPE
+
+WebSocket message type enum:
+
+```typescript
+enum SOCKET_MESSAGE_TYPE {
+  ROOM_JOINING = 1,
+  SEND_MESSAGE = 2,
+  MESSAGE = 3,
+  ACK = 4,
+  THINKING = 5,
+  CONTROL = 6,
+}
+```
+
+---
+
+## Event Payloads
+
+### RunEventPayload
+
+Emitted on run start/end:
+
+```typescript
+interface RunEventPayload extends EventPayload {
+  runId: UUID;
+  agentId: UUID;
+  roomId?: UUID;
+  startTime: number;
+  endTime?: number;
+  status: "started" | "completed" | "failed" | "timeout";
+  error?: string;
+}
+```
+
+### ActionEventPayload
+
+Emitted on action start/complete:
+
+```typescript
+interface ActionEventPayload extends EventPayload {
+  action: string;
+  content: Content;
+  roomId: UUID;
+  messageId: UUID;
+  status: "started" | "completed" | "failed";
+  result?: ActionResult;
+  error?: string;
+  duration?: number;
+}
+```
+
+### EvaluatorEventPayload
+
+```typescript
+interface EvaluatorEventPayload extends EventPayload {
+  evaluator: string;
+  roomId: UUID;
+  messageId: UUID;
+  status: "started" | "completed" | "failed";
+  result?: unknown;
+  duration?: number;
+}
+```
+
+### ModelEventPayload
+
+Emitted on model usage:
+
+```typescript
+interface ModelEventPayload extends EventPayload {
+  modelType: ModelTypeName;
+  provider: string;
+  model: string;
+  tokens?: TokenUsage;
+  duration?: number;
+  cached?: boolean;
+}
+```
+
+### EmbeddingGenerationPayload
+
+```typescript
+interface EmbeddingGenerationPayload extends EventPayload {
+  memoryId: UUID;
+  priority: "high" | "normal" | "low";
+  status: "requested" | "completed" | "failed";
+  error?: string;
+}
+```
+
+---
+
+## Database Types
+
+### Log & LogBody
+
+```typescript
+interface Log {
+  id: UUID;
+  agentId: UUID;
+  roomId?: UUID;
+  entityId?: UUID;
+  type: "action" | "evaluator" | "model" | "embedding";
+  body: LogBody;
+  createdAt: number;
+}
+
+// Discriminated union for log body types
+type LogBody =
+  | ActionLogBody
+  | EvaluatorLogBody
+  | ModelLogBody
+  | EmbeddingLogBody;
+
+interface ActionLogBody {
+  type: "action";
+  action: string;
+  input: Content;
+  output?: ActionResult;
+  duration: number;
+  success: boolean;
+  error?: string;
+}
+
+interface ModelLogBody {
+  type: "model";
+  modelType: ModelTypeName;
+  provider: string;
+  model: string;
+  tokens: TokenUsage;
+  duration: number;
+  cached: boolean;
+}
+```
+
+### AgentRunSummary
+
+Analytics for agent runs:
+
+```typescript
+interface AgentRunSummary {
+  runId: UUID;
+  agentId: UUID;
+  roomId?: UUID;
+  startTime: number;
+  endTime: number;
+  status: RunStatus;
+  actionsExecuted: number;
+  messagesProcessed: number;
+  tokensUsed: TokenUsage;
+  errors: string[];
+}
+
+type RunStatus = "completed" | "failed" | "timeout" | "cancelled";
+```
+
+### Memory Options
+
+```typescript
+interface MemoryRetrievalOptions {
+  roomId?: UUID;
+  entityId?: UUID;
+  limit?: number;
+  before?: number;
+  after?: number;
+  types?: MemoryType[];
+}
+
+interface MemorySearchOptions extends MemoryRetrievalOptions {
+  query: string;
+  threshold?: number; // Similarity threshold (0-1)
+  embedding?: number[];
+}
+
+interface EmbeddingSearchResult {
+  memory: Memory;
+  similarity: number;
+}
+```
+
+### Vector Dimensions
+
+```typescript
+const VECTOR_DIMS = {
+  SMALL: 384, // MiniLM
+  MEDIUM: 512,
+  LARGE: 768, // BERT-base
+  XL: 1024,
+  XXL: 1536, // OpenAI ada-002
+  XXXL: 3072, // OpenAI text-embedding-3-large
+} as const;
+```
+
+---
+
+## TEE Types
+
+### TEEMode
+
+Trusted Execution Environment modes:
+
+```typescript
+enum TEEMode {
+  OFF = "OFF", // No TEE
+  LOCAL = "LOCAL", // Local simulation
+  DOCKER = "DOCKER", // Docker-based TEE
+  PRODUCTION = "PRODUCTION", // Real hardware TEE
+}
+```
+
+### TeeAgent
+
+TEE agent registration:
+
+```typescript
+interface TeeAgent {
+  id: string;
+  agentId: string;
+  agentName: string;
+  createdAt: number;
+  publicKey: string;
+  attestation: string; // Attestation document as string
+}
+```
+
+### RemoteAttestationQuote
+
+```typescript
+interface RemoteAttestationQuote {
+  quote: string;
+  timestamp: number;
+  mrEnclave?: string;
+  mrSigner?: string;
+}
+```
+
+### TeePluginConfig
+
+```typescript
+interface TeePluginConfig {
+  mode: TEEMode;
+  vendor?: string;
+  vendorConfig?: Record<string, unknown>;
+}
+```
+
+---
+
+## ElizaOS Orchestrator
+
+### IElizaOS
+
+Multi-agent orchestrator interface:
+
+```typescript
+interface IElizaOS {
+  // Handle single message (sync or async mode)
+  handleMessage(
+    agentId: UUID | IAgentRuntime,
+    message: Message,
+    options?: HandleMessageOptions,
+  ): Promise<HandleMessageResult>;
+
+  // Handle messages to multiple agents
+  handleMessages(
+    messages: Array<{ agentId: UUID; message: Message }>,
+  ): Promise<HandleMessageResult[]>;
+
+  // Get agent runtime by ID
+  getAgent(agentId: UUID): IAgentRuntime | undefined;
+
+  // Get all agents
+  getAgents(): Map<UUID, IAgentRuntime>;
+}
+```
+
+### HandleMessageOptions
+
+```typescript
+interface HandleMessageOptions {
+  // Callbacks for async mode
+  onResponse?: (content: Content) => Promise<void>;
+  onStreamChunk?: (chunk: string, messageId: UUID) => Promise<void>;
+  onError?: (error: Error) => Promise<void>;
+  onComplete?: () => Promise<void>;
+
+  // Processing options
+  skipEvaluators?: boolean;
+  skipActions?: boolean;
+}
+```
+
+### HandleMessageResult
+
+```typescript
+interface HandleMessageResult {
+  messageId: UUID;
+  userMessage: Memory;
+  processing?: {
+    text: string;
+    actions?: ActionResult[];
+    evaluations?: unknown[];
+  };
+  error?: Error;
+}
+```
+
+### HealthStatus
+
+```typescript
+interface HealthStatus {
+  alive: boolean;
+  responsive: boolean;
+  memoryUsage?: number;
+  uptime?: number;
+  lastActivity?: number;
+}
+```
+
+---
+
+## Model Types
+
+### TokenUsage
+
+```typescript
+interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedTokens?: number;
+}
+```
+
+### TextStreamResult
+
+```typescript
+interface TextStreamResult {
+  text: string;
+  usage?: TokenUsage;
+
+  // Async iterator for streaming
+  [Symbol.asyncIterator](): AsyncIterator<TextStreamChunk>;
+}
+
+interface TextStreamChunk {
+  text: string;
+  isFirst?: boolean;
+  isLast?: boolean;
+}
+```
+
+### Settings
+
+```typescript
+const MODEL_SETTINGS = {
+  TEXT_SMALL: {
+    maxTokens: 4096,
+    temperature: 0.7,
+  },
+  TEXT_LARGE: {
+    maxTokens: 8192,
+    temperature: 0.7,
+  },
+  TEXT_REASONING: {
+    maxTokens: 16384,
+    temperature: 0.3,
+  },
+  // ...
+} as const;
+```
+
+### isStreamableModelType
+
+Type guard for streaming-capable models:
+
+```typescript
+function isStreamableModelType(type: ModelTypeName): boolean;
+// Returns true for: TEXT_SMALL, TEXT_LARGE, TEXT_REASONING_*
+```
+
+---
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Core Runtime" icon="microchip" href="/runtime/core">
+    Runtime interface and lifecycle
+  </Card>
+  <Card title="Events" icon="bolt" href="/runtime/events">
+    Event system and payloads
+  </Card>
+  <Card title="Services" icon="server" href="/runtime/services">
+    Service types and patterns
+  </Card>
+  <Card title="Plugin Reference" icon="puzzle-piece" href="/plugins/reference">
+    Plugin interface definitions
+  </Card>
+</CardGroup>

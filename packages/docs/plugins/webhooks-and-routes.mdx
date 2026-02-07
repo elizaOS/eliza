@@ -1,0 +1,747 @@
+---
+title: "Webhooks and Routes"
+description: "How to expose HTTP endpoints and send messages as agents using plugin routes"
+---
+
+## Overview
+
+Plugins in elizaOS can expose HTTP routes that act as webhooks, allowing external services to trigger agent actions and send messages on behalf of agents. This enables powerful integrations with third-party services, automated workflows, and custom APIs.
+
+## Defining Routes in Plugins
+
+Routes are defined in your plugin's main export using the `routes` property. Each route specifies an HTTP method, path, and handler function.
+
+### Route Interface
+
+```typescript
+type Route = {
+  type: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "STATIC";
+  path: string;
+  handler?: (
+    req: RouteRequest,
+    res: RouteResponse,
+    runtime: IAgentRuntime,
+  ) => Promise<void>;
+  filePath?: string; // For static file serving
+  public?: boolean; // Whether route is publicly accessible
+  name?: string; // Optional route name
+  isMultipart?: boolean; // For file upload endpoints
+};
+```
+
+### Basic Route Example
+
+```typescript
+import type { Plugin } from "@elizaos/core";
+
+export const myPlugin: Plugin = {
+  name: "webhook-plugin",
+  description: "Plugin with webhook endpoints",
+
+  routes: [
+    {
+      name: "webhook-endpoint",
+      path: "/webhook",
+      type: "POST",
+      handler: async (req, res, runtime) => {
+        // Access request data
+        const { event, data } = req.body;
+
+        // Process webhook
+        console.log(`Received webhook: ${event}`);
+
+        // Send response
+        res.json({
+          success: true,
+          message: "Webhook processed",
+        });
+      },
+    },
+  ],
+};
+```
+
+## Sending Messages as an Agent
+
+The most powerful use case for plugin routes is sending messages on behalf of the agent. This allows external services to make the agent speak in any conversation.
+
+### Using the Messaging API
+
+To send a message as an agent, your route handler needs to make a POST request to the messaging submit endpoint:
+
+```typescript
+{
+  name: 'send-message-webhook',
+  path: '/send-agent-message',
+  type: 'POST',
+  handler: async (req, res, runtime) => {
+    try {
+      const { channelId, message, metadata } = req.body;
+
+      // Validate input
+      if (!channelId || !message) {
+        return res.status(400).json({
+          success: false,
+          error: 'channelId and message are required'
+        });
+      }
+
+      // Prepare message payload
+      const messagePayload = {
+        channel_id: channelId,
+        server_id: '00000000-0000-0000-0000-000000000000', // Default server
+        author_id: runtime.agentId,
+        content: message,
+        source_type: 'agent_response',
+        raw_message: {
+          text: message,
+          thought: metadata?.thought,
+          actions: metadata?.actions || []
+        },
+        metadata: {
+          agent_id: runtime.agentId,
+          agentName: runtime.character.name,
+          ...metadata
+        }
+      };
+
+      // Send message via messaging API
+      const baseUrl = runtime.getSetting('SERVER_URL') || 'http://localhost:3000';
+      const response = await fetch(`${baseUrl}/api/messaging/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Add any required auth headers
+        },
+        body: JSON.stringify(messagePayload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to send message: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+
+      res.json({
+        success: true,
+        messageId: result.data.id,
+        message: 'Message sent successfully'
+      });
+
+    } catch (error) {
+      console.error('Error sending agent message:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to send message'
+      });
+    }
+  }
+}
+```
+
+### Complete Example: GitHub Webhook Integration
+
+Here's a complete example of a plugin that receives GitHub webhooks and makes the agent comment on events:
+
+```typescript
+import type { Plugin, Route } from "@elizaos/core";
+import { validateUuid } from "@elizaos/core";
+
+const githubWebhookRoute: Route = {
+  name: "github-webhook",
+  path: "/github/webhook",
+  type: "POST",
+  handler: async (req, res, runtime) => {
+    try {
+      // Verify GitHub signature (optional but recommended)
+      const signature = req.headers["x-hub-signature-256"];
+      // ... signature verification logic ...
+
+      // Parse GitHub event
+      const event = req.headers["x-github-event"];
+      const payload = req.body;
+
+      // Determine channel to send message to
+      const channelId = runtime.getSetting("GITHUB_NOTIFICATION_CHANNEL");
+      if (!channelId || !validateUuid(channelId)) {
+        console.error("No valid channel configured for GitHub notifications");
+        return res.status(200).json({ ok: true }); // Return 200 to prevent GitHub retries
+      }
+
+      // Format message based on event type
+      let message = "";
+      switch (event) {
+        case "push":
+          message =
+            `🔄 New push to ${payload.repository.full_name} by ${payload.pusher.name}:\n` +
+            `Branch: ${payload.ref.replace("refs/heads/", "")}\n` +
+            `Commits: ${payload.commits.length}\n` +
+            `Message: "${payload.head_commit.message}"`;
+          break;
+
+        case "pull_request":
+          const pr = payload.pull_request;
+          message =
+            `🔀 Pull Request ${payload.action} in ${payload.repository.full_name}:\n` +
+            `#${pr.number}: ${pr.title}\n` +
+            `Author: ${pr.user.login}\n` +
+            `${pr.html_url}`;
+          break;
+
+        case "issues":
+          const issue = payload.issue;
+          message =
+            `📝 Issue ${payload.action} in ${payload.repository.full_name}:\n` +
+            `#${issue.number}: ${issue.title}\n` +
+            `Author: ${issue.user.login}\n` +
+            `${issue.html_url}`;
+          break;
+
+        default:
+          message = `GitHub event: ${event} on ${payload.repository?.full_name || "unknown repo"}`;
+      }
+
+      // Send message as agent
+      const messagePayload = {
+        channel_id: channelId,
+        server_id: "00000000-0000-0000-0000-000000000000",
+        author_id: runtime.agentId,
+        content: message,
+        source_type: "agent_response",
+        raw_message: {
+          text: message,
+          actions: ["GITHUB_NOTIFICATION"],
+        },
+        metadata: {
+          agent_id: runtime.agentId,
+          agentName: runtime.character.name,
+          githubEvent: event,
+          repository: payload.repository?.full_name,
+        },
+      };
+
+      // Submit message
+      const baseUrl =
+        runtime.getSetting("SERVER_URL") || "http://localhost:3000";
+      const submitResponse = await fetch(`${baseUrl}/api/messaging/submit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(messagePayload),
+      });
+
+      if (!submitResponse.ok) {
+        throw new Error(
+          `Failed to submit message: ${submitResponse.statusText}`,
+        );
+      }
+
+      res.json({
+        success: true,
+        message: "GitHub webhook processed",
+      });
+    } catch (error) {
+      console.error("GitHub webhook error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to process webhook",
+      });
+    }
+  },
+};
+
+export const githubPlugin: Plugin = {
+  name: "github-integration",
+  description: "GitHub webhook integration for agent notifications",
+  routes: [githubWebhookRoute],
+
+  init: async (config, runtime) => {
+    const channelId = runtime.getSetting("GITHUB_NOTIFICATION_CHANNEL");
+    if (!channelId) {
+      console.warn("GITHUB_NOTIFICATION_CHANNEL not configured");
+    }
+    console.log("GitHub integration initialized");
+  },
+};
+```
+
+## Advanced Patterns
+
+### Authenticated Webhooks
+
+For secure webhook endpoints, implement authentication:
+
+```typescript
+{
+  name: 'secure-webhook',
+  path: '/secure/webhook',
+  type: 'POST',
+  handler: async (req, res, runtime) => {
+    // Check for API key
+    const apiKey = req.headers['x-api-key'];
+    const expectedKey = runtime.getSetting('WEBHOOK_API_KEY');
+
+    if (!apiKey || apiKey !== expectedKey) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized'
+      });
+    }
+
+    // Process authenticated request
+    // ...
+  }
+}
+```
+
+### File Upload Webhooks
+
+For endpoints that accept file uploads:
+
+```typescript
+{
+  name: 'upload-webhook',
+  path: '/upload',
+  type: 'POST',
+  isMultipart: true,
+  handler: async (req, res, runtime) => {
+    const file = req.file; // Access uploaded file
+    const { description } = req.body;
+
+    // Process file and send agent message
+    const message = `📎 New file uploaded: ${file.originalname}\n${description}`;
+
+    // Send message with file attachment
+    const messagePayload = {
+      channel_id: channelId,
+      author_id: runtime.agentId,
+      content: message,
+      metadata: {
+        attachments: [{
+          filename: file.originalname,
+          size: file.size,
+          mimeType: file.mimetype
+        }]
+      }
+    };
+
+    // Submit message...
+  }
+}
+```
+
+### Scheduled Messages
+
+Create endpoints that schedule future agent messages:
+
+```typescript
+{
+  name: 'schedule-message',
+  path: '/schedule',
+  type: 'POST',
+  handler: async (req, res, runtime) => {
+    const { channelId, message, sendAt } = req.body;
+
+    // Calculate delay
+    const delay = new Date(sendAt).getTime() - Date.now();
+
+    if (delay <= 0) {
+      return res.status(400).json({
+        error: 'sendAt must be in the future'
+      });
+    }
+
+    // Schedule message
+    setTimeout(async () => {
+      // Send message as agent
+      await sendAgentMessage(runtime, channelId, message);
+    }, delay);
+
+    res.json({
+      success: true,
+      message: `Message scheduled for ${sendAt}`
+    });
+  }
+}
+```
+
+## Route Registration and Access
+
+### How Routes Are Registered
+
+When your plugin is loaded:
+
+1. The runtime registers all routes from the `routes` array
+2. Routes are accessible at the path you specify
+3. The runtime provides the route handler with the agent's runtime instance
+
+### Accessing Your Routes
+
+Routes are available at:
+
+- **Development**: `http://localhost:3000{path}`
+- **Production**: `https://your-domain.com{path}`
+
+With query parameter for agent selection:
+
+- `http://localhost:3000/webhook?agentId=YOUR_AGENT_ID`
+
+## Best Practices
+
+### 1. Security
+
+- **Always validate input** from webhooks
+- **Implement authentication** for sensitive endpoints
+- **Verify signatures** from known services (GitHub, Stripe, etc.)
+- **Rate limit** webhook endpoints to prevent abuse
+
+### 2. Error Handling
+
+- **Return appropriate HTTP status codes**
+- **Log errors** for debugging
+- **Don't expose internal errors** to webhook callers
+- **Return 200 OK** to prevent webhook retries for non-critical errors
+
+### 3. Message Formatting
+
+- **Keep messages concise** and relevant
+- **Use emoji** sparingly for visual indicators
+- **Include links** when referencing external resources
+- **Add metadata** for message tracking and debugging
+
+### 4. Performance
+
+- **Process webhooks asynchronously** when possible
+- **Return responses quickly** (< 5 seconds)
+- **Queue heavy processing** tasks
+- **Implement timeouts** for external API calls
+
+## Common Use Cases
+
+1. **CI/CD Notifications**: Deploy status, build results, test failures
+2. **Monitoring Alerts**: System health, error rates, performance metrics
+3. **Customer Support**: Ticket creation, status updates, escalations
+4. **Social Media**: Mentions, new followers, engagement metrics
+5. **E-commerce**: Order updates, inventory alerts, customer inquiries
+6. **Calendar Integration**: Meeting reminders, schedule changes
+7. **IoT Devices**: Sensor alerts, status updates, command responses
+
+## Testing Webhooks
+
+### Local Development
+
+Use ngrok or similar tools to expose your local server:
+
+```bash
+# Install ngrok
+npm install -g ngrok
+
+# Start your agent
+elizaos start
+
+# In another terminal, expose port 3000
+ngrok http 3000
+
+# Use the ngrok URL for webhook configuration
+# https://abc123.ngrok.io/webhook
+```
+
+### Testing with cURL
+
+```bash
+# Test your webhook endpoint
+curl -X POST http://localhost:3000/webhook?agentId=YOUR_AGENT_ID \
+  -H "Content-Type: application/json" \
+  -d '{
+    "channelId": "test-channel-id",
+    "message": "Hello from webhook!",
+    "metadata": {
+      "source": "curl-test"
+    }
+  }'
+```
+
+### Testing Webhook Routes
+
+ElizaOS provides two types of tests for validating webhook functionality: component tests and e2e tests.
+
+#### Component Tests
+
+Component tests verify route handler logic using a real runtime. All tests use PGLite for in-memory database operations:
+
+```typescript src/__tests__/webhook-routes.test.ts
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { createTestRuntimeWithCleanup } from "./test-utils";
+import { webhookPlugin } from "../index";
+import type { IAgentRuntime } from "@elizaos/core";
+
+describe("Webhook Plugin Routes", () => {
+  let runtime: IAgentRuntime;
+  let cleanup: () => Promise<void>;
+
+  beforeEach(async () => {
+    const result = await createTestRuntimeWithCleanup();
+    runtime = result.runtime;
+    cleanup = result.cleanup;
+
+    // Spy on getSetting if you need specific values
+    vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+      const settings: Record<string, string> = {
+        GITHUB_NOTIFICATION_CHANNEL: "test-channel-123",
+        SERVER_URL: "http://localhost:3000",
+      };
+      return settings[key];
+    });
+  });
+
+  afterEach(async () => {
+    await cleanup();
+  });
+
+  it("should handle GitHub webhook and return success", async () => {
+    const githubRoute = webhookPlugin.routes?.find(
+      (r) => r.name === "github-webhook",
+    );
+    expect(githubRoute).toBeDefined();
+
+    const mockReq = {
+      headers: {
+        "x-github-event": "push",
+        "x-hub-signature-256": "sha256=test",
+      },
+      body: {
+        repository: { full_name: "test/repo" },
+        pusher: { name: "testuser" },
+        ref: "refs/heads/main",
+        commits: [{ message: "Test commit" }],
+        head_commit: { message: "Test commit" },
+      },
+    };
+
+    let responseData: Record<string, unknown> | null = null;
+    const mockRes = {
+      json: (data: Record<string, unknown>) => {
+        responseData = data;
+      },
+      status: (code: number) => mockRes,
+    };
+
+    // Mock fetch for the messaging API call
+    const originalFetch = global.fetch;
+    global.fetch = async () =>
+      ({
+        ok: true,
+        json: async () => ({ success: true, data: { id: "msg-123" } }),
+      }) as Response;
+
+    await githubRoute!.handler!(mockReq, mockRes, runtime);
+
+    expect(responseData).toEqual({
+      success: true,
+      message: "GitHub webhook processed",
+    });
+
+    // Restore fetch
+    global.fetch = originalFetch;
+  });
+
+  it("should validate required fields in send-message webhook", async () => {
+    const sendMessageRoute = webhookPlugin.routes?.find(
+      (r) => r.name === "send-message-webhook",
+    );
+    expect(sendMessageRoute).toBeDefined();
+
+    const mockReq = {
+      body: {}, // Missing required fields
+    };
+
+    let responseData: Record<string, unknown> | null = null;
+    let statusCode: number = 200;
+    const mockRes = {
+      json: (data: Record<string, unknown>) => {
+        responseData = data;
+      },
+      status: (code: number) => {
+        statusCode = code;
+        return mockRes;
+      },
+    };
+
+    await sendMessageRoute!.handler!(mockReq, mockRes, runtime);
+
+    expect(statusCode).toBe(400);
+    expect(responseData).toEqual({
+      success: false,
+      error: "channelId and message are required",
+    });
+  });
+});
+```
+
+#### E2E Tests
+
+E2E tests validate the complete webhook flow with a live agent runtime:
+
+```typescript src/__tests__/webhook-e2e.test.ts
+import { TestSuite } from "@elizaos/core";
+
+export const webhookE2ETests: TestSuite = {
+  name: "Webhook Integration E2E Tests",
+  tests: [
+    {
+      name: "should process webhook and send agent message",
+      fn: async (runtime) => {
+        // Create a test channel
+        const testChannel = await runtime.createMemory(
+          {
+            id: "test-channel-webhook",
+            roomId: "test-room-webhook",
+            entityId: "test-entity",
+            content: {
+              text: "Test channel for webhook testing",
+              source: "test",
+            },
+          },
+          "channels",
+        );
+
+        // Test the webhook endpoint via HTTP request
+        const webhookPayload = {
+          channelId: testChannel.roomId,
+          message: "Hello from webhook integration test!",
+          metadata: {
+            source: "e2e-test",
+            testRun: true,
+          },
+        };
+
+        // Make HTTP request to webhook endpoint
+        const response = await fetch(
+          `http://localhost:3000/send-agent-message?agentId=${runtime.agentId}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(webhookPayload),
+          },
+        );
+
+        expect(response.ok).toBe(true);
+
+        const result = await response.json();
+        expect(result.success).toBe(true);
+        expect(result.messageId).toBeDefined();
+
+        // Verify the message was actually sent
+        const messages = await runtime.getMemories({
+          roomId: testChannel.roomId,
+          tableName: "messages",
+          count: 10,
+        });
+
+        const webhookMessage = messages.find(
+          (m) =>
+            m.content.text === "Hello from webhook integration test!" &&
+            m.metadata?.source === "e2e-test",
+        );
+
+        expect(webhookMessage).toBeDefined();
+        expect(webhookMessage.entityId).toBe(runtime.agentId);
+      },
+    },
+    {
+      name: "should handle GitHub webhook events",
+      fn: async (runtime) => {
+        // Set required environment variable
+        const channelId = "github-test-channel";
+
+        const githubPayload = {
+          repository: { full_name: "elizaos/test-repo" },
+          pusher: { name: "testdev" },
+          ref: "refs/heads/main",
+          commits: [{ message: "Add new feature" }],
+          head_commit: { message: "Add new feature" },
+        };
+
+        const response = await fetch(
+          `http://localhost:3000/github/webhook?agentId=${runtime.agentId}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-github-event": "push",
+            },
+            body: JSON.stringify(githubPayload),
+          },
+        );
+
+        expect(response.ok).toBe(true);
+
+        const result = await response.json();
+        expect(result.success).toBe(true);
+        expect(result.message).toBe("GitHub webhook processed");
+      },
+    },
+  ],
+};
+
+// Export for plugin registration
+export default webhookE2ETests;
+```
+
+#### Adding Tests to Your Plugin
+
+Include tests in your plugin definition:
+
+```typescript src/index.ts
+import { webhookE2ETests } from "./__tests__/webhook-e2e.test";
+
+export const webhookPlugin: Plugin = {
+  name: "webhook-integration",
+  description: "Plugin with webhook endpoints",
+  routes: [
+    /* your routes */
+  ],
+  tests: [webhookE2ETests], // Add your test suites
+};
+```
+
+#### Running Tests
+
+Use the ElizaOS test command to run your webhook tests:
+
+```bash
+# Run component tests only
+elizaos test --type component
+
+# Run e2e tests only
+elizaos test --type e2e
+
+# Run all tests
+elizaos test
+
+# Run tests for specific plugin
+elizaos test --name "Webhook Integration"
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Plugin Architecture" icon="sitemap" href="/plugins/architecture">
+    Understanding the plugin system
+  </Card>
+
+<Card title="Plugin Development" icon="code" href="/plugins/development">
+  Creating plugins
+</Card>
+
+<Card title="Sessions API" icon="messages" href="/runtime/sessions-api">
+  Build persistent conversations on messaging
+</Card>
+
+  <Card title="Runtime Messaging" icon="wifi" href="/runtime/messaging">
+    Real-time messaging infrastructure
+  </Card>
+</CardGroup>

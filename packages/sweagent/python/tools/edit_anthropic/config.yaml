@@ -1,0 +1,56 @@
+tools:
+  str_replace_editor:
+    signature: |
+      str_replace_editor <command> <path> [<file_text>] [<view_range>] [<old_str>] [<new_str>] [<insert_line>]
+    # This docstrings was taken from openhands:
+    # https://github.com/All-Hands-AI/OpenHands/blob/main/openhands/agenthub/codeact_agent/function_calling.py
+    docstring: >
+      Custom editing tool for viewing, creating and editing files
+      * State is persistent across command calls and discussions with the user
+      * If `path` is a file, `view` displays the result of applying `cat -n`. If `path` is a directory, `view` lists non-hidden files and directories up to 2 levels deep
+      * The `create` command cannot be used if the specified `path` already exists as a file
+      * If a `command` generates a long output, it will be truncated and marked with `<response clipped>`
+      * The `undo_edit` command will revert the last edit made to the file at `path`
+
+      Notes for using the `str_replace` command:
+      * The `old_str` parameter should match EXACTLY one or more consecutive lines from the original file. Be mindful of whitespaces!
+      * If the `old_str` parameter is not unique in the file, the replacement will not be performed. Make sure to include enough context in `old_str` to make it unique
+      * The `new_str` parameter should contain the edited lines that should replace the `old_str`
+    arguments:
+      - name: command
+        type: string
+        description: "The commands to run. Allowed options are: `view`, `create`, `str_replace`, `insert`, `undo_edit`."
+        required: true
+        enum: ["view", "create", "str_replace", "insert", "undo_edit"]
+      - name: path
+        type: string
+        description: "Absolute path to file or directory, e.g. `/testbed/file.py` or `/testbed`."
+        required: true
+      - name: file_text
+        type: string
+        description: "Required parameter of `create` command, with the content of the file to be created."
+        required: false
+        argument_format: "--file_text {{value}}"
+      - name: old_str
+        type: string
+        description: "Required parameter of `str_replace` command containing the string in `path` to replace."
+        required: false
+        argument_format: "--old_str {{value}}"
+      - name: new_str
+        type: string
+        description: "Optional parameter of `str_replace` command containing the new string (if not given, no string will be added). Required parameter of `insert` command containing the string to insert."
+        required: false
+        argument_format: "--new_str {{value}}"
+      - name: insert_line
+        type: integer
+        description: "Required parameter of `insert` command. The `new_str` will be inserted AFTER the line `insert_line` of `path`."
+        required: false
+        argument_format: "--insert_line {{value}}"
+      - name: view_range
+        type: array
+        items:
+          type: integer
+        description: "Optional parameter of `view` command when `path` points to a file. If none is given, the full file is shown. If provided, the file will be shown in the indicated line number range, e.g. [11, 12] will show lines 11 and 12. Indexing at 1 to start. Setting `[start_line, -1]` shows all lines from `start_line` to the end of the file."
+        required: false
+        argument_format: "--view_range {{value|join(' ')}}"
+state_command: "_state_anthropic"

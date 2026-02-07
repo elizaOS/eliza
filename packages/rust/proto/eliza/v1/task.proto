@@ -1,0 +1,38 @@
+// task.proto - Task types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "google/protobuf/struct.proto";
+
+// Task status enumeration
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_PENDING = 1;
+  TASK_STATUS_IN_PROGRESS = 2;
+  TASK_STATUS_COMPLETED = 3;
+  TASK_STATUS_FAILED = 4;
+  TASK_STATUS_CANCELLED = 5;
+}
+
+// Task metadata
+message TaskMetadata {
+  // Custom metadata values
+  google.protobuf.Struct values = 1;
+}
+
+// Represents a task
+message Task {
+  optional string id = 1;
+  string name = 2;
+  optional string description = 3;
+  TaskStatus status = 4;
+  optional string room_id = 5;
+  optional string world_id = 6;
+  optional string entity_id = 7;
+  repeated string tags = 8;
+  optional TaskMetadata metadata = 9;
+  optional int64 created_at = 10;
+  optional int64 updated_at = 11;
+  optional int64 due_at = 12;
+}

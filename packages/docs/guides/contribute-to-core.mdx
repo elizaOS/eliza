@@ -1,0 +1,261 @@
+---
+title: "Contribute to Core"
+description: "How to contribute to the elizaOS core project and plugin ecosystem"
+---
+
+<Note>
+  This guide covers contributing to the main elizaOS monorepo and the elizaOS
+  plugin ecosystem.
+</Note>
+
+## Understanding the Ecosystem
+
+elizaOS open source contribution happens across these main areas:
+
+### Main Repository (Monorepo)
+
+**[github.com/elizaos/eliza](https://github.com/elizaos/eliza)** - The core monorepo containing:
+
+- `packages/typescript` - Runtime, types, interfaces, and bootstrap plugin
+- `packages/cli` - Command-line tools and elizaos CLI
+- `packages/server` - Agent server implementation
+- `packages/client` - Client libraries and interfaces
+- Core plugins (`packages/plugin-sql`, etc.)
+- Project templates (`packages/project-starter`, `packages/project-tee-starter`)
+- Plugin templates (`packages/plugin-starter`, `packages/plugin-quick-starter`)
+- Config files, READMEs & more
+
+### Plugin Ecosystem
+
+**[github.com/elizaos-plugins](https://github.com/elizaos-plugins)** - Official plugins maintained by the elizaOS team:
+
+- `plugin-discord` - Discord integration
+- `plugin-x` - X integration
+- `plugin-evm` - Ethereum and blockchain functionality
+- And many more frequently-used plugins
+
+---
+
+## Step 1: Identify an Issue
+
+### Check Main Repository Issues
+
+**Start here first** - Browse existing bugs in the main repo:
+
+**[elizaos/eliza/issues](https://github.com/elizaos/eliza/issues)**
+
+Focus on labels like:
+
+- `good first issue` - Perfect for newcomers
+- `bug` - Something that needs fixing
+
+<Note>
+  The best way to start contributing is fixing reported bugs rather than writing
+  new features.
+</Note>
+
+### elizaOS-Maintained Plugin Issues
+
+Find issues in elizaOS-maintained plugins (often more focused for first contributions):
+
+**Official elizaOS plugins:**
+
+- [plugin-x/issues](https://github.com/elizaos-plugins/plugin-x/issues)
+- [plugin-discord/issues](https://github.com/elizaos-plugins/plugin-discord/issues)
+- [plugin-evm/issues](https://github.com/elizaos-plugins/plugin-evm/issues)
+
+### Community Plugin Issues
+
+**Community plugins are separate** - These are built by the community:
+
+- Browse the [Plugin Registry](/plugin-registry/overview) for community-maintained plugins
+- Check their GitHub repositories for contribution opportunities
+- Help with maintenance: updating dependencies, fixing bugs, improving docs
+- Consider adopting unmaintained plugins by forking and continuing development
+
+### Creating Issues for New Bugs
+
+If you discover a bug without an existing issue:
+
+1. **Reproduce the bug** consistently & locally
+2. **Check if it's already reported** by searching existing issues
+3. **Create a detailed issue** with:
+   - Clear description of the problem
+   - Steps to reproduce
+   - Expected vs actual behavior
+   - Environment details (OS, Node/Bun version, elizaOS version)
+   - Error messages or logs
+
+```markdown Issue Template Example
+## Bug Description
+
+The Discord plugin fails to connect when using voice channels
+
+## Steps to Reproduce
+
+1. Configure agent with Discord and ElevenLabs plugins
+2. Invite agent to voice channel
+3. Agent connects but immediately disconnects
+
+## Expected Behavior
+
+Agent should remain connected and respond with voice
+
+## Environment
+
+- elizaOS version: 1.4.4
+- Node version: 23.3
+- OS: macOS 14.0
+```
+
+### Contribute to Docs and Community
+
+Beyond code contributions, you can help in these important areas:
+
+**Documentation contributions:**
+
+- Add tutorials to the tutorials section in [docs repository](https://github.com/elizaos/docs)
+- Update any outdated references, instructions, or broken links you find
+- Fix typos, improve clarity, or add missing examples
+
+**Community support:**
+
+- **Answer questions** in [GitHub Discussions](https://github.com/orgs/elizaOS/discussions) Q&A section
+- **Help with troubleshooting** - Setup issues, configuration problems, etc.
+- **Share knowledge** in general discussions about elizaOS development
+- **Showcase projects** in show and tell or participate in feature discussions
+
+<Tip>
+  Community contributions like answering questions and writing tutorials are
+  often the most impactful ways to help other developers succeed with elizaOS.
+</Tip>
+
+---
+
+## Step 2: Contribution Workflow
+
+elizaOS follows standard open source contribution practices for all repositories.
+
+### Clone and Set Up Repository
+
+1. **Clone the repository** you want to contribute to on your local machine
+2. **Create a branch** off the `develop` branch for monorepo or `1.x` branch for plugins
+3. **Install dependencies** and build the project
+
+### Make Your Changes Locally
+
+**Focus on these types of contributions:**
+
+- Fix existing functionality that isn't working
+- Improve error handling and edge cases
+- Performance optimizations
+- Documentation corrections
+
+<Warning>
+  Large refactors are unlikely to be accepted. Focus on incremental improvements
+  and bug fixes first. Always discuss major architectural changes with core
+  developers before starting work.
+</Warning>
+
+**Implementation steps:**
+
+1. **Make your changes** to fix the bug or implement the improvement
+2. **Test your changes** thoroughly - run existing tests and add new ones if needed
+3. **Ensure code quality** - follow linting rules and TypeScript requirements
+
+### Submit Your Pull Request
+
+**Target the correct branch:**
+
+- **Main repository (elizaos/eliza):** Target `develop` branch
+- **Plugin repositories:** Target `1.x` branch (or check the default branch)
+
+**Create a detailed pull request** with:
+
+- Clear description of what the PR does
+- Link to the related issue (`Fixes #123`)
+- List of specific changes made
+- Check that CI/GitHub Actions are passing
+- Screenshots if there are UI changes
+
+### Collaborate During Review
+
+- Respond to code review comments promptly
+- Make requested changes in additional commits
+- Be open to feedback and iteration
+
+### Code Quality Standards
+
+**What we look for:**
+
+- Bug fixes with clear reproduction steps
+- Performance improvements with benchmarks
+- Documentation improvements and corrections
+- Test coverage improvements
+- Security fixes
+
+**Technical requirements:**
+
+- **TypeScript**: All code must be properly typed
+- **Testing**: New features require tests, bug fixes should include regression tests
+- **Documentation**: Update relevant documentation for any user-facing changes
+- **Linting**: Code must pass all linting checks
+- **Commit Messages**: Use clear, descriptive commit messages
+
+---
+
+## Step 3: Get Connected
+
+### Join Discord for Development
+
+Connect with core developers and other contributors:
+
+**[Join elizaOS Discord](https://discord.gg/ai16z)**
+
+Key channels for contributors:
+
+- **💬 #coders** - Development discussions and questions
+- **💻 #tech-support** - Help others troubleshoot and get help yourself
+
+### Communicate Before Major Work
+
+For significant contributions:
+
+1. **Post in 💬 #coders** about your planned contribution
+2. **Share your approach** before implementing large features
+3. **Ask questions** - the community is helpful and welcoming
+
+<Tip>
+  Core developers are active in Discord and can provide guidance on whether your
+  planned contribution aligns with project goals.
+</Tip>
+
+### Build Community Connections
+
+- Participate in discussions and help answer questions
+- Share your progress and learn from others
+- Connect with the core devs & other community contributors
+- Stay updated on project direction and roadmap
+
+---
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card
+    title="Create a Plugin"
+    icon="puzzle-piece"
+    href="/guides/create-a-plugin"
+  >
+    Build your own plugins to contribute to the ecosystem
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">
+    Master the development tools for efficient contribution
+  </Card>
+  <Card title="Test a Project" icon="flask" href="/guides/test-a-project">
+    Learn comprehensive testing strategies for your contributions
+  </Card>
+  <Card title="Join Discord" icon="users" href="https://discord.gg/ai16z">
+    Connect with core developers and the contributor community
+  </Card>
+</CardGroup>

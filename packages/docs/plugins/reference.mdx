@@ -1,0 +1,630 @@
+---
+title: "Reference"
+description: "Complete TypeScript interface reference for elizaOS plugins"
+---
+
+## Core Interfaces
+
+### Plugin Interface
+
+```typescript
+export interface Plugin {
+  // Required
+  name: string; // Unique identifier
+  description: string; // Human-readable description
+
+  // Initialization
+  init?: (
+    config: Record<string, string>,
+    runtime: IAgentRuntime,
+  ) => Promise<void>;
+
+  // Configuration
+  config?: { [key: string]: string | number | boolean }; // Plugin-specific configuration
+
+  // Core Components
+  actions?: Action[]; // Tasks agents can perform
+  providers?: Provider[]; // Data sources
+  evaluators?: Evaluator[]; // Response filters
+  services?: (typeof Service)[]; // Background services
+
+  // Additional Components
+  adapter?: IDatabaseAdapter; // Database adapter
+  models?: {
+    // Model handlers
+    [key: string]: ModelHandler;
+  };
+  events?: PluginEvents; // Event handlers
+  routes?: Route[]; // HTTP endpoints
+  tests?: TestSuite[]; // Test suites
+  componentTypes?: {
+    // Custom component types
+    name: string;
+    schema: Record<string, unknown>;
+    validator?: (data: unknown) => boolean;
+  }[];
+
+  // Dependencies
+  dependencies?: string[]; // Required plugins
+  testDependencies?: string[]; // Test-only dependencies
+  priority?: number; // Loading priority
+  schema?: Record<string, unknown>; // Database schema
+}
+```
+
+### Action Interface
+
+```typescript
+export interface Action {
+  name: string; // Unique identifier
+  similes?: string[]; // Alternative names/aliases
+  description: string; // What the action does
+  examples?: ActionExample[][]; // Usage examples
+  handler: Handler; // Execution logic
+  validate: Validator; // Pre-execution validation
+}
+
+// Handler type
+export type Handler = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  options?: HandlerOptions,
+  callback?: HandlerCallback,
+  responses?: Memory[],
+) => Promise<ActionResult | void | undefined>;
+
+// Validator type
+export type Validator = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+) => Promise<boolean>;
+
+// HandlerCallback type
+export type HandlerCallback = (response: Content) => Promise<Memory[]>;
+
+// ActionResult interface
+export interface ActionResult {
+  success: boolean; // Required - whether action succeeded
+  text?: string; // Optional text description
+  values?: Record<string, unknown>; // Values to merge into state
+  data?: Record<string, unknown>; // Data payload
+  error?: string | Error; // Error information if failed
+}
+
+// ActionExample interface
+export interface ActionExample {
+  name: string; // Speaker name
+  content: Content; // Message content
+}
+
+// ActionContext interface (for chaining)
+export interface ActionContext {
+  previousResults: ActionResult[];
+  getPreviousResult?: (actionName: string) => ActionResult | undefined;
+}
+```
+
+### Provider Interface
+
+```typescript
+export interface Provider {
+  name: string; // Unique identifier
+  description?: string; // What data it provides
+  dynamic?: boolean; // Dynamic data source (default: false)
+  position?: number; // Execution order (-100 to 100, default: 0)
+  private?: boolean; // Hidden from provider list (default: false)
+  get: (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+  ) => Promise<ProviderResult>;
+}
+
+// ProviderResult interface
+export interface ProviderResult {
+  values?: { [key: string]: unknown }; // Key-value pairs for state
+  data?: { [key: string]: unknown }; // Structured data
+  text?: string; // Natural language context
+}
+```
+
+### Evaluator Interface
+
+```typescript
+export interface Evaluator {
+  alwaysRun?: boolean; // Run on every response
+  description: string; // What it evaluates
+  similes?: string[]; // Alternative names
+  examples: EvaluationExample[]; // Example evaluations
+  handler: Handler; // Evaluation logic
+  name: string; // Unique identifier
+  validate: Validator; // Should evaluator run?
+}
+
+// EvaluationExample interface
+export interface EvaluationExample {
+  prompt: string; // Evaluation prompt
+  messages: Array<ActionExample>; // Example messages
+  outcome: string; // Expected outcome
+}
+```
+
+### Service Abstract Class
+
+```typescript
+export abstract class Service {
+  protected runtime!: IAgentRuntime;
+
+  constructor(runtime?: IAgentRuntime) {
+    if (runtime) {
+      this.runtime = runtime;
+    }
+  }
+
+  abstract stop(): Promise<void>;
+  static serviceType: string;
+  abstract capabilityDescription: string;
+  config?: Metadata;
+
+  static async start(_runtime: IAgentRuntime): Promise<Service> {
+    throw new Error("Not implemented");
+  }
+}
+```
+
+## Supporting Types
+
+### Memory Interface
+
+```typescript
+export interface Memory {
+  id?: UUID; // Optional unique identifier
+  entityId: UUID; // Associated user/entity ID
+  agentId?: UUID; // Associated agent ID
+  createdAt?: number; // Creation timestamp (ms since epoch)
+  content: Content; // Memory content
+  embedding?: number[]; // Embedding vector for semantic search
+  roomId: UUID; // Associated room ID
+  worldId?: UUID; // Associated world ID
+  unique?: boolean; // Prevent duplicates
+  similarity?: number; // Embedding similarity score (on search)
+  metadata?: MemoryMetadata; // Memory metadata
+}
+
+// MemoryType enum
+export enum MemoryType {
+  DOCUMENT = "document",
+  FRAGMENT = "fragment",
+  MESSAGE = "message",
+  DESCRIPTION = "description",
+  CUSTOM = "custom",
+}
+```
+
+### Content Interface
+
+```typescript
+export interface Content {
+  text?: string;
+  source?: string;
+  url?: string;
+  attachments?: Attachment[];
+  actions?: string[];
+  [key: string]: unknown;
+}
+```
+
+### State Interface
+
+```typescript
+export interface State {
+  values: { [key: string]: unknown };
+  data?: { [key: string]: unknown };
+  text: string;
+}
+```
+
+### Character Interface
+
+```typescript
+export interface Character {
+  id: UUID;
+  name: string;
+  bio?: string | string[];
+  lore?: string[];
+  messageExamples?: MessageExample[][];
+  postExamples?: string[];
+  adjectives?: string[];
+  topics?: string[];
+  style?: {
+    all?: string[];
+    chat?: string[];
+    post?: string[];
+  };
+  clients?: string[];
+  plugins?: string[];
+  settings?: {
+    secrets?: { [key: string]: string };
+    [key: string]: unknown;
+  };
+}
+```
+
+## Route Types
+
+```typescript
+export type Route = {
+  type: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "STATIC";
+  path: string;
+  filePath?: string; // For static files
+  public?: boolean; // Public access
+  name?: string; // Route name
+  handler?: (
+    req: RouteRequest,
+    res: RouteResponse,
+    runtime: IAgentRuntime,
+  ) => Promise<void>;
+  isMultipart?: boolean; // File uploads
+};
+```
+
+## Event Types
+
+### Event System Types
+
+```typescript
+export type PluginEvents = {
+  [K in keyof EventPayloadMap]?: EventHandler<K>[];
+} & {
+  [key: string]: ((params: EventPayload) => Promise<void>)[];
+};
+
+export type EventHandler<K extends keyof EventPayloadMap> = (
+  params: EventPayloadMap[K],
+) => Promise<void>;
+```
+
+### Standard Event Types
+
+```typescript
+export enum EventType {
+  // World events
+  WORLD_JOINED = "world:joined",
+  WORLD_CONNECTED = "world:connected",
+  WORLD_LEFT = "world:left",
+
+  // Entity events
+  ENTITY_JOINED = "entity:joined",
+  ENTITY_LEFT = "entity:left",
+  ENTITY_UPDATED = "entity:updated",
+
+  // Room events
+  ROOM_JOINED = "room:joined",
+  ROOM_LEFT = "room:left",
+
+  // Message events
+  MESSAGE_RECEIVED = "message:received",
+  MESSAGE_SENT = "message:sent",
+  MESSAGE_DELETED = "message:deleted",
+
+  // Voice events
+  VOICE_MESSAGE_RECEIVED = "voice:message:received",
+  VOICE_MESSAGE_SENT = "voice:message:sent",
+
+  // Run events
+  RUN_STARTED = "run:started",
+  RUN_ENDED = "run:ended",
+  RUN_TIMEOUT = "run:timeout",
+
+  // Action/Evaluator events
+  ACTION_STARTED = "action:started",
+  ACTION_COMPLETED = "action:completed",
+  EVALUATOR_STARTED = "evaluator:started",
+  EVALUATOR_COMPLETED = "evaluator:completed",
+
+  // Model events
+  MODEL_USED = "model:used",
+}
+```
+
+## Database Types
+
+### IDatabaseAdapter Interface (Partial)
+
+```typescript
+export interface IDatabaseAdapter {
+  // Core database property
+  db: DatabaseConnection;
+
+  // Agent methods
+  createAgent(agent: Agent): Promise<void>;
+  getAgent(agentId: UUID): Promise<Agent | null>;
+  updateAgent(agent: Agent): Promise<void>;
+  deleteAgent(agentId: UUID): Promise<void>;
+
+  // Memory methods
+  createMemory(memory: Memory, tableName?: string): Promise<void>;
+  getMemories(params: {
+    roomId?: UUID;
+    agentId?: UUID;
+    entityId?: UUID;
+    tableName?: string;
+    count?: number;
+    unique?: boolean;
+    start?: number;
+    end?: number;
+  }): Promise<Memory[]>;
+  searchMemories(params: {
+    query: string;
+    roomId?: UUID;
+    agentId?: UUID;
+    limit?: number;
+  }): Promise<Memory[]>;
+
+  // Room methods
+  createRoom(room: Room): Promise<void>;
+  getRoom(roomId: UUID): Promise<Room | null>;
+  updateRoom(room: Room): Promise<void>;
+  deleteRoom(roomId: UUID): Promise<void>;
+
+  // Participant methods
+  createParticipant(participant: Participant): Promise<void>;
+  getParticipants(roomId: UUID): Promise<Participant[]>;
+  updateParticipantUserState(
+    roomId: UUID,
+    userId: UUID,
+    state: string,
+  ): Promise<void>;
+
+  // Relationship methods
+  createRelationship(relationship: Relationship): Promise<void>;
+  getRelationships(params: {
+    entityA?: UUID;
+    entityB?: UUID;
+  }): Promise<Relationship[]>;
+
+  // Task methods
+  createTask(task: Task): Promise<void>;
+  getTasks(agentId: UUID): Promise<Task[]>;
+  updateTask(task: Task): Promise<void>;
+
+  // Cache methods
+  getCachedEmbedding(text: string): Promise<number[] | null>;
+  setCachedEmbedding(text: string, embedding: number[]): Promise<void>;
+
+  // Log methods
+  log(entry: LogEntry): Promise<void>;
+  getLogs(params: {
+    agentId?: UUID;
+    level?: string;
+    limit?: number;
+  }): Promise<LogEntry[]>;
+}
+```
+
+## Model Types
+
+### ModelType Enum
+
+```typescript
+export enum ModelType {
+  TEXT_SMALL = "text_small",
+  TEXT_MEDIUM = "text_medium",
+  TEXT_LARGE = "text_large",
+  TEXT_EMBEDDING = "text_embedding",
+  OBJECT_SMALL = "object_small",
+  OBJECT_MEDIUM = "object_medium",
+  OBJECT_LARGE = "object_large",
+  IMAGE_GENERATION = "image_generation",
+  SPEECH_TO_TEXT = "speech_to_text",
+  TEXT_TO_SPEECH = "text_to_speech",
+}
+```
+
+### Model Handler Type
+
+```typescript
+export type ModelHandler = (params: {
+  prompt: string;
+  runtime: IAgentRuntime;
+  [key: string]: unknown;
+}) => Promise<ModelResponse>;
+```
+
+## Utility Types
+
+### UUID Type
+
+```typescript
+export type UUID = string & { __uuid: true };
+```
+
+### Metadata Type
+
+```typescript
+export type Metadata = Record<string, unknown>;
+```
+
+### TestSuite Interface
+
+```typescript
+export interface TestSuite {
+  name: string;
+  tests: TestCase[];
+}
+
+export interface TestCase {
+  name: string;
+  description?: string;
+  fn: (runtime: IAgentRuntime) => Promise<void>;
+}
+```
+
+## Runtime Interface (Partial)
+
+```typescript
+export interface IAgentRuntime {
+  // Core properties
+  agentId: UUID;
+  character: Character;
+  databaseAdapter: IDatabaseAdapter;
+
+  // Plugin management
+  plugins: Plugin[];
+  actions: Action[];
+  providers: Provider[];
+  evaluators: Evaluator[];
+
+  // Methods
+  registerPlugin(plugin: Plugin): Promise<void>;
+  getService<T extends Service>(name: string): T | null;
+  getSetting(key: string): string | undefined;
+
+  // State composition
+  composeState(
+    message: Memory,
+    includeList?: string[],
+    onlyInclude?: boolean,
+    skipCache?: boolean,
+  ): Promise<State>;
+
+  // Model usage
+  useModel<T = ModelResponse>(type: ModelType, params: ModelParams): Promise<T>;
+
+  // Memory management
+  createMemory(memory: Memory, tableName?: string): Promise<void>;
+  getMemories(params: GetMemoriesParams): Promise<Memory[]>;
+
+  // Participant management
+  getParticipantUserState(roomId: UUID, userId: UUID): Promise<string | null>;
+  setParticipantUserState(
+    roomId: UUID,
+    userId: UUID,
+    state: string,
+  ): Promise<void>;
+
+  // Action management
+  getAction(name: string): Action | undefined;
+
+  // Completion
+  completion(params: { messages: Message[]; [key: string]: unknown }): Promise<CompletionResponse>;
+}
+```
+
+## Common Enums
+
+### ChannelType
+
+```typescript
+export enum ChannelType {
+  DM = "dm",
+  GROUP = "group",
+  THREAD = "thread",
+  BROADCAST = "broadcast",
+}
+```
+
+### ServiceType
+
+```typescript
+export enum ServiceType {
+  TRANSCRIPTION = "transcription",
+  VIDEO = "video",
+  BROWSER = "browser",
+  PDF = "pdf",
+  REMOTE_FILES = "remote_files",
+  WEB_SEARCH = "web_search",
+  EMAIL = "email",
+  TEE = "tee",
+  TASK = "task",
+  WALLET = "wallet",
+  LP_POOL = "lp_pool",
+  TOKEN_DATA = "token_data",
+  DATABASE_MIGRATION = "database_migration",
+  PLUGIN_MANAGER = "plugin_manager",
+  PLUGIN_CONFIGURATION = "plugin_configuration",
+  PLUGIN_USER_INTERACTION = "plugin_user_interaction",
+}
+```
+
+## Helper Function Types
+
+### composePromptFromState
+
+```typescript
+export function composePromptFromState(params: {
+  state: State;
+  template: string;
+  additionalContext?: Record<string, unknown>;
+}): string;
+```
+
+### parseKeyValueXml
+
+```typescript
+export function parseKeyValueXml(xml: string): Record<string, string>;
+```
+
+### generateId
+
+```typescript
+export function generateId(): UUID;
+```
+
+### addHeader
+
+```typescript
+export function addHeader(header: string, content: string): string;
+```
+
+## Configuration Types
+
+### Environment Variables
+
+Common environment variables accessed via `runtime.getSetting()`:
+
+```typescript
+// AI Model Providers
+OPENAI_API_KEY?: string;
+ANTHROPIC_API_KEY?: string;
+GOOGLE_GENERATIVE_AI_API_KEY?: string;
+OLLAMA_API_ENDPOINT?: string;
+
+// Platform Integrations
+DISCORD_API_TOKEN?: string;
+TELEGRAM_BOT_TOKEN?: string;
+X_API_KEY?: string;
+X_API_SECRET?: string;
+X_ACCESS_TOKEN?: string;
+X_ACCESS_TOKEN_SECRET?: string;
+
+// Database
+POSTGRES_URL?: string;
+PGLITE_DATA_DIR?: string;
+
+// Plugin Control
+IGNORE_BOOTSTRAP?: string;
+CHANNEL_IDS?: string;
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Plugin Architecture" icon="sitemap" href="/plugins/architecture">
+    Understand how plugins fit into the system
+  </Card>
+
+<Card title="Plugin Components" icon="cube" href="/plugins/components">
+  Deep dive into Actions, Providers, Evaluators, and Services
+</Card>
+
+<Card title="Development Guide" icon="code" href="/plugins/development">
+  Build your first plugin with practical examples
+</Card>
+
+  <Card title="Common Patterns" icon="lightbulb" href="/plugins/patterns">
+    Learn proven plugin development patterns
+  </Card>
+</CardGroup>

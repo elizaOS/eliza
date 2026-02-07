@@ -1,0 +1,30 @@
+# Task: Update settings based on the request.
+
+{{providers}}
+
+# Current Settings:
+{{settings}}
+
+# Instructions:
+Based on the request, determine which settings to update.
+Only update settings that the user has explicitly requested.
+
+Respond using XML format like this:
+<response>
+    <thought>Your reasoning for the settings changes</thought>
+    <updates>
+        <update>
+            <key>setting_key</key>
+            <value>new_value</value>
+        </update>
+    </updates>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above.
+
+
+
+
+
+
+

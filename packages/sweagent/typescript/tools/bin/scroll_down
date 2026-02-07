@@ -1,0 +1,6 @@
+#!/usr/bin/env node
+// Windowed editor scroll down command
+const { WindowedEditor } = require('../dist/windowed/index.js');
+
+const editor = new WindowedEditor();
+editor.scrollDown();
