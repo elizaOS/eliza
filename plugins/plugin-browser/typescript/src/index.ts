@@ -91,6 +91,9 @@ const browserStateProvider: Provider = {
   },
 };
 
+// CLI self-registration - importing this module triggers CLI command registration
+import "./cli/index.js";
+
 export const browserPlugin: Plugin = {
   name: "plugin-browser",
   description: "Browser automation plugin",

@@ -36,13 +36,26 @@ _CORE_ACTION_DOCS_JSON = """{
   "version": "1.0.0",
   "actions": [
     {
-      "name": "user",
-      "description": "",
+      "name": "SEND_CAST",
+      "description": "Posts a cast (message) on Farcaster",
+      "similes": [
+        "POST_CAST",
+        "FARCASTER_POST",
+        "CAST",
+        "SHARE_ON_FARCASTER",
+        "ANNOUNCE"
+      ],
       "parameters": []
     },
     {
-      "name": "user",
-      "description": "",
+      "name": "REPLY_TO_CAST",
+      "description": "Replies to a cast on Farcaster",
+      "similes": [
+        "REPLY_CAST",
+        "RESPOND_CAST",
+        "ANSWER_CAST",
+        "COMMENT_CAST"
+      ],
       "parameters": []
     }
   ]
@@ -51,13 +64,26 @@ _ALL_ACTION_DOCS_JSON = """{
   "version": "1.0.0",
   "actions": [
     {
-      "name": "user",
-      "description": "",
+      "name": "SEND_CAST",
+      "description": "Posts a cast (message) on Farcaster",
+      "similes": [
+        "POST_CAST",
+        "FARCASTER_POST",
+        "CAST",
+        "SHARE_ON_FARCASTER",
+        "ANNOUNCE"
+      ],
       "parameters": []
     },
     {
-      "name": "user",
-      "description": "",
+      "name": "REPLY_TO_CAST",
+      "description": "Replies to a cast on Farcaster",
+      "similes": [
+        "REPLY_CAST",
+        "RESPOND_CAST",
+        "ANSWER_CAST",
+        "COMMENT_CAST"
+      ],
       "parameters": []
     }
   ]

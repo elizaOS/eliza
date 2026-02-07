@@ -19,7 +19,7 @@ pub use providers::{
 pub use service::KnowledgeService;
 pub use types::*;
 
-pub const VERSION: &str = "1.6.1";
+pub const VERSION: &str = "2.0.0";
 pub const PLUGIN_NAME: &str = "knowledge";
 
 #[cfg(test)]
@@ -28,7 +28,7 @@ mod tests {
 
     #[test]
     fn test_version() {
-        assert_eq!(VERSION, "1.6.1");
+        assert_eq!(VERSION, "2.0.0");
     }
 
     #[test]

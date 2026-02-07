@@ -12,9 +12,16 @@ vi.mock("../../utils", () => ({
   chunkTextForSms: vi.fn((text) => [text]),
 }));
 
+/**
+ * Interface for mock Twilio service
+ */
+interface MockTwilioService {
+  sendSms: ReturnType<typeof vi.fn>;
+}
+
 describe("sendSmsAction", () => {
   let mockRuntime: IAgentRuntime;
-  let mockTwilioService: any;
+  let mockTwilioService: MockTwilioService;
   let mockCallback: HandlerCallback;
 
   beforeEach(() => {
@@ -32,7 +39,7 @@ describe("sendSmsAction", () => {
 
     mockRuntime = {
       getService: vi.fn().mockReturnValue(mockTwilioService),
-    } as any;
+    } as unknown as IAgentRuntime;
 
     mockCallback = vi.fn();
   });
@@ -190,7 +197,7 @@ describe("sendSmsAction", () => {
 
     it("should handle invalid phone number", async () => {
       const { validatePhoneNumber } = await import("../../utils");
-      (validatePhoneNumber as any).mockReturnValue(false);
+      vi.mocked(validatePhoneNumber).mockReturnValue(false);
 
       const message: Memory = {
         content: { text: "Send SMS to +18885551234" },
@@ -213,11 +220,11 @@ describe("sendSmsAction", () => {
 
       // Mock chunkTextForSms to return chunks
       const { chunkTextForSms, validatePhoneNumber } = await import("../../utils");
-      (chunkTextForSms as any).mockReturnValue([
+      vi.mocked(chunkTextForSms).mockReturnValue([
         longMessage.substring(0, 160),
         longMessage.substring(160, 320),
       ]);
-      (validatePhoneNumber as any).mockReturnValue(true);
+      vi.mocked(validatePhoneNumber).mockReturnValue(true);
 
       await sendSmsAction.handler(mockRuntime, message, undefined, undefined, mockCallback);
 

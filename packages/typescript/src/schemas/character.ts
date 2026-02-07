@@ -300,7 +300,7 @@ export const characterSchema = z
       .array(z.string())
       .default([])
       .describe(
-        'List of plugin package names to load (e.g., ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap"] - these are commonly required)',
+        'List of plugin package names to load (e.g., ["@elizaos/plugin-sql"] - these are commonly required)',
       ),
     settings: settingsSchema,
     secrets: secretsSchema,

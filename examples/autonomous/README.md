@@ -11,7 +11,6 @@ This folder contains **three** minimal, sandboxed “always-on” autonomous loo
 
 These demos are intentionally **sandboxed**:
 
-- **Shell is opt-in**: it only runs when `SHELL_ENABLED=true`.
 - **Shell is directory-restricted**: set `SHELL_ALLOWED_DIRECTORY` to a dedicated sandbox folder.
 - **Default command allowlist**: the examples only allow a small set of basic commands (you can expand it).
 - **Kill switch**: create a `STOP` file inside the sandbox directory to stop the loop.
@@ -39,7 +38,6 @@ Notes:
 Pick a safe directory (example below uses this repo’s `examples/autonomous/sandbox`):
 
 ```bash
-export SHELL_ENABLED=true
 export SHELL_ALLOWED_DIRECTORY="$(pwd)/examples/autonomous/sandbox"
 export SHELL_TIMEOUT=30000
 
@@ -74,6 +72,8 @@ python autonomous.py
 ```
 
 ### Rust
+
+> **Note**: The Rust example requires `elizaos-plugin-local-ai` with the `llm` feature enabled for actual inference. This feature depends on a vendored `llama_cpp_rs` crate that is not yet included in the repository. The example will compile but exit early with an error message until the vendor is added. See the plugin's `Cargo.toml` for details.
 
 ```bash
 cd examples/autonomous/rust/autonomous

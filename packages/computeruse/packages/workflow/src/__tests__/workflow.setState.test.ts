@@ -3,14 +3,14 @@
  */
 
 import { createWorkflow, createStep, z } from "../index";
-import type { StepResult } from "../types";
+import type { DesktopLike, StepResult } from "../types";
 
 // Mock Desktop for unit tests
-const mockDesktop = {
+const mockDesktop: DesktopLike = {
     locator: jest.fn(),
     openApplication: jest.fn(),
     delay: jest.fn(),
-} as any;
+};
 
 describe("setState Tests", () => {
     describe("setState in workflow steps", () => {

@@ -324,11 +324,11 @@ The answer should be concise and match what is being asked (a number, name, date
 
                 message = Memory(
                     id=as_uuid(str(uuid.uuid4())),
-                    entityId=user_id,
-                    agentId=runtime.agent_id,
-                    roomId=room_id,
+                    entity_id=user_id,
+                    agent_id=runtime.agent_id,
+                    room_id=room_id,
                     content=Content(text=user_text),
-                    createdAt=int(time.time() * 1000),
+                    created_at=int(time.time() * 1000),
                 )
 
                 result = await runtime.message_service.handle_message(runtime, message, _capture)

@@ -1,8 +1,11 @@
 #!/usr/bin/env node
-// @ts-nocheck
+import type { IAgentRuntime } from "@elizaos/core";
 import { VisionService } from "../../service";
+import { VisionServiceType } from "../../types";
 import visionAutonomyE2ETests from "./vision-autonomy";
 import visionBasicE2ETests from "./vision-basic";
+
+type ModelParams = string | Record<string, string | number | boolean | null>;
 
 // Simple test runner for local e2e testing
 async function runE2ETests() {
@@ -12,6 +15,7 @@ async function runE2ETests() {
   const agentId = `agent-${Date.now()}`;
 
   // Create a minimal runtime with vision service
+  let visionService: VisionService | null = null;
   const runtime = {
     agentId,
     getSetting: (key: string) => {
@@ -22,7 +26,7 @@ async function runE2ETests() {
       return settings[key] || null;
     },
     getService: (name: string) => {
-      if (name === "VISION") {
+      if (name === VisionServiceType.VISION) {
         return visionService;
       }
       return null;
@@ -38,16 +42,17 @@ async function runE2ETests() {
       data: {},
       text: "Visual Perception: Available",
     }),
-    useModel: async (type: string, _params: unknown) => {
+    useModel: async (type: string, _params: ModelParams) => {
       if (type === "IMAGE_DESCRIPTION") {
         return { description: "A test scene with various objects" };
       }
       return "Test response";
     },
-  } as Partial<IAgentRuntime>;
+    services: new Map(),
+  } as IAgentRuntime;
 
-  const visionService = await VisionService.start(runtime);
-  runtime.services = new Map([["VISION", visionService]]);
+  visionService = await VisionService.start(runtime);
+  runtime.services = new Map([[VisionServiceType.VISION, [visionService]]]);
 
   const testSuites = [visionBasicE2ETests, visionAutonomyE2ETests];
 

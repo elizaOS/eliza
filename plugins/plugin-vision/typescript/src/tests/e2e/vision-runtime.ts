@@ -1,6 +1,7 @@
-// @ts-nocheck
-import type { Action, IAgentRuntime, Provider } from "@elizaos/core";
+import type { Action, Content, IAgentRuntime, Provider } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type { VisionService } from "../../service";
+import { VisionMode, VisionServiceType } from "../../types";
 
 export class VisionRuntimeTestSuite {
   name = "vision-runtime-tests";
@@ -12,7 +13,7 @@ export class VisionRuntimeTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing vision service initialization...");
 
-        const visionService = runtime.getService("VISION");
+        const visionService = runtime.getService<VisionService>(VisionServiceType.VISION);
         if (!visionService) {
           throw new Error("Vision service not found in runtime");
         }
@@ -26,7 +27,7 @@ export class VisionRuntimeTestSuite {
         logger.info(`[Test] Vision service active: ${isActive}`);
 
         // Service should be active after initialization
-        if (!isActive && runtime.getSetting("VISION_MODE") !== "OFF") {
+        if (!isActive && runtime.getSetting("VISION_MODE") !== VisionMode.OFF) {
           throw new Error("Vision service should be active but is not");
         }
 
@@ -39,7 +40,7 @@ export class VisionRuntimeTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing scene description...");
 
-        const visionService = runtime.getService("VISION");
+        const visionService = runtime.getService<VisionService>(VisionServiceType.VISION);
         if (!visionService) {
           throw new Error("Vision service not found");
         }
@@ -80,7 +81,7 @@ export class VisionRuntimeTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing vision mode switching...");
 
-        const visionService = runtime.getService("VISION");
+        const visionService = runtime.getService<VisionService>(VisionServiceType.VISION);
         if (!visionService) {
           throw new Error("Vision service not found");
         }
@@ -90,7 +91,12 @@ export class VisionRuntimeTestSuite {
         logger.info(`[Test] Original mode: ${originalMode}`);
 
         // Test switching modes
-        const testModes = ["CAMERA", "SCREEN", "BOTH", "OFF"];
+        const testModes: VisionMode[] = [
+          VisionMode.CAMERA,
+          VisionMode.SCREEN,
+          VisionMode.BOTH,
+          VisionMode.OFF,
+        ];
 
         for (const mode of testModes) {
           logger.info(`[Test] Switching to mode: ${mode}`);
@@ -139,7 +145,7 @@ export class VisionRuntimeTestSuite {
 
         // Execute action
         let responseReceived = false;
-        const callback = async (response: { text?: string }) => {
+        const callback = async (response: Content) => {
           if (response.text && response.text.length > 0) {
             responseReceived = true;
             logger.info(`[Test] Action response: ${response.text.substring(0, 100)}...`);
@@ -204,7 +210,7 @@ export class VisionRuntimeTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing Florence-2 model...");
 
-        const visionService = runtime.getService("VISION");
+        const visionService = runtime.getService<VisionService>(VisionServiceType.VISION);
         if (!visionService) {
           throw new Error("Vision service not found");
         }
@@ -221,7 +227,7 @@ export class VisionRuntimeTestSuite {
 
         // If screen mode is enabled, Florence-2 should be initialized
         const mode = visionService.getVisionMode();
-        if (mode === "SCREEN" || mode === "BOTH") {
+        if (mode === VisionMode.SCREEN || mode === VisionMode.BOTH) {
           // Try to get screen capture
           const screenCapture = await visionService.getScreenCapture();
           if (screenCapture) {
@@ -240,7 +246,7 @@ export class VisionRuntimeTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing OCR service...");
 
-        const visionService = runtime.getService("VISION");
+        const visionService = runtime.getService<VisionService>(VisionServiceType.VISION);
         if (!visionService) {
           throw new Error("Vision service not found");
         }
@@ -257,7 +263,7 @@ export class VisionRuntimeTestSuite {
 
         // If screen mode is enabled, OCR should work
         const mode = visionService.getVisionMode();
-        if (mode === "SCREEN" || mode === "BOTH") {
+        if (mode === VisionMode.SCREEN || mode === VisionMode.BOTH) {
           const enhancedScene = await visionService.getEnhancedSceneDescription();
           if (enhancedScene?.screenAnalysis) {
             const ocrText = enhancedScene.screenAnalysis.fullScreenOCR;
@@ -277,7 +283,7 @@ export class VisionRuntimeTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         logger.info("[Test] Testing entity tracking...");
 
-        const visionService = runtime.getService("VISION");
+        const visionService = runtime.getService<VisionService>(VisionServiceType.VISION);
         if (!visionService) {
           throw new Error("Vision service not found");
         }

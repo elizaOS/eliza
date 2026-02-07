@@ -77,12 +77,405 @@ export interface FragmentMetadata
   type?: "fragment";
 }
 
+/**
+ * Chat type for message context.
+ */
+export type MessageChatType =
+  | "dm"
+  | "private"
+  | "direct"
+  | "group"
+  | "supergroup"
+  | "channel"
+  | "thread"
+  | "forum"
+  | string;
+
+/**
+ * Sender identity information.
+ */
+export interface SenderIdentity {
+  /** Platform-specific sender ID */
+  id?: string;
+  /** Display name */
+  name?: string;
+  /** Username (without @ prefix) */
+  username?: string;
+  /** User tag (e.g., user#1234 for Discord) */
+  tag?: string;
+  /** E.164 phone number */
+  e164?: string;
+}
+
+/**
+ * Thread context for threaded conversations.
+ */
+export interface ThreadContext {
+  /** Thread/topic ID */
+  id?: string | number;
+  /** Thread label/name */
+  label?: string;
+  /** Whether this is a forum topic */
+  isForum?: boolean;
+  /** Thread starter message body */
+  starterBody?: string;
+}
+
+/**
+ * Group context for group chats.
+ */
+export interface GroupContext {
+  /** Group ID */
+  id?: string;
+  /** Group name/subject */
+  name?: string;
+  /** Channel within the group (e.g., #general) */
+  channel?: string;
+  /** Workspace/space name */
+  space?: string;
+  /** Group members (comma-separated or count) */
+  members?: string;
+  /** Group-specific system prompt */
+  systemPrompt?: string;
+}
+
+/**
+ * Reply context for reply messages.
+ */
+export interface ReplyContext {
+  /** ID of message being replied to (also in Content.inReplyTo) */
+  id?: string;
+  /** Full platform-specific ID */
+  idFull?: string;
+  /** Body of message being replied to */
+  body?: string;
+  /** Sender of message being replied to */
+  sender?: string;
+  /** Whether this is a quote reply */
+  isQuote?: boolean;
+}
+
+/**
+ * Forwarded message context.
+ */
+export interface ForwardedContext {
+  /** Original sender name */
+  fromName?: string;
+  /** Original sender ID */
+  fromId?: string;
+  /** Original sender username */
+  fromUsername?: string;
+  /** Original sender type */
+  fromType?: string;
+  /** Original chat/channel title */
+  fromTitle?: string;
+  /** Original signature */
+  fromSignature?: string;
+  /** Original chat type */
+  fromChatType?: string;
+  /** Original message ID */
+  originalMessageId?: number;
+  /** Forward date timestamp */
+  date?: number;
+}
+
+/**
+ * Delivery context for message routing.
+ */
+export interface DeliveryContext {
+  /** Channel/provider for delivery */
+  channel?: string;
+  /** Destination address */
+  to?: string;
+  /** Account ID for multi-account channels */
+  accountId?: string;
+  /** Thread ID for threaded replies */
+  threadId?: string | number;
+}
+
+/**
+ * Session origin information.
+ */
+export interface SessionOrigin {
+  /** Human-readable label */
+  label?: string;
+  /** Provider name */
+  provider?: string;
+  /** Surface type */
+  surface?: string;
+  /** Chat type */
+  chatType?: MessageChatType;
+  /** Original sender */
+  from?: string;
+  /** Original recipient */
+  to?: string;
+  /** Account ID */
+  accountId?: string;
+  /** Thread ID */
+  threadId?: string | number;
+}
+
+// =========================================================================
+// Session Context - First-class session support for filtering and state
+// =========================================================================
+
+/**
+ * Model override configuration for a session.
+ */
+export interface SessionModelOverride {
+  /** Provider name override (e.g., "anthropic", "openai") */
+  provider?: string;
+  /** Model name override (e.g., "claude-3-opus", "gpt-5") */
+  model?: string;
+  /** Authentication profile override */
+  authProfile?: string;
+  /** Source of auth profile override */
+  authProfileSource?: "auto" | "user";
+}
+
+/**
+ * Token usage tracking for a session.
+ */
+export interface SessionUsage {
+  /** Total input tokens consumed */
+  inputTokens: number;
+  /** Total output tokens generated */
+  outputTokens: number;
+  /** Combined total tokens */
+  totalTokens: number;
+  /** Number of context compactions performed */
+  compactionCount: number;
+}
+
+/**
+ * Skill snapshot for a session.
+ */
+export interface SessionSkillEntry {
+  /** Skill name */
+  name: string;
+  /** Primary environment for the skill */
+  primaryEnv?: string;
+}
+
+/**
+ * Skills configuration snapshot for a session.
+ */
+export interface SessionSkillsSnapshot {
+  /** Prompt text for skills */
+  prompt: string;
+  /** List of available skills */
+  skills: SessionSkillEntry[];
+}
+
+/**
+ * Session context providing first-class session state access.
+ * This enables filtering memories by session and accessing session configuration
+ * from within the Eliza runtime pipeline (providers, evaluators, actions).
+ */
+export interface SessionContext {
+  /** Session ID (UUID) - used for transcript files and filtering */
+  sessionId: string;
+
+  /** Session key for conversation routing (e.g., "agent:123:telegram:+1234567890") */
+  sessionKey: string;
+
+  /** Parent session key if this session was spawned from another */
+  parentSessionKey?: string;
+
+  /** Whether this is a newly created session */
+  isNewSession: boolean;
+
+  /** Timestamp of last session activity */
+  updatedAt: number;
+
+  /** Human-readable session label */
+  label?: string;
+
+  /** Model and provider overrides for this session */
+  modelOverride?: SessionModelOverride;
+
+  /** Thinking level setting ("low", "medium", "high") */
+  thinkingLevel?: string;
+
+  /** Verbose level setting ("on", "off") */
+  verboseLevel?: string;
+
+  /** Reasoning level setting */
+  reasoningLevel?: string;
+
+  /** Send policy for outbound messages */
+  sendPolicy?: "allow" | "deny";
+
+  /** Token usage tracking */
+  usage?: SessionUsage;
+
+  /** Skills snapshot for this session */
+  skillsSnapshot?: SessionSkillsSnapshot;
+
+  /** Chat type for the session */
+  chatType?: MessageChatType;
+
+  /** Channel identifier */
+  channel?: string;
+
+  /** Group ID if in a group context */
+  groupId?: string;
+
+  /** Group channel name */
+  groupChannel?: string;
+
+  /** Workspace/space identifier */
+  space?: string;
+
+  /** Session spawned by this key (for sandbox scoping) */
+  spawnedBy?: string;
+
+  /** Response usage display mode */
+  responseUsage?: "on" | "off" | "tokens" | "full";
+
+  /** Execution host configuration */
+  execHost?: string;
+
+  /** Execution security mode */
+  execSecurity?: string;
+
+  /** Group activation mode */
+  groupActivation?: "mention" | "always";
+}
+
 export interface MessageMetadata
   extends Omit<ProtoMessageMetadata, "$typeName" | "$unknown" | "base"> {
   base?: BaseMetadata;
   type?: "message";
   trajectoryStepId?: string;
   benchmarkContext?: string;
+
+  // =========================================================================
+  // Message Context - per-message routing and identity information
+  // =========================================================================
+
+  /** Session key for conversation routing */
+  sessionKey?: string;
+  /** Parent session key (for spawned/subagent sessions) */
+  parentSessionKey?: string;
+
+  /** Sender identity */
+  sender?: SenderIdentity;
+
+  /** Platform/provider name (e.g., "telegram", "discord", "slack") */
+  provider?: string;
+  /** Chat type */
+  chatType?: MessageChatType;
+  /** Account ID for multi-account channels */
+  accountId?: string;
+
+  /** Thread context */
+  thread?: ThreadContext;
+
+  /** Group context */
+  group?: GroupContext;
+
+  /** Reply context (supplements Content.inReplyTo) */
+  reply?: ReplyContext;
+
+  /** Forwarded message context */
+  forwarded?: ForwardedContext;
+
+  /** Delivery context for routing responses */
+  delivery?: DeliveryContext;
+
+  /** Session origin (where the conversation started) */
+  origin?: SessionOrigin;
+
+  /** Full session context for session-aware processing */
+  session?: SessionContext;
+
+  /** Whether the agent was mentioned */
+  wasMentioned?: boolean;
+
+  // =========================================================================
+  // Message IDs - for multi-message batches and platform tracking
+  // =========================================================================
+
+  /** Full platform-specific message ID */
+  messageIdFull?: string;
+  /** Multiple message IDs (for batched messages) */
+  messageIds?: string[];
+  /** First message ID in a batch */
+  messageIdFirst?: string;
+  /** Last message ID in a batch */
+  messageIdLast?: string;
+
+  // =========================================================================
+  // Platform-specific nested metadata
+  // =========================================================================
+
+  /** Telegram-specific metadata */
+  telegram?: {
+    chatId?: string | number;
+    messageId?: string;
+    threadId?: string | number;
+  };
+
+  /** Discord-specific metadata */
+  discord?: {
+    guildId?: string;
+    channelId?: string;
+    messageId?: string;
+  };
+
+  /** Slack-specific metadata */
+  slack?: {
+    teamId?: string;
+    channelId?: string;
+    messageTs?: string;
+    threadTs?: string;
+  };
+
+  /** WhatsApp-specific metadata */
+  whatsapp?: {
+    phoneNumberId?: string;
+    contactId?: string;
+    messageId?: string;
+  };
+
+  /** Signal-specific metadata */
+  signal?: {
+    groupId?: string;
+    senderId?: string;
+    timestamp?: number;
+  };
+
+  // =========================================================================
+  // Media and content processing
+  // =========================================================================
+
+  /** Sticker metadata (Telegram) */
+  sticker?: {
+    emoji?: string;
+    setName?: string;
+    fileId?: string;
+    fileUniqueId?: string;
+    description?: string;
+  };
+
+  /** Media transcription result */
+  transcript?: string;
+
+  // =========================================================================
+  // Command and gateway context
+  // =========================================================================
+
+  /** Command source type */
+  commandSource?: string;
+  /** Command target session key */
+  commandTargetSessionKey?: string;
+  /** Gateway client scopes */
+  gatewayClientScopes?: string[];
+  /** Untrusted user-provided context */
+  untrustedContext?: string[];
+  /** Hook-injected messages */
+  hookMessages?: string[];
 }
 
 export interface DescriptionMetadata
@@ -141,6 +534,29 @@ export interface Memory
   embedding?: number[];
   metadata?: MemoryMetadata;
   content: Content;
+
+  /**
+   * Session ID for filtering and grouping memories by conversation session.
+   * This is a first-class field to enable efficient querying by session.
+   * Optional for backwards compatibility - memories without sessionId
+   * will continue to work as before.
+   *
+   * Format: UUID string (e.g., "550e8400-e29b-41d4-a716-446655440000")
+   */
+  sessionId?: string;
+
+  /**
+   * Session key for routing and identification.
+   * This is the full session key used for conversation routing.
+   * Optional for backwards compatibility.
+   *
+   * Format: "agent:<agentId>:<channel>:<destination>" or similar patterns
+   * Examples:
+   *   - "agent:123:telegram:+14155551234"
+   *   - "agent:123:discord:channel:987654321"
+   *   - "cron:daily-summary"
+   */
+  sessionKey?: string;
 }
 
 /**

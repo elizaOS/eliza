@@ -146,16 +146,21 @@ class CoderService:
     async def write_file(
         self, conversation_id: str, filepath: str, content: str
     ) -> tuple[bool, str]:
+        """Write content to a file, creating parent directories as needed."""
         disabled = self._ensure_enabled()
         if disabled:
             return False, disabled
+
+        if not filepath or not filepath.strip():
+            return False, "File path cannot be empty"
 
         resolved = self._resolve_within(conversation_id, filepath)
         if not resolved:
             return False, "Cannot access path outside allowed directory"
 
         p = Path(resolved)
-        p.parent.mkdir(parents=True, exist_ok=True)
+        if p.parent != Path(resolved).parent or str(p.parent):
+            p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
         return True, ""
 

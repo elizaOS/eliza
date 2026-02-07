@@ -99,13 +99,13 @@ async fn main() -> anyhow::Result<()> {
 
 ```bash
 # TypeScript CLI
-npx sweagent run --agent.model.name=gpt-4 --problem_statement.path=issue.md
+npx sweagent run --agent.model.name=gpt-5 --problem_statement.path=issue.md
 
 # Python CLI
-sweagent run --agent.model.name gpt-4 --problem_statement.path issue.md
+sweagent run --agent.model.name gpt-5 --problem_statement.path issue.md
 
 # Rust CLI
-cargo run --bin sweagent -- run --agent.model.name=gpt-4 --problem_statement.path=issue.md
+cargo run --bin sweagent -- run --agent.model.name=gpt-5 --problem_statement.path=issue.md
 ```
 
 ## Configuration

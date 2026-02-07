@@ -515,7 +515,6 @@ jobs:
             Or add packages to your project:
             ```bash
             bun add @elizaos/core@${{ steps.release_type.outputs.dist_tag }}
-            bun add @elizaos/plugin-bootstrap@${{ steps.release_type.outputs.dist_tag }}
             ```
 
             ---

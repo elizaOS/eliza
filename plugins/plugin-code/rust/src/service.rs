@@ -211,13 +211,18 @@ impl CoderService {
         if let Some(msg) = self.ensure_enabled() {
             return Err(msg);
         }
+        if filepath.trim().is_empty() {
+            return Err("File path cannot be empty".to_string());
+        }
         let resolved = self
             .resolve_within(conversation_id, filepath)
             .ok_or_else(|| "Cannot access path outside allowed directory".to_string())?;
         if let Some(parent) = resolved.parent() {
-            fs::create_dir_all(parent)
-                .await
-                .map_err(|e| e.to_string())?;
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
         }
         fs::write(&resolved, content)
             .await

@@ -2,13 +2,18 @@
   "name": "@elizaos/plugin-form-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "Guardrails for agent-guided user journeys - forms as agent guidance rails for ElizaOS",
+  "description": "Guardrails for agent-guided user journeys - conversational forms for ElizaOS",
   "author": "Odilitime",
-  "license": "MIT",
   "type": "module",
   "main": "typescript/dist/index.js",
   "module": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "keywords": ["plugin", "elizaos", "form", "conversational", "data-collection"],
+  "repository": { "type": "git", "url": "https://github.com/elizaos/elizaos" },
+  "homepage": "https://elizaos.ai",
   "exports": {
     "./package.json": "./package.json",
     ".": {
@@ -23,6 +28,7 @@
     "package.json",
     "LICENSE"
   ],
+  "sideEffects": false,
   "dependencies": {},
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
@@ -54,5 +60,9 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {},
+    "description": "Conversational forms for structured data collection."
+  }
 }

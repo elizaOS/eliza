@@ -25,12 +25,17 @@ export interface ServiceTypeRegistry {
   EMAIL: "email";
   TEE: "tee";
   TASK: "task";
+  APPROVAL: "approval";
+  TOOL_POLICY: "tool_policy";
   WALLET: "wallet";
   LP_POOL: "lp_pool";
   TOKEN_DATA: "token_data";
   MESSAGE_SERVICE: "message_service";
   MESSAGE: "message";
   POST: "post";
+  HOOKS: "hooks";
+  PAIRING: "pairing";
+  AGENT_EVENT: "agent_event";
   UNKNOWN: "unknown";
 }
 
@@ -108,12 +113,17 @@ export const ServiceType = {
   EMAIL: "email",
   TEE: "tee",
   TASK: "task",
+  APPROVAL: "approval",
+  TOOL_POLICY: "tool_policy",
   WALLET: "wallet",
   LP_POOL: "lp_pool",
   TOKEN_DATA: "token_data",
   MESSAGE_SERVICE: "message_service",
   MESSAGE: "message",
   POST: "post",
+  HOOKS: "hooks",
+  PAIRING: "pairing",
+  AGENT_EVENT: "agent_event",
   UNKNOWN: "unknown",
 } as const;
 

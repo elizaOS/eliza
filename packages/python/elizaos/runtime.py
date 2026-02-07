@@ -5,6 +5,7 @@ import re
 import uuid
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
@@ -34,10 +35,11 @@ from elizaos.types.runtime import (
     TargetInfo,
 )
 from elizaos.types.service import Service
-from elizaos.types.state import State, StateData
+from elizaos.types.state import RetryBackoffConfig, SchemaRow, State, StateData, StreamEvent
 from elizaos.types.task import TaskWorker
 from elizaos.utils import compose_prompt_from_state as _compose_prompt_from_state
 from elizaos.utils import get_current_time_ms as _get_current_time_ms
+from elizaos.utils.streaming import ValidationStreamExtractor, ValidationStreamExtractorConfig
 
 _message_service_class: type | None = None
 
@@ -347,12 +349,19 @@ class AgentRuntime(IAgentRuntime):
         if secret:
             if self._character.secrets is None:
                 self._character.secrets = {}
-            self._character.secrets[key] = value  # type: ignore[assignment]
+            if isinstance(self._character.secrets, dict):
+                self._character.secrets[key] = value  # type: ignore[assignment]
+            else:
+                # Fall back to internal settings dict for protobuf objects
+                self._settings[key] = value
             return
 
-        if self._character.settings is None:
-            self._character.settings = {}
-        self._character.settings[key] = value  # type: ignore[assignment]
+        # Try to set on character.settings if it's a dict
+        if isinstance(self._character.settings, dict):
+            self._character.settings[key] = value  # type: ignore[assignment]
+        else:
+            # Fall back to internal settings dict for protobuf objects
+            self._settings[key] = value
 
     def get_setting(self, key: str) -> object | None:
         settings = self._character.settings
@@ -593,11 +602,11 @@ class AgentRuntime(IAgentRuntime):
                     errors.append(
                         f"Required parameter '{param_def.name}' was not provided for action {action.name}"
                     )
-                elif param_def.schema_def.default is not None:
-                    validated[param_def.name] = param_def.schema_def.default
+                elif getattr(param_def.schema, "default_value", None):
+                    validated[param_def.name] = param_def.schema.default_value
                 continue
 
-            schema_type = param_def.schema_def.type
+            schema_type = param_def.schema.type
 
             if schema_type == "string":
                 # Parameters often come from XML and may be parsed into scalars
@@ -612,16 +621,16 @@ class AgentRuntime(IAgentRuntime):
                         f"Parameter '{param_def.name}' expected string, got {type(extracted_value).__name__}"
                     )
                     continue
-                if param_def.schema_def.enum and extracted_value not in param_def.schema_def.enum:
+                if param_def.schema.enum_values and extracted_value not in param_def.schema.enum_values:
                     errors.append(
-                        f"Parameter '{param_def.name}' value '{extracted_value}' not in allowed values: {', '.join(param_def.schema_def.enum)}"
+                        f"Parameter '{param_def.name}' value '{extracted_value}' not in allowed values: {', '.join(param_def.schema.enum_values)}"
                     )
                     continue
-                if param_def.schema_def.pattern and not re.fullmatch(
-                    param_def.schema_def.pattern, extracted_value
+                if param_def.schema.pattern and not re.fullmatch(
+                    param_def.schema.pattern, extracted_value
                 ):
                     errors.append(
-                        f"Parameter '{param_def.name}' value '{extracted_value}' does not match pattern: {param_def.schema_def.pattern}"
+                        f"Parameter '{param_def.name}' value '{extracted_value}' does not match pattern: {param_def.schema.pattern}"
                     )
                     continue
                 validated[param_def.name] = extracted_value
@@ -635,18 +644,18 @@ class AgentRuntime(IAgentRuntime):
                         f"Parameter '{param_def.name}' expected number, got {type(extracted_value).__name__}"
                     )
                     continue
-                if param_def.schema_def.minimum is not None and float(extracted_value) < float(
-                    param_def.schema_def.minimum
+                if param_def.schema.minimum is not None and float(extracted_value) < float(
+                    param_def.schema.minimum
                 ):
                     errors.append(
-                        f"Parameter '{param_def.name}' value {extracted_value} is below minimum {param_def.schema_def.minimum}"
+                        f"Parameter '{param_def.name}' value {extracted_value} is below minimum {param_def.schema.minimum}"
                     )
                     continue
-                if param_def.schema_def.maximum is not None and float(extracted_value) > float(
-                    param_def.schema_def.maximum
+                if param_def.schema.maximum is not None and float(extracted_value) > float(
+                    param_def.schema.maximum
                 ):
                     errors.append(
-                        f"Parameter '{param_def.name}' value {extracted_value} is above maximum {param_def.schema_def.maximum}"
+                        f"Parameter '{param_def.name}' value {extracted_value} is above maximum {param_def.schema.maximum}"
                     )
                     continue
                 validated[param_def.name] = extracted_value
@@ -736,6 +745,9 @@ class AgentRuntime(IAgentRuntime):
                     continue
 
                 options_obj = HandlerOptions()
+                valid = True
+                validated_params: dict[str, object] | None = None
+                errors: list[str] = []
 
                 if action.parameters:
                     params_raw = getattr(response.content, "params", None)
@@ -785,6 +797,28 @@ class AgentRuntime(IAgentRuntime):
                         else:
                             struct_values.fields[k].string_value = str(v)
                     options_obj.parameters.CopyFrom(ActionParameters(values=struct_values))
+
+                # Ensure options_obj.parameters is always a plain dict for action
+                # handlers.  Benchmark (and many plugin) handlers call
+                # ``options.parameters.get("key")`` which only works on dicts,
+                # not on protobuf ActionParameters messages.
+                if validated_params:
+                    options_obj = type("_Opts", (), {
+                        "parameters": validated_params,
+                        "parameter_errors": getattr(options_obj, "parameter_errors", []),
+                    })()  # type: ignore[assignment]
+                elif hasattr(options_obj, "parameters"):
+                    try:
+                        pv = options_obj.parameters
+                        if hasattr(pv, "values") and hasattr(pv.values, "items"):
+                            # Proto ActionParameters -> convert Struct values to dict
+                            from google.protobuf.json_format import MessageToDict
+                            options_obj = type("_Opts", (), {
+                                "parameters": MessageToDict(pv.values),
+                                "parameter_errors": getattr(options_obj, "parameter_errors", []),
+                            })()  # type: ignore[assignment]
+                    except Exception:
+                        pass
 
                 result = await action.handler(
                     self,
@@ -1054,11 +1088,11 @@ class AgentRuntime(IAgentRuntime):
         if llm_mode != LLMMode.DEFAULT:
             # List of text generation model types that can be overridden
             text_generation_models = [
-                ModelType.TEXT_SMALL.value,
-                ModelType.TEXT_LARGE.value,
-                ModelType.TEXT_REASONING_SMALL.value,
-                ModelType.TEXT_REASONING_LARGE.value,
-                ModelType.TEXT_COMPLETION.value,
+                ModelType.TEXT_SMALL,
+                ModelType.TEXT_LARGE,
+                ModelType.TEXT_REASONING_SMALL,
+                ModelType.TEXT_REASONING_LARGE,
+                ModelType.TEXT_COMPLETION,
             ]
             if effective_model_type in text_generation_models:
                 override_model_type = (
@@ -1243,7 +1277,7 @@ class AgentRuntime(IAgentRuntime):
         Use a streaming model handler to generate text token by token.
 
         Args:
-            model_type: The model type (e.g., ModelType.TEXT_LARGE_STREAM)
+            model_type: The model type (e.g., "TEXT_LARGE_STREAM")
             params: Parameters for the model (prompt, system, temperature, etc.)
             provider: Optional specific provider to use
             **kwargs: Additional parameters merged into params
@@ -1774,8 +1808,618 @@ class AgentRuntime(IAgentRuntime):
             return []
         return await self._adapter.get_memories_by_world_id(params)
 
+    # ============================================================================
+    # Dynamic Prompt Execution with Validation-Aware Streaming
+    # ============================================================================
+
+    async def dynamic_prompt_exec_from_state(
+        self,
+        state: State,
+        prompt: str | Callable[[dict[str, Any]], str],
+        schema: list[SchemaRow],
+        options: DynamicPromptOptions | None = None,
+    ) -> dict[str, Any] | None:
+        """Dynamic prompt execution with state injection, schema-based parsing, and validation.
+
+        WHY THIS EXISTS:
+        LLMs are powerful but unreliable for structured outputs. They can:
+        - Silently truncate output when hitting token limits
+        - Skip fields or produce malformed structures
+        - Hallucinate or ignore parts of the prompt
+
+        This method addresses these issues by:
+        1. Validation codes: Injects UUID codes the LLM must echo back
+        2. Retry with backoff: Automatic retries on validation failure
+        3. Structured parsing: XML/JSON response parsing with nested support
+        4. Streaming support: ValidationStreamExtractor for incremental output with validation
+
+        For streaming, provide `on_stream_chunk` in options. Streaming uses
+        ValidationStreamExtractor which streams validated content in real-time
+        while detecting truncation via validation codes.
+
+        Args:
+            state: State object to inject into the prompt template
+            prompt: Prompt template string or callable that takes state and returns string
+            schema: Array of SchemaRow definitions for structured output
+            options: Configuration for model size, validation level, retries, streaming, etc.
+
+        Returns:
+            Parsed structured response as dict, or None on failure
+        """
+        if options is None:
+            options = DynamicPromptOptions()
+
+        # Determine model type - check options.model first, then model_size, then default
+        if options.model:
+            model_type_str = options.model
+        elif options.model_size == "small":
+            model_type_str = ModelType.TEXT_SMALL
+        else:
+            model_type_str = ModelType.TEXT_LARGE
+
+        schema_key = ",".join(s.field for s in schema)
+        model_schema_key = f"{model_type_str}:{schema_key}"
+
+        # Get validation level from settings or options (mirrors TypeScript behavior)
+        default_context_level = 2
+        default_retries = 1
+
+        validation_setting = self.get_setting("VALIDATION_LEVEL")
+        if validation_setting:
+            level_str = str(validation_setting).lower()
+            if level_str in ("trusted", "fast"):
+                default_context_level = 0
+                default_retries = 0
+            elif level_str == "progressive":
+                default_context_level = 1
+                default_retries = 2
+            elif level_str in ("strict", "safe"):
+                default_context_level = 3
+                default_retries = 3
+            else:
+                self.logger.warning(
+                    f'Unrecognized VALIDATION_LEVEL "{level_str}". '
+                    f"Valid values: trusted, fast, progressive, strict, safe. "
+                    f"Falling back to default (level 2)."
+                )
+
+        validation_level = (
+            options.context_check_level
+            if options.context_check_level is not None
+            else default_context_level
+        )
+        max_retries = options.max_retries if options.max_retries is not None else default_retries
+        current_retry = 0
+
+        # Generate per-field validation codes for levels 0-1
+        per_field_codes: dict[str, str] = {}
+        if validation_level <= 1:
+            for row in schema:
+                default_validate = validation_level == 1
+                needs_validation = (
+                    row.validate_field if row.validate_field is not None else default_validate
+                )
+                if needs_validation:
+                    per_field_codes[row.field] = str(uuid.uuid4())[:8]
+
+        # Streaming extractor (created on first iteration if streaming enabled)
+        extractor: ValidationStreamExtractor | None = None
+
+        while current_retry <= max_retries:
+            # Compile template with state values
+            # Callable signature: def my_prompt(ctx: dict) -> str:
+            #   return f"Hello {ctx['state'].values.get('name')}"
+            template_str = prompt({"state": state}) if callable(prompt) else prompt
+
+            # Template substitution (Handlebars-like)
+            # Mirrors TypeScript behavior: { ...filteredState, ...state.values }
+            rendered = template_str
+
+            # Helper to extract dict from protobuf message or dict-like object
+            def extract_fields(obj: Any) -> dict[str, Any]:
+                """Extract fields from protobuf message, dict, or object."""
+                if obj is None:
+                    return {}
+                # If it's already a dict, return it
+                if isinstance(obj, dict):
+                    return obj
+                # Try MessageToDict for protobuf messages (most reliable)
+                if hasattr(obj, "DESCRIPTOR"):
+                    try:
+                        from google.protobuf.json_format import MessageToDict
+
+                        return MessageToDict(obj, preserving_proto_field_name=True)
+                    except Exception:
+                        pass
+                # Fallback: try ListFields() for protobuf messages
+                if hasattr(obj, "ListFields"):
+                    result = {}
+                    for field_desc, value in obj.ListFields():
+                        result[field_desc.name] = value
+                    return result
+                # Fallback: try __dict__ for regular objects
+                if hasattr(obj, "__dict__"):
+                    return {
+                        k: v
+                        for k, v in obj.__dict__.items()
+                        if not k.startswith("_") and v is not None
+                    }
+                return {}
+
+            # Build context dict combining state properties and state.values
+            context: dict[str, Any] = {}
+
+            # Add state-level properties (like filteredState in TypeScript)
+            # Exclude 'text', 'values', 'data' like TypeScript does
+            state_fields = extract_fields(state)
+            for key, value in state_fields.items():
+                if key not in ("text", "values", "data"):
+                    context[key] = value
+
+            # Add state.data properties
+            if hasattr(state, "data"):
+                data_fields = extract_fields(state.data)
+                context.update(data_fields)
+
+            # Add state.values (these take precedence, like in TypeScript)
+            if hasattr(state, "values"):
+                values_fields = extract_fields(state.values)
+                context.update(values_fields)
+
+            # Add smart retry context if present
+            if "_smartRetryContext" in context:
+                rendered += str(context.pop("_smartRetryContext"))
+
+            # Perform substitution
+            for key, value in context.items():
+                placeholder = f"{{{{{key}}}}}"
+                rendered = rendered.replace(placeholder, str(value))
+
+            # Build format
+            format_type = (options.force_format or "xml").upper()
+            is_xml = format_type == "XML"
+            container_start = "<response>" if is_xml else "{"
+            container_end = "</response>" if is_xml else "}"
+
+            # Build extended schema with validation codes
+            first = validation_level >= 2
+            last = validation_level >= 3
+
+            ext_schema: list[tuple[str, str]] = []
+
+            def codes_schema(prefix: str) -> list[tuple[str, str]]:
+                return [
+                    (f"{prefix}initial_code", "echo the initial UUID code from prompt"),
+                    (f"{prefix}middle_code", "echo the middle UUID code from prompt"),
+                    (f"{prefix}end_code", "echo the end UUID code from prompt"),
+                ]
+
+            if first:
+                ext_schema.extend(codes_schema("one_"))
+
+            for row in schema:
+                if row.field in per_field_codes:
+                    ext_schema.append(
+                        (f"code_{row.field}_start", f"output exactly: {per_field_codes[row.field]}")
+                    )
+                ext_schema.append((row.field, row.description))
+                if row.field in per_field_codes:
+                    ext_schema.append(
+                        (f"code_{row.field}_end", f"output exactly: {per_field_codes[row.field]}")
+                    )
+
+            if last:
+                ext_schema.extend(codes_schema("two_"))
+
+            # Build example
+            example_lines = [container_start]
+            for i, (field, desc) in enumerate(ext_schema):
+                is_last = i == len(ext_schema) - 1
+                if is_xml:
+                    example_lines.append(f"  <{field}>{desc}</{field}>")
+                else:
+                    # No trailing comma on last field for valid JSON
+                    comma = "" if is_last else ","
+                    example_lines.append(f'  "{field}": "{desc}"{comma}')
+            example_lines.append(container_end)
+            example = "\n".join(example_lines)
+
+            init_code = str(uuid.uuid4())
+            mid_code = str(uuid.uuid4())
+            final_code = str(uuid.uuid4())
+
+            section_start = "<output>" if is_xml else "# Strict Output instructions"
+            section_end = "</output>" if is_xml else ""
+
+            full_prompt = f"""initial code: {init_code}
+{rendered}
+middle code: {mid_code}
+{section_start}
+Do NOT include any thinking, reasoning, or <think> sections in your response.
+Go directly to the {format_type} response format without any preamble or explanation.
+
+Respond using {format_type} format like this:
+{example}
+
+IMPORTANT: Your response must ONLY contain the {container_start}{container_end} {format_type} block above. Do not include any text, thinking, or reasoning before or after this {format_type} block. Start your response immediately with {container_start} and end with {container_end}.
+{section_end}
+end code: {final_code}
+"""
+
+            self.logger.debug(f"dynamic_prompt_exec_from_state: using format {format_type}")
+
+            # Call model
+            params = {
+                "prompt": full_prompt,
+                "maxTokens": 4096,
+            }
+
+            # Check for cancellation before request
+            if options.abort_signal and options.abort_signal():
+                if extractor:
+                    extractor.signal_error("Cancelled by user")
+                return None
+
+            # Create ValidationStreamExtractor on first iteration if streaming enabled (XML only)
+            # JSON streaming bypasses the extractor since it parses XML tags
+            if current_retry == 0 and options.on_stream_chunk and extractor is None and is_xml:
+                has_rich_consumer = options.on_stream_event is not None
+
+                # Determine which fields to stream
+                stream_fields = [
+                    row.field
+                    for row in schema
+                    if (row.stream_field if row.stream_field is not None else row.field == "text")
+                ]
+
+                # Default to "text" if no explicit stream fields
+                if not stream_fields and any(row.field == "text" for row in schema):
+                    stream_fields = ["text"]
+
+                stream_message_id = f"stream-{uuid.uuid4().hex[:12]}"
+
+                # Capture stream_message_id in default parameter to avoid late binding
+                extractor = ValidationStreamExtractor(
+                    ValidationStreamExtractorConfig(
+                        level=validation_level,
+                        schema=schema,
+                        stream_fields=stream_fields,
+                        expected_codes=per_field_codes,
+                        on_chunk=lambda chunk,
+                        _field,
+                        msg_id=stream_message_id: options.on_stream_chunk(chunk, msg_id)
+                        if options.on_stream_chunk
+                        else None,
+                        on_event=lambda event, msg_id=stream_message_id: options.on_stream_event(
+                            event, msg_id
+                        )
+                        if options.on_stream_event
+                        else None,
+                        abort_signal=options.abort_signal,
+                        has_rich_consumer=has_rich_consumer,
+                    )
+                )
+
+            try:
+                # Use streaming if extractor is active, otherwise use non-streaming
+                if extractor:
+                    # Streaming mode: use use_model_stream and feed chunks to extractor
+                    response_parts: list[str] = []
+                    stream_model_type = (
+                        f"{model_type_str}_STREAM"
+                        if not model_type_str.endswith("_STREAM")
+                        else model_type_str
+                    )
+
+                    async for chunk in self.use_model_stream(stream_model_type, params):
+                        if options.abort_signal and options.abort_signal():
+                            extractor.signal_error("Cancelled by user")
+                            return None
+                        response_parts.append(chunk)
+                        extractor.push(chunk)
+
+                    # Flush extractor and get final state
+                    extractor.flush()
+                    response_str = "".join(response_parts)
+                else:
+                    # Non-streaming mode: use use_model
+                    response = await self.use_model(model_type_str, params)
+                    response_str = str(response) if response else ""
+            except Exception as e:
+                self.logger.error(f"Model call failed: {e}")
+                current_retry += 1
+                if current_retry <= max_retries and options.retry_backoff:
+                    delay = options.retry_backoff.delay_for_retry(current_retry)
+                    self.logger.debug(
+                        f"Retry backoff: waiting {delay}ms before retry {current_retry}"
+                    )
+                    await asyncio.sleep(delay / 1000.0)
+                if extractor:
+                    extractor.reset()
+                continue
+
+            # Clean response (remove <think> blocks)
+            clean_response = re.sub(r"<think>[\s\S]*?</think>", "", response_str)
+
+            # Parse response
+            response_content: dict[str, Any] | None = None
+            if is_xml:
+                response_content = self._parse_xml_to_dict(clean_response)
+            else:
+                import contextlib
+                import json
+
+                with contextlib.suppress(json.JSONDecodeError):
+                    # JSON parse may fail - response_content remains None if so
+                    # This triggers retry logic below via the all_good = False path
+                    response_content = json.loads(clean_response)
+
+            all_good = True
+
+            if response_content:
+                # Validate codes based on context level
+                if validation_level <= 1:
+                    # Per-field validation
+                    for field, expected_code in per_field_codes.items():
+                        start_code = response_content.get(f"code_{field}_start")
+                        end_code = response_content.get(f"code_{field}_end")
+                        if start_code != expected_code or end_code != expected_code:
+                            self.logger.warning(
+                                f"Per-field validation failed for {field}: expected={expected_code}, start={start_code}, end={end_code}"
+                            )
+                            all_good = False
+                else:
+                    # Checkpoint validation
+                    validation_codes = [
+                        (first, "one_initial_code", init_code),
+                        (first, "one_middle_code", mid_code),
+                        (first, "one_end_code", final_code),
+                        (last, "two_initial_code", init_code),
+                        (last, "two_middle_code", mid_code),
+                        (last, "two_end_code", final_code),
+                    ]
+                    for enabled, field, expected in validation_codes:
+                        if enabled:
+                            actual = response_content.get(field)
+                            if actual != expected:
+                                self.logger.warning(
+                                    f"Checkpoint {field} mismatch: expected {expected}"
+                                )
+                                all_good = False
+
+                # Validate required fields
+                if options.required_fields:
+                    for field in options.required_fields:
+                        value = response_content.get(field)
+                        is_missing = (
+                            value is None
+                            or (isinstance(value, str) and not value.strip())
+                            or (isinstance(value, (list, dict)) and not value)
+                        )
+                        if is_missing:
+                            self.logger.warning(f"Missing required field: {field}")
+                            all_good = False
+
+                # Clean up validation code fields from result
+                for field in list(per_field_codes.keys()):
+                    response_content.pop(f"code_{field}_start", None)
+                    response_content.pop(f"code_{field}_end", None)
+                if first:
+                    response_content.pop("one_initial_code", None)
+                    response_content.pop("one_middle_code", None)
+                    response_content.pop("one_end_code", None)
+                if last:
+                    response_content.pop("two_initial_code", None)
+                    response_content.pop("two_middle_code", None)
+                    response_content.pop("two_end_code", None)
+            else:
+                self.logger.warning(
+                    f"dynamic_prompt_exec_from_state parse problem: {clean_response[:500]}"
+                )
+                all_good = False
+
+            if all_good and response_content:
+                self.logger.debug(f"dynamic_prompt_exec_from_state success [{model_schema_key}]")
+                # Clean up smart retry context from state
+                if hasattr(state, "values") and "_smartRetryContext" in getattr(
+                    state.values, "__dict__", state.values if isinstance(state.values, dict) else {}
+                ):
+                    with contextlib.suppress(KeyError, TypeError):
+                        del state.values["_smartRetryContext"]
+                return response_content
+
+            current_retry += 1
+
+            # Signal retry to extractor if present
+            if extractor:
+                extractor.signal_retry(current_retry)
+                extractor.reset()
+
+            # Build smart retry context for level 1 (per-field validation)
+            if validation_level == 1 and response_content:
+                # Find validated fields (those with correct codes)
+                validated_fields: list[str] = []
+                for field, expected_code in per_field_codes.items():
+                    start_code = response_content.get(f"code_{field}_start")
+                    end_code = response_content.get(f"code_{field}_end")
+                    if start_code == expected_code and end_code == expected_code:
+                        validated_fields.append(field)
+
+                if validated_fields:
+                    # Build retry context with validated fields
+                    validated_parts: list[str] = []
+                    for field in validated_fields:
+                        content = response_content.get(field, "")
+                        if content:
+                            truncated = (
+                                content[:500] + "..." if len(str(content)) > 500 else str(content)
+                            )
+                            validated_parts.append(f"<{field}>{truncated}</{field}>")
+
+                    if validated_parts:
+                        # Find missing/invalid fields
+                        all_fields = {row.field for row in schema}
+                        missing = [f for f in all_fields if f not in validated_fields]
+                        smart_retry_context = (
+                            f"\n\n[RETRY CONTEXT]\n"
+                            f"You previously produced these valid fields:\n"
+                            f"{chr(10).join(validated_parts)}\n\n"
+                            f"Please complete: {', '.join(missing) if missing else 'all fields'}"
+                        )
+                        # Store in state for next iteration (may fail on protobuf)
+                        if hasattr(state, "values"):
+                            import contextlib
+
+                            with contextlib.suppress(TypeError):
+                                # Protobuf messages don't support item assignment
+                                state.values["_smartRetryContext"] = smart_retry_context
+
+                self.logger.warn(
+                    f"dynamic_prompt_exec_from_state retry {current_retry}/{max_retries} "
+                    f"validated={','.join(validated_fields) or 'none'}"
+                )
+
+            if current_retry <= max_retries and options.retry_backoff:
+                delay = options.retry_backoff.delay_for_retry(current_retry)
+                self.logger.debug(f"Retry backoff: waiting {delay}ms before retry {current_retry}")
+                await asyncio.sleep(delay / 1000.0)
+
+        self.logger.error(
+            f"dynamic_prompt_exec_from_state failed after {max_retries} retries [{model_schema_key}]"
+        )
+
+        # Signal error to extractor if present
+        if extractor:
+            diagnosis = extractor.diagnose()
+            missing = diagnosis.missing_fields
+            invalid = diagnosis.invalid_fields
+            incomplete = diagnosis.incomplete_fields
+            extractor.signal_error(
+                f"Failed after {max_retries} retries. "
+                f"Missing: {missing}, Invalid: {invalid}, Incomplete: {incomplete}"
+            )
+
+        # Clean up smart retry context from state
+        if hasattr(state, "values") and "_smartRetryContext" in getattr(
+            state.values, "__dict__", state.values if isinstance(state.values, dict) else {}
+        ):
+            with contextlib.suppress(KeyError, TypeError):
+                del state.values["_smartRetryContext"]
+        return None
+
+    def _parse_xml_to_dict(self, xml_text: str) -> dict[str, Any] | None:
+        """Parse XML-like response to dict using ElementTree for nested XML support."""
+
+        def element_to_dict(element: ET.Element) -> dict[str, Any] | str:
+            """Recursively convert an XML element to a dict."""
+            children = list(element)
+            if not children:
+                # Leaf node - return trimmed text
+                return (element.text or "").strip()
+
+            # Has children - build nested dict
+            result: dict[str, Any] = {}
+            for child in children:
+                child_value = element_to_dict(child)
+                if child.tag in result:
+                    # Handle duplicate tags by converting to list
+                    existing = result[child.tag]
+                    if isinstance(existing, list):
+                        existing.append(child_value)
+                    else:
+                        result[child.tag] = [existing, child_value]
+                else:
+                    result[child.tag] = child_value
+            return result
+
+        try:
+            # Try to find and parse the response element
+            # First try to find <response>...</response>
+            response_match = re.search(r"<response>([\s\S]*?)</response>", xml_text)
+            if response_match:
+                xml_content = f"<response>{response_match.group(1)}</response>"
+            else:
+                # Try to wrap content if it looks like XML tags
+                xml_content = f"<root>{xml_text}</root>"
+
+            root = ET.fromstring(xml_content)
+            result = element_to_dict(root)
+
+            if isinstance(result, dict) and result:
+                return result
+            return None
+        except ET.ParseError:
+            # Fall back to regex for malformed XML with recursive nested tag parsing
+            def parse_nested(text: str) -> dict[str, Any]:
+                """Recursively parse nested XML tags."""
+                result: dict[str, Any] = {}
+                pattern = r"<([\w-]+)>([\s\S]*?)</\1>"
+                matches = re.findall(pattern, text)
+                for tag_name, content in matches:
+                    content_stripped = content.strip()
+                    # Check if content has nested tags
+                    if re.search(r"<[\w-]+>", content_stripped):
+                        # Recursively parse nested content
+                        nested = parse_nested(content_stripped)
+                        if nested:
+                            result[tag_name] = nested
+                        else:
+                            result[tag_name] = content_stripped
+                    else:
+                        result[tag_name] = content_stripped
+                return result
+
+            # First try to unwrap <response> wrapper and parse inner content
+            # Use lazy *? to avoid matching too much if multiple response tags exist
+            response_match = re.search(r"<response>([\s\S]*?)</response>", xml_text)
+            if response_match:
+                inner_result = parse_nested(response_match.group(1))
+                if inner_result:
+                    return inner_result
+
+            # Otherwise parse the whole text
+            result = parse_nested(xml_text)
+            return result if result else None
+
     async def search_knowledge(self, query: str, limit: int = 5) -> list[object]:
         """Search for knowledge matching the given query."""
         if not self._adapter:
             return []
         return await self._adapter.search_memories({"query": query, "limit": limit})
+
+
+@dataclass
+class DynamicPromptOptions:
+    """Options for dynamic prompt execution."""
+
+    model_size: str | None = None
+    """Model size to use ('small' or 'large')"""
+
+    model: str | None = None
+    """Specific model identifier override"""
+
+    force_format: str | None = None
+    """Force output format ('json' or 'xml')"""
+
+    required_fields: list[str] | None = None
+    """Required fields that must be present and non-empty"""
+
+    context_check_level: int | None = None
+    """Validation level (0=trusted, 1=progressive, 2=checkpoint, 3=full)"""
+
+    max_retries: int | None = None
+    """Maximum retry attempts"""
+
+    retry_backoff: RetryBackoffConfig | None = None
+    """Retry backoff configuration"""
+
+    on_stream_chunk: Callable[[str, str | None], Any] | None = None
+    """Callback for streaming chunks (chunk, message_id) -> None.
+    If provided, enables streaming with validation-aware extraction."""
+
+    on_stream_event: Callable[[StreamEvent, str | None], Any] | None = None
+    """Callback for rich streaming events (event, message_id) -> None.
+    Provides detailed events for advanced UIs (field validation, retries, errors)."""
+
+    abort_signal: Callable[[], bool] | None = None
+    """Callable returning True if the operation should be aborted."""

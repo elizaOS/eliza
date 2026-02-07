@@ -1,0 +1,31 @@
+{
+  "name": "@elizaos/plugin-matrix-typescript",
+  "version": "2.0.0-alpha.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "matrix-js-sdk": "^31.0.0",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "typescript": "^5.3.0"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js via main entry point"
+    }
+  }
+}

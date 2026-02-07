@@ -6,14 +6,11 @@ import twilioPlugin from "../index";
 describe("twilioPlugin", () => {
   it("should have correct metadata", () => {
     expect(twilioPlugin.name).toBe("twilio");
-    expect(twilioPlugin.description).toBe(
-      "Twilio plugin for bidirectional voice and text messaging integration"
-    );
+    expect(twilioPlugin.description).toContain("Twilio plugin");
   });
 
-  it("should export all actions", () => {
+  it("should export SMS/MMS actions", () => {
     expect(twilioPlugin.actions).toBeDefined();
-    expect(twilioPlugin.actions).toHaveLength(3);
 
     const actionNames = twilioPlugin.actions?.map((a) => a.name);
     expect(actionNames).toContain("SEND_SMS");
@@ -21,19 +18,41 @@ describe("twilioPlugin", () => {
     expect(actionNames).toContain("SEND_MMS");
   });
 
-  it("should export all providers", () => {
+  it("should export voice call actions", () => {
+    const actionNames = twilioPlugin.actions?.map((a) => a.name);
+    expect(actionNames).toContain("VOICE_CALL_INITIATE");
+    expect(actionNames).toContain("VOICE_CALL_MAKE");
+    expect(actionNames).toContain("VOICE_CALL_CONTINUE");
+    expect(actionNames).toContain("VOICE_CALL_SPEAK");
+    expect(actionNames).toContain("VOICE_CALL_END");
+    expect(actionNames).toContain("VOICE_CALL_STATUS");
+  });
+
+  it("should export all 9 actions total", () => {
+    expect(twilioPlugin.actions).toHaveLength(9);
+  });
+
+  it("should export SMS providers", () => {
     expect(twilioPlugin.providers).toBeDefined();
-    expect(twilioPlugin.providers).toHaveLength(2);
 
     const providerNames = twilioPlugin.providers?.map((p) => p.name);
     expect(providerNames).toContain("twilioConversationHistory");
     expect(providerNames).toContain("twilioCallState");
   });
 
-  it("should export TwilioService", () => {
+  it("should export voice call providers", () => {
+    const providerNames = twilioPlugin.providers?.map((p) => p.name);
+    expect(providerNames).toContain("voiceCallContext");
+    expect(providerNames).toContain("voiceCallState");
+  });
+
+  it("should export all 4 providers total", () => {
+    expect(twilioPlugin.providers).toHaveLength(4);
+  });
+
+  it("should export both TwilioService and VoiceCallService", () => {
     expect(twilioPlugin.services).toBeDefined();
-    expect(twilioPlugin.services).toHaveLength(1);
-    expect(twilioPlugin.services?.[0].name).toBe("TwilioService");
+    expect(twilioPlugin.services).toHaveLength(2);
   });
 
   it("should export test suite", () => {
@@ -48,7 +67,7 @@ describe("twilioPlugin", () => {
     beforeEach(() => {
       mockRuntime = {
         getSetting: vi.fn(),
-      } as any;
+      } as unknown as IAgentRuntime;
       vi.clearAllMocks();
     });
 

@@ -127,7 +127,7 @@ Post:"""
 
             try:
                 response = await runtime.use_model(
-                    ModelType.TEXT_SMALL.value,
+                    ModelType.TEXT_SMALL,
                     {
                         "prompt": prompt,
                         "maxTokens": 100,

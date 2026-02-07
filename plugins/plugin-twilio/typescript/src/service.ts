@@ -497,9 +497,10 @@ export class TwilioService extends Service implements TwilioServiceInterface {
     if (webhook.NumMedia && parseInt(webhook.NumMedia) > 0) {
       message.media = [];
       // Twilio sends media as MediaUrl0, MediaUrl1, etc.
+      const webhookRecord = webhook as Record<string, string | undefined>;
       for (let i = 0; i < parseInt(webhook.NumMedia); i++) {
-        const mediaUrl = (webhook as any)[`MediaUrl${i}`];
-        const contentType = (webhook as any)[`MediaContentType${i}`];
+        const mediaUrl = webhookRecord[`MediaUrl${i}`];
+        const contentType = webhookRecord[`MediaContentType${i}`];
         if (mediaUrl) {
           message.media.push({
             url: mediaUrl,

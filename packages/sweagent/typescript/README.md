@@ -55,7 +55,7 @@ sweagent --help
 ```bash
 # Have SWE-agent automatically fix a GitHub issue
 npx sweagent run \
-  --agent.model.name gpt-4o \
+  --agent.model.name gpt-5 \
   --env.repo.github_url https://github.com/user/repo \
   --problem_statement.github_url https://github.com/user/repo/issues/123
 ```
@@ -73,7 +73,7 @@ The agent will:
 echo "Create a REST API with CRUD operations for a todo list app" > task.md
 
 npx sweagent run \
-  --agent.model.name gpt-4o \
+  --agent.model.name gpt-5 \
   --env.repo.path ./my-project \
   --problem_statement.path task.md
 ```
@@ -105,7 +105,7 @@ npx sweagent run-batch \
   --instances.subset lite \
   --instances.split dev \
   --instances.slice :3 \
-  --agent.model.name gpt-4o
+  --agent.model.name gpt-5
 
 # Full benchmark with parallel execution
 npx sweagent run-batch \
@@ -113,7 +113,7 @@ npx sweagent run-batch \
   --instances.subset lite \
   --instances.slice :50 \
   --num_workers 5 \
-  --agent.model.name gpt-4o \
+  --agent.model.name gpt-5 \
   --instances.evaluate
 ```
 
@@ -136,7 +136,7 @@ EOF
 npx sweagent run-batch \
   --instances.type file \
   --instances.path my_tests.json \
-  --agent.model.name gpt-4o
+  --agent.model.name gpt-5
 ```
 
 ## 🧪 Running Tests
@@ -180,7 +180,7 @@ node examples/test_swe_bench_simple.js
 #### Fix a Bug
 ```bash
 npx sweagent run \
-  --agent.model.name gpt-4o \
+  --agent.model.name gpt-5 \
   --env.repo.path ./my-app \
   --problem_statement.text "The login form throws an error when email contains special characters"
 ```
@@ -196,7 +196,7 @@ npx sweagent run \
 #### Refactor Code
 ```bash
 npx sweagent run \
-  --agent.model.name gpt-4o \
+  --agent.model.name gpt-5 \
   --env.repo.path ./legacy-app \
   --problem_statement.text "Refactor the user service to use async/await instead of callbacks"
 ```
@@ -225,7 +225,7 @@ swe-agent-ts/
 # config/my_config.yaml
 agent:
   model:
-    name: gpt-4o
+    name: gpt-5
     per_instance_cost_limit: 2.00
     temperature: 0.7
     

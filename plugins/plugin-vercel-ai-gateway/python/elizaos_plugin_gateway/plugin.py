@@ -257,9 +257,9 @@ def create_gateway_elizaos_plugin() -> Plugin:
         name="gateway",
         description="Vercel AI Gateway model provider for elizaOS",
         models={
-            ModelType.TEXT_LARGE.value: text_large_handler,
-            ModelType.TEXT_SMALL.value: text_small_handler,
-            ModelType.TEXT_EMBEDDING.value: embedding_handler,
+            ModelType.TEXT_LARGE: text_large_handler,
+            ModelType.TEXT_SMALL: text_small_handler,
+            ModelType.TEXT_EMBEDDING: embedding_handler,
         },
     )
 

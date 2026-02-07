@@ -16,8 +16,8 @@ class ActionResult:
 
 
 class CreateFromDescriptionAction:
-    name = "createPluginFromDescription"
-    description = "Create a plugin from a natural language description"
+    name = "DESCRIBE_PLUGIN"
+    description = "Generate and create an ElizaOS plugin from a natural language description. Do NOT use for n8n workflow creation."
     similes = [
         "describe plugin",
         "plugin from description",

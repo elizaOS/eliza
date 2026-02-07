@@ -54,7 +54,7 @@
     "face-api.js": "^0.22.2",
     "sharp": "^0.34.3",
     "tesseract.js": "^6.0.1",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
@@ -91,5 +91,14 @@
       }
     }
   },
-  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7",
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js only (platform: node)"
+    }
+  }
 }

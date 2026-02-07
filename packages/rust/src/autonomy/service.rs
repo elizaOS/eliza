@@ -1,17 +1,15 @@
-//! Autonomy service (runs an autonomous think loop).
+//! Autonomy service using the Task system (TypeScript parity).
+//!
+//! This service registers an `AUTONOMY_THINK` task worker and creates a recurring
+//! task that triggers autonomous thinking at a configurable interval.
 
-use std::any::Any;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, Weak};
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Weak};
+use std::any::Any;
 
 use anyhow::Result;
 use serde_json::{Number, Value};
-#[cfg(feature = "native")]
-use tokio::task::JoinHandle;
-#[cfg(feature = "native")]
-use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
 use crate::prompts::{
@@ -25,27 +23,37 @@ use crate::types::environment::{Room, RoomMetadata, World, WorldMetadata};
 use crate::types::memory::Memory;
 use crate::types::primitives::{Content, UUID};
 use crate::types::settings::SettingValue;
+use crate::types::task::{Task, TaskWorker};
 
 use super::types::AutonomyStatus;
 
 /// Service type constant for autonomy (parity with TS).
 pub const AUTONOMY_SERVICE_TYPE: &str = "AUTONOMY";
 
+/// Task name for autonomy thinking (parity with TypeScript).
+pub const AUTONOMY_TASK_NAME: &str = "AUTONOMY_THINK";
+
+/// Tags used for autonomy tasks (parity with TypeScript).
+/// Note: TypeScript uses ["repeat", "autonomy", "internal"] without "queue".
+pub const AUTONOMY_TASK_TAGS: &[&str] = &["repeat", "autonomy", "internal"];
+
+/// Default interval for autonomy loop in milliseconds.
+const DEFAULT_INTERVAL_MS: i64 = 30_000;
+
 /// Autonomous world ID (stable).
 fn autonomy_world_id() -> UUID {
     UUID::new("00000000-0000-0000-0000-000000000001").expect("valid uuid")
 }
 
-/// AutonomyService - manages autonomous agent operation.
+/// AutonomyService - manages autonomous agent operation using the Task system.
 pub struct AutonomyService {
     runtime: Weak<AgentRuntime>,
     is_running: AtomicBool,
     is_thinking: AtomicBool,
-    interval_ms: AtomicU64,
+    interval_ms: std::sync::atomic::AtomicI64,
     autonomous_room_id: UUID,
     autonomous_world_id: UUID,
-    stop_flag: AtomicBool,
-    task: Mutex<Option<AutonomyTaskHandle>>,
+    task_registered: AtomicBool,
 }
 
 #[derive(Clone, Copy)]
@@ -54,30 +62,38 @@ enum AutonomyMode {
     Task,
 }
 
-#[cfg(feature = "native")]
-type AutonomyTaskHandle = JoinHandle<()>;
-#[cfg(not(feature = "native"))]
-type AutonomyTaskHandle = ();
-
 impl AutonomyService {
-    /// Create and start the autonomy service (spawns background loop).
+    /// Create and start the autonomy service.
     pub async fn start(runtime: Weak<AgentRuntime>) -> Result<Arc<Self>> {
         let autonomous_room_id = UUID::new_v4();
         let svc = Arc::new(AutonomyService {
-            runtime,
+            runtime: runtime.clone(),
             is_running: AtomicBool::new(false),
             is_thinking: AtomicBool::new(false),
-            interval_ms: AtomicU64::new(30_000),
+            interval_ms: std::sync::atomic::AtomicI64::new(DEFAULT_INTERVAL_MS),
             autonomous_room_id,
             autonomous_world_id: autonomy_world_id(),
-            stop_flag: AtomicBool::new(false),
-            task: Mutex::new(None),
+            task_registered: AtomicBool::new(false),
         });
 
         svc.ensure_autonomous_context().await?;
 
-        // Always spawn the background loop (it is gated by runtime.enableAutonomy).
-        svc.spawn_loop().await;
+        // Register the task worker
+        svc.register_autonomy_task_worker().await;
+
+        // Check if autonomy should auto-start
+        if svc.runtime_enable_autonomy() {
+            info!(
+                target: "autonomy",
+                "Autonomy enabled, creating autonomy task..."
+            );
+            svc.create_autonomy_task().await?;
+        } else {
+            info!(
+                target: "autonomy",
+                "Autonomy not enabled. Set enableAutonomy: true to auto-start."
+            );
+        }
 
         Ok(svc)
     }
@@ -98,30 +114,51 @@ impl AutonomyService {
     }
 
     /// Get the current loop interval in milliseconds.
-    pub fn get_loop_interval(&self) -> u64 {
+    pub fn get_loop_interval(&self) -> i64 {
         self.interval_ms.load(Ordering::SeqCst)
     }
 
     /// Update the loop interval (clamped to a safe range).
-    pub fn set_loop_interval(&self, ms: u64) {
-        const MIN: u64 = 5_000;
-        const MAX: u64 = 600_000;
-        self.interval_ms.store(ms.clamp(MIN, MAX), Ordering::SeqCst);
+    /// Recreates the task if autonomy is currently running (parity with TypeScript).
+    pub async fn set_loop_interval(&self, ms: i64) {
+        const MIN: i64 = 5_000;
+        const MAX: i64 = 600_000;
+        let clamped = ms.clamp(MIN, MAX);
+        self.interval_ms.store(clamped, Ordering::SeqCst);
+
+        if let Some(rt) = self.runtime.upgrade() {
+            info!(
+                target: "autonomy",
+                agent_id = %rt.agent_id,
+                interval_ms = clamped,
+                "Loop interval set"
+            );
+        }
+
+        // Recreate the task if running (parity with TypeScript)
+        if self.is_running.load(Ordering::SeqCst) {
+            if let Err(e) = self.create_autonomy_task().await {
+                warn!(target: "autonomy", error = %e, "Failed to recreate autonomy task after interval change");
+            }
+        }
     }
 
-    /// Enable autonomy by setting the runtime flag.
-    pub async fn enable_autonomy(&self) {
+    /// Enable autonomy by creating the task.
+    pub async fn enable_autonomy(&self) -> Result<()> {
         if let Some(rt) = self.runtime.upgrade() {
             rt.set_enable_autonomy(true);
         }
+        self.create_autonomy_task().await
     }
 
-    /// Disable autonomy and stop the loop.
-    pub async fn disable_autonomy(&self) {
+    /// Disable autonomy by removing the task.
+    pub async fn disable_autonomy(&self) -> Result<()> {
         if let Some(rt) = self.runtime.upgrade() {
             rt.set_enable_autonomy(false);
+            self.remove_autonomy_task(&rt).await?;
         }
-        self.stop_loop().await;
+        self.is_running.store(false, Ordering::SeqCst);
+        Ok(())
     }
 
     /// Get a snapshot of the current autonomy status.
@@ -131,66 +168,90 @@ impl AutonomyService {
             enabled,
             running: self.is_running.load(Ordering::SeqCst),
             thinking: self.is_thinking.load(Ordering::SeqCst),
-            interval: self.interval_ms.load(Ordering::SeqCst),
+            interval: self.interval_ms.load(Ordering::SeqCst) as u64,
             autonomous_room_id: self.autonomous_room_id.clone(),
         }
     }
 
-    async fn spawn_loop(self: &Arc<Self>) {
-        #[cfg(not(feature = "native"))]
-        {
-            // Autonomy loop requires the native async runtime.
+    /// Register the task worker for autonomous thinking.
+    async fn register_autonomy_task_worker(self: &Arc<Self>) {
+        if self.task_registered.swap(true, Ordering::SeqCst) {
+            return; // Already registered
+        }
+
+        let Some(rt) = self.runtime.upgrade() else {
             return;
-        }
-        #[cfg(feature = "native")]
-        if self.stop_flag.load(Ordering::SeqCst) {
-            return;
-        }
-        #[cfg(feature = "native")]
-        if self.task.lock().expect("lock poisoned").is_some() {
-            return;
-        }
+        };
 
-        #[cfg(feature = "native")]
-        let svc = Arc::clone(self);
-        #[cfg(feature = "native")]
-        let handle: JoinHandle<()> = tokio::spawn(async move {
-            let mut last_think = Instant::now() - Duration::from_millis(svc.get_loop_interval());
-            while !svc.stop_flag.load(Ordering::SeqCst) {
-                // Runtime-based enable/disable (parity with TS monitoring)
-                let enabled = svc.runtime_enable_autonomy();
-                if !enabled {
-                    svc.is_running.store(false, Ordering::SeqCst);
-                    sleep(Duration::from_secs(10)).await;
-                    continue;
-                }
+        let service = Arc::clone(self);
+        let worker = AutonomyTaskWorker { service };
 
-                svc.is_running.store(true, Ordering::SeqCst);
+        rt.register_task_worker(Arc::new(worker)).await;
 
-                // Trigger think based on interval
-                let interval = Duration::from_millis(svc.get_loop_interval());
-                if last_think.elapsed() >= interval && !svc.is_thinking.swap(true, Ordering::SeqCst)
-                {
-                    if let Err(e) = svc.perform_autonomous_think().await {
-                        warn!(error = %e, "autonomy think failed");
-                    }
-                    svc.is_thinking.store(false, Ordering::SeqCst);
-                    last_think = Instant::now();
-                }
-
-                sleep(Duration::from_secs(1)).await;
-            }
-        });
-
-        #[cfg(feature = "native")]
-        {
-            *self.task.lock().expect("lock poisoned") = Some(handle);
-            info!("Autonomy loop started");
-        }
+        debug!(
+            target: "autonomy",
+            agent_id = %rt.agent_id,
+            "Registered autonomy task worker"
+        );
     }
 
-    async fn stop_loop(&self) {
-        self.is_running.store(false, Ordering::SeqCst);
+    /// Create the recurring autonomy task.
+    async fn create_autonomy_task(&self) -> Result<()> {
+        let Some(rt) = self.runtime.upgrade() else {
+            return Ok(());
+        };
+
+        // Remove any existing autonomy tasks
+        self.remove_autonomy_task(&rt).await?;
+
+        // Create the recurring task
+        let interval = self.interval_ms.load(Ordering::SeqCst);
+        let mut task = Task::repeating(AUTONOMY_TASK_NAME, interval);
+        task.description = Some(format!("Autonomous thinking for agent {}", rt.agent_id));
+        task.world_id = Some(self.autonomous_world_id.clone());
+        task.room_id = Some(self.autonomous_room_id.clone());
+        task.tags = Some(AUTONOMY_TASK_TAGS.iter().map(|s| s.to_string()).collect());
+
+        // Ensure metadata has blocking = true
+        if let Some(ref mut metadata) = task.metadata {
+            metadata.blocking = Some(true);
+        }
+
+        rt.create_task(task).await;
+
+        self.is_running.store(true, Ordering::SeqCst);
+
+        info!(
+            target: "autonomy",
+            agent_id = %rt.agent_id,
+            interval_ms = interval,
+            "Created autonomy task"
+        );
+
+        Ok(())
+    }
+
+    /// Remove existing autonomy tasks.
+    /// Uses full AUTONOMY_TASK_TAGS for filtering (parity with TypeScript).
+    async fn remove_autonomy_task(&self, rt: &AgentRuntime) -> Result<()> {
+        let tags: Vec<String> = AUTONOMY_TASK_TAGS.iter().map(|s| s.to_string()).collect();
+        let existing_tasks = rt.get_tasks(Some(tags)).await;
+
+        for task in existing_tasks {
+            if task.name == AUTONOMY_TASK_NAME {
+                if let Some(task_id) = &task.id {
+                    rt.delete_task(&task_id.to_string()).await;
+                    debug!(
+                        target: "autonomy",
+                        agent_id = %rt.agent_id,
+                        task_id = %task_id,
+                        "Removed existing autonomy task"
+                    );
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn runtime_enable_autonomy(&self) -> bool {
@@ -394,15 +455,34 @@ impl AutonomyService {
         output
     }
 
-    async fn perform_autonomous_think(&self) -> Result<()> {
+    /// Perform one iteration of autonomous thinking.
+    /// This is called by the task worker when the task executes.
+    pub async fn perform_autonomous_think(&self) -> Result<()> {
         let Some(rt) = self.runtime.upgrade() else {
             return Ok(());
         };
 
-        let last_thought = self.get_last_autonomous_thought(&rt).await;
+        // Guard against overlapping think cycles
+        if self.is_thinking.swap(true, Ordering::SeqCst) {
+            debug!(
+                target: "autonomy",
+                "Previous think cycle still in progress, skipping"
+            );
+            return Ok(());
+        }
+
+        let result = self.do_think(&rt).await;
+
+        self.is_thinking.store(false, Ordering::SeqCst);
+
+        result
+    }
+
+    async fn do_think(&self, rt: &AgentRuntime) -> Result<()> {
+        let last_thought = self.get_last_autonomous_thought(rt).await;
         let is_first = last_thought.as_deref().unwrap_or("").is_empty();
-        let mode = self.get_autonomy_mode(&rt).await;
-        let target_context = self.get_target_room_context_text(&rt).await;
+        let mode = self.get_autonomy_mode(rt).await;
+        let target_context = self.get_target_room_context_text(rt).await;
         let prompt = match mode {
             AutonomyMode::Task => {
                 self.create_task_prompt(last_thought.as_deref(), is_first, &target_context)
@@ -453,7 +533,7 @@ impl AutonomyService {
 
         let service = rt.message_service();
         let _ = service
-            .handle_message(rt.as_ref(), &mut msg, Some(callback), None)
+            .handle_message(rt, &mut msg, Some(callback), None)
             .await?;
 
         Ok(())
@@ -472,6 +552,59 @@ impl AutonomyService {
     }
 }
 
+/// Task worker for autonomous thinking.
+struct AutonomyTaskWorker {
+    service: Arc<AutonomyService>,
+}
+
+#[async_trait::async_trait]
+impl TaskWorker for AutonomyTaskWorker {
+    fn name(&self) -> &str {
+        AUTONOMY_TASK_NAME
+    }
+
+    async fn execute(
+        &self,
+        _runtime: Arc<dyn Any + Send + Sync>,
+        _options: HashMap<String, serde_json::Value>,
+        task: Task,
+    ) -> Result<()> {
+        let start_time = std::time::Instant::now();
+
+        debug!(
+            target: "autonomy",
+            task_id = ?task.id,
+            "Executing autonomy task"
+        );
+
+        let result = self.service.perform_autonomous_think().await;
+
+        let duration_ms = start_time.elapsed().as_millis();
+
+        match &result {
+            Ok(_) => {
+                debug!(
+                    target: "autonomy",
+                    task_id = ?task.id,
+                    duration_ms = duration_ms,
+                    "Autonomy task completed successfully"
+                );
+            }
+            Err(e) => {
+                warn!(
+                    target: "autonomy",
+                    task_id = ?task.id,
+                    error = %e,
+                    duration_ms = duration_ms,
+                    "Autonomy task failed"
+                );
+            }
+        }
+
+        result
+    }
+}
+
 #[async_trait::async_trait]
 impl Service for AutonomyService {
     fn service_type(&self) -> &str {
@@ -483,13 +616,14 @@ impl Service for AutonomyService {
     }
 
     async fn stop(&self) -> Result<()> {
-        self.stop_flag.store(true, Ordering::SeqCst);
-        #[cfg(feature = "native")]
-        {
-            if let Some(handle) = self.task.lock().expect("lock poisoned").take() {
-                handle.abort();
-            }
+        self.is_running.store(false, Ordering::SeqCst);
+
+        // Remove the autonomy task
+        if let Some(rt) = self.runtime.upgrade() {
+            let _ = self.remove_autonomy_task(&rt).await;
         }
+
+        info!(target: "autonomy", "Autonomy service stopped");
         Ok(())
     }
 }
@@ -526,6 +660,14 @@ mod tests {
             similarity: None,
             metadata: None,
         }
+    }
+
+    #[test]
+    fn test_task_constants() {
+        assert_eq!(AUTONOMY_TASK_NAME, "AUTONOMY_THINK");
+        assert!(AUTONOMY_TASK_TAGS.contains(&"repeat"));
+        assert!(AUTONOMY_TASK_TAGS.contains(&"autonomy"));
+        assert!(AUTONOMY_TASK_TAGS.contains(&"internal"));
     }
 
     #[test]

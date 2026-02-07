@@ -1,0 +1,52 @@
+{
+  "name": "@milaidy/capacitor-talkmode",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Talk mode plugin with STT, chat, and TTS for Milaidy",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources/",
+    "*.podspec"
+  ],
+  "scripts": {
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "build:docs": "npm run clean && npm run docgen && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist",
+    "docgen": "docgen --api TalkModePlugin --output-readme README.md --output-json dist/docs.json"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/docgen": "^0.2.2",
+    "rimraf": "^5.0.0",
+    "rollup": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "milaidy": {
+    "platforms": ["browser", "node"],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Support via Web Speech API for STT/TTS. No ElevenLabs streaming (CORS). System TTS fallback.",
+      "node": "Full support via Electron with ElevenLabs streaming TTS, native STT, and system TTS fallback",
+      "ios": true,
+      "android": true
+    }
+  }
+}

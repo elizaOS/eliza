@@ -33,6 +33,7 @@ import type { JsonValue } from "./proto.js";
 import type { Service, ServiceTypeName } from "./service";
 import type { State } from "./state";
 import type { TaskWorker } from "./task";
+import type { ToolPolicyConfig, ToolProfileId } from "./tools";
 
 /**
  * Represents the core runtime environment for an agent.
@@ -149,6 +150,45 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
   registerProvider(provider: Provider): void;
 
   registerAction(action: Action): void;
+
+  /**
+   * Get all registered actions.
+   */
+  getAllActions(): Action[];
+
+  /**
+   * Get actions filtered by tool policy.
+   *
+   * @param context - Optional policy context for filtering
+   * @returns Filtered actions based on policy
+   */
+  getFilteredActions(context?: {
+    profile?: ToolProfileId;
+    characterPolicy?: ToolPolicyConfig;
+    channelPolicy?: ToolPolicyConfig;
+    providerPolicy?: ToolPolicyConfig;
+    worldPolicy?: ToolPolicyConfig;
+    roomPolicy?: ToolPolicyConfig;
+  }): Action[];
+
+  /**
+   * Check if a specific action is allowed by tool policy.
+   *
+   * @param actionName - The action name to check
+   * @param context - Optional policy context
+   * @returns Whether the action is allowed
+   */
+  isActionAllowed(
+    actionName: string,
+    context?: {
+      profile?: ToolProfileId;
+      characterPolicy?: ToolPolicyConfig;
+      channelPolicy?: ToolPolicyConfig;
+      providerPolicy?: ToolPolicyConfig;
+      worldPolicy?: ToolPolicyConfig;
+      roomPolicy?: ToolPolicyConfig;
+    },
+  ): { allowed: boolean; reason: string };
 
   registerEvaluator(evaluator: Evaluator): void;
 
@@ -290,6 +330,63 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
   registerTaskWorker(taskHandler: TaskWorker): void;
   getTaskWorker(name: string): TaskWorker | undefined;
 
+  /**
+   * Dynamic prompt execution with state injection, schema-based parsing, and validation-aware streaming.
+   *
+   * WHY THIS EXISTS:
+   * LLMs are powerful but unreliable for structured outputs. They can:
+   * - Silently truncate output when hitting token limits
+   * - Skip fields or produce malformed structures
+   * - Hallucinate or ignore parts of the prompt
+   *
+   * This method addresses these issues by:
+   * 1. Validation codes: Injects UUID codes the LLM must echo back. If codes match,
+   *    we know the LLM actually read and followed the prompt.
+   * 2. Streaming with safety: Enables streaming while detecting truncation.
+   * 3. Performance tracking: Tracks success/failure rates per model+schema.
+   *
+   * VALIDATION LEVELS:
+   * - Level 0 (Trusted): No codes. Maximum speed. Use for reliable models.
+   * - Level 1 (Progressive): Per-field codes. Balance of safety + speed.
+   * - Level 2 (First Checkpoint): Codes at start. Default. Catches ignored prompts.
+   * - Level 3 (Full): Codes at start AND end. Maximum correctness.
+   *
+   * @param state - State object to inject into the prompt template
+   * @param params - LLM parameters with a prompt template
+   * @param schema - Array of field definitions for structured output
+   * @param options - Configuration (modelSize, validation level, streaming callbacks, etc.)
+   * @returns Parsed structured response object, or null on failure
+   */
+  dynamicPromptExecFromState(args: {
+    state: State;
+    params: Omit<GenerateTextParams, "prompt"> & {
+      prompt: string | ((ctx: { state: State }) => string);
+    };
+    schema: import("./state").SchemaRow[];
+    options?: {
+      key?: string;
+      modelSize?: "small" | "large";
+      model?: string;
+      preferredEncapsulation?: "json" | "xml";
+      forceFormat?: "json" | "xml";
+      requiredFields?: string[];
+      contextCheckLevel?: 0 | 1 | 2 | 3;
+      maxRetries?: number;
+      retryBackoff?: number | import("./state").RetryBackoffConfig;
+      disableCache?: boolean;
+      cacheTTL?: number;
+      onStreamChunk?: (
+        chunk: string,
+        messageId?: string,
+      ) => void | Promise<void>;
+      onStreamEvent?: (
+        event: import("./state").StreamEvent,
+        messageId?: string,
+      ) => void | Promise<void>;
+      abortSignal?: AbortSignal;
+    };
+  }): Promise<Record<string, unknown> | null>;
+
   stop(): Promise<void>;
 
   addEmbeddingToMemory(memory: Memory): Promise<Memory>;
@@ -339,4 +436,11 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
   registerSendHandler(source: string, handler: SendHandlerFunction): void;
   sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
   updateWorld(world: World): Promise<void>;
+
+  /**
+   * Redact secrets from a text string.
+   * @param text - The text to redact secrets from
+   * @returns The text with secrets redacted
+   */
+  redactSecrets(text: string): string;
 }

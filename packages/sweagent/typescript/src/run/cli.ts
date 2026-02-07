@@ -216,7 +216,7 @@ program
           config.agent = {
             type: "default",
             model: {
-              name: "gpt-4",
+              name: "gpt-5",
               perInstanceCostLimit: parseFloat(
                 options["agent.model.per_instance_cost_limit"],
               ),

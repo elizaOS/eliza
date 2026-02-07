@@ -97,5 +97,16 @@
         "default": "Chip-PlayAI"
       }
     }
+  },
+  "milaidy": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
+    }
   }
 }

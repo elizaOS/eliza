@@ -2,6 +2,7 @@
  * Tests for Instagram UserState provider
  */
 
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { userStateProvider } from "../user-state";
 
@@ -19,17 +20,21 @@ describe("userStateProvider", () => {
 
   describe("get", () => {
     it("should return user state for DM context", async () => {
-      const mockRuntime = {};
+      const mockRuntime = {} as IAgentRuntime;
       const mockMessage = {
         roomId: "room-uuid-123",
         content: {
           userId: 12345,
           threadId: "thread-1",
         },
-      };
+      } as Memory;
+      const mockState = {} as State;
 
-      // @ts-expect-error - partial mock
-      const result = await userStateProvider.get(mockRuntime, mockMessage, {});
+      const result = await userStateProvider.get(
+        mockRuntime,
+        mockMessage,
+        mockState,
+      );
 
       // Result is a ProviderResult with text, values, and data
       expect(result.data).toBeDefined();
@@ -41,17 +46,21 @@ describe("userStateProvider", () => {
     });
 
     it("should return user state for comment context", async () => {
-      const mockRuntime = {};
+      const mockRuntime = {} as IAgentRuntime;
       const mockMessage = {
         roomId: "room-uuid-123",
         content: {
           userId: 12345,
           mediaId: 67890,
         },
-      };
+      } as Memory;
+      const mockState = {} as State;
 
-      // @ts-expect-error - partial mock
-      const result = await userStateProvider.get(mockRuntime, mockMessage, {});
+      const result = await userStateProvider.get(
+        mockRuntime,
+        mockMessage,
+        mockState,
+      );
 
       expect(result.data).toBeDefined();
       const state = result.data as Record<string, unknown>;
@@ -62,14 +71,18 @@ describe("userStateProvider", () => {
     });
 
     it("should handle missing context", async () => {
-      const mockRuntime = {};
+      const mockRuntime = {} as IAgentRuntime;
       const mockMessage = {
         roomId: "room-uuid-123",
         content: {},
-      };
+      } as Memory;
+      const mockState = {} as State;
 
-      // @ts-expect-error - partial mock
-      const result = await userStateProvider.get(mockRuntime, mockMessage, {});
+      const result = await userStateProvider.get(
+        mockRuntime,
+        mockMessage,
+        mockState,
+      );
 
       expect(result.data).toBeDefined();
       const state = result.data as Record<string, unknown>;

@@ -1,8 +1,14 @@
 /**
  * Autonomy Service for elizaOS
  *
- * Provides autonomous operation loop for agents, enabling them to think
- * and act independently without external prompts.
+ * Provides autonomous operation for agents using the Task system,
+ * enabling them to think and act independently without external prompts.
+ *
+ * This service uses the unified Task system for scheduling instead of
+ * timer-based loops, which provides:
+ * - Database persistence (survives restarts)
+ * - Blocking mode (prevents overlapping executions)
+ * - Unified task management across all periodic operations
  */
 
 import {
@@ -32,22 +38,35 @@ import type { AutonomyStatus } from "./types";
 export const AUTONOMY_SERVICE_TYPE = "AUTONOMY" as const;
 
 /**
+ * Task name for autonomy thinking
+ */
+export const AUTONOMY_TASK_NAME = "AUTONOMY_THINK" as const;
+
+/**
+ * Tags used for autonomy tasks
+ */
+export const AUTONOMY_TASK_TAGS = ["repeat", "autonomy", "internal"] as const;
+
+/**
  * AutonomyService - Manages autonomous agent operation
  *
- * This service runs an autonomous loop that triggers agent thinking
+ * This service uses the Task system to trigger agent thinking
  * in a dedicated room context, separate from user conversations.
+ * The task-based approach ensures:
+ * - Persistence across restarts
+ * - No overlapping executions (blocking mode)
+ * - Unified management with other periodic tasks
  */
 export class AutonomyService extends Service {
   static serviceType = AUTONOMY_SERVICE_TYPE;
   static serviceName = "Autonomy";
 
   protected isRunning = false;
-  protected isThinking = false; // Guard to prevent overlapping think cycles
-  protected loopInterval?: NodeJS.Timeout;
-  protected settingsMonitorInterval?: NodeJS.Timeout;
   protected intervalMs: number;
   protected autonomousRoomId: UUID;
   protected autonomousWorldId: UUID;
+  private taskRegistered = false;
+  private isThinking = false;
   protected autonomyEntityId: UUID; // Dedicated entity ID for autonomy prompts (not the agent's ID)
 
   private getAutonomyMode(): "continuous" | "task" {
@@ -174,8 +193,8 @@ export class AutonomyService extends Service {
 
   constructor() {
     super();
-    // Default interval of 5 seconds
-    this.intervalMs = 5000;
+    // Default interval of 30 seconds
+    this.intervalMs = 30000;
     // Generate unique room ID for autonomous thoughts
     this.autonomousRoomId = stringToUuid(uuidv4());
     this.autonomousWorldId = stringToUuid(
@@ -207,6 +226,9 @@ export class AutonomyService extends Service {
       `Using autonomous room ID: ${this.autonomousRoomId}`,
     );
 
+    // Register the task worker for autonomous thinking
+    this.registerAutonomyTaskWorker();
+
     // Check runtime flag for auto-start
     const autonomyEnabled = this.runtime.enableAutonomy;
 
@@ -222,18 +244,149 @@ export class AutonomyService extends Service {
     if (autonomyEnabled) {
       this.runtime.logger.info(
         { src: "autonomy", agentId: this.runtime.agentId },
-        "Autonomy enabled (enableAutonomy: true), starting autonomous loop...",
+        "Autonomy enabled (enableAutonomy: true), creating autonomy task...",
       );
-      await this.startLoop();
+      await this.createAutonomyTask();
     } else {
       this.runtime.logger.info(
         { src: "autonomy", agentId: this.runtime.agentId },
         "Autonomy not enabled (enableAutonomy: false or not set). Set enableAutonomy: true in runtime options to auto-start, or call enableAutonomy() to start manually.",
       );
     }
+  }
 
-    // Set up settings monitoring
-    this.setupSettingsMonitoring();
+  /**
+   * Register the task worker for autonomous thinking
+   */
+  private registerAutonomyTaskWorker(): void {
+    if (this.taskRegistered) return;
+
+    this.runtime.registerTaskWorker({
+      name: AUTONOMY_TASK_NAME,
+      validate: async () => true,
+      execute: async (runtime, _options, task) => {
+        const startTime = Date.now();
+        this.runtime.logger.debug(
+          {
+            src: "autonomy",
+            agentId: runtime.agentId,
+            taskId: task.id,
+          },
+          "Executing autonomy task",
+        );
+
+        try {
+          await this.performAutonomousThink();
+          const durationMs = Date.now() - startTime;
+          this.runtime.logger.debug(
+            {
+              src: "autonomy",
+              agentId: runtime.agentId,
+              taskId: task.id,
+              durationMs,
+            },
+            "Autonomy task completed successfully",
+          );
+        } catch (error) {
+          const durationMs = Date.now() - startTime;
+          this.runtime.logger.error(
+            {
+              src: "autonomy",
+              agentId: runtime.agentId,
+              taskId: task.id,
+              error: error instanceof Error ? error.message : String(error),
+              durationMs,
+            },
+            "Autonomy task failed",
+          );
+          throw error;
+        }
+      },
+    });
+
+    this.taskRegistered = true;
+    this.runtime.logger.debug(
+      { src: "autonomy", agentId: this.runtime.agentId },
+      "Registered autonomy task worker",
+    );
+  }
+
+  /**
+   * Create the recurring autonomy task
+   */
+  private async createAutonomyTask(): Promise<void> {
+    // Clean up any existing autonomy tasks
+    const existingTasks = await this.runtime.getTasks({
+      tags: [...AUTONOMY_TASK_TAGS],
+    });
+
+    for (const task of existingTasks) {
+      if (task.id && task.name === AUTONOMY_TASK_NAME) {
+        await this.runtime.deleteTask(task.id);
+        this.runtime.logger.debug(
+          {
+            src: "autonomy",
+            agentId: this.runtime.agentId,
+            taskId: task.id,
+          },
+          "Removed existing autonomy task",
+        );
+      }
+    }
+
+    // Create the recurring task
+    await this.runtime.createTask({
+      name: AUTONOMY_TASK_NAME,
+      description: `Autonomous thinking for agent ${this.runtime.agentId}`,
+      worldId: this.autonomousWorldId,
+      roomId: this.autonomousRoomId,
+      metadata: {
+        updatedAt: Date.now(),
+        updateInterval: this.intervalMs,
+        // Enable blocking to prevent overlapping think cycles
+        // This is critical for long-running autonomous operations
+        blocking: true,
+      },
+      tags: [...AUTONOMY_TASK_TAGS],
+    });
+
+    this.isRunning = true;
+    this.runtime.enableAutonomy = true;
+
+    this.runtime.logger.info(
+      {
+        src: "autonomy",
+        agentId: this.runtime.agentId,
+        intervalMs: this.intervalMs,
+      },
+      `Created autonomy task (interval: ${this.intervalMs}ms)`,
+    );
+  }
+
+  /**
+   * Delete the autonomy task to stop autonomous operation
+   */
+  private async deleteAutonomyTask(): Promise<void> {
+    const existingTasks = await this.runtime.getTasks({
+      tags: [...AUTONOMY_TASK_TAGS],
+    });
+
+    for (const task of existingTasks) {
+      if (task.id && task.name === AUTONOMY_TASK_NAME) {
+        await this.runtime.deleteTask(task.id);
+        this.runtime.logger.info(
+          {
+            src: "autonomy",
+            agentId: this.runtime.agentId,
+            taskId: task.id,
+          },
+          "Deleted autonomy task",
+        );
+      }
+    }
+
+    this.isRunning = false;
+    this.runtime.enableAutonomy = false;
   }
 
   /**
@@ -299,123 +452,6 @@ export class AutonomyService extends Service {
     );
   }
 
-  /**
-   * Monitor settings for autonomy state changes
-   */
-  private setupSettingsMonitoring(): void {
-    this.settingsMonitorInterval = setInterval(async () => {
-      const shouldBeRunning = this.runtime.enableAutonomy;
-
-      if (shouldBeRunning && !this.isRunning) {
-        this.runtime.logger.info(
-          { src: "autonomy", agentId: this.runtime.agentId },
-          "Runtime indicates autonomy should be enabled, starting...",
-        );
-        await this.startLoop();
-      } else if (!shouldBeRunning && this.isRunning) {
-        this.runtime.logger.info(
-          { src: "autonomy", agentId: this.runtime.agentId },
-          "Runtime indicates autonomy should be disabled, stopping...",
-        );
-        await this.stopLoop();
-      }
-    }, 10000); // Check every 10 seconds
-  }
-
-  /**
-   * Start the autonomous loop
-   */
-  async startLoop(): Promise<void> {
-    if (this.isRunning) {
-      this.runtime.logger.debug(
-        { src: "autonomy", agentId: this.runtime.agentId },
-        "Loop already running",
-      );
-      return;
-    }
-
-    this.isRunning = true;
-    this.runtime.enableAutonomy = true;
-
-    this.runtime.logger.info(
-      { src: "autonomy", agentId: this.runtime.agentId },
-      `Starting autonomous loop (${this.intervalMs}ms interval)`,
-    );
-
-    this.scheduleNextThink();
-  }
-
-  /**
-   * Stop the autonomous loop
-   */
-  async stopLoop(): Promise<void> {
-    if (!this.isRunning) {
-      this.runtime.logger.debug(
-        { src: "autonomy", agentId: this.runtime.agentId },
-        "Loop not running",
-      );
-      return;
-    }
-
-    this.isRunning = false;
-
-    if (this.loopInterval) {
-      clearTimeout(this.loopInterval);
-      this.loopInterval = undefined;
-    }
-
-    this.runtime.enableAutonomy = false;
-    this.runtime.logger.info(
-      { src: "autonomy", agentId: this.runtime.agentId },
-      "Stopped autonomous loop",
-    );
-  }
-
-  /**
-   * Schedule next autonomous thinking iteration
-   */
-  private scheduleNextThink(): void {
-    if (!this.isRunning) {
-      return;
-    }
-
-    this.loopInterval = setTimeout(async () => {
-      // Guard: Skip if previous iteration is still running
-      if (this.isThinking) {
-        this.runtime.logger.debug(
-          { src: "autonomy", agentId: this.runtime.agentId },
-          "Previous autonomous think still in progress, skipping this iteration and rescheduling",
-        );
-        this.scheduleNextThink();
-        return;
-      }
-
-      // Guard: Don't run if loop was stopped while waiting
-      if (!this.isRunning) {
-        return;
-      }
-
-      this.isThinking = true;
-      try {
-        await this.performAutonomousThink();
-      } finally {
-        this.isThinking = false;
-      }
-
-      // Only schedule next if still running (could have been stopped during think)
-      if (this.isRunning) {
-        this.scheduleNextThink();
-      }
-    }, this.intervalMs);
-  }
-
-  /**
-   * Check if currently processing an autonomous thought
-   */
-  isThinkingInProgress(): boolean {
-    return this.isThinking;
-  }
-
   private async buildEntityNameLookup(
     entityIds: Set<UUID>,
   ): Promise<Map<UUID, string>> {
@@ -449,7 +485,7 @@ export class AutonomyService extends Service {
    * - Action processing (executing decided actions)
    * - Evaluators (post-response analysis)
    */
-  private async performAutonomousThink(): Promise<void> {
+  async performAutonomousThink(): Promise<void> {
     this.runtime.logger.debug(
       { src: "autonomy", agentId: this.runtime.agentId },
       `Performing autonomous thinking... (${new Date().toLocaleTimeString()})`,
@@ -484,9 +520,9 @@ export class AutonomyService extends Service {
         memory.entityId === agentEntity.id &&
         memory.content?.text &&
         memory.content?.metadata &&
-        (memory.content.metadata as Record<string, unknown>)?.isAutonomous ===
+        (memory.content.metadata as Record<string, ContentValue>)?.isAutonomous ===
           true &&
-        (memory.content.metadata as Record<string, unknown>)?.type ===
+        (memory.content.metadata as Record<string, ContentValue>)?.type ===
           "autonomous-response"
       ) {
         if (
@@ -707,7 +743,7 @@ export class AutonomyService extends Service {
   // Public API methods
 
   /**
-   * Check if loop is currently running
+   * Check if autonomy is currently running
    */
   isLoopRunning(): boolean {
     return this.isRunning;
@@ -721,9 +757,9 @@ export class AutonomyService extends Service {
   }
 
   /**
-   * Set loop interval (takes effect on next iteration)
+   * Set loop interval (recreates the task with new interval)
    */
-  setLoopInterval(ms: number): void {
+  async setLoopInterval(ms: number): Promise<void> {
     const MIN_INTERVAL = 5000;
     const MAX_INTERVAL = 600000;
 
@@ -747,6 +783,11 @@ export class AutonomyService extends Service {
       { src: "autonomy", agentId: this.runtime.agentId },
       `Loop interval set to ${ms}ms`,
     );
+
+    // Recreate the task if running
+    if (this.isRunning) {
+      await this.createAutonomyTask();
+    }
   }
 
   /**
@@ -757,23 +798,34 @@ export class AutonomyService extends Service {
   }
 
   /**
-   * Enable autonomy
+   * Enable autonomy - creates the recurring task
    */
   async enableAutonomy(): Promise<void> {
     this.runtime.enableAutonomy = true;
     if (!this.isRunning) {
-      await this.startLoop();
+      await this.createAutonomyTask();
     }
   }
 
   /**
-   * Disable autonomy
+   * Disable autonomy - deletes the recurring task
    */
   async disableAutonomy(): Promise<void> {
     this.runtime.enableAutonomy = false;
     if (this.isRunning) {
-      await this.stopLoop();
+      await this.deleteAutonomyTask();
     }
+  }
+
+  /**
+   * Legacy method names for backwards compatibility
+   */
+  async startLoop(): Promise<void> {
+    await this.enableAutonomy();
+  }
+
+  async stopLoop(): Promise<void> {
+    await this.disableAutonomy();
   }
 
   /**
@@ -818,7 +870,7 @@ export class AutonomyService extends Service {
     return {
       enabled,
       running: this.isRunning,
-      thinking: this.isThinking,
+      thinking: false, // Task system handles blocking
       interval: this.intervalMs,
       autonomousRoomId: this.autonomousRoomId,
     };
@@ -828,14 +880,8 @@ export class AutonomyService extends Service {
    * Stop the service
    */
   async stop(): Promise<void> {
-    // Stop the autonomous loop
-    await this.stopLoop();
-
-    // Clean up settings monitoring
-    if (this.settingsMonitorInterval) {
-      clearInterval(this.settingsMonitorInterval);
-      this.settingsMonitorInterval = undefined;
-    }
+    // Delete the autonomy task
+    await this.deleteAutonomyTask();
 
     this.runtime.logger.info(
       { src: "autonomy", agentId: this.runtime.agentId },
@@ -844,6 +890,6 @@ export class AutonomyService extends Service {
   }
 
   get capabilityDescription(): string {
-    return "Autonomous operation loop for continuous agent thinking and actions";
+    return "Autonomous operation using Task system for continuous agent thinking and actions";
   }
 }

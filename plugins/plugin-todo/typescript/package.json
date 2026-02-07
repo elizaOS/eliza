@@ -55,7 +55,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "drizzle-orm": "^0.30.10",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
@@ -64,7 +64,7 @@
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
-    "zod": "^3.24.2"
+    "zod": "^4.3.6"
   },
   "publishConfig": {
     "access": "public"
@@ -86,6 +86,17 @@
         "default": 30000,
         "sensitive": false
       }
+    }
+  },
+  "milaidy": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
     }
   }
 }

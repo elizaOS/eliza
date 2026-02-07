@@ -23,9 +23,6 @@ pip install elizaos-plugin-shell
 Set the following environment variables:
 
 ```bash
-# Enable the shell plugin (disabled by default for safety)
-SHELL_ENABLED=true
-
 # Set the allowed directory (commands can only run here)
 SHELL_ALLOWED_DIRECTORY=/path/to/safe/directory
 

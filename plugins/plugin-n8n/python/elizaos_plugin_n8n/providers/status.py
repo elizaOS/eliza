@@ -13,7 +13,7 @@ class ProviderResult:
 
 
 class PluginCreationStatusProvider:
-    name = "plugin_creation_status"
+    name = "n8n_plugin_status"
     description = "Provides status of active plugin creation jobs"
 
     async def get(self, context: ProviderContext) -> ProviderResult:

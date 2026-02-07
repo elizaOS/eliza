@@ -206,7 +206,7 @@ async def main() -> None:
     await storage.init()
     steps_collection = "autonomous_steps"
 
-    # Shell via plugin-shell (disabled unless SHELL_ENABLED=true).
+    # Shell via plugin-shell.
     shell_config = ShellConfig.from_env()
     shell_service = ShellService(shell_config)
 
@@ -268,7 +268,7 @@ async def main() -> None:
             if not _is_command_allowed(decision.command, allowed_commands):
                 shell_summary = f"shell: not executed (command-not-allowed): {decision.command}"
             elif not shell_config.enabled:
-                shell_summary = "shell: not executed (SHELL_ENABLED is false)"
+                shell_summary = "shell: not executed (shell disabled)"
             else:
                 cmd_result = await shell_service.execute_command(
                     decision.command, conversation_id="autonomous"

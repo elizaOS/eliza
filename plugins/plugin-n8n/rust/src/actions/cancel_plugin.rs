@@ -22,11 +22,11 @@ impl Default for CancelPluginAction {
 #[async_trait]
 impl N8nAction for CancelPluginAction {
     fn name(&self) -> &'static str {
-        "cancelPluginCreation"
+        "CANCEL_PLUGIN"
     }
 
     fn description(&self) -> &'static str {
-        "Cancel the current plugin creation job"
+        "Cancel an active plugin creation job. Do NOT use to cancel n8n workflow drafts."
     }
 
     fn similes(&self) -> Vec<&'static str> {

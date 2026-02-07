@@ -1,0 +1,123 @@
+---
+title: Installation
+description: Install the elizaOS SDK and CLI tools for local development.
+---
+
+import { Tabs, Callout, Steps } from "nextra/components";
+
+# Installation
+
+<div className="status-badge status-stable">Stable</div>
+
+Set up your development environment for elizaOS Cloud integration.
+
+## SDK Installation
+
+Install the official elizaOS packages:
+
+<Tabs items={["bun", "pnpm", "yarn"]}>
+  <Tabs.Tab>
+    ```bash bun add @elizaos/core @elizaos/plugin-elizacloud ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash pnpm add @elizaos/core @elizaos/plugin-elizacloud ```
+  </Tabs.Tab>
+  <Tabs.Tab>
+    ```bash yarn add @elizaos/core @elizaos/plugin-elizacloud ```
+  </Tabs.Tab>
+</Tabs>
+
+## CLI Installation
+
+Install the elizaOS CLI for deployment and management:
+
+```bash
+bun add -g @elizaos/cli
+```
+
+Verify the installation:
+
+```bash
+elizaos --version
+```
+
+## Requirements
+
+| Requirement | Version            |
+| ----------- | ------------------ |
+| Node.js     | 18.0+              |
+| Bun         | Latest             |
+| TypeScript  | 5.0+ (recommended) |
+
+## Project Setup
+
+<Steps>
+### Initialize a New Project
+
+```bash
+elizaos init my-agent
+cd my-agent
+```
+
+### Install Dependencies
+
+```bash
+bun install
+```
+
+### Configure Environment
+
+Create a `.env` file:
+
+```bash
+# elizaOS Cloud Configuration
+ELIZA_API_KEY=your_api_key_here
+ELIZA_API_URL=https://elizacloud.ai/api/v1
+
+# Optional: Model Provider Keys (if using direct providers)
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+### Start Development
+
+```bash
+bun run dev
+```
+
+</Steps>
+
+## TypeScript Configuration
+
+For TypeScript projects, ensure your `tsconfig.json` includes:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true
+  }
+}
+```
+
+## Package Versions
+
+Install the latest stable versions:
+
+```bash
+bun add @elizaos/core@latest @elizaos/plugin-elizacloud@latest
+```
+
+<Callout type="warning">
+  Always use matching versions of elizaOS packages to avoid compatibility
+  issues. Run `bun update` regularly to get the latest fixes.
+</Callout>
+
+## Next Steps
+
+- [Authentication](/docs/authentication) - Set up API authentication
+- [Quickstart](/docs/quickstart) - Build your first agent

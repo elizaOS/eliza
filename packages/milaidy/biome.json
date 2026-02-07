@@ -1,0 +1,63 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.3.14/schema.json",
+  "extends": ["../biome.json"],
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "maxSize": 1048576,
+    "ignore": [
+      "apps/",
+      "assets/",
+      "dist/",
+      "docs/_layouts/",
+      "node_modules/",
+      "patches/",
+      "pnpm-lock.yaml",
+      "skills/",
+      "Swabble/",
+      "vendor/"
+    ]
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "correctness": {
+        "noUnusedPrivateClassMembers": "warn"
+      },
+      "style": {
+        "noNonNullAssertion": "warn",
+        "useSelfClosingElements": "warn"
+      },
+      "suspicious": {
+        "noExplicitAny": "error",
+        "noImplicitAnyLet": "warn",
+        "useIterableCallbackReturn": "warn",
+        "noAssignInExpressions": "warn",
+        "useAdjacentOverloadSignatures": "warn"
+      },
+      "complexity": {
+        "noBannedTypes": "warn"
+      },
+      "performance": {
+        "noAccumulatingSpread": "off"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  }
+}

@@ -22,11 +22,11 @@ impl Default for CheckStatusAction {
 #[async_trait]
 impl N8nAction for CheckStatusAction {
     fn name(&self) -> &'static str {
-        "checkPluginCreationStatus"
+        "CHECK_PLUGIN_STATUS"
     }
 
     fn description(&self) -> &'static str {
-        "Check the status of a plugin creation job"
+        "Check the progress of an active plugin creation job. Do NOT use for n8n workflow status."
     }
 
     fn similes(&self) -> Vec<&'static str> {

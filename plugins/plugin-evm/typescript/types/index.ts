@@ -268,7 +268,7 @@ export enum VoteType {
   ABSTAIN = 2,
 }
 
-export const VoteTypeSchema = z.nativeEnum(VoteType);
+export const VoteTypeSchema = z.enum(VoteType);
 
 export interface Proposal {
   readonly targets: readonly Address[];

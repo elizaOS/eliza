@@ -56,8 +56,6 @@ import {
   TotalExecutionTimeExceededError,
 } from "../exceptions";
 
-// Dynamic import for ShellAgent to avoid circular dependency
-
 // Special tokens
 const RETRY_WITH_OUTPUT_TOKEN = "###SWE-AGENT-RETRY-WITH-OUTPUT###";
 const RETRY_WITHOUT_OUTPUT_TOKEN = "###SWE-AGENT-RETRY-WITHOUT-OUTPUT###";
@@ -489,7 +487,7 @@ export interface DefaultAgentConfig {
   model: ModelConfig;
   maxRequeries: number;
   actionSampler?: ActionSamplerConfig;
-  type: "default" | "retry" | "shell";
+  type: "default" | "retry";
 }
 
 /**
@@ -502,23 +500,7 @@ export interface RetryAgentConfig {
   type: "retry";
 }
 
-/**
- * Configuration for shell agent
- */
-export interface ShellAgentConfig {
-  name: string;
-  templates: TemplateConfig;
-  tools: ToolConfig;
-  historyProcessors: AbstractHistoryProcessor[];
-  model: ModelConfig;
-  maxRequeries: number;
-  type: "shell";
-}
-
-export type AgentConfig =
-  | DefaultAgentConfig
-  | RetryAgentConfig
-  | ShellAgentConfig;
+export type AgentConfig = DefaultAgentConfig | RetryAgentConfig;
 
 /**
  * Abstract base class for agents
@@ -1720,11 +1702,6 @@ export async function getAgentFromConfig(
       return DefaultAgent.fromConfig(config as DefaultAgentConfig);
     case "retry":
       return RetryAgent.fromConfig(config as RetryAgentConfig);
-    case "shell": {
-      // Dynamic import to avoid circular dependency
-      const { ShellAgent } = await import("./extra/shell-agent");
-      return ShellAgent.fromConfig(config as DefaultAgentConfig);
-    }
     default:
       throw new Error(`Unknown agent type: ${(config as AgentConfig).type}`);
   }

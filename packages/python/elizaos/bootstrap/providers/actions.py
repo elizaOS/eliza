@@ -33,19 +33,27 @@ def _format_parameter_type(schema: ActionParameterSchema) -> str:
     return schema.type
 
 
+def _get_param_schema(param: ActionParameter) -> object:
+    """Get schema from ActionParameter, handling both Pydantic and protobuf variants."""
+    return getattr(param, "schema_def", None) or getattr(param, "schema", None)
+
+
 def _format_action_parameters(parameters: list[ActionParameter]) -> str:
     lines: list[str] = []
     for param in parameters:
+        schema = _get_param_schema(param)
+        if schema is None:
+            lines.append(f"    - {param.name}: {param.description}")
+            continue
         required_str = " (required)" if param.required else " (optional)"
-        type_str = _format_parameter_type(param.schema_def)
-        default_str = (
-            f" [default: {param.schema_def.default}]"
-            if param.schema_def.default is not None
-            else ""
-        )
-        enum_str = f" [values: {', '.join(param.schema_def.enum)}]" if param.schema_def.enum else ""
+        type_str = _format_parameter_type(schema)
+        default_val = getattr(schema, "default", None) or getattr(schema, "default_value", None)
+        default_str = f" [default: {default_val}]" if default_val else ""
+        enum_vals = getattr(schema, "enum", None) or getattr(schema, "enum_values", None)
+        enum_str = f" [values: {', '.join(enum_vals)}]" if enum_vals else ""
         examples_str = (
-            f" [examples: {', '.join(repr(v) for v in param.examples)}]" if param.examples else ""
+            f" [examples: {', '.join(repr(v) for v in param.examples)}]"
+            if getattr(param, "examples", None) else ""
         )
         lines.append(
             f"    - {param.name}{required_str}: {param.description} ({type_str}{enum_str}{default_str}{examples_str})"
@@ -223,8 +231,8 @@ async def get_actions(
                             "name": p.name,
                             "description": p.description,
                             "required": bool(p.required),
-                            "examples": p.examples,
-                            "schema": p.schema_def.model_dump(),
+                            "examples": getattr(p, "examples", None) or [],
+                            "schema": (p.schema_def.model_dump() if hasattr(p, "schema_def") and hasattr(p.schema_def, "model_dump") else getattr(p, "schema", None)),
                         }
                         for p in (a.parameters or [])
                     ],

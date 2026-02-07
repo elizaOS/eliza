@@ -21,7 +21,7 @@
     "@elizaos/plugin-sql": "workspace:*",
     "dotenv": "^17.2.3",
     "uuid": "^13.0.0",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",

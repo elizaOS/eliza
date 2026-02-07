@@ -515,7 +515,7 @@ class MINTAgent:
                 content=Content(
                     text=prompt,
                     source="mint-benchmark",
-                    channel_type=ChannelType.DM.value,
+                    channel_type="DM",
                 ),
             )
 

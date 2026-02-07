@@ -493,19 +493,28 @@ def create_openai_elizaos_plugin() -> Plugin:
             "status": result.status,
         }
 
+    models_dict = {
+        ModelType.TEXT_LARGE: text_large_handler,
+        ModelType.TEXT_SMALL: text_small_handler,
+        ModelType.TEXT_EMBEDDING: embedding_handler,
+    }
+    # RESEARCH and streaming types may not exist in all proto versions
+    if hasattr(ModelType, "RESEARCH"):
+        models_dict[ModelType.RESEARCH] = research_handler
+    if hasattr(ModelType, "TEXT_REASONING_LARGE"):
+        models_dict[ModelType.TEXT_REASONING_LARGE] = research_handler
+
+    streaming_dict: dict[str, object] = {}
+    if hasattr(ModelType, "TEXT_LARGE_STREAM"):
+        streaming_dict[ModelType.TEXT_LARGE_STREAM] = text_large_stream_handler
+    if hasattr(ModelType, "TEXT_SMALL_STREAM"):
+        streaming_dict[ModelType.TEXT_SMALL_STREAM] = text_small_stream_handler
+
     return Plugin(
         name="openai",
         description="OpenAI model provider for elizaOS",
-        models={
-            ModelType.TEXT_LARGE.value: text_large_handler,
-            ModelType.TEXT_SMALL.value: text_small_handler,
-            ModelType.TEXT_EMBEDDING.value: embedding_handler,
-            ModelType.RESEARCH.value: research_handler,
-        },
-        streaming_models={
-            ModelType.TEXT_LARGE_STREAM.value: text_large_stream_handler,
-            ModelType.TEXT_SMALL_STREAM.value: text_small_stream_handler,
-        },
+        models=models_dict,
+        streaming_models=streaming_dict if streaming_dict else None,
     )
 
 

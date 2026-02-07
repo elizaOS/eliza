@@ -35,7 +35,7 @@ class OpenAIResponse(TypedDict):
     usage: Usage
 
 
-def call_openai(messages: list[Message], model: str = "gpt-4o-mini", max_tokens: int = 100) -> OpenAIResponse:
+def call_openai(messages: list[Message], model: str = "gpt-5-mini", max_tokens: int = 100) -> OpenAIResponse:
     """Return a deterministic OpenAI-like response (offline)."""
 
     last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
@@ -92,7 +92,7 @@ class TestOpenAILive:
         assert response is not None
         assert "id" in response
         assert response["object"] == "chat.completion"
-        assert "gpt-4o-mini" in response["model"]
+        assert "gpt-5-mini" in response["model"]
         assert len(response["choices"]) == 1
         assert response["choices"][0]["message"]["role"] == "assistant"
         assert len(response["choices"][0]["message"]["content"]) > 0

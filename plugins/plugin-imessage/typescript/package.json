@@ -1,0 +1,30 @@
+{
+  "name": "@elizaos/plugin-imessage-typescript",
+  "version": "2.0.0-alpha.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "vitest run",
+    "lint": "biome check --write --unsafe src"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js via main entry point"
+    }
+  }
+}

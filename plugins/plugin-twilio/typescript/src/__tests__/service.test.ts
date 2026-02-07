@@ -55,18 +55,27 @@ const createMockTwilioClient = () => {
   return mockClient;
 };
 
+/**
+ * Type for the mocked Twilio client
+ */
+interface MockTwilioClient {
+  messages: { create: ReturnType<typeof vi.fn> };
+  calls: { create: ReturnType<typeof vi.fn> };
+  incomingPhoneNumbers: ReturnType<typeof vi.fn> & { list: ReturnType<typeof vi.fn> };
+}
+
 describe("TwilioService", () => {
   let service: TwilioService;
   let mockRuntime: IAgentRuntime;
-  let mockTwilioClient: any;
-  let mockTwilio: any;
+  let mockTwilioClient: MockTwilioClient;
+  let mockTwilio: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
 
     // Get the mocked twilio function
     const twilioModule = await import("twilio");
-    mockTwilio = twilioModule.default as any;
+    mockTwilio = twilioModule.default as unknown as ReturnType<typeof vi.fn>;
 
     mockRuntime = {
       getSetting: vi.fn((key: string) => {
@@ -82,7 +91,7 @@ describe("TwilioService", () => {
       agentId: "agent123",
       createMemory: vi.fn(),
       emitEvent: vi.fn(),
-    } as any;
+    } as unknown as IAgentRuntime;
 
     service = new TwilioService();
 

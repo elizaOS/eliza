@@ -162,6 +162,7 @@ mod tests {
             filename: filename.to_string(),
             content_type: "text/plain".to_string(),
             file_size: size,
+            content_hash: String::new(),
             fragments: Vec::new(),
             metadata: HashMap::new(),
         }

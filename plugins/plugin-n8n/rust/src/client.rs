@@ -320,6 +320,10 @@ impl PluginCreationClient {
                 .ok_or_else(|| N8nError::job_not_found(job_id))?
         };
 
+        if output_path.as_os_str().is_empty() {
+            return Err(N8nError::validation("output_path", "Output path cannot be empty"));
+        }
+
         tokio::fs::create_dir_all(&output_path).await?;
         tokio::fs::create_dir_all(output_path.join("src")).await?;
         tokio::fs::create_dir_all(output_path.join("src/__tests__")).await?;
@@ -529,6 +533,10 @@ impl PluginCreationClient {
                 .ok_or_else(|| N8nError::job_not_found(job_id))?
         };
 
+        if output_path.as_os_str().is_empty() {
+            return Err(N8nError::validation("output_path", "Output path cannot be empty"));
+        }
+
         let file_regex = Regex::new(
             r"```(?:typescript|ts|javascript|js)?\s*\n(?://\s*)?(?:File:\s*)?(.+?)\n([\s\S]*?)```",
         )
@@ -537,6 +545,10 @@ impl PluginCreationClient {
         for cap in file_regex.captures_iter(response_text) {
             let file_path = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
             let file_content = cap.get(2).map(|m| m.as_str().trim()).unwrap_or("");
+
+            if file_path.is_empty() {
+                continue; // Skip entries with empty file paths
+            }
 
             let normalized_path = if file_path.starts_with("src/") {
                 file_path.to_string()
@@ -547,7 +559,9 @@ impl PluginCreationClient {
             let full_path = output_path.join(&normalized_path);
 
             if let Some(parent) = full_path.parent() {
-                tokio::fs::create_dir_all(parent).await?;
+                if !parent.as_os_str().is_empty() {
+                    tokio::fs::create_dir_all(parent).await?;
+                }
             }
 
             tokio::fs::write(&full_path, file_content).await?;

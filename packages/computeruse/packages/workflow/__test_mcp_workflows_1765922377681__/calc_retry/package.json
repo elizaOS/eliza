@@ -5,6 +5,6 @@
   "dependencies": {
     "@mediar-ai/computeruse": "^0.22.7",
     "@mediar-ai/workflow": "^0.22.7",
-    "zod": "^3.22.0"
+    "zod": "^4.3.6"
   }
 }

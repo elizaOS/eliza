@@ -5,6 +5,20 @@ import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import { sendTransaction } from '../utils/sendTransaction.ts';
 const { BN } = anchor;
 
+/** Response shape from Meteora DLMM API */
+interface MeteoraPoolResponse {
+  address: string;
+  mint_x: string;
+  mint_y: string;
+  name_x?: string;
+  name_y?: string;
+  decimals_x: number;
+  decimals_y: number;
+  tvl?: number;
+  volume_24h?: number;
+  fee_percentage?: number;
+}
+
 export class MeteoraLpService extends Service {
   public static readonly serviceType = 'meteora-lp';
   public readonly capabilityDescription = 'Provides liquidity pool data and interaction for the Meteora DEX.';
@@ -37,9 +51,9 @@ export class MeteoraLpService extends Service {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      const data = (await response.json()) as any[];
+      const data = (await response.json()) as MeteoraPoolResponse[];
       
-      let pools = data.map((pool: any): PoolInfo => ({
+      let pools = data.map((pool): PoolInfo => ({
         id: pool.address,
         dex: 'meteora',
         tokenA: { 

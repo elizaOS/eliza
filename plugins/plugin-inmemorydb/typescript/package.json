@@ -60,5 +60,16 @@
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"
   },
-  "gitHead": "255e37c0e4a76da0b776219db5ebb9dadf20e89f"
+  "gitHead": "255e37c0e4a76da0b776219db5ebb9dadf20e89f",
+  "milaidy": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
+    }
+  }
 }

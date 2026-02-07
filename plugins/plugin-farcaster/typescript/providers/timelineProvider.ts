@@ -12,7 +12,7 @@ function getTimeAgo(date: Date): string {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
-const spec = requireProviderSpec("timelineProvider");
+const spec = requireProviderSpec("farcasterTimeline");
 
 export const farcasterTimelineProvider: Provider = {
   name: spec.name,

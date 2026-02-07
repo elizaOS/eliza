@@ -54,8 +54,8 @@ class TestContent:
     def test_minimal_content(self) -> None:
         content = Content(text="Hello world")
         assert content.text == "Hello world"
-        assert content.thought is None
-        assert content.actions == []
+        assert content.thought == ""  # Protobuf defaults optional string to ""
+        assert list(content.actions) == []
 
     def test_full_content(self) -> None:
         content = Content(
@@ -90,7 +90,8 @@ class TestMemory:
             content=Content(text="Hello"),
             embedding=embedding,
         )
-        assert memory.embedding == embedding
+        # Use approximate comparison due to float32 precision in protobuf
+        assert list(memory.embedding) == pytest.approx(embedding, rel=1e-6)
 
 
 class TestCharacter:
@@ -208,13 +209,13 @@ class TestTask:
             description="A test task",
         )
         assert task.name == "test-task"
-        assert task.status == TaskStatus.PENDING
+        assert task.status == TaskStatus.TASK_STATUS_UNSPECIFIED
 
     def test_task_with_metadata(self) -> None:
         task = Task(
             name="scheduled-task",
-            status=TaskStatus.IN_PROGRESS,
+            status=TaskStatus.TASK_STATUS_IN_PROGRESS,
             tags=["important", "daily"],
         )
-        assert task.status == TaskStatus.IN_PROGRESS
+        assert task.status == TaskStatus.TASK_STATUS_IN_PROGRESS
         assert "important" in (task.tags or [])

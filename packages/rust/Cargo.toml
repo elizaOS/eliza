@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["native"]
-native = ["tokio/full", "sqlx"]
+native = ["tokio/full", "sqlx", "which"]
 wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "getrandom/js"]
 bootstrap = ["native", "dep:chrono", "dep:quick-xml"]
 bootstrap-internal = ["bootstrap"]
@@ -73,6 +73,10 @@ tracing-subscriber = { version = "0.3", optional = true }
 regex = "1.0"
 lazy_static = "1.4"
 
+# MIME type detection
+infer = "0.16"
+url = "2.5"
+
 # URL encoding (for stringToUuid compatibility with TypeScript)
 percent-encoding = "2.3"
 
@@ -82,6 +86,7 @@ handlebars = "6.4"
 # Native-only dependencies
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros"], optional = true }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"], optional = true }
+which = { version = "6.0", optional = true }
 
 # WASM-only dependencies
 wasm-bindgen = { version = "0.2", optional = true }

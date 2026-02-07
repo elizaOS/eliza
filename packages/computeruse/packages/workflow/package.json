@@ -2,7 +2,7 @@
   "author": "Mediar AI",
   "private": true,
   "dependencies": {
-    "zod": "^3.22.4"
+    "zod": "^4.3.6"
   },
   "description": "TypeScript workflow SDK for ComputerUse",
   "devDependencies": {
@@ -40,7 +40,7 @@
     "url": "https://github.com/mediar-ai/computeruse"
   },
   "scripts": {
-    "build": "echo 'Skipping workflow build - requires @mediar-ai/computeruse'",
+    "build": "echo 'Skipping workflow build - requires @elizaos/computeruse'",
     "dev": "tsc --watch",
     "test": "jest"
   },

@@ -336,7 +336,7 @@ describe("CLI Integration", () => {
       "--instances.shuffle",
       "--instances.evaluate",
       "--agent.model.name",
-      "gpt-4o",
+      "gpt-5",
       "--agent.model.per_instance_cost_limit",
       "2.00",
       "--num_workers",

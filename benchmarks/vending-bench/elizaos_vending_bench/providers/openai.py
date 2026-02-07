@@ -72,7 +72,7 @@ class OpenAIProvider(LLMProvider):
                     "model": self.model,
                     "messages": messages,
                     "temperature": temperature,
-                    "max_tokens": 2048,
+                    "max_completion_tokens": 2048,
                 },
             ) as response:
                 if response.status != 200:

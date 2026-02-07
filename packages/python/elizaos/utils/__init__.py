@@ -11,6 +11,23 @@ from google.protobuf.message import Message
 from elizaos.types.agent import TemplateType
 from elizaos.types.state import State
 
+# Re-export from spec_examples for convenience
+from .spec_examples import convert_spec_examples
+
+# Re-export streaming utilities for validation-aware streaming
+from .streaming import (
+    MAX_CHUNK_SIZE,
+    ChunkSizeError,
+    ExtractorState,
+    FieldState,
+    IStreamExtractor,
+    MarkableExtractor,
+    ValidationDiagnosis,
+    ValidationStreamExtractor,
+    ValidationStreamExtractorConfig,
+    validate_chunk_size,
+)
+
 _TEMPLATE_TOKEN_RE = re.compile(r"\{\{\{?\s*([A-Za-z0-9_.-]+)\s*\}\}\}?")
 
 
@@ -70,3 +87,22 @@ def compose_prompt_from_state(*, state: State, template: TemplateType) -> str:
     ctx.update(values)
 
     return _render_template(template_str, ctx)
+
+
+__all__ = [
+    "get_current_time_ms",
+    "compose_prompt",
+    "compose_prompt_from_state",
+    "convert_spec_examples",
+    # Streaming utilities
+    "ChunkSizeError",
+    "ExtractorState",
+    "FieldState",
+    "IStreamExtractor",
+    "MarkableExtractor",
+    "MAX_CHUNK_SIZE",
+    "validate_chunk_size",
+    "ValidationDiagnosis",
+    "ValidationStreamExtractor",
+    "ValidationStreamExtractorConfig",
+]

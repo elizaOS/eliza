@@ -35,7 +35,7 @@
   ],
   "dependencies": {
     "ws": "^8.18.0",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
@@ -57,5 +57,14 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js only (platform: node)"
+    }
   }
 }

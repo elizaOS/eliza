@@ -33,22 +33,23 @@ export class TransferAction {
 
     const walletClient = this.walletProvider.getWalletClient(params.fromChain);
 
-    if (!walletClient.account) {
+    const account = walletClient.account;
+    if (!account) {
       throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "Wallet account is not available");
     }
 
-    // @ts-expect-error - viem type narrowing issue with sendTransaction parameters
+    const chainConfig = this.walletProvider.getChainConfigs(params.fromChain);
     const hash = await walletClient.sendTransaction({
-      account: walletClient.account,
+      account,
       to: params.toAddress,
       value: parseEther(params.amount),
       data,
-      chain: walletClient.chain,
+      chain: chainConfig,
     });
 
     return {
       hash,
-      from: walletClient.account.address,
+      from: account.address,
       to: params.toAddress,
       value: parseEther(params.amount),
       data,

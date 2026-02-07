@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.types import Action, ActionExample, ActionResult, Content
+from elizaos.types.memory import Memory as MemoryType
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
@@ -112,6 +113,20 @@ class SendMessageAction:
             actions=["SEND_MESSAGE"],
         )
 
+        # Create the message memory for event emission
+        import time
+        import uuid as uuid_module
+
+        from elizaos.types.primitives import as_uuid
+
+        message_memory = MemoryType(
+            id=as_uuid(str(uuid_module.uuid4())),
+            entity_id=runtime.agent_id,
+            room_id=as_uuid(target_room_id_val) if target_room_id_val else None,
+            content=message_content,
+            created_at=int(time.time() * 1000),
+        )
+
         await runtime.create_memory(
             content=message_content,
             room_id=target_room_id_val,
@@ -120,6 +135,16 @@ class SendMessageAction:
             metadata={
                 "type": "SEND_MESSAGE",
                 "targetEntityId": str(target_entity_id) if target_entity_id else None,
+            },
+        )
+
+        # Emit MESSAGE_SENT event
+        await runtime.emit_event(
+            "MESSAGE_SENT",
+            {
+                "runtime": runtime,
+                "source": "send-message-action",
+                "message": message_memory,
             },
         )
 

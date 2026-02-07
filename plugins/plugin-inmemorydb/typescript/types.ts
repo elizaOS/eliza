@@ -46,6 +46,8 @@ export const COLLECTIONS = {
   CACHE: "cache",
   LOGS: "logs",
   EMBEDDINGS: "embeddings",
+  PAIRING_REQUESTS: "pairing_requests",
+  PAIRING_ALLOWLIST: "pairing_allowlist",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

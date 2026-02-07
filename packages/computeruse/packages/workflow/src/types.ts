@@ -1,19 +1,38 @@
 import { z } from "zod";
+import type { Desktop, Element, Locator } from "@elizaos/computeruse";
 
 // Re-export types from computeruse.js
-export type { Desktop, Locator, Element } from "@mediar-ai/computeruse";
+export type { Desktop, Element, Locator };
 
-/**
- * Logger interface
- * @deprecated Use console.log/info/warn/error/debug instead - they are automatically
- * redirected to the MCP agent's log pipe with structured JSON and OpenTelemetry integration.
- */
 export interface Logger {
     info(message: string): void;
-    success(message: string): void;
     warn(message: string): void;
     error(message: string): void;
-    debug(message: string): void;
+    success(message: string): void;
+}
+
+export class ConsoleLogger implements Logger {
+    info(message: string): void {
+        console.log(message);
+    }
+
+    warn(message: string): void {
+        console.warn(message);
+    }
+
+    error(message: string): void {
+        console.error(message);
+    }
+
+    success(message: string): void {
+        console.log(message);
+    }
+}
+
+export interface DesktopLike {
+    locator: Desktop["locator"];
+    openApplication: Desktop["openApplication"];
+    delay: Desktop["delay"];
 }
 
 /**
@@ -62,15 +81,12 @@ export interface StepContext<
     TState = Record<string, unknown>,
 > {
     /** Desktop automation instance */
-    desktop: import("@mediar-ai/computeruse").Desktop;
+    desktop: DesktopLike;
     /** Workflow input (validated by Zod schema) */
     input: TInput;
     /** Shared workflow context with typed state and variables */
     context: WorkflowContext<TInput, TState>;
-    /**
-     * Logger instance
-     * @deprecated Use console.log/info/warn/error/debug instead
-     */
+    /** Logger for step output */
     logger: Logger;
 }
 
@@ -103,9 +119,9 @@ export interface StepContext<
  *   execute: async ({ desktop }) => {
  *     await desktop.locator('role:button[name="Submit"]').click();
  *   },
- *   onError: async ({ error, retry, desktop, logger }) => {
+ *   onError: async ({ error, retry, desktop }) => {
  *     if (error.message.includes('Session expired')) {
- *       logger.info('Session expired, re-authenticating...');
+ *       console.log('Session expired, re-authenticating...');
  *       await desktop.locator('role:button[name="Login"]').click();
  *       return retry();
  *     }
@@ -122,7 +138,7 @@ export interface ErrorContext<
     /** The error that occurred */
     error: Error;
     /** Desktop instance for recovery actions */
-    desktop: import("@mediar-ai/computeruse").Desktop;
+    desktop: DesktopLike;
     /**
      * Retry the step execution after performing recovery actions.
      * Call this to re-execute the step's `execute()` function.
@@ -134,7 +150,7 @@ export interface ErrorContext<
     input: TInput;
     /** Shared context with typed state and variables */
     context: WorkflowContext<TInput, TState>;
-    /** Logger instance */
+    /** Logger for error recovery output */
     logger: Logger;
 }
 
@@ -172,14 +188,14 @@ export interface ExpectationContext<
     TState = Record<string, any>,
 > {
     /** Desktop instance for validation checks */
-    desktop: import("@mediar-ai/computeruse").Desktop;
+    desktop: DesktopLike;
     /** Workflow input */
     input: TInput;
     /** Result from execute() */
     result: TOutput;
     /** Shared context with typed state and variables */
     context: WorkflowContext<TInput, TState>;
-    /** Logger instance */
+    /** Logger for expectation output */
     logger: Logger;
 }
 
@@ -231,10 +247,9 @@ export function WorkflowError(error: ExecuteError): Error & ExecuteError {
     return err;
 }
 
-/**
- * @deprecated Use WorkflowError instead (follows Error/TypeError naming convention)
- */
-export const createWorkflowError = WorkflowError;
+export function createWorkflowError(error: ExecuteError): Error & ExecuteError {
+    return WorkflowError(error);
+}
 
 /**
  * Workflow execution response
@@ -290,6 +305,13 @@ export interface StepResult<TData = any, TStateUpdate = Record<string, any>> {
 }
 
 /**
+ * Bivariant callback type for step hooks.
+ */
+type BivariantCallback<TArg, TResult> = {
+    bivarianceHack(arg: TArg): TResult;
+}["bivarianceHack"];
+
+/**
  * Step configuration
  * @template TInput - Type of workflow input
  * @template TOutput - Type of step output (data)
@@ -322,9 +344,10 @@ export interface StepConfig<
     ) => Promise<StepResult<TOutput, TStateOut> | TOutput | void>;
 
     /** Expectation validation - runs after execute() to verify outcome */
-    expect?: (
-        context: ExpectationContext<TInput, TOutput, TStateIn>,
-    ) => Promise<ExpectationResult>;
+    expect?: BivariantCallback<
+        ExpectationContext<TInput, TOutput, TStateIn>,
+        Promise<ExpectationResult>
+    >;
 
     /**
      * Error recovery handler for business logic failures.
@@ -340,12 +363,12 @@ export interface StepConfig<
      *
      * @example
      * ```typescript
-     * onError: async ({ error, retry, attempt, logger }) => {
+     * onError: async ({ error, retry, attempt }) => {
      *   if (attempt >= 3) {
      *     return { recoverable: false, reason: 'Max retries exceeded' };
      *   }
      *   if (error.message.includes('Element not found')) {
-     *     logger.info(`Retry attempt ${attempt + 1}/3`);
+     *     console.log(`Retry attempt ${attempt + 1}/3`);
      *     await new Promise(r => setTimeout(r, 1000));
      *     return retry();
      *   }
@@ -353,9 +376,10 @@ export interface StepConfig<
      * }
      * ```
      */
-    onError?: (
-        context: ErrorContext<TInput, TOutput, TStateIn>,
-    ) => Promise<ErrorRecoveryResult | void>;
+    onError?: BivariantCallback<
+        ErrorContext<TInput, TOutput, TStateIn>,
+        Promise<ErrorRecoveryResult | void>
+    >;
 
     /** Step timeout in milliseconds */
     timeout?: number;
@@ -543,7 +567,7 @@ export interface WorkflowConfig<TInput = any> {
      *
      * @example
      * ```typescript
-     * onSuccess: async ({ context, logger }) => {
+     * onSuccess: async ({ context }) => {
      *   const { file_name, outlet_code, date } = context.state;
      *   return {
      *     summary: `# SAP Journal Entry - Success\n| Outlet | ${outlet_code} |`,
@@ -590,8 +614,6 @@ export interface WorkflowExecutionContext<
     input: TInput;
     /** Shared context with typed state and variables */
     context: WorkflowContext<TInput, TState>;
-    /** Logger */
-    logger: Logger;
 }
 
 /**
@@ -605,7 +627,7 @@ export interface WorkflowSuccessContext<
     input: TInput;
     /** Final context state with typed state and variables */
     context: WorkflowContext<TInput, TState>;
-    /** Logger */
+    /** Logger for success output */
     logger: Logger;
     /** Execution duration in ms */
     duration: number;
@@ -625,14 +647,14 @@ export interface WorkflowErrorContext<
     /** The error that occurred */
     error: Error;
     /** Desktop instance for recovery actions */
-    desktop: import("@mediar-ai/computeruse").Desktop;
+    desktop: DesktopLike;
     /** Step where error occurred */
     step: Step;
     /** Workflow input */
     input: TInput;
     /** Context at time of error with typed state and variables */
     context: WorkflowContext<TInput, TState>;
-    /** Logger */
+    /** Logger for error output */
     logger: Logger;
 }
 
@@ -646,8 +668,7 @@ export interface Workflow<TInput = any> {
     /** Run the workflow */
     run(
         input: TInput,
-        desktop?: import("@mediar-ai/computeruse").Desktop,
-        logger?: Logger,
+        desktop?: DesktopLike,
     ): Promise<ExecutionResponse>;
 
     /** Get workflow metadata */
@@ -663,32 +684,6 @@ export interface Workflow<TInput = any> {
         }>;
         trigger?: TriggerConfig;
     };
-}
-
-/**
- * Console logger implementation
- * @deprecated Use console.log/info/warn/error/debug directly instead
- */
-export class ConsoleLogger implements Logger {
-    info(message: string): void {
-        console.log(message);
-    }
-
-    success(message: string): void {
-        console.log(message);
-    }
-
-    warn(message: string): void {
-        console.warn(message);
-    }
-
-    error(message: string): void {
-        console.error(message);
-    }
-
-    debug(message: string): void {
-        console.debug(message);
-    }
 }
 
 /**

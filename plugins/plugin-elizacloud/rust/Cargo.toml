@@ -50,6 +50,9 @@ base64 = "0.22"
 # URL handling
 url = "2.5"
 
+# Hostname detection for device auth
+hostname = "0.4"
+
 # WASM-only dependencies
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }

@@ -104,12 +104,12 @@ async fn test_connect_and_get_response() {
         },
     ];
 
-    let response = call_openai(messages, "gpt-4o-mini", 100).await;
+    let response = call_openai(messages, "gpt-5-mini", 100).await;
 
     // Verify response structure
     assert!(!response.id.is_empty());
     assert_eq!(response.object, "chat.completion");
-    assert!(response.model.contains("gpt-4o-mini"));
+    assert!(response.model.contains("gpt-5-mini"));
     assert_eq!(response.choices.len(), 1);
     assert_eq!(response.choices[0].message.role, "assistant");
     assert!(!response.choices[0].message.content.is_empty());
@@ -144,7 +144,7 @@ async fn test_multi_turn_conversation() {
         },
     ];
 
-    let response = call_openai(messages, "gpt-4o-mini", 100).await;
+    let response = call_openai(messages, "gpt-5-mini", 100).await;
 
     let content = &response.choices[0].message.content;
     assert!(!content.is_empty());
@@ -164,7 +164,7 @@ async fn test_max_tokens_respected() {
         content: "Write a very long essay about programming.".to_string(),
     }];
 
-    let response = call_openai(messages, "gpt-4o-mini", 100).await;
+    let response = call_openai(messages, "gpt-5-mini", 100).await;
 
     // With max_tokens=100, the response should be limited
     assert!(response.usage.completion_tokens <= 100);
@@ -188,7 +188,7 @@ async fn test_code_related_queries() {
         },
     ];
 
-    let response = call_openai(messages, "gpt-4o-mini", 100).await;
+    let response = call_openai(messages, "gpt-5-mini", 100).await;
 
     let content = &response.choices[0].message.content;
     assert!(!content.is_empty());
@@ -208,7 +208,7 @@ async fn test_valid_token_counts() {
         content: "Hi".to_string(),
     }];
 
-    let response = call_openai(messages, "gpt-4o-mini", 100).await;
+    let response = call_openai(messages, "gpt-5-mini", 100).await;
 
     let usage = &response.usage;
     assert!(usage.prompt_tokens > 0);

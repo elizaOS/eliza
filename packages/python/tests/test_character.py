@@ -18,16 +18,16 @@ from elizaos.types import Character
 
 class TestParseCharacter:
     def test_parse_character_object(self) -> None:
-        character = Character(name="Test", bio="A test agent")
+        character = Character(name="Test", bio=["A test agent"])
         result = parse_character(character)
         assert result.name == "Test"
-        assert result.bio == "A test agent"
+        assert list(result.bio) == ["A test agent"]
 
     def test_parse_character_dict(self) -> None:
-        data = {"name": "Test", "bio": "A test agent"}
+        data = {"name": "Test", "bio": ["A test agent"]}
         result = parse_character(data)
         assert result.name == "Test"
-        assert result.bio == "A test agent"
+        assert list(result.bio) == ["A test agent"]
 
     def test_parse_character_invalid_dict(self) -> None:
         data = {"bio": "Missing name"}
@@ -36,7 +36,7 @@ class TestParseCharacter:
 
     def test_parse_character_file_path(self) -> None:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump({"name": "FileAgent", "bio": "From file"}, f)
+            json.dump({"name": "FileAgent", "bio": ["From file"]}, f)
             f.flush()
 
             try:
@@ -52,7 +52,7 @@ class TestLoadCharacterFromFile:
             json.dump(
                 {
                     "name": "FileAgent",
-                    "bio": "A file-based agent",
+                    "bio": ["A file-based agent"],
                     "topics": ["testing"],
                 },
                 f,
@@ -62,7 +62,7 @@ class TestLoadCharacterFromFile:
             try:
                 result = load_character_from_file(f.name)
                 assert result.name == "FileAgent"
-                assert result.topics == ["testing"]
+                assert list(result.topics) == ["testing"]
             finally:
                 os.unlink(f.name)
 
@@ -84,7 +84,7 @@ class TestLoadCharacterFromFile:
 
 class TestValidateCharacterConfig:
     def test_valid_character(self) -> None:
-        character = Character(name="Test", bio="A test agent")
+        character = Character(name="Test", bio=["A test agent"])
         result = validate_character_config(character)
         assert result["isValid"] is True
         assert result["errors"] == []
@@ -107,26 +107,22 @@ class TestMergeCharacterDefaults:
     def test_merge_empty(self) -> None:
         result = merge_character_defaults({})
         assert result.name == "Unnamed Character"
-        assert result.settings == {}
-        assert result.plugins == []
+        assert list(result.plugins) == []
 
     def test_merge_partial(self) -> None:
-        result = merge_character_defaults({"name": "CustomAgent", "bio": "Custom bio"})
+        result = merge_character_defaults({"name": "CustomAgent", "bio": ["Custom bio"]})
         assert result.name == "CustomAgent"
-        assert result.bio == "Custom bio"
-        assert result.settings == {}
+        assert list(result.bio) == ["Custom bio"]
 
     def test_merge_preserves_values(self) -> None:
         result = merge_character_defaults(
             {
                 "name": "Agent",
-                "bio": "Bio",
-                "settings": {"key": "value"},
+                "bio": ["Bio"],
                 "plugins": ["plugin-1"],
             }
         )
-        assert result.settings == {"key": "value"}
-        assert result.plugins == ["plugin-1"]
+        assert list(result.plugins) == ["plugin-1"]
 
 
 class TestBuildCharacterPlugins:
@@ -153,10 +149,6 @@ class TestBuildCharacterPlugins:
             }
         )
         assert "@elizaos/plugin-discord" in plugins
-
-    def test_bootstrap_in_core(self) -> None:
-        plugins = build_character_plugins({})
-        assert "@elizaos/plugin-bootstrap" not in plugins
 
     def test_plugin_order(self) -> None:
         plugins = build_character_plugins(

@@ -30,8 +30,12 @@ class TelegramEventType(str, Enum):
     MESSAGE_RECEIVED = "TELEGRAM_MESSAGE_RECEIVED"
     MESSAGE_SENT = "TELEGRAM_MESSAGE_SENT"
     REACTION_RECEIVED = "TELEGRAM_REACTION_RECEIVED"
+    REACTION_SENT = "TELEGRAM_REACTION_SENT"
     INTERACTION_RECEIVED = "TELEGRAM_INTERACTION_RECEIVED"
     SLASH_START = "TELEGRAM_SLASH_START"
+    BOT_STARTED = "TELEGRAM_BOT_STARTED"
+    BOT_STOPPED = "TELEGRAM_BOT_STOPPED"
+    WEBHOOK_REGISTERED = "TELEGRAM_WEBHOOK_REGISTERED"
 
 
 class TelegramChannelType(str, Enum):
@@ -88,3 +92,107 @@ class TelegramEntityPayload(BaseModel):
     user: TelegramUser
     chat: TelegramChat
     action: Literal["joined", "left", "updated"]
+
+
+class TelegramBotInfo(BaseModel):
+    """Extended bot information from getMe."""
+    id: int
+    username: str | None = None
+    first_name: str
+    can_join_groups: bool = False
+    can_read_all_group_messages: bool = False
+    supports_inline_queries: bool = False
+
+
+class TelegramBotProbe(BaseModel):
+    """Result of probing the Telegram bot connection."""
+    ok: bool
+    bot: TelegramBotInfo | None = None
+    error: str | None = None
+    latency_ms: int
+
+
+class SendReactionParams(BaseModel):
+    """Parameters for sending a reaction."""
+    chat_id: int | str
+    message_id: int
+    reaction: str
+    is_big: bool = False
+
+
+class SendReactionResult(BaseModel):
+    """Result of sending a reaction."""
+    success: bool
+    chat_id: int | str
+    message_id: int
+    reaction: str
+    error: str | None = None
+
+
+class TelegramBotStatusPayload(BaseModel):
+    """Payload for bot status events."""
+    bot_id: int | None = None
+    bot_username: str | None = None
+    bot_name: str | None = None
+    update_mode: Literal["polling", "webhook"]
+    timestamp: int
+
+
+class TelegramWebhookPayload(BaseModel):
+    """Payload for webhook registration events."""
+    url: str
+    path: str
+    port: int | None = None
+    has_secret: bool
+    timestamp: int
+
+
+class TelegramWebhookInfo(BaseModel):
+    """Webhook configuration info from Telegram."""
+    url: str
+    has_custom_certificate: bool
+    pending_update_count: int
+    last_error_date: int | None = None
+    last_error_message: str | None = None
+    max_connections: int | None = None
+    allowed_updates: list[str] | None = None
+
+
+# Common reaction emojis supported by Telegram
+class TelegramReactions:
+    THUMBS_UP = "👍"
+    THUMBS_DOWN = "👎"
+    HEART = "❤"
+    FIRE = "🔥"
+    CELEBRATION = "🎉"
+    CRYING = "😢"
+    THINKING = "🤔"
+    EXPLODING_HEAD = "🤯"
+    SCREAMING = "😱"
+    ANGRY = "🤬"
+    SKULL = "💀"
+    POOP = "💩"
+    CLOWN = "🤡"
+    QUESTION = "🤨"
+    EYES = "👀"
+    WHALE = "🐳"
+    HEART_ON_FIRE = "❤️‍🔥"
+    NEW_MOON = "🌚"
+    HOT_DOG = "🌭"
+    HUNDRED = "💯"
+    TEARS_OF_JOY = "😂"
+    LIGHTNING = "⚡"
+    BANANA = "🍌"
+    TROPHY = "🏆"
+    BROKEN_HEART = "💔"
+    NEUTRAL = "😐"
+    STRAWBERRY = "🍓"
+    CHAMPAGNE = "🍾"
+    KISS = "💋"
+    DEVIL = "😈"
+    SLEEPING = "😴"
+    LOUDLY_CRYING = "😭"
+    NERD = "🤓"
+    GHOST = "👻"
+    TECHNOLOGIST = "👨‍💻"
+    UNICORN = "🦄"

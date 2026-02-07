@@ -9,6 +9,9 @@ import type {
   Memory,
   MemoryMetadata,
   Metadata,
+  PairingAllowlistEntry,
+  PairingChannel,
+  PairingRequest,
   Participant,
   Relationship,
   Room,
@@ -620,4 +623,63 @@ export abstract class DatabaseAdapter<DB extends object = object>
   }): Promise<Memory[]>;
 
   abstract deleteRoomsByWorldId(worldId: UUID): Promise<void>;
+
+  // Pairing Methods
+  // ===============================
+
+  /**
+   * Get all pending pairing requests for a channel and agent.
+   * @param channel The messaging channel (telegram, discord, whatsapp, etc.)
+   * @param agentId The agent ID
+   * @returns Array of pending pairing requests
+   */
+  abstract getPairingRequests(
+    channel: PairingChannel,
+    agentId: UUID,
+  ): Promise<PairingRequest[]>;
+
+  /**
+   * Create a new pairing request.
+   * @param request The pairing request to create
+   * @returns The created request ID
+   */
+  abstract createPairingRequest(request: PairingRequest): Promise<UUID>;
+
+  /**
+   * Update an existing pairing request.
+   * @param request The pairing request with updated data
+   */
+  abstract updatePairingRequest(request: PairingRequest): Promise<void>;
+
+  /**
+   * Delete a pairing request by ID.
+   * @param id The request ID to delete
+   */
+  abstract deletePairingRequest(id: UUID): Promise<void>;
+
+  /**
+   * Get the allowlist for a channel and agent.
+   * @param channel The messaging channel
+   * @param agentId The agent ID
+   * @returns Array of allowlist entries
+   */
+  abstract getPairingAllowlist(
+    channel: PairingChannel,
+    agentId: UUID,
+  ): Promise<PairingAllowlistEntry[]>;
+
+  /**
+   * Create a new allowlist entry.
+   * @param entry The allowlist entry to create
+   * @returns The created entry ID
+   */
+  abstract createPairingAllowlistEntry(
+    entry: PairingAllowlistEntry,
+  ): Promise<UUID>;
+
+  /**
+   * Delete an allowlist entry by ID.
+   * @param id The entry ID to delete
+   */
+  abstract deletePairingAllowlistEntry(id: UUID): Promise<void>;
 }

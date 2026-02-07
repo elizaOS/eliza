@@ -76,5 +76,14 @@
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {},
     "description": "Collects complete agent interaction trajectories for RL training."
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js only (platform: node)"
+    }
   }
 }

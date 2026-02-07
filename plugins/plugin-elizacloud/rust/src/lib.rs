@@ -1,6 +1,8 @@
 //! ElizaCloud plugin for the ElizaOS runtime.
 //!
-//! This plugin provides integration with ElizaCloud services.
+//! This plugin provides integration with ElizaCloud services including
+//! multi-model AI generation, container provisioning, agent bridge,
+//! and billing management.
 
 #![warn(missing_docs)]
 #![deny(unsafe_code)]
@@ -9,6 +11,13 @@ pub mod error;
 pub mod models;
 pub mod providers;
 pub mod types;
+
+// Cloud integration modules
+pub mod actions;
+pub mod cloud_api;
+pub mod cloud_providers;
+pub mod cloud_types;
+pub mod services;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;

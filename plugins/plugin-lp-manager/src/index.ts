@@ -11,7 +11,7 @@ import { UserLpProfileService } from './services/UserLpProfileService.ts';
 import { VaultService } from './services/VaultService.ts';
 import { YieldOptimizationService } from './services/YieldOptimizationService.ts';
 import { ConcentratedLiquidityService } from './services/ConcentratedLiquidityService.ts';
-import { LpAutoRebalanceTask } from './tasks/LpAutoRebalanceTask.ts';
+// LpAutoRebalanceTask import removed - file doesn't exist
 import type { SolanaDex, EvmDex, LpManagerConfig } from './types.ts';
 
 // It's good practice to define a unique name for the plugin
@@ -253,7 +253,6 @@ export default lpManagerPlugin;
 export {
     ConcentratedLiquidityService,
     DexInteractionService,
-    LpAutoRebalanceTask,
     LpManagementAgentAction,
     UserLpProfileService,
     VaultService,

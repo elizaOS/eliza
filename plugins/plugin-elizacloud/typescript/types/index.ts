@@ -33,3 +33,45 @@ export interface OpenAIConfig {
   embeddingModel?: string;
   embeddingDimensions?: number;
 }
+
+// Re-export all cloud types
+export type {
+  CloudContainer,
+  CloudCredentials,
+  CloudPluginConfig,
+  ContainerStatus,
+  ContainerBillingStatus,
+  ContainerArchitecture,
+  CreateContainerRequest,
+  CreateContainerResponse,
+  ContainerListResponse,
+  ContainerGetResponse,
+  ContainerDeleteResponse,
+  ContainerHealthResponse,
+  DevicePlatform,
+  DeviceAuthRequest,
+  DeviceAuthResponse,
+  CreditBalanceResponse,
+  CreditSummaryResponse,
+  CreditTransaction,
+  BridgeConnectionState,
+  BridgeConnection,
+  BridgeMessage,
+  BridgeError,
+  BridgeMessageHandler,
+  AgentSnapshot,
+  SnapshotType,
+  CreateSnapshotRequest,
+  CreateSnapshotResponse,
+  SnapshotListResponse,
+  RestoreSnapshotRequest,
+  RestoreSnapshotResponse,
+  InferenceMode,
+  CloudApiErrorBody,
+} from "./cloud";
+
+export {
+  DEFAULT_CLOUD_CONFIG,
+  CloudApiError,
+  InsufficientCreditsError,
+} from "./cloud";

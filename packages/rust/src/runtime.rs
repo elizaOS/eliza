@@ -260,6 +260,32 @@ pub type RuntimeModelHandler = Box<
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String>>>>,
 >;
 
+/// Streaming model handler for native builds (returns async iterator of chunks)
+/// Uses a channel-based approach for streaming chunks
+#[cfg(not(feature = "wasm"))]
+pub type StreamingModelHandler = Box<
+    dyn Fn(
+            serde_json::Value,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = Result<tokio::sync::mpsc::Receiver<Result<String>>>,
+                    > + Send,
+            >,
+        > + Send
+        + Sync,
+>;
+
+/// Streaming model handler for WASM builds
+#[cfg(feature = "wasm")]
+pub type StreamingModelHandler = Box<
+    dyn Fn(
+        serde_json::Value,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<std::sync::mpsc::Receiver<Result<String>>>>>,
+    >,
+>;
+
 /// Static counter for anonymous agent naming
 static ANONYMOUS_AGENT_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -340,6 +366,8 @@ pub struct AgentRuntime {
     services: RwLock<HashMap<String, Arc<dyn Service>>>,
     /// Model handlers (maps model type like "TEXT_LARGE" to handler)
     model_handlers: RwLock<HashMap<String, RuntimeModelHandler>>,
+    /// Streaming model handlers (maps model type like "TEXT_LARGE_STREAM" to handler)
+    streaming_model_handlers: RwLock<HashMap<String, StreamingModelHandler>>,
     /// Runtime settings
     settings: RwLock<RuntimeSettings>,
     /// Current run ID (tracked for prompt/model call correlation)
@@ -366,6 +394,10 @@ pub struct AgentRuntime {
     capability_options: CapabilityOptions,
     /// Runtime flag that toggles autonomy execution.
     enable_autonomy: AtomicBool,
+    /// Task workers (maps task name to worker)
+    task_workers: RwLock<HashMap<String, Arc<dyn crate::types::task::TaskWorker>>>,
+    /// In-memory task storage (maps task ID to task)
+    tasks: RwLock<HashMap<String, crate::types::task::Task>>,
 }
 
 /// Tri-state capability options (mirrors TypeScript bootstrap capability config behavior).
@@ -432,6 +464,7 @@ impl AgentRuntime {
             events: RwLock::new(HashMap::new()),
             services: RwLock::new(HashMap::new()),
             model_handlers: RwLock::new(HashMap::new()),
+            streaming_model_handlers: RwLock::new(HashMap::new()),
             settings: RwLock::new(opts.settings.unwrap_or_default()),
             current_run_id: Mutex::new(None),
             current_room_id: Mutex::new(None),
@@ -450,6 +483,8 @@ impl AgentRuntime {
                 skip_character_provider: is_anonymous,
             },
             enable_autonomy: AtomicBool::new(opts.enable_autonomy.unwrap_or(false)),
+            task_workers: RwLock::new(HashMap::new()),
+            tasks: RwLock::new(HashMap::new()),
         };
 
         Ok(Arc::new(runtime))
@@ -838,6 +873,161 @@ impl AgentRuntime {
     /// Update the runtime autonomy flag.
     pub fn set_enable_autonomy(&self, enabled: bool) {
         self.enable_autonomy.store(enabled, Ordering::SeqCst);
+    }
+
+    // =========================================================================
+    // Task Worker Methods (parity with TypeScript)
+    // =========================================================================
+
+    /// Register a task worker.
+    pub async fn register_task_worker(&self, worker: Arc<dyn crate::types::task::TaskWorker>) {
+        let name = worker.name().to_string();
+        #[cfg(not(feature = "wasm"))]
+        {
+            let mut workers = self.task_workers.write().await;
+            if workers.contains_key(&name) {
+                warn!(
+                    target: "agent",
+                    agent_id = %self.agent_id,
+                    task = %name,
+                    "Task worker already registered, overwriting"
+                );
+            }
+            workers.insert(name.clone(), worker);
+        }
+        #[cfg(feature = "wasm")]
+        {
+            let mut workers = self.task_workers.write().unwrap();
+            workers.insert(name.clone(), worker);
+        }
+        debug!(target: "agent", agent_id = %self.agent_id, task = %name, "Task worker registered");
+    }
+
+    /// Get a task worker by name.
+    pub async fn get_task_worker(&self, name: &str) -> Option<Arc<dyn crate::types::task::TaskWorker>> {
+        #[cfg(not(feature = "wasm"))]
+        {
+            self.task_workers.read().await.get(name).cloned()
+        }
+        #[cfg(feature = "wasm")]
+        {
+            self.task_workers.read().unwrap().get(name).cloned()
+        }
+    }
+
+    /// Check if a task worker exists for the given name.
+    pub async fn has_task_worker(&self, name: &str) -> bool {
+        #[cfg(not(feature = "wasm"))]
+        {
+            self.task_workers.read().await.contains_key(name)
+        }
+        #[cfg(feature = "wasm")]
+        {
+            self.task_workers.read().unwrap().contains_key(name)
+        }
+    }
+
+    // =========================================================================
+    // Task CRUD Methods (parity with TypeScript)
+    // =========================================================================
+
+    /// Create a new task.
+    pub async fn create_task(&self, mut task: crate::types::task::Task) -> crate::types::task::Task {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        // Ensure task has an ID
+        if task.id.is_none() {
+            task.id = Some(UUID::new_v4());
+        }
+
+        // Set timestamps
+        task.created_at = Some(now);
+        task.updated_at = Some(now);
+
+        // Ensure metadata exists with timestamps
+        let mut metadata = task.metadata.take().unwrap_or_default();
+        if metadata.updated_at.is_none() {
+            metadata.updated_at = Some(now);
+        }
+        if metadata.created_at.is_none() {
+            metadata.created_at = Some(now.to_string());
+        }
+        task.metadata = Some(metadata);
+
+        let task_id = task.id.clone().unwrap().to_string();
+
+        #[cfg(not(feature = "wasm"))]
+        self.tasks.write().await.insert(task_id.clone(), task.clone());
+        #[cfg(feature = "wasm")]
+        self.tasks.write().unwrap().insert(task_id.clone(), task.clone());
+
+        debug!(
+            target: "agent",
+            agent_id = %self.agent_id,
+            task_id = %task_id,
+            task_name = %task.name,
+            "Task created"
+        );
+
+        task
+    }
+
+    /// Get a task by ID.
+    pub async fn get_task(&self, task_id: &str) -> Option<crate::types::task::Task> {
+        #[cfg(not(feature = "wasm"))]
+        {
+            self.tasks.read().await.get(task_id).cloned()
+        }
+        #[cfg(feature = "wasm")]
+        {
+            self.tasks.read().unwrap().get(task_id).cloned()
+        }
+    }
+
+    /// Get tasks matching the given filters.
+    pub async fn get_tasks(&self, tags: Option<Vec<String>>) -> Vec<crate::types::task::Task> {
+        #[cfg(not(feature = "wasm"))]
+        let tasks = self.tasks.read().await;
+        #[cfg(feature = "wasm")]
+        let tasks = self.tasks.read().unwrap();
+
+        tasks
+            .values()
+            .filter(|t| {
+                if let Some(ref filter_tags) = tags {
+                    if let Some(ref task_tags) = t.tags {
+                        filter_tags.iter().all(|tag| task_tags.contains(tag))
+                    } else {
+                        false
+                    }
+                } else {
+                    true
+                }
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// Delete a task by ID.
+    pub async fn delete_task(&self, task_id: &str) -> bool {
+        #[cfg(not(feature = "wasm"))]
+        let removed = self.tasks.write().await.remove(task_id).is_some();
+        #[cfg(feature = "wasm")]
+        let removed = self.tasks.write().unwrap().remove(task_id).is_some();
+
+        if removed {
+            debug!(
+                target: "agent",
+                agent_id = %self.agent_id,
+                task_id = %task_id,
+                "Task deleted"
+            );
+        }
+
+        removed
     }
 
     /// Set a setting value (TypeScript-compatible semantics).
@@ -1283,6 +1473,109 @@ impl AgentRuntime {
         debug!("Registered model handler for: {}", model_type);
     }
 
+    /// Register a streaming model handler for a specific model type
+    ///
+    /// Streaming model types typically end with "_STREAM" (e.g., "TEXT_LARGE_STREAM")
+    /// The handler returns a channel receiver that yields chunks of text.
+    pub async fn register_streaming_model(&self, model_type: &str, handler: StreamingModelHandler) {
+        #[cfg(not(feature = "wasm"))]
+        {
+            let mut handlers = self.streaming_model_handlers.write().await;
+            handlers.insert(model_type.to_string(), handler);
+        }
+        #[cfg(feature = "wasm")]
+        {
+            let mut handlers = self.streaming_model_handlers.write().unwrap();
+            handlers.insert(model_type.to_string(), handler);
+        }
+        debug!("Registered streaming model handler for: {}", model_type);
+    }
+
+    /// Use a streaming model to generate text chunks
+    ///
+    /// Returns a receiver that yields text chunks as they are generated.
+    /// The stream completes when the receiver returns None.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let mut rx = runtime.use_model_stream("TEXT_LARGE_STREAM", params).await?;
+    /// while let Some(chunk_result) = rx.recv().await {
+    ///     match chunk_result {
+    ///         Ok(chunk) => print!("{}", chunk),
+    ///         Err(e) => eprintln!("Error: {}", e),
+    ///     }
+    /// }
+    /// ```
+    #[cfg(not(feature = "wasm"))]
+    pub async fn use_model_stream(
+        &self,
+        model_type: &str,
+        params: serde_json::Value,
+    ) -> Result<tokio::sync::mpsc::Receiver<Result<String>>> {
+        // Apply LLM mode override for streaming text generation models
+        let llm_mode = self.get_llm_mode().await;
+        let effective_model_type = if llm_mode != LLMMode::Default {
+            // Streaming model types that can be overridden
+            let text_generation_models = [
+                "TEXT_SMALL_STREAM",
+                "TEXT_LARGE_STREAM",
+                "TEXT_REASONING_SMALL_STREAM",
+                "TEXT_REASONING_LARGE_STREAM",
+            ];
+
+            if text_generation_models.contains(&model_type) {
+                let override_model = match llm_mode {
+                    LLMMode::Small => "TEXT_SMALL_STREAM",
+                    LLMMode::Large => "TEXT_LARGE_STREAM",
+                    LLMMode::Default => model_type,
+                };
+                if model_type != override_model {
+                    debug!(
+                        "LLM mode override applied (stream): {} -> {} (mode: {:?})",
+                        model_type, override_model, llm_mode
+                    );
+                }
+                override_model
+            } else {
+                model_type
+            }
+        } else {
+            model_type
+        };
+
+        let handler_future = {
+            let handlers = self.streaming_model_handlers.read().await;
+            handlers
+                .get(effective_model_type)
+                .map(|h| h(params.clone()))
+        };
+
+        match handler_future {
+            Some(future) => future.await,
+            None => Err(anyhow::anyhow!(
+                "No streaming model handler registered for type: {}. Register a streaming model handler using register_streaming_model().",
+                effective_model_type
+            )),
+        }
+    }
+
+    /// Use a streaming model to generate text chunks (WASM version)
+    #[cfg(feature = "wasm")]
+    pub async fn use_model_stream(
+        &self,
+        model_type: &str,
+        params: serde_json::Value,
+    ) -> Result<std::sync::mpsc::Receiver<Result<String>>> {
+        let handlers = self.streaming_model_handlers.read().unwrap();
+        match handlers.get(model_type).map(|h| h(params.clone())) {
+            Some(future) => future.await,
+            None => Err(anyhow::anyhow!(
+                "No streaming model handler registered for type: {}",
+                model_type
+            )),
+        }
+    }
+
     /// Use a model to generate text
     pub async fn use_model(&self, model_type: &str, params: serde_json::Value) -> Result<String> {
         use crate::types::model::model_type;
@@ -1424,6 +1717,704 @@ impl AgentRuntime {
 
         info!("AgentRuntime stopped successfully");
         Ok(())
+    }
+
+    // ============================================================================
+    // Dynamic Prompt Execution with Validation-Aware Streaming
+    // ============================================================================
+
+    /// Dynamic prompt execution with state injection, schema-based parsing, and validation.
+    ///
+    /// WHY THIS EXISTS:
+    /// LLMs are powerful but unreliable for structured outputs. They can:
+    /// - Silently truncate output when hitting token limits
+    /// - Skip fields or produce malformed structures
+    /// - Hallucinate or ignore parts of the prompt
+    ///
+    /// This method addresses these issues by:
+    /// 1. Validation codes: Injects UUID codes the LLM must echo back
+    /// 2. Retry with backoff: Automatic retries on validation failure
+    /// 3. Structured parsing: XML/JSON response parsing with nested support
+    ///
+    /// # Streaming Support
+    ///
+    /// For streaming with validation, use `use_model_stream()` combined with
+    /// `ValidationStreamExtractor` from `crate::types::streaming`:
+    ///
+    /// ```ignore
+    /// use crate::types::streaming::{ValidationStreamExtractor, ValidationStreamExtractorConfig};
+    ///
+    /// let config = ValidationStreamExtractorConfig { /* ... */ };
+    /// let mut extractor = ValidationStreamExtractor::new(config);
+    ///
+    /// let mut rx = runtime.use_model_stream("TEXT_LARGE_STREAM", params).await?;
+    /// while let Some(chunk) = rx.recv().await {
+    ///     if let Ok(text) = chunk {
+    ///         extractor.push(&text);
+    ///     }
+    /// }
+    /// extractor.flush();
+    /// ```
+    ///
+    /// # Arguments
+    /// * `state` - State object to inject into the prompt template
+    /// * `prompt` - Prompt template string (Handlebars syntax)
+    /// * `schema` - Array of field definitions for structured output
+    /// * `options` - Configuration for model size, validation level, retries, etc.
+    ///
+    /// # Returns
+    /// Parsed structured response as JSON Value, or None on failure
+    pub async fn dynamic_prompt_exec_from_state(
+        &self,
+        state: &State,
+        prompt: &str,
+        schema: &[crate::types::state::SchemaRow],
+        options: DynamicPromptOptions,
+    ) -> Result<Option<serde_json::Value>> {
+        use crate::types::model::model_type;
+        use uuid::Uuid;
+
+        // Determine model type - check options.model first, then model_size, then default
+        let model_type_str = if let Some(ref model) = options.model {
+            model.as_str()
+        } else {
+            match options.model_size {
+                Some(ModelSize::Small) => model_type::TEXT_SMALL,
+                Some(ModelSize::Large) => model_type::TEXT_LARGE,
+                None => model_type::TEXT_LARGE,
+            }
+        };
+
+        let schema_key = schema
+            .iter()
+            .map(|s| s.field.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+        let model_schema_key = format!("{}:{}", model_type_str, schema_key);
+
+        // Get validation level from settings or options (mirrors TypeScript behavior)
+        let (default_context_level, default_retries) = {
+            let validation_setting = self.get_setting("VALIDATION_LEVEL").await;
+            // Convert SettingValue to string for matching
+            let setting_str: Option<String> = validation_setting.and_then(|sv| match sv {
+                crate::types::settings::SettingValue::String(s) => Some(s.to_lowercase()),
+                _ => None,
+            });
+            match setting_str.as_deref() {
+                Some("trusted") | Some("fast") => (0u8, 0u32),
+                Some("progressive") => (1, 2),
+                Some("strict") | Some("safe") => (3, 3),
+                Some(other) => {
+                    warn!(
+                        "Unrecognized VALIDATION_LEVEL \"{}\". Valid values: trusted, fast, progressive, strict, safe. Falling back to default (level 2).",
+                        other
+                    );
+                    (2, 1)
+                }
+                None => (2, 1),
+            }
+        };
+
+        let validation_level = options.context_check_level.unwrap_or(default_context_level);
+        let max_retries = options.max_retries.unwrap_or(default_retries);
+        let mut current_retry = 0;
+        let mut last_error: Option<String> = None;
+        let mut smart_retry_context: Option<String> = None;
+
+        // Generate per-field validation codes for levels 0-1
+        let mut per_field_codes: HashMap<String, String> = HashMap::new();
+        if validation_level <= 1 {
+            for row in schema {
+                let default_validate = validation_level == 1;
+                let needs_validation = row.validate_field.unwrap_or(default_validate);
+                if needs_validation {
+                    per_field_codes.insert(
+                        row.field.clone(),
+                        Uuid::new_v4().to_string()[..8].to_string(),
+                    );
+                }
+            }
+        }
+
+        while current_retry <= max_retries {
+            // Simple template substitution: replaces {{key}} with state values.
+            // NOTE: Unlike TypeScript (which uses full Handlebars), this does NOT support:
+            // - Conditionals ({{#if}}/{{#unless}})
+            // - Loops ({{#each}})
+            // - Nested access ({{user.name}})
+            // - Helpers or partials
+            // For complex templates, pre-render in TypeScript or use a Rust Handlebars crate.
+            let state_map = state.values_map();
+            let mut rendered = prompt.to_string();
+            for (key, value) in &state_map {
+                let placeholder = format!("{{{{{}}}}}", key);
+                let value_str = match value {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                rendered = rendered.replace(&placeholder, &value_str);
+            }
+
+            // Append smart retry context if available from previous retry
+            if let Some(ref ctx) = smart_retry_context {
+                rendered.push_str(ctx);
+            }
+
+            // Build format
+            let format = options
+                .force_format
+                .as_deref()
+                .unwrap_or("xml")
+                .to_uppercase();
+            let is_xml = format == "XML";
+            let container_start = if is_xml { "<response>" } else { "{" };
+            let container_end = if is_xml { "</response>" } else { "}" };
+
+            // Build extended schema with validation codes
+            let first = validation_level >= 2;
+            let last = validation_level >= 3;
+
+            let mut ext_schema: Vec<(String, String)> = Vec::new();
+
+            let codes_schema = |prefix: &str| -> Vec<(String, String)> {
+                vec![
+                    (
+                        format!("{}initial_code", prefix),
+                        "echo the initial UUID code from prompt".to_string(),
+                    ),
+                    (
+                        format!("{}middle_code", prefix),
+                        "echo the middle UUID code from prompt".to_string(),
+                    ),
+                    (
+                        format!("{}end_code", prefix),
+                        "echo the end UUID code from prompt".to_string(),
+                    ),
+                ]
+            };
+
+            if first {
+                ext_schema.extend(codes_schema("one_"));
+            }
+
+            for row in schema {
+                if let Some(code) = per_field_codes.get(&row.field) {
+                    ext_schema.push((
+                        format!("code_{}_start", row.field),
+                        format!("output exactly: {}", code),
+                    ));
+                }
+                ext_schema.push((row.field.clone(), row.description.clone()));
+                if let Some(code) = per_field_codes.get(&row.field) {
+                    ext_schema.push((
+                        format!("code_{}_end", row.field),
+                        format!("output exactly: {}", code),
+                    ));
+                }
+            }
+
+            if last {
+                ext_schema.extend(codes_schema("two_"));
+            }
+
+            // Build example
+            let mut example = format!("{}\n", container_start);
+            let ext_schema_len = ext_schema.len();
+            for (i, (field, desc)) in ext_schema.iter().enumerate() {
+                let is_last = i == ext_schema_len - 1;
+                if is_xml {
+                    example.push_str(&format!("  <{}>{}</{}>\n", field, desc, field));
+                } else {
+                    // No trailing comma on last field for valid JSON
+                    let comma = if is_last { "" } else { "," };
+                    example.push_str(&format!("  \"{}\": \"{}\"{}\n", field, desc, comma));
+                }
+            }
+            example.push_str(container_end);
+
+            let init_code = Uuid::new_v4().to_string();
+            let mid_code = Uuid::new_v4().to_string();
+            let final_code = Uuid::new_v4().to_string();
+
+            let section_start = if is_xml {
+                "<output>"
+            } else {
+                "# Strict Output instructions"
+            };
+            let section_end = if is_xml { "</output>" } else { "" };
+
+            let full_prompt = format!(
+                "initial code: {}\n{}\nmiddle code: {}\n{}\n\
+                Do NOT include any thinking, reasoning, or <think> sections in your response.\n\
+                Go directly to the {} response format without any preamble or explanation.\n\n\
+                Respond using {} format like this:\n{}\n\n\
+                IMPORTANT: Your response must ONLY contain the {}{} {} block above. \
+                Do not include any text, thinking, or reasoning before or after this {} block. \
+                Start your response immediately with {} and end with {}.\n\
+                {}\nend code: {}\n",
+                init_code,
+                rendered,
+                mid_code,
+                section_start,
+                format,
+                format,
+                example,
+                container_start,
+                container_end,
+                format,
+                format,
+                container_start,
+                container_end,
+                section_end,
+                final_code
+            );
+
+            debug!("dynamic_prompt_exec_from_state: using format {}", format);
+
+            // Call model
+            let params = serde_json::json!({
+                "prompt": full_prompt,
+                "maxTokens": 4096,
+            });
+
+            let response = match self.use_model(model_type_str, params).await {
+                Ok(r) => r,
+                Err(e) => {
+                    let err_msg = format!("Model call failed: {}", e);
+                    error!("{}", err_msg);
+                    last_error = Some(err_msg);
+                    current_retry += 1;
+                    if current_retry <= max_retries {
+                        if let Some(backoff) = &options.retry_backoff {
+                            let delay = backoff.delay_for_retry(current_retry);
+                            debug!(
+                                "Retry backoff: waiting {}ms before retry {}",
+                                delay, current_retry
+                            );
+                            #[cfg(not(feature = "wasm"))]
+                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        }
+                    }
+                    continue;
+                }
+            };
+
+            // Clean response (remove <think> blocks)
+            let clean_response = {
+                let mut result = response.clone();
+                while let Some(start) = result.find("<think>") {
+                    if let Some(end) = result.find("</think>") {
+                        result = format!("{}{}", &result[..start], &result[end + 8..]);
+                    } else {
+                        break;
+                    }
+                }
+                result
+            };
+
+            // Parse response
+            let response_content: Option<serde_json::Value> = if is_xml {
+                parse_xml_to_json(&clean_response)
+            } else {
+                serde_json::from_str(&clean_response).ok()
+            };
+
+            let mut all_good = true;
+            let mut parsed = response_content.clone();
+
+            if let Some(ref content) = parsed {
+                // Validate codes based on context level
+                if validation_level <= 1 {
+                    // Per-field validation
+                    for (field, expected_code) in &per_field_codes {
+                        let start_code_field = format!("code_{}_start", field);
+                        let end_code_field = format!("code_{}_end", field);
+                        let start_code = content.get(&start_code_field).and_then(|v| v.as_str());
+                        let end_code = content.get(&end_code_field).and_then(|v| v.as_str());
+
+                        if start_code != Some(expected_code.as_str())
+                            || end_code != Some(expected_code.as_str())
+                        {
+                            warn!("Per-field validation failed for {}: expected={}, start={:?}, end={:?}",
+                                field, expected_code, start_code, end_code);
+                            all_good = false;
+                        }
+                    }
+                } else {
+                    // Checkpoint validation
+                    let validation_codes = [
+                        (first, "one_initial_code", &init_code),
+                        (first, "one_middle_code", &mid_code),
+                        (first, "one_end_code", &final_code),
+                        (last, "two_initial_code", &init_code),
+                        (last, "two_middle_code", &mid_code),
+                        (last, "two_end_code", &final_code),
+                    ];
+
+                    for (enabled, field, expected) in &validation_codes {
+                        if *enabled {
+                            let actual = content.get(*field).and_then(|v| v.as_str());
+                            if actual != Some(*expected) {
+                                warn!("Checkpoint {} mismatch: expected {}", field, expected);
+                                all_good = false;
+                            }
+                        }
+                    }
+                }
+
+                // Validate required fields
+                if let Some(ref required_fields) = options.required_fields {
+                    for field in required_fields {
+                        let value = content.get(field);
+                        let is_missing = match value {
+                            None => true,
+                            Some(serde_json::Value::Null) => true,
+                            Some(serde_json::Value::String(s)) => s.trim().is_empty(),
+                            Some(serde_json::Value::Array(a)) => a.is_empty(),
+                            Some(serde_json::Value::Object(o)) => o.is_empty(),
+                            _ => false,
+                        };
+                        if is_missing {
+                            warn!("Missing required field: {}", field);
+                            all_good = false;
+                        }
+                    }
+                }
+
+                // Clean up validation code fields from result
+                if let Some(serde_json::Value::Object(ref mut obj)) = parsed {
+                    // Remove per-field codes
+                    for field in per_field_codes.keys() {
+                        obj.remove(&format!("code_{}_start", field));
+                        obj.remove(&format!("code_{}_end", field));
+                    }
+                    // Remove checkpoint codes
+                    if first {
+                        obj.remove("one_initial_code");
+                        obj.remove("one_middle_code");
+                        obj.remove("one_end_code");
+                    }
+                    if last {
+                        obj.remove("two_initial_code");
+                        obj.remove("two_middle_code");
+                        obj.remove("two_end_code");
+                    }
+                }
+            } else {
+                warn!(
+                    "dynamic_prompt_exec_from_state parse problem: {}",
+                    clean_response
+                );
+                all_good = false;
+            }
+
+            if all_good {
+                debug!(
+                    "dynamic_prompt_exec_from_state success [{}]",
+                    model_schema_key
+                );
+                return Ok(parsed);
+            }
+
+            current_retry += 1;
+
+            // Build smart retry context for level 1 (per-field validation)
+            // Note: Since state is immutable in Rust, we store context for the next iteration
+            if validation_level == 1 {
+                if let Some(ref content) = response_content {
+                    // Find validated fields (those with correct codes)
+                    let mut validated_fields: Vec<String> = Vec::new();
+                    for (field, expected_code) in &per_field_codes {
+                        let start_code_field = format!("code_{}_start", field);
+                        let end_code_field = format!("code_{}_end", field);
+                        let start_code = content.get(&start_code_field).and_then(|v| v.as_str());
+                        let end_code = content.get(&end_code_field).and_then(|v| v.as_str());
+
+                        if start_code == Some(expected_code.as_str())
+                            && end_code == Some(expected_code.as_str())
+                        {
+                            validated_fields.push(field.clone());
+                        }
+                    }
+
+                    if !validated_fields.is_empty() {
+                        // Build retry context with validated fields
+                        let mut validated_parts: Vec<String> = Vec::new();
+                        for field in &validated_fields {
+                            if let Some(val) = content.get(field) {
+                                let content_str = match val {
+                                    serde_json::Value::String(s) => s.clone(),
+                                    _ => val.to_string(),
+                                };
+                                let truncated = if content_str.len() > 500 {
+                                    format!("{}...", &content_str[..500])
+                                } else {
+                                    content_str
+                                };
+                                validated_parts
+                                    .push(format!("<{}>{}</{}>", field, truncated, field));
+                            }
+                        }
+
+                        if !validated_parts.is_empty() {
+                            // Find missing/invalid fields
+                            let all_fields: std::collections::HashSet<_> =
+                                schema.iter().map(|r| r.field.clone()).collect();
+                            let validated_set: std::collections::HashSet<_> =
+                                validated_fields.iter().cloned().collect();
+                            let missing: Vec<_> =
+                                all_fields.difference(&validated_set).cloned().collect();
+
+                            // Build smart retry context and append to next prompt iteration
+                            // (stored in smart_retry_context variable for use in next loop)
+                            smart_retry_context = Some(format!(
+                                "\n\n[RETRY CONTEXT]\nYou previously produced these valid fields:\n{}\n\nPlease complete: {}",
+                                validated_parts.join("\n"),
+                                if missing.is_empty() { "all fields".to_string() } else { missing.join(", ") }
+                            ));
+                        }
+                    }
+
+                    warn!(
+                        "dynamic_prompt_exec_from_state retry {}/{} validated={}",
+                        current_retry,
+                        max_retries,
+                        if validated_fields.is_empty() {
+                            "none".to_string()
+                        } else {
+                            validated_fields.join(",")
+                        }
+                    );
+                }
+            }
+
+            if current_retry <= max_retries {
+                if let Some(backoff) = &options.retry_backoff {
+                    let delay = backoff.delay_for_retry(current_retry);
+                    debug!(
+                        "Retry backoff: waiting {}ms before retry {}",
+                        delay, current_retry
+                    );
+                    #[cfg(not(feature = "wasm"))]
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                }
+            }
+        }
+
+        if let Some(err) = &last_error {
+            error!(
+                "dynamic_prompt_exec_from_state failed after {} retries [{}]: {}",
+                max_retries, model_schema_key, err
+            );
+        } else {
+            error!(
+                "dynamic_prompt_exec_from_state failed after {} retries [{}]: validation errors",
+                max_retries, model_schema_key
+            );
+        }
+        Ok(None)
+    }
+}
+
+/// Options for dynamic prompt execution.
+#[derive(Debug, Clone, Default)]
+pub struct DynamicPromptOptions {
+    /// Model size to use (small or large)
+    pub model_size: Option<ModelSize>,
+    /// Specific model identifier override
+    pub model: Option<String>,
+    /// Force output format (json or xml)
+    pub force_format: Option<String>,
+    /// Required fields that must be present and non-empty
+    pub required_fields: Option<Vec<String>>,
+    /// Validation level (0=trusted, 1=progressive, 2=checkpoint, 3=full)
+    pub context_check_level: Option<u8>,
+    /// Maximum retry attempts
+    pub max_retries: Option<u32>,
+    /// Retry backoff configuration
+    pub retry_backoff: Option<crate::types::state::RetryBackoffConfig>,
+}
+
+/// Model size selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelSize {
+    /// Small model for quick, less complex tasks
+    Small,
+    /// Large model for complex reasoning tasks
+    Large,
+}
+
+/// Parse XML-like response to JSON with support for nested structures.
+///
+/// This parser handles:
+/// - Simple tags: `<tag>content</tag>` → `{"tag": "content"}`
+/// - Nested tags: `<parent><child>x</child></parent>` → `{"parent": {"child": "x"}}`
+/// - Multiple same-name tags: converted to arrays
+/// - Attributes are ignored (stripped)
+/// - Comments and processing instructions are skipped
+fn parse_xml_to_json(xml: &str) -> Option<serde_json::Value> {
+    use serde_json::{Map, Value};
+
+    /// Recursively parse XML content into a JSON value
+    fn parse_element(content: &str) -> Value {
+        // Safety limits to prevent DoS on malformed XML
+        const MAX_TAGS: usize = 10000;
+        const MAX_NESTING_ITERATIONS: usize = 10000;
+
+        let trimmed = content.trim();
+
+        // Check if content has any child tags
+        if !trimmed.contains('<') {
+            return Value::String(trimmed.to_string());
+        }
+
+        let mut result: Map<String, Value> = Map::new();
+        let mut remaining = trimmed;
+        let mut tag_count = 0;
+
+        while let Some(open_start) = remaining.find('<') {
+            // Safety: prevent infinite loop on malformed XML
+            tag_count += 1;
+            if tag_count > MAX_TAGS {
+                break;
+            }
+
+            let after_open = &remaining[open_start + 1..];
+
+            if let Some(open_end) = after_open.find('>') {
+                let tag_content = &after_open[..open_end];
+
+                // Skip closing tags, comments, and processing instructions
+                if tag_content.starts_with('/')
+                    || tag_content.starts_with('!')
+                    || tag_content.starts_with('?')
+                {
+                    remaining = &after_open[open_end + 1..];
+                    continue;
+                }
+
+                // Extract tag name (strip attributes)
+                let tag_name = tag_content
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or(tag_content)
+                    .trim_end_matches('/'); // Handle self-closing tags
+
+                // Handle self-closing tags
+                if tag_content.ends_with('/') {
+                    result.insert(tag_name.to_string(), Value::String(String::new()));
+                    remaining = &after_open[open_end + 1..];
+                    continue;
+                }
+
+                // Find matching closing tag (handles nesting)
+                let close_tag = format!("</{}>", tag_name);
+                let open_tag_start = format!("<{}", tag_name);
+                let content_start_idx = open_start + 1 + open_end + 1;
+
+                // Count nesting depth to find correct closing tag
+                let mut depth = 1;
+                let mut search_pos = 0;
+                let search_content = &remaining[content_start_idx..];
+                let mut close_pos = None;
+                let mut nesting_iterations = 0;
+
+                while depth > 0 {
+                    // Safety: prevent infinite loop in nesting search
+                    nesting_iterations += 1;
+                    if nesting_iterations > MAX_NESTING_ITERATIONS {
+                        break;
+                    }
+
+                    let next_open = search_content[search_pos..].find(&open_tag_start);
+                    let next_close = search_content[search_pos..].find(&close_tag);
+
+                    match (next_open, next_close) {
+                        (Some(o), Some(c)) if o < c => {
+                            // Check if it's actually an opening tag (not just a prefix match)
+                            let after_tag =
+                                &search_content[search_pos + o + open_tag_start.len()..];
+                            if after_tag.starts_with('>')
+                                || after_tag.starts_with(' ')
+                                || after_tag.starts_with('/')
+                            {
+                                depth += 1;
+                            }
+                            search_pos += o + 1;
+                        }
+                        (_, Some(c)) => {
+                            depth -= 1;
+                            if depth == 0 {
+                                close_pos = Some(search_pos + c);
+                            } else {
+                                search_pos += c + 1;
+                            }
+                        }
+                        _ => break,
+                    }
+                }
+
+                if let Some(pos) = close_pos {
+                    let inner_content = &search_content[..pos];
+                    let child_value = parse_element(inner_content);
+
+                    // Handle duplicate tags by converting to array
+                    if let Some(existing) = result.get_mut(tag_name) {
+                        match existing {
+                            Value::Array(arr) => arr.push(child_value),
+                            _ => {
+                                let old = existing.take();
+                                *existing = Value::Array(vec![old, child_value]);
+                            }
+                        }
+                    } else {
+                        result.insert(tag_name.to_string(), child_value);
+                    }
+
+                    remaining = &search_content[pos + close_tag.len()..];
+                } else {
+                    remaining = &after_open[open_end + 1..];
+                }
+            } else {
+                break;
+            }
+        }
+
+        if result.is_empty() {
+            Value::String(trimmed.to_string())
+        } else {
+            Value::Object(result)
+        }
+    }
+
+    // Try to find and parse a <response> wrapper, otherwise parse root
+    let content = if let Some(start) = xml.find("<response>") {
+        // Search for closing tag AFTER the opening tag to avoid panic on malformed input
+        let content_start = start + 10; // Length of "<response>"
+        if let Some(end) = xml[content_start..].find("</response>") {
+            &xml[content_start..content_start + end]
+        } else {
+            xml
+        }
+    } else {
+        xml
+    };
+
+    match parse_element(content) {
+        Value::Object(map) if !map.is_empty() => {
+            // If result is {"response": {...}}, unwrap the nested object
+            // This handles cases where wrapper extraction didn't work (whitespace, etc.)
+            if map.len() == 1 {
+                if let Some(inner) = map.get("response") {
+                    if let Value::Object(inner_map) = inner {
+                        return Some(Value::Object(inner_map.clone()));
+                    }
+                }
+            }
+            Some(Value::Object(map))
+        }
+        Value::Object(_) => None,
+        other => Some(other),
     }
 }
 

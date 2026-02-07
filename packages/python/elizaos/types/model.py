@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -59,6 +59,13 @@ ModelTypeName = str
 
 # Union type of text generation model types
 TextGenerationModelType = str  # TEXT_SMALL, TEXT_LARGE, REASONING_*, TEXT_COMPLETION
+
+# ModelHandler uses Any at runtime to avoid circular imports.
+# Type checkers will see the proper type from the TYPE_CHECKING block.
+if TYPE_CHECKING:
+    ModelHandler = Callable[["IAgentRuntime", object], Awaitable[object]]
+else:
+    ModelHandler = Callable[[Any, object], Awaitable[object]]
 
 
 class ModelSettings(BaseModel):
@@ -386,13 +393,3 @@ class ResearchResult(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-class ModelHandler(BaseModel):
-    provider: str = Field(..., description="Provider name that registered this handler")
-    priority: int | None = Field(
-        default=None, description="Priority for selection (higher preferred)"
-    )
-    registration_order: int | None = Field(
-        default=None, alias="registrationOrder", description="Order of registration"
-    )
-
-    model_config = {"populate_by_name": True}

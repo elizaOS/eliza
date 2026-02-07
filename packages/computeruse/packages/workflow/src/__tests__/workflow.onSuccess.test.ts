@@ -3,12 +3,12 @@
  * Tests both direct pattern (steps array) and builder pattern
  */
 
-import { Desktop } from "@mediar-ai/computeruse";
+import { Desktop } from "@elizaos/computeruse";
 import { createWorkflow, createStep, z } from "../index";
 import type { WorkflowErrorContext } from "../types";
 
 // Mock Desktop to avoid needing real automation
-jest.mock("@mediar-ai/computeruse", () => ({
+jest.mock("@elizaos/computeruse", () => ({
     Desktop: jest.fn().mockImplementation(() => ({
         locator: jest.fn().mockReturnThis(),
         first: jest.fn().mockResolvedValue({}),

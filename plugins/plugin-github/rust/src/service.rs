@@ -223,6 +223,40 @@ impl GitHubService {
         Ok(self.map_pull_request(pr))
     }
 
+    pub async fn list_pull_requests(
+        &self,
+        params: ListPullRequestsParams,
+    ) -> Result<Vec<GitHubPullRequest>> {
+        let client = self.get_client().await?;
+        let (owner, repo) = self
+            .config
+            .get_repository_ref(Some(&params.owner), Some(&params.repo))?;
+
+        let state = match params.state {
+            PullRequestStateFilter::Open => octocrab::params::State::Open,
+            PullRequestStateFilter::Closed => octocrab::params::State::Closed,
+            PullRequestStateFilter::All => octocrab::params::State::All,
+        };
+
+        let page = client
+            .pulls(&owner, &repo)
+            .list()
+            .state(state)
+            .per_page(params.per_page)
+            .page(params.page)
+            .send()
+            .await
+            .map_err(|e| self.map_error(e, &owner, &repo))?;
+
+        let prs: Vec<GitHubPullRequest> = page
+            .items
+            .into_iter()
+            .map(|pr| self.map_pull_request(pr))
+            .collect();
+
+        Ok(prs)
+    }
+
     pub async fn merge_pull_request(
         &self,
         params: MergePullRequestParams,

@@ -74,6 +74,11 @@ async def main() -> int:
         help="Use ElizaOS runtime (requires elizaos package)",
     )
     parser.add_argument(
+        "--milaidy",
+        action="store_true",
+        help="Use milaidy TypeScript agent via benchmark server",
+    )
+    parser.add_argument(
         "--env",
         nargs="+",
         choices=["os", "db", "kg", "ws", "lt", "all"],
@@ -243,12 +248,28 @@ async def main() -> int:
             print(f"Warning: ElizaOS not available ({e})")
             print("Falling back to deterministic mock runtime")
             runtime = SmartMockRuntime()
+    elif args.milaidy:
+        print("\n" + "=" * 60)
+        print("Using MILAIDY TypeScript agent via benchmark server")
+        print("=" * 60)
+        from milaidy_adapter import MilaidyServerManager
+        from milaidy_adapter.agentbench import MilaidyAgentHarness
+
+        _load_dotenv()
+        milaidy_server = MilaidyServerManager()
+        milaidy_server.start()
+        milaidy_harness = MilaidyAgentHarness(milaidy_server.client)
+        # Use mock runtime for the runner scaffolding; the harness overrides
+        # the actual agent loop.
+        runtime = SmartMockRuntime()
+        runtime._milaidy_harness = milaidy_harness  # type: ignore[attr-defined]
+        print("✅ Milaidy benchmark server connected")
     else:
         print("\nUsing deterministic mock runtime (for harness validation)")
         runtime = SmartMockRuntime()
 
     # Baseline comparisons are only meaningful for real model runs
-    if isinstance(runtime, SmartMockRuntime):
+    if isinstance(runtime, SmartMockRuntime) and not getattr(runtime, "_milaidy_harness", None):
         config.enable_baseline_comparison = False
 
     # Show enabled environments

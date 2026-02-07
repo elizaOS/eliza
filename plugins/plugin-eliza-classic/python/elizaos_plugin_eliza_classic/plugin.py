@@ -523,8 +523,8 @@ def create_eliza_classic_elizaos_plugin() -> object:
         name="eliza-classic",
         description="Classic ELIZA pattern matching - no LLM required",
         models={
-            ModelType.TEXT_LARGE.value: text_large_handler,
-            ModelType.TEXT_SMALL.value: text_small_handler,
+            ModelType.TEXT_LARGE: text_large_handler,
+            ModelType.TEXT_SMALL: text_small_handler,
         },
     )
 

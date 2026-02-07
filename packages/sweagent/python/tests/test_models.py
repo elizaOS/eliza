@@ -11,7 +11,7 @@ from sweagent.types import History
 def test_litellm_mock():
     model = get_model(
         GenericAPIModelConfig(
-            name="gpt-4o",
+            name="gpt-5",
             completion_kwargs={"mock_response": "Hello, world!"},
             api_key=SecretStr("dummy_key"),
             top_p=None,

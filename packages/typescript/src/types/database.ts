@@ -8,6 +8,11 @@ import type {
   World,
 } from "./environment";
 import type { Memory, MemoryMetadata } from "./memory";
+import type {
+  PairingAllowlistEntry,
+  PairingChannel,
+  PairingRequest,
+} from "./pairing";
 import type { Metadata, UUID } from "./primitives";
 import type {
   JsonValue,
@@ -539,6 +544,62 @@ export interface IDatabaseAdapter<DB extends object = object> {
     count?: number;
     tableName?: string;
   }): Promise<Memory[]>;
+
+  // Pairing methods for secure DM access control
+
+  /**
+   * Get all pending pairing requests for a channel and agent.
+   * @param channel The messaging channel (telegram, discord, whatsapp, etc.)
+   * @param agentId The agent ID
+   * @returns Array of pending pairing requests
+   */
+  getPairingRequests(
+    channel: PairingChannel,
+    agentId: UUID,
+  ): Promise<PairingRequest[]>;
+
+  /**
+   * Create a new pairing request.
+   * @param request The pairing request to create
+   * @returns The created request ID
+   */
+  createPairingRequest(request: PairingRequest): Promise<UUID>;
+
+  /**
+   * Update an existing pairing request.
+   * @param request The pairing request with updated data
+   */
+  updatePairingRequest(request: PairingRequest): Promise<void>;
+
+  /**
+   * Delete a pairing request by ID.
+   * @param id The request ID to delete
+   */
+  deletePairingRequest(id: UUID): Promise<void>;
+
+  /**
+   * Get the allowlist for a channel and agent.
+   * @param channel The messaging channel
+   * @param agentId The agent ID
+   * @returns Array of allowlist entries
+   */
+  getPairingAllowlist(
+    channel: PairingChannel,
+    agentId: UUID,
+  ): Promise<PairingAllowlistEntry[]>;
+
+  /**
+   * Create a new allowlist entry.
+   * @param entry The allowlist entry to create
+   * @returns The created entry ID
+   */
+  createPairingAllowlistEntry(entry: PairingAllowlistEntry): Promise<UUID>;
+
+  /**
+   * Delete an allowlist entry by ID.
+   * @param id The entry ID to delete
+   */
+  deletePairingAllowlistEntry(id: UUID): Promise<void>;
 }
 
 /**

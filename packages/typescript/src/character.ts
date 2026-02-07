@@ -247,12 +247,6 @@ export function buildCharacterPlugins(
       ? ["@elizaos/plugin-x"]
       : []),
     ...(env.TELEGRAM_BOT_TOKEN?.trim() ? ["@elizaos/plugin-telegram"] : []),
-    ...(() => {
-      const ignore = env.IGNORE_BOOTSTRAP?.trim().toLowerCase();
-      const shouldIgnore =
-        ignore === "true" || ignore === "1" || ignore === "yes";
-      return shouldIgnore ? [] : ["@elizaos/plugin-bootstrap"];
-    })(),
     ...(!env.ANTHROPIC_API_KEY?.trim() &&
     !env.OPENROUTER_API_KEY?.trim() &&
     !env.OPENAI_API_KEY?.trim() &&

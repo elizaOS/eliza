@@ -4,7 +4,6 @@ import pytest
 
 pytest.importorskip("anthropic", reason="anthropic not installed")
 
-from elizaos_plugin_n8n.providers.capabilities import PluginCreationCapabilitiesProvider
 from elizaos_plugin_n8n.providers.exists import PluginExistsProvider
 from elizaos_plugin_n8n.providers.registry import PluginRegistryProvider
 from elizaos_plugin_n8n.providers.status import (
@@ -24,7 +23,7 @@ class TestPluginCreationStatusProvider:
     @pytest.mark.asyncio
     async def test_name(self, provider: PluginCreationStatusProvider) -> None:
         """Test provider name."""
-        assert provider.name == "plugin_creation_status"
+        assert provider.name == "n8n_plugin_status"
 
     @pytest.mark.asyncio
     async def test_get_no_jobs(self, provider: PluginCreationStatusProvider) -> None:
@@ -53,36 +52,6 @@ class TestPluginCreationStatusProvider:
         assert "50" in result.text
 
 
-class TestPluginCreationCapabilitiesProvider:
-    """Tests for PluginCreationCapabilitiesProvider."""
-
-    @pytest.fixture
-    def provider(self) -> PluginCreationCapabilitiesProvider:
-        """Create provider instance."""
-        return PluginCreationCapabilitiesProvider()
-
-    @pytest.mark.asyncio
-    async def test_name(self, provider: PluginCreationCapabilitiesProvider) -> None:
-        """Test provider name."""
-        assert provider.name == "plugin_creation_capabilities"
-
-    @pytest.mark.asyncio
-    async def test_get_no_api_key(self, provider: PluginCreationCapabilitiesProvider) -> None:
-        """Test get without API key."""
-        context = ProviderContext(state={"hasApiKey": False})
-        result = await provider.get(context)
-        assert "requires ANTHROPIC_API_KEY" in result.text
-        assert result.data["aiEnabled"] is False
-
-    @pytest.mark.asyncio
-    async def test_get_with_api_key(self, provider: PluginCreationCapabilitiesProvider) -> None:
-        """Test get with API key."""
-        context = ProviderContext(state={"hasApiKey": True})
-        result = await provider.get(context)
-        assert "fully operational" in result.text
-        assert result.data["aiEnabled"] is True
-
-
 class TestPluginRegistryProvider:
     """Tests for PluginRegistryProvider."""
 
@@ -94,7 +63,7 @@ class TestPluginRegistryProvider:
     @pytest.mark.asyncio
     async def test_name(self, provider: PluginRegistryProvider) -> None:
         """Test provider name."""
-        assert provider.name == "plugin_registry"
+        assert provider.name == "n8n_plugin_registry"
 
     @pytest.mark.asyncio
     async def test_get_empty_registry(self, provider: PluginRegistryProvider) -> None:
@@ -121,7 +90,7 @@ class TestPluginRegistryProvider:
 
 
 class TestPluginExistsProvider:
-    """Tests for PluginExistsProvider."""
+    """Tests for PluginExistsProvider (alias for PluginRegistryProvider)."""
 
     @pytest.fixture
     def provider(self) -> PluginExistsProvider:
@@ -130,15 +99,15 @@ class TestPluginExistsProvider:
 
     @pytest.mark.asyncio
     async def test_name(self, provider: PluginExistsProvider) -> None:
-        """Test provider name."""
-        assert provider.name == "plugin_exists"
+        """Test provider name matches merged PluginRegistryProvider."""
+        assert provider.name == "n8n_plugin_registry"
 
     @pytest.mark.asyncio
-    async def test_get_no_plugin_name(self, provider: PluginExistsProvider) -> None:
-        """Test get without plugin name."""
+    async def test_get_empty_state(self, provider: PluginExistsProvider) -> None:
+        """Test get with empty state falls through to registry listing."""
         context = ProviderContext(state={})
         result = await provider.get(context)
-        assert "No plugin name" in result.text
+        assert "No plugins" in result.text
 
     @pytest.mark.asyncio
     async def test_get_plugin_exists(self, provider: PluginExistsProvider) -> None:

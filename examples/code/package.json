@@ -36,6 +36,7 @@
     "@elizaos/plugin-todo": "workspace:*",
     "@elizaos/plugin-trajectory-logger": "workspace:*",
     "@elizaos/sweagent-root": "workspace:*",
+    "@elizaos/tui": "workspace:*",
     "@openai/codex-sdk": "^0.80.0",
     "@types/three": "^0.182.0",
     "chalk": "^5.3.0",
@@ -45,7 +46,7 @@
     "react": "19.2.3",
     "three": "^0.182.0",
     "uuid": "^13.0.0",
-    "zod": "^4.3.5",
+    "zod": "^4.3.6",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

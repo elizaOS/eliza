@@ -1,5 +1,4 @@
-// @ts-nocheck
-import type { IAgentRuntime, Memory, ServiceTypeName, State } from "@elizaos/core";
+import type { Content, IAgentRuntime, Memory, ServiceTypeName, State } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
 import { captureImageAction, describeSceneAction } from "../../action";
 import type { VisionService } from "../../service";
@@ -52,12 +51,7 @@ export class VisionBasicE2ETestSuite {
         };
 
         let callbackCalled = false;
-        let callbackResponse: {
-          text?: string;
-          thought?: string;
-          actions?: string[];
-          attachments?: Array<{ url: string; title: string }>;
-        } | null = null;
+        let callbackResponse: Content | null = null;
 
         const state: State = { values: {}, data: {}, text: "" };
 
@@ -152,12 +146,7 @@ export class VisionBasicE2ETestSuite {
         };
 
         let callbackCalled = false;
-        let callbackResponse: {
-          text?: string;
-          thought?: string;
-          actions?: string[];
-          attachments?: Array<{ url: string; title: string }>;
-        } | null = null;
+        let callbackResponse: Content | null = null;
 
         const state: State = { values: {}, data: {}, text: "" };
 

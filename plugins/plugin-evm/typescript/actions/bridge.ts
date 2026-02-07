@@ -12,7 +12,7 @@ import {
   type RouteExtended,
   resumeRoute,
 } from "@lifi/sdk";
-import { type Address, parseAbi, parseUnits } from "viem";
+import { type Address, parseAbi, parseUnits, type ReadContractParameters } from "viem";
 import {
   BRIDGE_POLL_INTERVAL_MS,
   DEFAULT_SLIPPAGE_PERCENT,
@@ -165,12 +165,13 @@ export class BridgeAction {
     const decimalsAbi = parseAbi(["function decimals() view returns (uint8)"]);
 
     const publicClient = this.walletProvider.getPublicClient(chainName as SupportedChain);
-    // @ts-expect-error - viem type narrowing issue with readContract parameters
-    const decimals = (await publicClient.readContract({
-      address: tokenAddress as Address,
-      abi: decimalsAbi,
-      functionName: "decimals",
-    })) as number;
+    const readDecimalsParams: ReadContractParameters<typeof decimalsAbi, "decimals"> =
+      {
+        address: tokenAddress as Address,
+        abi: decimalsAbi,
+        functionName: "decimals",
+      };
+    const decimals = await publicClient.readContract(readDecimalsParams);
     return Number(decimals);
   }
 

@@ -1,5 +1,4 @@
-// @ts-nocheck
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type { Content, IAgentRuntime, Memory } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
 import { killAutonomousAction } from "../../action";
 import type { VisionService } from "../../service";
@@ -25,7 +24,7 @@ export class VisionAutonomyE2ETestSuite {
         };
 
         let callbackCalled = false;
-        let callbackResponse: { text?: string; thought?: string; actions?: string[] } | null = null;
+        let callbackResponse: Content | null = null;
 
         // Validate the action
         const isValid = await killAutonomousAction.validate(runtime, message, {

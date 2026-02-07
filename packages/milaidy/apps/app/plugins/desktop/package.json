@@ -1,0 +1,44 @@
+{
+  "name": "@milaidy/capacitor-desktop",
+  "version": "1.0.0",
+  "description": "Milaidy Desktop Plugin for Capacitor - System tray, global shortcuts, auto-launch for Electron",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "dist/",
+    "electron/"
+  ],
+  "author": "Milaidy",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/milaidy/milaidy"
+  },
+  "scripts": {
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "rimraf": "^5.0.0",
+    "rollup": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "milaidy": {
+    "platforms": ["browser", "node"],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Limited support with graceful fallbacks (notifications via Web API, clipboard, basic window ops). System tray, global shortcuts, and auto-launch unavailable.",
+      "node": "Full support via Electron (system tray, global shortcuts, auto-launch, window management, power monitoring, native notifications)",
+      "ios": false,
+      "android": false
+    }
+  }
+}

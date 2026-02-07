@@ -1,17 +1,13 @@
-import {
-  createUniqueUuid,
-  type IAgentRuntime,
-  type JsonValue,
-  logger,
-  type Memory,
-  MemoryType,
-  Service,
-  type ServiceTypeName,
-  stringToUuid,
-  type Task,
-  type TaskWorker,
-  type UUID,
-} from "@elizaos/core";
+import { createUniqueUuid } from "../entities";
+import { logger } from "../logger";
+import type { Memory } from "../types/memory";
+import { MemoryType } from "../types/memory";
+import type { JsonValue, UUID } from "../types/primitives";
+import type { IAgentRuntime } from "../types/runtime";
+import type { ServiceTypeName } from "../types/service";
+import { Service } from "../types/service";
+import type { Task, TaskWorker } from "../types/task";
+import { stringToUuid } from "../utils";
 import type { ContactInfo, RolodexService } from "./rolodex.ts";
 
 export interface FollowUpTask {

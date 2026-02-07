@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Export all E2E test suites
 
 export { default as ScreenVisionE2ETestSuite } from "./screen-vision";

@@ -10,32 +10,18 @@ import {
   createMessageMemory,
   logger,
   MemoryType,
-  ModelType,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import inmemorydbPlugin from "@elizaos/plugin-inmemorydb";
 import localAiPlugin from "@elizaos/plugin-local-ai";
-import { ShellService, shellPlugin } from "@elizaos/plugin-shell";
+import { type ShellService, shellPlugin } from "@elizaos/plugin-shell";
 import { v4 as uuidv4 } from "uuid";
 
-type DecisionAction = "RUN" | "SLEEP" | "STOP";
-
 type AgentDecision =
-  | {
-      action: "RUN";
-      command: string;
-      note: string;
-    }
-  | {
-      action: "SLEEP";
-      sleepMs: number;
-      note: string;
-    }
-  | {
-      action: "STOP";
-      note: string;
-    };
+  | { action: "RUN"; command: string; note: string }
+  | { action: "SLEEP"; sleepMs: number; note: string }
+  | { action: "STOP"; note: string };
 
 type StepRecord = {
   step: number;
@@ -108,30 +94,32 @@ function parseDecision(raw: string): AgentDecision | null {
   const block = extractResponseBlock(raw);
   const xml = block ?? raw;
 
-  const actionRaw = extractTag(xml, "action");
+  const actionRaw = extractTag(xml, "action")?.trim().toUpperCase();
   if (!actionRaw) return null;
-  const action = actionRaw.trim().toUpperCase() as DecisionAction;
 
   const note = extractTag(xml, "note") ?? "";
 
-  if (action === "STOP") {
-    return { action, note };
+  switch (actionRaw) {
+    case "STOP":
+      return { action: "STOP", note };
+    case "SLEEP": {
+      const sleepRaw = extractTag(xml, "sleepMs");
+      const sleepMsParsed = sleepRaw ? Number(sleepRaw) : NaN;
+      if (!Number.isFinite(sleepMsParsed)) return null;
+      return {
+        action: "SLEEP",
+        sleepMs: clamp(sleepMsParsed, 100, 60_000),
+        note,
+      };
+    }
+    case "RUN": {
+      const command = extractTag(xml, "command");
+      if (!command) return null;
+      return { action: "RUN", command, note };
+    }
+    default:
+      return null;
   }
-
-  if (action === "SLEEP") {
-    const sleepRaw = extractTag(xml, "sleepMs");
-    const sleepMsParsed = sleepRaw ? Number(sleepRaw) : NaN;
-    if (!Number.isFinite(sleepMsParsed)) return null;
-    return { action, sleepMs: clamp(sleepMsParsed, 100, 60_000), note };
-  }
-
-  if (action === "RUN") {
-    const command = extractTag(xml, "command");
-    if (!command) return null;
-    return { action, command, note };
-  }
-
-  return null;
 }
 
 function baseCommand(command: string): string {
@@ -140,7 +128,10 @@ function baseCommand(command: string): string {
   return space === -1 ? trimmed : trimmed.slice(0, space);
 }
 
-function isCommandAllowed(command: string, allowedBaseCommands: readonly string[]): boolean {
+function isCommandAllowed(
+  command: string,
+  allowedBaseCommands: readonly string[],
+): boolean {
   const trimmed = command.trim();
   if (trimmed.length === 0) return false;
   if (trimmed.includes("\n") || trimmed.includes("\r")) return false;
@@ -195,8 +186,16 @@ async function main(): Promise<void> {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const repoRoot = path.resolve(here, "..", "..", "..");
 
-  const defaultSandboxDir = path.join(repoRoot, "examples", "autonomous", "sandbox");
-  const allowedDirectory = envString("SHELL_ALLOWED_DIRECTORY", defaultSandboxDir);
+  const defaultSandboxDir = path.join(
+    repoRoot,
+    "examples",
+    "autonomous",
+    "sandbox",
+  );
+  const allowedDirectory = envString(
+    "SHELL_ALLOWED_DIRECTORY",
+    defaultSandboxDir,
+  );
 
   // Ensure sandbox exists before plugin-shell reads env (it throws if missing).
   await fs.mkdir(allowedDirectory, { recursive: true });
@@ -204,12 +203,25 @@ async function main(): Promise<void> {
   // If user didn't set it, we still set it so plugin-shell is constrained even if enabled.
   process.env.SHELL_ALLOWED_DIRECTORY = allowedDirectory;
 
-  const goalFile = envString("AUTONOMY_GOAL_FILE", path.join(allowedDirectory, "GOAL.txt"));
-  const stopFile = envString("AUTONOMY_STOP_FILE", path.join(allowedDirectory, "STOP"));
-  const intervalMs = clamp(envNumber("AUTONOMY_INTERVAL_MS", 2000), 100, 60_000);
+  const goalFile = envString(
+    "AUTONOMY_GOAL_FILE",
+    path.join(allowedDirectory, "GOAL.txt"),
+  );
+  const stopFile = envString(
+    "AUTONOMY_STOP_FILE",
+    path.join(allowedDirectory, "STOP"),
+  );
+  const intervalMs = clamp(
+    envNumber("AUTONOMY_INTERVAL_MS", 2000),
+    100,
+    60_000,
+  );
   const maxSteps = clamp(envNumber("AUTONOMY_MAX_STEPS", 200), 1, 1_000_000);
 
-  const allowedCommands = envString("AUTONOMY_ALLOWED_COMMANDS", "ls,pwd,cat,echo,touch,mkdir")
+  const allowedCommands = envString(
+    "AUTONOMY_ALLOWED_COMMANDS",
+    "ls,pwd,cat,echo,touch,mkdir",
+  )
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
@@ -278,7 +290,10 @@ async function main(): Promise<void> {
 
   for (let step = 1; step <= maxSteps; step += 1) {
     if (await exists(stopFile)) {
-      logger.info({ src: "example:autonomous", stopFile }, "STOP file found; exiting");
+      logger.info(
+        { src: "example:autonomous", stopFile },
+        "STOP file found; exiting",
+      );
       break;
     }
 
@@ -309,17 +324,43 @@ async function main(): Promise<void> {
       id: uuidv4() as UUID,
       entityId: userId,
       roomId: autonomousRoomId,
-      content: { text: prompt },
+      content: {
+        text: prompt,
+        source: "autonomous-loop",
+        metadata: {
+          type: "autonomous-prompt",
+          isAutonomous: true,
+          channelId: "autonomous",
+          timestamp: Date.now(),
+        },
+      },
     });
 
     let rawText = "";
-    await runtime.messageService.handleMessage(runtime, message, async (content) => {
-      if (content?.text) rawText += content.text;
-      return [];
-    });
+    const result = await runtime.messageService.handleMessage(
+      runtime,
+      message,
+      async (content) => {
+        if (content?.text) rawText += content.text;
+        return [];
+      },
+    );
 
-    const decision =
-      parseDecision(rawText) ?? { action: "SLEEP", sleepMs: 2000, note: "parse-failed" };
+    logger.debug(
+      {
+        src: "example:autonomous",
+        step,
+        didRespond: result.didRespond,
+        mode: result.mode,
+      },
+      "Message service response",
+    );
+
+    const decision = parseDecision(rawText) ?? {
+      action: "SLEEP",
+      sleepMs: 2000,
+      note: "parse-failed",
+    };
 
     const record: StepRecord = {
       step,
@@ -339,7 +380,10 @@ async function main(): Promise<void> {
           error: "command-not-allowed",
         };
       } else {
-        const result = await shellService.executeCommand(trimmed, autonomousRoomId);
+        const result = await shellService.executeCommand(
+          trimmed,
+          autonomousRoomId,
+        );
         record.shell = {
           executed: true,
           command: trimmed,
@@ -353,27 +397,27 @@ async function main(): Promise<void> {
       }
     }
 
-    if (decision.action === "SLEEP") {
-      record.shell = { executed: false };
-    }
-
-    if (decision.action === "STOP") {
+    if (decision.action === "SLEEP" || decision.action === "STOP") {
       record.shell = { executed: false };
     }
 
     const summaryLines: string[] = [];
     summaryLines.push(`[step ${step}] ${decision.action}`);
     if (decision.note) summaryLines.push(`note: ${decision.note}`);
-    if (decision.action === "RUN") summaryLines.push(`command: ${decision.command}`);
-    if (decision.action === "SLEEP") summaryLines.push(`sleepMs: ${decision.sleepMs}`);
+    if (decision.action === "RUN")
+      summaryLines.push(`command: ${decision.command}`);
+    if (decision.action === "SLEEP")
+      summaryLines.push(`sleepMs: ${decision.sleepMs}`);
     if (record.shell?.executed) {
       summaryLines.push(
         `result: success=${String(record.shell.success)} exitCode=${String(record.shell.exitCode)} cwd=${String(
           record.shell.executedIn ?? "",
         )}`,
       );
-      if (record.shell.stdout) summaryLines.push(`stdout:\n${record.shell.stdout}`);
-      if (record.shell.stderr) summaryLines.push(`stderr:\n${record.shell.stderr}`);
+      if (record.shell.stdout)
+        summaryLines.push(`stdout:\n${record.shell.stdout}`);
+      if (record.shell.stderr)
+        summaryLines.push(`stderr:\n${record.shell.stderr}`);
       if (record.shell.error) summaryLines.push(`error: ${record.shell.error}`);
     } else if (record.shell?.error) {
       summaryLines.push(`shell: not executed (${record.shell.error})`);
@@ -406,7 +450,8 @@ async function main(): Promise<void> {
       break;
     }
 
-    const sleepFor = decision.action === "SLEEP" ? decision.sleepMs : intervalMs;
+    const sleepFor =
+      decision.action === "SLEEP" ? decision.sleepMs : intervalMs;
     await new Promise<void>((resolve) => setTimeout(resolve, sleepFor));
   }
 
@@ -414,4 +459,3 @@ async function main(): Promise<void> {
 }
 
 await main();
-

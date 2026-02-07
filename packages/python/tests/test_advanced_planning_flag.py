@@ -9,7 +9,7 @@ from elizaos.types.agent import Character
 @pytest.mark.asyncio
 async def test_advanced_planning_autoloads_when_enabled() -> None:
     runtime = AgentRuntime(
-        character=Character(name="AdvPlanningOn", bio="Test", advancedPlanning=True),
+        character=Character(name="AdvPlanningOn", bio=["Test"], advanced_planning=True),
         plugins=[],
     )
     await runtime.initialize()
@@ -19,7 +19,7 @@ async def test_advanced_planning_autoloads_when_enabled() -> None:
 @pytest.mark.asyncio
 async def test_advanced_planning_not_loaded_when_disabled() -> None:
     runtime = AgentRuntime(
-        character=Character(name="AdvPlanningOff", bio="Test", advancedPlanning=False),
+        character=Character(name="AdvPlanningOff", bio=["Test"], advanced_planning=False),
         plugins=[],
     )
     await runtime.initialize()

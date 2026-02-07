@@ -5,9 +5,11 @@
 
 use async_trait::async_trait;
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::PluginResult;
+use crate::types::task::Task;
 use crate::types::{Character, Content, Entity, Memory, MemoryType, ModelType, Room, State, World};
 
 /// The agent runtime interface.
@@ -101,6 +103,58 @@ pub trait IAgentRuntime: Send + Sync {
 
     /// Log an error message.
     fn log_error(&self, source: &str, message: &str);
+
+    // =========================================================================
+    // Task Worker Methods (parity with TypeScript)
+    // =========================================================================
+
+    /// Register a task worker.
+    fn register_task_worker(&self, worker: Box<dyn TaskWorker>);
+
+    /// Get a task worker by name.
+    fn get_task_worker(&self, name: &str) -> Option<Arc<dyn TaskWorker>>;
+
+    // =========================================================================
+    // Task CRUD Methods
+    // =========================================================================
+
+    /// Create a new task.
+    async fn create_task(&self, task: Task) -> PluginResult<Task>;
+
+    /// Get tasks matching the given filters.
+    async fn get_tasks(&self, tags: Option<Vec<String>>) -> PluginResult<Vec<Task>>;
+
+    /// Delete a task by ID.
+    async fn delete_task(&self, task_id: Uuid) -> PluginResult<bool>;
+
+    /// Get the service for the given type.
+    fn get_service(&self, service_type: &str) -> Option<Arc<dyn std::any::Any + Send + Sync>>;
+}
+
+/// Task worker trait - defines the contract for executing tasks.
+/// Parity with TypeScript's TaskWorker interface.
+#[async_trait]
+pub trait TaskWorker: Send + Sync {
+    /// The unique name of the task type this worker handles
+    fn name(&self) -> &str;
+
+    /// Execute the task
+    async fn execute(
+        &self,
+        runtime: Arc<dyn IAgentRuntime>,
+        options: HashMap<String, serde_json::Value>,
+        task: Task,
+    ) -> PluginResult<()>;
+
+    /// Optional validation function (defaults to true)
+    async fn validate(
+        &self,
+        _runtime: Arc<dyn IAgentRuntime>,
+        _message: Memory,
+        _state: State,
+    ) -> bool {
+        true
+    }
 }
 
 /// Parameters for model calls.

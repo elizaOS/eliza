@@ -95,3 +95,161 @@ async def test_mcp_action_argument_shapes() -> None:
     assert fake.calls[3][1]["title"] == "Untitled"
     assert fake.calls[3][1]["include_tree_after_action"] is True
     assert fake.calls[3][1]["tree_max_depth"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Action handler tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_handle_action_disabled_returns_error() -> None:
+    cfg = ComputerUseConfig(enabled=False, mode=ComputerUseMode.AUTO)
+    plugin = create_computeruse_plugin(cfg)
+    res = await plugin.handle_action("COMPUTERUSE_CLICK", {"selector": "role:Button"})
+    assert res["success"] is False
+    assert "disabled" in str(res.get("error", "")).lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_action_unknown_action() -> None:
+    cfg = ComputerUseConfig(enabled=True, mode=ComputerUseMode.MCP)
+    plugin = create_computeruse_plugin(cfg)
+    plugin.backend = "mcp"
+    plugin._mcp = _FakeMcpClient()
+    res = await plugin.handle_action("COMPUTERUSE_FLY_TO_MOON", {})
+    assert res["success"] is False
+    assert "Unknown" in str(res.get("error", ""))
+
+
+@pytest.mark.asyncio
+async def test_click_missing_selector() -> None:
+    cfg = ComputerUseConfig(enabled=True, mode=ComputerUseMode.MCP)
+    plugin = create_computeruse_plugin(cfg)
+    plugin.backend = "mcp"
+    plugin._mcp = _FakeMcpClient()
+    res = await plugin.handle_action("COMPUTERUSE_CLICK", {})
+    assert res["success"] is False
+    assert "selector" in str(res.get("error", "")).lower()
+
+
+@pytest.mark.asyncio
+async def test_click_missing_process_in_mcp_mode() -> None:
+    cfg = ComputerUseConfig(enabled=True, mode=ComputerUseMode.MCP)
+    plugin = create_computeruse_plugin(cfg)
+    plugin.backend = "mcp"
+    plugin._mcp = _FakeMcpClient()
+    res = await plugin.handle_action(
+        "COMPUTERUSE_CLICK",
+        {"selector": "role:Button|name:Save"},  # no process, no process: prefix
+    )
+    assert res["success"] is False
+    assert "process" in str(res.get("error", "")).lower()
+
+
+@pytest.mark.asyncio
+async def test_type_missing_text() -> None:
+    cfg = ComputerUseConfig(enabled=True, mode=ComputerUseMode.MCP)
+    plugin = create_computeruse_plugin(cfg)
+    plugin.backend = "mcp"
+    plugin._mcp = _FakeMcpClient()
+    res = await plugin.handle_action(
+        "COMPUTERUSE_TYPE",
+        {"selector": "process:notepad >> role:Edit"},
+    )
+    assert res["success"] is False
+    assert "text" in str(res.get("error", "")).lower()
+
+
+@pytest.mark.asyncio
+async def test_open_application_missing_name() -> None:
+    cfg = ComputerUseConfig(enabled=True, mode=ComputerUseMode.MCP)
+    plugin = create_computeruse_plugin(cfg)
+    plugin.backend = "mcp"
+    plugin._mcp = _FakeMcpClient()
+    res = await plugin.handle_action("COMPUTERUSE_OPEN_APPLICATION", {})
+    assert res["success"] is False
+    assert "name" in str(res.get("error", "")).lower()
+
+
+@pytest.mark.asyncio
+async def test_open_application_empty_name() -> None:
+    cfg = ComputerUseConfig(enabled=True, mode=ComputerUseMode.MCP)
+    plugin = create_computeruse_plugin(cfg)
+    plugin.backend = "mcp"
+    plugin._mcp = _FakeMcpClient()
+    res = await plugin.handle_action("COMPUTERUSE_OPEN_APPLICATION", {"name": "  "})
+    assert res["success"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_window_tree_missing_process() -> None:
+    cfg = ComputerUseConfig(enabled=True, mode=ComputerUseMode.MCP)
+    plugin = create_computeruse_plugin(cfg)
+    plugin.backend = "mcp"
+    plugin._mcp = _FakeMcpClient()
+    res = await plugin.handle_action("COMPUTERUSE_GET_WINDOW_TREE", {})
+    assert res["success"] is False
+    assert "process" in str(res.get("error", "")).lower()
+
+
+@pytest.mark.asyncio
+async def test_get_applications_via_mcp() -> None:
+    cfg = ComputerUseConfig(enabled=True, mode=ComputerUseMode.MCP)
+    plugin = create_computeruse_plugin(cfg)
+    fake = _FakeMcpClient()
+    plugin.backend = "mcp"
+    plugin._mcp = fake
+
+    res = await plugin.handle_action("COMPUTERUSE_GET_APPLICATIONS", {})
+    assert res["success"] is True
+    assert fake.calls[0][0] == "get_applications_and_windows_list"
+
+
+@pytest.mark.asyncio
+async def test_click_with_process_prefix_selector() -> None:
+    """Test that a selector with 'process:app >> ...' extracts process properly."""
+    cfg = ComputerUseConfig(enabled=True, mode=ComputerUseMode.MCP)
+    plugin = create_computeruse_plugin(cfg)
+    fake = _FakeMcpClient()
+    plugin.backend = "mcp"
+    plugin._mcp = fake
+
+    res = await plugin.handle_action(
+        "COMPUTERUSE_CLICK",
+        {"selector": "process:chrome >> role:Button|name:Submit", "timeoutMs": 3000},
+    )
+    assert res["success"] is True
+    assert fake.calls[0][1]["process"] == "chrome"
+    assert fake.calls[0][1]["selector"] == "role:Button|name:Submit"
+    assert fake.calls[0][1]["timeout_ms"] == 3000
+
+
+@pytest.mark.asyncio
+async def test_type_clears_before_typing_by_default() -> None:
+    cfg = ComputerUseConfig(enabled=True, mode=ComputerUseMode.MCP)
+    plugin = create_computeruse_plugin(cfg)
+    fake = _FakeMcpClient()
+    plugin.backend = "mcp"
+    plugin._mcp = fake
+
+    await plugin.handle_action(
+        "COMPUTERUSE_TYPE",
+        {"selector": "process:notepad >> role:Edit", "text": "hello"},
+    )
+    assert fake.calls[0][1]["clear_before_typing"] is True
+
+
+@pytest.mark.asyncio
+async def test_click_invalid_timeout_uses_default() -> None:
+    cfg = ComputerUseConfig(enabled=True, mode=ComputerUseMode.MCP)
+    plugin = create_computeruse_plugin(cfg)
+    fake = _FakeMcpClient()
+    plugin.backend = "mcp"
+    plugin._mcp = fake
+
+    await plugin.handle_action(
+        "COMPUTERUSE_CLICK",
+        {"process": "notepad", "selector": "role:Button", "timeoutMs": -1},
+    )
+    assert fake.calls[0][1]["timeout_ms"] == 5000

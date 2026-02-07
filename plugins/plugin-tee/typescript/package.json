@@ -87,5 +87,14 @@
         "sensitive": true
       }
     }
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js build available via exports.node"
+    }
   }
 }

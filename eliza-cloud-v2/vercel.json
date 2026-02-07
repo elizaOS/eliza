@@ -1,0 +1,56 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/container-billing",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/social-automation",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/auto-top-up",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/v1/cron/deployment-monitor",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/v1/cron/health-check",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/sample-eliza-price",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/process-redemptions",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/agent-budgets",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/release-pending-earnings",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-anonymous-sessions",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-expired-crypto-payments",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-webhook-events",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/snapshot-cleanup",
+      "schedule": "0 3 * * 0"
+    }
+  ]
+}

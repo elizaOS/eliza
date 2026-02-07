@@ -10,12 +10,43 @@ vi.mock('../DexInteractionService');
 vi.mock('../VaultService');
 vi.mock('../UserLpProfileService');
 
+/**
+ * Interface for accessing private members for testing
+ */
+interface ConcentratedLiquidityServiceTestable extends ConcentratedLiquidityService {
+    isInitialized: boolean;
+}
+
+/**
+ * Interface for mock DEX service
+ */
+interface MockDexService {
+    getDexService: ReturnType<typeof vi.fn>;
+    getPools: ReturnType<typeof vi.fn>;
+}
+
+/**
+ * Interface for mock vault service
+ */
+interface MockVaultServiceShape {
+    createVault: ReturnType<typeof vi.fn>;
+    getVaultKeypair: ReturnType<typeof vi.fn>;
+}
+
+/**
+ * Interface for mock user profile service
+ */
+interface MockUserProfileService {
+    getProfile: ReturnType<typeof vi.fn>;
+    updateProfile: ReturnType<typeof vi.fn>;
+}
+
 describe('ConcentratedLiquidityService', () => {
     let service: ConcentratedLiquidityService;
     let mockRuntime: IAgentRuntime;
-    let mockDexService: any;
-    let mockVaultService: any;
-    let mockUserProfileService: any;
+    let mockDexService: MockDexService;
+    let mockVaultService: MockVaultServiceShape;
+    let mockUserProfileService: MockUserProfileService;
 
     beforeEach(() => {
         // Create mock services
@@ -48,7 +79,7 @@ describe('ConcentratedLiquidityService', () => {
                         return null;
                 }
             })
-        } as any;
+        } as unknown as IAgentRuntime;
 
         service = new ConcentratedLiquidityService();
     });
@@ -56,7 +87,8 @@ describe('ConcentratedLiquidityService', () => {
     describe('start', () => {
         it('should initialize without errors', async () => {
             await expect(service.start(mockRuntime)).resolves.not.toThrow();
-            expect((service as any).isInitialized).toBe(true);
+            const testableService = service as unknown as ConcentratedLiquidityServiceTestable;
+            expect(testableService.isInitialized).toBe(true);
         });
     });
 
@@ -139,13 +171,15 @@ describe('ConcentratedLiquidityService', () => {
         it('should reset initialization state', async () => {
             await service.start(mockRuntime);
             
+            const testableService = service as unknown as ConcentratedLiquidityServiceTestable;
+            
             // Verify service is initialized
-            expect((service as any).isInitialized).toBe(true);
+            expect(testableService.isInitialized).toBe(true);
 
             await service.stop();
             
             // Verify service is no longer initialized
-            expect((service as any).isInitialized).toBe(false);
+            expect(testableService.isInitialized).toBe(false);
         });
     });
 }); 

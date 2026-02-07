@@ -28,12 +28,14 @@
   "sideEffects": false,
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "drizzle-orm": "^0.45.1",
     "fs-extra": "^11.2.0",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.40.1",
     "@biomejs/biome": "^2.3.11",
+    "@types/bun": "^1.3.5",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^25.0.3",
     "dotenv": "^17.2.3",
@@ -93,7 +95,27 @@
         "description": "Claude model to use",
         "required": false,
         "default": "claude-3-opus-20240229"
+      },
+      "N8N_API_KEY": {
+        "type": "string",
+        "description": "n8n API key for authentication (required for workflow features)",
+        "required": false,
+        "sensitive": true
+      },
+      "N8N_HOST": {
+        "type": "string",
+        "description": "n8n instance URL (e.g., https://your.n8n.cloud) (required for workflow features)",
+        "required": false
       }
+    }
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js build available via exports.node"
     }
   }
 }

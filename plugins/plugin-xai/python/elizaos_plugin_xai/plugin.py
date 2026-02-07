@@ -123,8 +123,8 @@ def get_xai_elizaos_plugin() -> Plugin:
         init=init_plugin,
         actions=[POST_ACTION],
         models={
-            ModelType.TEXT_SMALL.value: handle_text_small,
-            ModelType.TEXT_LARGE.value: handle_text_large,
-            ModelType.TEXT_EMBEDDING.value: handle_text_embedding,
+            ModelType.TEXT_SMALL: handle_text_small,
+            ModelType.TEXT_LARGE: handle_text_large,
+            ModelType.TEXT_EMBEDDING: handle_text_embedding,
         },
     )

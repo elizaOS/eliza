@@ -202,7 +202,7 @@ export enum OrderSide {
   SELL = "SELL",
 }
 
-export const OrderSideSchema = z.nativeEnum(OrderSide);
+export const OrderSideSchema = z.enum(OrderSide);
 
 /**
  * Order type enumeration
@@ -218,7 +218,7 @@ export enum OrderType {
   FAK = "FAK",
 }
 
-export const OrderTypeSchema = z.nativeEnum(OrderType);
+export const OrderTypeSchema = z.enum(OrderType);
 
 /**
  * Order status
@@ -233,7 +233,7 @@ export enum OrderStatus {
   REJECTED = "REJECTED",
 }
 
-export const OrderStatusSchema = z.nativeEnum(OrderStatus);
+export const OrderStatusSchema = z.enum(OrderStatus);
 
 /**
  * Parameters for creating orders

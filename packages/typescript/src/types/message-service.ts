@@ -30,6 +30,8 @@ export interface MessageProcessingOptions
   maxMultiStepIterations?: number;
   shouldRespondModel?: ShouldRespondModelType;
   onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+  /** Signal to abort message processing */
+  abortSignal?: AbortSignal;
 }
 
 /**

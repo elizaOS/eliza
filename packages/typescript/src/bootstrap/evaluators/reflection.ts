@@ -122,7 +122,9 @@ function resolveEntity(entityId: string, entities: Entity[]): UUID {
 
   // Try name match as last resort
   entity = entities.find((a) =>
-    a.names.some((n) => n.toLowerCase().includes(entityId.toLowerCase())),
+    a.names.some((n: string) =>
+      n.toLowerCase().includes(entityId.toLowerCase()),
+    ),
   );
   if (entity?.id) {
     return entity.id;

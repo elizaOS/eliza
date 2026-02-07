@@ -10,7 +10,7 @@ fn get_tokenizer(model: &str) -> Result<CoreBPE> {
     if model.contains("4o") {
         get_bpe_from_model("gpt-5").map_err(|e| OpenAIError::TokenizerError(e.to_string()))
     } else if model.contains("4") {
-        get_bpe_from_model("gpt-4").map_err(|e| OpenAIError::TokenizerError(e.to_string()))
+        get_bpe_from_model("gpt-5").map_err(|e| OpenAIError::TokenizerError(e.to_string()))
     } else {
         get_bpe_from_model("gpt-3.5-turbo").map_err(|e| OpenAIError::TokenizerError(e.to_string()))
     }

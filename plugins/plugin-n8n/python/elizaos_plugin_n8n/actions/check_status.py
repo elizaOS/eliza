@@ -16,8 +16,8 @@ class ActionResult:
 
 
 class CheckStatusAction:
-    name = "checkPluginCreationStatus"
-    description = "Check the status of a plugin creation job"
+    name = "CHECK_PLUGIN_STATUS"
+    description = "Check the progress of an active plugin creation job. Do NOT use for n8n workflow status."
     similes = [
         "plugin status",
         "check plugin progress",

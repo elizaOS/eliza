@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+        <string>Milaidy</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>armv7</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<true/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_milaidy-gw._tcp</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Milaidy uses your camera to capture photos and video when you ask it to.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Milaidy discovers and connects to your Milaidy gateway on the local network.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Milaidy can share your location in the background so it stays up to date even when the app is not in use.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Milaidy uses your location to provide location-aware responses when you allow it.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Milaidy needs microphone access for voice wake, talk mode, and video capture.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Milaidy saves captured photos and videos to your photo library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Milaidy accesses your photo library to attach and share photos or videos.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Milaidy uses on-device speech recognition to listen for voice commands and wake words.</string>
+</dict>
+</plist>

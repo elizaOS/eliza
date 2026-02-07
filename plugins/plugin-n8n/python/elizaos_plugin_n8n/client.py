@@ -259,6 +259,9 @@ class PluginCreationClient:
         job: PluginCreationJob,
         use_template: bool = True,
     ) -> None:
+        """Set up the plugin workspace directory structure."""
+        if not job.output_path or not job.output_path.strip():
+            raise ValueError("Output path cannot be empty")
         output_path = Path(job.output_path)
         output_path.mkdir(parents=True, exist_ok=True)
 
@@ -400,6 +403,9 @@ Please fix all the errors and provide updated code with file paths marked."""
         job: PluginCreationJob,
         response_text: str,
     ) -> None:
+        """Write generated code files to the plugin workspace."""
+        if not job.output_path or not job.output_path.strip():
+            raise ValueError("Output path cannot be empty")
         output_path = Path(job.output_path)
         file_regex = re.compile(
             r"```(?:typescript|ts|javascript|js)?\s*\n(?://\s*)?(?:File:\s*)?(.+?)\n([\s\S]*?)```"
@@ -408,6 +414,9 @@ Please fix all the errors and provide updated code with file paths marked."""
         for match in file_regex.finditer(response_text):
             file_path = match.group(1).strip()
             file_content = match.group(2).strip()
+
+            if not file_path:
+                continue  # Skip entries with empty file paths
 
             normalized_path = file_path if file_path.startswith("src/") else f"src/{file_path}"
             full_path = output_path / normalized_path
