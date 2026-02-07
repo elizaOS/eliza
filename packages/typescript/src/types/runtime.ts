@@ -5,6 +5,7 @@ import type {
   ActionResult,
   Evaluator,
   HandlerCallback,
+  PreEvaluatorResult,
   Provider,
 } from "./components";
 import type { IDatabaseAdapter } from "./database";
@@ -146,6 +147,20 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
     callback?: HandlerCallback,
     responses?: Memory[],
   ): Promise<Evaluator[] | null>;
+
+  /**
+   * Run pre-phase evaluators on a message before memory storage.
+   * Pre-evaluators act as security gates — they can block the message
+   * entirely or rewrite it (e.g. redact credentials).
+   *
+   * @param message - The incoming message to evaluate
+   * @param state - Optional state context
+   * @returns A merged PreEvaluatorResult
+   */
+  evaluatePre(
+    message: Memory,
+    state?: State,
+  ): Promise<PreEvaluatorResult>;
 
   registerProvider(provider: Provider): void;
 

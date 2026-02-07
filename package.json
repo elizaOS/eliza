@@ -66,7 +66,7 @@
     "examples/app/*/*/*",
     "examples/polyagent/apps/*",
     "examples/polyagent/packages/*",
-    "../eliza-workspace/milaidy"
+    "../milaidy"
   ],
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",

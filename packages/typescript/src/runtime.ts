@@ -1285,6 +1285,90 @@ export class AgentRuntime implements IAgentRuntime {
     this.evaluators.push(withCanonicalEvaluatorDocs(evaluator));
   }
 
+  /**
+   * Run all phase:"pre" evaluators against an incoming message.
+   *
+   * Pre-evaluators act as middleware — they can inspect, rewrite, or block a
+   * message **before** it is saved to memory or processed by the agent.
+   *
+   * @returns A merged {@link PreEvaluatorResult}.  If *any* pre-evaluator
+   *          sets `blocked: true` the message is dropped.  If any provides
+   *          `rewrittenText` the *last* rewrite wins.
+   */
+  async evaluatePre(
+    message: Memory,
+    state?: State,
+  ): Promise<import("./types/components").PreEvaluatorResult> {
+    const preEvaluators = this.evaluators.filter((e) => e.phase === "pre");
+    if (preEvaluators.length === 0) {
+      return { blocked: false };
+    }
+
+    let blocked = false;
+    let rewrittenText: string | undefined;
+    let reason: string | undefined;
+
+    for (const evaluator of preEvaluators) {
+      if (!evaluator.handler) continue;
+      try {
+        const shouldRun = await evaluator.validate(
+          this as IAgentRuntime,
+          message,
+          state,
+        );
+        if (!shouldRun) continue;
+
+        const result = await evaluator.handler(
+          this as IAgentRuntime,
+          message,
+          state ?? ({ values: {}, data: {}, text: "" } as State),
+          {},
+          undefined,
+          undefined,
+        );
+
+        // Handler may return a PreEvaluatorResult-shaped object
+        if (result && typeof result === "object") {
+          const r = result as unknown as Record<string, unknown>;
+          if (r.blocked === true) {
+            blocked = true;
+            reason = (r.reason as string) ?? reason;
+            this.logger.warn(
+              { src: "runtime:evaluatePre", evaluator: evaluator.name, reason: r.reason },
+              `Pre-evaluator "${evaluator.name}" blocked message`,
+            );
+          }
+          if (typeof r.rewrittenText === "string") {
+            rewrittenText = r.rewrittenText;
+          }
+        }
+
+        this.adapter.log({
+          entityId: message.entityId,
+          roomId: message.roomId,
+          type: "evaluator",
+          body: {
+            messageId: message.id,
+            runId: this.getCurrentRunId(),
+            metadata: {
+              evaluator: evaluator.name,
+              phase: "pre",
+              blocked,
+              message: message.content.text ?? "",
+            },
+          },
+        });
+      } catch (err) {
+        this.logger.error(
+          { src: "runtime:evaluatePre", evaluator: evaluator.name, error: err },
+          `Pre-evaluator "${evaluator.name}" threw — skipping`,
+        );
+      }
+    }
+
+    return { blocked, rewrittenText, reason };
+  }
+
   // Helper functions for immutable action plan updates
   private updateActionPlan<T>(plan: T, updates: Partial<T>): T {
     return { ...plan, ...updates };
@@ -2372,7 +2456,10 @@ export class AgentRuntime implements IAgentRuntime {
     worldId,
     metadata,
   }: Room) {
-    if (!worldId) throw new Error("worldId is required");
+    // Default worldId to agentId for agent-internal rooms
+    if (!worldId) {
+      worldId = this.agentId;
+    }
     const room = await this.getRoom(id);
     if (!room) {
       await this.createRoom({
@@ -4504,28 +4591,35 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     }
   }
 
-  async ensureEmbeddingDimension() {
+  async ensureEmbeddingDimension(): Promise<void> {
     if (!this.adapter) {
       throw new Error(
         "Database adapter not initialized before ensureEmbeddingDimension",
       );
     }
-    const model = this.getModel(ModelType.TEXT_EMBEDDING);
-    if (!model) {
+    if (!this.getModel(ModelType.TEXT_EMBEDDING)) {
       throw new Error("No TEXT_EMBEDDING model registered");
     }
 
-    // Pass null to get a test vector for dimension detection
-    // Model handlers should return a zero-filled vector of the correct dimension when null is passed
-    const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
-    if (!embedding || !embedding.length) {
-      throw new Error("Invalid embedding received");
+    // Check if dimension is provided via settings (skips expensive ~500ms API call)
+    const providedDimension = this.getSetting("EMBEDDING_DIMENSION");
+    const parsedDimension = Number(providedDimension);
+    const useProvidedDimension = parsedDimension > 0;
+
+    const dimension = useProvidedDimension
+      ? parsedDimension
+      : (await this.useModel(ModelType.TEXT_EMBEDDING, null))?.length;
+
+    if (!dimension) {
+      throw new Error("Invalid embedding dimension");
     }
 
-    await this.adapter.ensureEmbeddingDimension(embedding.length);
+    await this.adapter.ensureEmbeddingDimension(dimension);
     this.logger.debug(
-      { src: "agent", agentId: this.agentId, dimension: embedding.length },
-      "Embedding dimension set",
+      { src: "agent", agentId: this.agentId, dimension },
+      useProvidedDimension
+        ? "Embedding dimension set from config"
+        : "Embedding dimension set via API call",
     );
   }
 
@@ -4996,7 +5090,10 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     messageServerId,
     worldId,
   }: Room): Promise<UUID> {
-    if (!worldId) throw new Error("worldId is required");
+    // Default worldId to agentId for agent-internal rooms (e.g. heartbeat)
+    if (!worldId) {
+      worldId = this.agentId;
+    }
     const res = await this.adapter.createRooms([
       {
         id,
@@ -5086,6 +5183,10 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return await this.adapter.deleteCache(key);
   }
   async createTask(task: Task): Promise<UUID> {
+    // Default worldId to agentId for agent-internal tasks (e.g. cron, heartbeat)
+    if (!task.worldId) {
+      task = { ...task, worldId: this.agentId };
+    }
     return await this.adapter.createTask(task);
   }
   async getTasks(params: {

@@ -64,7 +64,8 @@ export type MessageProcessingMode =
   | ProtoMessageProcessingMode
   | "simple"
   | "actions"
-  | "none";
+  | "none"
+  | "blocked";
 
 /**
  * Core interface for message handling service.

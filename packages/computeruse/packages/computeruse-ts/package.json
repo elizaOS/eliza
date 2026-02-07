@@ -31,6 +31,12 @@
     "linux"
   ],
   "main": "wrapper.js",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "wrapper.js",
+    "wrapper.d.ts"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -47,12 +53,12 @@
     }
   },
   "optionalDependencies": {
-    "@elizaos/computeruse-win32-arm64-msvc": "0.24.20",
-    "@elizaos/computeruse-win32-x64-msvc": "0.24.20",
-    "@elizaos/computeruse-darwin-arm64": "0.24.20",
-    "@elizaos/computeruse-darwin-x64": "0.24.20",
-    "@elizaos/computeruse-linux-x64-gnu": "0.24.20",
-    "@elizaos/computeruse-linux-arm64-gnu": "0.24.20"
+    "@elizaos/computeruse-win32-arm64-msvc": "2.0.0-alpha.3",
+    "@elizaos/computeruse-win32-x64-msvc": "2.0.0-alpha.3",
+    "@elizaos/computeruse-darwin-arm64": "2.0.0-alpha.3",
+    "@elizaos/computeruse-darwin-x64": "2.0.0-alpha.3",
+    "@elizaos/computeruse-linux-x64-gnu": "2.0.0-alpha.3",
+    "@elizaos/computeruse-linux-arm64-gnu": "2.0.0-alpha.3"
   },
   "repository": {
     "type": "git",
@@ -60,15 +66,15 @@
   },
   "scripts": {
     "artifacts": "npx napi artifacts",
-    "build": "npm run sync-version && npm run build:wrapper && npx napi build --platform --release --strip",
-    "build:debug": "npm run sync-version && npm run build:wrapper && npx napi build --platform",
+    "build": "npm run build:wrapper && npx napi build --platform --release --strip",
+    "build:debug": "npm run build:wrapper && npx napi build --platform",
     "build:wrapper": "npx esbuild wrapper.ts --outfile=wrapper.js --platform=node --format=cjs --target=es2020",
-    "prepublish:ci": "npm run sync-version && npm run build:wrapper",
-    "prepublishOnly": "npm run sync-version && npm run build:wrapper && npx napi prepublish -t npm",
+    "prepublish:ci": "npm run build:wrapper",
+    "prepublishOnly": "npm run build:wrapper && npx napi prepublish -t npm",
     "sync-version": "node scripts/sync-version.js",
     "test": "node tests/element-chaining.test.js",
     "test-hook": "powershell.exe -ExecutionPolicy Bypass -File \"../../.git/hooks/pre-push.ps1\""
   },
   "types": "wrapper.d.ts",
-  "version": "0.24.20"
+  "version": "2.0.0-alpha.3"
 }
