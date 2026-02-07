@@ -1,0 +1,164 @@
+---
+title: "Examples Gallery"
+description: "Browse all elizaOS examples by category, platform, and language"
+---
+
+Explore our comprehensive collection of examples. Every example demonstrates real-world usage patterns and is available in multiple languages.
+
+## Browse by Category
+
+<CardGroup cols={2}>
+  <Card
+    title="Chat Applications"
+    icon="comments"
+    href="/examples-gallery/chat-apps"
+  >
+    Interactive CLI and web chat interfaces for conversational agents
+  </Card>
+  <Card
+    title="Web Applications"
+    icon="browser"
+    href="/examples-gallery/web-apps"
+  >
+    React, Next.js, and vanilla HTML browser implementations
+  </Card>
+  <Card title="REST APIs" icon="server" href="/examples-gallery/rest-apis">
+    HTTP endpoints using 8 different web frameworks
+  </Card>
+  <Card title="Serverless" icon="cloud" href="/examples-gallery/serverless">
+    AWS Lambda, GCP, Vercel, Cloudflare, and Supabase deployments
+  </Card>
+  <Card title="Games" icon="gamepad" href="/examples-gallery/games">
+    AI-powered text adventure and interactive games
+  </Card>
+</CardGroup>
+
+---
+
+## Browse by Platform
+
+<CardGroup cols={3}>
+  <Card title="AWS" icon="aws" href="/examples-gallery/aws">
+    Lambda, API Gateway, SAM
+  </Card>
+  <Card title="GCP" icon="google" href="/examples-gallery/gcp">
+    Cloud Functions, Cloud Run
+  </Card>
+  <Card title="Vercel" icon="triangle" href="/examples-gallery/vercel">
+    Edge Functions, Serverless
+  </Card>
+  <Card
+    title="Cloudflare"
+    icon="cloudflare"
+    href="/examples-gallery/cloudflare"
+  >
+    Workers, Durable Objects
+  </Card>
+  <Card title="Supabase" icon="database" href="/examples-gallery/supabase">
+    Edge Functions, Deno
+  </Card>
+</CardGroup>
+
+---
+
+## Quick Stats
+
+| Category   | TypeScript | Python |  Rust  |  Total  |
+| ---------- | :--------: | :----: | :----: | :-----: |
+| Chat       |     ✅     |   ✅   |   ✅   |    3    |
+| REST API   |     3      |   2    |   3    |    8    |
+| Browser    |     3      |   —    |   1    |    4    |
+| Serverless |     5      |   5    |   5    |   15    |
+| Game       |     ✅     |   ✅   |   ✅   |    3    |
+| **Total**  |   **14**   | **10** | **12** | **33+** |
+
+---
+
+## Featured Examples
+
+### Beginner-Friendly
+
+<CardGroup cols={2}>
+  <Card title="CLI Chat" icon="terminal" href="/examples/chat">
+    The simplest way to understand elizaOS. Build an interactive chat agent in
+    50 lines of code.
+  </Card>
+  <Card title="HTML ELIZA" icon="code" href="/examples/browser#html-example">
+    Zero-dependency browser demo with retro CRT terminal styling.
+  </Card>
+</CardGroup>
+
+### Production-Ready
+
+<CardGroup cols={2}>
+  <Card title="AWS Lambda" icon="aws" href="/examples/serverless#aws-lambda">
+    Scalable serverless deployment with SAM template.
+  </Card>
+  <Card
+    title="Next.js Full-Stack"
+    icon="react"
+    href="/examples/browser#nextjs-example"
+  >
+    Complete web application with SSR and API routes.
+  </Card>
+</CardGroup>
+
+### Advanced
+
+<CardGroup cols={2}>
+  <Card
+    title="Rust WASM"
+    icon="gear"
+    href="/examples/browser#react-wasm-example"
+  >
+    High-performance browser agents using Rust compiled to WebAssembly.
+  </Card>
+  <Card title="AI Adventure Game" icon="gamepad" href="/examples/game">
+    Multi-step AI decision making with state management.
+  </Card>
+</CardGroup>
+
+---
+
+## Getting Started
+
+1. **Clone the repository**
+
+```bash
+git clone https://github.com/elizaos/eliza.git
+cd eliza
+```
+
+2. **Install dependencies**
+
+```bash
+bun install
+```
+
+3. **Set up environment**
+
+```bash
+export OPENAI_API_KEY="your-key"
+```
+
+4. **Run any example**
+
+```bash
+bun run examples/chat/typescript/chat.ts
+```
+
+---
+
+## Contributing Examples
+
+We welcome new examples! See our [contribution guide](/guides/contribute-to-core) for details.
+
+When adding examples:
+
+- Implement in all applicable languages
+- Include a README.md with setup instructions
+- Add tests where applicable
+- Follow existing directory structure
+
+
+

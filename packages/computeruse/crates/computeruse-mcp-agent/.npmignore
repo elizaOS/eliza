@@ -1,0 +1,5 @@
+*.log
+src/
+test/
+node_modules/
+.git/ 

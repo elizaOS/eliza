@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ElizaOS Code Quality Analysis Script
+# elizaOS Code Quality Analysis Script
 # This script performs comprehensive code quality checks similar to the GitHub workflow
 # Runs the same analysis as the daily workflow (scheduled at 12:00 PM UTC)
 
@@ -43,7 +43,7 @@ command_exists() {
 # Create results directory
 mkdir -p "${RESULTS_DIR}"
 
-print_info "Starting ElizaOS Code Quality Analysis"
+print_info "Starting elizaOS Code Quality Analysis"
 print_info "Results will be saved to: ${REPORT_FILE}"
 echo ""
 
@@ -56,7 +56,7 @@ fi
 
 # Initialize report
 cat > "${REPORT_FILE}" << EOF
-# ElizaOS Code Quality Analysis Report
+# elizaOS Code Quality Analysis Report
 Generated on: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
 This automated analysis checks for:
@@ -391,7 +391,7 @@ print_info "Analyzing documentation accuracy..."
         echo ""
         echo "### Missing Documentation for Core Features"
         # Check if important packages have corresponding docs
-        for package in packages/core packages/cli packages/client packages/plugin-*; do
+        for package in packages/typescript packages/cli packages/client packages/plugin-*; do
             if [ -d "$package" ]; then
                 package_name=$(basename "$package")
                 if ! grep -r "$package_name" "$DOCS_DIR" --include="*.md" >/dev/null 2>&1; then
@@ -403,7 +403,7 @@ print_info "Analyzing documentation accuracy..."
         echo ""
         echo "### Outdated Code Examples in Documentation"
         # Look for code blocks that might have outdated imports or syntax
-        grep -r "import.*from" "$DOCS_DIR" --include="*.md" 2>/dev/null | grep -E "(packages/core|@ai16z/|elizaos@)" | head -10 || echo "No outdated imports found"
+        grep -r "import.*from" "$DOCS_DIR" --include="*.md" 2>/dev/null | grep -E "(packages/typescript|@ai16z/|elizaos@)" | head -10 || echo "No outdated imports found"
 
         echo ""
         echo "### Missing API Documentation"
@@ -436,19 +436,19 @@ print_info "Analyzing repository standards..."
 
     echo ""
     echo "### Incorrect Core Package Imports"
-    grep -r "from ['\"].*packages/core" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
+    grep -r "from ['\"].*packages/typescript" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
 
     echo ""
     echo "### Class Definitions (Should Use Functional)"
     grep -r -E "^class\s+|export\s+class\s+" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | grep -v -E "(Error|Exception)" | head -20 || echo "None found"
 
     echo ""
-    echo "### Non-Bun Test Framework Usage (Should use bun:test)"
-    echo "ElizaOS uses 'bun:test' exclusively. Found usage of other test frameworks:"
-    grep -r -E "(from ['\"]vitest|from ['\"]jest|from ['\"]mocha|import.*vitest|import.*jest|require\(['\"]jest|require\(['\"]vitest)" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
+    echo "### Non-Vitest Test Framework Usage (Should use vitest)"
+    echo "elizaOS uses 'vitest' exclusively. Found usage of other test frameworks:"
+    grep -r -E "(from ['\"]jest|from ['\"]mocha|import.*jest|require\(['\"]jest)" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
     echo ""
-    echo "Test syntax that should use bun:test instead:"
-    grep -r -E "(describe\.only|it\.only|test\.only|jest\.|vitest\.|expect\.extend)" packages --include="*.ts" --include="*.tsx" --include="*.test.*" --include="*.spec.*" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
+    echo "Test syntax that should use vitest instead:"
+    grep -r -E "(jest\.|expect\.extend)" packages --include="*.ts" --include="*.tsx" --include="*.test.*" --include="*.spec.*" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
 } >> "${REPORT_FILE}"
 
 # Generate summary

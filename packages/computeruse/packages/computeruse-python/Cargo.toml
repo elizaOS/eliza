@@ -1,0 +1,25 @@
+[package]
+name = "computeruse-py-bindings"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "computeruse"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# PyO3 for Python bindings
+pyo3 = { version = "0.25", features = ["abi3-py310"] }
+pyo3-async-runtimes = { version = "0.25", features = ["attributes", "tokio-runtime"] }
+computeruse_core = { path = "../../crates/computeruse", package = "computeruse-rs" }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+pyo3-stub-gen = "0.9"
+serde_json = { workspace = true }
+serde = { workspace = true }
+base64 = { workspace = true }
+tokio = { workspace = true }
+
+[[bin]]
+name = "stub_gen"
+doc = false

@@ -1,0 +1,105 @@
+[package]
+name = "computeruse-mcp-agent"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = ["telemetry", "sentry"]
+telemetry = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:opentelemetry-semantic-conventions", "dep:opentelemetry-appender-tracing", "dep:tracing-opentelemetry"]
+sentry = ["dep:sentry", "dep:sentry-tracing"]
+
+[lib]
+name = "computeruse_mcp_agent"
+path = "src/lib.rs"
+
+[[bin]]
+name = "computeruse-mcp-agent"
+path = "src/main.rs"
+
+
+[dependencies]
+serde = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+computeruse = { workspace = true }
+serde_json = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+time = { workspace = true }
+dirs = { workspace = true }
+rmcp = { version = "0.9", features = [
+    "server",
+    "client",
+    "elicitation",
+    "schemars",
+    "transport-sse-server",
+    "transport-io",
+    "transport-streamable-http-server",
+    "transport-child-process",
+] }
+schemars = "1.0"
+futures = "0.3"
+image = { version = "0.25.1", features = ["png", "jpeg"] }
+base64 = "0.22.1"
+clap = { version = "4.5", features = ["derive", "env"] }
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+
+regex = { workspace = true }
+tempfile = "3"
+sysinfo = "0.33"
+hostname = "0.4"
+
+reqwest = { version = "0.12.5", features = ["json", "blocking"] }
+
+# File search support for search_computeruse_api tools
+glob = "0.3"
+walkdir = "2"
+ignore = "0.4"  # Same crate ripgrep uses - respects .gitignore, skips node_modules etc.
+
+# OpenTelemetry dependencies (optional, behind 'telemetry' feature)
+opentelemetry = { version = "0.27", optional = true }
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio", "logs"], optional = true }
+opentelemetry-otlp = { version = "0.27", features = ["http-proto", "reqwest-client", "logs"], optional = true }
+opentelemetry-semantic-conventions = { version = "0.27", optional = true }
+opentelemetry-appender-tracing = { version = "0.27", optional = true }
+tracing-opentelemetry = { version = "0.28", optional = true }
+
+# Sentry dependencies (optional, behind 'sentry' feature)
+sentry = { version = "0.45", optional = true, default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls", "anyhow", "tracing"] }
+sentry-tracing = { version = "0.45", optional = true }
+
+# Dependencies for AI summarizer binary - TODO add behind feature flag
+ollama-rs = "0.3.2"
+arboard = "3.6.0"
+rdev = "0.5.3"
+
+
+[build-dependencies]
+chrono = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+rand = "0.8"
+
+[[example]]
+name = "computeruse-ai-summarizer"
+path = "examples/computeruse-ai-summarizer/src/main.rs"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_JobObjects",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Security"
+] }

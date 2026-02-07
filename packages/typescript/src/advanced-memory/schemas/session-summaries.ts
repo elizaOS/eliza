@@ -1,0 +1,39 @@
+import { sql } from "drizzle-orm";
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  real,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
+
+export const sessionSummaries = pgTable(
+  "session_summaries",
+  {
+    id: varchar("id", { length: 36 }).primaryKey(),
+    agentId: varchar("agent_id", { length: 36 }).notNull(),
+    roomId: varchar("room_id", { length: 36 }).notNull(),
+    entityId: varchar("entity_id", { length: 36 }),
+    summary: text("summary").notNull(),
+    messageCount: integer("message_count").notNull(),
+    lastMessageOffset: integer("last_message_offset").notNull().default(0),
+    startTime: timestamp("start_time").notNull(),
+    endTime: timestamp("end_time").notNull(),
+    topics: jsonb("topics"),
+    metadata: jsonb("metadata"),
+    embedding: real("embedding").array(),
+    createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+    updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+  },
+  (table) => ({
+    agentRoomIdx: index("session_summaries_agent_room_idx").on(
+      table.agentId,
+      table.roomId,
+    ),
+    entityIdx: index("session_summaries_entity_idx").on(table.entityId),
+    startTimeIdx: index("session_summaries_start_time_idx").on(table.startTime),
+  }),
+);

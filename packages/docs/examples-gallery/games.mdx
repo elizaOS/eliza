@@ -1,0 +1,156 @@
+---
+title: "Game Examples"
+description: "AI-powered games built with elizaOS"
+---
+
+Build games where AI agents make strategic decisions.
+
+## Adventure Game
+
+A text-based dungeon crawler where an AI agent explores, fights, and collects treasure.
+
+| Language   | Location                                |
+| ---------- | --------------------------------------- |
+| TypeScript | `examples/typescript/adventure-game.ts` |
+| Python     | `examples/game/python/game.py`          |
+| Rust       | `examples/game/rust/game/src/main.rs`   |
+
+### Quick Start
+
+```bash
+export OPENAI_API_KEY="your-key"
+LOG_LEVEL=fatal bun run examples/typescript/adventure-game.ts
+```
+
+### Features
+
+- **7 dungeon rooms** with unique descriptions
+- **Combat system** against goblins, skeletons, and a dragon
+- **Inventory management** for torch, sword, key, and potions
+- **AI decision making** for strategic choices
+- **Win condition**: Defeat the dragon and claim the treasure
+
+### Gameplay
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║                    🏰 DUNGEON ADVENTURE 🏰                        ║
+╠══════════════════════════════════════════════════════════════════╣
+║ Location: Great Hall                                              ║
+║ Description: A vast hall with crumbling pillars.                 ║
+║ Exits: north, south, east, west                                   ║
+║ Enemies: goblin (30 HP)                                          ║
+║ Items: none                                                       ║
+╠══════════════════════════════════════════════════════════════════╣
+║ Inventory: torch                                                  ║
+║ Health: 100/100                                                   ║
+╚══════════════════════════════════════════════════════════════════╝
+
+AI Decision: attack
+Result: You strike the goblin for 10 damage! It retaliates for 10 damage.
+Your health: 90/100 | Goblin health: 20/30
+```
+
+### AI Integration
+
+```typescript
+// The AI analyzes the game state and chooses an action
+const decision = await runtime.useModel(ModelType.TEXT_SMALL, {
+  prompt: `
+Current Location: ${room.name}
+Enemies present: ${room.enemies?.length ? "YES" : "NO"}
+Health: ${state.health}%
+Has sword: ${state.inventory.includes("sword")}
+
+Choose ONE action: move north, attack, take item, use potion
+
+Your choice:`,
+  maxTokens: 20,
+  temperature: 0.3,
+});
+```
+
+---
+
+## Extending Games
+
+### Add New Rooms
+
+```typescript
+const rooms = {
+  secret_chamber: {
+    name: "Secret Chamber",
+    description: "A hidden room filled with ancient artifacts.",
+    items: ["golden_idol"],
+    exits: { south: "treasure_room" },
+  },
+};
+```
+
+### Add New Items
+
+```typescript
+const items = {
+  golden_idol: {
+    name: "Golden Idol",
+    description: "An ancient artifact of immense value.",
+    use: (state) => {
+      state.score += 1000;
+      return "The idol glows with ancient power!";
+    },
+  },
+};
+```
+
+### Add New Enemies
+
+```typescript
+const enemies = {
+  lich: {
+    name: "Lich",
+    health: 80,
+    damage: 30,
+    weakness: "holy_water",
+    special: "Can summon skeletons",
+  },
+};
+```
+
+---
+
+## Game Ideas
+
+<CardGroup cols={2}>
+  <Card title="RPG Character" icon="user">
+    Create an AI party member that makes strategic combat decisions
+  </Card>
+  <Card title="Mystery Solver" icon="magnifying-glass">
+    Build a detective game where the AI gathers clues
+  </Card>
+  <Card title="Trading Simulator" icon="chart-line">
+    Create an AI trader that learns market patterns
+  </Card>
+  <Card title="Story Generator" icon="book">
+    Build an interactive fiction engine with AI narration
+  </Card>
+</CardGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Examples Overview" icon="grid-2" href="/examples/overview">
+    See all available examples
+  </Card>
+  <Card
+    title="Create a Plugin"
+    icon="puzzle-piece"
+    href="/guides/create-a-plugin"
+  >
+    Build custom game plugins
+  </Card>
+</CardGroup>
+
+
+

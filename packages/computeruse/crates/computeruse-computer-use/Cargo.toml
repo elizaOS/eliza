@@ -1,0 +1,21 @@
+[package]
+name = "computeruse-computer-use"
+version = { workspace = true }
+edition = { workspace = true }
+description = "Gemini Computer Use - AI-powered autonomous desktop automation"
+authors = ["elizaOS Contributors"]
+repository = "https://github.com/mediar-ai/computeruse"
+homepage = "https://github.com/mediar-ai/computeruse"
+license-file = { workspace = true }
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+base64 = { workspace = true }
+image = { workspace = true }
+reqwest = { version = "0.12", features = ["json"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+sysinfo = { workspace = true }

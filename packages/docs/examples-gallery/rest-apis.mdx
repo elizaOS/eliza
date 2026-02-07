@@ -1,0 +1,307 @@
+---
+title: "REST API Examples"
+description: "HTTP endpoints for elizaOS using 8 different web frameworks"
+---
+
+Build REST APIs for your elizaOS agents using your preferred framework.
+
+## Available Frameworks
+
+### TypeScript
+
+| Framework | Location                     | Features                           |
+| --------- | ---------------------------- | ---------------------------------- |
+| Express   | `examples/rest-api/express/` | Most popular, middleware ecosystem |
+| Hono      | `examples/rest-api/hono/`    | Fast, small, edge-ready            |
+| Elysia    | `examples/rest-api/elysia/`  | Bun-native, type-safe              |
+
+### Python
+
+| Framework | Location                     | Features                   |
+| --------- | ---------------------------- | -------------------------- |
+| FastAPI   | `examples/rest-api/fastapi/` | Async, auto-docs, Pydantic |
+| Flask     | `examples/rest-api/flask/`   | Simple, flexible, WSGI     |
+
+### Rust
+
+| Framework | Location                    | Features                 |
+| --------- | --------------------------- | ------------------------ |
+| Actix Web | `examples/rest-api/actix/`  | Fastest, actor model     |
+| Axum      | `examples/rest-api/axum/`   | Tokio ecosystem, modular |
+| Rocket    | `examples/rest-api/rocket/` | Type-safe, ergonomic     |
+
+---
+
+## Quick Start
+
+<Tabs>
+  <Tab title="Express">
+```bash
+cd examples/rest-api/express
+bun install && bun run start
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+  </Tab>
+  <Tab title="FastAPI">
+```bash
+cd examples/rest-api/fastapi
+pip install -r requirements.txt
+python server.py
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+  </Tab>
+  <Tab title="Actix">
+```bash
+cd examples/rest-api/actix
+cargo run --release
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Common API
+
+All implementations expose the same endpoints:
+
+### GET /
+
+Agent information.
+
+```json
+{
+  "name": "Eliza",
+  "bio": "A Rogerian psychotherapist simulation",
+  "status": "ready"
+}
+```
+
+### GET /health
+
+Health check.
+
+```json
+{
+  "status": "healthy",
+  "runtime": "elizaos-typescript",
+  "uptime": 12345.67
+}
+```
+
+### POST /chat
+
+Send a message.
+
+**Request:**
+
+```json
+{
+  "message": "I am feeling anxious",
+  "userId": "optional-user-id"
+}
+```
+
+**Response:**
+
+```json
+{
+  "response": "Tell me more about what's making you feel anxious.",
+  "character": "Eliza",
+  "userId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+---
+
+## Framework Comparison
+
+| Framework | Language | Async | Type Safety | Bundle Size | Performance |
+| --------- | -------- | :---: | :---------: | :---------: | :---------: |
+| Express   | TS       |  ✅   |     ⚠️      |   Medium    |    Good     |
+| Hono      | TS       |  ✅   |     ✅      |    Small    |  Excellent  |
+| Elysia    | TS       |  ✅   |     ✅      |    Small    |  Excellent  |
+| FastAPI   | Python   |  ✅   |     ✅      |     N/A     |    Good     |
+| Flask     | Python   |  ⚠️   |     ⚠️      |     N/A     |    Fair     |
+| Actix     | Rust     |  ✅   |     ✅      |    Small    |  Excellent  |
+| Axum      | Rust     |  ✅   |     ✅      |    Small    |  Excellent  |
+| Rocket    | Rust     |  ✅   |     ✅      |   Medium    |    Great    |
+
+---
+
+## Express Example
+
+```typescript
+import express from "express";
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
+
+const app = express();
+app.use(express.json());
+
+const runtime = new AgentRuntime({
+  character: { name: "Eliza", bio: "A helpful AI." },
+  plugins: [elizaClassicPlugin],
+});
+
+await runtime.initialize();
+
+app.post("/chat", async (req, res) => {
+  const { message } = req.body;
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt: message,
+  });
+  res.json({ response: String(response) });
+});
+
+app.listen(3000);
+```
+
+---
+
+## FastAPI Example
+
+```python
+from fastapi import FastAPI
+from pydantic import BaseModel
+from elizaos import AgentRuntime, Character
+from elizaos.plugin_eliza_classic import eliza_classic_plugin
+
+app = FastAPI()
+
+runtime = AgentRuntime(
+    character=Character(name="Eliza", bio="A helpful AI."),
+    plugins=[eliza_classic_plugin],
+)
+
+class ChatRequest(BaseModel):
+    message: str
+
+@app.on_event("startup")
+async def startup():
+    await runtime.initialize()
+
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    response = await runtime.use_model("TEXT_LARGE", {
+        "prompt": request.message,
+    })
+    return {"response": str(response)}
+```
+
+---
+
+## Actix Example
+
+```rust
+use actix_web::{web, App, HttpServer, HttpResponse};
+use elizaos::{AgentRuntime, RuntimeOptions, parse_character};
+use elizaos_plugin_eliza_classic::create_eliza_classic_plugin;
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize)]
+struct ChatRequest {
+    message: String,
+}
+
+#[derive(Serialize)]
+struct ChatResponse {
+    response: String,
+}
+
+async fn chat(
+    runtime: web::Data<AgentRuntime>,
+    req: web::Json<ChatRequest>,
+) -> HttpResponse {
+    let response = runtime.use_model("TEXT_LARGE", &req.message).await.unwrap();
+    HttpResponse::Ok().json(ChatResponse { response })
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    let character = parse_character(r#"{"name": "Eliza", "bio": "A helpful AI."}"#)?;
+    let runtime = AgentRuntime::new(RuntimeOptions {
+        character: Some(character),
+        plugins: vec![create_eliza_classic_plugin()],
+        ..Default::default()
+    }).await?;
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(runtime.clone()))
+            .route("/chat", web::post().to(chat))
+    })
+    .bind("0.0.0.0:3000")?
+    .run()
+    .await
+}
+```
+
+---
+
+## Adding OpenAI
+
+Replace the classic plugin with OpenAI for real LLM responses:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+import { openaiPlugin } from '@elizaos/plugin-openai';
+import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
+
+const runtime = new AgentRuntime({
+character,
+plugins: [sqlPlugin, openaiPlugin],
+});
+
+````
+  </Tab>
+  <Tab title="Python">
+```python
+from elizaos_plugin_openai import get_openai_plugin
+
+runtime = AgentRuntime(
+    character=character,
+    plugins=[get_openai_plugin()],
+)
+````
+
+  </Tab>
+  <Tab title="Rust">
+```rust
+use elizaos_plugin_openai::create_openai_plugin;
+
+let runtime = AgentRuntime::new(RuntimeOptions {
+character: Some(character),
+plugins: vec![create_openai_plugin()?],
+..Default::default()
+}).await?;
+
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Serverless" icon="cloud" href="/examples-gallery/serverless">
+    Deploy your API to the cloud
+  </Card>
+  <Card title="Web Apps" icon="browser" href="/examples-gallery/web-apps">
+    Build frontend interfaces
+  </Card>
+</CardGroup>
+
+
+```
+
+
+

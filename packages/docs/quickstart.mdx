@@ -1,0 +1,400 @@
+---
+title: "Quickstart"
+description: "Create and run your first elizaOS agent in 3 minutes"
+---
+
+**3 minutes.** That's all it takes to go from zero to a running AI agent with memory, actions, and a web interface.
+
+Choose your language and follow along.
+
+<Tip>
+  **Prefer video?** Watch the [**3-minute
+  tutorial**](https://www.youtube.com/watch?v=MP4ldEqmTiE&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS&index=2)
+</Tip>
+
+## Create Your First Agent
+
+<Tabs>
+  <Tab title="TypeScript">
+    <Steps>
+      <Step title="Create Your Project">
+        Create a new elizaOS project using the interactive CLI:
+
+        ```bash
+        elizaos create
+        ```
+
+        <Note>
+          The CLI is for building agents and projects. The monorepo is only for contributing to elizaOS core. See [CLI vs Monorepo](https://www.youtube.com/watch?v=tSO4wpQs2OA&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS).
+        </Note>
+      </Step>
+
+      <Step title="Configure Your Project">
+        During the interactive setup:
+
+        1. **Project Name**: Enter your desired project name
+        2. **Database**: Select `pglite` for lightweight, local PostgreSQL
+        3. **Model Provider**: Select `OpenAI` for this quickstart
+        4. **API Key**: Enter your OpenAI API key
+
+        <Note>
+          Get an OpenAI API key from [OpenAI Platform](https://platform.openai.com/).
+        </Note>
+      </Step>
+
+      <Step title="Navigate to Your Project">
+        ```bash
+        cd my-eliza-project
+        ```
+      </Step>
+
+      <Step title="Start Your Agent">
+        ```bash
+        elizaos start
+        ```
+
+        Wait a few seconds for the server to start up.
+      </Step>
+
+      <Step title="Chat with Your Agent">
+        Open your browser and navigate to:
+        ```
+        http://localhost:3000
+        ```
+
+        Start chatting with Eliza through the web interface!
+      </Step>
+    </Steps>
+
+  </Tab>
+
+  <Tab title="Python">
+    <Steps>
+      <Step title="Set Up Your Environment">
+        Create a new directory and virtual environment:
+
+        ```bash
+        mkdir my-eliza-agent
+        cd my-eliza-agent
+        python -m venv .venv
+        source .venv/bin/activate  # Windows: .venv\Scripts\activate
+        ```
+      </Step>
+
+      <Step title="Install Dependencies">
+        ```bash
+        pip install elizaos elizaos-plugin-openai
+        ```
+      </Step>
+
+      <Step title="Set Your API Key">
+        ```bash
+        export OPENAI_API_KEY="your-api-key-here"
+        ```
+
+        Or create a `.env` file:
+        ```bash
+        echo "OPENAI_API_KEY=your-api-key-here" > .env
+        ```
+      </Step>
+
+      <Step title="Create Your Agent">
+        Create `agent.py`:
+
+        ```python
+        import asyncio
+        from elizaos import AgentRuntime, Character, Memory, Content, ChannelType
+        from elizaos_plugin_openai import get_openai_plugin
+        from uuid6 import uuid7
+
+        async def main():
+            # Define your character
+            character = Character(
+                name="Eliza",
+                bio="A helpful AI assistant.",
+                system="You are helpful and concise.",
+            )
+
+            # Create runtime with plugins
+            runtime = AgentRuntime(
+                character=character,
+                plugins=[get_openai_plugin()],
+            )
+
+            # Initialize
+            await runtime.initialize()
+            print(f"🤖 Chat with {character.name} (type 'quit' to exit)\n")
+
+            user_id = uuid7()
+            room_id = uuid7()
+
+            while True:
+                user_input = input("You: ")
+                if user_input.strip().lower() in ("quit", "exit"):
+                    break
+
+                message = Memory(
+                    entity_id=user_id,
+                    room_id=room_id,
+                    content=Content(
+                        text=user_input,
+                        source="cli",
+                        channel_type=ChannelType.DM.value,
+                    ),
+                )
+
+                result = await runtime.message_service.handle_message(runtime, message)
+                print(f"\n{character.name}: {result.response_content.text}\n")
+
+            await runtime.stop()
+            print("Goodbye! 👋")
+
+        if __name__ == "__main__":
+            asyncio.run(main())
+        ```
+      </Step>
+
+      <Step title="Run Your Agent">
+        ```bash
+        python agent.py
+        ```
+
+        Start chatting in your terminal!
+      </Step>
+    </Steps>
+
+  </Tab>
+
+  <Tab title="Rust">
+    <Steps>
+      <Step title="Create Your Project">
+        ```bash
+        cargo new my-eliza-agent
+        cd my-eliza-agent
+        ```
+      </Step>
+
+      <Step title="Add Dependencies">
+        Update `Cargo.toml`:
+
+        ```toml
+        [package]
+        name = "my-eliza-agent"
+        version = "0.1.0"
+        edition = "2021"
+
+        [dependencies]
+        elizaos = "1.0"
+        elizaos-plugin-openai = "1.0"
+        tokio = { version = "1", features = ["full"] }
+        anyhow = "1"
+        dotenvy = "0.15"
+        ```
+      </Step>
+
+      <Step title="Set Your API Key">
+        Create a `.env` file:
+        ```bash
+        echo "OPENAI_API_KEY=your-api-key-here" > .env
+        ```
+      </Step>
+
+      <Step title="Create Your Agent">
+        Replace `src/main.rs`:
+
+        ```rust
+        use anyhow::Result;
+        use elizaos::{
+            parse_character,
+            runtime::{AgentRuntime, RuntimeOptions},
+            types::{Content, Memory, UUID},
+            IMessageService,
+        };
+        use elizaos_plugin_openai::create_openai_plugin;
+        use std::io::{self, Write};
+
+        #[tokio::main]
+        async fn main() -> Result<()> {
+            // Load environment variables
+            let _ = dotenvy::dotenv();
+
+            // Define your character
+            let character = parse_character(r#"{
+                "name": "Eliza",
+                "bio": "A helpful AI assistant.",
+                "system": "You are helpful and concise."
+            }"#)?;
+
+            // Create runtime with plugins
+            let runtime = AgentRuntime::new(RuntimeOptions {
+                character: Some(character.clone()),
+                plugins: vec![create_openai_plugin()?],
+                ..Default::default()
+            }).await?;
+
+            runtime.initialize().await?;
+
+            println!("🤖 Chat with {} (type 'quit' to exit)\n", character.name);
+
+            let (user_id, room_id) = (UUID::new_v4(), UUID::new_v4());
+
+            loop {
+                print!("You: ");
+                io::stdout().flush()?;
+
+                let mut input = String::new();
+                if io::stdin().read_line(&mut input)? == 0 {
+                    break;
+                }
+
+                let input = input.trim();
+                if input.eq_ignore_ascii_case("quit") || input.eq_ignore_ascii_case("exit") {
+                    break;
+                }
+
+                let content = Content {
+                    text: Some(input.into()),
+                    ..Default::default()
+                };
+                let mut message = Memory::new(user_id.clone(), room_id.clone(), content);
+
+                let result = runtime
+                    .message_service()
+                    .handle_message(&runtime, &mut message, None, None)
+                    .await?;
+
+                if let Some(text) = result.response_content.and_then(|c| c.text) {
+                    println!("\n{}: {}\n", character.name, text);
+                }
+            }
+
+            runtime.stop().await?;
+            println!("Goodbye! 👋");
+            Ok(())
+        }
+        ```
+      </Step>
+
+      <Step title="Run Your Agent">
+        ```bash
+        cargo run
+        ```
+
+        Start chatting in your terminal!
+      </Step>
+    </Steps>
+
+  </Tab>
+</Tabs>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion icon="key" title="API Key Issues">
+    If you're getting authentication errors:
+
+    **Check your `.env` file:**
+    ```
+    OPENAI_API_KEY=your-actual-api-key-here
+    ```
+
+    **Common issues:**
+    - API key has extra spaces or quotes
+    - Wrong format (should start with `sk-`)
+    - OpenAI account has no credits
+    - Key not exported in current shell session
+
+    **Verify the key is loaded:**
+
+    <Tabs>
+      <Tab title="TypeScript">
+        ```bash
+        echo $OPENAI_API_KEY
+        ```
+      </Tab>
+      <Tab title="Python">
+        ```python
+        import os
+        print(os.getenv("OPENAI_API_KEY"))
+        ```
+      </Tab>
+      <Tab title="Rust">
+        ```bash
+        echo $OPENAI_API_KEY
+        ```
+      </Tab>
+    </Tabs>
+
+  </Accordion>
+
+  <Accordion icon="database" title="Database Issues">
+    **TypeScript (PGLite):**
+    ```
+    PGLITE_DATA_DIR=/path/to/your/project/.eliza/.elizadb
+    ```
+
+    **Python (SQLite by default):**
+    The Python runtime uses SQLite by default. For PostgreSQL:
+    ```bash
+    pip install asyncpg
+    export POSTGRES_URL="postgresql://user:pass@localhost:5432/db"
+    ```
+
+    **Rust:**
+    The Rust runtime supports both in-memory and PostgreSQL. Set `POSTGRES_URL` for persistence.
+
+  </Accordion>
+
+  <Accordion icon="wrench" title="Common Fixes">
+    **When in doubt, restart:**
+    - Stop the server with `Ctrl+C`
+    - Start again with your run command
+
+    **TypeScript - Start fresh:**
+    ```bash
+    rm -rf my-eliza-project
+    elizaos create
+    ```
+
+    **Python - Reinstall:**
+    ```bash
+    pip uninstall elizaos elizaos-plugin-openai
+    pip install elizaos elizaos-plugin-openai
+    ```
+
+    **Rust - Clean build:**
+    ```bash
+    cargo clean
+    cargo build
+    ```
+
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Customize Your Agent" icon="sliders" href="/guides/customize-an-agent">
+    Change personality, add knowledge, configure behavior
+  </Card>
+
+<Card title="Explore Examples" icon="code" href="/examples/overview">
+  See working code in TypeScript, Python, and Rust
+</Card>
+
+<Card
+  title="Create a Plugin"
+  icon="puzzle-piece"
+  href="/guides/create-a-plugin"
+>
+  Add custom actions, providers, and services
+</Card>
+
+  <Card title="Deploy to Cloud" icon="cloud" href="/guides/deploy-to-cloud">
+    Ship your agent to production in minutes
+  </Card>
+</CardGroup>

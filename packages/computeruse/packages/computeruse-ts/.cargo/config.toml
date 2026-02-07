@@ -1,0 +1,10 @@
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# Optional sccache configuration - automatically used if RUSTC_WRAPPER=sccache is set
+# This speeds up compilation by caching builds across the project  
+# To enable: Install sccache and set RUSTC_WRAPPER=sccache in your environment
+# See CONTRIBUTING.md for installation instructions
+[build]
+# These settings only apply when sccache is used as RUSTC_WRAPPER
+incremental = true

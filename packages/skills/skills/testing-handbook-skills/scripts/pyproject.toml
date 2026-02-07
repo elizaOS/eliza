@@ -1,0 +1,8 @@
+[project]
+name = "testing-handbook-validator"
+version = "0.1.0"
+description = "Validator for testing-handbook-generator skills"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+]

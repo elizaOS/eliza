@@ -1,0 +1,110 @@
+---
+title: "Vercel Examples"
+description: "Deploy elizaOS to Vercel Edge Functions"
+---
+
+Deploy AI agents to Vercel's global edge network.
+
+## Quick Start
+
+```bash
+cd examples/vercel
+vercel  # Deploy to production
+```
+
+## Available Implementations
+
+| Language   | Directory                     | Runtime      |
+| ---------- | ----------------------------- | ------------ |
+| TypeScript | `examples/vercel/api/`        | Edge Runtime |
+| Python     | `examples/vercel/api/python/` | Python       |
+
+## Edge Function
+
+```typescript
+// api/chat.ts
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+export const config = {
+  runtime: "edge",
+};
+
+let runtime: AgentRuntime | null = null;
+
+export default async function handler(request: Request) {
+  if (!runtime) {
+    runtime = new AgentRuntime({
+      character: { name: "Eliza", bio: "A helpful AI." },
+      plugins: [openaiPlugin],
+    });
+    await runtime.initialize();
+  }
+
+  const { message } = await request.json();
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt: message,
+  });
+
+  return new Response(JSON.stringify({ response: String(response) }), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+```
+
+## Testing Locally
+
+```bash
+cd examples/vercel
+vercel dev
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+
+## Environment Variables
+
+Set in Vercel dashboard or `.env.local`:
+
+```bash
+OPENAI_API_KEY=your-key
+```
+
+## Streaming Responses
+
+```typescript
+export default async function handler(request: Request) {
+  const { message } = await request.json();
+  const runtime = await getRuntime();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      await runtime.messageService?.handleMessage(
+        runtime,
+        createMessage(message),
+        async (content) => {
+          if (content?.text) {
+            controller.enqueue(new TextEncoder().encode(content.text));
+          }
+          return [];
+        },
+      );
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+}
+```
+
+## Benefits
+
+- **<50ms cold start** on edge runtime
+- **Global distribution** across 30+ regions
+- **Automatic HTTPS** and custom domains
+- **Built-in analytics** and logging
+
+
+

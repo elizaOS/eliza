@@ -1,0 +1,100 @@
+[package]
+name = "elizaos-sweagent"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "SWE-agent: Software Engineering Agent - Rust implementation with native and WASM support"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+keywords = ["ai", "agent", "software-engineering", "automation", "swe-agent"]
+categories = ["development-tools", "command-line-utilities"]
+readme = "README.md"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full", "reqwest/default-tls"]
+wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "getrandom/js", "reqwest/rustls-tls"]
+
+[dependencies]
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Async runtime
+async-trait = "0.1"
+futures = "0.3"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# UUID handling
+uuid = { version = "1.19", features = ["v4", "serde"] }
+
+# Regex for parsing
+regex = "1.10"
+
+# Template rendering
+handlebars = "6.0"
+
+# Command line interface
+clap = { version = "4.5", features = ["derive"] }
+
+# Docker interaction
+bollard = { version = "0.18", optional = true }
+
+# Git operations
+git2 = { version = "0.20", optional = true }
+
+# File globbing
+glob = "0.3"
+
+# Path manipulation
+pathdiff = "0.2"
+
+# Time utilities
+chrono = { version = "0.4", features = ["serde"] }
+
+# Random number generation
+rand = "0.8"
+
+# Environment loading
+dotenvy = "0.15"
+
+# Native-only dependencies
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "process", "fs", "io-util", "sync"], optional = true }
+
+# WASM-only dependencies
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", features = ["console"], optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+getrandom = { version = "0.2", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+pretty_assertions = "1.0"
+dotenvy = "0.15"
+tempfile = "3.10"
+rand = "0.8"
+
+[profile.release]
+lto = true
+opt-level = "z"
+
+[[bin]]
+name = "sweagent"
+path = "src/bin/sweagent.rs"
+required-features = ["native"]

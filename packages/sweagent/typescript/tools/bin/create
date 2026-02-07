@@ -1,0 +1,14 @@
+#!/usr/bin/env node
+// Windowed editor create command
+const { WindowedEditor } = require('../dist/windowed/index.js');
+
+const args = process.argv.slice(2);
+const filePath = args[0];
+
+if (!filePath) {
+  console.error('Usage: create <filename>');
+  process.exit(1);
+}
+
+const editor = new WindowedEditor();
+editor.create(filePath);

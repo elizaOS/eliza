@@ -1,0 +1,13 @@
+{
+  "name": "fix-review",
+  "version": "0.1.0",
+  "description": "Verifies that code changes address security audit findings without introducing bugs",
+  "author": {
+    "name": "Trail of Bits",
+    "email": "opensource@trailofbits.com",
+    "url": "https://www.trailofbits.com"
+  },
+  "repository": "https://github.com/trailofbits/skills",
+  "license": "CC-BY-SA-4.0",
+  "keywords": ["security", "audit", "remediation", "fix-review"]
+}

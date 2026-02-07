@@ -1,0 +1,14 @@
+#!/usr/bin/env node
+// Windowed editor goto command
+const { WindowedEditor } = require('../dist/windowed/index.js');
+
+const args = process.argv.slice(2);
+const lineNumber = parseInt(args[0]);
+
+if (!lineNumber) {
+  console.error('Usage: goto <line_number>');
+  process.exit(1);
+}
+
+const editor = new WindowedEditor();
+editor.goto(lineNumber);
