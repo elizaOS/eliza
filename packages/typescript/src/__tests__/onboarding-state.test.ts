@@ -48,7 +48,7 @@ function getUnconfiguredRequired(
   config: OnboardingConfig,
 ): Array<[string, OnboardingSetting]> {
   return Object.entries(config.settings).filter(
-    ([_, setting]) => setting.required && setting.value === null,
+    ([_, setting]) => setting.required && setting.value == null,
   );
 }
 
@@ -59,7 +59,7 @@ function getUnconfiguredOptional(
   config: OnboardingConfig,
 ): Array<[string, OnboardingSetting]> {
   return Object.entries(config.settings).filter(
-    ([_, setting]) => !setting.required && setting.value === null,
+    ([_, setting]) => !setting.required && setting.value == null,
   );
 }
 

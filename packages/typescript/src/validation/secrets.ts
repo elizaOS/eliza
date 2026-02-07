@@ -143,7 +143,7 @@ export const SECRET_VALIDATION_PATTERNS: Record<
   },
 
   TELEGRAM_BOT_TOKEN: {
-    pattern: /^\d{8,10}:[A-Za-z0-9_-]{35}$/,
+    pattern: /^\d{8,10}:[A-Za-z0-9_-]{35,43}$/,
     description: "Telegram bot token must be in the format: BOT_ID:TOKEN",
     minLength: 44,
     example: "123456789:ABCdefGHIjklMNOpqrSTUvwxYZ12345678901",

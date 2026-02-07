@@ -137,7 +137,7 @@ impl IMessageService for DefaultMessageService {
                 did_respond: false,
                 response_content: None,
                 response_messages: vec![],
-                state: None,
+                state: State::default(),
             });
         }
         if let Some(ref rewritten) = pre_result.rewritten_text {
