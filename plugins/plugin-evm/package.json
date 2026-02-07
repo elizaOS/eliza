@@ -32,7 +32,7 @@
     "@lifi/sdk": "^3.7.9",
     "@lifi/types": "^17.18.0",
     "viem": "^2.21.0",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
@@ -44,7 +44,7 @@
     "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
     "build": "npm run build:prompts && bun run build:ts && bun run build:rust && bun run build:python",
     "build:ts": "cd typescript && bun run build.ts",
-    "build:python": "test -d python && cd python && (python3 -m build 2>/dev/null || pyproject-build) || echo 'Python build skipped - no python directory'",
+    "build:python": "test -n \"$SKIP_PYTHON_BUILD\" && echo 'Python build skipped (SKIP_PYTHON_BUILD set)' || (test -d python && cd python && (timeout 120 python3 -m build 2>/dev/null || timeout 120 pyproject-build 2>/dev/null) || echo 'Python build skipped or timed out')",
     "dev": "bun run build.ts --watch",
     "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
     "clean": "rm -rf typescript/dist .turbo typescript/node_modules .turbo-tsconfig.json typescript/*.tsbuildinfo",

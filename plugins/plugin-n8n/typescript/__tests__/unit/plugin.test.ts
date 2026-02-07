@@ -1,6 +1,5 @@
 /**
  * Unit tests for the N8n Plugin.
- * Uses REAL AgentRuntime - NO MOCKS.
  */
 
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
@@ -9,11 +8,12 @@ import {
   cancelPluginCreationAction,
   checkPluginCreationStatusAction,
   createPluginAction,
+  createPluginFromDescriptionAction,
 } from "../../actions/plugin-creation-actions";
 import { n8nPlugin } from "../../index";
 import {
-  pluginCreationCapabilitiesProvider,
   pluginCreationStatusProvider,
+  pluginRegistryProvider,
 } from "../../providers/plugin-creation-providers";
 
 function createMockRuntime(): {
@@ -29,8 +29,8 @@ function createMockRuntime(): {
       bio: ["A test agent"],
       system: "You are a helpful assistant.",
     },
-    getService: () => undefined, // No services by default
-    getSetting: () => undefined, // No settings by default
+    getService: () => undefined,
+    getSetting: () => undefined,
     services: new Map(),
   } as unknown as IAgentRuntime;
 
@@ -58,53 +58,74 @@ describe("n8nPlugin", () => {
   });
 
   it("should have correct description", () => {
-    expect(n8nPlugin.description).toContain("N8n");
+    expect(n8nPlugin.description).toContain("n8n");
   });
 
-  it("should have actions defined", () => {
+  it("should have 9 actions defined", () => {
     expect(n8nPlugin.actions).toBeDefined();
-    expect(n8nPlugin.actions?.length).toBeGreaterThan(0);
+    expect(n8nPlugin.actions?.length).toBe(9);
   });
 
-  it("should have providers defined", () => {
+  it("should have 3 providers defined", () => {
     expect(n8nPlugin.providers).toBeDefined();
-    expect(n8nPlugin.providers?.length).toBeGreaterThan(0);
+    expect(n8nPlugin.providers?.length).toBe(3);
   });
 
-  it("should have services defined", () => {
+  it("should have 3 services defined", () => {
     expect(n8nPlugin.services).toBeDefined();
-    expect(n8nPlugin.services?.length).toBeGreaterThan(0);
+    expect(n8nPlugin.services?.length).toBe(3);
   });
 });
 
 describe("createPluginAction", () => {
-  it("should be properly defined", () => {
+  it("should have correct name", () => {
     expect(createPluginAction).toBeDefined();
-    expect(createPluginAction.name).toBe("createPlugin");
+    expect(createPluginAction.name).toBe("CREATE_PLUGIN");
   });
 
-  it("should have description", () => {
+  it("should have description with when-to-use guidance", () => {
     expect(createPluginAction.description).toBeDefined();
-    expect(createPluginAction.description.length).toBeGreaterThan(0);
+    expect(createPluginAction.description).toContain("Do NOT");
+    expect(createPluginAction.description.length).toBeGreaterThan(50);
   });
 
   it("should have examples", () => {
     expect(createPluginAction.examples).toBeDefined();
-    expect(createPluginAction.examples?.length).toBeGreaterThan(0);
+    expect(createPluginAction.examples?.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("should have similes", () => {
+    expect(createPluginAction.similes).toBeDefined();
+    expect(createPluginAction.similes?.length).toBeGreaterThan(0);
   });
 });
 
 describe("checkPluginCreationStatusAction", () => {
-  it("should be properly defined", () => {
+  it("should have correct name", () => {
     expect(checkPluginCreationStatusAction).toBeDefined();
-    expect(checkPluginCreationStatusAction.name).toBe("checkPluginCreationStatus");
+    expect(checkPluginCreationStatusAction.name).toBe("CHECK_PLUGIN_STATUS");
+  });
+
+  it("should have description with when-to-use guidance", () => {
+    expect(checkPluginCreationStatusAction.description).toContain("Do NOT");
   });
 });
 
 describe("cancelPluginCreationAction", () => {
-  it("should be properly defined", () => {
+  it("should have correct name", () => {
     expect(cancelPluginCreationAction).toBeDefined();
-    expect(cancelPluginCreationAction.name).toBe("cancelPluginCreation");
+    expect(cancelPluginCreationAction.name).toBe("CANCEL_PLUGIN");
+  });
+});
+
+describe("createPluginFromDescriptionAction", () => {
+  it("should have correct name", () => {
+    expect(createPluginFromDescriptionAction).toBeDefined();
+    expect(createPluginFromDescriptionAction.name).toBe("DESCRIBE_PLUGIN");
+  });
+
+  it("should have description with when-to-use guidance", () => {
+    expect(createPluginFromDescriptionAction.description).toContain("Do NOT");
   });
 });
 
@@ -125,19 +146,19 @@ describe("pluginCreationStatusProvider", () => {
     await cleanup();
   });
 
-  it("should be properly defined", () => {
+  it("should have correct name", () => {
     expect(pluginCreationStatusProvider).toBeDefined();
-    expect(pluginCreationStatusProvider.name).toBe("plugin_creation_status");
+    expect(pluginCreationStatusProvider.name).toBe("n8n_plugin_status");
   });
 
-  it("should return service not available when no service", async () => {
+  it("should return empty when no service", async () => {
     const message = createTestMemory("test", runtime.agentId);
     const result = await pluginCreationStatusProvider.get(runtime, message, testState);
-    expect(result.text).toContain("not available");
+    expect(result.text).toBe("");
   });
 });
 
-describe("pluginCreationCapabilitiesProvider", () => {
+describe("pluginRegistryProvider", () => {
   let runtime: IAgentRuntime;
   let cleanup: () => Promise<void>;
   let testState: State;
@@ -154,14 +175,14 @@ describe("pluginCreationCapabilitiesProvider", () => {
     await cleanup();
   });
 
-  it("should be properly defined", () => {
-    expect(pluginCreationCapabilitiesProvider).toBeDefined();
-    expect(pluginCreationCapabilitiesProvider.name).toBe("plugin_creation_capabilities");
+  it("should have correct name", () => {
+    expect(pluginRegistryProvider).toBeDefined();
+    expect(pluginRegistryProvider.name).toBe("n8n_plugin_registry");
   });
 
-  it("should return service not available when no service", async () => {
+  it("should return empty when no service", async () => {
     const message = createTestMemory("test", runtime.agentId);
-    const result = await pluginCreationCapabilitiesProvider.get(runtime, message, testState);
-    expect(result.text).toContain("not available");
+    const result = await pluginRegistryProvider.get(runtime, message, testState);
+    expect(result.text).toBe("");
   });
 });

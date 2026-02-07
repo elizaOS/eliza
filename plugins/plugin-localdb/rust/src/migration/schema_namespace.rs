@@ -186,7 +186,7 @@ mod tests {
     fn test_scope_and_prefix_removed() {
         // npm scope and plugin- prefix are removed
         assert_eq!(derive_schema_name("@your-org/plugin-name"), "name");
-        assert_eq!(derive_schema_name("@elizaos/plugin-bootstrap"), "bootstrap");
+        assert_eq!(derive_schema_name("@elizaos/plugin-discord"), "discord");
     }
 
     #[test]

@@ -28,7 +28,7 @@
     "@octokit/webhooks-types": "^7.5.0",
     "glob": "^11.0.0",
     "simple-git": "^3.27.0",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
@@ -106,5 +106,14 @@
       }
     }
   },
-  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "ESM build available via exports.import"
+    }
+  }
 }

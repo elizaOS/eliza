@@ -42,15 +42,15 @@ Persistence is abstracted behind `DatabaseAdapter` (`packages/typescript/src/dat
 
 ## Worlds, rooms, and entities
 
-ElizaOS models “where” a conversation happens and “who” is participating using three core concepts:
+ElizaOS models "where" a conversation happens and "who" is participating using three core concepts:
 
 - **Entity**: a participant identity (user, agent, or external identity on a platform).
 - **Room**: a conversation space (a DM, channel, thread, etc.).
-- **World**: a container that groups rooms (often a “server”, “workspace”, or deployment environment).
+- **World**: a container that groups rooms (often a "server", "workspace", or deployment environment).
 
 ### Room vs channel (both exist)
 
-ElizaOS has both an internal **room** concept and a “channel” concept, but “channel” is treated as **platform-specific metadata**:
+ElizaOS has both an internal **room** concept and a "channel" concept, but "channel" is treated as **platform-specific metadata**:
 
 - **Room**: the internal conversation record with a stable UUID `roomId` (`Room.id`).
 - **Channel type**: what kind of conversation it is (DM, GROUP, THREAD, etc.) via `ChannelType` (`Room.type`, and often also `Content.channelType`).
@@ -70,8 +70,9 @@ Before you process messages, ensure the runtime knows about the participant and 
 
 You can see this exact pattern in:
 
-- `packages/elizaos/examples/chat/typescript/chat.ts`
-- `packages/elizaos/examples/aws/typescript/handler.ts`
+- `examples/chat/typescript/chat.ts`
+- `examples/aws/typescript/handler.ts`
+- `examples/cloudflare/src/worker.ts`
 
 ## State and providers
 
@@ -102,7 +103,7 @@ Providers (`Provider` in `packages/typescript/src/types/components.ts`) return a
 
 ## Models and inference
 
-ElizaOS treats LLM calls, embeddings, and image description as “models”.
+ElizaOS treats LLM calls, embeddings, and image description as "models".
 
 Plugins register model handlers via `plugin.models` (`packages/typescript/src/types/plugin.ts`). The runtime calls them through:
 
@@ -112,7 +113,7 @@ When multiple handlers exist for a model type, the runtime selects based on **pr
 
 ## Actions (tools)
 
-Actions (`Action` in `packages/typescript/src/types/components.ts`) are the primary “tool” mechanism.
+Actions (`Action` in `packages/typescript/src/types/components.ts`) are the primary "tool" mechanism.
 
 The default message pipeline is:
 
@@ -160,3 +161,4 @@ This repo contains:
 - **Python** SDK/runtime (`packages/python/`) — ML ecosystem integration
 
 Cross-language plugins are enabled by `packages/interop/` (see `INTEROP_GUIDE.md`).
+

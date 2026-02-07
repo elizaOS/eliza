@@ -36,8 +36,8 @@ _CORE_ACTION_DOCS_JSON = """{
   "version": "1.0.0",
   "actions": [
     {
-      "name": "PLUGIN_CREATION_ACTIONS",
-      "description": "Create a plugin from a JSON specification",
+      "name": "CREATE_PLUGIN",
+      "description": "Create an ElizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation.",
       "similes": [
         "create plugin",
         "build plugin",
@@ -57,7 +57,7 @@ _CORE_ACTION_DOCS_JSON = """{
             "content": {
               "text": "I'll create a user preferences management plugin for you.",
               "actions": [
-                "PLUGIN_CREATION_ACTIONS"
+                "CREATE_PLUGIN"
               ]
             }
           }
@@ -65,8 +65,8 @@ _CORE_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "CHECK_PLUGIN_CREATION_STATUS",
-      "description": "Check the status of a plugin creation job",
+      "name": "CHECK_PLUGIN_STATUS",
+      "description": "Check the progress of an active plugin creation job. Do NOT use for n8n workflow status.",
       "similes": [
         "plugin status",
         "check plugin progress",
@@ -87,7 +87,7 @@ _CORE_ACTION_DOCS_JSON = """{
             "content": {
               "text": "Let me check the status of your plugin creation job...",
               "actions": [
-                "CHECK_PLUGIN_CREATION_STATUS"
+                "CHECK_PLUGIN_STATUS"
               ]
             }
           }
@@ -95,8 +95,8 @@ _CORE_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "CANCEL_PLUGIN_CREATION",
-      "description": "Cancel the current plugin creation job",
+      "name": "CANCEL_PLUGIN",
+      "description": "Cancel an active plugin creation job. Do NOT use to cancel n8n workflow drafts.",
       "similes": [
         "stop plugin creation",
         "abort plugin creation",
@@ -116,7 +116,7 @@ _CORE_ACTION_DOCS_JSON = """{
             "content": {
               "text": "I'll cancel the current plugin creation job.",
               "actions": [
-                "CANCEL_PLUGIN_CREATION"
+                "CANCEL_PLUGIN"
               ]
             }
           }
@@ -124,8 +124,8 @@ _CORE_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "CREATE_PLUGIN_FROM_DESCRIPTION",
-      "description": "Create a plugin from a natural language description",
+      "name": "DESCRIBE_PLUGIN",
+      "description": "Generate and create an ElizaOS plugin from a natural language description. Do NOT use for n8n workflow creation.",
       "similes": [
         "describe plugin",
         "plugin from description",
@@ -146,7 +146,7 @@ _CORE_ACTION_DOCS_JSON = """{
             "content": {
               "text": "I'll create a todo list management plugin based on your description.",
               "actions": [
-                "CREATE_PLUGIN_FROM_DESCRIPTION"
+                "DESCRIBE_PLUGIN"
               ]
             }
           }
@@ -159,8 +159,8 @@ _ALL_ACTION_DOCS_JSON = """{
   "version": "1.0.0",
   "actions": [
     {
-      "name": "PLUGIN_CREATION_ACTIONS",
-      "description": "Create a plugin from a JSON specification",
+      "name": "CREATE_PLUGIN",
+      "description": "Create an ElizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation.",
       "similes": [
         "create plugin",
         "build plugin",
@@ -180,7 +180,7 @@ _ALL_ACTION_DOCS_JSON = """{
             "content": {
               "text": "I'll create a user preferences management plugin for you.",
               "actions": [
-                "PLUGIN_CREATION_ACTIONS"
+                "CREATE_PLUGIN"
               ]
             }
           }
@@ -188,8 +188,8 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "CHECK_PLUGIN_CREATION_STATUS",
-      "description": "Check the status of a plugin creation job",
+      "name": "CHECK_PLUGIN_STATUS",
+      "description": "Check the progress of an active plugin creation job. Do NOT use for n8n workflow status.",
       "similes": [
         "plugin status",
         "check plugin progress",
@@ -210,7 +210,7 @@ _ALL_ACTION_DOCS_JSON = """{
             "content": {
               "text": "Let me check the status of your plugin creation job...",
               "actions": [
-                "CHECK_PLUGIN_CREATION_STATUS"
+                "CHECK_PLUGIN_STATUS"
               ]
             }
           }
@@ -218,8 +218,8 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "CANCEL_PLUGIN_CREATION",
-      "description": "Cancel the current plugin creation job",
+      "name": "CANCEL_PLUGIN",
+      "description": "Cancel an active plugin creation job. Do NOT use to cancel n8n workflow drafts.",
       "similes": [
         "stop plugin creation",
         "abort plugin creation",
@@ -239,7 +239,7 @@ _ALL_ACTION_DOCS_JSON = """{
             "content": {
               "text": "I'll cancel the current plugin creation job.",
               "actions": [
-                "CANCEL_PLUGIN_CREATION"
+                "CANCEL_PLUGIN"
               ]
             }
           }
@@ -247,8 +247,8 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "CREATE_PLUGIN_FROM_DESCRIPTION",
-      "description": "Create a plugin from a natural language description",
+      "name": "DESCRIBE_PLUGIN",
+      "description": "Generate and create an ElizaOS plugin from a natural language description. Do NOT use for n8n workflow creation.",
       "similes": [
         "describe plugin",
         "plugin from description",
@@ -269,7 +269,7 @@ _ALL_ACTION_DOCS_JSON = """{
             "content": {
               "text": "I'll create a todo list management plugin based on your description.",
               "actions": [
-                "CREATE_PLUGIN_FROM_DESCRIPTION"
+                "DESCRIBE_PLUGIN"
               ]
             }
           }
@@ -282,12 +282,12 @@ _CORE_PROVIDER_DOCS_JSON = """{
   "version": "1.0.0",
   "providers": [
     {
-      "name": "plugin_creation_status",
+      "name": "n8n_plugin_status",
       "description": "Provides status of active plugin creation jobs",
       "dynamic": true
     },
     {
-      "name": "plugin_registry",
+      "name": "n8n_plugin_registry",
       "description": "Provides information about all created plugins in the current session",
       "dynamic": true
     }
@@ -297,12 +297,12 @@ _ALL_PROVIDER_DOCS_JSON = """{
   "version": "1.0.0",
   "providers": [
     {
-      "name": "plugin_creation_status",
+      "name": "n8n_plugin_status",
       "description": "Provides status of active plugin creation jobs",
       "dynamic": true
     },
     {
-      "name": "plugin_registry",
+      "name": "n8n_plugin_registry",
       "description": "Provides information about all created plugins in the current session",
       "dynamic": true
     }

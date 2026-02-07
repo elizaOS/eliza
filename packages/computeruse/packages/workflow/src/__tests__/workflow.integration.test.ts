@@ -3,9 +3,16 @@
  * Tests error handling, onError callback, and real Calculator automation
  */
 
-import { Desktop } from "@mediar-ai/computeruse";
+import { Desktop } from "@elizaos/computeruse";
 import { createWorkflow, createStep, z } from "../index";
-import type { StepResult } from "../types";
+import type { StepResult, WorkflowErrorContext } from "../types";
+
+type EmptyWorkflowErrorContext = WorkflowErrorContext<Record<string, never>>;
+
+const shouldRunDesktopTests =
+    process.env.COMPUTERUSE_DESKTOP_TESTS === "1" ||
+    process.env.COMPUTERUSE_DESKTOP_TESTS === "true";
+const describeDesktop = shouldRunDesktopTests ? describe : describe.skip;
 
 describe("Workflow Integration Tests - Calculator", () => {
     let desktop: Desktop;
@@ -40,7 +47,11 @@ describe("Workflow Integration Tests - Calculator", () => {
             const workflow = createWorkflow({
                 input: z.object({}),
                 steps: [failingStep],
-                onError: async ({ error, step, logger }: { error: Error; step: any; logger: any }) => {
+                onError: async ({
+                    error,
+                    step,
+                    logger,
+                }: EmptyWorkflowErrorContext) => {
                     errorCaught = true;
                     errorHandler(error, step.config.name);
                     logger.error(`Error handler called: ${error.message}`);
@@ -49,7 +60,7 @@ describe("Workflow Integration Tests - Calculator", () => {
 
             const result = await workflow.run({}, desktop);
 
-            expect(result.status).toBe("error");
+            expect(result.status).toBe("execution_error");
             expect(result.message).toContain("Intentional test failure");
             expect(errorCaught).toBe(true);
             expect(errorHandler).toHaveBeenCalledWith(
@@ -72,9 +83,9 @@ describe("Workflow Integration Tests - Calculator", () => {
             const workflow = createWorkflow({
                 input: z.object({}),
                 steps: [failingStep],
-                onError: async (): Promise<any> => {
+                onError: async () => {
                     return {
-                        status: "error" as const,
+                        status: "execution_error" as const,
                         message: "Custom error message from handler",
                         error: {
                             category: "business" as const,
@@ -89,7 +100,7 @@ describe("Workflow Integration Tests - Calculator", () => {
 
             const result = await workflow.run({}, desktop);
 
-            expect(result.status).toBe("error");
+            expect(result.status).toBe("execution_error");
             expect(result.message).toBe("Custom error message from handler");
             expect(result.error?.code).toBe("CUSTOM_ERROR");
             expect(result.error?.category).toBe("business");
@@ -116,12 +127,12 @@ describe("Workflow Integration Tests - Calculator", () => {
             const result = await workflow.run({}, desktop);
 
             // Workflow should still return error response even if handler fails
-            expect(result.status).toBe("error");
+            expect(result.status).toBe("execution_error");
             expect(result.message).toBe("Step failure");
         });
     });
 
-    describe("Calculator Automation", () => {
+    describeDesktop("Calculator Automation", () => {
         test("open Calculator and verify window", async () => {
             const openStep = createStep({
                 id: "open_calc",
@@ -149,7 +160,7 @@ describe("Workflow Integration Tests - Calculator", () => {
 
             const result = await workflow.run({}, desktop);
 
-            expect(result.status).toBe("success");
+            expect(result.status).toBe("executed_without_error");
         });
 
         test("Calculator addition workflow", async () => {
@@ -219,7 +230,7 @@ describe("Workflow Integration Tests - Calculator", () => {
 
             const result = await workflow.run({}, desktop);
 
-            expect(result.status).toBe("success");
+            expect(result.status).toBe("executed_without_error");
         });
 
         test("Calculator workflow with error recovery", async () => {
@@ -252,13 +263,16 @@ describe("Workflow Integration Tests - Calculator", () => {
             const workflow = createWorkflow({
                 input: z.object({}),
                 steps: [openCalc, clickInvalidButton],
-                onError: async ({ error, logger }) => {
+                onError: async ({
+                    error,
+                    logger,
+                }: EmptyWorkflowErrorContext) => {
                     errorOccurred = true;
                     recoveryAttempted = true;
                     logger.info("Recovering from error...");
 
                     return {
-                        status: "error" as const,
+                        status: "execution_error" as const,
                         message: "Button not found - this is expected",
                         error: {
                             category: "technical" as const,
@@ -273,7 +287,7 @@ describe("Workflow Integration Tests - Calculator", () => {
 
             const result = await workflow.run({}, desktop);
 
-            expect(result.status).toBe("error");
+            expect(result.status).toBe("execution_error");
             expect(errorOccurred).toBe(true);
             expect(recoveryAttempted).toBe(true);
             expect(result.message).toContain("Button not found");
@@ -316,7 +330,7 @@ describe("Workflow Integration Tests - Calculator", () => {
 
             const result = await workflow.run({}, desktop);
 
-            expect(result.status).toBe("success");
+            expect(result.status).toBe("executed_without_error");
         });
     });
 });

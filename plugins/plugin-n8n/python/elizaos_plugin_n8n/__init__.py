@@ -16,7 +16,6 @@ from elizaos_plugin_n8n.errors import (
 )
 from elizaos_plugin_n8n.models import ClaudeModel, JobStatus
 from elizaos_plugin_n8n.providers import (
-    PluginCreationCapabilitiesProvider,
     PluginCreationStatusProvider,
     PluginExistsCheckProvider,
     PluginExistsProvider,
@@ -56,7 +55,6 @@ __all__ = [
     "CancelPluginAction",
     "CreateFromDescriptionAction",
     "PluginCreationStatusProvider",
-    "PluginCreationCapabilitiesProvider",
     "PluginRegistryProvider",
     "PluginExistsProvider",
     "PluginExistsCheckProvider",

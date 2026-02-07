@@ -35,18 +35,14 @@ impl Provider for ContextBenchProvider {
         message: &Memory,
         _state: Option<&State>,
     ) -> PluginResult<ProviderResult> {
-        let mut bench_ctx: Option<String> = None;
-        if let Some(meta) = &message.metadata {
-            if let crate::types::memory::MemoryMetadata::Custom(v) = meta {
-                if let Some(obj) = v.as_object() {
-                    if let Some(s) = obj.get("benchmarkContext").and_then(|x| x.as_str()) {
-                        if !s.trim().is_empty() {
-                            bench_ctx = Some(s.trim().to_string());
-                        }
-                    }
-                }
-            }
-        }
+        let bench_ctx = message.metadata.as_ref().and_then(|meta| {
+            let crate::types::memory::MemoryMetadata::Custom(v) = meta;
+            v.as_object()
+                .and_then(|obj| obj.get("benchmarkContext"))
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .map(|s| s.trim().to_string())
+        });
 
         if let Some(ctx) = bench_ctx {
             Ok(ProviderResult {

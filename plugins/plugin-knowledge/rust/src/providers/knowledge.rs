@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use log::error;
 
 use super::{KnowledgeProviderTrait, ProviderContext, ProviderResult};
-use crate::types::KnowledgeItem;
+use crate::types::{KnowledgeItem, RAGMetadata, RetrievedFragmentInfo};
 
 pub struct KnowledgeProvider {
     items: Vec<KnowledgeItem>,
@@ -24,17 +24,9 @@ impl KnowledgeProvider {
 
         items
             .iter()
-            .enumerate()
-            .map(|(i, item)| {
-                let similarity = item
-                    .similarity
-                    .map(|s| format!(" (relevance: {:.2})", s))
-                    .unwrap_or_default();
-
-                format!("{}. {}{}", i + 1, item.content, similarity)
-            })
+            .map(|item| format!("- {}", item.content))
             .collect::<Vec<_>>()
-            .join("\n\n")
+            .join("\n")
     }
 
     fn add_header(header: &str, content: &str) -> String {
@@ -43,6 +35,50 @@ impl KnowledgeProvider {
         } else {
             format!("{}\n\n{}", header, content)
         }
+    }
+
+    /// Build RAG metadata from knowledge items and a query.
+    pub fn build_rag_metadata(items: &[KnowledgeItem], query_text: &str) -> Option<RAGMetadata> {
+        if items.is_empty() {
+            return None;
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        Some(RAGMetadata {
+            retrieved_fragments: items
+                .iter()
+                .map(|item| {
+                    let doc_title = item
+                        .metadata
+                        .get("filename")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| item.metadata.get("title").and_then(|v| v.as_str()))
+                        .unwrap_or("")
+                        .to_string();
+
+                    let preview = if item.content.len() > 100 {
+                        format!("{}...", &item.content[..100])
+                    } else {
+                        item.content.clone()
+                    };
+
+                    RetrievedFragmentInfo {
+                        fragment_id: item.id.clone(),
+                        document_title: doc_title,
+                        similarity_score: item.similarity,
+                        content_preview: preview,
+                    }
+                })
+                .collect(),
+            query_text: query_text.to_string(),
+            total_fragments: items.len(),
+            retrieval_timestamp: now,
+            used_in_response: true,
+        })
     }
 }
 
@@ -59,7 +95,7 @@ impl KnowledgeProviderTrait for KnowledgeProvider {
     }
 
     fn description(&self) -> &'static str {
-        "Retrieves knowledge from the knowledge base for RAG"
+        "Knowledge from the knowledge base that the agent knows, retrieved whenever the agent needs to answer a question about their expertise."
     }
 
     fn dynamic(&self) -> bool {
@@ -82,42 +118,52 @@ impl KnowledgeProviderTrait for KnowledgeProvider {
 
         if items.is_empty() {
             return ProviderResult {
-                data: serde_json::json!({ "knowledge": [], "count": 0 }),
-                values: serde_json::json!({
-                    "knowledgeCount": 0,
+                data: serde_json::json!({
                     "knowledge": "",
-                    "relevantKnowledge": "",
+                    "ragMetadata": null,
+                    "knowledgeUsed": false,
+                }),
+                values: serde_json::json!({
+                    "knowledge": "",
+                    "knowledgeUsed": false,
                 }),
                 text: String::new(),
             };
         }
 
-        let item_refs: Vec<&KnowledgeItem> = items.iter().collect();
-        let knowledge_list = self.format_items(&item_refs);
-        let knowledge_text = Self::add_header("# Relevant Knowledge", &knowledge_list);
+        // Take first 5 items for context
+        let first_five: Vec<&KnowledgeItem> = items.iter().take(5).collect();
+        let knowledge_list = self.format_items(&first_five);
+        let knowledge_text = Self::add_header("# Knowledge", &knowledge_list);
 
-        let knowledge_data: Vec<serde_json::Value> = items
-            .iter()
-            .map(|item| {
-                serde_json::json!({
-                    "id": item.id,
-                    "content": item.content,
-                    "similarity": item.similarity,
-                })
-            })
-            .collect();
+        // Truncate if too long (4000 tokens * 3.5 chars/token)
+        let max_chars = (4000.0 * 3.5) as usize;
+        let knowledge = if knowledge_text.len() > max_chars {
+            knowledge_text[..max_chars].to_string()
+        } else {
+            knowledge_text
+        };
+
+        // Build RAG metadata
+        let query_text = context.query.as_deref().unwrap_or("");
+        let rag_metadata = Self::build_rag_metadata(&items, query_text);
+
+        let rag_json = rag_metadata
+            .as_ref()
+            .map(|r| serde_json::to_value(r).unwrap_or(serde_json::Value::Null))
+            .unwrap_or(serde_json::Value::Null);
 
         ProviderResult {
             data: serde_json::json!({
-                "knowledge": knowledge_data,
-                "count": items.len(),
+                "knowledge": &knowledge,
+                "ragMetadata": rag_json,
+                "knowledgeUsed": true,
             }),
             values: serde_json::json!({
-                "knowledgeCount": items.len(),
-                "knowledge": knowledge_list,
-                "relevantKnowledge": knowledge_text,
+                "knowledge": &knowledge,
+                "knowledgeUsed": true,
             }),
-            text: knowledge_text,
+            text: knowledge,
         }
     }
 }
@@ -147,10 +193,8 @@ mod tests {
         let items: Vec<&KnowledgeItem> = vec![&item1, &item2];
         let formatted = provider.format_items(&items);
 
-        assert!(formatted.contains("1. First knowledge"));
-        assert!(formatted.contains("(relevance: 0.95)"));
-        assert!(formatted.contains("2. Second knowledge"));
-        assert!(formatted.contains("(relevance: 0.87)"));
+        assert!(formatted.contains("- First knowledge"));
+        assert!(formatted.contains("- Second knowledge"));
     }
 
     #[test]
@@ -159,6 +203,30 @@ mod tests {
         let items: Vec<&KnowledgeItem> = vec![];
         let formatted = provider.format_items(&items);
         assert!(formatted.is_empty());
+    }
+
+    #[test]
+    fn test_build_rag_metadata() {
+        let items = vec![
+            create_test_item("AI content", 0.95),
+            create_test_item("ML content", 0.85),
+        ];
+
+        let rag = KnowledgeProvider::build_rag_metadata(&items, "AI query");
+        assert!(rag.is_some());
+
+        let rag = rag.unwrap();
+        assert_eq!(rag.retrieved_fragments.len(), 2);
+        assert_eq!(rag.query_text, "AI query");
+        assert_eq!(rag.total_fragments, 2);
+        assert!(rag.retrieval_timestamp > 0);
+    }
+
+    #[test]
+    fn test_build_rag_metadata_empty() {
+        let items: Vec<KnowledgeItem> = vec![];
+        let rag = KnowledgeProvider::build_rag_metadata(&items, "query");
+        assert!(rag.is_none());
     }
 
     #[tokio::test]
@@ -174,7 +242,31 @@ mod tests {
 
         let result = provider.get(&context).await;
 
-        assert_eq!(result.data["count"], 0);
+        assert_eq!(result.data["knowledgeUsed"], false);
         assert!(result.text.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_with_items() {
+        let mut provider = KnowledgeProvider::new();
+        provider.update_items(vec![
+            create_test_item("Knowledge about AI", 0.95),
+            create_test_item("Knowledge about ML", 0.85),
+        ]);
+
+        let context = ProviderContext {
+            agent_id: uuid::Uuid::new_v4(),
+            entity_id: None,
+            room_id: None,
+            query: Some("AI query".to_string()),
+            state: serde_json::json!({}),
+        };
+
+        let result = provider.get(&context).await;
+
+        assert_eq!(result.data["knowledgeUsed"], true);
+        assert!(!result.text.is_empty());
+        assert!(result.text.contains("Knowledge about AI"));
+        assert!(result.data["ragMetadata"].is_object());
     }
 }

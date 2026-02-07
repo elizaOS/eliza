@@ -1,6 +1,6 @@
 import { Workflow, WorkflowContext, Logger, ConsoleLogger, isWorkflowSuccess, isNextStep } from './types';
 import { emit } from './events';
-import { Desktop } from '@mediar-ai/computeruse';
+import { Desktop } from '@elizaos/computeruse';
 
 export interface WorkflowRunnerOptions {
   workflow: Workflow;

@@ -16,8 +16,8 @@ class ActionResult:
 
 
 class CancelPluginAction:
-    name = "cancelPluginCreation"
-    description = "Cancel the current plugin creation job"
+    name = "CANCEL_PLUGIN"
+    description = "Cancel an active plugin creation job. Do NOT use to cancel n8n workflow drafts."
     similes = ["stop plugin creation", "abort plugin creation", "cancel plugin"]
 
     async def validate(self, context: ActionContext) -> bool:

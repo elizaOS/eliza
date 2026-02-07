@@ -11,12 +11,20 @@
  * - State restoration across retries
  */
 
-import { Desktop } from "@mediar-ai/computeruse";
+import { Desktop } from "@elizaos/computeruse";
 import { createWorkflow, createStep, z, retry } from "../index";
+import type { WorkflowErrorContext } from "../types";
 import * as fs from "fs";
 import * as path from "path";
 
 const TEMP_WORKFLOW_DIR = path.join(process.cwd(), "__test_workflows__");
+
+type EmptyWorkflowErrorContext = WorkflowErrorContext<Record<string, never>>;
+
+const shouldRunDesktopTests =
+    process.env.COMPUTERUSE_DESKTOP_TESTS === "1" ||
+    process.env.COMPUTERUSE_DESKTOP_TESTS === "true";
+const describeDesktop = shouldRunDesktopTests ? describe : describe.skip;
 
 describe("Workflow E2E Tests - MCP Client+Server Loop", () => {
     let desktop: Desktop;
@@ -323,7 +331,7 @@ describe("Workflow E2E Tests - MCP Client+Server Loop", () => {
         });
     });
 
-    describe("Calculator E2E with Retry and State", () => {
+    describeDesktop("Calculator E2E with Retry and State", () => {
         test("Calculator workflow with intermittent failures and retry", async () => {
             let openAttempts = 0;
             let clickAttempts = 0;
@@ -517,7 +525,11 @@ describe("Workflow E2E Tests - MCP Client+Server Loop", () => {
             const workflow = createWorkflow({
                 input: z.object({}),
                 steps: [step1, step2],
-                onError: async ({ error, step, logger }) => {
+                onError: async ({
+                    error,
+                    step,
+                    logger,
+                }: EmptyWorkflowErrorContext) => {
                     workflowOnErrorCalled = true;
                     logger.error(
                         `Workflow failed at ${step.config.name}: ${error.message}`,
@@ -556,7 +568,11 @@ describe("Workflow E2E Tests - MCP Client+Server Loop", () => {
             const workflow = createWorkflow({
                 input: z.object({}),
                 steps: [failingStep],
-                onError: async ({ error, step, logger }) => {
+                onError: async ({
+                    error,
+                    step,
+                    logger,
+                }: EmptyWorkflowErrorContext) => {
                     workflowErrorHandled = true;
                     logger.error(
                         `Workflow caught error from ${step.config.name}`,

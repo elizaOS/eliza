@@ -5,7 +5,6 @@ describe("buildCharacterPlugins", () => {
   // Plugin name constants for better maintainability
   const PLUGINS = {
     SQL: "@elizaos/plugin-sql",
-    BOOTSTRAP: "@elizaos/plugin-bootstrap",
     OLLAMA: "@elizaos/plugin-ollama",
     ANTHROPIC: "@elizaos/plugin-anthropic",
     OPENAI: "@elizaos/plugin-openai",
@@ -27,57 +26,6 @@ describe("buildCharacterPlugins", () => {
     it("should always include SQL plugin first", () => {
       const plugins = buildCharacterPlugins(testEnv);
       expect(plugins[0]).toBe(PLUGINS.SQL);
-    });
-
-    it("should include bootstrap plugin by default (not ignored)", () => {
-      const plugins = buildCharacterPlugins(testEnv);
-      expect(plugins).toContain(PLUGINS.BOOTSTRAP);
-    });
-
-    it('should exclude bootstrap plugin when IGNORE_BOOTSTRAP="true"', () => {
-      testEnv.IGNORE_BOOTSTRAP = "true";
-      const plugins = buildCharacterPlugins(testEnv);
-      expect(plugins).not.toContain(PLUGINS.BOOTSTRAP);
-    });
-
-    it('should exclude bootstrap plugin when IGNORE_BOOTSTRAP="1"', () => {
-      testEnv.IGNORE_BOOTSTRAP = "1";
-      const plugins = buildCharacterPlugins(testEnv);
-      expect(plugins).not.toContain(PLUGINS.BOOTSTRAP);
-    });
-
-    it('should exclude bootstrap plugin when IGNORE_BOOTSTRAP="yes"', () => {
-      testEnv.IGNORE_BOOTSTRAP = "yes";
-      const plugins = buildCharacterPlugins(testEnv);
-      expect(plugins).not.toContain(PLUGINS.BOOTSTRAP);
-    });
-
-    it('should INCLUDE bootstrap plugin when IGNORE_BOOTSTRAP="false" (common mistake)', () => {
-      testEnv.IGNORE_BOOTSTRAP = "false";
-      const plugins = buildCharacterPlugins(testEnv);
-      expect(plugins).toContain(PLUGINS.BOOTSTRAP);
-    });
-
-    it('should INCLUDE bootstrap plugin when IGNORE_BOOTSTRAP="0"', () => {
-      testEnv.IGNORE_BOOTSTRAP = "0";
-      const plugins = buildCharacterPlugins(testEnv);
-      expect(plugins).toContain(PLUGINS.BOOTSTRAP);
-    });
-
-    it('should INCLUDE bootstrap plugin when IGNORE_BOOTSTRAP="no"', () => {
-      testEnv.IGNORE_BOOTSTRAP = "no";
-      const plugins = buildCharacterPlugins(testEnv);
-      expect(plugins).toContain(PLUGINS.BOOTSTRAP);
-    });
-
-    it("should handle case-insensitive IGNORE_BOOTSTRAP values", () => {
-      testEnv.IGNORE_BOOTSTRAP = "TRUE";
-      const plugins1 = buildCharacterPlugins(testEnv);
-      expect(plugins1).not.toContain(PLUGINS.BOOTSTRAP);
-
-      testEnv.IGNORE_BOOTSTRAP = "Yes";
-      const plugins2 = buildCharacterPlugins(testEnv);
-      expect(plugins2).not.toContain(PLUGINS.BOOTSTRAP);
     });
   });
 
@@ -164,18 +112,6 @@ describe("buildCharacterPlugins", () => {
       expect(discordIndex).toBeGreaterThan(-1);
       expect(discordIndex).toBeGreaterThan(openaiIndex);
     });
-
-    it("should place platform plugins before bootstrap", () => {
-      testEnv.DISCORD_API_TOKEN = "discord-token";
-
-      const plugins = buildCharacterPlugins(testEnv);
-      const discordIndex = plugins.indexOf(PLUGINS.DISCORD);
-      const bootstrapIndex = plugins.indexOf(PLUGINS.BOOTSTRAP);
-
-      expect(discordIndex).toBeGreaterThan(-1);
-      expect(bootstrapIndex).toBeGreaterThan(-1);
-      expect(bootstrapIndex).toBeGreaterThan(discordIndex);
-    });
   });
 
   describe("Complex Environment Combinations", () => {
@@ -184,12 +120,7 @@ describe("buildCharacterPlugins", () => {
       testEnv.OPENAI_API_KEY = "openai-key";
 
       const plugins = buildCharacterPlugins(testEnv);
-      const expectedOrder = [
-        PLUGINS.SQL,
-        PLUGINS.ANTHROPIC,
-        PLUGINS.OPENAI,
-        PLUGINS.BOOTSTRAP,
-      ];
+      const expectedOrder = [PLUGINS.SQL, PLUGINS.ANTHROPIC, PLUGINS.OPENAI];
 
       expect(plugins).toEqual(expectedOrder);
     });
@@ -198,11 +129,7 @@ describe("buildCharacterPlugins", () => {
       testEnv.OPENROUTER_API_KEY = "openrouter-key";
 
       const plugins = buildCharacterPlugins(testEnv);
-      const expectedOrder = [
-        PLUGINS.SQL,
-        PLUGINS.OPENROUTER,
-        PLUGINS.BOOTSTRAP,
-      ];
+      const expectedOrder = [PLUGINS.SQL, PLUGINS.OPENROUTER];
 
       expect(plugins).toEqual(expectedOrder);
     });
@@ -322,16 +249,7 @@ describe("buildCharacterPlugins", () => {
   });
 
   describe("Edge Cases", () => {
-    it("should handle empty environment (only SQL, bootstrap, Ollama)", () => {
-      const plugins = buildCharacterPlugins(testEnv);
-      const expectedPlugins = [PLUGINS.SQL, PLUGINS.BOOTSTRAP, PLUGINS.OLLAMA];
-
-      expect(plugins).toEqual(expectedPlugins);
-    });
-
-    it("should handle IGNORE_BOOTSTRAP with no AI providers", () => {
-      testEnv.IGNORE_BOOTSTRAP = "true";
-
+    it("should handle empty environment (only SQL, Ollama)", () => {
       const plugins = buildCharacterPlugins(testEnv);
       const expectedPlugins = [PLUGINS.SQL, PLUGINS.OLLAMA];
 

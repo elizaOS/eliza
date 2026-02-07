@@ -15,7 +15,7 @@ describe("Models", () => {
   describe("LiteLLM Mock", () => {
     it("should handle mock responses", async () => {
       const config: GenericAPIModelConfig = {
-        name: "gpt-4o",
+        name: "gpt-5",
         completionKwargs: {
           mockResponse: "Hello, world!",
         },
@@ -52,7 +52,7 @@ describe("Models", () => {
       // Note: This test would need mocking to actually work
       // For now, we're just testing that the model can be created
       expect(model).toBeDefined();
-      expect(config.name).toBe("gpt-4o");
+      expect(config.name).toBe("gpt-5");
     });
   });
 

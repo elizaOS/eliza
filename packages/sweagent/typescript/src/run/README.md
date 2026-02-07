@@ -65,7 +65,7 @@ src/run/
 
 ```bash
 # Run on a single GitHub issue
-sweagent run --agent.model.name gpt-4 \
+sweagent run --agent.model.name gpt-5 \
   --env.repo.github_url https://github.com/user/repo \
   --problem_statement.github_url https://github.com/user/repo/issues/1
 
@@ -73,7 +73,7 @@ sweagent run --agent.model.name gpt-4 \
 sweagent run-batch --instances.type swe_bench \
   --instances.subset lite \
   --instances.split dev \
-  --agent.model.name gpt-4
+  --agent.model.name gpt-5
 
 # Replay a trajectory
 sweagent run-replay --traj_path path/to/trajectory.traj
@@ -92,7 +92,7 @@ import { RunSingle, RunBatch, RunReplay } from '@swe-agent/run';
 
 // Single run
 const runSingle = RunSingle.fromConfig({
-  agent: { model: { name: 'gpt-4' } },
+  agent: { model: { name: 'gpt-5' } },
   env: { repo: { type: 'github', githubUrl: 'https://...' } },
   problemStatement: { type: 'github', githubUrl: 'https://...' }
 });
@@ -101,7 +101,7 @@ await runSingle.run();
 // Batch run
 const runBatch = RunBatch.fromConfig({
   instances: { type: 'swe_bench', subset: 'lite' },
-  agent: { model: { name: 'gpt-4' } }
+  agent: { model: { name: 'gpt-5' } }
 });
 await runBatch.main();
 ```

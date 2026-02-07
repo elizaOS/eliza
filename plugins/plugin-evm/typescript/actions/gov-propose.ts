@@ -14,7 +14,8 @@ export class ProposeAction {
   async propose(params: ProposeProposalParams): Promise<Transaction> {
     const walletClient = this.walletProvider.getWalletClient(params.chain);
 
-    if (!walletClient.account) {
+    const account = walletClient.account;
+    if (!account) {
       throw new Error("Wallet account is not available");
     }
 
@@ -28,9 +29,8 @@ export class ProposeAction {
       const chainConfig = this.walletProvider.getChainConfigs(params.chain);
       const publicClient = this.walletProvider.getPublicClient(params.chain);
 
-      // @ts-expect-error - viem type narrowing issue with sendTransaction parameters
       const hash = await walletClient.sendTransaction({
-        account: walletClient.account,
+        account,
         to: params.governor,
         value: BigInt(0),
         data: txData as Hex,
@@ -43,7 +43,7 @@ export class ProposeAction {
 
       return {
         hash,
-        from: walletClient.account?.address as `0x${string}`,
+        from: account.address,
         to: params.governor,
         value: BigInt(0),
         data: txData as Hex,

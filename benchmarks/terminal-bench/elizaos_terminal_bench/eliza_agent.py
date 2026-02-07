@@ -164,8 +164,10 @@ class ElizaTerminalAgent:
                 "If a command fails, analyze the error and try again with corrections."
             ),
             settings={
-                "CHECK_SHOULD_RESPOND": False,  # Always respond (benchmark mode)
-                "ACTION_PLANNING": True,  # Enable multi-action execution
+                "extra": {
+                    "CHECK_SHOULD_RESPOND": False,  # Always respond (benchmark mode)
+                    "ACTION_PLANNING": True,  # Enable multi-action execution
+                },
             },
             templates={
                 # Use a stricter message handler template for terminal actions.

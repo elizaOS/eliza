@@ -24,7 +24,7 @@ export const myPlugin: Plugin = {
 };
 ```
 
-Register it by passing it to `new AgentRuntime({ plugins: [...] })` and calling `runtime.initialize()` (see `packages/elizaos/examples/chat/typescript/chat.ts` for a minimal “runtime + plugins” setup).
+Register it by passing it to `new AgentRuntime({ plugins: [...] })` and calling `runtime.initialize()`. See `examples/chat/typescript/chat.ts` for a minimal "runtime + plugins" setup.
 
 ## Actions
 
@@ -175,7 +175,5 @@ This repository contains TypeScript unit tests for the core runtime under:
 
 - `packages/typescript/src/__tests__/`
 
-For plugin tests, follow the patterns in the example plugin templates under:
-
-- `packages/elizaos/examples/plugin/`
+For plugin development examples, see the various plugins in the `plugins/` directory. For plugin starter templates, follow the patterns in `examples/_plugin/`.
 

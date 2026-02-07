@@ -5,7 +5,9 @@
     "emitDeclarationOnly": true,
     "declaration": true,
     "declarationMap": false,
-    "outDir": "dist"
+    "outDir": "dist",
+    "skipLibCheck": true,
+    "rootDir": "."
   },
   "include": ["./**/*.ts"],
   "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts"]

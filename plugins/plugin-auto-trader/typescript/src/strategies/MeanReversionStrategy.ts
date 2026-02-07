@@ -43,7 +43,6 @@ export class MeanReversionStrategy implements TradingStrategy {
     "A strategy that trades on mean reversion patterns using Bollinger Bands and RSI";
   private config: MeanReversionConfig;
   private initialized = false;
-  private runtime: AgentRuntime | null = null;
 
   constructor(config?: Partial<MeanReversionConfig>) {
     this.config = {

@@ -1,4 +1,4 @@
-import { Action, IAgentRuntime } from '@elizaos/core';
+import { Action, IAgentRuntime, type ActionExample } from '@elizaos/core';
 import {
   IDexInteractionService,
   IUserLpProfileService,
@@ -130,7 +130,7 @@ export const LpManagementAgentAction: Action = {
     'MANAGE_LIQUIDITY'
   ],
   
-  examples: [] as any[], // TODO: Add proper examples once ActionExample type is clarified
+  examples: [] as ActionExample[][], // Empty for now - add examples when specific LP workflows are documented
 
   validate: async (runtime, message, state) => {
     console.info('[LpManagementAgentAction] Validate called with message:', message?.content?.text || 'No text');

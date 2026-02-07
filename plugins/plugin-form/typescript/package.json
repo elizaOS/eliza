@@ -14,11 +14,12 @@
     "plugin",
     "elizaos",
     "form",
-    "conversational"
+    "conversational",
+    "data-collection"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/elizaos/eliza"
+    "url": "https://github.com/elizaos/elizaos"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -43,14 +44,14 @@
     "typescript": "^5.9.3"
   },
   "scripts": {
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
     "dev": "bun --hot build.ts",
     "test": "vitest run || echo 'TypeScript tests skipped - no tests found'",
-    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist .turbo",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "build": "bun run build.ts",
-    "build:ts": "bun run build.ts"
+    "clean": "rm -rf dist .turbo"
   },
   "publishConfig": {
     "access": "public"

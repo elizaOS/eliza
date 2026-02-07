@@ -2484,6 +2484,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "ACTIVATE_N8N_WORKFLOW",
+      "description": "Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
+      "parameters": [],
+      "similes": [
+        "ACTIVATE_WORKFLOW",
+        "ENABLE_WORKFLOW",
+        "START_WORKFLOW",
+        "TURN_ON_WORKFLOW"
+      ]
+    },
+    {
       "name": "ANALYZE_PERFORMANCE",
       "description": "Analyze trading performance and show metrics",
       "parameters": [],
@@ -2492,6 +2503,16 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "CHECK_PERFORMANCE",
         "TRADING_RESULTS",
         "SHOW_PERFORMANCE"
+      ]
+    },
+    {
+      "name": "BLUEBUBBLES_SEND_REACTION",
+      "description": "Add or remove a reaction on a message via BlueBubbles",
+      "parameters": [],
+      "similes": [
+        "BLUEBUBBLES_REACT",
+        "BB_REACTION",
+        "IMESSAGE_REACT"
       ]
     },
     {
@@ -2608,6 +2629,16 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "clear-linear-activity",
         "reset-linear-activity",
         "delete-linear-activity"
+      ]
+    },
+    {
+      "name": "COMMANDS_LIST",
+      "description": "List all available commands with their aliases",
+      "parameters": [],
+      "similes": [
+        "/commands",
+        "/cmds",
+        "list all commands"
       ]
     },
     {
@@ -3065,6 +3096,23 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "CREATE_N8N_WORKFLOW",
+      "description": "Generate, preview, and deploy n8n workflows from natural language. ",
+      "parameters": [],
+      "similes": [
+        "CREATE_WORKFLOW",
+        "BUILD_WORKFLOW",
+        "GENERATE_WORKFLOW",
+        "MAKE_AUTOMATION",
+        "CREATE_AUTOMATION",
+        "BUILD_N8N_WORKFLOW",
+        "SETUP_WORKFLOW",
+        "CONFIRM_WORKFLOW",
+        "DEPLOY_WORKFLOW",
+        "CANCEL_WORKFLOW"
+      ]
+    },
+    {
       "name": "CREATE_TASK",
       "description": "Create an orchestrated background task to be executed by a selected agent provider.",
       "parameters": [],
@@ -3076,6 +3124,18 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "DEACTIVATE_N8N_WORKFLOW",
+      "description": "Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
+      "parameters": [],
+      "similes": [
+        "DEACTIVATE_WORKFLOW",
+        "DISABLE_WORKFLOW",
+        "STOP_WORKFLOW",
+        "PAUSE_WORKFLOW",
+        "TURN_OFF_WORKFLOW"
+      ]
+    },
+    {
       "name": "DELETE_LINEAR_ISSUE",
       "description": "Delete (archive) an issue in Linear",
       "parameters": [],
@@ -3084,6 +3144,16 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "archive-linear-issue",
         "remove-linear-issue",
         "close-linear-issue"
+      ]
+    },
+    {
+      "name": "DELETE_N8N_WORKFLOW",
+      "description": "Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.",
+      "parameters": [],
+      "similes": [
+        "DELETE_WORKFLOW",
+        "REMOVE_WORKFLOW",
+        "DESTROY_WORKFLOW"
       ]
     },
     {
@@ -3108,6 +3178,16 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "RESUME_FORM",
         "CONTINUE_FORM"
+      ]
+    },
+    {
+      "name": "GENERATE_ENV_VAR",
+      "description": "Automatically generates environment variables that can be created programmatically",
+      "parameters": [],
+      "similes": [
+        "AUTO_GENERATE_ENV",
+        "CREATE_ENV_VAR",
+        "GENERATE_VARIABLE"
       ]
     },
     {
@@ -3167,6 +3247,130 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "ANALYZE_MARKET",
         "MARKET_OVERVIEW",
         "TRENDING_TOKENS"
+      ]
+    },
+    {
+      "name": "GET_N8N_EXECUTIONS",
+      "description": "Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in any language.",
+      "parameters": [],
+      "similes": [
+        "GET_EXECUTIONS",
+        "SHOW_EXECUTIONS",
+        "EXECUTION_HISTORY",
+        "WORKFLOW_RUNS",
+        "WORKFLOW_EXECUTIONS"
+      ]
+    },
+    {
+      "name": "GET_SKILL_DETAILS",
+      "description": "Get detailed information about a specific skill including version, owner, and stats.",
+      "parameters": [],
+      "similes": [
+        "SKILL_INFO",
+        "SKILL_DETAILS"
+      ]
+    },
+    {
+      "name": "GET_SKILL_GUIDANCE",
+      "description": "Search for and get skill instructions. Use when user asks to find a skill or when you need instructions for a capability.",
+      "parameters": [],
+      "similes": [
+        "FIND_SKILL",
+        "SEARCH_SKILLS",
+        "SKILL_HELP",
+        "HOW_TO",
+        "GET_INSTRUCTIONS",
+        "LEARN_SKILL",
+        "LOOKUP_SKILL"
+      ]
+    },
+    {
+      "name": "GOOGLE_CHAT_LIST_SPACES",
+      "description": "List all Google Chat spaces the bot is a member of",
+      "parameters": [],
+      "similes": [
+        "LIST_GOOGLE_CHAT_SPACES",
+        "GCHAT_SPACES",
+        "SHOW_GOOGLE_CHAT_SPACES"
+      ]
+    },
+    {
+      "name": "GOOGLE_CHAT_SEND_MESSAGE",
+      "description": "Send a message to a Google Chat space",
+      "parameters": [],
+      "similes": [
+        "SEND_GOOGLE_CHAT_MESSAGE",
+        "MESSAGE_GOOGLE_CHAT",
+        "GCHAT_SEND",
+        "GOOGLE_CHAT_TEXT"
+      ]
+    },
+    {
+      "name": "GOOGLE_CHAT_SEND_REACTION",
+      "description": "Add or remove an emoji reaction to a Google Chat message",
+      "parameters": [],
+      "similes": [
+        "REACT_GOOGLE_CHAT",
+        "GCHAT_REACT",
+        "GOOGLE_CHAT_EMOJI",
+        "ADD_GOOGLE_CHAT_REACTION"
+      ]
+    },
+    {
+      "name": "HELP_COMMAND",
+      "description": "Show available commands and their descriptions",
+      "parameters": [],
+      "similes": [
+        "/help",
+        "/h",
+        "/?",
+        "help",
+        "show help",
+        "list commands"
+      ]
+    },
+    {
+      "name": "IMESSAGE_SEND_MESSAGE",
+      "description": "Send a text message via iMessage (macOS only)",
+      "parameters": [],
+      "similes": [
+        "SEND_IMESSAGE",
+        "IMESSAGE_TEXT",
+        "TEXT_IMESSAGE",
+        "SEND_IMSG"
+      ]
+    },
+    {
+      "name": "LINE_SEND_FLEX_MESSAGE",
+      "description": "Send a rich flex message/card via LINE",
+      "parameters": [],
+      "similes": [
+        "SEND_LINE_CARD",
+        "LINE_FLEX",
+        "LINE_CARD",
+        "SEND_LINE_FLEX"
+      ]
+    },
+    {
+      "name": "LINE_SEND_LOCATION",
+      "description": "Send a location message via LINE",
+      "parameters": [],
+      "similes": [
+        "SEND_LINE_LOCATION",
+        "LINE_LOCATION",
+        "LINE_MAP",
+        "SHARE_LOCATION_LINE"
+      ]
+    },
+    {
+      "name": "LINE_SEND_MESSAGE",
+      "description": "Send a text message via LINE",
+      "parameters": [],
+      "similes": [
+        "SEND_LINE_MESSAGE",
+        "LINE_MESSAGE",
+        "LINE_TEXT",
+        "MESSAGE_LINE"
       ]
     },
     {
@@ -3240,6 +3444,23 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "MANAGE_PROCESS",
+      "description": "Manage running shell/exec sessions: list, poll, log, write, send-keys, submit, paste, kill, clear, remove",
+      "parameters": [],
+      "similes": [
+        "PROCESS_LIST",
+        "PROCESS_POLL",
+        "PROCESS_LOG",
+        "PROCESS_WRITE",
+        "PROCESS_KILL",
+        "LIST_SESSIONS",
+        "POLL_SESSION",
+        "KILL_SESSION",
+        "CHECK_PROCESS",
+        "SEND_KEYS"
+      ]
+    },
+    {
       "name": "manage_raydium_positions",
       "description": "Automatically manage Raydium positions by rebalancing them when they drift too far from the pool price",
       "parameters": [],
@@ -3247,6 +3468,101 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "AUTOMATE_RAYDIUM_REBALANCING",
         "AUTOMATE_RAYDIUM_POSITIONS",
         "START_MANAGING_RAYDIUM_POSITIONS"
+      ]
+    },
+    {
+      "name": "MANAGE_SECRET",
+      "description": "Manage secrets at different levels (global, world, user) with get, set, delete, and list operations",
+      "parameters": []
+    },
+    {
+      "name": "MATRIX_JOIN_ROOM",
+      "description": "Join a Matrix room by ID or alias",
+      "parameters": [],
+      "similes": [
+        "JOIN_MATRIX_ROOM",
+        "ENTER_ROOM"
+      ]
+    },
+    {
+      "name": "MATRIX_LIST_ROOMS",
+      "description": "List all Matrix rooms the bot has joined",
+      "parameters": [],
+      "similes": [
+        "LIST_MATRIX_ROOMS",
+        "SHOW_ROOMS",
+        "GET_ROOMS",
+        "MY_ROOMS"
+      ]
+    },
+    {
+      "name": "MATRIX_SEND_MESSAGE",
+      "description": "Send a message to a Matrix room",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "SEND_MATRIX_MESSAGE",
+        "MESSAGE_MATRIX",
+        "MATRIX_TEXT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use MATRIX_SEND_MESSAGE with the provided parameters.",
+          "actions": [
+            "MATRIX_SEND_MESSAGE"
+          ],
+          "params": {
+            "MATRIX_SEND_MESSAGE": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MATRIX_SEND_REACTION",
+      "description": "React to a Matrix message with an emoji",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "REACT_MATRIX",
+        "MATRIX_REACT",
+        "ADD_MATRIX_REACTION"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use MATRIX_SEND_REACTION with the provided parameters.",
+          "actions": [
+            "MATRIX_SEND_REACTION"
+          ],
+          "params": {
+            "MATRIX_SEND_REACTION": {
+              "data": "example"
+            }
+          }
+        }
       ]
     },
     {
@@ -3483,6 +3799,96 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
+      ]
+    },
+    {
+      "name": "MODELS_COMMAND",
+      "description": "List available AI models and providers",
+      "parameters": [],
+      "similes": [
+        "/models",
+        "list models",
+        "show models",
+        "available models"
+      ]
+    },
+    {
+      "name": "MOLTBOOK_BROWSE",
+      "description": "Browse posts on Moltbook to see what other AI agents are discussing.",
+      "parameters": [],
+      "similes": [
+        "BROWSE_MOLTBOOK",
+        "READ_MOLTBOOK",
+        "CHECK_MOLTBOOK",
+        "VIEW_MOLTBOOK",
+        "EXPLORE_MOLTBOOK"
+      ]
+    },
+    {
+      "name": "MOLTBOOK_COMMENT",
+      "description": "Comment on a Moltbook post to engage with the community.",
+      "parameters": [],
+      "similes": [
+        "COMMENT_MOLTBOOK",
+        "REPLY_MOLTBOOK",
+        "RESPOND_MOLTBOOK"
+      ]
+    },
+    {
+      "name": "MOLTBOOK_POST",
+      "description": "Create a post on Moltbook, a Reddit-like platform for AI agents. Great for sharing ideas and engaging with the community.",
+      "parameters": [],
+      "similes": [
+        "POST_MOLTBOOK",
+        "CREATE_MOLTBOOK_POST",
+        "WRITE_MOLTBOOK",
+        "SHARE_MOLTBOOK",
+        "PUBLISH_MOLTBOOK"
+      ]
+    },
+    {
+      "name": "MOLTBOOK_READ",
+      "description": "Read a specific Moltbook post with its comments to see the full discussion.",
+      "parameters": [],
+      "similes": [
+        "READ_MOLTBOOK_POST",
+        "VIEW_MOLTBOOK_POST",
+        "GET_MOLTBOOK_POST",
+        "OPEN_MOLTBOOK_POST"
+      ]
+    },
+    {
+      "name": "MOLTBOOK_SUBMOLTS",
+      "description": "List available submolts (communities) on Moltbook or get details about a specific submolt.",
+      "parameters": [],
+      "similes": [
+        "LIST_SUBMOLTS",
+        "SHOW_SUBMOLTS",
+        "MOLTBOOK_COMMUNITIES",
+        "EXPLORE_SUBMOLTS",
+        "GET_SUBMOLT",
+        "EXAMINE_SUBMOLT"
+      ]
+    },
+    {
+      "name": "NOSTR_PUBLISH_PROFILE",
+      "description": "Publish or update the bot's Nostr profile (kind:0 metadata)",
+      "parameters": [],
+      "similes": [
+        "UPDATE_NOSTR_PROFILE",
+        "SET_NOSTR_PROFILE",
+        "NOSTR_PROFILE"
+      ]
+    },
+    {
+      "name": "NOSTR_SEND_DM",
+      "description": "Send an encrypted direct message via Nostr (NIP-04)",
+      "parameters": [],
+      "similes": [
+        "SEND_NOSTR_DM",
+        "NOSTR_MESSAGE",
+        "NOSTR_TEXT",
+        "DM_NOSTR"
       ]
     },
     {
@@ -3800,6 +4206,11 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "REQUEST_SECRET_FORM",
+      "description": "Create a secure web form for collecting secrets from users",
+      "parameters": []
+    },
+    {
       "name": "RESUME_TASK",
       "description": "Resume a paused task.",
       "parameters": [],
@@ -3898,6 +4309,15 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "RUN_SKILL_SCRIPT",
+      "description": "Execute a script bundled with an installed skill. Provide skill slug and script name.",
+      "parameters": [],
+      "similes": [
+        "EXECUTE_SKILL_SCRIPT",
+        "SKILL_SCRIPT"
+      ]
+    },
+    {
       "name": "SCHEDULE_MEETING",
       "description": "Schedule a meeting between multiple participants by finding a suitable time slot",
       "parameters": [],
@@ -3959,12 +4379,34 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "SEARCH_SKILLS",
+      "description": "Search the skill registry for available skills by keyword or category.",
+      "parameters": [],
+      "similes": [
+        "BROWSE_SKILLS",
+        "LIST_SKILLS",
+        "FIND_SKILLS"
+      ]
+    },
+    {
       "name": "SEARCH_TASKS",
       "description": "Search tasks by query.",
       "parameters": [],
       "similes": [
         "FIND_TASK",
         "LOOKUP_TASK"
+      ]
+    },
+    {
+      "name": "SEND_BLUEBUBBLES_MESSAGE",
+      "description": "Send a message via iMessage through BlueBubbles",
+      "parameters": [],
+      "similes": [
+        "SEND_IMESSAGE",
+        "TEXT_MESSAGE",
+        "IMESSAGE_REPLY",
+        "BLUEBUBBLES_SEND",
+        "APPLE_MESSAGE"
       ]
     },
     {
@@ -4034,6 +4476,451 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "SET_ENV_VAR",
+      "description": "Sets environment variables for plugins based on user input",
+      "parameters": [],
+      "similes": [
+        "UPDATE_ENV_VAR",
+        "CONFIGURE_ENV",
+        "SET_ENVIRONMENT",
+        "UPDATE_ENVIRONMENT"
+      ]
+    },
+    {
+      "name": "SET_SECRET",
+      "description": "Set a secret value (API key, token, password, etc.) for the agent to use",
+      "parameters": [],
+      "similes": [
+        "STORE_SECRET",
+        "SAVE_SECRET",
+        "SET_API_KEY",
+        "CONFIGURE_SECRET",
+        "SET_ENV_VAR",
+        "STORE_API_KEY",
+        "SET_TOKEN",
+        "SAVE_KEY"
+      ]
+    },
+    {
+      "name": "SIGNAL_LIST_CONTACTS",
+      "description": "List Signal contacts",
+      "parameters": [],
+      "similes": [
+        "LIST_SIGNAL_CONTACTS",
+        "SHOW_CONTACTS",
+        "GET_CONTACTS",
+        "SIGNAL_CONTACTS"
+      ]
+    },
+    {
+      "name": "SIGNAL_LIST_GROUPS",
+      "description": "List Signal groups",
+      "parameters": [],
+      "similes": [
+        "LIST_SIGNAL_GROUPS",
+        "SHOW_GROUPS",
+        "GET_GROUPS",
+        "SIGNAL_GROUPS"
+      ]
+    },
+    {
+      "name": "SIGNAL_SEND_MESSAGE",
+      "description": "Send a message to a Signal contact or group",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "SEND_SIGNAL_MESSAGE",
+        "TEXT_SIGNAL",
+        "MESSAGE_SIGNAL",
+        "SIGNAL_TEXT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SIGNAL_SEND_MESSAGE with the provided parameters.",
+          "actions": [
+            "SIGNAL_SEND_MESSAGE"
+          ],
+          "params": {
+            "SIGNAL_SEND_MESSAGE": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SIGNAL_SEND_REACTION",
+      "description": "React to a Signal message with an emoji",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "REACT_SIGNAL",
+        "SIGNAL_REACT",
+        "ADD_SIGNAL_REACTION",
+        "SIGNAL_EMOJI"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SIGNAL_SEND_REACTION with the provided parameters.",
+          "actions": [
+            "SIGNAL_SEND_REACTION"
+          ],
+          "params": {
+            "SIGNAL_SEND_REACTION": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SLACK_DELETE_MESSAGE",
+      "description": "Delete a Slack message",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "REMOVE_SLACK_MESSAGE",
+        "DELETE_MESSAGE",
+        "SLACK_REMOVE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SLACK_DELETE_MESSAGE with the provided parameters.",
+          "actions": [
+            "SLACK_DELETE_MESSAGE"
+          ],
+          "params": {
+            "SLACK_DELETE_MESSAGE": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SLACK_EDIT_MESSAGE",
+      "description": "Edit an existing Slack message",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "UPDATE_SLACK_MESSAGE",
+        "MODIFY_MESSAGE",
+        "CHANGE_MESSAGE",
+        "SLACK_UPDATE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SLACK_EDIT_MESSAGE with the provided parameters.",
+          "actions": [
+            "SLACK_EDIT_MESSAGE"
+          ],
+          "params": {
+            "SLACK_EDIT_MESSAGE": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SLACK_EMOJI_LIST",
+      "description": "List custom emoji available in the Slack workspace",
+      "parameters": [],
+      "similes": [
+        "LIST_SLACK_EMOJI",
+        "SHOW_EMOJI",
+        "GET_CUSTOM_EMOJI",
+        "CUSTOM_EMOJI",
+        "WORKSPACE_EMOJI"
+      ]
+    },
+    {
+      "name": "SLACK_GET_USER_INFO",
+      "description": "Get information about a Slack user",
+      "parameters": [],
+      "similes": [
+        "GET_SLACK_USER",
+        "USER_INFO",
+        "SLACK_USER",
+        "MEMBER_INFO",
+        "WHO_IS"
+      ]
+    },
+    {
+      "name": "SLACK_LIST_CHANNELS",
+      "description": "List available Slack channels in the workspace",
+      "parameters": [],
+      "similes": [
+        "LIST_SLACK_CHANNELS",
+        "SHOW_CHANNELS",
+        "GET_CHANNELS",
+        "CHANNELS_LIST"
+      ]
+    },
+    {
+      "name": "SLACK_LIST_PINS",
+      "description": "List pinned messages in a Slack channel",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "LIST_SLACK_PINS",
+        "SHOW_PINS",
+        "GET_PINNED_MESSAGES",
+        "PINNED_MESSAGES"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SLACK_LIST_PINS with the provided parameters.",
+          "actions": [
+            "SLACK_LIST_PINS"
+          ],
+          "params": {
+            "SLACK_LIST_PINS": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SLACK_PIN_MESSAGE",
+      "description": "Pin a message in a Slack channel",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "PIN_SLACK_MESSAGE",
+        "PIN_MESSAGE",
+        "SLACK_PIN",
+        "SAVE_MESSAGE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SLACK_PIN_MESSAGE with the provided parameters.",
+          "actions": [
+            "SLACK_PIN_MESSAGE"
+          ],
+          "params": {
+            "SLACK_PIN_MESSAGE": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SLACK_REACT_TO_MESSAGE",
+      "description": "Add or remove an emoji reaction to a Slack message",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "ADD_SLACK_REACTION",
+        "REACT_SLACK",
+        "SLACK_EMOJI",
+        "ADD_EMOJI",
+        "REMOVE_REACTION"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SLACK_REACT_TO_MESSAGE with the provided parameters.",
+          "actions": [
+            "SLACK_REACT_TO_MESSAGE"
+          ],
+          "params": {
+            "SLACK_REACT_TO_MESSAGE": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SLACK_READ_CHANNEL",
+      "description": "Read message history from a Slack channel",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "READ_SLACK_MESSAGES",
+        "GET_CHANNEL_HISTORY",
+        "SLACK_HISTORY",
+        "FETCH_MESSAGES",
+        "LIST_MESSAGES"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SLACK_READ_CHANNEL with the provided parameters.",
+          "actions": [
+            "SLACK_READ_CHANNEL"
+          ],
+          "params": {
+            "SLACK_READ_CHANNEL": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SLACK_SEND_MESSAGE",
+      "description": "Send a message to a Slack channel or thread",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "SEND_SLACK_MESSAGE",
+        "POST_TO_SLACK",
+        "MESSAGE_SLACK",
+        "SLACK_POST",
+        "SEND_TO_CHANNEL"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SLACK_SEND_MESSAGE with the provided parameters.",
+          "actions": [
+            "SLACK_SEND_MESSAGE"
+          ],
+          "params": {
+            "SLACK_SEND_MESSAGE": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SLACK_UNPIN_MESSAGE",
+      "description": "Unpin a message from a Slack channel",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "UNPIN_SLACK_MESSAGE",
+        "UNPIN_MESSAGE",
+        "SLACK_UNPIN",
+        "REMOVE_PIN"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SLACK_UNPIN_MESSAGE with the provided parameters.",
+          "actions": [
+            "SLACK_UNPIN_MESSAGE"
+          ],
+          "params": {
+            "SLACK_UNPIN_MESSAGE": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "START_TRADING",
       "description": "Start automated trading with a specified strategy. Supports ANY Solana token.",
       "parameters": [],
@@ -4042,6 +4929,31 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "START_AUTO_TRADING",
         "ENABLE_TRADING",
         "TURN_ON_TRADING"
+      ]
+    },
+    {
+      "name": "STATUS_COMMAND",
+      "description": "Show current session status, model, and settings",
+      "parameters": [],
+      "similes": [
+        "/status",
+        "/s",
+        "status",
+        "show status",
+        "what's my status"
+      ]
+    },
+    {
+      "name": "STOP_COMMAND",
+      "description": "Stop current operation or abort running tasks",
+      "parameters": [],
+      "similes": [
+        "/stop",
+        "/abort",
+        "/cancel",
+        "stop",
+        "abort",
+        "cancel"
       ]
     },
     {
@@ -4058,6 +4970,205 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SET_TASK",
         "CHANGE_TASK",
         "GO_TO_TASK"
+      ]
+    },
+    {
+      "name": "SYNC_SKILL_CATALOG",
+      "description": "Sync the skill catalog from the registry to discover new skills.",
+      "parameters": [],
+      "similes": [
+        "REFRESH_SKILLS",
+        "UPDATE_CATALOG"
+      ]
+    },
+    {
+      "name": "TWITCH_JOIN_CHANNEL",
+      "description": "Join a Twitch channel to listen and send messages",
+      "parameters": [],
+      "similes": [
+        "JOIN_TWITCH_CHANNEL",
+        "ENTER_CHANNEL",
+        "CONNECT_CHANNEL"
+      ]
+    },
+    {
+      "name": "TWITCH_LEAVE_CHANNEL",
+      "description": "Leave a Twitch channel",
+      "parameters": [],
+      "similes": [
+        "LEAVE_TWITCH_CHANNEL",
+        "EXIT_CHANNEL",
+        "PART_CHANNEL",
+        "DISCONNECT_CHANNEL"
+      ]
+    },
+    {
+      "name": "TWITCH_LIST_CHANNELS",
+      "description": "List all Twitch channels the bot is currently in",
+      "parameters": [],
+      "similes": [
+        "LIST_TWITCH_CHANNELS",
+        "SHOW_CHANNELS",
+        "GET_CHANNELS",
+        "CURRENT_CHANNELS"
+      ]
+    },
+    {
+      "name": "TWITCH_SEND_MESSAGE",
+      "description": "Send a message to a Twitch channel",
+      "parameters": [],
+      "similes": [
+        "SEND_TWITCH_MESSAGE",
+        "TWITCH_CHAT",
+        "CHAT_TWITCH",
+        "SAY_IN_TWITCH"
+      ]
+    },
+    {
+      "name": "VOICE_CALL_END",
+      "description": "End an active voice call",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "HANG_UP",
+        "END_CALL",
+        "DISCONNECT_CALL",
+        "HANGUP"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use VOICE_CALL_END with the provided parameters.",
+          "actions": [
+            "VOICE_CALL_END"
+          ],
+          "params": {
+            "VOICE_CALL_END": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "VOICE_CALL_INITIATE",
+      "description": "Initiate an outbound voice call",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "MAKE_CALL",
+        "PHONE_CALL",
+        "CALL_USER",
+        "DIAL"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use VOICE_CALL_INITIATE with the provided parameters.",
+          "actions": [
+            "VOICE_CALL_INITIATE"
+          ],
+          "params": {
+            "VOICE_CALL_INITIATE": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "VOICE_CALL_MAKE",
+      "description": "Make an outbound voice call to a phone number",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "MAKE_PHONE_CALL",
+        "PLACE_CALL",
+        "DIAL_NUMBER",
+        "CALL_PHONE",
+        "VOICE_DIAL",
+        "PHONE_DIAL",
+        "RING",
+        "INITIATE_VOICE_CALL"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use VOICE_CALL_MAKE with the provided parameters.",
+          "actions": [
+            "VOICE_CALL_MAKE"
+          ],
+          "params": {
+            "VOICE_CALL_MAKE": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "VOICE_CALL_STATUS",
+      "description": "Get the status of a voice call",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": [
+            "example"
+          ]
+        }
+      ],
+      "similes": [
+        "CALL_STATUS",
+        "CHECK_CALL",
+        "CALL_INFO"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use VOICE_CALL_STATUS with the provided parameters.",
+          "actions": [
+            "VOICE_CALL_STATUS"
+          ],
+          "params": {
+            "VOICE_CALL_STATUS": {
+              "data": "example"
+            }
+          }
+        }
       ]
     }
   ]

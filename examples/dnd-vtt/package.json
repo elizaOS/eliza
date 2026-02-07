@@ -1,0 +1,26 @@
+{
+  "name": "eliza-dungeons",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && bun run dev",
+    "dev:client": "cd client && npm run dev",
+    "build": "npm run build:server && npm run build:client",
+    "build:server": "cd server && bun run build",
+    "build:client": "cd client && npm run build",
+    "db:migrate": "cd server && bun run migrate",
+    "db:seed": "cd server && bun run seed",
+    "test": "cd server && bun test",
+    "clean": "rm -rf server/dist client/dist node_modules"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "typescript": "^5.3.0"
+  }
+}

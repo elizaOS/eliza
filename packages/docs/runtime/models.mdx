@@ -263,7 +263,7 @@ class OpenAIModelProvider {
 
   async handleTextGeneration(params: TextGenerationParams) {
     const response = await this.client.chat.completions.create({
-      model: params.model || "gpt-4",
+      model: params.model || "gpt-5",
       messages: params.messages || [{ role: "user", content: params.prompt }],
       temperature: params.temperature,
       max_tokens: params.maxTokens,

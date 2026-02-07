@@ -38,7 +38,28 @@ import {
   parseKeyValueXml,
   truncateToCompleteSentence,
 } from "../utils";
-import { ResponseStreamExtractor } from "../utils/streaming";
+import {
+  createStreamingContext,
+  MarkableExtractor,
+  ResponseStreamExtractor,
+} from "../utils/streaming";
+
+/**
+ * Escape Handlebars syntax in a string to prevent template injection.
+ *
+ * WHY: When embedding LLM-generated text into continuation prompts, the text
+ * goes through Handlebars.compile(). If the LLM output contains {{variable}},
+ * Handlebars will try to substitute it with state values, corrupting the prompt.
+ *
+ * This function escapes {{ to \\{{ so Handlebars outputs literal {{.
+ *
+ * @param text - Text that may contain Handlebars-like syntax
+ * @returns Text with {{ escaped to prevent interpretation
+ */
+function escapeHandlebars(text: string): string {
+  // Single-pass replacement to avoid double-escaping triple braces.
+  return text.replace(/\{\{\{|\{\{/g, (match) => `\\${match}`);
+}
 
 /**
  * Image description response from the model
@@ -489,7 +510,7 @@ export class DefaultMessageService implements IMessageService {
         shouldRespondToMessage = responseDecision.shouldRespond;
       } else {
         // Need LLM evaluation for ambiguous case
-        const shouldRespondPrompt = composePromptFromState({
+        const _shouldRespondPrompt = composePromptFromState({
           state,
           template:
             runtime.character.templates?.shouldRespondTemplate ||
@@ -497,7 +518,7 @@ export class DefaultMessageService implements IMessageService {
         });
 
         // Select model based on configuration - "large" enables better context analysis and planning
-        const shouldRespondModelType =
+        const _shouldRespondModelType =
           opts.shouldRespondModel === "large"
             ? ModelType.TEXT_LARGE
             : ModelType.TEXT_SMALL;
@@ -512,16 +533,42 @@ export class DefaultMessageService implements IMessageService {
           "Using LLM evaluation",
         );
 
-        const response = await runtime.useModel(shouldRespondModelType, {
-          prompt: shouldRespondPrompt,
+        // Use dynamicPromptExecFromState for structured output with validation
+        const responseObject = await runtime.dynamicPromptExecFromState({
+          state,
+          params: {
+            prompt:
+              runtime.character.templates?.shouldRespondTemplate ||
+              shouldRespondTemplate,
+          },
+          schema: [
+            // Decision schema - no streaming, no per-field validation needed
+            // WHY: This is internal decision-making, not user-facing output
+            {
+              field: "name",
+              description: "The name of the agent responding",
+              validateField: false,
+              streamField: false,
+            },
+            {
+              field: "reasoning",
+              description: "Your reasoning for this decision",
+              validateField: false,
+              streamField: false,
+            },
+            {
+              field: "action",
+              description: "RESPOND | IGNORE | STOP",
+              validateField: false,
+              streamField: false,
+            },
+          ],
+          options: {
+            modelSize: opts.shouldRespondModel === "large" ? "large" : "small",
+            preferredEncapsulation: "xml",
+          },
         });
 
-        runtime.logger.debug(
-          { src: "service:message", response },
-          "LLM evaluation result",
-        );
-
-        const responseObject = parseKeyValueXml(response);
         runtime.logger.debug(
           { src: "service:message", responseObject },
           "Parsed evaluation result",
@@ -622,6 +669,12 @@ export class DefaultMessageService implements IMessageService {
             );
           }
           if (callback) {
+            // Redact any secrets from response content before sending
+            if (responseContent.text) {
+              responseContent.text = runtime.redactSecrets(
+                responseContent.text,
+              );
+            }
             await callback(responseContent);
           }
         } else if (mode === "actions") {
@@ -749,6 +802,10 @@ export class DefaultMessageService implements IMessageService {
           responseContent.evalCallbacks = content;
         }
         if (callback) {
+          // Redact any secrets from evaluate callback content
+          if (content.text) {
+            content.text = runtime.redactSecrets(content.text);
+          }
           return callback(content);
         }
         return [];
@@ -1114,6 +1171,104 @@ export class DefaultMessageService implements IMessageService {
               "Skipping non-plain-text document",
             );
           }
+        } else if (
+          attachment.contentType === ContentType.AUDIO &&
+          !attachment.text
+        ) {
+          runtime.logger.debug(
+            { src: "service:message", audioUrl: attachment.url },
+            "Transcribing audio attachment",
+          );
+
+          try {
+            let transcriptionInput: string | Buffer = url;
+
+            // For local/internal URLs, fetch the audio as a buffer
+            if (!isRemote) {
+              const res = await fetch(url);
+              if (!res.ok)
+                throw new Error(
+                  `Failed to fetch audio: ${res.statusText}`,
+                );
+              const arrayBuffer = await res.arrayBuffer();
+              transcriptionInput = Buffer.from(arrayBuffer);
+            }
+
+            const transcript = await runtime.useModel(
+              ModelType.TRANSCRIPTION,
+              transcriptionInput,
+            );
+
+            if (typeof transcript === "string" && transcript.trim()) {
+              processedAttachment.text = transcript.trim();
+              processedAttachment.title =
+                processedAttachment.title || "Audio";
+              processedAttachment.description = `Transcript: ${transcript.trim()}`;
+
+              runtime.logger.debug(
+                {
+                  src: "service:message",
+                  transcriptPreview:
+                    processedAttachment.text?.substring(0, 100),
+                },
+                "Transcribed audio attachment",
+              );
+            }
+          } catch (err) {
+            runtime.logger.warn(
+              { src: "service:message", err },
+              "Audio transcription failed, continuing without transcript",
+            );
+          }
+        } else if (
+          attachment.contentType === ContentType.VIDEO &&
+          !attachment.text
+        ) {
+          runtime.logger.debug(
+            { src: "service:message", videoUrl: attachment.url },
+            "Transcribing video attachment",
+          );
+
+          try {
+            let transcriptionInput: string | Buffer = url;
+
+            // For local/internal URLs, fetch the video as a buffer
+            if (!isRemote) {
+              const res = await fetch(url);
+              if (!res.ok)
+                throw new Error(
+                  `Failed to fetch video: ${res.statusText}`,
+                );
+              const arrayBuffer = await res.arrayBuffer();
+              transcriptionInput = Buffer.from(arrayBuffer);
+            }
+
+            const transcript = await runtime.useModel(
+              ModelType.TRANSCRIPTION,
+              transcriptionInput,
+            );
+
+            if (typeof transcript === "string" && transcript.trim()) {
+              processedAttachment.text = transcript.trim();
+              processedAttachment.title =
+                processedAttachment.title || "Video";
+              processedAttachment.description = `Transcript: ${transcript.trim()}`;
+
+              runtime.logger.debug(
+                {
+                  src: "service:message",
+                  transcriptPreview:
+                    processedAttachment.text?.substring(0, 100),
+                },
+                "Transcribed video attachment",
+              );
+            }
+          } catch (err) {
+            runtime.logger.warn(
+              { src: "service:message", err },
+              "Video transcription failed, continuing without transcript",
+            );
+          }
         }
 
         return processedAttachment;
@@ -1125,6 +1280,7 @@ export class DefaultMessageService implements IMessageService {
 
   /**
    * Single-shot strategy: one LLM call to generate response
+   * Uses dynamicPromptExecFromState for validation-aware structured output
    */
   private async runSingleShotCore(
     runtime: IAgentRuntime,
@@ -1142,151 +1298,208 @@ export class DefaultMessageService implements IMessageService {
       );
     }
 
-    const prompt = composePromptFromState({
-      state,
-      template:
-        runtime.character.templates?.messageHandlerTemplate ||
-        messageHandlerTemplate,
-    });
-
     let responseContent: Content | null = null;
 
-    // Retry if missing required fields
-    let retries = 0;
+    // Create streaming context for retry state tracking
+    const streamingExtractor = opts.onStreamChunk
+      ? new MarkableExtractor()
+      : undefined;
+    const streamingCtx =
+      streamingExtractor && opts.onStreamChunk
+        ? createStreamingContext(
+            streamingExtractor,
+            opts.onStreamChunk,
+            responseId,
+          )
+        : undefined;
 
-    while (
-      retries < opts.maxRetries &&
-      (!responseContent || !responseContent.thought || !responseContent.actions)
-    ) {
-      const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt,
-      });
-
-      runtime.logger.info(
+    // Use dynamicPromptExecFromState for structured output with validation
+    const parsedXml = await runtime.dynamicPromptExecFromState({
+      state,
+      params: {
+        prompt:
+          runtime.character.templates?.messageHandlerTemplate ||
+          messageHandlerTemplate,
+      },
+      schema: [
+        // WHY validateField: false on non-streamed fields?
+        // At validation level 1, each field gets validation codes by default.
+        // If a non-streamed field's code is corrupted, we'd retry unnecessarily.
+        // By opting out, we reduce token overhead AND avoid false failures.
         {
-          src: "service:message",
-          responseLength: response.length,
-          responsePreview: response.substring(0, 500),
+          field: "thought",
+          description:
+            "Your internal reasoning about the message and what to do",
+          required: true,
+          validateField: false,
+          streamField: false,
         },
-        "Raw LLM response received",
-      );
-
-      // Some model backends (e.g. deterministic/offline ones) may return plain text.
-      // In that case, treat the raw response as the user-visible reply rather than failing XML parsing.
-      const looksLikeXml =
-        response.includes("<response") &&
-        response.includes("</response>") &&
-        response.includes("<actions");
-      const parsedXml = looksLikeXml ? parseKeyValueXml(response) : null;
-      runtime.logger.info(
         {
-          src: "service:message",
-          parsedXml: parsedXml
-            ? {
-                hasThought: !!parsedXml.thought,
-                thoughtPreview:
-                  typeof parsedXml.thought === "string"
-                    ? parsedXml.thought.substring(0, 100)
-                    : null,
-                hasActions: !!parsedXml.actions,
-                actions: parsedXml.actions,
-                hasText: !!parsedXml.text,
-                textPreview:
-                  typeof parsedXml.text === "string"
-                    ? parsedXml.text.substring(0, 100)
-                    : null,
-              }
-            : null,
+          field: "providers",
+          description:
+            "List of providers to use for additional context (comma-separated)",
+          validateField: false,
+          streamField: false,
         },
-        "Parsed XML content",
-      );
+        {
+          field: "actions",
+          description: "List of actions to take (comma-separated)",
+          required: true,
+          validateField: false,
+          streamField: false,
+        },
+        // WHY streamField: true? This is the user-facing output - stream it!
+        // WHY validateField default? At level 1, we want to validate text integrity
+        {
+          field: "text",
+          description: "The text response to send to the user",
+          streamField: true,
+        },
+        {
+          field: "simple",
+          description: "Whether this is a simple response (true/false)",
+          validateField: false,
+          streamField: false,
+        },
+      ],
+      options: {
+        modelSize: "large",
+        preferredEncapsulation: "xml",
+        requiredFields: ["thought", "actions"],
+        maxRetries: opts.maxRetries,
+        // Stream through the filtered context callback for real-time output
+        onStreamChunk: streamingCtx?.onStreamChunk,
+      },
+    });
 
-      if (parsedXml) {
-        const thought =
-          typeof parsedXml.thought === "string" ? parsedXml.thought : "";
-        let actions = Array.isArray(parsedXml.actions)
-          ? parsedXml.actions.filter((a): a is string => typeof a === "string")
-          : typeof parsedXml.actions === "string"
-            ? [parsedXml.actions]
-            : ["IGNORE"];
+    runtime.logger.debug(
+      { src: "service:message", parsedXml },
+      "Parsed Response Content",
+    );
 
-        // Limit to single action if action planning is disabled
-        if (!runtime.isActionPlanningEnabled() && actions.length > 1) {
-          runtime.logger.debug(
-            {
-              src: "service:message",
-              selectedAction: actions[0],
-              skippedActions: actions.slice(1),
-            },
-            "Action planning disabled, limiting to first action",
-          );
-          actions = [actions[0]];
+    if (parsedXml) {
+      // Mark streaming as complete now that we have a valid response
+      streamingExtractor?.markComplete();
+
+      const normalizedActions = (() => {
+        if (Array.isArray(parsedXml.actions)) {
+          return parsedXml.actions;
         }
+        if (typeof parsedXml.actions === "string") {
+          return parsedXml.actions
+            .split(",")
+            .map((action) => String(action).trim())
+            .filter((action) => action.length > 0);
+        }
+        return [];
+      })();
 
-        const providers = Array.isArray(parsedXml.providers)
-          ? parsedXml.providers.filter(
-              (p): p is string => typeof p === "string",
-            )
+      // Limit to single action if action planning is disabled
+      const finalActions =
+        !runtime.isActionPlanningEnabled() && normalizedActions.length > 1
+          ? [normalizedActions[0]]
+          : normalizedActions;
+
+      const providers = Array.isArray(parsedXml.providers)
+        ? parsedXml.providers.filter((p): p is string => typeof p === "string")
+        : typeof parsedXml.providers === "string"
+          ? parsedXml.providers
+              .split(",")
+              .map((p) => String(p).trim())
+              .filter((p) => p.length > 0)
           : [];
-        const text = typeof parsedXml.text === "string" ? parsedXml.text : "";
-        const simple =
-          typeof parsedXml.simple === "boolean" ? parsedXml.simple : false;
 
-        responseContent = {
-          ...parsedXml,
-          thought,
-          actions,
-          providers,
-          text,
-          simple,
-        };
-      } else {
-        const text = truncateToCompleteSentence(response, 4000).trim();
-        if (text) {
-          runtime.logger.info(
-            {
-              src: "service:message",
-              responsePreview: response.substring(0, 300),
-            },
-            "Model returned plain text; using fallback REPLY response",
-          );
-          responseContent = {
-            thought: "Responding with plain text model output.",
-            actions: ["REPLY"],
-            providers: [],
-            text,
-            simple: true,
-          };
-        } else {
-          responseContent = null;
-          runtime.logger.warn(
-            {
-              src: "service:message",
-              responsePreview: response.substring(0, 300),
-            },
-            looksLikeXml
-              ? "parseKeyValueXml returned null - XML parsing failed"
-              : "Model returned empty text and no XML; cannot form a reply",
-          );
-        }
-      }
+      responseContent = {
+        ...parsedXml,
+        thought: String(parsedXml.thought || ""),
+        actions: finalActions.length > 0 ? finalActions : ["IGNORE"],
+        providers,
+        text: String(parsedXml.text || ""),
+        simple: parsedXml.simple === true || parsedXml.simple === "true",
+      };
+    } else {
+      // dynamicPromptExecFromState returned null - use streamed text if available
+      const streamedText = streamingCtx?.getStreamedText?.() || "";
+      const isTextComplete = streamingCtx?.isComplete?.() ?? false;
 
-      retries++;
-      if (
-        !responseContent ||
-        !responseContent.thought ||
-        !responseContent.actions
-      ) {
-        runtime.logger.warn(
+      if (isTextComplete && streamedText) {
+        runtime.logger.info(
           {
             src: "service:message",
-            retries,
-            maxRetries: opts.maxRetries,
-            hasThought: !!responseContent?.thought,
-            hasActions: !!responseContent?.actions,
-            actionsValue: responseContent?.actions,
+            streamedTextLength: streamedText.length,
+            streamedTextPreview: streamedText.substring(0, 100),
           },
-          "Missing required fields (thought or actions), retrying",
+          "Text extraction complete - using streamed text",
+        );
+
+        responseContent = {
+          thought: "Response generated via streaming",
+          actions: ["REPLY"],
+          providers: [],
+          text: streamedText,
+          simple: true,
+        };
+      } else if (streamedText && !isTextComplete) {
+        // Text was cut mid-stream - attempt continuation
+        runtime.logger.debug(
+          {
+            src: "service:message",
+            streamedTextLength: streamedText.length,
+            streamedTextPreview: streamedText.substring(0, 100),
+          },
+          "Text cut mid-stream - attempting continuation",
+        );
+
+        // Reset extractor for fresh streaming of continuation
+        streamingCtx?.reset?.();
+
+        // Build continuation prompt with full context
+        const prompt =
+          runtime.character.templates?.messageHandlerTemplate ||
+          messageHandlerTemplate;
+        const escapedStreamedText = escapeHandlebars(streamedText);
+        const continuationPrompt = `${prompt}
+
+[CONTINUATION REQUIRED]
+Your previous response was cut off. The user already received this text:
+"${escapedStreamedText}"
+
+Continue EXACTLY from where you left off. Do NOT repeat what was already said.
+Output ONLY the continuation, starting immediately after the last character above.`;
+
+        const continuationParsed = await runtime.dynamicPromptExecFromState({
+          state,
+          params: { prompt: continuationPrompt },
+          schema: [
+            {
+              field: "text",
+              description: "Continuation of response",
+              required: true,
+              streamField: true,
+            },
+          ],
+          options: {
+            modelSize: "large",
+            preferredEncapsulation: "xml",
+            contextCheckLevel: 0, // Fast mode for continuations - we trust the model
+            onStreamChunk: streamingCtx?.onStreamChunk,
+          },
+        });
+
+        const continuationText = String(continuationParsed?.text || "");
+        const fullText = streamedText + continuationText;
+
+        responseContent = {
+          thought: "Response completed via continuation",
+          actions: ["REPLY"],
+          providers: [],
+          text: fullText,
+          simple: true,
+        };
+      } else {
+        runtime.logger.warn(
+          { src: "service:message" },
+          "dynamicPromptExecFromState returned null",
         );
       }
     }
@@ -1472,17 +1685,60 @@ export class DefaultMessageService implements IMessageService {
       ])) as MultiStepState;
       accumulatedState.data.actionResults = traceActionResult;
 
-      const prompt = composePromptFromState({
+      // Use dynamicPromptExecFromState for structured decision output
+      const parsedStep = await runtime.dynamicPromptExecFromState({
         state: accumulatedState,
-        template:
-          runtime.character.templates?.multiStepDecisionTemplate ||
-          multiStepDecisionTemplate,
+        params: {
+          prompt:
+            runtime.character.templates?.multiStepDecisionTemplate ||
+            multiStepDecisionTemplate,
+        },
+        schema: [
+          // Multi-step decision loop - internal reasoning, no streaming needed
+          // WHY: This is orchestration logic, not user-facing output
+          {
+            field: "thought",
+            description:
+              "Your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request",
+            validateField: false,
+            streamField: false,
+          },
+          {
+            field: "providers",
+            description:
+              "Comma-separated list of providers to call to gather necessary data",
+            validateField: false,
+            streamField: false,
+          },
+          {
+            field: "action",
+            description:
+              "Name of the action to execute after providers return (can be empty if no action is needed)",
+            validateField: false,
+            streamField: false,
+          },
+          // WHY parameters: Actions need input data. Without this field in the schema,
+          // the LLM won't be instructed to output parameters, breaking action execution.
+          {
+            field: "parameters",
+            description:
+              "JSON object with parameter names and values for the action (use {} if no parameters needed)",
+            validateField: false,
+            streamField: false,
+          },
+          {
+            field: "isFinish",
+            description:
+              "true if the task is fully resolved and no further steps are needed, false otherwise",
+            validateField: false,
+            streamField: false,
+          },
+        ],
+        options: {
+          modelSize: "large",
+          preferredEncapsulation: "xml",
+        },
       });
-
-      const stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt,
-      });
-      const parsedStep = parseKeyValueXml(stepResultRaw);
 
       if (!parsedStep) {
         runtime.logger.warn(
@@ -1499,9 +1755,16 @@ export class DefaultMessageService implements IMessageService {
 
       const thought =
         typeof parsedStep.thought === "string" ? parsedStep.thought : undefined;
-      const providers = Array.isArray(parsedStep.providers)
-        ? parsedStep.providers
-        : [];
+      // Handle providers as comma-separated string or array
+      let providers: string[] = [];
+      if (Array.isArray(parsedStep.providers)) {
+        providers = parsedStep.providers;
+      } else if (typeof parsedStep.providers === "string") {
+        providers = parsedStep.providers
+          .split(",")
+          .map((p: string) => p.trim())
+          .filter((p: string) => p.length > 0);
+      }
       const action =
         typeof parsedStep.action === "string" ? parsedStep.action : undefined;
       const isFinish = parsedStep.isFinish;
@@ -1709,8 +1972,8 @@ export class DefaultMessageService implements IMessageService {
           actions: [action],
           thought: thought || "",
         };
-        if (parsedStep && typeof parsedStep.params === "string") {
-          actionContent.params = parsedStep.params;
+        if (parsedStep && typeof parsedStep.parameters === "string") {
+          actionContent.params = parsedStep.parameters;
         }
 
         await runtime.processActions(
@@ -1777,17 +2040,39 @@ export class DefaultMessageService implements IMessageService {
       "RECENT_MESSAGES",
       "ACTION_STATE",
     ])) as MultiStepState;
-    const summaryPrompt = composePromptFromState({
-      state: accumulatedState,
-      template:
-        runtime.character.templates?.multiStepSummaryTemplate ||
-        multiStepSummaryTemplate,
-    });
 
-    const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: summaryPrompt,
+    // Use dynamicPromptExecFromState for final summary generation
+    // Stream the final summary for better UX
+    const summary = await runtime.dynamicPromptExecFromState({
+      state: accumulatedState,
+      params: {
+        prompt:
+          runtime.character.templates?.multiStepSummaryTemplate ||
+          multiStepSummaryTemplate,
+      },
+      schema: [
+        {
+          field: "thought",
+          description: "Your internal reasoning about the summary",
+          validateField: false,
+          streamField: false,
+        },
+        // WHY streamField: true? This is the final user-facing output
+        {
+          field: "text",
+          description: "The final summary message to send to the user",
+          required: true,
+          streamField: true,
+        },
+      ],
+      options: {
+        modelSize: "large",
+        preferredEncapsulation: "xml",
+        requiredFields: ["text"],
+        // Stream the final summary to the user
+        onStreamChunk: opts.onStreamChunk,
+      },
     });
-    const summary = parseKeyValueXml(finalOutput);
 
     let responseContent: Content | null = null;
     const summaryText = summary?.text;
@@ -1796,7 +2081,7 @@ export class DefaultMessageService implements IMessageService {
         actions: ["MULTI_STEP_SUMMARY"],
         text: summaryText,
         thought:
-          (typeof summary.thought === "string"
+          (typeof summary?.thought === "string"
             ? summary.thought
             : "Final user-facing message after task completion.") ||
           "Final user-facing message after task completion.",

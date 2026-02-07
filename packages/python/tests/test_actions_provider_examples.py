@@ -9,7 +9,7 @@ from elizaos.types import Character, Content, Memory, as_uuid
 @pytest.mark.asyncio
 async def test_actions_provider_includes_examples_and_parameter_examples() -> None:
     runtime = AgentRuntime(
-        character=Character(name="DocsTest", bio="docs test", system="test"),
+        character=Character(name="DocsTest", bio=["docs test"], system="test"),
         log_level="ERROR",
     )
     await runtime.initialize()
@@ -36,4 +36,4 @@ async def test_actions_provider_includes_examples_and_parameter_examples() -> No
     assert "# Action Examples" in text
     # Canonical docs include examples for SEND_MESSAGE parameters
     assert "SEND_MESSAGE" in text
-    assert "examples:" in text
+    assert "# Action Call Examples" in text

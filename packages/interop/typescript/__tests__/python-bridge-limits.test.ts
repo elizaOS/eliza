@@ -1,5 +1,31 @@
 import { describe, expect, test } from "vitest";
 import { PythonPluginBridge } from "../python-bridge";
+import type { IPCResponse } from "../types";
+
+type BridgeInternals = {
+  initialized: boolean;
+  process:
+    | {
+        stdin?: { write: (json: string) => void };
+        kill?: (signal: NodeJS.Signals) => void;
+      }
+    | null;
+  pendingRequests: Map<
+    string,
+    {
+      resolve: (value: IPCResponse) => void;
+      reject: (error: Error) => void;
+      timeout: NodeJS.Timeout;
+    }
+  >;
+  handleData: (data: string) => void;
+};
+
+const getBridgeInternals = (
+  bridge: PythonPluginBridge,
+): PythonPluginBridge & BridgeInternals => {
+  return bridge as PythonPluginBridge & BridgeInternals;
+};
 
 describe("Python Bridge - limits", () => {
   test("sendRequest should reject when maxPendingRequests is exceeded", async () => {
@@ -9,19 +35,14 @@ describe("Python Bridge - limits", () => {
     });
 
     // Simulate started bridge without spawning a process.
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-expect-error test-only access to internals
-    bridge.initialized = true;
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-expect-error test-only access to internals
-    bridge.process = {
+    const bridgeInternals = getBridgeInternals(bridge);
+    bridgeInternals.initialized = true;
+    bridgeInternals.process = {
       stdin: { write: (_json: string) => {} },
     };
 
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-expect-error test-only access to internals
-    bridge.pendingRequests.set("req_0", {
-      resolve: (_value: object) => {},
+    bridgeInternals.pendingRequests.set("req_0", {
+      resolve: (_value: IPCResponse) => {},
       reject: (_err: Error) => {},
       timeout: setTimeout(() => {}, 10_000),
     });
@@ -42,17 +63,14 @@ describe("Python Bridge - limits", () => {
     });
 
     let killed = false;
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-expect-error test-only access to internals
-    bridge.process = {
+    const bridgeInternals = getBridgeInternals(bridge);
+    bridgeInternals.process = {
       kill: (_sig: string) => {
         killed = true;
       },
     };
 
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-expect-error test-only access to internals
-    bridge.handleData("0123456789ABCDEF"); // > 10 bytes
+    bridgeInternals.handleData("0123456789ABCDEF"); // > 10 bytes
 
     expect(killed).toBe(true);
   });

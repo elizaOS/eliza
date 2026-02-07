@@ -1,4 +1,3 @@
-from elizaos_plugin_n8n.providers.capabilities import PluginCreationCapabilitiesProvider
 from elizaos_plugin_n8n.providers.exists import (
     PluginExistsCheckProvider,
     PluginExistsProvider,
@@ -10,7 +9,6 @@ from elizaos_plugin_n8n.providers.status import PluginCreationStatusProvider
 
 __all__ = [
     "PluginCreationStatusProvider",
-    "PluginCreationCapabilitiesProvider",
     "PluginRegistryProvider",
     "PluginExistsProvider",
     "plugin_exists_provider",

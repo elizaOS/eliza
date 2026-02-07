@@ -11,6 +11,9 @@ import {
   type MemoryMetadata,
   type MemoryTypeAlias,
   type Metadata,
+  type PairingAllowlistEntry,
+  type PairingChannel,
+  type PairingRequest,
   type Participant,
   type Relationship,
   type Room,
@@ -866,5 +869,59 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async deleteTask(id: UUID): Promise<void> {
     await this.storage.delete(COLLECTIONS.TASKS, id);
+  }
+
+  // ===============================
+  // Pairing Methods
+  // ===============================
+
+  async getPairingRequests(channel: PairingChannel, agentId: UUID): Promise<PairingRequest[]> {
+    return this.storage.getWhere<PairingRequest>(
+      COLLECTIONS.PAIRING_REQUESTS,
+      (r) => r.channel === channel && r.agentId === agentId
+    );
+  }
+
+  async createPairingRequest(request: PairingRequest): Promise<UUID> {
+    const id = request.id ?? (crypto.randomUUID() as UUID);
+    await this.storage.set(COLLECTIONS.PAIRING_REQUESTS, id, { ...request, id });
+    return id;
+  }
+
+  async updatePairingRequest(request: PairingRequest): Promise<void> {
+    const existing = await this.storage.get<PairingRequest>(
+      COLLECTIONS.PAIRING_REQUESTS,
+      request.id
+    );
+    if (existing) {
+      await this.storage.set(COLLECTIONS.PAIRING_REQUESTS, request.id, {
+        ...existing,
+        ...request,
+      });
+    }
+  }
+
+  async deletePairingRequest(id: UUID): Promise<void> {
+    await this.storage.delete(COLLECTIONS.PAIRING_REQUESTS, id);
+  }
+
+  async getPairingAllowlist(
+    channel: PairingChannel,
+    agentId: UUID
+  ): Promise<PairingAllowlistEntry[]> {
+    return this.storage.getWhere<PairingAllowlistEntry>(
+      COLLECTIONS.PAIRING_ALLOWLIST,
+      (e) => e.channel === channel && e.agentId === agentId
+    );
+  }
+
+  async createPairingAllowlistEntry(entry: PairingAllowlistEntry): Promise<UUID> {
+    const id = entry.id ?? (crypto.randomUUID() as UUID);
+    await this.storage.set(COLLECTIONS.PAIRING_ALLOWLIST, id, { ...entry, id });
+    return id;
+  }
+
+  async deletePairingAllowlistEntry(id: UUID): Promise<void> {
+    await this.storage.delete(COLLECTIONS.PAIRING_ALLOWLIST, id);
   }
 }

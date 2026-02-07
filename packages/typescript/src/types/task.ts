@@ -61,6 +61,12 @@ export interface TaskMetadata
   updatedAt?: number;
   /** Optional. If the task is recurring, this specifies the interval in milliseconds between updates or executions. */
   updateInterval?: number;
+  /**
+   * Optional. If true (default), the task will block the next scheduled execution while it's running.
+   * Set to false to allow overlapping executions (use with caution - can cause resource contention).
+   * @default true
+   */
+  blocking?: boolean;
   /** Optional. Describes options or parameters that can be configured for this task, often for UI presentation. */
   options?: {
     name: string;

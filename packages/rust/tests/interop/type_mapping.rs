@@ -332,7 +332,7 @@ fn test_complex_nested_deserialization() {
         "bio": ["Line 1", "Line 2"],
         "topics": ["topic1", "topic2"],
         "settings": {
-            "model": "gpt-4",
+            "model": "gpt-5",
             "secrets": {
                 "API_KEY": "secret"
             }

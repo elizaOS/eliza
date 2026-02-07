@@ -99,6 +99,7 @@ import {
   type EventPayload,
   type IAgentRuntime,
   type JsonValue,
+  type Task,
   type UUID,
   logger,
 } from "@elizaos/core";
@@ -1605,7 +1606,7 @@ export class FormService extends Service {
 
     try {
       // Create a minimal task object for hook execution
-      const task = {
+      const task: Task = {
         id: session.id as UUID,
         name: workerName,
         roomId: session.roomId,
@@ -1618,7 +1619,7 @@ export class FormService extends Service {
           form,
           ...options,
         },
-        task as any,
+        task,
       );
     } catch (error) {
       logger.error(

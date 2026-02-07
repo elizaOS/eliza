@@ -534,8 +534,8 @@ def create_gaia_plugin(
         config={},
         actions=filtered_actions,
         models={
-            ModelType.TEXT_LARGE.value: multi_provider_model_handler,
-            ModelType.TEXT_SMALL.value: multi_provider_model_handler,
+            ModelType.TEXT_LARGE: multi_provider_model_handler,
+            ModelType.TEXT_SMALL: multi_provider_model_handler,
         },
     )
 

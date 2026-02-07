@@ -1,0 +1,16 @@
+{
+  "name": "mldy",
+  "version": "1.0.2",
+  "description": "Alias for milaidy CLI — cute agents for the acceleration",
+  "type": "module",
+  "bin": {
+    "mldy": "cli.js"
+  },
+  "files": [
+    "cli.js"
+  ],
+  "dependencies": {
+    "milaidy": "workspace:*"
+  },
+  "license": "MIT"
+}

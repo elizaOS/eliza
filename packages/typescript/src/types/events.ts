@@ -68,6 +68,36 @@ export enum EventType {
   // Form events
   FORM_FIELD_CONFIRMED = "FORM_FIELD_CONFIRMED",
   FORM_FIELD_CANCELLED = "FORM_FIELD_CANCELLED",
+
+  // Hook system events - command lifecycle
+  HOOK_COMMAND_NEW = "HOOK_COMMAND_NEW",
+  HOOK_COMMAND_RESET = "HOOK_COMMAND_RESET",
+  HOOK_COMMAND_STOP = "HOOK_COMMAND_STOP",
+
+  // Hook system events - session lifecycle
+  HOOK_SESSION_START = "HOOK_SESSION_START",
+  HOOK_SESSION_END = "HOOK_SESSION_END",
+
+  // Hook system events - agent lifecycle
+  HOOK_AGENT_BOOTSTRAP = "HOOK_AGENT_BOOTSTRAP",
+  HOOK_AGENT_START = "HOOK_AGENT_START",
+  HOOK_AGENT_END = "HOOK_AGENT_END",
+
+  // Hook system events - gateway lifecycle
+  HOOK_GATEWAY_START = "HOOK_GATEWAY_START",
+  HOOK_GATEWAY_STOP = "HOOK_GATEWAY_STOP",
+
+  // Hook system events - compaction
+  HOOK_COMPACTION_BEFORE = "HOOK_COMPACTION_BEFORE",
+  HOOK_COMPACTION_AFTER = "HOOK_COMPACTION_AFTER",
+
+  // Hook system events - tool execution
+  HOOK_TOOL_BEFORE = "HOOK_TOOL_BEFORE",
+  HOOK_TOOL_AFTER = "HOOK_TOOL_AFTER",
+  HOOK_TOOL_PERSIST = "HOOK_TOOL_PERSIST",
+
+  // Hook system events - message lifecycle (supplements MESSAGE_*)
+  HOOK_MESSAGE_SENDING = "HOOK_MESSAGE_SENDING",
 }
 
 /**
@@ -215,6 +245,161 @@ export interface FormFieldEventPayload extends EventPayload {
   reason?: string;
 }
 
+// ============================================================================
+// Hook System Event Payloads
+// ============================================================================
+
+/**
+ * Base payload for all hook events.
+ * Hooks can push messages to the `messages` array to send responses back to users.
+ */
+export interface HookEventPayload extends EventPayload {
+  /** Session key this hook event relates to */
+  sessionKey: string;
+  /** Messages to send back to the user (hooks can push to this array) */
+  messages: string[];
+  /** Timestamp when the event occurred */
+  timestamp: Date;
+  /** Additional context specific to the event */
+  context: Record<string, unknown>;
+}
+
+/**
+ * Payload for command hook events (HOOK_COMMAND_NEW, HOOK_COMMAND_RESET, HOOK_COMMAND_STOP)
+ */
+export interface HookCommandPayload extends HookEventPayload {
+  /** The command action: "new", "reset", or "stop" */
+  command: "new" | "reset" | "stop";
+  /** ID of the sender who issued the command */
+  senderId?: string;
+  /** Source surface of the command (e.g., "telegram", "discord") */
+  commandSource?: string;
+  /** Session entry data */
+  sessionEntry?: Record<string, unknown>;
+  /** Previous session entry data (for reset) */
+  previousSessionEntry?: Record<string, unknown>;
+  /** Configuration at time of command */
+  config?: Record<string, unknown>;
+}
+
+/**
+ * Bootstrap file definition for agent bootstrap hooks
+ */
+export interface BootstrapFile {
+  /** File path relative to workspace */
+  path: string;
+  /** File content */
+  content: string;
+  /** File type (e.g., "soul", "boot", "tools") */
+  type?: string;
+  /** Whether this file is required */
+  required?: boolean;
+}
+
+/**
+ * Payload for agent bootstrap hook event (HOOK_AGENT_BOOTSTRAP)
+ */
+export interface HookAgentBootstrapPayload extends HookEventPayload {
+  /** Workspace directory path */
+  workspaceDir: string;
+  /** Bootstrap files that will be injected. Hooks can modify this array. */
+  bootstrapFiles: BootstrapFile[];
+  /** Agent ID */
+  agentId?: string;
+  /** Session ID */
+  sessionId?: string;
+}
+
+/**
+ * Payload for agent start/end hook events (HOOK_AGENT_START, HOOK_AGENT_END)
+ */
+export interface HookAgentLifecyclePayload extends HookEventPayload {
+  /** The initial prompt or message */
+  prompt?: string;
+  /** Messages in the conversation */
+  conversationMessages?: unknown[];
+  /** Whether the agent run completed successfully */
+  success?: boolean;
+  /** Error message if failed */
+  error?: string;
+  /** Duration of the agent run in milliseconds */
+  durationMs?: number;
+  /** System prompt to inject (for HOOK_AGENT_START result) */
+  systemPrompt?: string;
+  /** Context to prepend to conversation (for HOOK_AGENT_START result) */
+  prependContext?: string;
+}
+
+/**
+ * Payload for session hook events (HOOK_SESSION_START, HOOK_SESSION_END)
+ */
+export interface HookSessionPayload extends HookEventPayload {
+  /** Channel ID for the session */
+  channelId?: string;
+  /** Account ID associated with the session */
+  accountId?: string;
+  /** Conversation ID */
+  conversationId?: string;
+}
+
+/**
+ * Payload for gateway hook events (HOOK_GATEWAY_START, HOOK_GATEWAY_STOP)
+ */
+export interface HookGatewayPayload extends HookEventPayload {
+  /** Gateway port number */
+  port?: number;
+  /** Gateway host/bind address */
+  host?: string;
+  /** List of channels that were started */
+  channels?: string[];
+}
+
+/**
+ * Payload for compaction hook events (HOOK_COMPACTION_BEFORE, HOOK_COMPACTION_AFTER)
+ */
+export interface HookCompactionPayload extends HookEventPayload {
+  /** Number of messages before compaction */
+  messageCount: number;
+  /** Estimated token count */
+  tokenCount?: number;
+  /** Number of messages compacted (for HOOK_COMPACTION_AFTER) */
+  compactedCount?: number;
+}
+
+/**
+ * Payload for tool hook events (HOOK_TOOL_BEFORE, HOOK_TOOL_AFTER, HOOK_TOOL_PERSIST)
+ */
+export interface HookToolPayload extends HookEventPayload {
+  /** Name of the tool being invoked */
+  toolName: string;
+  /** Tool input arguments */
+  toolArgs?: Record<string, unknown>;
+  /** Tool execution result (for HOOK_TOOL_AFTER) */
+  result?: unknown;
+  /** Whether to skip this tool invocation (for HOOK_TOOL_BEFORE) */
+  skip?: boolean;
+  /** Modified arguments (for HOOK_TOOL_BEFORE) */
+  modifiedArgs?: Record<string, unknown>;
+  /** Modified result to persist (for HOOK_TOOL_PERSIST) */
+  modifiedResult?: unknown;
+}
+
+/**
+ * Payload for message sending hook event (HOOK_MESSAGE_SENDING)
+ */
+export interface HookMessageSendingPayload extends HookEventPayload {
+  /** Recipient identifier */
+  to: string;
+  /** Message content */
+  content: string;
+  /** Message metadata */
+  metadata?: Record<string, unknown>;
+  /** Whether to cancel sending this message */
+  cancel?: boolean;
+  /** Modified content to send instead */
+  modifiedContent?: string;
+}
+
 /**
  * Maps event types to their corresponding payload types
  */
@@ -248,6 +433,23 @@ export interface EventPayloadMap {
   [EventType.CONTROL_MESSAGE]: ControlMessagePayload;
   [EventType.FORM_FIELD_CONFIRMED]: FormFieldEventPayload;
   [EventType.FORM_FIELD_CANCELLED]: FormFieldEventPayload;
+  // Hook system event payloads
+  [EventType.HOOK_COMMAND_NEW]: HookCommandPayload;
+  [EventType.HOOK_COMMAND_RESET]: HookCommandPayload;
+  [EventType.HOOK_COMMAND_STOP]: HookCommandPayload;
+  [EventType.HOOK_SESSION_START]: HookSessionPayload;
+  [EventType.HOOK_SESSION_END]: HookSessionPayload;
+  [EventType.HOOK_AGENT_BOOTSTRAP]: HookAgentBootstrapPayload;
+  [EventType.HOOK_AGENT_START]: HookAgentLifecyclePayload;
+  [EventType.HOOK_AGENT_END]: HookAgentLifecyclePayload;
+  [EventType.HOOK_GATEWAY_START]: HookGatewayPayload;
+  [EventType.HOOK_GATEWAY_STOP]: HookGatewayPayload;
+  [EventType.HOOK_COMPACTION_BEFORE]: HookCompactionPayload;
+  [EventType.HOOK_COMPACTION_AFTER]: HookCompactionPayload;
+  [EventType.HOOK_TOOL_BEFORE]: HookToolPayload;
+  [EventType.HOOK_TOOL_AFTER]: HookToolPayload;
+  [EventType.HOOK_TOOL_PERSIST]: HookToolPayload;
+  [EventType.HOOK_MESSAGE_SENDING]: HookMessageSendingPayload;
 }
 
 /**

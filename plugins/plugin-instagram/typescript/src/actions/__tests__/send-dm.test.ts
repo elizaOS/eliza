@@ -2,6 +2,7 @@
  * Tests for Instagram SendDm action
  */
 
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { sendDmAction } from "../send-dm";
 
@@ -32,33 +33,31 @@ describe("sendDmAction", () => {
     it("should return false for non-Instagram source", async () => {
       const mockRuntime = {
         getService: () => null,
-      };
+      } as IAgentRuntime;
 
       const mockMessage = {
         content: {
           source: "telegram",
           threadId: "thread-123",
         },
-      };
+      } as Memory;
 
-      // @ts-expect-error - partial mock
-      const result = await sendDmAction.validate(mockRuntime, mockMessage, {});
+      const result = await sendDmAction.validate(mockRuntime, mockMessage);
       expect(result).toBe(false);
     });
 
     it("should return false without thread ID", async () => {
       const mockRuntime = {
         getService: () => ({ getIsRunning: () => true }),
-      };
+      } as IAgentRuntime;
 
       const mockMessage = {
         content: {
           source: "instagram",
         },
-      };
+      } as Memory;
 
-      // @ts-expect-error - partial mock
-      const result = await sendDmAction.validate(mockRuntime, mockMessage, {});
+      const result = await sendDmAction.validate(mockRuntime, mockMessage);
       expect(result).toBe(false);
     });
   });

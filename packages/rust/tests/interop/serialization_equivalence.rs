@@ -43,7 +43,7 @@ mod fixtures {
             ],
             "postExamples": ["Check out this cool thing!"],
             "settings": {
-                "model": "gpt-4",
+                "model": "gpt-5",
                 "temperature": 0.7
             }
         })

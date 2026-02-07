@@ -7,7 +7,7 @@ import { MeteoraLpService } from '../MeteoraLpService.ts';
 
 // Mock fetch
 const mockFetch = vi.fn();
-global.fetch = mockFetch as any;
+global.fetch = mockFetch as unknown as typeof fetch;
 
 const mockRuntime = {
     agentId: '123e4567-e89b-12d3-a456-426614174000',

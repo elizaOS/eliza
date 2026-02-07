@@ -25,8 +25,6 @@
 //! ```
 
 pub mod actions;
-#[cfg(feature = "autonomy")]
-pub mod autonomy;
 pub mod error;
 pub mod evaluators;
 pub mod providers;
@@ -314,21 +312,21 @@ fn extended_evaluators() -> Vec<Box<dyn Evaluator>> {
 }
 
 // ============================================================================
-// Autonomy capabilities - opt-in
+// Autonomy capabilities - opt-in (uses crate-level autonomy module)
 // ============================================================================
 
 /// Autonomy actions: SEND_TO_ADMIN
 #[cfg(feature = "autonomy")]
 fn autonomy_actions() -> Vec<Box<dyn Action>> {
-    vec![Box::new(autonomy::SendToAdminAction)]
+    vec![Box::new(crate::autonomy::SendToAdminAction)]
 }
 
 /// Autonomy providers: ADMIN_CHAT_HISTORY, AUTONOMY_STATUS
 #[cfg(feature = "autonomy")]
 fn autonomy_providers() -> Vec<Box<dyn Provider>> {
     vec![
-        Box::new(autonomy::AdminChatProvider),
-        Box::new(autonomy::AutonomyStatusProvider),
+        Box::new(crate::autonomy::AdminChatProvider),
+        Box::new(crate::autonomy::AutonomyStatusProvider),
     ]
 }
 

@@ -25,6 +25,7 @@ class ServiceTypeRegistry:
     MESSAGE_SERVICE: ClassVar[str] = "message_service"
     MESSAGE: ClassVar[str] = "message"
     POST: ClassVar[str] = "post"
+    HOOKS: ClassVar[str] = "hooks"
     UNKNOWN: ClassVar[str] = "unknown"
 
 
@@ -48,6 +49,7 @@ class ServiceType:
     MESSAGE_SERVICE = ServiceTypeRegistry.MESSAGE_SERVICE
     MESSAGE = ServiceTypeRegistry.MESSAGE
     POST = ServiceTypeRegistry.POST
+    HOOKS = ServiceTypeRegistry.HOOKS
     UNKNOWN = ServiceTypeRegistry.UNKNOWN
 
 

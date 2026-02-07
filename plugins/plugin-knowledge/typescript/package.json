@@ -60,7 +60,7 @@
     "react-force-graph-2d": "^1.27.1",
     "tailwind-merge": "^3.3.1",
     "unpdf": "^1.4.0",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
@@ -248,6 +248,17 @@
         "default": true,
         "sensitive": false
       }
+    }
+  },
+  "milaidy": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
     }
   }
 }

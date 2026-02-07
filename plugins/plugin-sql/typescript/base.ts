@@ -13,6 +13,9 @@ import {
   type Memory,
   type MemoryMetadata,
   type Metadata,
+  type PairingAllowlistEntry,
+  type PairingChannel,
+  type PairingRequest,
   type Participant,
   type Relationship,
   type Room,
@@ -56,6 +59,8 @@ import {
   messageServerAgentsTable,
   messageServerTable,
   messageTable,
+  pairingAllowlistTable,
+  pairingRequestTable,
   participantTable,
   relationshipTable,
   roomTable,
@@ -3950,6 +3955,140 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         },
         ids
       );
+    });
+  }
+
+  // ===============================
+  // Pairing Methods
+  // ===============================
+
+  /**
+   * Get all pending pairing requests for a channel and agent.
+   */
+  async getPairingRequests(channel: PairingChannel, agentId: UUID): Promise<PairingRequest[]> {
+    return this.withDatabase(async () => {
+      const results = await this.db
+        .select()
+        .from(pairingRequestTable)
+        .where(
+          and(eq(pairingRequestTable.channel, channel), eq(pairingRequestTable.agentId, agentId))
+        )
+        .orderBy(pairingRequestTable.createdAt);
+
+      return results.map((row) => ({
+        id: row.id as UUID,
+        channel: row.channel as PairingChannel,
+        senderId: row.senderId,
+        code: row.code,
+        createdAt: row.createdAt,
+        lastSeenAt: row.lastSeenAt,
+        metadata: (row.metadata as Record<string, string>) || undefined,
+        agentId: row.agentId as UUID,
+      }));
+    });
+  }
+
+  /**
+   * Create a new pairing request.
+   */
+  async createPairingRequest(request: PairingRequest): Promise<UUID> {
+    return this.withDatabase(async () => {
+      const id = request.id || (v4() as UUID);
+      await this.db.insert(pairingRequestTable).values({
+        id,
+        channel: request.channel,
+        senderId: request.senderId,
+        code: request.code,
+        createdAt: request.createdAt,
+        lastSeenAt: request.lastSeenAt,
+        metadata: request.metadata || {},
+        agentId: request.agentId,
+      });
+      return id;
+    });
+  }
+
+  /**
+   * Update an existing pairing request.
+   */
+  async updatePairingRequest(request: PairingRequest): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db
+        .update(pairingRequestTable)
+        .set({
+          lastSeenAt: request.lastSeenAt,
+          metadata: request.metadata || {},
+        })
+        .where(eq(pairingRequestTable.id, request.id));
+    });
+  }
+
+  /**
+   * Delete a pairing request by ID.
+   */
+  async deletePairingRequest(id: UUID): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db.delete(pairingRequestTable).where(eq(pairingRequestTable.id, id));
+    });
+  }
+
+  /**
+   * Get the allowlist for a channel and agent.
+   */
+  async getPairingAllowlist(
+    channel: PairingChannel,
+    agentId: UUID
+  ): Promise<PairingAllowlistEntry[]> {
+    return this.withDatabase(async () => {
+      const results = await this.db
+        .select()
+        .from(pairingAllowlistTable)
+        .where(
+          and(
+            eq(pairingAllowlistTable.channel, channel),
+            eq(pairingAllowlistTable.agentId, agentId)
+          )
+        )
+        .orderBy(pairingAllowlistTable.createdAt);
+
+      return results.map((row) => ({
+        id: row.id as UUID,
+        channel: row.channel as PairingChannel,
+        senderId: row.senderId,
+        createdAt: row.createdAt,
+        metadata: (row.metadata as Record<string, string>) || undefined,
+        agentId: row.agentId as UUID,
+      }));
+    });
+  }
+
+  /**
+   * Create a new allowlist entry.
+   */
+  async createPairingAllowlistEntry(entry: PairingAllowlistEntry): Promise<UUID> {
+    return this.withDatabase(async () => {
+      const id = entry.id || (v4() as UUID);
+      await this.db
+        .insert(pairingAllowlistTable)
+        .values({
+          id,
+          channel: entry.channel,
+          senderId: entry.senderId,
+          createdAt: entry.createdAt,
+          metadata: entry.metadata || {},
+          agentId: entry.agentId,
+        })
+        .onConflictDoNothing();
+      return id;
+    });
+  }
+
+  /**
+   * Delete an allowlist entry by ID.
+   */
+  async deletePairingAllowlistEntry(id: UUID): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db.delete(pairingAllowlistTable).where(eq(pairingAllowlistTable.id, id));
     });
   }
 }

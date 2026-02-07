@@ -202,6 +202,13 @@ export function createStep<
 
                 return normalizedResult?.data as TOutput;
             } catch (error: any) {
+                if (isRetry(error)) {
+                    logger.info(
+                        `🔄 Retry requested, re-executing: ${config.name}...`,
+                    );
+                    return await this.run(context);
+                }
+
                 const duration = Date.now() - startTime;
                 logger.error(`❌ Step failed: ${config.name} (${duration}ms)`);
                 logger.error(`   Error: ${error.message}`);

@@ -29,6 +29,7 @@ ElizaOS is a **plugin-based agent runtime** implemented primarily in TypeScript 
 - **Interop layer**: `packages/interop/`
 - **Prompt templates**: `packages/prompts/`
 - **Plugins**: `plugins/`
+- **Examples**: `examples/`
 
 ## Core abstractions
 
@@ -41,7 +42,7 @@ ElizaOS is a **plugin-based agent runtime** implemented primarily in TypeScript 
   - `routes` (HTTP endpoints, namespaced by plugin name)
   - `adapter` (database adapter; typically provided by `@elizaos/plugin-sql`)
 - **Memory**: persisted conversational / knowledge objects (`packages/typescript/src/types/memory.ts`).
-- **State**: ephemeral “context” assembled for inference (`packages/typescript/src/types/state.ts`).
+- **State**: ephemeral "context" assembled for inference (`packages/typescript/src/types/state.ts`).
 
 ## End-to-end data flow: user message → agent response
 
@@ -65,7 +66,7 @@ Below is the default TypeScript pipeline as implemented by `DefaultMessageServic
    - Plain text documents can be fetched and embedded into message content.
 
 5. **Decide whether to respond**
-   - “Obvious” cases are handled deterministically (DMs, mentions, whitelisted sources).
+   - "Obvious" cases are handled deterministically (DMs, mentions, whitelisted sources).
    - Otherwise an LLM-based `shouldRespond` prompt can be run (model selectable via `SHOULD_RESPOND_MODEL` or options).
 
 6. **Generate a response plan**
@@ -87,7 +88,7 @@ Below is the default TypeScript pipeline as implemented by `DefaultMessageServic
    - Evaluators can run conditionally or always (`alwaysRun`).
 
 10. **Emit events**
-   - The runtime emits lifecycle events such as `RUN_STARTED`, `RUN_TIMEOUT`, and `RUN_ENDED`.
+    - The runtime emits lifecycle events such as `RUN_STARTED`, `RUN_TIMEOUT`, and `RUN_ENDED`.
 
 ## Plugin lifecycle & dependency ordering
 
@@ -109,7 +110,7 @@ ElizaOS uses a pluggable database adapter (`DatabaseAdapter` in `packages/typesc
 
 - The runtime requires an adapter at init time (commonly `@elizaos/plugin-sql`).
 - Plugin schemas can be migrated via `adapter.runPluginMigrations(...)` (invoked by `runtime.runPluginMigrations()`).
-- The core “unit of persistence” is a `Memory` with optional embeddings and metadata (`MemoryType`).
+- The core "unit of persistence" is a `Memory` with optional embeddings and metadata (`MemoryType`).
 
 ## Interop architecture (TypeScript/Rust/Python)
 

@@ -454,6 +454,7 @@ impl EvaluatorHandler for ResponseQualityEvaluator {
         &self,
         _message: &Memory,
         _state: Option<&State>,
+        _options: Option<&HandlerOptions>,
     ) -> Result<Option<ActionResult>> {
         Ok(Some(ActionResult {
             success: true,
@@ -764,8 +765,8 @@ mod provider_tests {
         assert!(state.text.contains("Recent memories:"));
 
         // Verify state contains provider values
-        assert!(state.values.contains_key("entity_id"));
-        assert!(state.values.contains_key("memory_count"));
+        assert!(state.get_value("entity_id").is_some());
+        assert!(state.get_value("memory_count").is_some());
     }
 
     /// Test that private providers are skipped
@@ -1408,7 +1409,17 @@ mod database_adapter_tests {
         adapter.create_world(&world).await.unwrap();
 
         // Create room
-        let room = Room::new("test-room", "test", elizaos::types::ChannelType::Group);
+        let room = Room {
+            id: UUID::new_v4(),
+            name: Some("test-room".to_string()),
+            agent_id: Some(world.agent_id.clone()),
+            source: "test".to_string(),
+            room_type: "GROUP".to_string(),
+            channel_id: None,
+            message_server_id: None,
+            world_id: Some(world.id.clone()),
+            metadata: None,
+        };
         let room_id = adapter.create_room(&room).await.unwrap();
 
         // Retrieve room
@@ -1416,8 +1427,14 @@ mod database_adapter_tests {
         assert!(retrieved_room.is_some());
 
         // Create entity
-        let entity = Entity::new("TestUser", world.agent_id.clone());
-        let entity_id = entity.id.clone().unwrap();
+        let entity_id = UUID::new_v4();
+        let entity = Entity {
+            id: Some(entity_id.clone()),
+            names: Some(vec!["TestUser".to_string()]),
+            metadata: None,
+            agent_id: Some(world.agent_id.clone()),
+            components: None,
+        };
         adapter.create_entity(&entity).await.unwrap();
 
         // Retrieve entity

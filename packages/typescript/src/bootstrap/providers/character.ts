@@ -59,7 +59,7 @@ export const characterProvider: Provider = {
     const topics =
       character.topics && character.topics.length > 0
         ? `${character.name} is also interested in ${character.topics
-            .filter((topic) => topic !== topicString)
+            .filter((topic: string) => topic !== topicString)
             .sort(() => 0.5 - Math.random())
             .slice(0, 5)
             .map((topic, index, array) => {

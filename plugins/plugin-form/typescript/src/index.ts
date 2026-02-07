@@ -137,7 +137,7 @@
  * @see {@link ControlBuilder} for field definition
  */
 
-import type { Plugin, IAgentRuntime } from "@elizaos/core";
+import type { Plugin, IAgentRuntime, ServiceClass } from "@elizaos/core";
 
 // ============================================================================
 // TYPE EXPORTS
@@ -305,7 +305,7 @@ export const formPlugin: Plugin = {
         const { FormService } = await import("./service");
         return FormService.start(runtime);
       },
-    } as any,
+    } as ServiceClass,
   ],
 
   // Provider for form context

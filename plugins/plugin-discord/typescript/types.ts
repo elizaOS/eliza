@@ -232,11 +232,24 @@ export interface DiscordActionRow {
   components: DiscordComponentOptions[];
 }
 
+/**
+ * DM access policy for Discord messages.
+ * - "open": Allow all DMs
+ * - "allowlist": Only allow DMs from users in allowFrom list
+ * - "pairing": Require pairing code approval for new DM senders
+ * - "disabled": Ignore all DMs
+ */
+export type DiscordDmPolicy = "open" | "allowlist" | "pairing" | "disabled";
+
 export interface DiscordSettings {
   allowedChannelIds?: string[];
   shouldIgnoreBotMessages?: boolean;
   shouldIgnoreDirectMessages?: boolean;
   shouldRespondOnlyToMentions?: boolean;
+  /** DM access policy (default: "open") */
+  dmPolicy?: DiscordDmPolicy;
+  /** List of allowed Discord user IDs for allowlist policy */
+  allowFrom?: string[];
 }
 
 export interface ChannelSpiderState {

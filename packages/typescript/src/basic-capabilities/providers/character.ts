@@ -71,7 +71,7 @@ export const characterProvider: Provider = {
     const topics =
       character.topics && character.topics.length > 0
         ? `${character.name} is also interested in ${randomSample(
-            character.topics.filter((topic) => topic !== topicString),
+            character.topics.filter((topic: string) => topic !== topicString),
             5,
           )
             .map((topic, index, array) => {

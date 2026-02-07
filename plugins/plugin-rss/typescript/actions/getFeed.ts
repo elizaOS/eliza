@@ -13,7 +13,7 @@ import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { RssService } from "../service";
 import { createMessageReply, extractUrls } from "../utils";
 
-const spec = requireActionSpec("GET_FEED");
+const spec = requireActionSpec("GET_NEWSFEED");
 
 export const getFeedAction: Action = {
   name: spec.name,

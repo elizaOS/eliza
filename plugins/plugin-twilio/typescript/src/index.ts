@@ -6,13 +6,22 @@ import callStateProvider from "./providers/callState";
 import conversationHistoryProvider from "./providers/conversationHistory";
 import { TwilioService } from "./service";
 import { TwilioTestSuite } from "./tests";
+import {
+  voiceCallServiceClass,
+  voiceCallActions,
+  voiceCallProviders,
+} from "./voicecall";
+
+// Re-export voice call module for direct imports
+export * from "./voicecall";
 
 const twilioPlugin: Plugin = {
   name: "twilio",
-  description: "Twilio plugin for bidirectional voice and text messaging integration",
-  services: [TwilioService],
-  actions: [sendSmsAction, makeCallAction, sendMmsAction],
-  providers: [conversationHistoryProvider, callStateProvider],
+  description:
+    "Twilio plugin for bidirectional voice and text messaging integration with advanced voice call lifecycle management",
+  services: [TwilioService, voiceCallServiceClass],
+  actions: [sendSmsAction, makeCallAction, sendMmsAction, ...voiceCallActions],
+  providers: [conversationHistoryProvider, callStateProvider, ...voiceCallProviders],
   tests: [new TwilioTestSuite()],
   init: async (config: Record<string, string>, runtime: IAgentRuntime) => {
     const accountSid = runtime.getSetting("TWILIO_ACCOUNT_SID") as string;
@@ -57,6 +66,15 @@ const twilioPlugin: Plugin = {
       logger.warn(
         "To enable incoming communication, please provide TWILIO_WEBHOOK_URL in your .env file"
       );
+    }
+
+    // Check for voice call provider configuration
+    const voiceCallProvider = config.VOICE_CALL_PROVIDER || process.env.VOICE_CALL_PROVIDER;
+    const voiceCallEnabled =
+      config.VOICE_CALL_ENABLED !== "false" && process.env.VOICE_CALL_ENABLED !== "false";
+
+    if (voiceCallEnabled && voiceCallProvider) {
+      logger.info(`[twilio] Voice call module initializing with provider: ${voiceCallProvider}`);
     }
 
     logger.info("Twilio plugin initialized successfully");

@@ -9,9 +9,10 @@ use crate::prompts::{
 };
 use crate::runtime::AgentRuntime;
 use crate::template::render_template;
+use crate::types::events::{EventPayload, EventType};
 use crate::types::memory::Memory;
 use crate::types::primitives::{Content, UUID};
-use crate::types::state::State;
+use crate::types::state::{SchemaRow, State};
 use crate::types::HandlerCallback;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -159,22 +160,36 @@ impl IMessageService for DefaultMessageService {
             }
         };
 
-        // shouldRespond gate (parity with TS/Python)
+        // shouldRespond gate (parity with TS/Python) - use dynamicPromptExecFromState
         if check_should_respond {
-            let should_prompt = build_should_respond_prompt(&character_name, message, &state)?;
-            let decision_xml = runtime
-                .use_model(
-                    "TEXT_SMALL",
-                    serde_json::json!({
-                        "prompt": should_prompt,
-                        "system": system_prompt,
-                        "temperature": 0.0
-                    }),
+            // Use dynamicPromptExecFromState for structured decision output
+            let schema = vec![
+                SchemaRow::new("name", "The name of the agent responding")
+                    .validate(false)
+                    .stream(false),
+                SchemaRow::new("reasoning", "Your reasoning for this decision")
+                    .validate(false)
+                    .stream(false),
+                SchemaRow::new("action", "RESPOND | IGNORE | STOP")
+                    .validate(false)
+                    .stream(false),
+            ];
+
+            let decision_result = runtime
+                .dynamic_prompt_exec_from_state(
+                    &state,
+                    SHOULD_RESPOND_TEMPLATE,
+                    &schema,
+                    crate::runtime::DynamicPromptOptions {
+                        model_size: Some(crate::runtime::ModelSize::Small),
+                        force_format: Some("xml".to_string()),
+                        ..Default::default()
+                    },
                 )
                 .await?;
 
-            let decision = crate::xml::parse_key_value_xml(&decision_xml)
-                .and_then(|m| m.get("action").cloned())
+            let decision = decision_result
+                .and_then(|m| m.get("action").and_then(|v| v.as_str()).map(String::from))
                 .unwrap_or_else(|| "RESPOND".to_string());
 
             let decision_upper = decision.trim().to_uppercase();
@@ -197,42 +212,69 @@ impl IMessageService for DefaultMessageService {
             return run_multi_step(runtime, message, &state, callback, max_iters).await;
         }
 
-        // Build the canonical prompt (MESSAGE_HANDLER_TEMPLATE parity)
-        let prompt = build_canonical_prompt(&character_name, message, &state)?;
+        // Use dynamicPromptExecFromState for structured message response
+        let schema = vec![
+            SchemaRow::new(
+                "thought",
+                "Your internal reasoning about the message and what to do",
+            )
+            .required()
+            .validate(false)
+            .stream(false),
+            SchemaRow::new(
+                "providers",
+                "List of providers to use for additional context (comma-separated)",
+            )
+            .validate(false)
+            .stream(false),
+            SchemaRow::new("actions", "List of actions to take (comma-separated)")
+                .required()
+                .validate(false)
+                .stream(false),
+            SchemaRow::new("text", "The text response to send to the user").stream(true),
+            SchemaRow::new("simple", "Whether this is a simple response (true/false)")
+                .validate(false)
+                .stream(false),
+        ];
 
-        // Generate response using the model (calls registered model handler)
-        let raw_response = runtime
-            .use_model(
-                "TEXT_LARGE",
-                serde_json::json!({
-                    "prompt": prompt,
-                    "system": system_prompt,
-                    "temperature": 0.7
-                }),
+        let parsed = runtime
+            .dynamic_prompt_exec_from_state(
+                &state,
+                MESSAGE_HANDLER_TEMPLATE,
+                &schema,
+                crate::runtime::DynamicPromptOptions {
+                    model_size: Some(crate::runtime::ModelSize::Large),
+                    force_format: Some("xml".to_string()),
+                    required_fields: Some(vec!["thought".to_string(), "actions".to_string()]),
+                    ..Default::default()
+                },
             )
             .await?;
 
-        // Parse XML response. If the backend returned plain text (no XML),
-        // treat it as a simple REPLY (TypeScript/Python parity).
-        let parsed = crate::xml::parse_key_value_xml(&raw_response);
-
         let thought = parsed
             .as_ref()
-            .and_then(|m| m.get("thought").cloned())
-            .unwrap_or_default();
+            .and_then(|m| m.get("thought").and_then(|v| v.as_str()))
+            .unwrap_or_default()
+            .to_string();
         let actions_raw = parsed
             .as_ref()
-            .and_then(|m| m.get("actions").cloned())
-            .unwrap_or_else(|| "REPLY".to_string());
+            .and_then(|m| m.get("actions").and_then(|v| v.as_str()))
+            .unwrap_or("REPLY")
+            .to_string();
         let providers_raw = parsed
             .as_ref()
-            .and_then(|m| m.get("providers").cloned())
-            .unwrap_or_default();
+            .and_then(|m| m.get("providers").and_then(|v| v.as_str()))
+            .unwrap_or_default()
+            .to_string();
         let mut text = parsed
             .as_ref()
-            .and_then(|m| m.get("text").cloned())
-            .unwrap_or_else(|| raw_response.clone());
-        let params_xml = parsed.as_ref().and_then(|m| m.get("params").cloned());
+            .and_then(|m| m.get("text").and_then(|v| v.as_str()))
+            .unwrap_or_default()
+            .to_string();
+        let params_xml = parsed
+            .as_ref()
+            .and_then(|m| m.get("params").and_then(|v| v.as_str()))
+            .map(String::from);
 
         let mut actions = split_csv(&actions_raw);
         if actions.is_empty() {
@@ -250,6 +292,8 @@ impl IMessageService for DefaultMessageService {
         // If the model selected actions that require parameters but omitted a complete <params> block,
         // do a second pass asking for ONLY a <params> block.
         let mut params_xml = params_xml;
+        // Build the canonical prompt for repair context
+        let prompt = build_canonical_prompt(&character_name, message, &state)?;
         if !actions.is_empty() {
             let defs = runtime.list_action_definitions().await;
             let mut required_by_action: HashMap<String, Vec<String>> = HashMap::new();
@@ -348,20 +392,16 @@ impl IMessageService for DefaultMessageService {
         }
 
         // Create response content with actions/providers/params
-        let mut response_content = Content {
+        let response_content = Content {
             thought: Some(thought),
             text: Some(text.clone()),
             actions: Some(actions.clone()),
             providers: Some(providers.clone()),
+            data: params_xml
+                .clone()
+                .map(|p| serde_json::json!({ "params": p })),
             ..Default::default()
         };
-        // Store params in extra if present
-        if let Some(params) = &params_xml {
-            response_content.extra.insert(
-                "params".to_string(),
-                serde_json::Value::String(params.clone()),
-            );
-        }
 
         // Create response memory
         let response_id = UUID::new_v4();
@@ -385,6 +425,21 @@ impl IMessageService for DefaultMessageService {
             adapter.create_memory(&response_memory, "messages").await?;
             debug!("Saved response with ID {:?}", response_id);
         }
+
+        // Emit MESSAGE_SENT event after saving response memory
+        let mut extra = HashMap::new();
+        if let Ok(message_json) = serde_json::to_value(&response_memory) {
+            extra.insert("message".to_string(), message_json);
+        }
+        let _ = runtime
+            .emit_event(
+                EventType::MessageSent,
+                EventPayload {
+                    source: "message-service".to_string(),
+                    extra,
+                },
+            )
+            .await;
 
         let mut response_messages: Vec<Memory> = vec![response_memory.clone()];
 
@@ -476,12 +531,10 @@ async fn persist_evaluator_results(
     };
 
     for r in results {
-        let mut content = Content {
-            content_type: Some("evaluator_result".to_string()),
-            source: Some("auto".to_string()),
-            thought: r.text.clone(),
-            ..Default::default()
-        };
+        let mut content = Content::default();
+        content.content_type = Some("evaluator_result".to_string());
+        content.source = Some("auto".to_string());
+        content.thought = r.text.clone();
         if let Some(err) = &r.error {
             content
                 .extra
@@ -538,7 +591,7 @@ fn build_canonical_prompt(character_name: &str, message: &Memory, state: &State)
     render_template(MESSAGE_HANDLER_TEMPLATE, &data)
 }
 
-fn build_should_respond_prompt(
+fn _build_should_respond_prompt(
     character_name: &str,
     message: &Memory,
     state: &State,
@@ -628,45 +681,95 @@ async fn run_multi_step(
     for _ in 0..max_iters.max(1) {
         let iter_state = runtime.compose_state(message).await?;
 
-        let system_prompt = {
-            #[cfg(not(feature = "wasm"))]
-            {
-                runtime.character.read().await.system.clone()
-            }
-            #[cfg(feature = "wasm")]
-            {
-                runtime.character.read().unwrap().system.clone()
-            }
-        };
+        // Add action results to state for template rendering
+        let mut iter_state = iter_state;
+        iter_state.set_value(
+            "actionResults",
+            Value::String(format_action_results(&trace_results)),
+        );
 
-        let ctx = serde_json::json!({
-            "recentMessages": iter_state.get_value("recentMessages").unwrap_or(Value::String(String::new())),
-            "actionsWithDescriptions": iter_state.get_value("actionsWithDescriptions").unwrap_or(Value::String(String::new())),
-            "providersWithDescriptions": iter_state.get_value("providersWithDescriptions").unwrap_or(Value::String(String::new())),
-            "actionResults": format_action_results(&trace_results),
-        });
+        // Use dynamicPromptExecFromState for multi-step decision
+        let schema = vec![
+            SchemaRow::new(
+                "thought",
+                "Your reasoning for the selected providers and/or action",
+            )
+            .validate(false)
+            .stream(false),
+            SchemaRow::new("providers", "Comma-separated list of providers to call")
+                .validate(false)
+                .stream(false),
+            SchemaRow::new("action", "Name of the action to execute (can be empty)")
+                .validate(false)
+                .stream(false),
+            SchemaRow::new("parameters", "JSON object with parameter names and values")
+                .validate(false)
+                .stream(false),
+            SchemaRow::new("isFinish", "true if task is complete, false otherwise")
+                .validate(false)
+                .stream(false),
+        ];
 
-        let decision_prompt = render_template(MULTI_STEP_DECISION_TEMPLATE, &ctx)?;
-        let raw = runtime
-            .use_model(
-                "TEXT_LARGE",
-                serde_json::json!({
-                    "prompt": decision_prompt,
-                    "system": system_prompt,
-                    "temperature": 0.7
-                }),
+        let parsed = runtime
+            .dynamic_prompt_exec_from_state(
+                &iter_state,
+                MULTI_STEP_DECISION_TEMPLATE,
+                &schema,
+                crate::runtime::DynamicPromptOptions {
+                    model_size: Some(crate::runtime::ModelSize::Large),
+                    force_format: Some("xml".to_string()),
+                    ..Default::default()
+                },
             )
             .await?;
 
-        let parsed = crate::xml::parse_key_value_xml(&raw)
-            .ok_or_else(|| anyhow::anyhow!("Failed to parse multi-step XML"))?;
-        let thought = parsed.get("thought").cloned().unwrap_or_default();
-        let action = parsed.get("action").cloned().unwrap_or_default();
+        let parsed = parsed.ok_or_else(|| anyhow::anyhow!("Failed to parse multi-step result"))?;
+        let thought = parsed
+            .get("thought")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let action = parsed
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let parameters_raw = parsed.get("parameters");
         let is_finish = parsed
             .get("isFinish")
+            .and_then(|v| v.as_str())
             .map(|s| s.trim().eq_ignore_ascii_case("true"))
             .unwrap_or(false);
-        last_thought = thought;
+        last_thought = thought.clone();
+
+        // Parse parameters into HashMap
+        let mut action_params: HashMap<String, String> = HashMap::new();
+        if let Some(params_val) = parameters_raw {
+            match params_val {
+                serde_json::Value::Object(obj) => {
+                    for (k, v) in obj {
+                        let value_str = match v {
+                            serde_json::Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        };
+                        action_params.insert(k.clone(), value_str);
+                    }
+                }
+                serde_json::Value::String(s) => {
+                    // Try to parse as JSON string
+                    if let Ok(serde_json::Value::Object(obj)) = serde_json::from_str(s) {
+                        for (k, v) in obj {
+                            let value_str = match v {
+                                serde_json::Value::String(s) => s,
+                                other => other.to_string(),
+                            };
+                            action_params.insert(k, value_str);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
 
         if is_finish {
             break;
@@ -674,48 +777,69 @@ async fn run_multi_step(
 
         let action_name = action.trim().to_string();
         if !action_name.is_empty() {
+            // Convert action_params to the expected nested structure
+            let inner_params: HashMap<String, Value> = action_params
+                .iter()
+                .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                .collect();
+            let mut nested_params: HashMap<String, HashMap<String, Value>> = HashMap::new();
+            nested_params.insert(action_name.to_uppercase(), inner_params);
+
             let results = runtime
-                .process_selected_actions(message, &iter_state, &[action_name], &HashMap::new())
+                .process_selected_actions(
+                    message,
+                    &iter_state,
+                    &[action_name.clone()],
+                    &nested_params,
+                )
                 .await?;
             trace_results.extend(results);
         }
     }
 
-    let system_prompt = {
-        #[cfg(not(feature = "wasm"))]
-        {
-            runtime.character.read().await.system.clone()
-        }
-        #[cfg(feature = "wasm")]
-        {
-            runtime.character.read().unwrap().system.clone()
-        }
-    };
+    // Add context to state for final summary
+    let mut final_state = state.clone();
+    final_state.set_value(
+        "actionResults",
+        Value::String(format_action_results(&trace_results)),
+    );
+    final_state.set_value("recentMessage", Value::String(last_thought));
 
-    let ctx = serde_json::json!({
-        "recentMessages": state.get_value("recentMessages").unwrap_or(Value::String(String::new())),
-        "actionResults": format_action_results(&trace_results),
-        "recentMessage": last_thought,
-        "bio": "",
-        "system": "",
-        "messageDirections": "",
-    });
+    // Use dynamicPromptExecFromState for final summary
+    let schema = vec![
+        SchemaRow::new("thought", "Your internal reasoning about the summary")
+            .validate(false)
+            .stream(false),
+        SchemaRow::new("text", "The final summary message to send to the user")
+            .required()
+            .stream(true),
+    ];
 
-    let summary_prompt = render_template(MULTI_STEP_SUMMARY_TEMPLATE, &ctx)?;
-    let raw = runtime
-        .use_model(
-            "TEXT_LARGE",
-            serde_json::json!({
-                "prompt": summary_prompt,
-                "system": system_prompt,
-                "temperature": 0.7
-            }),
+    let parsed = runtime
+        .dynamic_prompt_exec_from_state(
+            &final_state,
+            MULTI_STEP_SUMMARY_TEMPLATE,
+            &schema,
+            crate::runtime::DynamicPromptOptions {
+                model_size: Some(crate::runtime::ModelSize::Large),
+                force_format: Some("xml".to_string()),
+                required_fields: Some(vec!["text".to_string()]),
+                ..Default::default()
+            },
         )
         .await?;
-    let parsed = crate::xml::parse_key_value_xml(&raw)
-        .ok_or_else(|| anyhow::anyhow!("Failed to parse summary XML"))?;
-    let final_text = parsed.get("text").cloned().unwrap_or(raw);
-    let final_thought = parsed.get("thought").cloned().unwrap_or_default();
+
+    let parsed = parsed.ok_or_else(|| anyhow::anyhow!("Failed to parse summary result"))?;
+    let final_text = parsed
+        .get("text")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let final_thought = parsed
+        .get("thought")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
 
     let response_content = Content {
         thought: Some(final_thought),
@@ -749,6 +873,7 @@ fn chrono_timestamp() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::HandlerOptions;
 
     #[test]
     fn test_message_processing_result_default() {
@@ -820,8 +945,7 @@ mod tests {
     async fn test_evaluators_run_from_message_service() {
         use crate::runtime::RuntimeOptions;
         use crate::types::{
-            ActionResult, EvaluationExample, EvaluatorDefinition, EvaluatorHandler, HandlerOptions,
-            Plugin,
+            ActionResult, EvaluationExample, EvaluatorDefinition, EvaluatorHandler, Plugin,
         };
         use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;

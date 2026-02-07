@@ -47,7 +47,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "zod": "^4.2.1"
+    "zod": "^4.3.6"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
@@ -186,8 +186,33 @@
         "description": "Browser-only proxy endpoint base URL for ElizaOS Cloud embeddings.",
         "required": false,
         "sensitive": false
+      },
+      "ELIZAOS_CLOUD_ENABLED": {
+        "type": "boolean",
+        "description": "Enable ElizaCloud container provisioning, device auth, bridge, and backup services. When false, only inference model handlers are active.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_APP_VERSION": {
+        "type": "string",
+        "description": "Application version sent during device authentication.",
+        "required": false,
+        "default": "2.0.0-alpha",
+        "sensitive": false
       }
     }
   },
-  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "milaidy": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
+    }
+  }
 }

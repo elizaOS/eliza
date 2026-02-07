@@ -33,6 +33,7 @@ function convertUsage(usage: LanguageModelUsage | undefined): TokenUsage | undef
     return undefined;
   }
 
+  // The AI SDK uses inputTokens/outputTokens
   const promptTokens = usage.inputTokens ?? 0;
   const completionTokens = usage.outputTokens ?? 0;
 

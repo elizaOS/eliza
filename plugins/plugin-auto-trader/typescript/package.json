@@ -38,7 +38,7 @@
     "bignumber.js": "^9.1.0",
     "bs58": "^6.0.0",
     "technicalindicators": "^3.1.0",
-    "zod": "^3.23.0"
+    "zod": "^4.3.6"
   },
   "optionalDependencies": {
     "@elizaos/plugin-trajectory-logger": "workspace:*"
@@ -61,5 +61,14 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "ESM build available via exports.import"
+    }
   }
 }

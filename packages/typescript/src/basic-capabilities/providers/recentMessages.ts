@@ -73,16 +73,25 @@ export const recentMessagesProvider: Provider = {
     const { roomId } = message;
     const conversationLength = runtime.getConversationLength();
 
+    // First get room to check for compaction point
+    const room = await runtime.getRoom(roomId);
+
+    // Check for compaction point - only load messages after this timestamp
+    const lastCompactionAt = room?.metadata?.lastCompactionAt as
+      | number
+      | undefined;
+
     // Parallelize initial data fetching operations including recentInteractions
-    const [entitiesData, room, recentMessagesData, recentInteractionsData] =
+    const [entitiesData, recentMessagesData, recentInteractionsData] =
       await Promise.all([
         getEntityDetails({ runtime, roomId }),
-        runtime.getRoom(roomId),
         runtime.getMemories({
           tableName: "messages",
           roomId,
           count: conversationLength,
           unique: false,
+          // Use compaction point to filter history
+          start: lastCompactionAt,
         }),
         message.entityId !== runtime.agentId
           ? getRecentInteractions(

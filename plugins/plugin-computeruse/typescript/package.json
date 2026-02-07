@@ -39,7 +39,7 @@
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.0",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "peerDependencies": {
     "@elizaos/computeruse": "workspace:*",
@@ -85,5 +85,14 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js only (platform: node)"
+    }
   }
 }

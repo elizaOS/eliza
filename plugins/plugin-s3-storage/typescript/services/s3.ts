@@ -1,6 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, Service, ServiceType } from "@elizaos/core";
@@ -299,6 +305,97 @@ export class AwsS3Service extends Service {
         success: false,
         error: error instanceof Error ? error.message : String(error),
       };
+    }
+  }
+
+  /**
+   * Download an object from S3 as raw bytes.
+   *
+   * Mirrors Rust `S3StorageClient::download` and Python `S3StorageClient.download_file`
+   * (the in-memory portion).
+   */
+  async downloadBytes(bucket: string, key: string): Promise<Buffer> {
+    if (!(await this.initializeS3Client())) {
+      throw new Error("AWS S3 credentials not configured");
+    }
+
+    const client = this.getClient();
+    const response = await client.send(
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      })
+    );
+
+    if (!response.Body) {
+      throw new Error("Empty response body from S3");
+    }
+
+    const byteArray = await response.Body.transformToByteArray();
+    return Buffer.from(byteArray);
+  }
+
+  /**
+   * Download an object from S3 and write it to a local file.
+   *
+   * Mirrors Rust `S3StorageClient::download_file` and Python
+   * `S3StorageClient.download_file`.
+   */
+  async downloadFile(bucket: string, key: string, localPath: string): Promise<void> {
+    const data = await this.downloadBytes(bucket, key);
+    fs.writeFileSync(localPath, data);
+  }
+
+  /**
+   * Delete an object from S3.
+   *
+   * Mirrors Rust `S3StorageClient::delete` and Python
+   * `S3StorageClient.delete_object`.
+   */
+  async delete(bucket: string, key: string): Promise<void> {
+    if (!(await this.initializeS3Client())) {
+      throw new Error("AWS S3 credentials not configured");
+    }
+
+    const client = this.getClient();
+    await client.send(
+      new DeleteObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      })
+    );
+  }
+
+  /**
+   * Check whether an object exists in S3.
+   *
+   * Mirrors Rust `S3StorageClient::exists`.  Uses `HeadObject` and
+   * interprets a 404 / `NotFound` response as "does not exist".
+   */
+  async exists(bucket: string, key: string): Promise<boolean> {
+    if (!(await this.initializeS3Client())) {
+      throw new Error("AWS S3 credentials not configured");
+    }
+
+    const client = this.getClient();
+    try {
+      await client.send(
+        new HeadObjectCommand({
+          Bucket: bucket,
+          Key: key,
+        })
+      );
+      return true;
+    } catch (error: unknown) {
+      // HeadObject throws NotFound (or 404) when the key does not exist
+      if (error instanceof Error && error.name === "NotFound") {
+        return false;
+      }
+      const metadata = (error as { $metadata?: { httpStatusCode?: number } })?.$metadata;
+      if (metadata?.httpStatusCode === 404) {
+        return false;
+      }
+      throw error;
     }
   }
 }

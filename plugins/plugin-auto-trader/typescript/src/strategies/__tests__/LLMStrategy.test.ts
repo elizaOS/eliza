@@ -18,11 +18,19 @@ const mockLlmService = {
   generateText: vi.fn(),
 };
 
+/** Strategy with exposed private methods for testing */
+type StrategyWithBuildPrompt = LLMStrategy & {
+  buildPrompt(
+    marketData: StrategyContextMarketData,
+    agentState: AgentState,
+  ): string;
+};
+
 const createMockRuntime = (): AgentRuntime => {
-  const settings = new Map<string, any>();
+  const settings = new Map<string, string>();
   return {
     getSetting: vi.fn((key: string) => settings.get(key)),
-    setSetting: vi.fn((key: string, value: any) => settings.set(key, value)),
+    setSetting: vi.fn((key: string, value: string) => settings.set(key, value)),
     getService: (serviceName: string) => {
       if (serviceName === "LLMService") {
         return mockLlmService;
@@ -35,7 +43,7 @@ const createMockRuntime = (): AgentRuntime => {
       debug: vi.fn(),
       info: vi.fn(),
     },
-  } as any;
+  } as AgentRuntime;
 };
 
 const getDefaultOHLCV = (length = 50, startPrice = 100): OHLCV[] =>
@@ -134,7 +142,10 @@ describe("LLMStrategy", () => {
 
   describe("buildPrompt", () => {
     it("should construct a comprehensive prompt", () => {
-      const prompt = (strategy as any).buildPrompt(marketData, agentState);
+      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
+        marketData,
+        agentState,
+      );
       expect(prompt).toContain(`Market Data:`);
       expect(prompt).toContain("Your response MUST be a single JSON object.");
     });
@@ -144,8 +155,10 @@ describe("LLMStrategy", () => {
         customPromptPrefix: "TestPrefix",
         customPromptSuffix: "TestSuffix",
       });
-      // @ts-expect-error
-      const prompt = (strategy as any).buildPrompt(marketData, agentState);
+      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
+        marketData,
+        agentState,
+      );
       expect(prompt.startsWith("TestPrefix")).toBe(true);
       expect(prompt.endsWith("TestSuffix")).toBe(true);
     });
@@ -158,19 +171,27 @@ describe("LLMStrategy", () => {
       strategy.configure({
         structuredOutputSchema: schema,
       } as LLMStrategyParams);
-      const prompt = (strategy as any).buildPrompt(marketData, agentState);
+      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
+        marketData,
+        agentState,
+      );
       expect(prompt).toContain(JSON.stringify(schema));
     });
 
     it("should include current position P&L in the prompt", () => {
-      const prompt = (strategy as any).buildPrompt(marketData, agentState);
+      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
+        marketData,
+        agentState,
+      );
       expect(prompt).toContain("Portfolio Value: 50000.00");
     });
 
     it("should state no holdings if portfolio is empty for symbol", () => {
       const emptyAgentState = { ...agentState, portfolioValue: 0 };
-      // @ts-expect-error
-      const prompt = (strategy as any).buildPrompt(marketData, emptyAgentState);
+      const prompt = (strategy as StrategyWithBuildPrompt).buildPrompt(
+        marketData,
+        emptyAgentState,
+      );
       expect(prompt).toContain("Portfolio Value: 0.00");
     });
   });

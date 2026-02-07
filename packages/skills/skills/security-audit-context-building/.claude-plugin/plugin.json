@@ -1,0 +1,10 @@
+{
+  "name": "audit-context-building",
+  "version": "1.0.0",
+  "description": "Build deep architectural context through ultra-granular code analysis before vulnerability hunting",
+  "author": {
+    "name": "Omar Inuwa",
+    "email": "opensource@trailofbits.com",
+    "url": "https://github.com/trailofbits"
+  }
+}

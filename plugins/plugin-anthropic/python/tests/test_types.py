@@ -98,9 +98,9 @@ class TestContentBlock:
     """Tests for ContentBlock classes."""
 
     def test_text_content_block(self) -> None:
-        block = TextContentBlock(type="text", text_content="Hello, world!")
+        block = TextContentBlock(type="text", text="Hello, world!")
         assert block.type == "text"
-        assert block.text_content == "Hello, world!"
+        assert block.text == "Hello, world!"
 
 
 class TestMessage:

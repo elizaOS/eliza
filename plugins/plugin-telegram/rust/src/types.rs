@@ -23,10 +23,18 @@ pub enum TelegramEventType {
     MessageSent,
     /// A reaction was received.
     ReactionReceived,
+    /// A reaction was sent by the bot.
+    ReactionSent,
     /// An interaction (e.g. callback query) was received.
     InteractionReceived,
     /// The `/start` command was invoked.
     SlashStart,
+    /// The bot started successfully.
+    BotStarted,
+    /// The bot stopped.
+    BotStopped,
+    /// A webhook was registered.
+    WebhookRegistered,
 }
 
 impl fmt::Display for TelegramEventType {
@@ -41,8 +49,12 @@ impl fmt::Display for TelegramEventType {
             Self::MessageReceived => "TELEGRAM_MESSAGE_RECEIVED",
             Self::MessageSent => "TELEGRAM_MESSAGE_SENT",
             Self::ReactionReceived => "TELEGRAM_REACTION_RECEIVED",
+            Self::ReactionSent => "TELEGRAM_REACTION_SENT",
             Self::InteractionReceived => "TELEGRAM_INTERACTION_RECEIVED",
             Self::SlashStart => "TELEGRAM_SLASH_START",
+            Self::BotStarted => "TELEGRAM_BOT_STARTED",
+            Self::BotStopped => "TELEGRAM_BOT_STOPPED",
+            Self::WebhookRegistered => "TELEGRAM_WEBHOOK_REGISTERED",
         };
         write!(f, "{}", s)
     }
@@ -248,6 +260,160 @@ pub struct TelegramSettings {
     pub should_ignore_bot_messages: bool,
     /// Whether to respond only to explicit mentions.
     pub should_respond_only_to_mentions: bool,
+}
+
+/// Extended bot information from getMe.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramBotInfo {
+    /// Bot user ID.
+    pub id: i64,
+    /// Bot username (without @).
+    pub username: Option<String>,
+    /// Bot's first name.
+    pub first_name: String,
+    /// Whether the bot can join groups.
+    pub can_join_groups: bool,
+    /// Whether the bot can read all group messages.
+    pub can_read_all_group_messages: bool,
+    /// Whether the bot supports inline queries.
+    pub supports_inline_queries: bool,
+}
+
+/// Result of probing the Telegram bot connection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramBotProbe {
+    /// Whether the probe was successful.
+    pub ok: bool,
+    /// Bot info if successful.
+    pub bot: Option<TelegramBotInfo>,
+    /// Error message if failed.
+    pub error: Option<String>,
+    /// Latency in milliseconds.
+    pub latency_ms: u64,
+}
+
+/// Parameters for sending a reaction.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendReactionParams {
+    /// Chat ID where the message is.
+    pub chat_id: i64,
+    /// Message ID to react to.
+    pub message_id: i64,
+    /// Emoji to use as reaction.
+    pub reaction: String,
+    /// Whether to use a big/animated reaction.
+    #[serde(default)]
+    pub is_big: bool,
+}
+
+/// Result of sending a reaction.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendReactionResult {
+    /// Whether the reaction was sent successfully.
+    pub success: bool,
+    /// Chat ID.
+    pub chat_id: i64,
+    /// Message ID.
+    pub message_id: i64,
+    /// Reaction emoji.
+    pub reaction: String,
+    /// Error message if failed.
+    pub error: Option<String>,
+}
+
+/// Bot status payload for start/stop events.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramBotStatusPayload {
+    /// Bot user ID.
+    pub bot_id: Option<i64>,
+    /// Bot username.
+    pub bot_username: Option<String>,
+    /// Bot name.
+    pub bot_name: Option<String>,
+    /// Update mode (polling or webhook).
+    pub update_mode: String,
+    /// Timestamp in milliseconds.
+    pub timestamp: i64,
+}
+
+/// Webhook registration payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramWebhookPayload {
+    /// Full webhook URL.
+    pub url: String,
+    /// Webhook path.
+    pub path: String,
+    /// Webhook port.
+    pub port: Option<u16>,
+    /// Whether a secret token is configured.
+    pub has_secret: bool,
+    /// Timestamp in milliseconds.
+    pub timestamp: i64,
+}
+
+/// Webhook info from Telegram API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramWebhookInfo {
+    /// Webhook URL.
+    pub url: String,
+    /// Whether a custom certificate is used.
+    pub has_custom_certificate: bool,
+    /// Number of pending updates.
+    pub pending_update_count: i32,
+    /// Last error timestamp.
+    pub last_error_date: Option<i64>,
+    /// Last error message.
+    pub last_error_message: Option<String>,
+    /// Maximum number of connections.
+    pub max_connections: Option<i32>,
+    /// Allowed update types.
+    pub allowed_updates: Option<Vec<String>>,
+}
+
+/// Common Telegram reaction emojis.
+pub mod reactions {
+    /// Thumbs up reaction.
+    pub const THUMBS_UP: &str = "👍";
+    /// Thumbs down reaction.
+    pub const THUMBS_DOWN: &str = "👎";
+    /// Heart reaction.
+    pub const HEART: &str = "❤";
+    /// Fire reaction.
+    pub const FIRE: &str = "🔥";
+    /// Celebration/party reaction.
+    pub const CELEBRATION: &str = "🎉";
+    /// Crying face reaction.
+    pub const CRYING: &str = "😢";
+    /// Thinking face reaction.
+    pub const THINKING: &str = "🤔";
+    /// Exploding head reaction.
+    pub const EXPLODING_HEAD: &str = "🤯";
+    /// Screaming face reaction.
+    pub const SCREAMING: &str = "😱";
+    /// Angry/swearing face reaction.
+    pub const ANGRY: &str = "🤬";
+    /// Skull reaction.
+    pub const SKULL: &str = "💀";
+    /// Poop reaction.
+    pub const POOP: &str = "💩";
+    /// Clown face reaction.
+    pub const CLOWN: &str = "🤡";
+    /// Eyes reaction.
+    pub const EYES: &str = "👀";
+    /// Hundred points reaction.
+    pub const HUNDRED: &str = "💯";
+    /// Tears of joy reaction.
+    pub const TEARS_OF_JOY: &str = "😂";
+    /// Lightning bolt reaction.
+    pub const LIGHTNING: &str = "⚡";
+    /// Trophy reaction.
+    pub const TROPHY: &str = "🏆";
+    /// Broken heart reaction.
+    pub const BROKEN_HEART: &str = "💔";
+    /// Ghost reaction.
+    pub const GHOST: &str = "👻";
+    /// Unicorn reaction.
+    pub const UNICORN: &str = "🦄";
 }
 
 #[cfg(test)]

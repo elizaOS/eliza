@@ -23,17 +23,17 @@ class ContentBlock(BaseModel):
 
     @classmethod
     def create_text(cls, content: str) -> TextContentBlock:
-        return TextContentBlock(type="text", text_content=content)
+        return TextContentBlock(type="text", text=content)
 
     def get_text(self) -> str | None:
         if isinstance(self, TextContentBlock):
-            return self.text_content
+            return self.text
         return None
 
 
 class TextContentBlock(ContentBlock):
     type: str = "text"
-    text_content: str
+    text: str
 
 
 class ThinkingContentBlock(ContentBlock):

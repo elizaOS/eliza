@@ -1,3 +1,4 @@
+import { isValidWhatsAppNumber } from '../normalize';
 import type { WhatsAppConfig, WhatsAppMessage, WhatsAppTemplate } from '../types';
 
 export function validateConfig(config: WhatsAppConfig): void {
@@ -37,8 +38,10 @@ export function validateTemplate(template: WhatsAppTemplate): void {
     }
 }
 
+/**
+ * Validates a WhatsApp phone number using robust E.164 format checking.
+ * Requires at minimum 10 digits and validates against WhatsApp JID normalization rules.
+ */
 export function validatePhoneNumber(phoneNumber: string): boolean {
-    // Basic phone number validation - can be enhanced based on requirements
-    const phoneRegex = /^\d{1,15}$/;
-    return phoneRegex.test(phoneNumber);
+    return isValidWhatsAppNumber(phoneNumber);
 }

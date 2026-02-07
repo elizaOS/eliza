@@ -1,15 +1,14 @@
-import {
-  type Entity,
-  type IAgentRuntime,
-  type JsonValue,
-  logger,
-  type Metadata,
-  type MetadataValue,
-  type Relationship,
-  Service,
-  stringToUuid,
-  type UUID,
-} from "@elizaos/core";
+import { logger } from "../logger";
+import type { Entity, Relationship } from "../types/environment";
+import type {
+  JsonValue,
+  Metadata,
+  MetadataValue,
+  UUID,
+} from "../types/primitives";
+import type { IAgentRuntime } from "../types/runtime";
+import { Service } from "../types/service";
+import { stringToUuid } from "../utils";
 
 // Extended Relationship interface with new fields
 interface ExtendedRelationship extends Relationship {

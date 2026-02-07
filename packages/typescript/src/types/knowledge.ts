@@ -1,7 +1,6 @@
 import type { Content, UUID } from "./primitives";
 import type {
   MemoryMetadata,
-  DirectoryItem as ProtoDirectoryItem,
   KnowledgeItem as ProtoKnowledgeItem,
   KnowledgeRecord as ProtoKnowledgeRecord,
 } from "./proto.js";
@@ -54,15 +53,3 @@ export interface KnowledgeItem {
 export type KnowledgeRecord = Partial<
   Omit<ProtoKnowledgeRecord, "$typeName" | "$unknown">
 >;
-
-/**
- * Directory-based knowledge source definition.
- * @deprecated Use KnowledgeDirectory instead
- */
-export type DirectoryItem = Omit<
-  ProtoDirectoryItem,
-  "$typeName" | "$unknown" | "directory"
-> & {
-  directory?: string;
-  path?: string;
-};

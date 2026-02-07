@@ -188,7 +188,23 @@ function makeGameAction(params: {
     name: params.name,
     description: params.description,
     similes: params.similes,
-    validate: async () => true,
+    validate: async (runtime: IAgentRuntime, message) => {
+      // Validate that this is an elizagotchi-related action by checking message content
+      const text = (message?.content?.text ?? "").toLowerCase();
+      const actionKeywords = params.similes.map(s => s.toLowerCase());
+      
+      // Check if any simile keyword is present in the message
+      const hasRelevantKeyword = actionKeywords.some(kw => text.includes(kw));
+      
+      // Also check for pet/game context words
+      const hasPetContext = 
+        text.includes("pet") ||
+        text.includes("elizagotchi") ||
+        text.includes("tamagotchi") ||
+        text.includes("game");
+      
+      return hasRelevantKeyword || hasPetContext;
+    },
     handler: async (
       runtime: IAgentRuntime,
       _message,
@@ -218,7 +234,10 @@ const tickAction: ElizaAction = {
   name: "ELIZAGOTCHI_TICK",
   description: "Advance the pet simulation based on elapsed time.",
   similes: ["tick", "update", "step", "__tick__"],
-  validate: async () => true,
+  validate: async (_runtime: IAgentRuntime, message) => {
+    const text = (message?.content?.text ?? "").toLowerCase();
+    return text === "__tick__" || text.includes("tick") || text.includes("update");
+  },
   handler: async (runtime, _message, _state, _options, callback) => {
     const current = loadPetState(runtime);
     const updated = applyTimeUpdate(current);
@@ -234,7 +253,10 @@ const statusAction: ElizaAction = {
   name: "ELIZAGOTCHI_STATUS",
   description: "Get a full status readout of the pet (with stats).",
   similes: ["status", "stats", "info", "health"],
-  validate: async () => true,
+  validate: async (_runtime: IAgentRuntime, message) => {
+    const text = (message?.content?.text ?? "").toLowerCase();
+    return text.includes("status") || text.includes("stats") || text.includes("health") || text.includes("how is");
+  },
   handler: async (runtime, _message, _state, _options, callback) => {
     const current = loadPetState(runtime);
     const updated = applyTimeUpdate(current);
@@ -256,7 +278,10 @@ const helpAction: ElizaAction = {
   name: "ELIZAGOTCHI_HELP",
   description: "Show available Elizagotchi commands.",
   similes: ["help", "commands", "options"],
-  validate: async () => true,
+  validate: async (_runtime: IAgentRuntime, message) => {
+    const text = (message?.content?.text ?? "").toLowerCase();
+    return text.includes("help") || text.includes("commands") || text.includes("what can");
+  },
   handler: async (_runtime, _message, _state, _options, callback) => {
     if (callback) {
       await callback({ type: "elizagotchi_help", text: getHelp() });
@@ -273,7 +298,10 @@ const resetAction: ElizaAction = {
   name: "ELIZAGOTCHI_RESET",
   description: "Reset the game with a new pet (optionally named).",
   similes: ["reset", "restart", "new", "again", "new pet"],
-  validate: async () => true,
+  validate: async (_runtime: IAgentRuntime, message) => {
+    const text = (message?.content?.text ?? "").toLowerCase();
+    return text.includes("reset") || text.includes("restart") || text.includes("new pet") || text.includes("start over");
+  },
   parameters: [
     {
       name: "name",
@@ -303,7 +331,10 @@ const exportAction: ElizaAction = {
   name: "ELIZAGOTCHI_EXPORT",
   description: "Export the current pet save data as JSON.",
   similes: ["export", "backup", "save file"],
-  validate: async () => true,
+  validate: async (_runtime: IAgentRuntime, message) => {
+    const text = (message?.content?.text ?? "").toLowerCase();
+    return text.includes("export") || text.includes("backup") || text.includes("save file") || text.includes("download");
+  },
   handler: async (runtime, _message, _state, _options, callback) => {
     const petState = loadPetState(runtime);
     const saveData = buildSaveData(petState);
@@ -324,7 +355,10 @@ const importAction: ElizaAction = {
   name: "ELIZAGOTCHI_IMPORT",
   description: "Import a pet save JSON and replace the current pet state.",
   similes: ["import", "load save"],
-  validate: async () => true,
+  validate: async (_runtime: IAgentRuntime, message) => {
+    const text = (message?.content?.text ?? "").toLowerCase();
+    return text.includes("import") || text.includes("load save") || text.startsWith("__import__:");
+  },
   parameters: [
     {
       name: "saveJson",
@@ -384,7 +418,10 @@ const renameAction: ElizaAction = {
   name: "ELIZAGOTCHI_NAME",
   description: "Rename your pet.",
   similes: ["name", "call", "rename"],
-  validate: async () => true,
+  validate: async (_runtime: IAgentRuntime, message) => {
+    const text = (message?.content?.text ?? "").toLowerCase();
+    return text.includes("name") || text.includes("rename") || text.includes("call it") || text.includes("call my pet");
+  },
   parameters: [
     {
       name: "name",

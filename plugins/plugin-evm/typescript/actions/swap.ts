@@ -20,6 +20,7 @@ import {
   type Hex,
   parseAbi,
   parseUnits,
+  type ReadContractParameters,
   type SendTransactionParameters,
 } from "viem";
 import type { Account } from "viem/accounts";
@@ -265,14 +266,14 @@ export class SwapAction {
       fromTokenDecimals = chainConfig.nativeCurrency.decimals;
     } else {
       const publicClient = this.walletProvider.getPublicClient(params.chain);
-      fromTokenDecimals = Number(
-        // @ts-expect-error - viem type narrowing issue with readContract parameters
-        await publicClient.readContract({
+      const readDecimalsParams: ReadContractParameters<typeof decimalsAbi, "decimals"> =
+        {
           address: params.fromToken as Address,
           abi: decimalsAbi,
           functionName: "decimals",
-        })
-      );
+        };
+      const decimals = await publicClient.readContract(readDecimalsParams);
+      fromTokenDecimals = Number(decimals);
     }
 
     const quotesPromises: Promise<SwapQuote | undefined>[] = [
@@ -566,13 +567,16 @@ export class SwapAction {
 
     const allowanceAbi = parseAbi(["function allowance(address,address) view returns (uint256)"]);
 
-    // @ts-expect-error - viem type narrowing issue with readContract parameters
-    const allowance = (await publicClient.readContract({
+    const readAllowanceParams: ReadContractParameters<
+      typeof allowanceAbi,
+      "allowance"
+    > = {
       address: tokenAddress,
       abi: allowanceAbi,
       functionName: "allowance",
       args: [account.address, spenderAddress],
-    })) as bigint;
+    };
+    const allowance = await publicClient.readContract(readAllowanceParams);
 
     if (allowance >= requiredAmount) {
       return;

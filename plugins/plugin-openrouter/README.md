@@ -106,7 +106,7 @@ app.listen(3000);
 - `OPENROUTER_EMBEDDING_DIMENSIONS`: Number of dimensions for embedding vectors. Supported values: 256, 384, 512, 768, 1024, 1536, 2048, 3072. Defaults to 1536.
 - `OPENROUTER_AUTO_CLEANUP_IMAGES`: Whether to automatically delete generated images after 30 seconds (default: "false"). Set to "true" to enable auto-cleanup.
 - `SMALL_MODEL`: Fallback model for small tasks (default: "google/gemini-2.0-flash-001"). Used if `OPENROUTER_SMALL_MODEL` is not set.
-- `LARGE_MODEL`: Fallback model for large tasks (default: "openai/gpt-4.1-nano"). Used if `OPENROUTER_LARGE_MODEL` is not set.
+- `LARGE_MODEL`: Fallback model for large tasks (default: "openai/gpt-5.1-nano"). Used if `OPENROUTER_LARGE_MODEL` is not set.
 - `IMAGE_MODEL`: Fallback model for image analysis (default: "x-ai/grok-2-vision-1212"). Used if `OPENROUTER_IMAGE_MODEL` is not set.
 - `IMAGE_GENERATION_MODEL`: Fallback model for image generation (default: "google/gemini-2.5-flash-image-preview"). Used if `OPENROUTER_IMAGE_GENERATION_MODEL` is not set.
 - `EMBEDDING_MODEL`: Fallback model for text embeddings (default: "openai/text-embedding-3-small"). Used if `OPENROUTER_EMBEDDING_MODEL` is not set.

@@ -19,7 +19,7 @@ impl Default for KnowledgePlugin {
 impl KnowledgePlugin {
     pub const NAME: &'static str = "knowledge";
     pub const DESCRIPTION: &'static str = "Provides knowledge management and RAG capabilities";
-    pub const VERSION: &'static str = crate::VERSION;
+    pub const VERSION: &'static str = "2.0.0";
 
     pub fn new(config: KnowledgeConfig) -> Self {
         Self {

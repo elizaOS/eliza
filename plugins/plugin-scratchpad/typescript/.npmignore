@@ -1,0 +1,25 @@
+# Source files
+*.ts
+!*.d.ts
+
+# Config files
+tsconfig.json
+tsconfig.build.json
+biome.json
+build.ts
+
+# Test files
+__tests__/
+*.test.ts
+*.spec.ts
+
+# Development
+.turbo/
+.eslintrc*
+.prettierrc*
+
+# Documentation (keep README)
+docs/
+
+# Generated (already in dist)
+generated/

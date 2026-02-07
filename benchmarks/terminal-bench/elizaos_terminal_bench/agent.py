@@ -316,7 +316,7 @@ class TerminalAgent:
         result = await self.runtime.generate_text(
             input_text=prompt,
             options=GenerateTextOptions(
-                model_type=ModelType.TEXT_LARGE.value,
+                model_type=ModelType.TEXT_LARGE,
                 temperature=self.temperature,
                 max_tokens=2000,
             ),

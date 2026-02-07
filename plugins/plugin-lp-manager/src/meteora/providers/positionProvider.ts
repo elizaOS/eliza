@@ -100,7 +100,8 @@ const fetchPositions = async (
         const positions: MeteoraPositionStatistics[] = [];
 
         for (const poolAddress of POOL_ADDRESSES) {
-            const dlmmPool = await DLMM.create(connection as any, new PublicKey(poolAddress));
+            // Connection type compatibility - DLMM may expect a different Connection version
+            const dlmmPool = await DLMM.create(connection as unknown as Parameters<typeof DLMM.create>[0], new PublicKey(poolAddress));
             const { userPositions } = await dlmmPool.getPositionsByUserAndLbPair(ownerAddress);
             const activeBin = await dlmmPool.getActiveBin();
 

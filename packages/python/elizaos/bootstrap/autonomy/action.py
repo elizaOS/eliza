@@ -130,16 +130,21 @@ async def _handle_send_to_admin(
         content=Content(
             text=message_to_admin,
             source="autonomy-to-admin",
-            metadata={
-                "type": "autonomous-to-admin-message",
-                "originalThought": autonomous_thought,
-                "timestamp": current_time_ms,
-            },
         ),
         created_at=current_time_ms,
     )
 
     await runtime.create_memory(admin_message, "memories")
+
+    # Emit MESSAGE_SENT event after creating the admin message
+    await runtime.emit_event(
+        "MESSAGE_SENT",
+        {
+            "runtime": runtime,
+            "source": "autonomy-to-admin",
+            "message": admin_message,
+        },
+    )
 
     success_message = f"Message sent to admin in room {str(target_room_id)[:8]}..."
 

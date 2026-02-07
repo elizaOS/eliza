@@ -108,8 +108,8 @@ class TestGatewayConfig:
         assert not model_supports_temperature("gpt-5-mini")
 
         # Models that support temperature
-        assert model_supports_temperature("gpt-4")
-        assert model_supports_temperature("gpt-4-turbo")
+        assert model_supports_temperature("gpt-5")
+        assert model_supports_temperature("gpt-5")
         assert model_supports_temperature("claude-3")
         assert model_supports_temperature("custom-model")
 
@@ -133,14 +133,14 @@ class TestTypes:
         """Test TextGenerationParams with all options."""
         params = TextGenerationParams(
             prompt="Hello",
-            model="gpt-4",
+            model="gpt-5",
             system="Be helpful",
             temperature=0.7,
             max_tokens=100,
             stream=True,
         )
         assert params.prompt == "Hello"
-        assert params.model == "gpt-4"
+        assert params.model == "gpt-5"
         assert params.system == "Be helpful"
         assert params.temperature == 0.7
         assert params.max_tokens == 100
@@ -167,7 +167,7 @@ class TestTypes:
         response = ChatCompletionResponse(
             id="test-id",
             created=1234567890,
-            model="gpt-4",
+            model="gpt-5",
             choices=[
                 ChatChoice(
                     index=0,

@@ -212,15 +212,23 @@ class TauBenchRunner:
             if not task.policy_constraints:
                 task.policy_constraints = environment.get_policy_constraints()
 
-            # Create agent (mock or real ElizaOS)
-            agent = create_tau_agent(
-                executor=executor,
-                max_turns=self.config.max_turns_per_task,
-                use_mock=self.config.use_mock,
-                model_provider=self.config.model_provider,
-                temperature=self.config.temperature,
-                trajectory=self._trajectory,
-            )
+            # Create agent (mock, real ElizaOS, or milaidy TS agent)
+            if self.config.model_provider == "milaidy":
+                from milaidy_adapter.tau_bench import MilaidyTauAgent
+
+                agent = MilaidyTauAgent(
+                    executor=executor,
+                    max_turns=self.config.max_turns_per_task,
+                )
+            else:
+                agent = create_tau_agent(
+                    executor=executor,
+                    max_turns=self.config.max_turns_per_task,
+                    use_mock=self.config.use_mock,
+                    model_provider=self.config.model_provider,
+                    temperature=self.config.temperature,
+                    trajectory=self._trajectory,
+                )
             
             # Initialize agent (connects to LLM if not mock)
             await agent.initialize()

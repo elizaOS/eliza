@@ -78,6 +78,7 @@ from elizaos.types import (
     Media,
     Memory,
     MemoryMetadata,
+    MemoryType,
     MentionContext,
     MessageExample,
     MessageMemory,
@@ -109,6 +110,9 @@ from elizaos.types import (
 from elizaos.types.database import IDatabaseAdapter  # noqa: E402
 from elizaos.types.primitives import ChannelType, Content, ContentType, Media, Metadata # noqa: E402
 from elizaos.types.runtime import IAgentRuntime  # noqa: E402
+
+
+from elizaos.types.environment import ChannelType  # noqa: E402
 from elizaos.utils import compose_prompt, compose_prompt_from_state, get_current_time_ms
 
 _rebuild_ns = {
@@ -150,6 +154,7 @@ __all__ = [
     "MentionContext",
     # Types - Memory
     "Memory",
+    "MemoryType",
     "MessageMemory",
     "MemoryMetadata",
     "BaseMetadata",
@@ -207,6 +212,8 @@ __all__ = [
     # Types - Model
     "LLMMode",
     "ModelType",
+    # Types - Channel
+    "ChannelType",
     # Logger
     "create_logger",
     "Logger",

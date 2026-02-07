@@ -73,7 +73,15 @@ function redactSensitiveText(text: string): string {
   return out;
 }
 
+/**
+ * Ensures a directory exists, creating it and parent directories if necessary.
+ * @param dir - The directory path to ensure exists
+ * @throws Error if the directory path is empty or whitespace-only
+ */
 async function ensureDir(dir: string): Promise<void> {
+  if (!dir || dir.trim() === "") {
+    throw new Error("Directory path cannot be empty");
+  }
   await fs.mkdir(dir, { recursive: true });
 }
 
@@ -135,6 +143,7 @@ async function buildPatch(shellTool: SubAgentTool): Promise<string> {
 class RuntimeModel extends AbstractModel {
   private readonly runtime: IAgentRuntime;
   private readonly modelType: string;
+  stats = { apiCalls: 0, inputTokens: 0, outputTokens: 0 };
 
   constructor(runtime: IAgentRuntime, config: ModelConfig, tools: ToolConfig) {
     super(config, tools);
@@ -148,7 +157,7 @@ class RuntimeModel extends AbstractModel {
   async query(history: History): Promise<ModelOutput> {
     this.stats.apiCalls += 1;
     const prompt = history
-      .map((m) => {
+      .map((m: { role: string; content: string | Record<string, unknown> }) => {
         const content =
           typeof m.content === "string" ? m.content : JSON.stringify(m.content);
         return `${m.role.toUpperCase()}: ${content}`;

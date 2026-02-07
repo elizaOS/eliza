@@ -56,7 +56,7 @@
     "@atproto/xrpc": "^0.6.4",
     "@elizaos/core": "workspace:*",
     "lru-cache": "^11.1.0",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
@@ -175,6 +175,17 @@
         "default": true,
         "sensitive": false
       }
+    }
+  },
+  "milaidy": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
     }
   }
 }

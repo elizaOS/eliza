@@ -420,9 +420,14 @@ function loadSpecs(dir, corePath, kind) {
 }
 
 /**
- * @param {string} dir
+ * Ensures a directory exists, creating it and parent directories if necessary.
+ * @param {string} dir - The directory path to ensure exists
+ * @throws {Error} If the directory path is empty or whitespace-only
  */
 function ensureDir(dir) {
+  if (!dir || dir.trim() === "") {
+    throw new Error("Directory path cannot be empty");
+  }
   fs.mkdirSync(dir, { recursive: true });
 }
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
 import { setVisionModeAction } from "../../action";

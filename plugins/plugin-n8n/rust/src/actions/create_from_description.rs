@@ -22,11 +22,11 @@ impl Default for CreateFromDescriptionAction {
 #[async_trait]
 impl N8nAction for CreateFromDescriptionAction {
     fn name(&self) -> &'static str {
-        "createPluginFromDescription"
+        "DESCRIBE_PLUGIN"
     }
 
     fn description(&self) -> &'static str {
-        "Create a plugin from a natural language description"
+        "Generate and create an ElizaOS plugin from a natural language description. Do NOT use for n8n workflow creation."
     }
 
     fn similes(&self) -> Vec<&'static str> {
@@ -80,7 +80,7 @@ impl N8nAction for CreateFromDescriptionAction {
         Ok(ActionResult {
             success: true,
             text: format!(
-                "Creating plugin based on your description!\n\nPlugin: {}\nDescription: {}\n\nUse 'checkPluginCreationStatus' to monitor progress.",
+                "Creating plugin based on your description!\n\nPlugin: {}\nDescription: {}\n\nUse 'CHECK_PLUGIN_STATUS' to monitor progress.",
                 name, truncated_desc
             ),
             data: Some(serde_json::json!({

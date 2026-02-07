@@ -10,7 +10,7 @@ The design goals are:
 - Multiple transport options depending on environment constraints:
   - **WASM** for Rust ↔ TypeScript
   - **FFI** for Rust ↔ Python
-  - **subprocess IPC** for TypeScript ↔ Python (and generally “any ↔ any” with JSON messages)
+  - **subprocess IPC** for TypeScript ↔ Python (and generally "any ↔ any" with JSON messages)
 
 ## Key files
 
@@ -30,7 +30,7 @@ The design goals are:
 
 ## The plugin contract (what crosses the boundary)
 
-At a minimum, interop requires a **plugin manifest** that can describe a plugin’s name, version, language, and the capabilities it exposes (actions/providers/evaluators/services/routes).
+At a minimum, interop requires a **plugin manifest** that can describe a plugin's name, version, language, and the capabilities it exposes (actions/providers/evaluators/services/routes).
 
 In practice, interop implementations in this repo exchange:
 
@@ -70,7 +70,7 @@ When using subprocess IPC:
 
 Reference:
 
-- Protocol examples in `packages/interop/README.md` (“Protocol Messages”)
+- Protocol examples in `packages/interop/README.md` ("Protocol Messages")
 - Python server implementation: `packages/interop/python/bridge_server.py`
 - TypeScript client: `packages/interop/typescript/python-bridge.ts`
 
@@ -86,4 +86,13 @@ Interop unit tests live in:
 
 - `packages/interop/typescript/__tests__/`
 - `packages/rust/__tests__/` (including interop equivalence tests)
+
+## Cross-language examples
+
+The `examples/` directory contains multi-language implementations for many deployment targets:
+
+- `examples/cloudflare/` - TypeScript, Rust (WASM), Python workers
+- `examples/aws/` - TypeScript, Python, Rust Lambda handlers
+- `examples/gcp/` - TypeScript, Python, Rust Cloud Run services
+- `examples/vercel/` - TypeScript, Python, Rust (WASM) edge functions
 

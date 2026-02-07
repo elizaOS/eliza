@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { pipeline, Readable } from "node:stream";
+import { pipeline, Readable, Transform } from "node:stream";
 import {
   type AudioPlayer,
   type AudioReceiveStream,
@@ -56,7 +56,7 @@ function createOpusDecoder(options: {
   channels: number;
   rate: number;
   frameSize: number;
-}): NodeJS.ReadWriteStream {
+}): Transform {
   try {
     // First try to create decoder with prism-media
     return new prism.opus.Decoder(options);
@@ -723,9 +723,7 @@ export class VoiceManager extends EventEmitter {
         );
       }
     });
-    // NodeJS.ReadWriteStream extends Readable, but TypeScript can't verify this statically
-    // @ts-expect-error - ReadWriteStream implements Readable interface at runtime
-    this.streams.set(entityId, opusDecoder as Readable);
+    this.streams.set(entityId, opusDecoder);
     this.connections.set(entityId, connection as VoiceConnection);
     opusDecoder.on("error", (err: Error) => {
       this.runtime.logger.debug(

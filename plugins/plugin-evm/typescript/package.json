@@ -32,7 +32,7 @@
     "@lifi/sdk": "^3.7.9",
     "@lifi/types": "^17.18.0",
     "viem": "^2.21.0",
-    "zod": "^4.3.5"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
@@ -118,6 +118,15 @@
         "default": "https://sepolia.base.org",
         "sensitive": false
       }
+    }
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Default export (Node.js)"
     }
   }
 }

@@ -127,7 +127,6 @@ list_dir_action = Action(
             schema=ActionParameterSchema(
                 type="string",
                 description="Path to directory (defaults to current directory)",
-                default=".",
             ),
         ),
     ],

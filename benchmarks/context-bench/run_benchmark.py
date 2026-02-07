@@ -81,8 +81,15 @@ async def openai_llm_query(context: str, question: str) -> str:
         
         client = openai.AsyncOpenAI()
         
+        model_name = os.environ.get("OPENAI_SMALL_MODEL", "gpt-4o-mini")
+        # gpt-5 reasoning models don't support temperature; only pass it for
+        # older models.
+        extra_params: dict[str, object] = {}
+        if not model_name.startswith(("gpt-5", "o1", "o3")):
+            extra_params["temperature"] = 0.0
+
         response = await client.chat.completions.create(
-            model="gpt-5-mini",  # Use cheaper model for benchmark
+            model=model_name,
             messages=[
                 {
                     "role": "system",
@@ -93,8 +100,8 @@ async def openai_llm_query(context: str, question: str) -> str:
                     "content": f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer (be brief and precise):"
                 }
             ],
-            max_tokens=100,
-            temperature=0.0,
+            max_completion_tokens=100,
+            **extra_params,
         )
         
         return response.choices[0].message.content or ""
@@ -207,7 +214,7 @@ def get_llm_query_fn(provider: str):
                 "Answer (be brief and precise):"
             )
             result = await runtime.use_model(
-                ModelType.TEXT_LARGE.value,
+                ModelType.TEXT_LARGE,
                 {"prompt": prompt, "system": system, "maxTokens": 256, "temperature": 0.0},
             )
             return str(result)
@@ -224,7 +231,7 @@ def get_llm_query_fn(provider: str):
             prompt = str(params.get("prompt", ""))
             return await mock_llm_query(prompt, "")
 
-        runtime.register_model(ModelType.TEXT_LARGE.value, model_handler, provider="eliza-mock")
+        runtime.register_model(ModelType.TEXT_LARGE, model_handler, provider="eliza-mock")
 
         async def eliza_mock_query(context: str, question: str) -> str:
             prompt = (
@@ -234,12 +241,16 @@ def get_llm_query_fn(provider: str):
                 "Answer (be brief and precise):"
             )
             result = await runtime.use_model(
-                ModelType.TEXT_LARGE.value,
+                ModelType.TEXT_LARGE,
                 {"prompt": prompt, "maxTokens": 100, "temperature": 0.0},
             )
             return str(result)
 
         return eliza_mock_query
+    elif provider == "milaidy":
+        from milaidy_adapter.context_bench import make_milaidy_llm_query
+
+        return make_milaidy_llm_query()
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -430,9 +441,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--provider",
-        choices=["mock", "openai", "anthropic", "eliza-mock", "eliza-openai", "eliza-agent"],
+        choices=["mock", "openai", "anthropic", "eliza-mock", "eliza-openai", "eliza-agent", "milaidy"],
         default="mock",
-        help="LLM provider to use (default: mock). 'eliza-agent' runs the FULL canonical agent loop."
+        help="LLM provider to use (default: mock). 'milaidy' uses the TS milaidy agent."
     )
     parser.add_argument(
         "--quick",

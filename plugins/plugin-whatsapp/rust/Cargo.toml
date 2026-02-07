@@ -1,0 +1,33 @@
+[package]
+name = "elizaos-plugin-whatsapp"
+version = "2.0.0-alpha.1"
+edition = "2021"
+description = "WhatsApp Cloud API plugin for ElizaOS agents"
+license = "MIT"
+authors = ["ElizaOS Contributors"]
+repository = "https://github.com/elizaos/eliza"
+keywords = ["elizaos", "plugin", "whatsapp", "meta", "messaging"]
+categories = ["api-bindings", "asynchronous"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+elizaos = { path = "../../../packages/rust" }
+tokio = { version = "1.35", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+async-trait = "0.1"
+thiserror = "1.0"
+tracing = "0.1"
+reqwest = { version = "0.11", features = ["json"] }
+uuid = { version = "1.6", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+mockall = "0.12"
+wiremock = "0.5"
+
+[features]
+default = []

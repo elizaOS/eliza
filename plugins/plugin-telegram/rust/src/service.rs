@@ -7,6 +7,7 @@ use tracing::{debug, info};
 use crate::config::TelegramConfig;
 use crate::error::{Result, TelegramError};
 use crate::types::{
+    SendReactionParams, SendReactionResult, TelegramBotInfo, TelegramBotProbe,
     TelegramChannelType, TelegramChat, TelegramEventType, TelegramMessagePayload, TelegramUser,
 };
 
@@ -265,6 +266,157 @@ impl TelegramService {
             first_name: chat.first_name().map(|s| s.to_string()),
             is_forum: false,
         })
+    }
+
+    /// Probe the Telegram bot connection for health checks.
+    pub async fn probe_telegram(&self, timeout_ms: u64) -> TelegramBotProbe {
+        let bot = match self.bot.as_ref() {
+            Some(b) => b,
+            None => {
+                return TelegramBotProbe {
+                    ok: false,
+                    bot: None,
+                    error: Some("Bot not initialized".to_string()),
+                    latency_ms: 0,
+                };
+            }
+        };
+
+        let start = std::time::Instant::now();
+        
+        // Create a timeout future
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(timeout_ms),
+            bot.get_me(),
+        )
+        .await;
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+
+        match result {
+            Ok(Ok(me)) => TelegramBotProbe {
+                ok: true,
+                bot: Some(TelegramBotInfo {
+                    id: me.id.0 as i64,
+                    username: me.username.clone(),
+                    first_name: me.first_name.clone(),
+                    can_join_groups: me.can_join_groups,
+                    can_read_all_group_messages: me.can_read_all_group_messages,
+                    supports_inline_queries: me.supports_inline_queries,
+                }),
+                error: None,
+                latency_ms,
+            },
+            Ok(Err(e)) => TelegramBotProbe {
+                ok: false,
+                bot: None,
+                error: Some(e.to_string()),
+                latency_ms,
+            },
+            Err(_) => TelegramBotProbe {
+                ok: false,
+                bot: None,
+                error: Some("Timeout".to_string()),
+                latency_ms,
+            },
+        }
+    }
+
+    /// Send a reaction to a message.
+    pub async fn send_reaction(&self, params: SendReactionParams) -> SendReactionResult {
+        let bot = match self.bot.as_ref() {
+            Some(b) => b,
+            None => {
+                return SendReactionResult {
+                    success: false,
+                    chat_id: params.chat_id,
+                    message_id: params.message_id,
+                    reaction: params.reaction,
+                    error: Some("Bot not initialized".to_string()),
+                };
+            }
+        };
+
+        let reaction = teloxide::types::ReactionType::Emoji {
+            emoji: params.reaction.clone(),
+        };
+
+        let result = bot
+            .set_message_reaction(ChatId(params.chat_id), MessageId(params.message_id as i32))
+            .reaction(vec![reaction])
+            .is_big(params.is_big)
+            .await;
+
+        match result {
+            Ok(_) => {
+                // Emit event
+                let state = self.state.read().await;
+                if let Some(ref callback) = state.event_callback {
+                    callback(
+                        TelegramEventType::ReactionSent,
+                        serde_json::json!({
+                            "chat_id": params.chat_id,
+                            "message_id": params.message_id,
+                            "reaction": params.reaction,
+                            "success": true
+                        }),
+                    );
+                }
+                
+                SendReactionResult {
+                    success: true,
+                    chat_id: params.chat_id,
+                    message_id: params.message_id,
+                    reaction: params.reaction,
+                    error: None,
+                }
+            }
+            Err(e) => SendReactionResult {
+                success: false,
+                chat_id: params.chat_id,
+                message_id: params.message_id,
+                reaction: params.reaction,
+                error: Some(e.to_string()),
+            },
+        }
+    }
+
+    /// Remove a reaction from a message.
+    pub async fn remove_reaction(&self, chat_id: i64, message_id: i64) -> SendReactionResult {
+        let bot = match self.bot.as_ref() {
+            Some(b) => b,
+            None => {
+                return SendReactionResult {
+                    success: false,
+                    chat_id,
+                    message_id,
+                    reaction: String::new(),
+                    error: Some("Bot not initialized".to_string()),
+                };
+            }
+        };
+
+        let result = bot
+            .set_message_reaction(ChatId(chat_id), MessageId(message_id as i32))
+            .reaction(vec![])
+            .await;
+
+        match result {
+            Ok(_) => SendReactionResult {
+                success: true,
+                chat_id,
+                message_id,
+                reaction: String::new(),
+                error: None,
+            },
+            Err(e) => SendReactionResult {
+                success: false,
+                chat_id,
+                message_id,
+                reaction: String::new(),
+                error: Some(e.to_string()),
+            },
+        }
     }
 }
 

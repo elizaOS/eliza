@@ -207,7 +207,7 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
         messageExamples: [],
         postExamples: [],
         settings: {
-          model: "gpt-4",
+          model: "gpt-5",
           temperature: 0.7,
         },
       });
