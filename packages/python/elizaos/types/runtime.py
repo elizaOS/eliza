@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         ActionResult,
         Evaluator,
         HandlerCallback,
+        PreEvaluatorResult,
         Provider,
     )
     from elizaos.types.environment import Entity, Room, World
@@ -224,6 +225,13 @@ class IAgentRuntime(ABC):
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> list[Evaluator] | None: ...
+
+    @abstractmethod
+    async def evaluate_pre(
+        self,
+        message: Memory,
+        state: State | None = None,
+    ) -> "PreEvaluatorResult": ...
 
     # Component registration
     @abstractmethod

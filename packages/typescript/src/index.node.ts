@@ -74,6 +74,7 @@ export * from "./services/trajectoryLogger";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";
+export * from "./request-context";
 export * from "./streaming-context";
 export * from "./trajectory-context";
 // Export everything from types

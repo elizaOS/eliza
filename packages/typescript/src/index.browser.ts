@@ -24,6 +24,7 @@ export * from "./services";
 export * from "./services/message";
 export * from "./services/trajectoryLogger";
 export * from "./settings";
+export * from "./request-context";
 export * from "./streaming-context";
 export * from "./trajectory-context";
 // Export everything from types (type-only, safe for browser)

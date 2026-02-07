@@ -18,7 +18,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Options for message processing
 #[derive(Default, Clone)]
@@ -122,6 +122,31 @@ impl IMessageService for DefaultMessageService {
         // Note: This implementation always responds, so check_should_respond=false
         // maintains the default behavior. When shouldRespond logic is added,
         // this check will bypass it when check_should_respond is false.
+
+        // ── Pre-evaluator middleware ──────────────────────────────────────
+        // Run phase:Pre evaluators BEFORE saving to memory.  These act as
+        // security gates — they can block the message entirely (e.g. prompt
+        // injection) or rewrite it (e.g. redact credentials).
+        let pre_result = runtime.evaluate_pre(message, None).await;
+        if pre_result.blocked {
+            warn!(
+                "Message blocked by pre-evaluator: {:?}",
+                pre_result.reason
+            );
+            return Ok(MessageProcessingResult {
+                did_respond: false,
+                response_content: None,
+                response_messages: vec![],
+                state: None,
+            });
+        }
+        if let Some(ref rewritten) = pre_result.rewritten_text {
+            info!(
+                "Pre-evaluator rewrote message text: {:?}",
+                pre_result.reason
+            );
+            message.content.text = Some(rewritten.clone());
+        }
 
         // Save the incoming message to memory first
         if let Some(adapter) = runtime.get_adapter() {

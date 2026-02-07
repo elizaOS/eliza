@@ -867,6 +867,74 @@ class AgentRuntime(IAgentRuntime):
         """Get all registered actions."""
         return self._actions
 
+    async def evaluate_pre(
+        self,
+        message: Memory,
+        state: State | None = None,
+    ) -> "PreEvaluatorResult":
+        """Run phase='pre' evaluators as middleware before memory storage.
+
+        Pre-evaluators can inspect, rewrite, or block a message before it
+        reaches the agent.  If any pre-evaluator sets ``blocked=True``, the
+        message is dropped.  If any sets ``rewritten_text``, the last rewrite
+        wins.
+
+        Returns:
+            A merged PreEvaluatorResult.
+        """
+        from elizaos.types.components import PreEvaluatorResult
+
+        pre_evaluators = [e for e in self._evaluators if getattr(e, "phase", "post") == "pre"]
+        if not pre_evaluators:
+            return PreEvaluatorResult(blocked=False)
+
+        blocked = False
+        rewritten_text: str | None = None
+        reason: str | None = None
+
+        for evaluator in pre_evaluators:
+            try:
+                is_valid = await evaluator.validate(self, message, state)
+                if not is_valid:
+                    continue
+
+                result = await evaluator.handler(
+                    self,
+                    message,
+                    state,
+                    HandlerOptions(),
+                    None,
+                    None,
+                )
+
+                # Handler may return a PreEvaluatorResult-like object or ActionResult
+                if result and hasattr(result, "success"):
+                    # ActionResult — interpret success=False as blocked
+                    if not result.success:
+                        blocked = True
+                        reason = result.error or result.text or reason
+                        self.logger.warning(
+                            f'Pre-evaluator "{evaluator.name}" blocked message: {reason}'
+                        )
+                elif isinstance(result, dict):
+                    if result.get("blocked"):
+                        blocked = True
+                        reason = result.get("reason", reason)
+                        self.logger.warning(
+                            f'Pre-evaluator "{evaluator.name}" blocked message: {reason}'
+                        )
+                    if "rewritten_text" in result and result["rewritten_text"] is not None:
+                        rewritten_text = result["rewritten_text"]
+
+            except Exception as e:
+                self.logger.error(f'Pre-evaluator "{evaluator.name}" failed: {e}')
+
+        return PreEvaluatorResult(
+            blocked=blocked,
+            rewritten_text=rewritten_text,
+            reason=reason,
+        )
+
     async def evaluate(
         self,
         message: Memory,
@@ -875,10 +943,14 @@ class AgentRuntime(IAgentRuntime):
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> list[Evaluator] | None:
-        """Run evaluators on a message."""
+        """Run phase='post' (default) evaluators on a message."""
         ran_evaluators: list[Evaluator] = []
 
         for evaluator in self._evaluators:
+            # Skip pre-evaluators (they run via evaluate_pre)
+            if getattr(evaluator, "phase", "post") == "pre":
+                continue
+
             should_run = evaluator.always_run or did_respond
 
             if should_run:

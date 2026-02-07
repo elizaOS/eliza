@@ -374,7 +374,44 @@ export class DefaultMessageService implements IMessageService {
       "Processing message",
     );
 
-    // Save the incoming message to memory
+    // ── Pre-evaluator middleware ────────────────────────────────────────
+    // Run phase:"pre" evaluators BEFORE saving to memory.  These act as
+    // security gates — they can block the message entirely (e.g. prompt
+    // injection) or rewrite it (e.g. redact credentials).
+    const preResult = await runtime.evaluatePre(message);
+
+    if (preResult.blocked) {
+      runtime.logger.warn(
+        {
+          src: "service:message",
+          reason: preResult.reason,
+          messagePreview: truncateToCompleteSentence(
+            message.content.text || "",
+            50,
+          ),
+        },
+        "Message blocked by pre-evaluator — skipping memory, response, and actions",
+      );
+      await this.emitRunEnded(runtime, runId, message, startTime, "blocked");
+      return {
+        didRespond: false,
+        responseContent: null,
+        responseMessages: [],
+        state: { values: {}, data: {}, text: "" } as State,
+        mode: "blocked",
+      };
+    }
+
+    // Apply any text rewriting from pre-evaluators (redaction, sanitisation)
+    if (preResult.rewrittenText !== undefined) {
+      runtime.logger.info(
+        { src: "service:message", reason: preResult.reason },
+        "Pre-evaluator rewrote message text",
+      );
+      message.content.text = preResult.rewrittenText;
+    }
+
+    // ── Save the incoming message to memory ────────────────────────────
     runtime.logger.debug(
       { src: "service:message" },
       "Saving message to memory",
@@ -661,6 +698,13 @@ export class DefaultMessageService implements IMessageService {
             "Saving response to memory",
           );
           await runtime.createMemory(responseMemory, "messages");
+
+          // Emit MESSAGE_SENT event after saving to memory
+          await runtime.emitEvent(EventType.MESSAGE_SENT, {
+            runtime,
+            message: responseMemory,
+            source: message.content.source ?? "messageHandler",
+          });
         }
       }
 

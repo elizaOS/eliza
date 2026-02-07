@@ -7,7 +7,7 @@ use crate::advanced_planning;
 use crate::types::agent::{Agent, Bio, Character, CharacterSecrets, CharacterSettings};
 use crate::types::components::{
     ActionDefinition, ActionHandler, ActionResult, EvaluatorDefinition, EvaluatorHandler,
-    HandlerOptions, ProviderDefinition, ProviderHandler,
+    EvaluatorPhase, HandlerOptions, PreEvaluatorResult, ProviderDefinition, ProviderHandler,
 };
 use crate::types::database::{GetMemoriesParams, SearchMemoriesParams};
 use crate::types::environment::{Entity, Room, World};
@@ -1356,7 +1356,75 @@ impl AgentRuntime {
         Ok(results)
     }
 
-    /// Run evaluators for a message (TypeScript/Python parity).
+    /// Run phase:Pre evaluators as middleware before memory storage.
+    ///
+    /// Pre-evaluators can inspect, rewrite, or block a message before it
+    /// reaches the agent.  If any sets `blocked = true`, the message is dropped.
+    pub async fn evaluate_pre(
+        &self,
+        message: &Memory,
+        state: Option<&State>,
+    ) -> PreEvaluatorResult {
+        #[cfg(not(feature = "wasm"))]
+        let evaluators: Vec<_> = self.evaluators.read().await.iter().cloned().collect();
+        #[cfg(feature = "wasm")]
+        let evaluators: Vec<_> = self.evaluators.read().unwrap().iter().cloned().collect();
+
+        let pre_evaluators: Vec<_> = evaluators
+            .iter()
+            .filter(|e| e.definition().phase == EvaluatorPhase::Pre)
+            .collect();
+
+        if pre_evaluators.is_empty() {
+            return PreEvaluatorResult::default();
+        }
+
+        let mut result = PreEvaluatorResult::default();
+
+        for evaluator in pre_evaluators {
+            match evaluator.validate(message, state).await {
+                true => {}
+                false => continue,
+            }
+
+            match evaluator.handle(message, state, None).await {
+                Ok(Some(action_result)) => {
+                    if !action_result.success {
+                        result.blocked = true;
+                        result.reason = action_result
+                            .error
+                            .or(action_result.text)
+                            .or(result.reason);
+                        warn!(
+                            "Pre-evaluator '{}' blocked message: {:?}",
+                            evaluator.definition().name,
+                            result.reason
+                        );
+                    }
+                    // Check for rewritten_text in data
+                    if let Some(ref data) = action_result.data {
+                        if let Some(text) = data.get("rewritten_text") {
+                            if let Some(s) = text.as_str() {
+                                result.rewritten_text = Some(s.to_string());
+                            }
+                        }
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    error!(
+                        "Pre-evaluator '{}' failed: {}",
+                        evaluator.definition().name,
+                        e
+                    );
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Run phase:Post evaluators for a message (TypeScript/Python parity).
     pub async fn evaluate_message(
         &self,
         message: &Memory,
@@ -1368,8 +1436,14 @@ impl AgentRuntime {
         #[cfg(feature = "wasm")]
         let evaluators: Vec<_> = self.evaluators.read().unwrap().iter().cloned().collect();
 
+        // Only run post-phase evaluators (default)
+        let post_evaluators: Vec<_> = evaluators
+            .iter()
+            .filter(|e| e.definition().phase == EvaluatorPhase::Post)
+            .collect();
+
         let mut results: Vec<ActionResult> = Vec::new();
-        for evaluator in evaluators.iter() {
+        for evaluator in post_evaluators {
             if !evaluator.validate(message, Some(state)).await {
                 continue;
             }
