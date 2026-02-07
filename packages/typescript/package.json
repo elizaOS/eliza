@@ -52,7 +52,7 @@
     "dev": "bun run build:watch",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo && find src -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete 2>/dev/null || true",
     "perf:settings": "bun run scripts/perf-settings.ts",
-    "test": "vitest run --coverage",
+    "test": "vitest run --coverage && (bun run test:e2e 2>&1 || echo '[WARN] E2E tests skipped - requires running ollama instance')",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "npx playwright test",
     "test:watch": "vitest",

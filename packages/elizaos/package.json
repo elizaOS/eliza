@@ -28,6 +28,7 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit",
+    "test": "bun test src/__tests__/",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {

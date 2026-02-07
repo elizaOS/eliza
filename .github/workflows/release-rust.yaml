@@ -411,6 +411,14 @@ jobs:
         if: steps.check.outputs.should_publish == 'true'
         uses: actions/checkout@v4
 
+      - name: Checkout plugin-sql
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          mkdir -p plugins
+          git clone --depth 1 "https://github.com/elizaos-plugins/plugin-sql.git" "plugins/plugin-sql"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
         uses: dtolnay/rust-toolchain@stable
@@ -592,6 +600,18 @@ jobs:
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
         uses: actions/checkout@v4
+
+      - name: Checkout plugin repository
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          PLUGIN_DIR=$(echo "${{ matrix.path }}" | cut -d'/' -f1-2)
+          PLUGIN_NAME=$(echo "$PLUGIN_DIR" | cut -d'/' -f2)
+          if [ ! -d "$PLUGIN_DIR" ]; then
+            mkdir -p plugins
+            git clone --depth 1 "https://github.com/elizaos-plugins/$PLUGIN_NAME.git" "$PLUGIN_DIR"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
@@ -861,6 +881,18 @@ jobs:
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
         uses: actions/checkout@v4
+
+      - name: Checkout plugin repository
+        if: steps.check.outputs.should_publish == 'true'
+        run: |
+          PLUGIN_DIR=$(echo "${{ matrix.path }}" | cut -d'/' -f1-2)
+          PLUGIN_NAME=$(echo "$PLUGIN_DIR" | cut -d'/' -f2)
+          if [ ! -d "$PLUGIN_DIR" ]; then
+            mkdir -p plugins
+            git clone --depth 1 "https://github.com/elizaos-plugins/$PLUGIN_NAME.git" "$PLUGIN_DIR"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
