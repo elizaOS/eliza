@@ -15,8 +15,8 @@ use serde_json::Value;
 
 use crate::runtime::{AgentRuntime, Service};
 use crate::types::components::{
-    ActionResult, EvaluatorDefinition, EvaluatorHandler, HandlerOptions, ProviderDefinition,
-    ProviderHandler, ProviderResult,
+    ActionResult, EvaluatorDefinition, EvaluatorHandler, EvaluatorPhase, HandlerOptions,
+    ProviderDefinition, ProviderHandler, ProviderResult,
 };
 use crate::types::database::GetMemoriesParams;
 use crate::types::plugin::Plugin;
@@ -905,6 +905,7 @@ impl EvaluatorHandler for SummarizationEvaluator {
                 "MEMORY_OPTIMIZATION".to_string(),
             ]),
             examples: Vec::new(),
+            phase: EvaluatorPhase::Post,
         }
     }
 
@@ -1060,6 +1061,7 @@ impl EvaluatorHandler for LongTermExtractionEvaluator {
                 "USER_PROFILING".to_string(),
             ]),
             examples: Vec::new(),
+            phase: EvaluatorPhase::Post,
         }
     }
 

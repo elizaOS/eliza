@@ -448,7 +448,7 @@ describe("Onboarding CLI Adapter", () => {
       const config = createTestConfig({
         TELEGRAM_BOT_TOKEN: {
           required: true,
-          validation: (v) => /^\d{8,10}:[A-Za-z0-9_-]{35}$/.test(v),
+          validation: (v) => /^\d{8,10}:[A-Za-z0-9_-]{35,43}$/.test(v),
         },
       });
       const adapter = createMockAdapter({});

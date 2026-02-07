@@ -386,11 +386,19 @@ describe("character-utils", () => {
     });
 
     it("should return null when no provider key found", () => {
+      // Clear all provider keys that may be set by .env.test
+      for (const key of Object.values(MODEL_PROVIDER_SECRETS)) {
+        delete process.env[key];
+      }
       const character: Character = { name: "Test" };
       expect(getModelProvider(character)).toBeNull();
     });
 
     it("should check process.env for provider keys", () => {
+      // Clear all provider keys so only the one we set is found
+      for (const key of Object.values(MODEL_PROVIDER_SECRETS)) {
+        delete process.env[key];
+      }
       process.env.GROQ_API_KEY = "gsk-test";
       const character: Character = { name: "Test" };
       expect(getModelProvider(character)).toBe("groq");
@@ -430,6 +438,10 @@ describe("character-utils", () => {
     });
 
     it("should return empty array when no providers configured", () => {
+      // Clear all provider keys that may be set by .env.test
+      for (const key of Object.values(MODEL_PROVIDER_SECRETS)) {
+        delete process.env[key];
+      }
       const character: Character = { name: "Test" };
       expect(getConfiguredModelProviders(character)).toEqual([]);
     });

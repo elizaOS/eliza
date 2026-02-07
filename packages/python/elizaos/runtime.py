@@ -760,6 +760,22 @@ class AgentRuntime(IAgentRuntime):
 
                 if action.parameters:
                     params_raw = getattr(response.content, "params", None)
+                    # Fallback: params may be stored in content.data["params"]
+                    # when Content is a protobuf without a native params field.
+                    if params_raw is None and response.content.data:
+                        try:
+                            # Protobuf Struct uses [] access, not .get()
+                            if "params" in response.content.data:
+                                data_params = response.content.data["params"]
+                                if data_params is not None:
+                                    # Convert protobuf Struct to dict for _parse_action_params
+                                    from google.protobuf.json_format import MessageToDict
+                                    if hasattr(data_params, "DESCRIPTOR"):
+                                        params_raw = MessageToDict(data_params)
+                                    else:
+                                        params_raw = data_params
+                        except (AttributeError, TypeError, KeyError):
+                            pass
                     params_by_action = self._parse_action_params(params_raw)
                     action_key = response_action.upper()
                     extracted_list = params_by_action.get(action_key) or params_by_action.get(
@@ -786,7 +802,11 @@ class AgentRuntime(IAgentRuntime):
                         actionName=action.name,
                         errors=errors,
                     )
-                    options_obj.parameter_errors = errors
+                    try:
+                        options_obj.parameter_errors = errors
+                    except (AttributeError, ValueError):
+                        # Protobuf HandlerOptions may not have parameter_errors field
+                        pass
 
                 if validated_params:
                     from google.protobuf import struct_pb2

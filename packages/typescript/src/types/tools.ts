@@ -472,8 +472,11 @@ export function isToolAllowedByPolicy(
     }
   }
 
-  // Check allow list
-  if (policy.allow && policy.allow.length > 0) {
+  // Check allow list — if an allow list exists (even empty), only listed tools pass
+  if (policy.allow) {
+    if (policy.allow.length === 0) {
+      return false; // Empty allow list = nothing allowed
+    }
     const expandedAllow = expandToolGroups(policy.allow);
     // Wildcard allows everything not denied
     if (expandedAllow.includes("*")) {

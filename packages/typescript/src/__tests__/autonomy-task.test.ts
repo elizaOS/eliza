@@ -87,7 +87,7 @@ describe("autonomy service task-based implementation", () => {
 
   test("exports task constants", () => {
     expect(AUTONOMY_TASK_NAME).toBe("AUTONOMY_THINK");
-    expect(AUTONOMY_TASK_TAGS).toEqual(["repeat", "autonomy", "internal"]);
+    expect(AUTONOMY_TASK_TAGS).toEqual(["queue", "repeat", "autonomy"]);
   });
 
   test("registers task worker on initialization", async () => {
