@@ -72,7 +72,8 @@
     "prepublish:ci": "npm run build:wrapper",
     "prepublishOnly": "npm run build:wrapper && npx napi prepublish -t npm",
     "sync-version": "node scripts/sync-version.js",
-    "test": "node tests/element-chaining.test.js",
+    "test": "node --test tests/element-chaining.test.js tests/element-range.test.js tests/element-scroll-into-view.test.js tests/element-value.test.js tests/execute-browser-script-wrapper.test.js tests/comprehensive-ui-elements.test.js",
+    "test:desktop": "node --test tests/*.test.js",
     "test-hook": "powershell.exe -ExecutionPolicy Bypass -File \"../../.git/hooks/pre-push.ps1\""
   },
   "types": "wrapper.d.ts",

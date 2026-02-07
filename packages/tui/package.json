@@ -47,6 +47,7 @@
 	},
 	"devDependencies": {
 		"@xterm/headless": "^5.5.0",
-		"@xterm/xterm": "^5.5.0"
+		"@xterm/xterm": "^5.5.0",
+		"tsx": "^4.19.0"
 	}
 }

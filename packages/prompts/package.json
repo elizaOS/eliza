@@ -25,7 +25,8 @@
     "clean": "rm -rf dist",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "echo 'No TypeScript source files to check'"
+    "typecheck": "echo 'No TypeScript source files to check'",
+    "test": "node --test test/*.test.js"
   },
   "files": [
     "prompts/",

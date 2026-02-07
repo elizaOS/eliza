@@ -15,7 +15,7 @@ use elizaos::{
     runtime::{AgentRuntime, DatabaseAdapter, RuntimeOptions},
     types::{
         ActionDefinition, ActionHandler, ActionResult, Bio, Character, Content, Entity,
-        EvaluationExample, EvaluatorDefinition, EvaluatorHandler, EventPayload, EventType,
+        EvaluationExample, EvaluatorDefinition, EvaluatorHandler, EvaluatorPhase, EventPayload, EventType,
         GetMemoriesParams, HandlerOptions, Memory, Plugin, PluginDefinition, ProviderDefinition,
         ProviderHandler, ProviderResult, Room, RuntimeSettings, SearchMemoriesParams, SettingValue,
         State, Task, World, UUID,
@@ -443,6 +443,7 @@ impl EvaluatorHandler for ResponseQualityEvaluator {
                 messages: vec![],
                 outcome: "Response is helpful and relevant".to_string(),
             }],
+            phase: EvaluatorPhase::default(),
         }
     }
 

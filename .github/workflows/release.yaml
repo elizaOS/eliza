@@ -57,6 +57,34 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Checkout plugins
+        run: |
+          echo "📦 Checking out all plugin repositories..."
+          mkdir -p plugins
+
+          # Clone all plugin repos from the elizaos-plugins org
+          REPOS=$(gh api /orgs/elizaos-plugins/repos --paginate -q '.[].name' | grep '^plugin-')
+          TOTAL=$(echo "$REPOS" | wc -l | tr -d ' ')
+          COUNT=0
+
+          echo "$REPOS" | while IFS= read -r repo; do
+            COUNT=$((COUNT + 1))
+            if [ ! -d "plugins/$repo" ]; then
+              echo "  [$COUNT/$TOTAL] Cloning $repo..."
+              git clone --depth 1 "https://github.com/elizaos-plugins/$repo.git" "plugins/$repo" 2>/dev/null &
+            fi
+
+            # Limit concurrent clones
+            if (( COUNT % 20 == 0 )); then
+              wait
+            fi
+          done
+          wait
+
+          echo "✅ Plugins directory populated with $(ls plugins/ | wc -l | tr -d ' ') plugins"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Setup Git
         run: |
           git config user.name "github-actions[bot]"

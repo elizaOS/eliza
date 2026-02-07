@@ -42,7 +42,8 @@ pub use agent::{
 pub use components::{
     ActionContext, ActionDefinition, ActionExample, ActionHandler, ActionParameter,
     ActionParameterSchema, ActionResult, EvaluationExample, EvaluatorDefinition, EvaluatorHandler,
-    HandlerCallback, HandlerOptions, ProviderDefinition, ProviderHandler, ProviderResult,
+    EvaluatorPhase, HandlerCallback, HandlerOptions, ProviderDefinition, ProviderHandler,
+    ProviderResult,
 };
 
 // From memory

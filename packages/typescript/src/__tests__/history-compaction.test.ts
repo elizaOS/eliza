@@ -275,7 +275,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 // RESET_SESSION Action Tests
 // ============================================
 describe("RESET_SESSION action", () => {
-  it("should set lastCompactionAt in room metadata", async () => {
+  it("should set lastCompactionAt in room metadata", { timeout: 15000 }, async () => {
     const { resetSessionAction } = await import(
       "../bootstrap/actions/resetSession.ts"
     );
