@@ -17,21 +17,24 @@ const ROOT_DIR = path.resolve(__dirname, '../../../..');
 const TEMPLATES_DIR = path.resolve(ROOT_DIR, 'packages/cli/templates');
 
 /**
- * Updates package.json with the CLI version and replaces workspace references
+ * Updates package.json and replaces workspace references with 'latest'
+ * so that created projects can always install from npm
  */
-async function updatePackageJson(packagePath: string, cliVersion: string) {
+async function updatePackageJson(packagePath: string) {
   const packageJsonContent = await fs.readFile(packagePath, 'utf-8');
   const packageData = JSON.parse(packageJsonContent);
 
   // Use a standard initial version for new packages
   packageData.version = '0.1.0';
 
-  // Replace workspace references in dependencies
+  // Replace workspace references in dependencies with 'latest'
+  // This ensures created projects can install packages from npm
+  // regardless of the CLI version used to create them
   for (const section of ['dependencies', 'devDependencies']) {
     if (packageData[section]) {
       for (const [dep, version] of Object.entries(packageData[section])) {
         if (version === 'workspace:*') {
-          packageData[section][dep] = cliVersion;
+          packageData[section][dep] = 'latest';
         }
       }
     }
@@ -57,11 +60,6 @@ async function main() {
       // Clean existing templates to prevent conflicts
       await fs.emptyDir(TEMPLATES_DIR);
     }
-
-    // Get CLI version from package.json
-    const cliPackageJsonPath = path.resolve(ROOT_DIR, 'packages/cli/package.json');
-    const cliPackageData = JSON.parse(await fs.readFile(cliPackageJsonPath, 'utf-8'));
-    const cliVersion = cliPackageData.version;
 
     // Define templates to copy
     const templates = [
@@ -92,17 +90,13 @@ async function main() {
       await fs.copy(template.src, template.dest, {
         filter: (srcPath) => {
           const baseName = path.basename(srcPath);
-          if (baseName === 'node_modules' || baseName === '.git') {
-            // console.log(`Filtering out: ${srcPath}`); // Log which paths are being filtered
-            return false;
-          }
-          return true;
+          return baseName !== 'node_modules' && baseName !== '.git';
         },
       });
 
-      // Update package.json with correct version
+      // Update package.json to use 'latest' for @elizaos dependencies
       const packageJsonPath = path.resolve(template.dest, 'package.json');
-      await updatePackageJson(packageJsonPath, cliVersion);
+      await updatePackageJson(packageJsonPath);
     }
 
     console.log('Templates have been copied and updated successfully.');
