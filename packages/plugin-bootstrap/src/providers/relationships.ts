@@ -17,9 +17,9 @@ function csvEscape(value: string | number | null | undefined): string {
  * Formats relationships as CSV for token efficiency.
  * Format: name,interactions,tags
  *
- * @param runtime - The runtime instance
- * @param relationships - The relationships to format
- * @returns CSV formatted string
+ * @param {IAgentRuntime} runtime - The runtime instance
+ * @param {Relationship[]} relationships - The relationships to format
+ * @returns {Promise<string>} CSV formatted string
  */
 async function formatRelationships(runtime: IAgentRuntime, relationships: Relationship[]) {
   // Sort relationships by interaction strength (descending)

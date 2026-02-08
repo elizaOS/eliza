@@ -49,6 +49,9 @@ export const characterProvider: Provider = {
         ? character.topics[Math.floor(Math.random() * character.topics.length)]
         : null;
 
+    // postCreationTemplate in core prompts.ts
+    // Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from the perspective of {{agentName}}. Do not add commentary or acknowledge this request, just write the post.
+    // Write a post that is {{Spartan is dirty}} about {{Spartan is currently}}
     const topic = topicString || '';
 
     // Format topics list (reuse shuffled array to avoid re-shuffling)

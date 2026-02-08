@@ -96,7 +96,7 @@ export const entitiesProvider: Provider = {
     const senderName = entityMap.get(entityId)?.names[0];
 
     // Format entities for display
-    const formattedEntities = formatEntities({ entities: entitiesData });
+    const formattedEntities = formatEntities({ entities: entitiesData ?? [] });
 
     // Create formatted text with header
     const entities =

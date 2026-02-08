@@ -13,6 +13,32 @@ import {
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
+/** Shape of a single fact in the XML response */
+interface FactXml {
+  claim?: string;
+  type?: string;
+  in_bio?: string;
+  already_known?: string;
+}
+
+/** Shape of a single relationship in the XML response */
+interface RelationshipXml {
+  sourceEntityId?: string;
+  targetEntityId?: string;
+  tags?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/** Shape of the reflection XML response */
+interface ReflectionXmlResult {
+  facts?: {
+    fact?: FactXml | FactXml[];
+  };
+  relationships?: {
+    relationship?: RelationshipXml | RelationshipXml[];
+  };
+}
+
 // Schema definitions for the reflection output
 const relationshipSchema = z.object({
   sourceEntityId: z.string(),
@@ -243,7 +269,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     }
 
     // Parse XML response
-    const reflection = parseKeyValueXml(response);
+    const reflection = parseKeyValueXml<ReflectionXmlResult>(response);
 
     if (!reflection) {
       runtime.logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Getting reflection failed - failed to parse XML');
@@ -263,29 +289,27 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
     // Handle facts - parseKeyValueXml returns nested structures differently
     // Facts might be a single object or an array depending on the count
-    let factsArray: any[] = [];
-    if (reflection.facts.fact) {
+    let factsArray: FactXml[] = [];
+    const factsData = reflection.facts as { fact?: FactXml | FactXml[] };
+    if (factsData.fact) {
       // Normalize to array
-      factsArray = Array.isArray(reflection.facts.fact)
-        ? reflection.facts.fact
-        : [reflection.facts.fact];
+      factsArray = Array.isArray(factsData.fact)
+        ? factsData.fact
+        : [factsData.fact];
     }
 
-    // Store new facts
-    const newFacts =
-      factsArray.filter(
-        (fact: any) =>
-          fact &&
-          typeof fact === 'object' &&
-          fact.already_known === 'false' &&
-          fact.in_bio === 'false' &&
-          fact.claim &&
-          typeof fact.claim === 'string' &&
-          fact.claim.trim() !== ''
-      ) || [];
+    // Store new facts - filter for valid new facts with claim text
+    const newFacts = factsArray.filter(
+      (fact): fact is FactXml & { claim: string } =>
+        fact != null &&
+        fact.already_known === 'false' &&
+        fact.in_bio === 'false' &&
+        typeof fact.claim === 'string' &&
+        fact.claim.trim() !== ''
+    );
 
     await Promise.all(
-      newFacts.map(async (fact: any) => {
+      newFacts.map(async (fact) => {
         const factMemory = {
           id: asUUID(v4()),
           entityId: agentId,
@@ -305,11 +329,12 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     );
 
     // Handle relationships - similar structure normalization
-    let relationshipsArray: any[] = [];
-    if (reflection.relationships.relationship) {
-      relationshipsArray = Array.isArray(reflection.relationships.relationship)
-        ? reflection.relationships.relationship
-        : [reflection.relationships.relationship];
+    let relationshipsArray: RelationshipXml[] = [];
+    const relationshipsData = reflection.relationships as { relationship?: RelationshipXml | RelationshipXml[] };
+    if (relationshipsData.relationship) {
+      relationshipsArray = Array.isArray(relationshipsData.relationship)
+        ? relationshipsData.relationship
+        : [relationshipsData.relationship];
     }
 
     // Early return if no relationships to process (skip map building)
@@ -335,12 +360,20 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     const relationshipPromises: Promise<void>[] = [];
 
     for (const relationship of relationshipsArray) {
+      if (!relationship.sourceEntityId || !relationship.targetEntityId) {
+        runtime.logger.warn(
+          { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId },
+          'Skipping relationship with missing entity IDs'
+        );
+        continue;
+      }
+
       let sourceId: UUID;
       let targetId: UUID;
 
       try {
-        sourceId = resolveEntityWithMaps(relationship.sourceEntityId, entityById, entityByName);
-        targetId = resolveEntityWithMaps(relationship.targetEntityId, entityById, entityByName);
+        sourceId = resolveEntityWithMaps(relationship.sourceEntityId! as UUID, entityById, entityByName);
+        targetId = resolveEntityWithMaps(relationship.targetEntityId! as UUID, entityById, entityByName);
       } catch (error) {
         runtime.logger.warn(
           { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) },

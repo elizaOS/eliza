@@ -6,7 +6,7 @@ import type {
   Provider,
   State,
 } from '@elizaos/core';
-import { addHeader } from '@elizaos/core';
+import { addHeader, logger } from '@elizaos/core';
 import { names, uniqueNamesGenerator } from 'unique-names-generator';
 
 /**
@@ -34,7 +34,30 @@ export function formatEvaluatorExamples(evaluators: Evaluator[]) {
     .map((evaluator) => {
       // Filter out examples that are missing required fields
       const validExamples = (evaluator.examples || []).filter(
-        (example) => example && example.prompt && example.messages
+        (example) => {
+          if (!example) {
+            logger.error(
+              { evaluator: evaluator.name },
+              'Evaluator has null/undefined example - check evaluator implementation'
+            );
+            return false;
+          }
+          if (!example.prompt) {
+            logger.error(
+              { evaluator: evaluator.name },
+              'Evaluator example missing required "prompt" field - check evaluator implementation'
+            );
+            return false;
+          }
+          if (!example.messages) {
+            logger.error(
+              { evaluator: evaluator.name },
+              'Evaluator example missing required "messages" field - check evaluator implementation'
+            );
+            return false;
+          }
+          return true;
+        }
       );
 
       return validExamples
@@ -58,6 +81,10 @@ export function formatEvaluatorExamples(evaluators: Evaluator[]) {
           const formattedMessages = (example.messages || [])
             .map((message: ActionExample) => {
               if (!message?.name || !message?.content?.text) {
+                logger.error(
+                  { evaluator: evaluator.name },
+                  'Evaluator example message missing "name" or "content.text" - check evaluator implementation'
+                );
                 return null;
               }
               let messageString = `${message.name}: ${message.content.text}`;
@@ -132,9 +159,17 @@ export const evaluatorsProvider: Provider = {
     }
 
     // Format evaluator-related texts
-    const evaluators = addHeader('# Available Evaluators', formatEvaluators(evaluatorsData));
-    const evaluatorNames = formatEvaluatorNames(evaluatorsData);
-    const evaluatorExamples = addHeader('# Evaluator Examples', formatEvaluatorExamples(evaluatorsData));
+    const evaluators =
+      evaluatorsData.length > 0
+        ? addHeader('# Available Evaluators', formatEvaluators(evaluatorsData))
+        : '';
+
+    const evaluatorNames = evaluatorsData.length > 0 ? formatEvaluatorNames(evaluatorsData) : '';
+
+    const evaluatorExamples =
+      evaluatorsData.length > 0
+        ? addHeader('# Evaluator Examples', formatEvaluatorExamples(evaluatorsData))
+        : '';
 
     const values = {
       evaluatorsData,
@@ -144,7 +179,7 @@ export const evaluatorsProvider: Provider = {
     };
 
     // Combine all text sections
-    const text = `${evaluators}\n\n${evaluatorExamples}`;
+    const text = [evaluators, evaluatorExamples].filter(Boolean).join('\n\n');
 
     return {
       values,
