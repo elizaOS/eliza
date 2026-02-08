@@ -129,10 +129,7 @@ impl IMessageService for DefaultMessageService {
         // injection) or rewrite it (e.g. redact credentials).
         let pre_result = runtime.evaluate_pre(message, None).await;
         if pre_result.blocked {
-            warn!(
-                "Message blocked by pre-evaluator: {:?}",
-                pre_result.reason
-            );
+            warn!("Message blocked by pre-evaluator: {:?}", pre_result.reason);
             return Ok(MessageProcessingResult {
                 did_respond: false,
                 response_content: None,
