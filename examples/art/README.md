@@ -30,6 +30,8 @@ This package provides complete training pipelines for:
 
 ```bash
 cd examples/art
+python -m venv venv
+source venv/bin/activate
 pip install -e ".[dev,local]"
 ```
 
@@ -53,6 +55,9 @@ elizaos-art-2048 benchmark --episodes 100
 ### Full training pipeline:
 ```bash
 elizaos-art-2048 pipeline --steps 50 --rollouts 8
+
+# Or else try following if above command is failing. 
+HF_HUB_ENABLE_HF_TRANSFER=0 elizaos-art-2048 pipeline --steps 50 --rollouts 8
 ```
 
 ## Training Pipeline

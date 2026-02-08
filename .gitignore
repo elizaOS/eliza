@@ -14,6 +14,8 @@ bun.lock
 .idea
 .zed
 .DS_Store
+.art
+art_venv
 
 # Xcode (user data)
 xcuserdata/
@@ -358,5 +360,3 @@ skills/.cache/
 # Terminal-bench: local test output artifacts
 /benchmarks/terminal-bench/python/test_output/terminal-bench-*.json
 /benchmarks/terminal-bench/python/test_output/terminal-bench-*.md
-
-
