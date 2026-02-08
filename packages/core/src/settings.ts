@@ -204,6 +204,10 @@ export function unsaltSettingValue(setting: Setting, salt: string): Setting {
  * Applies salt to all settings in a WorldSettings object
  */
 export function saltWorldSettings(worldSettings: WorldSettings, salt: string): WorldSettings {
+  if (!worldSettings || typeof worldSettings !== 'object') {
+    return {};
+  }
+
   const saltedSettings: WorldSettings = {};
 
   for (const [key, setting] of Object.entries(worldSettings)) {
@@ -217,6 +221,10 @@ export function saltWorldSettings(worldSettings: WorldSettings, salt: string): W
  * Removes salt from all settings in a WorldSettings object
  */
 export function unsaltWorldSettings(worldSettings: WorldSettings, salt: string): WorldSettings {
+  if (!worldSettings || typeof worldSettings !== 'object') {
+    return {};
+  }
+
   const unsaltedSettings: WorldSettings = {};
 
   for (const [key, setting] of Object.entries(worldSettings)) {
@@ -386,6 +394,10 @@ export function encryptObjectValues(
   obj: Record<string, unknown>,
   salt: string
 ): Record<string, unknown> {
+  if (!obj || typeof obj !== 'object') {
+    return {};
+  }
+
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
@@ -409,6 +421,10 @@ export function decryptObjectValues(
   obj: Record<string, unknown>,
   salt: string
 ): Record<string, unknown> {
+  if (!obj || typeof obj !== 'object') {
+    return {};
+  }
+
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
