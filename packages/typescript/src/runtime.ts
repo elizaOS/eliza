@@ -22,6 +22,7 @@ import { createLogger } from "./logger";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
+import type { ActionFilterService } from "./services/action-filter";
 import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
 import {
@@ -1219,6 +1220,26 @@ export class AgentRuntime implements IAgentRuntime {
     } else {
       this.actions.push(canonical);
       this._actionIndex = null; // Invalidate cached index
+
+      // Notify the ActionFilterService so it can index the new action for
+      // BM25 + vector retrieval.  This is fire-and-forget — we don't
+      // block registration on embedding computation.
+      const filterService =
+        this.getService<ActionFilterService>("action_filter");
+      if (filterService) {
+        filterService.addAction(canonical, this).catch((err) => {
+          this.logger.warn(
+            {
+              src: "agent",
+              agentId: this.agentId,
+              action: canonical.name,
+              error: err instanceof Error ? err.message : String(err),
+            },
+            "Failed to add action to filter index",
+          );
+        });
+      }
+
       this.logger.debug(
         { src: "agent", agentId: this.agentId, action: canonical.name },
         "Action registered",
@@ -1372,6 +1393,29 @@ export class AgentRuntime implements IAgentRuntime {
   // Helper functions for immutable action plan updates
   private updateActionPlan<T>(plan: T, updates: Partial<T>): T {
     return { ...plan, ...updates };
+  }
+
+  /**
+   * If the ActionFilterService filtered this room's actions, check whether
+   * `actionName` was excluded.  If so, report a filter miss (the LLM
+   * selected an action that wasn't in the prompt).
+   */
+  private checkFilterMiss(roomId: string | undefined, actionName: string): void {
+    if (!roomId) return;
+    const filterSvc = this.getService<ActionFilterService>("action_filter");
+    if (!filterSvc) return;
+    const inSet = filterSvc.wasActionInFilteredSet(actionName, roomId);
+    if (inSet === false) {
+      filterSvc.reportMiss(actionName);
+      this.logger.warn(
+        {
+          src: "agent",
+          agentId: this.agentId,
+          action: actionName,
+        },
+        "LLM selected an action that was filtered out — filter may be too aggressive",
+      );
+    }
   }
 
   private updateActionStep<T, S>(
@@ -1627,6 +1671,9 @@ export class AgentRuntime implements IAgentRuntime {
             "Action not found",
           );
 
+          // Report a filter miss if the unresolved name was filtered out
+          this.checkFilterMiss(message.roomId, responseAction);
+
           if (actionPlan?.steps?.[actionIndex]) {
             actionPlan = this.updateActionStep(actionPlan, actionIndex, {
               status: "failed",
@@ -1652,6 +1699,9 @@ export class AgentRuntime implements IAgentRuntime {
           actionIndex++;
           continue;
         }
+        // Check if the LLM selected an action that the filter removed
+        this.checkFilterMiss(message.roomId, action.name);
+
         if (!action.handler) {
           this.logger.error(
             { src: "agent", agentId: this.agentId, action: action.name },
@@ -1922,6 +1972,17 @@ export class AgentRuntime implements IAgentRuntime {
 
         const isSuccess = actionResult?.success !== false;
         const statusText = isSuccess ? "completed" : "failed";
+
+        // ── Conversation momentum ─────────────────────────────────────
+        // Record successful action usage so the filter service can boost
+        // it in subsequent turns within the same room.
+        if (isSuccess && message.roomId) {
+          const filterSvc =
+            this.getService<ActionFilterService>("action_filter");
+          if (filterSvc) {
+            filterSvc.recordActionUse(action.name, message.roomId);
+          }
+        }
 
         await this.emitEvent(EventType.ACTION_COMPLETED, {
           messageId: actionId,
@@ -2529,6 +2590,94 @@ export class AgentRuntime implements IAgentRuntime {
         providerNames.add(name);
       }
     }
+
+    // ── Provider relevance filtering ──────────────────────────────────
+    // 1. Providers with alwaysRun=true are always included regardless
+    //    of any filter/include list logic.
+    // 2. Dynamic providers with relevanceKeywords are auto-activated
+    //    when any keyword matches the message text, even if not
+    //    explicitly included.
+    const messageTextLower =
+      typeof message.content?.text === "string"
+        ? message.content.text.toLowerCase()
+        : "";
+
+    for (const p of this.providers) {
+      // alwaysRun providers bypass all filtering
+      if (p.alwaysRun && !p.private) {
+        providerNames.add(p.name);
+      }
+
+      // Dynamic providers with relevanceKeywords get auto-activated
+      // when a keyword matches the message.  This only applies when
+      // we're NOT in a strict filter-only mode (onlyInclude=true with
+      // a specific list), because that mode means the caller wants
+      // exact control.
+      if (
+        !filterList &&
+        p.dynamic &&
+        !p.private &&
+        p.relevanceKeywords &&
+        p.relevanceKeywords.length > 0 &&
+        messageTextLower.length > 0
+      ) {
+        for (const kw of p.relevanceKeywords) {
+          if (messageTextLower.includes(kw.toLowerCase())) {
+            providerNames.add(p.name);
+            break;
+          }
+        }
+      }
+    }
+
+    // ── BM25-based dynamic provider filtering ─────────────────────
+    // If the ActionFilterService is available, use its provider BM25
+    // index to auto-include dynamic providers whose descriptions are
+    // relevant to the current message. This extends the keyword-based
+    // matching above with semantic term matching.
+    // Only applies when NOT in strict filter-only mode.
+    if (!filterList) {
+      const actionFilterSvc =
+        this.getService<ActionFilterService>("action_filter");
+      if (actionFilterSvc) {
+        try {
+          const dynamicProviders = this.providers.filter(
+            (p) => p.dynamic && !p.private && !providerNames.has(p.name),
+          );
+          if (dynamicProviders.length > 0) {
+            const relevantNames = actionFilterSvc.filterProviders(
+              dynamicProviders,
+              message,
+              cachedState,
+            );
+            for (const name of relevantNames) {
+              providerNames.add(name);
+            }
+            if (relevantNames.length > 0) {
+              this.logger.debug(
+                {
+                  src: "agent",
+                  agentId: this.agentId,
+                  bm25Providers: relevantNames,
+                },
+                "BM25 auto-included dynamic providers",
+              );
+            }
+          }
+        } catch (err) {
+          // BM25 provider filtering is best-effort; never break composeState
+          this.logger.warn(
+            {
+              src: "agent",
+              agentId: this.agentId,
+              error: err instanceof Error ? err.message : String(err),
+            },
+            "BM25 provider filtering failed — continuing without it",
+          );
+        }
+      }
+    }
+
     const providersToGet: Provider[] = [];
     for (const provider of this.providers) {
       if (providerNames.has(provider.name)) {

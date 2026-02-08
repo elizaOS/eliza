@@ -16,6 +16,7 @@ import { RolodexService } from "../services/rolodex.ts";
 import { TaskService } from "../services/task.ts";
 import { ToolPolicyService } from "../services/tool-policy.ts";
 import { TrajectoryLoggerService } from "../services/trajectoryLogger.ts";
+import { ActionFilterService } from "../services/action-filter.ts";
 import { Role } from "../types/environment.ts";
 import { EventType } from "../types/events.ts";
 import type {
@@ -1225,6 +1226,7 @@ const basic = {
     EmbeddingGenerationService,
     ToolPolicyService,
     TrajectoryLoggerService,
+    ActionFilterService,
   ] as ServiceClass[],
 };
 
