@@ -74,13 +74,13 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
         continue-on-error: true
 
-      - name: Run tests (native + bootstrap)
+      - name: Run tests
         working-directory: packages/rust
-        run: cargo test --features native,bootstrap-internal
+        run: cargo test
 
       - name: Build release
         working-directory: packages/rust
-        run: cargo build --release --features native,bootstrap-internal
+        run: cargo build --release
 
   # ============================================
   # Rust SQL Plugin Tests (with PostgreSQL + pgvector)
