@@ -15,3 +15,29 @@ export { roleProvider } from './roles';
 export { settingsProvider } from './settings';
 export { timeProvider } from './time';
 export { worldProvider } from './world';
+
+// Shared caching utilities for cross-provider optimization
+export {
+    // Agent-specific cache functions
+    getCachedRoom,
+    getCachedWorld,
+    getCachedEntitiesForRoom,
+    getCachedWorldSettings,
+    extractWorldSettings,
+    invalidateRoomCache,
+    invalidateWorldCache,
+    invalidateEntitiesCache,
+    // Cross-agent cache functions (by external IDs like Discord guildId/channelId)
+    getCachedRoomByExternalId,
+    getCachedSettingsByServerId,
+    invalidateRoomCacheByExternalId,
+    invalidateWorldCacheByServerId,
+    // Negative caching
+    hasNoServerId,
+    markNoServerId,
+    hasNoSettings,
+    markNoSettings,
+    // Utilities
+    withTimeout,
+    getCacheStats,
+} from './shared-cache';

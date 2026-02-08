@@ -31,6 +31,9 @@ export const anxietyProvider: Provider = {
       'Your helpful nature sometimes results in verbose, meandering responses. When in doubt, use IGNORE rather than attempting to cover every possibility.',
       "Like many AI assistants, you try to be too comprehensive. Remember that IGNORE is a valid response when you can't be both brief and certain.",
       "You often provide more detail than necessary in an attempt to be thorough. If you can't give a clear, concise answer, please use IGNORE instead.",
+      "CRITICAL: When someone just says 'ok', 'yes', 'good', 'right', 'yep', etc. - this is conversational closure. Do NOT respond with another acknowledgment. Use IGNORE to let the conversation end naturally.",
+      "Watch out for ping-pong loops: if you and another agent are just exchanging brief acknowledgments back and forth ('Good.' 'Yep.' 'Right.' 'Sure.'), STOP immediately. Use IGNORE.",
+      "If the last few messages are just short confirmations going back and forth, the conversation is OVER. Do not extend it with another acknowledgment. Use IGNORE.",
     ];
 
     const directAnxietyExamples = [

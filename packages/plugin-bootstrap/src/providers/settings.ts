@@ -1,12 +1,11 @@
 // File: /swarm/shared/settings/provider.ts
-// Updated to use world metadata instead of cache
+// Updated to use shared cache module for better cross-provider caching
 
 import {
+  asUUID,
   ChannelType,
   findWorldsForOwner,
-  getSalt,
   logger,
-  unsaltWorldSettings,
   World,
   type IAgentRuntime,
   type Memory,
@@ -16,17 +15,27 @@ import {
   type State,
   type WorldSettings,
 } from '@elizaos/core';
+import {
+  extractWorldSettings,
+  getCachedRoom,
+  getCachedWorld,
+  getCachedSettingsByServerId,
+  hasNoServerId,
+  hasNoSettings,
+  markNoServerId,
+  markNoSettings,
+  withTimeout,
+} from './shared-cache';
+
+// Timeout for DB operations to prevent 80+ second waits
+const DB_TIMEOUT_MS = 5_000;
 
 /**
  * Formats a setting value for display, respecting privacy flags
  */
 const formatSettingValue = (setting: Setting, isOnboarding: boolean): string => {
-  if (setting.value === null) {
-    return 'Not set';
-  }
-  if (setting.secret && !isOnboarding) {
-    return '****************';
-  }
+  if (setting.value === null) return 'Not set';
+  if (setting.secret && !isOnboarding) return '****************';
   return String(setting.value);
 };
 
@@ -43,9 +52,7 @@ function generateStatusMessage(
     // Format settings for display
     const formattedSettings = Object.entries(worldSettings)
       .map(([key, setting]) => {
-        if (typeof setting !== 'object' || !setting.name) {
-          return null;
-        }
+        if (typeof setting !== 'object' || !setting.name) return null;
 
         const description = setting.description || '';
         const usageDescription = setting.usageDescription || '';
@@ -122,14 +129,7 @@ function generateStatusMessage(
       .map((s) => `### ${s?.name}\n**Value:** ${s?.value}\n**Description:** ${s?.description}`)
       .join('\n\n')}`;
   } catch (error) {
-    logger.error(
-      {
-        src: 'plugin:bootstrap:provider:settings',
-        agentId: runtime.agentId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      'Error generating status message'
-    );
+    logger.error({ src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error generating status message');
     return 'Error generating configuration status.';
   }
 }
@@ -142,29 +142,22 @@ export const settingsProvider: Provider = {
   name: 'SETTINGS',
   description: 'Current settings for the server',
   get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<ProviderResult> => {
+    // Early validation - fail fast before any IO
+    if (!message.roomId) {
+      return {
+        data: { settings: [] },
+        values: { settings: 'Error: No room ID in message' },
+        text: 'Error: No room ID in message',
+      };
+    }
+
     try {
-      // Parallelize the initial database operations to improve performance
-      // These operations can run simultaneously as they don't depend on each other
-      const [room, userWorlds] = await Promise.all([
-        runtime.getRoom(message.roomId),
-        findWorldsForOwner(runtime, message.entityId),
-      ]).catch((error) => {
-        logger.error(
-          {
-            src: 'plugin:bootstrap:provider:settings',
-            agentId: runtime.agentId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          'Error fetching initial data'
-        );
-        throw new Error('Failed to retrieve room or user world information');
-      });
+      // Use shared cache for room lookup - this ensures all providers share the same
+      // in-flight promise and cached result, preventing redundant DB calls
+      const room = await getCachedRoom(runtime, message.roomId);
 
       if (!room) {
-        logger.error(
-          { src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId },
-          'No room found for settings provider'
-        );
+        logger.error({ src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId }, 'No room found for settings provider');
         return {
           data: {
             settings: [],
@@ -177,10 +170,7 @@ export const settingsProvider: Provider = {
       }
 
       if (!room.worldId) {
-        logger.debug(
-          { src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId },
-          'No world found for settings provider -- settings provider will be skipped'
-        );
+        logger.debug({ src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId }, 'No world found for settings provider -- settings provider will be skipped');
         return {
           data: {
             settings: [],
@@ -192,17 +182,20 @@ export const settingsProvider: Provider = {
         };
       }
 
-      const type = room.type;
-      const isOnboarding = type === ChannelType.DM;
+      const isOnboarding = room.type === ChannelType.DM;
 
       let world: World | null | undefined = null;
       let serverId: string | undefined = undefined;
       let worldSettings: WorldSettings | null = null;
 
       if (isOnboarding) {
+        // Only fetch user worlds in onboarding mode (optimization: avoids unnecessary DB call in non-DM contexts)
+        // Add timeout to prevent slow getAllWorlds() from blocking
+        const userWorlds = await withTimeout(findWorldsForOwner(runtime, message.entityId), DB_TIMEOUT_MS, null);
+
         // In onboarding mode, use the user's world directly
         // Look for worlds with settings metadata, or create one if none exists
-        world = userWorlds?.find((world) => world.metadata?.settings !== undefined);
+        world = userWorlds?.find((w) => w.metadata?.settings !== undefined);
 
         if (!world && userWorlds && userWorlds.length > 0) {
           // If user has worlds but none have settings, use the first one and initialize settings
@@ -212,87 +205,94 @@ export const settingsProvider: Provider = {
           }
           world.metadata.settings = {};
           await runtime.updateWorld(world);
-          logger.info(
-            {
-              src: 'plugin:bootstrap:provider:settings',
-              agentId: runtime.agentId,
-              worldId: world.id,
-            },
-            'Initialized settings for user world'
-          );
+          logger.info({ src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId, worldId: world.id }, 'Initialized settings for user world');
         }
 
         if (!world) {
-          logger.error(
-            { src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId },
-            'No world found for user during onboarding'
-          );
+          logger.error({ src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId }, 'No world found for user during onboarding');
           throw new Error('No server ownership found for onboarding');
         }
 
         serverId = world.messageServerId;
 
-        // Get world settings directly from the world object we already have
-        // Must decrypt secret values using unsaltWorldSettings (settings are stored encrypted)
-        if (world.metadata?.settings) {
-          const salt = getSalt();
-          worldSettings = unsaltWorldSettings(world.metadata.settings as WorldSettings, salt);
+        // Extract settings directly from the already-fetched world (avoids redundant DB call)
+        if (serverId) {
+          worldSettings = extractWorldSettings(world);
         }
       } else {
         // For non-onboarding, we need to get the world associated with the room
-        try {
-          world = await runtime.getWorld(room.worldId);
+        const worldIdTyped = asUUID(room.worldId);
 
-          if (!world) {
-            logger.error(
-              {
-                src: 'plugin:bootstrap:provider:settings',
-                agentId: runtime.agentId,
-                worldId: room.worldId,
-              },
-              'No world found for room'
-            );
-            throw new Error(`No world found for room ${room.worldId}`);
+        // Fast path: Check if we already know this world has no serverId (shared across all agents)
+        if (hasNoServerId(worldIdTyped)) {
+          logger.debug({ src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId, worldId: room.worldId }, 'Skipping world with known no serverId (cached)');
+          return {
+            data: { settings: [] },
+            values: { settings: 'Error: No configuration access' },
+            text: 'Error: No configuration access',
+          };
+        }
+
+        // Fast path: Check cross-agent cache using room's messageServerId (raw Discord guildId)
+        // This allows agents to skip the world fetch entirely if another agent already cached settings
+        const roomServerId = room.messageServerId ?? room.serverId;
+        if (roomServerId) {
+          // Check if this server is known to have no settings (cross-agent negative cache)
+          if (hasNoSettings(roomServerId)) {
+            logger.debug({ src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId, serverId: roomServerId }, 'Skipping server with known no settings (cross-agent cache)');
+            return {
+              data: { settings: [] },
+              values: { settings: 'Configuration has not been completed yet.' },
+              text: 'Configuration has not been completed yet.',
+            };
           }
 
-          serverId = world.messageServerId;
-
-          // Get world settings directly from the world object we already have
-          // Must decrypt secret values using unsaltWorldSettings (settings are stored encrypted)
-          if (world.metadata?.settings) {
-            const salt = getSalt();
-            worldSettings = unsaltWorldSettings(world.metadata.settings as WorldSettings, salt);
-          } else if (!serverId) {
-            logger.debug(
-              {
-                src: 'plugin:bootstrap:provider:settings',
-                agentId: runtime.agentId,
-                worldId: room.worldId,
-              },
-              'No server ID or settings found for world'
-            );
+          // Check if another agent already fetched settings for this server
+          const cachedSettings = getCachedSettingsByServerId(roomServerId);
+          if (cachedSettings) {
+            logger.debug({ src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId, serverId: roomServerId }, 'Using cross-agent cached settings');
+            serverId = roomServerId;
+            worldSettings = cachedSettings;
           }
-        } catch (error) {
-          logger.error(
-            {
-              src: 'plugin:bootstrap:provider:settings',
-              agentId: runtime.agentId,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            'Error processing world data'
-          );
-          throw new Error('Failed to process world information');
+        }
+
+        // Only fetch world if we didn't get settings from cross-agent cache
+        if (!worldSettings) {
+          try {
+            // Use cached world fetch with timeout
+            world = await getCachedWorld(runtime, worldIdTyped);
+
+            if (!world) {
+              logger.error({ src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId, worldId: room.worldId }, 'No world found for room');
+              throw new Error(`No world found for room ${room.worldId}`);
+            }
+
+            serverId = world.messageServerId;
+
+            // Extract settings directly from the already-fetched world (avoids redundant DB call)
+            // extractWorldSettings also caches by serverId for cross-agent benefit
+            if (serverId) {
+              worldSettings = extractWorldSettings(world);
+              // Mark as no settings if none found (for cross-agent negative cache)
+              if (!worldSettings) {
+                markNoSettings(serverId);
+              }
+            } else {
+              // Cache the fact that this world has no serverId to skip future lookups (shared across all agents)
+              markNoServerId(worldIdTyped);
+              logger.debug({ src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId, worldId: room.worldId }, 'No server ID found for world (marked for cache)');
+            }
+          } catch (error) {
+            logger.error({ src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error processing world data');
+            throw new Error('Failed to process world information');
+          }
         }
       }
 
       // If no server found after recovery attempts
       if (!serverId) {
         logger.info(
-          {
-            src: 'plugin:bootstrap:provider:settings',
-            agentId: runtime.agentId,
-            entityId: message.entityId,
-          },
+          { src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId, entityId: message.entityId },
           'No server ownership found for user after recovery attempt'
         );
         return isOnboarding
@@ -318,14 +318,7 @@ export const settingsProvider: Provider = {
       }
 
       if (!worldSettings) {
-        logger.info(
-          {
-            src: 'plugin:bootstrap:provider:settings',
-            agentId: runtime.agentId,
-            messageServerId: serverId,
-          },
-          'No settings state found for server'
-        );
+        logger.info({ src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId, serverId }, 'No settings state found for server');
         return isOnboarding
           ? {
               data: {
@@ -361,14 +354,7 @@ export const settingsProvider: Provider = {
         text: output,
       };
     } catch (error) {
-      logger.error(
-        {
-          src: 'plugin:bootstrap:provider:settings',
-          agentId: runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Critical error in settings provider'
-      );
+      logger.error({ src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Critical error in settings provider');
       return {
         data: {
           settings: [],

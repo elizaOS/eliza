@@ -1,16 +1,25 @@
 import type { Entity, IAgentRuntime, Memory, Provider, Relationship, UUID } from '@elizaos/core';
+
 /**
- * Formats the provided relationships based on interaction strength and returns a string.
- * @param {IAgentRuntime} runtime - The runtime object to interact with the agent.
- * @param {Relationship[]} relationships - The relationships to format.
- * @returns {string} The formatted relationships as a string.
+ * Escape a value for CSV output.
+ * Wraps in quotes if contains comma, quote, or newline.
  */
+function csvEscape(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
 /**
- * Asynchronously formats relationships based on their interaction strength.
+ * Formats relationships as CSV for token efficiency.
+ * Format: name,interactions,tags
  *
- * @param {IAgentRuntime} runtime The runtime instance.
- * @param {Relationship[]} relationships The relationships to be formatted.
- * @returns {Promise<string>} A formatted string of the relationships.
+ * @param runtime - The runtime instance
+ * @param relationships - The relationships to format
+ * @returns CSV formatted string
  */
 async function formatRelationships(runtime: IAgentRuntime, relationships: Relationship[]) {
   // Sort relationships by interaction strength (descending)
@@ -43,34 +52,24 @@ async function formatRelationships(runtime: IAgentRuntime, relationships: Relati
     }
   });
 
-  const formatMetadata = (metadata: Record<string, unknown>) => {
-    return JSON.stringify(
-      Object.entries(metadata)
-        .map(
-          ([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`
-        )
-        .join('\n')
-    );
-  };
+  // CSV header
+  const rows: string[] = ['name,interactions,tags'];
 
-  // Format relationships using the entity map
-  const formattedRelationships = sortedRelationships
-    .map((rel) => {
-      const targetEntityId = rel.targetEntityId as UUID;
-      const entity = entityMap.get(targetEntityId);
+  // Format relationships as CSV rows
+  for (const rel of sortedRelationships) {
+    const targetEntityId = rel.targetEntityId as UUID;
+    const entity = entityMap.get(targetEntityId);
 
-      if (!entity) {
-        return null;
-      }
+    if (!entity) continue;
 
-      const names = entity.names.join(' aka ');
-      return `${names}\n${
-        rel.tags ? rel.tags.join(', ') : ''
-      }\n${formatMetadata(entity.metadata)}\n`;
-    })
-    .filter(Boolean);
+    const name = entity.names[0] || 'Unknown';
+    const interactions = (rel.metadata?.interactions as number) || 0;
+    const tags = rel.tags?.join(';') || '';
 
-  return formattedRelationships.join('\n');
+    rows.push(`${csvEscape(name)},${interactions},${csvEscape(tags)}`);
+  }
+
+  return rows.join('\n');
 }
 
 /**
@@ -120,6 +119,10 @@ const relationshipsProvider: Provider = {
         text: 'No relationships found.',
       };
     }
+
+    const senderName = message.content.senderName || message.content.name || 'user';
+    const header = `# Relationships (${relationships.length}) - ${senderName}'s connections`;
+
     return {
       data: {
         relationships: formattedRelationships,
@@ -127,7 +130,7 @@ const relationshipsProvider: Provider = {
       values: {
         relationships: formattedRelationships,
       },
-      text: `# ${runtime.character.name} has observed ${message.content.senderName || message.content.name} interacting with these people:\n${formattedRelationships}`,
+      text: `${header}\n${formattedRelationships}`,
     };
   },
 };
