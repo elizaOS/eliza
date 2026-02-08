@@ -48,6 +48,12 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      - name: Install protoc
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y protobuf-compiler
+          protoc --version
+
       - name: Cache cargo
         uses: actions/cache@v4
         with:
