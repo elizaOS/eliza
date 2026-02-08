@@ -12,7 +12,7 @@
  * Discord's raw IDs (guildId, channelId) as secondary cache keys that ALL agents share.
  */
 import type { IAgentRuntime, Room, UUID, World, WorldSettings } from '@elizaos/core';
-import { createUniqueUuid, getSalt, unsaltWorldSettings } from '@elizaos/core';
+import { createUniqueUuid, getSalt, logger, unsaltWorldSettings } from '@elizaos/core';
 
 // Cache TTL in milliseconds (30 seconds - short enough to pick up changes, long enough to help)
 const CACHE_TTL_MS = 30_000;
@@ -91,8 +91,13 @@ export async function withTimeout<T>(
     fallback: T
 ): Promise<T> {
     let timeoutId: ReturnType<typeof setTimeout>;
+    let didTimeout = false;
     const timeoutPromise = new Promise<T>((resolve) => {
-        timeoutId = setTimeout(() => resolve(fallback), ms);
+        timeoutId = setTimeout(() => {
+            didTimeout = true;
+            logger.warn({ src: 'plugin:bootstrap:cache', timeoutMs: ms }, 'DB operation timed out, returning fallback');
+            resolve(fallback);
+        }, ms);
     });
     try {
         return await Promise.race([promise, timeoutPromise]);
@@ -102,21 +107,87 @@ export async function withTimeout<T>(
 }
 
 /**
- * Clean up old entries from a cache map.
+ * Remove expired entries from a cache map by TTL.
+ * Returns the number of entries evicted.
+ *
+ * Called in two contexts:
+ * 1. Inline after a fetch (burst guard) - caps at maxSize to prevent sudden spikes
+ * 2. Periodic sweep (steady-state) - maxSize=0 to evict everything expired
  */
-function cleanupCache<T>(
+function evictExpired<T>(
     cache: Map<string, CacheEntry<T>>,
     maxSize: number,
     ttl: number
-): void {
-    if (cache.size <= maxSize) return;
+): number {
+    // Burst guard: only run the inline eviction when we're over the cap.
+    // The periodic sweep passes maxSize=0, so it always runs.
+    if (maxSize > 0 && cache.size <= maxSize) return 0;
 
     const now = Date.now();
+    let evicted = 0;
     for (const [key, entry] of cache) {
-        if (now - entry.timestamp > ttl * 2) {
+        // Use the entry's own TTL if it's a negative-cache entry, otherwise use the provided TTL
+        const entryTtl = entry.isNegative ? NEGATIVE_CACHE_TTL_MS : ttl;
+        if (now - entry.timestamp > entryTtl) {
             cache.delete(key);
+            evicted++;
         }
     }
+    return evicted;
+}
+
+// ============================================================================
+// PERIODIC CACHE SWEEP
+// ============================================================================
+//
+// WHY: Without periodic cleanup, caches leak memory in two ways:
+// 1. Caches below maxSize never trigger inline eviction - stale entries accumulate
+// 2. Several caches (externalRoomCache, noServerIdCache, noSettingsCache) had no
+//    inline eviction at all - completely unbounded growth
+// 3. Idle systems (no fetches) never trigger any cleanup
+//
+// The sweep runs every 60s (2x the standard TTL), iterates ALL caches, and
+// removes entries past their TTL. The timer is unref'd so it won't keep the
+// process alive.
+
+const SWEEP_INTERVAL_MS = 60_000;
+
+function sweepAllCaches(): void {
+    evictExpired(roomCache, 0, CACHE_TTL_MS);
+    evictExpired(externalRoomCache, 0, CACHE_TTL_MS);
+    evictExpired(worldCache, 0, CACHE_TTL_MS);
+    evictExpired(externalWorldCache, 0, CACHE_TTL_MS);
+    evictExpired(noServerIdCache, 0, NEGATIVE_CACHE_TTL_MS);
+    evictExpired(noSettingsCache, 0, NEGATIVE_CACHE_TTL_MS);
+    evictExpired(entitiesCache, 0, CACHE_TTL_MS);
+    evictExpired(worldSettingsCache, 0, CACHE_TTL_MS);
+}
+
+const sweepTimer = setInterval(sweepAllCaches, SWEEP_INTERVAL_MS);
+// Don't keep the process alive just for cache maintenance
+if (sweepTimer && typeof sweepTimer === 'object' && 'unref' in sweepTimer) {
+    (sweepTimer as { unref: () => void }).unref();
+}
+
+/**
+ * Stop the periodic cache sweep and clear all caches.
+ * Call during shutdown or in tests to prevent timer leaks.
+ */
+export function stopCacheMaintenance(): void {
+    clearInterval(sweepTimer);
+    roomCache.clear();
+    roomInFlight.clear();
+    externalRoomCache.clear();
+    worldCache.clear();
+    worldInFlight.clear();
+    externalWorldCache.clear();
+    externalWorldInFlight.clear();
+    noServerIdCache.clear();
+    noSettingsCache.clear();
+    entitiesCache.clear();
+    entitiesInFlight.clear();
+    worldSettingsCache.clear();
+    worldSettingsInFlight.clear();
 }
 
 // ============================================================================
@@ -198,7 +269,7 @@ export async function getCachedRoom(
     })();
 
     roomInFlight.set(cacheKey, fetchPromise);
-    cleanupCache(roomCache, 500, CACHE_TTL_MS);
+    evictExpired(roomCache, 500, CACHE_TTL_MS);
 
     return fetchPromise;
 }
@@ -337,7 +408,7 @@ export async function getCachedWorld(
     })();
 
     worldInFlight.set(cacheKey, fetchPromise);
-    cleanupCache(worldCache, 200, CACHE_TTL_MS);
+    evictExpired(worldCache, 200, CACHE_TTL_MS);
 
     return fetchPromise;
 }
@@ -474,7 +545,7 @@ export async function getCachedEntitiesForRoom(
     })();
 
     entitiesInFlight.set(cacheKey, fetchPromise);
-    cleanupCache(entitiesCache, 500, CACHE_TTL_MS);
+    evictExpired(entitiesCache, 500, CACHE_TTL_MS);
 
     return fetchPromise;
 }
@@ -587,7 +658,7 @@ export async function getCachedWorldSettings(
     })();
 
     worldSettingsInFlight.set(cacheKey, fetchPromise);
-    cleanupCache(worldSettingsCache, 200, CACHE_TTL_MS);
+    evictExpired(worldSettingsCache, 200, CACHE_TTL_MS);
 
     return fetchPromise;
 }

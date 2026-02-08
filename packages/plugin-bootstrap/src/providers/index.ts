@@ -40,4 +40,5 @@ export {
     // Utilities
     withTimeout,
     getCacheStats,
+    stopCacheMaintenance,
 } from './shared-cache';
