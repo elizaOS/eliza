@@ -1391,10 +1391,8 @@ impl AgentRuntime {
                 Ok(Some(action_result)) => {
                     if !action_result.success {
                         result.blocked = true;
-                        result.reason = action_result
-                            .error
-                            .or(action_result.text)
-                            .or(result.reason);
+                        result.reason =
+                            action_result.error.or(action_result.text).or(result.reason);
                         warn!(
                             "Pre-evaluator '{}' blocked message: {:?}",
                             evaluator.definition().name,
