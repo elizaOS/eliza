@@ -29,6 +29,7 @@ class TestTrajectoryAdapter:
     async def test_trajectory_lifecycle(self, temp_data_dir):
         """Test complete trajectory logging lifecycle."""
         from elizaos_art.eliza_integration.trajectory_adapter import (
+            ElizaActionAttempt,
             ElizaEnvironmentState,
             ElizaLLMCall,
             ElizaTrajectoryLogger,
@@ -66,13 +67,16 @@ class TestTrajectoryAdapter:
         logger.log_llm_call(step_id, llm_call)
 
         # Complete step
-        logger.complete_step(
-            trajectory_id=traj_id,
-            step_id=step_id,
+        action = ElizaActionAttempt(
             action_type="TEST_ACTION",
             action_name="test_action",
             parameters={"value": 42},
             success=True,
+        )
+        logger.complete_step(
+            trajectory_id=traj_id,
+            step_id=step_id,
+            action=action,
             reward=1.0,
         )
 
