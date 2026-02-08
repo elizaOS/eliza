@@ -1,0 +1,395 @@
+---
+title: "Browser Examples"
+description: "Run elizaOS agents client-side with React, Next.js, and vanilla HTML"
+---
+
+Run AI agents entirely in the browser. No server required for basic functionality. These examples use in-browser databases and pattern matching to work offline.
+
+## Overview
+
+| Example    | Framework         | Directory              | Features                           |
+| ---------- | ----------------- | ---------------------- | ---------------------------------- |
+| HTML       | Vanilla JS        | `examples/html/`       | Zero dependencies, CRT terminal UI |
+| React      | React + Vite      | `examples/react/`      | Full React app with PGLite         |
+| React WASM | React + Rust WASM | `examples/react-wasm/` | Rust core compiled to WASM         |
+| Next.js    | Next.js 14        | `examples/next/`       | SSR + API routes                   |
+
+---
+
+## Quick Start
+
+<Tabs>
+  <Tab title="HTML">
+```bash
+cd examples/html
+# Open index.html in your browser, or:
+python -m http.server 8000
+# Visit http://localhost:8000
+```
+  </Tab>
+  <Tab title="React">
+```bash
+cd examples/react
+bun install
+bun dev
+# Visit http://localhost:5173
+```
+  </Tab>
+  <Tab title="React WASM">
+```bash
+# Build WASM first
+cd packages/rust && ./build-wasm.sh && cd -
+
+cd examples/react-wasm
+bun install
+bun dev
+
+# Visit http://localhost:5173
+
+````
+  </Tab>
+  <Tab title="Next.js">
+```bash
+cd examples/next
+bun install
+OPENAI_API_KEY="your-key" bun dev
+# Visit http://localhost:3000
+````
+
+  </Tab>
+</Tabs>
+
+---
+
+## HTML Example
+
+The simplest browser implementation. Pure HTML, CSS, and JavaScript with a beautiful retro CRT terminal interface.
+
+**Features:**
+
+- Zero build step required
+- Classic ELIZA pattern matching
+- localStorage persistence
+- Retro phosphor green aesthetic
+- Works completely offline
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>ELIZA - elizaOS Browser Demo</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "@elizaos/core": "../../packages/typescript/dist/browser/index.browser.js",
+          "@elizaos/plugin-eliza-classic": "../../plugins/plugin-eliza-classic/dist/browser/index.browser.js",
+          "@elizaos/plugin-localdb": "../../plugins/plugin-localdb/dist/browser/index.browser.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="chat"></div>
+    <input
+      type="text"
+      id="input"
+      placeholder="Tell me what's troubling you..."
+    />
+
+    <script type="module">
+      import { AgentRuntime, ModelType, stringToUuid } from "@elizaos/core";
+      import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
+      import { plugin as localdbPlugin } from "@elizaos/plugin-localdb";
+
+      // Create runtime
+      const runtime = new AgentRuntime({
+        character: {
+          name: "Eliza",
+          bio: "A Rogerian psychotherapist simulation.",
+        },
+        plugins: [localdbPlugin, elizaClassicPlugin],
+      });
+
+      await runtime.initialize();
+
+      // Handle input
+      document
+        .getElementById("input")
+        .addEventListener("keypress", async (e) => {
+          if (e.key === "Enter") {
+            const text = e.target.value.trim();
+            if (!text) return;
+
+            // Display user message
+            appendMessage("You", text);
+            e.target.value = "";
+
+            // Get response
+            const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+              prompt: text,
+            });
+
+            appendMessage("Eliza", String(response));
+          }
+        });
+
+      function appendMessage(sender, text) {
+        const chat = document.getElementById("chat");
+        chat.innerHTML += `<div><strong>${sender}:</strong> ${text}</div>`;
+        chat.scrollTop = chat.scrollHeight;
+      }
+    </script>
+  </body>
+</html>
+```
+
+---
+
+## React Example
+
+Full React application with PGLite for in-browser PostgreSQL-compatible storage.
+
+**Features:**
+
+- Full elizaOS AgentRuntime
+- PGLite database (IndexedDB backend)
+- Classic ELIZA plugin (no API keys)
+- Retro CRT terminal styling
+- Persistent conversation history
+
+```typescript
+// eliza-runtime.ts
+import { AgentRuntime, stringToUuid } from "@elizaos/core";
+import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+
+let runtime: AgentRuntime | null = null;
+
+export async function getRuntime(): Promise<AgentRuntime> {
+  if (runtime) return runtime;
+
+  runtime = new AgentRuntime({
+    character: {
+      name: "Eliza",
+      bio: "A Rogerian psychotherapist simulation.",
+    },
+    plugins: [sqlPlugin, elizaClassicPlugin],
+  });
+
+  await runtime.initialize();
+  return runtime;
+}
+```
+
+```tsx
+// App.tsx
+import { useState, useEffect, useRef } from "react";
+import { getRuntime } from "./eliza-runtime";
+import type { AgentRuntime } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
+
+interface Message {
+  sender: "user" | "eliza";
+  text: string;
+}
+
+export default function App() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [runtime, setRuntime] = useState<AgentRuntime | null>(null);
+
+  useEffect(() => {
+    getRuntime().then(setRuntime);
+  }, []);
+
+  const sendMessage = async () => {
+    if (!input.trim() || !runtime || loading) return;
+
+    const userMessage = input.trim();
+    setInput("");
+    setMessages((prev) => [...prev, { sender: "user", text: userMessage }]);
+    setLoading(true);
+
+    try {
+      const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt: userMessage,
+      });
+
+      setMessages((prev) => [
+        ...prev,
+        { sender: "eliza", text: String(response) },
+      ]);
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="terminal">
+      <div className="chat">
+        {messages.map((msg, i) => (
+          <div key={i} className={`message ${msg.sender}`}>
+            <strong>{msg.sender === "user" ? "YOU" : "ELIZA"}:</strong>
+            <span>{msg.text}</span>
+          </div>
+        ))}
+        {loading && <div className="typing">ELIZA is typing...</div>}
+      </div>
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+        placeholder="Tell me what's troubling you..."
+        disabled={!runtime || loading}
+      />
+    </div>
+  );
+}
+```
+
+---
+
+## React WASM Example
+
+Uses the Rust implementation compiled to WebAssembly for the best performance.
+
+**Features:**
+
+- Rust core running in the browser
+- ~30% faster than pure TypeScript
+- Same API as native Rust
+- Type-safe interop
+
+```typescript
+// eliza-runtime.ts (WASM version)
+import init, { WasmAgentRuntime } from "@elizaos/core/rust";
+
+let runtime: WasmAgentRuntime | null = null;
+
+export async function getRuntime(): Promise<WasmAgentRuntime> {
+  if (runtime) return runtime;
+
+  // Initialize WASM module
+  await init();
+
+  // Create runtime with character JSON
+  runtime = await new WasmAgentRuntime(
+    JSON.stringify({
+      name: "Eliza",
+      bio: "A Rogerian psychotherapist simulation.",
+    }),
+  );
+
+  await runtime.initialize();
+  return runtime;
+}
+```
+
+---
+
+## Next.js Example
+
+Full-stack Next.js application with server-side rendering and API routes.
+
+**Features:**
+
+- SSR for fast initial load
+- API routes for server-side processing
+- OpenAI integration (requires API key)
+- Streaming responses
+
+```typescript
+// app/api/chat/route.ts
+import { NextResponse } from "next/server";
+import { AgentRuntime } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime() {
+  if (runtime) return runtime;
+
+  runtime = new AgentRuntime({
+    character: {
+      name: "Eliza",
+      bio: "A helpful AI assistant.",
+      secrets: {
+        OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      },
+    },
+    plugins: [sqlPlugin, openaiPlugin],
+  });
+
+  await runtime.initialize();
+  return runtime;
+}
+
+export async function POST(request: Request) {
+  const { message } = await request.json();
+  const runtime = await getRuntime();
+
+  // Stream response
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      await runtime.messageService?.handleMessage(
+        runtime,
+        createMessage(message),
+        async (content) => {
+          if (content?.text) {
+            controller.enqueue(encoder.encode(content.text));
+          }
+          return [];
+        },
+      );
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+}
+```
+
+---
+
+## Browser Compatibility
+
+| Feature            | Chrome | Firefox | Safari | Edge |
+| ------------------ | ------ | ------- | ------ | ---- |
+| ES Modules         | ✅     | ✅      | ✅     | ✅   |
+| Import Maps        | ✅     | ✅      | ✅     | ✅   |
+| WASM               | ✅     | ✅      | ✅     | ✅   |
+| IndexedDB (PGLite) | ✅     | ✅      | ✅     | ✅   |
+| localStorage       | ✅     | ✅      | ✅     | ✅   |
+
+---
+
+## Plugin Comparison
+
+| Plugin                 | Requires API | Offline | Response Time |
+| ---------------------- | ------------ | ------- | ------------- |
+| `plugin-eliza-classic` | ❌           | ✅      | ~1ms          |
+| `plugin-openai`        | ✅           | ❌      | ~500-2000ms   |
+| `plugin-anthropic`     | ✅           | ❌      | ~500-2000ms   |
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Serverless Examples" icon="cloud" href="/examples/serverless">
+    Deploy to AWS, GCP, Vercel, or Cloudflare
+  </Card>
+  <Card title="Game Examples" icon="gamepad" href="/examples/game">
+    Build AI-powered games
+  </Card>
+</CardGroup>
+
+
+

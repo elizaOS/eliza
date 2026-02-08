@@ -1,0 +1,221 @@
+---
+title: "Examples Overview"
+description: "Learn elizaOS through working code in TypeScript, Python, and Rust"
+---
+
+elizaOS comes with a comprehensive collection of examples demonstrating real-world usage patterns. Every example is available in multiple languages with identical functionality.
+
+## Quick Reference
+
+| Example                            |   TypeScript    |     Python      |      Rust       | Description               |
+| ---------------------------------- | :-------------: | :-------------: | :-------------: | ------------------------- |
+| [CLI Chat](/examples/chat)         |       ✅        |       ✅        |       ✅        | Interactive terminal chat |
+| [REST API](/examples/rest-api)     | ✅ 3 frameworks | ✅ 2 frameworks | ✅ 3 frameworks | HTTP endpoints            |
+| [Browser](/examples/browser)       |  ✅ React/HTML  |        —        |     ✅ WASM     | Client-side agents        |
+| [Serverless](/examples/serverless) |       ✅        |       ✅        |       ✅        | AWS/GCP/Vercel/Cloudflare |
+| [Game](/examples/game)             |       ✅        |       ✅        |       ✅        | AI dungeon adventure      |
+
+---
+
+## Running Examples
+
+All examples are located in the `examples/` directory of the elizaOS repository.
+
+<Tabs>
+  <Tab title="TypeScript">
+```bash
+# Clone the repository (if you haven't already)
+git clone https://github.com/elizaos/eliza.git
+cd eliza
+
+# Install dependencies
+
+bun install
+
+# Run any TypeScript example
+
+bun run examples/chat/typescript/chat.ts
+
+````
+  </Tab>
+  <Tab title="Python">
+```bash
+# Clone the repository
+git clone https://github.com/elizaos/eliza.git
+cd eliza
+
+# Set up Python environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install elizaOS packages
+pip install -e packages/typescript/python
+pip install -e plugins/plugin-openai/python
+
+# Run any Python example
+python examples/chat/python/chat.py
+````
+
+  </Tab>
+  <Tab title="Rust">
+```bash
+# Clone the repository
+git clone https://github.com/elizaos/eliza.git
+cd eliza
+
+# Run any Rust example
+
+cd examples/chat/rust/chat
+cargo run
+
+````
+  </Tab>
+</Tabs>
+
+---
+
+## Environment Setup
+
+Most examples require an OpenAI API key:
+
+```bash
+export OPENAI_API_KEY="your-api-key-here"
+````
+
+Or create a `.env` file in the repository root:
+
+```bash
+OPENAI_API_KEY=your-api-key-here
+```
+
+| Variable             | Default                     | Description                      |
+| -------------------- | --------------------------- | -------------------------------- |
+| `OPENAI_API_KEY`     | (required)                  | OpenAI API key                   |
+| `OPENAI_BASE_URL`    | `https://api.openai.com/v1` | API base URL                     |
+| `OPENAI_SMALL_MODEL` | `gpt-5-mini`               | Model for TEXT_SMALL             |
+| `OPENAI_LARGE_MODEL` | `gpt-5`                    | Model for TEXT_LARGE             |
+| `LOG_LEVEL`          | `info`                      | Set to `fatal` to suppress logs  |
+| `PGLITE_DATA_DIR`    | `memory://`                 | PGLite storage (TypeScript only) |
+
+---
+
+## Example Categories
+
+<CardGroup cols={2}>
+  <Card title="Chat Applications" icon="comments" href="/examples/chat">
+    Interactive CLI chat demonstrating core agent functionality: message handling, streaming responses, and conversation memory.
+  </Card>
+
+<Card title="REST APIs" icon="server" href="/examples/rest-api">
+  HTTP endpoints using Express, Hono, Elysia (TS), FastAPI, Flask (Python), and
+  Actix, Axum, Rocket (Rust).
+</Card>
+
+<Card title="Browser Apps" icon="browser" href="/examples/browser">
+  Client-side agents with React, Next.js, and vanilla HTML. No server required
+  for basic functionality.
+</Card>
+
+<Card title="Serverless" icon="cloud" href="/examples/serverless">
+  Deploy to AWS Lambda, GCP Cloud Functions, Vercel Edge Functions, Cloudflare
+  Workers, and Supabase Edge Functions.
+</Card>
+
+  <Card title="Games" icon="gamepad" href="/examples/game">
+    AI-powered text adventure game demonstrating decision-making, state management, and game loop integration.
+  </Card>
+</CardGroup>
+
+---
+
+## Architecture Overview
+
+All examples follow the same architectural pattern:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Example Application                          │
+│  (chat.ts, server.py, main.rs)                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                     elizaOS Core Runtime                         │
+│  AgentRuntime, MessageService, Model Handlers                    │
+├─────────────────────────────────────────────────────────────────┤
+│                        Plugins                                   │
+│  plugin-openai, plugin-sql, plugin-bootstrap                     │
+├─────────────────────────────────────────────────────────────────┤
+│                    Language Bindings                             │
+│  TypeScript (native), Python (elizaos), Rust (elizaos crate)    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## API Consistency
+
+All examples use identical APIs across languages:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+import { AgentRuntime } from '@elizaos/core';
+import { openaiPlugin } from '@elizaos/plugin-openai';
+
+const runtime = new AgentRuntime({
+character: { name: 'Eliza', bio: 'A helpful AI.' },
+plugins: [openaiPlugin],
+});
+
+await runtime.initialize();
+
+````
+  </Tab>
+  <Tab title="Python">
+```python
+from elizaos import AgentRuntime, Character
+from elizaos_plugin_openai import get_openai_plugin
+
+runtime = AgentRuntime(
+    character=Character(name="Eliza", bio="A helpful AI."),
+    plugins=[get_openai_plugin()],
+)
+
+await runtime.initialize()
+````
+
+  </Tab>
+  <Tab title="Rust">
+```rust
+use elizaos::{AgentRuntime, RuntimeOptions, parse_character};
+use elizaos_plugin_openai::create_openai_plugin;
+
+let character = parse_character(r#"{"name": "Eliza", "bio": "A helpful AI."}"#)?;
+let runtime = AgentRuntime::new(RuntimeOptions {
+character: Some(character),
+plugins: vec![create_openai_plugin()?],
+..Default::default()
+}).await?;
+
+runtime.initialize().await?;
+
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Contributing Examples
+
+We welcome new examples! When contributing:
+
+1. **Implement in all languages** where possible
+2. **Follow the existing structure** in `examples/`
+3. **Include a README.md** with setup instructions
+4. **Test thoroughly** before submitting
+
+See [Contributing to Core](/guides/contribute-to-core) for the full contribution guide.
+
+
+```
+
+
+

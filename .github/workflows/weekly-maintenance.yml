@@ -8,6 +8,7 @@ on:
 jobs:
   maintenance:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       issues: write
@@ -16,7 +17,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -43,7 +44,7 @@ jobs:
             5. Verify README.md examples and docs are up to date
             6. Check for any failing or skipped tests
 
-            **Important:** This is an ElizaOS project - use `bun` for all package operations, never npm/yarn/pnpm.
+            **Important:** This is an elizaOS project - use `bun` for all package operations, never npm/yarn/pnpm.
 
             Create a single issue summarizing any findings with sections:
             - 🔒 Security Issues (if any)

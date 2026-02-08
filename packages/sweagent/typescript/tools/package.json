@@ -1,0 +1,62 @@
+{
+  "name": "swe-agent-tools",
+  "version": "1.0.0",
+  "description": "Node.js tools",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "chalk": "^5.3.0",
+    "commander": "^11.1.0",
+    "diff": "^5.1.0",
+    "express": "^4.18.0",
+    "glob": "^10.3.0",
+    "js-yaml": "^4.1.0",
+    "minimatch": "^9.0.0",
+    "playwright": "^1.40.0",
+    "sharp": "^0.33.0",
+    "ws": "^8.14.0"
+  },
+  "optionalDependencies": {
+    "@types/tree-sitter": "*",
+    "tree-sitter": "^0.20.6",
+    "tree-sitter-javascript": "^0.20.3",
+    "tree-sitter-python": "^0.20.4",
+    "tree-sitter-typescript": "^0.20.5"
+  },
+  "devDependencies": {
+    "@types/diff": "^5.0.0",
+    "@types/express": "^4.17.0",
+    "@types/js-yaml": "^4.0.0",
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.55.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.3.0"
+  },
+  "bin": {
+    "registry": "./dist/registry/index.js",
+    "diff-state": "./dist/diff-state/index.js",
+    "str-replace-editor": "./dist/edit-anthropic/str-replace-editor.js",
+    "filemap": "./dist/filemap/index.js",
+    "forfeit": "./dist/forfeit/index.js",
+    "view-image": "./dist/image-tools/view-image.js",
+    "search-file": "./dist/search/search-file.js",
+    "search-dir": "./dist/search/search-dir.js",
+    "find-file": "./dist/search/find-file.js",
+    "submit": "./dist/submit/index.js",
+    "web-browser": "./dist/web-browser/index.js",
+    "windowed-editor": "./dist/windowed/index.js"
+  }
+}

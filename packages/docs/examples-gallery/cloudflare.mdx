@@ -1,0 +1,134 @@
+---
+title: "Cloudflare Examples"
+description: "Deploy elizaOS to Cloudflare Workers"
+---
+
+Deploy AI agents to Cloudflare's global edge network.
+
+## Quick Start
+
+```bash
+cd examples/cloudflare
+wrangler deploy
+```
+
+## Available Implementations
+
+| Language   | Directory                            | Features       |
+| ---------- | ------------------------------------ | -------------- |
+| TypeScript | `examples/cloudflare/src/`           | Workers        |
+| Python     | `examples/cloudflare/python-worker/` | Python Workers |
+| Rust       | `examples/cloudflare/rust-worker/`   | WASM Workers   |
+
+## Worker
+
+```typescript
+// src/worker.ts
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+interface Env {
+  OPENAI_API_KEY: string;
+}
+
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime(env: Env) {
+  if (runtime) return runtime;
+
+  runtime = new AgentRuntime({
+    character: {
+      name: "Eliza",
+      bio: "A helpful AI assistant.",
+      secrets: { OPENAI_API_KEY: env.OPENAI_API_KEY },
+    },
+    plugins: [openaiPlugin],
+  });
+
+  await runtime.initialize();
+  return runtime;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    if (request.method === "GET") {
+      return new Response(JSON.stringify({ status: "healthy" }));
+    }
+
+    const runtime = await getRuntime(env);
+    const { message } = await request.json();
+
+    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt: message,
+    });
+
+    return new Response(JSON.stringify({ response: String(response) }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  },
+};
+```
+
+## Configuration
+
+`wrangler.toml`:
+
+```toml
+name = "eliza-worker"
+main = "src/worker.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+CHARACTER_NAME = "Eliza"
+
+[[kv_namespaces]]
+binding = "MEMORY"
+id = "your-kv-namespace-id"
+```
+
+## Testing Locally
+
+```bash
+wrangler dev
+curl -X POST http://localhost:8787 \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+
+## Secrets
+
+```bash
+wrangler secret put OPENAI_API_KEY
+# Enter your API key when prompted
+```
+
+## Rust Worker
+
+For maximum performance, use the Rust WASM worker:
+
+```rust
+// rust-worker/src/lib.rs
+use worker::*;
+use elizaos::{AgentRuntime, RuntimeOptions};
+
+#[event(fetch)]
+async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
+    let runtime = get_runtime(&env).await?;
+    let body: serde_json::Value = req.json().await?;
+    let message = body["message"].as_str().unwrap_or("");
+
+    let response = runtime.use_model("TEXT_LARGE", message).await?;
+
+    Response::from_json(&serde_json::json!({ "response": response }))
+}
+```
+
+## Benefits
+
+- **<10ms cold start** worldwide
+- **Unlimited free requests** (100K/day)
+- **Durable Objects** for state
+- **KV Storage** for persistence
+
+
+

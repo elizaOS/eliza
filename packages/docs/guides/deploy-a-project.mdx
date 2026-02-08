@@ -1,0 +1,410 @@
+---
+title: "Deploy a Project"
+description: "From localhost to production in 5 minutes"
+---
+
+**Your agent works locally. Now what?** Getting it live shouldn't require a DevOps degree.
+
+<Tip>
+  **Video Tutorial**: [**Deploying Your Agent to a
+  TEE**](https://www.youtube.com/watch?v=paoryBje404&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS&index=7)
+</Tip>
+
+## Eliza Cloud
+
+**Two commands. That's it.**
+
+```bash
+elizaos login
+elizaos deploy --project-name my-agent
+```
+
+No Dockerfile to write. No cloud console. No load balancer config. No CI/CD pipeline.
+
+You get a production URL in ~5 minutes, with automatic HTTPS, health monitoring, and zero-downtime updates built in.
+
+Beyond deployment: on-chain agent discovery (ERC-8004), crypto payments (X402), and a marketplace to publish and monetize your agents.
+
+<Card
+  title="Get Started with Eliza Cloud"
+  icon="rocket"
+  href="/guides/deploy-to-cloud"
+>
+  Full guide: auth, custom resources, logs, troubleshooting
+</Card>
+
+---
+
+## Other Options
+
+Need more control? Here's how Eliza Cloud compares:
+
+|                        | Eliza Cloud | Railway/Render | Self-Hosted |
+| ---------------------- | :---------: | :------------: | :---------: |
+| **Setup time**         |    5 min    |   15-30 min    |  1-2 hours  |
+| **Commands to deploy** |      2      |   10+ steps    |  20+ steps  |
+| **Docker knowledge**   | Not needed  |     Basic      |  Required   |
+| **Server management**  |    None     |      None      | All on you  |
+| **Scaling**            |  Automatic  |   Automatic    |   Manual    |
+| **elizaOS optimized**  |     ✅      |       ❌       |     ❌      |
+
+<Note>
+  **For Advanced Users:** If you're experienced with server administration and
+  networking, you can deploy elizaOS like any Node.js application using your
+  preferred infrastructure setup. The sections below are for developers looking
+  for guided deployment paths.
+</Note>
+
+---
+
+## Option 1: Managed Cloud
+
+The easiest deployment method, best for rapid prototyping. These platforms handle all of the complicated stuff automatically. This is a good option if you:
+
+- are a beginner,
+- don't know how to use Docker/VPS services (and don't want to learn)
+- aren't expecting a huge amount of traffic,
+- have a relatively simple agent, or
+- are price insensitive
+
+<Note>
+  **Cost Reality Check:** A simple agent might cost ~$20 dollars per month, but
+  as you scale up, the costs can quickly balloon. For this reason, it's smart to
+  set spending threshholds and closely monitor resource usage.
+</Note>
+
+### Pros & Cons
+
+| ✅ Pros                                                                           | ❌ Cons                                                                        |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Zero server management** - No Linux, Docker, or infrastructure knowledge needed | **Variable costs** - Pricing based on usage (CPU, RAM, bandwidth, requests)    |
+| **Deploy in minutes** - Push to GitHub, connect your repo, and you're live        | **Can get expensive** - Heavy traffic or processing can push bills really high |
+| **Automatic everything** - SSL certificates, scaling, updates, backups            | **Less control** - Limited customization of infrastructure                     |
+| **Great developer experience** - Built-in logs, metrics, rollbacks                | **Vendor lock-in** - Harder to migrate to other platforms                      |
+| **Free tiers** - Most platforms offer generous free plans to start                | **Resource limits** - May not handle very high-performance requirements        |
+
+Here are our top managed service recommendations:
+
+### Railway (Recommended)
+
+[Railway website](https://railway.com?referralCode=-rye7A) | [Railway docs](https://docs.railway.app)
+
+Railway is a solid, preferred option. They offer a free Trial plan with $5 of credits which is more than enough to test out. It also re-deploys everytime you push a change to Github, which is convenient. Here's the steps from project creation => deployment:
+
+<Steps>
+  <Step title="Create your project">
+    ```bash Terminal
+    elizaos create my-agent --type project
+    cd my-agent
+    ```
+  </Step>
+
+<Step title="Push to GitHub repo">
+  Create a GitHub repository and push your code. Choose one approach: **Option
+  A: Public Repository (Recommended)** - Create a PUBLIC GitHub repository -
+  Keep `.env` in your `.gitignore` (stays secure) - You'll add environment
+  variables in Railway dashboard (Step 5) **Option B: Private Repository** -
+  Create a PRIVATE GitHub repository - Remove `.env` from your `.gitignore` -
+  Commit your `.env` file (secure since repo is private) - ✅ **Skip Step 5** -
+  Railway will use your committed .env file
+  <Note>
+    Both approaches work well. Public repos are more common for open-source
+    projects, while private repos let you skip the environment variables step.
+  </Note>
+</Step>
+
+<Step title="Sign up for Railway">
+  1. Go to [railway.com](https://railway.com) 2. Click **"Sign in"** and sign up
+  with your GitHub account
+  <img src="/images/railway-auth.png" alt="Railway GitHub OAuth login screen" />
+</Step>
+
+<Step title="Deploy new project">
+  1. Click **"Deploy New Project"** 2. Select **"GitHub Repo"** 3. Select your
+  project's GitHub repository from the list
+  <img
+    src="/images/railway-new-proj.png"
+    alt="Railway new project selection screen"
+  />
+  <Warning>
+    If you used Option A (Public Repository) and Railway starts auto-deploying
+    immediately, **stop the deployment** - we need to add environment variables
+    first! If you used Option B (Private Repository), you can let it deploy.
+  </Warning>
+</Step>
+
+  <Step title="Add environment variables">
+    **Skip this step if you used Option B (Private Repository) - your .env file is already committed!**
+    
+    For Option A (Public Repository), add your environment variables in Railway:
+    
+    1. Click on your service → **Variables** tab
+
+    <img src="/images/railway-env.png" alt="Railway environment variables interface" />
+
+    2. Add the variables your project needs:
+
+    ```bash env
+    # If your project has a frontend/web UI
+    ELIZA_UI_ENABLE=true
+
+    # If using Postgres (recommended for production)
+    POSTGRES_URL=your_postgres_connection_string
+
+    # Everything else in your .env
+    OPENAI_API_KEY=your_openai_key
+    DISCORD_APPLICATION_ID=your_app_id
+    DISCORD_API_TOKEN=your_bot_token
+    ... etc
+    ```
+
+    <Note>
+    **What to add?** Check your `.env` file to see which variables your specific project needs. The exact variables depend on your project's configuration and integrations.
+    </Note>
+
+  </Step>
+
+<Step title="Deploy your app">
+  1. Once environment variables are set, click **"Deploy"** to start deployment
+  2. Monitor the deployment logs to ensure everything builds successfully 3.
+  Wait for deployment to complete (you'll see "Build completed" in logs)
+</Step>
+
+  <Step title="Get your production URL">
+    1. Go to **Settings** → **Networking**
+    2. Click **"Generate Domain"** (or add custom domain if you own one)
+    3. Railway may ask you to specify the port - set it to **3000** (default)
+    4. Your agent is now live at your generated URL!
+    
+    <img src="/images/railway-generate-domain.png" alt="Railway domain generation settings" />
+  </Step>
+</Steps>
+
+### Render
+
+[Render website](https://render.com) | [Render docs](https://docs.render.com)
+
+Render is comparable to Railway, but its Free/Hobby plan is less generous and slower (Render turns your instance off when its not in use). Still it's a good option.
+
+<Steps>
+  <Step title="Create your project">
+    ```bash Terminal
+    elizaos create my-agent --type project
+    cd my-agent
+    ```
+  </Step>
+
+<Step title="Push to GitHub repo">
+  Create a GitHub repository and push your code. Choose one approach: **Option
+  A: Public Repository (Recommended)** - Create a PUBLIC GitHub repository -
+  Keep `.env` in your `.gitignore` (stays secure) - You'll add environment
+  variables in Render dashboard (Step 5) **Option B: Private Repository** -
+  Create a PRIVATE GitHub repository - Remove `.env` from your `.gitignore` -
+  Commit your `.env` file (secure since repo is private) - ⚠️ **Still need Step
+  5** - Render requires env vars on their side even with private repos
+  <Note>
+    Unlike Railway, Render always requires you to add environment variables on
+    their platform, even if you have a private repo with committed .env file.
+  </Note>
+</Step>
+
+<Step title="Sign up for Render">
+  1. Go to [render.com](https://render.com) 2. Create a Render account with your
+  GitHub profile
+</Step>
+
+<Step title="Select Web Service and connect GitHub">
+  1. Click **"Web Services"** when asked to select a service type
+  <img src="/images/render-service.png" alt="Render service type selection" />
+  2. Select **Git Provider** → **GitHub** to give Render access to your repos
+  <img src="/images/render-gh-auth.png" alt="Render GitHub authorization" />
+  3. Select the repository you want to deploy
+</Step>
+
+<Step title="Configure build settings">
+  Render will ask you about Build and Start commands: - **Build Command:** `bun
+  install && bun run build` - **Start Command:** `bun run start` - **Instance
+  Type:** Free (Hobby) - works but slower, or paid for faster performance
+  <Note>
+    Render automatically detects the port, so no port configuration needed!
+  </Note>
+</Step>
+
+<Step title="Add environment variables">
+  Put all your environment variables in here, even if you commited your .env
+  file, you still need to add it on Render-side:
+  <img
+    src="/images/render-env.png"
+    alt="Render environment variables configuration"
+  />
+  Add your variables: ```bash env # If your project has a frontend/web UI
+  ELIZA_UI_ENABLE=true # If using Postgres (can add PostgreSQL service in
+  Render) POSTGRES_URL=your_postgres_connection_string # Everything else in your
+  .env OPENAI_API_KEY=your_openai_key DISCORD_APPLICATION_ID=your_app_id
+  DISCORD_API_TOKEN=your_bot_token ... etc ```
+  <Note>
+    **What to add?** Check your `.env` file to see which variables your specific
+    project needs. The exact variables depend on your project's configuration
+    and integrations.
+  </Note>
+</Step>
+
+  <Step title="Deploy and access your app">
+    1. Click **"Create Web Service"** to start deployment
+    2. Monitor the build logs as Render builds and deploys
+    3. Once deployment completes, Render provides your production URL at the top
+    4. Visit your URL - your agent is now live!
+    
+    <img src="/images/render-prod-url.png" alt="Render production URL ready" />
+    
+    <Tip>
+    **Free tier note:** Free (Hobby) services spin down after 15 minutes of inactivity and are slower. Upgrade to paid plans for always-on hosting and better performance.
+    </Tip>
+  </Step>
+</Steps>
+
+---
+
+## Option 2: Self-Hosted
+
+Deploy on your own Virtual Private Server (VPS) for more control and predictable costs. Different platforms handle the build process differently. Some build from GitHub (like Coolify), others use Docker (like Phala).
+
+### Pros & Cons
+
+| ✅ Pros                                                         | ❌ Cons                                                                           |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **Lower costs** - Fixed monthly VPS cost regardless of traffic  | **Requires server knowledge** - Need basic Linux/Docker skills                    |
+| **Complete control** - Full access to your infrastructure       | **More setup time** - Initial configuration takes longer                          |
+| **Better security** - Your data never leaves your servers       | **You handle maintenance** - Updates, backups, monitoring are your responsibility |
+| **Predictable pricing** - No surprise bills from traffic spikes | **Downtime risk** - If your server goes down, you fix it                          |
+| **Performance control** - Choose exact CPU/RAM specifications   | **Learning curve** - Need to understand Docker, networking basics                 |
+
+### Phala Network (Recommended)
+
+[Phala website](https://phala.network) | [Phala docs](https://docs.phala.network) | [Video Tutorial](https://www.youtube.com/watch?v=paoryBje404&t=8s)
+
+Phala offers secure deployment with excellent elizaOS integration and a good CLI. Perfect for production agents requiring a good mix of cost-effective and good security.
+
+<Steps>
+  <Step title="Create your project">
+    ```bash Terminal
+    elizaos create my-agent --type project
+    cd my-agent
+    ```
+    
+    <Note>
+    Both regular projects and TEE projects include Docker files. Use regular projects unless you specifically need TEE security features.
+    </Note>
+  </Step>
+
+<Step title="Install prerequisites">
+  ```bash Terminal # Install Phala CLI npm install -g @phala/cli # Ensure Docker
+  is installed and running # Download from docker.com if needed ```
+</Step>
+
+<Step title="Setup accounts and authentication">
+  1. **Create Phala account** at
+  [dashboard.phala.network](https://dashboard.phala.network) 2. Add a credit
+  card (small amounts for testing) 3. Create API token in dashboard → API Tokens
+  4. **Authenticate:** ```bash Terminal export
+  PHALA_CLOUD_API_KEY=your_api_key_here # Also login to Docker Hub docker login
+  # Enter Docker Hub credentials ```
+</Step>
+
+<Step title="Configure environment variables">
+  Set up your production `.env` file with the variables your project needs:
+  ```bash .env # If using Postgres (recommended for production)
+  POSTGRES_URL=postgresql://user:password@host:5432/eliza # If your project has
+  a frontend/web UI ELIZA_UI_ENABLE=true # Everything else in your .env
+  OPENAI_API_KEY=your_openai_key DISCORD_APPLICATION_ID=your_app_id
+  DISCORD_API_TOKEN=your_bot_token ... etc ```
+  <Note>
+    **What to add?** Check your `.env` file to see which variables your specific
+    project needs. We recommend neon.tech for easy PostgreSQL setup.
+  </Note>
+</Step>
+
+<Step title="Build and push Docker image">
+  ```bash Terminal # Build your Docker image phala docker build --image my-agent
+  --tag v1.0.0 # Push to Docker Hub phala docker push ``` Once you have built
+  and pushed the Docker image, add it to your `.env`: ```bash .env
+  DOCKER_IMAGE=yourusername/my-agent:v1.0.0 # [!code ++] ```
+</Step>
+
+<Step title="Deploy to Phala Cloud">
+  ```bash Terminal phala cvms create --name my-agent --compose
+  ./docker-compose.yaml --env-file ./.env ``` When prompted for resources: -
+  **vCPUs:** 2 (sufficient for most agents) - **Memory:** 4096 MB (4GB
+  recommended) - **Disk:** 40 GB - **TEEPod:** Select any online TEE pod
+</Step>
+
+  <Step title="Access your live agent">
+    After running the `cvms create` command, you'll receive an **App URL** - this is your cloud dashboard where you can monitor everything.
+    
+    **To access your agent:**
+    1. **Visit the App URL** provided after deployment (your cloud dashboard)
+    2. In the dashboard, click **Network** → **"Endpoint #1"**
+    3. This gives you your agent's public URL
+    4. Test both the web interface and any connected platforms (Discord, X, etc.)
+  </Step>
+</Steps>
+
+### Other Self-Hosted Options
+
+**Different approaches for self-hosting:**
+
+**Platform-Assisted (Like Managed Cloud, but bring-your-own VPS):**
+
+- **[Coolify](https://coolify.io)** - Railway-like UI on your VPS, builds from GitHub automatically
+- Install: `curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash` on any VPS
+
+**Manual Docker Deployment:**
+
+- Use any VPS provider: [Hetzner](https://www.hetzner.com/cloud), [DigitalOcean](https://www.digitalocean.com), [Netcup](https://www.netcup.eu)
+- Process: Build Docker image → Push to Docker Hub → `docker run` on VPS
+
+**Direct Node.js Deployment (No Docker):**
+
+- Clone repo directly on VPS, install Node.js/Bun, run with PM2/systemd
+- More manual but maximum control
+
+<Warning>
+  **Security Warning:** Self-hosting requires proper server security setup. If
+  you're new to server administration, you can accidentally expose sensitive
+  data. Consider using managed cloud services (Option 1) which handle security
+  for you, or follow platform-specific guides carefully.
+</Warning>
+
+<Note>
+  **Tons of tutorials available:** There are many excellent online tutorials for
+  deploying with Coolify, Hetzner, DigitalOcean, and other providers. Search for
+  "[Provider Name] Docker deployment tutorial" or "[Provider Name] Node.js
+  deployment" for platform-specific guides.
+</Note>
+
+---
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card
+    title="Create a Plugin"
+    icon="puzzle-piece"
+    href="/guides/create-a-plugin"
+  >
+    Extend your agent with custom functionality
+  </Card>
+  <Card
+    title="Add Multiple Agents"
+    icon="users"
+    href="/guides/add-multiple-agents"
+  >
+    Deploy multiple agents working together
+  </Card>
+  <Card title="Test a Project" icon="flask" href="/guides/test-a-project">
+    Learn comprehensive testing strategies for your agents
+  </Card>
+  <Card title="Publish a Plugin" icon="upload" href="/guides/publish-a-plugin">
+    Share your custom plugins with the elizaOS community
+  </Card>
+</CardGroup>

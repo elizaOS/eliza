@@ -1,6 +1,8 @@
 node_modules
-bun.lock
 /out
+
+.next/
+**/.next/**
 
 .env
 .env.production
@@ -12,6 +14,13 @@ bun.lock
 .zed
 .DS_Store
 
+# Xcode (user data)
+xcuserdata/
+*.xcuserstate
+
+# Tauri-generated Xcode project
+examples/browser-extension/safari/
+
 dist/
 
 *.gguf
@@ -21,12 +30,6 @@ dist/
 
 logs/
 tokencache/
-
-# Character configurations
-characters/**/secrets.json
-characters/**/*.env
-characters/**/*.key
-characters/**/private/
 
 cache/*
 models/*
@@ -176,16 +179,80 @@ tasks/
 **/.taskmaster/
 **/.windsurfrules/
 .roomodes
-bun.lock
 /.kiro
 # TypeScript incremental compilation cache
 *.tsbuildinfo
 tsconfig.tsbuildinfo
 
+# Rust build artifacts
+**/target/
+**/*.rs.bk
+
+# Python build artifacts
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/.coverage.*
+**/*.egg-info/
+**/.venv/
+**/venv/
+**/env/
+**/ENV/
+
 test-data/
 standalone.ts
-/.claude
 
 # Continuous Claude cache (local only)
 .claude/cache/
-/thoughts
+
+# Proto-generated files (regenerated from schemas/)
+**/generated/**
+# But keep generated files needed for packages to work
+!packages/python/elizaos/types/generated/
+!packages/python/elizaos/types/generated/**
+!packages/rust/src/generated/
+!packages/rust/src/generated/**
+
+# Vitest config files (if not needed in repo)
+vitest.config.ts
+tsconfig.test.json
+
+# Test output files
+test-output.txt
+
+# Plugin-specific ignores
+# Test environment files (anywhere in repo)
+.env.test
+**/.env.test
+
+# Cargo.lock for library crates (plugins are libraries)
+plugins/**/rust/Cargo.lock
+
+# Python poetry lock files (if not needed)
+**/poetry.lock
+
+.next/
+:memory:
+:memory:*
+**:memory:**
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Cache directories (local)
+skills/.cache/
+**/skills/.cache/
+.cache/
+
+# Local vendored experiments (do not commit)
+/plugins/plugin-local-ai/rust/vendor/llama_cpp_rs/
+/vendor/llama_cpp_rs/

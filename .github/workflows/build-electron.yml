@@ -1,0 +1,136 @@
+name: Build Electron
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      upload_to_release:
+        description: "Upload binaries to latest GitHub release"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: build-electron-${{ github.ref }}-${{ matrix.os }}
+  cancel-in-progress: true
+
+env:
+  APP_DIR: packages/milaidy/apps/app
+  NODE_VERSION: "23"
+
+jobs:
+  build-electron:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: mac
+            artifact_name: milaidy-electron-mac
+          - os: ubuntu-latest
+            platform: linux
+            artifact_name: milaidy-electron-linux
+          - os: windows-latest
+            platform: win
+            artifact_name: milaidy-electron-win
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build web assets
+        working-directory: ${{ env.APP_DIR }}
+        run: bun run build
+
+      - name: Build Capacitor plugins
+        working-directory: ${{ env.APP_DIR }}
+        run: bun run plugin:build
+
+      - name: Sync Capacitor Electron
+        working-directory: ${{ env.APP_DIR }}
+        run: bunx capacitor sync @capacitor-community/electron
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION="0.0.0-dev"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set package version
+        working-directory: ${{ env.APP_DIR }}/electron
+        shell: bash
+        run: |
+          npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Build Electron app (pack)
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: ${{ env.APP_DIR }}/electron
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun run electron:pack
+
+      - name: Build Electron app (make)
+        if: github.event_name == 'release'
+        working-directory: ${{ env.APP_DIR }}/electron
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS code signing
+          CSC_LINK: ${{ secrets.MAC_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          # Windows code signing
+          WIN_CSC_LINK: ${{ secrets.WIN_CERTIFICATE_BASE64 }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERTIFICATE_PASSWORD }}
+        run: bun run electron:make
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            ${{ env.APP_DIR }}/electron/dist/*.dmg
+            ${{ env.APP_DIR }}/electron/dist/*.zip
+            ${{ env.APP_DIR }}/electron/dist/*.exe
+            ${{ env.APP_DIR }}/electron/dist/*.msi
+            ${{ env.APP_DIR }}/electron/dist/*.AppImage
+            ${{ env.APP_DIR }}/electron/dist/*.deb
+            ${{ env.APP_DIR }}/electron/dist/*.snap
+          if-no-files-found: warn
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+          files: |
+            ${{ env.APP_DIR }}/electron/dist/*.dmg
+            ${{ env.APP_DIR }}/electron/dist/*.zip
+            ${{ env.APP_DIR }}/electron/dist/*.exe
+            ${{ env.APP_DIR }}/electron/dist/*.msi
+            ${{ env.APP_DIR }}/electron/dist/*.AppImage
+            ${{ env.APP_DIR }}/electron/dist/*.deb
+            ${{ env.APP_DIR }}/electron/dist/*.snap
+          fail_on_unmatched_files: false

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["maturin>=1.8,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "computeruse-py"
+requires-python = ">=3.10"
+authors = [
+  { name="elizaOS Contributors" },
+]
+description = "Python bindings for the ComputerUse Rust library (via PyO3)"
+
+keywords = ["ui", "automation", "testing", "desktop", "windows", "macos", "linux"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dynamic = ["version"]
+
+[tool.maturin]
+module-name = "computeruse"
+# "extension-module" tells pyo3 we want to build an extension module (skips linking against libpython.so)
+features = ["pyo3/extension-module"]
+
+[project.urls]
+"Homepage" = "https://github.com/mediar-ai/computeruse" # Replace with actual URL
+"Bug Tracker" = "https://github.com/mediar-ai/computeruse/issues" # Replace with actual URL
+"Documentation" = "https://github.com/mediar-ai/computeruse#readme"
+"Repository" = "https://github.com/mediar-ai/computeruse"
+

@@ -18,6 +18,7 @@ jobs:
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: write
@@ -26,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
@@ -43,4 +44,4 @@ jobs:
           claude_args: |
             --model claude-opus-4-5-20251101
             --allowedTools "Bash(*),Bash(gh *)"
-            --system-prompt "Be concise. Focus on actionable solutions. Use bun only (no npm/pnpm/yarn). Use bun test only (no jest/vitest). Check logs: gh run view <run-id> --log. Follow CLAUDE.md standards. IMPORTANT: When reviewing PRs, always check and consider all previous comments in the PR thread. Don't repeat suggestions that have already been made or addressed."
+            --system-prompt "Be concise. Focus on actionable solutions. Use bun only (no npm/pnpm/yarn). Use vitest for testing (no jest). Check logs: gh run view <run-id> --log. Follow CLAUDE.md standards. IMPORTANT: When reviewing PRs, always check and consider all previous comments in the PR thread. Don't repeat suggestions that have already been made or addressed."

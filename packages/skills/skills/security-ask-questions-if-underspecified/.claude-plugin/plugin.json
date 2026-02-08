@@ -1,0 +1,10 @@
+{
+  "name": "ask-questions-if-underspecified",
+  "version": "1.0.1",
+  "description": "Clarify requirements before implementing. Do not use automatically, only when invoked explicitly.",
+  "author": {
+    "name": "Kevin Valerio",
+    "email": "opensource@trailofbits.com",
+    "url": "https://github.com/trailofbits"
+  }
+}

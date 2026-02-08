@@ -1,7 +1,9 @@
 {
-  "version": "1.7.3-alpha.4",
+  "version": "2.0.0-alpha.3",
   "packages": [
-    "packages/*"
+    "packages/*",
+    "packages/computeruse/packages/computeruse-ts",
+    "plugins/plugin-*/typescript"
   ],
   "npmClient": "bun",
   "command": {
@@ -12,6 +14,7 @@
         "main",
         "develop",
         "alpha",
+        "v2.0.0",
         "release/*"
       ],
       "ignoreChanges": [
@@ -26,6 +29,7 @@
         "main",
         "develop",
         "alpha",
+        "v2.0.0",
         "release/*"
       ],
       "message": "chore(release): publish %s",

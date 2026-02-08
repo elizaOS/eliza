@@ -1,0 +1,580 @@
+---
+title: "Game Examples"
+description: "Build AI-powered games with elizaOS in TypeScript, Python, and Rust"
+---
+
+Create AI-powered games where agents make strategic decisions. The adventure game example demonstrates game state management, AI decision-making, and interactive gameplay.
+
+## Overview
+
+The adventure game is a text-based dungeon crawler where an AI agent explores rooms, fights enemies, and collects treasures. It showcases:
+
+- **AI Decision Making**: The agent analyzes the situation and chooses actions
+- **State Management**: Track inventory, health, and room positions
+- **Game Loop Integration**: Real-time interaction with the elizaOS runtime
+
+| Language   | File                                    | Features                 |
+| ---------- | --------------------------------------- | ------------------------ |
+| TypeScript | `examples/typescript/adventure-game.ts` | Full game with streaming |
+| Python     | `examples/game/python/game.py`          | Async game loop          |
+| Rust       | `examples/game/rust/game/src/main.rs`   | Native performance       |
+
+---
+
+## Quick Start
+
+<Tabs>
+  <Tab title="TypeScript">
+```bash
+export OPENAI_API_KEY="your-key"
+LOG_LEVEL=fatal bun run examples/typescript/adventure-game.ts
+```
+  </Tab>
+  <Tab title="Python">
+```bash
+# Set up environment
+python -m venv .venv && source .venv/bin/activate
+pip install -e packages/typescript/python -e plugins/plugin-openai/python
+
+export OPENAI_API_KEY="your-key"
+LOG_LEVEL=fatal python examples/game/python/game.py
+```
+  </Tab>
+  <Tab title="Rust">
+```bash
+export OPENAI_API_KEY="your-key"
+cd examples/game/rust/game
+cargo run --release
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Game Features
+
+### Dungeon Layout
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        ENTRANCE                              │
+│                            │                                 │
+│              ┌─────────────┼─────────────┐                  │
+│              │             │             │                  │
+│           ARMORY ──── GREAT HALL ──── LIBRARY              │
+│              │             │             │                  │
+│              └─────────────┼─────────────┘                  │
+│                            │                                 │
+│                     TREASURE ROOM                            │
+│                            │                                 │
+│                      DRAGON LAIR                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Items
+
+| Item          | Location      | Effect                  |
+| ------------- | ------------- | ----------------------- |
+| Torch         | Entrance      | Required for dark rooms |
+| Sword         | Armory        | +20 attack damage       |
+| Key           | Library       | Opens treasure room     |
+| Health Potion | Various       | Restore 30 HP           |
+| Treasure      | Treasure Room | Win condition           |
+
+### Enemies
+
+| Enemy    | Location    | Health | Damage |
+| -------- | ----------- | ------ | ------ |
+| Goblin   | Great Hall  | 30     | 10     |
+| Skeleton | Library     | 40     | 15     |
+| Dragon   | Dragon Lair | 100    | 25     |
+
+---
+
+## Game Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Game Loop                               │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│   ┌──────────┐    ┌──────────┐    ┌──────────┐             │
+│   │ Display  │───▶│  AI      │───▶│ Execute  │             │
+│   │ State    │    │ Decision │    │ Action   │             │
+│   └──────────┘    └──────────┘    └──────────┘             │
+│        ▲                               │                    │
+│        └───────────────────────────────┘                    │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│                   elizaOS Runtime                            │
+│   runtime.useModel(ModelType.TEXT_SMALL, { prompt })        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Core Implementation
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+
+// Game State
+interface GameState {
+currentRoom: string;
+inventory: string[];
+health: number;
+maxHealth: number;
+enemies: Record<string, { health: number; damage: number }>;
+visitedRooms: Set<string>;
+}
+
+// Room definitions
+const rooms: Record<string, Room> = {
+entrance: {
+name: "Entrance",
+description: "A dark cave entrance. Torches flicker on the walls.",
+items: ["torch"],
+exits: { north: "great_hall" },
+},
+great_hall: {
+name: "Great Hall",
+description: "A vast hall with crumbling pillars.",
+enemies: ["goblin"],
+exits: { south: "entrance", east: "library", west: "armory", north: "treasure_room" },
+},
+// ... more rooms
+};
+
+// Initialize runtime
+const runtime = new AgentRuntime({
+character: {
+name: "Adventurer",
+bio: "A brave adventurer exploring a dangerous dungeon.",
+system: `You are playing a text adventure game. Analyze the situation and choose the best action.
+Available actions: move [direction], take [item], attack, use [item], look
+Respond with ONLY the action command, nothing else.`,
+},
+plugins: [sqlPlugin, openaiPlugin],
+});
+
+await runtime.initialize();
+
+// Game loop
+async function gameLoop(state: GameState): Promise<void> {
+while (state.health > 0) {
+// Display current state
+const room = rooms[state.currentRoom];
+const prompt = buildPrompt(state, room);
+
+    // Get AI decision
+    const decision = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+      maxTokens: 50,
+    });
+
+    // Parse and execute action
+    const action = parseAction(String(decision));
+    const result = executeAction(state, action);
+
+    console.log(result.message);
+
+    if (result.gameOver) {
+      console.log(result.won ? "🎉 Victory!" : "💀 Game Over");
+      break;
+    }
+
+}
+}
+
+function buildPrompt(state: GameState, room: Room): string {
+return `
+Current Location: ${room.name}
+Description: ${room.description}
+Exits: ${Object.keys(room.exits).join(", ")}
+Items here: ${room.items?.join(", ") || "none"}
+Enemies: ${room.enemies?.join(", ") || "none"}
+Your inventory: ${state.inventory.join(", ") || "empty"}
+Your health: ${state.health}/${state.maxHealth}
+
+What do you do?`;
+}
+
+// Start the game
+const initialState: GameState = {
+currentRoom: "entrance",
+inventory: [],
+health: 100,
+maxHealth: 100,
+enemies: {
+goblin: { health: 30, damage: 10 },
+skeleton: { health: 40, damage: 15 },
+dragon: { health: 100, damage: 25 },
+},
+visitedRooms: new Set(["entrance"]),
+};
+
+await gameLoop(initialState);
+await runtime.stop();
+
+````
+  </Tab>
+  <Tab title="Python">
+```python
+import asyncio
+from dataclasses import dataclass, field
+from elizaos import AgentRuntime, Character
+from elizaos_plugin_openai import get_openai_plugin
+
+@dataclass
+class GameState:
+    current_room: str = "entrance"
+    inventory: list = field(default_factory=list)
+    health: int = 100
+    max_health: int = 100
+    enemies: dict = field(default_factory=lambda: {
+        "goblin": {"health": 30, "damage": 10},
+        "skeleton": {"health": 40, "damage": 15},
+        "dragon": {"health": 100, "damage": 25},
+    })
+    visited_rooms: set = field(default_factory=lambda: {"entrance"})
+
+ROOMS = {
+    "entrance": {
+        "name": "Entrance",
+        "description": "A dark cave entrance. Torches flicker on the walls.",
+        "items": ["torch"],
+        "exits": {"north": "great_hall"},
+    },
+    "great_hall": {
+        "name": "Great Hall",
+        "description": "A vast hall with crumbling pillars.",
+        "enemies": ["goblin"],
+        "exits": {"south": "entrance", "east": "library", "west": "armory"},
+    },
+    # ... more rooms
+}
+
+async def main():
+    character = Character(
+        name="Adventurer",
+        bio="A brave adventurer exploring a dangerous dungeon.",
+        system="""You are playing a text adventure game.
+Analyze the situation and choose the best action.
+Available actions: move [direction], take [item], attack, use [item], look
+Respond with ONLY the action command, nothing else.""",
+    )
+
+    runtime = AgentRuntime(
+        character=character,
+        plugins=[get_openai_plugin()],
+    )
+    await runtime.initialize()
+
+    state = GameState()
+
+    while state.health > 0:
+        room = ROOMS[state.current_room]
+        prompt = build_prompt(state, room)
+
+        # Get AI decision via full message pipeline
+        from elizaos import ChannelType, Content, Memory, string_to_uuid
+
+        msg = Memory(
+            entity_id=string_to_uuid("adventurer-user"),
+            room_id=string_to_uuid("adventure-game-room"),
+            content=Content(
+                text=prompt,
+                source="game",
+                channel_type=ChannelType.DM.value,
+            ),
+        )
+        result = await runtime.message_service.handle_message(runtime, msg)
+        decision = (
+            result.response_content.text
+            if result.response_content and result.response_content.text
+            else ""
+        )
+
+        # Parse and execute
+        action = parse_action(str(decision))
+        result = execute_action(state, action)
+
+        print(result["message"])
+
+        if result.get("game_over"):
+            print("🎉 Victory!" if result["won"] else "💀 Game Over")
+            break
+
+    await runtime.stop()
+
+def build_prompt(state: GameState, room: dict) -> str:
+    return f"""
+Current Location: {room['name']}
+Description: {room['description']}
+Exits: {', '.join(room['exits'].keys())}
+Items here: {', '.join(room.get('items', [])) or 'none'}
+Enemies: {', '.join(room.get('enemies', [])) or 'none'}
+Your inventory: {', '.join(state.inventory) or 'empty'}
+Your health: {state.health}/{state.max_health}
+
+What do you do?"""
+
+if __name__ == "__main__":
+    asyncio.run(main())
+````
+
+  </Tab>
+  <Tab title="Rust">
+```rust
+use elizaos::{AgentRuntime, RuntimeOptions, parse_character};
+use elizaos_plugin_openai::create_openai_plugin;
+use std::collections::{HashMap, HashSet};
+
+#[derive(Clone)]
+struct GameState {
+current_room: String,
+inventory: Vec<String>,
+health: i32,
+max_health: i32,
+enemies: HashMap<String, Enemy>,
+visited_rooms: HashSet<String>,
+}
+
+#[derive(Clone)]
+struct Enemy {
+health: i32,
+damage: i32,
+}
+
+struct Room {
+name: String,
+description: String,
+items: Vec<String>,
+enemies: Vec<String>,
+exits: HashMap<String, String>,
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+let \_ = dotenvy::dotenv();
+
+    let character = parse_character(r#"{
+        "name": "Adventurer",
+        "bio": "A brave adventurer exploring a dangerous dungeon.",
+        "system": "You are playing a text adventure game. Respond with ONLY the action command."
+    }"#)?;
+
+    let runtime = AgentRuntime::new(RuntimeOptions {
+        character: Some(character),
+        plugins: vec![create_openai_plugin()?],
+        ..Default::default()
+    }).await?;
+
+    runtime.initialize().await?;
+
+    let rooms = build_rooms();
+    let mut state = GameState {
+        current_room: "entrance".to_string(),
+        inventory: vec![],
+        health: 100,
+        max_health: 100,
+        enemies: build_enemies(),
+        visited_rooms: HashSet::from(["entrance".to_string()]),
+    };
+
+    while state.health > 0 {
+        let room = rooms.get(&state.current_room).unwrap();
+        let prompt = build_prompt(&state, room);
+
+        // Get AI decision via full message pipeline
+        let content = elizaos::types::Content {
+            text: Some(prompt.clone()),
+            source: Some("game".to_string()),
+            channel_type: Some(elizaos::types::ChannelType::Dm),
+            ..Default::default()
+        };
+
+        let mut message =
+            elizaos::types::Memory::new(elizaos::types::UUID::new_v4(), elizaos::types::UUID::new_v4(), content);
+
+        let result = runtime
+            .message_service()
+            .handle_message(&runtime, &mut message, None, None)
+            .await?;
+
+        let decision = result
+            .response_content
+            .and_then(|c| c.text)
+            .unwrap_or_default();
+
+        // Parse and execute
+        let action = parse_action(&decision);
+        let result = execute_action(&mut state, &action, &rooms);
+
+        println!("{}", result.message);
+
+        if result.game_over {
+            println!("{}", if result.won { "🎉 Victory!" } else { "💀 Game Over" });
+            break;
+        }
+    }
+
+    runtime.stop().await?;
+    Ok(())
+
+}
+
+fn build_prompt(state: &GameState, room: &Room) -> String {
+format!(r#"
+Current Location: {}
+Description: {}
+Exits: {}
+Items here: {}
+Enemies: {}
+Your inventory: {}
+Your health: {}/{}
+
+What do you do?"#,
+room.name,
+room.description,
+room.exits.keys().cloned().collect::<Vec<\_>>().join(", "),
+if room.items.is_empty() { "none".to_string() } else { room.items.join(", ") },
+if room.enemies.is_empty() { "none".to_string() } else { room.enemies.join(", ") },
+if state.inventory.is_empty() { "empty".to_string() } else { state.inventory.join(", ") },
+state.health,
+state.max_health,
+)
+}
+
+````
+  </Tab>
+</Tabs>
+
+---
+
+## Game Modes
+
+### AI Mode (Default)
+
+The AI agent plays the game autonomously, making strategic decisions based on the current state.
+
+```bash
+LOG_LEVEL=fatal bun run examples/typescript/adventure-game.ts
+````
+
+### Interactive Mode
+
+Add a flag to play the game yourself:
+
+```typescript
+const isInteractive = process.argv.includes("--interactive");
+
+if (isInteractive) {
+  // Get player input
+  const action = await readline.question("Your action: ");
+} else {
+  // Get AI decision
+  const action = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+}
+```
+
+---
+
+## AI Decision Making
+
+The AI uses the runtime's model handler to choose actions:
+
+```typescript
+const decision = await runtime.useModel(ModelType.TEXT_SMALL, {
+  prompt: `
+You are exploring a dungeon. Current situation:
+- Location: ${room.name}
+- Enemies present: ${room.enemies?.length ? "YES" : "NO"}
+- Health: ${state.health}%
+- Has sword: ${state.inventory.includes("sword")}
+
+Choose ONE action: move north, move south, attack, take item, use potion
+
+Your choice:`,
+  maxTokens: 20,
+  temperature: 0.3, // Lower temperature for more consistent decisions
+});
+```
+
+---
+
+## Extending the Game
+
+### Add New Rooms
+
+```typescript
+const rooms = {
+  // ... existing rooms
+  secret_passage: {
+    name: "Secret Passage",
+    description: "A hidden tunnel behind a bookshelf.",
+    items: ["ancient_map"],
+    exits: { south: "library", north: "hidden_chamber" },
+  },
+};
+```
+
+### Add New Items
+
+```typescript
+const items = {
+  ancient_map: {
+    name: "Ancient Map",
+    description: "Reveals hidden rooms",
+    use: (state) => {
+      state.visitedRooms.add("secret_passage");
+      return "The map reveals a secret passage in the library!";
+    },
+  },
+};
+```
+
+### Add Combat System
+
+```typescript
+function combat(state: GameState, enemy: string): CombatResult {
+  const hasSword = state.inventory.includes("sword");
+  const damage = hasSword ? 25 : 10;
+
+  state.enemies[enemy].health -= damage;
+
+  if (state.enemies[enemy].health <= 0) {
+    return { victory: true, message: `You defeated the ${enemy}!` };
+  }
+
+  state.health -= state.enemies[enemy].damage;
+  return {
+    victory: false,
+    message: `You hit the ${enemy} for ${damage} damage. It strikes back for ${state.enemies[enemy].damage}!`,
+  };
+}
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Examples Overview" icon="grid-2" href="/examples/overview">
+    See all available examples
+  </Card>
+  <Card
+    title="Create a Plugin"
+    icon="puzzle-piece"
+    href="/guides/create-a-plugin"
+  >
+    Build custom game plugins
+  </Card>
+</CardGroup>
+
+
+

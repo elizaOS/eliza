@@ -1,0 +1,10 @@
+{
+  "name": "@elizaos/docs",
+  "version": "2.0.0-alpha.3",
+  "type": "module",
+  "private": true,
+  "description": "ElizaOS documentation",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

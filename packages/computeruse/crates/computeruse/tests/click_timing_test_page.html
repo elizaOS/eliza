@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Click Timing Regression Repro</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, sans-serif;
+        margin: 0;
+        padding: 40px;
+      }
+      #container {
+        width: 600px;
+        border: 1px solid #ccc;
+        padding: 20px;
+      }
+      #hover-panel {
+        width: 560px;
+        height: 40px;
+        background: #f7f7f7;
+        border: 1px solid #ddd;
+        margin-bottom: 12px;
+        transition: height 60ms ease, margin-bottom 60ms ease;
+      }
+      /* On hover, expand height and push content down quickly to cause a layout shift */
+      #hover-panel:hover {
+        height: 120px;
+        margin-bottom: 24px;
+      }
+      #click-area {
+        width: 200px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0078d4;
+        color: white;
+        border-radius: 4px;
+        user-select: text; /* if the click is slightly early, text selection can happen */
+        position: relative;
+        transition: top 15ms linear, margin-top 15ms linear;
+      }
+      /* Self-hover shift: when the pointer arrives, the element nudges down briefly */
+      #click-area:hover {
+        top: 8px;
+        margin-top: 8px;
+      }
+      #status { margin-top: 16px; }
+    </style>
+  </head>
+  <body>
+    <div id="container" role="document" aria-label="Click Timing Regression Repro">
+      <div id="hover-panel" aria-label="hover panel"></div>
+      <!-- Role=button, accessible name used by our locator test -->
+      <div id="click-area" role="button" aria-label="Click Area">Click Area</div>
+      <div id="status">not clicked</div>
+    </div>
+
+    <script>
+      const clickArea = document.getElementById('click-area');
+      const status = document.getElementById('status');
+      let moved = false;
+
+      // Immediately move the target when the pointer arrives to simulate
+      // a hover/layout shift that invalidates the precomputed clickable point.
+      clickArea.addEventListener('mouseenter', () => {
+        if (!moved) {
+          clickArea.style.top = '140px';
+          clickArea.style.marginTop = '140px';
+          moved = true;
+        }
+      });
+
+      clickArea.addEventListener('click', () => {
+        status.textContent = 'clicked';
+      });
+    </script>
+  </body>
+  </html>
+
+

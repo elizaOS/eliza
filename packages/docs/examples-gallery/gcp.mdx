@@ -1,0 +1,98 @@
+---
+title: "GCP Examples"
+description: "Deploy elizaOS to Google Cloud Functions and Cloud Run"
+---
+
+Deploy AI agents to Google Cloud Platform.
+
+## Quick Start
+
+```bash
+cd examples/gcp
+
+# Deploy Cloud Function
+gcloud functions deploy eliza-chat \
+  --runtime nodejs20 \
+  --trigger-http \
+  --allow-unauthenticated \
+  --set-env-vars OPENAI_API_KEY=$OPENAI_API_KEY
+```
+
+## Available Implementations
+
+| Language   | Directory                  | Runtime     |
+| ---------- | -------------------------- | ----------- |
+| TypeScript | `examples/gcp/typescript/` | Node.js 20  |
+| Python     | `examples/gcp/python/`     | Python 3.11 |
+| Rust       | `examples/gcp/rust/`       | Cloud Run   |
+
+## TypeScript Handler
+
+```typescript
+import { HttpFunction } from "@google-cloud/functions-framework";
+import { AgentRuntime } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+let runtime: AgentRuntime | null = null;
+
+export const elizaChat: HttpFunction = async (req, res) => {
+  if (!runtime) {
+    runtime = new AgentRuntime({
+      character: { name: "Eliza", bio: "A helpful AI." },
+      plugins: [openaiPlugin],
+    });
+    await runtime.initialize();
+  }
+
+  const { message } = req.body;
+  const response = await runtime.useModel("TEXT_LARGE", { prompt: message });
+
+  res.json({ response: String(response) });
+};
+```
+
+## Testing Locally
+
+```bash
+cd examples/gcp/typescript
+npm start  # Uses functions-framework
+curl -X POST http://localhost:8080 \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+
+## Cloud Run Deployment
+
+For Rust or containerized deployments:
+
+```bash
+# Build container
+docker build -t gcr.io/PROJECT/eliza-chat .
+
+# Push to registry
+docker push gcr.io/PROJECT/eliza-chat
+
+# Deploy
+gcloud run deploy eliza-chat \
+  --image gcr.io/PROJECT/eliza-chat \
+  --set-env-vars OPENAI_API_KEY=$OPENAI_API_KEY
+```
+
+## Terraform
+
+Infrastructure as code is available in `examples/gcp/terraform/`:
+
+```hcl
+resource "google_cloudfunctions_function" "eliza" {
+  name        = "eliza-chat"
+  runtime     = "nodejs20"
+  entry_point = "elizaChat"
+
+  environment_variables = {
+    OPENAI_API_KEY = var.openai_api_key
+  }
+}
+```
+
+
+

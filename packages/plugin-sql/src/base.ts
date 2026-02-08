@@ -1041,6 +1041,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   async createTask(task: Task): Promise<UUID> {
+    // Default worldId to agentId for agent-internal tasks (e.g. cron, heartbeat)
+    if (!task.worldId) {
+      task = { ...task, worldId: this.agentId };
+    }
     return this.withDatabase(() => this.taskStore.create(task));
   }
 

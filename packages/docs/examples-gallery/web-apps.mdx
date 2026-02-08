@@ -1,0 +1,318 @@
+---
+title: "Web Applications"
+description: "Browser-based elizaOS examples with React, Next.js, and vanilla HTML"
+---
+
+Build web applications powered by elizaOS agents.
+
+## Available Examples
+
+| Example    | Framework    | Location               | Features                  |
+| ---------- | ------------ | ---------------------- | ------------------------- |
+| HTML ELIZA | Vanilla JS   | `examples/html/`       | Zero dependencies, CRT UI |
+| React      | React + Vite | `examples/react/`      | Full React app            |
+| React WASM | React + Rust | `examples/react-wasm/` | Rust WASM core            |
+| Next.js    | Next.js 14   | `examples/next/`       | SSR + API routes          |
+
+---
+
+## HTML (Zero Dependencies)
+
+The simplest browser implementation. No build step required.
+
+```bash
+cd examples/html
+open index.html  # Or use a local server
+```
+
+**Features:**
+
+- Pure HTML, CSS, JavaScript
+- ES modules via import maps
+- Classic ELIZA pattern matching (no API keys)
+- localStorage persistence
+- Retro CRT terminal aesthetic
+
+**Key code:**
+
+```html
+<script type="importmap">
+  {
+    "imports": {
+      "@elizaos/core": "../../packages/typescript/dist/browser/index.browser.js",
+      "@elizaos/plugin-eliza-classic": "../../plugins/plugin-eliza-classic/dist/browser/index.browser.js"
+    }
+  }
+</script>
+
+<script type="module">
+  import { AgentRuntime, ModelType } from "@elizaos/core";
+  import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
+
+  const runtime = new AgentRuntime({
+    character: { name: "Eliza", bio: "A psychotherapist simulation." },
+    plugins: [elizaClassicPlugin],
+  });
+
+  await runtime.initialize();
+
+  // Use the model
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt: userInput,
+  });
+</script>
+```
+
+---
+
+## React
+
+Full React application with Vite and PGLite.
+
+```bash
+cd examples/react
+bun install
+bun dev
+```
+
+**Features:**
+
+- React 18 with hooks
+- PGLite for in-browser PostgreSQL
+- Hot module reloading
+- TypeScript support
+- Tailwind-ready
+
+**App structure:**
+
+```
+examples/react/
+├── src/
+│   ├── App.tsx              # Main chat component
+│   ├── eliza-runtime.ts     # Runtime singleton
+│   ├── main.tsx             # React entry point
+│   └── App.css              # Terminal styling
+├── index.html
+├── package.json
+└── vite.config.ts
+```
+
+**Key code:**
+
+```tsx
+// eliza-runtime.ts
+import { AgentRuntime } from "@elizaos/core";
+import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+
+let runtime: AgentRuntime | null = null;
+
+export async function getRuntime(): Promise<AgentRuntime> {
+  if (runtime) return runtime;
+
+  runtime = new AgentRuntime({
+    character: { name: "Eliza", bio: "A helpful AI assistant." },
+    plugins: [sqlPlugin, elizaClassicPlugin],
+  });
+
+  await runtime.initialize();
+  return runtime;
+}
+```
+
+```tsx
+// App.tsx
+import { useState, useEffect } from "react";
+import { getRuntime } from "./eliza-runtime";
+import { ModelType } from "@elizaos/core";
+
+function App() {
+  const [runtime, setRuntime] = useState(null);
+  const [messages, setMessages] = useState([]);
+
+  useEffect(() => {
+    getRuntime().then(setRuntime);
+  }, []);
+
+  const sendMessage = async (text: string) => {
+    const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt: text,
+    });
+    setMessages((prev) => [...prev, { role: "assistant", text: response }]);
+  };
+
+  return (
+    <div className="chat-container">
+      {messages.map((msg, i) => (
+        <div key={i} className={msg.role}>
+          {msg.text}
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+---
+
+## React WASM
+
+Uses Rust compiled to WebAssembly for maximum performance.
+
+```bash
+# Build WASM first
+cd packages/rust && ./build-wasm.sh && cd -
+
+# Run the app
+cd examples/react-wasm
+bun install
+bun dev
+```
+
+**Features:**
+
+- Rust core in the browser
+- ~30% faster than pure TypeScript
+- Same API as native Rust
+- Type-safe interop
+
+**Key code:**
+
+```typescript
+import init, { WasmAgentRuntime } from "@elizaos/core/rust";
+
+// Initialize WASM module
+await init();
+
+// Create runtime
+const runtime = await new WasmAgentRuntime(
+  JSON.stringify({
+    name: "Eliza",
+    bio: "A helpful AI assistant.",
+  }),
+);
+
+await runtime.initialize();
+
+// Use the runtime
+const response = await runtime.use_model("TEXT_LARGE", prompt);
+```
+
+---
+
+## Next.js
+
+Full-stack application with server-side rendering.
+
+```bash
+cd examples/next
+bun install
+OPENAI_API_KEY="your-key" bun dev
+```
+
+**Features:**
+
+- Server-side rendering
+- API routes for agent logic
+- OpenAI integration
+- Streaming responses
+- Edge-ready
+
+**Project structure:**
+
+```
+examples/next/
+├── app/
+│   ├── api/
+│   │   └── chat/
+│   │       └── route.ts    # API endpoint
+│   ├── page.tsx            # Chat UI
+│   ├── layout.tsx
+│   └── globals.css
+├── lib/
+│   └── eliza-runtime.ts    # Server-side runtime
+├── next.config.js
+└── package.json
+```
+
+**API Route:**
+
+```typescript
+// app/api/chat/route.ts
+import { NextResponse } from "next/server";
+import { AgentRuntime } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime() {
+  if (runtime) return runtime;
+
+  runtime = new AgentRuntime({
+    character: {
+      name: "Eliza",
+      bio: "A helpful AI assistant.",
+      secrets: { OPENAI_API_KEY: process.env.OPENAI_API_KEY },
+    },
+    plugins: [sqlPlugin, openaiPlugin],
+  });
+
+  await runtime.initialize();
+  return runtime;
+}
+
+export async function POST(request: Request) {
+  const { message } = await request.json();
+  const runtime = await getRuntime();
+
+  // Stream response
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      await runtime.messageService?.handleMessage(
+        runtime,
+        createMessage(message),
+        async (content) => {
+          if (content?.text) {
+            controller.enqueue(encoder.encode(content.text));
+          }
+          return [];
+        },
+      );
+      controller.close();
+    },
+  });
+
+  return new Response(stream);
+}
+```
+
+---
+
+## Comparison
+
+| Feature     | HTML |  React   | React WASM | Next.js |
+| ----------- | :--: | :------: | :--------: | :-----: |
+| Build Step  |  ❌  |    ✅    |     ✅     |   ✅    |
+| SSR         |  ❌  |    ❌    |     ❌     |   ✅    |
+| API Keys    |  ❌  | Optional |  Optional  |   ✅    |
+| TypeScript  |  ❌  |    ✅    |     ✅     |   ✅    |
+| Performance | Good |   Good   | Excellent  |  Good   |
+| Complexity  | Low  |  Medium  |    High    | Medium  |
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Serverless" icon="cloud" href="/examples-gallery/serverless">
+    Deploy to edge and serverless platforms
+  </Card>
+  <Card title="REST APIs" icon="server" href="/examples-gallery/rest-apis">
+    Build HTTP endpoints
+  </Card>
+</CardGroup>
+
+
+

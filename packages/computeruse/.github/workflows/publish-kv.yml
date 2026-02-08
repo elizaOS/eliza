@@ -1,0 +1,110 @@
+name: Publish KV Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish @mediar-ai/kv to NPM
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: |
+          cd packages/kv
+          npm install
+
+      - name: Build TypeScript
+        run: |
+          cd packages/kv
+          npm run build
+
+      - name: Verify build output
+        run: |
+          cd packages/kv
+          echo "Verifying dist/ directory exists:"
+          ls -la dist/ || echo "dist/ directory not found"
+          if [ -f "dist/index.js" ] && [ -f "dist/index.d.ts" ]; then
+            echo "✓ Build output verified"
+          else
+            echo "✗ ERROR: Build output missing"
+            exit 1
+          fi
+
+      - name: Publish to NPM
+        run: |
+          cd packages/kv
+
+          # Extract package info
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+
+          echo "Publishing package: $PACKAGE_NAME@$PACKAGE_VERSION"
+
+          # Check if this version already exists on NPM
+          if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+            echo "Version $PACKAGE_VERSION of $PACKAGE_NAME already exists on NPM, skipping..."
+          else
+            echo "Publishing $PACKAGE_NAME@$PACKAGE_VERSION..."
+
+            if npm publish --access public; then
+              echo "✓ Successfully published $PACKAGE_NAME@$PACKAGE_VERSION"
+            else
+              echo "✗ Failed to publish $PACKAGE_NAME"
+              exit 1
+            fi
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify publication
+        continue-on-error: true
+        run: |
+          cd packages/kv
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+
+          echo "=== Verifying publication ==="
+          echo "Waiting for NPM propagation..."
+          sleep 20
+
+          # Try multiple times to verify package
+          package_found=false
+          for attempt in 1 2 3; do
+            echo "Checking if package is available (attempt $attempt/3)..."
+            if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+              echo "✓ Package $PACKAGE_NAME@$PACKAGE_VERSION is available on NPM"
+              package_found=true
+              break
+            else
+              echo "⏳ Package not found yet, waiting..."
+              if [ $attempt -lt 3 ]; then
+                sleep 20
+              fi
+            fi
+          done
+
+          if [ "$package_found" = true ]; then
+            echo ""
+            echo "🎉 Package $PACKAGE_NAME@$PACKAGE_VERSION has been published!"
+            echo "📦 NPM: https://www.npmjs.com/package/$PACKAGE_NAME"
+            echo ""
+          else
+            echo "⚠️  Package verification failed after multiple attempts"
+            echo "This might be due to NPM propagation delays"
+            echo "Check manually: npm view $PACKAGE_NAME@$PACKAGE_VERSION"
+          fi

@@ -1,0 +1,752 @@
+// service_interfaces.proto - Shared service data types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// ============================================================================
+// Token & Wallet Types
+// ============================================================================
+
+message TokenBalance {
+  string address = 1;
+  string balance = 2;
+  int32 decimals = 3;
+  optional double ui_amount = 4;
+  optional string name = 5;
+  optional string symbol = 6;
+  optional string logo_uri = 7;
+}
+
+message TokenData {
+  string id = 1;
+  string symbol = 2;
+  string name = 3;
+  string address = 4;
+  string chain = 5;
+  string source_provider = 6;
+  optional double price = 7;
+  optional double price_change_24h_percent = 8;
+  optional double price_change_24h_usd = 9;
+  optional double volume_24h_usd = 10;
+  optional double market_cap_usd = 11;
+  optional double liquidity = 12;
+  optional double holders = 13;
+  optional string logo_uri = 14;
+  optional int32 decimals = 15;
+  optional google.protobuf.Timestamp last_updated_at = 16;
+  google.protobuf.Struct raw = 17;
+}
+
+message WalletAsset {
+  string address = 1;
+  string balance = 2;
+  int32 decimals = 3;
+  optional double ui_amount = 4;
+  optional string name = 5;
+  optional string symbol = 6;
+  optional string logo_uri = 7;
+  optional double price_usd = 8;
+  optional double value_usd = 9;
+}
+
+message WalletPortfolio {
+  double total_value_usd = 1;
+  repeated WalletAsset assets = 2;
+}
+
+// ============================================================================
+// Liquidity Pool Types
+// ============================================================================
+
+message PoolTokenInfo {
+  string mint = 1;
+  optional string symbol = 2;
+  optional string reserve = 3;
+  optional int32 decimals = 4;
+}
+
+message PoolInfo {
+  string id = 1;
+  optional string display_name = 2;
+  string dex = 3;
+  PoolTokenInfo token_a = 4;
+  PoolTokenInfo token_b = 5;
+  optional string lp_token_mint = 6;
+  optional double apr = 7;
+  optional double apy = 8;
+  optional double tvl = 9;
+  optional double fee = 10;
+  google.protobuf.Struct metadata = 11;
+}
+
+message LpPositionDetails {
+  string pool_id = 1;
+  string dex = 2;
+  TokenBalance lp_token_balance = 3;
+  repeated TokenBalance underlying_tokens = 4;
+  optional double value_usd = 5;
+  repeated TokenBalance accrued_fees = 6;
+  repeated TokenBalance rewards = 7;
+  google.protobuf.Struct metadata = 8;
+}
+
+message TransactionResult {
+  bool success = 1;
+  optional string transaction_id = 2;
+  optional string error = 3;
+  google.protobuf.Struct data = 4;
+}
+
+// ============================================================================
+// Transcription & Speech Types
+// ============================================================================
+
+message TranscriptionOptions {
+  optional string language = 1;
+  optional string model = 2;
+  optional double temperature = 3;
+  optional string prompt = 4;
+  optional string response_format = 5;
+  repeated string timestamp_granularities = 6;
+  optional bool word_timestamps = 7;
+  optional bool segment_timestamps = 8;
+}
+
+message TranscriptionResult {
+  string text = 1;
+  optional string language = 2;
+  optional double duration = 3;
+  repeated TranscriptionSegment segments = 4;
+  repeated TranscriptionWord words = 5;
+  optional double confidence = 6;
+}
+
+message TranscriptionSegment {
+  int32 id = 1;
+  string text = 2;
+  double start = 3;
+  double end = 4;
+  optional double confidence = 5;
+  repeated int32 tokens = 6;
+  optional double temperature = 7;
+  optional double avg_logprob = 8;
+  optional double compression_ratio = 9;
+  optional double no_speech_prob = 10;
+}
+
+message TranscriptionWord {
+  string word = 1;
+  double start = 2;
+  double end = 3;
+  optional double confidence = 4;
+}
+
+message SpeechToTextOptions {
+  optional string language = 1;
+  optional string model = 2;
+  optional bool continuous = 3;
+  optional bool interim_results = 4;
+  optional int32 max_alternatives = 5;
+}
+
+message TextToSpeechOptions {
+  optional string voice = 1;
+  optional string model = 2;
+  optional double speed = 3;
+  optional string format = 4;
+  optional string response_format = 5;
+}
+
+// ============================================================================
+// Video Types
+// ============================================================================
+
+message VideoInfo {
+  optional string title = 1;
+  optional double duration = 2;
+  string url = 3;
+  optional string thumbnail = 4;
+  optional string description = 5;
+  optional string uploader = 6;
+  optional double view_count = 7;
+  optional google.protobuf.Timestamp upload_date = 8;
+  repeated VideoFormat formats = 9;
+}
+
+message VideoFormat {
+  string format_id = 1;
+  string url = 2;
+  string extension = 3;
+  string quality = 4;
+  optional int64 file_size = 5;
+  optional string video_codec = 6;
+  optional string audio_codec = 7;
+  optional string resolution = 8;
+  optional double fps = 9;
+  optional double bitrate = 10;
+}
+
+message VideoDownloadOptions {
+  optional string format = 1;
+  optional string quality = 2;
+  optional string output_path = 3;
+  optional bool audio_only = 4;
+  optional bool video_only = 5;
+  optional bool subtitles = 6;
+  optional bool embed_subs = 7;
+  optional bool write_info_json = 8;
+}
+
+message VideoProcessingOptions {
+  optional double start_time = 1;
+  optional double end_time = 2;
+  optional string output_format = 3;
+  optional string resolution = 4;
+  optional string bitrate = 5;
+  optional double framerate = 6;
+  optional string audio_codec = 7;
+  optional string video_codec = 8;
+}
+
+// ============================================================================
+// Browser Types
+// ============================================================================
+
+message BrowserViewport {
+  int32 width = 1;
+  int32 height = 2;
+}
+
+message BrowserNavigationOptions {
+  optional int32 timeout = 1;
+  optional string wait_until = 2;
+  optional BrowserViewport viewport = 3;
+  optional string user_agent = 4;
+  map<string, string> headers = 5;
+}
+
+message ScreenshotClip {
+  int32 x = 1;
+  int32 y = 2;
+  int32 width = 3;
+  int32 height = 4;
+}
+
+message ScreenshotOptions {
+  optional bool full_page = 1;
+  optional ScreenshotClip clip = 2;
+  optional string format = 3;
+  optional int32 quality = 4;
+  optional bool omit_background = 5;
+}
+
+message ElementSelector {
+  string selector = 1;
+  optional string text = 2;
+  optional int32 timeout = 3;
+}
+
+message LinkInfo {
+  string url = 1;
+  string text = 2;
+}
+
+message ImageInfo {
+  string src = 1;
+  optional string alt = 2;
+}
+
+message ExtractedContent {
+  string text = 1;
+  string html = 2;
+  repeated LinkInfo links = 3;
+  repeated ImageInfo images = 4;
+  optional string title = 5;
+  map<string, string> metadata = 6;
+}
+
+message ClickOptions {
+  optional int32 timeout = 1;
+  optional bool force = 2;
+  optional bool wait_for_navigation = 3;
+}
+
+message TypeOptions {
+  optional int32 delay = 1;
+  optional int32 timeout = 2;
+  optional bool clear = 3;
+}
+
+// ============================================================================
+// PDF Types
+// ============================================================================
+
+message PdfMetadata {
+  optional string title = 1;
+  optional string author = 2;
+  optional google.protobuf.Timestamp created_at = 3;
+  optional google.protobuf.Timestamp modified_at = 4;
+}
+
+message PdfExtractionResult {
+  string text = 1;
+  int32 page_count = 2;
+  optional PdfMetadata metadata = 3;
+}
+
+message PdfMargins {
+  optional double top = 1;
+  optional double bottom = 2;
+  optional double left = 3;
+  optional double right = 4;
+}
+
+message PdfGenerationOptions {
+  optional string format = 1;
+  optional string orientation = 2;
+  optional PdfMargins margins = 3;
+  optional string header = 4;
+  optional string footer = 5;
+}
+
+message PdfConversionOptions {
+  optional string quality = 1;
+  optional string output_format = 2;
+  optional bool compression = 3;
+}
+
+// ============================================================================
+// Web Search Types
+// ============================================================================
+
+message DateRange {
+  optional google.protobuf.Timestamp start = 1;
+  optional google.protobuf.Timestamp end = 2;
+}
+
+message SearchOptions {
+  optional int32 limit = 1;
+  optional int32 offset = 2;
+  optional string language = 3;
+  optional string region = 4;
+  optional DateRange date_range = 5;
+  optional string file_type = 6;
+  optional string site = 7;
+  optional string sort_by = 8;
+  optional string safe_search = 9;
+}
+
+message SearchResult {
+  string title = 1;
+  string url = 2;
+  string description = 3;
+  optional string display_url = 4;
+  optional string thumbnail = 5;
+  optional google.protobuf.Timestamp published_date = 6;
+  optional string source = 7;
+  optional double relevance_score = 8;
+  optional string snippet = 9;
+}
+
+message SearchResponse {
+  string query = 1;
+  repeated SearchResult results = 2;
+  optional int32 total_results = 3;
+  optional double search_time = 4;
+  repeated string suggestions = 5;
+  optional string next_page_token = 6;
+  repeated string related_searches = 7;
+}
+
+message NewsSearchOptions {
+  SearchOptions base = 1;
+  optional string category = 2;
+  optional string freshness = 3;
+}
+
+message ImageSearchOptions {
+  SearchOptions base = 1;
+  optional string size = 2;
+  optional string color = 3;
+  optional string type = 4;
+  optional string layout = 5;
+  optional string license = 6;
+}
+
+message VideoSearchOptions {
+  SearchOptions base = 1;
+  optional string duration = 2;
+  optional string resolution = 3;
+  optional string quality = 4;
+}
+
+// ============================================================================
+// Email Types
+// ============================================================================
+
+message EmailAddress {
+  string email = 1;
+  optional string name = 2;
+}
+
+message EmailAttachment {
+  string filename = 1;
+  oneof content {
+    bytes content_bytes = 2;
+    string content_text = 3;
+  }
+  optional string content_type = 4;
+  optional string content_disposition = 5;
+  optional string cid = 6;
+}
+
+message EmailMessage {
+  EmailAddress from = 1;
+  repeated EmailAddress to = 2;
+  repeated EmailAddress cc = 3;
+  repeated EmailAddress bcc = 4;
+  string subject = 5;
+  optional string text = 6;
+  optional string html = 7;
+  repeated EmailAttachment attachments = 8;
+  optional EmailAddress reply_to = 9;
+  optional google.protobuf.Timestamp date = 10;
+  optional string message_id = 11;
+  repeated string references = 12;
+  optional string in_reply_to = 13;
+  optional string priority = 14;
+}
+
+message EmailSendOptions {
+  optional int32 retry = 1;
+  optional int32 timeout = 2;
+  optional bool track_opens = 3;
+  optional bool track_clicks = 4;
+  repeated string tags = 5;
+}
+
+message EmailSearchOptions {
+  optional string query = 1;
+  optional string from = 2;
+  optional string to = 3;
+  optional string subject = 4;
+  optional string folder = 5;
+  optional google.protobuf.Timestamp since = 6;
+  optional google.protobuf.Timestamp before = 7;
+  optional int32 limit = 8;
+  optional int32 offset = 9;
+  optional bool unread = 10;
+  optional bool flagged = 11;
+  optional bool has_attachments = 12;
+}
+
+message EmailFolder {
+  string name = 1;
+  string path = 2;
+  string type = 3;
+  optional int32 message_count = 4;
+  optional int32 unread_count = 5;
+  repeated EmailFolder children = 6;
+}
+
+message EmailAccount {
+  string email = 1;
+  optional string name = 2;
+  optional string provider = 3;
+  repeated EmailFolder folders = 4;
+  optional int64 quota_used = 5;
+  optional int64 quota_limit = 6;
+}
+
+// ============================================================================
+// Messaging Types
+// ============================================================================
+
+message MessageParticipant {
+  string id = 1;
+  string name = 2;
+  optional string username = 3;
+  optional string avatar = 4;
+  optional string status = 5;
+}
+
+message MessageAttachment {
+  string id = 1;
+  string filename = 2;
+  string url = 3;
+  string mime_type = 4;
+  int64 size = 5;
+  optional int32 width = 6;
+  optional int32 height = 7;
+  optional double duration = 8;
+  optional string thumbnail = 9;
+}
+
+message MessageReaction {
+  string emoji = 1;
+  int32 count = 2;
+  repeated string users = 3;
+  bool has_reacted = 4;
+}
+
+message MessageReference {
+  string message_id = 1;
+  string channel_id = 2;
+  string type = 3;
+}
+
+message EmbedField {
+  string name = 1;
+  string value = 2;
+  optional bool inline = 3;
+}
+
+message MessageEmbed {
+  optional string title = 1;
+  optional string description = 2;
+  optional string url = 3;
+  optional string image = 4;
+  repeated EmbedField fields = 5;
+}
+
+message MessageContent {
+  optional string text = 1;
+  optional string html = 2;
+  optional string markdown = 3;
+  repeated MessageAttachment attachments = 4;
+  repeated MessageReaction reactions = 5;
+  optional MessageReference reference = 6;
+  repeated string mentions = 7;
+  repeated MessageEmbed embeds = 8;
+}
+
+message MessageThreadInfo {
+  string id = 1;
+  int32 message_count = 2;
+  repeated string participants = 3;
+  google.protobuf.Timestamp last_message_at = 4;
+}
+
+message MessageInfo {
+  string id = 1;
+  string channel_id = 2;
+  string sender_id = 3;
+  MessageContent content = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  optional google.protobuf.Timestamp edited = 6;
+  optional google.protobuf.Timestamp deleted = 7;
+  optional bool pinned = 8;
+  optional MessageThreadInfo thread = 9;
+}
+
+message MessageSendOptions {
+  optional string reply_to = 1;
+  optional bool ephemeral = 2;
+  optional bool silent = 3;
+  optional google.protobuf.Timestamp scheduled = 4;
+  optional string thread = 5;
+  optional string nonce = 6;
+}
+
+message MessageSearchOptions {
+  optional string query = 1;
+  optional string channel_id = 2;
+  optional string sender_id = 3;
+  optional google.protobuf.Timestamp before = 4;
+  optional google.protobuf.Timestamp after = 5;
+  optional int32 limit = 6;
+  optional int32 offset = 7;
+  optional bool has_attachments = 8;
+  optional bool pinned = 9;
+  optional string mentions = 10;
+}
+
+message ChannelPermissions {
+  bool can_send = 1;
+  bool can_read = 2;
+  bool can_delete = 3;
+  bool can_pin = 4;
+  bool can_manage = 5;
+}
+
+message MessageChannel {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  optional string description = 4;
+  repeated MessageParticipant participants = 5;
+  optional ChannelPermissions permissions = 6;
+  optional google.protobuf.Timestamp last_message_at = 7;
+  optional int32 message_count = 8;
+  optional int32 unread_count = 9;
+}
+
+// ============================================================================
+// Post/Social Types
+// ============================================================================
+
+message PostMedia {
+  string id = 1;
+  string url = 2;
+  string type = 3;
+  string mime_type = 4;
+  int64 size = 5;
+  optional int32 width = 6;
+  optional int32 height = 7;
+  optional double duration = 8;
+  optional string thumbnail = 9;
+  optional string description = 10;
+  optional string alt_text = 11;
+}
+
+message PostLocationCoordinates {
+  double latitude = 1;
+  double longitude = 2;
+}
+
+message PostLocation {
+  string name = 1;
+  optional string address = 2;
+  optional PostLocationCoordinates coordinates = 3;
+  optional string place_id = 4;
+}
+
+message PostAuthor {
+  string id = 1;
+  string username = 2;
+  string display_name = 3;
+  optional string avatar = 4;
+  optional bool verified = 5;
+  optional int32 follower_count = 6;
+  optional int32 following_count = 7;
+  optional string bio = 8;
+  optional string website = 9;
+}
+
+message PostEngagement {
+  int32 likes = 1;
+  int32 shares = 2;
+  int32 comments = 3;
+  optional int32 views = 4;
+  bool has_liked = 5;
+  bool has_shared = 6;
+  bool has_commented = 7;
+  bool has_saved = 8;
+}
+
+message PostLinkPreview {
+  string url = 1;
+  optional string title = 2;
+  optional string description = 3;
+  optional string image = 4;
+}
+
+message PostPollOption {
+  string text = 1;
+  int32 votes = 2;
+}
+
+message PostPoll {
+  string question = 1;
+  repeated PostPollOption options = 2;
+  optional google.protobuf.Timestamp expires_at = 3;
+  optional bool multiple_choice = 4;
+}
+
+message PostContent {
+  optional string text = 1;
+  optional string html = 2;
+  repeated PostMedia media = 3;
+  optional PostLocation location = 4;
+  repeated string tags = 5;
+  repeated string mentions = 6;
+  repeated PostLinkPreview links = 7;
+  optional PostPoll poll = 8;
+}
+
+message PostThreadInfo {
+  string id = 1;
+  int32 position = 2;
+  int32 total = 3;
+}
+
+message CrossPostInfo {
+  string platform = 1;
+  string platform_id = 2;
+  string url = 3;
+}
+
+message PostInfo {
+  string id = 1;
+  PostAuthor author = 2;
+  PostContent content = 3;
+  string platform = 4;
+  string platform_id = 5;
+  string url = 6;
+  google.protobuf.Timestamp created_at = 7;
+  optional google.protobuf.Timestamp edited_at = 8;
+  optional google.protobuf.Timestamp scheduled_at = 9;
+  PostEngagement engagement = 10;
+  string visibility = 11;
+  optional string reply_to = 12;
+  optional PostThreadInfo thread = 13;
+  repeated CrossPostInfo cross_posted = 14;
+}
+
+message PostCreateOptions {
+  repeated string platforms = 1;
+  optional google.protobuf.Timestamp scheduled_at = 2;
+  optional string visibility = 3;
+  optional string reply_to = 4;
+  optional bool thread = 5;
+  optional PostLocation location = 6;
+  repeated string tags = 7;
+  repeated string mentions = 8;
+  optional bool enable_comments = 9;
+  optional bool enable_sharing = 10;
+  optional string content_warning = 11;
+  optional bool sensitive = 12;
+}
+
+message PostSearchOptions {
+  optional string query = 1;
+  optional string author = 2;
+  optional string platform = 3;
+  repeated string tags = 4;
+  repeated string mentions = 5;
+  optional google.protobuf.Timestamp since = 6;
+  optional google.protobuf.Timestamp before = 7;
+  optional int32 limit = 8;
+  optional int32 offset = 9;
+  optional bool has_media = 10;
+  optional bool has_location = 11;
+  optional string visibility = 12;
+  optional string sort_by = 13;
+}
+
+message Demographics {
+  map<string, double> age = 1;
+  map<string, double> gender = 2;
+  map<string, double> location = 3;
+}
+
+message TopPerformingHour {
+  int32 hour = 1;
+  int32 engagement = 2;
+}
+
+message PostAnalytics {
+  string post_id = 1;
+  string platform = 2;
+  int32 impressions = 3;
+  int32 reach = 4;
+  PostEngagement engagement = 5;
+  int32 clicks = 6;
+  int32 shares = 7;
+  int32 saves = 8;
+  optional Demographics demographics = 9;
+  repeated TopPerformingHour top_performing_hours = 10;
+}

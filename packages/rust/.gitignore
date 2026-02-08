@@ -1,0 +1,34 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+
+# Cargo lock file is committed for reproducible builds/tests
+
+# Python cache (for Python tests)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+
+
+
+
+

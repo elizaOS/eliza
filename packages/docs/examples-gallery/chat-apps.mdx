@@ -1,0 +1,224 @@
+---
+title: "Chat Applications"
+description: "Interactive chat examples in TypeScript, Python, and Rust"
+---
+
+Build conversational AI agents with these chat application examples.
+
+## Available Examples
+
+| Example   | Language   | Location                              | Description               |
+| --------- | ---------- | ------------------------------------- | ------------------------- |
+| CLI Chat  | TypeScript | `examples/chat/typescript/chat.ts`    | Interactive terminal chat |
+| CLI Chat  | Python     | `examples/chat/python/chat.py`        | Async Python chat         |
+| CLI Chat  | Rust       | `examples/chat/rust/chat/src/main.rs` | Native Rust chat          |
+| WASM Chat | TypeScript | `examples/chat/rust-wasm/chat.ts`     | Rust WASM interop         |
+
+---
+
+## CLI Chat
+
+The foundational example. Demonstrates:
+
+- Runtime initialization with plugins
+- Message handling and streaming
+- Conversation flow management
+
+<Tabs>
+  <Tab title="TypeScript">
+```bash
+export OPENAI_API_KEY="your-key"
+bun run examples/chat/typescript/chat.ts
+```
+
+**Key code:**
+
+```typescript
+const runtime = new AgentRuntime({
+  character: { name: "Eliza", bio: "A helpful AI assistant." },
+  plugins: [sqlPlugin, openaiPlugin],
+});
+
+await runtime.initialize();
+
+// Handle messages with streaming
+await runtime.messageService.handleMessage(
+  runtime,
+  message,
+  async (content) => {
+    process.stdout.write(content.text);
+    return [];
+  },
+);
+```
+
+  </Tab>
+  <Tab title="Python">
+```bash
+pip install elizaos elizaos-plugin-openai
+export OPENAI_API_KEY="your-key"
+python examples/chat/python/chat.py
+```
+
+**Key code:**
+
+```python
+runtime = AgentRuntime(
+    character=Character(name="Eliza", bio="A helpful AI assistant."),
+    plugins=[get_openai_plugin()],
+)
+
+await runtime.initialize()
+
+result = await runtime.message_service.handle_message(runtime, message)
+print(result.response_content.text)
+```
+
+  </Tab>
+  <Tab title="Rust">
+```bash
+export OPENAI_API_KEY="your-key"
+cd examples/chat/rust/chat
+cargo run
+```
+
+**Key code:**
+
+```rust
+let runtime = AgentRuntime::new(RuntimeOptions {
+    character: Some(character),
+    plugins: vec![create_openai_plugin()?],
+    ..Default::default()
+}).await?;
+
+runtime.initialize().await?;
+
+let result = runtime.message_service()
+    .handle_message(&runtime, &mut message, None, None)
+    .await?;
+```
+
+  </Tab>
+</Tabs>
+
+---
+
+## Features Demonstrated
+
+### Character Definition
+
+Define your agent's personality:
+
+```typescript
+const character = {
+  name: "Eliza",
+  bio: "A helpful AI assistant who loves to learn.",
+  system: "You are friendly, knowledgeable, and concise.",
+  topics: ["technology", "science", "philosophy"],
+  style: {
+    tone: "casual",
+    formality: "medium",
+  },
+};
+```
+
+### Message Memory
+
+Messages are automatically stored for context:
+
+```typescript
+// Create message memory
+const message = createMessageMemory({
+  id: uuidv4(),
+  entityId: userId,
+  roomId,
+  content: { text: userInput },
+});
+
+// Previous messages are available in context
+const memories = await runtime.getMemories({ roomId, count: 10 });
+```
+
+### Streaming Responses
+
+Display responses as they're generated:
+
+```typescript
+await runtime.messageService.handleMessage(
+  runtime,
+  message,
+  async (content) => {
+    if (content?.text) {
+      // Write each chunk as it arrives
+      process.stdout.write(content.text);
+    }
+    return [];
+  },
+);
+```
+
+---
+
+## Customization
+
+### Use Different Models
+
+```typescript
+// Use Claude instead of GPT
+import { anthropicPlugin } from "@elizaos/plugin-anthropic";
+
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sqlPlugin, anthropicPlugin],
+});
+```
+
+### Add Conversation Persistence
+
+```typescript
+// Use PostgreSQL for production
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sqlPlugin, openaiPlugin],
+  database: {
+    url: process.env.POSTGRES_URL,
+  },
+});
+```
+
+### Multi-turn Conversations
+
+```typescript
+// The runtime automatically includes conversation history
+// Just keep sending messages to the same roomId
+const roomId = stringToUuid("persistent-chat-room");
+
+// Message 1
+await handleMessage("Hello, I'm learning about AI");
+
+// Message 2 - context from message 1 is included
+await handleMessage("Can you explain transformers?");
+
+// Message 3 - context from messages 1 & 2 included
+await handleMessage("How do they relate to what we discussed?");
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="REST API Examples"
+    icon="server"
+    href="/examples-gallery/rest-apis"
+  >
+    Expose your chat agent via HTTP
+  </Card>
+  <Card title="Web Apps" icon="browser" href="/examples-gallery/web-apps">
+    Build browser-based chat interfaces
+  </Card>
+</CardGroup>
+
+
+

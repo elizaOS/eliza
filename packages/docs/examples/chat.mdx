@@ -1,0 +1,515 @@
+---
+title: "Chat Examples"
+description: "Interactive CLI chat applications in TypeScript, Python, and Rust"
+---
+
+Build interactive chat agents that run in your terminal. These examples demonstrate core elizaOS functionality: agent initialization, message handling, streaming responses, and conversation flow.
+
+## Overview
+
+The chat example is the simplest way to understand elizaOS. It creates an agent, sends messages, and displays responses in real-time.
+
+| Language   | File                                  | Framework     |
+| ---------- | ------------------------------------- | ------------- |
+| TypeScript | `examples/chat/typescript/chat.ts`    | Node.js + Bun |
+| Python     | `examples/chat/python/chat.py`        | asyncio       |
+| Rust       | `examples/chat/rust/chat/src/main.rs` | tokio         |
+
+---
+
+## Quick Start
+
+<Tabs>
+  <Tab title="TypeScript">
+```bash
+# From the repository root
+export OPENAI_API_KEY="your-key"
+bun run examples/chat/typescript/chat.ts
+```
+  </Tab>
+  <Tab title="Python">
+```bash
+# Set up environment
+python -m venv .venv && source .venv/bin/activate
+pip install -e packages/typescript/python -e plugins/plugin-openai/python
+
+# Run
+
+export OPENAI_API_KEY="your-key"
+python examples/chat/python/chat.py
+```
+  </Tab>
+  <Tab title="Rust">
+```bash
+# From the repository root
+export OPENAI_API_KEY="your-key"
+cd examples/chat/rust/chat
+cargo run
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Complete Source Code
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+import {
+  AgentRuntime,
+  ChannelType,
+  createMessageMemory,
+  stringToUuid,
+  type Character,
+  type UUID,
+} from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+import { v4 as uuidv4 } from "uuid";
+import * as readline from "readline";
+
+// Define the character
+const character: Character = {
+name: "Eliza",
+bio: "A helpful AI assistant.",
+};
+
+console.log("🚀 Starting Eliza...\n");
+
+// Create runtime with plugins
+const runtime = new AgentRuntime({
+character,
+plugins: [sqlPlugin, openaiPlugin],
+});
+await runtime.initialize();
+
+// Setup connection identifiers
+const userId = uuidv4() as UUID;
+const roomId = stringToUuid("chat-room");
+const worldId = stringToUuid("chat-world");
+
+await runtime.ensureConnection({
+entityId: userId,
+roomId,
+worldId,
+userName: "User",
+source: "cli",
+channelId: "chat",
+serverId: "server",
+type: ChannelType.DM,
+});
+
+// Create readline interface
+const rl = readline.createInterface({
+input: process.stdin,
+output: process.stdout,
+});
+
+console.log("💬 Chat with Eliza (type 'exit' to quit)\n");
+
+const prompt = () => {
+rl.question("You: ", async (input) => {
+const text = input.trim();
+
+    if (text.toLowerCase() === "exit") {
+      console.log("\n👋 Goodbye!");
+      rl.close();
+      await runtime.stop();
+      process.exit(0);
+    }
+
+    if (!text) {
+      prompt();
+      return;
+    }
+
+    // Create and send message
+    const message = createMessageMemory({
+      id: uuidv4() as UUID,
+      entityId: userId,
+      roomId,
+      content: { text },
+    });
+
+    let response = "";
+    process.stdout.write("Eliza: ");
+
+    // Handle message with streaming callback
+    await runtime.messageService!.handleMessage(
+      runtime,
+      message,
+      async (content) => {
+        if (content?.text) {
+          response += content.text;
+          process.stdout.write(content.text);
+        }
+        return [];
+      }
+    );
+
+    console.log("\n");
+    prompt();
+
+});
+};
+
+prompt();
+
+````
+  </Tab>
+  <Tab title="Python">
+```python
+from __future__ import annotations
+import asyncio
+import logging
+import os
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+from uuid6 import uuid7
+from elizaos import Character, ChannelType, Content, Memory
+from elizaos.runtime import AgentRuntime
+from elizaos_plugin_openai import get_openai_plugin
+
+async def main() -> None:
+    # Define the character
+    character = Character(
+        name="Eliza",
+        username="eliza",
+        bio="A helpful AI assistant.",
+        system="You are helpful and concise.",
+    )
+
+    # Create runtime with plugins
+    runtime = AgentRuntime(
+        character=character,
+        plugins=[get_openai_plugin()],
+    )
+
+    user_id = uuid7()
+    room_id = uuid7()
+
+    try:
+        await runtime.initialize()
+        print(f"\n🤖 Chat with {character.name} (type 'quit' to exit)\n")
+
+        while True:
+            try:
+                user_input = await asyncio.to_thread(input, "You: ")
+            except EOFError:
+                break
+
+            if not user_input.strip():
+                continue
+
+            if user_input.strip().lower() in ("quit", "exit"):
+                break
+
+            # Create message memory
+            message = Memory(
+                entity_id=user_id,
+                room_id=room_id,
+                content=Content(
+                    text=user_input,
+                    source="cli",
+                    channel_type=ChannelType.DM.value,
+                ),
+            )
+
+            # Handle message and get response
+            result = await runtime.message_service.handle_message(
+                runtime,
+                message,
+            )
+
+            print(f"\n{character.name}: {result.response_content.text}\n")
+
+        print("\nGoodbye! 👋")
+    finally:
+        await runtime.stop()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+````
+
+  </Tab>
+  <Tab title="Rust">
+```rust
+use anyhow::Result;
+use elizaos::{
+    parse_character,
+    runtime::{AgentRuntime, RuntimeOptions},
+    types::{Content, Memory, UUID},
+    IMessageService,
+};
+use elizaos_plugin_openai::create_openai_plugin;
+use std::io::{self, Write};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+// Load environment variables from .env file
+let \_ = dotenvy::dotenv();
+
+    // Define the character
+    let character = parse_character(r#"{
+        "name": "Eliza",
+        "bio": "A helpful AI assistant.",
+        "system": "You are helpful and concise."
+    }"#)?;
+
+    // Create runtime with plugins
+    let runtime = AgentRuntime::new(RuntimeOptions {
+        character: Some(character.clone()),
+        plugins: vec![create_openai_plugin()?],
+        ..Default::default()
+    }).await?;
+
+    runtime.initialize().await?;
+
+    let (user_id, room_id) = (UUID::new_v4(), UUID::new_v4());
+
+    println!("🤖 Chat with {} (type 'quit' to exit)\n", character.name);
+
+    loop {
+        print!("You: ");
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        if io::stdin().read_line(&mut input)? == 0 {
+            break;
+        }
+
+        let input = input.trim();
+        if input.eq_ignore_ascii_case("quit") || input.eq_ignore_ascii_case("exit") {
+            break;
+        }
+
+        if input.is_empty() {
+            continue;
+        }
+
+        // Create message content
+        let content = Content {
+            text: Some(input.into()),
+            ..Default::default()
+        };
+        let mut message = Memory::new(user_id.clone(), room_id.clone(), content);
+
+        // Handle message and get response
+        let result = runtime
+            .message_service()
+            .handle_message(&runtime, &mut message, None, None)
+            .await?;
+
+        if let Some(text) = result.response_content.and_then(|c| c.text) {
+            println!("\n{}: {}\n", character.name, text);
+        }
+    }
+
+    runtime.stop().await?;
+    println!("Goodbye! 👋");
+    Ok(())
+
+}
+
+````
+  </Tab>
+</Tabs>
+
+---
+
+## Key Concepts
+
+### 1. Character Definition
+
+The character defines your agent's personality:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+const character: Character = {
+  name: "Eliza",
+  bio: "A helpful AI assistant.",
+  system: "You are helpful and concise.",  // Optional system prompt
+};
+````
+
+  </Tab>
+  <Tab title="Python">
+```python
+character = Character(
+    name="Eliza",
+    bio="A helpful AI assistant.",
+    system="You are helpful and concise.",
+)
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+let character = parse_character(r#"{
+    "name": "Eliza",
+    "bio": "A helpful AI assistant.",
+    "system": "You are helpful and concise."
+}"#)?;
+```
+  </Tab>
+</Tabs>
+
+### 2. Runtime Initialization
+
+Create and initialize the runtime with plugins:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sqlPlugin, openaiPlugin],
+});
+await runtime.initialize();
+```
+  </Tab>
+  <Tab title="Python">
+```python
+runtime = AgentRuntime(
+    character=character,
+    plugins=[get_openai_plugin()],
+)
+await runtime.initialize()
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+let runtime = AgentRuntime::new(RuntimeOptions {
+    character: Some(character),
+    plugins: vec![create_openai_plugin()?],
+    ..Default::default()
+}).await?;
+runtime.initialize().await?;
+```
+  </Tab>
+</Tabs>
+
+### 3. Message Handling
+
+Send messages and receive responses:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+const message = createMessageMemory({
+  id: uuidv4() as UUID,
+  entityId: userId,
+  roomId,
+  content: { text: userInput },
+});
+
+await runtime.messageService!.handleMessage(
+runtime,
+message,
+async (content) => {
+// Streaming callback
+if (content?.text) {
+process.stdout.write(content.text);
+}
+return [];
+}
+);
+
+````
+  </Tab>
+  <Tab title="Python">
+```python
+message = Memory(
+    entity_id=user_id,
+    room_id=room_id,
+    content=Content(text=user_input, source="cli"),
+)
+
+result = await runtime.message_service.handle_message(runtime, message)
+print(result.response_content.text)
+````
+
+  </Tab>
+  <Tab title="Rust">
+```rust
+let content = Content {
+    text: Some(input.into()),
+    ..Default::default()
+};
+let mut message = Memory::new(user_id.clone(), room_id.clone(), content);
+
+let result = runtime
+.message_service()
+.handle_message(&runtime, &mut message, None, None)
+.await?;
+
+if let Some(text) = result.response_content.and_then(|c| c.text) {
+println!("{}", text);
+}
+
+````
+  </Tab>
+</Tabs>
+
+---
+
+## Extending the Example
+
+### Add Streaming Output
+
+The TypeScript example already includes streaming. Here's how to add it to Python:
+
+```python
+async def stream_callback(content):
+    if content and content.text:
+        print(content.text, end="", flush=True)
+
+result = await runtime.message_service.handle_message(
+    runtime,
+    message,
+    callback=stream_callback,
+)
+````
+
+### Add Conversation Memory
+
+Messages are automatically stored in memory. To access previous messages:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+const memories = await runtime.getMemories({
+  roomId,
+  count: 10,
+});
+```
+  </Tab>
+  <Tab title="Python">
+```python
+memories = await runtime.get_memories(room_id=room_id, count=10)
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+let memories = runtime.get_memories(room_id, 10).await?;
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="REST API Examples" icon="server" href="/examples/rest-api">
+    Build HTTP endpoints for your agent
+  </Card>
+  <Card title="Browser Examples" icon="browser" href="/examples/browser">
+    Run agents client-side in the browser
+  </Card>
+</CardGroup>
+
+
+

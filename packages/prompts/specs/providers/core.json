@@ -1,0 +1,130 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "ACTIONS",
+      "description": "Possible response actions",
+      "position": -1,
+      "dynamic": false
+    },
+    {
+      "name": "CHARACTER",
+      "description": "Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
+      "dynamic": false
+    },
+    {
+      "name": "RECENT_MESSAGES",
+      "description": "Provides recent message history from the current conversation including formatted messages, posts, action results, and recent interactions",
+      "position": 100,
+      "dynamic": true
+    },
+    {
+      "name": "ACTION_STATE",
+      "description": "Provides information about the current action state and available actions",
+      "dynamic": true
+    },
+    {
+      "name": "ATTACHMENTS",
+      "description": "Media attachments in the current message",
+      "dynamic": true
+    },
+    {
+      "name": "CAPABILITIES",
+      "description": "Agent capabilities including models, services, and features",
+      "dynamic": false
+    },
+    {
+      "name": "CHOICE",
+      "description": "Available choice options for selection when there are pending tasks or decisions",
+      "dynamic": true
+    },
+    {
+      "name": "CONTACTS",
+      "description": "Provides contact information from the rolodex including categories and preferences",
+      "dynamic": true
+    },
+    {
+      "name": "CONTEXT_BENCH",
+      "description": "Benchmark/task context injected by a benchmark harness",
+      "position": 5,
+      "dynamic": true
+    },
+    {
+      "name": "ENTITIES",
+      "description": "Provides information about entities in the current context including users, agents, and participants",
+      "dynamic": true
+    },
+    {
+      "name": "EVALUATORS",
+      "description": "Available evaluators for assessing agent behavior",
+      "dynamic": false
+    },
+    {
+      "name": "FACTS",
+      "description": "Provides known facts about entities learned through conversation",
+      "dynamic": true
+    },
+    {
+      "name": "FOLLOW_UPS",
+      "description": "Provides information about upcoming follow-ups and reminders scheduled for contacts",
+      "dynamic": true
+    },
+    {
+      "name": "KNOWLEDGE",
+      "description": "Provides relevant knowledge from the agent's knowledge base based on semantic similarity",
+      "dynamic": true
+    },
+    {
+      "name": "PROVIDERS",
+      "description": "Available context providers",
+      "dynamic": false
+    },
+    {
+      "name": "RELATIONSHIPS",
+      "description": "Relationships between entities observed by the agent including tags and metadata",
+      "dynamic": true
+    },
+    {
+      "name": "ROLES",
+      "description": "Roles assigned to entities in the current context (Admin, Owner, Member, None)",
+      "dynamic": true
+    },
+    {
+      "name": "SETTINGS",
+      "description": "Current settings for the agent/server (filtered for security, excludes sensitive keys)",
+      "dynamic": true
+    },
+    {
+      "name": "TIME",
+      "description": "Provides the current date and time in UTC for time-based operations or responses",
+      "dynamic": true
+    },
+    {
+      "name": "WORLD",
+      "description": "Provides information about the current world context including settings and members",
+      "dynamic": true
+    },
+    {
+      "name": "LONG_TERM_MEMORY",
+      "description": "Persistent facts and preferences about the user learned and remembered across conversations",
+      "position": 50,
+      "dynamic": false
+    },
+    {
+      "name": "SUMMARIZED_CONTEXT",
+      "description": "Provides summarized context from previous conversations for optimized context usage",
+      "position": 96,
+      "dynamic": false
+    },
+    {
+      "name": "AGENT_SETTINGS",
+      "description": "Provides the agent's current configuration settings (filtered for security)",
+      "dynamic": true
+    },
+    {
+      "name": "CURRENT_TIME",
+      "description": "Provides current time and date information in various formats",
+      "dynamic": true
+    }
+  ]
+}
