@@ -20,6 +20,7 @@ import {
   type MessagePayload,
   ModelType,
   parseKeyValueXml,
+  parseBooleanFromText,
   type Plugin,
   PluginEvents,
   postCreationTemplate,
@@ -35,6 +36,7 @@ import { v4 } from 'uuid';
 import * as actions from './actions/index.ts';
 import * as evaluators from './evaluators/index.ts';
 import * as providers from './providers/index.ts';
+import { bootstrapInstructionsProvider, bootstrapSettingsProvider } from './providers/plugin-info.ts';
 
 import { TaskService } from './services/task.ts';
 import { EmbeddingGenerationService } from './services/embedding.ts';
@@ -74,6 +76,67 @@ export * from './providers/index.ts';
 type MediaData = {
   data: Buffer;
   mediaType: string;
+};
+
+/**
+ * Checks if memory creation is disabled via the DISABLE_MEMORY_CREATION setting.
+ */
+const isMemoryCreationDisabled = (runtime: IAgentRuntime): boolean => {
+  const setting = runtime.getSetting('DISABLE_MEMORY_CREATION');
+  if (typeof setting === 'boolean') {
+    return setting;
+  }
+  if (typeof setting === 'string') {
+    return parseBooleanFromText(setting);
+  }
+  if (setting != null) {
+    return parseBooleanFromText(String(setting));
+  }
+  return false;
+};
+
+/**
+ * Gets the list of allowed memory source IDs from the ALLOW_MEMORY_SOURCE_IDS setting.
+ * Returns null if no whitelist is configured (meaning all sources are allowed).
+ */
+const getAllowedMemorySources = (runtime: IAgentRuntime): string[] | null => {
+  const setting = runtime.getSetting('ALLOW_MEMORY_SOURCE_IDS');
+  if (Array.isArray(setting)) {
+    return setting.map((value) => String(value).trim()).filter(Boolean);
+  }
+  if (typeof setting === 'string') {
+    const trimmed = setting.trim();
+    if (!trimmed) {
+      return null;
+    }
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((value) => String(value).trim()).filter(Boolean);
+        }
+        runtime.logger.warn(
+          { src: 'plugin:bootstrap', parsed },
+          'ALLOW_MEMORY_SOURCE_IDS JSON did not parse to an array; ignoring setting'
+        );
+        return null;
+      } catch (error) {
+        runtime.logger.warn(
+          { src: 'plugin:bootstrap', error, setting: trimmed },
+          'Failed to parse ALLOW_MEMORY_SOURCE_IDS JSON; ignoring setting'
+        );
+        return null;
+      }
+    }
+    return trimmed
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+  if (setting != null) {
+    return [String(setting).trim()].filter(Boolean);
+  }
+  return null;
 };
 
 /**
@@ -134,6 +197,17 @@ function sanitizeJson(rawJson: string): string {
 export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]> {
   return Promise.all(
     attachments.map(async (attachment: Media) => {
+      // Handle data URLs (e.g., data:image/png;base64,...)
+      if (attachment.url.startsWith('data:')) {
+        const match = attachment.url.match(/^data:([^;]+);base64,(.+)$/);
+        if (match) {
+          const mediaType = match[1];
+          const base64Data = match[2];
+          const mediaBuffer = Buffer.from(base64Data, 'base64');
+          return { data: mediaBuffer, mediaType };
+        }
+        throw new Error(`Invalid data URL format: ${attachment.url.substring(0, 50)}...`);
+      }
       if (/^(http|https):\/\//.test(attachment.url)) {
         // Handle HTTP URLs
         const response = await fetch(attachment.url);
@@ -182,18 +256,19 @@ export async function processAttachments(
       // Start with the original attachment
       const processedAttachment: Media = { ...attachment };
 
+      const isDataUrl = attachment.url.startsWith('data:');
       const isRemote = /^(http|https):\/\//.test(attachment.url);
-      const url = isRemote ? attachment.url : getLocalServerUrl(attachment.url);
+      const url = isRemote ? attachment.url : isDataUrl ? attachment.url : getLocalServerUrl(attachment.url);
       // Only process images that don't already have descriptions
       if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
         runtime.logger.debug(
-          { src: 'plugin:bootstrap', agentId: runtime.agentId, url: attachment.url },
+          { src: 'plugin:bootstrap', agentId: runtime.agentId, url: attachment.url?.substring(0, 100) },
           'Generating description for image'
         );
 
         let imageUrl = url;
 
-        if (!isRemote) {
+        if (!isRemote && !isDataUrl) {
           // Only convert local/internal media to base64
           const res = await fetch(url);
           if (!res.ok) {
@@ -449,28 +524,54 @@ const reactionReceivedHandler = async ({
   message: Memory;
 }) => {
   try {
-    await runtime.createMemory(message, 'messages');
-  } catch (error: unknown) {
-    // PostgreSQL duplicate key violation error code
-    const isDuplicateKeyError =
-      error instanceof Error &&
-      'code' in error &&
-      (error as NodeJS.ErrnoException).code === '23505';
-    if (isDuplicateKeyError) {
-      runtime.logger.warn(
-        { src: 'plugin:bootstrap', agentId: runtime.agentId },
-        'Duplicate reaction memory, skipping'
+    const disableMemoryCreation = isMemoryCreationDisabled(runtime);
+    const allowedSources = getAllowedMemorySources(runtime);
+    const reactionSourceId = (message.metadata as Record<string, any> | undefined)?.sourceId;
+    const sourceAllowed =
+      !allowedSources ||
+      (typeof reactionSourceId === 'string' && allowedSources.includes(reactionSourceId));
+
+    if (disableMemoryCreation) {
+      runtime.logger.debug(
+        {
+          src: 'plugin:bootstrap',
+          agentId: runtime.agentId,
+          messageId: message.id,
+          sourceId: reactionSourceId ?? null,
+        },
+        'DISABLE_MEMORY_CREATION enabled; skipping reaction memory creation'
       );
       return;
     }
-    runtime.logger.error(
+    if (!sourceAllowed) {
+      runtime.logger.info(
+        {
+          src: 'plugin:bootstrap',
+          agentId: runtime.agentId,
+          messageId: message.id,
+          sourceId: reactionSourceId ?? null,
+          allowedSources,
+        },
+        'Reaction source not whitelisted; skipping reaction memory creation'
+      );
+      return;
+    }
+    await runtime.createMemory(message, 'messages');
+    runtime.logger.debug(
       {
         src: 'plugin:bootstrap',
         agentId: runtime.agentId,
-        error: error instanceof Error ? error.message : String(error),
+        messageId: message.id,
+        sourceId: reactionSourceId ?? null,
       },
-      'Error in reaction handler'
+      'Stored reaction memory'
     );
+  } catch (error: any) {
+    if (error.code === '23505') {
+      runtime.logger.warn({ src: 'plugin:bootstrap', agentId: runtime.agentId }, 'Duplicate reaction memory, skipping');
+      return;
+    }
+    runtime.logger.error({ src: 'plugin:bootstrap', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in reaction handler');
   }
 };
 
@@ -543,7 +644,7 @@ const postGeneratedHandler = async ({
   }
   const metadata = entity?.metadata as TwitterMetadata | undefined;
   if (metadata?.twitter?.userName || metadata?.userName) {
-    state.values.twitterUserName = metadata.twitter?.userName || metadata.userName;
+    state.values.twitterUserName = metadata.twitter?.userName ?? metadata.userName;
   }
 
   const prompt = composePromptFromState({
@@ -910,15 +1011,10 @@ const handleServerSync = async ({
  * @param {Object} params.message - The control message
  * @param {string} params.source - Source of the message
  */
-const controlMessageHandler = async ({ runtime, message }: ControlMessagePayload) => {
+const controlMessageHandler = async ({ runtime, message, source: _source }: ControlMessagePayload) => {
   try {
     runtime.logger.debug(
-      {
-        src: 'plugin:bootstrap',
-        agentId: runtime.agentId,
-        action: message.payload.action,
-        roomId: message.roomId,
-      },
+      { src: 'plugin:bootstrap', agentId: runtime.agentId, action: message.payload.action, roomId: message.roomId },
       'Processing control message'
     );
 
@@ -965,14 +1061,7 @@ const controlMessageHandler = async ({ runtime, message }: ControlMessagePayload
       );
     }
   } catch (error) {
-    runtime.logger.error(
-      {
-        src: 'plugin:bootstrap',
-        agentId: runtime.agentId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      'Error processing control message'
-    );
+    runtime.logger.error({ src: 'plugin:bootstrap', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error processing control message');
   }
 };
 
@@ -1045,7 +1134,10 @@ const events: PluginEvents = {
 
       const channelType = payload.metadata?.type;
       if (typeof channelType !== 'string') {
-        payload.runtime.logger.warn('Missing channel type in entity payload');
+        payload.runtime.logger.warn(
+          { src: 'plugin:bootstrap', agentId: payload.runtime.agentId },
+          'Missing channel type in entity payload'
+        );
         return;
       }
       await syncSingleUser(
@@ -1101,12 +1193,6 @@ const events: PluginEvents = {
         if (payload.content?.source === 'client_chat') {
           interface MessageBusServiceWithNotify {
             notifyActionStart: (
-              roomId: UUID,
-              worldId: UUID,
-              content: Content,
-              messageId?: UUID
-            ) => Promise<void>;
-            notifyActionUpdate: (
               roomId: UUID,
               worldId: UUID,
               content: Content,
@@ -1180,12 +1266,6 @@ const events: PluginEvents = {
         // Only notify for client_chat messages
         if (payload.content?.source === 'client_chat') {
           interface MessageBusServiceWithNotify {
-            notifyActionStart: (
-              roomId: UUID,
-              worldId: UUID,
-              content: Content,
-              messageId?: UUID
-            ) => Promise<void>;
             notifyActionUpdate: (
               roomId: UUID,
               worldId: UUID,
@@ -1364,21 +1444,41 @@ const events: PluginEvents = {
 
   [EventType.CONTROL_MESSAGE]: [
     async (payload: ControlMessagePayload) => {
-      if (!payload.message) {
-        payload.runtime.logger.warn(
-          { src: 'plugin:bootstrap' },
-          'CONTROL_MESSAGE received without message property'
-        );
-        return;
-      }
       await controlMessageHandler(payload);
     },
   ],
 };
 
+import { printBanner, type PluginSetting } from './banner.ts';
+
 export const bootstrapPlugin: Plugin = {
   name: 'bootstrap',
   description: 'Agent bootstrap with basic actions and evaluators',
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
+    const settings: PluginSetting[] = [
+      {
+        name: 'DISABLE_MEMORY_CREATION',
+        value: runtime.getSetting('DISABLE_MEMORY_CREATION'),
+        defaultValue: false,
+      },
+      {
+        name: 'ALLOW_MEMORY_SOURCE_IDS',
+        value: runtime.getSetting('ALLOW_MEMORY_SOURCE_IDS'),
+        defaultValue: undefined,
+      },
+      {
+        name: 'ALWAYS_RESPOND_CHANNELS',
+        value: runtime.getSetting('ALWAYS_RESPOND_CHANNELS'),
+        defaultValue: undefined,
+      },
+      {
+        name: 'ALWAYS_RESPOND_SOURCES',
+        value: runtime.getSetting('ALWAYS_RESPOND_SOURCES'),
+        defaultValue: undefined,
+      },
+    ];
+    printBanner({ runtime, settings });
+  },
   actions: [
     actions.replyAction,
     actions.followRoomAction,
@@ -1415,6 +1515,8 @@ export const bootstrapPlugin: Plugin = {
     providers.characterProvider,
     providers.recentMessagesProvider,
     providers.worldProvider,
+    bootstrapInstructionsProvider,
+    bootstrapSettingsProvider,
   ],
   services: [TaskService, EmbeddingGenerationService],
 };

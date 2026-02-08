@@ -108,8 +108,13 @@ export const worldProvider: Provider = {
         'Found world'
       );
 
-      // Get all rooms in the current world
-      const worldRooms = await runtime.getRooms(worldId);
+      // Parallelize the database operations - these don't depend on each other
+      // This improves performance by fetching rooms and participants simultaneously
+      const [worldRooms, participants] = await Promise.all([
+        runtime.getRooms(worldId),
+        runtime.getParticipantsForRoom(message.roomId),
+      ]);
+      
       logger.debug(
         {
           src: 'plugin:bootstrap:provider:world',
@@ -119,9 +124,6 @@ export const worldProvider: Provider = {
         },
         'Found rooms in world'
       );
-
-      // Get participants for the current room
-      const participants = await runtime.getParticipantsForRoom(message.roomId);
       logger.debug(
         {
           src: 'plugin:bootstrap:provider:world',

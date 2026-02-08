@@ -1,11 +1,12 @@
 import { z } from 'zod';
-import { asUUID, getEntityDetails, parseKeyValueXml } from '@elizaos/core';
+import { asUUID, parseKeyValueXml } from '@elizaos/core';
 import { composePrompt } from '@elizaos/core';
 import {
   type Entity,
   type Evaluator,
   type IAgentRuntime,
   type Memory,
+  type Relationship,
   ModelType,
   type State,
   type UUID,
@@ -140,67 +141,102 @@ Generate a response in the following format:
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
+// UUID regex pattern - compiled once for reuse
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Resolve an entity name to their UUID
- * @param name - Name to resolve
- * @param entities - List of entities to search through
- * @returns UUID if found, throws error if not found or if input is not a valid UUID
+ * Resolves an entity ID using pre-built lookup maps for O(1) access.
+ * Falls back to linear search only for partial/name matches.
  */
-/**
- * Resolves an entity ID by searching through a list of entities.
- *
- * @param {UUID} entityId - The ID of the entity to resolve.
- * @param {Entity[]} entities - The list of entities to search through.
- * @returns {UUID} - The resolved UUID of the entity.
- * @throws {Error} - If the entity ID cannot be resolved to a valid UUID.
- */
-function resolveEntity(entityId: string, entities: Entity[]): UUID {
-  // First try exact UUID match
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entityId)) {
+function resolveEntityWithMaps(
+  entityId: UUID,
+  entityById: Map<UUID, Entity>,
+  entityByName: Map<string, Entity>
+): UUID {
+  // First try exact UUID match (no lookup needed)
+  if (UUID_PATTERN.test(entityId)) {
     return entityId as UUID;
   }
 
-  let entity: Entity | undefined;
-
-  // Try to match the entityId exactly
-  entity = entities.find((a) => a.id === entityId);
-  if (entity?.id) {
-    return entity.id;
+  // O(1) lookup by ID
+  const byId = entityById.get(entityId);
+  if (byId?.id) {
+    return byId.id;
   }
 
-  // Try partial UUID match with entityId
-  entity = entities.find((a) => a.id?.includes(entityId));
-  if (entity?.id) {
-    return entity.id;
+  // O(1) lookup by lowercase name
+  const byName = entityByName.get(entityId.toLowerCase());
+  if (byName?.id) {
+    return byName.id;
   }
 
-  // Try name match as last resort
-  entity = entities.find((a) =>
-    a.names.some((n) => n.toLowerCase().includes(entityId.toLowerCase()))
-  );
-  if (entity?.id) {
-    return entity.id;
+  // Fallback: partial UUID match (rare case, O(n))
+  for (const [id, entity] of entityById) {
+    if (id?.includes(entityId) && entity.id) {
+      return entity.id;
+    }
+  }
+
+  // Fallback: partial name match (rare case, O(n))
+  for (const entity of entityById.values()) {
+    if (entity.names.some((n) => n.toLowerCase().includes(entityId.toLowerCase())) && entity.id) {
+      return entity.id;
+    }
   }
 
   throw new Error(`Could not resolve entityId "${entityId}" to a valid UUID`);
 }
-async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
-  const { agentId, roomId } = message;
 
+/**
+ * Build lookup maps for entities - O(n) once, then O(1) lookups
+ */
+function buildEntityMaps(entities: Entity[]): {
+  byId: Map<UUID, Entity>;
+  byName: Map<string, Entity>;
+} {
+  const byId = new Map<UUID, Entity>();
+  const byName = new Map<string, Entity>();
+
+  for (const entity of entities) {
+    if (entity.id) {
+      byId.set(entity.id, entity);
+    }
+    // Index all names for O(1) name lookup
+    for (const name of entity.names || []) {
+      byName.set(name.toLowerCase(), entity);
+    }
+  }
+
+  return { byId, byName };
+}
+async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
+  const { agentId, roomId, entityId } = message;
+
+  // Early validation - fail fast before any IO
   if (!agentId || !roomId) {
-    runtime.logger.warn(
-      { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId, message },
-      'Missing agentId or roomId in message'
-    );
+    runtime.logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Missing agentId or roomId in message');
     return;
   }
 
-  // Run all queries in parallel
+  if (!entityId) {
+    runtime.logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Missing entityId in message');
+    return;
+  }
+
+  // Try to get entities from ENTITIES provider in state (safe access with validation)
+  const entitiesProviderResult = state?.data?.providers?.ENTITIES;
+  const entitiesFromState =
+    entitiesProviderResult &&
+    typeof entitiesProviderResult === 'object' &&
+    'data' in entitiesProviderResult &&
+    Array.isArray((entitiesProviderResult.data as { entitiesData?: Entity[] })?.entitiesData)
+      ? (entitiesProviderResult.data as { entitiesData: Entity[] }).entitiesData
+      : undefined;
+
+  // Run all queries in parallel, skip entity fetch if we have valid data from state
   const [existingRelationships, entities, knownFacts] = await Promise.all([
-    runtime.getRelationships({
-      entityId: message.entityId,
-    }),
-    getEntityDetails({ runtime, roomId }),
+    runtime.getRelationships({ entityId }),
+    entitiesFromState ?? runtime.getEntitiesForRoom(roomId, true),
     runtime.getMemories({
       tableName: 'facts',
       roomId,
@@ -228,10 +264,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     });
 
     if (!response) {
-      runtime.logger.warn(
-        { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId },
-        'Getting reflection failed - empty response'
-      );
+      runtime.logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Getting reflection failed - empty response');
       return;
     }
 
@@ -239,38 +272,30 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     const reflection = parseKeyValueXml<ReflectionXmlResult>(response);
 
     if (!reflection) {
-      runtime.logger.warn(
-        { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId },
-        'Getting reflection failed - failed to parse XML'
-      );
+      runtime.logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Getting reflection failed - failed to parse XML');
       return;
     }
 
     // Perform basic structure validation
     if (!reflection.facts) {
-      runtime.logger.warn(
-        { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId },
-        'Getting reflection failed - invalid facts structure'
-      );
+      runtime.logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Getting reflection failed - invalid facts structure');
       return;
     }
 
     if (!reflection.relationships) {
-      runtime.logger.warn(
-        { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId },
-        'Getting reflection failed - invalid relationships structure'
-      );
+      runtime.logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Getting reflection failed - invalid relationships structure');
       return;
     }
 
     // Handle facts - parseKeyValueXml returns nested structures differently
     // Facts might be a single object or an array depending on the count
     let factsArray: FactXml[] = [];
-    if (reflection.facts.fact) {
+    const factsData = reflection.facts as { fact?: FactXml | FactXml[] };
+    if (factsData.fact) {
       // Normalize to array
-      factsArray = Array.isArray(reflection.facts.fact)
-        ? reflection.facts.fact
-        : [reflection.facts.fact];
+      factsArray = Array.isArray(factsData.fact)
+        ? factsData.fact
+        : [factsData.fact];
     }
 
     // Store new facts - filter for valid new facts with claim text
@@ -305,16 +330,41 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
     // Handle relationships - similar structure normalization
     let relationshipsArray: RelationshipXml[] = [];
-    if (reflection.relationships.relationship) {
-      relationshipsArray = Array.isArray(reflection.relationships.relationship)
-        ? reflection.relationships.relationship
-        : [reflection.relationships.relationship];
+    const relationshipsData = reflection.relationships as { relationship?: RelationshipXml | RelationshipXml[] };
+    if (relationshipsData.relationship) {
+      relationshipsArray = Array.isArray(relationshipsData.relationship)
+        ? relationshipsData.relationship
+        : [relationshipsData.relationship];
     }
 
-    // Update or create relationships
+    // Early return if no relationships to process (skip map building)
+    if (relationshipsArray.length === 0) {
+      await runtime.setCache<string>(
+        `${message.roomId}-reflection-last-processed`,
+        message?.id || ''
+      );
+      return;
+    }
+
+    // Build lookup maps once for O(1) entity resolution
+    const { byId: entityById, byName: entityByName } = buildEntityMaps(entities);
+
+    // Build relationship lookup map for O(1) access
+    const existingRelationshipMap = new Map<string, Relationship>();
+    for (const rel of existingRelationships) {
+      const key = `${rel.sourceEntityId}-${rel.targetEntityId}`;
+      existingRelationshipMap.set(key, rel);
+    }
+
+    // Collect relationship operations for parallel execution
+    const relationshipPromises: Promise<void>[] = [];
+
     for (const relationship of relationshipsArray) {
       if (!relationship.sourceEntityId || !relationship.targetEntityId) {
-        console.warn('Skipping relationship with missing entity IDs:', relationship);
+        runtime.logger.warn(
+          { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId },
+          'Skipping relationship with missing entity IDs'
+        );
         continue;
       }
 
@@ -322,17 +372,18 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       let targetId: UUID;
 
       try {
-        sourceId = resolveEntity(relationship.sourceEntityId, entities);
-        targetId = resolveEntity(relationship.targetEntityId, entities);
+        sourceId = resolveEntityWithMaps(relationship.sourceEntityId! as UUID, entityById, entityByName);
+        targetId = resolveEntityWithMaps(relationship.targetEntityId! as UUID, entityById, entityByName);
       } catch (error) {
-        console.warn('Failed to resolve relationship entities:', error);
-        console.warn('relationship:\n', relationship);
+        runtime.logger.warn(
+          { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) },
+          'Failed to resolve relationship entities'
+        );
         continue; // Skip this relationship if we can't resolve the IDs
       }
 
-      const existingRelationship = existingRelationships.find((r) => {
-        return r.sourceEntityId === sourceId && r.targetEntityId === targetId;
-      });
+      // O(1) lookup instead of O(n) find
+      const existingRelationship = existingRelationshipMap.get(`${sourceId}-${targetId}`);
 
       // Parse tags from comma-separated string
       const tags = relationship.tags
@@ -351,22 +402,31 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
         const updatedTags = Array.from(new Set([...(existingRelationship.tags || []), ...tags]));
 
-        await runtime.updateRelationship({
-          ...existingRelationship,
-          tags: updatedTags,
-          metadata: updatedMetadata,
-        });
+        relationshipPromises.push(
+          runtime.updateRelationship({
+            ...existingRelationship,
+            tags: updatedTags,
+            metadata: updatedMetadata,
+          }).then(() => {})
+        );
       } else {
-        await runtime.createRelationship({
-          sourceEntityId: sourceId,
-          targetEntityId: targetId,
-          tags,
-          metadata: {
-            interactions: 1,
-            ...(relationship.metadata || {}),
-          },
-        });
+        relationshipPromises.push(
+          runtime.createRelationship({
+            sourceEntityId: sourceId,
+            targetEntityId: targetId,
+            tags: tags,
+            metadata: {
+              interactions: 1,
+              ...(relationship.metadata || {}),
+            },
+          }).then(() => {})
+        );
       }
+    }
+
+    // Execute all relationship operations in parallel
+    if (relationshipPromises.length > 0) {
+      await Promise.all(relationshipPromises);
     }
 
     await runtime.setCache<string>(
@@ -374,14 +434,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       message?.id || ''
     );
   } catch (error) {
-    runtime.logger.error(
-      {
-        src: 'plugin:bootstrap:evaluator:reflection',
-        agentId: runtime.agentId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      'Error in reflection handler'
-    );
+    runtime.logger.error({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in reflection handler');
     return;
   }
 }
@@ -390,25 +443,43 @@ export const reflectionEvaluator: Evaluator = {
   name: 'REFLECTION',
   similes: ['REFLECT', 'SELF_REFLECT', 'EVALUATE_INTERACTION', 'ASSESS_SITUATION'],
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    const lastMessageId = await runtime.getCache<string>(
-      `${message.roomId}-reflection-last-processed`
-    );
-    const messages = await runtime.getMemories({
-      tableName: 'messages',
-      roomId: message.roomId,
-      count: runtime.getConversationLength(),
-    });
-
-    if (lastMessageId) {
-      const lastMessageIndex = messages.findIndex((msg) => msg.id === lastMessageId);
-      if (lastMessageIndex !== -1) {
-        messages.splice(0, lastMessageIndex + 1);
-      }
+    // Early validation - fail fast
+    if (!message.roomId) {
+      return false;
     }
 
     const reflectionInterval = Math.ceil(runtime.getConversationLength() / 4);
 
-    return messages.length > reflectionInterval;
+    // Check cache first (cheap operation)
+    const lastMessageId = await runtime.getCache<string>(
+      `${message.roomId}-reflection-last-processed`
+    );
+
+    // Only fetch messages we actually need to count
+    // If we have a lastMessageId, we need to find how many messages since then
+    // Otherwise, we just need to count if there are more than reflectionInterval messages
+    const messages = await runtime.getMemories({
+      tableName: 'messages',
+      roomId: message.roomId,
+      count: runtime.getConversationLength(), // Still need to fetch to find last processed
+      unique: false,
+    });
+
+    // If no messages, don't run
+    if (messages.length === 0) {
+      return false;
+    }
+
+    // Count messages since last reflection
+    let messagesSinceReflection = messages.length;
+    if (lastMessageId) {
+      const lastMessageIndex = messages.findIndex((msg) => msg.id === lastMessageId);
+      if (lastMessageIndex !== -1) {
+        messagesSinceReflection = messages.length - lastMessageIndex - 1;
+      }
+    }
+
+    return messagesSinceReflection > reflectionInterval;
   },
   description:
     'Generate a self-reflective thought on the conversation, then extract facts and relationships between entities in the conversation.',

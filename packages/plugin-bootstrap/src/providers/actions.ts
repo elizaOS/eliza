@@ -1,5 +1,5 @@
 import type { Action, IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
-import { addHeader, composeActionExamples, formatActionNames, formatActions } from '@elizaos/core';
+import { addHeader, composeActionExamples, formatActionNames, formatActions, logger } from '@elizaos/core';
 
 /**
  * Interface for action parameter definition
@@ -59,43 +59,20 @@ function formatActionsWithParams(actions: Action[]): string {
 }
 
 /**
- * A provider object that fetches possible response actions based on the provided runtime, message, and state.
- * @type {Provider}
- * @property {string} name - The name of the provider ("ACTIONS").
- * @property {string} description - The description of the provider ("Possible response actions").
- * @property {number} position - The position of the provider (-1).
- * @property {Function} get - Asynchronous function that retrieves actions that validate for the given message.
- * @param {IAgentRuntime} runtime - The runtime object.
- * @param {Memory} message - The message memory.
- * @param {State} state - The state object.
- * @returns {Object} An object containing the actions data, values, and combined text sections.
- */
-/**
- * Provider for ACTIONS
- *
- * @typedef {import('./Provider').Provider} Provider
- * @typedef {import('./Runtime').IAgentRuntime} IAgentRuntime
- * @typedef {import('./Memory').Memory} Memory
- * @typedef {import('./State').State} State
- * @typedef {import('./Action').Action} Action
+ * Provider for ACTIONS - fetches possible response actions based on validation.
  *
  * @type {Provider}
- * @property {string} name - The name of the provider
- * @property {string} description - Description of the provider
- * @property {number} position - The position of the provider
- * @property {Function} get - Asynchronous function to get actions that validate for a given message
- *
- * @param {IAgentRuntime} runtime - The agent runtime
- * @param {Memory} message - The message memory
- * @param {State} state - The state of the agent
- * @returns {Object} Object containing data, values, and text related to actions
+ * @property {string} name - The name of the provider ("ACTIONS")
+ * @property {string} description - Description of the provider ("Possible response actions")
+ * @property {number} position - The position of the provider (-1)
+ * @property {Function} get - Async function to get actions that validate for the given message
  */
 export const actionsProvider: Provider = {
   name: 'ACTIONS',
   description: 'Possible response actions',
   position: -1,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    // Get actions that validate for this message
+    // Get actions that validate for this message (all validations run in parallel)
     const actionPromises = runtime.actions.map(async (action: Action) => {
       try {
         const result = await action.validate(runtime, message, state);
@@ -103,31 +80,38 @@ export const actionsProvider: Provider = {
           return action;
         }
       } catch (e) {
-        console.error('ACTIONS GET -> validate err', action, e);
+        logger.error(
+          { src: 'plugin:bootstrap:provider:actions', agentId: runtime.agentId, action: action.name, error: e instanceof Error ? e.message : String(e) },
+          'Action validation error'
+        );
       }
       return null;
     });
 
     const resolvedActions = await Promise.all(actionPromises);
+    const actionsData = resolvedActions.filter((a): a is Action => a !== null);
 
-    const actionsData = resolvedActions.filter(Boolean) as Action[];
+    // Early return for no valid actions (optimization: avoids unnecessary string operations)
+    if (actionsData.length === 0) {
+      return {
+        data: { actionsData: [] },
+        values: {
+          actionNames: 'Possible response actions: none',
+          actionExamples: '',
+          actionsWithDescriptions: '',
+          actionsWithParams: '',
+        },
+        text: 'Possible response actions: none',
+      };
+    }
 
     // Format action-related texts
     const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;
-
-    const actionsWithDescriptions =
-      actionsData.length > 0 ? addHeader('# Available Actions', formatActions(actionsData)) : '';
-
+    const actionsWithDescriptions = addHeader('# Available Actions', formatActions(actionsData));
+    const actionExamples = addHeader('# Action Examples', composeActionExamples(actionsData, 10));
+    
     // Format actions with parameter schemas for multi-step workflows
-    const actionsWithParams =
-      actionsData.length > 0
-        ? addHeader('# Available Actions with Parameters', formatActionsWithParams(actionsData))
-        : '';
-
-    const actionExamples =
-      actionsData.length > 0
-        ? addHeader('# Action Examples', composeActionExamples(actionsData, 10))
-        : '';
+    const actionsWithParams = addHeader('# Available Actions with Parameters', formatActionsWithParams(actionsData));
 
     const data = {
       actionsData,
@@ -140,10 +124,8 @@ export const actionsProvider: Provider = {
       actionsWithParams, // NEW: includes parameter schemas for tool calling
     };
 
-    // Combine all text sections - now including actionsWithDescriptions
-    const text = [actionNames, actionsWithDescriptions, actionExamples]
-      .filter(Boolean)
-      .join('\n\n');
+    // Combine all text sections
+    const text = [actionNames, actionsWithDescriptions, actionExamples].join('\n\n');
 
     return {
       data,

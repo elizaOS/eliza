@@ -4,7 +4,7 @@ import {
   CustomMetadata,
   formatMessages,
   formatPosts,
-  getEntityDetails,
+  parseBooleanFromText,
   type Entity,
   type IAgentRuntime,
   type Memory,
@@ -13,16 +13,6 @@ import {
   logger,
 } from '@elizaos/core';
 
-// Move getRecentInteractions outside the provider
-/**
- * Retrieves the recent interactions between two entities in a specific context.
- *
- * @param {IAgentRuntime} runtime - The agent runtime object.
- * @param {UUID} sourceEntityId - The UUID of the source entity.
- * @param {UUID} targetEntityId - The UUID of the target entity.
- * @param {UUID} excludeRoomId - The UUID of the room to exclude from the search.
- * @returns {Promise<Memory[]>} A promise that resolves to an array of Memory objects representing recent interactions.
- */
 /**
  * Retrieves the recent interactions between two entities in different rooms excluding a specific room.
  * @param {IAgentRuntime} runtime - The agent runtime object.
@@ -50,6 +40,62 @@ const getRecentInteractions = async (
 };
 
 /**
+ * Build entity details from room entities (optimized version without extra room fetch).
+ * @param {IAgentRuntime} runtime - The agent runtime object.
+ * @param {UUID} roomId - The room ID.
+ * @param {any} room - The pre-fetched room object to avoid duplicate fetch.
+ * @returns {Promise<Entity[]>} Array of entity details.
+ */
+const getEntityDetailsWithRoom = async (
+  runtime: IAgentRuntime,
+  roomId: UUID,
+  room: { source?: string } | null
+): Promise<Entity[]> => {
+  const roomEntities = await runtime.getEntitiesForRoom(roomId, true);
+
+  // Use a Map for uniqueness checking while processing entities
+  const uniqueEntities = new Map<UUID, Entity>();
+
+  for (const entity of roomEntities) {
+    if (!entity.id || uniqueEntities.has(entity.id)) continue;
+
+    // Merge component data efficiently
+    const allData: Record<string, unknown> = {};
+    for (const component of entity.components || []) {
+      Object.assign(allData, component.data);
+    }
+
+    // Process merged data
+    const mergedData: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(allData)) {
+      if (!mergedData[key]) {
+        mergedData[key] = value;
+        continue;
+      }
+
+      if (Array.isArray(mergedData[key]) && Array.isArray(value)) {
+        mergedData[key] = [...new Set([...(mergedData[key] as unknown[]), ...value])];
+      } else if (typeof mergedData[key] === 'object' && typeof value === 'object') {
+        mergedData[key] = { ...mergedData[key] as object, ...value as object };
+      }
+    }
+
+    const entityId = entity.id!; // Already validated above
+    uniqueEntities.set(entityId, {
+      id: entityId,
+      agentId: entity.agentId,
+      name: room?.source
+        ? (entity.metadata[room.source] as { name?: string })?.name || entity.names[0]
+        : entity.names[0],
+      names: entity.names,
+      metadata: { ...mergedData, ...entity.metadata },
+    } as Entity);
+  }
+
+  return Array.from(uniqueEntities.values());
+};
+
+/**
  * A provider object that retrieves recent messages, interactions, and memories based on a given message.
  * @typedef {object} Provider
  * @property {string} name - The name of the provider ("RECENT_MESSAGES").
@@ -64,25 +110,64 @@ export const recentMessagesProvider: Provider = {
   name: 'RECENT_MESSAGES',
   description: 'Recent messages, interactions and other memories',
   position: 100,
-  get: async (runtime: IAgentRuntime, message: Memory) => {
+  get: async (runtime: IAgentRuntime, message: Memory, state) => {
+    // Early validation - fail fast before any IO
+    const { roomId } = message;
+    if (!roomId) {
+      logger.warn({ src: 'plugin:bootstrap:provider:recent-messages', agentId: runtime.agentId }, 'No roomId in message');
+      return { data: {}, values: {}, text: '' };
+    }
+
     try {
-      const { roomId } = message;
       const conversationLength = runtime.getConversationLength();
 
-      // Parallelize initial data fetching operations including recentInteractions
-      const [entitiesData, room, recentMessagesData, recentInteractionsData] = await Promise.all([
-        getEntityDetails({ runtime, roomId }),
-        runtime.getRoom(roomId),
+      // Check if we should limit to only the last message
+      const limitMessagesSetting = runtime.getSetting('LIMIT_TO_LAST_MESSAGE');
+      const limitToLastMessage =
+        limitMessagesSetting === true ||
+        (typeof limitMessagesSetting === 'string'
+          ? parseBooleanFromText(limitMessagesSetting)
+          : limitMessagesSetting != null
+            ? parseBooleanFromText(String(limitMessagesSetting))
+            : false);
+      const effectiveConversationLength = limitToLastMessage ? 1 : conversationLength;
+
+      // Try to get room and entities from previous provider results (ENTITIES provider runs before us)
+      // Safe access with explicit type checking - provider may not have run
+      const entitiesProviderResult = state?.data?.providers?.ENTITIES;
+      const entitiesProviderData =
+        entitiesProviderResult && typeof entitiesProviderResult === 'object' && 'data' in entitiesProviderResult
+          ? (entitiesProviderResult.data as { room?: { type?: string; source?: string }; entitiesData?: Entity[] })
+          : undefined;
+
+      // Only use cached data if it exists and is valid
+      const cachedRoom = entitiesProviderData?.room;
+      const cachedEntities = Array.isArray(entitiesProviderData?.entitiesData) ? entitiesProviderData.entitiesData : undefined;
+
+      // Fetch room only if not in cache
+      const [room, recentMessagesData, recentInteractionsData] = await Promise.all([
+        cachedRoom ? Promise.resolve(cachedRoom) : runtime.getRoom(roomId),
         runtime.getMemories({
           tableName: 'messages',
           roomId,
-          count: conversationLength,
+          count: effectiveConversationLength,
           unique: false,
         }),
         message.entityId !== runtime.agentId
           ? getRecentInteractions(runtime, message.entityId, runtime.agentId, roomId)
           : Promise.resolve([]),
       ]);
+
+      // Get entity details - use cache if available and valid, otherwise fetch
+      const entitiesData = cachedEntities ?? (await getEntityDetailsWithRoom(runtime, roomId, room));
+
+      // Build entity lookup map for O(1) access during formatting
+      const entityMap = new Map<UUID, Entity>();
+      for (const entity of entitiesData) {
+        if (entity.id) {
+          entityMap.set(entity.id, entity);
+        }
+      }
 
       // Separate action results from regular messages
       const actionResultMessages = recentMessagesData.filter(
@@ -98,18 +183,22 @@ export const recentMessagesProvider: Provider = {
         ? room.type === ChannelType.FEED || room.type === ChannelType.THREAD
         : false;
 
-      // Format recent messages and posts in parallel, using only dialogue messages
-      const [formattedRecentMessages, formattedRecentPosts] = await Promise.all([
-        formatMessages({
-          messages: dialogueMessages,
-          entities: entitiesData,
-        }),
-        formatPosts({
+      // Only format the type that will actually be used (optimization: avoid formatting both)
+      let formattedRecentMessages = '';
+      let formattedRecentPosts = '';
+
+      if (isPostFormat) {
+        formattedRecentPosts = formatPosts({
           messages: dialogueMessages,
           entities: entitiesData,
           conversationHeader: false,
-        }),
-      ]);
+        });
+      } else {
+        formattedRecentMessages = formatMessages({
+          messages: dialogueMessages,
+          entities: entitiesData,
+        });
+      }
 
       // Format action results separately
       let actionResultsText = '';
@@ -145,9 +234,7 @@ export const recentMessagesProvider: Provider = {
                 const error = mem.content?.error || '';
 
                 let memText = `  - ${actionName} (${status})`;
-                if (planStep) {
-                  memText += ` [${planStep}]`;
-                }
+                if (planStep) memText += ` [${planStep}]`;
                 if (error) {
                   memText += `: Error - ${error}`;
                 } else if (text && text !== `Executed action: ${actionName}`) {
@@ -207,25 +294,28 @@ export const recentMessagesProvider: Provider = {
       let recentMessage = 'No recent message available.';
 
       if (dialogueMessages.length > 0) {
-        // Get the most recent dialogue message (create a copy to avoid mutating original array)
+        // Get the most recent dialogue message (messages are sorted newest first after getMemories)
         const mostRecentMessage = [...dialogueMessages].sort(
           (a, b) => (b.createdAt || 0) - (a.createdAt || 0)
         )[0];
 
-        // Format just this single message to get the internal thought
-        const formattedSingleMessage = formatMessages({
-          messages: [mostRecentMessage],
-          entities: entitiesData,
-        });
+        // Inline format for the most recent message (avoids redundant formatMessages call)
+        const senderEntity = entityMap.get(mostRecentMessage.entityId);
+        const senderName = senderEntity?.names[0] || 'Unknown User';
+        const messageText = mostRecentMessage.content?.text || '';
+        const messageThought = mostRecentMessage.content?.thought;
 
-        if (formattedSingleMessage) {
-          recentMessage = formattedSingleMessage;
+        if (messageText || messageThought) {
+          const parts: string[] = [];
+          if (messageText) parts.push(`${senderName}: ${messageText}`);
+          if (messageThought) parts.push(`(${senderName}'s internal thought: ${messageThought})`);
+          recentMessage = parts.join('\n');
         }
       }
 
       const metaData = message.metadata as CustomMetadata;
-      const senderName =
-        entitiesData.find((entity: Entity) => entity.id === message.entityId)?.names[0] ||
+      const currentSenderName =
+        entityMap.get(message.entityId)?.names[0] ||
         metaData?.entityName ||
         'Unknown User';
       const receivedMessageContent = message.content.text;
@@ -233,55 +323,39 @@ export const recentMessagesProvider: Provider = {
       const hasReceivedMessage = !!receivedMessageContent?.trim();
 
       const receivedMessageHeader = hasReceivedMessage
-        ? addHeader('# Received Message', `${senderName}: ${receivedMessageContent}`)
+        ? addHeader('# Received Message', `${currentSenderName}: ${receivedMessageContent}`)
         : '';
 
       const focusHeader = hasReceivedMessage
         ? addHeader(
-            '# Focus your response',
-            `You are replying to the above message from **${senderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`
-          )
+          '# Focus your response',
+          `You are replying to the above message from **${currentSenderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`
+        )
         : '';
 
-      // Preload all necessary entities for both types of interactions
-      const interactionEntityMap = new Map<UUID, Entity>();
+      // Use the existing entityMap for interaction lookups, only fetch missing entities
+      const interactionEntityMap = new Map<UUID, Entity>(entityMap);
 
       // Only proceed if there are interactions to process
       if (recentInteractionsData.length > 0) {
-        // Get unique entity IDs that aren't the runtime agent
-        const uniqueEntityIds = [
+        // Get unique entity IDs that aren't the runtime agent and not already in our map
+        const missingEntityIds = [
           ...new Set(
             recentInteractionsData
-              .map((message) => message.entityId)
-              .filter((id) => id !== runtime.agentId)
+              .map((msg) => msg.entityId)
+              .filter((id) => id !== runtime.agentId && !entityMap.has(id))
           ),
         ];
 
-        // Create a Set for faster lookup
-        const uniqueEntityIdSet = new Set(uniqueEntityIds);
-
-        // Add entities already fetched in entitiesData to the map
-        const entitiesDataIdSet = new Set<UUID>();
-        entitiesData.forEach((entity) => {
-          if (uniqueEntityIdSet.has(entity.id)) {
-            interactionEntityMap.set(entity.id, entity);
-            entitiesDataIdSet.add(entity.id);
-          }
-        });
-
-        // Get the remaining entities that weren't already loaded
-        // Use Set difference for efficient filtering
-        const remainingEntityIds = uniqueEntityIds.filter((id) => !entitiesDataIdSet.has(id));
-
         // Only fetch the entities we don't already have
-        if (remainingEntityIds.length > 0) {
+        if (missingEntityIds.length > 0) {
           const entities = await Promise.all(
-            remainingEntityIds.map((entityId) => runtime.getEntityById(entityId))
+            missingEntityIds.map((entityId) => runtime.getEntityById(entityId))
           );
 
           entities.forEach((entity, index) => {
             if (entity) {
-              interactionEntityMap.set(remainingEntityIds[index], entity);
+              interactionEntityMap.set(missingEntityIds[index], entity);
             }
           });
         }
@@ -374,14 +448,7 @@ export const recentMessagesProvider: Provider = {
         text,
       };
     } catch (error) {
-      logger.error(
-        {
-          src: 'plugin:bootstrap:provider:recent_messages',
-          agentId: runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Error in recentMessagesProvider'
-      );
+      logger.error({ src: 'plugin:bootstrap:provider:recent_messages', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in recentMessagesProvider');
       // Return a default state in case of error, similar to the empty message list
       return {
         data: {

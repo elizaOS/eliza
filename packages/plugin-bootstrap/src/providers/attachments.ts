@@ -83,16 +83,23 @@ export const attachmentsProvider: Provider = {
 
     // Format attachments for display
     const formattedAttachments = allAttachments
-      .map(
-        (attachment) =>
-          `ID: ${attachment.id}
+      .map((attachment) => {
+        // For data URLs, show a summary instead of the massive base64 blob
+        let displayUrl = attachment.url;
+        if (attachment.url?.startsWith('data:')) {
+          const mimeMatch = attachment.url.match(/^data:([^;,]+)/);
+          const mimeType = mimeMatch ? mimeMatch[1] : 'unknown';
+          const sizeEstimate = Math.round((attachment.url.length * 3) / 4 / 1024); // Rough KB estimate
+          displayUrl = `[Embedded ${mimeType} ~${sizeEstimate}KB]`;
+        }
+        return `ID: ${attachment.id}
     Name: ${attachment.title}
-    URL: ${attachment.url}
-    Type: ${attachment.source}
+    URL: ${displayUrl}
+    Type: ${attachment.source || attachment.contentType}
     Description: ${attachment.description}
     Text: ${attachment.text}
-    `
-      )
+    `;
+      })
       .join('\n');
 
     // Create formatted text with header

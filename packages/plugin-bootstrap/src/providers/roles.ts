@@ -1,6 +1,8 @@
 import {
   ChannelType,
+  createUniqueUuid,
   logger,
+  type Entity,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -8,18 +10,15 @@ import {
   type State,
   type UUID,
 } from '@elizaos/core';
+import { getCachedRoom, getCachedWorld } from './shared-cache';
 
-/**
- * Role provider that retrieves roles in the server based on the provided runtime, message, and state.
- * * @type { Provider }
- * @property { string } name - The name of the role provider.
- * @property { string } description - A brief description of the role provider.
- * @property { Function } get - Asynchronous function that retrieves and processes roles in the server.
- * @param { IAgentRuntime } runtime - The agent runtime object.
- * @param { Memory } message - The message memory object.
- * @param { State } state - The state object.
- * @returns {Promise<ProviderResult>} The result containing roles data, values, and text.
- */
+/** Reusable empty result for no role scenarios */
+const NO_ROLES_RESULT: ProviderResult = {
+  data: { roles: [] },
+  values: { roles: 'No role information available for this server.' },
+  text: 'No role information available for this server.',
+};
+
 /**
  * A provider for retrieving and formatting the role hierarchy in a server.
  * @type {Provider}
@@ -27,174 +26,158 @@ import {
 export const roleProvider: Provider = {
   name: 'ROLES',
   description: 'Roles in the server, default are OWNER, ADMIN and MEMBER (as well as NONE)',
-  get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
-    const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
+    // Early validation - fail fast before any IO
+    if (!message.roomId) {
+      return NO_ROLES_RESULT;
+    }
+
+    // Use shared cache for room lookup - this ensures all providers share the same
+    // in-flight promise and cached result, preventing redundant DB calls
+    const room = await getCachedRoom(runtime, message.roomId);
     if (!room) {
       throw new Error('No room found');
     }
 
+    // Early return for non-group contexts
     if (room.type !== ChannelType.GROUP) {
       return {
-        data: {
-          roles: [],
-        },
+        data: { roles: [] },
         values: {
-          roles:
-            'No access to role information in DMs, the role provider is only available in group scenarios.',
+          roles: 'No access to role information in DMs, the role provider is only available in group scenarios.',
         },
         text: 'No access to role information in DMs, the role provider is only available in group scenarios.',
       };
     }
 
-    const worldId = room.worldId;
-
-    if (!worldId) {
-      throw new Error('No world ID found for room');
+    const serverId = room.serverId ?? room.messageServerId;
+    if (!serverId) {
+      logger.warn({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, roomId: room.id }, 'No server ID found for room');
+      return {
+        data: { roles: [] },
+        values: { roles: 'No role information available - server ID not found.' },
+        text: 'No role information available - server ID not found.',
+      };
     }
 
-    logger.info(
-      { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, worldId },
-      'Using world ID'
-    );
+    logger.info({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId }, 'Using server ID');
 
-    // Get world data
-    const world = await runtime.getWorld(worldId);
+    // Get world data (with caching)
+    const worldId = createUniqueUuid(runtime, serverId);
+    const world = await getCachedWorld(runtime, worldId);
 
     if (!world || !world.metadata?.ownership?.ownerId) {
       logger.info(
-        { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, worldId },
-        'No ownership data found for world, initializing empty role hierarchy'
+        { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId },
+        'No ownership data found for server, initializing empty role hierarchy'
       );
-      return {
-        data: {
-          roles: [],
-        },
-        values: {
-          roles: 'No role information available for this server.',
-        },
-        text: 'No role information available for this server.',
-      };
+      return NO_ROLES_RESULT;
     }
+
     // Get roles from world metadata
     const roles = world.metadata.roles || {};
+    const entityIds = Object.keys(roles) as UUID[];
 
-    if (Object.keys(roles).length === 0) {
-      logger.info(
-        { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, worldId },
-        'No roles found for world'
-      );
-      return {
-        data: {
-          roles: [],
-        },
-        values: {
-          roles: 'No role information available for this server.',
-        },
-        text: 'No role information available for this server.',
-      };
+    if (entityIds.length === 0) {
+      logger.info({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId }, 'No roles found for server');
+      return NO_ROLES_RESULT;
     }
 
-    logger.info(
-      {
-        src: 'plugin:bootstrap:provider:roles',
-        agentId: runtime.agentId,
-        roleCount: Object.keys(roles).length,
-      },
-      'Found roles'
-    );
+    logger.info({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, roleCount: entityIds.length }, 'Found roles');
+
+    // Batch fetch all entities at once using runtime's batch method (single DB query)
+    const entities = await runtime.getEntitiesByIds(entityIds);
+
+    // Build entity map for O(1) lookup
+    const entityMap = new Map<UUID, Entity>();
+    if (entities) {
+      for (const entity of entities) {
+        if (entity.id) {
+          entityMap.set(entity.id, entity);
+        }
+      }
+    }
+
+    // Use Set for O(1) duplicate checking instead of O(n) array.some()
+    const seenUsernames = new Set<string>();
 
     // Group users by role
     const owners: { name: string; username: string; names: string[] }[] = [];
     const admins: { name: string; username: string; names: string[] }[] = [];
     const members: { name: string; username: string; names: string[] }[] = [];
 
-    // Process roles
-    for (const entityId of Object.keys(roles) as UUID[]) {
+    // Process roles using the pre-fetched entities
+    for (const entityId of entityIds) {
       const userRole = roles[entityId];
-
-      // get the user from the database
-      const user = await runtime.getEntityById(entityId);
+      const user = entityMap.get(entityId);
 
       const name = user?.metadata?.name as string;
       const username = user?.metadata?.username as string;
-      const names = user?.names as string[];
+      const userNames = user?.names as string[];
 
-      // Skip duplicates (we store both UUID and original ID)
-      if (
-        owners.some((owner) => owner.username === username) ||
-        admins.some((admin) => admin.username === username) ||
-        members.some((member) => member.username === username)
-      ) {
+      // Skip if missing required fields
+      if (!name || !username || !userNames) {
+        logger.warn({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, entityId }, 'User has no name or username, skipping');
         continue;
       }
 
-      if (!name || !username || !names) {
-        logger.warn(
-          { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, entityId },
-          'User has no name or username, skipping'
-        );
+      // Skip duplicates using Set (O(1) lookup)
+      if (seenUsernames.has(username)) {
         continue;
       }
+      seenUsernames.add(username);
 
       // Add to appropriate group
+      const userData = { name, username, names: userNames };
       switch (userRole) {
         case 'OWNER':
-          owners.push({ name, username, names });
+          owners.push(userData);
           break;
         case 'ADMIN':
-          admins.push({ name, username, names });
+          admins.push(userData);
           break;
         default:
-          members.push({ name, username, names });
+          members.push(userData);
           break;
       }
     }
 
-    // Format the response
-    let response = '# Server Role Hierarchy\n\n';
+    // Early return if no valid users found
+    if (owners.length === 0 && admins.length === 0 && members.length === 0) {
+      return NO_ROLES_RESULT;
+    }
+
+    // Format the response using string builder pattern
+    const parts: string[] = ['# Server Role Hierarchy\n'];
 
     if (owners.length > 0) {
-      response += '## Owners\n';
-      owners.forEach((owner) => {
-        response += `${owner.name} (${owner.names.join(', ')})\n`;
-      });
-      response += '\n';
+      parts.push('## Owners');
+      for (const owner of owners) {
+        parts.push(`${owner.name} (${owner.names.join(', ')})`);
+      }
+      parts.push('');
     }
 
     if (admins.length > 0) {
-      response += '## Administrators\n';
-      admins.forEach((admin) => {
-        response += `${admin.name} (${admin.names.join(', ')}) (${admin.username})\n`;
-      });
-      response += '\n';
+      parts.push('## Administrators');
+      for (const admin of admins) {
+        parts.push(`${admin.name} (${admin.names.join(', ')}) (${admin.username})`);
+      }
+      parts.push('');
     }
 
     if (members.length > 0) {
-      response += '## Members\n';
-      members.forEach((member) => {
-        response += `${member.name} (${member.names.join(', ')}) (${member.username})\n`;
-      });
+      parts.push('## Members');
+      for (const member of members) {
+        parts.push(`${member.name} (${member.names.join(', ')}) (${member.username})`);
+      }
     }
 
-    if (owners.length === 0 && admins.length === 0 && members.length === 0) {
-      return {
-        data: {
-          roles: [],
-        },
-        values: {
-          roles: 'No role information available for this server.',
-        },
-        text: 'No role information available for this server.',
-      };
-    }
+    const response = parts.join('\n');
 
     return {
-      data: {
-        roles: response,
-      },
-      values: {
-        roles: response,
-      },
+      data: { roles: response },
+      values: { roles: response },
       text: response,
     };
   },

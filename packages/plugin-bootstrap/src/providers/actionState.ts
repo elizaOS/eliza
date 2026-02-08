@@ -28,6 +28,7 @@ export const actionStateProvider: Provider = {
   description:
     'Previous action results, working memory, and action plan from the current execution run',
   position: 150,
+  dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     // Get action results, plan, and working memory from the incoming state
     const actionResults = state.data?.actionResults || [];
