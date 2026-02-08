@@ -93,6 +93,38 @@ export const createUploadRateLimit = () => {
 };
 
 /**
+ * Strict rate limiting for authentication endpoints
+ * Prevents brute force attacks on login/register
+ */
+export const createAuthRateLimit = () => {
+  return rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10, // Limit each IP to 10 auth attempts per 15 minutes
+    message: {
+      success: false,
+      error: {
+        code: 'AUTH_RATE_LIMIT_EXCEEDED',
+        message: 'Too many authentication attempts. Please try again later.',
+      },
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true, // Don't count successful logins
+    handler: (req, res) => {
+      const clientIp = req.ip || 'unknown';
+      logger.warn({ src: 'http', ip: clientIp, path: req.path }, 'Auth rate limit exceeded');
+      res.status(429).json({
+        success: false,
+        error: {
+          code: 'AUTH_RATE_LIMIT_EXCEEDED',
+          message: 'Too many authentication attempts. Please try again later.',
+        },
+      });
+    },
+  });
+};
+
+/**
  * Rate limiting specifically for channel validation attempts
  * Prevents brute force attacks on channel IDs
  */

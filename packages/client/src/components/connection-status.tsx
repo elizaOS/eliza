@@ -4,24 +4,30 @@ import { useState, useEffect } from 'react';
 import { SidebarMenuButton, SidebarMenuItem } from './ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '../context/AuthContext';
 import { useConnection } from '../context/ConnectionContext';
 
 export interface ConnectionStatusProps {
+  // Allow standard HTML attributes like className
   [key: string]: any;
 }
 
 export default function ConnectionStatus() {
   const { toast } = useToast();
   const [prevStatus, setPrevStatus] = useState<string | null>(null);
+  const { requireAuth } = useAuth();
   const { status, error } = useConnection();
 
+  // Derive states from context
   const isLoading = status === 'loading';
   const isConnected = status === 'connected';
   const isError = status === 'error';
-  const isUnauthorized = status === 'unauthorized';
+  const isUnauthorized = status === 'unauthorized'; // Context handles this now
   const showingError = isError || isUnauthorized;
 
+  // Track connection state changes and show appropriate toast notifications
   useEffect(() => {
+    // Transition from disconnected/error/unauthorized to connected
     if (
       (prevStatus === 'error' || prevStatus === 'unauthorized' || prevStatus === 'disconnected') &&
       isConnected
@@ -36,6 +42,7 @@ export default function ConnectionStatus() {
         ),
       });
     } else if (prevStatus === 'connected' && (isError || isUnauthorized)) {
+      // Transition from connected to error/unauthorized
       toast({
         title: 'Connection Lost',
         description: 'Attempting to reconnect to the Eliza server...',
@@ -43,13 +50,21 @@ export default function ConnectionStatus() {
       });
     }
 
+    // Update the connection state tracking for the next render
     setPrevStatus(status);
   }, [status, prevStatus, isConnected, isError, isUnauthorized, toast]);
+
+  useEffect(() => {
+    // If the status becomes unauthorized, trigger the auth dialog
+    if (isUnauthorized && prevStatus !== 'unauthorized') {
+      requireAuth(); // Trigger the auth dialog
+    }
+  }, [isUnauthorized, prevStatus, requireAuth]);
 
   const getStatusColor = () => {
     if (isUnauthorized) return 'bg-yellow-500';
     if (isLoading) return 'bg-muted-foreground';
-    return isConnected ? 'bg-green-600' : 'bg-red-600';
+    return isConnected ? 'bg-green-600' : 'bg-red-600'; // Treat error/disconnected as red
   };
 
   const getStatusText = () => {
@@ -64,13 +79,16 @@ export default function ConnectionStatus() {
     return isConnected ? 'text-green-600' : 'text-red-600';
   };
 
+  // Get a specific error message based on the error
   const getErrorMessage = () => {
-    if (!error) return 'Connection failed';
+    if (!error) return 'Connection failed'; // Use error from context
 
+    // Specific check for Unauthorized first
     if (isUnauthorized) {
-      return 'Unauthorized: Invalid or missing API Key.';
+      return 'Unauthorized: Invalid or missing API Key. Check client configuration or server logs.';
     }
 
+    // The context already provides the error message string
     if (error.includes('NetworkError') || error.includes('Failed to fetch')) {
       return 'Cannot reach server';
     } else if (error.includes('ECONNREFUSED')) {
@@ -84,7 +102,7 @@ export default function ConnectionStatus() {
     ) {
       return 'Endpoint not found';
     }
-    return error;
+    return error; // Return the error message directly
   };
 
   return (
@@ -95,6 +113,7 @@ export default function ConnectionStatus() {
             <div className="flex flex-col gap-1 select-none">
               <div className="flex items-center gap-1">
                 {showingError || isUnauthorized ? (
+                  // Use AlertCircle for both general errors and unauthorized, but color differently
                   <AlertCircle
                     className={cn(
                       'h-3.5 w-3.5',
@@ -122,7 +141,10 @@ export default function ConnectionStatus() {
                 <p className="text-xs">Try refreshing the connection or check server logs.</p>
               )}
               {isUnauthorized && (
-                <p className="text-xs">Check the API key configured in your client settings.</p>
+                <p className="text-xs">
+                  Check the X-API-KEY configured in your client or the ELIZA_SERVER_AUTH_TOKEN on
+                  the server.
+                </p>
               )}
             </div>
           </TooltipContent>

@@ -7,11 +7,13 @@ import {
   useQueryClient,
   useQueries,
   UseQueryResult,
+  type DefinedUseQueryResult,
+  type UndefinedInitialDataOptions,
   type UseQueryOptions,
 } from '@tanstack/react-query';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from './use-toast';
-import { getEntityId } from '@/lib/utils';
+import { getEntityId, randomUUID, moment } from '@/lib/utils';
 import type {
   ServerMessage,
   MessageChannel as ClientMessageChannel,
@@ -23,17 +25,19 @@ import { useNavigate } from 'react-router-dom';
 import {
   mapApiAgentToClient,
   mapApiChannelToClient,
-  mapApiChannelsToClient,
+  mapApiServerToClient,
   mapApiServersToClient,
+  mapApiChannelsToClient,
   mapApiMessageToUi,
   mapApiLogToClient,
   mapApiMemoryToClient,
+  apiDateToTimestamp,
   type AgentLog,
 } from '@/lib/api-type-mappers';
 import type { ListRunsParams, RunDetail, RunSummary } from '@elizaos/api-client';
 import { getElizaClient } from '@/lib/api-client-config';
 
-// Helper to always get the current client instance (important after API key updates)
+// Helper to always get the current client instance (important after JWT token updates)
 const getClient = () => getElizaClient();
 
 /**
@@ -429,7 +433,7 @@ export function useChannelMessages(
         thought: isAgent ? sm.metadata?.thought : undefined,
         actions: isAgent ? sm.metadata?.actions : undefined,
         channelId: sm.channelId,
-        messageServerId: serverIdToUse || sm.metadata?.messageServerId || initialMessageServerId,
+        serverId: serverIdToUse || sm.metadata?.messageServerId || initialMessageServerId,
         source: sm.sourceType,
         isLoading: false,
         prompt: isAgent ? sm.metadata?.prompt : undefined,
