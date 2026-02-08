@@ -8,6 +8,12 @@ import {
 /**
  * Build entity details from room entities (optimized version that accepts pre-fetched room).
  * Avoids duplicate getRoom call if room is already in state.
+ *
+ * WHY THIS OPTIMIZATION:
+ * - Other providers (ROLES, WORLD) often fetch room before ENTITIES provider runs
+ * - Accepting pre-fetched room avoids redundant getRoom() database call
+ * - Cached entities come from shared-cache, preventing duplicate queries
+ * - Component merging is expensive - do it once and cache the result
  */
 const getEntityDetailsOptimized = async (
   runtime: IAgentRuntime,
@@ -16,9 +22,11 @@ const getEntityDetailsOptimized = async (
   cachedEntities?: Entity[]
 ): Promise<Entity[]> => {
   // Use cached entities if provided, otherwise fetch with caching
+  // WHY: Entities provider might be called multiple times in one message cycle
   const roomEntities = cachedEntities ?? (await getCachedEntitiesForRoom(runtime, roomId));
 
   // Use a Map for uniqueness checking while processing entities
+  // WHY: O(1) has() check vs O(n) find() - critical for large rooms (100+ entities)
   const uniqueEntities = new Map<UUID, Entity>();
 
   for (const entity of roomEntities) {
@@ -85,6 +93,8 @@ export const entitiesProvider: Provider = {
     const entitiesData = await getEntityDetailsOptimized(runtime, roomId, room, cachedEntities);
 
     // Build entity map for O(1) lookup
+    // WHY: Need to find sender name from entityId. find() would be O(n), Map is O(1)
+    // Impact: 1000 entities = 1000 comparisons vs 1 lookup (1000x faster)
     const entityMap = new Map<UUID, Entity>();
     for (const entity of entitiesData) {
       if (entity.id) {
@@ -96,6 +106,7 @@ export const entitiesProvider: Provider = {
     const senderName = entityMap.get(entityId)?.names[0];
 
     // Format entities for display
+    // WHY: ?? [] ensures we never pass null/undefined to formatEntities (defense in depth)
     const formattedEntities = formatEntities({ entities: entitiesData ?? [] });
 
     // Create formatted text with header
