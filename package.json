@@ -42,8 +42,8 @@
     "python:version": "python3 scripts/update-python-versions.py",
     "python:version:restore": "python3 scripts/restore-python-versions.py",
     "rust:version": "echo 'Rust versions are managed by release-rust.yaml workflow'",
-    "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
-    "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
+    "migrate": "turbo run migrate --filter=./plugins/plugin-sql --force",
+    "migrate:generate": "turbo run migrate:generate --filter=./plugins/plugin-sql",
     "test": "turbo run test --concurrency 3 --filter=!elizaos-cloudflare-worker --filter=!@elizaos/python",
     "test:all": "turbo run test --concurrency 3 --filter=!elizaos-cloudflare-worker --filter=!@elizaos/python",
     "test:plugins": "turbo run test --concurrency 3 --filter='./plugins/*'",
@@ -65,8 +65,7 @@
     "examples/app/*/*",
     "examples/app/*/*/*",
     "examples/polyagent/apps/*",
-    "examples/polyagent/packages/*",
-    "../milaidy"
+    "examples/polyagent/packages/*"
   ],
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
