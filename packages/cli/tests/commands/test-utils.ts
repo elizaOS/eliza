@@ -578,8 +578,24 @@ export class TestProcessManager {
           }
         }
       } else {
-        // Unix: SIGTERM should be sufficient
+        // Unix: SIGTERM first, then escalate to SIGKILL
         process.kill('SIGTERM');
+
+        // Wait briefly for graceful shutdown
+        const gracefulTimeout = new Promise<boolean>((resolve) => {
+          setTimeout(() => resolve(false), 2000);
+        });
+
+        const wasGraceful = await Promise.race([exitPromise.then(() => true), gracefulTimeout]);
+
+        // Force kill if still running
+        if (!wasGraceful && process.exitCode === null) {
+          try {
+            process.kill('SIGKILL');
+          } catch (e) {
+            // Process might already be dead
+          }
+        }
       }
 
       // Wait for process to exit with timeout

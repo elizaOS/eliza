@@ -165,7 +165,8 @@ describe('ElizaOS Start Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () 
     expect(result).toContain('--port');
   });
 
-  it(
+  // Server startup tests require OPENAI_API_KEY for proper server initialization
+  it.skipIf(!process.env.OPENAI_API_KEY)(
     'start and list shows Ada agent running',
     async () => {
       const charactersDir = join(__dirname, '../test-characters');
@@ -295,8 +296,8 @@ describe('ElizaOS Start Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () 
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  // Custom port flag (-p)
-  it(
+  // Custom port flag (-p) - requires server startup
+  it.skipIf(!process.env.OPENAI_API_KEY)(
     'custom port spin-up works',
     async () => {
       const newPort = 3456;
@@ -412,8 +413,8 @@ describe('ElizaOS Start Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () 
     expect(result).toContain('start');
   });
 
-  // --configure flag triggers reconfiguration message in log
-  it(
+  // --configure flag triggers reconfiguration message in log - requires server startup
+  it.skipIf(!process.env.OPENAI_API_KEY)(
     'configure option runs',
     async () => {
       const charactersDir = join(__dirname, '../test-characters');
@@ -453,8 +454,8 @@ describe('ElizaOS Start Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () 
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  // Basic server startup test without advanced features that require models
-  it(
+  // Basic server startup test - requires server initialization with API key
+  it.skipIf(!process.env.OPENAI_API_KEY)(
     'server starts and responds to health check',
     async () => {
       const charactersDir = join(__dirname, '../test-characters');
@@ -482,8 +483,8 @@ describe('ElizaOS Start Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () 
   // which is inappropriate for e2e tests. These tests should be implemented as unit tests
   // in a separate test file if the build behavior needs to be tested.
 
-  // Test plugin loading in plugin directory
-  it(
+  // Test plugin loading in plugin directory - requires API key and network
+  it.skipIf(!process.env.OPENAI_API_KEY)(
     'start command loads plugin when run in plugin directory',
     async () => {
       // Clone and setup the plugin
