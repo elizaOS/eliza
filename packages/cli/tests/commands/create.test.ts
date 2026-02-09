@@ -100,13 +100,21 @@ describe('ElizaOS Create Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, ()
       expect(existsSync('my-default-app/package.json')).toBe(true);
       expect(existsSync('my-default-app/src')).toBe(true);
 
-      // Diagnostic: if .gitignore is missing, dump directory contents for CI debugging
+      // Diagnostic: dump ALL [COPY-TPL] lines from CLI output for CI debugging
+      const copyTplLines = result.split('\n').filter((l: string) => l.includes('COPY-TPL'));
+      if (copyTplLines.length > 0) {
+        console.log('[TEST DIAG] COPY-TPL output from CLI:');
+        copyTplLines.forEach((l: string) => console.log('  ', l));
+      } else {
+        console.log('[TEST DIAG] WARNING: No COPY-TPL lines found in CLI output — binary may be stale');
+        console.log('[TEST DIAG] CLI output (first 1500 chars):', result.slice(0, 1500));
+      }
+
       if (!existsSync('my-default-app/.gitignore')) {
         const entries = readdirSync('my-default-app');
         const dotfiles = entries.filter((e: string) => e.startsWith('.'));
-        console.log('[TEST DIAG] .gitignore missing! Dir contents:', entries.join(', '));
+        console.log('[TEST DIAG] .gitignore MISSING! Dir contents:', entries.join(', '));
         console.log('[TEST DIAG] dotfiles:', dotfiles.join(', ') || '(none)');
-        console.log('[TEST DIAG] CLI output snippet:', result.slice(0, 500));
       }
       expect(existsSync('my-default-app/.gitignore')).toBe(true);
       expect(existsSync('my-default-app/.npmignore')).toBe(true);
@@ -515,13 +523,21 @@ describe('ElizaOS Create Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, ()
         expect(existsSync('my-tee-project/package.json')).toBe(true);
         expect(existsSync('my-tee-project/src')).toBe(true);
 
-        // Diagnostic: if .gitignore is missing, dump directory contents for CI debugging
+        // Diagnostic: dump all COPY-TPL lines from CLI output for CI debugging
+        const copyTplLines = result.split('\n').filter((l: string) => l.includes('COPY-TPL'));
+        if (copyTplLines.length > 0) {
+          console.log('[TEST DIAG] TEE COPY-TPL output:');
+          copyTplLines.forEach((l: string) => console.log('  ', l));
+        } else {
+          console.log('[TEST DIAG] TEE WARNING: No COPY-TPL lines — binary may be stale');
+          console.log('[TEST DIAG] TEE CLI output (first 1500):', result.slice(0, 1500));
+        }
+
         if (!existsSync('my-tee-project/.gitignore')) {
           const entries = readdirSync('my-tee-project');
           const dotfiles = entries.filter((e: string) => e.startsWith('.'));
-          console.log('[TEST DIAG] TEE .gitignore missing! Dir contents:', entries.join(', '));
+          console.log('[TEST DIAG] TEE .gitignore MISSING! Dir contents:', entries.join(', '));
           console.log('[TEST DIAG] TEE dotfiles:', dotfiles.join(', ') || '(none)');
-          console.log('[TEST DIAG] TEE CLI output snippet:', result.slice(0, 500));
         }
         expect(existsSync('my-tee-project/.gitignore')).toBe(true);
         expect(existsSync('my-tee-project/.npmignore')).toBe(true);

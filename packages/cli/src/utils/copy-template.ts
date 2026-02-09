@@ -146,10 +146,14 @@ export async function copyTemplate(
     );
   }
 
-  logger.debug(
-    { src: 'cli', util: 'copy-template', templateType, templateDir, targetDir },
-    'Copying template'
-  );
+  // --- CI DIAGNOSTICS: trace the entire .gitignore pipeline ---
+  const srcGitignore = path.join(templateDir, '.gitignore');
+  const srcNpmignore = path.join(templateDir, '.npmignore');
+  console.log(`[COPY-TPL] __dirname=${__dirname}`);
+  console.log(`[COPY-TPL] templateDir=${templateDir}`);
+  console.log(`[COPY-TPL] targetDir=${targetDir}`);
+  console.log(`[COPY-TPL] template .gitignore exists: ${existsSync(srcGitignore)}`);
+  console.log(`[COPY-TPL] template .npmignore exists: ${existsSync(srcNpmignore)}`);
 
   // Copy template files using Node's built-in cpSync for reliable dotfile
   // handling.  The previous custom copyDir (async readdir + copyFile) silently
@@ -169,44 +173,41 @@ export async function copyTemplate(
     filter: (src: string) => !SKIP_NAMES.has(path.basename(src)),
   });
 
-  // npm strips .gitignore files during publish (converts them to .npmignore).
-  // Recreate .gitignore from .npmignore when it's missing so new projects
-  // always start with proper git-ignore rules.
-  //
-  // Uses synchronous ops to guarantee the file exists before this function
-  // returns — some Bun versions may have async-ordering quirks.
   const gitignorePath = path.join(targetDir, '.gitignore');
   const npmignorePath = path.join(targetDir, '.npmignore');
 
+  console.log(`[COPY-TPL] after cpSync: target .gitignore exists: ${existsSync(gitignorePath)}`);
+  console.log(`[COPY-TPL] after cpSync: target .npmignore exists: ${existsSync(npmignorePath)}`);
+
+  // npm strips .gitignore files during publish (converts them to .npmignore).
+  // Recreate .gitignore from .npmignore when it's missing so new projects
+  // always start with proper git-ignore rules.
   if (!existsSync(gitignorePath) && existsSync(npmignorePath)) {
     copyFileSync(npmignorePath, gitignorePath);
-    logger.debug(
-      { src: 'cli', util: 'copy-template' },
-      'Created .gitignore from .npmignore (npm stripped original during publish)'
-    );
+    console.log(`[COPY-TPL] FALLBACK: created .gitignore from .npmignore`);
   } else if (!existsSync(gitignorePath)) {
-    writeFileSync(
-      gitignorePath,
-      [
-        'node_modules/',
-        'dist/',
-        '.env',
-        '.env.local',
-        '.DS_Store',
-        'Thumbs.db',
-        '*.log',
-        '.eliza/',
-        '.elizadb/',
-        'pglite/',
-        'cache/',
-        '',
-      ].join('\n')
-    );
-    logger.debug(
-      { src: 'cli', util: 'copy-template' },
-      'Created default .gitignore (template had none)'
-    );
+    const defaultContent = [
+      'node_modules/',
+      'dist/',
+      '.env',
+      '.env.local',
+      '.DS_Store',
+      'Thumbs.db',
+      '*.log',
+      '.eliza/',
+      '.elizadb/',
+      'pglite/',
+      'cache/',
+      '',
+    ].join('\n');
+    writeFileSync(gitignorePath, defaultContent);
+    console.log(`[COPY-TPL] FALLBACK: created default .gitignore (${defaultContent.length} bytes)`);
+  } else {
+    console.log(`[COPY-TPL] .gitignore already exists, no fallback needed`);
   }
+
+  console.log(`[COPY-TPL] FINAL: .gitignore exists: ${existsSync(gitignorePath)}`);
+  // --- END CI DIAGNOSTICS ---
 
   // For plugin templates, replace hardcoded "plugin-starter" strings in source files
   if (templateType === 'plugin' || templateType === 'plugin-quick') {

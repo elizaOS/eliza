@@ -111,23 +111,38 @@ jobs:
       - name: Verify CLI build artifacts and templates
         shell: bash
         run: |
-          echo "Checking CLI build artifacts..."
-          echo "CLI dist contents:"
-          ls -la packages/cli/dist/ || echo "ERROR: No dist directory"
-          echo ""
-          echo "CLI templates in dist:"
-          ls -la packages/cli/dist/templates/ || echo "ERROR: No templates in dist"
-          echo ""
-          echo "CLI executable:"
+          echo "=== CLI BUILD ARTIFACTS ==="
           test -f packages/cli/dist/index.js && echo "✓ CLI index.js exists" || echo "ERROR: CLI index.js missing"
           echo ""
-          echo "Template dotfiles:"
-          ls -la packages/cli/templates/project-starter/.gitignore 2>/dev/null && echo "✓ .gitignore in templates/" || echo "⚠ .gitignore missing from templates/"
-          ls -la packages/cli/templates/project-starter/.npmignore 2>/dev/null && echo "✓ .npmignore in templates/" || echo "⚠ .npmignore missing from templates/"
+
+          echo "=== TEMPLATE SOURCE (packages/project-starter/) ==="
+          ls -la packages/project-starter/.gitignore 2>/dev/null && echo "✓ SOURCE .gitignore exists" || echo "✗ SOURCE .gitignore MISSING"
+          ls -la packages/project-starter/.npmignore 2>/dev/null && echo "✓ SOURCE .npmignore exists" || echo "✗ SOURCE .npmignore MISSING"
+          echo "All dotfiles in source:"
+          ls -la packages/project-starter/ | grep '^\.' || echo "(no dotfiles)"
           echo ""
-          echo "Monorepo bin symlink:"
+
+          echo "=== BUILD-COPIED TEMPLATE (packages/cli/templates/project-starter/) ==="
+          ls -la packages/cli/templates/project-starter/.gitignore 2>/dev/null && echo "✓ BUILD-COPY .gitignore exists" || echo "✗ BUILD-COPY .gitignore MISSING"
+          ls -la packages/cli/templates/project-starter/.npmignore 2>/dev/null && echo "✓ BUILD-COPY .npmignore exists" || echo "✗ BUILD-COPY .npmignore MISSING"
+          echo "All dotfiles in build-copy:"
+          ls -la packages/cli/templates/project-starter/ | grep '^\.' || echo "(no dotfiles)"
+          echo ""
+
+          echo "=== DIST TEMPLATE (packages/cli/dist/templates/project-starter/) ==="
+          ls -la packages/cli/dist/templates/project-starter/.gitignore 2>/dev/null && echo "✓ DIST .gitignore exists" || echo "✗ DIST .gitignore MISSING"
+          ls -la packages/cli/dist/templates/project-starter/.npmignore 2>/dev/null && echo "✓ DIST .npmignore exists" || echo "✗ DIST .npmignore MISSING"
+          echo "All dotfiles in dist:"
+          ls -la packages/cli/dist/templates/project-starter/ | grep '^\.' || echo "(no dotfiles)"
+          echo ""
+
+          echo "=== MONOREPO BIN SYMLINK ==="
           ls -la node_modules/.bin/elizaos 2>/dev/null && echo "✓ node_modules/.bin/elizaos exists" || echo "⚠ node_modules/.bin/elizaos missing"
           readlink -f node_modules/.bin/elizaos 2>/dev/null || true
+          echo ""
+
+          echo "=== BINARY VERIFICATION (grep for COPY-TPL marker) ==="
+          strings packages/cli/dist/index.js 2>/dev/null | grep -c "COPY-TPL" || echo "0 COPY-TPL markers found in binary"
 
       - name: Clean eliza projects cache
         shell: bash

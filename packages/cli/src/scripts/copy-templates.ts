@@ -89,16 +89,55 @@ async function main() {
 
     // Copy each template and update its package.json
     for (const template of templates) {
+      const srcGitignore = path.join(template.src, '.gitignore');
+      const srcNpmignore = path.join(template.src, '.npmignore');
+      console.log(`  [copy-tpl] ${template.name}: src .gitignore=${fs.existsSync(srcGitignore)}, .npmignore=${fs.existsSync(srcNpmignore)}`);
+
       await fs.copy(template.src, template.dest, {
         filter: (srcPath) => {
           const baseName = path.basename(srcPath);
           if (baseName === 'node_modules' || baseName === '.git') {
-            // console.log(`Filtering out: ${srcPath}`); // Log which paths are being filtered
             return false;
           }
           return true;
         },
       });
+
+      // Verify dotfiles were copied; fs-extra may skip .gitignore/.npmignore
+      // on some platforms or Bun versions. Explicitly copy them as fallback.
+      const destGitignore = path.join(template.dest, '.gitignore');
+      const destNpmignore = path.join(template.dest, '.npmignore');
+      const gitignoreCopied = fs.existsSync(destGitignore);
+      const npmignoreCopied = fs.existsSync(destNpmignore);
+      console.log(`  [copy-tpl] ${template.name}: dest .gitignore=${gitignoreCopied}, .npmignore=${npmignoreCopied}`);
+
+      if (!gitignoreCopied && fs.existsSync(srcGitignore)) {
+        console.log(`  [copy-tpl] ${template.name}: FIXING — fs.copy missed .gitignore, copying explicitly`);
+        await fs.copyFile(srcGitignore, destGitignore);
+      }
+      if (!npmignoreCopied && fs.existsSync(srcNpmignore)) {
+        console.log(`  [copy-tpl] ${template.name}: FIXING — fs.copy missed .npmignore, copying explicitly`);
+        await fs.copyFile(srcNpmignore, destNpmignore);
+      }
+
+      // If source has no .gitignore at all, create a default one
+      if (!fs.existsSync(destGitignore)) {
+        console.log(`  [copy-tpl] ${template.name}: creating default .gitignore`);
+        await fs.writeFile(destGitignore, [
+          'node_modules/',
+          'dist/',
+          '.env',
+          '.env.local',
+          '.DS_Store',
+          'Thumbs.db',
+          '*.log',
+          '.eliza/',
+          '.elizadb/',
+          'pglite/',
+          'cache/',
+          '',
+        ].join('\n'));
+      }
 
       // Update package.json with correct version
       const packageJsonPath = path.resolve(template.dest, 'package.json');

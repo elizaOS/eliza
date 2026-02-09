@@ -40,7 +40,15 @@ export default defineConfig({
         global: 'globalThis',
       },
     },
-    include: ['buffer', 'process', '@elizaos/core', '@elizaos/api-client'],
+    include: [
+      'buffer',
+      'process',
+      '@elizaos/core',
+      '@elizaos/api-client',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-direction',
+      '@radix-ui/react-tooltip',
+    ],
   },
   esbuild: {
     keepNames: true,
