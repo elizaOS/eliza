@@ -8,19 +8,30 @@ import { TEST_TIMEOUTS } from '../test-timeouts';
 import { mkdtempSync, existsSync, rmSync } from 'node:fs';
 
 // On macOS CI, `bun link` creates symlinks to linux-built native modules
-// (e.g. bcrypt). Any test that invokes the `elizaos` CLI will fail because
-// the server binary tries to load the wrong native build. Detect this early
-// and skip the entire suite when the CLI can't start.
-function cliAvailable(): boolean {
+// (e.g. bcrypt). `elizaos --version` works because it doesn't import
+// @elizaos/server, but `elizaos create` triggers the server import which
+// fails with "No native build was found for platform=darwin".
+// Detect this by actually running `elizaos create` in a temp directory.
+function cliCreateAvailable(): boolean {
+  const tmpDir = mkdtempSync(join(tmpdir(), 'eliza-cli-check-'));
+  const origCwd = process.cwd();
   try {
-    bunExecSync('elizaos --version', { encoding: 'utf8' });
+    process.chdir(tmpDir);
+    bunExecSync('elizaos create cli-check-proj --yes', { encoding: 'utf8' });
     return true;
   } catch {
     return false;
+  } finally {
+    process.chdir(origCwd);
+    try {
+      rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
   }
 }
 
-const CLI_WORKS = cliAvailable();
+const CLI_WORKS = cliCreateAvailable();
 
 describe.skipIf(!CLI_WORKS)('ElizaOS Update Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let testTmpDir: string;
