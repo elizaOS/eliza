@@ -336,6 +336,12 @@ export interface Provider {
    */
   private?: boolean;
 
+  /** When true the provider is always included regardless of filter/include lists */
+  alwaysRun?: boolean;
+
+  /** Keywords that auto-activate a dynamic provider when they appear in the message */
+  relevanceKeywords?: string[];
+
   /** Data retrieval function */
   get: (
     runtime: IAgentRuntime,
