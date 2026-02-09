@@ -1,4 +1,4 @@
-import { existsSync, copyFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { existsSync, copyFileSync, writeFileSync, cpSync, mkdirSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -151,31 +151,23 @@ export async function copyTemplate(
     'Copying template'
   );
 
-  // Copy template files as-is
-  await copyDir(templateDir, targetDir);
+  // Copy template files using Node's built-in cpSync for reliable dotfile
+  // handling.  The previous custom copyDir (async readdir + copyFile) silently
+  // dropped dotfiles in certain Bun versions on Linux CI.
+  const SKIP_NAMES = new Set([
+    'node_modules',
+    '.git',
+    'cache',
+    'data',
+    'generatedImages',
+    '.turbo',
+  ]);
 
-  // Verify dotfiles survived the async copy pipeline.  Some Bun versions may
-  // silently skip dotfiles from readdir/copyFile.  Re-copy them synchronously
-  // as a fallback so the template is always complete.
-  const criticalDotfiles = ['.gitignore', '.npmignore', '.env.example'];
-  for (const dotfile of criticalDotfiles) {
-    const srcDotfile = path.join(templateDir, dotfile);
-    const destDotfile = path.join(targetDir, dotfile);
-    if (existsSync(srcDotfile) && !existsSync(destDotfile)) {
-      try {
-        copyFileSync(srcDotfile, destDotfile);
-        logger.debug(
-          { src: 'cli', util: 'copy-template', dotfile },
-          'Re-copied missing dotfile after copyDir'
-        );
-      } catch (e) {
-        logger.warn(
-          { src: 'cli', util: 'copy-template', dotfile, error: String(e) },
-          'Failed to re-copy dotfile'
-        );
-      }
-    }
-  }
+  mkdirSync(targetDir, { recursive: true });
+  cpSync(templateDir, targetDir, {
+    recursive: true,
+    filter: (src: string) => !SKIP_NAMES.has(path.basename(src)),
+  });
 
   // npm strips .gitignore files during publish (converts them to .npmignore).
   // Recreate .gitignore from .npmignore when it's missing so new projects
