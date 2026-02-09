@@ -169,14 +169,20 @@ export async function copyTemplate(
     );
   }
 
-  // --- CI DIAGNOSTICS: trace the entire .gitignore pipeline ---
+  // --- .gitignore / .npmignore copy pipeline ---
+  //
+  // Diagnostics are written to a JSON file inside the target directory because
+  // clack's spinner suppresses console.log on stdout and tests don't always
+  // capture stderr. The diagnostic file lets the test read exactly what happened.
   const srcGitignore = path.join(templateDir, '.gitignore');
   const srcNpmignore = path.join(templateDir, '.npmignore');
-  console.log(`[COPY-TPL] __dirname=${__dirname}`);
-  console.log(`[COPY-TPL] templateDir=${templateDir}`);
-  console.log(`[COPY-TPL] targetDir=${targetDir}`);
-  console.log(`[COPY-TPL] template .gitignore exists: ${existsSync(srcGitignore)}`);
-  console.log(`[COPY-TPL] template .npmignore exists: ${existsSync(srcNpmignore)}`);
+  const diag: Record<string, unknown> = {
+    __dirname,
+    templateDir,
+    targetDir,
+    srcGitignoreExists: existsSync(srcGitignore),
+    srcNpmignoreExists: existsSync(srcNpmignore),
+  };
 
   // Copy template files using Node's built-in cpSync for reliable dotfile
   // handling.  The previous custom copyDir (async readdir + copyFile) silently
@@ -191,24 +197,56 @@ export async function copyTemplate(
   ]);
 
   mkdirSync(targetDir, { recursive: true });
-  cpSync(templateDir, targetDir, {
-    recursive: true,
-    filter: (src: string) => !SKIP_NAMES.has(path.basename(src)),
-  });
+  try {
+    cpSync(templateDir, targetDir, {
+      recursive: true,
+      filter: (src: string) => !SKIP_NAMES.has(path.basename(src)),
+    });
+    diag.cpSyncOk = true;
+  } catch (cpErr) {
+    diag.cpSyncOk = false;
+    diag.cpSyncError = cpErr instanceof Error ? cpErr.message : String(cpErr);
+    // cpSync may have partially copied — continue to salvage what we can
+  }
 
   const gitignorePath = path.join(targetDir, '.gitignore');
   const npmignorePath = path.join(targetDir, '.npmignore');
 
-  console.log(`[COPY-TPL] after cpSync: target .gitignore exists: ${existsSync(gitignorePath)}`);
-  console.log(`[COPY-TPL] after cpSync: target .npmignore exists: ${existsSync(npmignorePath)}`);
+  diag.afterCpSync_gitignore = existsSync(gitignorePath);
+  diag.afterCpSync_npmignore = existsSync(npmignorePath);
 
-  // npm strips .gitignore files during publish (converts them to .npmignore).
-  // Recreate .gitignore from .npmignore when it's missing so new projects
-  // always start with proper git-ignore rules.
+  // Layer 1: If cpSync missed .gitignore but the source has it, copy explicitly
+  if (!existsSync(gitignorePath) && existsSync(srcGitignore)) {
+    try {
+      copyFileSync(srcGitignore, gitignorePath);
+      diag.layer1 = 'copied from source .gitignore';
+    } catch (e) {
+      diag.layer1Error = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  // Layer 1b: Same for .npmignore
+  if (!existsSync(npmignorePath) && existsSync(srcNpmignore)) {
+    try {
+      copyFileSync(srcNpmignore, npmignorePath);
+      diag.layer1b = 'copied from source .npmignore';
+    } catch (e) {
+      diag.layer1bError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  // Layer 2: If still missing, create .gitignore from .npmignore
   if (!existsSync(gitignorePath) && existsSync(npmignorePath)) {
-    copyFileSync(npmignorePath, gitignorePath);
-    console.log(`[COPY-TPL] FALLBACK: created .gitignore from .npmignore`);
-  } else if (!existsSync(gitignorePath)) {
+    try {
+      copyFileSync(npmignorePath, gitignorePath);
+      diag.layer2 = 'created from .npmignore';
+    } catch (e) {
+      diag.layer2Error = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  // Layer 3: Last resort — write a sensible default
+  if (!existsSync(gitignorePath)) {
     const defaultContent = [
       'node_modules/',
       'dist/',
@@ -223,14 +261,24 @@ export async function copyTemplate(
       'cache/',
       '',
     ].join('\n');
-    writeFileSync(gitignorePath, defaultContent);
-    console.log(`[COPY-TPL] FALLBACK: created default .gitignore (${defaultContent.length} bytes)`);
-  } else {
-    console.log(`[COPY-TPL] .gitignore already exists, no fallback needed`);
+    try {
+      writeFileSync(gitignorePath, defaultContent);
+      diag.layer3 = `wrote default (${defaultContent.length} bytes)`;
+    } catch (e) {
+      diag.layer3Error = e instanceof Error ? e.message : String(e);
+    }
   }
 
-  console.log(`[COPY-TPL] FINAL: .gitignore exists: ${existsSync(gitignorePath)}`);
-  // --- END CI DIAGNOSTICS ---
+  diag.finalGitignoreExists = existsSync(gitignorePath);
+  diag.finalNpmignoreExists = existsSync(npmignorePath);
+
+  // Write diagnostic file — tests read this to understand exactly what happened
+  try {
+    writeFileSync(path.join(targetDir, '.copy-template-diag.json'), JSON.stringify(diag, null, 2));
+  } catch {
+    // best-effort
+  }
+  // --- END .gitignore pipeline ---
 
   // For plugin templates, replace hardcoded "plugin-starter" strings in source files
   if (templateType === 'plugin' || templateType === 'plugin-quick') {

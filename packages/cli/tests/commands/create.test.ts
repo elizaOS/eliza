@@ -3,7 +3,7 @@ import { mkdtemp, rm, readFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as path from 'node:path';
 import { tmpdir } from 'node:os';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { safeChangeDirectory, crossPlatform, getPlatformOptions } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { getAvailableAIModels } from '../../src/commands/create/utils/selection';
@@ -100,14 +100,20 @@ describe('ElizaOS Create Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, ()
       expect(existsSync('my-default-app/package.json')).toBe(true);
       expect(existsSync('my-default-app/src')).toBe(true);
 
-      // Diagnostic: dump ALL [COPY-TPL] lines from CLI output for CI debugging
-      const copyTplLines = result.split('\n').filter((l: string) => l.includes('COPY-TPL'));
-      if (copyTplLines.length > 0) {
-        console.log('[TEST DIAG] COPY-TPL output from CLI:');
-        copyTplLines.forEach((l: string) => console.log('  ', l));
+      // Read file-based diagnostics written by copyTemplate (stdout is
+      // suppressed by clack spinners, so file-based diag is the only reliable
+      // way to see what happened inside the CLI process).
+      const diagPath = 'my-default-app/.copy-template-diag.json';
+      if (existsSync(diagPath)) {
+        try {
+          const diag = JSON.parse(readFileSync(diagPath, 'utf8'));
+          console.log('[TEST DIAG] copyTemplate diagnostics:', JSON.stringify(diag, null, 2));
+        } catch {
+          console.log('[TEST DIAG] diagnostic file exists but failed to parse');
+        }
       } else {
-        console.log('[TEST DIAG] WARNING: No COPY-TPL lines found in CLI output — binary may be stale');
-        console.log('[TEST DIAG] CLI output (first 1500 chars):', result.slice(0, 1500));
+        console.log('[TEST DIAG] NO diagnostic file — copyTemplate may not have run');
+        console.log('[TEST DIAG] CLI stdout (first 1500 chars):', result.slice(0, 1500));
       }
 
       if (!existsSync('my-default-app/.gitignore')) {
@@ -523,14 +529,18 @@ describe('ElizaOS Create Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, ()
         expect(existsSync('my-tee-project/package.json')).toBe(true);
         expect(existsSync('my-tee-project/src')).toBe(true);
 
-        // Diagnostic: dump all COPY-TPL lines from CLI output for CI debugging
-        const copyTplLines = result.split('\n').filter((l: string) => l.includes('COPY-TPL'));
-        if (copyTplLines.length > 0) {
-          console.log('[TEST DIAG] TEE COPY-TPL output:');
-          copyTplLines.forEach((l: string) => console.log('  ', l));
+        // Read file-based diagnostics from copyTemplate
+        const diagPath = 'my-tee-project/.copy-template-diag.json';
+        if (existsSync(diagPath)) {
+          try {
+            const diag = JSON.parse(readFileSync(diagPath, 'utf8'));
+            console.log('[TEST DIAG] TEE copyTemplate diagnostics:', JSON.stringify(diag, null, 2));
+          } catch {
+            console.log('[TEST DIAG] TEE diagnostic file exists but failed to parse');
+          }
         } else {
-          console.log('[TEST DIAG] TEE WARNING: No COPY-TPL lines — binary may be stale');
-          console.log('[TEST DIAG] TEE CLI output (first 1500):', result.slice(0, 1500));
+          console.log('[TEST DIAG] TEE NO diagnostic file — copyTemplate may not have run');
+          console.log('[TEST DIAG] TEE CLI stdout (first 1500):', result.slice(0, 1500));
         }
 
         if (!existsSync('my-tee-project/.gitignore')) {

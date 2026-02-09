@@ -141,8 +141,8 @@ jobs:
           readlink -f node_modules/.bin/elizaos 2>/dev/null || true
           echo ""
 
-          echo "=== BINARY VERIFICATION (grep for COPY-TPL marker) ==="
-          strings packages/cli/dist/index.js 2>/dev/null | grep -c "COPY-TPL" || echo "0 COPY-TPL markers found in binary"
+          echo "=== BINARY VERIFICATION (grep for copy-template-diag marker) ==="
+          strings packages/cli/dist/index.js 2>/dev/null | grep -c "copy-template-diag" || echo "0 diag markers found in binary"
 
       - name: Clean eliza projects cache
         shell: bash

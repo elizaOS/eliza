@@ -17,6 +17,18 @@ export default defineConfig({
       },
     }) as PluginOption,
   ],
+  // Stabilise the Vite dev-server that Cypress spins up for component tests.
+  // Without these settings the server can become unresponsive between spec
+  // transitions, causing "Failed to fetch dynamically imported module" errors
+  // for the support file.  This happens because HMR + file-watchers consume
+  // resources that accumulate across 25 spec files in CI.
+  server: {
+    hmr: false, // No hot-reload needed for isolated component tests
+    watch: {
+      // Reduce file-watcher pressure in CI
+      ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/cypress/screenshots/**'],
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -32,8 +44,11 @@ export default defineConfig({
     'process.browser': true,
   },
   optimizeDeps: {
+    // Force Vite to pre-bundle ALL deps up front so it doesn't need to
+    // re-process them between spec transitions (the primary cause of
+    // "Failed to fetch dynamically imported module" in CI).
+    force: true,
     esbuildOptions: {
-      // Better stack traces in component tests
       sourcemap: true,
       keepNames: true,
       define: {
@@ -48,6 +63,22 @@ export default defineConfig({
       '@radix-ui/react-dropdown-menu',
       '@radix-ui/react-direction',
       '@radix-ui/react-tooltip',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-toast',
+      '@radix-ui/react-avatar',
+      '@radix-ui/react-select',
+      '@radix-ui/react-scroll-area',
+      '@radix-ui/react-collapsible',
+      '@radix-ui/react-checkbox',
+      '@radix-ui/react-label',
+      '@radix-ui/react-separator',
+      '@radix-ui/react-tabs',
+      'react',
+      'react-dom',
+      'react-dom/client',
+      'react-router-dom',
+      '@tanstack/react-query',
+      '@cypress/react',
     ],
   },
   esbuild: {

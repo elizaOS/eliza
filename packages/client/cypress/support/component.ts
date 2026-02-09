@@ -156,19 +156,11 @@ function mountRadix(component: React.ReactNode, options = {}) {
   return mount(wrapped, options);
 }
 
-// Handle Vite dev-server transient failures that occur during spec transitions
-// in CI.  When the Vite HMR server becomes unresponsive (typically after many
-// specs), Cypress reports "Failed to fetch dynamically imported module" as an
-// uncaught exception.  Returning false prevents this from failing the current
-// test, which allows Cypress to retry cleanly.
-Cypress.on('uncaught:exception', (err) => {
-  if (
-    err.message.includes('Failed to fetch dynamically imported module') ||
-    err.message.includes('Failed to load url')
-  ) {
-    return false;
-  }
-});
+// NOTE: The "Failed to fetch dynamically imported module" errors that occur
+// between spec transitions in CI cannot be caught here because THIS FILE is
+// the module that fails to load.  The fix is in vite.config.cypress.ts which
+// disables HMR, force-prebundles all deps, and reduces watcher pressure so
+// the Vite dev-server stays responsive across all 25+ spec files.
 
 // Add commands
 Cypress.Commands.add('mount', mountWithProviders);
