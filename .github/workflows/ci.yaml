@@ -7,14 +7,14 @@ concurrency:
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 jobs:
   # Test job
   test:
-    # Skip duplicate runs: run on push to main, or on pull_request events only
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
+    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -46,8 +46,8 @@ jobs:
 
   # Lint and format job
   lint-and-format:
-    # Skip duplicate runs: run on push to main, or on pull_request events only
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
+    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -72,8 +72,8 @@ jobs:
 
   # Build job
   build:
-    # Skip duplicate runs: run on push to main, or on pull_request events only
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
+    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
