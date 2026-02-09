@@ -214,12 +214,18 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
   // Early validation - fail fast before any IO
   if (!agentId || !roomId) {
-    runtime.logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Missing agentId or roomId in message');
+    runtime.logger.warn(
+      { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId },
+      'Missing agentId or roomId in message'
+    );
     return;
   }
 
   if (!entityId) {
-    runtime.logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Missing entityId in message');
+    runtime.logger.warn(
+      { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId },
+      'Missing entityId in message'
+    );
     return;
   }
 
@@ -264,7 +270,10 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     });
 
     if (!response) {
-      runtime.logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Getting reflection failed - empty response');
+      runtime.logger.warn(
+        { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId },
+        'Getting reflection failed - empty response'
+      );
       return;
     }
 
@@ -272,18 +281,27 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     const reflection = parseKeyValueXml<ReflectionXmlResult>(response);
 
     if (!reflection) {
-      runtime.logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Getting reflection failed - failed to parse XML');
+      runtime.logger.warn(
+        { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId },
+        'Getting reflection failed - failed to parse XML'
+      );
       return;
     }
 
     // Perform basic structure validation
     if (!reflection.facts) {
-      runtime.logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Getting reflection failed - invalid facts structure');
+      runtime.logger.warn(
+        { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId },
+        'Getting reflection failed - invalid facts structure'
+      );
       return;
     }
 
     if (!reflection.relationships) {
-      runtime.logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Getting reflection failed - invalid relationships structure');
+      runtime.logger.warn(
+        { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId },
+        'Getting reflection failed - invalid relationships structure'
+      );
       return;
     }
 
@@ -293,9 +311,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     const factsData = reflection.facts as { fact?: FactXml | FactXml[] };
     if (factsData.fact) {
       // Normalize to array
-      factsArray = Array.isArray(factsData.fact)
-        ? factsData.fact
-        : [factsData.fact];
+      factsArray = Array.isArray(factsData.fact) ? factsData.fact : [factsData.fact];
     }
 
     // Store new facts - filter for valid new facts with claim text
@@ -330,7 +346,9 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
     // Handle relationships - similar structure normalization
     let relationshipsArray: RelationshipXml[] = [];
-    const relationshipsData = reflection.relationships as { relationship?: RelationshipXml | RelationshipXml[] };
+    const relationshipsData = reflection.relationships as {
+      relationship?: RelationshipXml | RelationshipXml[];
+    };
     if (relationshipsData.relationship) {
       relationshipsArray = Array.isArray(relationshipsData.relationship)
         ? relationshipsData.relationship
@@ -372,11 +390,23 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       let targetId: UUID;
 
       try {
-        sourceId = resolveEntityWithMaps(relationship.sourceEntityId! as UUID, entityById, entityByName);
-        targetId = resolveEntityWithMaps(relationship.targetEntityId! as UUID, entityById, entityByName);
+        sourceId = resolveEntityWithMaps(
+          relationship.sourceEntityId! as UUID,
+          entityById,
+          entityByName
+        );
+        targetId = resolveEntityWithMaps(
+          relationship.targetEntityId! as UUID,
+          entityById,
+          entityByName
+        );
       } catch (error) {
         runtime.logger.warn(
-          { src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:bootstrap:evaluator:reflection',
+            agentId: runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Failed to resolve relationship entities'
         );
         continue; // Skip this relationship if we can't resolve the IDs
@@ -403,23 +433,27 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
         const updatedTags = Array.from(new Set([...(existingRelationship.tags || []), ...tags]));
 
         relationshipPromises.push(
-          runtime.updateRelationship({
-            ...existingRelationship,
-            tags: updatedTags,
-            metadata: updatedMetadata,
-          }).then(() => {})
+          runtime
+            .updateRelationship({
+              ...existingRelationship,
+              tags: updatedTags,
+              metadata: updatedMetadata,
+            })
+            .then(() => {})
         );
       } else {
         relationshipPromises.push(
-          runtime.createRelationship({
-            sourceEntityId: sourceId,
-            targetEntityId: targetId,
-            tags: tags,
-            metadata: {
-              interactions: 1,
-              ...(relationship.metadata || {}),
-            },
-          }).then(() => {})
+          runtime
+            .createRelationship({
+              sourceEntityId: sourceId,
+              targetEntityId: targetId,
+              tags: tags,
+              metadata: {
+                interactions: 1,
+                ...(relationship.metadata || {}),
+              },
+            })
+            .then(() => {})
         );
       }
     }
@@ -434,7 +468,14 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       message?.id || ''
     );
   } catch (error) {
-    runtime.logger.error({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in reflection handler');
+    runtime.logger.error(
+      {
+        src: 'plugin:bootstrap:evaluator:reflection',
+        agentId: runtime.agentId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error in reflection handler'
+    );
     return;
   }
 }

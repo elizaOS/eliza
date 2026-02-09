@@ -36,9 +36,8 @@ const AvatarImage = React.forwardRef<
 ));
 AvatarImage.displayName = AvatarPrimitive.Image.displayName;
 
-interface AvatarFallbackProps extends React.ComponentPropsWithoutRef<
-  typeof AvatarPrimitive.Fallback
-> {
+interface AvatarFallbackProps
+  extends React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Fallback> {
   'data-testid'?: string;
 }
 

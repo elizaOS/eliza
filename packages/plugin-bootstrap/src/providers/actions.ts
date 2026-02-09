@@ -1,5 +1,11 @@
 import type { Action, IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
-import { addHeader, composeActionExamples, formatActionNames, formatActions, logger } from '@elizaos/core';
+import {
+  addHeader,
+  composeActionExamples,
+  formatActionNames,
+  formatActions,
+  logger,
+} from '@elizaos/core';
 
 /**
  * Interface for action parameter definition
@@ -81,7 +87,12 @@ export const actionsProvider: Provider = {
         }
       } catch (e) {
         logger.error(
-          { src: 'plugin:bootstrap:provider:actions', agentId: runtime.agentId, action: action.name, error: e instanceof Error ? e.message : String(e) },
+          {
+            src: 'plugin:bootstrap:provider:actions',
+            agentId: runtime.agentId,
+            action: action.name,
+            error: e instanceof Error ? e.message : String(e),
+          },
           'Action validation error'
         );
       }
@@ -109,9 +120,12 @@ export const actionsProvider: Provider = {
     const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;
     const actionsWithDescriptions = addHeader('# Available Actions', formatActions(actionsData));
     const actionExamples = addHeader('# Action Examples', composeActionExamples(actionsData, 10));
-    
+
     // Format actions with parameter schemas for multi-step workflows
-    const actionsWithParams = addHeader('# Available Actions with Parameters', formatActionsWithParams(actionsData));
+    const actionsWithParams = addHeader(
+      '# Available Actions with Parameters',
+      formatActionsWithParams(actionsData)
+    );
 
     const data = {
       actionsData,

@@ -16,7 +16,11 @@ export const bootstrapInstructionsProvider: Provider = {
   description: 'Instructions and capabilities for the bootstrap (core) plugin',
   dynamic: true,
 
-  get: async (_runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
+  get: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+    _state: State
+  ): Promise<ProviderResult> => {
     const instructions = `
 # Bootstrap Plugin Capabilities
 
@@ -134,4 +138,3 @@ export const bootstrapSettingsProvider: Provider = {
     };
   },
 };
-

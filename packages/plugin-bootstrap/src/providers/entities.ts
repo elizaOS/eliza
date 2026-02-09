@@ -1,9 +1,6 @@
 import type { Entity, IAgentRuntime, Memory, Provider, State, UUID } from '@elizaos/core';
 import { addHeader, formatEntities, processEntitiesForRoom } from '@elizaos/core';
-import {
-  getCachedRoom,
-  getCachedEntitiesForRoom,
-} from './shared-cache';
+import { getCachedRoom, getCachedEntitiesForRoom } from './shared-cache';
 
 /**
  * Provider for fetching entities related to the current conversation.

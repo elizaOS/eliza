@@ -60,7 +60,11 @@ function ensureGitignore(targetDir: string): void {
 
   // Log to stderr (not suppressed by clack spinners)
   const stderrLog = (msg: string) => {
-    try { process.stderr.write(`[ensureGitignore] ${msg}\n`); } catch { /* best-effort */ }
+    try {
+      process.stderr.write(`[ensureGitignore] ${msg}\n`);
+    } catch {
+      /* best-effort */
+    }
   };
 
   if (existsSync(gitignorePath)) {
@@ -87,7 +91,9 @@ function ensureGitignore(targetDir: string): void {
       stderrLog(`created .gitignore from .npmignore`);
       return;
     } catch (e) {
-      stderrLog(`copyFileSync from .npmignore failed: ${e instanceof Error ? e.message : String(e)}`);
+      stderrLog(
+        `copyFileSync from .npmignore failed: ${e instanceof Error ? e.message : String(e)}`
+      );
     }
   }
 

@@ -44,7 +44,8 @@ export const roleProvider: Provider = {
       return {
         data: { roles: [] },
         values: {
-          roles: 'No access to role information in DMs, the role provider is only available in group scenarios.',
+          roles:
+            'No access to role information in DMs, the role provider is only available in group scenarios.',
         },
         text: 'No access to role information in DMs, the role provider is only available in group scenarios.',
       };
@@ -52,7 +53,10 @@ export const roleProvider: Provider = {
 
     const serverId = room.serverId ?? room.messageServerId;
     if (!serverId) {
-      logger.warn({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, roomId: room.id }, 'No server ID found for room');
+      logger.warn(
+        { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, roomId: room.id },
+        'No server ID found for room'
+      );
       return {
         data: { roles: [] },
         values: { roles: 'No role information available - server ID not found.' },
@@ -60,7 +64,10 @@ export const roleProvider: Provider = {
       };
     }
 
-    logger.info({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId }, 'Using server ID');
+    logger.info(
+      { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId },
+      'Using server ID'
+    );
 
     // Get world data (with caching)
     const worldId = createUniqueUuid(runtime, serverId);
@@ -79,11 +86,21 @@ export const roleProvider: Provider = {
     const entityIds = Object.keys(roles) as UUID[];
 
     if (entityIds.length === 0) {
-      logger.info({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId }, 'No roles found for server');
+      logger.info(
+        { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId },
+        'No roles found for server'
+      );
       return NO_ROLES_RESULT;
     }
 
-    logger.info({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, roleCount: entityIds.length }, 'Found roles');
+    logger.info(
+      {
+        src: 'plugin:bootstrap:provider:roles',
+        agentId: runtime.agentId,
+        roleCount: entityIds.length,
+      },
+      'Found roles'
+    );
 
     // Batch fetch all entities at once using runtime's batch method (single DB query)
     const entities = await runtime.getEntitiesByIds(entityIds);
@@ -117,7 +134,10 @@ export const roleProvider: Provider = {
 
       // Skip if missing required fields
       if (!name || !username || !userNames) {
-        logger.warn({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, entityId }, 'User has no name or username, skipping');
+        logger.warn(
+          { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, entityId },
+          'User has no name or username, skipping'
+        );
         continue;
       }
 

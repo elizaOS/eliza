@@ -78,7 +78,10 @@ export const recentMessagesProvider: Provider = {
     // Early validation - fail fast before any IO
     const { roomId } = message;
     if (!roomId) {
-      logger.warn({ src: 'plugin:bootstrap:provider:recent-messages', agentId: runtime.agentId }, 'No roomId in message');
+      logger.warn(
+        { src: 'plugin:bootstrap:provider:recent-messages', agentId: runtime.agentId },
+        'No roomId in message'
+      );
       return { data: {}, values: {}, text: '' };
     }
 
@@ -100,13 +103,20 @@ export const recentMessagesProvider: Provider = {
       // Safe access with explicit type checking - provider may not have run
       const entitiesProviderResult = state?.data?.providers?.ENTITIES;
       const entitiesProviderData =
-        entitiesProviderResult && typeof entitiesProviderResult === 'object' && 'data' in entitiesProviderResult
-          ? (entitiesProviderResult.data as { room?: { type?: string; source?: string }; entitiesData?: Entity[] })
+        entitiesProviderResult &&
+        typeof entitiesProviderResult === 'object' &&
+        'data' in entitiesProviderResult
+          ? (entitiesProviderResult.data as {
+              room?: { type?: string; source?: string };
+              entitiesData?: Entity[];
+            })
           : undefined;
 
       // Only use cached data if it exists and is valid
       const cachedRoom = entitiesProviderData?.room;
-      const cachedEntities = Array.isArray(entitiesProviderData?.entitiesData) ? entitiesProviderData.entitiesData : undefined;
+      const cachedEntities = Array.isArray(entitiesProviderData?.entitiesData)
+        ? entitiesProviderData.entitiesData
+        : undefined;
 
       // Fetch room only if not in cache
       const [room, recentMessagesData, recentInteractionsData] = await Promise.all([
@@ -123,7 +133,8 @@ export const recentMessagesProvider: Provider = {
       ]);
 
       // Get entity details - use cache if available and valid, otherwise fetch
-      const entitiesData = cachedEntities ?? (await getEntityDetailsWithRoom(runtime, roomId, room));
+      const entitiesData =
+        cachedEntities ?? (await getEntityDetailsWithRoom(runtime, roomId, room));
 
       // Build entity lookup map for O(1) access during formatting
       const entityMap = new Map<UUID, Entity>();
@@ -279,9 +290,7 @@ export const recentMessagesProvider: Provider = {
 
       const metaData = message.metadata as CustomMetadata;
       const currentSenderName =
-        entityMap.get(message.entityId)?.names[0] ||
-        metaData?.entityName ||
-        'Unknown User';
+        entityMap.get(message.entityId)?.names[0] || metaData?.entityName || 'Unknown User';
       const receivedMessageContent = message.content.text;
 
       const hasReceivedMessage = !!receivedMessageContent?.trim();
@@ -292,9 +301,9 @@ export const recentMessagesProvider: Provider = {
 
       const focusHeader = hasReceivedMessage
         ? addHeader(
-          '# Focus your response',
-          `You are replying to the above message from **${currentSenderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`
-        )
+            '# Focus your response',
+            `You are replying to the above message from **${currentSenderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`
+          )
         : '';
 
       // Use the existing entityMap for interaction lookups, only fetch missing entities
@@ -412,7 +421,14 @@ export const recentMessagesProvider: Provider = {
         text,
       };
     } catch (error) {
-      logger.error({ src: 'plugin:bootstrap:provider:recent_messages', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in recentMessagesProvider');
+      logger.error(
+        {
+          src: 'plugin:bootstrap:provider:recent_messages',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error in recentMessagesProvider'
+      );
       // Return a default state in case of error, similar to the empty message list
       return {
         data: {

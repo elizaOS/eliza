@@ -244,7 +244,9 @@ export async function copyTemplate(
   diag.afterCpSync_gitignore = existsSync(gitignorePath);
   diag.afterCpSync_npmignore = existsSync(npmignorePath);
   flushDiag();
-  stderrLog(`after-cpSync gitignore=${diag.afterCpSync_gitignore} npmignore=${diag.afterCpSync_npmignore}`);
+  stderrLog(
+    `after-cpSync gitignore=${diag.afterCpSync_gitignore} npmignore=${diag.afterCpSync_npmignore}`
+  );
 
   // Layer 1: If cpSync missed .gitignore but the source has it, copy explicitly
   if (!existsSync(gitignorePath) && existsSync(srcGitignore)) {

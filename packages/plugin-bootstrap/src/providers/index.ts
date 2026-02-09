@@ -18,27 +18,27 @@ export { worldProvider } from './world';
 
 // Shared caching utilities for cross-provider optimization
 export {
-    // Agent-specific cache functions
-    getCachedRoom,
-    getCachedWorld,
-    getCachedEntitiesForRoom,
-    getCachedWorldSettings,
-    extractWorldSettings,
-    invalidateRoomCache,
-    invalidateWorldCache,
-    invalidateEntitiesCache,
-    // Cross-agent cache functions (by external IDs like Discord guildId/channelId)
-    getCachedRoomByExternalId,
-    getCachedSettingsByServerId,
-    invalidateRoomCacheByExternalId,
-    invalidateWorldCacheByServerId,
-    // Negative caching
-    hasNoServerId,
-    markNoServerId,
-    hasNoSettings,
-    markNoSettings,
-    // Utilities
-    withTimeout,
-    getCacheStats,
-    stopCacheMaintenance,
+  // Agent-specific cache functions
+  getCachedRoom,
+  getCachedWorld,
+  getCachedEntitiesForRoom,
+  getCachedWorldSettings,
+  extractWorldSettings,
+  invalidateRoomCache,
+  invalidateWorldCache,
+  invalidateEntitiesCache,
+  // Cross-agent cache functions (by external IDs like Discord guildId/channelId)
+  getCachedRoomByExternalId,
+  getCachedSettingsByServerId,
+  invalidateRoomCacheByExternalId,
+  invalidateWorldCacheByServerId,
+  // Negative caching
+  hasNoServerId,
+  markNoServerId,
+  hasNoSettings,
+  markNoSettings,
+  // Utilities
+  withTimeout,
+  getCacheStats,
+  stopCacheMaintenance,
 } from './shared-cache';

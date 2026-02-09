@@ -33,9 +33,9 @@ export const characterProvider: Provider = {
     // Handle bio (string or random selection from array)
     const bioText = Array.isArray(character.bio)
       ? character.bio
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 10)
-        .join(' ')
+          .sort(() => 0.5 - Math.random())
+          .slice(0, 10)
+          .join(' ')
       : character.bio || '';
 
     const bio = addHeader(`# About ${character.name}`, bioText);
@@ -98,7 +98,10 @@ export const characterProvider: Provider = {
         }
         const formattedPosts = shuffledPosts.slice(0, 50).join('\n');
         if (formattedPosts.replaceAll('\n', '').length > 0) {
-          characterPostExamples = addHeader(`# Example Posts for ${character.name}`, formattedPosts);
+          characterPostExamples = addHeader(
+            `# Example Posts for ${character.name}`,
+            formattedPosts
+          );
         }
       }
     } else {
@@ -118,10 +121,11 @@ export const characterProvider: Provider = {
 
             return example
               .map((msg) => {
-                let messageString = `${msg.name}: ${msg.content.text}${msg.content.action || msg.content.actions
-                  ? ` (actions: ${msg.content.action || msg.content.actions?.join(', ')})`
-                  : ''
-                  }`;
+                let messageString = `${msg.name}: ${msg.content.text}${
+                  msg.content.action || msg.content.actions
+                    ? ` (actions: ${msg.content.action || msg.content.actions?.join(', ')})`
+                    : ''
+                }`;
                 exampleNames.forEach((name, index) => {
                   const placeholder = `{{name${index + 1}}}`;
                   messageString = messageString.replaceAll(placeholder, name);
@@ -152,7 +156,10 @@ export const characterProvider: Provider = {
       if (hasPostStyle) {
         const all = character?.style?.all || [];
         const post = character?.style?.post || [];
-        postDirections = addHeader(`# Post Directions for ${character.name}`, [...all, ...post].join('\n'));
+        postDirections = addHeader(
+          `# Post Directions for ${character.name}`,
+          [...all, ...post].join('\n')
+        );
       }
     } else {
       const hasChatStyle =
@@ -161,7 +168,10 @@ export const characterProvider: Provider = {
       if (hasChatStyle) {
         const all = character?.style?.all || [];
         const chat = character?.style?.chat || [];
-        messageDirections = addHeader(`# Message Directions for ${character.name}`, [...all, ...chat].join('\n'));
+        messageDirections = addHeader(
+          `# Message Directions for ${character.name}`,
+          [...all, ...chat].join('\n')
+        );
       }
     }
 

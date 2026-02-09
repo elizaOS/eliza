@@ -33,32 +33,30 @@ export function formatEvaluatorExamples(evaluators: Evaluator[]) {
   return evaluators
     .map((evaluator) => {
       // Filter out examples that are missing required fields
-      const validExamples = (evaluator.examples || []).filter(
-        (example) => {
-          if (!example) {
-            logger.error(
-              { evaluator: evaluator.name },
-              'Evaluator has null/undefined example - check evaluator implementation'
-            );
-            return false;
-          }
-          if (!example.prompt) {
-            logger.error(
-              { evaluator: evaluator.name },
-              'Evaluator example missing required "prompt" field - check evaluator implementation'
-            );
-            return false;
-          }
-          if (!example.messages) {
-            logger.error(
-              { evaluator: evaluator.name },
-              'Evaluator example missing required "messages" field - check evaluator implementation'
-            );
-            return false;
-          }
-          return true;
+      const validExamples = (evaluator.examples || []).filter((example) => {
+        if (!example) {
+          logger.error(
+            { evaluator: evaluator.name },
+            'Evaluator has null/undefined example - check evaluator implementation'
+          );
+          return false;
         }
-      );
+        if (!example.prompt) {
+          logger.error(
+            { evaluator: evaluator.name },
+            'Evaluator example missing required "prompt" field - check evaluator implementation'
+          );
+          return false;
+        }
+        if (!example.messages) {
+          logger.error(
+            { evaluator: evaluator.name },
+            'Evaluator example missing required "messages" field - check evaluator implementation'
+          );
+          return false;
+        }
+        return true;
+      });
 
       return validExamples
         .map((example) => {
@@ -135,7 +133,11 @@ export const evaluatorsProvider: Provider = {
         }
       } catch (e) {
         logger.warn(
-          { src: 'plugin:bootstrap:provider:evaluators', evaluator: evaluator.name, error: e instanceof Error ? e.message : String(e) },
+          {
+            src: 'plugin:bootstrap:provider:evaluators',
+            evaluator: evaluator.name,
+            error: e instanceof Error ? e.message : String(e),
+          },
           'Evaluator validation failed'
         );
       }

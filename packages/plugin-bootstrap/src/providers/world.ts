@@ -114,7 +114,7 @@ export const worldProvider: Provider = {
         runtime.getRooms(worldId),
         runtime.getParticipantsForRoom(message.roomId),
       ]);
-      
+
       logger.debug(
         {
           src: 'plugin:bootstrap:provider:world',

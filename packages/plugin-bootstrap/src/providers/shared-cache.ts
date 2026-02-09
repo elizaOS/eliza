@@ -22,9 +22,9 @@ const DB_TIMEOUT_MS = 5_000;
 const NEGATIVE_CACHE_TTL_MS = 60_000;
 
 interface CacheEntry<T> {
-    data: T;
-    timestamp: number;
-    isNegative?: boolean;
+  data: T;
+  timestamp: number;
+  isNegative?: boolean;
 }
 
 // ============================================================================
@@ -40,12 +40,12 @@ const roomInFlight = new Map<string, Promise<Room | null>>();
 // ============================================================================
 
 interface ExternalRoomData {
-    name?: string;
-    source: string;
-    type: import('@elizaos/core').ChannelType;
-    channelId?: string;
-    messageServerId?: string;
-    metadata?: import('@elizaos/core').Metadata;
+  name?: string;
+  source: string;
+  type: import('@elizaos/core').ChannelType;
+  channelId?: string;
+  messageServerId?: string;
+  metadata?: import('@elizaos/core').Metadata;
 }
 
 const externalRoomCache = new Map<string, CacheEntry<ExternalRoomData | null>>();
@@ -63,11 +63,11 @@ const worldInFlight = new Map<string, Promise<World | null>>();
 // ============================================================================
 
 interface ExternalWorldData {
-    name?: string;
-    messageServerId?: string;
-    metadata?: import('@elizaos/core').Metadata;
-    // Settings are stored by raw serverId, so they're shared across agents
-    settings?: WorldSettings;
+  name?: string;
+  messageServerId?: string;
+  metadata?: import('@elizaos/core').Metadata;
+  // Settings are stored by raw serverId, so they're shared across agents
+  settings?: WorldSettings;
 }
 
 const externalWorldCache = new Map<string, CacheEntry<ExternalWorldData | null>>();
@@ -85,26 +85,25 @@ const noSettingsCache = new Map<string, CacheEntry<boolean>>();
 /**
  * Promise with timeout - prevents indefinite waits on slow DB operations.
  */
-export async function withTimeout<T>(
-    promise: Promise<T>,
-    ms: number,
-    fallback: T
-): Promise<T> {
-    let timeoutId: ReturnType<typeof setTimeout>;
-    let settled = false;
-    const timeoutPromise = new Promise<T>((resolve) => {
-        timeoutId = setTimeout(() => {
-            if (settled) return; // Main promise already won the race; no-op.
-            logger.warn({ src: 'plugin:bootstrap:cache', timeoutMs: ms }, 'DB operation timed out, returning fallback');
-            resolve(fallback);
-        }, ms);
-    });
-    try {
-        return await Promise.race([promise, timeoutPromise]);
-    } finally {
-        settled = true;
-        clearTimeout(timeoutId!);
-    }
+export async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  let settled = false;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timeoutId = setTimeout(() => {
+      if (settled) return; // Main promise already won the race; no-op.
+      logger.warn(
+        { src: 'plugin:bootstrap:cache', timeoutMs: ms },
+        'DB operation timed out, returning fallback'
+      );
+      resolve(fallback);
+    }, ms);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    settled = true;
+    clearTimeout(timeoutId!);
+  }
 }
 
 /**
@@ -115,26 +114,22 @@ export async function withTimeout<T>(
  * 1. Inline after a fetch (burst guard) - caps at maxSize to prevent sudden spikes
  * 2. Periodic sweep (steady-state) - maxSize=0 to evict everything expired
  */
-function evictExpired<T>(
-    cache: Map<string, CacheEntry<T>>,
-    maxSize: number,
-    ttl: number
-): number {
-    // Burst guard: only run the inline eviction when we're over the cap.
-    // The periodic sweep passes maxSize=0, so it always runs.
-    if (maxSize > 0 && cache.size <= maxSize) return 0;
+function evictExpired<T>(cache: Map<string, CacheEntry<T>>, maxSize: number, ttl: number): number {
+  // Burst guard: only run the inline eviction when we're over the cap.
+  // The periodic sweep passes maxSize=0, so it always runs.
+  if (maxSize > 0 && cache.size <= maxSize) return 0;
 
-    const now = Date.now();
-    let evicted = 0;
-    for (const [key, entry] of cache) {
-        // Use the entry's own TTL if it's a negative-cache entry, otherwise use the provided TTL
-        const entryTtl = entry.isNegative ? NEGATIVE_CACHE_TTL_MS : ttl;
-        if (now - entry.timestamp > entryTtl) {
-            cache.delete(key);
-            evicted++;
-        }
+  const now = Date.now();
+  let evicted = 0;
+  for (const [key, entry] of cache) {
+    // Use the entry's own TTL if it's a negative-cache entry, otherwise use the provided TTL
+    const entryTtl = entry.isNegative ? NEGATIVE_CACHE_TTL_MS : ttl;
+    if (now - entry.timestamp > entryTtl) {
+      cache.delete(key);
+      evicted++;
     }
-    return evicted;
+  }
+  return evicted;
 }
 
 // ============================================================================
@@ -154,14 +149,14 @@ function evictExpired<T>(
 const SWEEP_INTERVAL_MS = 60_000;
 
 function sweepAllCaches(): void {
-    evictExpired(roomCache, 0, CACHE_TTL_MS);
-    evictExpired(externalRoomCache, 0, CACHE_TTL_MS);
-    evictExpired(worldCache, 0, CACHE_TTL_MS);
-    evictExpired(externalWorldCache, 0, CACHE_TTL_MS);
-    evictExpired(noServerIdCache, 0, NEGATIVE_CACHE_TTL_MS);
-    evictExpired(noSettingsCache, 0, NEGATIVE_CACHE_TTL_MS);
-    evictExpired(entitiesCache, 0, CACHE_TTL_MS);
-    evictExpired(worldSettingsCache, 0, CACHE_TTL_MS);
+  evictExpired(roomCache, 0, CACHE_TTL_MS);
+  evictExpired(externalRoomCache, 0, CACHE_TTL_MS);
+  evictExpired(worldCache, 0, CACHE_TTL_MS);
+  evictExpired(externalWorldCache, 0, CACHE_TTL_MS);
+  evictExpired(noServerIdCache, 0, NEGATIVE_CACHE_TTL_MS);
+  evictExpired(noSettingsCache, 0, NEGATIVE_CACHE_TTL_MS);
+  evictExpired(entitiesCache, 0, CACHE_TTL_MS);
+  evictExpired(worldSettingsCache, 0, CACHE_TTL_MS);
 }
 
 // Lazy-initialized sweep timer. Starts on first cache access rather than
@@ -170,12 +165,12 @@ function sweepAllCaches(): void {
 let sweepTimer: ReturnType<typeof setInterval> | null = null;
 
 function ensureSweepTimer(): void {
-    if (sweepTimer !== null) return;
-    sweepTimer = setInterval(sweepAllCaches, SWEEP_INTERVAL_MS);
-    // Don't keep the process alive just for cache maintenance
-    if (sweepTimer && typeof sweepTimer === 'object' && 'unref' in sweepTimer) {
-        (sweepTimer as { unref: () => void }).unref();
-    }
+  if (sweepTimer !== null) return;
+  sweepTimer = setInterval(sweepAllCaches, SWEEP_INTERVAL_MS);
+  // Don't keep the process alive just for cache maintenance
+  if (sweepTimer && typeof sweepTimer === 'object' && 'unref' in sweepTimer) {
+    (sweepTimer as { unref: () => void }).unref();
+  }
 }
 
 /**
@@ -183,23 +178,23 @@ function ensureSweepTimer(): void {
  * Call during shutdown or in tests to prevent timer leaks.
  */
 export function stopCacheMaintenance(): void {
-    if (sweepTimer !== null) {
-        clearInterval(sweepTimer);
-        sweepTimer = null;
-    }
-    roomCache.clear();
-    roomInFlight.clear();
-    externalRoomCache.clear();
-    worldCache.clear();
-    worldInFlight.clear();
-    externalWorldCache.clear();
-    externalWorldInFlight.clear();
-    noServerIdCache.clear();
-    noSettingsCache.clear();
-    entitiesCache.clear();
-    entitiesInFlight.clear();
-    worldSettingsCache.clear();
-    worldSettingsInFlight.clear();
+  if (sweepTimer !== null) {
+    clearInterval(sweepTimer);
+    sweepTimer = null;
+  }
+  roomCache.clear();
+  roomInFlight.clear();
+  externalRoomCache.clear();
+  worldCache.clear();
+  worldInFlight.clear();
+  externalWorldCache.clear();
+  externalWorldInFlight.clear();
+  noServerIdCache.clear();
+  noSettingsCache.clear();
+  entitiesCache.clear();
+  entitiesInFlight.clear();
+  worldSettingsCache.clear();
+  worldSettingsInFlight.clear();
 }
 
 // ============================================================================
@@ -211,26 +206,26 @@ export function stopCacheMaintenance(): void {
  * Uses source:channelId which is shared across all agents.
  */
 function getExternalRoomKey(room: Room | ExternalRoomData): string | null {
-    if (!room.source || !room.channelId) return null;
-    return `${room.source}:${room.channelId}`;
+  if (!room.source || !room.channelId) return null;
+  return `${room.source}:${room.channelId}`;
 }
 
 /**
  * Store room data in the external (cross-agent) cache.
  */
 function cacheRoomByExternalId(room: Room): void {
-    const key = getExternalRoomKey(room);
-    if (!key) return;
+  const key = getExternalRoomKey(room);
+  if (!key) return;
 
-    const externalData: ExternalRoomData = {
-        name: room.name,
-        source: room.source,
-        type: room.type,
-        channelId: room.channelId,
-        messageServerId: room.messageServerId ?? room.serverId,
-        metadata: room.metadata,
-    };
-    externalRoomCache.set(key, { data: externalData, timestamp: Date.now() });
+  const externalData: ExternalRoomData = {
+    name: room.name,
+    source: room.source,
+    type: room.type,
+    channelId: room.channelId,
+    messageServerId: room.messageServerId ?? room.serverId,
+    metadata: room.metadata,
+  };
+  externalRoomCache.set(key, { data: externalData, timestamp: Date.now() });
 }
 
 /**
@@ -244,47 +239,44 @@ function cacheRoomByExternalId(room: Room): void {
  * @param roomId - The room UUID to fetch
  * @returns The room data or null if not found
  */
-export async function getCachedRoom(
-    runtime: IAgentRuntime,
-    roomId: UUID
-): Promise<Room | null> {
-    ensureSweepTimer();
-    const cacheKey = roomId;
-    const cached = roomCache.get(cacheKey);
-    const now = Date.now();
+export async function getCachedRoom(runtime: IAgentRuntime, roomId: UUID): Promise<Room | null> {
+  ensureSweepTimer();
+  const cacheKey = roomId;
+  const cached = roomCache.get(cacheKey);
+  const now = Date.now();
 
-    // Return cached data if valid
-    if (cached && now - cached.timestamp < CACHE_TTL_MS) {
-        return cached.data;
+  // Return cached data if valid
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  // Check if ANY agent/provider already has an in-flight request for this room
+  const inFlight = roomInFlight.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  // Create new promise and store it BEFORE awaiting
+  const fetchPromise = (async () => {
+    try {
+      const room = await withTimeout(runtime.getRoom(roomId), DB_TIMEOUT_MS, null);
+      roomCache.set(cacheKey, { data: room, timestamp: Date.now() });
+
+      // Also cache by external ID for cross-agent benefit
+      if (room) {
+        cacheRoomByExternalId(room);
+      }
+
+      return room;
+    } finally {
+      roomInFlight.delete(cacheKey);
     }
+  })();
 
-    // Check if ANY agent/provider already has an in-flight request for this room
-    const inFlight = roomInFlight.get(cacheKey);
-    if (inFlight) {
-        return inFlight;
-    }
+  roomInFlight.set(cacheKey, fetchPromise);
+  evictExpired(roomCache, 500, CACHE_TTL_MS);
 
-    // Create new promise and store it BEFORE awaiting
-    const fetchPromise = (async () => {
-        try {
-            const room = await withTimeout(runtime.getRoom(roomId), DB_TIMEOUT_MS, null);
-            roomCache.set(cacheKey, { data: room, timestamp: Date.now() });
-
-            // Also cache by external ID for cross-agent benefit
-            if (room) {
-                cacheRoomByExternalId(room);
-            }
-
-            return room;
-        } finally {
-            roomInFlight.delete(cacheKey);
-        }
-    })();
-
-    roomInFlight.set(cacheKey, fetchPromise);
-    evictExpired(roomCache, 500, CACHE_TTL_MS);
-
-    return fetchPromise;
+  return fetchPromise;
 }
 
 /**
@@ -296,17 +288,17 @@ export async function getCachedRoom(
  * @returns Cached external room data or null
  */
 export function getCachedRoomByExternalId(
-    source: string,
-    channelId: string
+  source: string,
+  channelId: string
 ): ExternalRoomData | null {
-    const key = `${source}:${channelId}`;
-    const cached = externalRoomCache.get(key);
-    const now = Date.now();
+  const key = `${source}:${channelId}`;
+  const cached = externalRoomCache.get(key);
+  const now = Date.now();
 
-    if (cached && now - cached.timestamp < CACHE_TTL_MS) {
-        return cached.data;
-    }
-    return null;
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+  return null;
 }
 
 /**
@@ -314,7 +306,7 @@ export function getCachedRoomByExternalId(
  * For most use cases, prefer the combined invalidateRoomCache wrapper below.
  */
 function invalidateRoomCacheInternal(roomId: UUID): void {
-    roomCache.delete(roomId);
+  roomCache.delete(roomId);
 }
 
 /**
@@ -323,15 +315,15 @@ function invalidateRoomCacheInternal(roomId: UUID): void {
  * This is the recommended function to use when entities change.
  */
 export function invalidateRoomCache(agentId: UUID, roomId: UUID): void {
-    invalidateRoomCacheInternal(roomId);
-    invalidateEntitiesCache(agentId, roomId);
+  invalidateRoomCacheInternal(roomId);
+  invalidateEntitiesCache(agentId, roomId);
 }
 
 /**
  * Invalidate room cache by external ID.
  */
 export function invalidateRoomCacheByExternalId(source: string, channelId: string): void {
-    externalRoomCache.delete(`${source}:${channelId}`);
+  externalRoomCache.delete(`${source}:${channelId}`);
 }
 
 // ============================================================================
@@ -343,9 +335,9 @@ export function invalidateRoomCacheByExternalId(source: string, channelId: strin
  * Uses the raw messageServerId (Discord guildId) which is shared across all agents.
  */
 function getExternalWorldKey(world: World | { messageServerId?: string }): string | null {
-    const serverId = world.messageServerId;
-    if (!serverId) return null;
-    return `guild:${serverId}`;
+  const serverId = world.messageServerId;
+  if (!serverId) return null;
+  return `guild:${serverId}`;
 }
 
 /**
@@ -353,29 +345,26 @@ function getExternalWorldKey(world: World | { messageServerId?: string }): strin
  * Most importantly, caches the settings which are keyed by raw serverId.
  */
 function cacheWorldByExternalId(world: World): void {
-    const key = getExternalWorldKey(world);
-    if (!key) return;
+  const key = getExternalWorldKey(world);
+  if (!key) return;
 
-    const externalData: ExternalWorldData = {
-        name: world.name,
-        messageServerId: world.messageServerId,
-        metadata: world.metadata,
-    };
+  const externalData: ExternalWorldData = {
+    name: world.name,
+    messageServerId: world.messageServerId,
+    metadata: world.metadata,
+  };
 
-    // Extract and cache settings if present
-    if (world.metadata?.settings) {
-        try {
-            const salt = getSalt();
-            externalData.settings = unsaltWorldSettings(
-                world.metadata.settings as WorldSettings,
-                salt
-            );
-        } catch {
-            // Settings decryption failed, skip caching settings
-        }
+  // Extract and cache settings if present
+  if (world.metadata?.settings) {
+    try {
+      const salt = getSalt();
+      externalData.settings = unsaltWorldSettings(world.metadata.settings as WorldSettings, salt);
+    } catch {
+      // Settings decryption failed, skip caching settings
     }
+  }
 
-    externalWorldCache.set(key, { data: externalData, timestamp: Date.now() });
+  externalWorldCache.set(key, { data: externalData, timestamp: Date.now() });
 }
 
 /**
@@ -385,46 +374,43 @@ function cacheWorldByExternalId(world: World): void {
  * @param worldId - The world UUID to fetch
  * @returns The world data or null if not found
  */
-export async function getCachedWorld(
-    runtime: IAgentRuntime,
-    worldId: UUID
-): Promise<World | null> {
-    ensureSweepTimer();
-    const cacheKey = worldId;
-    const cached = worldCache.get(cacheKey);
-    const now = Date.now();
+export async function getCachedWorld(runtime: IAgentRuntime, worldId: UUID): Promise<World | null> {
+  ensureSweepTimer();
+  const cacheKey = worldId;
+  const cached = worldCache.get(cacheKey);
+  const now = Date.now();
 
-    if (cached && now - cached.timestamp < CACHE_TTL_MS) {
-        return cached.data;
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  // Check if ANY agent already has an in-flight request for this world
+  const inFlight = worldInFlight.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  // Create new promise and store it BEFORE awaiting
+  const fetchPromise = (async () => {
+    try {
+      const world = await withTimeout(runtime.getWorld(worldId), DB_TIMEOUT_MS, null);
+      worldCache.set(cacheKey, { data: world, timestamp: Date.now() });
+
+      // Also cache by external ID (guildId) for cross-agent benefit
+      if (world) {
+        cacheWorldByExternalId(world);
+      }
+
+      return world;
+    } finally {
+      worldInFlight.delete(cacheKey);
     }
+  })();
 
-    // Check if ANY agent already has an in-flight request for this world
-    const inFlight = worldInFlight.get(cacheKey);
-    if (inFlight) {
-        return inFlight;
-    }
+  worldInFlight.set(cacheKey, fetchPromise);
+  evictExpired(worldCache, 200, CACHE_TTL_MS);
 
-    // Create new promise and store it BEFORE awaiting
-    const fetchPromise = (async () => {
-        try {
-            const world = await withTimeout(runtime.getWorld(worldId), DB_TIMEOUT_MS, null);
-            worldCache.set(cacheKey, { data: world, timestamp: Date.now() });
-
-            // Also cache by external ID (guildId) for cross-agent benefit
-            if (world) {
-                cacheWorldByExternalId(world);
-            }
-
-            return world;
-        } finally {
-            worldInFlight.delete(cacheKey);
-        }
-    })();
-
-    worldInFlight.set(cacheKey, fetchPromise);
-    evictExpired(worldCache, 200, CACHE_TTL_MS);
-
-    return fetchPromise;
+  return fetchPromise;
 }
 
 /**
@@ -436,14 +422,14 @@ export async function getCachedWorld(
  * @returns Cached settings or null
  */
 export function getCachedSettingsByServerId(serverId: string): WorldSettings | null {
-    const key = `guild:${serverId}`;
-    const cached = externalWorldCache.get(key);
-    const now = Date.now();
+  const key = `guild:${serverId}`;
+  const cached = externalWorldCache.get(key);
+  const now = Date.now();
 
-    if (cached && now - cached.timestamp < CACHE_TTL_MS && cached.data?.settings) {
-        return cached.data.settings;
-    }
-    return null;
+  if (cached && now - cached.timestamp < CACHE_TTL_MS && cached.data?.settings) {
+    return cached.data.settings;
+  }
+  return null;
 }
 
 /**
@@ -451,12 +437,12 @@ export function getCachedSettingsByServerId(serverId: string): WorldSettings | n
  * Uses raw serverId so ALL agents share this knowledge.
  */
 export function hasNoSettings(serverId: string): boolean {
-    const cached = noSettingsCache.get(serverId);
-    const now = Date.now();
-    if (cached && now - cached.timestamp < NEGATIVE_CACHE_TTL_MS) {
-        return cached.data;
-    }
-    return false;
+  const cached = noSettingsCache.get(serverId);
+  const now = Date.now();
+  if (cached && now - cached.timestamp < NEGATIVE_CACHE_TTL_MS) {
+    return cached.data;
+  }
+  return false;
 }
 
 /**
@@ -464,23 +450,23 @@ export function hasNoSettings(serverId: string): boolean {
  * Shared across all agents.
  */
 export function markNoSettings(serverId: string): void {
-    noSettingsCache.set(serverId, { data: true, timestamp: Date.now() });
+  noSettingsCache.set(serverId, { data: true, timestamp: Date.now() });
 }
 
 /**
  * Invalidate the world cache for a specific world.
  */
 export function invalidateWorldCache(worldId: UUID): void {
-    worldCache.delete(worldId);
-    noServerIdCache.delete(worldId);
+  worldCache.delete(worldId);
+  noServerIdCache.delete(worldId);
 }
 
 /**
  * Invalidate world cache by raw server/guild ID.
  */
 export function invalidateWorldCacheByServerId(serverId: string): void {
-    externalWorldCache.delete(`guild:${serverId}`);
-    noSettingsCache.delete(serverId);
+  externalWorldCache.delete(`guild:${serverId}`);
+  noSettingsCache.delete(serverId);
 }
 
 // ============================================================================
@@ -492,19 +478,19 @@ export function invalidateWorldCacheByServerId(serverId: string): void {
  * Check if a world is known to have no server ID.
  */
 export function hasNoServerId(worldId: UUID): boolean {
-    const cached = noServerIdCache.get(worldId);
-    const now = Date.now();
-    if (cached && now - cached.timestamp < NEGATIVE_CACHE_TTL_MS) {
-        return cached.data;
-    }
-    return false;
+  const cached = noServerIdCache.get(worldId);
+  const now = Date.now();
+  if (cached && now - cached.timestamp < NEGATIVE_CACHE_TTL_MS) {
+    return cached.data;
+  }
+  return false;
 }
 
 /**
  * Mark a world as having no server ID.
  */
 export function markNoServerId(worldId: UUID): void {
-    noServerIdCache.set(worldId, { data: true, timestamp: Date.now() });
+  noServerIdCache.set(worldId, { data: true, timestamp: Date.now() });
 }
 
 // ============================================================================
@@ -525,52 +511,52 @@ const entitiesInFlight = new Map<string, Promise<import('@elizaos/core').Entity[
  * @returns Array of entities in the room
  */
 export async function getCachedEntitiesForRoom(
-    runtime: IAgentRuntime,
-    roomId: UUID
+  runtime: IAgentRuntime,
+  roomId: UUID
 ): Promise<import('@elizaos/core').Entity[]> {
-    ensureSweepTimer();
-    // Keep agentId for entities - different agents may see different entity metadata
-    const cacheKey = `${runtime.agentId}:${roomId}`;
-    const cached = entitiesCache.get(cacheKey);
-    const now = Date.now();
+  ensureSweepTimer();
+  // Keep agentId for entities - different agents may see different entity metadata
+  const cacheKey = `${runtime.agentId}:${roomId}`;
+  const cached = entitiesCache.get(cacheKey);
+  const now = Date.now();
 
-    if (cached && now - cached.timestamp < CACHE_TTL_MS) {
-        return cached.data;
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  // Check if there's already an in-flight request for this key
+  const inFlight = entitiesInFlight.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  // Create new promise and store it BEFORE awaiting
+  const fetchPromise = (async () => {
+    try {
+      const entities = await withTimeout(
+        runtime.getEntitiesForRoom(roomId, true),
+        DB_TIMEOUT_MS,
+        []
+      );
+      entitiesCache.set(cacheKey, { data: entities, timestamp: Date.now() });
+      return entities;
+    } finally {
+      entitiesInFlight.delete(cacheKey);
     }
+  })();
 
-    // Check if there's already an in-flight request for this key
-    const inFlight = entitiesInFlight.get(cacheKey);
-    if (inFlight) {
-        return inFlight;
-    }
+  entitiesInFlight.set(cacheKey, fetchPromise);
+  evictExpired(entitiesCache, 500, CACHE_TTL_MS);
 
-    // Create new promise and store it BEFORE awaiting
-    const fetchPromise = (async () => {
-        try {
-            const entities = await withTimeout(
-                runtime.getEntitiesForRoom(roomId, true),
-                DB_TIMEOUT_MS,
-                []
-            );
-            entitiesCache.set(cacheKey, { data: entities, timestamp: Date.now() });
-            return entities;
-        } finally {
-            entitiesInFlight.delete(cacheKey);
-        }
-    })();
-
-    entitiesInFlight.set(cacheKey, fetchPromise);
-    evictExpired(entitiesCache, 500, CACHE_TTL_MS);
-
-    return fetchPromise;
+  return fetchPromise;
 }
 
 /**
  * Invalidate entity cache for a specific agent and room.
  */
 export function invalidateEntitiesCache(agentId: UUID, roomId: UUID): void {
-    const cacheKey = `${agentId}:${roomId}`;
-    entitiesCache.delete(cacheKey);
+  const cacheKey = `${agentId}:${roomId}`;
+  entitiesCache.delete(cacheKey);
 }
 
 // ============================================================================
@@ -592,44 +578,44 @@ const worldSettingsInFlight = new Map<string, Promise<WorldSettings | null>>();
  * @returns The world settings or null
  */
 export function extractWorldSettings(world: World | null): WorldSettings | null {
-    if (!world) {
-        return null;
-    }
+  if (!world) {
+    return null;
+  }
 
-    // First check if we have cross-agent cached settings for this server
+  // First check if we have cross-agent cached settings for this server
+  if (world.messageServerId) {
+    const cachedSettings = getCachedSettingsByServerId(world.messageServerId);
+    if (cachedSettings) {
+      return cachedSettings;
+    }
+  }
+
+  if (!world.metadata?.settings) {
+    // Mark as having no settings so other agents skip
     if (world.messageServerId) {
-        const cachedSettings = getCachedSettingsByServerId(world.messageServerId);
-        if (cachedSettings) {
-            return cachedSettings;
-        }
+      markNoSettings(world.messageServerId);
     }
+    return null;
+  }
 
-    if (!world.metadata?.settings) {
-        // Mark as having no settings so other agents skip
-        if (world.messageServerId) {
-            markNoSettings(world.messageServerId);
-        }
-        return null;
-    }
+  // Get settings from metadata and remove salt
+  const saltedSettings = world.metadata.settings as WorldSettings;
+  const salt = getSalt();
+  const settings = unsaltWorldSettings(saltedSettings, salt);
 
-    // Get settings from metadata and remove salt
-    const saltedSettings = world.metadata.settings as WorldSettings;
-    const salt = getSalt();
-    const settings = unsaltWorldSettings(saltedSettings, salt);
+  // Cache by raw serverId for cross-agent benefit
+  if (world.messageServerId && settings) {
+    const key = `guild:${world.messageServerId}`;
+    const externalData: ExternalWorldData = {
+      name: world.name,
+      messageServerId: world.messageServerId,
+      metadata: world.metadata,
+      settings,
+    };
+    externalWorldCache.set(key, { data: externalData, timestamp: Date.now() });
+  }
 
-    // Cache by raw serverId for cross-agent benefit
-    if (world.messageServerId && settings) {
-        const key = `guild:${world.messageServerId}`;
-        const externalData: ExternalWorldData = {
-            name: world.name,
-            messageServerId: world.messageServerId,
-            metadata: world.metadata,
-            settings,
-        };
-        externalWorldCache.set(key, { data: externalData, timestamp: Date.now() });
-    }
-
-    return settings;
+  return settings;
 }
 
 /**
@@ -644,39 +630,39 @@ export function extractWorldSettings(world: World | null): WorldSettings | null 
  * @returns The world settings or null
  */
 export async function getCachedWorldSettings(
-    runtime: IAgentRuntime,
-    serverId: string
+  runtime: IAgentRuntime,
+  serverId: string
 ): Promise<WorldSettings | null> {
-    ensureSweepTimer();
-    const cacheKey = `${runtime.agentId}:${serverId}`;
-    const cached = worldSettingsCache.get(cacheKey);
-    const now = Date.now();
+  ensureSweepTimer();
+  const cacheKey = `${runtime.agentId}:${serverId}`;
+  const cached = worldSettingsCache.get(cacheKey);
+  const now = Date.now();
 
-    if (cached && now - cached.timestamp < CACHE_TTL_MS) {
-        return cached.data;
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const inFlight = worldSettingsInFlight.get(cacheKey);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const fetchPromise = (async () => {
+    try {
+      const worldId = createUniqueUuid(runtime, serverId);
+      const world = await getCachedWorld(runtime, worldId);
+      const settings = extractWorldSettings(world);
+      worldSettingsCache.set(cacheKey, { data: settings, timestamp: Date.now() });
+      return settings;
+    } finally {
+      worldSettingsInFlight.delete(cacheKey);
     }
+  })();
 
-    const inFlight = worldSettingsInFlight.get(cacheKey);
-    if (inFlight) {
-        return inFlight;
-    }
+  worldSettingsInFlight.set(cacheKey, fetchPromise);
+  evictExpired(worldSettingsCache, 200, CACHE_TTL_MS);
 
-    const fetchPromise = (async () => {
-        try {
-            const worldId = createUniqueUuid(runtime, serverId);
-            const world = await getCachedWorld(runtime, worldId);
-            const settings = extractWorldSettings(world);
-            worldSettingsCache.set(cacheKey, { data: settings, timestamp: Date.now() });
-            return settings;
-        } finally {
-            worldSettingsInFlight.delete(cacheKey);
-        }
-    })();
-
-    worldSettingsInFlight.set(cacheKey, fetchPromise);
-    evictExpired(worldSettingsCache, 200, CACHE_TTL_MS);
-
-    return fetchPromise;
+  return fetchPromise;
 }
 
 // ============================================================================
@@ -684,40 +670,39 @@ export async function getCachedWorldSettings(
 // ============================================================================
 
 export function getCacheStats(): {
-    // Agent-specific caches
-    rooms: number;
-    roomsInFlight: number;
-    worlds: number;
-    worldsInFlight: number;
-    entities: number;
-    entitiesInFlight: number;
-    worldSettings: number;
-    worldSettingsInFlight: number;
-    // Cross-agent caches (by external IDs)
-    externalRooms: number;
-    externalWorlds: number;
-    externalWorldsInFlight: number;
-    // Negative caches
-    noServerIds: number;
-    noSettings: number;
+  // Agent-specific caches
+  rooms: number;
+  roomsInFlight: number;
+  worlds: number;
+  worldsInFlight: number;
+  entities: number;
+  entitiesInFlight: number;
+  worldSettings: number;
+  worldSettingsInFlight: number;
+  // Cross-agent caches (by external IDs)
+  externalRooms: number;
+  externalWorlds: number;
+  externalWorldsInFlight: number;
+  // Negative caches
+  noServerIds: number;
+  noSettings: number;
 } {
-    return {
-        // Agent-specific
-        rooms: roomCache.size,
-        roomsInFlight: roomInFlight.size,
-        worlds: worldCache.size,
-        worldsInFlight: worldInFlight.size,
-        entities: entitiesCache.size,
-        entitiesInFlight: entitiesInFlight.size,
-        worldSettings: worldSettingsCache.size,
-        worldSettingsInFlight: worldSettingsInFlight.size,
-        // Cross-agent
-        externalRooms: externalRoomCache.size,
-        externalWorlds: externalWorldCache.size,
-        externalWorldsInFlight: externalWorldInFlight.size,
-        // Negative
-        noServerIds: noServerIdCache.size,
-        noSettings: noSettingsCache.size,
-    };
+  return {
+    // Agent-specific
+    rooms: roomCache.size,
+    roomsInFlight: roomInFlight.size,
+    worlds: worldCache.size,
+    worldsInFlight: worldInFlight.size,
+    entities: entitiesCache.size,
+    entitiesInFlight: entitiesInFlight.size,
+    worldSettings: worldSettingsCache.size,
+    worldSettingsInFlight: worldSettingsInFlight.size,
+    // Cross-agent
+    externalRooms: externalRoomCache.size,
+    externalWorlds: externalWorldCache.size,
+    externalWorldsInFlight: externalWorldInFlight.size,
+    // Negative
+    noServerIds: noServerIdCache.size,
+    noSettings: noSettingsCache.size,
+  };
 }
-

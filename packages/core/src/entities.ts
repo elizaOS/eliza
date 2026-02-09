@@ -342,10 +342,7 @@ export const createUniqueUuid = (runtime: IAgentRuntime, baseUserId: UUID | stri
  * @param source - The source key (e.g., "discord", "twitter")
  * @returns The display name string, or undefined if not found
  */
-export function getEntityNameFromMetadata(
-  entity: Entity,
-  source: string
-): string | undefined {
+export function getEntityNameFromMetadata(entity: Entity, source: string): string | undefined {
   const sourceMetadata = entity.metadata[source];
   if (sourceMetadata && typeof sourceMetadata === 'object' && sourceMetadata !== null) {
     const metadataObj = sourceMetadata as Record<string, unknown>;
@@ -403,10 +400,7 @@ export function mergeEntityComponentData(entity: Entity): Metadata {
  * @param roomSource - The room's source field (e.g., "discord"), for name resolution
  * @returns Deduplicated entities with merged component and metadata
  */
-export function processEntitiesForRoom(
-  roomEntities: Entity[],
-  roomSource?: string
-): Entity[] {
+export function processEntitiesForRoom(roomEntities: Entity[], roomSource?: string): Entity[] {
   const uniqueEntities = new Map<UUID, Entity>();
 
   for (const entity of roomEntities) {
@@ -416,13 +410,9 @@ export function processEntitiesForRoom(
 
     // Resolve a display name from source-specific metadata (e.g., Discord username)
     // and prepend it to names so names[0] is always the best available display name.
-    const sourceName = roomSource
-      ? getEntityNameFromMetadata(entity, roomSource)
-      : undefined;
+    const sourceName = roomSource ? getEntityNameFromMetadata(entity, roomSource) : undefined;
     const names =
-      sourceName && sourceName !== entity.names[0]
-        ? [sourceName, ...entity.names]
-        : entity.names;
+      sourceName && sourceName !== entity.names[0] ? [sourceName, ...entity.names] : entity.names;
 
     uniqueEntities.set(entity.id, {
       id: entity.id,

@@ -36,7 +36,10 @@ import { v4 } from 'uuid';
 import * as actions from './actions/index.ts';
 import * as evaluators from './evaluators/index.ts';
 import * as providers from './providers/index.ts';
-import { bootstrapInstructionsProvider, bootstrapSettingsProvider } from './providers/plugin-info.ts';
+import {
+  bootstrapInstructionsProvider,
+  bootstrapSettingsProvider,
+} from './providers/plugin-info.ts';
 
 import { TaskService } from './services/task.ts';
 import { EmbeddingGenerationService } from './services/embedding.ts';
@@ -258,11 +261,19 @@ export async function processAttachments(
 
       const isDataUrl = attachment.url.startsWith('data:');
       const isRemote = /^(http|https):\/\//.test(attachment.url);
-      const url = isRemote ? attachment.url : isDataUrl ? attachment.url : getLocalServerUrl(attachment.url);
+      const url = isRemote
+        ? attachment.url
+        : isDataUrl
+          ? attachment.url
+          : getLocalServerUrl(attachment.url);
       // Only process images that don't already have descriptions
       if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
         runtime.logger.debug(
-          { src: 'plugin:bootstrap', agentId: runtime.agentId, url: attachment.url?.substring(0, 100) },
+          {
+            src: 'plugin:bootstrap',
+            agentId: runtime.agentId,
+            url: attachment.url?.substring(0, 100),
+          },
           'Generating description for image'
         );
 
@@ -568,10 +579,20 @@ const reactionReceivedHandler = async ({
     );
   } catch (error: any) {
     if (error.code === '23505') {
-      runtime.logger.warn({ src: 'plugin:bootstrap', agentId: runtime.agentId }, 'Duplicate reaction memory, skipping');
+      runtime.logger.warn(
+        { src: 'plugin:bootstrap', agentId: runtime.agentId },
+        'Duplicate reaction memory, skipping'
+      );
       return;
     }
-    runtime.logger.error({ src: 'plugin:bootstrap', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in reaction handler');
+    runtime.logger.error(
+      {
+        src: 'plugin:bootstrap',
+        agentId: runtime.agentId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error in reaction handler'
+    );
   }
 };
 
@@ -1011,10 +1032,19 @@ const handleServerSync = async ({
  * @param {Object} params.message - The control message
  * @param {string} params.source - Source of the message
  */
-const controlMessageHandler = async ({ runtime, message, source: _source }: ControlMessagePayload) => {
+const controlMessageHandler = async ({
+  runtime,
+  message,
+  source: _source,
+}: ControlMessagePayload) => {
   try {
     runtime.logger.debug(
-      { src: 'plugin:bootstrap', agentId: runtime.agentId, action: message.payload.action, roomId: message.roomId },
+      {
+        src: 'plugin:bootstrap',
+        agentId: runtime.agentId,
+        action: message.payload.action,
+        roomId: message.roomId,
+      },
       'Processing control message'
     );
 
@@ -1061,7 +1091,14 @@ const controlMessageHandler = async ({ runtime, message, source: _source }: Cont
       );
     }
   } catch (error) {
-    runtime.logger.error({ src: 'plugin:bootstrap', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error processing control message');
+    runtime.logger.error(
+      {
+        src: 'plugin:bootstrap',
+        agentId: runtime.agentId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error processing control message'
+    );
   }
 };
 

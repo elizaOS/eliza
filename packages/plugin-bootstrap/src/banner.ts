@@ -72,9 +72,14 @@ function line(content: string): string {
 
 export function printBanner(options: BannerOptions): void {
   const { settings = [], runtime } = options;
-  const R = ANSI.reset, D = ANSI.dim, B = ANSI.bold;
-  const C = ANSI.teal, c2 = ANSI.tealBright, M = ANSI.mint;
-  const G = ANSI.brightGreen, Y = ANSI.brightYellow;
+  const R = ANSI.reset,
+    D = ANSI.dim,
+    B = ANSI.bold;
+  const C = ANSI.teal,
+    c2 = ANSI.tealBright,
+    M = ANSI.mint;
+  const G = ANSI.brightGreen,
+    Y = ANSI.brightYellow;
 
   const top = `${C}╔${'═'.repeat(78)}╗${R}`;
   const mid = `${C}╠${'═'.repeat(78)}╣${R}`;
@@ -87,18 +92,32 @@ export function printBanner(options: BannerOptions): void {
   lines.push(mid);
 
   // Bootstrap - 3D Isometric Shadow Font with pyramid icon
-  lines.push(row(`${c2}    ____                    __          __                    ${M}    ▲${R}`));
-  lines.push(row(`${c2}   / __ ) ____   ____  ____/ /_ _____  / /_ _____ ____ _ ____ ${M}   /▲\\${R}`));
-  lines.push(row(`${c2}  / __  |/ __ \\ / __ \\/ __  __// ___/ / __// ___// __ '// __ \\${M}  / ▲ \\${R}`));
-  lines.push(row(`${c2} / /_/ // /_/ // /_/ / /_/ /_ (__  ) / /_ / /   / /_/ // /_/ /${M} /  ▲  \\${R}`));
-  lines.push(row(`${c2}/_____/ \\____/ \\____/\\__,___//____/  \\__//_/    \\__,_// .___/ ${M}/___▲___\\${R}`));
+  lines.push(
+    row(`${c2}    ____                    __          __                    ${M}    ▲${R}`)
+  );
+  lines.push(
+    row(`${c2}   / __ ) ____   ____  ____/ /_ _____  / /_ _____ ____ _ ____ ${M}   /▲\\${R}`)
+  );
+  lines.push(
+    row(`${c2}  / __  |/ __ \\ / __ \\/ __  __// ___/ / __// ___// __ '// __ \\${M}  / ▲ \\${R}`)
+  );
+  lines.push(
+    row(`${c2} / /_/ // /_/ // /_/ / /_/ /_ (__  ) / /_ / /   / /_/ // /_/ /${M} /  ▲  \\${R}`)
+  );
+  lines.push(
+    row(
+      `${c2}/_____/ \\____/ \\____/\\__,___//____/  \\__//_/    \\__,_// .___/ ${M}/___▲___\\${R}`
+    )
+  );
   lines.push(row(`${D}                                                     ${c2}/_/${R}`));
   lines.push(row(``));
   lines.push(row(`${M}         Agent Foundation  •  Actions  •  Evaluators  •  Providers${R}`));
   lines.push(mid);
 
   if (settings.length > 0) {
-    const NW = 32, VW = 28, SW = 8;
+    const NW = 32,
+      VW = 28,
+      SW = 8;
     lines.push(row(` ${B}${pad('ENV VARIABLE', NW)} ${pad('VALUE', VW)} ${pad('STATUS', SW)}${R}`));
     lines.push(row(` ${D}${'-'.repeat(NW)} ${'-'.repeat(VW)} ${'-'.repeat(SW)}${R}`));
 
@@ -128,11 +147,21 @@ export function printBanner(options: BannerOptions): void {
     }
 
     lines.push(mid);
-    lines.push(row(` ${D}${G}✓${D} custom  ${ANSI.brightBlue}●${D} default  ○ unset  ${ANSI.brightRed}◆${D} required      → Set in .env${R}`));
+    lines.push(
+      row(
+        ` ${D}${G}✓${D} custom  ${ANSI.brightBlue}●${D} default  ○ unset  ${ANSI.brightRed}◆${D} required      → Set in .env${R}`
+      )
+    );
   } else {
-    lines.push(row(` ${G}▸${R} ${Y}Actions${R}      reply, sendMessage, followRoom, muteRoom, generateImage...`));
+    lines.push(
+      row(
+        ` ${G}▸${R} ${Y}Actions${R}      reply, sendMessage, followRoom, muteRoom, generateImage...`
+      )
+    );
     lines.push(row(` ${G}▸${R} ${Y}Evaluators${R}   reflection, memory consolidation, learning`));
-    lines.push(row(` ${G}▸${R} ${Y}Providers${R}    time, entities, facts, relationships, attachments...`));
+    lines.push(
+      row(` ${G}▸${R} ${Y}Providers${R}    time, entities, facts, relationships, attachments...`)
+    );
     lines.push(row(` ${G}▸${R} ${Y}Services${R}     TaskService, EmbeddingGenerationService`));
     lines.push(mid);
     lines.push(row(` ${D}The foundation that gives every elizaOS agent its core capabilities${R}`));

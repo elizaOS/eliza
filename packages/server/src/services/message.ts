@@ -681,7 +681,9 @@ export class MessageBusService extends Service {
 
             // Create the message memory object for event emission
             const memoryData: Memory = {
-              id: responseContent.responseId as UUID | undefined || createUniqueUuid(this.runtime, `response-${Date.now()}`),
+              id:
+                (responseContent.responseId as UUID | undefined) ||
+                createUniqueUuid(this.runtime, `response-${Date.now()}`),
               entityId: this.runtime.agentId,
               roomId: agentRoomId,
               worldId: agentWorldId,
