@@ -3,6 +3,12 @@ dist
 .turbo
 cache
 models
+
+# Regenerated at build time by src/scripts/copy-templates.ts from the monorepo
+# source packages (packages/project-starter, packages/plugin-starter, etc.).
+# The copy script explicitly verifies .gitignore/.npmignore are present because
+# fs-extra and Bun's fs.cp can silently drop them on some platforms.
+# See the header comments in src/scripts/copy-templates.ts for full context.
 templates/
 
 # Generated version file (created at build time)

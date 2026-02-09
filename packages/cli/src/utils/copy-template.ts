@@ -1,3 +1,26 @@
+/**
+ * Template copying utility used at runtime by `elizaos create`.
+ *
+ * ## .gitignore / .npmignore — READ BEFORE MODIFYING
+ *
+ * New projects MUST have a `.gitignore`.  The file can be lost at several
+ * points in the build-to-runtime pipeline:
+ *
+ *   • `copy-templates.ts` (pre-build) copies from monorepo source into
+ *     `packages/cli/templates/` — fs-extra may silently drop the file.
+ *   • `copyAssets` (post-build) copies from `templates/` into `dist/templates/`
+ *     — Node's `fs.cp` may also drop it in certain Bun versions.
+ *   • This file (`copyTemplate`) copies the resolved template to the user's
+ *     target directory using `cpSync`.
+ *
+ * After `cpSync` we explicitly check and recreate `.gitignore` from
+ * `.npmignore` or a default.  The `[COPY-TPL]` console.log lines are CI
+ * diagnostics — they let us trace exactly where the file was lost if a test
+ * fails.  Do NOT remove them without confirming CI still passes on Ubuntu.
+ *
+ * See also: `packages/cli/src/commands/create/actions/creators.ts` which calls
+ * `ensureGitignore()` as a final safety-net after this function returns.
+ */
 import { existsSync, copyFileSync, writeFileSync, cpSync, mkdirSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';

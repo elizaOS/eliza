@@ -33,13 +33,27 @@ const DEFAULT_GITIGNORE = [
 /**
  * Ensure .gitignore exists in a newly created project directory.
  *
- * npm strips .gitignore during publish (renaming it to .npmignore), and some
- * file-copy pipelines or Bun versions may silently skip dotfiles.  This
- * function is a final safety-net called AFTER template copying.
+ * This is the FINAL safety-net in a three-layer defense:
+ *
+ *   1. `copy-templates.ts` (pre-build) — copies .gitignore from monorepo
+ *      source into `packages/cli/templates/` and explicitly re-copies it if
+ *      `fs-extra.copy()` silently dropped it.
+ *   2. `copy-template.ts` (`copyTemplate()` at runtime) — copies the template
+ *      to the target dir with `cpSync` and recreates .gitignore from .npmignore
+ *      or a default if it's missing after the copy.
+ *   3. THIS function — called by each creator (`createProject`, `createPlugin`,
+ *      `createTeeProject`) AFTER `copyTemplate()` returns, as a last resort.
+ *
+ * Why three layers?  `.gitignore` has been silently lost in CI due to:
+ *   • npm publish stripping it (renaming to .npmignore)
+ *   • fs-extra / Bun's fs.cp / cpSync dropping dotfiles on certain platforms
+ *   • Stale CLI binaries that lack the newer fallback code
  *
  * Uses *synchronous* fs operations to guarantee the file is written before
- * the function returns — eliminates any async-ordering issues that could
- * cause the file to be missing when the caller checks immediately after.
+ * the function returns — eliminates any async-ordering issues.
+ *
+ * Do NOT remove this function without confirming .gitignore appears in
+ * created projects on Ubuntu CI (the platform where it has historically failed).
  */
 function ensureGitignore(targetDir: string): void {
   const gitignorePath = join(targetDir, '.gitignore');

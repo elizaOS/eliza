@@ -1,8 +1,31 @@
 #!/usr/bin/env node
 
 /**
- * This script copies template packages from the monorepo into the CLI templates directory
- * It runs before the CLI build to prepare templates that will be included in the distribution
+ * Pre-build script: copies template packages from the monorepo into the CLI
+ * templates directory so they are bundled with the CLI distribution.
+ *
+ * ## .gitignore / .npmignore handling — READ BEFORE MODIFYING
+ *
+ * These dotfiles require special care because they can be silently lost at
+ * multiple stages of the pipeline:
+ *
+ *   1. **npm publish** strips `.gitignore` from packages and renames it to
+ *      `.npmignore`.  Template source packages (e.g. `packages/project-starter`)
+ *      therefore ship BOTH files in the git repo so that the template always has
+ *      a `.gitignore` regardless of whether it was installed from npm or copied
+ *      from the monorepo.
+ *
+ *   2. **fs-extra `copy()`** (used below) has been observed to silently skip
+ *      `.gitignore` and `.npmignore` on certain Bun versions and Linux CI
+ *      runners.  After copying, this script explicitly verifies the files exist
+ *      and re-copies them individually if they were missed.
+ *
+ *   3. **`packages/cli/.gitignore`** contains `templates/` which means the
+ *      generated `packages/cli/templates/` directory is not tracked by git.
+ *      This is intentional — templates are regenerated at build time.
+ *
+ * Do NOT remove the explicit dotfile verification / fallback below without
+ * also confirming that `.gitignore` appears in created projects on Ubuntu CI.
  */
 
 import path from 'node:path';
