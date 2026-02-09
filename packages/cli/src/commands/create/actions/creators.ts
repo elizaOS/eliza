@@ -16,6 +16,45 @@ import { existsSync, rmSync } from 'node:fs';
 import { getDisplayDirectory } from '@/src/utils/helpers';
 
 /**
+ * Ensure .gitignore exists in a newly created project directory.
+ *
+ * npm strips .gitignore during publish (renaming it to .npmignore), and some
+ * file-copy pipelines may silently skip dotfiles.  This function is a final
+ * safety-net called AFTER template copying, dependency installation, and
+ * build so the created project always has proper git-ignore rules.
+ */
+async function ensureGitignore(targetDir: string): Promise<void> {
+  const gitignorePath = join(targetDir, '.gitignore');
+  if (existsSync(gitignorePath)) return;
+
+  // Try to derive from .npmignore (npm preserves this file)
+  const npmignorePath = join(targetDir, '.npmignore');
+  if (existsSync(npmignorePath)) {
+    await fs.copyFile(npmignorePath, gitignorePath);
+    return;
+  }
+
+  // Fallback: create a sensible default
+  await fs.writeFile(
+    gitignorePath,
+    [
+      'node_modules/',
+      'dist/',
+      '.env',
+      '.env.local',
+      '.DS_Store',
+      'Thumbs.db',
+      '*.log',
+      '.eliza/',
+      '.elizadb/',
+      'pglite/',
+      'cache/',
+      '',
+    ].join('\n')
+  );
+}
+
+/**
  * Handles interactive configuration setup for projects
  * This includes database configuration, AI model setup, and Ollama fallback configuration
  */
@@ -170,6 +209,9 @@ export async function createPlugin(
       createTask('Installing dependencies', () => installDependenciesWithSpinner(pluginTargetDir)),
     ]);
 
+    // Guarantee .gitignore exists (npm strips it during publish; copy pipelines may skip dotfiles)
+    await ensureGitignore(pluginTargetDir);
+
     console.info(`\n${colors.green('✓')} Plugin "${pluginDirName}" created successfully!`);
     console.info(`\nNext steps:`);
     console.info(`  cd ${pluginDirName}`);
@@ -295,6 +337,9 @@ export async function createTEEProject(
       createTask('Building project', () => buildProjectWithSpinner(teeTargetDir, false)),
     ]);
 
+    // Guarantee .gitignore exists (npm strips it during publish; copy pipelines may skip dotfiles)
+    await ensureGitignore(teeTargetDir);
+
     console.info(`\n${colors.green('✓')} TEE project "${projectName}" created successfully!`);
     console.info(`\nNext steps:`);
     console.info(`  cd ${projectName}`);
@@ -362,6 +407,9 @@ export async function createProject(
       createTask('Installing dependencies', () => installDependenciesWithSpinner(projectTargetDir)),
       createTask('Building project', () => buildProjectWithSpinner(projectTargetDir, false)),
     ]);
+
+    // Guarantee .gitignore exists (npm strips it during publish; copy pipelines may skip dotfiles)
+    await ensureGitignore(projectTargetDir);
 
     const displayName = projectName === '.' ? 'Project' : `Project "${projectName}"`;
     console.info(`\n${colors.green('✓')} ${displayName} initialized successfully!`);
