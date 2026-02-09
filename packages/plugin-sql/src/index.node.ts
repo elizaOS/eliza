@@ -120,6 +120,7 @@ export function createDatabaseAdapter(
 
   if (!globalSingletons.pgLiteClientManager) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
+    // NOTE: initialize() not called here -- see comment in index.ts
   }
   return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
 }

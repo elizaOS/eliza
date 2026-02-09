@@ -35,8 +35,31 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     return this.shuttingDown;
   }
 
+  /**
+   * Wait for the PGLite WASM module to be fully initialized.
+   * PGLite initializes its WASM backend asynchronously after construction.
+   * Under CI load, the module may not be ready when the first query arrives,
+   * causing "access to a null reference (_pgl_initdb)" RuntimeErrors.
+   * This method issues a trivial query with retries to ensure readiness.
+   */
   public async initialize(): Promise<void> {
-    // Kept for backward compatibility
+    const maxRetries = 3;
+    const retryDelayMs = 500;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await this.client.query('SELECT 1');
+        return;
+      } catch (error) {
+        if (attempt === maxRetries) {
+          throw new Error(
+            `PGLite failed to initialize after ${maxRetries} attempts: ${(error as Error).message}`
+          );
+        }
+        // Wait before retrying -- gives the WASM module time to finish loading
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt));
+      }
+    }
   }
 
   public async close(): Promise<void> {

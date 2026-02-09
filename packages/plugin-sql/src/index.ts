@@ -93,6 +93,13 @@ export function createDatabaseAdapter(
 
   if (!globalSingletons.pgLiteClientManager) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
+    // NOTE: We intentionally do NOT call initialize() here because this function
+    // is synchronous and has ~15+ callers. Making it async would require updating
+    // every call site. The WASM readiness check in initialize() is called by test
+    // helpers (see test-helpers.ts) where CI flakiness is the concern. Production
+    // code is less prone because PGLite has time to init during server startup.
+    // To add it here, createDatabaseAdapter must first be made async across all
+    // three entry points (index.ts, index.node.ts, index.browser.ts) and all callers.
   }
 
   return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);

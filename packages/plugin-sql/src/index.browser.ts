@@ -41,6 +41,7 @@ export function createDatabaseAdapter(
   if (!globalSingletons.pgLiteClientManager) {
     // Use in-memory PGlite by default in the browser.
     globalSingletons.pgLiteClientManager = new PGliteClientManager({});
+    // NOTE: initialize() not called here -- see comment in index.ts
   }
   return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
 }
