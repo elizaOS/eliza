@@ -5,10 +5,12 @@ import {
   formatMessages,
   formatPosts,
   parseBooleanFromText,
+  processEntitiesForRoom,
   type Entity,
   type IAgentRuntime,
   type Memory,
   type Provider,
+  type State,
   type UUID,
   logger,
 } from '@elizaos/core';
@@ -41,58 +43,20 @@ const getRecentInteractions = async (
 
 /**
  * Build entity details from room entities (optimized version without extra room fetch).
+ * Uses the shared processEntitiesForRoom() from core to deduplicate and merge component data.
+ *
  * @param {IAgentRuntime} runtime - The agent runtime object.
  * @param {UUID} roomId - The room ID.
- * @param {any} room - The pre-fetched room object to avoid duplicate fetch.
+ * @param {Pick<{ source?: string }, 'source'> | null} room - The pre-fetched room object to avoid duplicate fetch.
  * @returns {Promise<Entity[]>} Array of entity details.
  */
 const getEntityDetailsWithRoom = async (
   runtime: IAgentRuntime,
   roomId: UUID,
-  room: { source?: string } | null
+  room: Pick<{ source?: string }, 'source'> | null
 ): Promise<Entity[]> => {
   const roomEntities = await runtime.getEntitiesForRoom(roomId, true);
-
-  // Use a Map for uniqueness checking while processing entities
-  const uniqueEntities = new Map<UUID, Entity>();
-
-  for (const entity of roomEntities) {
-    if (!entity.id || uniqueEntities.has(entity.id)) continue;
-
-    // Merge component data efficiently
-    const allData: Record<string, unknown> = {};
-    for (const component of entity.components || []) {
-      Object.assign(allData, component.data);
-    }
-
-    // Process merged data
-    const mergedData: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(allData)) {
-      if (!mergedData[key]) {
-        mergedData[key] = value;
-        continue;
-      }
-
-      if (Array.isArray(mergedData[key]) && Array.isArray(value)) {
-        mergedData[key] = [...new Set([...(mergedData[key] as unknown[]), ...value])];
-      } else if (typeof mergedData[key] === 'object' && typeof value === 'object') {
-        mergedData[key] = { ...mergedData[key] as object, ...value as object };
-      }
-    }
-
-    const entityId = entity.id!; // Already validated above
-    uniqueEntities.set(entityId, {
-      id: entityId,
-      agentId: entity.agentId,
-      name: room?.source
-        ? (entity.metadata[room.source] as { name?: string })?.name || entity.names[0]
-        : entity.names[0],
-      names: entity.names,
-      metadata: { ...mergedData, ...entity.metadata },
-    } as Entity);
-  }
-
-  return Array.from(uniqueEntities.values());
+  return processEntitiesForRoom(roomEntities, room?.source);
 };
 
 /**
@@ -110,7 +74,7 @@ export const recentMessagesProvider: Provider = {
   name: 'RECENT_MESSAGES',
   description: 'Recent messages, interactions and other memories',
   position: 100,
-  get: async (runtime: IAgentRuntime, message: Memory, state) => {
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     // Early validation - fail fast before any IO
     const { roomId } = message;
     if (!roomId) {

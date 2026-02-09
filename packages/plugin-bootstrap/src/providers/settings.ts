@@ -1,6 +1,3 @@
-// File: /swarm/shared/settings/provider.ts
-// Updated to use shared cache module for better cross-provider caching
-
 import {
   asUUID,
   ChannelType,

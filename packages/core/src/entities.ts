@@ -5,6 +5,7 @@ import {
   type Entity,
   type IAgentRuntime,
   type Memory,
+  type Metadata,
   ModelType,
   type Relationship,
   type State,
@@ -366,15 +367,15 @@ export function getEntityNameFromMetadata(
  * @param entity - The entity whose components to merge
  * @returns A merged record of all component data
  */
-export function mergeEntityComponentData(entity: Entity): Record<string, unknown> {
+export function mergeEntityComponentData(entity: Entity): Metadata {
   // First pass: flatten all component data into one object
-  const allData: Record<string, unknown> = {};
+  const allData: Metadata = {};
   for (const component of entity.components || []) {
     Object.assign(allData, component.data);
   }
 
   // Second pass: handle collisions (arrays merged, objects merged, first-wins otherwise)
-  const mergedData: Record<string, unknown> = {};
+  const mergedData: Metadata = {};
   for (const [key, value] of Object.entries(allData)) {
     if (!mergedData[key]) {
       mergedData[key] = value;

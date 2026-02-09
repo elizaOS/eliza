@@ -134,7 +134,10 @@ export const evaluatorsProvider: Provider = {
           return evaluator;
         }
       } catch (e) {
-        // Silently skip evaluators that fail validation
+        logger.warn(
+          { src: 'plugin:bootstrap:provider:evaluators', evaluator: evaluator.name, error: e instanceof Error ? e.message : String(e) },
+          'Evaluator validation failed'
+        );
       }
       return null;
     });
