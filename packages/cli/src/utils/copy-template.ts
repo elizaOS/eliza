@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, copyFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -154,20 +154,46 @@ export async function copyTemplate(
   // Copy template files as-is
   await copyDir(templateDir, targetDir);
 
+  // Verify dotfiles survived the async copy pipeline.  Some Bun versions may
+  // silently skip dotfiles from readdir/copyFile.  Re-copy them synchronously
+  // as a fallback so the template is always complete.
+  const criticalDotfiles = ['.gitignore', '.npmignore', '.env.example'];
+  for (const dotfile of criticalDotfiles) {
+    const srcDotfile = path.join(templateDir, dotfile);
+    const destDotfile = path.join(targetDir, dotfile);
+    if (existsSync(srcDotfile) && !existsSync(destDotfile)) {
+      try {
+        copyFileSync(srcDotfile, destDotfile);
+        logger.debug(
+          { src: 'cli', util: 'copy-template', dotfile },
+          'Re-copied missing dotfile after copyDir'
+        );
+      } catch (e) {
+        logger.warn(
+          { src: 'cli', util: 'copy-template', dotfile, error: String(e) },
+          'Failed to re-copy dotfile'
+        );
+      }
+    }
+  }
+
   // npm strips .gitignore files during publish (converts them to .npmignore).
   // Recreate .gitignore from .npmignore when it's missing so new projects
   // always start with proper git-ignore rules.
+  //
+  // Uses synchronous ops to guarantee the file exists before this function
+  // returns — some Bun versions may have async-ordering quirks.
   const gitignorePath = path.join(targetDir, '.gitignore');
   const npmignorePath = path.join(targetDir, '.npmignore');
 
   if (!existsSync(gitignorePath) && existsSync(npmignorePath)) {
-    await fs.copyFile(npmignorePath, gitignorePath);
+    copyFileSync(npmignorePath, gitignorePath);
     logger.debug(
       { src: 'cli', util: 'copy-template' },
       'Created .gitignore from .npmignore (npm stripped original during publish)'
     );
   } else if (!existsSync(gitignorePath)) {
-    await fs.writeFile(
+    writeFileSync(
       gitignorePath,
       [
         'node_modules/',

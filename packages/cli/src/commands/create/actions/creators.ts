@@ -12,46 +12,64 @@ import {
   createTask,
   runTasks,
 } from '@/src/utils/spinner-utils';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, rmSync, copyFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { getDisplayDirectory } from '@/src/utils/helpers';
+
+const DEFAULT_GITIGNORE = [
+  'node_modules/',
+  'dist/',
+  '.env',
+  '.env.local',
+  '.DS_Store',
+  'Thumbs.db',
+  '*.log',
+  '.eliza/',
+  '.elizadb/',
+  'pglite/',
+  'cache/',
+  '',
+].join('\n');
 
 /**
  * Ensure .gitignore exists in a newly created project directory.
  *
  * npm strips .gitignore during publish (renaming it to .npmignore), and some
- * file-copy pipelines may silently skip dotfiles.  This function is a final
- * safety-net called AFTER template copying, dependency installation, and
- * build so the created project always has proper git-ignore rules.
+ * file-copy pipelines or Bun versions may silently skip dotfiles.  This
+ * function is a final safety-net called AFTER template copying.
+ *
+ * Uses *synchronous* fs operations to guarantee the file is written before
+ * the function returns — eliminates any async-ordering issues that could
+ * cause the file to be missing when the caller checks immediately after.
  */
-async function ensureGitignore(targetDir: string): Promise<void> {
+function ensureGitignore(targetDir: string): void {
   const gitignorePath = join(targetDir, '.gitignore');
-  if (existsSync(gitignorePath)) return;
+
+  if (existsSync(gitignorePath)) {
+    return;
+  }
+
+  // Diagnostic: list root-level dotfiles so CI logs reveal what was copied
+  try {
+    const entries = readdirSync(targetDir);
+    const dotfiles = entries.filter((e: string) => e.startsWith('.'));
+    console.log(`[ensureGitignore] .gitignore missing in ${targetDir}`);
+    console.log(`[ensureGitignore] dotfiles present: ${dotfiles.join(', ') || '(none)'}`);
+    console.log(`[ensureGitignore] total entries: ${entries.length}`);
+  } catch {
+    // readdir diagnostic is best-effort
+  }
 
   // Try to derive from .npmignore (npm preserves this file)
   const npmignorePath = join(targetDir, '.npmignore');
   if (existsSync(npmignorePath)) {
-    await fs.copyFile(npmignorePath, gitignorePath);
+    copyFileSync(npmignorePath, gitignorePath);
+    console.log(`[ensureGitignore] created .gitignore from .npmignore`);
     return;
   }
 
   // Fallback: create a sensible default
-  await fs.writeFile(
-    gitignorePath,
-    [
-      'node_modules/',
-      'dist/',
-      '.env',
-      '.env.local',
-      '.DS_Store',
-      'Thumbs.db',
-      '*.log',
-      '.eliza/',
-      '.elizadb/',
-      'pglite/',
-      'cache/',
-      '',
-    ].join('\n')
-  );
+  writeFileSync(gitignorePath, DEFAULT_GITIGNORE);
+  console.log(`[ensureGitignore] created default .gitignore`);
 }
 
 /**

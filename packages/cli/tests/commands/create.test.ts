@@ -3,7 +3,7 @@ import { mkdtemp, rm, readFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as path from 'node:path';
 import { tmpdir } from 'node:os';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { safeChangeDirectory, crossPlatform, getPlatformOptions } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { getAvailableAIModels } from '../../src/commands/create/utils/selection';
@@ -99,6 +99,15 @@ describe('ElizaOS Create Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, ()
       expect(existsSync('my-default-app')).toBe(true);
       expect(existsSync('my-default-app/package.json')).toBe(true);
       expect(existsSync('my-default-app/src')).toBe(true);
+
+      // Diagnostic: if .gitignore is missing, dump directory contents for CI debugging
+      if (!existsSync('my-default-app/.gitignore')) {
+        const entries = readdirSync('my-default-app');
+        const dotfiles = entries.filter((e: string) => e.startsWith('.'));
+        console.log('[TEST DIAG] .gitignore missing! Dir contents:', entries.join(', '));
+        console.log('[TEST DIAG] dotfiles:', dotfiles.join(', ') || '(none)');
+        console.log('[TEST DIAG] CLI output snippet:', result.slice(0, 500));
+      }
       expect(existsSync('my-default-app/.gitignore')).toBe(true);
       expect(existsSync('my-default-app/.npmignore')).toBe(true);
       // Verify CLAUDE.md is copied from project-starter template
@@ -505,6 +514,15 @@ describe('ElizaOS Create Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, ()
         expect(existsSync('my-tee-project')).toBe(true);
         expect(existsSync('my-tee-project/package.json')).toBe(true);
         expect(existsSync('my-tee-project/src')).toBe(true);
+
+        // Diagnostic: if .gitignore is missing, dump directory contents for CI debugging
+        if (!existsSync('my-tee-project/.gitignore')) {
+          const entries = readdirSync('my-tee-project');
+          const dotfiles = entries.filter((e: string) => e.startsWith('.'));
+          console.log('[TEST DIAG] TEE .gitignore missing! Dir contents:', entries.join(', '));
+          console.log('[TEST DIAG] TEE dotfiles:', dotfiles.join(', ') || '(none)');
+          console.log('[TEST DIAG] TEE CLI output snippet:', result.slice(0, 500));
+        }
         expect(existsSync('my-tee-project/.gitignore')).toBe(true);
         expect(existsSync('my-tee-project/.npmignore')).toBe(true);
         // Verify GUIDE.md is copied from project-tee-starter template
