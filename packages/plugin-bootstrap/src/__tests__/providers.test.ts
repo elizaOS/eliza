@@ -499,16 +499,20 @@ describe('Role Provider', () => {
       };
     });
 
-    // Setup getEntityById mock
-    (mockRuntime.getEntityById as any).mockImplementation(async (id) => {
-      if (id === ownerId) {
-        return {
-          id: ownerId,
-          names: ['Simple Owner'],
-          metadata: { name: 'SimpleOwnerName', username: 'simple_owner_discord' },
-        };
-      }
-      return null;
+    // Setup getEntitiesByIds mock (the provider uses batch fetch)
+    (mockRuntime.getEntitiesByIds as any).mockImplementation(async (ids: UUID[]) => {
+      return ids
+        .map((id) => {
+          if (id === ownerId) {
+            return {
+              id: ownerId,
+              names: ['Simple Owner'],
+              metadata: { name: 'SimpleOwnerName', username: 'simple_owner_discord' },
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
     });
 
     const result = await roleProvider.get(
@@ -527,7 +531,7 @@ describe('Role Provider', () => {
 
     // createUniqueUuid is not directly mockable in bun:test
     expect(mockRuntime.getWorld).toHaveBeenCalled();
-    expect(mockRuntime.getEntityById).toHaveBeenCalledWith(ownerId);
+    expect(mockRuntime.getEntitiesByIds).toHaveBeenCalled();
   });
 
   // This test might need to be re-evaluated based on provider's handling of individual missing entities

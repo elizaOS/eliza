@@ -103,15 +103,6 @@ Optimized providers can reuse cached data from earlier providers.
 - **Attachments:** 99.8% reduction (data URL summarization)
 - **Examples:** 50% reduction (conditional formatting)
 
-## Documentation
-
-See [OPTIMIZATION_GUIDE.md](./OPTIMIZATION_GUIDE.md) for detailed explanations of:
-- Why each optimization exists
-- How the caching system works
-- When to parallelize operations
-- Type safety best practices
-- Token efficiency strategies
-
 ## Development
 
 ### Build
@@ -139,8 +130,6 @@ When adding new providers or modifying existing ones:
 4. **Use TypeScript interfaces** - no `any` types
 5. **Parallelize independent operations** with `Promise.all()`
 6. **Document WHYs** - explain why optimizations exist
-
-See the OPTIMIZATION_GUIDE.md for detailed best practices.
 
 ## License
 

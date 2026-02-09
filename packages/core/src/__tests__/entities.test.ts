@@ -540,7 +540,7 @@ describe('entities', () => {
       expect(result[0]).toEqual({
         id: 'entity-1',
         name: 'Alice#1234', // Uses discord name from metadata
-        names: ['Alice', 'Alice Smith'],
+        names: ['Alice#1234', 'Alice', 'Alice Smith'], // Source name prepended
         data: expect.stringContaining('avatar'),
       });
       expect(result[1]).toEqual({

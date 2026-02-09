@@ -88,6 +88,7 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
     ensureAgentExists: mock().mockResolvedValue(undefined),
     ensureEmbeddingDimension: mock().mockResolvedValue(undefined),
     getEntityById: mock().mockResolvedValue(null),
+    getEntitiesByIds: mock().mockResolvedValue([]),
     getEntitiesForRoom: mock().mockResolvedValue([]),
     createEntity: mock().mockResolvedValue(true),
     updateEntity: mock().mockResolvedValue(undefined),

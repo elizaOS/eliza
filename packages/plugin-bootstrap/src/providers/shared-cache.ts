@@ -91,10 +91,10 @@ export async function withTimeout<T>(
     fallback: T
 ): Promise<T> {
     let timeoutId: ReturnType<typeof setTimeout>;
-    let didTimeout = false;
+    let settled = false;
     const timeoutPromise = new Promise<T>((resolve) => {
         timeoutId = setTimeout(() => {
-            didTimeout = true;
+            if (settled) return; // Main promise already won the race; no-op.
             logger.warn({ src: 'plugin:bootstrap:cache', timeoutMs: ms }, 'DB operation timed out, returning fallback');
             resolve(fallback);
         }, ms);
@@ -102,6 +102,7 @@ export async function withTimeout<T>(
     try {
         return await Promise.race([promise, timeoutPromise]);
     } finally {
+        settled = true;
         clearTimeout(timeoutId!);
     }
 }
@@ -163,10 +164,18 @@ function sweepAllCaches(): void {
     evictExpired(worldSettingsCache, 0, CACHE_TTL_MS);
 }
 
-const sweepTimer = setInterval(sweepAllCaches, SWEEP_INTERVAL_MS);
-// Don't keep the process alive just for cache maintenance
-if (sweepTimer && typeof sweepTimer === 'object' && 'unref' in sweepTimer) {
-    (sweepTimer as { unref: () => void }).unref();
+// Lazy-initialized sweep timer. Starts on first cache access rather than
+// on module import, avoiding side effects at load time and timer leaks
+// in test environments that never call stopCacheMaintenance().
+let sweepTimer: ReturnType<typeof setInterval> | null = null;
+
+function ensureSweepTimer(): void {
+    if (sweepTimer !== null) return;
+    sweepTimer = setInterval(sweepAllCaches, SWEEP_INTERVAL_MS);
+    // Don't keep the process alive just for cache maintenance
+    if (sweepTimer && typeof sweepTimer === 'object' && 'unref' in sweepTimer) {
+        (sweepTimer as { unref: () => void }).unref();
+    }
 }
 
 /**
@@ -174,7 +183,10 @@ if (sweepTimer && typeof sweepTimer === 'object' && 'unref' in sweepTimer) {
  * Call during shutdown or in tests to prevent timer leaks.
  */
 export function stopCacheMaintenance(): void {
-    clearInterval(sweepTimer);
+    if (sweepTimer !== null) {
+        clearInterval(sweepTimer);
+        sweepTimer = null;
+    }
     roomCache.clear();
     roomInFlight.clear();
     externalRoomCache.clear();
@@ -236,6 +248,7 @@ export async function getCachedRoom(
     runtime: IAgentRuntime,
     roomId: UUID
 ): Promise<Room | null> {
+    ensureSweepTimer();
     const cacheKey = roomId;
     const cached = roomCache.get(cacheKey);
     const now = Date.now();
@@ -376,6 +389,7 @@ export async function getCachedWorld(
     runtime: IAgentRuntime,
     worldId: UUID
 ): Promise<World | null> {
+    ensureSweepTimer();
     const cacheKey = worldId;
     const cached = worldCache.get(cacheKey);
     const now = Date.now();
@@ -514,6 +528,7 @@ export async function getCachedEntitiesForRoom(
     runtime: IAgentRuntime,
     roomId: UUID
 ): Promise<import('@elizaos/core').Entity[]> {
+    ensureSweepTimer();
     // Keep agentId for entities - different agents may see different entity metadata
     const cacheKey = `${runtime.agentId}:${roomId}`;
     const cached = entitiesCache.get(cacheKey);
@@ -632,6 +647,7 @@ export async function getCachedWorldSettings(
     runtime: IAgentRuntime,
     serverId: string
 ): Promise<WorldSettings | null> {
+    ensureSweepTimer();
     const cacheKey = `${runtime.agentId}:${serverId}`;
     const cached = worldSettingsCache.get(cacheKey);
     const now = Date.now();

@@ -335,6 +335,106 @@ export const createUniqueUuid = (runtime: IAgentRuntime, baseUserId: UUID | stri
 };
 
 /**
+ * Safely extract a display name from an entity's source-specific metadata.
+ *
+ * @param entity - The entity to extract the name from
+ * @param source - The source key (e.g., "discord", "twitter")
+ * @returns The display name string, or undefined if not found
+ */
+export function getEntityNameFromMetadata(
+  entity: Entity,
+  source: string
+): string | undefined {
+  const sourceMetadata = entity.metadata[source];
+  if (sourceMetadata && typeof sourceMetadata === 'object' && sourceMetadata !== null) {
+    const metadataObj = sourceMetadata as Record<string, unknown>;
+    if ('name' in metadataObj && typeof metadataObj.name === 'string') {
+      return metadataObj.name;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Merge all component data for an entity into a single record.
+ *
+ * Components may have overlapping keys. When keys collide:
+ * - Arrays are merged with deduplication (Set-based)
+ * - Objects are shallow-merged (later components win)
+ * - Primitives are overwritten (first value wins via the skip-if-exists check)
+ *
+ * @param entity - The entity whose components to merge
+ * @returns A merged record of all component data
+ */
+export function mergeEntityComponentData(entity: Entity): Record<string, unknown> {
+  // First pass: flatten all component data into one object
+  const allData: Record<string, unknown> = {};
+  for (const component of entity.components || []) {
+    Object.assign(allData, component.data);
+  }
+
+  // Second pass: handle collisions (arrays merged, objects merged, first-wins otherwise)
+  const mergedData: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(allData)) {
+    if (!mergedData[key]) {
+      mergedData[key] = value;
+      continue;
+    }
+
+    if (Array.isArray(mergedData[key]) && Array.isArray(value)) {
+      mergedData[key] = [...new Set([...(mergedData[key] as unknown[]), ...value])];
+    } else if (typeof mergedData[key] === 'object' && typeof value === 'object') {
+      mergedData[key] = { ...(mergedData[key] as object), ...(value as object) };
+    }
+  }
+
+  return mergedData;
+}
+
+/**
+ * Process a list of entities for a room, deduplicating and merging component data.
+ *
+ * This is the shared implementation used by both core's getEntityDetails()
+ * and plugin-bootstrap's entity provider. It accepts pre-fetched data so
+ * callers can provide cached entities/room without forcing a DB call.
+ *
+ * @param roomEntities - Entities to process (typically from getEntitiesForRoom)
+ * @param roomSource - The room's source field (e.g., "discord"), for name resolution
+ * @returns Deduplicated entities with merged component and metadata
+ */
+export function processEntitiesForRoom(
+  roomEntities: Entity[],
+  roomSource?: string
+): Entity[] {
+  const uniqueEntities = new Map<UUID, Entity>();
+
+  for (const entity of roomEntities) {
+    if (!entity.id || uniqueEntities.has(entity.id)) continue;
+
+    const mergedData = mergeEntityComponentData(entity);
+
+    // Resolve a display name from source-specific metadata (e.g., Discord username)
+    // and prepend it to names so names[0] is always the best available display name.
+    const sourceName = roomSource
+      ? getEntityNameFromMetadata(entity, roomSource)
+      : undefined;
+    const names =
+      sourceName && sourceName !== entity.names[0]
+        ? [sourceName, ...entity.names]
+        : entity.names;
+
+    uniqueEntities.set(entity.id, {
+      id: entity.id,
+      agentId: entity.agentId,
+      names,
+      metadata: { ...mergedData, ...entity.metadata },
+    } as Entity);
+  }
+
+  return Array.from(uniqueEntities.values());
+}
+
+/**
  * Retrieves entity details for a specific room from the database.
  *
  * @param {Object} params - The input parameters
@@ -355,59 +455,15 @@ export async function getEntityDetails({
     runtime.getEntitiesForRoom(roomId, true),
   ]);
 
-  // Use a Map for uniqueness checking while processing entities
-  const uniqueEntities = new Map();
+  const entities = processEntitiesForRoom(roomEntities, room?.source);
 
-  // Process entities in a single pass
-  for (const entity of roomEntities) {
-    if (uniqueEntities.has(entity.id)) continue;
-
-    // Merge component data more efficiently
-    const allData = {};
-    for (const component of entity.components || []) {
-      Object.assign(allData, component.data);
-    }
-
-    // Process merged data
-    const mergedData: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(allData)) {
-      if (!mergedData[key]) {
-        mergedData[key] = value;
-        continue;
-      }
-
-      if (Array.isArray(mergedData[key]) && Array.isArray(value)) {
-        // Use Set for deduplication in arrays
-        mergedData[key] = [...new Set([...mergedData[key], ...value])];
-      } else if (typeof mergedData[key] === 'object' && typeof value === 'object') {
-        mergedData[key] = { ...mergedData[key], ...value };
-      }
-    }
-
-    // Create the entity details
-    // Helper to safely extract name from metadata
-    const getEntityNameFromMetadata = (source: string): string | undefined => {
-      const sourceMetadata = entity.metadata[source];
-      if (sourceMetadata && typeof sourceMetadata === 'object' && sourceMetadata !== null) {
-        const metadataObj = sourceMetadata as Record<string, unknown>;
-        if ('name' in metadataObj && typeof metadataObj.name === 'string') {
-          return metadataObj.name;
-        }
-      }
-      return undefined;
-    };
-
-    uniqueEntities.set(entity.id, {
-      id: entity.id,
-      name: room?.source
-        ? getEntityNameFromMetadata(room.source) || entity.names[0]
-        : entity.names[0],
-      names: entity.names,
-      data: JSON.stringify({ ...mergedData, ...entity.metadata }),
-    });
-  }
-
-  return Array.from(uniqueEntities.values());
+  // Return in the legacy format with stringified data for backward compatibility
+  return entities.map((entity) => ({
+    id: entity.id,
+    name: entity.names[0],
+    names: entity.names,
+    data: JSON.stringify(entity.metadata),
+  }));
 }
 
 /**

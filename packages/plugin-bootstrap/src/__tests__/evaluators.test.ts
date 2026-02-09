@@ -422,6 +422,7 @@ describe('Reflection Evaluator', () => {
       tableName: 'messages',
       roomId: mockMessage.roomId,
       count: 10,
+      unique: false,
     });
   });
 });
