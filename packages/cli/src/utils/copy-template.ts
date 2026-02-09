@@ -171,18 +171,47 @@ export async function copyTemplate(
 
   // --- .gitignore / .npmignore copy pipeline ---
   //
-  // Diagnostics are written to a JSON file inside the target directory because
-  // clack's spinner suppresses console.log on stdout and tests don't always
-  // capture stderr. The diagnostic file lets the test read exactly what happened.
+  // Diagnostics are written to a JSON file inside the target directory AND to
+  // stderr.  The JSON file is written IMMEDIATELY after mkdirSync and updated
+  // at each step, so even if the function crashes midway we can see how far
+  // it got.  stderr is used because clack spinners suppress stdout.
   const srcGitignore = path.join(templateDir, '.gitignore');
   const srcNpmignore = path.join(templateDir, '.npmignore');
   const diag: Record<string, unknown> = {
+    phase: 'init',
+    calledAt: Date.now(),
     __dirname,
     templateDir,
     targetDir,
     srcGitignoreExists: existsSync(srcGitignore),
     srcNpmignoreExists: existsSync(srcNpmignore),
   };
+
+  const diagPath = path.join(targetDir, '.copy-template-diag.json');
+
+  // Helper: persist current diag state to disk (best-effort)
+  const flushDiag = () => {
+    try {
+      writeFileSync(diagPath, JSON.stringify(diag, null, 2));
+    } catch {
+      // best-effort — disk/permission issues shouldn't kill the template copy
+    }
+  };
+
+  // Helper: also write to stderr so tests can capture it even if clack
+  // suppresses stdout.
+  const stderrLog = (msg: string) => {
+    try {
+      process.stderr.write(`[COPY-TPL] ${msg}\n`);
+    } catch {
+      // best-effort
+    }
+  };
+
+  // Create target directory and write initial diagnostic IMMEDIATELY
+  mkdirSync(targetDir, { recursive: true });
+  flushDiag();
+  stderrLog(`START templateDir=${templateDir} targetDir=${targetDir}`);
 
   // Copy template files using Node's built-in cpSync for reliable dotfile
   // handling.  The previous custom copyDir (async readdir + copyFile) silently
@@ -196,7 +225,6 @@ export async function copyTemplate(
     '.turbo',
   ]);
 
-  mkdirSync(targetDir, { recursive: true });
   try {
     cpSync(templateDir, targetDir, {
       recursive: true,
@@ -206,14 +234,17 @@ export async function copyTemplate(
   } catch (cpErr) {
     diag.cpSyncOk = false;
     diag.cpSyncError = cpErr instanceof Error ? cpErr.message : String(cpErr);
+    stderrLog(`cpSync ERROR: ${diag.cpSyncError}`);
     // cpSync may have partially copied — continue to salvage what we can
   }
 
+  diag.phase = 'after-cpsync';
   const gitignorePath = path.join(targetDir, '.gitignore');
   const npmignorePath = path.join(targetDir, '.npmignore');
-
   diag.afterCpSync_gitignore = existsSync(gitignorePath);
   diag.afterCpSync_npmignore = existsSync(npmignorePath);
+  flushDiag();
+  stderrLog(`after-cpSync gitignore=${diag.afterCpSync_gitignore} npmignore=${diag.afterCpSync_npmignore}`);
 
   // Layer 1: If cpSync missed .gitignore but the source has it, copy explicitly
   if (!existsSync(gitignorePath) && existsSync(srcGitignore)) {
@@ -269,15 +300,11 @@ export async function copyTemplate(
     }
   }
 
+  diag.phase = 'done';
   diag.finalGitignoreExists = existsSync(gitignorePath);
   diag.finalNpmignoreExists = existsSync(npmignorePath);
-
-  // Write diagnostic file — tests read this to understand exactly what happened
-  try {
-    writeFileSync(path.join(targetDir, '.copy-template-diag.json'), JSON.stringify(diag, null, 2));
-  } catch {
-    // best-effort
-  }
+  flushDiag();
+  stderrLog(`DONE gitignore=${diag.finalGitignoreExists} npmignore=${diag.finalNpmignoreExists}`);
   // --- END .gitignore pipeline ---
 
   // For plugin templates, replace hardcoded "plugin-starter" strings in source files

@@ -58,7 +58,13 @@ const DEFAULT_GITIGNORE = [
 function ensureGitignore(targetDir: string): void {
   const gitignorePath = join(targetDir, '.gitignore');
 
+  // Log to stderr (not suppressed by clack spinners)
+  const stderrLog = (msg: string) => {
+    try { process.stderr.write(`[ensureGitignore] ${msg}\n`); } catch { /* best-effort */ }
+  };
+
   if (existsSync(gitignorePath)) {
+    stderrLog(`already exists at ${gitignorePath}`);
     return;
   }
 
@@ -66,9 +72,9 @@ function ensureGitignore(targetDir: string): void {
   try {
     const entries = readdirSync(targetDir);
     const dotfiles = entries.filter((e: string) => e.startsWith('.'));
-    console.log(`[ensureGitignore] .gitignore missing in ${targetDir}`);
-    console.log(`[ensureGitignore] dotfiles present: ${dotfiles.join(', ') || '(none)'}`);
-    console.log(`[ensureGitignore] total entries: ${entries.length}`);
+    stderrLog(`.gitignore missing in ${targetDir}`);
+    stderrLog(`dotfiles present: ${dotfiles.join(', ') || '(none)'}`);
+    stderrLog(`total entries: ${entries.length}`);
   } catch {
     // readdir diagnostic is best-effort
   }
@@ -76,14 +82,22 @@ function ensureGitignore(targetDir: string): void {
   // Try to derive from .npmignore (npm preserves this file)
   const npmignorePath = join(targetDir, '.npmignore');
   if (existsSync(npmignorePath)) {
-    copyFileSync(npmignorePath, gitignorePath);
-    console.log(`[ensureGitignore] created .gitignore from .npmignore`);
-    return;
+    try {
+      copyFileSync(npmignorePath, gitignorePath);
+      stderrLog(`created .gitignore from .npmignore`);
+      return;
+    } catch (e) {
+      stderrLog(`copyFileSync from .npmignore failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   // Fallback: create a sensible default
-  writeFileSync(gitignorePath, DEFAULT_GITIGNORE);
-  console.log(`[ensureGitignore] created default .gitignore`);
+  try {
+    writeFileSync(gitignorePath, DEFAULT_GITIGNORE);
+    stderrLog(`created default .gitignore (${DEFAULT_GITIGNORE.length} bytes)`);
+  } catch (e) {
+    stderrLog(`writeFileSync default failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 /**

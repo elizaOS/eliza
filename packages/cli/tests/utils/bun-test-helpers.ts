@@ -135,6 +135,50 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
 }
 
 /**
+ * Like bunExecSync but returns both stdout and stderr without throwing on
+ * non-zero exit codes.  This is essential for diagnosing CLI issues in CI
+ * where clack spinners suppress stdout and errors may only appear on stderr.
+ */
+export function bunExecSyncFull(
+  command: string,
+  options: BunExecSyncOptions = {}
+): { stdout: string; stderr: string; exitCode: number | null } {
+  const {
+    cwd = process.cwd(),
+    env = process.env,
+    shell = true,
+  } = options;
+
+  let cmd: string;
+  let args: string[];
+
+  if (shell) {
+    const shellCmd =
+      typeof shell === 'string' ? shell : process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
+    args = process.platform === 'win32' ? ['/c', command] : ['-c', command];
+    cmd = shellCmd;
+  } else {
+    const parsed = parseCommand(command);
+    cmd = parsed.command;
+    args = parsed.args;
+  }
+
+  const proc = Bun.spawnSync([cmd, ...args], {
+    cwd,
+    env: env as Record<string, string | undefined>,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    stdin: 'ignore',
+  });
+
+  return {
+    stdout: proc.stdout?.toString() ?? '',
+    stderr: proc.stderr?.toString() ?? '',
+    exitCode: proc.exitCode,
+  };
+}
+
+/**
  * Wrapper for Bun.spawn with test-friendly defaults
  *
  * @param command - Command to execute

@@ -8,7 +8,7 @@ import { safeChangeDirectory, crossPlatform, getPlatformOptions } from './test-u
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { getAvailableAIModels } from '../../src/commands/create/utils/selection';
 import { isValidOllamaEndpoint } from '../../src/utils/get-config';
-import { bunExecSync } from '../utils/bun-test-helpers';
+import { bunExecSync, bunExecSyncFull } from '../utils/bun-test-helpers';
 
 describe('ElizaOS Create Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let testTmpDir: string;
@@ -71,13 +71,24 @@ describe('ElizaOS Create Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, ()
       // Use cross-platform directory removal
       await crossPlatform.removeDir('my-default-app');
 
-      const result = bunExecSync(
+      // Use bunExecSyncFull to capture BOTH stdout and stderr.
+      // Clack spinners suppress stdout; our copyTemplate and ensureGitignore
+      // now write diagnostics to stderr so we can finally see what happens
+      // inside the CLI subprocess.
+      const fullResult = bunExecSyncFull(
         'elizaos create my-default-app --yes',
         getPlatformOptions({
           encoding: 'utf8',
           timeout: TEST_TIMEOUTS.PROJECT_CREATION,
         })
-      ) as string;
+      );
+      const result = fullResult.stdout;
+
+      // Always log stderr — it contains [COPY-TPL] and [ensureGitignore] markers
+      if (fullResult.stderr) {
+        console.log('[TEST DIAG] CLI stderr (first 3000 chars):', fullResult.stderr.slice(0, 3000));
+      }
+      console.log('[TEST DIAG] CLI exitCode:', fullResult.exitCode);
 
       // Check for various success patterns since output might vary
       const successPatterns = [
@@ -100,9 +111,7 @@ describe('ElizaOS Create Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, ()
       expect(existsSync('my-default-app/package.json')).toBe(true);
       expect(existsSync('my-default-app/src')).toBe(true);
 
-      // Read file-based diagnostics written by copyTemplate (stdout is
-      // suppressed by clack spinners, so file-based diag is the only reliable
-      // way to see what happened inside the CLI process).
+      // Read file-based diagnostics written by copyTemplate
       const diagPath = 'my-default-app/.copy-template-diag.json';
       if (existsSync(diagPath)) {
         try {
@@ -499,13 +508,21 @@ describe('ElizaOS Create Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, ()
         // Use cross-platform directory removal
         await crossPlatform.removeDir('my-tee-project');
 
-        const result = bunExecSync(
+        // Use bunExecSyncFull to capture stderr diagnostics
+        const fullResult = bunExecSyncFull(
           'elizaos create my-tee-project --yes --type tee',
           getPlatformOptions({
             encoding: 'utf8',
             timeout: TEST_TIMEOUTS.PROJECT_CREATION,
           })
-        ) as string;
+        );
+        const result = fullResult.stdout;
+
+        // Log stderr — contains [COPY-TPL] and [ensureGitignore] diagnostics
+        if (fullResult.stderr) {
+          console.log('[TEST DIAG] TEE CLI stderr (first 3000 chars):', fullResult.stderr.slice(0, 3000));
+        }
+        console.log('[TEST DIAG] TEE CLI exitCode:', fullResult.exitCode);
 
         // Check for various success patterns
         const successPatterns = [

@@ -108,6 +108,31 @@ jobs:
           which elizaos || echo "elizaos not found in PATH"
           elizaos --version || echo "Failed to run elizaos --version"
 
+      - name: Ensure node_modules/.bin/elizaos symlink exists
+        shell: bash
+        run: |
+          # bun install can't create bin symlinks for workspace packages when
+          # dist/ doesn't exist yet.  After building, we need to ensure the
+          # symlink exists so tests use the LOCAL binary rather than the global
+          # one from bun link (which may resolve __dirname differently).
+          if [ ! -f node_modules/.bin/elizaos ]; then
+            echo "Creating node_modules/.bin/elizaos symlink..."
+            mkdir -p node_modules/.bin
+            if [ "$RUNNER_OS" = "Windows" ]; then
+              # On Windows, create a cmd wrapper
+              echo '#!/usr/bin/env bun' > node_modules/.bin/elizaos
+              echo '"$(dirname "$0")/../../packages/cli/dist/index.js" "$@"' >> node_modules/.bin/elizaos
+            else
+              ln -sf ../../packages/cli/dist/index.js node_modules/.bin/elizaos
+            fi
+            chmod +x node_modules/.bin/elizaos 2>/dev/null || true
+            echo "✓ Created symlink"
+          else
+            echo "✓ Symlink already exists"
+          fi
+          ls -la node_modules/.bin/elizaos 2>/dev/null || true
+          readlink -f node_modules/.bin/elizaos 2>/dev/null || true
+
       - name: Verify CLI build artifacts and templates
         shell: bash
         run: |
@@ -118,22 +143,16 @@ jobs:
           echo "=== TEMPLATE SOURCE (packages/project-starter/) ==="
           ls -la packages/project-starter/.gitignore 2>/dev/null && echo "✓ SOURCE .gitignore exists" || echo "✗ SOURCE .gitignore MISSING"
           ls -la packages/project-starter/.npmignore 2>/dev/null && echo "✓ SOURCE .npmignore exists" || echo "✗ SOURCE .npmignore MISSING"
-          echo "All dotfiles in source:"
-          ls -la packages/project-starter/ | grep '^\.' || echo "(no dotfiles)"
           echo ""
 
           echo "=== BUILD-COPIED TEMPLATE (packages/cli/templates/project-starter/) ==="
           ls -la packages/cli/templates/project-starter/.gitignore 2>/dev/null && echo "✓ BUILD-COPY .gitignore exists" || echo "✗ BUILD-COPY .gitignore MISSING"
           ls -la packages/cli/templates/project-starter/.npmignore 2>/dev/null && echo "✓ BUILD-COPY .npmignore exists" || echo "✗ BUILD-COPY .npmignore MISSING"
-          echo "All dotfiles in build-copy:"
-          ls -la packages/cli/templates/project-starter/ | grep '^\.' || echo "(no dotfiles)"
           echo ""
 
           echo "=== DIST TEMPLATE (packages/cli/dist/templates/project-starter/) ==="
           ls -la packages/cli/dist/templates/project-starter/.gitignore 2>/dev/null && echo "✓ DIST .gitignore exists" || echo "✗ DIST .gitignore MISSING"
           ls -la packages/cli/dist/templates/project-starter/.npmignore 2>/dev/null && echo "✓ DIST .npmignore exists" || echo "✗ DIST .npmignore MISSING"
-          echo "All dotfiles in dist:"
-          ls -la packages/cli/dist/templates/project-starter/ | grep '^\.' || echo "(no dotfiles)"
           echo ""
 
           echo "=== MONOREPO BIN SYMLINK ==="
@@ -141,8 +160,17 @@ jobs:
           readlink -f node_modules/.bin/elizaos 2>/dev/null || true
           echo ""
 
+          echo "=== GLOBAL BIN ==="
+          which elizaos 2>/dev/null && echo "✓ global elizaos: $(which elizaos)" || echo "⚠ no global elizaos"
+          readlink -f "$(which elizaos 2>/dev/null)" 2>/dev/null || true
+          echo ""
+
           echo "=== BINARY VERIFICATION (grep for copy-template-diag marker) ==="
           strings packages/cli/dist/index.js 2>/dev/null | grep -c "copy-template-diag" || echo "0 diag markers found in binary"
+          echo ""
+
+          echo "=== BINARY VERIFICATION (grep for COPY-TPL stderr marker) ==="
+          strings packages/cli/dist/index.js 2>/dev/null | grep -c "COPY-TPL" || echo "0 COPY-TPL markers found in binary"
 
       - name: Clean eliza projects cache
         shell: bash
