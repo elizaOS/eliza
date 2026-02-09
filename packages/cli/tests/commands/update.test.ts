@@ -8,35 +8,18 @@ import { TEST_TIMEOUTS } from '../test-timeouts';
 import { mkdtempSync, existsSync, rmSync } from 'node:fs';
 
 // On macOS CI, `bun link` creates symlinks to linux-built native modules
-// (e.g. bcrypt). Commands like `elizaos --version` and `elizaos create` work
-// because they don't import @elizaos/server. But `elizaos update --packages`
-// triggers the server import which fails with "No native build was found for
-// platform=darwin".
+// (e.g. bcrypt). The `elizaos update` command imports @elizaos/server which
+// depends on bcrypt, and fails with "No native build was found for
+// platform=darwin". This only happens in CI because bun link copies the
+// linux-built bcrypt binary; on real macOS machines bcrypt is built natively.
 //
-// Detect this by running `elizaos update --packages` in a temp directory.
-// This exercises the exact import path that the update tests rely on.
-function cliUpdateAvailable(): boolean {
-  const tmpDir = mkdtempSync(join(tmpdir(), 'eliza-cli-check-'));
-  const origCwd = process.cwd();
-  try {
-    process.chdir(tmpDir);
-    // This triggers the @elizaos/server import (and thus bcrypt).
-    // If it throws (e.g. bcrypt native module mismatch), skip update tests.
-    bunExecSync('elizaos update --packages', { encoding: 'utf8' });
-    return true;
-  } catch {
-    return false;
-  } finally {
-    process.chdir(origCwd);
-    try {
-      rmSync(tmpDir, { recursive: true, force: true });
-    } catch {
-      // ignore cleanup errors
-    }
-  }
-}
-
-const CLI_WORKS = cliUpdateAvailable();
+// A dynamic health-check (running `elizaos update` in a temp dir) is
+// unreliable because the command exits early in an empty directory without
+// triggering the server import. Detecting platform + CI is the most robust
+// approach — the update tests exercise code paths that inherently require
+// platform-native binaries.
+const IS_MACOS_CI = process.platform === 'darwin' && !!process.env.CI;
+const CLI_WORKS = !IS_MACOS_CI;
 
 describe.skipIf(!CLI_WORKS)('ElizaOS Update Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let testTmpDir: string;
