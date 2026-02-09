@@ -834,7 +834,7 @@ interface StemmingRule {
 /**
  * Options for configuring the Tokenizer.
  */
-interface TokenizerOptions {
+export interface TokenizerOptions {
   /** A set of words to be ignored during tokenization. Defaults to an empty set. */
   stopWords?: Set<string>;
   /** The minimum length for a token to be kept. Defaults to 2. Numeric tokens are always kept. */
@@ -849,7 +849,7 @@ interface TokenizerOptions {
  * Flexible text tokenizer with support for stop words, minimum token length,
  * Unicode normalization, and optional Porter2 stemming with custom rules.
  */
-class Tokenizer {
+export class Tokenizer {
   /** Set of stop words to ignore. */
   readonly stopWords: Set<string>;
   /** Minimum length of tokens to keep. */
