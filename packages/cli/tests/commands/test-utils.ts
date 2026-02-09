@@ -710,27 +710,41 @@ export async function cloneAndSetupPlugin(
     });
   } catch (buildError) {
     // If build fails, try without type checking by modifying build.ts temporarily
-    console.log(`[PLUGIN SETUP] Build failed, retrying with skipNodeModulesBundle...`);
+    console.warn(`[PLUGIN SETUP] Build failed, retrying without DTS and tsc...`);
     const buildTsPath = join(pluginDir, 'build.ts');
 
     if (existsSync(buildTsPath)) {
       const originalBuild = readFileSync(buildTsPath, 'utf-8');
 
-      // Modify build.ts to skip DTS generation
-      const modifiedBuild = originalBuild.replace(/dts:\s*{[^}]*}/g, 'dts: false');
+      // Modify build.ts to skip DTS generation and tsc invocations
+      // (external plugins may have TS errors we can't control)
+      const modifiedBuild = originalBuild
+        .replace(/dts:\s*{[^}]*}/g, 'dts: false')
+        .replace(/await\s+\$`tsc[^`]*`(\.quiet\(\))?/g, '/* skipped tsc for test */');
 
       writeFileSync(buildTsPath, modifiedBuild, 'utf-8');
 
       try {
         await spawnCommand('bun', ['run', 'build'], {
           cwd: pluginDir,
+          env: {
+            ...process.env,
+            SKIP_TYPE_CHECK: 'true',
+          },
         });
+      } catch (retryError) {
+        // Build is non-fatal for plugin loading tests -- the JS bundle may
+        // already exist from the first attempt. Log and continue; if the
+        // plugin truly can't load, the actual test assertion will fail with
+        // a clearer error than a build error in an external repo.
+        console.warn(`[PLUGIN SETUP] Retry build also failed (non-fatal):`, retryError);
       } finally {
         // Restore original build.ts
         writeFileSync(buildTsPath, originalBuild, 'utf-8');
       }
     } else {
-      throw buildError;
+      // No build.ts to modify -- log and continue (non-fatal)
+      console.warn(`[PLUGIN SETUP] No build.ts found and build failed (non-fatal):`, buildError);
     }
   }
 

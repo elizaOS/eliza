@@ -154,6 +154,42 @@ export async function copyTemplate(
   // Copy template files as-is
   await copyDir(templateDir, targetDir);
 
+  // npm strips .gitignore files during publish (converts them to .npmignore).
+  // Recreate .gitignore from .npmignore when it's missing so new projects
+  // always start with proper git-ignore rules.
+  const gitignorePath = path.join(targetDir, '.gitignore');
+  const npmignorePath = path.join(targetDir, '.npmignore');
+
+  if (!existsSync(gitignorePath) && existsSync(npmignorePath)) {
+    await fs.copyFile(npmignorePath, gitignorePath);
+    logger.debug(
+      { src: 'cli', util: 'copy-template' },
+      'Created .gitignore from .npmignore (npm stripped original during publish)'
+    );
+  } else if (!existsSync(gitignorePath)) {
+    await fs.writeFile(
+      gitignorePath,
+      [
+        'node_modules/',
+        'dist/',
+        '.env',
+        '.env.local',
+        '.DS_Store',
+        'Thumbs.db',
+        '*.log',
+        '.eliza/',
+        '.elizadb/',
+        'pglite/',
+        'cache/',
+        '',
+      ].join('\n')
+    );
+    logger.debug(
+      { src: 'cli', util: 'copy-template' },
+      'Created default .gitignore (template had none)'
+    );
+  }
+
   // For plugin templates, replace hardcoded "plugin-starter" strings in source files
   if (templateType === 'plugin' || templateType === 'plugin-quick') {
     const pluginNameFromPath = path.basename(targetDir);
