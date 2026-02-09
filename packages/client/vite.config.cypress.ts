@@ -40,7 +40,7 @@ export default defineConfig({
         global: 'globalThis',
       },
     },
-    include: ['buffer', 'process'],
+    include: ['buffer', 'process', '@elizaos/core', '@elizaos/api-client'],
   },
   esbuild: {
     keepNames: true,

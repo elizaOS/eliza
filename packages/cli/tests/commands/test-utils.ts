@@ -1,9 +1,18 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { bunExecSimple } from '../../src/utils/bun-exec';
 import { TEST_TIMEOUTS } from '../test-timeouts';
+
+/**
+ * Absolute path to the monorepo root node_modules/.bin directory.
+ * Prepended to PATH in getPlatformOptions so that the locally-built
+ * `elizaos` binary (symlinked there by bun install) is always found
+ * first -- even when `bun link` or `bun install -g` breaks or overwrites
+ * the global symlink.
+ */
+const MONOREPO_BIN_DIR = resolve(__dirname, '..', '..', '..', '..', 'node_modules', '.bin');
 
 /**
  * Helper function to execute shell commands using Bun.spawn
@@ -477,15 +486,24 @@ export const crossPlatform = {
 };
 
 /**
- * Get platform-specific options for execSync calls
+ * Get platform-specific options for execSync calls.
+ *
+ * Ensures the monorepo's `node_modules/.bin/` is first in PATH so the
+ * locally-built `elizaos` binary is always found, regardless of whether
+ * `bun link` or `bun install -g` modified global symlinks.
  */
 export function getPlatformOptions(baseOptions: any = {}): any {
   const platformOptions = { ...baseOptions };
+
+  const sep = process.platform === 'win32' ? ';' : ':';
+  const basePath = baseOptions.env?.PATH || process.env.PATH || '';
 
   // Always ensure environment variables are passed
   platformOptions.env = {
     ...process.env,
     ...baseOptions.env, // Preserve any custom env vars from baseOptions
+    // Prepend the monorepo bin dir so the locally-built elizaos is found first
+    PATH: `${MONOREPO_BIN_DIR}${sep}${basePath}`,
   };
 
   if (process.platform === 'win32') {

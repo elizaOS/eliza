@@ -71,6 +71,13 @@ jobs:
       - name: Build all packages
         run: bun run build
 
+      - name: Install cross-env globally (before linking, to avoid overwriting symlinks)
+        run: bun install -g cross-env
+
+      - name: Install BATS on macOS
+        if: matrix.os == 'macos-latest'
+        run: bun install -g bats
+
       - name: Link packages globally
         run: |
           # Link core package first (everything depends on it)
@@ -101,7 +108,7 @@ jobs:
           which elizaos || echo "elizaos not found in PATH"
           elizaos --version || echo "Failed to run elizaos --version"
 
-      - name: Verify CLI build artifacts
+      - name: Verify CLI build artifacts and templates
         shell: bash
         run: |
           echo "Checking CLI build artifacts..."
@@ -113,6 +120,14 @@ jobs:
           echo ""
           echo "CLI executable:"
           test -f packages/cli/dist/index.js && echo "✓ CLI index.js exists" || echo "ERROR: CLI index.js missing"
+          echo ""
+          echo "Template dotfiles:"
+          ls -la packages/cli/templates/project-starter/.gitignore 2>/dev/null && echo "✓ .gitignore in templates/" || echo "⚠ .gitignore missing from templates/"
+          ls -la packages/cli/templates/project-starter/.npmignore 2>/dev/null && echo "✓ .npmignore in templates/" || echo "⚠ .npmignore missing from templates/"
+          echo ""
+          echo "Monorepo bin symlink:"
+          ls -la node_modules/.bin/elizaos 2>/dev/null && echo "✓ node_modules/.bin/elizaos exists" || echo "⚠ node_modules/.bin/elizaos missing"
+          readlink -f node_modules/.bin/elizaos 2>/dev/null || true
 
       - name: Clean eliza projects cache
         shell: bash
@@ -123,13 +138,6 @@ jobs:
         run: |
           echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
           echo "LOG_LEVEL=info" >> .env
-
-      - name: Install cross-env globally
-        run: bun install -g cross-env
-
-      - name: Install BATS on macOS
-        if: matrix.os == 'macos-latest'
-        run: bun install -g bats
 
       - name: Run CLI TypeScript tests
         run: cross-env bun test tests/commands/

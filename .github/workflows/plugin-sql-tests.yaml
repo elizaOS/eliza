@@ -13,6 +13,9 @@ on:
 jobs:
   pglite:
     runs-on: ubuntu-latest
+    env:
+      # Use Node.js WASM runtime to avoid browser-style WASM init crashes in CI
+      PGLITE_WASM_MODE: node
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -26,6 +29,8 @@ jobs:
         run: bun install && bun run build
       - name: Tests
         working-directory: ./packages/plugin-sql
+        env:
+          PGLITE_WASM_MODE: node
         run: |
           bun run test:unit
           bun run test:integration
@@ -73,6 +78,8 @@ jobs:
   # This tests upgrading from older Eliza versions (1.6.x) to current
   e2e-upgrade:
     runs-on: ubuntu-latest
+    env:
+      PGLITE_WASM_MODE: node
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -86,4 +93,6 @@ jobs:
         run: bun install && bun run build
       - name: E2E Upgrade Test
         working-directory: ./packages/plugin-sql
+        env:
+          PGLITE_WASM_MODE: node
         run: bun run test:e2e:upgrade
