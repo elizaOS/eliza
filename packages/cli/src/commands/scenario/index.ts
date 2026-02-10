@@ -527,9 +527,8 @@ export const scenario = new Command()
             calculateExecutionStats,
             formatDuration,
           } = await import('./src/matrix-runner');
-          const { validateMatrixParameterPaths, combinationToOverrides } = await import(
-            './src/parameter-override'
-          );
+          const { validateMatrixParameterPaths, combinationToOverrides } =
+            await import('./src/parameter-override');
 
           const logger = elizaLogger || console;
           logger.info(`🧪 Starting matrix analysis with config: ${configPath}`);
