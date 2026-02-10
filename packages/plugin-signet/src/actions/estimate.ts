@@ -91,7 +91,17 @@ export const estimateSpotlightAction: Action = {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error({ error: msg }, 'Signet: estimate failed');
 
+      const errText = `❌ Failed to estimate spotlight cost: ${msg}`;
+      if (callback) {
+        await callback({
+          text: errText,
+          actions: ['SIGNET_ESTIMATE'],
+          source: message.content.source,
+        });
+      }
+
       return {
+        text: errText,
         success: false,
         error: error instanceof Error ? error : new Error(msg),
       };

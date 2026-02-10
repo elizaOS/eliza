@@ -236,7 +236,7 @@ export const postSpotlightAction: Action = {
         },
       };
 
-      const paymentHeader = btoa(JSON.stringify(paymentPayload));
+      const paymentHeader = Buffer.from(JSON.stringify(paymentPayload), 'utf8').toString('base64');
 
       logger.info('Signet: submitting payment...');
 
@@ -255,7 +255,10 @@ export const postSpotlightAction: Action = {
       }
 
       const result = await paidRes.json();
-      const costUSDC = (Number(amount) / 1e6).toFixed(2);
+      // Format USDC amount using bigint math to avoid Number precision loss
+      const wholePart = amount / 1_000_000n;
+      const fracPart = (amount % 1_000_000n).toString().padStart(6, '0').slice(0, 2);
+      const costUSDC = `${wholePart}.${fracPart}`;
 
       const response = [
         '✅ **Spotlight Ad Posted on Signet!**',
