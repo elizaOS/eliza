@@ -485,9 +485,12 @@ async function executeIndividualRun(
 ): Promise<MatrixRunResult> {
   const startTime = new Date();
 
-  // Add timeout wrapper to prevent hanging
+  // Add timeout wrapper to prevent hanging.
+  // Store the timer handle so we can clear it when execution completes,
+  // preventing a leaked timer that keeps the event loop alive.
+  let runTimeoutHandle: ReturnType<typeof setTimeout>;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
+    runTimeoutHandle = setTimeout(() => {
       reject(new Error(`Run ${runId} timed out after ${timeout}ms`));
     }, timeout);
   });
@@ -594,6 +597,8 @@ async function executeIndividualRun(
       error: error instanceof Error ? error.message : String(error),
       metrics: resourceMetrics,
     };
+  } finally {
+    clearTimeout(runTimeoutHandle!);
   }
 }
 
@@ -630,9 +635,12 @@ async function executeScenarioWithTimeout(
 ): Promise<ScenarioExecutionResult> {
   const scenarioStartTime = Date.now();
 
-  // Create a timeout promise that rejects after the specified duration
+  // Create a timeout promise that rejects after the specified duration.
+  // The timer handle is stored so we can clear it when the execution promise
+  // wins the race, preventing a leaked timer that keeps the event loop alive.
+  let timeoutHandle: ReturnType<typeof setTimeout>;
   const timeoutPromise = new Promise<never>((_resolve, reject) => {
-    setTimeout(() => {
+    timeoutHandle = setTimeout(() => {
       reject(new Error(`Scenario execution timed out after ${timeout}ms`));
     }, timeout);
   });
@@ -808,7 +816,11 @@ async function executeScenarioWithTimeout(
     }
   })();
 
-  return Promise.race([executionPromise, timeoutPromise]);
+  try {
+    return await Promise.race([executionPromise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutHandle!);
+  }
 }
 
 /**
