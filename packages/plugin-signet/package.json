@@ -1,0 +1,82 @@
+{
+  "name": "@elizaos/plugin-signet",
+  "description": "Signet onchain advertising plugin — buy spotlight ads on Base with USDC via x402 payments",
+  "version": "1.7.3-alpha.3",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "author": "h1-hunt",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "signet",
+    "x402",
+    "advertising",
+    "onchain",
+    "base",
+    "usdc"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/plugin-signet"
+  },
+  "homepage": "https://signet.sebayaki.com",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "viem": "^2.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "dotenv": "^17.2.3",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "start": "elizaos start",
+    "dev": "elizaos dev",
+    "build": "bun run build.ts",
+    "lint": "prettier --write ./src",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "test": "bun test"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SIGNET_PRIVATE_KEY": {
+        "type": "string",
+        "description": "EVM private key with USDC on Base for x402 payments (can also use BASE_PRIVATE_KEY or EVM_PRIVATE_KEY)"
+      },
+      "SIGNET_BASE_URL": {
+        "type": "string",
+        "description": "Signet API base URL (default: https://signet.sebayaki.com)"
+      },
+      "SIGNET_RPC_URL": {
+        "type": "string",
+        "description": "Base RPC URL (default: https://mainnet.base.org)"
+      }
+    }
+  }
+}

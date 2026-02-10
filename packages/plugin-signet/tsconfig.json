@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "outDir": "dist",
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "incremental": true,
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "noImplicitAny": true,
+    "allowJs": false,
+    "noEmitOnError": false,
+    "moduleDetection": "force",
+    "isolatedModules": false,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/__tests__/**/*", "**/*.test.ts", "**/*.spec.ts"]
+}
