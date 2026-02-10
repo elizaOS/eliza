@@ -33,11 +33,7 @@ describe('SPA Routing', () => {
 
     // Start from home page
     cy.visit('/');
-
-    // Wait for app to be ready
-    cy.get('#root', { timeout: 30000 }).should('exist');
-    cy.document().its('readyState').should('equal', 'complete');
-    cy.wait(1000);
+    cy.waitForAppReady();
   });
 
   it('navigates to different routes without refresh', () => {
@@ -49,10 +45,7 @@ describe('SPA Routing', () => {
         win.dispatchEvent(new Event('popstate'));
       });
 
-      // Wait for route change
-      cy.wait(500);
-
-      // Verify URL changed
+      // Verify URL changed (retryable)
       cy.url().should('include', route.path);
 
       // Verify app is still loaded (no full page refresh)
@@ -64,10 +57,7 @@ describe('SPA Routing', () => {
     routes.forEach((route) => {
       // Visit route directly
       cy.visit(route.path);
-
-      // Wait for app to load
-      cy.get('#root', { timeout: 30000 }).should('exist');
-      cy.document().its('readyState').should('equal', 'complete');
+      cy.waitForAppReady();
 
       // Verify URL is correct
       cy.url().should('include', route.path);
@@ -83,17 +73,11 @@ describe('SPA Routing', () => {
     routes.forEach((route) => {
       // Navigate to route first
       cy.visit(route.path);
-
-      // Wait for initial load
-      cy.get('#root', { timeout: 30000 }).should('exist');
-      cy.wait(1000);
+      cy.waitForAppReady();
 
       // Refresh the page
       cy.reload();
-
-      // Wait for app to reload
-      cy.get('#root', { timeout: 30000 }).should('exist');
-      cy.document().its('readyState').should('equal', 'complete');
+      cy.waitForAppReady();
 
       // Verify we're still on the same route
       cy.url().should('include', route.path);
@@ -103,18 +87,8 @@ describe('SPA Routing', () => {
       cy.get('body').should('not.contain.text', '404');
       cy.get('body').should('not.contain.text', 'Client application not found');
 
-      // Wait for navigation elements to load after refresh - check both sidebar and mobile menu
-      cy.get('body').then(($body) => {
-        // Try to find the desktop sidebar first
-        if ($body.find('[data-testid="app-sidebar"]:visible').length > 0) {
-          cy.get('[data-testid="app-sidebar"]').should('be.visible');
-        } else {
-          // Fallback to checking for mobile menu button or any navigation
-          cy.get('[data-testid="mobile-menu-button"], aside, nav, [role="navigation"]', {
-            timeout: 15000,
-          }).should('exist');
-        }
-      });
+      // Wait for navigation elements to load after refresh
+      cy.waitForNavigation();
     });
   });
 
@@ -124,39 +98,25 @@ describe('SPA Routing', () => {
 
     navigationPath.forEach((path) => {
       cy.visit(path);
-      cy.get('#root', { timeout: 30000 }).should('exist');
-      cy.wait(500);
+      cy.waitForAppReady();
     });
 
     // Go back twice
     cy.go('back');
-    cy.wait(500);
     cy.url().should('include', '/settings/');
 
     cy.go('back');
-    cy.wait(500);
     cy.url().should('include', '/create');
 
     // Go forward
     cy.go('forward');
-    cy.wait(500);
     cy.url().should('include', '/settings/');
 
     // Verify app is still functional
     cy.get('#root').should('exist');
 
-    // Wait for navigation elements to be ready - check both sidebar and mobile menu
-    cy.get('body').then(($body) => {
-      // Try to find the desktop sidebar first
-      if ($body.find('[data-testid="app-sidebar"]:visible').length > 0) {
-        cy.get('[data-testid="app-sidebar"]').should('be.visible');
-      } else {
-        // Fallback to checking for mobile menu button or any navigation
-        cy.get('[data-testid="mobile-menu-button"], aside, nav, [role="navigation"]', {
-          timeout: 15000,
-        }).should('exist');
-      }
-    });
+    // Wait for navigation elements to be ready
+    cy.waitForNavigation();
   });
 
   it('handles deep links with query parameters', () => {
@@ -168,17 +128,14 @@ describe('SPA Routing', () => {
 
     deepLinks.forEach((link) => {
       cy.visit(link);
-
-      // Wait for app to load
-      cy.get('#root', { timeout: 30000 }).should('exist');
-      cy.document().its('readyState').should('equal', 'complete');
+      cy.waitForAppReady();
 
       // Verify URL preserved query parameters
       cy.url().should('include', link);
 
       // Refresh to ensure query params are preserved
       cy.reload();
-      cy.get('#root', { timeout: 30000 }).should('exist');
+      cy.waitForAppReady();
       cy.url().should('include', link);
     });
   });
@@ -207,7 +164,7 @@ describe('SPA Routing', () => {
 
     // Navigate to different route
     cy.visit('/create');
-    cy.get('#root', { timeout: 30000 }).should('exist');
+    cy.waitForAppReady();
 
     // Verify state is preserved
     cy.window().its('localStorage').invoke('getItem', 'test-key').should('eq', 'test-value');
@@ -229,23 +186,12 @@ describe('SPA Routing', () => {
     });
 
     // Final wait for last route to load
-    cy.get('#root', { timeout: 30000 }).should('exist');
-    cy.document().its('readyState').should('equal', 'complete');
+    cy.waitForAppReady();
 
     // Verify we ended up on the last route
     cy.url().should('include', '/group/new');
 
-    // Wait for navigation elements to be ready - check both sidebar and mobile menu
-    cy.get('body').then(($body) => {
-      // Try to find the desktop sidebar first
-      if ($body.find('[data-testid="app-sidebar"]:visible').length > 0) {
-        cy.get('[data-testid="app-sidebar"]').should('be.visible');
-      } else {
-        // Fallback to checking for mobile menu button or any navigation
-        cy.get('[data-testid="mobile-menu-button"], aside, nav, [role="navigation"]', {
-          timeout: 15000,
-        }).should('exist');
-      }
-    });
+    // Wait for navigation elements to be ready
+    cy.waitForNavigation();
   });
 });

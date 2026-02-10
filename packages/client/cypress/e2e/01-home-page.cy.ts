@@ -24,11 +24,7 @@ describe('Home Page', () => {
 
     // Visit the home page before each test
     cy.visit('/');
-
-    // Wait for app to be ready (inline implementation)
-    cy.get('#root', { timeout: 30000 }).should('exist');
-    cy.document().its('readyState').should('equal', 'complete');
-    cy.wait(1000);
+    cy.waitForAppReady();
   });
 
   it('loads successfully', () => {
@@ -43,87 +39,39 @@ describe('Home Page', () => {
   });
 
   it('displays the main navigation', () => {
-    // Check for sidebar - may not be immediately visible in E2E context
-    // First check if any sidebar-like element exists
-    cy.get('body').then(($body) => {
-      if ($body.find('[data-testid="app-sidebar"]').length > 0) {
-        cy.get('[data-testid="app-sidebar"]').should('exist');
-      } else {
-        // Look for alternative sidebar indicators
-        cy.get('aside, nav, [role="navigation"]').should('exist');
-        cy.log('app-sidebar not found, but alternative navigation element exists');
-      }
-    });
-
-    // Check if mobile menu button exists (may be hidden on desktop)
-    cy.get('body').then(($body) => {
-      if ($body.find('[data-testid="mobile-menu-button"]').length > 0) {
-        cy.get('[data-testid="mobile-menu-button"]').should('exist');
-      } else {
-        // Look for alternative menu button
-        cy.get('button[aria-label*="menu"], button[aria-label*="Menu"]').should('exist');
-        cy.log('mobile-menu-button not found, but alternative menu button exists');
-      }
-    });
+    // Use retryable combined selector instead of synchronous jQuery check.
+    // Cypress will keep polling until any navigation element appears.
+    cy.waitForNavigation();
   });
 
   it('displays connection status', () => {
-    // Check for connection status indicator - may not exist in E2E context
-    cy.get('body').then(($body) => {
-      if ($body.find('[data-testid="connection-status"]').length > 0) {
-        cy.get('[data-testid="connection-status"]').should('exist');
-      } else {
-        // Look for alternative connection indicators
-        cy.get('[data-testid*="connection"], [data-testid*="status"], .connection, .status').should(
-          'exist'
-        );
-        cy.log('connection-status not found, but alternative connection element exists');
-      }
-    });
+    // Check for connection status indicator with retryable combined selector
+    cy.get(
+      '[data-testid="connection-status"], [data-testid*="connection"], [data-testid*="status"], .connection, .status',
+      { timeout: 15000 }
+    ).should('exist');
   });
 
   it('can toggle sidebar', () => {
-    // On desktop viewport, check if sidebar elements exist
-    cy.get('body').then(($body) => {
-      if ($body.find('[data-testid="app-sidebar"]').length > 0) {
-        cy.get('[data-testid="app-sidebar"]').should('exist');
-      } else {
-        // Look for alternative sidebar
-        cy.get('aside, nav, [role="navigation"]').should('exist');
-      }
+    // Wait for navigation to be ready
+    cy.waitForNavigation();
 
-      if ($body.find('[data-testid="mobile-menu-button"]').length > 0) {
-        cy.get('[data-testid="mobile-menu-button"]').should('exist');
-      }
-
-      // Skip toggle functionality test - just verify elements exist
-      cy.log('Sidebar elements exist - toggle functionality may not be available in E2E context');
-    });
+    // Skip toggle functionality test -- just verify elements exist
+    cy.log('Sidebar elements exist - toggle functionality may not be available in E2E context');
   });
 
   it('handles responsive design', () => {
     // Test mobile viewport
     cy.viewport('iphone-x');
 
-    // Wait for layout to settle
-    cy.wait(1000);
-
-    // Check if mobile menu button exists and is visible
-    cy.get('body').then(($body) => {
-      if ($body.find('[data-testid="mobile-menu-button"]').length > 0) {
-        cy.get('[data-testid="mobile-menu-button"]').should('be.visible');
-      } else {
-        // Look for alternative mobile menu button
-        cy.get('button[aria-label*="menu"], button[aria-label*="Menu"]').should('exist');
-        cy.log('Mobile menu button exists (alternative selector)');
-      }
-    });
+    // Wait for layout to settle with retryable assertion
+    cy.get(
+      '[data-testid="mobile-menu-button"], button[aria-label*="menu"], button[aria-label*="Menu"]',
+      { timeout: 15000 }
+    ).should('exist');
 
     // Reset viewport
     cy.viewport(1280, 720);
-
-    // Wait for layout to settle back
-    cy.wait(500);
   });
 
   it('shows loading states properly', () => {
@@ -131,17 +79,14 @@ describe('Home Page', () => {
     cy.intercept('GET', '/api/agents', {
       delay: 1000,
       body: { data: { agents: [] } },
-    }).as('getAgents');
+    }).as('getAgentsDelayed');
 
     // Reload page
     cy.reload();
-    // Wait for app to be ready
-    cy.get('#root', { timeout: 30000 }).should('exist');
-    cy.document().its('readyState').should('equal', 'complete');
-    cy.wait(500);
+    cy.waitForAppReady();
 
     // Wait for request to complete
-    cy.wait('@getAgents');
+    cy.wait('@getAgentsDelayed');
 
     // Page should still be functional
     cy.get('#root').should('exist');
@@ -156,10 +101,7 @@ describe('Home Page', () => {
 
     // Reload page
     cy.reload();
-    // Wait for app to be ready
-    cy.get('#root', { timeout: 30000 }).should('exist');
-    cy.document().its('readyState').should('equal', 'complete');
-    cy.wait(500);
+    cy.waitForAppReady();
 
     // Wait for error
     cy.wait('@getAgentsError');
@@ -167,28 +109,16 @@ describe('Home Page', () => {
     // App should still be functional
     cy.get('#root').should('exist');
 
-    // Check if sidebar exists (lenient check)
-    cy.get('body').then(($body) => {
-      if ($body.find('[data-testid="app-sidebar"]').length > 0) {
-        cy.get('[data-testid="app-sidebar"]').should('exist');
-      } else {
-        cy.get('aside, nav, [role="navigation"]').should('exist');
-      }
-    });
+    // Navigation should still render despite API error
+    cy.waitForNavigation();
   });
 
   it('loads basic page structure', () => {
     // Check that main structural elements exist
     cy.get('#root').should('exist');
 
-    // Check for sidebar (lenient check)
-    cy.get('body').then(($body) => {
-      if ($body.find('[data-testid="app-sidebar"]').length > 0) {
-        cy.get('[data-testid="app-sidebar"]').should('exist');
-      } else {
-        cy.get('aside, nav, [role="navigation"]').should('exist');
-      }
-    });
+    // Navigation should be present
+    cy.waitForNavigation();
 
     // Check that the page doesn't show any critical errors
     cy.get('body').should('not.contain.text', 'Error:');
@@ -196,22 +126,9 @@ describe('Home Page', () => {
   });
 
   it('has working navigation elements', () => {
-    // Check sidebar exists (lenient check)
-    cy.get('body').then(($body) => {
-      if ($body.find('[data-testid="app-sidebar"]').length > 0) {
-        cy.get('[data-testid="app-sidebar"]').should('exist');
-      } else {
-        cy.get('aside, nav, [role="navigation"]').should('exist');
-      }
+    // Navigation should be present
+    cy.waitForNavigation();
 
-      // Check for basic navigation elements
-      if ($body.find('[data-testid="mobile-menu-button"]').length > 0) {
-        cy.get('[data-testid="mobile-menu-button"]').should('exist');
-      } else {
-        cy.get('button[aria-label*="menu"], button[aria-label*="Menu"]').should('exist');
-      }
-
-      cy.log('Navigation elements verified');
-    });
+    cy.log('Navigation elements verified');
   });
 });

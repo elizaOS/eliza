@@ -77,12 +77,50 @@ Cypress.Commands.add('waitForApi', (alias: string, timeout = 10000) => {
   return cy.wait(`@${alias}`, { timeout });
 });
 
+// Custom command to wait for the app navigation to be ready.
+// Uses a single combined CSS selector so Cypress retries until any sidebar
+// or navigation element appears, avoiding the fragile synchronous jQuery
+// check pattern ($body.find(...)...) that caused flaky CI failures.
+Cypress.Commands.add('waitForNavigation', (options: { timeout?: number } = {}) => {
+  const timeout = options.timeout ?? 15000;
+
+  // On desktop (1280x720) the sidebar renders as [data-testid="app-sidebar"].
+  // On mobile viewports the mobile-menu-button is shown instead.
+  // Some error/loading states may render a plain <aside>, <nav>, or [role="navigation"].
+  // Combining them in one selector lets Cypress retry until ANY of them appear.
+  cy.get(
+    '[data-testid="app-sidebar"], [data-testid="mobile-menu-button"], aside, nav, [role="navigation"]',
+    { timeout }
+  ).should('exist');
+});
+
+// Custom command to wait for the app to be fully interactive after a page
+// load or reload. Replaces the scattered cy.wait(500) / cy.wait(1000) calls
+// with a deterministic check.
+Cypress.Commands.add('waitForAppReady', () => {
+  cy.get('#root', { timeout: 30000 }).should('exist');
+  cy.document().its('readyState').should('equal', 'complete');
+
+  // Check if there's a loading indicator and wait for it to disappear
+  cy.get('body').then(($body) => {
+    if ($body.find('[data-testid="loading"]').length > 0) {
+      cy.get('[data-testid="loading"]', { timeout: 30000 }).should('not.exist');
+    }
+  });
+
+  // Wait for React to finish hydration and at least one DOM element to render
+  // beyond #root. This replaces arbitrary cy.wait() calls.
+  cy.get('#root').children({ timeout: 10000 }).should('have.length.greaterThan', 0);
+});
+
 // Add TypeScript support for custom commands
 declare global {
   namespace Cypress {
     interface Chainable {
       visitWithoutOnboarding(url?: string): Chainable<void>;
       waitForApp(): Chainable<void>;
+      waitForAppReady(): Chainable<void>;
+      waitForNavigation(options?: { timeout?: number }): Chainable<void>;
       login(email: string, password: string): Chainable<void>;
       connectWebSocket(): Chainable<void>;
       cleanupTestData(): Chainable<void>;
