@@ -21,7 +21,7 @@
  * See also: `packages/cli/src/commands/create/actions/creators.ts` which calls
  * `ensureGitignore()` as a final safety-net after this function returns.
  */
-import { existsSync, copyFileSync, writeFileSync, cpSync, mkdirSync } from 'node:fs';
+import { existsSync, copyFileSync, writeFileSync, cpSync, mkdirSync, unlinkSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -305,8 +305,18 @@ export async function copyTemplate(
   diag.phase = 'done';
   diag.finalGitignoreExists = existsSync(gitignorePath);
   diag.finalNpmignoreExists = existsSync(npmignorePath);
-  flushDiag();
   stderrLog(`DONE gitignore=${diag.finalGitignoreExists} npmignore=${diag.finalNpmignoreExists}`);
+
+  // Clean up the diagnostic file so it doesn't ship in user projects.
+  // The stderr logging above preserves CI traceability without leaving
+  // artifacts containing internal paths in every generated project.
+  try {
+    if (existsSync(diagPath)) {
+      unlinkSync(diagPath);
+    }
+  } catch {
+    // best-effort — don't fail the template copy over cleanup
+  }
   // --- END .gitignore pipeline ---
 
   // For plugin templates, replace hardcoded "plugin-starter" strings in source files
