@@ -142,7 +142,9 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                   size="icon"
                   className="h-8 w-8 sm:h-10 sm:w-10"
                   onClick={() => {
-                    if (fileInputRef.current) fileInputRef.current.click();
+                    if (fileInputRef.current) {
+                      fileInputRef.current.click();
+                    }
                   }}
                 >
                   <Paperclip className="size-3 sm:size-4" />

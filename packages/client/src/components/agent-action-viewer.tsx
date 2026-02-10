@@ -81,7 +81,9 @@ function getModelUsageType(modelType: string): string {
 }
 
 function formatDate(timestamp: number | undefined) {
-  if (!timestamp) return 'Unknown date';
+  if (!timestamp) {
+    return 'Unknown date';
+  }
   const date = new Date(timestamp);
   const now = new Date();
   const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
@@ -104,19 +106,33 @@ function formatDate(timestamp: number | undefined) {
 }
 
 function getModelIcon(modelType = '') {
-  if (modelType === 'ACTION') return Zap;
-  if (modelType.includes('TEXT_EMBEDDING')) return Brain;
-  if (modelType.includes('TRANSCRIPTION')) return FileText;
-  if (modelType.includes('TEXT') || modelType.includes('OBJECT')) return Bot;
-  if (modelType.includes('IMAGE')) return ImagePlusIcon;
+  if (modelType === 'ACTION') {
+    return Zap;
+  }
+  if (modelType.includes('TEXT_EMBEDDING')) {
+    return Brain;
+  }
+  if (modelType.includes('TRANSCRIPTION')) {
+    return FileText;
+  }
+  if (modelType.includes('TEXT') || modelType.includes('OBJECT')) {
+    return Bot;
+  }
+  if (modelType.includes('IMAGE')) {
+    return ImagePlusIcon;
+  }
   return Activity;
 }
 
 function formatTokenUsage(usage: any) {
-  if (!usage) return null;
+  if (!usage) {
+    return null;
+  }
 
   const { prompt_tokens, completion_tokens, total_tokens } = usage;
-  if (!total_tokens) return null;
+  if (!total_tokens) {
+    return null;
+  }
 
   return {
     prompt: prompt_tokens || 0,
@@ -126,8 +142,10 @@ function formatTokenUsage(usage: any) {
 }
 
 function truncateText(text: string, maxLength = 100) {
-  if (text.length <= maxLength) return text;
-  return text.substring(0, maxLength) + '...';
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.substring(0, maxLength)}...`;
 }
 
 function copyToClipboard(text: string) {
@@ -171,7 +189,9 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
   const renderParams = () => {
     const params = action.body?.params;
 
-    if (!params && !actionPrompts) return null;
+    if (!params && !actionPrompts) {
+      return null;
+    }
 
     if (modelType.includes('TRANSCRIPTION') && Array.isArray(params)) {
       return (
@@ -293,7 +313,9 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
 
   const renderResponse = () => {
     const response = action.body?.response;
-    if (!response) return null;
+    if (!response) {
+      return null;
+    }
 
     if (response === '[array]') {
       return (
@@ -499,8 +521,12 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
                       `${action.body.promptCount} prompt${action.body.promptCount > 1 ? 's' : ''}`
                     );
                   }
-                  if (action.body?.params) parts.push('parameters');
-                  if (action.body?.response) parts.push('response data');
+                  if (action.body?.params) {
+                    parts.push('parameters');
+                  }
+                  if (action.body?.response) {
+                    parts.push('response data');
+                  }
                   return parts.length > 0
                     ? `Contains ${parts.join(' and ')}`
                     : 'Contains additional data';
@@ -598,20 +624,30 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
       switch (selectedType) {
         case ActionType.llm:
           // Only show LLM model calls (not actions)
-          if (usageType !== 'LLM') return false;
+          if (usageType !== 'LLM') {
+            return false;
+          }
           break;
         case ActionType.embedding:
-          if (usageType !== 'Embedding') return false;
+          if (usageType !== 'Embedding') {
+            return false;
+          }
           break;
         case ActionType.transcription:
-          if (usageType !== 'Transcription') return false;
+          if (usageType !== 'Transcription') {
+            return false;
+          }
           break;
         case ActionType.image:
-          if (usageType !== 'Image') return false;
+          if (usageType !== 'Image') {
+            return false;
+          }
           break;
         case ActionType.other:
           // "Other" includes actions and unknown model types
-          if (usageType !== 'Other' && usageType !== 'Unknown' && !isActionLog) return false;
+          if (usageType !== 'Other' && usageType !== 'Unknown' && !isActionLog) {
+            return false;
+          }
           break;
       }
     }

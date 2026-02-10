@@ -228,7 +228,9 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
 
       for (const line of lines) {
         const trimmedLine = line.trim();
-        if (!trimmedLine || trimmedLine.startsWith('#')) continue;
+        if (!trimmedLine || trimmedLine.startsWith('#')) {
+          continue;
+        }
 
         const [key, ...rest] = trimmedLine.split('=');
         const val = rest
@@ -250,7 +252,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
       // Create a new envs array with updates from raw editor
       const newEnvs = envs
         .map((env) => {
-          if (parsedEnvs.hasOwnProperty(env.name)) {
+          if (Object.prototype.hasOwnProperty.call(parsedEnvs, env.name)) {
             const cleanValue = parsedEnvs[env.name].startsWith('process.env.')
               ? ''
               : parsedEnvs[env.name];
@@ -287,8 +289,12 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
 
       // Sort: required secrets first, then alphabetically
       newEnvs.sort((a, b) => {
-        if (a.isRequired && !b.isRequired) return -1;
-        if (!a.isRequired && b.isRequired) return 1;
+        if (a.isRequired && !b.isRequired) {
+          return -1;
+        }
+        if (!a.isRequired && b.isRequired) {
+          return 1;
+        }
         return a.name.localeCompare(b.name);
       });
 
@@ -312,7 +318,9 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
     // Load initial secrets from characterValue and merge with required secrets
     useEffect(() => {
       // Skip if still loading secrets or global envs
-      if (isLoadingSecrets || isLoadingGlobalEnvs) return;
+      if (isLoadingSecrets || isLoadingGlobalEnvs) {
+        return;
+      }
 
       // Only reset if we're switching to a different agent or this is the first load
       // or if envs is empty (meaning we haven't initialized yet)
@@ -389,8 +397,12 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
 
         // Sort: required secrets first, then alphabetically
         allSecrets.sort((a, b) => {
-          if (a.isRequired && !b.isRequired) return -1;
-          if (!a.isRequired && b.isRequired) return 1;
+          if (a.isRequired && !b.isRequired) {
+            return -1;
+          }
+          if (!a.isRequired && b.isRequired) {
+            return 1;
+          }
           return a.name.localeCompare(b.name);
         });
 
@@ -417,7 +429,9 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
     // Sync secrets when plugins change (not just when agent changes)
     useEffect(() => {
       // Skip only if still loading secrets
-      if (isLoadingSecrets) return;
+      if (isLoadingSecrets) {
+        return;
+      }
 
       // Create a stable key for comparison
       const requiredSecretsKey = requiredSecrets
@@ -426,7 +440,9 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
         .join(',');
 
       // Only update if the required secrets actually changed
-      if (requiredSecretsKey === lastRequiredSecretsKeyRef.current) return;
+      if (requiredSecretsKey === lastRequiredSecretsKeyRef.current) {
+        return;
+      }
       lastRequiredSecretsKeyRef.current = requiredSecretsKey;
 
       // Get current required secret names
@@ -492,8 +508,12 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
 
         // Sort: required secrets first, then alphabetically
         updatedEnvs.sort((a, b) => {
-          if (a.isRequired && !b.isRequired) return -1;
-          if (!a.isRequired && b.isRequired) return 1;
+          if (a.isRequired && !b.isRequired) {
+            return -1;
+          }
+          if (!a.isRequired && b.isRequired) {
+            return 1;
+          }
           return a.name.localeCompare(b.name);
         });
 
@@ -525,7 +545,9 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
 
     // Notify parent of changes
     useEffect(() => {
-      if (!onChange) return;
+      if (!onChange) {
+        return;
+      }
 
       // Create a debounced version to avoid rapid fire updates
       const timeoutId = setTimeout(() => {
@@ -577,14 +599,18 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
           const newEnvs: Record<string, string> = {};
           for (const line of lines) {
             const trimmedLine = line.trim();
-            if (!trimmedLine || trimmedLine.startsWith('#')) continue;
+            if (!trimmedLine || trimmedLine.startsWith('#')) {
+              continue;
+            }
 
             const [key, ...rest] = trimmedLine.split('=');
             const val = rest
               .join('=')
               .trim()
               .replace(/^['"]|['"]$/g, '');
-            if (key) newEnvs[key.trim()] = val;
+            if (key) {
+              newEnvs[key.trim()] = val;
+            }
           }
 
           setEnvs((prev) => {
@@ -617,8 +643,12 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
 
             // Sort: required secrets first, then alphabetically
             result.sort((a, b) => {
-              if (a.isRequired && !b.isRequired) return -1;
-              if (!a.isRequired && b.isRequired) return 1;
+              if (a.isRequired && !b.isRequired) {
+                return -1;
+              }
+              if (!a.isRequired && b.isRequired) {
+                return 1;
+              }
               return a.name.localeCompare(b.name);
             });
 
@@ -706,8 +736,12 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
           const updatedEnvs = [...envs, newEnv];
           // Sort: required secrets first, then alphabetically
           updatedEnvs.sort((a, b) => {
-            if (a.isRequired && !b.isRequired) return -1;
-            if (!a.isRequired && b.isRequired) return 1;
+            if (a.isRequired && !b.isRequired) {
+              return -1;
+            }
+            if (!a.isRequired && b.isRequired) {
+              return 1;
+            }
             return a.name.localeCompare(b.name);
           });
 

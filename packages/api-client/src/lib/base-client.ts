@@ -131,13 +131,20 @@ export abstract class BaseApiClient {
       // Handle error responses
       if (!response.ok) {
         // Try to extract error information from response
-        const errorData = jsonData as { error?: { code?: string; message?: string; details?: unknown } } | null;
+        const errorData = jsonData as {
+          error?: { code?: string; message?: string; details?: unknown };
+        } | null;
         const error = errorData?.error || {
           code: 'HTTP_ERROR',
           message: `HTTP ${response.status}: ${response.statusText}`,
         };
         const details = typeof error.details === 'string' ? error.details : undefined;
-        throw new ApiError(error.code || 'HTTP_ERROR', error.message || 'Unknown error', details, response.status);
+        throw new ApiError(
+          error.code || 'HTTP_ERROR',
+          error.message || 'Unknown error',
+          details,
+          response.status
+        );
       }
 
       // Handle successful responses
@@ -149,9 +156,9 @@ export abstract class BaseApiClient {
             'error' in apiResponse
               ? apiResponse.error
               : {
-                code: 'UNKNOWN_ERROR',
-                message: 'An unknown error occurred',
-              };
+                  code: 'UNKNOWN_ERROR',
+                  message: 'An unknown error occurred',
+                };
           throw new ApiError(error.code, error.message, error.details, response.status);
         }
         return apiResponse.data;

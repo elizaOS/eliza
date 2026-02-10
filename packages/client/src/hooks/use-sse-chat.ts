@@ -43,7 +43,9 @@ export function useSSEChat({
 
   const sendMessage = useCallback(
     async (text: string, attachments?: Media[]) => {
-      if (!sessionId || !channelId || !agentId || !text.trim()) return;
+      if (!sessionId || !channelId || !agentId || !text.trim()) {
+        return;
+      }
 
       const tempId = randomUUID();
       setInputDisabled(true);
@@ -128,7 +130,9 @@ export function useSSEChat({
 
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            break;
+          }
 
           buffer += decoder.decode(value, { stream: true });
 

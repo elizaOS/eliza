@@ -26,13 +26,16 @@ function AgentRouteContent() {
 
   const { agent, isLoading, isStarting, start } = useElizaAgent(agentId);
 
-  if (!agentId) return <div className="p-4">Agent ID not provided.</div>;
-  if (isLoading || !agent)
+  if (!agentId) {
+    return <div className="p-4">Agent ID not provided.</div>;
+  }
+  if (isLoading || !agent) {
     return (
       <div className="p-4 flex items-center justify-center h-full" data-testid="loader">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
+  }
 
   const isActive = agent.status === CoreAgentStatusEnum.ACTIVE;
 

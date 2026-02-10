@@ -41,7 +41,9 @@ export default function Home() {
   };
 
   const handleNavigateToDm = async (agent: Partial<Agent>, forceNew: boolean) => {
-    if (!agent.id) return;
+    if (!agent.id) {
+      return;
+    }
     clientLogger.info(`[Home] Navigating to chat/${agent.id}`);
     navigate(`/chat/${agent.id}`, { state: { forceNew } });
   };
@@ -194,9 +196,12 @@ const ServerChannels = React.memo(({ serverId }: { serverId: UUID }) => {
     [channelsData]
   );
 
-  if (isLoadingChannels) return <p>Loading channels for server...</p>;
-  if (!groupChannels || groupChannels.length === 0)
+  if (isLoadingChannels) {
+    return <p>Loading channels for server...</p>;
+  }
+  if (!groupChannels || groupChannels.length === 0) {
     return <p className="text-sm text-muted-foreground">No group channels in this server.</p>;
+  }
 
   return (
     <>

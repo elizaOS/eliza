@@ -96,9 +96,13 @@ const getContentPadding = ({
   level: number;
   hasExpandButton: boolean;
 }) => {
-  if (level === 0) return 0;
+  if (level === 0) {
+    return 0;
+  }
 
-  if (hasExpandButton) return 4;
+  if (hasExpandButton) {
+    return 4;
+  }
 
   return 8;
 };
@@ -207,7 +211,9 @@ const SpanCardChildren: FC<{
   onExpandSpansIdsChange,
   viewOptions = DEFAULT_VIEW_OPTIONS,
 }) => {
-  if (!data.children?.length) return null;
+  if (!data.children?.length) {
+    return null;
+  }
 
   return (
     <div className="relative">

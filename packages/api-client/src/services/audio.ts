@@ -94,7 +94,9 @@ export class AudioService extends BaseApiClient {
   /**
    * Convert audio input to appropriate FormData value
    */
-  private processAudioInput(audio: Blob | Buffer | ArrayBuffer | ArrayBufferView | string): Blob | string {
+  private processAudioInput(
+    audio: Blob | Buffer | ArrayBuffer | ArrayBufferView | string
+  ): Blob | string {
     if (audio instanceof Blob) {
       return audio;
     }

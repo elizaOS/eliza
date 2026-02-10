@@ -193,7 +193,9 @@ export default function AgentSettings({
   };
 
   const handleDelete = () => {
-    if (isDeletingAgent) return; // Prevent multiple clicks
+    if (isDeletingAgent) {
+      return;
+    } // Prevent multiple clicks
 
     confirm(
       {

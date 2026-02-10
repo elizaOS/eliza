@@ -102,8 +102,12 @@ export class ElizaSpanAdapter {
             attemptSpan.status = success ? 'success' : 'error';
             attemptSpan.endTime = new Date(event.timestamp);
             attemptSpan.duration = event.timestamp - attemptSpan.startTime.getTime();
-            if (prompt) attemptSpan.input = prompt;
-            if (response) attemptSpan.output = response;
+            if (prompt) {
+              attemptSpan.input = prompt;
+            }
+            if (response) {
+              attemptSpan.output = response;
+            }
             attemptMap.delete(actionKey);
           }
 
@@ -112,8 +116,12 @@ export class ElizaSpanAdapter {
             actionSpan.status = success ? 'success' : 'error';
             actionSpan.endTime = new Date(event.timestamp);
             actionSpan.duration = event.timestamp - actionSpan.startTime.getTime();
-            if (prompt && !actionSpan.input) actionSpan.input = prompt;
-            if (response && !actionSpan.output) actionSpan.output = response;
+            if (prompt && !actionSpan.input) {
+              actionSpan.input = prompt;
+            }
+            if (response && !actionSpan.output) {
+              actionSpan.output = response;
+            }
           }
           break;
         }
@@ -322,10 +330,14 @@ export class ElizaSpanAdapter {
 
     // Helper to extract from a usage-like object
     const extractFromUsage = (usageContainer: unknown): number | undefined => {
-      if (!usageContainer || typeof usageContainer !== 'object') return undefined;
+      if (!usageContainer || typeof usageContainer !== 'object') {
+        return undefined;
+      }
       const container = usageContainer as Record<string, unknown>;
       const totalTokens = this.coerceToNumber(container['total_tokens']);
-      if (totalTokens !== undefined) return totalTokens;
+      if (totalTokens !== undefined) {
+        return totalTokens;
+      }
       const hasPrompt = Object.prototype.hasOwnProperty.call(container, 'prompt_tokens');
       const hasCompletion = Object.prototype.hasOwnProperty.call(container, 'completion_tokens');
       if (hasPrompt || hasCompletion) {
@@ -340,12 +352,16 @@ export class ElizaSpanAdapter {
     if (data.response && typeof data.response === 'object') {
       const response = data.response as Record<string, unknown>;
       const fromResponseUsage = extractFromUsage(response['usage']);
-      if (fromResponseUsage !== undefined) return fromResponseUsage;
+      if (fromResponseUsage !== undefined) {
+        return fromResponseUsage;
+      }
     }
 
     // Try top-level usage object
     const fromTopLevelUsage = extractFromUsage(data['usage']);
-    if (fromTopLevelUsage !== undefined) return fromTopLevelUsage;
+    if (fromTopLevelUsage !== undefined) {
+      return fromTopLevelUsage;
+    }
 
     return undefined;
   }

@@ -74,7 +74,9 @@ export default function EnvSettings() {
   };
 
   const addEnv = () => {
-    if (!name || !value) return;
+    if (!name || !value) {
+      return;
+    }
 
     setLocalEnvs({
       ...localEnvs,

@@ -80,14 +80,18 @@ export default function PluginsPanel({
 
   // Ensure we always have arrays and normalize plugin names
   const safeCharacterPlugins = useMemo(() => {
-    if (!Array.isArray(characterValue?.plugins)) return [];
+    if (!Array.isArray(characterValue?.plugins)) {
+      return [];
+    }
     return characterValue.plugins;
   }, [characterValue?.plugins]);
 
   // Get plugin names from available plugins
   const pluginNames = useMemo(() => {
     const defaultPlugins = ['@elizaos/plugin-sql'];
-    if (!plugins) return defaultPlugins;
+    if (!plugins) {
+      return defaultPlugins;
+    }
     return [
       ...defaultPlugins,
       ...(Array.isArray(plugins) ? plugins : Object.keys(plugins)).filter(
@@ -99,16 +103,24 @@ export default function PluginsPanel({
   // Check if the selected voice model requires specific plugins
   const voiceModelPluginInfo = useMemo(() => {
     const settings = characterValue?.settings;
-    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      return null;
+    }
 
     const voice = settings.voice;
-    if (!voice || typeof voice !== 'object' || Array.isArray(voice)) return null;
+    if (!voice || typeof voice !== 'object' || Array.isArray(voice)) {
+      return null;
+    }
 
     const voiceModelValue = voice.model;
-    if (!voiceModelValue || typeof voiceModelValue !== 'string') return null;
+    if (!voiceModelValue || typeof voiceModelValue !== 'string') {
+      return null;
+    }
 
     const voiceModel = getVoiceModelByValue(voiceModelValue);
-    if (!voiceModel) return null;
+    if (!voiceModel) {
+      return null;
+    }
 
     // Get required plugin from configuration
     const requiredPlugin = providerPluginMap[voiceModel.provider];
@@ -128,8 +140,12 @@ export default function PluginsPanel({
   // }, [safeCharacterPlugins]);
 
   const hasChanged = useMemo(() => {
-    if (!initialPlugins) return false;
-    if (initialPlugins.length !== safeCharacterPlugins.length) return true;
+    if (!initialPlugins) {
+      return false;
+    }
+    if (initialPlugins.length !== safeCharacterPlugins.length) {
+      return true;
+    }
     return !initialPlugins?.every((plugin) => safeCharacterPlugins.includes(plugin));
   }, [safeCharacterPlugins, initialPlugins]);
 
@@ -140,7 +156,9 @@ export default function PluginsPanel({
   }, [pluginNames, safeCharacterPlugins, searchQuery]);
 
   const handlePluginAdd = (plugin: string) => {
-    if (safeCharacterPlugins.includes(plugin)) return;
+    if (safeCharacterPlugins.includes(plugin)) {
+      return;
+    }
 
     if (setCharacterValue.addPlugin) {
       setCharacterValue.addPlugin(plugin);
@@ -262,7 +280,9 @@ export default function PluginsPanel({
                       .sort((a, b) => {
                         const aIsEssential = Object.keys(ESSENTIAL_PLUGINS).includes(a);
                         const bIsEssential = Object.keys(ESSENTIAL_PLUGINS).includes(b);
-                        if (aIsEssential === bIsEssential) return 0;
+                        if (aIsEssential === bIsEssential) {
+                          return 0;
+                        }
                         return aIsEssential ? -1 : 1;
                       })
                       .map((plugin) => {

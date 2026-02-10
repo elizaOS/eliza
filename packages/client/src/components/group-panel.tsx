@@ -125,7 +125,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   // Update group mutation
   const updateGroupMutation = useMutation({
     mutationFn: async ({ name, participantIds }: { name: string; participantIds: UUID[] }) => {
-      if (!channelId) throw new Error('Channel ID is required for update');
+      if (!channelId) {
+        throw new Error('Channel ID is required for update');
+      }
       const elizaClient = getElizaClient();
       return await elizaClient.messaging.updateChannel(channelId, {
         name,
@@ -152,7 +154,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   // Delete group mutation
   const deleteGroupMutation = useMutation({
     mutationFn: async () => {
-      if (!channelId) throw new Error('Channel ID is required for delete');
+      if (!channelId) {
+        throw new Error('Channel ID is required for delete');
+      }
       const elizaClient = getElizaClient();
       return await elizaClient.messaging.deleteChannel(channelId);
     },
@@ -193,7 +197,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   }: UseQueryResult<ChannelParticipantsResponse, Error> = useQuery({
     queryKey: ['channelParticipants', channelId],
     queryFn: async () => {
-      if (!channelId) return { success: true, data: [] };
+      if (!channelId) {
+        return { success: true, data: [] };
+      }
       try {
         const elizaClient = getElizaClient();
         const result = await elizaClient.messaging.getChannelParticipants(channelId);
@@ -250,8 +256,12 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
 
   // Separate effect for handling participants
   useEffect(() => {
-    if (isLoadingAgents) return;
-    if (channelId && isLoadingChannelParticipants) return;
+    if (isLoadingAgents) {
+      return;
+    }
+    if (channelId && isLoadingChannelParticipants) {
+      return;
+    }
     if (!channelId) {
       // Reset for create mode
       agentsInitializedRef.current = false;
@@ -259,7 +269,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     }
 
     // Only initialize once per channel
-    if (agentsInitializedRef.current && lastChannelIdRef.current === channelId) return;
+    if (agentsInitializedRef.current && lastChannelIdRef.current === channelId) {
+      return;
+    }
 
     if (isErrorChannelParticipants) {
       toast({
@@ -308,7 +320,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   ]);
 
   const comboboxOptions: ComboboxOption[] = useMemo(() => {
-    if (isLoadingAgents || isErrorAgents) return [];
+    if (isLoadingAgents || isErrorAgents) {
+      return [];
+    }
     return allAvailableSelectableAgents.map((agent) => ({
       id: agent.id,
       label: `${agent.name}${agent.status === AgentStatus.INACTIVE ? ' (Inactive)' : ''}`,
@@ -319,11 +333,17 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY = useMemo(() => [], []);
 
   const initialSelectedComboboxOptions: ComboboxOption[] = useMemo(() => {
-    if (isLoadingAgents) return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY;
-    if (!channelId) return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY; // Create mode
+    if (isLoadingAgents) {
+      return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY;
+    }
+    if (!channelId) {
+      return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY;
+    } // Create mode
 
     // In edit mode, wait for agents to be initialized before determining selection
-    if (channelId && !agentsInitializedRef.current) return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY;
+    if (channelId && !agentsInitializedRef.current) {
+      return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY;
+    }
 
     const options = selectedAgents.map((agent) => ({
       id: agent.id,
@@ -345,7 +365,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   );
 
   const handleDeleteGroup = useCallback(async () => {
-    if (!channelId) return;
+    if (!channelId) {
+      return;
+    }
     const channel = channelsData?.data?.channels.find((ch) => ch.id === channelId);
     confirm(
       {
@@ -362,7 +384,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
 
   // Check if form has changed
   const hasFormChanged = useMemo(() => {
-    if (!channelId) return true; // Always allow creation
+    if (!channelId) {
+      return true;
+    } // Always allow creation
 
     const nameChanged = chatName.trim() !== initialChatName.trim();
     const currentAgentIds = selectedAgents.map((a) => a.id).sort();

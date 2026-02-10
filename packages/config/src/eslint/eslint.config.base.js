@@ -217,6 +217,7 @@ export const baseConfig = [
 
       // General JavaScript/TypeScript rules
       'no-unused-vars': 'off',
+      'no-redeclare': 'off', // TypeScript allows type/value declaration merging
       'no-console': 'off',
       'no-debugger': 'error',
       'no-alert': 'warn',

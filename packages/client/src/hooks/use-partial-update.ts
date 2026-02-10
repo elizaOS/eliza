@@ -171,7 +171,9 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
         const fieldValue = prevValue[fieldName as keyof T];
         const currentArray = Array.isArray(fieldValue) ? [...fieldValue] : [];
 
-        if (index < 0 || index >= currentArray.length) return prevValue;
+        if (index < 0 || index >= currentArray.length) {
+          return prevValue;
+        }
 
         return {
           ...prevValue,

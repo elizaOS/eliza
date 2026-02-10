@@ -47,25 +47,39 @@ export default function ConnectionStatus() {
   }, [status, prevStatus, isConnected, isError, isUnauthorized, toast]);
 
   const getStatusColor = () => {
-    if (isUnauthorized) return 'bg-yellow-500';
-    if (isLoading) return 'bg-muted-foreground';
+    if (isUnauthorized) {
+      return 'bg-yellow-500';
+    }
+    if (isLoading) {
+      return 'bg-muted-foreground';
+    }
     return isConnected ? 'bg-green-600' : 'bg-red-600';
   };
 
   const getStatusText = () => {
-    if (isUnauthorized) return 'Unauthorized';
-    if (isLoading) return 'Connecting...';
+    if (isUnauthorized) {
+      return 'Unauthorized';
+    }
+    if (isLoading) {
+      return 'Connecting...';
+    }
     return isConnected ? 'Connected' : 'Disconnected';
   };
 
   const getTextColor = () => {
-    if (isUnauthorized) return 'text-yellow-500';
-    if (isLoading) return 'text-muted-foreground';
+    if (isUnauthorized) {
+      return 'text-yellow-500';
+    }
+    if (isLoading) {
+      return 'text-muted-foreground';
+    }
     return isConnected ? 'text-green-600' : 'text-red-600';
   };
 
   const getErrorMessage = () => {
-    if (!error) return 'Connection failed';
+    if (!error) {
+      return 'Connection failed';
+    }
 
     if (isUnauthorized) {
       return 'Unauthorized: Invalid or missing API Key.';

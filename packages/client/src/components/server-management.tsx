@@ -43,7 +43,9 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
   // Load agents for each server
   useEffect(() => {
     const loadServerAgents = async () => {
-      if (!serversData?.data?.servers) return;
+      if (!serversData?.data?.servers) {
+        return;
+      }
 
       const newServerAgents = new Map<UUID, UUID[]>();
 
@@ -146,7 +148,9 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
   };
 
   const getAvailableAgents = () => {
-    if (!selectedServerId || !agents) return [];
+    if (!selectedServerId || !agents) {
+      return [];
+    }
 
     const currentAgents = serverAgents.get(selectedServerId) || [];
     return agents.filter((agent) => agent.id && !currentAgents.includes(agent.id as UUID));

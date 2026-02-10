@@ -149,11 +149,19 @@ export const getAgentAvatar = (
 export type AttachmentType = 'image' | 'file' | 'audio' | 'video' | 'document';
 
 export function getAttachmentType(contentType: string | undefined): AttachmentType {
-  if (!contentType) return 'file';
+  if (!contentType) {
+    return 'file';
+  }
 
-  if (contentType.startsWith('image/')) return 'image';
-  if (contentType.startsWith('audio/')) return 'audio';
-  if (contentType.startsWith('video/')) return 'video';
+  if (contentType.startsWith('image/')) {
+    return 'image';
+  }
+  if (contentType.startsWith('audio/')) {
+    return 'audio';
+  }
+  if (contentType.startsWith('video/')) {
+    return 'video';
+  }
   if (
     contentType === 'application/pdf' ||
     contentType.startsWith('application/msword') ||
@@ -182,7 +190,9 @@ export const generateGroupName = (
     ) {
       // If only current user is a participant (and has a name), or no other named participants
       const currentUserParticipant = participants.find((p) => p.id === currentUserId);
-      if (currentUserParticipant) return currentUserParticipant.name || 'Unnamed Group';
+      if (currentUserParticipant) {
+        return currentUserParticipant.name || 'Unnamed Group';
+      }
       return 'Unnamed Group'; // Fallback if current user somehow has no name
     }
     if (otherParticipants.length > 0) {

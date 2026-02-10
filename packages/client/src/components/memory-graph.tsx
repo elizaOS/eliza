@@ -133,7 +133,7 @@ export default function MemoryGraph({
           nodeLabel={(node: any) => {
             const content = node.memory?.content;
             const text = content?.text || '';
-            const truncated = text.length > 100 ? text.substring(0, 100) + '...' : text;
+            const truncated = text.length > 100 ? `${text.substring(0, 100)}...` : text;
             return truncated || node.memory?.id || 'Memory';
           }}
           onNodeClick={(node: any) => {

@@ -132,16 +132,30 @@ const convertActionMessageToToolPart = (message: UiMessage): ToolPart => {
 
   // Create input data from available action properties
   const inputData: Record<string, unknown> = {};
-  if (rawMessage.actions) inputData.actions = rawMessage.actions;
-  if (rawMessage.action) inputData.action = rawMessage.action;
-  if (rawMessage.thought) inputData.thought = rawMessage.thought;
+  if (rawMessage.actions) {
+    inputData.actions = rawMessage.actions;
+  }
+  if (rawMessage.action) {
+    inputData.action = rawMessage.action;
+  }
+  if (rawMessage.thought) {
+    inputData.thought = rawMessage.thought;
+  }
 
   // Create output data based on status and content
   const outputData: Record<string, unknown> = {};
-  if (rawMessage.text) outputData.result = rawMessage.text;
-  if (actionStatus) outputData.status = actionStatus;
-  if (rawMessage.thought) outputData.thought = rawMessage.thought;
-  if (rawMessage.actionResult) outputData.actionResult = rawMessage.actionResult;
+  if (rawMessage.text) {
+    outputData.result = rawMessage.text;
+  }
+  if (actionStatus) {
+    outputData.status = actionStatus;
+  }
+  if (rawMessage.thought) {
+    outputData.thought = rawMessage.thought;
+  }
+  if (rawMessage.actionResult) {
+    outputData.actionResult = rawMessage.actionResult;
+  }
 
   // Handle error cases
   const isError = actionStatus === 'failed' || actionStatus === 'error';
@@ -234,7 +248,9 @@ export function MessageContent({
         ) : (
           <div>
             {(() => {
-              if (!message.text) return null;
+              if (!message.text) {
+                return null;
+              }
 
               const mediaInfos = parseMediaFromText(message.text);
               const attachmentUrls = new Set(
@@ -440,17 +456,23 @@ export default function Chat({
     chatType,
     onMessageAdded: (message: UiMessage) => {
       updateChatTitle();
-      if (message.isAgent) safeScrollToBottom();
+      if (message.isAgent) {
+        safeScrollToBottom();
+      }
     },
     onMessageUpdated: (_id: UUID, updates: Partial<UiMessage>) => {
-      if (!updates.isLoading && updates.isLoading !== undefined) safeScrollToBottom();
+      if (!updates.isLoading && updates.isLoading !== undefined) {
+        safeScrollToBottom();
+      }
     },
     onInputDisabledChange: (disabled: boolean) => updateChatState({ inputDisabled: disabled }),
   });
 
   // Get agents in the current group
   const groupAgents = useMemo(() => {
-    if (chatType !== ChannelType.GROUP || !participants) return [];
+    if (chatType !== ChannelType.GROUP || !participants) {
+      return [];
+    }
     return participants
       .map((pId) => allAgents.find((a) => a.id === pId))
       .filter(Boolean) as Agent[];
@@ -499,7 +521,9 @@ export default function Chat({
   // Handle DM channel creation
   const handleNewDmChannel = useCallback(
     async (agentIdForNewChannel: UUID | undefined) => {
-      if (!agentIdForNewChannel || chatType !== 'DM') return;
+      if (!agentIdForNewChannel || chatType !== 'DM') {
+        return;
+      }
 
       if (latestChannel) {
         try {
@@ -602,10 +626,13 @@ export default function Chat({
 
   // Handle DM channel deletion
   const handleDeleteCurrentDmChannel = useCallback(() => {
-    if (chatType !== ChannelType.DM || !chatState.currentDmChannelId || !targetAgentData?.id)
+    if (chatType !== ChannelType.DM || !chatState.currentDmChannelId || !targetAgentData?.id) {
       return;
+    }
     const channelToDelete = agentDmChannels.find((ch) => ch.id === chatState.currentDmChannelId);
-    if (!channelToDelete) return;
+    if (!channelToDelete) {
+      return;
+    }
 
     confirm(
       {
@@ -1013,8 +1040,9 @@ export default function Chat({
       !finalMessageServerIdForHooks ||
       !currentClientEntityId ||
       (chatType === ChannelType.DM && !targetAgentData?.id)
-    )
+    ) {
       return;
+    }
 
     const tempMessageId = randomUUID() as UUID;
     let messageText = chatState.input.trim();
@@ -1037,22 +1065,26 @@ export default function Chat({
       source: chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
       attachments: optimisticAttachments,
     };
-    if (messageText || currentSelectedFiles.length > 0) addMessage(optimisticUiMessage);
+    if (messageText || currentSelectedFiles.length > 0) {
+      addMessage(optimisticUiMessage);
+    }
     safeScrollToBottom();
     try {
       let processedUiAttachments: Media[] = [];
       if (currentSelectedFiles.length > 0) {
         const { uploaded, failed, blobUrls } = await uploadFiles(currentSelectedFiles);
         processedUiAttachments = uploaded;
-        if (failed.length > 0)
+        if (failed.length > 0) {
           updateMessage(tempMessageId, {
             attachments: optimisticUiMessage.attachments?.filter(
               (att) => !failed.some((f) => f.file.id === att.id)
             ),
           });
+        }
         cleanupBlobUrls(blobUrls);
-        if (!messageText.trim() && processedUiAttachments.length > 0)
+        if (!messageText.trim() && processedUiAttachments.length > 0) {
           messageText = `Shared ${processedUiAttachments.length} file(s).`;
+        }
       }
       const mediaInfosFromText = parseMediaFromText(currentInputVal);
       const textMediaAttachments: Media[] = mediaInfosFromText.map(
@@ -1105,7 +1137,9 @@ export default function Chat({
   };
 
   const handleDeleteMessage = (messageId: string) => {
-    if (!finalChannelIdForHooks || !messageId) return;
+    if (!finalChannelIdForHooks || !messageId) {
+      return;
+    }
     const validMessageId = validateUuid(messageId);
     if (validMessageId) {
       // Immediately remove message from UI for optimistic update
@@ -1178,7 +1212,9 @@ export default function Chat({
   };
 
   const handleClearChat = () => {
-    if (!finalChannelIdForHooks) return;
+    if (!finalChannelIdForHooks) {
+      return;
+    }
     const confirmMessage =
       chatType === ChannelType.DM
         ? `Clear all messages in this chat with ${targetAgentData?.name}?`
@@ -1237,7 +1273,9 @@ export default function Chat({
   }
 
   const onDeleteAgent = () => {
-    if (isDeletingAgent) return;
+    if (isDeletingAgent) {
+      return;
+    }
     confirm(
       {
         title: 'Delete Agent',
@@ -1496,7 +1534,9 @@ export default function Chat({
                   {
                     label: 'Delete Group',
                     onClick: () => {
-                      if (!finalChannelIdForHooks || !finalMessageServerIdForHooks) return;
+                      if (!finalChannelIdForHooks || !finalMessageServerIdForHooks) {
+                        return;
+                      }
                       // Capture the channel ID to use in the async callback
                       const channelIdToDelete = finalChannelIdForHooks;
                       confirm(

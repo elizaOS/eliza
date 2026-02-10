@@ -100,10 +100,12 @@ export function AgentMemoryViewer({ agentId, agentName, channelId }: AgentMemory
       }
 
       // For messages table, filter by type
-      if (selectedType === MemoryType.messagesSent && memory.entityId !== memory.agentId)
+      if (selectedType === MemoryType.messagesSent && memory.entityId !== memory.agentId) {
         return false;
-      if (selectedType === MemoryType.messagesReceived && memory.entityId === memory.agentId)
+      }
+      if (selectedType === MemoryType.messagesReceived && memory.entityId === memory.agentId) {
         return false;
+      }
     }
 
     // Search filter
@@ -174,8 +176,12 @@ export function AgentMemoryViewer({ agentId, agentName, channelId }: AgentMemory
   };
 
   const getMemoryIcon = (memory: Memory, content: ChatMemoryContent) => {
-    if (content?.thought) return Brain;
-    if (memory.entityId === memory.agentId) return Bot;
+    if (content?.thought) {
+      return Brain;
+    }
+    if (memory.entityId === memory.agentId) {
+      return Bot;
+    }
     return User;
   };
 

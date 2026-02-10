@@ -35,7 +35,9 @@ export function useHTTPChat({
 
   const sendMessage = useCallback(
     async (text: string, attachments?: Media[]) => {
-      if (!sessionId || !channelId || !agentId || !text.trim()) return;
+      if (!sessionId || !channelId || !agentId || !text.trim()) {
+        return;
+      }
 
       const tempId = randomUUID();
       setInputDisabled(true);

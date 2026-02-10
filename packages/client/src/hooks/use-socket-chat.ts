@@ -132,7 +132,9 @@ export function useSocketChat({
         JSON.stringify(data)
       );
       const msgChannelId = data.channelId || data.roomId;
-      if (msgChannelId !== channelId) return;
+      if (msgChannelId !== channelId) {
+        return;
+      }
       const isCurrentUser = data.senderId === currentUserId;
 
       // Unified message handling for both DM and GROUP
@@ -141,7 +143,9 @@ export function useSocketChat({
           ? data.senderId === contextId
           : allAgents.some((agent) => agent.id === data.senderId);
 
-      if (!isCurrentUser && isTargetAgent) onInputDisabledChange(false);
+      if (!isCurrentUser && isTargetAgent) {
+        onInputDisabledChange(false);
+      }
 
       const clientMessageId =
         'clientMessageId' in data
@@ -254,14 +258,19 @@ export function useSocketChat({
 
     const handleMessageComplete = (data: MessageCompleteData) => {
       const completeChannelId = data.channelId || data.roomId;
-      if (completeChannelId === channelId) onInputDisabledChange(false);
+      if (completeChannelId === channelId) {
+        onInputDisabledChange(false);
+      }
     };
 
     const handleControlMessage = (data: ControlMessageData) => {
       const ctrlChannelId = data.channelId || data.roomId;
       if (ctrlChannelId === channelId) {
-        if (data.action === 'disable_input') onInputDisabledChange(true);
-        else if (data.action === 'enable_input') onInputDisabledChange(false);
+        if (data.action === 'disable_input') {
+          onInputDisabledChange(true);
+        } else if (data.action === 'enable_input') {
+          onInputDisabledChange(false);
+        }
       }
     };
 
@@ -287,7 +296,9 @@ export function useSocketChat({
     };
 
     const handleStreamChunk = (data: StreamChunkData) => {
-      if (data.channelId !== channelId) return;
+      if (data.channelId !== channelId) {
+        return;
+      }
 
       const { messageId, chunk, agentId } = data;
       const streamingMessages = streamingMessagesRef.current;

@@ -415,7 +415,9 @@ export function useRequiredSecrets(pluginNames: string[]) {
   const { data: pluginDetails, isLoading, error } = usePluginDetails(pluginNames);
 
   const requiredSecrets = useMemo(() => {
-    if (!pluginDetails) return [];
+    if (!pluginDetails) {
+      return [];
+    }
 
     return pluginDetails.reduce(
       (acc, plugin) => {

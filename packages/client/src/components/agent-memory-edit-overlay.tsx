@@ -261,7 +261,9 @@ export default function MemoryEditOverlay({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <>

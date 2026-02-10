@@ -1,11 +1,17 @@
 export function computePca(data: number[][], dims = 2): number[][] {
-  if (data.length === 0) return [];
+  if (data.length === 0) {
+    return [];
+  }
   const dim = data[0].length;
   const mean = Array(dim).fill(0);
   for (const vec of data) {
-    for (let i = 0; i < dim; i++) mean[i] += vec[i];
+    for (let i = 0; i < dim; i++) {
+      mean[i] += vec[i];
+    }
   }
-  for (let i = 0; i < dim; i++) mean[i] /= data.length;
+  for (let i = 0; i < dim; i++) {
+    mean[i] /= data.length;
+  }
   const centered = data.map((v) => v.map((val, idx) => val - mean[idx]));
   // covariance matrix
   const cov = Array.from({ length: dim }, () => Array(dim).fill(0));
@@ -22,14 +28,16 @@ export function computePca(data: number[][], dims = 2): number[][] {
     }
   }
   const eigenvectors: number[][] = [];
-  let matrix = cov.map((row) => row.slice());
+  const matrix = cov.map((row) => row.slice());
   for (let k = 0; k < dims; k++) {
     // start with a deterministic unit vector for stability
     let vec = Array(dim).fill(1 / Math.sqrt(dim));
     for (let iter = 0; iter < 50; iter++) {
       const next = multiplyMatrixVector(matrix, vec);
       const norm = Math.sqrt(next.reduce((a, b) => a + b * b, 0));
-      if (norm === 0) break;
+      if (norm === 0) {
+        break;
+      }
       vec = next.map((v) => v / norm);
     }
     eigenvectors.push(vec.slice());

@@ -30,7 +30,9 @@ interface ProfileOverlayProps {
  * @returns The profile overlay component, or null if not open.
  */
 export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOverlayProps) {
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   const { startAgent, isAgentStarting, isAgentStopping } = useAgentManagement();
   const { toast } = useToast();
@@ -56,13 +58,17 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
 
   // Handle agent start
   const handleAgentStart = () => {
-    if (isProcessing) return;
+    if (isProcessing) {
+      return;
+    }
     startAgent(agent!);
   };
 
   // Handle character export
   const handleExportCharacter = () => {
-    if (!agent) return;
+    if (!agent) {
+      return;
+    }
 
     // Ensure agent has required properties for export
     const agentForExport = {

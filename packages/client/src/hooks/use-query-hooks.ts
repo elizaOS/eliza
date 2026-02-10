@@ -151,7 +151,9 @@ export function useAgent(agentId: UUID | undefined | null, options = {}) {
   return useQuery<{ data: Agent }>({
     queryKey: ['agent', agentId],
     queryFn: async () => {
-      if (!agentId) throw new Error('Agent ID is required');
+      if (!agentId) {
+        throw new Error('Agent ID is required');
+      }
       const result = await getClient().agents.getAgent(agentId);
       return { data: mapApiAgentToClient(result) };
     },
@@ -187,7 +189,9 @@ export function useAgentRuns(
   return useQuery<RunsListResponse>({
     queryKey: ['agent', agentId, 'runs', serializedParams],
     queryFn: async () => {
-      if (!agentId) throw new Error('Agent ID is required');
+      if (!agentId) {
+        throw new Error('Agent ID is required');
+      }
       return getClient().runs.listRuns(agentId, sanitizedParams as ListRunsParams | undefined);
     },
     enabled: Boolean(agentId),
@@ -213,7 +217,9 @@ export function useAgentRunDetail(
   return useQuery<RunDetail>({
     queryKey: ['agent', agentId, 'runs', 'detail', runId, roomId ?? null],
     queryFn: async () => {
-      if (!agentId || !runId) throw new Error('Agent ID and Run ID are required');
+      if (!agentId || !runId) {
+        throw new Error('Agent ID and Run ID are required');
+      }
       return getClient().runs.getRun(agentId, runId, roomId ?? undefined);
     },
     enabled: Boolean(agentId && runId),
@@ -423,7 +429,7 @@ export function useChannelMessages(
             'Agent'
           : USER_NAME,
         senderId: sm.authorId,
-        isAgent: isAgent,
+        isAgent,
         createdAt: timestamp,
         attachments: (sm.metadata?.attachments as Media[]) || [],
         thought: isAgent ? sm.metadata?.thought : undefined,
@@ -486,10 +492,9 @@ export function useChannelMessages(
         setInternalIsLoading(false);
         setIsFetchingMore(false);
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     },
     [channelId, transformServerMessageToUiMessage, initialMessageServerId]
-  ); // Add initialMessageServerId to deps
+  );
 
   useEffect(() => {
     // Initial fetch when channelId changes or becomes available
@@ -508,8 +513,7 @@ export function useChannelMessages(
       setHasMoreMessages(true);
       setInternalIsLoading(false); // No channel, so not loading anything
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelId, fetchMessages]); // fetchMessages is memoized with useCallback
+  }, [channelId, fetchMessages]);
 
   const fetchNextPage = async () => {
     if (hasMoreMessages && !isFetchingMore && oldestMessageTimestamp) {
@@ -602,7 +606,9 @@ export function useAgentActions(agentId: UUID, roomId?: UUID, excludeTypes?: str
       const response = await getClient().agents.getAgentLogs(agentId, {
         limit: 50,
       });
-      if (!response) return [];
+      if (!response) {
+        return [];
+      }
 
       // Filter to only include model calls (useModel:*) and actions
       const relevantLogs = response.filter((log) => {
@@ -885,7 +891,9 @@ export function useAgentPanels(agentId: UUID | undefined | null, options = {}) {
   }>({
     queryKey: ['agentPanels', agentId],
     queryFn: async () => {
-      if (!agentId) throw new Error('Agent ID required');
+      if (!agentId) {
+        throw new Error('Agent ID required');
+      }
       const result = await getClient().agents.getAgentPanels(agentId);
       return { success: true, data: result.panels };
     },
@@ -975,7 +983,9 @@ export function useAgentInternalActions(
   return useQuery<AgentLog[], Error>({
     queryKey: ['agentInternalActions', agentId, agentPerspectiveRoomId],
     queryFn: async () => {
-      if (!agentId) return []; // Or throw error, depending on desired behavior for null agentId
+      if (!agentId) {
+        return [];
+      } // Or throw error, depending on desired behavior for null agentId
       const response = await getClient().agents.getAgentLogs(agentId, {
         limit: 50,
       });
@@ -1028,7 +1038,9 @@ export function useAgentInternalMemories(
       includeEmbedding,
     ],
     queryFn: async () => {
-      if (!agentId || !agentPerspectiveRoomId) return Promise.resolve([]);
+      if (!agentId || !agentPerspectiveRoomId) {
+        return Promise.resolve([]);
+      }
       const response = await getClient().memory.getAgentInternalMemories(
         agentId,
         agentPerspectiveRoomId,
@@ -1156,7 +1168,9 @@ export function useChannels(serverId: UUID | undefined, options = {}) {
   return useQuery<{ data: { channels: ClientMessageChannel[] } }>({
     queryKey: ['channels', serverId],
     queryFn: async () => {
-      if (!serverId) return Promise.resolve({ data: { channels: [] } });
+      if (!serverId) {
+        return Promise.resolve({ data: { channels: [] } });
+      }
       const result = await getClient().messaging.getMessageServerChannels(serverId);
       return { data: { channels: mapApiChannelsToClient(result.channels) } };
     },
@@ -1173,7 +1187,9 @@ export function useChannelDetails(channelId: UUID | undefined, options = {}) {
   return useQuery<{ success: boolean; data: ClientMessageChannel | null }>({
     queryKey: ['channelDetails', channelId],
     queryFn: async () => {
-      if (!channelId) return Promise.resolve({ success: true, data: null });
+      if (!channelId) {
+        return Promise.resolve({ success: true, data: null });
+      }
       const result = await getClient().messaging.getChannelDetails(channelId);
       return { success: true, data: mapApiChannelToClient(result) };
     },
@@ -1190,7 +1206,9 @@ export function useChannelParticipants(channelId: UUID | undefined, options = {}
   return useQuery<{ success: boolean; data: UUID[] }>({
     queryKey: ['channelParticipants', channelId],
     queryFn: async () => {
-      if (!channelId) return Promise.resolve({ success: true, data: [] });
+      if (!channelId) {
+        return Promise.resolve({ success: true, data: [] });
+      }
       try {
         const result = await getClient().messaging.getChannelParticipants(channelId);
 

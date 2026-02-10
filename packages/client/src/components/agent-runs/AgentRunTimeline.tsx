@@ -33,7 +33,9 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
     return runs
       .map((run, index) => {
         const detailQuery = runDetailQueries[index];
-        if (!detailQuery?.data) return null;
+        if (!detailQuery?.data) {
+          return null;
+        }
 
         return {
           traceRecord: elizaSpanAdapter.convertRunSummaryToTraceRecord(run),

@@ -4,8 +4,12 @@ import { useElizaAgents } from '@/hooks/use-eliza';
 const AgentList: React.FC = () => {
   const { agents, isLoading, error } = useElizaAgents();
 
-  if (isLoading) return <div>Loading agents...</div>;
-  if (error) return <div>Error loading agents: {(error as Error).message}</div>;
+  if (isLoading) {
+    return <div>Loading agents...</div>;
+  }
+  if (error) {
+    return <div>Error loading agents: {(error as Error).message}</div>;
+  }
 
   return (
     <div className="p-4">

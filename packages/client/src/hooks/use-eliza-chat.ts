@@ -235,7 +235,9 @@ export function useElizaChat({
         overrideChannelId?: UUID;
       }
     ) => {
-      if (!text.trim() && !options?.attachments?.length) return;
+      if (!text.trim() && !options?.attachments?.length) {
+        return;
+      }
 
       const {
         attachments,
@@ -259,7 +261,9 @@ export function useElizaChat({
         } else {
           // Default: websocket
           const targetChannelId = overrideChannelId ?? channelId;
-          if (!targetChannelId) return;
+          if (!targetChannelId) {
+            return;
+          }
 
           const tempId = messageId ?? randomUUID();
 

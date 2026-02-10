@@ -126,7 +126,9 @@ const useContainerWidth = (threshold: number = 768) => {
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
     // Debounced resize handler
     const handleResize = (width: number) => {
@@ -235,7 +237,9 @@ export default function CharacterForm({
   // Check if tabs need scroll buttons
   const checkScrollButtons = useCallback(() => {
     const container = tabsContainerRef.current;
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
     const { scrollLeft, scrollWidth, clientWidth } = container;
     setShowLeftScroll(scrollLeft > 0);
@@ -244,7 +248,9 @@ export default function CharacterForm({
 
   useEffect(() => {
     const container = tabsContainerRef.current;
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
     checkScrollButtons();
     container.addEventListener('scroll', checkScrollButtons);
@@ -258,7 +264,9 @@ export default function CharacterForm({
 
   const scrollTabs = (direction: 'left' | 'right') => {
     const container = tabsContainerRef.current;
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
     const scrollAmount = container.clientWidth * 0.8;
     container.scrollBy({
@@ -739,7 +747,9 @@ export default function CharacterForm({
 
   const handleImportJSON = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     try {
       const text = await file.text();
@@ -753,7 +763,9 @@ export default function CharacterForm({
       const missingFields = (
         Object.keys(FIELD_REQUIREMENTS) as Array<keyof typeof FIELD_REQUIREMENTS>
       ).filter((field) => {
-        if (FIELD_REQUIREMENTS[field] !== FIELD_REQUIREMENT_TYPE.REQUIRED) return false;
+        if (FIELD_REQUIREMENTS[field] !== FIELD_REQUIREMENT_TYPE.REQUIRED) {
+          return false;
+        }
 
         // Handle nested fields like style.all
         const parts = field.split('.');
@@ -761,7 +773,9 @@ export default function CharacterForm({
 
         for (const part of parts) {
           current = current?.[part];
-          if (current === undefined) return true; // field missing
+          if (current === undefined) {
+            return true;
+          } // field missing
         }
 
         return false;

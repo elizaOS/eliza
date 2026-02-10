@@ -7,9 +7,15 @@ const AgentDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { agent, isLoading, error } = useElizaAgent(id as UUID | undefined);
 
-  if (isLoading) return <div>Loading agent details...</div>;
-  if (error) return <div>Error loading agent: {(error as Error).message}</div>;
-  if (!agent) return <div>Agent not found</div>;
+  if (isLoading) {
+    return <div>Loading agent details...</div>;
+  }
+  if (error) {
+    return <div>Error loading agent: {(error as Error).message}</div>;
+  }
+  if (!agent) {
+    return <div>Agent not found</div>;
+  }
 
   return (
     <div className="p-4">

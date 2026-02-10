@@ -103,9 +103,15 @@ const Tool = ({ toolPart, defaultOpen = false, className }: ToolProps) => {
   };
 
   const formatValue = (value: unknown): string => {
-    if (value === null) return 'null';
-    if (value === undefined) return 'undefined';
-    if (typeof value === 'string') return value;
+    if (value === null) {
+      return 'null';
+    }
+    if (value === undefined) {
+      return 'undefined';
+    }
+    if (typeof value === 'string') {
+      return value;
+    }
     if (typeof value === 'object') {
       return JSON.stringify(value, null, 2);
     }

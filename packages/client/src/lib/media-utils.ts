@@ -95,7 +95,9 @@ export function getVideoPlatformInfo(
  * Parses URLs from text and identifies media types
  */
 export function parseMediaFromText(text: string): MediaInfo[] {
-  if (!text) return [];
+  if (!text) {
+    return [];
+  }
 
   // Regular expression to find URLs
   const urlRegex = /(https?:\/\/[^\s]+)/g;

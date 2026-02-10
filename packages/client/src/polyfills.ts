@@ -2,7 +2,7 @@
 import { Buffer } from 'buffer';
 
 // Ensure globalThis is used as the single global
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 const g: any =
   typeof globalThis !== 'undefined'
     ? globalThis

@@ -180,7 +180,9 @@ const DesktopLayout = ({
             value={selectedTrace.id}
             onValueChange={(value) => {
               const trace = traceRecords.find((t) => t.id === value);
-              if (trace) handleTraceSelect(trace);
+              if (trace) {
+                handleTraceSelect(trace);
+              }
             }}
           >
             <SelectTrigger className="w-full h-auto py-3">
@@ -291,7 +293,9 @@ const DesktopLayout = ({
             value=""
             onValueChange={(value) => {
               const trace = traceRecords.find((t) => t.id === value);
-              if (trace) handleTraceSelect(trace);
+              if (trace) {
+                handleTraceSelect(trace);
+              }
             }}
           >
             <SelectTrigger className="w-full">

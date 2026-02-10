@@ -107,7 +107,9 @@ export function useAgentManagement() {
    * Check if an agent is currently starting
    */
   const isAgentStarting = (agentId: UUID | undefined | null) => {
-    if (!agentId) return false;
+    if (!agentId) {
+      return false;
+    }
     return startingAgents.includes(agentId);
   };
 
@@ -115,7 +117,9 @@ export function useAgentManagement() {
    * Check if an agent is currently stopping
    */
   const isAgentStopping = (agentId: UUID | undefined | null) => {
-    if (!agentId) return false;
+    if (!agentId) {
+      return false;
+    }
     return stoppingAgents.includes(agentId);
   };
 

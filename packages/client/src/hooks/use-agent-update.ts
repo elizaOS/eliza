@@ -413,7 +413,9 @@ export function useAgentUpdate(initialAgent: Agent) {
         });
 
         if (hasSecretChanges) {
-          if (!changedFields.settings) changedFields.settings = {};
+          if (!changedFields.settings) {
+            changedFields.settings = {};
+          }
           changedFields.settings.secrets = changedSecrets;
         }
       }

@@ -11,8 +11,11 @@ const ChatInput = React.forwardRef<HTMLTextAreaElement, ChatInputProps>(
     const internalRef = React.useRef<HTMLTextAreaElement | null>(null);
 
     const combinedRef = (node: HTMLTextAreaElement) => {
-      if (typeof ref === 'function') ref(node);
-      else if (ref) ref.current = node;
+      if (typeof ref === 'function') {
+        ref(node);
+      } else if (ref) {
+        ref.current = node;
+      }
       internalRef.current = node;
     };
 
@@ -20,7 +23,7 @@ const ChatInput = React.forwardRef<HTMLTextAreaElement, ChatInputProps>(
       const textarea = internalRef.current;
       if (textarea) {
         textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, MAX_HEIGHT) + 'px';
+        textarea.style.height = `${Math.min(textarea.scrollHeight, MAX_HEIGHT)}px`;
       }
     };
 

@@ -149,7 +149,9 @@ class EventAdapter {
 
   // For checking if EventEmitter has listeners
   listenerCount(eventName: string): number {
-    if (!this.events[eventName]) return 0;
+    if (!this.events[eventName]) {
+      return 0;
+    }
     return this.events[eventName].getHandlers().length;
   }
 
@@ -244,11 +246,11 @@ export class SocketIOManager extends EventAdapter {
     }
 
     // Create a single socket connection
-    const fullURL = window.location.origin + '/';
+    const fullURL = `${window.location.origin}/`;
     clientLogger.info('connecting to', fullURL);
     this.socket = io(fullURL, {
       auth: {
-        apiKey: apiKey,
+        apiKey,
         entityId: clientEntityId,
       },
       autoConnect: true,
@@ -356,7 +358,7 @@ export class SocketIOManager extends EventAdapter {
         // Post the message to the event for UI updates
         this.emit('messageBroadcast', {
           ...data,
-          channelId: channelId, // Ensure channelId is always set
+          channelId, // Ensure channelId is always set
           roomId: channelId, // Keep roomId for backward compatibility
           name: data.senderName, // Required for ContentWithUser compatibility
         });
@@ -400,7 +402,7 @@ export class SocketIOManager extends EventAdapter {
         // Emit the control message event
         this.emit('controlMessage', {
           ...data,
-          channelId: channelId, // Ensure channelId is always set
+          channelId, // Ensure channelId is always set
           roomId: channelId, // Keep roomId for backward compatibility
         });
       } else {
@@ -423,7 +425,7 @@ export class SocketIOManager extends EventAdapter {
         // Emit the message deleted event
         this.emit('messageDeleted', {
           ...data,
-          channelId: channelId, // Ensure channelId is always set
+          channelId, // Ensure channelId is always set
           roomId: channelId, // Deprecated: Retained for backward compatibility with older clients
         });
       } else {
@@ -446,7 +448,7 @@ export class SocketIOManager extends EventAdapter {
         // Emit the channel cleared event
         this.emit('channelCleared', {
           ...data,
-          channelId: channelId, // Ensure channelId is always set
+          channelId, // Ensure channelId is always set
           roomId: channelId, // Keep roomId for backward compatibility
         });
       } else {
@@ -469,7 +471,7 @@ export class SocketIOManager extends EventAdapter {
         // Emit the channel deleted event (same as cleared for now)
         this.emit('channelDeleted', {
           ...data,
-          channelId: channelId, // Ensure channelId is always set
+          channelId, // Ensure channelId is always set
           roomId: channelId, // Keep roomId for backward compatibility
         });
       } else {
@@ -553,7 +555,7 @@ export class SocketIOManager extends EventAdapter {
     this.socket.emit('message', {
       type: SOCKET_MESSAGE_TYPE.ROOM_JOINING,
       payload: {
-        channelId: channelId,
+        channelId,
         roomId: channelId, // Keep for backward compatibility
         entityId: this.clientEntityId,
       },
@@ -641,9 +643,9 @@ export class SocketIOManager extends EventAdapter {
         senderId: this.clientEntityId,
         senderName: USER_NAME,
         message,
-        channelId: channelId,
+        channelId,
         roomId: channelId, // Keep for backward compatibility
-        messageServerId: messageServerId,
+        messageServerId,
         messageId: finalMessageId,
         source,
         attachments,

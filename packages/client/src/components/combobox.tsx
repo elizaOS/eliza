@@ -83,7 +83,9 @@ export default function MultiSelectCombobox({
       }
 
       console.log('[MultiSelectCombobox] New selection:', newSelection);
-      if (onSelect) onSelect(newSelection);
+      if (onSelect) {
+        onSelect(newSelection);
+      }
       return newSelection;
     });
   };
@@ -96,7 +98,9 @@ export default function MultiSelectCombobox({
         }
         return item.label !== option.label;
       });
-      if (onSelect) onSelect(newSelection);
+      if (onSelect) {
+        onSelect(newSelection);
+      }
       return newSelection;
     });
   };
@@ -104,7 +108,9 @@ export default function MultiSelectCombobox({
   const removeExtraSelections = () => {
     setSelected((prev) => {
       const newSelection = prev.slice(0, 3); // Keep only the first 3
-      if (onSelect) onSelect(newSelection);
+      if (onSelect) {
+        onSelect(newSelection);
+      }
       return newSelection;
     });
   };
