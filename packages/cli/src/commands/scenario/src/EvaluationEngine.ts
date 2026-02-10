@@ -144,7 +144,7 @@ class ExecutionTimeEvaluator implements Evaluator {
 
     const duration =
       runResult.durationMs ?? (runResult.endedAtMs ?? 0) - (runResult.startedAtMs ?? 0);
-    if (duration === null || Number.isNaN(duration)) {
+    if (duration == null || Number.isNaN(duration)) {
       return {
         success: false,
         message: 'No timing information available for this step',
@@ -152,7 +152,7 @@ class ExecutionTimeEvaluator implements Evaluator {
     }
 
     const tooSlow = duration > params.max_duration_ms;
-    const tooFast = params.min_duration_ms !== null && duration < params.min_duration_ms;
+    const tooFast = params.min_duration_ms != null && duration < params.min_duration_ms;
     const success = !tooSlow && !tooFast;
 
     return {

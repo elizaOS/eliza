@@ -219,7 +219,7 @@ class EnhancedExecutionTimeEvaluator implements EnhancedEvaluator {
       runResult.durationMs ?? (runResult.endedAtMs ?? 0) - (runResult.startedAtMs ?? 0);
 
     if (
-      duration === null ||
+      duration == null ||
       Number.isNaN(duration) ||
       (runResult.durationMs === undefined &&
         (runResult.startedAtMs === undefined || runResult.endedAtMs === undefined))
@@ -241,7 +241,7 @@ class EnhancedExecutionTimeEvaluator implements EnhancedEvaluator {
     }
 
     const tooSlow = duration > params.max_duration_ms;
-    const tooFast = params.min_duration_ms !== null && duration < params.min_duration_ms;
+    const tooFast = params.min_duration_ms != null && duration < params.min_duration_ms;
     const success = !tooSlow && !tooFast;
 
     let summary: string;

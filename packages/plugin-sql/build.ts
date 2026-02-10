@@ -40,7 +40,9 @@ async function buildAll() {
     },
   });
 
-  if (!nodeOk) return false;
+  if (!nodeOk) {
+    return false;
+  }
 
   // Browser build (client): PGlite only, no Node builtins
   const browserOk = await runBuild({
@@ -66,7 +68,9 @@ async function buildAll() {
     },
   });
 
-  if (!browserOk) return false;
+  if (!browserOk) {
+    return false;
+  }
 
   // Ensure declaration entry points are present for consumers (keep minimal)
   const distDir = join(process.cwd(), 'dist');
@@ -111,7 +115,9 @@ async function buildAll() {
 
 buildAll()
   .then((ok) => {
-    if (!ok) process.exit(1);
+    if (!ok) {
+      process.exit(1);
+    }
   })
   .catch((error) => {
     console.error('Build script error:', error);
