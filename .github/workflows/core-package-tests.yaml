@@ -143,6 +143,15 @@ jobs:
 
           # Track if any tests fail
           TESTS_FAILED=0
+          MAX_RETRIES=2  # Retry up to 2 times on Bun runtime crashes
+
+          # Check if exit code indicates a Bun runtime crash (segfault, SIGILL, etc.)
+          is_bun_crash() {
+            case $1 in
+              132|134|136|139|137) return 0 ;;  # SIGILL, SIGABRT, SIGFPE, SIGSEGV, SIGKILL
+              *) return 1 ;;
+            esac
+          }
 
           # Run tests in each package that has them (excluding CLI and client)
           # These packages are tested together because they:
@@ -157,7 +166,33 @@ jobs:
 
             cd "packages/$package"
 
-            if bun run test --timeout 60000; then
+            attempt=1
+            pkg_passed=false
+            while [ $attempt -le $((MAX_RETRIES + 1)) ]; do
+              set +e
+              bun run test --timeout 60000
+              exit_code=$?
+              set -e
+
+              if [ $exit_code -eq 0 ]; then
+                pkg_passed=true
+                break
+              elif is_bun_crash $exit_code; then
+                if [ $attempt -le $MAX_RETRIES ]; then
+                  echo ""
+                  echo "⚠️  Bun runtime crash (exit $exit_code) in $package — retrying ($((attempt + 1))/$((MAX_RETRIES + 1)))..."
+                  sleep 3
+                  ((attempt++))
+                else
+                  echo "⚠️  Bun crashed $((MAX_RETRIES + 1)) times in $package"
+                  break
+                fi
+              else
+                break  # Normal test failure, no retry
+              fi
+            done
+
+            if $pkg_passed; then
               echo "✅ Tests passed for $package"
             else
               echo "❌ Tests failed for $package"
