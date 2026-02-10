@@ -68,14 +68,22 @@ jobs:
 
       - name: Run Cypress Component Tests
         working-directory: packages/client
+        # Vite's dev-server runs all 25+ spec files in a single process.
+        # Under CI memory constraints it can become unresponsive around spec
+        # 20+, causing "Failed to fetch dynamically imported module" for the
+        # support file.  A workflow-level retry starts a fresh Vite process
+        # which reliably succeeds.  The Vite config (vite.config.cypress.ts)
+        # already mitigates this with pre-bundling, HMR off, sourcemap off,
+        # and server.warmup, but a retry is the safety net.
         run: |
-          # Update dependencies first to ensure compatibility
           bun install
-          # Run component tests
-          bun run test:component
+          bun run test:component || bun run test:component
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: true
+          # Give the Vite dev-server more V8 heap so it survives 25+ spec
+          # transitions without running out of memory.
+          NODE_OPTIONS: '--max-old-space-size=4096'
 
   # E2E tests (needs server)
   cypress-e2e:
