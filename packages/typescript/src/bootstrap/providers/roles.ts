@@ -35,7 +35,20 @@ export const roleProvider: Provider = {
   ): Promise<ProviderResult> => {
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
     if (!room) {
-      throw new Error("No room found");
+      logger.debug(
+        {
+          src: "plugin:bootstrap:provider:roles",
+          agentId: runtime.agentId,
+        },
+        "No room found for roles provider, skipping",
+      );
+      return {
+        data: { roles: [] },
+        values: {
+          roles: "No room context available for role information.",
+        },
+        text: "No room context available for role information.",
+      };
     }
 
     if (room.type !== ChannelType.GROUP) {

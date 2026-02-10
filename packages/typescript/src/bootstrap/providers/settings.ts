@@ -162,21 +162,21 @@ export const settingsProvider: Provider = {
     ]);
 
     if (!room) {
-      logger.error(
+      logger.debug(
         {
           src: "plugin:bootstrap:provider:settings",
           agentId: runtime.agentId,
         },
-        "No room found for settings provider",
+        "No room found for settings provider, skipping",
       );
       return {
         data: {
           settings: [],
         },
         values: {
-          settings: "Error: Room not found",
+          settings: "No room context available for settings.",
         },
-        text: "Error: Room not found",
+        text: "No room context available for settings.",
       };
     }
 
