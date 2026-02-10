@@ -25,6 +25,7 @@ For complete guides and API references, visit our official **[documentation](htt
 ## 🚀 Key Features
 
 - 🔌 **Rich Connectivity**: Out-of-the-box connectors for Discord, Telegram, Farcaster, and more.
+- 📞 **Voice Calling**: [ClawdTalk](https://clawdtalk.com) integration lets agents make and receive real phone calls via [Telnyx](https://telnyx.com) voice infrastructure. [GitHub](https://github.com/team-telnyx/clawdtalk-client).
 - 🧠 **Model Agnostic**: Supports all major models, including OpenAI, Gemini, Anthropic, Llama, and Grok.
 - 🖥️ **Modern Web UI**: A professional dashboard for managing agents, groups, and conversations in real-time.
 - 🤖 **Multi-Agent Architecture**: Designed from the ground up for creating and orchestrating groups of specialized agents.
