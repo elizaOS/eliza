@@ -907,11 +907,7 @@ export class TestDatabaseManager {
   /**
    * Get statistics about test databases
    */
-  getStats(): {
-    activeDatabases: number;
-    tempPaths: string[];
-    memoryUsage: string;
-  } {
+  getStats(): { activeDatabases: number; tempPaths: string[]; memoryUsage: string } {
     return {
       activeDatabases: this.testDatabases.size,
       tempPaths: Array.from(this.tempPaths),
