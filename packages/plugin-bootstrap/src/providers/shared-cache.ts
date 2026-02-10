@@ -229,7 +229,7 @@ function ensureSweepTimer(): void {
  */
 /**
  * Stop the periodic cache sweep and clear all caches.
- * 
+ *
  * **IMPORTANT**: Call during shutdown or in test `afterEach`/`afterAll` hooks
  * to prevent timer leaks that keep the process alive.
  */
