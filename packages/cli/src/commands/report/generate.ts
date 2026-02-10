@@ -163,8 +163,8 @@ function transformMatrixRunResultToScenarioRunResult(
     parameters: matrixResult.parameters,
     metrics: transformedMetrics,
     final_agent_response: finalResponse,
-    evaluations: evaluations,
-    trajectory: trajectory,
+    evaluations,
+    trajectory,
     error: matrixResult.error || null,
   };
 }

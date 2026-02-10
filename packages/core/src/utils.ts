@@ -30,7 +30,9 @@ function upgradeDoubleToTriple(tpl: string) {
     /(?<!{){{(?![{#\/!>])([\s\S]*?)}}/g,
     (_match: string, inner: string) => {
       // keep the block keyword {{else}} unchanged
-      if (inner.trim() === 'else') return `{{${inner}}}`;
+      if (inner.trim() === 'else') {
+        return `{{${inner}}}`;
+      }
       return `{{{${inner}}}}`;
     }
   );
@@ -271,8 +273,12 @@ export const formatMessages = ({
           ? ` (Attachments: ${attachments
               .map((media) => {
                 const lines = [`[${media.id} - ${media.title} (${media.url})]`];
-                if (media.text) lines.push(`Text: ${media.text}`);
-                if (media.description) lines.push(`Description: ${media.description}`);
+                if (media.text) {
+                  lines.push(`Text: ${media.text}`);
+                }
+                if (media.description) {
+                  lines.push(`Description: ${media.description}`);
+                }
                 return lines.join('\n');
               })
               .join(
@@ -356,7 +362,9 @@ const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
  * // result is MyResponse | null
  */
 export function parseKeyValueXml<T = Record<string, unknown>>(text: string): T | null {
-  if (!text) return null;
+  if (!text) {
+    return null;
+  }
 
   // First, try to find a specific <response> block using linear search (avoids regex ReDoS)
   let xmlContent: string | null = null;
@@ -377,7 +385,9 @@ export function parseKeyValueXml<T = Record<string, unknown>>(text: string): T |
       const length = input.length;
       while (i < length) {
         const openIdx = input.indexOf('<', i);
-        if (openIdx === -1) break;
+        if (openIdx === -1) {
+          break;
+        }
         // Skip closing tags and comments/decls
         if (
           input.startsWith('</', openIdx) ||
@@ -405,7 +415,9 @@ export function parseKeyValueXml<T = Record<string, unknown>>(text: string): T |
         }
         // Find end of start tag '>' (skip attributes if present)
         const startTagEnd = input.indexOf('>', j);
-        if (startTagEnd === -1) break;
+        if (startTagEnd === -1) {
+          break;
+        }
         // Self-closing tag? tolerate whitespace before '/>'
         const startTagText = input.slice(openIdx, startTagEnd + 1);
         if (/\/\s*>$/.test(startTagText)) {
@@ -470,7 +482,9 @@ export function parseKeyValueXml<T = Record<string, unknown>>(text: string): T |
 
     while (i < length) {
       const openIdx = input.indexOf('<', i);
-      if (openIdx === -1) break;
+      if (openIdx === -1) {
+        break;
+      }
 
       // Skip closing tags and comments/decls
       if (
@@ -501,7 +515,9 @@ export function parseKeyValueXml<T = Record<string, unknown>>(text: string): T |
 
       // Find end of start tag '>' (skip attributes if present)
       const startTagEnd = input.indexOf('>', j);
-      if (startTagEnd === -1) break;
+      if (startTagEnd === -1) {
+        break;
+      }
 
       // Self-closing tag? tolerate whitespace before '/>'
       const startTagText = input.slice(openIdx, startTagEnd + 1);
@@ -695,12 +711,18 @@ export async function splitChunks(content: string, chunkSize = 512, bleed = 20):
  * Trims the provided text prompt to a specified token limit using a tokenizer model and type.
  */
 export async function trimTokens(prompt: string, maxTokens: number, runtime: IAgentRuntime) {
-  if (!prompt) throw new Error('Trim tokens received a null prompt');
+  if (!prompt) {
+    throw new Error('Trim tokens received a null prompt');
+  }
 
   // if prompt is less than of maxtokens / 5, skip
-  if (prompt.length < maxTokens / 5) return prompt;
+  if (prompt.length < maxTokens / 5) {
+    return prompt;
+  }
 
-  if (maxTokens <= 0) throw new Error('maxTokens must be positive');
+  if (maxTokens <= 0) {
+    throw new Error('maxTokens must be positive');
+  }
 
   const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
     prompt,
@@ -745,9 +767,13 @@ export function safeReplacer() {
  * @returns {boolean} - Returns `true` for affirmative inputs, `false` for negative or unrecognized inputs
  */
 export function parseBooleanFromText(value: string | undefined | null): boolean {
-  if (!value) return false;
+  if (!value) {
+    return false;
+  }
   // shouldn't need this but we're hitting where value is true at runtime
-  if (typeof value === 'boolean') return value;
+  if (typeof value === 'boolean') {
+    return value;
+  }
 
   const affirmative = ['YES', 'Y', 'TRUE', 'T', '1', 'ON', 'ENABLE'];
   const negative = ['NO', 'N', 'FALSE', 'F', '0', 'OFF', 'DISABLE'];
@@ -803,7 +829,9 @@ export function stringToUuid(target: string | number): UUID {
 
   // If already a UUID, return as-is to avoid re-hashing
   const maybeUuid = validateUuid(target);
-  if (maybeUuid) return maybeUuid;
+  if (maybeUuid) {
+    return maybeUuid;
+  }
 
   const escapedStr = encodeURIComponent(target);
 
@@ -825,7 +853,9 @@ export function stringToUuid(target: string | number): UUID {
  * Call this during initialization to improve performance
  */
 export async function prewarmUuidCache(values: string[]): Promise<void> {
-  if (!checkWebCrypto()) return;
+  if (!checkWebCrypto()) {
+    return;
+  }
 
   const promises = values.map(async (value) => {
     const escapedStr = encodeURIComponent(value);
@@ -844,7 +874,9 @@ let webCryptoAvailable: boolean | null = null;
  * Check if WebCrypto is available for SHA-1
  */
 function checkWebCrypto(): boolean {
-  if (webCryptoAvailable !== null) return webCryptoAvailable;
+  if (webCryptoAvailable !== null) {
+    return webCryptoAvailable;
+  }
 
   // Check for crypto.subtle (WebCrypto API)
   if (
@@ -868,7 +900,9 @@ function checkWebCrypto(): boolean {
 function getCachedSha1(message: string): Uint8Array {
   // Check cache first
   const cached = sha1Cache.get(message);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
 
   // Use synchronous pure JS implementation for immediate result
   const digest = sha1Bytes(message);
@@ -1006,9 +1040,10 @@ function utf8Encode(str: string): Uint8Array {
   // Fallback
   const utf8: number[] = [];
   for (let i = 0; i < str.length; i++) {
-    let charcode = str.charCodeAt(i);
-    if (charcode < 0x80) utf8.push(charcode);
-    else if (charcode < 0x800) {
+    const charcode = str.charCodeAt(i);
+    if (charcode < 0x80) {
+      utf8.push(charcode);
+    } else if (charcode < 0x800) {
       utf8.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f));
     } else if (charcode < 0xd800 || charcode >= 0xe000) {
       utf8.push(0xe0 | (charcode >> 12), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
@@ -1035,23 +1070,21 @@ function bytesToUuid(bytes: Uint8Array): string {
     hex.push(h);
   }
   // Format: 8-4-4-4-12 hexadecimal digits
-  return (
-    hex.slice(0, 4).join('') +
-    '-' +
-    hex.slice(4, 6).join('') +
-    '-' +
-    hex.slice(6, 8).join('') +
-    '-' +
-    hex.slice(8, 10).join('') +
-    '-' +
-    hex.slice(10, 16).join('')
-  );
+  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex
+    .slice(8, 10)
+    .join('')}-${hex.slice(10, 16).join('')}`;
 }
 
 export const getContentTypeFromMimeType = (mimeType: string): ContentType | undefined => {
-  if (mimeType.startsWith('image/')) return ContentType.IMAGE;
-  if (mimeType.startsWith('video/')) return ContentType.VIDEO;
-  if (mimeType.startsWith('audio/')) return ContentType.AUDIO;
+  if (mimeType.startsWith('image/')) {
+    return ContentType.IMAGE;
+  }
+  if (mimeType.startsWith('video/')) {
+    return ContentType.VIDEO;
+  }
+  if (mimeType.startsWith('audio/')) {
+    return ContentType.AUDIO;
+  }
   if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.startsWith('text/')) {
     return ContentType.DOCUMENT;
   }

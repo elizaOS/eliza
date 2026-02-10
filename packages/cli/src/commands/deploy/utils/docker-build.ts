@@ -50,7 +50,9 @@ export interface DockerPushResult {
 export async function checkDockerAvailable(): Promise<boolean> {
   try {
     const versionResult = await bunExec('docker', ['--version']);
-    if (!versionResult.success) return false;
+    if (!versionResult.success) {
+      return false;
+    }
     const infoResult = await bunExec('docker', ['info']);
     return infoResult.success;
   } catch {
@@ -386,7 +388,9 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
 
     // Process stderr stream for progress tracking
     const processStderr = async () => {
-      if (!pushProcess.stderr) return;
+      if (!pushProcess.stderr) {
+        return;
+      }
 
       const reader = pushProcess.stderr.getReader();
       const decoder = new TextDecoder();
@@ -394,7 +398,9 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            break;
+          }
 
           const output = decoder.decode(value, { stream: true });
 

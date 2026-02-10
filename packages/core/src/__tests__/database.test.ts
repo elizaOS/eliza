@@ -204,7 +204,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
    */
   async getMemoriesByIds(memoryIds: UUID[], _tableName?: string): Promise<Memory[]> {
     return memoryIds.map((id) => ({
-      id: id,
+      id,
       content: { text: 'Test Memory' },
       roomId: 'room-id' as UUID,
       entityId: 'user-id' as UUID,

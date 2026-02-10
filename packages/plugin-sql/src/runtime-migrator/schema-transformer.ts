@@ -87,12 +87,12 @@ export function deriveSchemaName(pluginName: string): string {
   const reserved = ['public', 'pg_catalog', 'information_schema', 'migrations'];
   if (!schemaName || reserved.includes(schemaName)) {
     // Fallback to using the full plugin name with safe characters
-    schemaName = 'plugin_' + normalizeSchemaName(pluginName.toLowerCase());
+    schemaName = `plugin_${normalizeSchemaName(pluginName.toLowerCase())}`;
   }
 
   // Ensure it starts with a letter (PostgreSQL requirement)
   if (!/^[a-z]/.test(schemaName)) {
-    schemaName = 'p_' + schemaName;
+    schemaName = `p_${schemaName}`;
   }
 
   // Truncate if too long (PostgreSQL identifier limit is 63 chars)

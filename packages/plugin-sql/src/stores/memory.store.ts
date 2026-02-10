@@ -26,7 +26,9 @@ export class MemoryStore implements Store {
   }): Promise<Memory[]> {
     const { entityId, agentId, roomId, worldId, tableName, unique, start, end, offset } = params;
 
-    if (!tableName) throw new Error('tableName is required');
+    if (!tableName) {
+      throw new Error('tableName is required');
+    }
     if (offset !== undefined && offset < 0) {
       throw new Error('offset must be a non-negative number');
     }
@@ -34,12 +36,24 @@ export class MemoryStore implements Store {
     return this.ctx.withIsolationContext(entityId ?? null, async (tx) => {
       const conditions = [eq(memoryTable.type, tableName)];
 
-      if (start) conditions.push(gte(memoryTable.createdAt, new Date(start)));
-      if (roomId) conditions.push(eq(memoryTable.roomId, roomId));
-      if (worldId) conditions.push(eq(memoryTable.worldId, worldId));
-      if (end) conditions.push(lte(memoryTable.createdAt, new Date(end)));
-      if (unique) conditions.push(eq(memoryTable.unique, true));
-      if (agentId) conditions.push(eq(memoryTable.agentId, agentId));
+      if (start) {
+        conditions.push(gte(memoryTable.createdAt, new Date(start)));
+      }
+      if (roomId) {
+        conditions.push(eq(memoryTable.roomId, roomId));
+      }
+      if (worldId) {
+        conditions.push(eq(memoryTable.worldId, worldId));
+      }
+      if (end) {
+        conditions.push(lte(memoryTable.createdAt, new Date(end)));
+      }
+      if (unique) {
+        conditions.push(eq(memoryTable.unique, true));
+      }
+      if (agentId) {
+        conditions.push(eq(memoryTable.agentId, agentId));
+      }
 
       const baseQuery = tx
         .select({
@@ -96,7 +110,9 @@ export class MemoryStore implements Store {
     limit?: number;
   }): Promise<Memory[]> {
     return this.ctx.withRetry(async () => {
-      if (params.roomIds.length === 0) return [];
+      if (params.roomIds.length === 0) {
+        return [];
+      }
 
       const conditions = [
         eq(memoryTable.type, params.tableName),
@@ -144,7 +160,9 @@ export class MemoryStore implements Store {
         .where(eq(memoryTable.id, id))
         .limit(1);
 
-      if (memoryResult.length === 0) return null;
+      if (memoryResult.length === 0) {
+        return null;
+      }
 
       const memory = memoryResult[0];
 
@@ -179,10 +197,14 @@ export class MemoryStore implements Store {
 
   async getByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]> {
     return this.ctx.withRetry(async () => {
-      if (memoryIds.length === 0) return [];
+      if (memoryIds.length === 0) {
+        return [];
+      }
 
       const conditions = [inArray(memoryTable.id, memoryIds)];
-      if (tableName) conditions.push(eq(memoryTable.type, tableName));
+      if (tableName) {
+        conditions.push(eq(memoryTable.type, tableName));
+      }
 
       const rows = await this.db
         .select({
@@ -236,11 +258,21 @@ export class MemoryStore implements Store {
         eq(memoryTable.agentId, this.ctx.agentId),
       ];
 
-      if (params.unique) conditions.push(eq(memoryTable.unique, true));
-      if (params.roomId) conditions.push(eq(memoryTable.roomId, params.roomId));
-      if (params.worldId) conditions.push(eq(memoryTable.worldId, params.worldId));
-      if (params.entityId) conditions.push(eq(memoryTable.entityId, params.entityId));
-      if (params.match_threshold) conditions.push(gte(similarity, params.match_threshold));
+      if (params.unique) {
+        conditions.push(eq(memoryTable.unique, true));
+      }
+      if (params.roomId) {
+        conditions.push(eq(memoryTable.roomId, params.roomId));
+      }
+      if (params.worldId) {
+        conditions.push(eq(memoryTable.worldId, params.worldId));
+      }
+      if (params.entityId) {
+        conditions.push(eq(memoryTable.entityId, params.entityId));
+      }
+      if (params.match_threshold) {
+        conditions.push(gte(similarity, params.match_threshold));
+      }
 
       const results = await this.db
         .select({
@@ -393,7 +425,9 @@ export class MemoryStore implements Store {
   }
 
   async deleteMany(memoryIds: UUID[]): Promise<void> {
-    if (memoryIds.length === 0) return;
+    if (memoryIds.length === 0) {
+      return;
+    }
 
     return this.ctx.withRetry(async () => {
       await this.db.transaction(async (tx) => {
@@ -418,7 +452,9 @@ export class MemoryStore implements Store {
           .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
 
         const ids = rows.map((r) => r.id);
-        if (ids.length === 0) return;
+        if (ids.length === 0) {
+          return;
+        }
 
         await Promise.all(
           ids.map(async (memoryId) => {
@@ -435,11 +471,15 @@ export class MemoryStore implements Store {
   }
 
   async count(roomId: UUID, unique = true, tableName = ''): Promise<number> {
-    if (!tableName) throw new Error('tableName is required');
+    if (!tableName) {
+      throw new Error('tableName is required');
+    }
 
     return this.ctx.withRetry(async () => {
       const conditions = [eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)];
-      if (unique) conditions.push(eq(memoryTable.unique, true));
+      if (unique) {
+        conditions.push(eq(memoryTable.unique, true));
+      }
 
       const result = await this.db
         .select({ count: sql<number>`count(*)` })

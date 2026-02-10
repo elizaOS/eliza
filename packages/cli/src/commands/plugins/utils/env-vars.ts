@@ -41,7 +41,9 @@ export const extractPluginEnvRequirements = async (
         );
       }
       const parentDir = path.dirname(currentDir);
-      if (parentDir === currentDir) break; // Reached root
+      if (parentDir === currentDir) {
+        break;
+      } // Reached root
       currentDir = parentDir;
     }
 
@@ -646,14 +648,12 @@ export const promptForPluginEnvVars = async (packageName: string, cwd: string): 
   } else {
     clack.outro(
       `No new variables were configured.\n\n` +
-        `To set up this plugin, add these variables to your .env file:\n\n` +
-        missingVars
+        `To set up this plugin, add these variables to your .env file:\n\n${missingVars
           .map(([name, config]) => {
             const required = config.required !== false ? ' (Required)' : ' (Optional)';
             return `${name}=your_value_here${required}`;
           })
-          .join('\n') +
-        `\n\nRestart your application after adding the variables.`
+          .join('\n')}\n\nRestart your application after adding the variables.`
     );
   }
 };

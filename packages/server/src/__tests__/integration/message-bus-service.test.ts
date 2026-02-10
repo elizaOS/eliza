@@ -334,7 +334,7 @@ describe('MessageBusService Integration Tests', () => {
       internalMessageBus.emit('server_agent_update', {
         type: 'agent_removed_from_server',
         agentId: testAgentId,
-        messageServerId: messageServerId,
+        messageServerId,
       });
 
       // Wait
@@ -351,7 +351,7 @@ describe('MessageBusService Integration Tests', () => {
       internalMessageBus.emit('server_agent_update', {
         type: 'agent_added_to_server',
         agentId: otherAgentId,
-        messageServerId: messageServerId,
+        messageServerId,
       });
 
       // Wait

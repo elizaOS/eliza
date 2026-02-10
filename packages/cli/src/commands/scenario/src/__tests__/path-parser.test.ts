@@ -201,7 +201,7 @@ describe('Path Parser', () => {
 
   describe('Edge Cases', () => {
     it('should handle very long paths', () => {
-      const longPath = Array(50).fill('level').join('.') + '.final';
+      const longPath = `${Array(50).fill('level').join('.')}.final`;
       const result = parseParameterPath(longPath);
       expect(result.segments.length).toBe(51);
     });

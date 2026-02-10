@@ -209,7 +209,9 @@ export const recentMessagesProvider: Provider = {
                 const error = mem.content?.error || '';
 
                 let memText = `  - ${actionName} (${status})`;
-                if (planStep) memText += ` [${planStep}]`;
+                if (planStep) {
+                  memText += ` [${planStep}]`;
+                }
                 if (error) {
                   memText += `: Error - ${error}`;
                 } else if (text && text !== `Executed action: ${actionName}`) {
@@ -282,8 +284,12 @@ export const recentMessagesProvider: Provider = {
 
         if (messageText || messageThought) {
           const parts: string[] = [];
-          if (messageText) parts.push(`${senderName}: ${messageText}`);
-          if (messageThought) parts.push(`(${senderName}'s internal thought: ${messageThought})`);
+          if (messageText) {
+            parts.push(`${senderName}: ${messageText}`);
+          }
+          if (messageThought) {
+            parts.push(`(${senderName}'s internal thought: ${messageThought})`);
+          }
           recentMessage = parts.join('\n');
         }
       }

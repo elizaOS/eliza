@@ -67,8 +67,12 @@ export const characterProvider: Provider = {
       if (selectedTopics.length > 0) {
         const topicsList = selectedTopics
           .map((t, index, array) => {
-            if (index === array.length - 2) return `${t} and `;
-            if (index === array.length - 1) return t;
+            if (index === array.length - 2) {
+              return `${t} and `;
+            }
+            if (index === array.length - 1) {
+              return t;
+            }
             return `${t}, `;
           })
           .join('');

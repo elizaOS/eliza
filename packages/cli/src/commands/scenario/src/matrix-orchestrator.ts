@@ -628,186 +628,187 @@ async function executeScenarioWithTimeout(
   runId?: string, // Optional run ID for unique agent naming
   dynamicPlugins?: string[] // Plugins extracted from scenario configuration
 ): Promise<ScenarioExecutionResult> {
-  return new Promise(async (resolve, reject) => {
-    const scenarioStartTime = Date.now();
-    const timeoutHandle = setTimeout(() => {
+  const scenarioStartTime = Date.now();
+
+  // Create a timeout promise that rejects after the specified duration
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    setTimeout(() => {
       reject(new Error(`Scenario execution timed out after ${timeout}ms`));
     }, timeout);
+  });
+
+  // Race the actual execution against the timeout
+  const executionPromise = (async () => {
+    onProgress(0.1, 'Loading scenario...');
+
+    // Load and parse the scenario file
+    const yaml = await import('js-yaml');
+    const scenarioContent = await fs.readFile(scenarioPath, 'utf8');
+    const scenario = yaml.load(scenarioContent) as Scenario;
+
+    onProgress(0.2, 'Validating scenario...');
+
+    // Import scenario validation
+    const { ScenarioSchema } = await import('./schema');
+    const validationResult = ScenarioSchema.safeParse(scenario);
+    if (!validationResult.success) {
+      throw new Error(`Invalid scenario: ${JSON.stringify(validationResult.error.format())}`);
+    }
+
+    onProgress(0.3, 'Setting up environment...');
+
+    // Create isolated environment provider
+    const { LocalEnvironmentProvider } = await import('./LocalEnvironmentProvider');
+    const { createScenarioServerAndAgent, createScenarioAgent, shutdownScenarioServer } =
+      await import('./runtime-factory');
+
+    // Override environment variables for isolation
+    const originalEnv = process.env;
+    // Set up isolated environment variables
+    process.env = {
+      ...originalEnv,
+      ELIZAOS_DB_PATH: context.dbPath,
+      ELIZAOS_LOG_PATH: context.logPath,
+      ELIZAOS_TEMP_DIR: context.tempDir,
+    };
 
     try {
-      onProgress(0.1, 'Loading scenario...');
+      onProgress(0.4, 'Initializing agent runtime...');
 
-      // Load and parse the scenario file
-      const yaml = await import('js-yaml');
-      const scenarioContent = await fs.readFile(scenarioPath, 'utf8');
-      const scenario = yaml.load(scenarioContent) as Scenario;
+      let server: AgentServer;
+      let runtime: IAgentRuntime;
+      let agentId: UUID;
+      let port: number;
+      let serverCreated = false;
 
-      onProgress(0.2, 'Validating scenario...');
+      if (sharedServer) {
+        // Use shared server pattern for matrix testing
+        server = sharedServer.server;
+        port = sharedServer.port;
 
-      // Import scenario validation
-      const { ScenarioSchema } = await import('./schema');
-      const validationResult = ScenarioSchema.safeParse(scenario);
-      if (!validationResult.success) {
-        throw new Error(`Invalid scenario: ${JSON.stringify(validationResult.error.format())}`);
+        // Ensure SERVER_PORT is set for shared server scenarios
+        process.env.SERVER_PORT = port.toString();
+
+        // Create new agent on shared server (with unique ID for isolation)
+        const uniqueAgentName = `scenario-agent-${runId}`;
+        const agentResult = await createScenarioAgent(
+          server,
+          uniqueAgentName, // Unique agent name per run
+          dynamicPlugins || [
+            '@elizaos/plugin-sql',
+            '@elizaos/plugin-openai',
+            '@elizaos/plugin-bootstrap',
+          ] // Use dynamic or fallback plugins
+        );
+        runtime = agentResult.runtime;
+        agentId = agentResult.agentId;
+        serverCreated = false; // We didn't create the server, so don't shut it down
+      } else {
+        // Single scenario pattern (backward compatibility) - use unique agent name
+        const uniqueAgentName = `scenario-agent-${runId}`;
+        const result = await createScenarioServerAndAgent(
+          null,
+          3000, // Use fixed port 3000 for MessageBusService compatibility
+          dynamicPlugins || [
+            '@elizaos/plugin-sql',
+            '@elizaos/plugin-openai',
+            '@elizaos/plugin-bootstrap',
+          ], // Use dynamic or fallback plugins
+          uniqueAgentName // Pass unique agent name
+        );
+        server = result.server;
+        runtime = result.runtime;
+        agentId = result.agentId;
+        port = result.port;
+        serverCreated = result.createdServer;
       }
 
-      onProgress(0.3, 'Setting up environment...');
+      const provider = new LocalEnvironmentProvider(server, agentId, runtime, port);
 
-      // Create isolated environment provider
-      const { LocalEnvironmentProvider } = await import('./LocalEnvironmentProvider');
-      const { createScenarioServerAndAgent, createScenarioAgent, shutdownScenarioServer } =
-        await import('./runtime-factory');
+      onProgress(0.5, 'Setting up scenario environment...');
 
-      // Override environment variables for isolation
-      const originalEnv = process.env;
-      // Set up isolated environment variables
-      process.env = {
-        ...originalEnv,
-        ELIZAOS_DB_PATH: context.dbPath,
-        ELIZAOS_LOG_PATH: context.logPath,
-        ELIZAOS_TEMP_DIR: context.tempDir,
-      };
+      // Setup the scenario environment
+      await provider.setup(scenario);
 
-      try {
-        onProgress(0.4, 'Initializing agent runtime...');
+      onProgress(0.7, 'Executing scenario...');
 
-        let server: AgentServer;
-        let runtime: IAgentRuntime;
-        let agentId: UUID;
-        let port: number;
-        let serverCreated = false;
+      // Run the scenario
+      const executionResults = await provider.run(scenario);
 
-        if (sharedServer) {
-          // Use shared server pattern for matrix testing
-          server = sharedServer.server;
-          port = sharedServer.port;
+      onProgress(0.8, 'Running evaluations...');
 
-          // Ensure SERVER_PORT is set for shared server scenarios
-          process.env.SERVER_PORT = port.toString();
+      // Run evaluations for each run step (similar to regular scenario runner)
+      const { EvaluationEngine } = await import('./EvaluationEngine');
+      const evaluationEngine = new EvaluationEngine(runtime);
 
-          // Create new agent on shared server (with unique ID for isolation)
-          const uniqueAgentName = `scenario-agent-${runId}`;
-          const agentResult = await createScenarioAgent(
-            server,
-            uniqueAgentName, // Unique agent name per run
-            dynamicPlugins || [
-              '@elizaos/plugin-sql',
-              '@elizaos/plugin-openai',
-              '@elizaos/plugin-bootstrap',
-            ] // Use dynamic or fallback plugins
-          );
-          runtime = agentResult.runtime;
-          agentId = agentResult.agentId;
-          serverCreated = false; // We didn't create the server, so don't shut it down
-        } else {
-          // Single scenario pattern (backward compatibility) - use unique agent name
-          const uniqueAgentName = `scenario-agent-${runId}`;
-          const result = await createScenarioServerAndAgent(
-            null,
-            3000, // Use fixed port 3000 for MessageBusService compatibility
-            dynamicPlugins || [
-              '@elizaos/plugin-sql',
-              '@elizaos/plugin-openai',
-              '@elizaos/plugin-bootstrap',
-            ], // Use dynamic or fallback plugins
-            uniqueAgentName // Pass unique agent name
-          );
-          server = result.server;
-          runtime = result.runtime;
-          agentId = result.agentId;
-          port = result.port;
-          serverCreated = result.createdServer;
-        }
+      const evaluationResults = [];
+      if (scenario.run && Array.isArray(scenario.run)) {
+        for (let i = 0; i < scenario.run.length && i < executionResults.length; i++) {
+          const step = scenario.run[i];
+          const executionResult = executionResults[i];
 
-        const provider = new LocalEnvironmentProvider(server, agentId, runtime, port);
-
-        onProgress(0.5, 'Setting up scenario environment...');
-
-        // Setup the scenario environment
-        await provider.setup(scenario);
-
-        onProgress(0.7, 'Executing scenario...');
-
-        // Run the scenario
-        const executionResults = await provider.run(scenario);
-
-        onProgress(0.8, 'Running evaluations...');
-
-        // Run evaluations for each run step (similar to regular scenario runner)
-        const { EvaluationEngine } = await import('./EvaluationEngine');
-        const evaluationEngine = new EvaluationEngine(runtime);
-
-        const evaluationResults = [];
-        if (scenario.run && Array.isArray(scenario.run)) {
-          for (let i = 0; i < scenario.run.length && i < executionResults.length; i++) {
-            const step = scenario.run[i];
-            const executionResult = executionResults[i];
-
-            if (step.evaluations && step.evaluations.length > 0) {
-              try {
-                const stepEvaluations = await evaluationEngine.runEnhancedEvaluations(
-                  step.evaluations,
-                  executionResult
-                );
-                evaluationResults.push(...stepEvaluations);
-              } catch (evaluationError) {
-                // Still add a failed evaluation result
-                evaluationResults.push({
-                  evaluator_type: 'step_evaluation_failed',
-                  success: false,
-                  summary: `Step ${i} evaluations failed: ${evaluationError instanceof Error ? evaluationError.message : String(evaluationError)}`,
-                  details: { step: i, error: String(evaluationError) },
-                });
-              }
+          if (step.evaluations && step.evaluations.length > 0) {
+            try {
+              const stepEvaluations = await evaluationEngine.runEnhancedEvaluations(
+                step.evaluations,
+                executionResult
+              );
+              evaluationResults.push(...stepEvaluations);
+            } catch (evaluationError) {
+              // Still add a failed evaluation result
+              evaluationResults.push({
+                evaluator_type: 'step_evaluation_failed',
+                success: false,
+                summary: `Step ${i} evaluations failed: ${evaluationError instanceof Error ? evaluationError.message : String(evaluationError)}`,
+                details: { step: i, error: String(evaluationError) },
+              });
             }
           }
         }
-
-        onProgress(0.9, 'Processing results...');
-
-        // Calculate success based on judgment strategy
-        let success = false;
-        if (scenario.judgment?.strategy === 'all_pass') {
-          success = evaluationResults.every((r) => r.success);
-        } else if (scenario.judgment?.strategy === 'any_pass') {
-          success = evaluationResults.some((r) => r.success);
-        } else {
-          success = evaluationResults.length > 0 && evaluationResults.every((r) => r.success);
-        }
-
-        // Cleanup: Only shut down server if we created it (single scenario mode)
-        // For shared server mode, we only clean up the agent
-        if (serverCreated) {
-          await shutdownScenarioServer(server, port);
-        } else {
-          // Stop the agent but keep the server running
-          if (server && typeof server.unregisterAgent === 'function') {
-            server.unregisterAgent(agentId);
-          } else {
-          }
-        }
-
-        onProgress(1.0, 'Complete');
-
-        const result = {
-          success,
-          evaluations: evaluationResults,
-          executionResults,
-          tokenCount: estimateTokenCount(executionResults),
-          duration: Date.now() - scenarioStartTime, // Actual execution duration in ms
-        };
-
-        clearTimeout(timeoutHandle);
-        resolve(result);
-      } finally {
-        // Restore original environment
-        process.env = originalEnv;
       }
-    } catch (error) {
-      clearTimeout(timeoutHandle);
-      reject(error);
+
+      onProgress(0.9, 'Processing results...');
+
+      // Calculate success based on judgment strategy
+      let success = false;
+      if (scenario.judgment?.strategy === 'all_pass') {
+        success = evaluationResults.every((r) => r.success);
+      } else if (scenario.judgment?.strategy === 'any_pass') {
+        success = evaluationResults.some((r) => r.success);
+      } else {
+        success = evaluationResults.length > 0 && evaluationResults.every((r) => r.success);
+      }
+
+      // Cleanup: Only shut down server if we created it (single scenario mode)
+      // For shared server mode, we only clean up the agent
+      if (serverCreated) {
+        await shutdownScenarioServer(server, port);
+      } else {
+        // Stop the agent but keep the server running
+        if (server && typeof server.unregisterAgent === 'function') {
+          server.unregisterAgent(agentId);
+        } else {
+        }
+      }
+
+      onProgress(1.0, 'Complete');
+
+      const result = {
+        success,
+        evaluations: evaluationResults,
+        executionResults,
+        tokenCount: estimateTokenCount(executionResults),
+        duration: Date.now() - scenarioStartTime, // Actual execution duration in ms
+      };
+
+      return result;
+    } finally {
+      // Restore original environment
+      process.env = originalEnv;
     }
-  });
+  })();
+
+  return Promise.race([executionPromise, timeoutPromise]);
 }
 
 /**

@@ -158,7 +158,9 @@ export class LogStore implements Store {
 
       for (const row of runEventRows) {
         const runId = row.runId;
-        if (!runId) continue;
+        if (!runId) {
+          continue;
+        }
 
         const summary: AgentRunSummary = runMap.get(runId) ?? {
           runId,
@@ -262,7 +264,9 @@ export class LogStore implements Store {
         const actionRows = actionSummary.rows ?? [];
         for (const row of actionRows) {
           const counts = runCounts.get(row.runId);
-          if (!counts) continue;
+          if (!counts) {
+            continue;
+          }
           counts.actions += Number(row.actions ?? 0);
           counts.errors += Number(row.errors ?? 0);
           counts.modelCalls += Number(row.modelCalls ?? 0);
@@ -281,7 +285,9 @@ export class LogStore implements Store {
         const evaluatorRows = evaluatorSummary.rows ?? [];
         for (const row of evaluatorRows) {
           const counts = runCounts.get(row.runId);
-          if (!counts) continue;
+          if (!counts) {
+            continue;
+          }
           counts.evaluators += Number(row.evaluators ?? 0);
         }
 
@@ -299,7 +305,9 @@ export class LogStore implements Store {
         const genericRows = genericSummary.rows ?? [];
         for (const row of genericRows) {
           const counts = runCounts.get(row.runId);
-          if (!counts) continue;
+          if (!counts) {
+            continue;
+          }
           counts.modelCalls += Number(row.modelLogs ?? 0);
           counts.errors += Number(row.embeddingErrors ?? 0);
         }

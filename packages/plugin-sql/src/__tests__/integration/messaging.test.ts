@@ -34,7 +34,7 @@ describe('Messaging Integration Tests', () => {
   describe('Message Server Tests', () => {
     it('should create and retrieve a message channel', async () => {
       const channelData = {
-        messageServerId: messageServerId,
+        messageServerId,
         name: 'test-channel',
         type: ChannelType.GROUP,
       };
@@ -50,7 +50,7 @@ describe('Messaging Integration Tests', () => {
     it('should create and retrieve a message', async () => {
       const channel = await adapter.createChannel(
         {
-          messageServerId: messageServerId,
+          messageServerId,
           name: 'message-channel',
           type: ChannelType.GROUP,
         },
@@ -73,7 +73,7 @@ describe('Messaging Integration Tests', () => {
     it('should add and retrieve channel participants', async () => {
       const channel = await adapter.createChannel(
         {
-          messageServerId: messageServerId,
+          messageServerId,
           name: 'participant-channel',
           type: ChannelType.GROUP,
         },
@@ -92,7 +92,7 @@ describe('Messaging Integration Tests', () => {
     it('should check if entity is channel participant', async () => {
       const channel = await adapter.createChannel(
         {
-          messageServerId: messageServerId,
+          messageServerId,
           name: 'check-participant-channel',
           type: ChannelType.GROUP,
         },

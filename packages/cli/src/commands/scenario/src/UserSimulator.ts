@@ -42,7 +42,7 @@ export class UserSimulator {
         (this.config.model_type ||
           ModelType.TEXT_LARGE) as keyof import('@elizaos/core').ModelParamsMap,
         {
-          prompt: prompt,
+          prompt,
           temperature: this.config.temperature || 0.8,
         }
       );

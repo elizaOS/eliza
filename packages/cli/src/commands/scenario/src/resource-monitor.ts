@@ -298,7 +298,9 @@ export class ResourceMonitor {
     };
 
     const match = bytesStr.match(/^([\d.]+)\s*([A-Z]+)$/i);
-    if (!match) return 0;
+    if (!match) {
+      return 0;
+    }
 
     const value = parseFloat(match[1]);
     const unit = match[2].toUpperCase() as keyof typeof units;
@@ -441,13 +443,21 @@ export class ResourceMonitor {
    * Generates performance recommendations based on resource trends.
    */
   private generateRecommendations(resources: SystemResources): void {
-    if (!this.config.onRecommendation) return;
+    if (!this.config.onRecommendation) {
+      return;
+    }
 
     // Recommend reducing parallelism if multiple resources are high
     let highResourceCount = 0;
-    if (resources.memoryUsage > 70) highResourceCount++;
-    if (resources.diskUsage > 70) highResourceCount++;
-    if (resources.cpuUsage > 70) highResourceCount++;
+    if (resources.memoryUsage > 70) {
+      highResourceCount++;
+    }
+    if (resources.diskUsage > 70) {
+      highResourceCount++;
+    }
+    if (resources.cpuUsage > 70) {
+      highResourceCount++;
+    }
 
     if (highResourceCount >= 2) {
       this.config.onRecommendation(
@@ -627,7 +637,9 @@ export async function calculateDiskUsage(dirPath: string): Promise<DiskUsage> {
  * Formats bytes into human-readable format.
  */
 export function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) {
+    return '0 B';
+  }
 
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];

@@ -123,7 +123,7 @@ export class RuntimeMigrator {
     const buffer = hash.slice(0, 8);
 
     // Convert to bigint
-    let lockId = BigInt('0x' + buffer.toString('hex'));
+    let lockId = BigInt(`0x${buffer.toString('hex')}`);
 
     // Ensure the value fits in PostgreSQL's positive bigint range
     // Use a mask to keep only 63 bits (ensures positive in signed 64-bit)
@@ -154,16 +154,22 @@ export class RuntimeMigrator {
    * (not PGLite, in-memory, or other non-PostgreSQL databases)
    */
   private isRealPostgresDatabase(connectionUrl: string): boolean {
-    if (!connectionUrl?.trim()) return false;
+    if (!connectionUrl?.trim()) {
+      return false;
+    }
 
     const url = connectionUrl.trim().toLowerCase();
 
     // Exclude non-PostgreSQL databases (check schemes first)
     const nonPgSchemes = ['mysql://', 'mysqli://', 'mariadb://', 'mongodb://', 'mongodb+srv://'];
-    if (nonPgSchemes.some((s) => url.startsWith(s))) return false;
+    if (nonPgSchemes.some((s) => url.startsWith(s))) {
+      return false;
+    }
 
     // Always reject :memory: databases (even with postgres:// scheme, it's not valid)
-    if (url.includes(':memory:')) return false;
+    if (url.includes(':memory:')) {
+      return false;
+    }
 
     // PostgreSQL URL schemes - check BEFORE other exclude patterns
     // (a postgres:// URL may have "sqlite" in the database name, that's OK)
@@ -179,16 +185,24 @@ export class RuntimeMigrator {
       'timescaledb://',
       'yugabyte://',
     ];
-    if (pgSchemes.some((s) => url.startsWith(s))) return true;
+    if (pgSchemes.some((s) => url.startsWith(s))) {
+      return true;
+    }
 
     // Exclude PGLite, SQLite databases (only for non-postgres:// URLs)
     const excludePatterns = ['pglite', 'sqlite'];
     const urlBase = url.split('?')[0];
-    if (excludePatterns.some((p) => url.includes(p))) return false;
-    if (/\.(db|sqlite|sqlite3)$/.test(urlBase)) return false;
+    if (excludePatterns.some((p) => url.includes(p))) {
+      return false;
+    }
+    if (/\.(db|sqlite|sqlite3)$/.test(urlBase)) {
+      return false;
+    }
 
     // Local PostgreSQL (localhost, 127.0.0.1, Docker service names)
-    if (url.includes('localhost') || url.includes('127.0.0.1')) return true;
+    if (url.includes('localhost') || url.includes('127.0.0.1')) {
+      return true;
+    }
 
     // PostgreSQL connection params (libpq style)
     const connParams = [
@@ -208,13 +222,19 @@ export class RuntimeMigrator {
       'keepalives=',
       'target_session_attrs=',
     ];
-    if (connParams.some((p) => url.includes(p))) return true;
+    if (connParams.some((p) => url.includes(p))) {
+      return true;
+    }
 
     // user@host format with postgres keyword or port
-    if (url.includes('@') && (url.includes('postgres') || /:\d{4,5}/.test(url))) return true;
+    if (url.includes('@') && (url.includes('postgres') || /:\d{4,5}/.test(url))) {
+      return true;
+    }
 
     // Common PostgreSQL ports
-    if (/:(5432|5433|5434|6432|8432|9999|25060|26257)\b/.test(url)) return true;
+    if (/:(5432|5433|5434|6432|8432|9999|25060|26257)\b/.test(url)) {
+      return true;
+    }
 
     // Cloud providers
     const cloudPatterns = [
@@ -272,14 +292,22 @@ export class RuntimeMigrator {
       'fly.dev',
       'fly.io',
     ];
-    if (cloudPatterns.some((p) => url.includes(p))) return true;
+    if (cloudPatterns.some((p) => url.includes(p))) {
+      return true;
+    }
 
     // IP:port patterns (IPv4 and IPv6)
-    if (/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}/.test(url)) return true;
-    if (/\[[0-9a-f:]+\](:\d{1,5})?/i.test(connectionUrl)) return true;
+    if (/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}/.test(url)) {
+      return true;
+    }
+    if (/\[[0-9a-f:]+\](:\d{1,5})?/i.test(connectionUrl)) {
+      return true;
+    }
 
     // host:port/database format (Docker Compose, etc.)
-    if (/^[a-z0-9_.-]+:\d{1,5}\/[a-z0-9_-]+/i.test(connectionUrl)) return true;
+    if (/^[a-z0-9_.-]+:\d{1,5}\/[a-z0-9_-]+/i.test(connectionUrl)) {
+      return true;
+    }
 
     logger.debug(
       { src: 'plugin:sql', urlPreview: url.substring(0, 50) },
@@ -601,7 +629,6 @@ export class RuntimeMigrator {
       logger.info({ src: 'plugin:sql', pluginName }, 'Migration completed successfully');
 
       // Return a success result
-      return;
     } catch (error) {
       logger.error(
         {

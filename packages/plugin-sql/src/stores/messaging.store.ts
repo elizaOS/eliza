@@ -165,7 +165,9 @@ export class MessagingStore implements Store {
       `);
 
       const rows = results.rows || results;
-      if (rows.length === 0) return null;
+      if (rows.length === 0) {
+        return null;
+      }
 
       const row = rows[0];
       return {
@@ -260,7 +262,7 @@ export class MessagingStore implements Store {
       if (participantIds && participantIds.length > 0) {
         const participantValues = participantIds.map((entityId) => ({
           channelId: newId,
-          entityId: entityId,
+          entityId,
         }));
         await this.db
           .insert(channelParticipantsTable)
@@ -328,8 +330,12 @@ export class MessagingStore implements Store {
       await this.db.transaction(async (tx) => {
         // Update channel details
         const updateData: Record<string, unknown> = { updatedAt: now };
-        if (updates.name !== undefined) updateData.name = updates.name;
-        if (updates.metadata !== undefined) updateData.metadata = updates.metadata;
+        if (updates.name !== undefined) {
+          updateData.name = updates.name;
+        }
+        if (updates.metadata !== undefined) {
+          updateData.metadata = updates.metadata;
+        }
 
         await tx.update(channelTable).set(updateData).where(eq(channelTable.id, channelId));
 
@@ -343,8 +349,8 @@ export class MessagingStore implements Store {
           // Add new participants
           if (updates.participantCentralUserIds.length > 0) {
             const participantValues = updates.participantCentralUserIds.map((entityId) => ({
-              channelId: channelId,
-              entityId: entityId,
+              channelId,
+              entityId,
             }));
             await tx
               .insert(channelParticipantsTable)
@@ -435,11 +441,13 @@ export class MessagingStore implements Store {
 
   async addChannelParticipants(channelId: UUID, entityIds: UUID[]): Promise<void> {
     return this.ctx.withRetry(async () => {
-      if (!entityIds || entityIds.length === 0) return;
+      if (!entityIds || entityIds.length === 0) {
+        return;
+      }
 
       const participantValues = entityIds.map((entityId) => ({
-        channelId: channelId,
-        entityId: entityId,
+        channelId,
+        entityId,
       }));
 
       await this.db
@@ -521,7 +529,9 @@ export class MessagingStore implements Store {
         .from(messageTable)
         .where(eq(messageTable.id, id))
         .limit(1);
-      if (!rows || rows.length === 0) return null;
+      if (!rows || rows.length === 0) {
+        return null;
+      }
       const r = rows[0];
       return {
         id: r.id as UUID,
@@ -552,7 +562,9 @@ export class MessagingStore implements Store {
   ): Promise<Message | null> {
     return this.ctx.withRetry(async () => {
       const existing = await this.getMessageById(id);
-      if (!existing) return null;
+      if (!existing) {
+        return null;
+      }
 
       const updatedAt = new Date();
       const next = {

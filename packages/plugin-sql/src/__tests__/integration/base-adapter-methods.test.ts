@@ -224,7 +224,7 @@ describe('Base Adapter Methods Integration Tests', () => {
         id: memoryId,
         agentId: testAgentId,
         entityId: testEntityId,
-        roomId: roomId,
+        roomId,
         content: { text: 'Original content' } as Content,
         createdAt: Date.now(),
         metadata: { type: 'test' },
@@ -418,7 +418,7 @@ describe('Base Adapter Methods Integration Tests', () => {
         id: memoryId,
         agentId: testAgentId,
         entityId: testEntityId,
-        roomId: roomId,
+        roomId,
         content: { text: 'Test memory' } as Content,
         createdAt: new Date(),
         metadata: { type: 'test' },
@@ -647,7 +647,7 @@ describe('Base Adapter Methods Integration Tests', () => {
         {
           id: uuidv4() as UUID,
           agentId,
-          entityId: entityId,
+          entityId,
           roomId,
           content: { text: 'Meeting scheduled for tomorrow' } as Content,
           createdAt: new Date(Date.now() - 3600_000), // 1 hour ago
@@ -656,7 +656,7 @@ describe('Base Adapter Methods Integration Tests', () => {
         {
           id: uuidv4() as UUID,
           agentId,
-          entityId: entityId,
+          entityId,
           roomId,
           content: { text: 'Remember to buy groceries' } as Content,
           createdAt: new Date(Date.now() - 1800_000), // 30 min ago
@@ -665,7 +665,7 @@ describe('Base Adapter Methods Integration Tests', () => {
         {
           id: uuidv4() as UUID,
           agentId,
-          entityId: entityId,
+          entityId,
           roomId,
           content: { text: 'Important meeting notes' } as Content,
           createdAt: new Date(Date.now() - 900_000), // 15 min ago

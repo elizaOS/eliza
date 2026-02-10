@@ -13,7 +13,7 @@ interface ServerState {
 /**
  * Global server state
  */
-let serverState: ServerState = {
+const serverState: ServerState = {
   process: null,
   isRunning: false,
 };
@@ -311,9 +311,6 @@ export function isRunning(): boolean {
 export function getCurrentProcess(): Subprocess | null {
   return getServerProcess();
 }
-
-// Export functional interface for backwards compatibility
-export interface DevServerManager extends ServerProcess {}
 
 /**
  * Create a new server manager instance (factory function)

@@ -673,7 +673,7 @@ describe('Logger - Cross-Environment Tests', () => {
 
       const obj: any = {
         name: 'function container',
-        callback: function () {
+        callback() {
           return obj;
         },
       };

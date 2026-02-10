@@ -263,7 +263,7 @@ export class TrajectoryReconstructor {
       console.log(`\n🔄 Processing message memory ${memory.id}...`);
       console.log(`   type: ${content.type || 'undefined'}`);
       console.log(
-        `   text: ${content.text ? String(content.text).substring(0, 100) + '...' : 'undefined'}`
+        `   text: ${content.text ? `${String(content.text).substring(0, 100)}...` : 'undefined'}`
       );
       console.log(`   source: ${content.source || 'undefined'}`);
       console.log(`   thought: ${content.thought ? 'present' : 'absent'}`);

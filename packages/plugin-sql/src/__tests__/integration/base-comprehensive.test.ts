@@ -156,7 +156,7 @@ describe('Base Adapter Comprehensive Tests', () => {
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          entityId: entityId,
+          entityId,
           roomId: testRoomId,
           content: { text: 'Related memory' } as Content,
           createdAt: new Date(),
@@ -175,7 +175,7 @@ describe('Base Adapter Comprehensive Tests', () => {
       // Verify related memory is also deleted
       const memories = await adapter.getMemories({
         agentId: testAgentId,
-        entityId: entityId,
+        entityId,
         tableName: 'memories',
       });
       expect(memories).toHaveLength(0);
@@ -270,7 +270,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           id: uuidv4() as UUID,
           agentId: testAgentId,
           entityId: testEntityId,
-          roomId: roomId,
+          roomId,
           content: { text: `Memory for room ${i}` } as Content,
           createdAt: new Date(),
           metadata: { type: 'test', roomIndex: i },
@@ -309,7 +309,7 @@ describe('Base Adapter Comprehensive Tests', () => {
         type: 'relationship',
         worldId: testWorldId,
         entityId: testEntityId,
-        sourceEntityId: sourceEntityId,
+        sourceEntityId,
         agentId: testAgentId,
         roomId: testRoomId,
         data: {
@@ -443,7 +443,7 @@ describe('Base Adapter Comprehensive Tests', () => {
       // Store embedding in cache - log requires specific format
       await adapter.log({
         body: {
-          content: content,
+          content,
           embedding: Array.from(embedding),
         },
         entityId: testEntityId,

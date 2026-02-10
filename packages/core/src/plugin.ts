@@ -15,11 +15,21 @@ const attemptedInstalls = new Set<string>();
  * Check if auto-install is allowed in current environment
  */
 function isAutoInstallAllowed(): boolean {
-  if (process.env.ELIZA_NO_AUTO_INSTALL === 'true') return false;
-  if (process.env.ELIZA_NO_PLUGIN_AUTO_INSTALL === 'true') return false;
-  if (process.env.CI === 'true') return false;
-  if (process.env.ELIZA_TEST_MODE === 'true') return false;
-  if (process.env.NODE_ENV === 'test') return false;
+  if (process.env.ELIZA_NO_AUTO_INSTALL === 'true') {
+    return false;
+  }
+  if (process.env.ELIZA_NO_PLUGIN_AUTO_INSTALL === 'true') {
+    return false;
+  }
+  if (process.env.CI === 'true') {
+    return false;
+  }
+  if (process.env.ELIZA_TEST_MODE === 'true') {
+    return false;
+  }
+  if (process.env.NODE_ENV === 'test') {
+    return false;
+  }
   return true;
 }
 
@@ -322,7 +332,9 @@ export function resolvePluginDependencies(
     // Use the actual plugin.name for tracking to ensure consistency
     const canonicalName = plugin.name;
 
-    if (visited.has(canonicalName)) return;
+    if (visited.has(canonicalName)) {
+      return;
+    }
     if (visiting.has(canonicalName)) {
       logger.error(
         { src: 'core:plugin', pluginName: canonicalName },
@@ -467,7 +479,9 @@ async function resolvePluginsImpl(
   while (queue.length > 0) {
     const next = queue.shift()!;
     const loaded = await loadPlugin(next);
-    if (!loaded) continue;
+    if (!loaded) {
+      continue;
+    }
 
     const canonicalName = loaded.name;
 

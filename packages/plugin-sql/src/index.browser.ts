@@ -50,7 +50,7 @@ export const plugin: Plugin = {
   name: '@elizaos/plugin-sql',
   description: 'A plugin for SQL database access (PGlite WASM in browser).',
   priority: 0,
-  schema: schema,
+  schema,
   init: async (_config, runtime: IAgentRuntime) => {
     logger.info({ src: 'plugin:sql' }, 'plugin-sql (browser) init starting');
 

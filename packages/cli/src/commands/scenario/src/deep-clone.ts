@@ -87,7 +87,7 @@ export function deepClone<T>(obj: T): T {
       const cloned = {} as Record<string, unknown>;
 
       for (const key in obj) {
-        if (obj.hasOwnProperty(key)) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
           cloned[key] = deepClone((obj as Record<string, unknown>)[key]);
         }
       }
@@ -107,7 +107,7 @@ export function deepClone<T>(obj: T): T {
     cloneCache.set(obj as object, true);
 
     for (const key in obj) {
-      if (obj.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
         (cloned as Record<string, unknown>)[key] = deepClone((obj as Record<string, unknown>)[key]);
       }
     }
@@ -180,7 +180,7 @@ export function hasCircularReference(obj: unknown): boolean {
       } else {
         const currentObj = current as Record<string, unknown>;
         for (const key in currentObj) {
-          if (currentObj.hasOwnProperty(key)) {
+          if (Object.prototype.hasOwnProperty.call(currentObj, key)) {
             if (checkCircular(currentObj[key])) {
               return true;
             }
@@ -235,7 +235,7 @@ export function deepCloneWithLimit<T>(obj: T, maxDepth: number = 50): T {
     const cloned: Record<string, unknown> = {};
     const currentObj = current as Record<string, unknown>;
     for (const key in currentObj) {
-      if (currentObj.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(currentObj, key)) {
         cloned[key] = cloneWithDepth(currentObj[key], depth + 1);
       }
     }
@@ -324,7 +324,9 @@ export function advancedDeepClone<T>(obj: T, options: CloneOptions = {}): T {
     for (const [type, cloner] of customCloners) {
       if (current instanceof type) {
         const cloned = cloner(current);
-        if (visited) visited.set(current, cloned);
+        if (visited) {
+          visited.set(current, cloned);
+        }
         return cloned;
       }
     }
@@ -333,13 +335,17 @@ export function advancedDeepClone<T>(obj: T, options: CloneOptions = {}): T {
     if (preserveTypes) {
       if (current instanceof Date) {
         const cloned = new Date(current.getTime());
-        if (visited) visited.set(current, cloned);
+        if (visited) {
+          visited.set(current, cloned);
+        }
         return cloned;
       }
 
       if (current instanceof RegExp) {
         const cloned = new RegExp(current.source, current.flags);
-        if (visited) visited.set(current, cloned);
+        if (visited) {
+          visited.set(current, cloned);
+        }
         return cloned;
       }
     }
@@ -347,7 +353,9 @@ export function advancedDeepClone<T>(obj: T, options: CloneOptions = {}): T {
     // Handle arrays
     if (Array.isArray(current)) {
       const cloned: unknown[] = [];
-      if (visited) visited.set(current as object, cloned as object);
+      if (visited) {
+        visited.set(current as object, cloned as object);
+      }
 
       for (let i = 0; i < current.length; i++) {
         cloned[i] = cloneAdvanced(current[i], depth + 1);
@@ -364,7 +372,7 @@ export function advancedDeepClone<T>(obj: T, options: CloneOptions = {}): T {
 
     const currentObj = current as Record<string, unknown>;
     for (const key in currentObj) {
-      if (currentObj.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(currentObj, key)) {
         cloned[key] = cloneAdvanced(currentObj[key], depth + 1);
       }
     }

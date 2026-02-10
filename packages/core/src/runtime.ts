@@ -333,7 +333,7 @@ export class AgentRuntime implements IAgentRuntime {
       for (const route of plugin.routes) {
         // namespace plugin name infront of paths
         const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
-        this.routes.push({ ...route, path: '/' + plugin.name + routePath });
+        this.routes.push({ ...route, path: `/${plugin.name}${routePath}` });
       }
     }
     if (plugin.events) {
@@ -529,7 +529,9 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   private mergeAgentSettings(existingAgent: Agent): void {
-    if (!existingAgent.settings) return;
+    if (!existingAgent.settings) {
+      return;
+    }
 
     this.character.settings = {
       ...existingAgent.settings,
@@ -710,8 +712,12 @@ export class AgentRuntime implements IAgentRuntime {
     if (typeof value === 'string') {
       // Only decrypt string values
       const decrypted = decryptSecret(value, getSalt());
-      if (decrypted === 'true') return true;
-      if (decrypted === 'false') return false;
+      if (decrypted === 'true') {
+        return true;
+      }
+      if (decrypted === 'false') {
+        return false;
+      }
       return decrypted;
     }
 
@@ -1011,7 +1017,7 @@ export class AgentRuntime implements IAgentRuntime {
 
         // Add plan information to options if multiple actions
         const options: HandlerOptions = {
-          actionContext: actionContext,
+          actionContext,
         };
 
         if (actionPlan) {
@@ -1036,15 +1042,15 @@ export class AgentRuntime implements IAgentRuntime {
             text: `Executing action: ${action.name}`,
             actions: [action.name],
             actionStatus: 'executing',
-            actionId: actionId,
-            runId: runId,
+            actionId,
+            runId,
             type: 'agent_action',
-            thought: thought,
+            thought,
             source: message.content?.source,
           },
         });
 
-        let storedCallbackData: Content[] = [];
+        const storedCallbackData: Content[] = [];
 
         const storageCallback = async (response: Content) => {
           // Use responseMessageId for the text response (separate from action badge)
@@ -1148,7 +1154,9 @@ export class AgentRuntime implements IAgentRuntime {
 
           // Store in working memory (in state data) with cleanup
           if (actionResult && accumulatedState.data) {
-            if (!accumulatedState.data.workingMemory) accumulatedState.data.workingMemory = {};
+            if (!accumulatedState.data.workingMemory) {
+              accumulatedState.data.workingMemory = {};
+            }
 
             // Add new entry first, then clean up if we exceed the limit
             const responseAction = actionResult.data?.actionName || action.name;
@@ -1203,10 +1211,10 @@ export class AgentRuntime implements IAgentRuntime {
             text: actionResult?.text || '',
             actions: [action.name],
             actionStatus: statusText,
-            actionId: actionId,
+            actionId,
             type: 'agent_action',
-            thought: thought,
-            actionResult: actionResult,
+            thought,
+            actionResult,
             source: message.content?.source, // Include original message source
           },
         });
@@ -1380,7 +1388,9 @@ export class AgentRuntime implements IAgentRuntime {
     // Helper function for chunking arrays
     const chunkArray = <T>(arr: T[], size: number): T[][] =>
       arr.reduce((chunks: T[][], item: T, i: number) => {
-        if (i % size === 0) chunks.push([]);
+        if (i % size === 0) {
+          chunks.push([]);
+        }
         chunks[chunks.length - 1].push(item);
         return chunks;
       }, []);
@@ -1510,8 +1520,8 @@ export class AgentRuntime implements IAgentRuntime {
     const entityMetadata = {
       [source!]: {
         id: userId,
-        name: name,
-        userName: userName,
+        name,
+        userName,
       },
     };
     // First check if the entity exists
@@ -1543,8 +1553,8 @@ export class AgentRuntime implements IAgentRuntime {
               ? (entity.metadata[source!] as Record<string, unknown>)
               : {}),
             id: userId,
-            name: name,
-            userName: userName,
+            name,
+            userName,
           },
         },
         agentId: this.agentId,
@@ -1557,7 +1567,7 @@ export class AgentRuntime implements IAgentRuntime {
           ? `World for server ${messageServerId}`
           : `World for room ${roomId}`,
       agentId: this.agentId,
-      messageServerId: messageServerId,
+      messageServerId,
       metadata,
     });
     await this.ensureRoomExists({
@@ -1667,7 +1677,9 @@ export class AgentRuntime implements IAgentRuntime {
     worldId,
     metadata,
   }: Room) {
-    if (!worldId) throw new Error('worldId is required');
+    if (!worldId) {
+      throw new Error('worldId is required');
+    }
     const room = await this.getRoom(id);
     if (!room) {
       await this.createRoom({
@@ -2153,15 +2165,33 @@ export class AgentRuntime implements IAgentRuntime {
     );
 
     // Add settings if they exist
-    if (maxTokens !== null) modelSettings.maxTokens = maxTokens;
-    if (temperature !== null) modelSettings.temperature = temperature;
-    if (topP !== null) modelSettings.topP = topP;
-    if (topK !== null) modelSettings.topK = topK;
-    if (minP !== null) modelSettings.minP = minP;
-    if (seed !== null) modelSettings.seed = seed;
-    if (repetitionPenalty !== null) modelSettings.repetitionPenalty = repetitionPenalty;
-    if (frequencyPenalty !== null) modelSettings.frequencyPenalty = frequencyPenalty;
-    if (presencePenalty !== null) modelSettings.presencePenalty = presencePenalty;
+    if (maxTokens !== null) {
+      modelSettings.maxTokens = maxTokens;
+    }
+    if (temperature !== null) {
+      modelSettings.temperature = temperature;
+    }
+    if (topP !== null) {
+      modelSettings.topP = topP;
+    }
+    if (topK !== null) {
+      modelSettings.topK = topK;
+    }
+    if (minP !== null) {
+      modelSettings.minP = minP;
+    }
+    if (seed !== null) {
+      modelSettings.seed = seed;
+    }
+    if (repetitionPenalty !== null) {
+      modelSettings.repetitionPenalty = repetitionPenalty;
+    }
+    if (frequencyPenalty !== null) {
+      modelSettings.frequencyPenalty = frequencyPenalty;
+    }
+    if (presencePenalty !== null) {
+      modelSettings.presencePenalty = presencePenalty;
+    }
 
     // Return null if no settings were configured
     return Object.keys(modelSettings).length > 0 ? modelSettings : null;
@@ -2358,19 +2388,27 @@ export class AgentRuntime implements IAgentRuntime {
     ) {
       let fullText = '';
       for await (const chunk of (response as TextStreamResult).textStream) {
-        if (abortSignal?.aborted) break;
+        if (abortSignal?.aborted) {
+          break;
+        }
         fullText += chunk;
         try {
-          if (paramsChunk) await paramsChunk(chunk, msgId);
+          if (paramsChunk) {
+            await paramsChunk(chunk, msgId);
+          }
         } catch {}
         try {
-          if (ctxChunk) await ctxChunk(chunk, msgId);
+          if (ctxChunk) {
+            await ctxChunk(chunk, msgId);
+          }
         } catch {}
       }
 
       // Signal stream end to allow context to reset state between useModel calls
       const ctxEnd = getStreamingContext()?.onStreamEnd;
-      if (ctxEnd) ctxEnd();
+      if (ctxEnd) {
+        ctxEnd();
+      }
 
       // Log the completed stream
       const elapsedTime =
@@ -2663,7 +2701,9 @@ export class AgentRuntime implements IAgentRuntime {
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {
     const entities = await this.adapter.getEntitiesByIds([entityId]);
-    if (!entities?.length) return null;
+    if (!entities?.length) {
+      return null;
+    }
     return entities[0];
   }
 
@@ -2686,10 +2726,14 @@ export class AgentRuntime implements IAgentRuntime {
    * @returns Input entity on success (not re-fetched to avoid extra query), null on failure
    */
   async ensureEntity(entity: Entity): Promise<Entity | null> {
-    if (!entity.id) return null;
+    if (!entity.id) {
+      return null;
+    }
 
     const created = await this.createEntity(entity);
-    if (!created) return null;
+    if (!created) {
+      return null;
+    }
 
     return entity;
   }
@@ -2883,7 +2927,9 @@ export class AgentRuntime implements IAgentRuntime {
     return results.map((result) => memories[result.index]);
   }
   async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID> {
-    if (unique !== undefined) memory.unique = unique;
+    if (unique !== undefined) {
+      memory.unique = unique;
+    }
     return await this.adapter.createMemory(memory, tableName, unique);
   }
   async updateMemory(
@@ -2951,7 +2997,9 @@ export class AgentRuntime implements IAgentRuntime {
   }
   async getRoom(roomId: UUID): Promise<Room | null> {
     const rooms = await this.adapter.getRoomsByIds([roomId]);
-    if (!rooms?.length) return null;
+    if (!rooms?.length) {
+      return null;
+    }
     return rooms[0];
   }
 
@@ -2967,7 +3015,9 @@ export class AgentRuntime implements IAgentRuntime {
     messageServerId,
     worldId,
   }: Room): Promise<UUID> {
-    if (!worldId) throw new Error('worldId is required');
+    if (!worldId) {
+      throw new Error('worldId is required');
+    }
     const res = await this.adapter.createRooms([
       {
         id,
@@ -2979,7 +3029,9 @@ export class AgentRuntime implements IAgentRuntime {
         worldId,
       },
     ]);
-    if (!res.length) throw new Error('Failed to create room');
+    if (!res.length) {
+      throw new Error('Failed to create room');
+    }
     return res[0];
   }
 

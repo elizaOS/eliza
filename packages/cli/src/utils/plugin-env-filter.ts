@@ -113,7 +113,9 @@ function scanNodeModules(
 
       for (const scopedPkg of scopedEntries) {
         const fullPkgName = `${entry}/${scopedPkg}`;
-        if (scannedPackages.has(fullPkgName)) continue;
+        if (scannedPackages.has(fullPkgName)) {
+          continue;
+        }
         scannedPackages.add(fullPkgName);
 
         const packageJsonPath = path.join(scopePath, scopedPkg, 'package.json');
@@ -124,12 +126,16 @@ function scanNodeModules(
         }
       }
     } else {
-      if (scannedPackages.has(entry)) continue;
+      if (scannedPackages.has(entry)) {
+        continue;
+      }
       scannedPackages.add(entry);
 
       const pkgPath = path.join(nodeModulesPath, entry);
       try {
-        if (!statSync(pkgPath).isDirectory()) continue;
+        if (!statSync(pkgPath).isDirectory()) {
+          continue;
+        }
       } catch {
         continue;
       }
@@ -164,7 +170,9 @@ export function scanPluginsForEnvDeclarations(
     scanNodeModules(path.join(currentDir, 'node_modules'), result, scannedPackages);
 
     const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) break;
+    if (parentDir === currentDir) {
+      break;
+    }
     currentDir = parentDir;
   }
 
@@ -188,7 +196,9 @@ export function filterEnvVarsByPluginDeclarations(
 ): Record<string, string> {
   const filtered: Record<string, string> = {};
   for (const [key, value] of Object.entries(envVars)) {
-    if (value !== undefined && allowedVars.has(key)) filtered[key] = value;
+    if (value !== undefined && allowedVars.has(key)) {
+      filtered[key] = value;
+    }
   }
   return filtered;
 }
@@ -214,7 +224,9 @@ export function detectShellOnlyVars(
     const trimmed = line.trim();
     if (trimmed && !trimmed.startsWith('#')) {
       const match = trimmed.match(ENV_VAR_NAME_REGEX);
-      if (match) envFileVars.add(match[1].trim());
+      if (match) {
+        envFileVars.add(match[1].trim());
+      }
     }
   }
 
@@ -230,7 +242,9 @@ export function warnAboutMissingDeclarations(
   const officialPluginsMissing = pluginsWithoutDeclarations.filter((p) =>
     p.startsWith('@elizaos/plugin-')
   );
-  if (officialPluginsMissing.length === 0) return false;
+  if (officialPluginsMissing.length === 0) {
+    return false;
+  }
 
   const message = `${officialPluginsMissing.length} ElizaOS plugins missing env var declarations: ${officialPluginsMissing.join(', ')}`;
   const logFn = options.logLevel === 'debug' ? logger.debug : logger.warn;

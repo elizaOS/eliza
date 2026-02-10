@@ -119,7 +119,9 @@ export class PostgresConnectionManager {
    * @memberof PostgresConnectionManager
    */
   public async close(): Promise<void> {
-    if (this._closed) return;
+    if (this._closed) {
+      return;
+    }
     this._closed = true;
     await this.pool.end();
   }

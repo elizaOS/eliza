@@ -240,7 +240,7 @@ export class AnalysisEngine {
 
     // If not found, try navigating nested object structure
     const pathParts = parameterPath.split('.');
-    let value = parameters;
+    const value = parameters;
 
     let currentValue: unknown = value;
     for (const part of pathParts) {
@@ -330,7 +330,9 @@ export class AnalysisEngine {
    * Calculate median value from sorted array of numbers
    */
   private calculateMedian(sortedNumbers: number[]): number {
-    if (sortedNumbers.length === 0) return 0;
+    if (sortedNumbers.length === 0) {
+      return 0;
+    }
 
     const middle = Math.floor(sortedNumbers.length / 2);
 

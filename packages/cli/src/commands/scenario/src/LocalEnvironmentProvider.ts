@@ -267,7 +267,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
             exitCode,
             stdout,
             stderr,
-            files: files,
+            files,
             startedAtMs,
             endedAtMs,
             durationMs,

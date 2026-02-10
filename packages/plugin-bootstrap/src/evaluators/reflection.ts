@@ -447,7 +447,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
             .createRelationship({
               sourceEntityId: sourceId,
               targetEntityId: targetId,
-              tags: tags,
+              tags,
               metadata: {
                 interactions: 1,
                 ...(relationship.metadata || {}),
@@ -476,7 +476,6 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       },
       'Error in reflection handler'
     );
-    return;
   }
 }
 

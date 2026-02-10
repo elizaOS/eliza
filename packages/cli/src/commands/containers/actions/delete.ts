@@ -80,7 +80,7 @@ export async function deleteContainerAction(
         logger.info({ src: 'cli', command: 'containers-delete' }, 'Available projects:');
         const uniqueProjects = [...new Set(containers.map((c) => c.project_name))];
         uniqueProjects.forEach((proj) => {
-          logger.info({ src: 'cli', command: 'containers-delete', project: proj }, '   - ' + proj);
+          logger.info({ src: 'cli', command: 'containers-delete', project: proj }, `   - ${proj}`);
         });
         logger.info(
           { src: 'cli', command: 'containers-delete' },

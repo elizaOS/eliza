@@ -18,8 +18,12 @@ export type PluginType = 'adapter' | 'client' | 'plugin';
  * @returns {PluginType} The type of plugin ('adapter', 'client', or 'plugin').
  */
 export function getPluginType(name: string): PluginType {
-  if (/sql/.test(name)) return 'adapter';
-  if (/discord|twitter|telegram/.test(name)) return 'client';
+  if (/sql/.test(name)) {
+    return 'adapter';
+  }
+  if (/discord|twitter|telegram/.test(name)) {
+    return 'client';
+  }
   return 'plugin';
 }
 

@@ -192,7 +192,6 @@ export async function setupAIModelConfig(
 
       default:
         console.warn(`Unknown AI model: ${aiModel}, skipping configuration`);
-        return;
     }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -206,7 +205,9 @@ export async function setupAIModelConfig(
 export function hasValidApiKey(content: string, keyName: string): boolean {
   const regex = new RegExp(`^${keyName}=(.+)$`, 'm');
   const match = content.match(regex);
-  if (!match) return false;
+  if (!match) {
+    return false;
+  }
 
   const value = match[1].trim();
   // Check if it's not empty and not a placeholder
@@ -383,7 +384,6 @@ export async function setupEmbeddingModelConfig(
 
       default:
         console.warn(`Unknown embedding model: ${embeddingModel}, skipping configuration`);
-        return;
     }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

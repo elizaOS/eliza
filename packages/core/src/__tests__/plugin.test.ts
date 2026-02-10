@@ -703,8 +703,11 @@ describe('Plugin Functions', () => {
         return {
           exited: (async () => {
             await delay(isVersion ? 25 : 50);
-            if (isVersion) versionResolved = true;
-            else addResolved = true;
+            if (isVersion) {
+              versionResolved = true;
+            } else {
+              addResolved = true;
+            }
             return 0;
           })(),
         } as any;

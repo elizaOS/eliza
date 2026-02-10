@@ -14,7 +14,9 @@ const ELIZAOS_API_KEY_ENV = 'ELIZAOS_API_KEY';
  * @returns True if the key appears valid (starts with 'eliza_' and has sufficient length)
  */
 function isValidElizaCloudKey(key: string): boolean {
-  if (!key || typeof key !== 'string') return false;
+  if (!key || typeof key !== 'string') {
+    return false;
+  }
   // elizaOS Cloud keys start with 'eliza_' and should have reasonable length
   return key.startsWith('eliza_') && key.length > 10;
 }

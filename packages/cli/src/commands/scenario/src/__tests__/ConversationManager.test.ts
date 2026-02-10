@@ -18,7 +18,7 @@ describe('ConversationManager', () => {
     mockRuntime = {
       useModel: async () => 'Mock LLM response',
       _callHistory: [],
-      _setMockResponse: function (response: string) {
+      _setMockResponse(response: string) {
         this.useModel = async () => response;
       },
     };
@@ -26,7 +26,7 @@ describe('ConversationManager', () => {
     // Mock AgentServer
     mockServer = {
       _mockApiResponses: new Map(),
-      setMockApiResponse: function (response: string, roomId: string = 'mock-room-123') {
+      setMockApiResponse(response: string, roomId: string = 'mock-room-123') {
         this._mockApiResponses.set('latest', { response, roomId });
       },
     };
@@ -34,7 +34,7 @@ describe('ConversationManager', () => {
     // Mock TrajectoryReconstructor
     mockTrajectoryReconstructor = {
       _mockTrajectories: new Map(),
-      getLatestTrajectory: async function (roomId: string) {
+      async getLatestTrajectory(roomId: string) {
         return (
           this._mockTrajectories.get(roomId) || [
             {
@@ -50,7 +50,7 @@ describe('ConversationManager', () => {
           ]
         );
       },
-      setMockTrajectory: function (roomId: string, trajectory: any[]) {
+      setMockTrajectory(roomId: string, trajectory: any[]) {
         this._mockTrajectories.set(roomId, trajectory);
       },
     };

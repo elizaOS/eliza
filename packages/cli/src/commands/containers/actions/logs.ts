@@ -60,7 +60,7 @@ export async function getContainerLogsAction(
         logger.info({ src: 'cli', command: 'containers-logs' }, 'Available projects:');
         const uniqueProjects = [...new Set(containers.map((c) => c.project_name))];
         uniqueProjects.forEach((proj) => {
-          logger.info({ src: 'cli', command: 'containers-logs', project: proj }, '   - ' + proj);
+          logger.info({ src: 'cli', command: 'containers-logs', project: proj }, `   - ${proj}`);
         });
         logger.info(
           { src: 'cli', command: 'containers-logs' },

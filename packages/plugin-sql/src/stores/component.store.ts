@@ -20,15 +20,21 @@ export class ComponentStore implements Store {
     return this.ctx.withRetry(async () => {
       const conditions = [eq(componentTable.entityId, entityId), eq(componentTable.type, type)];
 
-      if (worldId) conditions.push(eq(componentTable.worldId, worldId));
-      if (sourceEntityId) conditions.push(eq(componentTable.sourceEntityId, sourceEntityId));
+      if (worldId) {
+        conditions.push(eq(componentTable.worldId, worldId));
+      }
+      if (sourceEntityId) {
+        conditions.push(eq(componentTable.sourceEntityId, sourceEntityId));
+      }
 
       const result = await this.db
         .select()
         .from(componentTable)
         .where(and(...conditions));
 
-      if (result.length === 0) return null;
+      if (result.length === 0) {
+        return null;
+      }
 
       const component = result[0];
       return {
@@ -49,8 +55,12 @@ export class ComponentStore implements Store {
     return this.ctx.withRetry(async () => {
       const conditions = [eq(componentTable.entityId, entityId)];
 
-      if (worldId) conditions.push(eq(componentTable.worldId, worldId));
-      if (sourceEntityId) conditions.push(eq(componentTable.sourceEntityId, sourceEntityId));
+      if (worldId) {
+        conditions.push(eq(componentTable.worldId, worldId));
+      }
+      if (sourceEntityId) {
+        conditions.push(eq(componentTable.sourceEntityId, sourceEntityId));
+      }
 
       const result = await this.db
         .select({
@@ -67,7 +77,9 @@ export class ComponentStore implements Store {
         .from(componentTable)
         .where(and(...conditions));
 
-      if (result.length === 0) return [];
+      if (result.length === 0) {
+        return [];
+      }
 
       return result.map((component) => ({
         ...component,

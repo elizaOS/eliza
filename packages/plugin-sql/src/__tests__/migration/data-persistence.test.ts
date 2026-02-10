@@ -212,8 +212,8 @@ describe('Data Persistence Through Migrations', () => {
         await db.execute(sql`
           INSERT INTO employees (name, email, department_id, salary) 
           VALUES (
-            ${'Employee ' + i}, 
-            ${'employee' + i + '@company.com'},
+            ${`Employee ${i}`}, 
+            ${`employee${i}@company.com`},
             ${deptId},
             ${50000 + Math.random() * 100000}
           )
@@ -342,7 +342,7 @@ describe('Data Persistence Through Migrations', () => {
 
       // Verify each transaction is unchanged
       for (let i = 0; i < 10; i++) {
-        expect(afterFailure.rows[i].amount).toBe(String(100 * (i + 1)) + '.00'); // Numeric includes precision
+        expect(afterFailure.rows[i].amount).toBe(`${String(100 * (i + 1))}.00`); // Numeric includes precision
         expect(afterFailure.rows[i].status).toBe('completed');
         expect(transactionIds).toContain(afterFailure.rows[i].id as string);
       }

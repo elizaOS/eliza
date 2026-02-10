@@ -27,8 +27,6 @@ export async function listAgents(opts: OptionValues): Promise<void> {
         console.table(agentData);
       }
     }
-
-    return;
   } catch (error) {
     await checkServer(opts);
     handleError(error);

@@ -84,7 +84,9 @@ export class RelationshipStore implements Store {
           )
         );
 
-      if (result.length === 0) return null;
+      if (result.length === 0) {
+        return null;
+      }
 
       const relationship = result[0];
       return {

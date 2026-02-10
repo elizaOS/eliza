@@ -13,7 +13,9 @@ export function getAllowedEnvVars(): Set<string> | null {
 
 export function hasCharacterSecrets(character: Character): boolean {
   const secrets = character?.settings?.secrets;
-  if (!secrets || typeof secrets !== 'object') return false;
+  if (!secrets || typeof secrets !== 'object') {
+    return false;
+  }
   // Use for...in with early return instead of Object.keys().length > 0
   // which allocates an array just to check if it's non-empty
   for (const _ in secrets) {

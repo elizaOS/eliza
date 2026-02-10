@@ -143,7 +143,9 @@ export async function watchDirectory(
         globalDebounceTimer = null;
       }
       changeHandlerRef = (event: string, filePath: string) => {
-        if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) return;
+        if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) {
+          return;
+        }
         const rel = path.relative(process.cwd(), filePath);
         if (event === 'change' || event === 'add' || event === 'unlink') {
           const action = event === 'add' ? 'added' : event === 'unlink' ? 'removed' : 'changed';
@@ -187,7 +189,9 @@ export async function watchDirectory(
 
     // On ready handler
     watcher.on('ready', () => {
-      if (readyLogged) return;
+      if (readyLogged) {
+        return;
+      }
       readyLogged = true;
       // Log only once when watcher is initially set up
       const watchPath = existsSync(srcDir)
@@ -198,7 +202,9 @@ export async function watchDirectory(
 
     // Set up file change handler
     changeHandlerRef = (event: string, filePath: string) => {
-      if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) return;
+      if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) {
+        return;
+      }
       const rel = path.relative(process.cwd(), filePath);
       if (event === 'change' || event === 'add' || event === 'unlink') {
         const action = event === 'add' ? 'added' : event === 'unlink' ? 'removed' : 'changed';

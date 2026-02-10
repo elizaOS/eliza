@@ -41,7 +41,9 @@ describe('Agent UUID Identification', () => {
         return Array.from(agentStore.values());
       }),
       createAgent: mock().mockImplementation(async (agent: Partial<Agent>) => {
-        if (!agent.id) return false;
+        if (!agent.id) {
+          return false;
+        }
         const fullAgent: Agent = {
           id: agent.id,
           name: agent.name || 'Unknown',
@@ -55,7 +57,9 @@ describe('Agent UUID Identification', () => {
       }),
       updateAgent: mock().mockImplementation(async (agentId: UUID, updates: Partial<Agent>) => {
         const existing = agentStore.get(agentId);
-        if (!existing) return false;
+        if (!existing) {
+          return false;
+        }
         agentStore.set(agentId, { ...existing, ...updates, updatedAt: Date.now() });
         return true;
       }),

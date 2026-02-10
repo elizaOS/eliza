@@ -224,7 +224,9 @@ export class ProgressTracker {
    */
   updateRunProgress(runId: string, progress: number, status: string): void {
     const run = this.runs.get(runId);
-    if (!run) return;
+    if (!run) {
+      return;
+    }
 
     run.progress = progress;
     run.status = status;
@@ -244,7 +246,9 @@ export class ProgressTracker {
    */
   completeRun(runId: string, success: boolean, duration: number, error?: string): void {
     const run = this.runs.get(runId);
-    if (!run) return;
+    if (!run) {
+      return;
+    }
 
     run.completionTime = new Date();
     run.success = success;
@@ -314,7 +318,9 @@ export class ProgressTracker {
    */
   completeCombination(combinationId: string): void {
     const combination = this.combinations.get(combinationId);
-    if (!combination) return;
+    if (!combination) {
+      return;
+    }
 
     combination.completionTime = new Date();
 

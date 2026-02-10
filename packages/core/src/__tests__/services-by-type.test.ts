@@ -73,7 +73,9 @@ describe('Service Type System', () => {
     // Access private resolver for test purposes
     const resolver = (runtime as AgentRuntime & { initResolver?: (() => void) | undefined })
       .initResolver;
-    if (resolver) resolver();
+    if (resolver) {
+      resolver();
+    }
   });
 
   describe('Multiple services of same type', () => {

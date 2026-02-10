@@ -12,7 +12,9 @@ export class TaskStore implements Store {
   }
 
   async create(task: Task): Promise<UUID> {
-    if (!task.worldId) throw new Error('worldId is required');
+    if (!task.worldId) {
+      throw new Error('worldId is required');
+    }
 
     return this.ctx.withRetry(async () => {
       const now = new Date();
@@ -25,7 +27,7 @@ export class TaskStore implements Store {
         roomId: task.roomId as UUID,
         worldId: task.worldId as UUID,
         tags: task.tags,
-        metadata: metadata,
+        metadata,
         createdAt: now,
         updatedAt: now,
         agentId: this.ctx.agentId as UUID,
@@ -95,7 +97,9 @@ export class TaskStore implements Store {
         .where(and(eq(taskTable.id, id), eq(taskTable.agentId, this.ctx.agentId)))
         .limit(1);
 
-      if (result.length === 0) return null;
+      if (result.length === 0) {
+        return null;
+      }
 
       const row = result[0];
       return {
@@ -114,11 +118,21 @@ export class TaskStore implements Store {
     return this.ctx.withRetry(async () => {
       const updateValues: Partial<Task> = {};
 
-      if (task.name !== undefined) updateValues.name = task.name;
-      if (task.description !== undefined) updateValues.description = task.description;
-      if (task.roomId !== undefined) updateValues.roomId = task.roomId;
-      if (task.worldId !== undefined) updateValues.worldId = task.worldId;
-      if (task.tags !== undefined) updateValues.tags = task.tags;
+      if (task.name !== undefined) {
+        updateValues.name = task.name;
+      }
+      if (task.description !== undefined) {
+        updateValues.description = task.description;
+      }
+      if (task.roomId !== undefined) {
+        updateValues.roomId = task.roomId;
+      }
+      if (task.worldId !== undefined) {
+        updateValues.worldId = task.worldId;
+      }
+      if (task.tags !== undefined) {
+        updateValues.tags = task.tags;
+      }
 
       interface TaskUpdateValues extends Partial<typeof taskTable.$inferInsert> {
         updatedAt?: Date;

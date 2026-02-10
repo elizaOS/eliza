@@ -901,7 +901,7 @@ async function runMultiStepCoreTestWithRetry({
   callback: any;
   maxParseRetries?: number;
 }) {
-  let accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+  const accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
   accumulatedState.data.actionResults = [];
 
   const prompt = mockComposePromptFromState({
@@ -956,7 +956,7 @@ async function runMultiStepCoreTestWithSummaryRetry({
   callback: any;
   maxSummaryRetries?: number;
 }) {
-  let accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+  const accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
   accumulatedState.data.actionResults = [];
 
   // Simulate step completion
@@ -1033,7 +1033,7 @@ async function runMultiStepCoreTestWithParams({
   callback: any;
 }) {
   const traceActionResult: any[] = [];
-  let accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+  const accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
   accumulatedState.data.actionResults = traceActionResult;
   let extractedParams: Record<string, unknown> = {};
 

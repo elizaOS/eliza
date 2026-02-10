@@ -430,7 +430,9 @@ export class UserEnvironment {
 
         if (existsSync(monoRepoPackagePath)) {
           const packageJson = JSON.parse(await fs.readFile(monoRepoPackagePath, 'utf8'));
-          if (packageJson.version) return packageJson.version;
+          if (packageJson.version) {
+            return packageJson.version;
+          }
         }
       }
 
@@ -496,7 +498,9 @@ export class UserEnvironment {
    */
   public async getLocalPackages(): Promise<string[]> {
     const { monorepoRoot } = await this.getPathInfo();
-    if (!monorepoRoot) return [];
+    if (!monorepoRoot) {
+      return [];
+    }
 
     try {
       const packagesDirEntries = await fs.readdir(path.join(monorepoRoot, 'packages'), {

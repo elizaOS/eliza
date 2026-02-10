@@ -86,7 +86,7 @@ describe('Actual Runtime Scenario - Plugin Loading Simulation', () => {
     expect(afterPolymarket.rows.length).toBe(2);
 
     // Step 3: Simulate app restart - what happens?
-    console.log('\n' + '='.repeat(80));
+    console.log(`\n${'='.repeat(80)}`);
     console.log('SCENARIO: Application Restart');
     console.log('='.repeat(80));
 
@@ -118,7 +118,7 @@ describe('Actual Runtime Scenario - Plugin Loading Simulation', () => {
     console.log(`\n📊 Migrations after restart: ${afterRestart.rows.length}`);
     expect(afterRestart.rows.length).toBe(2);
 
-    console.log('\n' + '='.repeat(80));
+    console.log(`\n${'='.repeat(80)}`);
     console.log('DIAGNOSTICS');
     console.log('='.repeat(80));
 
@@ -158,7 +158,7 @@ describe('Actual Runtime Scenario - Plugin Loading Simulation', () => {
   });
 
   it('should test shared migrator scenario', async () => {
-    console.log('\n' + '='.repeat(80));
+    console.log(`\n${'='.repeat(80)}`);
     console.log('SCENARIO: Shared Migrator Instance');
     console.log('='.repeat(80));
 

@@ -119,14 +119,12 @@ describe('Trajectory Integration - Scenario Runner', () => {
       // Skip this test for now as it requires full runtime setup
       // TODO: Implement proper test runtime factory
       console.log('⚠️ Skipping trajectory capture test - requires runtime factory');
-      return;
     });
 
     it('should include trajectory in scenario run results', async () => {
       // Skip this test for now as it requires full runtime setup
       // TODO: Implement proper test runtime factory
       console.log('⚠️ Skipping trajectory integration test - requires runtime factory');
-      return;
     });
   });
 
@@ -135,21 +133,18 @@ describe('Trajectory Integration - Scenario Runner', () => {
       // Skip this test for now as it requires full runtime setup
       // TODO: Implement proper test runtime factory
       console.log('⚠️ Skipping timestamp formatting test - requires runtime factory');
-      return;
     });
 
     it('should maintain chronological order of trajectory steps', async () => {
       // Skip this test for now as it requires full runtime setup
       // TODO: Implement proper test runtime factory
       console.log('⚠️ Skipping chronological order test - requires runtime factory');
-      return;
     });
 
     it('should handle complex action parameters correctly', async () => {
       // Skip this test for now as it requires full runtime setup
       // TODO: Implement proper test runtime factory
       console.log('⚠️ Skipping complex parameters test - requires runtime factory');
-      return;
     });
   });
 
@@ -158,7 +153,6 @@ describe('Trajectory Integration - Scenario Runner', () => {
       // Skip this test for now as it requires full runtime setup
       // TODO: Implement proper test runtime factory
       console.log('⚠️ Skipping error handling test - requires runtime factory');
-      return;
     });
   });
 });

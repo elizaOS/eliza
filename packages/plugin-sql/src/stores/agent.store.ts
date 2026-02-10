@@ -19,7 +19,9 @@ export class AgentStore implements Store {
         .where(eq(agentTable.id, agentId))
         .limit(1);
 
-      if (rows.length === 0) return null;
+      if (rows.length === 0) {
+        return null;
+      }
 
       const row = rows[0];
       return {
@@ -219,8 +221,12 @@ export class AgentStore implements Store {
       target: Record<string, unknown> | unknown,
       source: Record<string, unknown>
     ): Record<string, unknown> | undefined => {
-      if (source === null) return undefined;
-      if (Array.isArray(source) || typeof source !== 'object') return source;
+      if (source === null) {
+        return undefined;
+      }
+      if (Array.isArray(source) || typeof source !== 'object') {
+        return source;
+      }
 
       const output =
         typeof target === 'object' && target !== null && !Array.isArray(target)
@@ -233,8 +239,11 @@ export class AgentStore implements Store {
           delete output[key];
         } else if (typeof sourceValue === 'object' && !Array.isArray(sourceValue)) {
           const nested = deepMerge(output[key], sourceValue as Record<string, unknown>);
-          if (nested === undefined) delete output[key];
-          else output[key] = nested;
+          if (nested === undefined) {
+            delete output[key];
+          } else {
+            output[key] = nested;
+          }
         } else {
           output[key] = sourceValue;
         }

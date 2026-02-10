@@ -476,7 +476,7 @@ describe('Role Provider', () => {
     mockState.data = {
       room: {
         id: 'room-for-roles-simple-test' as UUID,
-        worldId: worldId,
+        worldId,
         messageServerId: serverId,
         type: ChannelType.GROUP,
         source: 'discord',

@@ -139,7 +139,9 @@ describe('SQL Plugin', () => {
 
     it('should use POSTGRES_URL when available', async () => {
       mockRuntime.getSetting = mock((key) => {
-        if (key === 'POSTGRES_URL') return 'postgresql://localhost:5432/test';
+        if (key === 'POSTGRES_URL') {
+          return 'postgresql://localhost:5432/test';
+        }
         return null;
       });
 
@@ -151,7 +153,9 @@ describe('SQL Plugin', () => {
     it('should use PGLITE_DATA_DIR when provided', async () => {
       const customDir = path.join(tempDir, 'custom-pglite');
       mockRuntime.getSetting = mock((key) => {
-        if (key === 'PGLITE_DATA_DIR') return customDir;
+        if (key === 'PGLITE_DATA_DIR') {
+          return customDir;
+        }
         return null;
       });
 

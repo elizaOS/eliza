@@ -16,7 +16,9 @@ import { logger } from '@elizaos/core';
 function isRunningFromLocalCli(): boolean {
   try {
     const currentScriptPath = process.argv[1];
-    if (!currentScriptPath) return false;
+    if (!currentScriptPath) {
+      return false;
+    }
 
     // Get the expected local CLI path
     const expectedLocalCliPath = path.join(

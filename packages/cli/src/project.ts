@@ -200,8 +200,8 @@ export async function loadProject(dir: string): Promise<Project> {
         // Convert to file URL for ESM import
         const importUrl =
           process.platform === 'win32'
-            ? 'file:///' + importPath.replace(/\\/g, '/')
-            : 'file://' + importPath;
+            ? `file:///${importPath.replace(/\\/g, '/')}`
+            : `file://${importPath}`;
         projectModule = (await import(importUrl)) as ProjectModule;
         logger.info({ src: 'cli', util: 'project', entryPoint }, 'Loaded project');
 

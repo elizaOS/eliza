@@ -136,7 +136,9 @@ export function createStreamingContext(
 
   return {
     onStreamChunk: async (chunk: string, msgId?: UUID) => {
-      if (extractor.done) return;
+      if (extractor.done) {
+        return;
+      }
       const textToStream = extractor.push(chunk);
       if (textToStream) {
         retryState._appendText(textToStream);
@@ -310,7 +312,9 @@ export class XmlTagExtractor implements IStreamExtractor {
   }
 
   push(chunk: string): string {
-    if (this.finished) return '';
+    if (this.finished) {
+      return '';
+    }
 
     validateChunkSize(chunk);
     this.buffer += chunk;
@@ -481,11 +485,15 @@ export class ResponseStreamExtractor implements IStreamExtractor {
     const openTag = '<actions>';
     const closeTag = '</actions>';
     const startIdx = this.buffer.indexOf(openTag);
-    if (startIdx === -1) return;
+    if (startIdx === -1) {
+      return;
+    }
 
     const contentStart = startIdx + openTag.length;
     const endIdx = this.buffer.indexOf(closeTag, contentStart);
-    if (endIdx === -1) return;
+    if (endIdx === -1) {
+      return;
+    }
 
     const actionsContent = this.buffer.substring(contentStart, endIdx);
     const actions = this.parseActions(actionsContent);
@@ -593,11 +601,17 @@ export class ActionStreamFilter implements IStreamExtractor {
   /** Detect content type from first non-whitespace character */
   private detectContentType(): ContentType | null {
     const trimmed = this.buffer.trimStart();
-    if (trimmed.length === 0) return null;
+    if (trimmed.length === 0) {
+      return null;
+    }
 
     const firstChar = trimmed[0];
-    if (firstChar === '{' || firstChar === '[') return 'json';
-    if (firstChar === '<') return 'xml';
+    if (firstChar === '{' || firstChar === '[') {
+      return 'json';
+    }
+    if (firstChar === '<') {
+      return 'xml';
+    }
     return 'text';
   }
 

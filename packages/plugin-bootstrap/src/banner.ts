@@ -35,7 +35,9 @@ export interface BannerOptions {
 }
 
 function mask(v: string): string {
-  if (!v || v.length < 8) return '••••••••';
+  if (!v || v.length < 8) {
+    return '••••••••';
+  }
   return `${v.slice(0, 4)}${'•'.repeat(Math.min(12, v.length - 8))}${v.slice(-4)}`;
 }
 
@@ -48,25 +50,33 @@ function fmtVal(value: unknown, sensitive: boolean, maxLen: number): string {
   } else {
     s = String(value);
   }
-  if (s.length > maxLen) s = s.slice(0, maxLen - 3) + '...';
+  if (s.length > maxLen) {
+    s = `${s.slice(0, maxLen - 3)}...`;
+  }
   return s;
 }
 
 function isDef(v: unknown, d: unknown): boolean {
-  if (v === undefined || v === null || v === '') return true;
+  if (v === undefined || v === null || v === '') {
+    return true;
+  }
   return d !== undefined && v === d;
 }
 
 function pad(s: string, n: number): string {
   const len = s.replace(/\x1b\[[0-9;]*m/g, '').length;
-  if (len >= n) return s;
+  if (len >= n) {
+    return s;
+  }
   return s + ' '.repeat(n - len);
 }
 
 function line(content: string): string {
   const stripped = content.replace(/\x1b\[[0-9;]*m/g, '');
   const len = stripped.length;
-  if (len > 78) return content.slice(0, 78);
+  if (len > 78) {
+    return content.slice(0, 78);
+  }
   return content + ' '.repeat(78 - len);
 }
 

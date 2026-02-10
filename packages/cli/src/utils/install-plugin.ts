@@ -22,7 +22,7 @@ function getCliDirectory(): string | null {
     if (cliPath.includes('node_modules/@elizaos/cli')) {
       // Go up to the CLI package root
       const cliDir = path.dirname(
-        cliPath.split('node_modules/@elizaos/cli')[0] + 'node_modules/@elizaos/cli'
+        `${cliPath.split('node_modules/@elizaos/cli')[0]}node_modules/@elizaos/cli`
       );
 
       // Verify this is actually the CLI directory

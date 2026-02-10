@@ -29,7 +29,7 @@ describe('Messages Library', () => {
     const messages: Memory[] = [
       {
         content: { text: 'Hello, world!' } as Content,
-        entityId: entityId,
+        entityId,
         roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
         createdAt: new Date().getTime(),
         agentId: '' as UUID, // assuming agentId is an empty string here
@@ -64,7 +64,7 @@ describe('Messages Library', () => {
             },
           ],
         } as Content,
-        entityId: entityId,
+        entityId,
         roomId: '123e4567-e89b-12d3-a456-426614174004' as UUID,
         createdAt: new Date().getTime(),
         agentId: '' as UUID, // assuming agentId is an empty string here
@@ -84,7 +84,7 @@ describe('Messages Library', () => {
         content: {
           text: 'No attachments here',
         } as Content,
-        entityId: entityId,
+        entityId,
         roomId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
         createdAt: new Date().getTime(),
         agentId: '' as UUID, // assuming agentId is an empty string here

@@ -24,7 +24,9 @@ export async function checkForUpdates(
 
   for (const [pkg, currentVersion] of elizaPackages) {
     const latestVersion = await fetchLatestVersion(pkg);
-    if (!latestVersion) continue;
+    if (!latestVersion) {
+      continue;
+    }
 
     const { needsUpdate, error } = checkVersionNeedsUpdate(currentVersion, latestVersion);
     if (needsUpdate) {
@@ -72,7 +74,7 @@ export async function updatePackageJson(
   }
 
   if (modified) {
-    await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
+    await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
     console.log('Updated package.json with new versions');
   }
 }

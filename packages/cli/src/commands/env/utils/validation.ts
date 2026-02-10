@@ -4,7 +4,9 @@
  * @returns The masked value
  */
 export function maskedValue(value: string): string {
-  if (!value) return '';
+  if (!value) {
+    return '';
+  }
 
   // If the value looks like a token/API key (longer than 20 chars, no spaces), mask it
   if (value.length > 20 && !value.includes(' ')) {

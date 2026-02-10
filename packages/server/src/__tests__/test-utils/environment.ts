@@ -19,7 +19,9 @@ async function cleanupPluginSqlSingletons(): Promise<void> {
   const globalSymbols = globalThis as unknown as Record<symbol, any>;
   const singletons = globalSymbols[GLOBAL_SINGLETONS];
 
-  if (!singletons) return;
+  if (!singletons) {
+    return;
+  }
 
   // Cleanup PGLite client manager
   if (singletons.pgLiteClientManager) {

@@ -242,7 +242,9 @@ const importStrategies: ImportStrategy[] = [
     name: 'package.json entry',
     tryImport: async (repository: string) => {
       const packageJson = await readPackageJson(repository);
-      if (!packageJson) return null;
+      if (!packageJson) {
+        return null;
+      }
 
       const entryPoint = packageJson.module || packageJson.main || DEFAULT_ENTRY_POINT;
       return tryImporting(
@@ -256,7 +258,9 @@ const importStrategies: ImportStrategy[] = [
     name: 'common dist pattern',
     tryImport: async (repository: string) => {
       const packageJson = await readPackageJson(repository);
-      if (packageJson?.main === DEFAULT_ENTRY_POINT) return null;
+      if (packageJson?.main === DEFAULT_ENTRY_POINT) {
+        return null;
+      }
 
       return tryImporting(
         resolveNodeModulesPath(repository, DEFAULT_ENTRY_POINT),
@@ -315,7 +319,9 @@ export async function loadPluginModule(
 
   for (const strategy of strategies) {
     const result = await strategy.tryImport(repository);
-    if (result) return result;
+    if (result) {
+      return result;
+    }
   }
 
   logger.warn(

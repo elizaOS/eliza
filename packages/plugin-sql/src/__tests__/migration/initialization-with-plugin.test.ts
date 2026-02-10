@@ -321,7 +321,7 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
     it('should successfully insert and read data from polymarket.markets table', async () => {
       console.log('\n🔍 Testing write/read operations on polymarket schema...\n');
 
-      const testConditionId = 'test_' + testAgentId.slice(0, 8);
+      const testConditionId = `test_${testAgentId.slice(0, 8)}`;
       const testMarketId = testAgentId; // Use the test UUID
 
       // Direct insert using the polymarket schema tables
@@ -335,7 +335,7 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
         await db.insert(polymarketMarketsTable).values({
           id: testMarketId,
           conditionId: testConditionId,
-          questionId: 'test_question_' + Date.now(),
+          questionId: `test_question_${Date.now()}`,
           marketSlug: 'test-market-slug',
           question: 'Test market question?',
           category: 'Test',
@@ -357,8 +357,8 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
         console.log('✅ Market verified via raw SQL');
 
         // Test 2: Insert tokens for the market
-        const tokenId1 = 'token_yes_' + Date.now();
-        const tokenId2 = 'token_no_' + Date.now();
+        const tokenId1 = `token_yes_${Date.now()}`;
+        const tokenId2 = `token_no_${Date.now()}`;
 
         console.log('Inserting test tokens...');
         await db.insert(polymarketTokensTable).values([
@@ -408,7 +408,7 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
           .values({
             id: sql`gen_random_uuid()`,
             conditionId: testConditionId,
-            questionId: 'updated_question_' + Date.now(),
+            questionId: `updated_question_${Date.now()}`,
             marketSlug: 'updated-market-slug',
             question: 'Updated test market question?',
             category: 'Updated',
@@ -468,13 +468,13 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
         await import('../fixtures/test-plugin-schema');
 
       // Try to insert a token with non-existent conditionId (should fail)
-      const invalidConditionId = 'non_existent_' + Date.now();
-      const tokenId = 'test_token_' + Date.now();
+      const invalidConditionId = `non_existent_${Date.now()}`;
+      const tokenId = `test_token_${Date.now()}`;
 
       try {
         await db.insert(polymarketTokensTable).values({
           id: sql`gen_random_uuid()`,
-          tokenId: tokenId,
+          tokenId,
           conditionId: invalidConditionId,
           outcome: 'YES',
           createdAt: new Date(),
@@ -507,7 +507,7 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
       const { polymarketMarketsTable, polymarketTokensTable } =
         await import('../fixtures/test-plugin-schema');
 
-      const testConditionId = 'tx_test_' + Date.now();
+      const testConditionId = `tx_test_${Date.now()}`;
       let transactionSucceeded = false;
 
       try {
@@ -529,7 +529,7 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
           // Insert token
           await tx.insert(polymarketTokensTable).values({
             id: sql`gen_random_uuid()`,
-            tokenId: 'tx_token_' + Date.now(),
+            tokenId: `tx_token_${Date.now()}`,
             conditionId: testConditionId,
             outcome: 'YES',
             createdAt: new Date(),

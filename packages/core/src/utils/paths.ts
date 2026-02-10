@@ -43,7 +43,9 @@ class ElizaPaths {
    */
   getDataDir(): string {
     const cached = this.cache.get('dataDir');
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const dir =
       (typeof process !== 'undefined' && process.env?.ELIZA_DATA_DIR) ||
@@ -59,7 +61,9 @@ class ElizaPaths {
    */
   getDatabaseDir(): string {
     const cached = this.cache.get('databaseDir');
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const dir =
       (typeof process !== 'undefined' && process.env?.ELIZA_DATABASE_DIR) ||
@@ -74,7 +78,9 @@ class ElizaPaths {
    */
   getCharactersDir(): string {
     const cached = this.cache.get('charactersDir');
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const dir =
       (typeof process !== 'undefined' && process.env?.ELIZA_DATA_DIR_CHARACTERS) ||
@@ -88,7 +94,9 @@ class ElizaPaths {
    */
   getGeneratedDir(): string {
     const cached = this.cache.get('generatedDir');
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const dir =
       (typeof process !== 'undefined' && process.env?.ELIZA_DATA_DIR_GENERATED) ||
@@ -102,7 +110,9 @@ class ElizaPaths {
    */
   getUploadsAgentsDir(): string {
     const cached = this.cache.get('uploadsAgentsDir');
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const dir =
       (typeof process !== 'undefined' && process.env?.ELIZA_DATA_DIR_UPLOADS_AGENTS) ||
@@ -116,7 +126,9 @@ class ElizaPaths {
    */
   getUploadsChannelsDir(): string {
     const cached = this.cache.get('uploadsChannelsDir');
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const dir =
       (typeof process !== 'undefined' && process.env?.ELIZA_DATA_DIR_UPLOADS_CHANNELS) ||

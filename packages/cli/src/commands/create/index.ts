@@ -100,7 +100,9 @@ export const create = new Command('create')
             message: `What is the name of your ${projectType}?`,
             placeholder: `my-${projectType}`,
             validate: (value) => {
-              if (!value) return 'Name is required';
+              if (!value) {
+                return 'Name is required';
+              }
 
               // Validate project/plugin names differently than agent names
               if (projectType === 'agent') {

@@ -214,7 +214,6 @@ export async function addPlugin(pluginArg: string, opts: AddPluginOptions): Prom
 
   // --- Convert full GitHub HTTPS URL to shorthand ---
   const httpsGitHubUrlRegex =
-    // eslint-disable-next-line no-useless-escape
     /^https?:\/\/github\.com\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_.-]+?)(?:\.git)?(?:(?:#|\/tree\/|\/commit\/)([a-zA-Z0-9_.-]+))?\/?$/;
   const httpsMatch = plugin.match(httpsGitHubUrlRegex);
 

@@ -11,8 +11,12 @@ import { bunExecSimple } from './bun-exec';
  */
 export function getVersionChannel(version: string): 'latest' | 'alpha' | 'beta' {
   // Check for prerelease identifiers
-  if (version.includes('-alpha')) return 'alpha';
-  if (version.includes('-beta')) return 'beta';
+  if (version.includes('-alpha')) {
+    return 'alpha';
+  }
+  if (version.includes('-beta')) {
+    return 'beta';
+  }
 
   // No prerelease identifier means it's the latest stable version
   return 'latest';

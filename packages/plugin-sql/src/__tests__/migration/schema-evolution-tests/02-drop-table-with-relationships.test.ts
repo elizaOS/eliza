@@ -154,7 +154,7 @@ describe('Schema Evolution Test: Drop Table with Production Relationships', () =
         source: 'discord',
         type: 'text',
         channelId: channelId1,
-        messageServerId: messageServerId,
+        messageServerId,
       },
       {
         id: room2Id,
@@ -163,7 +163,7 @@ describe('Schema Evolution Test: Drop Table with Production Relationships', () =
         source: 'discord',
         type: 'voice',
         channelId: channelId2,
-        messageServerId: messageServerId,
+        messageServerId,
       },
     ]);
 

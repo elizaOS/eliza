@@ -177,7 +177,9 @@ const isShortV = (w: number[], len: number): boolean => {
  * @returns The stemmed version of the word.
  */
 const stem = (word: string): string => {
-  if (word.length < 3) return word;
+  if (word.length < 3) {
+    return word;
+  }
   // exception1
   if (word.length <= 6) {
     switch (word) {
@@ -229,21 +231,29 @@ const stem = (word: string): string => {
     }
     w[i] = ch;
   }
-  if (w[l - 1] === 39 /* ' */) --l;
-  if (l >= 2 && w[l - 2] === 39 /* ' */ && w[l - 1] === 115 /* s */) l -= 2;
+  if (w[l - 1] === 39 /* ' */) {
+    --l;
+  }
+  if (l >= 2 && w[l - 2] === 39 /* ' */ && w[l - 1] === 115 /* s */) {
+    l -= 2;
+  }
   // mark_regions
   let rv = 0;
   // rv is the position after the first vowel
-  while (rv < l && !isV(w[rv])) ++rv;
-  if (rv < l) ++rv;
+  while (rv < l && !isV(w[rv])) {
+    ++rv;
+  }
+  if (rv < l) {
+    ++rv;
+  }
   let r1 = rv;
   if (
     l >= 5 &&
     ((w[0] === 103 && w[1] === 101 && w[2] === 110 && w[3] === 101 && w[4] === 114) || // gener
       (w[0] === 97 && w[1] === 114 && w[2] === 115 && w[3] === 101 && w[4] === 110)) // arsen
-  )
+  ) {
     r1 = 5;
-  else if (
+  } else if (
     l >= 6 &&
     w[0] === 99 && // c
     w[1] === 111 && // o
@@ -251,36 +261,55 @@ const stem = (word: string): string => {
     w[3] === 109 && // m
     w[4] === 117 && // u
     w[5] === 110 // n
-  )
-    // commun
+  ) // commun
+  {
     r1 = 6;
-  else {
+  } else {
     // > R1 is the region after the first non-vowel following a vowel,
     // > or the end of the word if there is no such non-vowel.
-    while (r1 < l && isV(w[r1])) ++r1;
-    if (r1 < l) ++r1;
+    while (r1 < l && isV(w[r1])) {
+      ++r1;
+    }
+    if (r1 < l) {
+      ++r1;
+    }
   }
   // > R2 is the region after the first non-vowel following a vowel in R1,
   // > or the end of the word if there is no such non-vowel.
   let r2 = r1;
-  while (r2 < l && !isV(w[r2])) ++r2;
-  while (r2 < l && isV(w[r2])) ++r2;
-  if (r2 < l) ++r2;
+  while (r2 < l && !isV(w[r2])) {
+    ++r2;
+  }
+  while (r2 < l && isV(w[r2])) {
+    ++r2;
+  }
+  if (r2 < l) {
+    ++r2;
+  }
   // Step_1a
   if (l >= 3) {
     if (w[l - 1] === 115) {
       // s
-      if (l >= 4 && w[l - 2] === 101 && w[l - 3] === 115 && w[l - 4] === 115)
-        // sses
-        l -= 2; // sses -> ss
-      else if (w[l - 2] === 101 && w[l - 3] === 105)
-        // ies
-        l -= l >= 5 ? 2 : 1; // ies
-      else if (w[l - 2] !== 117 && w[l - 2] !== 115 && rv < l - 1)
-        // us ss -> <nothing>; s -> "delete if the preceding word part
-        // contains a vowel not immediately before the s"
+      if (l >= 4 && w[l - 2] === 101 && w[l - 3] === 115 && w[l - 4] === 115) // sses
+      {
+        l -= 2;
+      } // sses -> ss
+      else if (w[l - 2] === 101 && w[l - 3] === 105) // ies
+      {
+        l -= l >= 5 ? 2 : 1;
+      } // ies
+      else if (
+        w[l - 2] !== 117 &&
+        w[l - 2] !== 115 &&
+        rv < l - 1
+      ) // us ss -> <nothing>; s -> "delete if the preceding word part
+      // contains a vowel not immediately before the s"
+      {
         l -= 1;
-    } else if (w[l - 1] === 100 && w[l - 2] === 101 && w[l - 3] === 105) l -= l >= 5 ? 2 : 1; // ied
+      }
+    } else if (w[l - 1] === 100 && w[l - 2] === 101 && w[l - 3] === 105) {
+      l -= l >= 5 ? 2 : 1;
+    } // ied
   }
   // exception2
   if (
@@ -341,7 +370,9 @@ const stem = (word: string): string => {
           w[6] === 100))) // d (succeed)
   ) {
     let exp2Out = '';
-    for (let i = 0; i < l; ++i) exp2Out += String.fromCharCode(w[i]);
+    for (let i = 0; i < l; ++i) {
+      exp2Out += String.fromCharCode(w[i]);
+    }
     return exp2Out;
   }
   // Step_1b
@@ -351,14 +382,20 @@ const stem = (word: string): string => {
   if (ll >= 3) {
     if (w[ll - 3] === 101 && w[ll - 2] === 101 && w[ll - 1] === 100) {
       // eed
-      if (ll >= r1 + 3) l = ll - 1; // eed eedly -> ee (if in R1)
+      if (ll >= r1 + 3) {
+        l = ll - 1;
+      } // eed eedly -> ee (if in R1)
     } else {
       // ll without: ed edly ing ingly (-1 if not found)
-      if (w[ll - 2] === 101 && w[ll - 1] === 100)
-        ll -= 2; // ed
-      else if (w[ll - 3] === 105 && w[ll - 2] === 110 && w[ll - 1] === 103)
-        ll -= 3; // ing
-      else ll = -1;
+      if (w[ll - 2] === 101 && w[ll - 1] === 100) {
+        ll -= 2;
+      } // ed
+      else if (w[ll - 3] === 105 && w[ll - 2] === 110 && w[ll - 1] === 103) {
+        ll -= 3;
+      } // ing
+      else {
+        ll = -1;
+      }
       if (ll >= 0 && rv <= ll) {
         l = ll;
         if (l >= 2) {
@@ -382,7 +419,9 @@ const stem = (word: string): string => {
     }
   }
   // Step_1c
-  if (l >= 3 && (w[l - 1] === 89 || w[l - 1] === 121) && !isV(w[l - 2])) w[l - 1] = 105; // i
+  if (l >= 3 && (w[l - 1] === 89 || w[l - 1] === 121) && !isV(w[l - 2])) {
+    w[l - 1] = 105;
+  } // i
   // Step_2
   if (l >= r1 + 2) {
     switch (w[l - 1]) {
@@ -433,7 +472,9 @@ const stem = (word: string): string => {
         if (l >= r1 + 4) {
           if (w[l - 2] === 101) {
             // e (er)
-            if (w[l - 3] === 122 && w[l - 4] === 105) --l; // izer -> ize
+            if (w[l - 3] === 122 && w[l - 4] === 105) {
+              --l;
+            } // izer -> ize
           } else if (w[l - 2] === 111) {
             // o (or)
             if (w[l - 3] === 116 && w[l - 4] === 97) {
@@ -464,8 +505,9 @@ const stem = (word: string): string => {
           w[l - 3] === 105 && // i
           w[l - 4] === 108 && // l
           w[l - 5] === 97 // a (alism)
-        )
-          l -= 3; // alism -> al
+        ) {
+          l -= 3;
+        } // alism -> al
         break;
       case 105: // i
         if (w[l - 2] === 99) {
@@ -476,9 +518,16 @@ const stem = (word: string): string => {
           }
         } else if (w[l - 2] === 103) {
           // g (gi)
-          if (l >= r1 + 3 && l >= 4 && w[l - 2] === 103 && w[l - 3] === 111 && w[l - 4] === 108)
-            // logi
-            --l; // ogi -> og (if preceded by l)
+          if (
+            l >= r1 + 3 &&
+            l >= 4 &&
+            w[l - 2] === 103 &&
+            w[l - 3] === 111 &&
+            w[l - 4] === 108
+          ) // logi
+          {
+            --l;
+          } // ogi -> og (if preceded by l)
         } else if (w[l - 2] === 116) {
           // t (ti)
           if (l >= r1 + 5 && w[l - 3] === 105) {
@@ -510,7 +559,9 @@ const stem = (word: string): string => {
             // bli
             if (l >= 4 && w[l - 4] === 97) {
               // abli
-              if (l >= r1 + 4) w[l - 1] = 101; // abli -> able
+              if (l >= r1 + 4) {
+                w[l - 1] = 101;
+              } // abli -> able
             } else if (l >= r1 + 3) {
               w[l - 1] = 101; // bli -> ble
             }
@@ -520,7 +571,9 @@ const stem = (word: string): string => {
               // lli
               if (l >= 5 && w[l - 4] === 117 && w[l - 5] === 102) {
                 // fulli
-                if (l >= r1 + 5) l -= 2; // fulli -> ful
+                if (l >= r1 + 5) {
+                  l -= 2;
+                } // fulli -> ful
               } else if (l >= r1 + 4 && w[l - 4] === 97) {
                 // alli
                 l -= 2; // alli -> al
@@ -529,14 +582,18 @@ const stem = (word: string): string => {
               // sli
               if (l >= 6 && w[l - 4] === 115 && w[l - 5] === 101 && w[l - 6] === 108) {
                 // lessli
-                if (l >= r1 + 6) l -= 2; // lessli -> less
+                if (l >= r1 + 6) {
+                  l -= 2;
+                } // lessli -> less
               } else if (l >= r1 + 5 && w[l - 4] === 117 && w[l - 5] === 111) {
                 // ousli
                 l -= 2; // ousli -> ous
               }
             } else if (l >= 5 && w[l - 3] === 116 && w[l - 4] === 110 && w[l - 5] === 101) {
               // entli
-              if (l >= r1 + 5) l -= 2; // entli -> ent
+              if (l >= r1 + 5) {
+                l -= 2;
+              } // entli -> ent
             } else if (isValidLi(w[l - 3])) {
               l -= 2;
             }
@@ -550,10 +607,14 @@ const stem = (word: string): string => {
       case 108: // l
         if (w[l - 3] === 99) {
           // cal
-          if (l >= r1 + 4 && w[l - 4] === 105 && w[l - 2] === 97) l -= 2; // ical -> ic
+          if (l >= r1 + 4 && w[l - 4] === 105 && w[l - 2] === 97) {
+            l -= 2;
+          } // ical -> ic
         } else if (w[l - 3] === 102) {
           // ful
-          if (w[l - 2] === 117) l -= 3; // ful -> <delete>
+          if (w[l - 2] === 117) {
+            l -= 3;
+          } // ful -> <delete>
         } else if (w[l - 3] === 110) {
           // nal
           if (
@@ -579,13 +640,19 @@ const stem = (word: string): string => {
       case 101: // e
         if (w[l - 2] === 122) {
           // ze
-          if (l >= r1 + 5 && w[l - 3] === 105 && w[l - 4] === 108 && w[l - 5] === 97) l -= 3; // alize -> al
+          if (l >= r1 + 5 && w[l - 3] === 105 && w[l - 4] === 108 && w[l - 5] === 97) {
+            l -= 3;
+          } // alize -> al
         } else if (w[l - 2] === 116) {
           // te
-          if (l >= r1 + 5 && w[l - 3] === 97 && w[l - 4] === 99 && w[l - 5] === 105) l -= 3; // icate -> ic
+          if (l >= r1 + 5 && w[l - 3] === 97 && w[l - 4] === 99 && w[l - 5] === 105) {
+            l -= 3;
+          } // icate -> ic
         } else if (w[l - 2] === 118) {
           // ve
-          if (l >= r2 + 5 && w[l - 3] === 105 && w[l - 4] === 116 && w[l - 5] === 97) l -= 5; // ative -> <delete> (if in R2)
+          if (l >= r2 + 5 && w[l - 3] === 105 && w[l - 4] === 116 && w[l - 5] === 97) {
+            l -= 5;
+          } // ative -> <delete> (if in R2)
         }
         break;
       case 105: // i
@@ -595,11 +662,14 @@ const stem = (word: string): string => {
           w[l - 3] === 105 && // i
           w[l - 4] === 99 && // c
           w[l - 5] === 105 // i (iciti)
-        )
-          l -= 3; // iciti -> ic
+        ) {
+          l -= 3;
+        } // iciti -> ic
         break;
       case 115: // s
-        if (l >= r1 + 4 && w[l - 2] === 115 && w[l - 3] === 101 && w[l - 4] === 110) l -= 4; // ness -> <delete>
+        if (l >= r1 + 4 && w[l - 2] === 115 && w[l - 3] === 101 && w[l - 4] === 110) {
+          l -= 4;
+        } // ness -> <delete>
     }
   }
   // Step_4
@@ -611,26 +681,39 @@ const stem = (word: string): string => {
           w[l - 2] === 111 && // o
           w[l - 3] === 105 && // i (ion)
           (w[l - 4] === 115 || w[l - 4] === 116) // s or t
-        )
-          l -= 3; // ion -> <delete> (if preceded by s or t)
+        ) {
+          l -= 3;
+        } // ion -> <delete> (if preceded by s or t)
         break;
       case 108: // l
-        if (w[l - 2] === 97) l -= 2; // al
+        if (w[l - 2] === 97) {
+          l -= 2;
+        } // al
         break;
       case 114: // r
-        if (w[l - 2] === 101) l -= 2; // er
+        if (w[l - 2] === 101) {
+          l -= 2;
+        } // er
         break;
       case 99: // c
-        if (w[l - 2] === 105) l -= 2; // ic
+        if (w[l - 2] === 105) {
+          l -= 2;
+        } // ic
         break;
       case 109: // m
-        if (l >= r2 + 3 && w[l - 2] === 115 && w[l - 3] === 105) l -= 3; // ism
+        if (l >= r2 + 3 && w[l - 2] === 115 && w[l - 3] === 105) {
+          l -= 3;
+        } // ism
         break;
       case 105: // i
-        if (l >= r2 + 3 && w[l - 2] === 116 && w[l - 3] === 105) l -= 3; // iti
+        if (l >= r2 + 3 && w[l - 2] === 116 && w[l - 3] === 105) {
+          l -= 3;
+        } // iti
         break;
       case 115: // s
-        if (l >= r2 + 3 && w[l - 2] === 117 && w[l - 3] === 111) l -= 3; // ous
+        if (l >= r2 + 3 && w[l - 2] === 117 && w[l - 3] === 111) {
+          l -= 3;
+        } // ous
         break;
       case 116: // t
         if (l >= r2 + 3 && w[l - 2] === 110) {
@@ -644,7 +727,9 @@ const stem = (word: string): string => {
               // ment
               if (l >= 5 && w[l - 5] === 101) {
                 // ement
-                if (l >= r2 + 5) l -= 5; // ement
+                if (l >= r2 + 5) {
+                  l -= 5;
+                } // ement
               } else if (l >= r2 + 4) {
                 l -= 4; // ment
               }
@@ -657,13 +742,19 @@ const stem = (word: string): string => {
       case 101: // e
         if (w[l - 2] === 99) {
           // ce
-          if (l >= r2 + 4 && w[l - 3] === 110 && (w[l - 4] === 97 || w[l - 4] === 101)) l -= 4; // ance  ence
+          if (l >= r2 + 4 && w[l - 3] === 110 && (w[l - 4] === 97 || w[l - 4] === 101)) {
+            l -= 4;
+          } // ance  ence
         } else if (w[l - 2] === 108) {
           // le
-          if (l >= r2 + 4 && w[l - 3] === 98 && (w[l - 4] === 97 || w[l - 4] === 105)) l -= 4; // able  ible
+          if (l >= r2 + 4 && w[l - 3] === 98 && (w[l - 4] === 97 || w[l - 4] === 105)) {
+            l -= 4;
+          } // able  ible
         } else if (w[l - 2] === 116) {
           // te
-          if (l >= r2 + 3 && w[l - 3] === 97) l -= 3; // ate
+          if (l >= r2 + 3 && w[l - 3] === 97) {
+            l -= 3;
+          } // ate
         } else if (l >= r2 + 3 && (w[l - 2] === 118 || w[l - 2] === 122) && w[l - 3] === 105) {
           // ive ize
           l -= 3; // ive  ize
@@ -675,15 +766,18 @@ const stem = (word: string): string => {
     l >= r1 + 1 && // r1 is >= 1
     ((l >= r2 + 1 && w[l - 1] === 108 && w[l - 2] === 108) || // ll
       (w[l - 1] === 101 && (l >= r2 + 1 || !isShortV(w, l - 1)))) // e
-  )
+  ) {
     --l;
+  }
   let out = '';
   if (yFound) {
     for (let i = 0; i < l; ++i) {
       out += String.fromCharCode(w[i] === 89 ? 121 : w[i]); // Y -> y
     }
   } else {
-    for (let i = 0; i < l; ++i) out += String.fromCharCode(w[i]);
+    for (let i = 0; i < l; ++i) {
+      out += String.fromCharCode(w[i]);
+    }
   }
   return out;
 };
@@ -916,7 +1010,9 @@ class Tokenizer {
    * @returns The stemmed word.
    */
   stemWord(word: string): string {
-    if (word.length < 3) return word;
+    if (word.length < 3) {
+      return word;
+    }
     let customRuleApplied = false;
     let stemmed = word;
     for (const rule of this.stemmingRules) {
@@ -943,7 +1039,9 @@ class Tokenizer {
     }
     // If a custom rule was applied and modified the word, return it.
     // Otherwise, or if custom rules are meant to precede default stemming, apply Porter2.
-    if (customRuleApplied && stemmed !== word) return stemmed; // Return if custom rule changed the word
+    if (customRuleApplied && stemmed !== word) {
+      return stemmed;
+    } // Return if custom rule changed the word
 
     // Fallback to Porter2 if no custom rule applied or if custom rules are pre-processing
     return stem(stemmed); // Apply Porter2 to the (potentially already custom-stemmed) word
@@ -958,7 +1056,9 @@ class Tokenizer {
    */
   isConsonant(word: string, i: number): boolean {
     const char = word[i];
-    if ('aeiou'.includes(char)) return false;
+    if ('aeiou'.includes(char)) {
+      return false;
+    }
     return char !== 'y' || (i === 0 ? true : !this.isConsonant(word, i - 1));
   }
 
@@ -1125,7 +1225,9 @@ export class BM25 {
 
       // Iterate through fields of the document
       Object.entries(doc).forEach(([field, content]) => {
-        if (typeof content !== 'string') return; // Skip non-string fields
+        if (typeof content !== 'string') {
+          return;
+        } // Skip non-string fields
 
         const fieldBoost = this.fieldBoosts[field] || 1;
         const { tokens } = this.tokenizer.tokenize(content);
@@ -1210,14 +1312,20 @@ export class BM25 {
     queryTokens.forEach((term) => {
       const termIndex = this.termToIndex.get(term);
       // Ignore terms not found in the index
-      if (termIndex === undefined) return;
+      if (termIndex === undefined) {
+        return;
+      }
 
       const idf = this.calculateIdf(termIndex);
       // Skip terms with non-positive IDF (e.g., term in all docs)
-      if (idf <= 0) return;
+      if (idf <= 0) {
+        return;
+      }
 
       const termFreqsInDocs = this.termFrequencies.get(termIndex); // Map<DocIndex, TF>
-      if (!termFreqsInDocs) return; // Should not happen if termIndex exists, but check anyway
+      if (!termFreqsInDocs) {
+        return;
+      } // Should not happen if termIndex exists, but check anyway
 
       // Iterate over documents containing this term
       termFreqsInDocs.forEach((tf, docIndex) => {
@@ -1261,7 +1369,9 @@ export class BM25 {
    */
   searchPhrase(phrase: string, topK = 10): SearchResult[] {
     const { tokens: phraseTokens } = this.tokenizer.tokenize(phrase); // Tokenize the phrase
-    if (phraseTokens.length === 0) return []; // Cannot search for empty phrase
+    if (phraseTokens.length === 0) {
+      return [];
+    } // Cannot search for empty phrase
 
     // --- Find Candidate Documents ---
     // Start with documents containing the *first* term, then intersect with subsequent terms.
@@ -1269,10 +1379,14 @@ export class BM25 {
 
     for (const term of phraseTokens) {
       const termIndex = this.termToIndex.get(term);
-      if (termIndex === undefined) return []; // Phrase cannot exist if any term is missing
+      if (termIndex === undefined) {
+        return [];
+      } // Phrase cannot exist if any term is missing
 
       const docsContainingTermIter = this.termFrequencies.get(termIndex)?.keys();
-      if (!docsContainingTermIter) return []; // Should not happen, but check
+      if (!docsContainingTermIter) {
+        return [];
+      } // Should not happen, but check
 
       const currentTermDocs = new Set(docsContainingTermIter);
 
@@ -1287,10 +1401,14 @@ export class BM25 {
       }
 
       // If intersection becomes empty, the phrase cannot exist
-      if (candidateDocs.size === 0) return [];
+      if (candidateDocs.size === 0) {
+        return [];
+      }
     }
 
-    if (candidateDocs === null || candidateDocs.size === 0) return []; // No candidates found
+    if (candidateDocs === null || candidateDocs.size === 0) {
+      return [];
+    } // No candidates found
 
     // --- Verify Phrase Occurrence and Score ---
     const scores = new Map<number, number>(); // Map<DocIndex, Score>
@@ -1301,7 +1419,9 @@ export class BM25 {
 
       // Check each field for the phrase
       Object.entries(doc).forEach(([field, content]) => {
-        if (typeof content !== 'string' || phraseFoundInDoc) return; // Skip non-strings or if already found
+        if (typeof content !== 'string' || phraseFoundInDoc) {
+          return;
+        } // Skip non-strings or if already found
 
         const fieldBoost = this.fieldBoosts[field] || 1;
         // Tokenize the field content using the same settings
@@ -1346,7 +1466,9 @@ export class BM25 {
     return phraseTokens.reduce((currentScore, term) => {
       const termIndex = this.termToIndex.get(term);
       // Ignore terms not in index (shouldn't happen if candidate selection worked)
-      if (termIndex === undefined) return currentScore;
+      if (termIndex === undefined) {
+        return currentScore;
+      }
 
       const idf = this.calculateIdf(termIndex);
       const tf = this.termFrequencies.get(termIndex)?.get(docIndex) || 0;
@@ -1375,7 +1497,9 @@ export class BM25 {
    * @throws {Error} If the document is null or undefined.
    */
   async addDocument(doc: Record<string, unknown>): Promise<void> {
-    if (!doc) throw new Error('Document cannot be null');
+    if (!doc) {
+      throw new Error('Document cannot be null');
+    }
 
     const docIndex = this.documentLengths.length; // Index for the new document
 
@@ -1392,7 +1516,9 @@ export class BM25 {
 
     // --- Process Fields and Tokens ---
     Object.entries(doc).forEach(([field, content]) => {
-      if (typeof content !== 'string') return;
+      if (typeof content !== 'string') {
+        return;
+      }
 
       const fieldBoost = this.fieldBoosts[field] || 1;
       const { tokens } = this.tokenizer.tokenize(content);

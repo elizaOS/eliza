@@ -75,6 +75,4 @@ export async function cloneMonorepo(cloneInfo: CloneInfo): Promise<void> {
 
   // Clone the repository
   await cloneRepository(repo, branch, destinationDir);
-
-  return;
 }

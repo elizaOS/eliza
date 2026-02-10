@@ -160,7 +160,9 @@ async function startClientDevServer(cwd: string): Promise<void> {
         try {
           while (true) {
             const { value, done } = await reader.read();
-            if (done) break;
+            if (done) {
+              break;
+            }
             if (value) {
               const text = decoder.decode(value);
               // Show Vite startup messages but filter noise
@@ -190,7 +192,9 @@ async function startClientDevServer(cwd: string): Promise<void> {
         try {
           while (true) {
             const { value, done } = await reader.read();
-            if (done) break;
+            if (done) {
+              break;
+            }
             if (value) {
               const text = decoder.decode(value);
               // Show errors and warnings
@@ -261,7 +265,9 @@ async function getClientPort(cwd: string): Promise<number | null> {
           const match = script.match(/--port\s+(\d{2,5})/);
           if (match) {
             const port = parseInt(match[1], 10);
-            if (!Number.isNaN(port)) return port;
+            if (!Number.isNaN(port)) {
+              return port;
+            }
           }
         }
       } catch {
@@ -280,7 +286,9 @@ async function getClientPort(cwd: string): Promise<number | null> {
           const match = content.match(/server:\s*\{[\s\S]*?port:\s*(\d{2,5})/);
           if (match) {
             const port = parseInt(match[1], 10);
-            if (!Number.isNaN(port)) return port;
+            if (!Number.isNaN(port)) {
+              return port;
+            }
           }
         } catch {
           // ignore
@@ -445,7 +453,7 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   }
 
   // Display server information prominently
-  console.info('\n' + '═'.repeat(60));
+  console.info(`\n${'═'.repeat(60)}`);
   if (backendStarted || clientDevServerProcess) {
     console.info('🚀 Development servers are running:');
   } else {
@@ -483,7 +491,7 @@ export async function startDevMode(options: DevOptions): Promise<void> {
     }
   }
 
-  console.info('\n' + '─'.repeat(60));
+  console.info(`\n${'─'.repeat(60)}`);
 
   // Set up file watching if we're in a project, plugin, or monorepo directory
   if (isProject || isPlugin || isMonorepo) {
@@ -498,7 +506,7 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   }
 
   console.log('\nPress Ctrl+C to stop all servers');
-  console.log('═'.repeat(60) + '\n');
+  console.log(`${'═'.repeat(60)}\n`);
 
   // Handle graceful shutdown - only register in non-test mode to avoid conflicts
   process.on('SIGINT', async () => {

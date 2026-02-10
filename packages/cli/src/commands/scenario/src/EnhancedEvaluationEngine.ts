@@ -104,7 +104,9 @@ class EnhancedStringContainsEvaluator implements EnhancedEvaluator {
     params: EvaluationSchema,
     runResult: ExecutionResult
   ): Promise<EnhancedEvaluationResult> {
-    if (params.type !== 'string_contains') throw new Error('Mismatched evaluator');
+    if (params.type !== 'string_contains') {
+      throw new Error('Mismatched evaluator');
+    }
 
     const expectedValue = params.value;
     const actualOutput = runResult.stdout;
@@ -135,7 +137,9 @@ class EnhancedRegexMatchEvaluator implements EnhancedEvaluator {
     params: EvaluationSchema,
     runResult: ExecutionResult
   ): Promise<EnhancedEvaluationResult> {
-    if (params.type !== 'regex_match') throw new Error('Mismatched evaluator');
+    if (params.type !== 'regex_match') {
+      throw new Error('Mismatched evaluator');
+    }
 
     const pattern = params.pattern;
     const actualOutput = runResult.stdout;
@@ -166,7 +170,9 @@ class EnhancedFileExistsEvaluator implements EnhancedEvaluator {
     params: EvaluationSchema,
     runResult: ExecutionResult
   ): Promise<EnhancedEvaluationResult> {
-    if (params.type !== 'file_exists') throw new Error('Mismatched evaluator');
+    if (params.type !== 'file_exists') {
+      throw new Error('Mismatched evaluator');
+    }
 
     const expectedPath = params.path;
     const createdFiles = Object.keys(runResult.files);
@@ -205,13 +211,15 @@ class EnhancedExecutionTimeEvaluator implements EnhancedEvaluator {
     params: EvaluationSchema,
     runResult: ExecutionResult
   ): Promise<EnhancedEvaluationResult> {
-    if (params.type !== 'execution_time') throw new Error('Mismatched evaluator');
+    if (params.type !== 'execution_time') {
+      throw new Error('Mismatched evaluator');
+    }
 
     const duration =
       runResult.durationMs ?? (runResult.endedAtMs ?? 0) - (runResult.startedAtMs ?? 0);
 
     if (
-      duration == null ||
+      duration === null ||
       Number.isNaN(duration) ||
       (runResult.durationMs === undefined &&
         (runResult.startedAtMs === undefined || runResult.endedAtMs === undefined))
@@ -233,7 +241,7 @@ class EnhancedExecutionTimeEvaluator implements EnhancedEvaluator {
     }
 
     const tooSlow = duration > params.max_duration_ms;
-    const tooFast = params.min_duration_ms != null && duration < params.min_duration_ms;
+    const tooFast = params.min_duration_ms !== null && duration < params.min_duration_ms;
     const success = !tooSlow && !tooFast;
 
     let summary: string;
@@ -273,7 +281,9 @@ class EnhancedTrajectoryContainsActionEvaluator implements EnhancedEvaluator {
     _runResult: ExecutionResult,
     runtime: IAgentRuntime
   ): Promise<EnhancedEvaluationResult> {
-    if (params.type !== 'trajectory_contains_action') throw new Error('Mismatched evaluator');
+    if (params.type !== 'trajectory_contains_action') {
+      throw new Error('Mismatched evaluator');
+    }
 
     const actionName = params.action;
 
@@ -379,7 +389,9 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
     runResult: ExecutionResult,
     runtime: IAgentRuntime
   ): Promise<EnhancedEvaluationResult> {
-    if (params.type !== 'llm_judge') throw new Error('Mismatched evaluator');
+    if (params.type !== 'llm_judge') {
+      throw new Error('Mismatched evaluator');
+    }
 
     const prompt = params.prompt;
     const expected = params.expected;
@@ -388,7 +400,7 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
     const timeoutMs = Number(process.env.LLM_JUDGE_TIMEOUT_MS || 15000);
 
     // Pick first available model
-    let modelType: (typeof ModelType)[keyof typeof ModelType] =
+    const modelType: (typeof ModelType)[keyof typeof ModelType] =
       candidateModels.find((m) => runtime.getModel?.(m)) ?? ModelType.TEXT_LARGE;
 
     // Enhanced structured prompt for qualitative analysis with dynamic capabilities

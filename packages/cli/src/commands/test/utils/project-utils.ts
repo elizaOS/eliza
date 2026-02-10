@@ -27,7 +27,9 @@ export function getProjectType(testPath?: string): DirectoryInfo {
  * The filter preserves case sensitivity to match bun's test filtering behavior.
  */
 export function processFilterName(name?: string): string | undefined {
-  if (!name) return undefined;
+  if (!name) {
+    return undefined;
+  }
 
   // Handle common filter formats (preserve case for bun's case-sensitive matching)
   let baseName = name;

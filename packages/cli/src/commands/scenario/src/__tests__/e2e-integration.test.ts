@@ -19,12 +19,12 @@ describe('Dynamic Prompting E2E Integration', () => {
       _responseSequence: [] as string[],
       _currentIndex: 0,
 
-      setResponseSequence: function (responses: string[]) {
+      setResponseSequence(responses: string[]) {
         this._responseSequence = responses;
         this._currentIndex = 0;
       },
 
-      getNextResponse: function () {
+      getNextResponse() {
         if (this._currentIndex < this._responseSequence.length) {
           const response = this._responseSequence[this._currentIndex];
           this._currentIndex++;
@@ -62,7 +62,7 @@ describe('Dynamic Prompting E2E Integration', () => {
         return 'Mock LLM response';
       },
 
-      setUserResponses: function (responses: string[]) {
+      setUserResponses(responses: string[]) {
         this._userResponses = responses;
         this._userIndex = 0;
       },

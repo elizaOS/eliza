@@ -728,7 +728,7 @@ describe('Agent Integration Tests', () => {
           await cascadeAdapter.createWorld({
             id: worldId,
             name: 'Test World',
-            agentId: agentId,
+            agentId,
             serverId: uuidv4() as UUID,
           });
 
@@ -739,9 +739,9 @@ describe('Agent Integration Tests', () => {
             {
               id: roomId1,
               name: 'Test Room 1',
-              agentId: agentId,
+              agentId,
               serverId: uuidv4() as UUID,
-              worldId: worldId,
+              worldId,
               channelId: uuidv4() as UUID,
               type: 'PUBLIC' as any,
               source: 'test',
@@ -749,9 +749,9 @@ describe('Agent Integration Tests', () => {
             {
               id: roomId2,
               name: 'Test Room 2',
-              agentId: agentId,
+              agentId,
               serverId: uuidv4() as UUID,
-              worldId: worldId,
+              worldId,
               channelId: uuidv4() as UUID,
               type: 'PRIVATE' as any,
               source: 'test',
@@ -764,13 +764,13 @@ describe('Agent Integration Tests', () => {
           await cascadeAdapter.createEntities([
             {
               id: entityId1,
-              agentId: agentId,
+              agentId,
               names: ['Entity 1'],
               metadata: { type: 'test' },
             },
             {
               id: entityId2,
-              agentId: agentId,
+              agentId,
               names: ['Entity 2'],
               metadata: { type: 'test' },
             },
@@ -780,7 +780,7 @@ describe('Agent Integration Tests', () => {
           const memoryId1 = await cascadeAdapter.createMemory(
             {
               id: uuidv4() as UUID,
-              agentId: agentId,
+              agentId,
               entityId: entityId1,
               roomId: roomId1,
               content: { text: 'Test memory 1' },
@@ -793,7 +793,7 @@ describe('Agent Integration Tests', () => {
           const memoryId2 = await cascadeAdapter.createMemory(
             {
               id: uuidv4() as UUID,
-              agentId: agentId,
+              agentId,
               entityId: entityId2,
               roomId: roomId2,
               content: { text: 'Test memory 2' },
@@ -809,9 +809,9 @@ describe('Agent Integration Tests', () => {
             entityId: entityId1,
             type: 'test_component',
             data: { value: 'test' },
-            agentId: agentId,
+            agentId,
             roomId: roomId1,
-            worldId: worldId,
+            worldId,
             sourceEntityId: entityId2,
             createdAt: Date.now(),
           });
@@ -834,7 +834,7 @@ describe('Agent Integration Tests', () => {
             name: 'Test Task',
             description: 'A test task',
             roomId: roomId1,
-            worldId: worldId,
+            worldId,
             tags: ['test'],
             metadata: { priority: 'high' },
           });

@@ -87,7 +87,9 @@ export class RoomStore implements Store {
   }
 
   async delete(roomId: UUID): Promise<void> {
-    if (!roomId) throw new Error('Room ID is required');
+    if (!roomId) {
+      throw new Error('Room ID is required');
+    }
     return this.ctx.withRetry(async () => {
       await this.db.transaction(async (tx) => {
         await tx.delete(roomTable).where(eq(roomTable.id, roomId));

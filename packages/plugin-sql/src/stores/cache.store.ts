@@ -46,13 +46,13 @@ export class CacheStore implements Store {
         await this.db
           .insert(cacheTable)
           .values({
-            key: key,
+            key,
             agentId: this.ctx.agentId,
-            value: value,
+            value,
           })
           .onConflictDoUpdate({
             target: [cacheTable.key, cacheTable.agentId],
-            set: { value: value },
+            set: { value },
           });
 
         return true;

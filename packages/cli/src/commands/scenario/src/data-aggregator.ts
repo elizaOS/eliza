@@ -156,7 +156,7 @@ export class RunDataAggregator {
       metrics: completeMetrics,
       final_agent_response: this.finalResponse,
       evaluations: evaluationResults,
-      trajectory: trajectory,
+      trajectory,
       error: this.error || null,
     };
 

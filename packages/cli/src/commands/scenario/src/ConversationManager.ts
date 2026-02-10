@@ -76,7 +76,9 @@ export class ConversationManager {
     const defaultMessageServer = messageServers.messageServers.find(
       (s: { name: string }) => s.name === 'Default Message Server'
     );
-    if (!defaultMessageServer) throw new Error('Default message server not found');
+    if (!defaultMessageServer) {
+      throw new Error('Default message server not found');
+    }
 
     // Create test user ID
     const testUserId = stringToUuidCore('11111111-1111-1111-1111-111111111111');
@@ -354,7 +356,9 @@ export class ConversationManager {
     turns: ConversationTurn[],
     conditions: TerminationCondition[]
   ): Promise<boolean> {
-    if (!conditions || conditions.length === 0) return false;
+    if (!conditions || conditions.length === 0) {
+      return false;
+    }
 
     for (const condition of conditions) {
       let shouldTerminate = false;
@@ -411,7 +415,9 @@ export class ConversationManager {
     ];
     const keywords = condition.keywords || defaultKeywords;
 
-    if (turns.length === 0) return false;
+    if (turns.length === 0) {
+      return false;
+    }
 
     // Check both the last user input and agent response for satisfaction indicators
     const lastTurn = turns[turns.length - 1];
@@ -438,7 +444,9 @@ export class ConversationManager {
     ];
     const keywords = condition.keywords || defaultKeywords;
 
-    if (turns.length === 0) return false;
+    if (turns.length === 0) {
+      return false;
+    }
 
     const lastTurn = turns[turns.length - 1];
     const agentResponse = lastTurn.agentResponse.toLowerCase();
@@ -451,7 +459,9 @@ export class ConversationManager {
    * @private
    */
   private async checkConversationStuck(turns: ConversationTurn[]): Promise<boolean> {
-    if (turns.length < 3) return false;
+    if (turns.length < 3) {
+      return false;
+    }
 
     // Check if last 2 agent responses are very similar (indicating repetition)
     const lastResponse = turns[turns.length - 1].agentResponse;
@@ -480,7 +490,9 @@ export class ConversationManager {
     ];
     const keywords = condition.keywords || defaultKeywords;
 
-    if (turns.length === 0) return false;
+    if (turns.length === 0) {
+      return false;
+    }
 
     const lastTurn = turns[turns.length - 1];
     const agentResponse = lastTurn.agentResponse.toLowerCase();
@@ -521,14 +533,16 @@ export class ConversationManager {
     turns: ConversationTurn[],
     condition: TerminationCondition
   ): Promise<boolean> {
-    if (!condition.llm_judge) return false;
+    if (!condition.llm_judge) {
+      return false;
+    }
 
     const conversationText = this.generateTranscript(turns);
     const prompt = `${condition.llm_judge.prompt}\n\nConversation:\n${conversationText}\n\nShould this conversation be terminated? Respond with only 'yes' or 'no'.`;
 
     try {
       const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt: prompt,
+        prompt,
         temperature: 0.1,
       });
 
@@ -581,7 +595,9 @@ export class ConversationManager {
     turns: ConversationTurn[],
     conditions: TerminationCondition[]
   ): Promise<string | null> {
-    if (turns.length === 0) return null;
+    if (turns.length === 0) {
+      return null;
+    }
 
     // Check each condition to see which one terminated the conversation
     for (const condition of conditions) {

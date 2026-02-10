@@ -119,7 +119,9 @@ export class TestRunner {
    * @returns True if the name matches the filter or if no filter is specified
    */
   private matchesFilter(name: string, filter?: string): boolean {
-    if (!filter) return true;
+    if (!filter) {
+      return true;
+    }
 
     // Process filter name consistently
     let processedFilter = filter;

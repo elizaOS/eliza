@@ -65,8 +65,6 @@ export async function getAgent(opts: OptionValues): Promise<void> {
       const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
       console.log(JSON.stringify(agentConfig, null, 2));
     }
-
-    return;
   } catch (error) {
     await checkServer(opts);
     handleError(error);
@@ -96,7 +94,6 @@ export async function removeAgent(opts: OptionValues): Promise<void> {
     await agentsService.deleteAgent(agentId);
 
     console.log(`Successfully removed agent ${opts.name}`);
-    return;
   } catch (error) {
     await checkServer(opts);
     handleError(error);
@@ -126,7 +123,6 @@ export async function clearAgentMemories(opts: OptionValues): Promise<void> {
     const result = await memoryService.clearAgentMemories(agentId);
 
     console.log(`Successfully cleared ${result?.deleted || 0} memories for agent ${opts.name}`);
-    return;
   } catch (error) {
     await checkServer(opts);
     handleError(error);

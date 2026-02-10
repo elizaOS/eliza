@@ -150,7 +150,9 @@ function safeStringify(obj: unknown): string {
     const seen = new WeakSet();
     return JSON.stringify(obj, (_, value) => {
       if (typeof value === 'object' && value !== null) {
-        if (seen.has(value)) return '[Circular]';
+        if (seen.has(value)) {
+          return '[Circular]';
+        }
         seen.add(value);
       }
       return value;
@@ -164,7 +166,9 @@ function safeStringify(obj: unknown): string {
  * Parse boolean from text string
  */
 function parseBooleanFromText(value: string | undefined | null): boolean {
-  if (!value) return false;
+  if (!value) {
+    return false;
+  }
   const normalized = value.toLowerCase().trim();
   return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
 }
@@ -173,11 +177,21 @@ function parseBooleanFromText(value: string | undefined | null): boolean {
  * Format a value for display in pretty log extras
  */
 function formatExtraValue(value: unknown): string {
-  if (value === null) return 'null';
-  if (value === undefined) return 'undefined';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (value instanceof Error) return value.message;
+  if (value === null) {
+    return 'null';
+  }
+  if (value === undefined) {
+    return 'undefined';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (value instanceof Error) {
+    return value.message;
+  }
   return safeStringify(value);
 }
 
@@ -210,8 +224,12 @@ function formatPrettyLog(
   const extraPairs: string[] = [];
 
   for (const [key, value] of Object.entries(context)) {
-    if (excludeKeys.includes(key)) continue;
-    if (value === undefined) continue;
+    if (excludeKeys.includes(key)) {
+      continue;
+    }
+    if (value === undefined) {
+      continue;
+    }
     extraPairs.push(`${key}=${formatExtraValue(value)}`);
   }
 
@@ -348,13 +366,27 @@ const globalInMemoryDestination = createInMemoryDestination();
 // Map ElizaOS log levels to Adze log levels
 const getAdzeActiveLevel = () => {
   const level = effectiveLogLevel.toLowerCase();
-  if (level === 'trace') return 'verbose';
-  if (level === 'debug') return 'debug';
-  if (level === 'log') return 'log';
-  if (level === 'info') return 'info';
-  if (level === 'warn') return 'warn';
-  if (level === 'error') return 'error';
-  if (level === 'fatal') return 'alert';
+  if (level === 'trace') {
+    return 'verbose';
+  }
+  if (level === 'debug') {
+    return 'debug';
+  }
+  if (level === 'log') {
+    return 'log';
+  }
+  if (level === 'info') {
+    return 'info';
+  }
+  if (level === 'warn') {
+    return 'warn';
+  }
+  if (level === 'error') {
+    return 'error';
+  }
+  if (level === 'fatal') {
+    return 'alert';
+  }
   return 'info'; // Default to info
 };
 
@@ -523,15 +555,18 @@ adzeStore.addListener('*', (log: { data?: { message?: string | unknown[]; level?
  * Creates a sealed Adze logger instance with namespaces and metadata
  */
 function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let chain: ReturnType<typeof adze.ns> | typeof adze = adze as
     | ReturnType<typeof adze.ns>
     | typeof adze;
 
   // Add namespaces if provided
   const namespaces: string[] = [];
-  if (typeof base.namespace === 'string') namespaces.push(base.namespace);
-  if (Array.isArray(base.namespaces)) namespaces.push(...(base.namespaces as string[]));
+  if (typeof base.namespace === 'string') {
+    namespaces.push(base.namespace);
+  }
+  if (Array.isArray(base.namespaces)) {
+    namespaces.push(...(base.namespaces as string[]));
+  }
   if (namespaces.length > 0) {
     chain = chain.ns(...namespaces);
   }
@@ -657,8 +692,12 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     const formatArgs = (...args: unknown[]): string => {
       return args
         .map((arg) => {
-          if (typeof arg === 'string') return arg;
-          if (arg instanceof Error) return arg.message;
+          if (typeof arg === 'string') {
+            return arg;
+          }
+          if (arg instanceof Error) {
+            return arg.message;
+          }
           return safeStringify(arg);
         })
         .join(' ');
@@ -739,7 +778,9 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       progress: (obj, msg, ...args) => logToConsole('progress', ...adaptArgs(obj, msg, ...args)),
       log: (obj, msg, ...args) => logToConsole('log', ...adaptArgs(obj, msg, ...args)),
       clear: () => {
-        if (typeof console.clear === 'function') console.clear();
+        if (typeof console.clear === 'function') {
+          console.clear();
+        }
       },
       child: (childBindings: Record<string, unknown>) =>
         createLogger({ level: currentLevel, ...base, ...childBindings, __forceType: 'browser' }),
@@ -771,8 +812,12 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     if (args.length > 0) {
       msg = args
         .map((arg) => {
-          if (typeof arg === 'string') return arg;
-          if (arg instanceof Error) return arg.message;
+          if (typeof arg === 'string') {
+            return arg;
+          }
+          if (arg instanceof Error) {
+            return arg.message;
+          }
           return safeStringify(arg);
         })
         .join(' ');

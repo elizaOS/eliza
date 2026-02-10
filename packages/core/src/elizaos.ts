@@ -544,10 +544,14 @@ export class ElizaOS extends EventTarget implements IElizaOS {
         runtime.messageService!.handleMessage(runtime, userMessage, callback, processingOptions)
       )
         .then(() => {
-          if (options.onComplete) options.onComplete();
+          if (options.onComplete) {
+            options.onComplete();
+          }
         })
         .catch((error: Error) => {
-          if (options.onError) options.onError(error);
+          if (options.onError) {
+            options.onError(error);
+          }
         });
 
       // Emit event for tracking
@@ -566,7 +570,9 @@ export class ElizaOS extends EventTarget implements IElizaOS {
         runtime.messageService!.handleMessage(runtime, userMessage, undefined, processingOptions)
       );
 
-      if (options?.onComplete) await options.onComplete();
+      if (options?.onComplete) {
+        await options.onComplete();
+      }
 
       // Emit event for tracking
       this.dispatchEvent(
@@ -708,7 +714,9 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       getAgents: () => this.getAgents(),
       getState: (agentId: UUID) => {
         const agent = this.getAgent(agentId);
-        if (!agent) return undefined;
+        if (!agent) {
+          return undefined;
+        }
 
         // Access the most recent state from the runtime's state cache
         // Note: This returns the cached state for the most recent message

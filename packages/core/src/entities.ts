@@ -170,7 +170,9 @@ export async function findEntityByName(
   // Filter components for each entity based on permissions
   const filteredEntities = await Promise.all(
     entitiesInRoom.map(async (entity) => {
-      if (!entity.components) return entity;
+      if (!entity.components) {
+        return entity;
+      }
 
       // Get world roles if we have a world
       const worldRoles = world?.metadata?.roles || {};
@@ -178,16 +180,22 @@ export async function findEntityByName(
       // Filter components based on permissions
       entity.components = entity.components.filter((component) => {
         // 1. Pass if sourceEntityId matches the requesting entity
-        if (component.sourceEntityId === message.entityId) return true;
+        if (component.sourceEntityId === message.entityId) {
+          return true;
+        }
 
         // 2. Pass if sourceEntityId is an owner/admin of the current world
         if (world && component.sourceEntityId) {
           const sourceRole = worldRoles[component.sourceEntityId];
-          if (sourceRole === 'OWNER' || sourceRole === 'ADMIN') return true;
+          if (sourceRole === 'OWNER' || sourceRole === 'ADMIN') {
+            return true;
+          }
         }
 
         // 3. Pass if sourceEntityId is the agentId
-        if (component.sourceEntityId === runtime.agentId) return true;
+        if (component.sourceEntityId === runtime.agentId) {
+          return true;
+        }
 
         // Filter out components that don't meet any criteria
         return false;
@@ -259,12 +267,18 @@ export async function findEntityByName(
       if (entity.components) {
         const worldRoles = world?.metadata?.roles || {};
         entity.components = entity.components.filter((component) => {
-          if (component.sourceEntityId === message.entityId) return true;
+          if (component.sourceEntityId === message.entityId) {
+            return true;
+          }
           if (world && component.sourceEntityId) {
             const sourceRole = worldRoles[component.sourceEntityId];
-            if (sourceRole === 'OWNER' || sourceRole === 'ADMIN') return true;
+            if (sourceRole === 'OWNER' || sourceRole === 'ADMIN') {
+              return true;
+            }
           }
-          if (component.sourceEntityId === runtime.agentId) return true;
+          if (component.sourceEntityId === runtime.agentId) {
+            return true;
+          }
           return false;
         });
       }
@@ -288,7 +302,9 @@ export async function findEntityByName(
     // Find matching entity by username/handle in components or by name
     const matchingEntity = allEntities.find((entity) => {
       // Check names
-      if (entity.names.some((n) => n.toLowerCase() === matchName)) return true;
+      if (entity.names.some((n) => n.toLowerCase() === matchName)) {
+        return true;
+      }
 
       // Check components for username/handle match
       return entity.components?.some(
@@ -404,7 +420,9 @@ export function processEntitiesForRoom(roomEntities: Entity[], roomSource?: stri
   const uniqueEntities = new Map<UUID, Entity>();
 
   for (const entity of roomEntities) {
-    if (!entity.id || uniqueEntities.has(entity.id)) continue;
+    if (!entity.id || uniqueEntities.has(entity.id)) {
+      continue;
+    }
 
     const mergedData = mergeEntityComponentData(entity);
 

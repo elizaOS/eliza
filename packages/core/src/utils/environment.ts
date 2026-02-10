@@ -8,7 +8,9 @@ export interface EnvironmentConfig {
 let cachedEnvironment: RuntimeEnvironment | null = null;
 
 export function detectEnvironment(): RuntimeEnvironment {
-  if (cachedEnvironment !== null) return cachedEnvironment;
+  if (cachedEnvironment !== null) {
+    return cachedEnvironment;
+  }
 
   if (typeof process !== 'undefined' && process.versions?.node) {
     cachedEnvironment = 'node';
@@ -144,13 +146,17 @@ class Environment {
 
   getBoolean(key: string, defaultValue = false): boolean {
     const value = this.get(key);
-    if (value === undefined) return defaultValue;
+    if (value === undefined) {
+      return defaultValue;
+    }
     return Environment.TRUTHY_VALUES.has(value.toLowerCase());
   }
 
   getNumber(key: string, defaultValue?: number): number | undefined {
     const value = this.get(key);
-    if (value === undefined) return defaultValue;
+    if (value === undefined) {
+      return defaultValue;
+    }
     const parsed = Number(value);
     return isNaN(parsed) ? defaultValue : parsed;
   }
@@ -191,7 +197,9 @@ export function initBrowserEnvironment(config: EnvironmentConfig): void {
   const env = getEnvironment();
   if (env.isBrowser()) {
     for (const [key, value] of Object.entries(config)) {
-      if (value !== undefined) env.set(key, value);
+      if (value !== undefined) {
+        env.set(key, value);
+      }
     }
   }
 }
@@ -204,7 +212,9 @@ export function findEnvFile(
   startDir?: string,
   filenames: string[] = ['.env', '.env.local']
 ): string | null {
-  if (typeof process === 'undefined' || !process.cwd) return null;
+  if (typeof process === 'undefined' || !process.cwd) {
+    return null;
+  }
 
   const fs = require('node:fs');
   const nodePath = require('node:path');
@@ -214,11 +224,15 @@ export function findEnvFile(
   while (true) {
     for (const filename of filenames) {
       const candidate = nodePath.join(currentDir, filename);
-      if (fs.existsSync(candidate)) return candidate;
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
     }
 
     const parentDir = nodePath.dirname(currentDir);
-    if (parentDir === currentDir) break;
+    if (parentDir === currentDir) {
+      break;
+    }
     currentDir = parentDir;
   }
 
@@ -230,11 +244,15 @@ export interface LoadEnvOptions {
 }
 
 export function loadEnvFile(envPath?: string, options?: LoadEnvOptions): boolean {
-  if (typeof process === 'undefined' || !process.cwd) return false;
+  if (typeof process === 'undefined' || !process.cwd) {
+    return false;
+  }
 
   const dotenv = require('dotenv');
   const resolvedPath = envPath || findEnvFile();
-  if (!resolvedPath) return false;
+  if (!resolvedPath) {
+    return false;
+  }
 
   const result = dotenv.config({ path: resolvedPath, override: options?.override ?? false });
   if (result.error) {
@@ -245,7 +263,9 @@ export function loadEnvFile(envPath?: string, options?: LoadEnvOptions): boolean
 }
 
 export function findAllEnvFiles(startDir: string, boundaryDir?: string): string[] {
-  if (typeof process === 'undefined' || !process.cwd) return [];
+  if (typeof process === 'undefined' || !process.cwd) {
+    return [];
+  }
 
   const nodePath = require('path');
   const fs = require('fs');
@@ -257,12 +277,18 @@ export function findAllEnvFiles(startDir: string, boundaryDir?: string): string[
   let currentDir = startDir;
   for (let i = 0; i < 10; i++) {
     const envPath = nodePath.join(currentDir, '.env');
-    if (fs.existsSync(envPath)) envFiles.push(envPath);
+    if (fs.existsSync(envPath)) {
+      envFiles.push(envPath);
+    }
 
-    if (resolvedBoundary && nodePath.resolve(currentDir) === resolvedBoundary) break;
+    if (resolvedBoundary && nodePath.resolve(currentDir) === resolvedBoundary) {
+      break;
+    }
 
     const parentDir = nodePath.dirname(currentDir);
-    if (parentDir === currentDir) break;
+    if (parentDir === currentDir) {
+      break;
+    }
     currentDir = parentDir;
   }
 
@@ -277,7 +303,9 @@ export function loadEnvFilesWithPrecedence(
   options?: { boundaryDir?: string; clearBeforeLoad?: boolean; varsToClear?: string[] }
 ): string[] {
   const envFiles = findAllEnvFiles(startDir, options?.boundaryDir);
-  if (envFiles.length === 0) return [];
+  if (envFiles.length === 0) {
+    return [];
+  }
 
   if (options?.clearBeforeLoad && options.varsToClear) {
     for (const varName of options.varsToClear) {

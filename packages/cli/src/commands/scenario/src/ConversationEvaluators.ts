@@ -261,7 +261,9 @@ export class UserSatisfactionEvaluator implements Evaluator {
       0
     );
 
-    if (positiveCount === 0 && negativeCount === 0) return 0.5; // neutral
+    if (positiveCount === 0 && negativeCount === 0) {
+      return 0.5;
+    } // neutral
     return positiveCount / (positiveCount + negativeCount);
   }
 
@@ -283,7 +285,7 @@ Respond with only a number between 0.0 and 1.0:`;
 
     try {
       const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt: prompt,
+        prompt,
         temperature: 0.1,
       });
 
@@ -312,7 +314,7 @@ Respond with only a number between 0.0 and 1.0:`;
 
     try {
       const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt: prompt,
+        prompt,
         temperature: 0.1,
       });
 
@@ -389,7 +391,9 @@ export class ContextRetentionEvaluator implements Evaluator {
       }
     }
 
-    if (mentionTurn === -1) return 0; // Item never mentioned
+    if (mentionTurn === -1) {
+      return 0;
+    } // Item never mentioned
 
     // Check retention in subsequent turns
     let retentionScore = 0;
@@ -403,7 +407,9 @@ export class ContextRetentionEvaluator implements Evaluator {
         turns.slice(0, i + 1),
         runtime
       );
-      if (retained) retentionScore += 1;
+      if (retained) {
+        retentionScore += 1;
+      }
       testsCount += 1;
     }
 
@@ -435,7 +441,7 @@ Respond with only 'yes' or 'no'.`;
 
     try {
       const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt: prompt,
+        prompt,
         temperature: 0.1,
       });
 

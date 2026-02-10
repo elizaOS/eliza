@@ -22,7 +22,9 @@ export class EntityStore implements Store {
         .leftJoin(componentTable, eq(componentTable.entityId, entityTable.id))
         .where(inArray(entityTable.id, entityIds));
 
-      if (result.length === 0) return [];
+      if (result.length === 0) {
+        return [];
+      }
 
       const entities: Record<UUID, Entity> = {};
       const entityComponents: Record<UUID, Entity['components']> = {};
@@ -30,7 +32,9 @@ export class EntityStore implements Store {
       for (const e of result) {
         const key = e.entity.id;
         entities[key] = e.entity;
-        if (entityComponents[key] === undefined) entityComponents[key] = [];
+        if (entityComponents[key] === undefined) {
+          entityComponents[key] = [];
+        }
         if (e.components) {
           const componentsArray = Array.isArray(e.components) ? e.components : [e.components];
           entityComponents[key] = [...entityComponents[key], ...componentsArray];
@@ -70,7 +74,9 @@ export class EntityStore implements Store {
       const entitiesByIdMap = new Map<UUID, Entity>();
 
       for (const row of result) {
-        if (!row.entity) continue;
+        if (!row.entity) {
+          continue;
+        }
 
         const entityId = row.entity.id as UUID;
         if (!entitiesByIdMap.has(entityId)) {
@@ -87,7 +93,9 @@ export class EntityStore implements Store {
         if (includeComponents && row.components) {
           const entity = entitiesByIdMap.get(entityId);
           if (entity) {
-            if (!entity.components) entity.components = [];
+            if (!entity.components) {
+              entity.components = [];
+            }
             entity.components.push(row.components as Component);
           }
         }
@@ -150,7 +158,9 @@ export class EntityStore implements Store {
   }
 
   async update(entity: Entity): Promise<void> {
-    if (!entity.id) throw new Error('Entity ID is required for update');
+    if (!entity.id) {
+      throw new Error('Entity ID is required for update');
+    }
 
     return this.ctx.withRetry(async () => {
       const normalizedEntity = {
@@ -225,7 +235,7 @@ export class EntityStore implements Store {
         WHERE ${entityTable.agentId} = ${agentId}
         AND EXISTS (
           SELECT 1 FROM unnest(${entityTable.names}) AS name
-          WHERE LOWER(name) LIKE LOWER(${'%' + query + '%'})
+          WHERE LOWER(name) LIKE LOWER(${`%${query}%`})
         )
         LIMIT ${limit}
       `;
@@ -242,10 +252,18 @@ export class EntityStore implements Store {
   }
 
   private normalizeNames(names: unknown): string[] {
-    if (names == null) return [];
-    if (typeof names === 'string') return [names];
-    if (Array.isArray(names)) return names.map(String);
-    if (names instanceof Set) return Array.from(names).map(String);
+    if (names == null) {
+      return [];
+    }
+    if (typeof names === 'string') {
+      return [names];
+    }
+    if (Array.isArray(names)) {
+      return names.map(String);
+    }
+    if (names instanceof Set) {
+      return Array.from(names).map(String);
+    }
     if (
       typeof names === 'object' &&
       typeof (names as Iterable<unknown>)[Symbol.iterator] === 'function'

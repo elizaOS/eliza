@@ -130,7 +130,7 @@ describe('Room Integration Tests', () => {
         source: 'discord',
         type: ChannelType.GROUP,
         name: 'Discord Room',
-        messageServerId: messageServerId,
+        messageServerId,
       };
 
       await adapter.createRooms([room]);

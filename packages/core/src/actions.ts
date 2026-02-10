@@ -33,7 +33,7 @@ export const composeActionExamples = (actionsData: Action[], count: number): str
   const selectedExamples: ActionExample[][] = [];
 
   // Keep track of actions that still have examples
-  let availableActionIndices = examplesCopy
+  const availableActionIndices = examplesCopy
     .map((examples, index) => (examples.length > 0 ? index : -1))
     .filter((index) => index !== -1);
 
@@ -97,7 +97,9 @@ const formatSelectedExamples = (examples: ActionExample[][]): string => {
  * @returns A comma-separated string of action names.
  */
 export function formatActionNames(actions: Action[]): string {
-  if (!actions?.length) return '';
+  if (!actions?.length) {
+    return '';
+  }
 
   // Create a shuffled copy instead of mutating the original array
   return [...actions]
@@ -112,7 +114,9 @@ export function formatActionNames(actions: Action[]): string {
  * @returns A detailed string of actions, including names and descriptions.
  */
 export function formatActions(actions: Action[]): string {
-  if (!actions?.length) return '';
+  if (!actions?.length) {
+    return '';
+  }
 
   // Create a shuffled copy without mutating the original
   return [...actions]

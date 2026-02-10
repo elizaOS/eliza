@@ -5,7 +5,9 @@ import type { Entity, IAgentRuntime, Memory, Provider, Relationship, UUID } from
  * Wraps in quotes if contains comma, quote, or newline.
  */
 function csvEscape(value: string | number | null | undefined): string {
-  if (value === null || value === undefined) return '';
+  if (value === null || value === undefined) {
+    return '';
+  }
   const str = String(value);
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
     return `"${str.replace(/"/g, '""')}"`;
@@ -60,7 +62,9 @@ async function formatRelationships(runtime: IAgentRuntime, relationships: Relati
     const targetEntityId = rel.targetEntityId as UUID;
     const entity = entityMap.get(targetEntityId);
 
-    if (!entity) continue;
+    if (!entity) {
+      continue;
+    }
 
     const name = entity.names[0] || 'Unknown';
     const interactions = (rel.metadata?.interactions as number) || 0;

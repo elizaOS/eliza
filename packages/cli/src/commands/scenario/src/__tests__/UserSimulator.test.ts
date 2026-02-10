@@ -19,15 +19,15 @@ describe('UserSimulator', () => {
     mockRuntime = {
       useModel: async () => 'Simulated user response',
       _callHistory: [] as any[],
-      _setMockResponse: function (response: string) {
+      _setMockResponse(response: string) {
         this.useModel = async () => response;
       },
-      _setMockRejection: function (error: Error) {
+      _setMockRejection(error: Error) {
         this.useModel = async () => {
           throw error;
         };
       },
-      _recordCall: function (modelType: any, params: any) {
+      _recordCall(modelType: any, params: any) {
         this._callHistory.push({ modelType, params });
       },
     };

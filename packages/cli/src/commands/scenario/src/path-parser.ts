@@ -214,7 +214,7 @@ export function suggestPathCorrections(invalidPath: string): string[] {
       const corrected = invalidPath.replace(/\[(\d+)\./, '[$1].');
       suggestions.push(corrected);
     } else {
-      const corrected = invalidPath + ']';
+      const corrected = `${invalidPath}]`;
       suggestions.push(corrected);
     }
   }

@@ -258,7 +258,9 @@ export async function askAgentViaApi(
     const client = ElizaClient.create({ baseUrl: `http://localhost:${port}` });
 
     const { messageServers } = await client.messaging.listMessageServers();
-    if (messageServers.length === 0) throw new Error('No servers found');
+    if (messageServers.length === 0) {
+      throw new Error('No servers found');
+    }
     const defaultMessageServer = messageServers[0];
 
     const testUserId = stringToUuidCore('11111111-1111-1111-1111-111111111111');

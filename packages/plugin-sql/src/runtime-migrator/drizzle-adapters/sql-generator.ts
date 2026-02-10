@@ -114,7 +114,9 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
  * Handles equivalent type variations between introspected DB and schema definitions
  */
 function normalizeType(type: string | undefined): string {
-  if (!type) return '';
+  if (!type) {
+    return '';
+  }
 
   const normalized = type.toLowerCase().trim();
 
@@ -631,7 +633,9 @@ function generateAlterColumnSQL(table: string, column: string, changes: any): st
  * Based on Drizzle's type conversion logic
  */
 function checkIfNeedsUsingClause(fromType: string, toType: string): boolean {
-  if (!fromType || !toType) return false;
+  if (!fromType || !toType) {
+    return false;
+  }
 
   // Enum changes always need USING
   if (fromType.includes('enum') || toType.includes('enum')) {
@@ -802,7 +806,7 @@ function generateCreateForeignKeySQL(fk: any): string {
     sql += ` ON UPDATE ${fk.onUpdate}`;
   }
 
-  return sql + ';';
+  return `${sql};`;
 }
 
 /**

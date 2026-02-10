@@ -493,10 +493,7 @@ function createMockRunResult(overrides: Partial<ScenarioRunResult> = {}): Scenar
     run_id: `run-${Math.random().toString(36).substr(2, 9)}`,
     matrix_combination_id: `combination-${Math.random().toString(36).substr(2, 9)}`,
     parameters: { 'character.llm.model': 'gpt-4' },
-    metrics: defaultMetrics,
     final_agent_response: 'Mock response',
-    evaluations: defaultEvaluations,
-    trajectory: defaultTrajectory,
     error: null,
     ...overrides,
     // Ensure nested objects are properly merged

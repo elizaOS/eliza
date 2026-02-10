@@ -829,7 +829,9 @@ describe('DefaultMessageService', () => {
     it('should use default timeout of 1000ms when PROVIDERS_TOTAL_TIMEOUT_MS is not set', () => {
       const getSetting = mockRuntime.getSetting as ReturnType<typeof mock>;
       getSetting.mockImplementation((key: string) => {
-        if (key === 'PROVIDERS_TOTAL_TIMEOUT_MS') return null;
+        if (key === 'PROVIDERS_TOTAL_TIMEOUT_MS') {
+          return null;
+        }
         return null;
       });
 
@@ -843,7 +845,9 @@ describe('DefaultMessageService', () => {
     it('should use custom timeout when PROVIDERS_TOTAL_TIMEOUT_MS is set', () => {
       const getSetting = mockRuntime.getSetting as ReturnType<typeof mock>;
       getSetting.mockImplementation((key: string) => {
-        if (key === 'PROVIDERS_TOTAL_TIMEOUT_MS') return '5000';
+        if (key === 'PROVIDERS_TOTAL_TIMEOUT_MS') {
+          return '5000';
+        }
         return null;
       });
 

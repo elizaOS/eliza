@@ -36,9 +36,9 @@ describe('Runtime Migrator - PostgreSQL Integration Tests', () => {
 
   afterAll(async () => {
     // Print test summary
-    console.log('\n' + '='.repeat(80));
+    console.log(`\n${'='.repeat(80)}`);
     console.log('📊 RUNTIME MIGRATOR TEST SUMMARY');
-    console.log('='.repeat(80) + '\n');
+    console.log(`${'='.repeat(80)}\n`);
 
     console.log(`✅ PASSED (${testResults.passed.length} tests):`);
     testResults.passed.forEach((test, i) => {
@@ -52,7 +52,7 @@ describe('Runtime Migrator - PostgreSQL Integration Tests', () => {
       });
     }
 
-    console.log('\n' + '='.repeat(80) + '\n');
+    console.log(`\n${'='.repeat(80)}\n`);
 
     if (cleanup) {
       await cleanup();

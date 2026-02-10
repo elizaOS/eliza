@@ -397,7 +397,9 @@ export class DatabaseIntrospector {
    * Parse default value for a column
    */
   private parseDefault(defaultValue: string, dataType: string): string | undefined {
-    if (!defaultValue) return undefined;
+    if (!defaultValue) {
+      return undefined;
+    }
 
     // Remove the type cast if present (e.g., "'value'::text" -> "'value'")
     const match = defaultValue.match(/^'(.*)'::/);
@@ -412,8 +414,12 @@ export class DatabaseIntrospector {
 
     // Handle boolean defaults
     if (dataType === 'boolean') {
-      if (defaultValue === 'true') return 'true';
-      if (defaultValue === 'false') return 'false';
+      if (defaultValue === 'true') {
+        return 'true';
+      }
+      if (defaultValue === 'false') {
+        return 'false';
+      }
     }
 
     // Return as-is for other cases

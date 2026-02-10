@@ -338,7 +338,7 @@ export class SocketIORouter {
       );
       this.sendErrorResponse(
         socket,
-        `Access denied: You don't have permission to join this channel`
+        "Access denied: You don't have permission to join this channel"
       );
       return;
     }

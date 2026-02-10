@@ -37,7 +37,9 @@ describe('PostgreSQL Initialization Tests', () => {
   it('should initialize with PostgreSQL when POSTGRES_URL is provided', async () => {
     const postgresUrl = 'postgresql://test:test@localhost:5432/testdb';
     (mockRuntime.getSetting as any).mockImplementation((key: string) => {
-      if (key === 'POSTGRES_URL') return postgresUrl;
+      if (key === 'POSTGRES_URL') {
+        return postgresUrl;
+      }
       return undefined;
     });
 
@@ -60,9 +62,11 @@ describe('PostgreSQL Initialization Tests', () => {
 
   it('should use PGLITE_DATA_DIR when provided', async () => {
     // Use a proper temporary directory that actually exists
-    const pglitePath = join(tmpdir(), 'eliza-test-pglite-' + Date.now());
+    const pglitePath = join(tmpdir(), `eliza-test-pglite-${Date.now()}`);
     (mockRuntime.getSetting as any).mockImplementation((key: string) => {
-      if (key === 'PGLITE_DATA_DIR') return pglitePath;
+      if (key === 'PGLITE_DATA_DIR') {
+        return pglitePath;
+      }
       return undefined;
     });
 

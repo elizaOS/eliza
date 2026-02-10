@@ -199,7 +199,9 @@ async function addNewVariable(envPath: string, envVars: EnvVars, yes = false): P
     process.exit(0);
   }
 
-  if (!key) return;
+  if (!key) {
+    return;
+  }
 
   const value = await clack.text({
     message: `Enter the value for ${key}:`,

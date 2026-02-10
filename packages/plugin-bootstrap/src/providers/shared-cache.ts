@@ -90,7 +90,9 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: 
   let settled = false;
   const timeoutPromise = new Promise<T>((resolve) => {
     timeoutId = setTimeout(() => {
-      if (settled) return; // Main promise already won the race; no-op.
+      if (settled) {
+        return;
+      } // Main promise already won the race; no-op.
       logger.warn(
         { src: 'plugin:bootstrap:cache', timeoutMs: ms },
         'DB operation timed out, returning fallback'
@@ -117,7 +119,9 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: 
 function evictExpired<T>(cache: Map<string, CacheEntry<T>>, maxSize: number, ttl: number): number {
   // Burst guard: only run the inline eviction when we're over the cap.
   // The periodic sweep passes maxSize=0, so it always runs.
-  if (maxSize > 0 && cache.size <= maxSize) return 0;
+  if (maxSize > 0 && cache.size <= maxSize) {
+    return 0;
+  }
 
   const now = Date.now();
   let evicted = 0;
@@ -165,7 +169,9 @@ function sweepAllCaches(): void {
 let sweepTimer: ReturnType<typeof setInterval> | null = null;
 
 function ensureSweepTimer(): void {
-  if (sweepTimer !== null) return;
+  if (sweepTimer !== null) {
+    return;
+  }
   sweepTimer = setInterval(sweepAllCaches, SWEEP_INTERVAL_MS);
   // Don't keep the process alive just for cache maintenance
   if (sweepTimer && typeof sweepTimer === 'object' && 'unref' in sweepTimer) {
@@ -206,7 +212,9 @@ export function stopCacheMaintenance(): void {
  * Uses source:channelId which is shared across all agents.
  */
 function getExternalRoomKey(room: Room | ExternalRoomData): string | null {
-  if (!room.source || !room.channelId) return null;
+  if (!room.source || !room.channelId) {
+    return null;
+  }
   return `${room.source}:${room.channelId}`;
 }
 
@@ -215,7 +223,9 @@ function getExternalRoomKey(room: Room | ExternalRoomData): string | null {
  */
 function cacheRoomByExternalId(room: Room): void {
   const key = getExternalRoomKey(room);
-  if (!key) return;
+  if (!key) {
+    return;
+  }
 
   const externalData: ExternalRoomData = {
     name: room.name,
@@ -336,7 +346,9 @@ export function invalidateRoomCacheByExternalId(source: string, channelId: strin
  */
 function getExternalWorldKey(world: World | { messageServerId?: string }): string | null {
   const serverId = world.messageServerId;
-  if (!serverId) return null;
+  if (!serverId) {
+    return null;
+  }
   return `guild:${serverId}`;
 }
 
@@ -346,7 +358,9 @@ function getExternalWorldKey(world: World | { messageServerId?: string }): strin
  */
 function cacheWorldByExternalId(world: World): void {
   const key = getExternalWorldKey(world);
-  if (!key) return;
+  if (!key) {
+    return;
+  }
 
   const externalData: ExternalWorldData = {
     name: world.name,

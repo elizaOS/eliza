@@ -5,7 +5,9 @@ import type { SchemaSnapshot } from '../types';
  * Handles equivalent type variations between introspected DB and schema definitions
  */
 function normalizeType(type: string | undefined): string {
-  if (!type) return '';
+  if (!type) {
+    return '';
+  }
 
   const normalized = type.toLowerCase().trim();
 
@@ -55,16 +57,26 @@ function normalizeType(type: string | undefined): string {
  */
 function isIndexChanged(prevIndex: any, currIndex: any): boolean {
   // Compare basic properties
-  if (prevIndex.isUnique !== currIndex.isUnique) return true;
-  if (prevIndex.method !== currIndex.method) return true;
-  if (prevIndex.where !== currIndex.where) return true;
-  if (prevIndex.concurrently !== currIndex.concurrently) return true;
+  if (prevIndex.isUnique !== currIndex.isUnique) {
+    return true;
+  }
+  if (prevIndex.method !== currIndex.method) {
+    return true;
+  }
+  if (prevIndex.where !== currIndex.where) {
+    return true;
+  }
+  if (prevIndex.concurrently !== currIndex.concurrently) {
+    return true;
+  }
 
   // Compare columns array - must be same columns in same order
   const prevColumns = prevIndex.columns || [];
   const currColumns = currIndex.columns || [];
 
-  if (prevColumns.length !== currColumns.length) return true;
+  if (prevColumns.length !== currColumns.length) {
+    return true;
+  }
 
   for (let i = 0; i < prevColumns.length; i++) {
     const prevCol = prevColumns[i];
@@ -72,13 +84,23 @@ function isIndexChanged(prevIndex: any, currIndex: any): boolean {
 
     // Handle both string columns and expression columns
     if (typeof prevCol === 'string' && typeof currCol === 'string') {
-      if (prevCol !== currCol) return true;
+      if (prevCol !== currCol) {
+        return true;
+      }
     } else if (typeof prevCol === 'object' && typeof currCol === 'object') {
       // Compare expression columns
-      if (prevCol.expression !== currCol.expression) return true;
-      if (prevCol.isExpression !== currCol.isExpression) return true;
-      if (prevCol.asc !== currCol.asc) return true;
-      if (prevCol.nulls !== currCol.nulls) return true;
+      if (prevCol.expression !== currCol.expression) {
+        return true;
+      }
+      if (prevCol.isExpression !== currCol.isExpression) {
+        return true;
+      }
+      if (prevCol.asc !== currCol.asc) {
+        return true;
+      }
+      if (prevCol.nulls !== currCol.nulls) {
+        return true;
+      }
     } else {
       // Type mismatch (one is string, other is object)
       return true;

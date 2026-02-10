@@ -155,7 +155,9 @@ export class DefaultMessageService implements IMessageService {
         latestResponseIds.set(runtime.agentId, new Map<string, string>());
       }
       const agentResponses = latestResponseIds.get(runtime.agentId);
-      if (!agentResponses) throw new Error('Agent responses map not found');
+      if (!agentResponses) {
+        throw new Error('Agent responses map not found');
+      }
 
       const previousResponseId = agentResponses.get(message.roomId);
       if (previousResponseId) {
@@ -246,7 +248,9 @@ export class DefaultMessageService implements IMessageService {
   ): Promise<MessageProcessingResult> {
     try {
       const agentResponses = latestResponseIds.get(runtime.agentId);
-      if (!agentResponses) throw new Error('Agent responses map not found');
+      if (!agentResponses) {
+        throw new Error('Agent responses map not found');
+      }
 
       // Skip messages from self
       if (message.entityId === runtime.agentId) {
@@ -598,7 +602,7 @@ export class DefaultMessageService implements IMessageService {
           if (roomData.worldId) {
             const worldData = await runtime.getWorld(roomData.worldId);
             if (worldData) {
-              roomName = worldData.name + '-' + roomName;
+              roomName = `${worldData.name}-${roomName}`;
             }
           }
         }
@@ -624,7 +628,7 @@ export class DefaultMessageService implements IMessageService {
 
       const logData = {
         at: date.toString(),
-        timestamp: parseInt('' + date.getTime() / 1000),
+        timestamp: parseInt(`${date.getTime() / 1000}`),
         messageId: message.id,
         userEntityId: message.entityId,
         input: message.content.text,
@@ -701,7 +705,9 @@ export class DefaultMessageService implements IMessageService {
     }
 
     function normalizeEnvList(value: unknown): string[] {
-      if (!value || typeof value !== 'string') return [];
+      if (!value || typeof value !== 'string') {
+        return [];
+      }
       const cleaned = value.trim().replace(/^\[|\]$/g, '');
       return cleaned
         .split(',')
@@ -800,7 +806,9 @@ export class DefaultMessageService implements IMessageService {
         if (!isRemote) {
           // Convert local/internal media to base64
           const res = await fetch(url);
-          if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
+          if (!res.ok) {
+            throw new Error(`Failed to fetch image: ${res.statusText}`);
+          }
 
           const arrayBuffer = await res.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
@@ -881,7 +889,9 @@ export class DefaultMessageService implements IMessageService {
         }
       } else if (attachment.contentType === ContentType.DOCUMENT && !attachment.text) {
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`Failed to fetch document: ${res.statusText}`);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch document: ${res.statusText}`);
+        }
 
         const contentType = res.headers.get('content-type') || '';
         const isPlainText = contentType.startsWith('text/plain');

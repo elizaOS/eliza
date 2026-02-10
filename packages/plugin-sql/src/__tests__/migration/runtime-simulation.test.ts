@@ -56,7 +56,7 @@ describe('Runtime Simulation - Full Migration Flow', () => {
     expect(migrationTables).toContain('_snapshots');
     expect(migrationTables).toContain('_journal');
 
-    console.log('\n' + '='.repeat(80));
+    console.log(`\n${'='.repeat(80)}`);
     console.log('STEP 2: Migrate Core Schema (@elizaos/plugin-sql)');
     console.log('='.repeat(80));
 
@@ -99,7 +99,7 @@ describe('Runtime Simulation - Full Migration Flow', () => {
     console.log(`\n📦 Core tables in public schema: ${coreTableNames.length}`);
     console.log('Tables:', coreTableNames.join(', '));
 
-    console.log('\n' + '='.repeat(80));
+    console.log(`\n${'='.repeat(80)}`);
     console.log('STEP 3: Migrate Plugin Schema (polymarket)');
     console.log('='.repeat(80));
 
@@ -151,7 +151,7 @@ describe('Runtime Simulation - Full Migration Flow', () => {
     console.log(`📦 Polymarket tables: ${polymarketTableNames.length}`);
     console.log('Tables:', polymarketTableNames.join(', '));
 
-    console.log('\n' + '='.repeat(80));
+    console.log(`\n${'='.repeat(80)}`);
     console.log('STEP 4: Verify Complete Migration State');
     console.log('='.repeat(80));
 
@@ -219,7 +219,7 @@ describe('Runtime Simulation - Full Migration Flow', () => {
       }
     }
 
-    console.log('\n' + '='.repeat(80));
+    console.log(`\n${'='.repeat(80)}`);
     console.log('STEP 5: Test Migration Status Methods');
     console.log('='.repeat(80));
 
@@ -241,7 +241,7 @@ describe('Runtime Simulation - Full Migration Flow', () => {
     expect(coreStatus.hasRun).toBe(true);
     expect(polymarketStatus.hasRun).toBe(true);
 
-    console.log('\n' + '='.repeat(80));
+    console.log(`\n${'='.repeat(80)}`);
     console.log('STEP 6: Simulate Re-initialization (Idempotency Check)');
     console.log('='.repeat(80));
 
@@ -269,7 +269,7 @@ describe('Runtime Simulation - Full Migration Flow', () => {
     expect(Number(finalMigrationCount.rows[0]?.count)).toBe(2);
 
     // Final summary
-    console.log('\n' + '='.repeat(80));
+    console.log(`\n${'='.repeat(80)}`);
     console.log('✅ MIGRATION SIMULATION COMPLETE');
     console.log('='.repeat(80));
     console.log('\nSummary:');
@@ -282,7 +282,7 @@ describe('Runtime Simulation - Full Migration Flow', () => {
   });
 
   it('should handle plugin registration order correctly', async () => {
-    console.log('\n' + '='.repeat(80));
+    console.log(`\n${'='.repeat(80)}`);
     console.log('Testing Plugin Registration Order');
     console.log('='.repeat(80));
 

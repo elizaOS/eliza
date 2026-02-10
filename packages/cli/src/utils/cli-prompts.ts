@@ -35,14 +35,22 @@ export async function promptWithNav(
   }
 
   const trimmedInput = input.trim();
-  if (trimmedInput.toLowerCase() === 'cancel') return 'cancel';
-  if (trimmedInput.toLowerCase() === 'back') return NAV_BACK;
+  if (trimmedInput.toLowerCase() === 'cancel') {
+    return 'cancel';
+  }
+  if (trimmedInput.toLowerCase() === 'back') {
+    return NAV_BACK;
+  }
   if (trimmedInput.toLowerCase() === 'quit' || trimmedInput.toLowerCase() === 'exit') {
     logger.info('Exiting...');
     process.exit(0);
   }
-  if (trimmedInput === '' && initial) return initial; // Return initial if empty and exists
-  if (trimmedInput === '' || trimmedInput.toLowerCase() === 'next') return NAV_NEXT;
+  if (trimmedInput === '' && initial) {
+    return initial;
+  } // Return initial if empty and exists
+  if (trimmedInput === '' || trimmedInput.toLowerCase() === 'next') {
+    return NAV_NEXT;
+  }
   return trimmedInput;
 }
 
@@ -67,12 +75,18 @@ export async function promptForMultipleItems(
 
   while (true) {
     const val = await promptWithNav(`> ${fieldName}:`);
-    if (val === NAV_NEXT) break;
-    if (val === NAV_BACK) {
-      if (items.length === initial.length) return initial; // Return original if no change
+    if (val === NAV_NEXT) {
       break;
     }
-    if (val === 'cancel') return initial;
+    if (val === NAV_BACK) {
+      if (items.length === initial.length) {
+        return initial;
+      } // Return original if no change
+      break;
+    }
+    if (val === 'cancel') {
+      return initial;
+    }
     items.push(val);
   }
   return items;

@@ -98,7 +98,9 @@ export class NeonConnectionManager {
    * are managed by Neon's proxy, but we still track the closed state.
    */
   public async close(): Promise<void> {
-    if (this._closed) return;
+    if (this._closed) {
+      return;
+    }
     this._closed = true;
     await this.pool.end();
   }

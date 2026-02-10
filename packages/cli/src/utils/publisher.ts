@@ -480,7 +480,9 @@ export async function publishToGitHub(
           const line = lines[i].trim();
 
           // Skip empty lines and opening brace
-          if (!line || line === '{') continue;
+          if (!line || line === '{') {
+            continue;
+          }
 
           // If we hit the closing brace, insert before it
           if (line === '}') {
@@ -534,7 +536,7 @@ export async function publishToGitHub(
             // Only add a comma if the previous non-empty line is an entry (not an opening brace)
             const isEntryLine = /^"[^"]+"\s*:/.test(prevTrim);
             if (isEntryLine && !prevTrim.endsWith(',')) {
-              lines[prevLineIndex] = prevLine.trimEnd() + ',';
+              lines[prevLineIndex] = `${prevLine.trimEnd()},`;
             }
           }
 
@@ -607,7 +609,7 @@ Submitted by: @${username}`,
     // Return success with PR URL
     return {
       success: true,
-      prUrl: prUrl,
+      prUrl,
     };
   } else {
     logger.info({ src: 'cli', util: 'publisher' }, 'Test successful - all checks passed');

@@ -31,7 +31,9 @@ export class MockEngine {
   }
 
   public applyMocks(mocks: MockDefinition[] = []) {
-    if (mocks.length === 0) return;
+    if (mocks.length === 0) {
+      return;
+    }
 
     // Build mock registry for efficient lookup
     this.mockRegistry.clear();
@@ -154,7 +156,9 @@ export class MockEngine {
    * Enhanced condition matching with multiple strategies
    */
   private async matchesCondition(mock: MockDefinition, args: unknown[]): Promise<boolean> {
-    if (!mock.when) return true; // Generic mock
+    if (!mock.when) {
+      return true;
+    } // Generic mock
 
     const input = this.extractInputFromArgs(args);
     const context = this.buildRequestContext(args);
@@ -246,11 +250,21 @@ export class MockEngine {
   private calculateSpecificity(mock: MockDefinition): number {
     let score = 0;
     if (mock.when) {
-      if (mock.when.args) score += 10;
-      if (mock.when.input) score += 8;
-      if (mock.when.context) score += 6;
-      if (mock.when.matcher) score += 4;
-      if (mock.when.partialArgs) score += 2;
+      if (mock.when.args) {
+        score += 10;
+      }
+      if (mock.when.input) {
+        score += 8;
+      }
+      if (mock.when.context) {
+        score += 6;
+      }
+      if (mock.when.matcher) {
+        score += 4;
+      }
+      if (mock.when.partialArgs) {
+        score += 2;
+      }
     }
     return score;
   }
@@ -289,7 +303,9 @@ export class MockEngine {
    * Match partial arguments
    */
   private matchesPartialArgs(args: unknown[], partialArgs: unknown[]): boolean {
-    if (args.length < partialArgs.length) return false;
+    if (args.length < partialArgs.length) {
+      return false;
+    }
 
     for (let i = 0; i < partialArgs.length; i++) {
       if (!_.isEqual(args[i], partialArgs[i])) {

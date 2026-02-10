@@ -117,10 +117,10 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   getLogs: mock().mockResolvedValue([]),
   deleteLog: mock().mockResolvedValue(undefined),
   removeWorld: mock().mockResolvedValue(undefined),
-  deleteRoomsByWorldId: function (_worldId: UUID): Promise<void> {
+  deleteRoomsByWorldId(_worldId: UUID): Promise<void> {
     throw new Error('Function not implemented.');
   },
-  getMemoriesByWorldId: function (_params: {
+  getMemoriesByWorldId(_params: {
     worldId: UUID;
     count?: number;
     tableName?: string;
@@ -149,7 +149,7 @@ const createMockMemory = (
 ): Memory => ({
   id: id ?? stringToUuid(uuidv4()),
   entityId: entityId ?? stringToUuid(uuidv4()),
-  agentId: agentId, // Pass agentId if needed
+  agentId, // Pass agentId if needed
   roomId: roomId ?? stringToUuid(uuidv4()),
   content: { text }, // Assuming simple text content
   createdAt: Date.now(),
@@ -206,7 +206,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     // Instantiate runtime correctly, passing adapter in options object
     runtime = new AgentRuntime({
       character: mockCharacter,
-      agentId: agentId,
+      agentId,
       adapter: mockDatabaseAdapter, // Correct way to pass adapter
       // No plugins passed here by default, tests can pass them if needed
     });
@@ -269,7 +269,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       // Re-create runtime passing plugin in constructor
       runtime = new AgentRuntime({
         character: mockCharacter,
-        agentId: agentId,
+        agentId,
         adapter: mockDatabaseAdapter,
         plugins: [mockPlugin], // Pass plugin during construction
       });
@@ -293,7 +293,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       ).mockResolvedValue([
         {
           id: agentId,
-          agentId: agentId,
+          agentId,
           names: [mockCharacter.name],
           metadata: {},
         },
@@ -334,7 +334,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       ).mockResolvedValue([
         {
           id: agentId,
-          agentId: agentId,
+          agentId,
           names: [mockCharacter.name],
           metadata: {},
         },
@@ -402,7 +402,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       // Create runtime without passing adapter
       const runtimeWithoutAdapter = new AgentRuntime({
         character: mockCharacter,
-        agentId: agentId,
+        agentId,
       });
 
       // Prevent unhandled rejection from internal initPromise used by services waiting on initialization
@@ -416,7 +416,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     it('should skip plugin migrations when skipMigrations option is true', async () => {
       const runtimeWithMigrations = new AgentRuntime({
         character: mockCharacter,
-        agentId: agentId,
+        agentId,
         adapter: mockDatabaseAdapter,
       });
 
@@ -436,7 +436,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     it('should run plugin migrations by default when skipMigrations is not specified', async () => {
       const runtimeDefault = new AgentRuntime({
         character: mockCharacter,
-        agentId: agentId,
+        agentId,
         adapter: mockDatabaseAdapter,
       });
 
@@ -674,7 +674,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       const memory: Memory = {
         id: messageId,
         entityId: agentId,
-        agentId: agentId,
+        agentId,
         roomId: stringToUuid(uuidv4()) as UUID,
         content: { text: 'test message' },
         createdAt: Date.now(),
@@ -684,7 +684,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         {
           id: stringToUuid(uuidv4()) as UUID,
           entityId: agentId,
-          agentId: agentId,
+          agentId,
           roomId: memory.roomId,
           content: {
             text: 'response',
@@ -717,7 +717,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       const memory: Memory = {
         id: messageId,
         entityId: agentId,
-        agentId: agentId,
+        agentId,
         roomId: stringToUuid(uuidv4()) as UUID,
         content: { text: 'test message' },
         createdAt: Date.now(),
@@ -738,7 +738,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     it('createEntity should call adapter.createEntities', async () => {
       const entityData = {
         id: stringToUuid(uuidv4()),
-        agentId: agentId,
+        agentId,
         names: ['Test Entity'],
         metadata: {},
       };
@@ -1404,7 +1404,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       const runtimeWithDimension = new AgentRuntime({
         character: characterWithEmbeddingDimension,
-        agentId: agentId,
+        agentId,
         adapter: mockDatabaseAdapter,
       });
 
@@ -1430,7 +1430,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     it('should fall back to API call when EMBEDDING_DIMENSION is not set', async () => {
       const runtimeWithoutDimension = new AgentRuntime({
         character: mockCharacter,
-        agentId: agentId,
+        agentId,
         adapter: mockDatabaseAdapter,
       });
 
@@ -1463,7 +1463,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       const runtimeWithInvalidDimension = new AgentRuntime({
         character: characterWithInvalidDimension,
-        agentId: agentId,
+        agentId,
         adapter: mockDatabaseAdapter,
       });
 
@@ -1495,7 +1495,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       const runtimeWithStringDimension = new AgentRuntime({
         character: characterWithStringDimension,
-        agentId: agentId,
+        agentId,
         adapter: mockDatabaseAdapter,
       });
 
