@@ -291,8 +291,9 @@ class LLMJudgeEvaluator implements Evaluator {
       (params.json_schema as JSONSchema | undefined) || this.getDefaultJudgmentSchema();
     const timeoutMs = Number(process.env.LLM_JUDGE_TIMEOUT_MS || 15000);
 
-    // Pick first available model
-    const modelType = ModelType.TEXT_LARGE;
+    // Pick first available model from candidates, fall back to TEXT_LARGE
+    const modelType: (typeof ModelType)[keyof typeof ModelType] =
+      candidateModels.find((m) => runtime.getModel?.(m)) ?? ModelType.TEXT_LARGE;
 
     // Create a simple, clear prompt for object generation
     const fullPrompt = `
@@ -324,18 +325,7 @@ Do not use any other field names. Use only the exact field names specified above
 
     try {
       // Check if the picked model is available; if not, return gracefully
-      // Note: models property is internal to runtime, accessing for debugging only
-      // const availableModels = (runtime as IAgentRuntime & { models?: Map<string, unknown> | Record<string, unknown> }).models; // unused
-      // const modelKeys =
-      //   availableModels && typeof availableModels.keys === 'function'
-      //     ? Array.from(availableModels.keys())
-      //     : Object.keys(availableModels || {});
-      // console.log(`🔍 [LLMJudgeEvaluator] Available models: ${JSON.stringify(availableModels)}`);
-      // console.log(`🔍 [LLMJudgeEvaluator] Model keys: ${JSON.stringify(modelKeys)}`);
       const modelHandler = runtime.getModel(modelType);
-      console.log(`🔍 [LLMJudgeEvaluator] Model handler: ${JSON.stringify(modelHandler)}`);
-      console.log(`🔍 [LLMJudgeEvaluator] Model type: ${modelType}`);
-      console.log(`🔍 [LLMJudgeEvaluator] Candidate models: ${candidateModels.join(', ')}`);
       if (!modelHandler) {
         return {
           success: false,
