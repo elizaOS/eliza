@@ -537,7 +537,7 @@ const reactionReceivedHandler = async ({
   try {
     const disableMemoryCreation = isMemoryCreationDisabled(runtime);
     const allowedSources = getAllowedMemorySources(runtime);
-    const reactionSourceId = (message.metadata as Record<string, any> | undefined)?.sourceId;
+    const reactionSourceId = message.metadata?.sourceId;
     const sourceAllowed =
       !allowedSources ||
       (typeof reactionSourceId === 'string' && allowedSources.includes(reactionSourceId));
