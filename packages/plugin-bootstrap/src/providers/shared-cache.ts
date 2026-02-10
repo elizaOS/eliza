@@ -21,6 +21,18 @@ const DB_TIMEOUT_MS = 5_000;
 // Longer cache TTL for negative results (e.g., worlds without serverId)
 const NEGATIVE_CACHE_TTL_MS = 60_000;
 
+// Hard size limits per cache. When a cache exceeds its limit, the oldest
+// entries are evicted regardless of TTL. These caps guarantee O(1) memory
+// per cache even under sustained high-throughput bursts (many unique
+// rooms/worlds arriving within a single TTL window).
+const ROOM_CACHE_LIMIT = 500;
+const WORLD_CACHE_LIMIT = 200;
+const ENTITIES_CACHE_LIMIT = 500;
+const WORLD_SETTINGS_CACHE_LIMIT = 200;
+const EXTERNAL_ROOM_CACHE_LIMIT = 1000;
+const EXTERNAL_WORLD_CACHE_LIMIT = 500;
+const NEGATIVE_CACHE_LIMIT = 1000;
+
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
@@ -109,30 +121,62 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: 
 }
 
 /**
- * Remove expired entries from a cache map by TTL.
+ * Remove expired entries from a cache map by TTL, then enforce a hard size
+ * limit by evicting the oldest entries (LRU-ish) if the cache is still over
+ * the cap.
+ *
  * Returns the number of entries evicted.
  *
  * Called in two contexts:
- * 1. Inline after a fetch (burst guard) - caps at maxSize to prevent sudden spikes
- * 2. Periodic sweep (steady-state) - maxSize=0 to evict everything expired
+ * 1. Inline after a fetch (burst guard) - enforces hardLimit to bound memory
+ * 2. Periodic sweep (hardLimit=0) - evicts everything expired, no size cap
+ *
+ * HARD LIMIT RATIONALE:
+ * TTL-based eviction alone is not enough in high-throughput scenarios. If
+ * many unique rooms/worlds arrive within a single TTL window (30s), the
+ * cache can grow to tens of thousands of entries before the sweep or
+ * TTL-expiry kicks in. The hard limit guarantees O(1) memory per cache
+ * regardless of throughput.
  */
-function evictExpired<T>(cache: Map<string, CacheEntry<T>>, maxSize: number, ttl: number): number {
-  // Burst guard: only run the inline eviction when we're over the cap.
-  // The periodic sweep passes maxSize=0, so it always runs.
-  if (maxSize > 0 && cache.size <= maxSize) {
+function evictExpired<T>(
+  cache: Map<string, CacheEntry<T>>,
+  hardLimit: number,
+  ttl: number
+): number {
+  // Burst guard: skip TTL scan when well under the limit (saves iteration).
+  // The periodic sweep passes hardLimit=0, so it always runs.
+  const needsScan = hardLimit === 0 || cache.size > hardLimit;
+  if (!needsScan) {
     return 0;
   }
 
   const now = Date.now();
   let evicted = 0;
+
+  // Phase 1: Remove expired entries (TTL-based)
   for (const [key, entry] of cache) {
-    // Use the entry's own TTL if it's a negative-cache entry, otherwise use the provided TTL
     const entryTtl = entry.isNegative ? NEGATIVE_CACHE_TTL_MS : ttl;
     if (now - entry.timestamp > entryTtl) {
       cache.delete(key);
       evicted++;
     }
   }
+
+  // Phase 2: If still over the hard limit, evict the oldest entries.
+  // Map iteration order is insertion order, so the first entries are oldest.
+  if (hardLimit > 0 && cache.size > hardLimit) {
+    const excess = cache.size - hardLimit;
+    let removed = 0;
+    for (const key of cache.keys()) {
+      if (removed >= excess) {
+        break;
+      }
+      cache.delete(key);
+      removed++;
+      evicted++;
+    }
+  }
+
   return evicted;
 }
 
@@ -236,6 +280,7 @@ function cacheRoomByExternalId(room: Room): void {
     metadata: room.metadata,
   };
   externalRoomCache.set(key, { data: externalData, timestamp: Date.now() });
+  evictExpired(externalRoomCache, EXTERNAL_ROOM_CACHE_LIMIT, CACHE_TTL_MS);
 }
 
 /**
@@ -284,7 +329,7 @@ export async function getCachedRoom(runtime: IAgentRuntime, roomId: UUID): Promi
   })();
 
   roomInFlight.set(cacheKey, fetchPromise);
-  evictExpired(roomCache, 500, CACHE_TTL_MS);
+  evictExpired(roomCache, ROOM_CACHE_LIMIT, CACHE_TTL_MS);
 
   return fetchPromise;
 }
@@ -379,6 +424,7 @@ function cacheWorldByExternalId(world: World): void {
   }
 
   externalWorldCache.set(key, { data: externalData, timestamp: Date.now() });
+  evictExpired(externalWorldCache, EXTERNAL_WORLD_CACHE_LIMIT, CACHE_TTL_MS);
 }
 
 /**
@@ -422,7 +468,7 @@ export async function getCachedWorld(runtime: IAgentRuntime, worldId: UUID): Pro
   })();
 
   worldInFlight.set(cacheKey, fetchPromise);
-  evictExpired(worldCache, 200, CACHE_TTL_MS);
+  evictExpired(worldCache, WORLD_CACHE_LIMIT, CACHE_TTL_MS);
 
   return fetchPromise;
 }
@@ -465,6 +511,7 @@ export function hasNoSettings(serverId: string): boolean {
  */
 export function markNoSettings(serverId: string): void {
   noSettingsCache.set(serverId, { data: true, timestamp: Date.now() });
+  evictExpired(noSettingsCache, NEGATIVE_CACHE_LIMIT, NEGATIVE_CACHE_TTL_MS);
 }
 
 /**
@@ -505,6 +552,7 @@ export function hasNoServerId(worldId: UUID): boolean {
  */
 export function markNoServerId(worldId: UUID): void {
   noServerIdCache.set(worldId, { data: true, timestamp: Date.now() });
+  evictExpired(noServerIdCache, NEGATIVE_CACHE_LIMIT, NEGATIVE_CACHE_TTL_MS);
 }
 
 // ============================================================================
@@ -560,7 +608,7 @@ export async function getCachedEntitiesForRoom(
   })();
 
   entitiesInFlight.set(cacheKey, fetchPromise);
-  evictExpired(entitiesCache, 500, CACHE_TTL_MS);
+  evictExpired(entitiesCache, ENTITIES_CACHE_LIMIT, CACHE_TTL_MS);
 
   return fetchPromise;
 }
@@ -627,6 +675,7 @@ export function extractWorldSettings(world: World | null): WorldSettings | null 
       settings,
     };
     externalWorldCache.set(key, { data: externalData, timestamp: Date.now() });
+    evictExpired(externalWorldCache, EXTERNAL_WORLD_CACHE_LIMIT, CACHE_TTL_MS);
   }
 
   return settings;
@@ -674,7 +723,7 @@ export async function getCachedWorldSettings(
   })();
 
   worldSettingsInFlight.set(cacheKey, fetchPromise);
-  evictExpired(worldSettingsCache, 200, CACHE_TTL_MS);
+  evictExpired(worldSettingsCache, WORLD_SETTINGS_CACHE_LIMIT, CACHE_TTL_MS);
 
   return fetchPromise;
 }

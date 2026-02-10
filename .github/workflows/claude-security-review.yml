@@ -25,11 +25,13 @@ concurrency:
 
 jobs:
   security:
-    # Skip for draft PRs, [skip-security] in title, or bot-triggered
+    # Skip for draft PRs or [skip-security] in title.
+    # NOTE: We intentionally do NOT exclude cursor[bot] or other bot actors.
+    # Development is done via Cursor, so bot-triggered pushes are normal
+    # workflow and still need security review.
     if: |
       github.event.pull_request.draft != true &&
-      !contains(github.event.pull_request.title, '[skip-security]') &&
-      github.actor != 'cursor[bot]'
+      !contains(github.event.pull_request.title, '[skip-security]')
 
     runs-on: ubuntu-latest
     permissions:

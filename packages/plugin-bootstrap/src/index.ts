@@ -577,8 +577,8 @@ const reactionReceivedHandler = async ({
       },
       'Stored reaction memory'
     );
-  } catch (error: any) {
-    if (error.code === '23505') {
+  } catch (error: unknown) {
+    if (error instanceof Error && 'code' in error && (error as { code: string }).code === '23505') {
       runtime.logger.warn(
         { src: 'plugin:bootstrap', agentId: runtime.agentId },
         'Duplicate reaction memory, skipping'
