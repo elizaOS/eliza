@@ -205,6 +205,9 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   registerTaskWorker(taskHandler: TaskWorker): void;
   getTaskWorker(name: string): TaskWorker | undefined;
 
+  /** Flush any buffered log entries to the database. */
+  flushLogs(): Promise<void>;
+
   stop(): Promise<void>;
 
   addEmbeddingToMemory(memory: Memory): Promise<Memory>;

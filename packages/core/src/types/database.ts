@@ -285,6 +285,15 @@ export interface IDatabaseAdapter {
     type: string;
   }): Promise<void>;
 
+  logBatch?(
+    entries: Array<{
+      body: { [key: string]: unknown };
+      entityId: UUID;
+      roomId: UUID;
+      type: string;
+    }>
+  ): Promise<void>;
+
   getLogs(params: {
     entityId?: UUID;
     roomId?: UUID;

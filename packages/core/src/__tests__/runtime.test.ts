@@ -523,6 +523,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       // Check that handler was called with runtime and params (no runtime in params)
       expect(modelHandler).toHaveBeenCalledWith(runtime, expect.objectContaining(params));
       expect(result).toEqual('success');
+      // Flush buffered logs before asserting
+      await runtime.flushLogs();
       // Check if log was called (part of useModel logic)
       expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(
         expect.objectContaining({ type: `useModel:${modelType}` })
@@ -537,7 +539,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
   });
 
   describe('Action Processing', () => {
-    let mockActionHandler: any; // Use 'any' or specific function type
+    let mockActionHandler: ReturnType<typeof mock>;
     let testAction: Action;
     let message: Memory;
     let responseMemory: Memory;
@@ -586,6 +588,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect.any(Function), // storage callback function
         [responseMemory] // responses array
       );
+      // Flush buffered logs before asserting
+      await runtime.flushLogs();
       expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'action',
@@ -598,6 +602,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     it('should not execute if no action name matches', async () => {
       responseMemory.content.actions = ['NonExistentAction'];
       await runtime.processActions(message, [responseMemory]);
+      // Flush buffered logs before asserting
+      await runtime.flushLogs();
       expect(mockActionHandler).not.toHaveBeenCalled();
       expect(mockDatabaseAdapter.log).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: 'action' })
@@ -864,8 +870,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         });
 
         // Mock a model handler to capture params
-        let capturedParams: any = null;
-        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+        let capturedParams: Record<string, unknown> | null = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: IAgentRuntime, params: Record<string, unknown>) => {
           capturedParams = params;
           return 'test response';
         });
@@ -923,8 +929,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       it('should preserve explicitly provided empty string for user parameter in useModel', async () => {
         // Mock a model handler to capture params
-        let capturedParams: any = null;
-        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+        let capturedParams: Record<string, unknown> | null = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: IAgentRuntime, params: Record<string, unknown>) => {
           capturedParams = params;
           return 'test response';
         });
@@ -943,8 +949,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       it('should preserve explicitly provided null for user parameter in useModel', async () => {
         // Mock a model handler to capture params
-        let capturedParams: any = null;
-        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+        let capturedParams: Record<string, unknown> | null = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: IAgentRuntime, params: Record<string, unknown>) => {
           capturedParams = params;
           return 'test response';
         });
@@ -963,8 +969,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       it('should auto-populate user from character name when not provided in useModel', async () => {
         // Mock a model handler to capture params
-        let capturedParams: any = null;
-        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+        let capturedParams: Record<string, unknown> | null = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: IAgentRuntime, params: Record<string, unknown>) => {
           capturedParams = params;
           return 'test response';
         });
@@ -1013,31 +1019,31 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         });
 
         // Mock handlers to capture params
-        let capturedTextSmall: any = null;
-        let capturedTextLarge: any = null;
-        let capturedObjectSmall: any = null;
-        let capturedObjectLarge: any = null;
+        let capturedTextSmall: Record<string, unknown> | null = null;
+        let capturedTextLarge: Record<string, unknown> | null = null;
+        let capturedObjectSmall: Record<string, unknown> | null = null;
+        let capturedObjectLarge: Record<string, unknown> | null = null;
 
         const mockTextSmallHandler = mock().mockImplementation(
-          async (_runtime: any, params: any) => {
+          async (_runtime: IAgentRuntime, params: Record<string, unknown>) => {
             capturedTextSmall = params;
             return 'text small response';
           }
         );
         const mockTextLargeHandler = mock().mockImplementation(
-          async (_runtime: any, params: any) => {
+          async (_runtime: IAgentRuntime, params: Record<string, unknown>) => {
             capturedTextLarge = params;
             return 'text large response';
           }
         );
         const mockObjectSmallHandler = mock().mockImplementation(
-          async (_runtime: any, params: any) => {
+          async (_runtime: IAgentRuntime, params: Record<string, unknown>) => {
             capturedObjectSmall = params;
             return { type: 'small' };
           }
         );
         const mockObjectLargeHandler = mock().mockImplementation(
-          async (_runtime: any, params: any) => {
+          async (_runtime: IAgentRuntime, params: Record<string, unknown>) => {
             capturedObjectLarge = params;
             return { type: 'large' };
           }
@@ -1122,8 +1128,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           adapter: mockDatabaseAdapter,
         });
 
-        let capturedParams: any = null;
-        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+        let capturedParams: Record<string, unknown> | null = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: IAgentRuntime, params: Record<string, unknown>) => {
           capturedParams = params;
           return 'response';
         });
@@ -1154,8 +1160,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           adapter: mockDatabaseAdapter,
         });
 
-        let capturedParams: any = null;
-        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+        let capturedParams: Record<string, unknown> | null = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: IAgentRuntime, params: Record<string, unknown>) => {
           capturedParams = params;
           return 'response';
         });
@@ -1192,8 +1198,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           adapter: mockDatabaseAdapter,
         });
 
-        let capturedParams: any = null;
-        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+        let capturedParams: Record<string, unknown> | null = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: IAgentRuntime, params: Record<string, unknown>) => {
           capturedParams = params;
           return 'response';
         });
@@ -1417,7 +1423,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       );
 
       // Reset mock call counts
-      (mockDatabaseAdapter.ensureEmbeddingDimension as any).mockClear();
+      (mockDatabaseAdapter.ensureEmbeddingDimension as ReturnType<typeof mock>).mockClear();
 
       await runtimeWithDimension.ensureEmbeddingDimension();
 
@@ -1443,7 +1449,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       );
 
       // Reset mock call counts
-      (mockDatabaseAdapter.ensureEmbeddingDimension as any).mockClear();
+      (mockDatabaseAdapter.ensureEmbeddingDimension as ReturnType<typeof mock>).mockClear();
 
       await runtimeWithoutDimension.ensureEmbeddingDimension();
 
@@ -1476,7 +1482,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       );
 
       // Reset mock call counts
-      (mockDatabaseAdapter.ensureEmbeddingDimension as any).mockClear();
+      (mockDatabaseAdapter.ensureEmbeddingDimension as ReturnType<typeof mock>).mockClear();
 
       await runtimeWithInvalidDimension.ensureEmbeddingDimension();
 
@@ -1508,7 +1514,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       );
 
       // Reset mock call counts
-      (mockDatabaseAdapter.ensureEmbeddingDimension as any).mockClear();
+      (mockDatabaseAdapter.ensureEmbeddingDimension as ReturnType<typeof mock>).mockClear();
 
       await runtimeWithStringDimension.ensureEmbeddingDimension();
 

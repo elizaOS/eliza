@@ -68,6 +68,55 @@ export class LogStore implements Store {
     }
   }
 
+  async createBatch(
+    entries: Array<{
+      body: { [key: string]: unknown };
+      entityId: UUID;
+      roomId: UUID;
+      type: string;
+    }>
+  ): Promise<void> {
+    if (entries.length === 0) return;
+
+    // Group by entityId for RLS isolation context
+    const grouped = new Map<UUID, typeof entries>();
+    for (const entry of entries) {
+      const group = grouped.get(entry.entityId) ?? [];
+      group.push(entry);
+      grouped.set(entry.entityId, group);
+    }
+
+    for (const [entityId, group] of grouped) {
+      try {
+        const values = group.map((entry) => {
+          const sanitizedBody = sanitizeJsonObject(entry.body);
+          const jsonString = JSON.stringify(sanitizedBody);
+          return {
+            body: sql`${jsonString}::jsonb`,
+            entityId: entry.entityId,
+            roomId: entry.roomId,
+            type: entry.type,
+          };
+        });
+
+        await this.ctx.withIsolationContext(entityId, async (tx) => {
+          await tx.insert(logTable).values(values);
+        });
+      } catch (error) {
+        logger.error(
+          {
+            src: 'plugin:sql',
+            entityId,
+            count: group.length,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Failed to create batch log entries'
+        );
+        // Don't throw — best-effort for batched logs
+      }
+    }
+  }
+
   async getMany(params: {
     entityId?: UUID;
     roomId?: UUID;

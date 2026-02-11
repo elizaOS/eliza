@@ -613,6 +613,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
+   * Batch-insert multiple log entries, grouped by entityId for RLS isolation.
+   */
+  async logBatch(
+    entries: Array<{
+      body: { [key: string]: unknown };
+      entityId: UUID;
+      roomId: UUID;
+      type: string;
+    }>
+  ): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.logStore.createBatch(entries);
+    });
+  }
+
+  /**
    * Asynchronously retrieves logs from the database based on the provided parameters.
    * @param {Object} params - The parameters for retrieving logs.
    * @param {UUID} params.entityId - The ID of the entity associated with the logs.

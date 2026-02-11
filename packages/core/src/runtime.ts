@@ -107,6 +107,104 @@ type ServicePromiseHandler = {
   reject: ServiceRejecter;
 };
 
+/** Number of buffered entries that triggers an auto-flush */
+const LOG_FLUSH_THRESHOLD = 10;
+/** Milliseconds of inactivity before auto-flush */
+const LOG_FLUSH_INTERVAL_MS = 5_000;
+
+type LogEntry = {
+  body: { [key: string]: unknown };
+  entityId: UUID;
+  roomId: UUID;
+  type: string;
+};
+
+/**
+ * Non-blocking log buffer that batches adapter.log() calls.
+ * push() is synchronous — it never blocks the caller.
+ * flush() drains the buffer and writes via adapter.logBatch() (or falls back to adapter.log()).
+ */
+class LogBuffer {
+  private entries: LogEntry[] = [];
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private flushing: Promise<void> | null = null;
+  private destroyed = false;
+
+  constructor(private readonly getAdapter: () => IDatabaseAdapter) {}
+
+  /** Synchronously enqueue a log entry. Never blocks the caller. */
+  push(entry: LogEntry): void {
+    if (this.destroyed) return;
+    this.entries.push(entry);
+
+    if (this.entries.length >= LOG_FLUSH_THRESHOLD) {
+      // fire-and-forget — errors are swallowed inside flush()
+      void this.flush();
+    } else {
+      this.scheduleFlush();
+    }
+  }
+
+  /** Drain the buffer and write all entries to the database. Idempotent. */
+  async flush(): Promise<void> {
+    // Return the in-flight flush if one is already running
+    if (this.flushing) return this.flushing;
+
+    if (this.entries.length === 0) return;
+
+    this.clearTimer();
+
+    const batch = this.entries;
+    this.entries = [];
+
+    this.flushing = this.writeBatch(batch);
+    try {
+      await this.flushing;
+    } finally {
+      this.flushing = null;
+    }
+  }
+
+  /** Cleanup — flush remaining entries and clear timers. */
+  async destroy(): Promise<void> {
+    this.destroyed = true;
+    this.clearTimer();
+    await this.flush();
+  }
+
+  // ─── private ──────────────────────────────────────────────
+
+  private scheduleFlush(): void {
+    if (this.flushTimer || this.destroyed) return;
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      void this.flush();
+    }, LOG_FLUSH_INTERVAL_MS);
+  }
+
+  private clearTimer(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+  }
+
+  private async writeBatch(batch: LogEntry[]): Promise<void> {
+    try {
+      const adapter = this.getAdapter();
+      if (typeof adapter.logBatch === 'function') {
+        await adapter.logBatch(batch);
+      } else {
+        // Fallback: write one at a time
+        await Promise.all(batch.map((entry) => adapter.log(entry).catch(() => {})));
+      }
+    } catch {
+      // Fire-and-forget: swallow errors so log failures never crash the action loop
+    }
+  }
+
+}
+
 export class AgentRuntime implements IAgentRuntime {
   readonly #conversationLength = 32 as number;
   readonly agentId: UUID;
@@ -164,6 +262,7 @@ export class AgentRuntime implements IAgentRuntime {
   };
   private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
   public messageService: IMessageService | null = null; // Lazily initialized
+  private logBuffer: LogBuffer;
 
   constructor(opts: {
     conversationLength?: number;
@@ -197,6 +296,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
     this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
     this.settings = opts.settings ?? environmentSettings;
+    this.logBuffer = new LogBuffer(() => this.adapter);
 
     this.plugins = []; // Initialize plugins as an empty array
     this.characterPlugins = opts?.plugins ?? []; // Store the original character plugins
@@ -400,6 +500,9 @@ export class AgentRuntime implements IAgentRuntime {
 
   async stop() {
     this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Stopping runtime');
+    // Flush remaining log entries before shutting down
+    await this.logBuffer.destroy();
+
     for (const [serviceType, services] of this.services) {
       this.logger.debug({ src: 'agent', agentId: this.agentId, serviceType }, 'Stopping service');
       for (const service of services) {
@@ -1255,8 +1358,8 @@ export class AgentRuntime implements IAgentRuntime {
           'Action completed'
         );
 
-        // log to database with collected prompts
-        await this.adapter.log({
+        // log to database — non-blocking via LogBuffer
+        this.logBuffer.push({
           entityId: message.entityId,
           roomId: message.roomId,
           type: 'action',
@@ -1331,7 +1434,7 @@ export class AgentRuntime implements IAgentRuntime {
       evaluators.map(async (evaluator) => {
         if (evaluator.handler) {
           await evaluator.handler(this as IAgentRuntime, message, state, {}, callback, responses);
-          this.adapter.log({
+          this.logBuffer.push({
             entityId: message.entityId,
             roomId: message.roomId,
             type: 'evaluator',
@@ -2190,8 +2293,8 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    // Log to database
-    this.adapter.log({
+    // Log to database — non-blocking via LogBuffer
+    this.logBuffer.push({
       entityId: this.agentId,
       roomId: this.currentRoomId ?? this.agentId,
       body: {
@@ -2331,19 +2434,24 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Get streaming config
     const streamingCtx = getStreamingContext();
-    const paramsChunk = isPlainObject(modelParams) ? (modelParams as any).onStreamChunk : undefined;
+    const streamParamsObj = isPlainObject(modelParams)
+      ? (modelParams as Record<string, unknown>)
+      : undefined;
+    const paramsChunk = streamParamsObj?.onStreamChunk as
+      | ((chunk: string, messageId?: UUID) => Promise<void>)
+      | undefined;
     const ctxChunk = streamingCtx?.onStreamChunk;
     const msgId = streamingCtx?.messageId;
     const abortSignal = streamingCtx?.abortSignal;
-    const explicitStream = isPlainObject(modelParams) ? (modelParams as any).stream : undefined;
+    const explicitStream = streamParamsObj?.stream as boolean | undefined;
 
     // stream: false = force no stream, otherwise stream if any callback exists
     const shouldStream =
       explicitStream === false ? false : !!(paramsChunk || ctxChunk || explicitStream);
 
-    if (isPlainObject(modelParams)) {
-      (modelParams as any).stream = shouldStream;
-      delete (modelParams as any).onStreamChunk;
+    if (streamParamsObj) {
+      streamParamsObj.stream = shouldStream;
+      delete streamParamsObj.onStreamChunk;
     }
 
     const response = await handler(this as IAgentRuntime, modelParams as Record<string, unknown>);
@@ -2853,7 +2961,14 @@ export class AgentRuntime implements IAgentRuntime {
     roomId: UUID;
     type: string;
   }): Promise<void> {
-    await this.adapter.log(params);
+    // Public API: push + immediate flush for backward compat
+    this.logBuffer.push(params);
+    await this.logBuffer.flush();
+  }
+
+  /** Flush any buffered log entries to the database. */
+  async flushLogs(): Promise<void> {
+    await this.logBuffer.flush();
   }
   async searchMemories(params: {
     embedding: number[];
