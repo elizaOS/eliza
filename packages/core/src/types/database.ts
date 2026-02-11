@@ -98,6 +98,16 @@ export type LogBody =
   | EmbeddingLogBody;
 
 /**
+ * Parameters for writing a log entry
+ */
+export interface LogWriteParams {
+  body: { [key: string]: unknown };
+  entityId: UUID;
+  roomId: UUID;
+  type: string;
+}
+
+/**
  * Represents a log entry
  */
 export interface Log {
@@ -278,21 +288,9 @@ export interface IDatabaseAdapter {
     query_match_count: number;
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]>;
 
-  log(params: {
-    body: { [key: string]: unknown };
-    entityId: UUID;
-    roomId: UUID;
-    type: string;
-  }): Promise<void>;
+  log(params: LogWriteParams): Promise<void>;
 
-  logBatch?(
-    entries: Array<{
-      body: { [key: string]: unknown };
-      entityId: UUID;
-      roomId: UUID;
-      type: string;
-    }>
-  ): Promise<void>;
+  logBatch?(entries: LogWriteParams[]): Promise<void>;
 
   getLogs(params: {
     entityId?: UUID;

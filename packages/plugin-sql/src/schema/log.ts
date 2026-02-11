@@ -3,12 +3,6 @@ import { foreignKey, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzl
 import { entityTable } from './entity';
 import { roomTable } from './room';
 
-/**
- * Represents a PostgreSQL table for storing logs.
- *
- * @type {Table}
- */
-
 export const logTable = pgTable(
   'logs',
   {

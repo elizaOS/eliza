@@ -4,6 +4,7 @@ import {
   DatabaseAdapter,
   type Entity,
   type Log,
+  type LogWriteParams,
   logger,
   type Memory,
   type MemoryMetadata,
@@ -571,23 +572,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @param {string} params.type - The type of the event to log.
    * @returns {Promise<void>} A Promise that resolves when the event is logged.
    */
-  async log(params: {
-    body: { [key: string]: unknown };
-    entityId: UUID;
-    roomId: UUID;
-    type: string;
-  }): Promise<void> {
+  async log(params: LogWriteParams): Promise<void> {
     return this.withDatabase(async () => {
       try {
-        // Sanitize JSON body to prevent Unicode escape sequence errors
         const sanitizedBody = sanitizeJsonObject(params.body);
-
-        // Serialize to JSON string first for an additional layer of protection
-        // This ensures any problematic characters are properly escaped during JSON serialization
         const jsonString = JSON.stringify(sanitizedBody);
-
-        // Use withIsolationContext to set Entity RLS context before inserting
-        // This ensures the log entry passes STRICT Entity RLS policy
         await this.withIsolationContext(params.entityId, async (tx) => {
           await tx.insert(logTable).values({
             body: sql`${jsonString}::jsonb`,
@@ -612,17 +601,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     });
   }
 
-  /**
-   * Batch-insert multiple log entries, grouped by entityId for RLS isolation.
-   */
-  async logBatch(
-    entries: Array<{
-      body: { [key: string]: unknown };
-      entityId: UUID;
-      roomId: UUID;
-      type: string;
-    }>
-  ): Promise<void> {
+  async logBatch(entries: LogWriteParams[]): Promise<void> {
     return this.withDatabase(async () => {
       await this.logStore.createBatch(entries);
     });

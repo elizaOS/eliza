@@ -430,6 +430,7 @@ describe('useModel Streaming', () => {
         prompt: 'Test prompt',
         onStreamChunk: () => {},
       });
+      await streamingRuntime.flushLogs();
 
       // Verify adapter.log was called
       const logCalls = (mockAdapter.log as any).mock.calls;
@@ -460,6 +461,7 @@ describe('useModel Streaming', () => {
       await nonStreamingRuntime.useModel(ModelType.TEXT_LARGE, {
         prompt: 'Test prompt',
       });
+      await nonStreamingRuntime.flushLogs();
 
       // Verify adapter.log was called
       const logCalls = (mockAdapter.log as any).mock.calls;

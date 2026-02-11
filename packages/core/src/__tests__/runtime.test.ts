@@ -17,6 +17,7 @@ import type {
   Action,
   Character,
   IDatabaseAdapter,
+  LogWriteParams,
   Memory,
   ModelTypeName,
   Plugin,
@@ -26,7 +27,26 @@ import type {
   TextStreamResult,
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { LogStore } from '../../../plugin-sql/src/stores/log.store';
+import type { StoreContext } from '../../../plugin-sql/src/stores/types';
 const stringToUuid = (id: string): UUID => id as UUID;
+
+const LOG_FLUSH_THRESHOLD = 10;
+const LOG_FLUSH_INTERVAL_MS = 5000;
+
+const waitFor = async (
+  condition: () => boolean,
+  timeoutMs = 500,
+  intervalMs = 10
+): Promise<void> => {
+  const start = Date.now();
+  while (!condition()) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('Timed out waiting for condition');
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
+  }
+};
 
 // --- Mocks ---
 
@@ -128,6 +148,9 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
     throw new Error('Function not implemented.');
   },
 };
+
+const createAdapterWithOverrides = (overrides: Partial<IDatabaseAdapter>): IDatabaseAdapter =>
+  ({ ...mockDatabaseAdapter, ...overrides }) as IDatabaseAdapter;
 
 // Mock action creator (matches your example)
 const createMockAction = (name: string): Action => ({
@@ -538,6 +561,611 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     });
   });
 
+  describe('Log Buffering', () => {
+    it('buffers model logs and flushes them as a batch', async () => {
+      const logBatch = mock().mockResolvedValue(undefined);
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch }),
+      });
+      runtimeWithBatch.registerModel(ModelType.TEXT_LARGE, mock().mockResolvedValue('ok'), 'test');
+
+      await runtimeWithBatch.useModel(ModelType.TEXT_LARGE, { prompt: 'p1' });
+      await runtimeWithBatch.useModel(ModelType.TEXT_LARGE, { prompt: 'p2' });
+
+      expect(logBatch).not.toHaveBeenCalled();
+      await runtimeWithBatch.flushLogs();
+
+      expect(logBatch).toHaveBeenCalledTimes(1);
+      expect(logBatch).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ type: `useModel:${ModelType.TEXT_LARGE}` }),
+          expect.objectContaining({ type: `useModel:${ModelType.TEXT_LARGE}` }),
+        ])
+      );
+    });
+
+    it('drains entries pushed during an in-flight flush', async () => {
+      let releaseFirstFlush: (() => void) | undefined;
+      const firstFlushStarted = new Promise<void>((resolve) => {
+        releaseFirstFlush = resolve;
+      });
+
+      const releaseGate = (() => {
+        let release: (() => void) | undefined;
+        const wait = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return { wait, release: release! };
+      })();
+
+      const batches: LogWriteParams[][] = [];
+      const logBatch = mock().mockImplementation(async (entries: LogWriteParams[]) => {
+        batches.push(entries);
+        if (batches.length === 1) {
+          releaseFirstFlush?.();
+          await releaseGate.wait;
+        }
+      });
+
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch }),
+      });
+      runtimeWithBatch.registerModel(ModelType.TEXT_LARGE, mock().mockResolvedValue('ok'), 'test');
+
+      await runtimeWithBatch.useModel(ModelType.TEXT_LARGE, { prompt: 'first' });
+      const flushPromise = runtimeWithBatch.flushLogs();
+      await firstFlushStarted;
+
+      await runtimeWithBatch.useModel(ModelType.TEXT_LARGE, { prompt: 'second' });
+      releaseGate.release();
+      await flushPromise;
+
+      expect(batches).toHaveLength(2);
+      expect(batches[0]).toHaveLength(1);
+      expect(batches[1]).toHaveLength(1);
+      expect(batches[0][0].type).toBe(`useModel:${ModelType.TEXT_LARGE}`);
+      expect(batches[1][0].type).toBe(`useModel:${ModelType.TEXT_LARGE}`);
+    });
+
+    it('falls back to per-entry log writes and continues on partial failures', async () => {
+      const log = mock()
+        .mockRejectedValueOnce(new Error('first write failed'))
+        .mockResolvedValue(undefined);
+
+      const runtimeWithFallback = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ log }),
+      });
+      runtimeWithFallback.registerModel(ModelType.TEXT_LARGE, mock().mockResolvedValue('ok'), 'test');
+
+      await runtimeWithFallback.useModel(ModelType.TEXT_LARGE, { prompt: 'a' });
+      await runtimeWithFallback.useModel(ModelType.TEXT_LARGE, { prompt: 'b' });
+
+      await expect(runtimeWithFallback.flushLogs()).resolves.toBeUndefined();
+      expect(log).toHaveBeenCalledTimes(2);
+    });
+
+    it('auto-flushes immediately when pushes reach the threshold', async () => {
+      const logBatch = mock().mockResolvedValue(undefined);
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch }),
+      });
+      runtimeWithBatch.registerModel(ModelType.TEXT_LARGE, mock().mockResolvedValue('ok'), 'test');
+
+      for (let i = 0; i < LOG_FLUSH_THRESHOLD; i++) {
+        await runtimeWithBatch.useModel(ModelType.TEXT_LARGE, { prompt: `threshold-${i}` });
+      }
+
+      await waitFor(() => logBatch.mock.calls.length === 1);
+      const firstBatch = logBatch.mock.calls[0]?.[0] as LogWriteParams[];
+      expect(firstBatch).toHaveLength(LOG_FLUSH_THRESHOLD);
+      expect(firstBatch[0]).toMatchObject({
+        type: `useModel:${ModelType.TEXT_LARGE}`,
+        body: expect.objectContaining({ prompt: 'threshold-0' }),
+      });
+      expect(firstBatch[LOG_FLUSH_THRESHOLD - 1]).toMatchObject({
+        type: `useModel:${ModelType.TEXT_LARGE}`,
+        body: expect.objectContaining({ prompt: `threshold-${LOG_FLUSH_THRESHOLD - 1}` }),
+      });
+    });
+
+    it('does not auto-flush when buffered entries are below threshold', async () => {
+      const logBatch = mock().mockResolvedValue(undefined);
+      const setTimeoutSpy = spyOn(globalThis, 'setTimeout');
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch }),
+      });
+      runtimeWithBatch.registerModel(ModelType.TEXT_LARGE, mock().mockResolvedValue('ok'), 'test');
+
+      for (let i = 0; i < LOG_FLUSH_THRESHOLD - 1; i++) {
+        await runtimeWithBatch.useModel(ModelType.TEXT_LARGE, { prompt: `below-${i}` });
+      }
+
+      await Promise.resolve();
+      expect(logBatch).not.toHaveBeenCalled();
+      expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+      expect(setTimeoutSpy.mock.calls[0]?.[1]).toBe(LOG_FLUSH_INTERVAL_MS);
+    });
+
+    it('treats flushing an empty buffer as a no-op', async () => {
+      const logBatch = mock().mockResolvedValue(undefined);
+      const log = mock().mockResolvedValue(undefined);
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch, log }),
+      });
+
+      await expect(runtimeWithBatch.flushLogs()).resolves.toBeUndefined();
+      expect(logBatch).not.toHaveBeenCalled();
+      expect(log).not.toHaveBeenCalled();
+    });
+
+    it('falls back to per-entry log writes when logBatch throws', async () => {
+      const logBatch = mock().mockRejectedValue(new Error('batch failed'));
+      const log = mock().mockResolvedValue(undefined);
+      const runtimeWithFallback = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch, log }),
+      });
+      runtimeWithFallback.registerModel(ModelType.TEXT_LARGE, mock().mockResolvedValue('ok'), 'test');
+
+      await runtimeWithFallback.useModel(ModelType.TEXT_LARGE, { prompt: 'fb-1' });
+      await runtimeWithFallback.useModel(ModelType.TEXT_LARGE, { prompt: 'fb-2' });
+      await runtimeWithFallback.flushLogs();
+
+      expect(logBatch).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledTimes(2);
+      expect(log.mock.calls[0]?.[0]).toMatchObject({
+        type: `useModel:${ModelType.TEXT_LARGE}`,
+        body: expect.objectContaining({ prompt: 'fb-1' }),
+      });
+      expect(log.mock.calls[1]?.[0]).toMatchObject({
+        type: `useModel:${ModelType.TEXT_LARGE}`,
+        body: expect.objectContaining({ prompt: 'fb-2' }),
+      });
+    });
+
+    it('swallows errors when both batch and per-entry log writes fail', async () => {
+      const logBatch = mock().mockRejectedValue(new Error('batch failed'));
+      const log = mock().mockRejectedValue(new Error('single write failed'));
+      const runtimeWithFailure = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch, log }),
+      });
+      runtimeWithFailure.registerModel(ModelType.TEXT_LARGE, mock().mockResolvedValue('ok'), 'test');
+
+      await runtimeWithFailure.useModel(ModelType.TEXT_LARGE, { prompt: 'x' });
+      await runtimeWithFailure.useModel(ModelType.TEXT_LARGE, { prompt: 'y' });
+      await expect(runtimeWithFailure.flushLogs()).resolves.toBeUndefined();
+
+      expect(logBatch).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledTimes(2);
+    });
+
+    it('falls back to per-entry writes when reading logBatch throws', async () => {
+      const log = mock().mockResolvedValue(undefined);
+      const throwingAdapter = createAdapterWithOverrides({ log });
+      Object.defineProperty(throwingAdapter, 'logBatch', {
+        configurable: true,
+        get: () => {
+          throw new Error('logBatch getter failed');
+        },
+      });
+      const runtimeWithThrowingAdapter = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: throwingAdapter,
+      });
+
+      await expect(
+        runtimeWithThrowingAdapter.log({
+          entityId: agentId,
+          roomId: stringToUuid(uuidv4()),
+          type: 'test',
+          body: { message: 'should not crash' },
+        })
+      ).resolves.toBeUndefined();
+
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'test',
+          body: expect.objectContaining({ message: 'should not crash' }),
+        })
+      );
+    });
+
+    it('falls back only failed entries when logBatch reports partial failure', async () => {
+      const log = mock().mockResolvedValue(undefined);
+      const runtimeWithPartialFailure = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({
+          log,
+          logBatch: mock().mockImplementation(async (entries: LogWriteParams[]) => {
+            const error = new Error('partial failure') as Error & {
+              failedEntries: LogWriteParams[];
+            };
+            error.failedEntries = entries.slice(1);
+            throw error;
+          }),
+        }),
+      });
+      runtimeWithPartialFailure.registerModel(
+        ModelType.TEXT_LARGE,
+        mock().mockResolvedValue('ok'),
+        'test'
+      );
+
+      await runtimeWithPartialFailure.useModel(ModelType.TEXT_LARGE, { prompt: 'partial-1' });
+      await runtimeWithPartialFailure.useModel(ModelType.TEXT_LARGE, { prompt: 'partial-2' });
+      await runtimeWithPartialFailure.flushLogs();
+
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: `useModel:${ModelType.TEXT_LARGE}`,
+          body: expect.objectContaining({ prompt: 'partial-2' }),
+        })
+      );
+    });
+
+    it('destroy via stop flushes remaining entries before completing', async () => {
+      const logBatch = mock().mockResolvedValue(undefined);
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch }),
+      });
+      runtimeWithBatch.registerModel(ModelType.TEXT_LARGE, mock().mockResolvedValue('ok'), 'test');
+
+      await runtimeWithBatch.useModel(ModelType.TEXT_LARGE, { prompt: 'pending-1' });
+      await runtimeWithBatch.useModel(ModelType.TEXT_LARGE, { prompt: 'pending-2' });
+      await runtimeWithBatch.stop();
+
+      expect(logBatch).toHaveBeenCalledTimes(1);
+      const stoppedBatch = logBatch.mock.calls[0]?.[0] as LogWriteParams[];
+      expect(stoppedBatch).toHaveLength(2);
+      expect(stoppedBatch[0]).toMatchObject({
+        type: `useModel:${ModelType.TEXT_LARGE}`,
+        body: expect.objectContaining({ prompt: 'pending-1' }),
+      });
+      expect(stoppedBatch[1]).toMatchObject({
+        type: `useModel:${ModelType.TEXT_LARGE}`,
+        body: expect.objectContaining({ prompt: 'pending-2' }),
+      });
+    });
+
+    it('silently drops entries pushed after destroy', async () => {
+      const logBatch = mock().mockResolvedValue(undefined);
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch }),
+      });
+
+      await runtimeWithBatch.stop();
+      await runtimeWithBatch.log({
+        entityId: agentId,
+        roomId: stringToUuid(uuidv4()),
+        type: 'post-destroy',
+        body: { dropped: true },
+      });
+
+      expect(logBatch).not.toHaveBeenCalled();
+    });
+
+    it('makes destroy via stop idempotent', async () => {
+      const logBatch = mock().mockResolvedValue(undefined);
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch }),
+      });
+      runtimeWithBatch.registerModel(ModelType.TEXT_LARGE, mock().mockResolvedValue('ok'), 'test');
+
+      await runtimeWithBatch.useModel(ModelType.TEXT_LARGE, { prompt: 'once' });
+      await expect(runtimeWithBatch.stop()).resolves.toBeUndefined();
+      await expect(runtimeWithBatch.stop()).resolves.toBeUndefined();
+
+      expect(logBatch).toHaveBeenCalledTimes(1);
+      const idempotentBatch = logBatch.mock.calls[0]?.[0] as LogWriteParams[];
+      expect(idempotentBatch[0]).toMatchObject({
+        body: expect.objectContaining({ prompt: 'once' }),
+      });
+    });
+
+    it('schedules a timer when entries are below threshold', async () => {
+      const logBatch = mock().mockResolvedValue(undefined);
+      const setTimeoutSpy = spyOn(globalThis, 'setTimeout');
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch }),
+      });
+      runtimeWithBatch.registerModel(ModelType.TEXT_LARGE, mock().mockResolvedValue('ok'), 'test');
+
+      await runtimeWithBatch.useModel(ModelType.TEXT_LARGE, { prompt: 'timer' });
+
+      expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+      expect(setTimeoutSpy.mock.calls[0]?.[1]).toBe(LOG_FLUSH_INTERVAL_MS);
+      expect(logBatch).not.toHaveBeenCalled();
+    });
+
+    it('flushes buffered entries when the scheduled timer fires', async () => {
+      const logBatch = mock().mockResolvedValue(undefined);
+      let scheduledFlush: (() => void) | undefined;
+      spyOn(globalThis, 'setTimeout').mockImplementation(
+        ((handler: TimerHandler, _timeout?: number, ..._args: unknown[]) => {
+          if (typeof handler === 'function') {
+            scheduledFlush = handler;
+          }
+          return 11111 as ReturnType<typeof setTimeout>;
+        }) as typeof setTimeout
+      );
+
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch }),
+      });
+      runtimeWithBatch.registerModel(ModelType.TEXT_LARGE, mock().mockResolvedValue('ok'), 'test');
+
+      await runtimeWithBatch.useModel(ModelType.TEXT_LARGE, { prompt: 'timer-fire' });
+      expect(logBatch).not.toHaveBeenCalled();
+      expect(typeof scheduledFlush).toBe('function');
+
+      scheduledFlush?.();
+      await waitFor(() => logBatch.mock.calls.length === 1);
+      expect(logBatch).toHaveBeenCalledTimes(1);
+      const timerBatch = logBatch.mock.calls[0]?.[0] as LogWriteParams[];
+      expect(timerBatch).toHaveLength(1);
+      expect(timerBatch[0]).toMatchObject({
+        type: `useModel:${ModelType.TEXT_LARGE}`,
+        body: expect.objectContaining({ prompt: 'timer-fire' }),
+      });
+    });
+
+    it('clears the timer on manual flush', async () => {
+      const logBatch = mock().mockResolvedValue(undefined);
+      let timerHandle: ReturnType<typeof setTimeout> | undefined;
+      const setTimeoutSpy = spyOn(globalThis, 'setTimeout').mockImplementation(
+        ((handler: TimerHandler, _timeout?: number, ..._args: unknown[]) => {
+          timerHandle = 12345 as ReturnType<typeof setTimeout>;
+          if (typeof handler === 'function') void handler;
+          return timerHandle;
+        }) as typeof setTimeout
+      );
+      const clearTimeoutSpy = spyOn(globalThis, 'clearTimeout');
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch }),
+      });
+      runtimeWithBatch.registerModel(ModelType.TEXT_LARGE, mock().mockResolvedValue('ok'), 'test');
+
+      await runtimeWithBatch.useModel(ModelType.TEXT_LARGE, { prompt: 'manual-flush' });
+      await runtimeWithBatch.flushLogs();
+
+      expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+      expect(clearTimeoutSpy).toHaveBeenCalledWith(timerHandle);
+    });
+
+    it('clears the timer on destroy', async () => {
+      const logBatch = mock().mockResolvedValue(undefined);
+      let timerHandle: ReturnType<typeof setTimeout> | undefined;
+      spyOn(globalThis, 'setTimeout').mockImplementation(
+        ((_handler: TimerHandler, _timeout?: number, ..._args: unknown[]) => {
+          timerHandle = 98765 as ReturnType<typeof setTimeout>;
+          return timerHandle;
+        }) as typeof setTimeout
+      );
+      const clearTimeoutSpy = spyOn(globalThis, 'clearTimeout');
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch }),
+      });
+      runtimeWithBatch.registerModel(ModelType.TEXT_LARGE, mock().mockResolvedValue('ok'), 'test');
+
+      await runtimeWithBatch.useModel(ModelType.TEXT_LARGE, { prompt: 'destroy-clear' });
+      await runtimeWithBatch.stop();
+
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+      expect(clearTimeoutSpy).toHaveBeenCalledWith(timerHandle);
+      expect(logBatch).toHaveBeenCalledTimes(1);
+    });
+
+    it('runtime.log preserves backward compatibility by flushing immediately', async () => {
+      const logBatch = mock().mockResolvedValue(undefined);
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({ logBatch }),
+      });
+      const entry: LogWriteParams = {
+        entityId: agentId,
+        roomId: stringToUuid(uuidv4()),
+        type: 'compat',
+        body: { mode: 'immediate' },
+      };
+
+      await runtimeWithBatch.log(entry);
+
+      expect(logBatch).toHaveBeenCalledTimes(1);
+      const compatBatch = logBatch.mock.calls[0]?.[0] as LogWriteParams[];
+      expect(compatBatch).toEqual([entry]);
+    });
+
+    it('runtime.stop calls logBuffer.destroy', async () => {
+      const runtimeWithBatch = new AgentRuntime({
+        character: mockCharacter,
+        agentId,
+        adapter: createAdapterWithOverrides({}),
+      });
+      const logBufferHolder = runtimeWithBatch as unknown as {
+        logBuffer: { destroy: () => Promise<void> };
+      };
+      const destroySpy = spyOn(logBufferHolder.logBuffer, 'destroy').mockResolvedValue(undefined);
+
+      await runtimeWithBatch.stop();
+
+      expect(destroySpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('SQL LogStore batching', () => {
+    const createStoreHarness = () => {
+      const valuesMock = mock().mockResolvedValue(undefined);
+      const insertMock = mock().mockImplementation((_table: unknown) => ({
+        values: valuesMock,
+      }));
+      const tx = {
+        insert: insertMock,
+      };
+      const withIsolationContext = mock().mockImplementation(
+        async (
+          _entityId: UUID | null,
+          callback: (db: unknown) => Promise<void> | void
+        ): Promise<void> => {
+          await callback(tx);
+        }
+      );
+
+      const context: StoreContext = {
+        agentId,
+        getDb: () => tx as never,
+        withRetry: async <T>(operation: () => Promise<T>) => operation(),
+        withIsolationContext,
+        getEmbeddingDimension: () => 'embedding_1536',
+      };
+
+      return {
+        store: new LogStore(context),
+        valuesMock,
+        insertMock,
+        withIsolationContext,
+      };
+    };
+
+    it('groups createBatch writes by entityId', async () => {
+      const { store, valuesMock, withIsolationContext } = createStoreHarness();
+      const entityA = stringToUuid(uuidv4());
+      const entityB = stringToUuid(uuidv4());
+      const roomA = stringToUuid(uuidv4());
+      const roomB = stringToUuid(uuidv4());
+
+      await store.createBatch([
+        { entityId: entityA, roomId: roomA, type: 't1', body: { n: 1 } },
+        { entityId: entityB, roomId: roomB, type: 't2', body: { n: 2 } },
+        { entityId: entityA, roomId: roomA, type: 't3', body: { n: 3 } },
+      ]);
+
+      expect(withIsolationContext).toHaveBeenCalledTimes(2);
+      expect(withIsolationContext.mock.calls[0]?.[0]).toBe(entityA);
+      expect(withIsolationContext.mock.calls[1]?.[0]).toBe(entityB);
+      expect(valuesMock).toHaveBeenCalledTimes(2);
+
+      const firstGroup = valuesMock.mock.calls[0]?.[0] as Array<{
+        entityId: UUID;
+        roomId: UUID;
+        type: string;
+      }>;
+      const secondGroup = valuesMock.mock.calls[1]?.[0] as Array<{
+        entityId: UUID;
+        roomId: UUID;
+        type: string;
+      }>;
+
+      expect(firstGroup).toHaveLength(2);
+      expect(firstGroup[0]).toMatchObject({ entityId: entityA, roomId: roomA, type: 't1' });
+      expect(firstGroup[1]).toMatchObject({ entityId: entityA, roomId: roomA, type: 't3' });
+      expect(secondGroup).toHaveLength(1);
+      expect(secondGroup[0]).toMatchObject({ entityId: entityB, roomId: roomB, type: 't2' });
+    });
+
+    it('treats createBatch with empty entries as a no-op', async () => {
+      const { store, withIsolationContext, valuesMock } = createStoreHarness();
+
+      await expect(store.createBatch([])).resolves.toBeUndefined();
+
+      expect(withIsolationContext).not.toHaveBeenCalled();
+      expect(valuesMock).not.toHaveBeenCalled();
+    });
+
+    it('returns failed entries when one or more groups fail', async () => {
+      const valuesMock = mock().mockResolvedValue(undefined);
+      const insertMock = mock().mockImplementation((_table: unknown) => ({ values: valuesMock }));
+      const tx = { insert: insertMock };
+      const failingEntity = stringToUuid(uuidv4());
+      const successfulEntity = stringToUuid(uuidv4());
+      const roomId = stringToUuid(uuidv4());
+      const withIsolationContext = mock().mockImplementation(
+        async (
+          entityId: UUID | null,
+          callback: (db: unknown) => Promise<void> | void
+        ): Promise<void> => {
+          if (entityId === failingEntity) {
+            throw new Error('RLS context failed');
+          }
+          await callback(tx);
+        }
+      );
+      const context: StoreContext = {
+        agentId,
+        getDb: () => tx as never,
+        withRetry: async <T>(operation: () => Promise<T>) => operation(),
+        withIsolationContext,
+        getEmbeddingDimension: () => 'embedding_1536',
+      };
+      const store = new LogStore(context);
+
+      const failingEntry: LogWriteParams = {
+        entityId: failingEntity,
+        roomId,
+        type: 'bad',
+        body: { i: 1 },
+      };
+      const successfulEntry: LogWriteParams = {
+        entityId: successfulEntity,
+        roomId,
+        type: 'good',
+        body: { i: 2 },
+      };
+
+      await expect(store.createBatch([failingEntry, successfulEntry])).rejects.toMatchObject({
+        message: 'Failed to insert log batch',
+        failedEntries: [failingEntry],
+      });
+
+      expect(withIsolationContext).toHaveBeenCalledTimes(2);
+      expect(valuesMock).toHaveBeenCalledTimes(1);
+      const successfulGroup = valuesMock.mock.calls[0]?.[0] as Array<{
+        entityId: UUID;
+        roomId: UUID;
+        type: string;
+      }>;
+      expect(successfulGroup[0]).toMatchObject({
+        entityId: successfulEntity,
+        roomId,
+        type: 'good',
+      });
+    });
+  });
+
   describe('Action Processing', () => {
     let mockActionHandler: ReturnType<typeof mock>;
     let testAction: Action;
@@ -596,6 +1224,21 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           body: expect.objectContaining({ action: 'TestAction' }),
         })
       );
+    });
+
+    it('buffers action logs until flush is explicitly requested', async () => {
+      await runtime.processActions(message, [responseMemory]);
+
+      expect(mockDatabaseAdapter.log).not.toHaveBeenCalled();
+      await runtime.flushLogs();
+      expect(mockDatabaseAdapter.log).toHaveBeenCalledTimes(1);
+      expect(mockDatabaseAdapter.log.mock.calls[0]?.[0]).toMatchObject({
+        type: 'action',
+        body: expect.objectContaining({
+          action: 'TestAction',
+          messageId: message.id,
+        }),
+      });
     });
 
     // Add tests for action not found, simile matching, handler errors

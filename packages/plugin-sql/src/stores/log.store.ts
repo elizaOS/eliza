@@ -2,6 +2,7 @@ import { and, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
 import type {
   Log,
   LogBody,
+  LogWriteParams,
   UUID,
   AgentRunSummary,
   AgentRunSummaryResult,
@@ -13,7 +14,6 @@ import { logTable, roomTable } from '../schema';
 import type { Store, StoreContext } from './types';
 import { sanitizeJsonObject } from '../utils';
 
-// Raw SQL row types for aggregate queries
 type ActionSummaryRow = {
   runId: string;
   actions: number | string;
@@ -32,15 +32,14 @@ type GenericSummaryRow = {
   embeddingErrors: number | string;
 };
 
+type LogBatchInsertFailure = Error & {
+  failedEntries: LogWriteParams[];
+};
+
 export class LogStore implements Store {
   constructor(public readonly ctx: StoreContext) {}
 
-  async create(params: {
-    body: { [key: string]: unknown };
-    entityId: UUID;
-    roomId: UUID;
-    type: string;
-  }): Promise<void> {
+  async create(params: LogWriteParams): Promise<void> {
     try {
       const sanitizedBody = sanitizeJsonObject(params.body);
       const jsonString = JSON.stringify(sanitizedBody);
@@ -68,14 +67,7 @@ export class LogStore implements Store {
     }
   }
 
-  async createBatch(
-    entries: Array<{
-      body: { [key: string]: unknown };
-      entityId: UUID;
-      roomId: UUID;
-      type: string;
-    }>
-  ): Promise<void> {
+  async createBatch(entries: LogWriteParams[]): Promise<void> {
     if (entries.length === 0) return;
 
     // Group by entityId for RLS isolation context
@@ -85,6 +77,8 @@ export class LogStore implements Store {
       group.push(entry);
       grouped.set(entry.entityId, group);
     }
+
+    const failedEntries: LogWriteParams[] = [];
 
     for (const [entityId, group] of grouped) {
       try {
@@ -112,8 +106,14 @@ export class LogStore implements Store {
           },
           'Failed to create batch log entries'
         );
-        // Don't throw — best-effort for batched logs
+        failedEntries.push(...group);
       }
+    }
+
+    if (failedEntries.length > 0) {
+      throw Object.assign(new Error('Failed to insert log batch'), {
+        failedEntries,
+      }) as LogBatchInsertFailure;
     }
   }
 

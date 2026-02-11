@@ -58,6 +58,7 @@ import {
   type Memory,
   type ModelHandler,
   type RuntimeSettings,
+  type LogWriteParams,
   type Component,
   IAgentRuntime,
   type IElizaOS,
@@ -74,6 +75,7 @@ import { BM25 } from './search';
 import { stringToUuid } from './utils';
 
 const environmentSettings: RuntimeSettings = {};
+const logBufferLogger = createLogger({ namespace: 'log-buffer' });
 
 export class Semaphore {
   private permits: number;
@@ -107,57 +109,43 @@ type ServicePromiseHandler = {
   reject: ServiceRejecter;
 };
 
-/** Number of buffered entries that triggers an auto-flush */
 const LOG_FLUSH_THRESHOLD = 10;
-/** Milliseconds of inactivity before auto-flush */
 const LOG_FLUSH_INTERVAL_MS = 5_000;
 
-type LogEntry = {
-  body: { [key: string]: unknown };
-  entityId: UUID;
-  roomId: UUID;
-  type: string;
-};
-
-/**
- * Non-blocking log buffer that batches adapter.log() calls.
- * push() is synchronous — it never blocks the caller.
- * flush() drains the buffer and writes via adapter.logBatch() (or falls back to adapter.log()).
- */
 class LogBuffer {
-  private entries: LogEntry[] = [];
+  private entries: LogWriteParams[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private flushing: Promise<void> | null = null;
   private destroyed = false;
 
   constructor(private readonly getAdapter: () => IDatabaseAdapter) {}
 
-  /** Synchronously enqueue a log entry. Never blocks the caller. */
-  push(entry: LogEntry): void {
+  push(entry: LogWriteParams): void {
     if (this.destroyed) return;
     this.entries.push(entry);
 
     if (this.entries.length >= LOG_FLUSH_THRESHOLD) {
-      // fire-and-forget — errors are swallowed inside flush()
       void this.flush();
     } else {
       this.scheduleFlush();
     }
   }
 
-  /** Drain the buffer and write all entries to the database. Idempotent. */
   async flush(): Promise<void> {
-    // Return the in-flight flush if one is already running
-    if (this.flushing) return this.flushing;
+    while (this.flushing) {
+      await this.flushing;
+    }
 
     if (this.entries.length === 0) return;
 
     this.clearTimer();
-
-    const batch = this.entries;
-    this.entries = [];
-
-    this.flushing = this.writeBatch(batch);
+    this.flushing = (async () => {
+      while (this.entries.length > 0) {
+        const batch = this.entries;
+        this.entries = [];
+        await this.writeBatch(batch);
+      }
+    })();
     try {
       await this.flushing;
     } finally {
@@ -165,17 +153,14 @@ class LogBuffer {
     }
   }
 
-  /** Cleanup — flush remaining entries and clear timers. */
   async destroy(): Promise<void> {
     this.destroyed = true;
     this.clearTimer();
     await this.flush();
   }
 
-  // ─── private ──────────────────────────────────────────────
-
   private scheduleFlush(): void {
-    if (this.flushTimer || this.destroyed) return;
+    if (this.flushTimer) return;
     this.flushTimer = setTimeout(() => {
       this.flushTimer = null;
       void this.flush();
@@ -189,20 +174,86 @@ class LogBuffer {
     }
   }
 
-  private async writeBatch(batch: LogEntry[]): Promise<void> {
+  private async writeBatch(batch: LogWriteParams[]): Promise<void> {
+    const adapter = this.getAdapter();
     try {
-      const adapter = this.getAdapter();
-      if (typeof adapter.logBatch === 'function') {
-        await adapter.logBatch(batch);
-      } else {
-        // Fallback: write one at a time
-        await Promise.all(batch.map((entry) => adapter.log(entry).catch(() => {})));
+      let logBatchFn: IDatabaseAdapter['logBatch'] | undefined;
+      try {
+        logBatchFn = adapter.logBatch;
+      } catch (error) {
+        logBufferLogger.warn(
+          {
+            src: 'agent',
+            count: batch.length,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'logBatch unavailable, using per-entry writes'
+        );
       }
-    } catch {
-      // Fire-and-forget: swallow errors so log failures never crash the action loop
+
+      if (typeof logBatchFn === 'function') {
+        try {
+          await logBatchFn.call(adapter, batch);
+          return;
+        } catch (error) {
+          const failedEntries =
+            error &&
+            typeof error === 'object' &&
+            Array.isArray((error as { failedEntries?: unknown }).failedEntries)
+              ? ((error as { failedEntries: LogWriteParams[] }).failedEntries ?? [])
+              : batch;
+
+          logBufferLogger.warn(
+            {
+              src: 'agent',
+              count: batch.length,
+              fallbackCount: failedEntries.length,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            'logBatch failed, using per-entry writes'
+          );
+
+          const writeResults = await Promise.allSettled(
+            failedEntries.map((entry) => adapter.log(entry))
+          );
+          const failedWrites = writeResults.filter((result) => result.status === 'rejected').length;
+          if (failedWrites > 0) {
+            logBufferLogger.warn(
+              {
+                src: 'agent',
+                attempted: failedEntries.length,
+                failed: failedWrites,
+              },
+              'Fallback log writes failed'
+            );
+          }
+          return;
+        }
+      }
+
+      const writeResults = await Promise.allSettled(batch.map((entry) => adapter.log(entry)));
+      const failedWrites = writeResults.filter((result) => result.status === 'rejected').length;
+      if (failedWrites > 0) {
+        logBufferLogger.warn(
+          {
+            src: 'agent',
+            attempted: batch.length,
+            failed: failedWrites,
+          },
+          'Fallback log writes failed'
+        );
+      }
+    } catch (error) {
+      logBufferLogger.warn(
+        {
+          src: 'agent',
+          count: batch.length,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Unexpected failure while writing log batch'
+      );
     }
   }
-
 }
 
 export class AgentRuntime implements IAgentRuntime {
@@ -2955,12 +3006,7 @@ export class AgentRuntime implements IAgentRuntime {
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
     return await this.adapter.getCachedEmbeddings(params);
   }
-  async log(params: {
-    body: { [key: string]: unknown };
-    entityId: UUID;
-    roomId: UUID;
-    type: string;
-  }): Promise<void> {
+  async log(params: LogWriteParams): Promise<void> {
     // Public API: push + immediate flush for backward compat
     this.logBuffer.push(params);
     await this.logBuffer.flush();
