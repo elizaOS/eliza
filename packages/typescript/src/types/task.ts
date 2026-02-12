@@ -8,6 +8,7 @@ import type {
 } from "./proto.js";
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
+import type { TriggerConfig, TriggerRunRecord } from "./trigger";
 
 /**
  * Defines the contract for a Task Worker, which is responsible for executing a specific type of task.
@@ -58,6 +59,8 @@ export interface TaskMetadata
   completedAt?: string;
   completionNotes?: string;
   lastExecuted?: string;
+  trigger?: TriggerConfig;
+  triggerRuns?: TriggerRunRecord[];
   updatedAt?: number;
   /** Optional. If the task is recurring, this specifies the interval in milliseconds between updates or executions. */
   updateInterval?: number;

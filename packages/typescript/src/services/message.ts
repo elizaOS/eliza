@@ -1082,16 +1082,26 @@ export class DefaultMessageService implements IMessageService {
           attachment.contentType === ContentType.IMAGE &&
           !attachment.description
         ) {
+          // Skip image analysis when vision / image-description is explicitly
+          // disabled (e.g. the user toggled the Vision capability off).
+          const disableImageDesc = runtime.getSetting(
+            "DISABLE_IMAGE_DESCRIPTION",
+          );
+          if (disableImageDesc === true || disableImageDesc === "true") {
+            return processedAttachment;
+          }
+
           runtime.logger.debug(
             { src: "service:message", imageUrl: attachment.url },
             "Generating image description",
           );
 
           let imageUrl = url;
+          const runtimeFetch = runtime.fetch ?? globalThis.fetch;
 
           if (!isRemote) {
             // Convert local/internal media to base64
-            const res = await fetch(url);
+            const res = await runtimeFetch(url);
             if (!res.ok)
               throw new Error(`Failed to fetch image: ${res.statusText}`);
 
@@ -1195,7 +1205,8 @@ export class DefaultMessageService implements IMessageService {
           attachment.contentType === ContentType.DOCUMENT &&
           !attachment.text
         ) {
-          const res = await fetch(url);
+          const docFetch = runtime.fetch ?? globalThis.fetch;
+          const res = await docFetch(url);
           if (!res.ok)
             throw new Error(`Failed to fetch document: ${res.statusText}`);
 
@@ -1237,10 +1248,11 @@ export class DefaultMessageService implements IMessageService {
 
           try {
             let transcriptionInput: string | Buffer = url;
+            const audioFetch = runtime.fetch ?? globalThis.fetch;
 
             // For local/internal URLs, fetch the audio as a buffer
             if (!isRemote) {
-              const res = await fetch(url);
+              const res = await audioFetch(url);
               if (!res.ok)
                 throw new Error(`Failed to fetch audio: ${res.statusText}`);
               const arrayBuffer = await res.arrayBuffer();
@@ -1285,10 +1297,11 @@ export class DefaultMessageService implements IMessageService {
 
           try {
             let transcriptionInput: string | Buffer = url;
+            const videoFetch = runtime.fetch ?? globalThis.fetch;
 
             // For local/internal URLs, fetch the video as a buffer
             if (!isRemote) {
-              const res = await fetch(url);
+              const res = await videoFetch(url);
               if (!res.ok)
                 throw new Error(`Failed to fetch video: ${res.statusText}`);
               const arrayBuffer = await res.arrayBuffer();

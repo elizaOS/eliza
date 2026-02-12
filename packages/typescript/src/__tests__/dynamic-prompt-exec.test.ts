@@ -507,19 +507,19 @@ describe("dynamicPromptExecFromState", () => {
   describe("streaming callbacks", () => {
     it("should call onStreamChunk when provided", async () => {
       const chunks: string[] = [];
+      let modelReceivedStream = false;
       runtime.registerModel(
         ModelType.TEXT_LARGE,
         async (_, params) => {
-          // Simulate streaming by calling the callback
-          const onChunk = params.onStreamChunk as
-            | ((chunk: string) => void)
-            | undefined;
-          if (onChunk) {
-            onChunk("<response>");
-            onChunk("<text>Hello</text>");
-            onChunk("</response>");
-          }
-          return "<response><text>Hello</text></response>";
+          modelReceivedStream = params.stream === true;
+          return {
+            textStream: (async function* () {
+              yield '{"text":"Hello"}';
+            })(),
+            text: Promise.resolve('{"text":"Hello"}'),
+            usage: Promise.resolve(undefined),
+            finishReason: Promise.resolve("stop"),
+          };
         },
         "mock",
       );
@@ -531,15 +531,16 @@ describe("dynamicPromptExecFromState", () => {
         schema: [{ field: "text", description: "Response" }],
         options: {
           contextCheckLevel: 0,
+          forceFormat: "json",
           onStreamChunk: (chunk) => {
             chunks.push(chunk);
           },
         },
       });
 
-      // Note: actual streaming behavior depends on ValidationStreamExtractor
-      // This test verifies the callback is passed through
-      expect(chunks.length).toBeGreaterThanOrEqual(0);
+      expect(modelReceivedStream).toBe(true);
+      expect(chunks.length).toBeGreaterThan(0);
+      expect(chunks.join("")).toContain("Hello");
     });
   });
 

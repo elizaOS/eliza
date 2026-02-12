@@ -1,3 +1,9 @@
+import {
+  buildDeterministicSeed,
+  deterministicHex,
+  deterministicPickOne,
+  deterministicSample,
+} from "../../deterministic";
 import type {
   IAgentRuntime,
   Memory,
@@ -24,19 +30,27 @@ import { addHeader } from "../../utils.ts";
  */
 export const characterProvider: Provider = {
   name: "CHARACTER",
+  position: -8,
   description: "Character information",
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     const character = runtime.character;
 
     // Character name
     const agentName = character.name;
+    const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+    const deterministicSeed = buildDeterministicSeed([
+      "provider:character",
+      runtime.agentId,
+      character.id ?? "character:none",
+      room?.worldId ?? "world:none",
+      room?.id ?? message.roomId ?? "room:none",
+    ]);
 
     // Handle bio (string or random selection from array)
     const bioText = Array.isArray(character.bio)
-      ? character.bio
-          .sort(() => 0.5 - Math.random())
-          .slice(0, 10)
-          .join(" ")
+      ? deterministicSample(character.bio, 10, deterministicSeed, "bio").join(
+          " ",
+        )
       : character.bio || "";
 
     const bio = addHeader(`# About ${character.name}`, bioText);
@@ -47,7 +61,11 @@ export const characterProvider: Provider = {
     // Select random topic if available
     const topicString =
       character.topics && character.topics.length > 0
-        ? character.topics[Math.floor(Math.random() * character.topics.length)]
+        ? deterministicPickOne(
+            character.topics,
+            deterministicSeed,
+            "selected-topic",
+          ) || null
         : null;
 
     // postCreationTemplate in core prompts.ts
@@ -58,10 +76,12 @@ export const characterProvider: Provider = {
     // Format topics list
     const topics =
       character.topics && character.topics.length > 0
-        ? `${character.name} is also interested in ${character.topics
-            .filter((topic: string) => topic !== topicString)
-            .sort(() => 0.5 - Math.random())
-            .slice(0, 5)
+        ? `${character.name} is also interested in ${deterministicSample(
+            character.topics.filter((topic: string) => topic !== topicString),
+            5,
+            deterministicSeed,
+            "topic-list",
+          )
             .map((topic, index, array) => {
               if (index === array.length - 2) {
                 return `${topic} and `;
@@ -77,9 +97,11 @@ export const characterProvider: Provider = {
     // Select random adjective if available
     const adjectiveString =
       character.adjectives && character.adjectives.length > 0
-        ? character.adjectives[
-            Math.floor(Math.random() * character.adjectives.length)
-          ]
+        ? deterministicPickOne(
+            character.adjectives,
+            deterministicSeed,
+            "selected-adjective",
+          ) || ""
         : "";
 
     const adjective = adjectiveString || "";
@@ -87,13 +109,13 @@ export const characterProvider: Provider = {
     // Format post examples
     const formattedCharacterPostExamples = !character.postExamples
       ? ""
-      : character.postExamples
-          .sort(() => 0.5 - Math.random())
-          .map((post) => {
-            const messageString = `${post}`;
-            return messageString;
-          })
-          .slice(0, 50)
+      : deterministicSample(
+          character.postExamples,
+          50,
+          deterministicSeed,
+          "post-examples",
+        )
+          .map((post) => `${post}`)
           .join("\n");
 
     const characterPostExamples =
@@ -108,12 +130,21 @@ export const characterProvider: Provider = {
     // Format message examples
     const formattedCharacterMessageExamples = !character.messageExamples
       ? ""
-      : character.messageExamples
-          .sort(() => 0.5 - Math.random())
-          .slice(0, 5)
-          .map((example) => {
-            const exampleNames = Array.from({ length: 5 }, () =>
-              Math.random().toString(36).substring(2, 8),
+      : deterministicSample(
+          character.messageExamples,
+          5,
+          deterministicSeed,
+          "message-examples",
+        )
+          .map((example, exampleIndex) => {
+            const exampleNames = Array.from(
+              { length: 5 },
+              (_unused, nameIndex) =>
+                deterministicHex(
+                  deterministicSeed,
+                  `message-example:${exampleIndex}:name:${nameIndex}`,
+                  8,
+                ),
             );
 
             return example.examples
@@ -144,8 +175,6 @@ export const characterProvider: Provider = {
             formattedCharacterMessageExamples,
           )
         : "";
-
-    const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
     const roomType = room?.type;
     const isPostFormat =

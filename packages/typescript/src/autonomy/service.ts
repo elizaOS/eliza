@@ -158,7 +158,8 @@ export class AutonomyService extends Service {
     const entityNames = await this.buildEntityNameLookup(entityIds);
 
     const messagesByRoom = new Map<UUID, Memory[]>();
-    const sortedMessages = [...messages].sort(
+    const dedupedMessages = this.dedupeMemoriesByIdKeepEarliest(messages);
+    const sortedMessages = [...dedupedMessages].sort(
       (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
     );
     for (const memory of sortedMessages) {
@@ -193,18 +194,63 @@ export class AutonomyService extends Service {
       return `Room: ${roomName}\n${lines.join("\n")}`;
     });
 
-    const autonomyThoughts = autonomyMemories
-      .filter((memory) => memory.entityId === this.runtime.agentId)
-      .map((memory) =>
-        typeof memory.content.text === "string" ? memory.content.text : "",
-      )
-      .filter((text) => text.trim().length > 0);
+    const autonomyEntries = autonomyMemories
+      .map((memory) => {
+        const text =
+          typeof memory.content.text === "string" ? memory.content.text : "";
+        if (!text.trim()) return "";
+
+        const metadata =
+          typeof memory.content.metadata === "object" &&
+          memory.content.metadata !== null &&
+          !Array.isArray(memory.content.metadata)
+            ? (memory.content.metadata as Record<string, ContentValue>)
+            : {};
+        const type = metadata.type;
+
+        if (
+          memory.entityId === this.runtime.agentId &&
+          type === "autonomous-response"
+        ) {
+          return `Thought: ${text}`;
+        }
+        if (
+          memory.entityId === this.autonomyEntityId &&
+          type === "autonomous-trigger"
+        ) {
+          return `Trigger: ${text}`;
+        }
+        return "";
+      })
+      .filter((entry) => entry.trim().length > 0);
     const autonomySection =
-      autonomyThoughts.length > 0
-        ? ["Autonomous thoughts:", ...autonomyThoughts].join("\n")
-        : "Autonomous thoughts: (none)";
+      autonomyEntries.length > 0
+        ? ["Autonomous context:", ...autonomyEntries].join("\n")
+        : "Autonomous context: (none)";
 
     return [...roomSections, autonomySection].join("\n\n");
+  }
+
+  private dedupeMemoriesByIdKeepEarliest(memories: Memory[]): Memory[] {
+    const byId = new Map<UUID, Memory>();
+    const withoutId: Memory[] = [];
+    for (const memory of memories) {
+      const memoryId = memory.id;
+      if (!memoryId) {
+        withoutId.push(memory);
+        continue;
+      }
+
+      const existing = byId.get(memoryId);
+      if (!existing) {
+        byId.set(memoryId, memory);
+        continue;
+      }
+      if ((memory.createdAt ?? 0) < (existing.createdAt ?? 0)) {
+        byId.set(memoryId, memory);
+      }
+    }
+    return [...withoutId, ...byId.values()];
   }
 
   constructor() {
@@ -876,8 +922,17 @@ export class AutonomyService extends Service {
             try {
               await this.runtime.deleteMemory(entry.id);
               deleted++;
-            } catch {
-              // Ignore individual deletion errors
+            } catch (error) {
+              this.runtime.logger.warn(
+                {
+                  src: "autonomy",
+                  agentId: this.runtime.agentId,
+                  tableName,
+                  entryId: entry.id,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+                "Failed to delete autonomy entry during prune",
+              );
             }
           }
         }
@@ -995,6 +1050,71 @@ export class AutonomyService extends Service {
 
   async stopLoop(): Promise<void> {
     await this.disableAutonomy();
+  }
+
+  /**
+   * Inject an instruction into the autonomous room and optionally wake the loop immediately.
+   */
+  async injectAutonomousInstruction(params: {
+    instructions: string;
+    source?: string;
+    triggerId?: UUID;
+    triggerTaskId?: UUID;
+    wakeMode?: "inject_now" | "next_autonomy_cycle";
+  }): Promise<UUID> {
+    const instructions = params.instructions.trim();
+    if (!instructions) {
+      throw new Error("Instruction text is required");
+    }
+
+    await this.ensureAutonomousContext();
+
+    if (!this.isRunning) {
+      await this.enableAutonomy();
+    }
+
+    const wakeMode = params.wakeMode ?? "inject_now";
+    const timestamp = Date.now();
+    const metadata: Record<string, ContentValue> = {
+      type: "autonomous-trigger",
+      isAutonomous: true,
+      isInternalThought: true,
+      channelId: "autonomous",
+      timestamp,
+      wakeMode,
+      source: params.source ?? "autonomy-service",
+    };
+    if (params.triggerId) {
+      metadata.triggerId = params.triggerId;
+    }
+    if (params.triggerTaskId) {
+      metadata.triggerTaskId = params.triggerTaskId;
+    }
+
+    const memory: Memory = {
+      id: stringToUuid(uuidv4()),
+      entityId: this.autonomyEntityId,
+      agentId: this.runtime.agentId,
+      roomId: this.autonomousRoomId,
+      createdAt: timestamp,
+      content: {
+        text: instructions,
+        source: params.source ?? "autonomy-service",
+        metadata,
+      },
+    };
+
+    await this.runtime.createMemory(memory, "memories");
+
+    if (wakeMode === "inject_now") {
+      await this.triggerThinkNow();
+    }
+
+    const createdMemoryId = memory.id;
+    if (!createdMemoryId) {
+      throw new Error("Autonomy trigger memory ID was not generated");
+    }
+    return createdMemoryId;
   }
 
   /**

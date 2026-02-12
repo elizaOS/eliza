@@ -23,6 +23,7 @@ import { addHeader } from "../../utils.ts";
  */
 export const providersProvider: Provider = {
   name: "PROVIDERS",
+  position: -4,
   description:
     "List of all data providers the agent can use to get additional information",
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {

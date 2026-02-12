@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
+from uuid import UUID as StdUUID
 
+from elizaos.deterministic import get_prompt_reference_datetime
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.prompts import SCHEDULE_FOLLOW_UP_TEMPLATE
@@ -46,6 +48,25 @@ def _convert_spec_examples() -> list[list[ActionExample]]:
             for example in spec_examples
         ]
     return []
+
+
+def _normalize_priority(raw_priority: str) -> str:
+    normalized = raw_priority.strip().lower()
+    if normalized in {"high", "medium", "low"}:
+        return normalized
+    return "medium"
+
+
+def _coerce_uuid(value: object | None) -> StdUUID | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return StdUUID(text)
+    except ValueError:
+        return None
 
 
 @dataclass
@@ -93,7 +114,12 @@ class ScheduleFollowUpAction:
             )
 
         state = await runtime.compose_state(message, ["RECENT_MESSAGES", "ENTITIES"])
-        state.values["currentDateTime"] = datetime.utcnow().isoformat()
+        state.values["currentDateTime"] = get_prompt_reference_datetime(
+            runtime,
+            message,
+            state,
+            "action:schedule_follow_up",
+        ).isoformat()
 
         prompt = runtime.compose_prompt_from_state(
             state=state,
@@ -114,14 +140,46 @@ class ScheduleFollowUpAction:
         contact_name = str(parsed.get("contactName", ""))
         scheduled_at_str = str(parsed.get("scheduledAt", ""))
         reason = str(parsed.get("reason", "Follow-up"))
-        priority = str(parsed.get("priority", "medium"))
+        priority = _normalize_priority(str(parsed.get("priority", "medium")))
         follow_up_message = str(parsed.get("message", ""))
+        parsed_entity_id = _coerce_uuid(parsed.get("entityId"))
+        message_entity_id = _coerce_uuid(message.entity_id)
 
-        scheduled_at = datetime.fromisoformat(scheduled_at_str.replace("Z", "+00:00"))
+        try:
+            scheduled_at = datetime.fromisoformat(scheduled_at_str.replace("Z", "+00:00"))
+        except ValueError:
+            return ActionResult(
+                text="Could not parse the follow-up date/time",
+                success=False,
+                values={"error": True},
+                data={"error": "Invalid follow-up datetime"},
+            )
 
-        entity_id = message.entity_id
+        entity_id_uuid = parsed_entity_id or message_entity_id
+        if entity_id_uuid is None and contact_name:
+            contacts = await rolodex_service.search_contacts(search_term=contact_name)
+            if contacts:
+                entity_id_uuid = contacts[0].entity_id
+
+        if entity_id_uuid is None:
+            return ActionResult(
+                text=f"Could not determine which contact to schedule for ({contact_name}).",
+                success=False,
+                values={"error": True},
+                data={"error": "Missing contact entity id"},
+            )
+
+        contact = await rolodex_service.get_contact(entity_id_uuid)
+        if contact is None:
+            return ActionResult(
+                text=f"Contact '{contact_name}' was not found in the rolodex.",
+                success=False,
+                values={"error": True},
+                data={"error": "Contact not found"},
+            )
+
         await follow_up_service.schedule_follow_up(
-            entity_id=entity_id,
+            entity_id=entity_id_uuid,
             scheduled_at=scheduled_at,
             reason=reason,
             priority=priority,
@@ -137,11 +195,11 @@ class ScheduleFollowUpAction:
             text=response_text,
             success=True,
             values={
-                "contactId": str(entity_id),
+                "contactId": str(entity_id_uuid),
                 "scheduledAt": scheduled_at.isoformat(),
             },
             data={
-                "contactId": str(entity_id),
+                "contactId": str(entity_id_uuid),
                 "contactName": contact_name,
                 "scheduledAt": scheduled_at.isoformat(),
                 "reason": reason,

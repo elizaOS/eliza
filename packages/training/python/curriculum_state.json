@@ -1,0 +1,165 @@
+{
+  "attempts": {
+    "synth-358bd49f": 3,
+    "synth-16c4f2eb": 3,
+    "synth-8a4ec624": 1,
+    "synth-9fd0efab": 1,
+    "synth-ba50ff2e": 1,
+    "synth-a0606efe": 3,
+    "synth-ed0fa905": 3,
+    "synth-6fe1af12": 1,
+    "synth-5abf0d54": 1,
+    "synth-81666103": 1,
+    "synth-9f03c49a": 3,
+    "synth-77149a0b": 3,
+    "synth-ff30ad48": 1,
+    "synth-6dcb7f49": 1,
+    "synth-af5ea596": 1,
+    "synth-05e80975": 3,
+    "synth-7c409591": 3,
+    "synth-0672665f": 1,
+    "synth-f7124074": 1,
+    "synth-794c3986": 1,
+    "synth-724e7033": 3,
+    "synth-0b5c6522": 3,
+    "synth-7e91fab1": 1,
+    "synth-c2d90365": 1,
+    "synth-0f26e618": 1,
+    "synth-0e4e2992": 3,
+    "synth-41de6be5": 3,
+    "synth-e43be5e0": 1,
+    "synth-34f816e4": 1,
+    "synth-192a75c5": 1
+  },
+  "scores": {
+    "synth-358bd49f": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-16c4f2eb": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-8a4ec624": [
+      0.5
+    ],
+    "synth-9fd0efab": [
+      0.7
+    ],
+    "synth-ba50ff2e": [
+      0.9
+    ],
+    "synth-a0606efe": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-ed0fa905": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-6fe1af12": [
+      0.5
+    ],
+    "synth-5abf0d54": [
+      0.7
+    ],
+    "synth-81666103": [
+      0.9
+    ],
+    "synth-9f03c49a": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-77149a0b": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-ff30ad48": [
+      0.5
+    ],
+    "synth-6dcb7f49": [
+      0.7
+    ],
+    "synth-af5ea596": [
+      0.9
+    ],
+    "synth-05e80975": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-7c409591": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-0672665f": [
+      0.5
+    ],
+    "synth-f7124074": [
+      0.7
+    ],
+    "synth-794c3986": [
+      0.9
+    ],
+    "synth-724e7033": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-0b5c6522": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-7e91fab1": [
+      0.5
+    ],
+    "synth-c2d90365": [
+      0.7
+    ],
+    "synth-0f26e618": [
+      0.9
+    ],
+    "synth-0e4e2992": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-41de6be5": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "synth-e43be5e0": [
+      0.5
+    ],
+    "synth-34f816e4": [
+      0.7
+    ],
+    "synth-192a75c5": [
+      0.9
+    ]
+  },
+  "solved": [
+    "synth-41de6be5",
+    "synth-0e4e2992",
+    "synth-0b5c6522",
+    "synth-a0606efe",
+    "synth-77149a0b",
+    "synth-ed0fa905",
+    "synth-05e80975",
+    "synth-16c4f2eb",
+    "synth-724e7033",
+    "synth-358bd49f",
+    "synth-9f03c49a",
+    "synth-7c409591"
+  ],
+  "last_updated": "2026-01-01T16:28:16.176297+00:00"
+}

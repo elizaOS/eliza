@@ -14,6 +14,7 @@
 import { withCanonicalActionDocs } from "../action-docs.ts";
 import { FollowUpService } from "../services/followUp.ts";
 import { RolodexService } from "../services/rolodex.ts";
+import { TriggerDispatchService } from "../services/triggerWorker.ts";
 import type { ServiceClass } from "../types/plugin.ts";
 
 // Re-export action, provider, and evaluator modules
@@ -44,6 +45,7 @@ export const advancedProviders = [
  */
 export const advancedActions = [
   withCanonicalActionDocs(actions.addContactAction),
+  withCanonicalActionDocs(actions.createTaskAction),
   withCanonicalActionDocs(actions.followRoomAction),
   withCanonicalActionDocs(actions.generateImageAction),
   withCanonicalActionDocs(actions.muteRoomAction),
@@ -73,6 +75,7 @@ export const advancedEvaluators = [
 export const advancedServices: ServiceClass[] = [
   RolodexService,
   FollowUpService,
+  TriggerDispatchService,
 ];
 
 /**

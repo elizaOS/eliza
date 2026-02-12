@@ -4,7 +4,9 @@ import {
   formatActionNames,
   formatActions,
 } from "../../actions.ts";
+import { buildConversationSeed } from "../../deterministic";
 import { requireProviderSpec } from "../../generated/spec-helpers.ts";
+import { logger } from "../../logger.ts";
 import type {
   Action,
   IAgentRuntime,
@@ -56,28 +58,53 @@ export const actionsProvider: Provider = {
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     // Get actions that validate for this message
     const actionPromises = runtime.actions.map(async (action: Action) => {
-      const result = await action.validate(runtime, message, state);
-      if (result) {
-        return action;
+      try {
+        const result = await action.validate(runtime, message, state);
+        if (result) {
+          return action;
+        }
+        return null;
+      } catch (error) {
+        logger.warn(
+          {
+            src: "provider:actions",
+            agentId: runtime.agentId,
+            action: action.name,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Action validation threw — excluding action from prompt",
+        );
+        return null;
       }
-      return null;
     });
 
     const resolvedActions = await Promise.all(actionPromises);
 
     const actionsData = resolvedActions.filter(Boolean) as Action[];
+    const actionSeed = buildConversationSeed({
+      runtime,
+      message,
+      state,
+      surface: "provider:actions",
+    });
 
     // Format action-related texts
-    const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;
+    const actionNames = `Possible response actions: ${formatActionNames(actionsData, `${actionSeed}:names`)}`;
 
     const actionsWithDescriptions =
       actionsData.length > 0
-        ? addHeader("# Available Actions", formatActions(actionsData))
+        ? addHeader(
+            "# Available Actions",
+            formatActions(actionsData, `${actionSeed}:descriptions`),
+          )
         : "";
 
     const actionExamples =
       actionsData.length > 0
-        ? addHeader("# Action Examples", composeActionExamples(actionsData, 10))
+        ? addHeader(
+            "# Action Examples",
+            composeActionExamples(actionsData, 10, `${actionSeed}:examples`),
+          )
         : "";
 
     const actionCallExamples =

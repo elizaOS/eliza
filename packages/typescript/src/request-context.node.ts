@@ -8,7 +8,7 @@
  * @see https://nodejs.org/api/async_context.html
  */
 import { AsyncLocalStorage } from "async_hooks";
-import type { RequestContext, IRequestContextManager } from "./request-context";
+import type { IRequestContextManager, RequestContext } from "./request-context";
 
 /**
  * AsyncLocalStorage-based context manager for Node.js.
@@ -19,7 +19,9 @@ import type { RequestContext, IRequestContextManager } from "./request-context";
  * - User B's async chain sees User B's entitySettings
  * - No race conditions or cross-contamination
  */
-export class AsyncLocalStorageRequestContextManager implements IRequestContextManager {
+export class AsyncLocalStorageRequestContextManager
+  implements IRequestContextManager
+{
   private storage = new AsyncLocalStorage<RequestContext | undefined>();
 
   /**

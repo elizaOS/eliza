@@ -60,6 +60,13 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
   logger: Logger;
   stateCache: Map<string, State>;
 
+  /** Whether the runtime is operating in sandbox mode. Default: false. */
+  sandboxMode?: boolean;
+  /** Token manager for sandbox secret obfuscation. Undefined/null when sandbox mode is off. */
+  sandboxTokenManager?:
+    | import("../security/sandbox-token-manager.js").SandboxTokenManager
+    | null;
+
   // Methods
   registerPlugin(plugin: Plugin): Promise<void>;
 
@@ -157,10 +164,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
    * @param state - Optional state context
    * @returns A merged PreEvaluatorResult
    */
-  evaluatePre(
-    message: Memory,
-    state?: State,
-  ): Promise<PreEvaluatorResult>;
+  evaluatePre(message: Memory, state?: State): Promise<PreEvaluatorResult>;
 
   registerProvider(provider: Provider): void;
 

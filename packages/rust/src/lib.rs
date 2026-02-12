@@ -56,6 +56,7 @@ pub mod bootstrap;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod bootstrap_core;
 pub mod character;
+pub mod deterministic;
 #[cfg(all(
     feature = "bootstrap-internal",
     feature = "native",

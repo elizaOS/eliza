@@ -1,4 +1,11 @@
-import { names, uniqueNamesGenerator } from "unique-names-generator";
+import { names } from "unique-names-generator";
+import {
+  buildDeterministicSeed,
+  deterministicHex,
+  deterministicInt,
+  deterministicPickOne,
+  deterministicShuffle,
+} from "./deterministic";
 import { allActionDocs } from "./generated/action-docs.ts";
 import type {
   Action,
@@ -23,6 +30,7 @@ const actionDocByName: ActionDocByName = allActionDocs.reduce<ActionDocByName>(
 export const composeActionExamples = (
   actionsData: Action[],
   count: number,
+  seed?: string,
 ): string => {
   if (!actionsData.length || count <= 0) {
     return "";
@@ -45,26 +53,42 @@ export const composeActionExamples = (
 
   const selectedExamples: ActionExample[][] = [];
 
+  const selectionSeed =
+    seed ??
+    buildDeterministicSeed([
+      "action-examples",
+      actionsWithExamples.map((action) => action.name).join(","),
+      count,
+    ]);
+
   const availableActionIndices = examplesCopy
     .map((examples, index) => (examples.length > 0 ? index : -1))
     .filter((index) => index !== -1);
 
+  let pickIteration = 0;
   while (selectedExamples.length < count && availableActionIndices.length > 0) {
-    const randomIndex = Math.floor(
-      Math.random() * availableActionIndices.length,
+    const randomIndex = deterministicInt(
+      selectionSeed,
+      `action-index:${pickIteration}`,
+      availableActionIndices.length,
     );
     const actionIndex = availableActionIndices[randomIndex];
     const examples = examplesCopy[actionIndex];
 
-    const exampleIndex = Math.floor(Math.random() * examples.length);
+    const exampleIndex = deterministicInt(
+      selectionSeed,
+      `example-index:${pickIteration}`,
+      examples.length,
+    );
     selectedExamples.push(examples.splice(exampleIndex, 1)[0]);
+    pickIteration += 1;
 
     if (examples.length === 0) {
       availableActionIndices.splice(randomIndex, 1);
     }
   }
 
-  return formatSelectedExamples(selectedExamples);
+  return formatSelectedExamples(selectedExamples, selectionSeed);
 };
 
 function escapeXmlText(text: string): string {
@@ -129,13 +153,31 @@ export function composeActionCallExamples(
   return blocks.join("\n\n");
 }
 
-const formatSelectedExamples = (examples: ActionExample[][]): string => {
+const formatSelectedExamples = (
+  examples: ActionExample[][],
+  seed: string,
+): string => {
   const MAX_NAME_PLACEHOLDERS = 5;
 
   return examples
-    .map((example) => {
-      const randomNames = Array.from({ length: MAX_NAME_PLACEHOLDERS }, () =>
-        uniqueNamesGenerator({ dictionaries: [names] }),
+    .map((example, exampleIndex) => {
+      const randomNames = Array.from(
+        { length: MAX_NAME_PLACEHOLDERS },
+        (_, placeholderIndex) => {
+          const selectedName = deterministicPickOne(
+            names as readonly string[],
+            seed,
+            `example:${exampleIndex}:name:${placeholderIndex}`,
+          );
+          if (selectedName) {
+            return selectedName;
+          }
+          return deterministicHex(
+            seed,
+            `example:${exampleIndex}:fallback-name:${placeholderIndex}`,
+            8,
+          );
+        },
       );
 
       const conversation = example
@@ -158,27 +200,36 @@ const formatSelectedExamples = (examples: ActionExample[][]): string => {
     .join("\n");
 };
 
-function shuffleActions<T>(items: T[]): T[] {
-  const shuffled = [...items];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
+function shuffleActions<T>(items: T[], seed: string): T[] {
+  return deterministicShuffle(items, seed, "actions");
 }
 
-export function formatActionNames(actions: Action[]): string {
+export function formatActionNames(actions: Action[], seed?: string): string {
   if (!actions || !actions.length) return "";
 
-  return shuffleActions(actions)
+  const deterministicSeed =
+    seed ??
+    buildDeterministicSeed([
+      "action-names",
+      actions.map((action) => action.name).join(","),
+    ]);
+
+  return shuffleActions(actions, deterministicSeed)
     .map((action) => action.name)
     .join(", ");
 }
 
-export function formatActions(actions: Action[]): string {
+export function formatActions(actions: Action[], seed?: string): string {
   if (!actions || !actions.length) return "";
 
-  return shuffleActions(actions)
+  const deterministicSeed =
+    seed ??
+    buildDeterministicSeed([
+      "actions-format",
+      actions.map((action) => action.name).join(","),
+    ]);
+
+  return shuffleActions(actions, deterministicSeed)
     .map((action) => {
       let actionText = `- **${action.name}**: ${action.description || "No description available"}`;
 

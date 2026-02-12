@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from elizaos.deterministic import get_prompt_reference_datetime
 from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 
@@ -18,7 +18,12 @@ async def get_current_time_context(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    now = datetime.now(UTC)
+    now = get_prompt_reference_datetime(
+        runtime,
+        message,
+        state,
+        "provider:current_time",
+    )
 
     iso_timestamp = now.isoformat()
     human_readable = now.strftime("%A, %B %d, %Y at %H:%M:%S UTC")
@@ -53,4 +58,5 @@ current_time_provider = Provider(
     description=_spec["description"],
     get=get_current_time_context,
     dynamic=_spec.get("dynamic", True),
+    position=_spec.get("position"),
 )

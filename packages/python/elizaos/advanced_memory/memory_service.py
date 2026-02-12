@@ -95,38 +95,36 @@ class MemoryService(Service):
     @classmethod
     async def start(cls, runtime):
         svc = cls(runtime=runtime)
-        # read settings
-        settings = runtime.character.settings or {}
-        if (v := settings.get("MEMORY_SUMMARIZATION_THRESHOLD")) is not None and isinstance(
-            v, (int, float, str)
-        ):
+        if (
+            v := runtime.get_setting("MEMORY_SUMMARIZATION_THRESHOLD")
+        ) is not None and isinstance(v, (int, float, str)):
             svc._config.short_term_summarization_threshold = int(v)
-        if (v := settings.get("MEMORY_RETAIN_RECENT")) is not None and isinstance(
+        if (v := runtime.get_setting("MEMORY_RETAIN_RECENT")) is not None and isinstance(
             v, (int, float, str)
         ):
             svc._config.short_term_retain_recent = int(v)
-        if (v := settings.get("MEMORY_SUMMARIZATION_INTERVAL")) is not None and isinstance(
+        if (v := runtime.get_setting("MEMORY_SUMMARIZATION_INTERVAL")) is not None and isinstance(
             v, (int, float, str)
         ):
             svc._config.short_term_summarization_interval = int(v)
-        if (v := settings.get("MEMORY_MAX_NEW_MESSAGES")) is not None and isinstance(
+        if (v := runtime.get_setting("MEMORY_MAX_NEW_MESSAGES")) is not None and isinstance(
             v, (int, float, str)
         ):
             svc._config.summary_max_new_messages = int(v)
-        if (v := settings.get("MEMORY_LONG_TERM_ENABLED")) is not None:
+        if (v := runtime.get_setting("MEMORY_LONG_TERM_ENABLED")) is not None:
             if str(v).lower() == "false":
                 svc._config.long_term_extraction_enabled = False
             elif str(v).lower() == "true":
                 svc._config.long_term_extraction_enabled = True
-        if (v := settings.get("MEMORY_CONFIDENCE_THRESHOLD")) is not None and isinstance(
+        if (v := runtime.get_setting("MEMORY_CONFIDENCE_THRESHOLD")) is not None and isinstance(
             v, (int, float, str)
         ):
             svc._config.long_term_confidence_threshold = float(v)
-        if (v := settings.get("MEMORY_EXTRACTION_THRESHOLD")) is not None and isinstance(
+        if (v := runtime.get_setting("MEMORY_EXTRACTION_THRESHOLD")) is not None and isinstance(
             v, (int, float, str)
         ):
             svc._config.long_term_extraction_threshold = int(v)
-        if (v := settings.get("MEMORY_EXTRACTION_INTERVAL")) is not None and isinstance(
+        if (v := runtime.get_setting("MEMORY_EXTRACTION_INTERVAL")) is not None and isinstance(
             v, (int, float, str)
         ):
             svc._config.long_term_extraction_interval = int(v)
@@ -146,7 +144,7 @@ class MemoryService(Service):
         return f"memory:extraction:{entity_id}:{room_id}"
 
     async def get_last_extraction_checkpoint(self, entity_id: UUID, room_id: UUID) -> int:
-        runtime = self.runtime
+        runtime = self._runtime
         key = self._checkpoint_key(entity_id, room_id)
         if runtime is not None and getattr(runtime, "_adapter", None) is not None:
             cached = await runtime.get_cache(key)
@@ -163,7 +161,7 @@ class MemoryService(Service):
     async def set_last_extraction_checkpoint(
         self, entity_id: UUID, room_id: UUID, message_count: int
     ) -> None:
-        runtime = self.runtime
+        runtime = self._runtime
         key = self._checkpoint_key(entity_id, room_id)
         if runtime is not None and getattr(runtime, "_adapter", None) is not None:
             _ = await runtime.set_cache(key, int(message_count))
@@ -182,7 +180,7 @@ class MemoryService(Service):
         return current_cp > last_cp
 
     async def get_current_session_summary(self, room_id: UUID) -> SessionSummary | None:
-        runtime = self.runtime
+        runtime = self._runtime
         if runtime is None:
             return None
 
@@ -234,7 +232,7 @@ class MemoryService(Service):
         topics: list[str] | None = None,
         metadata: dict[str, object] | None = None,
     ) -> SessionSummary:
-        runtime = self.runtime
+        runtime = self._runtime
         s = SessionSummary(
             id=uuid4(),
             agent_id=agent_id,
@@ -279,7 +277,7 @@ class MemoryService(Service):
     async def update_session_summary(
         self, summary_id: UUID, room_id: UUID, **updates: object
     ) -> None:
-        runtime = self.runtime
+        runtime = self._runtime
         if runtime is not None and getattr(runtime, "_adapter", None) is not None:
             existing = await self.get_current_session_summary(room_id)
             if not existing or existing.id != summary_id:
@@ -350,7 +348,7 @@ class MemoryService(Service):
         source: str | None = None,
         metadata: dict[str, object] | None = None,
     ) -> LongTermMemory:
-        runtime = self.runtime
+        runtime = self._runtime
         m = LongTermMemory(
             id=uuid4(),
             agent_id=agent_id,
@@ -394,7 +392,7 @@ class MemoryService(Service):
     ) -> list[LongTermMemory]:
         if limit <= 0:
             return []
-        runtime = self.runtime
+        runtime = self._runtime
         if runtime is not None and getattr(runtime, "_adapter", None) is not None:
             db_mems = await runtime.get_memories(
                 {

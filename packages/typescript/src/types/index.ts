@@ -37,3 +37,4 @@ export * from "./task";
 export * from "./tee";
 export * from "./testing";
 export * from "./tools";
+export * from "./trigger";

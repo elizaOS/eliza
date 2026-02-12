@@ -15,6 +15,7 @@ export * from "./entities";
 export * from "./logger";
 export * from "./memory";
 export * from "./prompts";
+export * from "./request-context";
 export * from "./roles";
 export * from "./runtime";
 // Export schemas
@@ -23,8 +24,9 @@ export * from "./search";
 export * from "./services";
 export * from "./services/message";
 export * from "./services/trajectoryLogger";
+export * from "./services/triggerScheduling";
+export * from "./services/triggerWorker";
 export * from "./settings";
-export * from "./request-context";
 export * from "./streaming-context";
 export * from "./trajectory-context";
 // Export everything from types (type-only, safe for browser)

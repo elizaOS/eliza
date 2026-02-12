@@ -1,0 +1,143 @@
+# Babylon Tinker Training Configuration
+# 
+# This config file defines settings for GRPO training using Tinker API.
+# Copy this file and modify as needed for different training runs.
+#
+# Usage:
+#   python -m src.training.tinker_trainer --config config/tinker_training.yaml
+#
+# Environment variables (required):
+#   TINKER_API_KEY - Your Tinker API key from Thinking Machines
+#   DATABASE_URL - PostgreSQL connection URL
+#   OPENAI_API_KEY - For RLAIF judge (gpt-4o-mini)
+
+# =============================================================================
+# Tinker Model Settings
+# =============================================================================
+tinker:
+  # Base model to fine-tune
+  # Available models: https://tinker-docs.thinkingmachines.ai/models
+  # Recommended: Qwen3-30B-A3B-Instruct (good balance of capability/cost)
+  # For larger: Qwen/Qwen3-235B-A22B-Instruct
+  base_model: "Qwen/Qwen3-30B-A3B-Instruct"
+  
+  # LoRA rank (higher = more capacity, more cost)
+  # Recommended: 32 for most use cases
+  lora_rank: 32
+
+# =============================================================================
+# Training Hyperparameters
+# =============================================================================
+training:
+  # Learning rate for AdamW
+  # Lower = more stable, slower learning
+  # Higher = faster but risk of instability
+  learning_rate: 4.0e-5
+  
+  # Total training steps
+  training_steps: 100
+  
+  # Group size for GRPO comparison
+  # Trajectories are compared within groups for relative scoring
+  # This determines how many trajectories are loaded per training step
+  group_size: 4
+  
+  # How often to sync weights to sampling client
+  # More frequent = more on-policy, more API calls
+  weight_sync_interval: 5
+
+# =============================================================================
+# Environment / Data Settings
+# =============================================================================
+environment:
+  # PostgreSQL connection URL (can also be set via DATABASE_URL env var)
+  database_url: "${DATABASE_URL}"
+  
+  # How far back to look for trajectory data
+  lookback_hours: 72
+  
+  # Minimum agents required in a window for training
+  min_agents_per_window: 2
+  
+  # Minimum actions required in a trajectory
+  min_actions_per_trajectory: 3
+  
+  # Maximum steps to include from each trajectory
+  max_steps_per_trajectory: 20
+  
+  # Maximum sequence length in tokens
+  max_token_length: 4096
+
+# =============================================================================
+# RLAIF Judge Settings
+# =============================================================================
+judge:
+  # Model for scoring trajectories
+  # gpt-4o-mini is cost-effective, gpt-4o for higher quality
+  model: "gpt-4o-mini"
+  
+  # Temperature for judge responses
+  # Lower = more deterministic scoring
+  temperature: 0.3
+  
+  # Scoring rubric (customize for your use case)
+  rubric: |
+    Score each trading trajectory from 0.0 to 1.0 based on:
+    
+    1. PROFITABILITY (40%)
+       - Higher P&L should receive higher scores
+       - Consistent profits > volatile gains
+    
+    2. RISK MANAGEMENT (30%)
+       - Balanced positions preferred
+       - Avoiding excessive concentration
+       - Not overleveraged
+    
+    3. DECISION QUALITY (30%)
+       - Clear reasoning before actions
+       - Actions aligned with market analysis
+       - Efficient execution (fewer trades for same result)
+    
+    Compare trajectories RELATIVE to each other within this group.
+    If one is significantly better, reflect that in score differences.
+
+# =============================================================================
+# Inference Settings (for rollouts)
+# =============================================================================
+inference:
+  # Maximum tokens to generate
+  max_tokens: 512
+  
+  # Sampling temperature
+  temperature: 0.7
+  
+  # Stop sequences
+  stop_sequences:
+    - "\n\n"
+    - "<|endoftext|>"
+    - "<|im_end|>"
+
+# =============================================================================
+# Logging Settings
+# =============================================================================
+logging:
+  # Log metrics to file
+  log_to_file: true
+  
+  # Metrics log file path
+  log_file: "./logs/tinker_training_metrics.jsonl"
+  
+  # Console log level
+  log_level: "INFO"
+
+# =============================================================================
+# Advanced Settings
+# =============================================================================
+advanced:
+  # Adam optimizer parameters
+  adam_beta1: 0.9
+  adam_beta2: 0.95
+  adam_epsilon: 1.0e-8
+  
+  # Checkpoint naming prefix
+  checkpoint_prefix: "babylon"

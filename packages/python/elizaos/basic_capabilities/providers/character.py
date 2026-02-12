@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from elizaos.generated.spec_helpers import require_provider_spec
@@ -27,6 +28,19 @@ def _resolve_name_list(items: list[str], name: str) -> list[str]:
     return [_resolve_name(s, name) for s in items]
 
 
+def _coerce_text_list(value: object) -> list[str]:
+    """Normalize protobuf repeated fields and plain Python values to list[str]."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple)):
+        return [str(item) for item in value]
+    if isinstance(value, Iterable):
+        return [str(item) for item in value]
+    return [str(value)]
+
+
 async def get_character_context(
     runtime: IAgentRuntime,
     message: Memory,
@@ -47,11 +61,7 @@ async def get_character_context(
         sections.append(f"\n## Bio\n{bio_text}")
 
     if character.adjectives:
-        adjectives = (
-            character.adjectives
-            if isinstance(character.adjectives, list)
-            else [character.adjectives]
-        )
+        adjectives = _coerce_text_list(character.adjectives)
         resolved_adjectives = _resolve_name_list(adjectives, agent_name)
         sections.append(f"\n## Personality Traits\n{', '.join(resolved_adjectives)}")
 
@@ -65,34 +75,22 @@ async def get_character_context(
         sections.append(f"\n## Background\n{lore_text}")
 
     if character.topics:
-        topics = character.topics if isinstance(character.topics, list) else [character.topics]
+        topics = _coerce_text_list(character.topics)
         resolved_topics = _resolve_name_list(topics, agent_name)
         sections.append(f"\n## Knowledge Areas\n{', '.join(resolved_topics)}")
 
     if character.style:
         style_sections: list[str] = []
         if character.style.all:
-            all_style = (
-                character.style.all
-                if isinstance(character.style.all, list)
-                else [character.style.all]
-            )
+            all_style = _coerce_text_list(character.style.all)
             resolved_all = _resolve_name_list(all_style, agent_name)
             style_sections.append(f"General: {', '.join(resolved_all)}")
         if character.style.chat:
-            chat_style = (
-                character.style.chat
-                if isinstance(character.style.chat, list)
-                else [character.style.chat]
-            )
+            chat_style = _coerce_text_list(character.style.chat)
             resolved_chat = _resolve_name_list(chat_style, agent_name)
             style_sections.append(f"Chat: {', '.join(resolved_chat)}")
         if character.style.post:
-            post_style = (
-                character.style.post
-                if isinstance(character.style.post, list)
-                else [character.style.post]
-            )
+            post_style = _coerce_text_list(character.style.post)
             resolved_post = _resolve_name_list(post_style, agent_name)
             style_sections.append(f"Posts: {', '.join(resolved_post)}")
         if style_sections:

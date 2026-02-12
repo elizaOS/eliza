@@ -12,14 +12,14 @@ from urllib.parse import urlparse
 
 # Try to import python-magic for MIME sniffing, fallback to filetype
 try:
-    import magic
+    import magic  # type: ignore[import-not-found]
 
     HAS_MAGIC = True
 except ImportError:
     HAS_MAGIC = False
 
 try:
-    import filetype
+    import filetype  # type: ignore[import-not-found]
 
     HAS_FILETYPE = True
 except ImportError:

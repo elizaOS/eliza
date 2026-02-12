@@ -205,6 +205,8 @@ impl IMessageService for DefaultMessageService {
                     crate::runtime::DynamicPromptOptions {
                         model_size: Some(crate::runtime::ModelSize::Small),
                         force_format: Some("xml".to_string()),
+                        context_check_level: Some(0),
+                        max_retries: Some(0),
                         ..Default::default()
                     },
                 )
@@ -913,7 +915,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "TODO: update test to match current dynamic_prompt_exec_from_state API"]
     async fn test_should_respond_ignore_short_circuits() {
         use crate::runtime::RuntimeOptions;
         use crate::types::agent::Character;

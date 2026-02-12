@@ -16,7 +16,12 @@
  */
 
 import { logger } from "../logger.ts";
-import type { Action, IAgentRuntime, Memory, Provider } from "../types/index.ts";
+import type {
+  Action,
+  IAgentRuntime,
+  Memory,
+  Provider,
+} from "../types/index.ts";
 import { ModelType } from "../types/model.ts";
 import { Service } from "../types/service.ts";
 import type { State } from "../types/state.ts";
@@ -127,9 +132,7 @@ function freshMetrics(): FilterMetrics {
  * embedding and BM25 indexing.
  */
 export function getActionEmbeddingText(action: Action): string {
-  const parts: string[] = [
-    action.name.replace(/_/g, " "),
-  ];
+  const parts: string[] = [action.name.replace(/_/g, " ")];
   if (action.description) parts.push(action.description);
   if (action.similes?.length) parts.push(action.similes.join(", "));
   if (action.tags?.length) parts.push(action.tags.join(", "));
@@ -146,9 +149,7 @@ export function getActionEmbeddingText(action: Action): string {
  * Includes name, description, and relevanceKeywords.
  */
 export function getProviderIndexText(provider: Provider): string {
-  const parts: string[] = [
-    provider.name.replace(/_/g, " "),
-  ];
+  const parts: string[] = [provider.name.replace(/_/g, " ")];
   if (provider.description) parts.push(provider.description);
   if (provider.relevanceKeywords?.length) {
     parts.push(provider.relevanceKeywords.join(", "));
@@ -173,7 +174,10 @@ export function buildQueryText(message: Memory, state: State): string {
   // Recent messages from state (providers populate this).
   // We look at a few known locations where conversation context may live.
   const recentMessagesValue = state.values?.recentMessages;
-  if (typeof recentMessagesValue === "string" && recentMessagesValue.length > 0) {
+  if (
+    typeof recentMessagesValue === "string" &&
+    recentMessagesValue.length > 0
+  ) {
     // Truncate to last ~500 chars to keep the query focused
     const trimmed =
       recentMessagesValue.length > 500
@@ -209,9 +213,7 @@ export function minMaxNormalize(scores: number[]): number[] {
   if (scores.length === 0) return [];
 
   // Sanitize: NaN / Infinity → 0
-  const sanitized = scores.map((s) =>
-    Number.isFinite(s) ? s : 0,
-  );
+  const sanitized = scores.map((s) => (Number.isFinite(s) ? s : 0));
 
   let min = sanitized[0];
   let max = sanitized[0];
@@ -456,7 +458,10 @@ export class ActionFilterService extends Service {
 
     const allActions = runtime.actions;
 
-    if (!this.filterConfig.enabled || allActions.length <= this.filterConfig.threshold) {
+    if (
+      !this.filterConfig.enabled ||
+      allActions.length <= this.filterConfig.threshold
+    ) {
       return allActions;
     }
 
@@ -716,8 +721,8 @@ export class ActionFilterService extends Service {
     // If vector search produced candidates, rerank those.
     // Otherwise, BM25 searches the entire candidate pool.
 
-    const bm25CandidateIds = vectorCandidateNames
-      ?? candidates.map((a) => a.name);
+    const bm25CandidateIds =
+      vectorCandidateNames ?? candidates.map((a) => a.name);
 
     const bm25Results = this.bm25Index.searchSubset(
       queryText,
@@ -741,7 +746,9 @@ export class ActionFilterService extends Service {
     const normBm25 = minMaxNormalize(rawBm25Scores);
 
     const hasVector = vectorScores !== null && vectorScores.size > 0;
-    const effectiveVectorWeight = hasVector ? this.filterConfig.vectorWeight : 0;
+    const effectiveVectorWeight = hasVector
+      ? this.filterConfig.vectorWeight
+      : 0;
     const effectiveBm25Weight = hasVector ? this.filterConfig.bm25Weight : 1;
     const totalWeight = effectiveVectorWeight + effectiveBm25Weight;
 
@@ -849,13 +856,18 @@ function readFilterConfigFromRuntime(
     overrides.enabled = String(enabled).toLowerCase() !== "false";
   }
 
-  overrides.threshold =      num("ACTION_FILTER_THRESHOLD",        0, 1e6, true);
-  overrides.vectorTopK =     num("ACTION_FILTER_VECTOR_TOP_K",     1, 1e6, true);
-  overrides.finalTopK =      num("ACTION_FILTER_FINAL_TOP_K",      1, 1e6, true);
-  overrides.vectorWeight =   num("ACTION_FILTER_VECTOR_WEIGHT",    0, 1);
-  overrides.bm25Weight =     num("ACTION_FILTER_BM25_WEIGHT",      0, 1);
-  overrides.momentumDecayMs= num("ACTION_FILTER_MOMENTUM_DECAY_MS",1, 1e9, true);
-  overrides.momentumBoost =  num("ACTION_FILTER_MOMENTUM_BOOST",   0, 1);
+  overrides.threshold = num("ACTION_FILTER_THRESHOLD", 0, 1e6, true);
+  overrides.vectorTopK = num("ACTION_FILTER_VECTOR_TOP_K", 1, 1e6, true);
+  overrides.finalTopK = num("ACTION_FILTER_FINAL_TOP_K", 1, 1e6, true);
+  overrides.vectorWeight = num("ACTION_FILTER_VECTOR_WEIGHT", 0, 1);
+  overrides.bm25Weight = num("ACTION_FILTER_BM25_WEIGHT", 0, 1);
+  overrides.momentumDecayMs = num(
+    "ACTION_FILTER_MOMENTUM_DECAY_MS",
+    1,
+    1e9,
+    true,
+  );
+  overrides.momentumBoost = num("ACTION_FILTER_MOMENTUM_BOOST", 0, 1);
 
   // Strip undefined keys so they don't override defaults during spread
   for (const key of Object.keys(overrides) as (keyof FilterConfig)[]) {

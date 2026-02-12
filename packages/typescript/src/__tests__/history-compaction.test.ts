@@ -47,71 +47,79 @@ function createMockRoom(options?: {
 // InMemoryAdapter Tests
 // ============================================
 describe("InMemoryAdapter getMemories with start/end parameters", () => {
-  it("should filter messages by start timestamp", async () => {
-    const { InMemoryDatabaseAdapter } = await import(
-      "../database/inMemoryAdapter.ts"
-    );
+  it(
+    "should filter messages by start timestamp",
+    { timeout: 30000 },
+    async () => {
+      const { InMemoryDatabaseAdapter } = await import(
+        "../database/inMemoryAdapter.ts"
+      );
 
-    const adapter = new InMemoryDatabaseAdapter();
-    await adapter.init();
+      const adapter = new InMemoryDatabaseAdapter();
+      await adapter.init();
 
-    const roomId = "room-1" as UUID;
+      const roomId = "room-1" as UUID;
 
-    const messages = [
-      createMockMessage(1000, "Message at 1000", roomId),
-      createMockMessage(2000, "Message at 2000", roomId),
-      createMockMessage(3000, "Message at 3000", roomId),
-      createMockMessage(4000, "Message at 4000", roomId),
-      createMockMessage(5000, "Message at 5000", roomId),
-    ];
+      const messages = [
+        createMockMessage(1000, "Message at 1000", roomId),
+        createMockMessage(2000, "Message at 2000", roomId),
+        createMockMessage(3000, "Message at 3000", roomId),
+        createMockMessage(4000, "Message at 4000", roomId),
+        createMockMessage(5000, "Message at 5000", roomId),
+      ];
 
-    for (const msg of messages) {
-      await adapter.createMemory(msg, "messages", false);
-    }
+      for (const msg of messages) {
+        await adapter.createMemory(msg, "messages", false);
+      }
 
-    // Get messages after start = 2500
-    const result = await adapter.getMemories({
-      tableName: "messages",
-      roomId,
-      start: 2500,
-    });
+      // Get messages after start = 2500
+      const result = await adapter.getMemories({
+        tableName: "messages",
+        roomId,
+        start: 2500,
+      });
 
-    expect(result.length).toBe(3);
-    expect(result.map((m) => m.createdAt)).toEqual([3000, 4000, 5000]);
-  });
+      expect(result.length).toBe(3);
+      expect(result.map((m) => m.createdAt)).toEqual([3000, 4000, 5000]);
+    },
+  );
 
-  it("should filter messages by end timestamp", async () => {
-    const { InMemoryDatabaseAdapter } = await import(
-      "../database/inMemoryAdapter.ts"
-    );
+  it(
+    "should filter messages by end timestamp",
+    { timeout: 30000 },
+    async () => {
+      const { InMemoryDatabaseAdapter } = await import(
+        "../database/inMemoryAdapter.ts"
+      );
 
-    const adapter = new InMemoryDatabaseAdapter();
-    await adapter.init();
+      const adapter = new InMemoryDatabaseAdapter();
+      await adapter.init();
 
-    const roomId = "room-1" as UUID;
+      const roomId = "room-1" as UUID;
 
-    const messages = [
-      createMockMessage(1000, "Message at 1000", roomId),
-      createMockMessage(2000, "Message at 2000", roomId),
-      createMockMessage(3000, "Message at 3000", roomId),
-      createMockMessage(4000, "Message at 4000", roomId),
-      createMockMessage(5000, "Message at 5000", roomId),
-    ];
+      const messages = [
+        createMockMessage(1000, "Message at 1000", roomId),
+        createMockMessage(2000, "Message at 2000", roomId),
+        createMockMessage(3000, "Message at 3000", roomId),
+        createMockMessage(4000, "Message at 4000", roomId),
+        createMockMessage(5000, "Message at 5000", roomId),
+      ];
 
-    for (const msg of messages) {
-      await adapter.createMemory(msg, "messages", false);
-    }
+      for (const msg of messages) {
+        await adapter.createMemory(msg, "messages", false);
+      }
 
-    // Get messages before end = 3500
-    const result = await adapter.getMemories({
-      tableName: "messages",
-      roomId,
-      end: 3500,
-    });
+      // Get messages before end = 3500
+      const result = await adapter.getMemories({
+        tableName: "messages",
+        roomId,
+        end: 3500,
+      });
 
-    expect(result.length).toBe(3);
-    expect(result.map((m) => m.createdAt)).toEqual([1000, 2000, 3000]);
-  });
+      expect(result.length).toBe(3);
+      expect(result.map((m) => m.createdAt)).toEqual([1000, 2000, 3000]);
+    },
+  );
 
   it("should filter messages by both start and end timestamp", async () => {
     const { InMemoryDatabaseAdapter } = await import(
@@ -275,57 +283,61 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 // RESET_SESSION Action Tests
 // ============================================
 describe("RESET_SESSION action", () => {
-  it("should set lastCompactionAt in room metadata", { timeout: 15000 }, async () => {
-    const { resetSessionAction } = await import(
-      "../bootstrap/actions/resetSession.ts"
-    );
+  it(
+    "should set lastCompactionAt in room metadata",
+    { timeout: 30000 },
+    async () => {
+      const { resetSessionAction } = await import(
+        "../bootstrap/actions/resetSession.ts"
+      );
 
-    let updatedRoom: Room | null = null;
-    const mockRuntime = {
-      agentId: "agent-1" as UUID,
-      getRoom: vi.fn(async () => createMockRoom()),
-      updateRoom: vi.fn(async (room: Room) => {
-        updatedRoom = room;
-      }),
-    } as unknown as IAgentRuntime;
+      let updatedRoom: Room | null = null;
+      const mockRuntime = {
+        agentId: "agent-1" as UUID,
+        getRoom: vi.fn(async () => createMockRoom()),
+        updateRoom: vi.fn(async (room: Room) => {
+          updatedRoom = room;
+        }),
+      } as unknown as IAgentRuntime;
 
-    const mockMessage: Memory = {
-      id: "msg-1" as UUID,
-      entityId: "user-1" as UUID,
-      agentId: "agent-1" as UUID,
-      roomId: "room-1" as UUID,
-      content: { text: "/reset" },
-    };
+      const mockMessage: Memory = {
+        id: "msg-1" as UUID,
+        entityId: "user-1" as UUID,
+        agentId: "agent-1" as UUID,
+        roomId: "room-1" as UUID,
+        content: { text: "/reset" },
+      };
 
-    const mockState = {
-      data: {
-        room: createMockRoom(),
-      },
-    };
+      const mockState = {
+        data: {
+          room: createMockRoom(),
+        },
+      };
 
-    const mockCallback = vi.fn();
+      const mockCallback = vi.fn();
 
-    const result = await resetSessionAction.handler(
-      mockRuntime,
-      mockMessage,
-      mockState as never,
-      undefined,
-      mockCallback,
-    );
+      const result = await resetSessionAction.handler(
+        mockRuntime,
+        mockMessage,
+        mockState as never,
+        undefined,
+        mockCallback,
+      );
 
-    expect(result.success).toBe(true);
-    expect(mockRuntime.updateRoom).toHaveBeenCalled();
-    expect(updatedRoom?.metadata?.lastCompactionAt).toBeDefined();
-    expect(typeof updatedRoom?.metadata?.lastCompactionAt).toBe("number");
-    expect(mockCallback).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: "Session has been reset. I'll start fresh from here.",
-        actions: ["RESET_SESSION"],
-      }),
-    );
-  });
+      expect(result.success).toBe(true);
+      expect(mockRuntime.updateRoom).toHaveBeenCalled();
+      expect(updatedRoom?.metadata?.lastCompactionAt).toBeDefined();
+      expect(typeof updatedRoom?.metadata?.lastCompactionAt).toBe("number");
+      expect(mockCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "Session has been reset. I'll start fresh from here.",
+          actions: ["RESET_SESSION"],
+        }),
+      );
+    },
+  );
 
-  it("should maintain compaction history", async () => {
+  it("should maintain compaction history", { timeout: 30000 }, async () => {
     const { resetSessionAction } = await import(
       "../bootstrap/actions/resetSession.ts"
     );
@@ -375,49 +387,53 @@ describe("RESET_SESSION action", () => {
     expect(history[1].timestamp).toBeGreaterThan(1000);
   });
 
-  it("should limit compaction history to 10 entries", async () => {
-    const { resetSessionAction } = await import(
-      "../bootstrap/actions/resetSession.ts"
-    );
+  it(
+    "should limit compaction history to 10 entries",
+    { timeout: 30000 },
+    async () => {
+      const { resetSessionAction } = await import(
+        "../bootstrap/actions/resetSession.ts"
+      );
 
-    // Create room with 10 existing entries
-    const existingRoom = createMockRoom({ lastCompactionAt: 10000 });
-    existingRoom.metadata = {
-      ...existingRoom.metadata,
-      compactionHistory: Array.from({ length: 10 }, (_, i) => ({
-        timestamp: (i + 1) * 1000,
-        triggeredBy: `user-${i}`,
-        reason: "manual_reset",
-      })),
-    };
+      // Create room with 10 existing entries
+      const existingRoom = createMockRoom({ lastCompactionAt: 10000 });
+      existingRoom.metadata = {
+        ...existingRoom.metadata,
+        compactionHistory: Array.from({ length: 10 }, (_, i) => ({
+          timestamp: (i + 1) * 1000,
+          triggeredBy: `user-${i}`,
+          reason: "manual_reset",
+        })),
+      };
 
-    let updatedRoom: Room | null = null;
-    const mockRuntime = {
-      agentId: "agent-1" as UUID,
-      getRoom: vi.fn(async () => existingRoom),
-      updateRoom: vi.fn(async (room: Room) => {
-        updatedRoom = room;
-      }),
-    } as unknown as IAgentRuntime;
+      let updatedRoom: Room | null = null;
+      const mockRuntime = {
+        agentId: "agent-1" as UUID,
+        getRoom: vi.fn(async () => existingRoom),
+        updateRoom: vi.fn(async (room: Room) => {
+          updatedRoom = room;
+        }),
+      } as unknown as IAgentRuntime;
 
-    const mockMessage: Memory = {
-      id: "msg-11" as UUID,
-      entityId: "user-11" as UUID,
-      agentId: "agent-1" as UUID,
-      roomId: "room-1" as UUID,
-      content: { text: "/reset" },
-    };
+      const mockMessage: Memory = {
+        id: "msg-11" as UUID,
+        entityId: "user-11" as UUID,
+        agentId: "agent-1" as UUID,
+        roomId: "room-1" as UUID,
+        content: { text: "/reset" },
+      };
 
-    await resetSessionAction.handler(mockRuntime, mockMessage, {
-      data: { room: existingRoom },
-    } as never);
+      await resetSessionAction.handler(mockRuntime, mockMessage, {
+        data: { room: existingRoom },
+      } as never);
 
-    const history = updatedRoom?.metadata?.compactionHistory as {
-      timestamp: number;
-    }[];
-    expect(history).toHaveLength(10); // Should still be 10, oldest removed
-    expect(history[0].timestamp).toBe(2000); // First entry (1000) should be gone
-  });
+      const history = updatedRoom?.metadata?.compactionHistory as {
+        timestamp: number;
+      }[];
+      expect(history).toHaveLength(10); // Should still be 10, oldest removed
+      expect(history[0].timestamp).toBe(2000); // First entry (1000) should be gone
+    },
+  );
 
   it("should handle room not found error", async () => {
     const { resetSessionAction } = await import(

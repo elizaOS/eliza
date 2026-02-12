@@ -4,6 +4,7 @@ import {
   formatActionNames,
   formatActions,
 } from "../../actions.ts";
+import { buildConversationSeed } from "../../deterministic";
 import { logger } from "../../logger.ts";
 import type { ActionFilterService } from "../../services/action-filter.ts";
 import type {
@@ -50,7 +51,8 @@ export const actionsProvider: Provider = {
   description: "Possible response actions",
   position: -1,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    const filterService = runtime.getService<ActionFilterService>("action_filter");
+    const filterService =
+      runtime.getService<ActionFilterService>("action_filter");
 
     let actionsData: Action[];
 
@@ -66,16 +68,29 @@ export const actionsProvider: Provider = {
       );
     }
 
-    const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;
+    const actionSeed = buildConversationSeed({
+      runtime,
+      message,
+      state,
+      surface: "provider:actions",
+    });
+
+    const actionNames = `Possible response actions: ${formatActionNames(actionsData, `${actionSeed}:names`)}`;
 
     const actionsWithDescriptions =
       actionsData.length > 0
-        ? addHeader("# Available Actions", formatActions(actionsData))
+        ? addHeader(
+            "# Available Actions",
+            formatActions(actionsData, `${actionSeed}:descriptions`),
+          )
         : "";
 
     const actionExamples =
       actionsData.length > 0
-        ? addHeader("# Action Examples", composeActionExamples(actionsData, 10))
+        ? addHeader(
+            "# Action Examples",
+            composeActionExamples(actionsData, 10, `${actionSeed}:examples`),
+          )
         : "";
 
     const actionCallExamples =

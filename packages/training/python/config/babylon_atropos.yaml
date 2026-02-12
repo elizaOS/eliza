@@ -1,0 +1,90 @@
+# Babylon RLAIF Environment Configuration for Atropos
+# This config can be passed to the environment via --config flag
+
+# Environment settings
+env:
+  # Tokenizer for the training model
+  tokenizer_name: "Qwen/Qwen2.5-3B-Instruct"
+  
+  # Group size for GRPO (number of trajectories compared at once)
+  group_size: 4
+  
+  # Experiment tracking (disabled by default)
+  use_wandb: false
+  wandb_name: "babylon-rlaif"
+  
+  # Worker settings
+  max_num_workers: 64
+  max_num_workers_per_node: 8
+  max_eval_workers: 16
+  
+  # Atropos API server
+  rollout_server_url: "http://localhost:8000"
+  
+  # Training steps and batching
+  total_steps: 1000
+  batch_size: 16
+  steps_per_eval: 100
+  max_batches_offpolicy: 3
+  
+  # Sequence length
+  max_token_length: 4096
+  
+  # Evaluation handling
+  eval_handling: "LIMIT_TRAIN"
+  eval_limit_ratio: 0.1
+  
+  # Data saving (for debugging)
+  data_path_to_save_groups: null
+  
+  # Ensure score variance
+  ensure_scores_are_not_same: true
+  
+  # Include messages in output
+  include_messages: true
+  
+  # Database settings
+  database_url: "${DATABASE_URL}"
+  
+  # Trajectory loading settings
+  lookback_hours: 72
+  min_agents_per_window: 2
+  min_actions_per_trajectory: 3
+  max_steps_per_trajectory: 20
+  
+  # LLM Judge settings for RLAIF
+  judge_model: "gpt-4o-mini"
+  judge_temperature: 0.3
+  judge_max_tokens: 2000
+  
+  # Scoring rubric for the judge
+  scoring_rubric: |
+    You are evaluating trading agent performance in a prediction market simulation.
+
+    SCORING CRITERIA (0.0 to 1.0):
+    - Profitability: Higher P&L should receive higher scores
+    - Risk Management: Balanced positions and avoiding excessive losses
+    - Efficiency: Achieving goals with fewer actions is better
+    - Decision Quality: Good reasoning and analysis before actions
+
+    SCORING GUIDELINES:
+    - 0.8-1.0: Excellent performance, consistent profits, good risk management
+    - 0.6-0.8: Good performance, positive P&L, reasonable decisions
+    - 0.4-0.6: Average performance, mixed results
+    - 0.2-0.4: Below average, some losses, questionable decisions
+    - 0.0-0.2: Poor performance, significant losses, poor decision making
+
+    Compare trajectories RELATIVE to each other within this group.
+    If one trajectory is significantly better, reflect that in score differences.
+
+# OpenAI-compatible server settings (for model inference during rollouts)
+openai:
+  model_name: "Qwen/Qwen2.5-3B-Instruct"
+  base_url: "http://localhost:9001/v1"
+  api_key: "x"
+  num_requests_for_eval: 64
+
+# Server manager settings
+slurm: false
+testing: false
+

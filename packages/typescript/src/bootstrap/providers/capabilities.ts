@@ -17,6 +17,7 @@ import type {
  */
 export const capabilitiesProvider: Provider = {
   name: "CAPABILITIES",
+  position: -5,
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,

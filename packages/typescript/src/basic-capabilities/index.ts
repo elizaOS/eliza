@@ -123,11 +123,12 @@ type MediaData = {
 
 export async function fetchMediaData(
   attachments: Media[],
+  fetchFn: typeof fetch = globalThis.fetch,
 ): Promise<MediaData[]> {
   return Promise.all(
     attachments.map(async (attachment: Media) => {
       if (/^(http|https):\/\//.test(attachment.url)) {
-        const response = await fetch(attachment.url);
+        const response = await fetchFn(attachment.url);
         if (!response.ok) {
           throw new Error(`Failed to fetch file: ${attachment.url}`);
         }
@@ -177,6 +178,14 @@ export async function processAttachments(
       attachment.contentType === ContentType.IMAGE &&
       !attachment.description
     ) {
+      // Skip image analysis when vision / image-description is explicitly
+      // disabled (e.g. the user toggled the Vision capability off).
+      const disableImageDesc = runtime.getSetting("DISABLE_IMAGE_DESCRIPTION");
+      if (disableImageDesc === true || disableImageDesc === "true") {
+        processedAttachments.push(processedAttachment);
+        continue;
+      }
+
       runtime.logger.debug(
         {
           src: "basic-capabilities",
@@ -187,9 +196,10 @@ export async function processAttachments(
       );
 
       let imageUrl = url;
+      const runtimeFetch = runtime.fetch ?? globalThis.fetch;
 
       if (!isRemote) {
-        const res = await fetch(url);
+        const res = await runtimeFetch(url);
         if (!res.ok) {
           throw new Error(`Failed to fetch image: ${res.statusText}`);
         }
@@ -304,7 +314,8 @@ export async function processAttachments(
       attachment.contentType === ContentType.DOCUMENT &&
       !attachment.text
     ) {
-      const res = await fetch(url);
+      const docFetch = runtime.fetch ?? globalThis.fetch;
+      const res = await docFetch(url);
       if (!res.ok) {
         throw new Error(`Failed to fetch document: ${res.statusText}`);
       }

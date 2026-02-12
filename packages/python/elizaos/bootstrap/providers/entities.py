@@ -96,4 +96,5 @@ entities_provider = Provider(
     description=_spec["description"],
     get=get_entities_context,
     dynamic=_spec.get("dynamic", True),
+    position=_spec.get("position"),
 )

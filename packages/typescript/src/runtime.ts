@@ -17,12 +17,25 @@ import {
   createBootstrapPlugin,
 } from "./bootstrap/index";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
+import {
+  buildConversationSeed,
+  deterministicHex,
+  deterministicUuid,
+} from "./deterministic";
 import { createUniqueUuid } from "./entities";
 import { createLogger } from "./logger";
+import {
+  createSandboxFetchProxy,
+  type SandboxFetchAuditEvent,
+} from "./network/sandbox-fetch-proxy.js";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
-import { DefaultMessageService } from "./services/message";
+import {
+  SANDBOX_TOKEN_PREFIX,
+  SandboxTokenManager,
+} from "./security/sandbox-token-manager.js";
 import type { ActionFilterService } from "./services/action-filter";
+import { DefaultMessageService } from "./services/message";
 import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
 import {
@@ -200,6 +213,16 @@ export class AgentRuntime implements IAgentRuntime {
   public logger;
   public enableAutonomy: boolean;
   private settings: RuntimeSettings;
+
+  // ── Sandbox mode ──────────────────────────────────────────────────────────
+  /** When true, the runtime is operating in sandbox mode. */
+  public readonly sandboxMode: boolean;
+  /** Token manager for sandbox secret obfuscation. */
+  public readonly sandboxTokenManager: SandboxTokenManager | null;
+  /** Optional audit callback for sandbox fetch proxy events. */
+  private readonly sandboxAuditHandler?: (
+    event: SandboxFetchAuditEvent,
+  ) => void;
   private servicePromiseHandlers = new Map<string, ServicePromiseHandler>(); // Combined handlers for resolve/reject
   private servicePromises = new Map<string, Promise<Service>>(); // read
   private serviceRegistrationStatus = new Map<
@@ -291,6 +314,22 @@ export class AgentRuntime implements IAgentRuntime {
        * Can be enabled at construction time or lazily via settings.
        */
       enableAutonomy?: boolean;
+      /**
+       * Enable sandbox mode for secure secret isolation.
+       * When true, runtime.getSetting() returns opaque tokens instead of real secrets,
+       * and runtime.fetch intercepts/replaces tokens at the network boundary.
+       */
+      sandboxMode?: boolean;
+      /**
+       * Pre-built SandboxTokenManager instance.
+       * If not provided and sandboxMode is true, a new one is created automatically.
+       */
+      sandboxTokenManager?: SandboxTokenManager;
+      /**
+       * Audit callback for sandbox fetch proxy events.
+       * Called on every token replacement (outbound and inbound).
+       */
+      sandboxAuditHandler?: (event: SandboxFetchAuditEvent) => void;
     } = {},
   ) {
     // Create default anonymous character if none provided
@@ -356,7 +395,32 @@ export class AgentRuntime implements IAgentRuntime {
     if (opts.adapter) {
       this.registerDatabaseAdapter(opts.adapter);
     }
-    this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
+    // Sandbox mode — env var override for emergency disable
+    const envOverride =
+      typeof process !== "undefined"
+        ? process.env.MILAIDY_SANDBOX_MODE
+        : undefined;
+    this.sandboxMode =
+      envOverride === "off" ? false : (opts.sandboxMode ?? false);
+    this.sandboxAuditHandler = opts.sandboxAuditHandler;
+
+    if (this.sandboxMode) {
+      this.sandboxTokenManager =
+        opts.sandboxTokenManager ?? new SandboxTokenManager();
+
+      // Wrap the provided (or default) fetch with the sandbox proxy
+      const baseFetch = (opts.fetch as typeof fetch) ?? this.fetch;
+      this.fetch = createSandboxFetchProxy({
+        tokenManager: this.sandboxTokenManager,
+        baseFetch,
+        onAuditEvent: this.sandboxAuditHandler,
+        failureMode: "fail-closed",
+      });
+    } else {
+      this.sandboxTokenManager = null;
+      this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
+    }
+
     this.settings = opts.settings ?? environmentSettings;
     const enableAutonomyFromSettings =
       this.character.settings?.ENABLE_AUTONOMY === true ||
@@ -1090,6 +1154,20 @@ export class AgentRuntime implements IAgentRuntime {
       const decrypted = decryptSecret(value, getSalt());
       if (decrypted === "true") return true;
       if (decrypted === "false") return false;
+
+      // ── Sandbox mode: return opaque token instead of real secret ─────
+      // Only tokenize if the value looks like a secret (from secrets stores,
+      // not plain settings like "true" or numeric strings).
+      if (
+        this.sandboxMode &&
+        this.sandboxTokenManager &&
+        typeof decrypted === "string" &&
+        decrypted.length >= 8 &&
+        (secrets?.[key] !== undefined || nestedSecrets?.[key] !== undefined)
+      ) {
+        return this.sandboxTokenManager.registerSecret(key, decrypted);
+      }
+
       return decrypted;
     }
 
@@ -1355,7 +1433,11 @@ export class AgentRuntime implements IAgentRuntime {
             blocked = true;
             reason = (r.reason as string) ?? reason;
             this.logger.warn(
-              { src: "runtime:evaluatePre", evaluator: evaluator.name, reason: r.reason },
+              {
+                src: "runtime:evaluatePre",
+                evaluator: evaluator.name,
+                reason: r.reason,
+              },
               `Pre-evaluator "${evaluator.name}" blocked message`,
             );
           }
@@ -1400,7 +1482,10 @@ export class AgentRuntime implements IAgentRuntime {
    * `actionName` was excluded.  If so, report a filter miss (the LLM
    * selected an action that wasn't in the prompt).
    */
-  private checkFilterMiss(roomId: string | undefined, actionName: string): void {
+  private checkFilterMiss(
+    roomId: string | undefined,
+    actionName: string,
+  ): void {
     if (!roomId) return;
     const filterSvc = this.getService<ActionFilterService>("action_filter");
     if (!filterSvc) return;
@@ -3904,6 +3989,11 @@ export class AgentRuntime implements IAgentRuntime {
       (options.modelSize === "small" ? "TEXT_SMALL" : "TEXT_LARGE");
     const schemaKey = schema.map((s) => s.field).join(",");
     const modelSchemaKey = `${modelIdentifier}:${schemaKey}`;
+    const deterministicValidationSeed = buildConversationSeed({
+      runtime: this,
+      state,
+      surface: `dynamic-prompt:${modelSchemaKey}`,
+    });
 
     // Get validation level from settings or options
     const validationLevelRaw = this.getSetting("VALIDATION_LEVEL");
@@ -4014,7 +4104,14 @@ export class AgentRuntime implements IAgentRuntime {
             const defaultValidate = contextLevel === 1;
             const needsValidation = row.validateField ?? defaultValidate;
             if (needsValidation) {
-              perFieldCodes.set(row.field, uuidv4().slice(0, 8));
+              perFieldCodes.set(
+                row.field,
+                deterministicHex(
+                  deterministicValidationSeed,
+                  `field-code:${row.field}`,
+                  8,
+                ),
+              );
             }
           }
         }
@@ -4090,9 +4187,18 @@ export class AgentRuntime implements IAgentRuntime {
       }
       EXAMPLE += `${CONTAINER_END}\n`;
 
-      const initCode = uuidv4();
-      const midCode = uuidv4();
-      const finalCode = uuidv4();
+      const initCode = deterministicUuid(
+        deterministicValidationSeed,
+        `init-code:${currentRetry}`,
+      );
+      const midCode = deterministicUuid(
+        deterministicValidationSeed,
+        `mid-code:${currentRetry}`,
+      );
+      const finalCode = deterministicUuid(
+        deterministicValidationSeed,
+        `final-code:${currentRetry}`,
+      );
 
       // Check for smart retry context (set by previous retry iteration)
       const smartRetryContext =
@@ -4224,7 +4330,11 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
               ? ["text"]
               : [];
 
-        const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const streamMessageId = `stream-${deterministicHex(
+          deterministicValidationSeed,
+          `stream-message-id:${currentRetry}`,
+          20,
+        )}`;
 
         extractor = new ValidationStreamExtractor({
           level: contextLevel,
@@ -4232,10 +4342,44 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
           streamFields: finalStreamFields,
           expectedCodes: perFieldCodes,
           onChunk: (chunk) => {
-            options.onStreamChunk?.(chunk, streamMessageId);
+            const streamResult = options.onStreamChunk?.(
+              chunk,
+              streamMessageId,
+            );
+            if (streamResult) {
+              void Promise.resolve(streamResult).catch((error) => {
+                this.logger.warn(
+                  {
+                    src: "runtime:dynamic-prompt",
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  },
+                  "onStreamChunk callback failed",
+                );
+              });
+            }
           },
           onEvent: options.onStreamEvent
-            ? (event) => options.onStreamEvent?.(event, streamMessageId)
+            ? (event) => {
+                const eventResult = options.onStreamEvent?.(
+                  event,
+                  streamMessageId,
+                );
+                if (eventResult) {
+                  void Promise.resolve(eventResult).catch((error) => {
+                    this.logger.warn(
+                      {
+                        src: "runtime:dynamic-prompt",
+                        error:
+                          error instanceof Error
+                            ? error.message
+                            : String(error),
+                      },
+                      "onStreamEvent callback failed",
+                    );
+                  });
+                }
+              }
             : undefined,
           abortSignal: options.abortSignal,
           hasRichConsumer,
@@ -4757,7 +4901,11 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
 
     const dimension = useProvidedDimension
       ? parsedDimension
-      : (await this.useModel(ModelType.TEXT_EMBEDDING, null))?.length;
+      : (
+          await this.useModel(ModelType.TEXT_EMBEDDING, {
+            text: "embedding-dimension-probe",
+          })
+        )?.length;
 
     if (!dimension) {
       throw new Error("Invalid embedding dimension");
@@ -5095,17 +5243,28 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
    * Returns an empty object if no secrets are configured.
    */
   private getSecretsForRedaction(): Record<string, string> {
-    const secrets = this.character?.settings?.secrets;
-    if (!secrets || typeof secrets !== "object") {
-      return {};
-    }
-    // Filter to only include string values
     const result: Record<string, string> = {};
-    for (const [key, value] of Object.entries(secrets)) {
-      if (typeof value === "string" && value.length > 0) {
-        result[key] = value;
+
+    // Include character.secrets (top-level secrets)
+    const topSecrets = this.character?.secrets;
+    if (topSecrets && typeof topSecrets === "object") {
+      for (const [key, value] of Object.entries(topSecrets)) {
+        if (typeof value === "string" && value.length > 0) {
+          result[key] = value;
+        }
       }
     }
+
+    // Include character.settings.secrets (nested secrets)
+    const nestedSecrets = this.character?.settings?.secrets;
+    if (nestedSecrets && typeof nestedSecrets === "object") {
+      for (const [key, value] of Object.entries(nestedSecrets)) {
+        if (typeof value === "string" && value.length > 0 && !result[key]) {
+          result[key] = value;
+        }
+      }
+    }
+
     return result;
   }
 

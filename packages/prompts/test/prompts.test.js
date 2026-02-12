@@ -1,7 +1,7 @@
-import { describe, it } from "node:test";
 import assert from "node:assert";
-import { readdirSync, readFileSync, existsSync } from "node:fs";
-import { join, dirname, basename } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -35,7 +35,7 @@ describe("prompt templates", () => {
       assert.match(
         name,
         /^[a-z][a-z0-9_]*$/,
-        `${file} should follow snake_case naming convention`
+        `${file} should follow snake_case naming convention`,
       );
     }
   });
@@ -49,7 +49,7 @@ describe("prompt templates", () => {
       assert.strictEqual(
         opens,
         closes,
-        `${file} has unbalanced delimiters: ${opens} {{ vs ${closes} }}`
+        `${file} has unbalanced delimiters: ${opens} {{ vs ${closes} }}`,
       );
     }
   });
@@ -64,7 +64,7 @@ describe("prompt templates", () => {
     for (const required of requiredTemplates) {
       assert.ok(
         files.includes(required),
-        `Required template "${required}" should exist in prompts/`
+        `Required template "${required}" should exist in prompts/`,
       );
     }
   });
@@ -74,28 +74,28 @@ describe("build scripts", () => {
   it("generate.js script exists", () => {
     assert.ok(
       existsSync(join(SCRIPTS_DIR, "generate.js")),
-      "generate.js should exist"
+      "generate.js should exist",
     );
   });
 
   it("check-secrets.js script exists", () => {
     assert.ok(
       existsSync(join(SCRIPTS_DIR, "check-secrets.js")),
-      "check-secrets.js should exist"
+      "check-secrets.js should exist",
     );
   });
 
   it("generate-action-docs.js script exists", () => {
     assert.ok(
       existsSync(join(SCRIPTS_DIR, "generate-action-docs.js")),
-      "generate-action-docs.js should exist"
+      "generate-action-docs.js should exist",
     );
   });
 
   it("generate-plugin-action-spec.js script exists", () => {
     assert.ok(
       existsSync(join(SCRIPTS_DIR, "generate-plugin-action-spec.js")),
-      "generate-plugin-action-spec.js should exist"
+      "generate-plugin-action-spec.js should exist",
     );
   });
 });
@@ -127,7 +127,7 @@ describe("naming conventions", () => {
       assert.match(
         expectedConst,
         /^[A-Z][A-Z0-9_]*_TEMPLATE$/,
-        `Generated constant name "${expectedConst}" should be valid UPPER_SNAKE_CASE`
+        `Generated constant name "${expectedConst}" should be valid UPPER_SNAKE_CASE`,
       );
     }
   });
@@ -147,7 +147,7 @@ describe("naming conventions", () => {
       assert.match(
         camel,
         /^[a-z][a-zA-Z0-9]*Template$/,
-        `Generated camelCase name "${camel}" should be valid`
+        `Generated camelCase name "${camel}" should be valid`,
       );
     }
   });

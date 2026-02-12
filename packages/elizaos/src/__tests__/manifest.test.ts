@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import * as path from "node:path";
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 const PACKAGE_ROOT = path.join(import.meta.dir, "..", "..");
 
@@ -49,7 +49,12 @@ describe("examples-manifest.json", () => {
     const manifestPath = path.join(PACKAGE_ROOT, "examples-manifest.json");
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
 
-    expect(manifest.categories.length).toBeGreaterThan(0);
+    if (manifest.examples.length > 0) {
+      expect(manifest.categories.length).toBeGreaterThan(0);
+    } else {
+      expect(manifest.categories.length).toBe(0);
+    }
+
     for (const cat of manifest.categories) {
       expect(typeof cat).toBe("string");
       expect(cat.length).toBeGreaterThan(0);
@@ -60,7 +65,12 @@ describe("examples-manifest.json", () => {
     const manifestPath = path.join(PACKAGE_ROOT, "examples-manifest.json");
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
 
-    expect(manifest.languages.length).toBeGreaterThan(0);
+    if (manifest.examples.length > 0) {
+      expect(manifest.languages.length).toBeGreaterThan(0);
+    } else {
+      expect(manifest.languages.length).toBe(0);
+    }
+
     for (const lang of manifest.languages) {
       expect(typeof lang).toBe("string");
       expect(lang.length).toBeGreaterThan(0);

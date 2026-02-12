@@ -11,12 +11,8 @@ on:
         type: boolean
         default: false
 
-concurrency:
-  group: build-electron-${{ github.ref }}-${{ matrix.os }}
-  cancel-in-progress: true
-
 env:
-  APP_DIR: packages/milaidy/apps/app
+  APP_DIR: apps/app
   NODE_VERSION: "23"
 
 jobs:
@@ -37,6 +33,10 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+
+    concurrency:
+      group: build-electron-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
 
     permissions:
       contents: write
@@ -120,11 +120,25 @@ jobs:
             ${{ env.APP_DIR }}/electron/dist/*.snap
           if-no-files-found: warn
 
+      - name: Resolve release tag for upload
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_to_release
+        id: resolve_tag
+        shell: bash
+        run: |
+          TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName')
+          if [[ -z "$TAG" ]]; then
+            echo "::error::No releases found to upload to"
+            exit 1
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload to GitHub Release
         if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+          tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || steps.resolve_tag.outputs.tag }}
           files: |
             ${{ env.APP_DIR }}/electron/dist/*.dmg
             ${{ env.APP_DIR }}/electron/dist/*.zip

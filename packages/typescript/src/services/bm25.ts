@@ -14,13 +14,73 @@ import { Tokenizer, type TokenizerOptions } from "../search.ts";
 
 /** Common English stopwords. */
 const ENGLISH_STOPWORDS = new Set([
-  "a", "an", "and", "are", "as", "at", "be", "but", "by", "do", "for",
-  "from", "had", "has", "have", "he", "her", "his", "how", "i", "if",
-  "in", "into", "is", "it", "its", "me", "my", "no", "not", "of", "on",
-  "or", "our", "out", "own", "she", "so", "than", "that", "the", "their",
-  "them", "then", "there", "these", "they", "this", "to", "too", "up",
-  "us", "very", "was", "we", "what", "when", "where", "which", "who",
-  "whom", "why", "will", "with", "would", "you", "your",
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "but",
+  "by",
+  "do",
+  "for",
+  "from",
+  "had",
+  "has",
+  "have",
+  "he",
+  "her",
+  "his",
+  "how",
+  "i",
+  "if",
+  "in",
+  "into",
+  "is",
+  "it",
+  "its",
+  "me",
+  "my",
+  "no",
+  "not",
+  "of",
+  "on",
+  "or",
+  "our",
+  "out",
+  "own",
+  "she",
+  "so",
+  "than",
+  "that",
+  "the",
+  "their",
+  "them",
+  "then",
+  "there",
+  "these",
+  "they",
+  "this",
+  "to",
+  "too",
+  "up",
+  "us",
+  "very",
+  "was",
+  "we",
+  "what",
+  "when",
+  "where",
+  "which",
+  "who",
+  "whom",
+  "why",
+  "will",
+  "with",
+  "would",
+  "you",
+  "your",
 ]);
 
 interface BM25Document {
@@ -119,7 +179,11 @@ export class BM25Index {
     return sortAndTruncate(results, topK);
   }
 
-  searchSubset(query: string, documentIds: string[], topK?: number): BM25Result[] {
+  searchSubset(
+    query: string,
+    documentIds: string[],
+    topK?: number,
+  ): BM25Result[] {
     const queryTerms = this.tokenize(query);
     if (queryTerms.length === 0 || this.documents.size === 0) return [];
 
@@ -157,7 +221,8 @@ export class BM25Index {
       const df = this.documentFrequencies.get(term) ?? 0;
       const idf = Math.log((totalDocuments - df + 0.5) / (df + 0.5) + 1);
       const numerator = tf * (this.k1 + 1);
-      const denominator = tf + this.k1 * (1 - this.b + this.b * (doc.length / avgdl));
+      const denominator =
+        tf + this.k1 * (1 - this.b + this.b * (doc.length / avgdl));
       score += idf * (numerator / denominator);
     }
 
