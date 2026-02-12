@@ -34,6 +34,7 @@ function formatFacts(facts: Memory[]) {
  */
 const factsProvider: Provider = {
   name: "FACTS",
+  position: 65,
   description: "Key facts that the agent knows",
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {

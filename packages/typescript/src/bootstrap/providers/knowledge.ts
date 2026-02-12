@@ -15,6 +15,7 @@ import { ModelType } from "../../types/index.ts";
  */
 export const knowledgeProvider: Provider = {
   name: "KNOWLEDGE",
+  position: 60,
   description:
     "Provides relevant knowledge from the agent's knowledge base based on semantic similarity",
   dynamic: true,

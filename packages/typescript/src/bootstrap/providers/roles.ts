@@ -26,6 +26,7 @@ import { ChannelType } from "../../types/index.ts";
  */
 export const roleProvider: Provider = {
   name: "ROLES",
+  position: 12,
   description:
     "Roles in the server, default are OWNER, ADMIN and MEMBER (as well as NONE)",
   get: async (

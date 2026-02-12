@@ -15,6 +15,7 @@ import { addHeader } from "../../utils.ts";
  */
 export const worldProvider: Provider = {
   name: "WORLD",
+  position: 10,
   description: "World and environment information",
   dynamic: true,
 

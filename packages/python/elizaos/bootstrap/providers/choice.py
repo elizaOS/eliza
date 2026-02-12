@@ -74,4 +74,5 @@ choice_provider = Provider(
     description=_spec["description"],
     get=get_choice_options,
     dynamic=_spec.get("dynamic", True),
+    position=_spec.get("position"),
 )

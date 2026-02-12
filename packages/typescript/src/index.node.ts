@@ -48,6 +48,7 @@ export * from "./prompts";
 export * from "./providers/onboarding-progress";
 // Export skill eligibility provider
 export * from "./providers/skill-eligibility";
+export * from "./request-context";
 export * from "./roles";
 export * from "./runtime";
 // Export schemas
@@ -71,10 +72,11 @@ export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
 export * from "./services/tool-policy";
 export * from "./services/trajectoryLogger";
+export * from "./services/triggerScheduling";
+export * from "./services/triggerWorker";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";
-export * from "./request-context";
 export * from "./streaming-context";
 export * from "./trajectory-context";
 // Export everything from types

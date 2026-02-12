@@ -4,6 +4,7 @@
 
 use crate::advanced_memory;
 use crate::advanced_planning;
+use crate::deterministic::{build_conversation_seed, deterministic_hex, deterministic_uuid};
 use crate::types::agent::{Agent, Bio, Character, CharacterSecrets, CharacterSettings};
 use crate::types::components::{
     ActionDefinition, ActionHandler, ActionResult, EvaluatorDefinition, EvaluatorHandler,
@@ -1893,7 +1894,6 @@ impl AgentRuntime {
         options: DynamicPromptOptions,
     ) -> Result<Option<serde_json::Value>> {
         use crate::types::model::model_type;
-        use uuid::Uuid;
 
         // Determine model type - check options.model first, then model_size, then default
         let model_type_str = if let Some(ref model) = options.model {
@@ -1941,6 +1941,25 @@ impl AgentRuntime {
         let mut current_retry = 0;
         let mut last_error: Option<String> = None;
         let mut smart_retry_context: Option<String> = None;
+        let character_id = {
+            #[cfg(feature = "native")]
+            {
+                self.character.read().await.id.clone()
+            }
+            #[cfg(not(feature = "native"))]
+            {
+                self.character.read().unwrap().id.clone()
+            }
+        };
+        let deterministic_validation_seed = build_conversation_seed(
+            &self.agent_id,
+            character_id.as_ref(),
+            None,
+            Some(state),
+            &format!("dynamic-prompt:{}", model_schema_key),
+            None,
+            chrono_timestamp(),
+        );
 
         // Generate per-field validation codes for levels 0-1
         let mut per_field_codes: HashMap<String, String> = HashMap::new();
@@ -1951,7 +1970,11 @@ impl AgentRuntime {
                 if needs_validation {
                     per_field_codes.insert(
                         row.field.clone(),
-                        Uuid::new_v4().to_string()[..8].to_string(),
+                        deterministic_hex(
+                            &deterministic_validation_seed,
+                            &format!("field-code:{}", row.field),
+                            8,
+                        ),
                     );
                 }
             }
@@ -1966,8 +1989,11 @@ impl AgentRuntime {
             // - Helpers or partials
             // For complex templates, pre-render in TypeScript or use a Rust Handlebars crate.
             let state_map = state.values_map();
+            let mut sorted_state_entries: Vec<(&String, &serde_json::Value)> =
+                state_map.iter().collect();
+            sorted_state_entries.sort_by(|(left, _), (right, _)| left.cmp(right));
             let mut rendered = prompt.to_string();
-            for (key, value) in &state_map {
+            for (key, value) in sorted_state_entries {
                 let placeholder = format!("{{{{{}}}}}", key);
                 let value_str = match value {
                     serde_json::Value::String(s) => s.clone(),
@@ -2053,9 +2079,18 @@ impl AgentRuntime {
             }
             example.push_str(container_end);
 
-            let init_code = Uuid::new_v4().to_string();
-            let mid_code = Uuid::new_v4().to_string();
-            let final_code = Uuid::new_v4().to_string();
+            let init_code = deterministic_uuid(
+                &deterministic_validation_seed,
+                &format!("init-code:{}", current_retry),
+            );
+            let mid_code = deterministic_uuid(
+                &deterministic_validation_seed,
+                &format!("mid-code:{}", current_retry),
+            );
+            let final_code = deterministic_uuid(
+                &deterministic_validation_seed,
+                &format!("final-code:{}", current_retry),
+            );
 
             let section_start = if is_xml {
                 "<output>"

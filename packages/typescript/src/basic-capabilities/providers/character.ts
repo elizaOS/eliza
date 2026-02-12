@@ -1,3 +1,9 @@
+import {
+  buildDeterministicSeed,
+  deterministicHex,
+  deterministicPickOne,
+  deterministicSample,
+} from "../../deterministic";
 import { requireProviderSpec } from "../../generated/spec-helpers.ts";
 import type {
   IAgentRuntime,
@@ -10,18 +16,6 @@ import { addHeader } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("CHARACTER");
-
-function randomSample<T>(items: T[], count: number): T[] {
-  const copy = items.slice();
-  const max = Math.min(count, copy.length);
-  for (let i = 0; i < max; i += 1) {
-    const j = i + Math.floor(Math.random() * (copy.length - i));
-    const tmp = copy[i];
-    copy[i] = copy[j];
-    copy[j] = tmp;
-  }
-  return copy.slice(0, max);
-}
 
 /**
  * Replace `{{name}}` placeholders in a string with the character's name.
@@ -60,11 +54,22 @@ export const characterProvider: Provider = {
     // Character name
     const agentName = character.name ?? "";
 
+    const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+    const deterministicSeed = buildDeterministicSeed([
+      "provider:character",
+      runtime.agentId,
+      character.id ?? "character:none",
+      room?.worldId ?? "world:none",
+      room?.id ?? message.roomId ?? "room:none",
+    ]);
+
     // Handle bio (random selection from array, resolve {{name}} placeholders)
     const rawBioArray = character.bio ?? [];
     const bioArray = resolveNameInArray(rawBioArray, agentName);
     const bioText =
-      bioArray.length > 0 ? randomSample(bioArray, 10).join(" ") : "";
+      bioArray.length > 0
+        ? deterministicSample(bioArray, 10, deterministicSeed, "bio").join(" ")
+        : "";
 
     const bio = addHeader(`# About ${agentName}`, bioText);
 
@@ -79,7 +84,11 @@ export const characterProvider: Provider = {
     // Select random topic if available
     const topicString =
       resolvedTopics.length > 0
-        ? resolvedTopics[Math.floor(Math.random() * resolvedTopics.length)]
+        ? deterministicPickOne(
+            resolvedTopics,
+            deterministicSeed,
+            "selected-topic",
+          ) || null
         : null;
 
     // postCreationTemplate in core prompts.ts
@@ -90,9 +99,11 @@ export const characterProvider: Provider = {
     // Format topics list
     const topics =
       resolvedTopics.length > 0
-        ? `${agentName} is also interested in ${randomSample(
+        ? `${agentName} is also interested in ${deterministicSample(
             resolvedTopics.filter((t: string) => t !== topicString),
             5,
+            deterministicSeed,
+            "topic-list",
           )
             .map((t, index, array) => {
               if (index === array.length - 2) {
@@ -112,9 +123,11 @@ export const characterProvider: Provider = {
       : [];
     const adjectiveString =
       resolvedAdjectives.length > 0
-        ? resolvedAdjectives[
-            Math.floor(Math.random() * resolvedAdjectives.length)
-          ]
+        ? deterministicPickOne(
+            resolvedAdjectives,
+            deterministicSeed,
+            "selected-adjective",
+          ) || ""
         : "";
 
     const adjective = adjectiveString || "";
@@ -125,7 +138,12 @@ export const characterProvider: Provider = {
       : [];
     const formattedCharacterPostExamples =
       postExamplesArray.length > 0
-        ? randomSample(postExamplesArray, 50)
+        ? deterministicSample(
+            postExamplesArray,
+            50,
+            deterministicSeed,
+            "post-examples",
+          )
             .map((post) => `${post}`)
             .join("\n")
         : "";
@@ -143,10 +161,21 @@ export const characterProvider: Provider = {
     const messageExamplesArray = character.messageExamples ?? [];
     const formattedCharacterMessageExamples =
       messageExamplesArray.length > 0
-        ? randomSample(messageExamplesArray, 5)
-            .map((group) => {
-              const exampleNames = Array.from({ length: 5 }, () =>
-                Math.random().toString(36).substring(2, 8),
+        ? deterministicSample(
+            messageExamplesArray,
+            5,
+            deterministicSeed,
+            "message-examples",
+          )
+            .map((group, groupIndex) => {
+              const exampleNames = Array.from(
+                { length: 5 },
+                (_unused, nameIndex) =>
+                  deterministicHex(
+                    deterministicSeed,
+                    `message-example:${groupIndex}:name:${nameIndex}`,
+                    8,
+                  ),
               );
 
               return group.examples
@@ -181,8 +210,6 @@ export const characterProvider: Provider = {
             formattedCharacterMessageExamples,
           )
         : "";
-
-    const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
     const roomType = room?.type;
     const isPostFormat =

@@ -148,6 +148,7 @@ function generateStatusMessage(
  */
 export const settingsProvider: Provider = {
   name: "SETTINGS",
+  position: 15,
   description: "Current settings for the server",
   get: async (
     runtime: IAgentRuntime,

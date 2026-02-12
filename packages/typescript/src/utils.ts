@@ -1,8 +1,13 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import Handlebars from "handlebars";
-import { names, uniqueNamesGenerator } from "unique-names-generator";
+import { names } from "unique-names-generator";
 import { z } from "zod";
 
+import {
+  buildDeterministicSeed,
+  deterministicHex,
+  deterministicPickOne,
+} from "./deterministic";
 import logger from "./logger";
 import type {
   Content,
@@ -273,7 +278,14 @@ export const composePrompt = ({
     rendered = templateFunction(state);
   }
 
-  const output = composeRandomUser(rendered, 10);
+  const templateSeed = buildDeterministicSeed([
+    "composePrompt",
+    state.agentId ?? state.characterId ?? state.agentName ?? "agent:none",
+    state.worldId ?? "world:none",
+    state.roomId ?? "room:none",
+    rendered,
+  ]);
+  const output = composeRandomUser(rendered, 10, templateSeed);
   return output;
 };
 
@@ -324,8 +336,34 @@ export const composePromptFromState = ({
     rendered = templateFunction(context);
   }
 
+  const stateRoomId =
+    state.data.room?.id ||
+    (typeof state.values.roomId === "string"
+      ? state.values.roomId
+      : "room:none");
+  const stateWorldId =
+    state.data.world?.id ||
+    state.data.room?.worldId ||
+    (typeof state.values.worldId === "string"
+      ? state.values.worldId
+      : "world:none");
+  const stateCharacterId =
+    (typeof state.values.characterId === "string"
+      ? state.values.characterId
+      : null) ||
+    (typeof state.values.agentId === "string" ? state.values.agentId : null) ||
+    state.values.agentName ||
+    "agent:none";
+  const templateSeed = buildDeterministicSeed([
+    "composePromptFromState",
+    stateCharacterId,
+    stateWorldId,
+    stateRoomId,
+    rendered,
+  ]);
+
   // and then we flat state.values again
-  const output = composeRandomUser(rendered, 10);
+  const output = composeRandomUser(rendered, 10, templateSeed);
   return output;
 };
 
@@ -372,10 +410,22 @@ export const addHeader = (header: string, body: string) => {
  * // "Hello, John! Meet Alice and Bob."
  * const result = composeRandomUser(template, length);
  */
-const composeRandomUser = (template: string, length: number) => {
-  const exampleNames = Array.from({ length }, () =>
-    uniqueNamesGenerator({ dictionaries: [names] }),
-  );
+const composeRandomUser = (template: string, length: number, seed: string) => {
+  const exampleNames = Array.from({ length }, (_unused, index) => {
+    const selectedName = deterministicPickOne(
+      names as readonly string[],
+      seed,
+      `composeRandomUser:name:${index}`,
+    );
+    if (selectedName) {
+      return selectedName;
+    }
+    return deterministicHex(
+      seed,
+      `composeRandomUser:fallback-name:${index}`,
+      8,
+    );
+  });
   let result = template;
   for (let i = 0; i < exampleNames.length; i++) {
     result = result.replaceAll(`{{name${i + 1}}}`, exampleNames[i]);

@@ -1,15 +1,17 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { BM25Index } from "../services/bm25";
-import { cosineSimilarity, normalizeVector } from "../services/cosine-similarity";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { actionsProvider } from "../bootstrap/providers/actions";
 import {
   ActionFilterService,
-  getActionEmbeddingText,
   buildQueryText,
+  getActionEmbeddingText,
   minMaxNormalize,
 } from "../services/action-filter";
-import { actionsProvider } from "../bootstrap/providers/actions";
+import { BM25Index } from "../services/bm25";
+import {
+  cosineSimilarity,
+  normalizeVector,
+} from "../services/cosine-similarity";
 import type { Action, IAgentRuntime, Memory, State } from "../types";
-
 
 // ============================================================================
 // Test Helpers
@@ -141,8 +143,7 @@ function buildMockActions(): Record<string, Action> {
     // Knowledge actions
     SEARCH_KNOWLEDGE: createMockAction({
       name: "SEARCH_KNOWLEDGE",
-      description:
-        "Search the knowledge base for relevant information",
+      description: "Search the knowledge base for relevant information",
       similes: ["look up", "find information", "research"],
       tags: ["knowledge"],
     }),
@@ -170,15 +171,13 @@ function buildMockActions(): Record<string, Action> {
     // Payment actions
     PAY_FOR_SERVICE: createMockAction({
       name: "PAY_FOR_SERVICE",
-      description:
-        "Pay for an x402 service using USDC cryptocurrency",
+      description: "Pay for an x402 service using USDC cryptocurrency",
       similes: ["pay", "purchase", "buy"],
       tags: ["payment", "x402"],
     }),
     CHECK_PAYMENT_HISTORY: createMockAction({
       name: "CHECK_PAYMENT_HISTORY",
-      description:
-        "View recent payment transactions and spending summary",
+      description: "View recent payment transactions and spending summary",
       similes: ["spending", "transactions"],
       tags: ["payment"],
     }),
@@ -241,14 +240,17 @@ function createMockRuntime(
   const hasEmbeddingModel = opts?.hasEmbeddingModel ?? false;
 
   // Default useModel returns a deterministic embedding
-  const defaultUseModel = vi.fn().mockImplementation(
-    async (_modelType: string, params: { text: string }) => {
-      return deterministicEmbedding(params.text);
-    },
-  );
+  const defaultUseModel = vi
+    .fn()
+    .mockImplementation(
+      async (_modelType: string, params: { text: string }) => {
+        return deterministicEmbedding(params.text);
+      },
+    );
 
   return {
-    agentId: "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
+    agentId:
+      "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
     actions,
     character: { name: "TestAgent" },
     providers: [],
@@ -289,9 +291,12 @@ function createMockRuntime(
 function createMockMemory(text: string, roomId?: string): Memory {
   return {
     id: "00000000-0000-0000-0000-000000000010" as `${string}-${string}-${string}-${string}-${string}`,
-    entityId: "00000000-0000-0000-0000-000000000002" as `${string}-${string}-${string}-${string}-${string}`,
-    agentId: "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
-    roomId: (roomId ?? "00000000-0000-0000-0000-000000000003") as `${string}-${string}-${string}-${string}-${string}`,
+    entityId:
+      "00000000-0000-0000-0000-000000000002" as `${string}-${string}-${string}-${string}-${string}`,
+    agentId:
+      "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
+    roomId: (roomId ??
+      "00000000-0000-0000-0000-000000000003") as `${string}-${string}-${string}-${string}-${string}`,
     content: { text },
     createdAt: Date.now(),
   } as Memory;
@@ -368,7 +373,7 @@ describe("BM25Index", () => {
       index.addDocument("doc1", "swap tokens");
       index.addDocument(
         "doc2",
-        "swap tokens on a decentralized exchange with many extra words for padding to make this document much longer than necessary"
+        "swap tokens on a decentralized exchange with many extra words for padding to make this document much longer than necessary",
       );
 
       const results = index.search("swap");
@@ -492,10 +497,9 @@ describe("BM25Index", () => {
     });
 
     it("should handle very long documents", () => {
-      const longText = Array.from(
-        { length: 500 },
-        (_, i) => `word${i}`
-      ).join(" ");
+      const longText = Array.from({ length: 500 }, (_, i) => `word${i}`).join(
+        " ",
+      );
       index.addDocument("long", longText + " unique_target_term");
       index.addDocument("short", "unique_target_term");
 
@@ -662,7 +666,7 @@ describe("BM25Index", () => {
       for (let i = 0; i < 1000; i++) {
         index.addDocument(
           `doc-${i}`,
-          `action ${i} description for testing with term${i}`
+          `action ${i} description for testing with term${i}`,
         );
       }
 
@@ -873,7 +877,9 @@ describe("getActionEmbeddingText", () => {
       name: "TEST",
       description: "A test action for testing",
     });
-    expect(getActionEmbeddingText(action)).toContain("A test action for testing");
+    expect(getActionEmbeddingText(action)).toContain(
+      "A test action for testing",
+    );
   });
 
   it("should include similes", () => {
@@ -1003,8 +1009,12 @@ describe("ActionFilterService", () => {
     });
 
     it("should start in BM25-only mode when no embedding model", async () => {
-      const noEmbRuntime = createMockRuntime(allActions, { hasEmbeddingModel: false });
-      const bm25Service = (await ActionFilterService.start(noEmbRuntime)) as ActionFilterService;
+      const noEmbRuntime = createMockRuntime(allActions, {
+        hasEmbeddingModel: false,
+      });
+      const bm25Service = (await ActionFilterService.start(
+        noEmbRuntime,
+      )) as ActionFilterService;
       const metrics = bm25Service.getMetrics();
       expect(metrics.indexedActionCount).toBe(allActions.length);
       await bm25Service.stop();
@@ -1012,7 +1022,9 @@ describe("ActionFilterService", () => {
 
     it("should handle starting with empty action list", async () => {
       const emptyRuntime = createMockRuntime([], { hasEmbeddingModel: true });
-      const emptyService = (await ActionFilterService.start(emptyRuntime)) as ActionFilterService;
+      const emptyService = (await ActionFilterService.start(
+        emptyRuntime,
+      )) as ActionFilterService;
       expect(emptyService.getMetrics().indexedActionCount).toBe(0);
       await emptyService.stop();
     });
@@ -1021,7 +1033,9 @@ describe("ActionFilterService", () => {
   describe("filter — passthrough conditions", () => {
     it("should return all actions when count is below threshold", async () => {
       const smallActions = allActions.slice(0, 5);
-      const smallRuntime = createMockRuntime(smallActions, { hasEmbeddingModel: true });
+      const smallRuntime = createMockRuntime(smallActions, {
+        hasEmbeddingModel: true,
+      });
       const message = createMockMemory("swap tokens");
       const state = createMockState();
 
@@ -1031,7 +1045,9 @@ describe("ActionFilterService", () => {
     });
 
     it("should return all actions when disabled", async () => {
-      const disabledService = new ActionFilterService(runtime, { enabled: false });
+      const disabledService = new ActionFilterService(runtime, {
+        enabled: false,
+      });
       const message = createMockMemory("swap tokens");
       const state = createMockState();
 
@@ -1089,7 +1105,9 @@ describe("ActionFilterService", () => {
 
   describe("filter — always-include", () => {
     it("should always include REPLY, IGNORE, NONE by default config", async () => {
-      const message = createMockMemory("something completely unrelated to any action");
+      const message = createMockMemory(
+        "something completely unrelated to any action",
+      );
       const state = createMockState();
 
       const result = await service.filter(runtime, message, state);
@@ -1108,8 +1126,12 @@ describe("ActionFilterService", () => {
           alwaysInclude: true,
         }),
       ];
-      const customRuntime = createMockRuntime(customActions, { hasEmbeddingModel: true });
-      const customService = (await ActionFilterService.start(customRuntime)) as ActionFilterService;
+      const customRuntime = createMockRuntime(customActions, {
+        hasEmbeddingModel: true,
+      });
+      const customService = (await ActionFilterService.start(
+        customRuntime,
+      )) as ActionFilterService;
 
       const message = createMockMemory("totally unrelated query");
       const state = createMockState();
@@ -1124,7 +1146,9 @@ describe("ActionFilterService", () => {
 
   describe("filter — cross-domain queries", () => {
     it("should include both SWAP_TOKENS and SEND_MESSAGE for cross-domain query", async () => {
-      const message = createMockMemory("swap ETH and then message me the result");
+      const message = createMockMemory(
+        "swap ETH and then message me the result",
+      );
       const state = createMockState();
 
       const result = await service.filter(runtime, message, state);
@@ -1141,7 +1165,9 @@ describe("ActionFilterService", () => {
         hasEmbeddingModel: true,
         useModelFn: vi.fn().mockRejectedValue(new Error("model exploded")),
       });
-      const failingService = (await ActionFilterService.start(failingRuntime)) as ActionFilterService;
+      const failingService = (await ActionFilterService.start(
+        failingRuntime,
+      )) as ActionFilterService;
 
       const message = createMockMemory("swap tokens");
       const state = createMockState();
@@ -1149,7 +1175,11 @@ describe("ActionFilterService", () => {
       // filter() should not throw — BM25 still works even if embedding fails,
       // so it returns a filtered (smaller) set rather than all actions.
       // The key assertion is that it doesn't crash and returns valid results.
-      const result = await failingService.filter(failingRuntime, message, state);
+      const result = await failingService.filter(
+        failingRuntime,
+        message,
+        state,
+      );
       expect(result.length).toBeGreaterThan(0);
       // All always-include actions should be present
       const names = result.map((a) => a.name);
@@ -1164,8 +1194,12 @@ describe("ActionFilterService", () => {
     });
 
     it("should work with BM25-only when embeddings unavailable", async () => {
-      const noEmbRuntime = createMockRuntime(allActions, { hasEmbeddingModel: false });
-      const bm25Service = (await ActionFilterService.start(noEmbRuntime)) as ActionFilterService;
+      const noEmbRuntime = createMockRuntime(allActions, {
+        hasEmbeddingModel: false,
+      });
+      const bm25Service = (await ActionFilterService.start(
+        noEmbRuntime,
+      )) as ActionFilterService;
 
       const message = createMockMemory("swap tokens cryptocurrency exchange");
       const state = createMockState();
@@ -1229,7 +1263,10 @@ describe("ActionFilterService", () => {
       service.recordActionUse("EXECUTE_CODE", "room-A");
 
       // Query from room-B
-      const message = createMockMemory("do something generic", "room-B" as `${string}-${string}-${string}-${string}-${string}`);
+      const message = createMockMemory(
+        "do something generic",
+        "room-B" as `${string}-${string}-${string}-${string}-${string}`,
+      );
       const state = createMockState();
 
       // We can't easily assert the code action isn't boosted, but we can
@@ -1320,7 +1357,10 @@ describe("ActionFilterService", () => {
 
   describe("wasActionInFilteredSet", () => {
     it("should return null when no filtering happened for that room", () => {
-      const result = service.wasActionInFilteredSet("SWAP_TOKENS", "unknown-room");
+      const result = service.wasActionInFilteredSet(
+        "SWAP_TOKENS",
+        "unknown-room",
+      );
       expect(result).toBeNull();
     });
 
@@ -1355,11 +1395,21 @@ describe("ActionFilterService", () => {
     });
 
     it("should track per-room independently", async () => {
-      const room1 = "00000000-0000-0000-0000-000000000011" as `${string}-${string}-${string}-${string}-${string}`;
-      const room2 = "00000000-0000-0000-0000-000000000022" as `${string}-${string}-${string}-${string}-${string}`;
+      const room1 =
+        "00000000-0000-0000-0000-000000000011" as `${string}-${string}-${string}-${string}-${string}`;
+      const room2 =
+        "00000000-0000-0000-0000-000000000022" as `${string}-${string}-${string}-${string}-${string}`;
 
-      await service.filter(runtime, createMockMemory("swap tokens", room1), createMockState());
-      await service.filter(runtime, createMockMemory("send message", room2), createMockState());
+      await service.filter(
+        runtime,
+        createMockMemory("swap tokens", room1),
+        createMockState(),
+      );
+      await service.filter(
+        runtime,
+        createMockMemory("send message", room2),
+        createMockState(),
+      );
 
       // Both rooms should have tracking data
       expect(service.wasActionInFilteredSet("REPLY", room1)).toBe(true);
@@ -1372,8 +1422,12 @@ describe("ActionFilterService", () => {
 
   describe("runtime configuration", () => {
     it("should read settings from runtime.getSetting()", async () => {
-      const configuredRuntime = createMockRuntime(allActions, { hasEmbeddingModel: true });
-      (configuredRuntime.getSetting as ReturnType<typeof vi.fn>).mockImplementation((key: string) => {
+      const configuredRuntime = createMockRuntime(allActions, {
+        hasEmbeddingModel: true,
+      });
+      (
+        configuredRuntime.getSetting as ReturnType<typeof vi.fn>
+      ).mockImplementation((key: string) => {
         const settings: Record<string, string> = {
           ACTION_FILTER_THRESHOLD: "20",
           ACTION_FILTER_FINAL_TOP_K: "10",
@@ -1383,7 +1437,9 @@ describe("ActionFilterService", () => {
         return settings[key] ?? null;
       });
 
-      const configuredService = (await ActionFilterService.start(configuredRuntime)) as ActionFilterService;
+      const configuredService = (await ActionFilterService.start(
+        configuredRuntime,
+      )) as ActionFilterService;
       const config = configuredService.getConfig();
 
       expect(config.threshold).toBe(20);
@@ -1395,7 +1451,9 @@ describe("ActionFilterService", () => {
     });
 
     it("should use defaults when settings are not provided", async () => {
-      const defaultService = (await ActionFilterService.start(runtime)) as ActionFilterService;
+      const defaultService = (await ActionFilterService.start(
+        runtime,
+      )) as ActionFilterService;
       const config = defaultService.getConfig();
 
       expect(config.threshold).toBe(15);
@@ -1409,13 +1467,19 @@ describe("ActionFilterService", () => {
     });
 
     it("should disable filtering when ACTION_FILTER_ENABLED is false", async () => {
-      const disabledRuntime = createMockRuntime(allActions, { hasEmbeddingModel: true });
-      (disabledRuntime.getSetting as ReturnType<typeof vi.fn>).mockImplementation((key: string) => {
+      const disabledRuntime = createMockRuntime(allActions, {
+        hasEmbeddingModel: true,
+      });
+      (
+        disabledRuntime.getSetting as ReturnType<typeof vi.fn>
+      ).mockImplementation((key: string) => {
         if (key === "ACTION_FILTER_ENABLED") return "false";
         return null;
       });
 
-      const disabledService = (await ActionFilterService.start(disabledRuntime)) as ActionFilterService;
+      const disabledService = (await ActionFilterService.start(
+        disabledRuntime,
+      )) as ActionFilterService;
       const config = disabledService.getConfig();
       expect(config.enabled).toBe(false);
 
@@ -1431,17 +1495,23 @@ describe("ActionFilterService", () => {
     });
 
     it("should ignore invalid setting values", async () => {
-      const badRuntime = createMockRuntime(allActions, { hasEmbeddingModel: true });
-      (badRuntime.getSetting as ReturnType<typeof vi.fn>).mockImplementation((key: string) => {
-        const settings: Record<string, string> = {
-          ACTION_FILTER_THRESHOLD: "not-a-number",
-          ACTION_FILTER_VECTOR_WEIGHT: "2.5", // out of 0-1 range
-          ACTION_FILTER_BM25_WEIGHT: "-1", // negative
-        };
-        return settings[key] ?? null;
+      const badRuntime = createMockRuntime(allActions, {
+        hasEmbeddingModel: true,
       });
+      (badRuntime.getSetting as ReturnType<typeof vi.fn>).mockImplementation(
+        (key: string) => {
+          const settings: Record<string, string> = {
+            ACTION_FILTER_THRESHOLD: "not-a-number",
+            ACTION_FILTER_VECTOR_WEIGHT: "2.5", // out of 0-1 range
+            ACTION_FILTER_BM25_WEIGHT: "-1", // negative
+          };
+          return settings[key] ?? null;
+        },
+      );
 
-      const badService = (await ActionFilterService.start(badRuntime)) as ActionFilterService;
+      const badService = (await ActionFilterService.start(
+        badRuntime,
+      )) as ActionFilterService;
       const config = badService.getConfig();
 
       // Should fall back to defaults for invalid values
@@ -1467,7 +1537,8 @@ describe("ActionFilterService", () => {
 
     it("should handle undefined message content text", async () => {
       const message = { ...createMockMemory(""), content: {} } as Memory;
-      message.roomId = "00000000-0000-0000-0000-000000000003" as `${string}-${string}-${string}-${string}-${string}`;
+      message.roomId =
+        "00000000-0000-0000-0000-000000000003" as `${string}-${string}-${string}-${string}-${string}`;
       const state = createMockState();
 
       const result = await service.filter(runtime, message, state);
@@ -1485,7 +1556,7 @@ describe("ActionFilterService", () => {
 
       const results = await Promise.all(
         queries.map((q) =>
-          service.filter(runtime, createMockMemory(q), createMockState())
+          service.filter(runtime, createMockMemory(q), createMockState()),
         ),
       );
 
@@ -1513,7 +1584,9 @@ describe("ActionFilterService", () => {
         hasEmbeddingModel: true,
         useModelFn: vi.fn().mockResolvedValue([NaN, NaN, NaN]),
       });
-      const badService = (await ActionFilterService.start(badRuntime)) as ActionFilterService;
+      const badService = (await ActionFilterService.start(
+        badRuntime,
+      )) as ActionFilterService;
 
       // Service should still work via BM25 fallback
       const message = createMockMemory("swap tokens");
@@ -1529,7 +1602,9 @@ describe("ActionFilterService", () => {
         hasEmbeddingModel: true,
         useModelFn: vi.fn().mockResolvedValue([]),
       });
-      const emptyService = (await ActionFilterService.start(emptyEmbRuntime)) as ActionFilterService;
+      const emptyService = (await ActionFilterService.start(
+        emptyEmbRuntime,
+      )) as ActionFilterService;
 
       const message = createMockMemory("swap tokens");
       const state = createMockState();
@@ -1544,7 +1619,9 @@ describe("ActionFilterService", () => {
         hasEmbeddingModel: true,
         useModelFn: vi.fn().mockResolvedValue(new Array(64).fill(0)),
       });
-      const zeroService = (await ActionFilterService.start(zeroVecRuntime)) as ActionFilterService;
+      const zeroService = (await ActionFilterService.start(
+        zeroVecRuntime,
+      )) as ActionFilterService;
 
       const message = createMockMemory("swap tokens");
       const state = createMockState();
@@ -1565,18 +1642,34 @@ describe("ActionFilterService", () => {
             description: `This is action number ${i} that performs operation ${i % 20} in domain ${i % 10}`,
             similes: [`alias${i}`, `variant${i}`],
             tags: [`domain${i % 10}`, `category${i % 5}`],
-          })
+          }),
         );
       }
       // Add always-include
       largeActionList.push(
-        createMockAction({ name: "REPLY", description: "Reply", alwaysInclude: true }),
-        createMockAction({ name: "IGNORE", description: "Ignore", alwaysInclude: true }),
-        createMockAction({ name: "NONE", description: "None", alwaysInclude: true }),
+        createMockAction({
+          name: "REPLY",
+          description: "Reply",
+          alwaysInclude: true,
+        }),
+        createMockAction({
+          name: "IGNORE",
+          description: "Ignore",
+          alwaysInclude: true,
+        }),
+        createMockAction({
+          name: "NONE",
+          description: "None",
+          alwaysInclude: true,
+        }),
       );
 
-      const bigRuntime = createMockRuntime(largeActionList, { hasEmbeddingModel: true });
-      const bigService = (await ActionFilterService.start(bigRuntime)) as ActionFilterService;
+      const bigRuntime = createMockRuntime(largeActionList, {
+        hasEmbeddingModel: true,
+      });
+      const bigService = (await ActionFilterService.start(
+        bigRuntime,
+      )) as ActionFilterService;
 
       const message = createMockMemory("operation domain action testing");
       const state = createMockState();
@@ -1614,12 +1707,24 @@ describe("actionsProvider", () => {
 
   it("should fall back to validate-all when ActionFilterService unavailable", async () => {
     const actionList = [
-      createMockAction({ name: "REPLY", description: "Reply to the user", tags: ["core"] }),
-      createMockAction({ name: "SWAP_TOKENS", description: "Swap tokens", tags: ["defi"] }),
+      createMockAction({
+        name: "REPLY",
+        description: "Reply to the user",
+        tags: ["core"],
+      }),
+      createMockAction({
+        name: "SWAP_TOKENS",
+        description: "Swap tokens",
+        tags: ["defi"],
+      }),
     ];
     const mockRuntime = createMockRuntime(actionList);
 
-    const result = await actionsProvider.get!(mockRuntime, mockMessage, mockState);
+    const result = await actionsProvider.get!(
+      mockRuntime,
+      mockMessage,
+      mockState,
+    );
 
     expect(result).toBeDefined();
     expect(result.data.actionsData).toBeDefined();
@@ -1628,12 +1733,25 @@ describe("actionsProvider", () => {
 
   it("should produce valid action text output", async () => {
     const actionList = [
-      createMockAction({ name: "REPLY", description: "Reply to the user with a text message", tags: ["core"] }),
-      createMockAction({ name: "SWAP_TOKENS", description: "Swap one cryptocurrency token for another", similes: ["trade", "exchange"], tags: ["defi"] }),
+      createMockAction({
+        name: "REPLY",
+        description: "Reply to the user with a text message",
+        tags: ["core"],
+      }),
+      createMockAction({
+        name: "SWAP_TOKENS",
+        description: "Swap one cryptocurrency token for another",
+        similes: ["trade", "exchange"],
+        tags: ["defi"],
+      }),
     ];
     const mockRuntime = createMockRuntime(actionList);
 
-    const result = await actionsProvider.get!(mockRuntime, mockMessage, mockState);
+    const result = await actionsProvider.get!(
+      mockRuntime,
+      mockMessage,
+      mockState,
+    );
 
     expect(typeof result.text).toBe("string");
     expect(result.text!.length).toBeGreaterThan(0);
@@ -1643,11 +1761,19 @@ describe("actionsProvider", () => {
 
   it("should include actionNames in values", async () => {
     const actionList = [
-      createMockAction({ name: "REPLY", description: "Reply to user", tags: ["core"] }),
+      createMockAction({
+        name: "REPLY",
+        description: "Reply to user",
+        tags: ["core"],
+      }),
     ];
     const mockRuntime = createMockRuntime(actionList);
 
-    const result = await actionsProvider.get!(mockRuntime, mockMessage, mockState);
+    const result = await actionsProvider.get!(
+      mockRuntime,
+      mockMessage,
+      mockState,
+    );
 
     expect(result.values).toBeDefined();
     expect(result.values.actionNames).toBeDefined();
@@ -1656,12 +1782,24 @@ describe("actionsProvider", () => {
   });
 
   it("should handle actions that fail validation gracefully", async () => {
-    const validAction = createMockAction({ name: "REPLY", description: "Reply to user", validateReturn: true });
-    const invalidAction = createMockAction({ name: "SWAP_TOKENS", description: "Swap tokens", validateReturn: false });
+    const validAction = createMockAction({
+      name: "REPLY",
+      description: "Reply to user",
+      validateReturn: true,
+    });
+    const invalidAction = createMockAction({
+      name: "SWAP_TOKENS",
+      description: "Swap tokens",
+      validateReturn: false,
+    });
 
     const mockRuntime = createMockRuntime([validAction, invalidAction]);
 
-    const result = await actionsProvider.get!(mockRuntime, mockMessage, mockState);
+    const result = await actionsProvider.get!(
+      mockRuntime,
+      mockMessage,
+      mockState,
+    );
     expect(result.data.actionsData.length).toBe(1);
     expect(result.data.actionsData[0].name).toBe("REPLY");
   });
@@ -1669,21 +1807,35 @@ describe("actionsProvider", () => {
   it("should handle empty actions list gracefully", async () => {
     const mockRuntime = createMockRuntime([]);
 
-    const result = await actionsProvider.get!(mockRuntime, mockMessage, mockState);
+    const result = await actionsProvider.get!(
+      mockRuntime,
+      mockMessage,
+      mockState,
+    );
     expect(result.data.actionsData).toEqual([]);
   });
 
   it("should handle actions that throw during validation without crashing", async () => {
-    const throwingAction = createMockAction({ name: "BROKEN", description: "This action throws" });
+    const throwingAction = createMockAction({
+      name: "BROKEN",
+      description: "This action throws",
+    });
     (throwingAction.validate as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error("validation exploded"),
     );
-    const goodAction = createMockAction({ name: "REPLY", description: "Reply to user" });
+    const goodAction = createMockAction({
+      name: "REPLY",
+      description: "Reply to user",
+    });
 
     const mockRuntime = createMockRuntime([goodAction, throwingAction]);
 
     // Should NOT throw — the try/catch in validateActions handles it
-    const result = await actionsProvider.get!(mockRuntime, mockMessage, mockState);
+    const result = await actionsProvider.get!(
+      mockRuntime,
+      mockMessage,
+      mockState,
+    );
     expect(result.data.actionsData.length).toBe(1);
     expect(result.data.actionsData[0].name).toBe("REPLY");
   });
@@ -1701,11 +1853,17 @@ describe("actionsProvider", () => {
       );
     }
 
-    const mockRuntime = createMockRuntime(manyActions, { hasEmbeddingModel: true });
+    const mockRuntime = createMockRuntime(manyActions, {
+      hasEmbeddingModel: true,
+    });
 
     // Create and wire the filter service
-    const filterService = (await ActionFilterService.start(mockRuntime)) as ActionFilterService;
-    (mockRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(filterService);
+    const filterService = (await ActionFilterService.start(
+      mockRuntime,
+    )) as ActionFilterService;
+    (mockRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(
+      filterService,
+    );
 
     const result = await actionsProvider.get!(
       mockRuntime,
@@ -1732,9 +1890,15 @@ describe("actionsProvider", () => {
     }
 
     const roomId = "00000000-0000-0000-0000-000000000099";
-    const mockRuntime = createMockRuntime(manyActions, { hasEmbeddingModel: true });
-    const filterService = (await ActionFilterService.start(mockRuntime)) as ActionFilterService;
-    (mockRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(filterService);
+    const mockRuntime = createMockRuntime(manyActions, {
+      hasEmbeddingModel: true,
+    });
+    const filterService = (await ActionFilterService.start(
+      mockRuntime,
+    )) as ActionFilterService;
+    (mockRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(
+      filterService,
+    );
 
     const state = createMockState();
     const message = createMockMemory("test query", roomId);
@@ -1782,10 +1946,22 @@ describe("fuzz tests", () => {
 
   it("cosineSimilarity should not crash on extreme values", () => {
     const testCases: [number[], number[]][] = [
-      [[Number.MAX_VALUE, 1], [1, Number.MAX_VALUE]],
-      [[Number.MIN_VALUE, 1], [1, Number.MIN_VALUE]],
-      [[1e308, 1e308], [1e308, 1e308]],
-      [[1e-308, 1e-308], [1e-308, 1e-308]],
+      [
+        [Number.MAX_VALUE, 1],
+        [1, Number.MAX_VALUE],
+      ],
+      [
+        [Number.MIN_VALUE, 1],
+        [1, Number.MIN_VALUE],
+      ],
+      [
+        [1e308, 1e308],
+        [1e308, 1e308],
+      ],
+      [
+        [1e-308, 1e-308],
+        [1e-308, 1e-308],
+      ],
       [[NaN], [1]],
       [[Infinity], [1]],
       [[-Infinity], [1]],
@@ -1829,7 +2005,9 @@ describe("fuzz tests", () => {
   it("ActionFilterService should handle random message content without crashing", async () => {
     const actions = Object.values(buildMockActions());
     const runtime = createMockRuntime(actions, { hasEmbeddingModel: true });
-    const service = (await ActionFilterService.start(runtime)) as ActionFilterService;
+    const service = (await ActionFilterService.start(
+      runtime,
+    )) as ActionFilterService;
 
     const randomMessages = [
       "",
@@ -1929,10 +2107,11 @@ describe("data inspection", () => {
       // With multiple docs of different lengths, b affects length normalization
       // and k1 affects term saturation — so the RANKING should differ.
       const indexHighB = new BM25Index(1.5, 0.99); // strong length normalization
-      const indexLowB = new BM25Index(1.5, 0.01);  // almost no length normalization
+      const indexLowB = new BM25Index(1.5, 0.01); // almost no length normalization
 
       const short = "swap tokens";
-      const long = "swap tokens on a very large decentralized crypto exchange platform with many features";
+      const long =
+        "swap tokens on a very large decentralized crypto exchange platform with many features";
 
       indexHighB.addDocument("short", short);
       indexHighB.addDocument("long", long);
@@ -1965,8 +2144,18 @@ describe("data inspection", () => {
         similes: ["alias1", "alias2"],
         tags: ["tag1", "tag2"],
         parameters: [
-          { name: "param1", description: "first param", required: true, schema: { type: "string" } },
-          { name: "param2", description: "second param", required: false, schema: { type: "number" } },
+          {
+            name: "param1",
+            description: "first param",
+            required: true,
+            schema: { type: "string" },
+          },
+          {
+            name: "param2",
+            description: "second param",
+            required: false,
+            schema: { type: "number" },
+          },
         ],
         handler: vi.fn().mockResolvedValue({ success: true }),
         validate: vi.fn().mockResolvedValue(true),
@@ -2035,8 +2224,8 @@ describe("data inspection", () => {
         data: {
           actionPlan: {
             steps: [
-              { status: "pending" },                  // no action
-              { status: "pending", action: "" },       // empty action
+              { status: "pending" }, // no action
+              { status: "pending", action: "" }, // empty action
               { status: "pending", action: "REAL" },
             ],
           },
@@ -2052,7 +2241,9 @@ describe("data inspection", () => {
     it("should return fewer actions than total when filtering is active", async () => {
       const actions = Object.values(buildMockActions());
       const runtime = createMockRuntime(actions, { hasEmbeddingModel: true });
-      const service = (await ActionFilterService.start(runtime)) as ActionFilterService;
+      const service = (await ActionFilterService.start(
+        runtime,
+      )) as ActionFilterService;
 
       const result = await service.filter(
         runtime,
@@ -2077,17 +2268,35 @@ describe("data inspection", () => {
       // Create exactly 18 actions: 3 always-include + 15 regular
       // After removing 3 always-include, pool = 15 = finalTopK → return all
       const acts: Action[] = [
-        createMockAction({ name: "REPLY", description: "Reply", alwaysInclude: true }),
-        createMockAction({ name: "IGNORE", description: "Ignore", alwaysInclude: true }),
-        createMockAction({ name: "NONE", description: "None", alwaysInclude: true }),
+        createMockAction({
+          name: "REPLY",
+          description: "Reply",
+          alwaysInclude: true,
+        }),
+        createMockAction({
+          name: "IGNORE",
+          description: "Ignore",
+          alwaysInclude: true,
+        }),
+        createMockAction({
+          name: "NONE",
+          description: "None",
+          alwaysInclude: true,
+        }),
       ];
       for (let i = 0; i < 15; i++) {
-        acts.push(createMockAction({ name: `ACT_${i}`, description: `Action ${i}` }));
+        acts.push(
+          createMockAction({ name: `ACT_${i}`, description: `Action ${i}` }),
+        );
       }
       const rt = createMockRuntime(acts, { hasEmbeddingModel: true });
       const svc = (await ActionFilterService.start(rt)) as ActionFilterService;
 
-      const result = await svc.filter(rt, createMockMemory("test"), createMockState());
+      const result = await svc.filter(
+        rt,
+        createMockMemory("test"),
+        createMockState(),
+      );
       // candidatePool.length (15) <= finalTopK (15) → passthrough
       expect(result.length).toBe(18);
 
@@ -2098,7 +2307,9 @@ describe("data inspection", () => {
       // REPLY is always-include AND will also match "reply to user"
       const actions = Object.values(buildMockActions());
       const runtime = createMockRuntime(actions, { hasEmbeddingModel: true });
-      const service = (await ActionFilterService.start(runtime)) as ActionFilterService;
+      const service = (await ActionFilterService.start(
+        runtime,
+      )) as ActionFilterService;
 
       const result = await service.filter(
         runtime,
@@ -2115,16 +2326,32 @@ describe("data inspection", () => {
     it("should record metrics correctly across multiple calls", async () => {
       const actions = Object.values(buildMockActions());
       const runtime = createMockRuntime(actions, { hasEmbeddingModel: true });
-      const service = (await ActionFilterService.start(runtime)) as ActionFilterService;
+      const service = (await ActionFilterService.start(
+        runtime,
+      )) as ActionFilterService;
 
       // First call — filtered
-      await service.filter(runtime, createMockMemory("swap"), createMockState());
+      await service.filter(
+        runtime,
+        createMockMemory("swap"),
+        createMockState(),
+      );
       // Second call — filtered
-      await service.filter(runtime, createMockMemory("tweet"), createMockState());
+      await service.filter(
+        runtime,
+        createMockMemory("tweet"),
+        createMockState(),
+      );
 
       // Third call — passthrough (small runtime)
-      const smallRt = createMockRuntime(actions.slice(0, 5), { hasEmbeddingModel: true });
-      await service.filter(smallRt, createMockMemory("test"), createMockState());
+      const smallRt = createMockRuntime(actions.slice(0, 5), {
+        hasEmbeddingModel: true,
+      });
+      await service.filter(
+        smallRt,
+        createMockMemory("test"),
+        createMockState(),
+      );
 
       const m = service.getMetrics();
       expect(m.filterCalls).toBe(3);
@@ -2179,11 +2406,14 @@ describe("boundary conditions", () => {
     it("should prune old rooms when maxTrackedRooms is exceeded", async () => {
       const actions = Object.values(buildMockActions());
       const runtime = createMockRuntime(actions, { hasEmbeddingModel: true });
-      const service = (await ActionFilterService.start(runtime)) as ActionFilterService;
+      const service = (await ActionFilterService.start(
+        runtime,
+      )) as ActionFilterService;
 
       // Filter for 600 different rooms (exceeds maxTrackedRooms=500)
       for (let i = 0; i < 600; i++) {
-        const roomId = `room-${i}` as `${string}-${string}-${string}-${string}-${string}`;
+        const roomId =
+          `room-${i}` as `${string}-${string}-${string}-${string}-${string}`;
         await service.filter(
           runtime,
           createMockMemory("test", roomId),
@@ -2206,10 +2436,16 @@ describe("boundary conditions", () => {
     it("should return null after service is stopped", async () => {
       const actions = Object.values(buildMockActions());
       const runtime = createMockRuntime(actions, { hasEmbeddingModel: true });
-      const service = (await ActionFilterService.start(runtime)) as ActionFilterService;
+      const service = (await ActionFilterService.start(
+        runtime,
+      )) as ActionFilterService;
 
       const roomId = "00000000-0000-0000-0000-000000000003";
-      await service.filter(runtime, createMockMemory("test", roomId), createMockState());
+      await service.filter(
+        runtime,
+        createMockMemory("test", roomId),
+        createMockState(),
+      );
 
       // Before stop — should have data
       expect(service.wasActionInFilteredSet("REPLY", roomId)).toBe(true);
@@ -2224,7 +2460,9 @@ describe("boundary conditions", () => {
     it("should not return a removed action in filter results", async () => {
       const actions = Object.values(buildMockActions());
       const runtime = createMockRuntime(actions, { hasEmbeddingModel: true });
-      const service = (await ActionFilterService.start(runtime)) as ActionFilterService;
+      const service = (await ActionFilterService.start(
+        runtime,
+      )) as ActionFilterService;
 
       // Remove SWAP_TOKENS from the index
       service.removeAction("SWAP_TOKENS");
@@ -2250,17 +2488,25 @@ describe("boundary conditions", () => {
 
   describe("config boundary values", () => {
     it("should accept threshold=0 meaning always filter", async () => {
-      const rt = createMockRuntime(Object.values(buildMockActions()), { hasEmbeddingModel: true });
-      (rt.getSetting as ReturnType<typeof vi.fn>).mockImplementation((key: string) => {
-        if (key === "ACTION_FILTER_THRESHOLD") return "0";
-        return null;
+      const rt = createMockRuntime(Object.values(buildMockActions()), {
+        hasEmbeddingModel: true,
       });
+      (rt.getSetting as ReturnType<typeof vi.fn>).mockImplementation(
+        (key: string) => {
+          if (key === "ACTION_FILTER_THRESHOLD") return "0";
+          return null;
+        },
+      );
 
       const svc = (await ActionFilterService.start(rt)) as ActionFilterService;
       expect(svc.getConfig().threshold).toBe(0);
 
       // Even with threshold=0, filtering activates for any action count > 0
-      const result = await svc.filter(rt, createMockMemory("test"), createMockState());
+      const result = await svc.filter(
+        rt,
+        createMockMemory("test"),
+        createMockState(),
+      );
       expect(result.length).toBeLessThanOrEqual(15); // finalTopK
 
       await svc.stop();
@@ -2277,7 +2523,11 @@ describe("boundary conditions", () => {
       await svc.buildIndex(rt);
 
       // With both weights zero, safeTotalWeight kicks in (= 1)
-      const result = await svc.filter(rt, createMockMemory("swap"), createMockState());
+      const result = await svc.filter(
+        rt,
+        createMockMemory("swap"),
+        createMockState(),
+      );
       expect(result.length).toBeGreaterThan(0);
 
       await svc.stop();
@@ -2304,9 +2554,15 @@ describe("actionsProvider filtered path integration", () => {
       );
     }
 
-    const mockRuntime = createMockRuntime(manyActions, { hasEmbeddingModel: true });
-    const filterService = (await ActionFilterService.start(mockRuntime)) as ActionFilterService;
-    (mockRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(filterService);
+    const mockRuntime = createMockRuntime(manyActions, {
+      hasEmbeddingModel: true,
+    });
+    const filterService = (await ActionFilterService.start(
+      mockRuntime,
+    )) as ActionFilterService;
+    (mockRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(
+      filterService,
+    );
 
     const result = await actionsProvider.get!(
       mockRuntime,
@@ -2350,7 +2606,9 @@ describe("actionsProvider filtered path integration", () => {
 
     // Check that values contain all expected keys
     expect(result.values.actionNames).toContain("SWAP_TOKENS");
-    expect(result.values.actionsWithDescriptions).toContain("Swap cryptocurrency tokens");
+    expect(result.values.actionsWithDescriptions).toContain(
+      "Swap cryptocurrency tokens",
+    );
     expect(typeof result.values.actionExamples).toBe("string");
     expect(typeof result.values.actionCallExamples).toBe("string");
 
@@ -2361,8 +2619,16 @@ describe("actionsProvider filtered path integration", () => {
 
   it("should produce empty text sections when no actions pass validation", async () => {
     const noValidActions = [
-      createMockAction({ name: "BAD1", description: "Bad one", validateReturn: false }),
-      createMockAction({ name: "BAD2", description: "Bad two", validateReturn: false }),
+      createMockAction({
+        name: "BAD1",
+        description: "Bad one",
+        validateReturn: false,
+      }),
+      createMockAction({
+        name: "BAD2",
+        description: "Bad two",
+        validateReturn: false,
+      }),
     ];
     const mockRuntime = createMockRuntime(noValidActions);
 
@@ -2386,8 +2652,12 @@ describe("actionsProvider filtered path integration", () => {
       createMockAction({ name: "THROWS_NULL", description: "Throws null" }),
     ];
 
-    (actions[1].validate as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("fail"));
-    (actions[2].validate as ReturnType<typeof vi.fn>).mockRejectedValue("string error");
+    (actions[1].validate as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("fail"),
+    );
+    (actions[2].validate as ReturnType<typeof vi.fn>).mockRejectedValue(
+      "string error",
+    );
     (actions[3].validate as ReturnType<typeof vi.fn>).mockRejectedValue(null);
 
     const mockRuntime = createMockRuntime(actions);
@@ -2411,12 +2681,19 @@ describe("end-to-end pipeline", () => {
   it("should exercise the complete filter → validate → format pipeline with data inspection", async () => {
     const actions = Object.values(buildMockActions());
     // Mark SWAP_TOKENS as failing validation
-    (actions.find((a) => a.name === "SWAP_TOKENS")!.validate as ReturnType<typeof vi.fn>)
-      .mockResolvedValue(false);
+    (
+      actions.find((a) => a.name === "SWAP_TOKENS")!.validate as ReturnType<
+        typeof vi.fn
+      >
+    ).mockResolvedValue(false);
 
     const runtime = createMockRuntime(actions, { hasEmbeddingModel: true });
-    const filterService = (await ActionFilterService.start(runtime)) as ActionFilterService;
-    (runtime.getService as ReturnType<typeof vi.fn>).mockReturnValue(filterService);
+    const filterService = (await ActionFilterService.start(
+      runtime,
+    )) as ActionFilterService;
+    (runtime.getService as ReturnType<typeof vi.fn>).mockReturnValue(
+      filterService,
+    );
 
     const result = await actionsProvider.get!(
       runtime,
@@ -2447,7 +2724,9 @@ describe("end-to-end pipeline", () => {
   it("should correctly rank swap-related queries above social-related actions", async () => {
     const actions = Object.values(buildMockActions());
     const runtime = createMockRuntime(actions, { hasEmbeddingModel: true });
-    const filterService = (await ActionFilterService.start(runtime)) as ActionFilterService;
+    const filterService = (await ActionFilterService.start(
+      runtime,
+    )) as ActionFilterService;
 
     const result = await filterService.filter(
       runtime,
@@ -2473,7 +2752,9 @@ describe("end-to-end pipeline", () => {
     const runtime = createMockRuntime(actions, { hasEmbeddingModel: true });
 
     // 1. Start
-    const service = (await ActionFilterService.start(runtime)) as ActionFilterService;
+    const service = (await ActionFilterService.start(
+      runtime,
+    )) as ActionFilterService;
     expect(service.getMetrics().indexedActionCount).toBe(actions.length);
 
     // 2. Filter
@@ -2540,7 +2821,9 @@ describe("LARP-proofing", () => {
       hasEmbeddingModel: true,
       useModelFn: vi.fn().mockResolvedValue([NaN, NaN, NaN]),
     });
-    const service = (await ActionFilterService.start(badRuntime)) as ActionFilterService;
+    const service = (await ActionFilterService.start(
+      badRuntime,
+    )) as ActionFilterService;
 
     const metrics = service.getMetrics();
     // All 22 actions should have failed embedding
@@ -2556,7 +2839,9 @@ describe("LARP-proofing", () => {
       hasEmbeddingModel: true,
       useModelFn: vi.fn().mockRejectedValue(new Error("model down")),
     });
-    const service = (await ActionFilterService.start(throwingRuntime)) as ActionFilterService;
+    const service = (await ActionFilterService.start(
+      throwingRuntime,
+    )) as ActionFilterService;
 
     const metrics = service.getMetrics();
     expect(metrics.embedFailureCount).toBe(actions.length);
@@ -2567,19 +2852,29 @@ describe("LARP-proofing", () => {
   it("provider should call filterService even for small action counts (no hardcoded threshold)", async () => {
     // 5 actions — below any reasonable threshold
     const smallActions = [
-      createMockAction({ name: "REPLY", description: "Reply", alwaysInclude: true }),
+      createMockAction({
+        name: "REPLY",
+        description: "Reply",
+        alwaysInclude: true,
+      }),
       createMockAction({ name: "A", description: "Action A" }),
       createMockAction({ name: "B", description: "Action B" }),
       createMockAction({ name: "C", description: "Action C" }),
       createMockAction({ name: "D", description: "Action D" }),
     ];
 
-    const mockRuntime = createMockRuntime(smallActions, { hasEmbeddingModel: true });
+    const mockRuntime = createMockRuntime(smallActions, {
+      hasEmbeddingModel: true,
+    });
 
     // Create filter service with threshold=0 so it always filters
-    const filterService = new ActionFilterService(mockRuntime, { threshold: 0 });
+    const filterService = new ActionFilterService(mockRuntime, {
+      threshold: 0,
+    });
     await filterService.buildIndex(mockRuntime);
-    (mockRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(filterService);
+    (mockRuntime.getService as ReturnType<typeof vi.fn>).mockReturnValue(
+      filterService,
+    );
 
     // The provider should now call filterService.filter() even for 5 actions
     // because the hardcoded FILTER_THRESHOLD has been removed

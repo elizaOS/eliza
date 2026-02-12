@@ -52,4 +52,5 @@ settings_provider = Provider(
     description=_spec["description"],
     get=get_settings_context,
     dynamic=_spec.get("dynamic", True),
+    position=_spec.get("position"),
 )

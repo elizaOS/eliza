@@ -59,17 +59,15 @@ class TestAgentRuntimeSettings:
         runtime.set_setting("test_key", "test_value")
         assert runtime.get_setting("test_key") == "test_value"
 
-    @pytest.mark.skip(reason="CharacterSettings proto doesn't support arbitrary fields")
     def test_get_setting_from_character(self) -> None:
         character = Character(
             name="Test",
             bio=["Test"],
-            settings={"char_setting": "char_value"},
+            settings={"extra": {"char_setting": "char_value"}},
         )
         runtime = AgentRuntime(character=character)
         assert runtime.get_setting("char_setting") == "char_value"
 
-    @pytest.mark.skip(reason="Runtime get_setting from secrets not yet implemented")
     def test_get_setting_from_secrets(self) -> None:
         character = Character(
             name="Test",
@@ -305,42 +303,38 @@ class TestAgentRuntimeLLMMode:
         runtime = AgentRuntime(character=character, llm_mode=LLMMode.LARGE)
         assert runtime.get_llm_mode() == LLMMode.LARGE
 
-    @pytest.mark.skip(reason="CharacterSettings proto doesn't have LLM_MODE field")
     def test_character_setting_small(self) -> None:
         character = Character(
             name="Test",
             bio=["Test"],
-            settings={"LLM_MODE": "SMALL"},
+            settings={"extra": {"LLM_MODE": "SMALL"}},
         )
         runtime = AgentRuntime(character=character)
         assert runtime.get_llm_mode() == LLMMode.SMALL
 
-    @pytest.mark.skip(reason="CharacterSettings proto doesn't have LLM_MODE field")
     def test_constructor_option_takes_precedence(self) -> None:
         character = Character(
             name="Test",
             bio=["Test"],
-            settings={"LLM_MODE": "SMALL"},
+            settings={"extra": {"LLM_MODE": "SMALL"}},
         )
         runtime = AgentRuntime(character=character, llm_mode=LLMMode.LARGE)
         assert runtime.get_llm_mode() == LLMMode.LARGE
 
-    @pytest.mark.skip(reason="CharacterSettings proto doesn't have LLM_MODE field")
     def test_case_insensitive_character_setting(self) -> None:
         character = Character(
             name="Test",
             bio=["Test"],
-            settings={"LLM_MODE": "small"},
+            settings={"extra": {"LLM_MODE": "small"}},
         )
         runtime = AgentRuntime(character=character)
         assert runtime.get_llm_mode() == LLMMode.SMALL
 
-    @pytest.mark.skip(reason="CharacterSettings proto doesn't have LLM_MODE field")
     def test_invalid_setting_defaults_to_default(self) -> None:
         character = Character(
             name="Test",
             bio=["Test"],
-            settings={"LLM_MODE": "invalid"},
+            settings={"extra": {"LLM_MODE": "invalid"}},
         )
         runtime = AgentRuntime(character=character)
         assert runtime.get_llm_mode() == LLMMode.DEFAULT
@@ -391,32 +385,29 @@ class TestAgentRuntimeCheckShouldRespond:
         runtime = AgentRuntime(character=character, check_should_respond=True)
         assert runtime.is_check_should_respond_enabled() is True
 
-    @pytest.mark.skip(reason="CharacterSettings proto doesn't have CHECK_SHOULD_RESPOND field")
     def test_character_setting_false(self) -> None:
         character = Character(
             name="Test",
             bio=["Test"],
-            settings={"CHECK_SHOULD_RESPOND": "false"},
+            settings={"extra": {"CHECK_SHOULD_RESPOND": "false"}},
         )
         runtime = AgentRuntime(character=character)
         assert runtime.is_check_should_respond_enabled() is False
 
-    @pytest.mark.skip(reason="CharacterSettings proto doesn't have CHECK_SHOULD_RESPOND field")
     def test_constructor_option_takes_precedence(self) -> None:
         character = Character(
             name="Test",
             bio=["Test"],
-            settings={"CHECK_SHOULD_RESPOND": "false"},
+            settings={"extra": {"CHECK_SHOULD_RESPOND": "false"}},
         )
         runtime = AgentRuntime(character=character, check_should_respond=True)
         assert runtime.is_check_should_respond_enabled() is True
 
-    @pytest.mark.skip(reason="CharacterSettings proto doesn't have CHECK_SHOULD_RESPOND field")
     def test_non_false_string_defaults_to_true(self) -> None:
         character = Character(
             name="Test",
             bio=["Test"],
-            settings={"CHECK_SHOULD_RESPOND": "yes"},
+            settings={"extra": {"CHECK_SHOULD_RESPOND": "yes"}},
         )
         runtime = AgentRuntime(character=character)
         assert runtime.is_check_should_respond_enabled() is True

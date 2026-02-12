@@ -33,3 +33,10 @@ export {
   // Secrets-based redaction
   type SecretsRedactOptions,
 } from "./redact.js";
+
+// Sandbox token management
+export {
+  SANDBOX_TOKEN_PREFIX,
+  SandboxTokenManager,
+  type SecretTokenMetadata,
+} from "./sandbox-token-manager.js";

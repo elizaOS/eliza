@@ -56,4 +56,5 @@ providers_list_provider = Provider(
     description=_spec["description"],
     get=get_providers_list,
     dynamic=_spec.get("dynamic", False),
+    position=_spec.get("position"),
 )

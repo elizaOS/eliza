@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APP_DIR: packages/milaidy/apps/app
+  APP_DIR: apps/app
   NODE_VERSION: "23"
 
 jobs:
@@ -50,7 +50,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.APP_DIR }}/ios/App/Pods
-          key: pods-${{ runner.os }}-${{ hashFiles('packages/milaidy/apps/app/ios/App/Podfile.lock') }}
+          key: pods-${{ runner.os }}-${{ hashFiles('apps/app/ios/App/Podfile.lock') }}
           restore-keys: pods-${{ runner.os }}-
 
       - name: Install dependencies

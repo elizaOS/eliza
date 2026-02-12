@@ -123,7 +123,8 @@ class NoopRequestContextManager implements IRequestContextManager {
 }
 
 // Global singleton - will be configured by index.node.ts or index.browser.ts
-let globalRequestContextManager: IRequestContextManager = new NoopRequestContextManager();
+let globalRequestContextManager: IRequestContextManager =
+  new NoopRequestContextManager();
 
 /**
  * Set the global request context manager.
@@ -131,7 +132,9 @@ let globalRequestContextManager: IRequestContextManager = new NoopRequestContext
  *
  * @param manager - The context manager to use globally
  */
-export function setRequestContextManager(manager: IRequestContextManager): void {
+export function setRequestContextManager(
+  manager: IRequestContextManager,
+): void {
   globalRequestContextManager = manager;
 }
 
@@ -166,7 +169,10 @@ export function getRequestContextManager(): IRequestContextManager {
  * @param fn - The function to run with request context
  * @returns The result of the function
  */
-export function runWithRequestContext<T>(context: RequestContext | undefined, fn: () => T): T {
+export function runWithRequestContext<T>(
+  context: RequestContext | undefined,
+  fn: () => T,
+): T {
   return globalRequestContextManager.run(context, fn);
 }
 

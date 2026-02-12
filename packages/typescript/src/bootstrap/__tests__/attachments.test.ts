@@ -267,6 +267,75 @@ describe("processAttachments", () => {
     });
   });
 
+  it("should skip image description when DISABLE_IMAGE_DESCRIPTION setting is true", async () => {
+    const imageAttachment: Media = {
+      id: "image-1",
+      url: "https://example.com/image.jpg",
+      contentType: ContentType.IMAGE,
+      source: "image/jpeg",
+    };
+
+    // Mock getSetting to return true for DISABLE_IMAGE_DESCRIPTION
+    vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+      if (key === "DISABLE_IMAGE_DESCRIPTION") return true;
+      return null;
+    });
+
+    const result = await processAttachments([imageAttachment], runtime);
+
+    expect(result).toHaveLength(1);
+    // Attachment returned as-is — no model call made
+    expect(result[0].id).toBe("image-1");
+    expect(result[0].description).toBeUndefined();
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("should skip image description when DISABLE_IMAGE_DESCRIPTION setting is string 'true'", async () => {
+    const imageAttachment: Media = {
+      id: "image-2",
+      url: "https://example.com/image2.jpg",
+      contentType: ContentType.IMAGE,
+      source: "image/jpeg",
+    };
+
+    vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+      if (key === "DISABLE_IMAGE_DESCRIPTION") return "true";
+      return null;
+    });
+
+    const result = await processAttachments([imageAttachment], runtime);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].description).toBeUndefined();
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("should still process images when DISABLE_IMAGE_DESCRIPTION is not set", async () => {
+    const imageAttachment: Media = {
+      id: "image-3",
+      url: "https://example.com/image3.jpg",
+      contentType: ContentType.IMAGE,
+      source: "image/jpeg",
+    };
+
+    vi.spyOn(runtime, "getSetting").mockImplementation(() => null);
+
+    runtime.useModel.mockResolvedValue(`<response>
+  <title>Test</title>
+  <description>Should still process</description>
+  <text>Text content</text>
+</response>`);
+
+    const result = await processAttachments([imageAttachment], runtime);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].description).toBe("Should still process");
+    expect(runtime.useModel).toHaveBeenCalledWith(ModelType.IMAGE_DESCRIPTION, {
+      prompt: expect.stringContaining("Analyze the provided image"),
+      imageUrl: "https://example.com/image3.jpg",
+    });
+  });
+
   it("should set default title when not provided in response", async () => {
     const imageAttachment: Media = {
       id: "image-1",

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type {
+  CreateOptions,
   Example,
   ExampleLanguage,
   ExamplesManifest,
-  CreateOptions,
   InfoOptions,
 } from "../types.js";
 

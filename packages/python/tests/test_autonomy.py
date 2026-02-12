@@ -11,9 +11,10 @@ from elizaos.bootstrap.autonomy import (
     autonomy_status_provider,
     send_to_admin_action,
 )
+from elizaos.bootstrap.autonomy.service import AUTONOMY_TASK_TAGS
 from elizaos.bootstrap.autonomy.types import AutonomyStatus
 from elizaos.types.memory import Memory
-from elizaos.types.primitives import Content, as_uuid
+from elizaos.types.primitives import Content, as_uuid, string_to_uuid
 
 TEST_AGENT_ID = "00000000-0000-0000-0000-000000000001"
 TEST_ROOM_ID = "00000000-0000-0000-0000-000000000002"
@@ -75,6 +76,9 @@ class TestAutonomyService:
         assert AutonomyService.service_type == AUTONOMY_SERVICE_TYPE
         assert AutonomyService.service_type == "AUTONOMY"
 
+    def test_task_tags_match_typescript(self):
+        assert AUTONOMY_TASK_TAGS == ["queue", "repeat", "autonomy"]
+
     @pytest.mark.asyncio
     async def test_start_creates_service(self, test_runtime):
         service = await AutonomyService.start(test_runtime)
@@ -84,6 +88,12 @@ class TestAutonomyService:
         assert service.is_loop_running() is False
         assert service.get_loop_interval() == 30000
         assert service.get_autonomous_room_id() is not None
+
+    @pytest.mark.asyncio
+    async def test_autonomous_room_id_is_deterministic(self, test_runtime):
+        service = await AutonomyService.start(test_runtime)
+        expected_room_id = as_uuid(string_to_uuid(f"autonomy-room-{test_runtime.agent_id}"))
+        assert service.get_autonomous_room_id() == expected_room_id
 
     @pytest.mark.asyncio
     async def test_auto_start_when_enabled(self, test_runtime):

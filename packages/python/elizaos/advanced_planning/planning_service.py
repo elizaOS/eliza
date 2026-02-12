@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 from google.protobuf.json_format import MessageToDict
 
 from elizaos.logger import Logger
-from elizaos.types.components import ActionContext, ActionResult, HandlerCallback, HandlerOptions
+from elizaos.types.components import ActionContext, ActionResult, HandlerCallback
 from elizaos.types.memory import Memory
 from elizaos.types.primitives import Content
 from elizaos.types.service import Service
@@ -538,6 +538,8 @@ Focus on:
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for r in results:
+            if isinstance(r, Exception):
+                raise RuntimeError(f"Plan step failed during parallel execution: {r}") from r
             if isinstance(r, ActionResult):
                 execution.results.append(r)
 
@@ -586,6 +588,10 @@ Focus on:
 
             for step, r in zip(ready_batch, results, strict=False):
                 completed_count += 1
+                if isinstance(r, Exception):
+                    raise RuntimeError(
+                        f"Plan step '{step.action_name}' failed during DAG execution: {r}"
+                    ) from r
                 if isinstance(r, ActionResult):
                     execution.results.append(r)
 
@@ -622,13 +628,16 @@ Focus on:
             if execution.abort_event.is_set():
                 raise RuntimeError("Plan execution aborted")
             try:
-                options = HandlerOptions(
-                    action_context=action_context,
-                    parameters=step.parameters,
-                )
-                # Attach extra execution context (allowed by extra="allow")
-                options.previous_results = previous_results  # type: ignore[attr-defined]
-                options.context = {"workingMemory": execution.working_memory}  # type: ignore[attr-defined]
+                options = type(
+                    "_PlanningHandlerOptions",
+                    (),
+                    {
+                        "action_context": action_context,
+                        "parameters": step.parameters,
+                        "previous_results": previous_results,
+                        "context": {"workingMemory": execution.working_memory},
+                    },
+                )()
 
                 validate_fn = getattr(action, "validate", None) or getattr(
                     action, "validate_fn", None
@@ -641,12 +650,17 @@ Focus on:
                 if result is None:
                     return None
 
-                if result.data is None:
-                    result.data = {}
+                step_metadata = {
+                    "stepId": str(step.id),
+                    "actionName": step.action_name,
+                    "executedAt": int(time.time() * 1000),
+                }
                 if isinstance(result.data, dict):
-                    result.data["stepId"] = str(step.id)
-                    result.data["actionName"] = step.action_name
-                    result.data["executedAt"] = int(time.time() * 1000)
+                    result.data.update(step_metadata)
+                elif hasattr(result.data, "update"):
+                    result.data.update(step_metadata)
+                else:
+                    result.data = step_metadata
                 return result
             except Exception as e:
                 retries += 1

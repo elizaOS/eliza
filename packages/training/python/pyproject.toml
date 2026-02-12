@@ -1,0 +1,41 @@
+[project]
+name = "elizaos-training"
+version = "0.2.0"
+description = "RL training pipeline for ElizaOS agents using Atropos"
+authors = [
+    {name = "ElizaOS Contributors"}
+]
+requires-python = ">=3.10"
+dependencies = [
+    "atroposlib>=0.1.0",
+    "asyncpg>=0.29.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+    "numpy>=1.24.0",
+    "openai>=1.0.0",
+    "litellm>=1.0.0",
+    "tabulate>=0.9.0",
+    "vllm>=0.4.0",
+    "transformers>=4.40.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+train-mmo = "scripts.train_mmo:main"
+check-windows = "scripts.check_windows:main"
+run-migrations = "scripts.run_migrations:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]

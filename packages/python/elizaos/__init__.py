@@ -108,7 +108,6 @@ from elizaos.types import (
     string_to_uuid,
 )
 from elizaos.types.database import IDatabaseAdapter  # noqa: E402
-from elizaos.types.environment import ChannelType  # noqa: E402
 from elizaos.types.primitives import (  # noqa: E402
     ChannelType,
     Content,

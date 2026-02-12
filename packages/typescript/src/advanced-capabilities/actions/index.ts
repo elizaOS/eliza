@@ -5,6 +5,7 @@
  */
 
 export { addContactAction } from "./addContact.ts";
+export { createTaskAction } from "./createTask.ts";
 export { followRoomAction } from "./followRoom.ts";
 export { generateImageAction } from "./imageGeneration.ts";
 export { muteRoomAction } from "./muteRoom.ts";

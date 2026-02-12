@@ -1,3 +1,4 @@
+import { getPromptReferenceDate } from "../../deterministic";
 import { findEntityByName } from "../../entities.ts";
 import { logger } from "../../logger.ts";
 import type { FollowUpService } from "../../services/followUp.ts";
@@ -21,6 +22,20 @@ interface ScheduleFollowUpXmlResult {
   reason?: string;
   priority?: string;
   message?: string;
+}
+
+function normalizePriority(
+  rawPriority: string | undefined,
+): "high" | "medium" | "low" {
+  const normalized = rawPriority?.trim().toLowerCase();
+  if (
+    normalized === "high" ||
+    normalized === "medium" ||
+    normalized === "low"
+  ) {
+    return normalized;
+  }
+  return "medium";
 }
 
 const scheduleFollowUpTemplate = `# Schedule Follow-up
@@ -163,7 +178,12 @@ export const scheduleFollowUpAction: Action = {
       message: message.content.text,
       senderId: message.entityId,
       senderName: state.values?.senderName || "User",
-      currentDateTime: new Date().toISOString(),
+      currentDateTime: getPromptReferenceDate({
+        runtime,
+        message,
+        state,
+        surface: "action:schedule_follow_up",
+      }).toISOString(),
     };
 
     const prompt = composePromptFromState({
@@ -221,7 +241,7 @@ export const scheduleFollowUpAction: Action = {
       entityId,
       scheduledAt,
       parsedResponse.reason || "Follow-up",
-      (parsedResponse.priority as "high" | "medium" | "low") || "medium",
+      normalizePriority(parsedResponse.priority),
       parsedResponse.message,
     );
 

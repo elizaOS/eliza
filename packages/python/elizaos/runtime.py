@@ -4,11 +4,18 @@ import asyncio
 import re
 import uuid
 import xml.etree.ElementTree as ET
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, MutableMapping
 from dataclasses import dataclass
 from typing import Any
 
+from google.protobuf.struct_pb2 import Value as StructValue
+
 from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
+from elizaos.deterministic import (
+    build_conversation_seed,
+    deterministic_hex,
+    deterministic_uuid,
+)
 from elizaos.logger import Logger, create_logger
 from elizaos.settings import decrypt_secret, get_salt
 from elizaos.types.agent import Character, TemplateType
@@ -18,6 +25,7 @@ from elizaos.types.components import (
     Evaluator,
     HandlerCallback,
     HandlerOptions,
+    PreEvaluatorResult,
     Provider,
 )
 from elizaos.types.database import AgentRunSummaryResult, IDatabaseAdapter, Log
@@ -80,6 +88,49 @@ class StreamingModelHandlerWrapper:
 
 
 _anonymous_agent_counter = 0
+
+_MISSING = object()
+
+
+def _struct_value_to_python(value: StructValue) -> object | None:
+    kind = value.WhichOneof("kind")
+    if kind == "null_value":
+        return None
+    if kind == "number_value":
+        return value.number_value
+    if kind == "string_value":
+        return value.string_value
+    if kind == "bool_value":
+        return value.bool_value
+    if kind == "struct_value":
+        return {
+            key: _struct_value_to_python(item)
+            for key, item in value.struct_value.fields.items()
+        }
+    if kind == "list_value":
+        return [_struct_value_to_python(item) for item in value.list_value.values]
+    return None
+
+
+def _is_struct_compatible(value: object) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, (str, int, float, bool)):
+        return True
+    if isinstance(value, list):
+        return all(_is_struct_compatible(item) for item in value)
+    if isinstance(value, Mapping):
+        return all(
+            isinstance(map_key, str) and _is_struct_compatible(map_value)
+            for map_key, map_value in value.items()
+        )
+    return False
+
+
+def _to_runtime_setting_value(value: object | None) -> str | bool | int | float | None:
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    return str(value)
 
 
 class AgentRuntime(IAgentRuntime):
@@ -354,37 +405,56 @@ class AgentRuntime(IAgentRuntime):
         if secret:
             if self._character.secrets is None:
                 self._character.secrets = {}
-            if isinstance(self._character.secrets, dict):
+            if isinstance(self._character.secrets, MutableMapping):
                 self._character.secrets[key] = value  # type: ignore[assignment]
             else:
                 # Fall back to internal settings dict for protobuf objects
-                self._settings[key] = value
+                self._settings[key] = _to_runtime_setting_value(value)
             return
 
         # Try to set on character.settings if it's a dict
-        if isinstance(self._character.settings, dict):
+        if isinstance(self._character.settings, MutableMapping):
             self._character.settings[key] = value  # type: ignore[assignment]
+            return
+
+        settings_extra = getattr(self._character.settings, "extra", None)
+        if settings_extra is not None and hasattr(settings_extra, "update") and _is_struct_compatible(
+            value
+        ):
+            settings_extra.update({key: value})
         else:
             # Fall back to internal settings dict for protobuf objects
-            self._settings[key] = value
+            self._settings[key] = _to_runtime_setting_value(value)
 
     def get_setting(self, key: str) -> object | None:
         settings = self._character.settings
         secrets = self._character.secrets
 
-        nested_secrets: dict[str, object] | None = None
-        if isinstance(settings, dict):
+        nested_secrets: Mapping[str, object] | None = None
+        extra_value: object = _MISSING
+        if isinstance(settings, Mapping):
             nested = settings.get("secrets")
-            if isinstance(nested, dict):
+            if isinstance(nested, Mapping):
                 nested_secrets = nested
+        else:
+            settings_extra = getattr(settings, "extra", None)
+            settings_fields = getattr(settings_extra, "fields", None)
+            if isinstance(settings_fields, Mapping) and key in settings_fields:
+                struct_candidate = settings_fields[key]
+                if isinstance(struct_candidate, StructValue):
+                    extra_value = _struct_value_to_python(struct_candidate)
+                else:
+                    extra_value = struct_candidate
 
         value: object | None
-        if isinstance(secrets, dict) and key in secrets:
+        if isinstance(secrets, Mapping) and key in secrets:
             value = secrets.get(key)
-        elif isinstance(settings, dict) and key in settings:
+        elif isinstance(settings, Mapping) and key in settings:
             value = settings.get(key)
-        elif isinstance(nested_secrets, dict) and key in nested_secrets:
+        elif isinstance(nested_secrets, Mapping) and key in nested_secrets:
             value = nested_secrets.get(key)
+        elif extra_value is not _MISSING:
+            value = extra_value
         else:
             value = self._settings.get(key)
 
@@ -409,12 +479,17 @@ class AgentRuntime(IAgentRuntime):
 
     def get_all_settings(self) -> dict[str, object | None]:
         keys: set[str] = set(self._settings.keys())
-        if isinstance(self._character.settings, dict):
+        if isinstance(self._character.settings, Mapping):
             keys.update(self._character.settings.keys())
             nested = self._character.settings.get("secrets")
-            if isinstance(nested, dict):
+            if isinstance(nested, Mapping):
                 keys.update(nested.keys())
-        if isinstance(self._character.secrets, dict):
+        else:
+            settings_extra = getattr(self._character.settings, "extra", None)
+            settings_fields = getattr(settings_extra, "fields", None)
+            if isinstance(settings_fields, Mapping):
+                keys.update(settings_fields.keys())
+        if isinstance(self._character.secrets, Mapping):
             keys.update(self._character.secrets.keys())
 
         return {k: self.get_setting(k) for k in keys}
@@ -608,8 +683,14 @@ class AgentRuntime(IAgentRuntime):
                     errors.append(
                         f"Required parameter '{param_def.name}' was not provided for action {action.name}"
                     )
-                elif getattr(param_def.schema, "default_value", None):
-                    validated[param_def.name] = param_def.schema.default_value
+                else:
+                    default_value = getattr(param_def.schema, "default_value", None)
+                    if isinstance(default_value, StructValue):
+                        parsed_default = _struct_value_to_python(default_value)
+                        if parsed_default is not None:
+                            validated[param_def.name] = parsed_default
+                    elif default_value is not None:
+                        validated[param_def.name] = default_value
                 continue
 
             schema_type = param_def.schema.type
@@ -891,7 +972,7 @@ class AgentRuntime(IAgentRuntime):
         self,
         message: Memory,
         state: State | None = None,
-    ) -> "PreEvaluatorResult":
+    ) -> PreEvaluatorResult:
         """Run phase='pre' evaluators as middleware before memory storage.
 
         Pre-evaluators can inspect, rewrite, or block a message before it
@@ -902,8 +983,6 @@ class AgentRuntime(IAgentRuntime):
         Returns:
             A merged PreEvaluatorResult.
         """
-        from elizaos.types.components import PreEvaluatorResult
-
         pre_evaluators = [e for e in self._evaluators if getattr(e, "phase", "post") == "pre"]
         if not pre_evaluators:
             return PreEvaluatorResult(blocked=False)
@@ -1982,6 +2061,12 @@ class AgentRuntime(IAgentRuntime):
 
         schema_key = ",".join(s.field for s in schema)
         model_schema_key = f"{model_type_str}:{schema_key}"
+        deterministic_seed = build_conversation_seed(
+            self,
+            None,
+            state,
+            f"dynamic-prompt:{model_schema_key}",
+        )
 
         # Get validation level from settings or options (mirrors TypeScript behavior)
         default_context_level = 2
@@ -2023,7 +2108,11 @@ class AgentRuntime(IAgentRuntime):
                     row.validate_field if row.validate_field is not None else default_validate
                 )
                 if needs_validation:
-                    per_field_codes[row.field] = str(uuid.uuid4())[:8]
+                    per_field_codes[row.field] = deterministic_hex(
+                        deterministic_seed,
+                        f"field-code:{row.field}",
+                        8,
+                    )
 
         # Streaming extractor (created on first iteration if streaming enabled)
         extractor: ValidationStreamExtractor | None = None
@@ -2147,9 +2236,18 @@ class AgentRuntime(IAgentRuntime):
             example_lines.append(container_end)
             example = "\n".join(example_lines)
 
-            init_code = str(uuid.uuid4())
-            mid_code = str(uuid.uuid4())
-            final_code = str(uuid.uuid4())
+            init_code = deterministic_uuid(
+                deterministic_seed,
+                f"init-code:{current_retry}",
+            )
+            mid_code = deterministic_uuid(
+                deterministic_seed,
+                f"mid-code:{current_retry}",
+            )
+            final_code = deterministic_uuid(
+                deterministic_seed,
+                f"final-code:{current_retry}",
+            )
 
             section_start = "<output>" if is_xml else "# Strict Output instructions"
             section_end = "</output>" if is_xml else ""
@@ -2223,25 +2321,34 @@ end code: {final_code}
                 if not stream_fields and any(row.field == "text" for row in schema):
                     stream_fields = ["text"]
 
-                stream_message_id = f"stream-{uuid.uuid4().hex[:12]}"
+                stream_message_id = (
+                    "stream-"
+                    + deterministic_hex(
+                        deterministic_seed,
+                        f"stream-message-id:{current_retry}",
+                        20,
+                    )
+                )
 
-                # Capture stream_message_id in default parameter to avoid late binding
+                on_stream_chunk = options.on_stream_chunk
+                on_stream_event = options.on_stream_event
+
+                def _emit_chunk(chunk: str, _field: str | None) -> None:
+                    if on_stream_chunk is not None:
+                        on_stream_chunk(chunk, stream_message_id)
+
+                def _emit_event(event: StreamEvent) -> None:
+                    if on_stream_event is not None:
+                        on_stream_event(event, stream_message_id)
+
                 extractor = ValidationStreamExtractor(
                     ValidationStreamExtractorConfig(
                         level=validation_level,
                         schema=schema,
                         stream_fields=stream_fields,
                         expected_codes=per_field_codes,
-                        on_chunk=lambda chunk,
-                        _field,
-                        msg_id=stream_message_id: options.on_stream_chunk(chunk, msg_id)
-                        if options.on_stream_chunk
-                        else None,
-                        on_event=lambda event, msg_id=stream_message_id: options.on_stream_event(
-                            event, msg_id
-                        )
-                        if options.on_stream_event
-                        else None,
+                        on_chunk=_emit_chunk,
+                        on_event=_emit_event if on_stream_event is not None else None,
                         abort_signal=options.abort_signal,
                         has_rich_consumer=has_rich_consumer,
                     )

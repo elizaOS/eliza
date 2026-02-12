@@ -17,7 +17,7 @@ export function createTestMemory(
   const resolvedContent: Content =
     typeof content === "string"
       ? { text: content }
-      : content ?? { text: "test memory" };
+      : (content ?? { text: "test memory" });
 
   return {
     id: crypto.randomUUID() as UUID,
@@ -61,7 +61,10 @@ export async function expectRejection(
     throw new Error("Expected promise to reject but it resolved");
   } catch (err) {
     // Re-throw our own sentinel
-    if (err instanceof Error && err.message === "Expected promise to reject but it resolved") {
+    if (
+      err instanceof Error &&
+      err.message === "Expected promise to reject but it resolved"
+    ) {
       throw err;
     }
 
@@ -115,7 +118,7 @@ export async function retry<T>(
     } catch (err) {
       lastError = err as Error;
       if (i < totalAttempts - 1) {
-        const delay = baseDelay * Math.pow(2, i);
+        const delay = baseDelay * 2 ** i;
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
@@ -124,9 +127,28 @@ export async function retry<T>(
 }
 
 const WORDS = [
-  "the", "quick", "brown", "fox", "jumps", "over", "lazy", "dog",
-  "hello", "world", "test", "data", "random", "sentence", "generate",
-  "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "theta",
+  "the",
+  "quick",
+  "brown",
+  "fox",
+  "jumps",
+  "over",
+  "lazy",
+  "dog",
+  "hello",
+  "world",
+  "test",
+  "data",
+  "random",
+  "sentence",
+  "generate",
+  "alpha",
+  "beta",
+  "gamma",
+  "delta",
+  "epsilon",
+  "zeta",
+  "theta",
 ];
 
 export const testDataGenerators = {

@@ -33,6 +33,7 @@ interface OptionObject {
  */
 export const choiceProvider: Provider = {
   name: "CHOICE",
+  position: 80,
   get: async (
     runtime: IAgentRuntime,
     message: Memory,

@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+if TYPE_CHECKING:
+    from elizaos.types.runtime import IAgentRuntime
+
 
 class LLMMode(str, Enum):
     DEFAULT = "DEFAULT"

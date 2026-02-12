@@ -4,6 +4,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from google.protobuf.json_format import MessageToDict
 
 from elizaos.advanced_planning.planning_service import ActionPlan, ActionStep
 from elizaos.runtime import AgentRuntime
@@ -15,7 +16,6 @@ from elizaos.types.model import ModelType
 from elizaos.types.primitives import Content, as_uuid
 
 
-@pytest.mark.skip(reason="State.values.extra access issue with protobuf")
 @pytest.mark.asyncio
 async def test_advanced_planning_provider_parses_model_output() -> None:
     character = Character(name="AdvPlanningProvider", bio=["Test"], advanced_planning=True)
@@ -49,7 +49,13 @@ async def test_advanced_planning_provider_parses_model_output() -> None:
     state = await runtime.compose_state(msg)
     result = await provider.get(runtime, msg, state)
     assert result.data is not None
-    assert result.data.get("planningRequired") is True
+    parsed_data = (
+        MessageToDict(result.data, preserving_proto_field_name=True)
+        if hasattr(result.data, "DESCRIPTOR")
+        else result.data
+    )
+    assert isinstance(parsed_data, dict)
+    assert parsed_data.get("planningRequired") is True
 
 
 @pytest.mark.asyncio
@@ -72,7 +78,6 @@ async def test_advanced_planning_service_creates_simple_plan() -> None:
     assert any(step.action_name == "SEND_EMAIL" for step in plan.steps)
 
 
-@pytest.mark.skip(reason="State.values.extra access issue with protobuf")
 @pytest.mark.asyncio
 async def test_advanced_planning_service_creates_comprehensive_plan_and_executes() -> None:
     character = Character(name="AdvPlanningSvcExec", bio=["Test"], advanced_planning=True)
@@ -124,7 +129,6 @@ async def test_advanced_planning_service_creates_comprehensive_plan_and_executes
     assert result.total_steps >= 1
 
 
-@pytest.mark.skip(reason="validate lambda returns bool, not coroutine")
 @pytest.mark.asyncio
 async def test_advanced_planning_dag_executes_in_dependency_order() -> None:
     character = Character(name="AdvPlanningDag", bio=["Test"], advanced_planning=True)
@@ -220,6 +224,8 @@ async def test_advanced_planning_dag_executes_in_dependency_order() -> None:
         content=Content(text="run"),
     )
     state = await runtime.compose_state(msg)
-    await planning_service.execute_plan(plan, msg, state=state, callback=None)
+    execution_result = await planning_service.execute_plan(plan, msg, state=state, callback=None)
 
+    assert execution_result.success is True
+    assert execution_result.completed_steps == 3
     assert execution_order == ["STEP_A", "STEP_B", "STEP_C"]

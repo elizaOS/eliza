@@ -1,3 +1,4 @@
+import { getPromptReferenceDate } from "../../deterministic";
 import { requireActionSpec } from "../../generated/spec-helpers.ts";
 import { logger } from "../../logger.ts";
 import { updateContactTemplate } from "../../prompts.ts";
@@ -80,7 +81,12 @@ export const updateContactAction: Action = {
           message: message.content.text,
           senderName: state?.values?.senderName || "User",
           senderId: message.entityId,
-          currentDateTime: new Date().toISOString(),
+          currentDateTime: getPromptReferenceDate({
+            runtime,
+            message,
+            state: { data: state?.data ?? {} },
+            surface: "action:update_contact",
+          }).toISOString(),
         },
         data: state?.data || {},
         text: state?.text || "",

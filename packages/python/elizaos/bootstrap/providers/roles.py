@@ -92,4 +92,5 @@ roles_provider = Provider(
     description=_spec["description"],
     get=get_roles,
     dynamic=_spec.get("dynamic", True),
+    position=_spec.get("position"),
 )
