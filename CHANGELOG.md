@@ -105,7 +105,6 @@
 - fix: Update Supabase schema.sql [\#1660](https://github.com/elizaOS/eliza/pull/1660) ([0xRider](https://github.com/0xRider))
 - fix: Fix bug in plugin-bootstrap/src/evaluators/facts.ts [\#1648](https://github.com/elizaOS/eliza/pull/1648) ([metakai1](https://github.com/metakai1))
 - Added Hungarian README [\#1645](https://github.com/elizaOS/eliza/pull/1645) ([mdominikd](https://github.com/mdominikd))
-- fix: lockfile wasn't updated after dependency + bring viem to root level package.json [\#1642](https://github.com/elizaOS/eliza/pull/1642) ([monilpat](https://github.com/monilpat))
 - chore: update viem dependency version in plugin-evm and plugin-goat [\#1637](https://github.com/elizaOS/eliza/pull/1637) ([bertux](https://github.com/bertux))
 - Add README\_AR.md [\#1634](https://github.com/elizaOS/eliza/pull/1634) ([xMariem](https://github.com/xMariem))
 - fix: corrected path for image upload [\#1632](https://github.com/elizaOS/eliza/pull/1632) ([ShreyGanatra](https://github.com/ShreyGanatra))
@@ -144,7 +143,6 @@
 - fix: Telegram Bad Request: can't parse entities [\#1546](https://github.com/elizaOS/eliza/pull/1546) ([azep-ninja](https://github.com/azep-ninja))
 - Chore: Refactor Imports. Improve PR Template [\#1545](https://github.com/elizaOS/eliza/pull/1545) ([mgunnin](https://github.com/mgunnin))
 - fix: twitter usernames can start with numbers [\#1541](https://github.com/elizaOS/eliza/pull/1541) ([odilitime](https://github.com/odilitime))
-- feat: improve stale pr/issue messages [\#1540](https://github.com/elizaOS/eliza/pull/1540) ([monilpat](https://github.com/monilpat))
 - feat: add autoscroll chat client [\#1538](https://github.com/elizaOS/eliza/pull/1538) ([swizzmagik](https://github.com/swizzmagik))
 - docs: Polish readme [\#1537](https://github.com/elizaOS/eliza/pull/1537) ([yanushevitz](https://github.com/yanushevitz))
 - fix: disable trust provider for PostGres db [\#1536](https://github.com/elizaOS/eliza/pull/1536) ([swizzmagik](https://github.com/swizzmagik))
@@ -280,9 +278,6 @@
 - feat: handle long tweet [\#1339](https://github.com/elizaOS/eliza/pull/1339) ([tcm390](https://github.com/tcm390))
 - fix: Twitter login notifications, incorrect cookie management.  [\#1330](https://github.com/elizaOS/eliza/pull/1330) ([ChristopherTrimboli](https://github.com/ChristopherTrimboli))
 - feat: added docs for plugin-nft-generation [\#1327](https://github.com/elizaOS/eliza/pull/1327) ([vishal-kanna](https://github.com/vishal-kanna))
-- feat: add auto PR / issue close after being stale for a certain amount of time [\#1317](https://github.com/elizaOS/eliza/pull/1317) ([monilpat](https://github.com/monilpat))
-- feat: greet first time contributors [\#1316](https://github.com/elizaOS/eliza/pull/1316) ([monilpat](https://github.com/monilpat))
-- feat: \[Code Scanning\] Security Improvements - create codeql.yml [\#1314](https://github.com/elizaOS/eliza/pull/1314) ([monilpat](https://github.com/monilpat))
 - fix: Update speech.ts [\#1312](https://github.com/elizaOS/eliza/pull/1312) ([y4my4my4m](https://github.com/y4my4my4m))
 - fix: {{user}} tags in templates/examples empty when passed to LLM [\#1305](https://github.com/elizaOS/eliza/pull/1305) ([tcm390](https://github.com/tcm390))
 - fix: fix imageModelProvider apiKey selection fallback  [\#1272](https://github.com/elizaOS/eliza/pull/1272) ([UD1sto](https://github.com/UD1sto))
@@ -538,10 +533,8 @@
 - feat: Add `chatapi.akash.network` to available list of model providers \(FREE LLAMA API ACCESS!\) [\#1131](https://github.com/elizaOS/eliza/pull/1131) ([MbBrainz](https://github.com/MbBrainz))
 - fix: discord client duplicate function removal [\#1125](https://github.com/elizaOS/eliza/pull/1125) ([azep-ninja](https://github.com/azep-ninja))
 - fix: add more heplful default agents \(Dobby and C3PO\) [\#1124](https://github.com/elizaOS/eliza/pull/1124) ([0xCardinalError](https://github.com/0xCardinalError))
-- fix: Refactor to prevent unnecessary lockfile changes [\#1120](https://github.com/elizaOS/eliza/pull/1120) ([monilpat](https://github.com/monilpat))
 - chore: fix broken bun lockfile [\#1115](https://github.com/elizaOS/eliza/pull/1115) ([shakkernerd](https://github.com/shakkernerd))
 - feat: New docs for community section [\#1114](https://github.com/elizaOS/eliza/pull/1114) ([madjin](https://github.com/madjin))
-- fix: Revert "Feat: Update community section of docs" [\#1112](https://github.com/elizaOS/eliza/pull/1112) ([monilpat](https://github.com/monilpat))
 - Feat: Update community section of docs [\#1111](https://github.com/elizaOS/eliza/pull/1111) ([madjin](https://github.com/madjin))
 - Documentation: Plugin list numbering and titles [\#1107](https://github.com/elizaOS/eliza/pull/1107) ([brunocalmels](https://github.com/brunocalmels))
 - fix: add missing imports [\#1104](https://github.com/elizaOS/eliza/pull/1104) ([shakkernerd](https://github.com/shakkernerd))
@@ -651,7 +644,6 @@
 - feat: add venice.ai api model provider [\#1008](https://github.com/elizaOS/eliza/pull/1008) ([proteanx](https://github.com/proteanx))
 - feat: improve Twitter client with action processing [\#1007](https://github.com/elizaOS/eliza/pull/1007) ([dorianjanezic](https://github.com/dorianjanezic))
 - chore: Bring Develop up to date with HEAD [\#1006](https://github.com/elizaOS/eliza/pull/1006) ([odilitime](https://github.com/odilitime))
-- feat: create example folder with example plugin [\#1004](https://github.com/elizaOS/eliza/pull/1004) ([monilpat](https://github.com/monilpat))
 - chore: Twitter search switch [\#1003](https://github.com/elizaOS/eliza/pull/1003) ([odilitime](https://github.com/odilitime))
 - fix: add callback to action in farcaster client [\#1002](https://github.com/elizaOS/eliza/pull/1002) ([sin-bufan](https://github.com/sin-bufan))
 - fix: typo initialize [\#1000](https://github.com/elizaOS/eliza/pull/1000) ([cryptofish7](https://github.com/cryptofish7))
@@ -672,7 +664,6 @@
 - Fix farcaster client process action issue [\#963](https://github.com/elizaOS/eliza/pull/963) ([sin-bufan](https://github.com/sin-bufan))
 - fix\(agent\): correct EVM plugin activation condition [\#962](https://github.com/elizaOS/eliza/pull/962) ([0xAsten](https://github.com/0xAsten))
 - fix: use MAX\_TWEET\_LENGTH from setting [\#960](https://github.com/elizaOS/eliza/pull/960) ([oxSaturn](https://github.com/oxSaturn))
-- fix: Revert "docs: add WSL installation guide" [\#959](https://github.com/elizaOS/eliza/pull/959) ([monilpat](https://github.com/monilpat))
 - feat: add dev script to plugin-aptos [\#956](https://github.com/elizaOS/eliza/pull/956) ([asianviking](https://github.com/asianviking))
 - chore: rename intiface plugin [\#955](https://github.com/elizaOS/eliza/pull/955) ([odilitime](https://github.com/odilitime))
 - fix: revert llamacloud endpoint change [\#954](https://github.com/elizaOS/eliza/pull/954) ([odilitime](https://github.com/odilitime))
@@ -690,8 +681,6 @@
 - feat: Config eternalai model from env [\#927](https://github.com/elizaOS/eliza/pull/927) ([genesis-0000](https://github.com/genesis-0000))
 - feat: Add NanoGPT provider [\#926](https://github.com/elizaOS/eliza/pull/926) ([dylan1951](https://github.com/dylan1951))
 - fix: use of Heurist model env vars [\#924](https://github.com/elizaOS/eliza/pull/924) ([boxhock](https://github.com/boxhock))
-- feat: add readContract / invokeContract functionality to Coinbase plugin [\#923](https://github.com/elizaOS/eliza/pull/923) ([monilpat](https://github.com/monilpat))
-- chore: deprecate text based way of generating JSON [\#920](https://github.com/elizaOS/eliza/pull/920) ([monilpat](https://github.com/monilpat))
 - feat: create README\_TH.md  [\#918](https://github.com/elizaOS/eliza/pull/918) ([asianviking](https://github.com/asianviking))
 - feat: update gaianet config [\#915](https://github.com/elizaOS/eliza/pull/915) ([L-jasmine](https://github.com/L-jasmine))
 - fix: Farcater client cleanup and fixed response logic [\#914](https://github.com/elizaOS/eliza/pull/914) ([sayangel](https://github.com/sayangel))
@@ -716,7 +705,6 @@
 - loading indicator [\#827](https://github.com/elizaOS/eliza/pull/827) ([tcm390](https://github.com/tcm390))
 - use github access token [\#825](https://github.com/elizaOS/eliza/pull/825) ([tcm390](https://github.com/tcm390))
 - fix: refactor contributor page [\#809](https://github.com/elizaOS/eliza/pull/809) ([tcm390](https://github.com/tcm390))
-- feat: implement advanced coinbase trading [\#725](https://github.com/elizaOS/eliza/pull/725) ([monilpat](https://github.com/monilpat))
 
 ## [v0.1.5-alpha.5](https://github.com/elizaOS/eliza/tree/v0.1.5-alpha.5) (2024-12-07)
 
@@ -749,8 +737,6 @@
 - fix: run release workflow after a github release is created [\#846](https://github.com/elizaOS/eliza/pull/846) ([cygaar](https://github.com/cygaar))
 - fix: Include scripts/postinstall.js in the final NPM package [\#843](https://github.com/elizaOS/eliza/pull/843) ([martincik](https://github.com/martincik))
 - feat: add Aptos plugin [\#818](https://github.com/elizaOS/eliza/pull/818) ([0xaptosj](https://github.com/0xaptosj))
-- feat: add coinbase  ERC20, ERC721, and ERC1155 tokenContract deployment / invokement plugin [\#803](https://github.com/elizaOS/eliza/pull/803) ([monilpat](https://github.com/monilpat))
-- feat: coinbase webhook + add more examples + testing [\#801](https://github.com/elizaOS/eliza/pull/801) ([monilpat](https://github.com/monilpat))
 
 ## [v0.1.5-alpha.3](https://github.com/elizaOS/eliza/tree/v0.1.5-alpha.3) (2024-12-04)
 
@@ -863,7 +849,6 @@
 - Add decentralized GenAI backend  [\#762](https://github.com/elizaOS/eliza/pull/762) ([L-jasmine](https://github.com/L-jasmine))
 - fix\(deps\): update dependency tailwind-merge to v2.5.5 [\#761](https://github.com/elizaOS/eliza/pull/761) ([renovate[bot]](https://github.com/apps/renovate))
 - Update dependency clsx to v2.1.1 [\#760](https://github.com/elizaOS/eliza/pull/760) ([renovate[bot]](https://github.com/apps/renovate))
-- feat: donate 1% of coinbase transactions by default [\#759](https://github.com/elizaOS/eliza/pull/759) ([monilpat](https://github.com/monilpat))
 - Add running with Gitpod [\#758](https://github.com/elizaOS/eliza/pull/758) ([v1xingyue](https://github.com/v1xingyue))
 - fix: follow-up improvements for ICP token creation \(PR \#357\) [\#757](https://github.com/elizaOS/eliza/pull/757) ([asDNSk](https://github.com/asDNSk))
 - fix: recentPosts always empty [\#756](https://github.com/elizaOS/eliza/pull/756) ([tcm390](https://github.com/tcm390))
@@ -904,11 +889,9 @@
 - redpill custom models [\#668](https://github.com/elizaOS/eliza/pull/668) ([v1xingyue](https://github.com/v1xingyue))
 - feat: evm pubkey derivation [\#667](https://github.com/elizaOS/eliza/pull/667) ([St4rgarden](https://github.com/St4rgarden))
 - fix: add missing commands to quickstart [\#665](https://github.com/elizaOS/eliza/pull/665) ([0xaguspunk](https://github.com/0xaguspunk))
-- fix: bun.lockb [\#664](https://github.com/elizaOS/eliza/pull/664) ([monilpat](https://github.com/monilpat))
 - fix: discord permissions and duplicate reactions, new /joinchannel command [\#662](https://github.com/elizaOS/eliza/pull/662) ([augchan42](https://github.com/augchan42))
 - fix: embedding search for non-openai models [\#660](https://github.com/elizaOS/eliza/pull/660) ([cygaar](https://github.com/cygaar))
 - feat: add minimal config file for code cov [\#659](https://github.com/elizaOS/eliza/pull/659) ([pgoos](https://github.com/pgoos))
-- feat: Add wallet history \(transactions, balances\) to coinbase providers [\#658](https://github.com/elizaOS/eliza/pull/658) ([monilpat](https://github.com/monilpat))
 - CS - adding better errors and readme. [\#654](https://github.com/elizaOS/eliza/pull/654) ([justabot](https://github.com/justabot))
 - feat: improve browser service [\#653](https://github.com/elizaOS/eliza/pull/653) ([cygaar](https://github.com/cygaar))
 - Update ci.yaml [\#652](https://github.com/elizaOS/eliza/pull/652) ([snobbee](https://github.com/snobbee))
@@ -937,7 +920,6 @@
 - chore\(nvmrc\): update Node.js version from v23.1.0 to v23.3.0 [\#611](https://github.com/elizaOS/eliza/pull/611) ([wolfcito](https://github.com/wolfcito))
 - fix: add client farcaster templates to character type [\#610](https://github.com/elizaOS/eliza/pull/610) ([bmgalego](https://github.com/bmgalego))
 - fix: knowledge module exporting process [\#609](https://github.com/elizaOS/eliza/pull/609) ([bmgalego](https://github.com/bmgalego))
-- feat: implement coinbase trading [\#608](https://github.com/elizaOS/eliza/pull/608) ([monilpat](https://github.com/monilpat))
 - fix: use correct getCachedEmbeddings query\_field\_sub\_name [\#607](https://github.com/elizaOS/eliza/pull/607) ([bmgalego](https://github.com/bmgalego))
 - fix: db queries in sqljs database adapter not using agentId [\#606](https://github.com/elizaOS/eliza/pull/606) ([bmgalego](https://github.com/bmgalego))
 - fix: agent DirectClient is not a type [\#605](https://github.com/elizaOS/eliza/pull/605) ([odilitime](https://github.com/odilitime))
@@ -966,7 +948,6 @@
 - fix: remove postinstall script from plugin-coinbase [\#573](https://github.com/elizaOS/eliza/pull/573) ([bmgalego](https://github.com/bmgalego))
 - fix: add missing documents and knowledge memory managers to runtime interface [\#572](https://github.com/elizaOS/eliza/pull/572) ([bmgalego](https://github.com/bmgalego))
 - fix: remove db adapters depencies from core and remove plugin-node from telegram  [\#571](https://github.com/elizaOS/eliza/pull/571) ([bmgalego](https://github.com/bmgalego))
-- feat: implement coinbase mass payments across base/sol/eth/pol/arb [\#569](https://github.com/elizaOS/eliza/pull/569) ([monilpat](https://github.com/monilpat))
 - CS - first api hookups. [\#564](https://github.com/elizaOS/eliza/pull/564) ([justabot](https://github.com/justabot))
 - fix: bump echogarden to fix case sensitive issue [\#561](https://github.com/elizaOS/eliza/pull/561) ([0xFlicker](https://github.com/0xFlicker))
 - fix: sql command [\#560](https://github.com/elizaOS/eliza/pull/560) ([0xFlicker](https://github.com/0xFlicker))
@@ -1003,7 +984,6 @@
 - feat: Add decentralized inferencing for Eliza \(LLAMA, Hermes, Flux\) [\#516](https://github.com/elizaOS/eliza/pull/516) ([genesis-0000](https://github.com/genesis-0000))
 - fix: lint [\#515](https://github.com/elizaOS/eliza/pull/515) ([ponderingdemocritus](https://github.com/ponderingdemocritus))
 - fix: husky and pre-commit [\#514](https://github.com/elizaOS/eliza/pull/514) ([ponderingdemocritus](https://github.com/ponderingdemocritus))
-- feat: add coinbase plugin starting with cb commerce functionality [\#513](https://github.com/elizaOS/eliza/pull/513) ([monilpat](https://github.com/monilpat))
 - docs: add template and client configuration guide [\#510](https://github.com/elizaOS/eliza/pull/510) ([oguzserdar](https://github.com/oguzserdar))
 - Wrap `fastembed` in try catch to allow non node environments to build [\#508](https://github.com/elizaOS/eliza/pull/508) ([antpb](https://github.com/antpb))
 - fix: Gracefully Handle Add Participants Unique Constraint Error in Postgres [\#495](https://github.com/elizaOS/eliza/pull/495) ([VarKrishin](https://github.com/VarKrishin))
@@ -1125,7 +1105,6 @@
 
 **Merged pull requests:**
 
-- chore: Update pr.yaml to show actual condition so easier to follow [\#429](https://github.com/elizaOS/eliza/pull/429) ([monilpat](https://github.com/monilpat))
 - feat: don't require .env to exist [\#427](https://github.com/elizaOS/eliza/pull/427) ([odilitime](https://github.com/odilitime))
 
 ## [v0.1.3-alpha.0](https://github.com/elizaOS/eliza/tree/v0.1.3-alpha.0) (2024-11-20)
@@ -1135,7 +1114,6 @@
 **Merged pull requests:**
 
 - fix: linting and imports ready for npm [\#433](https://github.com/elizaOS/eliza/pull/433) ([ponderingdemocritus](https://github.com/ponderingdemocritus))
-- docs: Update contributing.md to incorporate Contribution Guidelines [\#430](https://github.com/elizaOS/eliza/pull/430) ([monilpat](https://github.com/monilpat))
 
 ## [v0.1.2](https://github.com/elizaOS/eliza/tree/v0.1.2) (2024-11-20)
 
@@ -1271,7 +1249,6 @@
 - Add Korean and French README [\#312](https://github.com/elizaOS/eliza/pull/312) ([BugByClaude](https://github.com/BugByClaude))
 - fix service call patterns but needs testing [\#311](https://github.com/elizaOS/eliza/pull/311) ([lalalune](https://github.com/lalalune))
 - Increased llama and llama based model temperatures [\#310](https://github.com/elizaOS/eliza/pull/310) ([alanneary17](https://github.com/alanneary17))
-- \[LLM Object Generation\]\[1/2\] Leverage AI Lib's Generate Object instead of parsing strings [\#309](https://github.com/elizaOS/eliza/pull/309) ([monilpat](https://github.com/monilpat))
 - Telegram client refactor for bot info availability [\#308](https://github.com/elizaOS/eliza/pull/308) ([ropresearch](https://github.com/ropresearch))
 - docs: add a new Japanese README [\#307](https://github.com/elizaOS/eliza/pull/307) ([eltociear](https://github.com/eltociear))
 - telegram: start agent after client initialization [\#304](https://github.com/elizaOS/eliza/pull/304) ([o-on-x](https://github.com/o-on-x))
