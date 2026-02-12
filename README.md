@@ -4,6 +4,9 @@
   <p>Build, deploy, and manage autonomous AI agents with a modern, extensible, and full-featured platform.</p>
 </div>
 
+<p align="center">
+  <a href="https://trendshift.io/repositories/12591" target="_blank"><img src="https://trendshift.io/api/badge/repositories/12591" alt="elizaOS%2Feliza | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+</p>
 <div align="center">
   <!-- Badges will go here -->
   <a href="https://github.com/elizaos/eliza/blob/main/LICENSE"><img src="https://img.shields.io/github/license/elizaos/eliza?style=for-the-badge" alt="License"></a>
