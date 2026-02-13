@@ -1,0 +1,62 @@
+{
+  "name": "@elizaos/plugin-mintclub",
+  "description": "Mint Club V2 plugin for ElizaOS — trade bonding curve tokens on Base",
+  "version": "1.7.3-alpha.3",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "author": "h1-hunt",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "mint-club",
+    "bonding-curve",
+    "defi",
+    "base"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Steemhunt/mint.club-v2-ai"
+  },
+  "homepage": "https://mint.club",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "PRIVATE_KEY": {
+        "type": "string",
+        "description": "Wallet private key for signing transactions on Base"
+      }
+    }
+  }
+}
