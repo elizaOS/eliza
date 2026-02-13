@@ -16,7 +16,7 @@ import {
   autonomyContinuousFirstTemplate,
   autonomyTaskContinueTemplate,
   autonomyTaskFirstTemplate,
-} from "@elizaos/prompts";
+} from "../prompts";
 import { v4 as uuidv4 } from "uuid";
 import {
   ChannelType,

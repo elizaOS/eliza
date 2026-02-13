@@ -11,8 +11,17 @@
   "packageType": "plugin",
   "platform": "node",
   "license": "MIT",
-  "keywords": ["plugin", "elizaos", "form", "conversational", "data-collection"],
-  "repository": { "type": "git", "url": "https://github.com/elizaos/elizaos" },
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "form",
+    "conversational",
+    "data-collection"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/elizaos"
+  },
   "homepage": "https://elizaos.ai",
   "exports": {
     "./package.json": "./package.json",

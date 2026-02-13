@@ -45,7 +45,6 @@
   },
   "peerDependencies": {},
   "devDependencies": {
-    "@elizaos/cli": "workspace:*",
     "@eslint/js": "^9.28.0",
     "dotenv": "16.4.5",
     "eslint": "^9.28.0",
