@@ -64,13 +64,22 @@
         "type": "string",
         "description": "DM policy: open, pairing, allowlist, disabled",
         "default": "pairing",
-        "enum": ["open", "pairing", "allowlist", "disabled"]
+        "enum": [
+          "open",
+          "pairing",
+          "allowlist",
+          "disabled"
+        ]
       },
       "BLUEBUBBLES_GROUP_POLICY": {
         "type": "string",
         "description": "Group message policy: open, allowlist, disabled",
         "default": "allowlist",
-        "enum": ["open", "allowlist", "disabled"]
+        "enum": [
+          "open",
+          "allowlist",
+          "disabled"
+        ]
       },
       "BLUEBUBBLES_ALLOW_FROM": {
         "type": "string",

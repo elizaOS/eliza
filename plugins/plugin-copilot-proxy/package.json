@@ -24,7 +24,15 @@
     "rust/Cargo.toml",
     "rust/pkg"
   ],
-  "keywords": ["elizaos", "plugin", "copilot", "proxy", "openai", "llm", "model-provider"],
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "copilot",
+    "proxy",
+    "openai",
+    "llm",
+    "model-provider"
+  ],
   "author": "elizaOS",
   "license": "MIT",
   "repository": {
