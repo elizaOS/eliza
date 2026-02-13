@@ -1,0 +1,19 @@
+{
+  "name": "@elizaos/plugin-mintclub",
+  "version": "1.0.0",
+  "description": "Mint Club V2 plugin for ElizaOS — token info, pricing, swaps, and wallet management",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "mint.club-cli": ">=1.0.0"
+  },
+  "license": "MIT"
+}
