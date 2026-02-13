@@ -11,7 +11,6 @@ import type {
 } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import { z } from 'zod';
-import { execSync } from 'child_process';
 
 const configSchema = z.object({
   PRIVATE_KEY: z
@@ -19,12 +18,22 @@ const configSchema = z.object({
     .min(1, 'PRIVATE_KEY is required for Mint Club wallet operations'),
 });
 
-function runMcCommand(cmd: string): string {
+async function runMcCommand(args: string[]): Promise<string> {
   try {
-    return execSync(cmd, { encoding: 'utf-8', timeout: 30000 }).trim();
+    const proc = Bun.spawn(['mc', ...args], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: process.env,
+    });
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+      throw new Error(stderr.trim() || `mc exited with code ${exitCode}`);
+    }
+    return stdout.trim();
   } catch (error: any) {
-    const stderr = error.stderr?.toString() || error.message;
-    throw new Error(`mc command failed: ${stderr}`);
+    throw new Error(`mc command failed: ${error.message}`);
   }
 }
 
@@ -51,7 +60,7 @@ const tokenInfoAction: Action = {
       const text = message.content.text || '';
       const words = text.trim().split(/\s+/);
       const token = words[words.length - 1];
-      const result = runMcCommand(`mc info ${token}`);
+      const result = await runMcCommand(['info', token]);
 
       if (callback) {
         await callback({
@@ -97,7 +106,7 @@ const tokenPriceAction: Action = {
       const text = message.content.text || '';
       const words = text.trim().split(/\s+/);
       const token = words[words.length - 1];
-      const result = runMcCommand(`mc price ${token}`);
+      const result = await runMcCommand(['price', token]);
 
       if (callback) {
         await callback({
@@ -142,7 +151,6 @@ const swapAction: Action = {
     try {
       const text = message.content.text || '';
 
-      // Extract input token, output token, and amount from message
       const inputMatch = text.match(/(?:from|input|sell)\s+(\S+)/i);
       const outputMatch = text.match(/(?:to|output|for|buy)\s+(\S+)/i);
       const amountMatch = text.match(/(\d+(?:\.\d+)?)\s*/);
@@ -159,7 +167,7 @@ const swapAction: Action = {
       const output = outputMatch[1];
       const amount = amountMatch[1];
 
-      const result = runMcCommand(`mc swap -i ${input} -o ${output} -a ${amount}`);
+      const result = await runMcCommand(['swap', '-i', input, '-o', output, '-a', amount]);
 
       if (callback) {
         await callback({
@@ -189,8 +197,9 @@ const walletBalanceAction: Action = {
   similes: ['CHECK_BALANCE', 'MY_WALLET', 'MC_WALLET', 'BALANCES'],
   description: 'Get wallet balances for the configured Mint Club wallet',
 
-  validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
-    return true;
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    const text = message.content.text || '';
+    return /\b(wallet|balance|balances)\b/i.test(text);
   },
 
   handler: async (
@@ -201,7 +210,7 @@ const walletBalanceAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
-      const result = runMcCommand('mc wallet');
+      const result = await runMcCommand(['wallet']);
 
       if (callback) {
         await callback({

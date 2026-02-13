@@ -19,7 +19,7 @@ Mint Club V2 plugin for [ElizaOS](https://github.com/elizaOS/eliza). Wraps the `
 
 1. Install the CLI globally:
    ```bash
-   npm install -g mint.club-cli
+   bun install -g mint.club-cli
    ```
 
 2. Set your private key:
