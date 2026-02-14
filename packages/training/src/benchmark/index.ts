@@ -87,3 +87,5 @@ export type {
   SimulationResult,
 } from './SimulationEngine';
 export { SimulationEngine } from './SimulationEngine';
+export type { TaskRunnerConfig, TaskRunResult } from './TaskRunner';
+export { TaskRunner } from './TaskRunner';
