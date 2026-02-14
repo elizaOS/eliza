@@ -437,3 +437,39 @@ export interface IAutonomousCoordinator {
     error?: string;
   }>;
 }
+
+/**
+ * Interface for task interaction
+ */
+export interface ITaskInteractor {
+  executeTask(
+    agentRuntime: IAgentRuntimeLike,
+    taskPrompt: string,
+    options?: {
+      maxTurns?: number;
+      temperature?: number;
+    }
+  ): Promise<{
+    success: boolean;
+    response: string;
+    trajectoryId?: string;
+    steps?: TrajectoryStepForTraining[];
+    error?: string;
+  }>;
+}
+
+let _taskInteractor: ITaskInteractor | null = null;
+
+export function configureTaskInteractor(interactor: ITaskInteractor): void {
+  assertFn(interactor, 'taskInteractor', ['executeTask']);
+  _taskInteractor = interactor;
+}
+
+export function getTaskInteractor(): ITaskInteractor {
+  if (!_taskInteractor) {
+    throw new Error(
+      'TaskInteractor not configured. Call configureTaskInteractor() first.'
+    );
+  }
+  return _taskInteractor;
+}
