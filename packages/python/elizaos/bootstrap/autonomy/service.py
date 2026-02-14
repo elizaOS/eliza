@@ -434,7 +434,11 @@ class AutonomyService(Service):
                     with contextlib.suppress(Exception):
                         fetched_messages.extend(
                             await self._runtime.get_memories(
-                                {"roomId": room_id, "count": per_room_limit, "tableName": "messages"}
+                                {
+                                    "roomId": room_id,
+                                    "count": per_room_limit,
+                                    "tableName": "messages",
+                                }
                             )
                         )
 
@@ -443,7 +447,9 @@ class AutonomyService(Service):
         )
 
         external_messages = [
-            m for m in fetched_messages if m and m.entity_id and m.entity_id != self._runtime.agent_id
+            m
+            for m in fetched_messages
+            if m and m.entity_id and m.entity_id != self._runtime.agent_id
         ]
         entity_name_by_id = await self._build_entity_name_lookup(
             memory.entity_id for memory in external_messages
@@ -494,7 +500,9 @@ class AutonomyService(Service):
 
             if memory.entity_id == self._runtime.agent_id and entry_type == "autonomous-response":
                 autonomy_entries.append(f"Thought: {text}")
-            elif memory.entity_id == self._autonomy_entity_id and entry_type == "autonomous-trigger":
+            elif (
+                memory.entity_id == self._autonomy_entity_id and entry_type == "autonomous-trigger"
+            ):
                 autonomy_entries.append(f"Trigger: {text}")
 
         if autonomy_entries:

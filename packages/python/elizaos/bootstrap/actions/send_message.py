@@ -156,7 +156,9 @@ class SendMessageAction:
                     target_room_id = parsed_room
                 else:
                     world_id = None
-                    room_data = getattr(getattr(state, "data", None), "room", None) if state else None
+                    room_data = (
+                        getattr(getattr(state, "data", None), "room", None) if state else None
+                    )
                     if room_data is not None:
                         world_id = getattr(room_data, "world_id", None) or getattr(
                             room_data, "worldId", None
@@ -278,7 +280,9 @@ class SendMessageAction:
         if callback:
             await callback(response_content)
 
-        target_id = target_entity_id if target_type == "user" and target_entity_id else target_room_id
+        target_id = (
+            target_entity_id if target_type == "user" and target_entity_id else target_room_id
+        )
         return ActionResult(
             text="Message sent",
             values={

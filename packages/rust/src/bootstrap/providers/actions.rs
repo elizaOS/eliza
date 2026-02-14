@@ -294,7 +294,8 @@ impl Provider for ActionsProvider {
             "provider:actions".to_string(),
         ]);
 
-        let shuffled_names = deterministic_shuffle(&actions, &format!("{}:names", action_seed), "actions");
+        let shuffled_names =
+            deterministic_shuffle(&actions, &format!("{}:names", action_seed), "actions");
         let names_text = shuffled_names
             .iter()
             .map(|a| a.name.as_str())
@@ -303,8 +304,11 @@ impl Provider for ActionsProvider {
 
         let mut formatted_actions: Vec<String> = Vec::new();
         let mut actions_data: Vec<serde_json::Value> = Vec::new();
-        let shuffled_descriptions =
-            deterministic_shuffle(&actions, &format!("{}:descriptions", action_seed), "actions");
+        let shuffled_descriptions = deterministic_shuffle(
+            &actions,
+            &format!("{}:descriptions", action_seed),
+            "actions",
+        );
 
         for a in shuffled_descriptions.iter() {
             let doc = docs_by_name.get(&a.name);

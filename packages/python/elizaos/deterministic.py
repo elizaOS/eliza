@@ -65,7 +65,7 @@ def deterministic_hex(seed: str, surface: str, length: int = 16) -> str:
     output = ""
     counter = 0
     while len(output) < length:
-        payload = f"{seed}|{surface}|{counter}".encode("utf-8")
+        payload = f"{seed}|{surface}|{counter}".encode()
         output += sha256(payload).hexdigest()
         counter += 1
     return output[:length]

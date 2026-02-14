@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypeAlias
 
 from elizaos.types.generated.eliza.v1 import components_pb2
@@ -46,6 +45,7 @@ class PreEvaluatorResult:
     blocked: bool = False
     rewritten_text: str | None = None
     reason: str | None = None
+
 
 # Proto-backed data types
 ActionExample = components_pb2.ActionExample

@@ -5,8 +5,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID as StdUUID
 
-from elizaos.deterministic import get_prompt_reference_datetime
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.deterministic import get_prompt_reference_datetime
 from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.prompts import SCHEDULE_FOLLOW_UP_TEMPLATE
 from elizaos.types import (

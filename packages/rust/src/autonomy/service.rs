@@ -397,17 +397,10 @@ impl AutonomyService {
                 .unwrap_or_default();
 
             if memory.entity_id == *agent_id && event_type == "autonomous-response" {
-                entries.push((
-                    memory.created_at.unwrap_or(0),
-                    format!("Thought: {}", text),
-                ));
-            } else if memory.entity_id == *autonomy_entity_id
-                && event_type == "autonomous-trigger"
+                entries.push((memory.created_at.unwrap_or(0), format!("Thought: {}", text)));
+            } else if memory.entity_id == *autonomy_entity_id && event_type == "autonomous-trigger"
             {
-                entries.push((
-                    memory.created_at.unwrap_or(0),
-                    format!("Trigger: {}", text),
-                ));
+                entries.push((memory.created_at.unwrap_or(0), format!("Trigger: {}", text)));
             }
         }
 
@@ -426,8 +419,7 @@ impl AutonomyService {
                 .await
                 .ok()
                 .flatten()
-                .map(|r| r.name)
-                .flatten()
+                .and_then(|r| r.name)
                 .map(|name| name.trim().to_string())
                 .filter(|name| !name.is_empty())
                 .unwrap_or_else(|| target_room_id.to_string());

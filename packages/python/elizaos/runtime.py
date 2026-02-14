@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
 import uuid
 import xml.etree.ElementTree as ET
@@ -104,8 +105,7 @@ def _struct_value_to_python(value: StructValue) -> object | None:
         return value.bool_value
     if kind == "struct_value":
         return {
-            key: _struct_value_to_python(item)
-            for key, item in value.struct_value.fields.items()
+            key: _struct_value_to_python(item) for key, item in value.struct_value.fields.items()
         }
     if kind == "list_value":
         return [_struct_value_to_python(item) for item in value.list_value.values]
@@ -418,8 +418,10 @@ class AgentRuntime(IAgentRuntime):
             return
 
         settings_extra = getattr(self._character.settings, "extra", None)
-        if settings_extra is not None and hasattr(settings_extra, "update") and _is_struct_compatible(
-            value
+        if (
+            settings_extra is not None
+            and hasattr(settings_extra, "update")
+            and _is_struct_compatible(value)
         ):
             settings_extra.update({key: value})
         else:
@@ -851,6 +853,7 @@ class AgentRuntime(IAgentRuntime):
                                 if data_params is not None:
                                     # Convert protobuf Struct to dict for _parse_action_params
                                     from google.protobuf.json_format import MessageToDict
+
                                     if hasattr(data_params, "DESCRIPTOR"):
                                         params_raw = MessageToDict(data_params)
                                     else:
@@ -883,11 +886,8 @@ class AgentRuntime(IAgentRuntime):
                         actionName=action.name,
                         errors=errors,
                     )
-                    try:
+                    with contextlib.suppress(AttributeError, ValueError):
                         options_obj.parameter_errors = errors
-                    except (AttributeError, ValueError):
-                        # Protobuf HandlerOptions may not have parameter_errors field
-                        pass
 
                 if validated_params:
                     from google.protobuf import struct_pb2
@@ -2321,25 +2321,31 @@ end code: {final_code}
                 if not stream_fields and any(row.field == "text" for row in schema):
                     stream_fields = ["text"]
 
-                stream_message_id = (
-                    "stream-"
-                    + deterministic_hex(
-                        deterministic_seed,
-                        f"stream-message-id:{current_retry}",
-                        20,
-                    )
+                stream_message_id = "stream-" + deterministic_hex(
+                    deterministic_seed,
+                    f"stream-message-id:{current_retry}",
+                    20,
                 )
 
                 on_stream_chunk = options.on_stream_chunk
                 on_stream_event = options.on_stream_event
 
-                def _emit_chunk(chunk: str, _field: str | None) -> None:
-                    if on_stream_chunk is not None:
-                        on_stream_chunk(chunk, stream_message_id)
+                def _emit_chunk(
+                    chunk: str,
+                    _field: str | None,
+                    cb=on_stream_chunk,
+                    msg_id=stream_message_id,
+                ) -> None:
+                    if cb is not None:
+                        cb(chunk, msg_id)
 
-                def _emit_event(event: StreamEvent) -> None:
-                    if on_stream_event is not None:
-                        on_stream_event(event, stream_message_id)
+                def _emit_event(
+                    event: StreamEvent,
+                    cb=on_stream_event,
+                    msg_id=stream_message_id,
+                ) -> None:
+                    if cb is not None:
+                        cb(event, msg_id)
 
                 extractor = ValidationStreamExtractor(
                     ValidationStreamExtractorConfig(
