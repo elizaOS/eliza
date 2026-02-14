@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
+from elizaos.action_docs import get_canonical_action_example_calls
 from elizaos.deterministic import (
     build_conversation_seed,
     build_deterministic_seed,
     deterministic_int,
 )
-from elizaos.action_docs import get_canonical_action_example_calls
 from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 from elizaos.types.components import ActionExample

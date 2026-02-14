@@ -5,12 +5,12 @@ from typing import TYPE_CHECKING, TypeVar, cast
 
 from google.protobuf.json_format import MessageToDict
 
+from elizaos.action_docs import get_canonical_action_example_calls
 from elizaos.deterministic import (
     build_conversation_seed,
     build_deterministic_seed,
     deterministic_int,
 )
-from elizaos.action_docs import get_canonical_action_example_calls
 from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 from elizaos.types.components import ActionExample

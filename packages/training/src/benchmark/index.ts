@@ -43,7 +43,7 @@ export type {
   BenchmarkRunConfig,
 } from './BenchmarkRunner';
 export { BenchmarkRunner } from './BenchmarkRunner';
-export { BenchmarkValidator } from './BenchmarkValidator';
+export * as BenchmarkValidator from './BenchmarkValidator';
 export type { FastEvalConfig, FastEvalResult } from './FastEvalRunner';
 export { FastEvalRunner } from './FastEvalRunner';
 export { MetricsValidator } from './MetricsValidator';

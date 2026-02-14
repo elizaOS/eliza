@@ -95,9 +95,9 @@ class MemoryService(Service):
     @classmethod
     async def start(cls, runtime):
         svc = cls(runtime=runtime)
-        if (
-            v := runtime.get_setting("MEMORY_SUMMARIZATION_THRESHOLD")
-        ) is not None and isinstance(v, (int, float, str)):
+        if (v := runtime.get_setting("MEMORY_SUMMARIZATION_THRESHOLD")) is not None and isinstance(
+            v, (int, float, str)
+        ):
             svc._config.short_term_summarization_threshold = int(v)
         if (v := runtime.get_setting("MEMORY_RETAIN_RECENT")) is not None and isinstance(
             v, (int, float, str)

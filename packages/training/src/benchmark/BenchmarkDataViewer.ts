@@ -13,7 +13,7 @@ import type {
   GroundTruth,
   Tick,
 } from './BenchmarkDataGenerator';
-import { BenchmarkValidator } from './BenchmarkValidator';
+import * as BenchmarkValidator from './BenchmarkValidator';
 
 export interface BenchmarkViewOptions {
   /** Show detailed information */

@@ -430,9 +430,7 @@ class DefaultMessageService(IMessageService):
             # or rewrite it (e.g. redact credentials).
             pre_result = await runtime.evaluate_pre(message)
             if pre_result.blocked:
-                runtime.logger.warning(
-                    f"Message blocked by pre-evaluator: {pre_result.reason}"
-                )
+                runtime.logger.warning(f"Message blocked by pre-evaluator: {pre_result.reason}")
                 return MessageProcessingResult(
                     did_respond=False,
                     response_content=None,
@@ -440,9 +438,7 @@ class DefaultMessageService(IMessageService):
                     state=None,
                 )
             if pre_result.rewritten_text is not None:
-                runtime.logger.info(
-                    f"Pre-evaluator rewrote message text: {pre_result.reason}"
-                )
+                runtime.logger.info(f"Pre-evaluator rewrote message text: {pre_result.reason}")
                 message.content.text = pre_result.rewritten_text
 
             # Step 1: Save incoming message to memory (if adapter available)

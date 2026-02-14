@@ -33,6 +33,18 @@ export interface SandboxFetchAuditEvent {
 }
 
 const DEFAULT_MAX_RESPONSE_SCAN_BYTES = 10 * 1024 * 1024;
+type FetchPreconnect = (
+  url: string | URL,
+  options?: {
+    dns?: boolean;
+    tcp?: boolean;
+    http?: boolean;
+    https?: boolean;
+  },
+) => void;
+type FetchWithOptionalPreconnect = typeof fetch & {
+  preconnect?: FetchPreconnect;
+};
 
 const TEXT_CONTENT_TYPES = [
   "text/",
@@ -56,6 +68,12 @@ export function createSandboxFetchProxy(
     failureMode = "fail-closed",
     maxResponseScanBytes = DEFAULT_MAX_RESPONSE_SCAN_BYTES,
   } = options;
+  const baseFetchWithExtensions = baseFetch as FetchWithOptionalPreconnect;
+  const preconnect: FetchPreconnect = (url, preconnectOptions): void => {
+    if (typeof baseFetchWithExtensions.preconnect === "function") {
+      baseFetchWithExtensions.preconnect(url, preconnectOptions);
+    }
+  };
 
   const proxy = Object.assign(
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -112,12 +130,7 @@ export function createSandboxFetchProxy(
 
       return sanitized;
     },
-    {
-      preconnect: (
-        ...args: Parameters<typeof baseFetch.preconnect>
-      ): ReturnType<typeof baseFetch.preconnect> =>
-        baseFetch.preconnect(...args),
-    },
+    { preconnect },
   ) satisfies typeof fetch;
 
   return proxy;

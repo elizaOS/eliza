@@ -231,7 +231,7 @@ class IAgentRuntime(ABC):
         self,
         message: Memory,
         state: State | None = None,
-    ) -> "PreEvaluatorResult": ...
+    ) -> PreEvaluatorResult: ...
 
     # Component registration
     @abstractmethod

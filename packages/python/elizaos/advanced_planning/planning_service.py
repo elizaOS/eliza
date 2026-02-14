@@ -655,9 +655,7 @@ Focus on:
                     "actionName": step.action_name,
                     "executedAt": int(time.time() * 1000),
                 }
-                if isinstance(result.data, dict):
-                    result.data.update(step_metadata)
-                elif hasattr(result.data, "update"):
+                if isinstance(result.data, dict) or hasattr(result.data, "update"):
                     result.data.update(step_metadata)
                 else:
                     result.data = step_metadata
