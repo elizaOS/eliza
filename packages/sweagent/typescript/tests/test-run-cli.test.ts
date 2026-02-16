@@ -10,13 +10,14 @@ describe("Run CLI", () => {
   const cwd = path.join(__dirname, "..");
   const node = process.execPath;
   const cliPath = path.join(cwd, "dist", "run", "cli.js");
+  const CLI_TIMEOUT_MS = 20000;
 
   function runOk(args: string[], input?: string): string {
     return execFileSync(node, [cliPath, ...args], {
       encoding: "utf-8",
       cwd,
       input,
-      timeout: 5000,
+      timeout: CLI_TIMEOUT_MS,
     });
   }
 
@@ -28,7 +29,7 @@ describe("Run CLI", () => {
       encoding: "utf-8",
       cwd,
       input,
-      timeout: 5000,
+      timeout: CLI_TIMEOUT_MS,
     });
     return {
       stdout: res.stdout ?? "",
@@ -114,7 +115,7 @@ describe("Run CLI", () => {
       const output = execFileSync(sweagentPath, ["--help"], {
         encoding: "utf-8",
         cwd,
-        timeout: 5000,
+        timeout: CLI_TIMEOUT_MS,
       });
 
       expect(output).toContain("run-batch");

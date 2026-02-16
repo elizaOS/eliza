@@ -1784,9 +1784,6 @@ export class AgentRuntime implements IAgentRuntime {
             "Action not found",
           );
 
-          // Report a filter miss if the unresolved name was filtered out
-          this.checkFilterMiss(message.roomId, responseAction);
-
           if (actionPlan?.steps?.[actionIndex]) {
             actionPlan = this.updateActionStep(actionPlan, actionIndex, {
               status: "failed",

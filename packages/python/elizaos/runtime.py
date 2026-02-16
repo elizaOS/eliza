@@ -1744,10 +1744,12 @@ class AgentRuntime(IAgentRuntime):
         if self._adapter:
             await self._adapter.delete_component(component_id)
 
-    async def search_memories(self, params: MemorySearchOptions) -> list[Memory]:
-        """Search memories by embedding."""
+    async def search_memories(
+        self, params: MemorySearchOptions | dict[str, Any]
+    ) -> list[Memory]:
+        """Search memories by embedding or query options."""
         if not self._adapter:
-            raise RuntimeError("Database adapter not set")
+            return []
         return await self._adapter.search_memories(params)
 
     async def get_memories(
@@ -1827,11 +1829,6 @@ class AgentRuntime(IAgentRuntime):
         if not self._adapter:
             return AgentRunSummaryResult(runs=[], total=0, has_more=False)
         return await self._adapter.get_agent_run_summaries(params)
-
-    async def search_memories(self, params: dict[str, Any]) -> list[Any]:
-        if not self._adapter:
-            return []
-        return await self._adapter.search_memories(params)
 
     async def create_memory(
         self,
@@ -2419,7 +2416,7 @@ end code: {final_code}
                                 user_prompt=str(params.get("prompt", ""))[:2000],
                                 response=response_str[:2000],
                                 temperature=0.0,
-                                max_tokens=int(params.get("maxTokens", 0)),
+                                max_tokens=max_tokens,
                                 purpose="action",
                                 action_type="dynamic_prompt_exec.stream",
                                 latency_ms=0,

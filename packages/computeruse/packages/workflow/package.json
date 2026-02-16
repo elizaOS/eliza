@@ -28,7 +28,7 @@
   "main": "dist/index.js",
   "name": "@mediar-ai/workflow",
   "peerDependencies": {
-    "@elizaos/computeruse": "workspace:*"
+    "@elizaos/computeruse": "^2.0.0-alpha.3"
   },
   "private": true,
   "repository": {

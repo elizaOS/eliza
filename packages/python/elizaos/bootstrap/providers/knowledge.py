@@ -43,11 +43,10 @@ async def get_knowledge_context(
     if embeddings:
         primary_embedding = embeddings[0]
         params = MemorySearchOptions(
-            table_name="knowledge",
             room_id=message.room_id,
             embedding=primary_embedding,
             match_threshold=0.75,
-            match_count=5,
+            count=5,
             unique=True,
         )
         relevant_knowledge = await runtime.search_memories(params)

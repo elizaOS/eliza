@@ -382,7 +382,13 @@ export class EmbeddingGenerationService extends Service {
     const estimatedTokens = estimateTokens(rawText);
 
     // Get the embedding model to check for specific token limits
-    const model = this.runtime.getModelConfiguration(ModelType.TEXT_EMBEDDING);
+    const model = (
+      this.runtime as {
+        getModelConfiguration?: (
+          modelType: string,
+        ) => { maxInputTokens?: number } | undefined;
+      }
+    ).getModelConfiguration?.(ModelType.TEXT_EMBEDDING);
     const maxTokens = model?.maxInputTokens || DEFAULT_MAX_EMBEDDING_TOKENS;
 
     // For short messages (< 100 tokens), enrich with recent conversation context
