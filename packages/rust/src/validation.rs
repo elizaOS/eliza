@@ -94,7 +94,77 @@ mod tests {
         let msg_caps = create_mock_memory("TRANSFER NOW");
         assert!(validate_action_keywords(&msg_caps, &[], &keywords));
 
-        // 5. Empty keywords
+    // 5. Empty keywords
         assert!(!validate_action_keywords(&msg, &[], &[]));
     }
+
+    #[test]
+    fn test_validate_action_regex() {
+        let msg = create_mock_memory("I want to transfer 100 sol");
+        let regex = r"(?i)transfer \d+ sol";
+
+        // 1. Regex match in current message
+        assert!(validate_action_regex(&msg, &[], regex));
+
+        // 2. Regex match in recent messages
+        let msg_empty = create_mock_memory("ok");
+        let recent = vec![
+            create_mock_memory("hello"),
+            create_mock_memory("transfer 50 sol"),
+        ];
+        assert!(validate_action_regex(&msg_empty, &recent, regex));
+
+        // 3. No match
+        let recent_none = vec![create_mock_memory("hello")];
+        assert!(!validate_action_regex(&msg_empty, &recent_none, regex));
+
+        // 4. Invalid regex (should return false safely)
+        assert!(!validate_action_regex(&msg, &[], r"["));
+    }
 }
+
+/// Validates if any of the recent message history matches the given regex pattern.
+///
+/// This function checks the current message content and the last 5 messages in the provided
+/// list against the provided regex pattern.
+pub fn validate_action_regex(
+    message: &Memory,
+    recent_messages: &[Memory],
+    regex_pattern: &str,
+) -> bool {
+    if regex_pattern.is_empty() {
+        return false;
+    }
+
+    let regex = match regex::Regex::new(regex_pattern) {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+
+    let mut relevant_text: Vec<String> = Vec::new();
+
+    // 1. Current message content
+    if let Some(text) = &message.content.text {
+        relevant_text.push(text.clone());
+    }
+
+    // 2. Recent messages (last 5)
+    let start_index = if recent_messages.len() > 5 {
+        recent_messages.len() - 5
+    } else {
+        0
+    };
+    for msg in &recent_messages[start_index..] {
+        if let Some(text) = &msg.content.text {
+            relevant_text.push(text.clone());
+        }
+    }
+
+    if relevant_text.is_empty() {
+        return false;
+    }
+
+    let combined_text = relevant_text.join("\n");
+    regex.is_match(&combined_text)
+}
+
