@@ -54,17 +54,35 @@ export const actionsProvider: Provider = {
     const filterService =
       runtime.getService<ActionFilterService>("action_filter");
 
-    let actionsData: Action[];
+    let candidateActions: Action[];
 
     if (filterService) {
-      const candidates = await filterService.filter(runtime, message, state);
-      actionsData = await validateActions(candidates, runtime, message, state);
-    } else {
-      actionsData = await validateActions(
-        runtime.actions,
+      const rankedCandidates = await filterService.filter(
         runtime,
         message,
         state,
+      );
+      const rankedNames = new Set(rankedCandidates.map((a) => a.name));
+      candidateActions = [
+        ...rankedCandidates,
+        ...runtime.actions.filter((a) => !rankedNames.has(a.name)),
+      ];
+    } else {
+      candidateActions = runtime.actions;
+    }
+
+    const actionsData = await validateActions(
+      candidateActions,
+      runtime,
+      message,
+      state,
+    );
+
+    // Track the exact action set shown in the prompt for miss detection.
+    if (filterService && message.roomId) {
+      filterService.setRoomActionSet(
+        message.roomId,
+        actionsData.map((action) => action.name),
       );
     }
 

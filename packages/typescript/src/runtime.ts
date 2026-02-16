@@ -23,7 +23,12 @@ import {
   deterministicUuid,
 } from "./deterministic";
 import { createUniqueUuid } from "./entities";
-import { createLogger } from "./logger";
+import {
+  createLogger,
+  type Logger,
+  type LoggerBindings,
+  loggerScope,
+} from "./logger";
 import {
   createSandboxFetchProxy,
   type SandboxFetchAuditEvent,
@@ -192,6 +197,7 @@ export class AgentRuntime implements IAgentRuntime {
   routes: Route[] = [];
   private taskWorkers = new Map<string, TaskWorker>();
   private sendHandlers = new Map<string, SendHandlerFunction>();
+  public logLevelOverrides = new Map<string, string>();
   private eventHandlers: Map<string, Array<(data: EventPayload) => void>> =
     new Map();
 
@@ -280,9 +286,7 @@ export class AgentRuntime implements IAgentRuntime {
       logLevel?: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
       /** Disable basic bootstrap capabilities (reply, ignore, none, core providers) */
       disableBasicCapabilities?: boolean;
-      /** Enable extended/advanced bootstrap capabilities (facts, roles, settings, room actions, etc.) */
-      enableExtendedCapabilities?: boolean;
-      /** Alias for enableExtendedCapabilities - Enable advanced bootstrap capabilities */
+      /** Enable advanced bootstrap capabilities (facts, roles, settings, room actions, etc.) */
       advancedCapabilities?: boolean;
       /**
        * Enable action planning mode for multi-action execution.
@@ -359,7 +363,6 @@ export class AgentRuntime implements IAgentRuntime {
     // Support both enableExtendedCapabilities and advancedCapabilities as aliases
     this.capabilityOptions = {
       disableBasic: opts.disableBasicCapabilities,
-      enableExtended: opts.enableExtendedCapabilities,
       advancedCapabilities: opts.advancedCapabilities,
       skipCharacterProvider: this.isAnonymousCharacter,
       enableAutonomy: opts.enableAutonomy,
@@ -398,7 +401,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Sandbox mode — env var override for emergency disable
     const envOverride =
       typeof process !== "undefined"
-        ? process.env.MILAIDY_SANDBOX_MODE
+        ? process.env.MILADY_SANDBOX_MODE
         : undefined;
     this.sandboxMode =
       envOverride === "off" ? false : (opts.sandboxMode ?? false);
@@ -528,13 +531,9 @@ export class AgentRuntime implements IAgentRuntime {
         this.capabilityOptions.disableBasic ??
         (settings?.DISABLE_BASIC_CAPABILITIES === true ||
           settings?.DISABLE_BASIC_CAPABILITIES === "true");
-      // Support both enableExtended/enableExtendedCapabilities and advancedCapabilities as aliases
-      const enableExtended =
-        this.capabilityOptions.enableExtended ??
+      const advancedCapabilities =
         this.capabilityOptions.advancedCapabilities ??
-        (settings?.ENABLE_EXTENDED_CAPABILITIES === true ||
-          settings?.ENABLE_EXTENDED_CAPABILITIES === "true" ||
-          settings?.ADVANCED_CAPABILITIES === true ||
+        (settings?.ADVANCED_CAPABILITIES === true ||
           settings?.ADVANCED_CAPABILITIES === "true");
       const skipCharacterProvider =
         this.capabilityOptions.skipCharacterProvider ?? false;
@@ -545,16 +544,17 @@ export class AgentRuntime implements IAgentRuntime {
 
       if (
         disableBasic ||
-        enableExtended ||
+        advancedCapabilities ||
         skipCharacterProvider ||
         enableAutonomy
       ) {
         const config: CapabilityConfig = {
           disableBasic,
-          enableExtended,
+          advancedCapabilities,
           skipCharacterProvider,
           enableAutonomy,
         };
+
         const configuredPlugin = createBootstrapPlugin(config);
         pluginToRegister = {
           ...configuredPlugin,
@@ -1538,6 +1538,34 @@ export class AgentRuntime implements IAgentRuntime {
       onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
     },
   ): Promise<void> {
+    const logLevel = this.logLevelOverrides.get(message.roomId);
+    return loggerScope.run(
+      {
+        runtime: this,
+        roomId: message.roomId,
+        logLevel: logLevel || undefined,
+      },
+      async () => {
+        await this._processActions(
+          message,
+          responses,
+          state,
+          callback,
+          processOptions,
+        );
+      },
+    );
+  }
+
+  private async _processActions(
+    message: Memory,
+    responses: Memory[],
+    state?: State,
+    callback?: HandlerCallback,
+    processOptions?: {
+      onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+    },
+  ): Promise<void> {
     // Check if action planning is enabled
     const actionPlanningEnabled = this.isActionPlanningEnabled();
 
@@ -2177,6 +2205,26 @@ export class AgentRuntime implements IAgentRuntime {
     callback?: HandlerCallback,
     responses?: Memory[],
   ) {
+    const logLevel = this.logLevelOverrides.get(message.roomId);
+    return loggerScope.run(
+      {
+        runtime: this,
+        roomId: message.roomId,
+        logLevel: logLevel || undefined,
+      },
+      async () => {
+        return this._evaluate(message, state, didRespond, callback, responses);
+      },
+    );
+  }
+
+  private async _evaluate(
+    message: Memory,
+    state: State,
+    didRespond?: boolean,
+    callback?: HandlerCallback,
+    responses?: Memory[],
+  ) {
     const evaluatorPromises = this.evaluators.map(
       async (evaluator: Evaluator) => {
         if (!evaluator.handler) {
@@ -2631,6 +2679,7 @@ export class AgentRuntime implements IAgentRuntime {
     includeList: string[] | null = null,
     onlyInclude = false,
     skipCache = false,
+    trajectoryPhase?: string,
   ): Promise<State> {
     const trajectoryStepIdFromMessage =
       typeof message.metadata === "object" &&
@@ -2821,7 +2870,9 @@ export class AgentRuntime implements IAgentRuntime {
             stepId: trajectoryStepId,
             providerName: r.providerName,
             data: { textLength: textLen },
-            purpose: "compose_state",
+            purpose: trajectoryPhase
+              ? `compose_state:${trajectoryPhase}`
+              : "compose_state",
             query: { message: userText.slice(0, 2000) },
           });
         } catch {
@@ -3246,6 +3297,20 @@ export class AgentRuntime implements IAgentRuntime {
       "Using model",
     );
     return models[0].handler;
+  }
+
+  getModelConfiguration(
+    modelType: ModelTypeName | string,
+  ): ModelHandler | undefined {
+    const modelKey =
+      typeof modelType === "string" ? modelType : ModelType[modelType];
+    const models = this.models.get(modelKey);
+    if (!models || !models.length) {
+      return undefined;
+    }
+
+    // Return highest priority handler (first in array after sorting)
+    return models[0];
   }
 
   /**
@@ -3747,8 +3812,11 @@ export class AgentRuntime implements IAgentRuntime {
               ? this.character.system
               : "",
           userPrompt: promptContent ?? "",
-          response:
-            typeof response === "string" ? response : JSON.stringify(response),
+          response: String(modelKey).includes("EMBEDDING")
+            ? `[embedding vector]`
+            : typeof response === "string"
+              ? response
+              : JSON.stringify(response),
           temperature: typeof tempRaw === "number" ? tempRaw : 0,
           maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
           purpose: "action",

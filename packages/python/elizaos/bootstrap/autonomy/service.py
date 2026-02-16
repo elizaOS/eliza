@@ -446,6 +446,14 @@ class AutonomyService(Service):
             {"roomId": self._autonomous_room_id, "count": per_room_limit, "tableName": "memories"}
         )
 
+        # ── Recent-context cutoff: ignore messages older than 1 hour ──
+        one_hour_ms = 3_600_000
+        now_ms = int(time.time() * 1000)
+        cutoff_ms = now_ms - one_hour_ms
+
+        fetched_messages = [m for m in fetched_messages if (m.created_at or 0) >= cutoff_ms]
+        autonomy_memories = [m for m in autonomy_memories if (m.created_at or 0) >= cutoff_ms]
+
         external_messages = [
             m
             for m in fetched_messages

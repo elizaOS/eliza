@@ -17,9 +17,7 @@ use uuid::Uuid;
 pub struct CapabilityConfig {
     /// Disable basic capabilities (default: false)
     pub disable_basic: bool,
-    /// Enable extended capabilities (default: false)
-    pub enable_extended: bool,
-    /// Alias for enable_extended (for consistency with TypeScript)
+    /// Enable advanced capabilities (default: false)
     pub advanced_capabilities: bool,
     /// Skip the character provider (used for anonymous agents without a character file)
     pub skip_character_provider: bool,
@@ -42,7 +40,6 @@ impl CapabilityConfig {
     pub fn with_extended() -> Self {
         Self {
             disable_basic: false,
-            enable_extended: true,
             advanced_capabilities: true,
             skip_character_provider: false,
             enable_autonomy: false,
@@ -58,7 +55,6 @@ impl CapabilityConfig {
     pub fn extended_only() -> Self {
         Self {
             disable_basic: true,
-            enable_extended: true,
             advanced_capabilities: true,
             skip_character_provider: false,
             enable_autonomy: false,
@@ -67,14 +63,13 @@ impl CapabilityConfig {
 
     /// Check if advanced/extended capabilities are enabled
     pub fn has_advanced(&self) -> bool {
-        self.enable_extended || self.advanced_capabilities
+        self.advanced_capabilities
     }
 
     /// Create a config for an anonymous agent (skips character provider)
     pub fn anonymous() -> Self {
         Self {
             disable_basic: false,
-            enable_extended: false,
             advanced_capabilities: false,
             skip_character_provider: true,
             enable_autonomy: false,
@@ -85,7 +80,6 @@ impl CapabilityConfig {
     pub fn with_autonomy() -> Self {
         Self {
             disable_basic: false,
-            enable_extended: false,
             advanced_capabilities: false,
             skip_character_provider: false,
             enable_autonomy: true,
@@ -96,7 +90,6 @@ impl CapabilityConfig {
     pub fn with_extended_and_autonomy() -> Self {
         Self {
             disable_basic: false,
-            enable_extended: true,
             advanced_capabilities: true,
             skip_character_provider: false,
             enable_autonomy: true,

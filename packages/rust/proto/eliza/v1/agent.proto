@@ -63,8 +63,8 @@ message CharacterSettings {
   optional double default_presence_penalty = 13;
   // Disable basic capabilities
   optional bool disable_basic_capabilities = 14;
-  // Enable extended capabilities
-  optional bool enable_extended_capabilities = 15;
+  // Enable advanced capabilities
+  optional bool advanced_capabilities = 15;
   // Additional dynamic settings
   google.protobuf.Struct extra = 16;
 }

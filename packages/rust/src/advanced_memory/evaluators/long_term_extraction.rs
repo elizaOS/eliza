@@ -1,8 +1,6 @@
 use crate::advanced_memory::memory_service::MemoryService;
 use crate::advanced_memory::prompts::LONG_TERM_EXTRACTION_TEMPLATE;
-use crate::advanced_memory::types::{
-    LongTermMemory, LongTermMemoryCategory, MemoryExtraction,
-};
+use crate::advanced_memory::types::{LongTermMemory, LongTermMemoryCategory, MemoryExtraction};
 use crate::runtime::AgentRuntime;
 use crate::types::components::{
     ActionResult, EvaluatorDefinition, EvaluatorHandler, HandlerOptions,
@@ -17,7 +15,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, error, info, warn};
 
 fn now_unix() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
 }
 
 fn now_iso() -> String {
@@ -29,7 +30,7 @@ fn now_iso() -> String {
 /// Parse XML memory extraction response from LLM.
 fn parse_memory_extraction_xml(xml: &str) -> Vec<MemoryExtraction> {
     let re = match regex::Regex::new(
-        r"<memory>[\s\S]*?<category>(.*?)</category>[\s\S]*?<content>(.*?)</content>[\s\S]*?<confidence>(.*?)</confidence>[\s\S]*?</memory>"
+        r"<memory>[\s\S]*?<category>(.*?)</category>[\s\S]*?<content>(.*?)</content>[\s\S]*?<confidence>(.*?)</confidence>[\s\S]*?</memory>",
     ) {
         Ok(r) => r,
         Err(_) => return vec![],
@@ -143,11 +144,7 @@ impl EvaluatorHandler for LongTermExtractionEvaluator {
         // Count messages in this room
         let current_count = count_room_messages(&runtime, &message.room_id).await;
 
-        memory_service.should_run_extraction(
-            &message.entity_id,
-            &message.room_id,
-            current_count,
-        )
+        memory_service.should_run_extraction(&message.entity_id, &message.room_id, current_count)
     }
 
     async fn handle(
@@ -338,4 +335,96 @@ async fn count_room_messages(runtime: &AgentRuntime, room_id: &UUID) -> i32 {
     };
 
     db.get_memories(params).await.unwrap_or_default().len() as i32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_extraction_xml_valid_multiple() {
+        let xml = r#"
+<memories>
+  <memory>
+    <category>semantic</category>
+    <content>User works as a software engineer</content>
+    <confidence>0.95</confidence>
+  </memory>
+  <memory>
+    <category>episodic</category>
+    <content>User had a meeting yesterday</content>
+    <confidence>0.8</confidence>
+  </memory>
+  <memory>
+    <category>procedural</category>
+    <content>User prefers TypeScript for backend</content>
+    <confidence>0.9</confidence>
+  </memory>
+</memories>"#;
+        let extractions = parse_memory_extraction_xml(xml);
+        assert_eq!(extractions.len(), 3);
+
+        assert!(matches!(
+            extractions[0].category,
+            LongTermMemoryCategory::Semantic
+        ));
+        assert_eq!(extractions[0].content, "User works as a software engineer");
+        assert!((extractions[0].confidence - 0.95).abs() < 0.001);
+
+        assert!(matches!(
+            extractions[1].category,
+            LongTermMemoryCategory::Episodic
+        ));
+        assert!((extractions[1].confidence - 0.8).abs() < 0.001);
+
+        assert!(matches!(
+            extractions[2].category,
+            LongTermMemoryCategory::Procedural
+        ));
+    }
+
+    #[test]
+    fn parse_extraction_xml_invalid_category_skipped() {
+        let xml = r#"
+<memories>
+  <memory>
+    <category>invalid_type</category>
+    <content>This should be skipped</content>
+    <confidence>0.9</confidence>
+  </memory>
+  <memory>
+    <category>semantic</category>
+    <content>This should be kept</content>
+    <confidence>0.85</confidence>
+  </memory>
+</memories>"#;
+        let extractions = parse_memory_extraction_xml(xml);
+        assert_eq!(extractions.len(), 1);
+        assert_eq!(extractions[0].content, "This should be kept");
+    }
+
+    #[test]
+    fn parse_extraction_xml_bad_confidence_skipped() {
+        let xml = r#"
+<memory>
+  <category>semantic</category>
+  <content>Bad confidence</content>
+  <confidence>not_a_number</confidence>
+</memory>"#;
+        let extractions = parse_memory_extraction_xml(xml);
+        assert_eq!(extractions.len(), 0);
+    }
+
+    #[test]
+    fn parse_extraction_xml_empty_input() {
+        let extractions = parse_memory_extraction_xml("");
+        assert!(extractions.is_empty());
+    }
+
+    #[test]
+    fn parse_extraction_xml_no_memories() {
+        let xml = "The model didn't return any structured data.";
+        let extractions = parse_memory_extraction_xml(xml);
+        assert!(extractions.is_empty());
+    }
 }

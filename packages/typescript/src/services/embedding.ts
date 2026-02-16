@@ -5,8 +5,8 @@ import { ModelType } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 import {
+  DEFAULT_MAX_EMBEDDING_TOKENS,
   estimateTokens,
-  MAX_EMBEDDING_TOKENS,
   stripMessageFormatting,
 } from "../utils";
 
@@ -375,11 +375,15 @@ export class EmbeddingGenerationService extends Service {
    *    the embedding captures semantic meaning rather than structure.
    * 2. If the memory belongs to a conversation room, fetch the last few
    *    messages to provide contextual meaning for short/ambiguous messages.
-   * 3. Truncate the result to MAX_EMBEDDING_TOKENS to stay within model limits.
+   * 3. Truncate the result to the model's max input tokens to stay within limits.
    */
   private async prepareEmbeddingText(memory: Memory): Promise<string> {
     const rawText = memory.content?.text ?? "";
     const estimatedTokens = estimateTokens(rawText);
+
+    // Get the embedding model to check for specific token limits
+    const model = this.runtime.getModelConfiguration(ModelType.TEXT_EMBEDDING);
+    const maxTokens = model?.maxInputTokens || DEFAULT_MAX_EMBEDDING_TOKENS;
 
     // For short messages (< 100 tokens), enrich with recent conversation context
     // so that "yes", "ok", "do it" get meaningful embeddings.
@@ -412,7 +416,8 @@ export class EmbeddingGenerationService extends Service {
     let cleaned = stripMessageFormatting(contextText);
 
     // Truncate to embedding model token limit using character estimation
-    const maxChars = MAX_EMBEDDING_TOKENS * 4; // ~4 chars per token
+    // ~4 chars per token is a safe upper bound estimate for most tokenizers
+    const maxChars = maxTokens * 4;
     if (cleaned.length > maxChars) {
       // Keep the end (most recent content) when truncating
       cleaned = cleaned.slice(-maxChars);
@@ -441,8 +446,50 @@ export class EmbeddingGenerationService extends Service {
     try {
       const startTime = Date.now();
 
+      // generated augmented query/intent
+      let embeddingSourceText = memoryContent.text;
+      try {
+        // Only generate intent for messages that are long enough to warrant it
+        // and haven't already had it generated
+        if (memoryContent.text.length > 20 && !memory.metadata?.intent) {
+          const intentPrompt = `Analyze the following message and extract the core user intent or a summary of what they are asking/saying. Return ONLY the intent text.
+Message:
+"${memoryContent.text}"
+
+Intent:`;
+
+          const intentResult = await this.runtime.useModel(
+            ModelType.TEXT_SMALL,
+            {
+              prompt: intentPrompt,
+            },
+          );
+
+          if (typeof intentResult === "string" && intentResult.length > 0) {
+            embeddingSourceText = intentResult.trim();
+            if (!memory.metadata) {
+              memory.metadata = {};
+            }
+            memory.metadata.intent = embeddingSourceText;
+          }
+        }
+      } catch (error) {
+        this.runtime.logger.warn(
+          {
+            src: "plugin:bootstrap:service:embedding",
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Failed to generate intent for embedding, falling back to original text",
+        );
+      }
+
       // Prepare text: strip formatting, enrich short messages, truncate to limit
-      const embeddingText = await this.prepareEmbeddingText(memory);
+      // We use the intent (if generated) as the source for the embedding
+      const tempMemory = {
+        ...memory,
+        content: { ...memory.content, text: embeddingSourceText },
+      };
+      const embeddingText = await this.prepareEmbeddingText(tempMemory);
 
       // Generate embedding
       const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
@@ -456,15 +503,18 @@ export class EmbeddingGenerationService extends Service {
           agentId: this.runtime.agentId,
           memoryId: memory.id,
           durationMs: duration,
+          hasIntent: embeddingSourceText !== memoryContent.text,
         },
         "Generated embedding",
       );
 
-      // Update memory with embedding
+      // Update memory with embedding and metadata (intent)
       if (memory.id) {
+        // Ensure we save the metadata update if we generated an intent
         await this.runtime.updateMemory({
           id: memory.id,
           embedding,
+          metadata: memory.metadata,
         });
 
         // Log embedding completion
@@ -478,6 +528,7 @@ export class EmbeddingGenerationService extends Service {
             status: "completed",
             duration,
             source: "embeddingService",
+            hasIntent: embeddingSourceText !== memoryContent.text,
           },
         });
 

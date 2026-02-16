@@ -33,7 +33,9 @@ import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 import {
   composePromptFromState,
+  extractFirstSentence,
   getLocalServerUrl,
+  hasFirstSentence,
   parseBooleanFromText,
   parseKeyValueXml,
   truncateToCompleteSentence,
@@ -43,6 +45,7 @@ import {
   MarkableExtractor,
   ResponseStreamExtractor,
 } from "../utils/streaming";
+import { VoiceCacheService } from "./voice-cache";
 
 /**
  * Escape Handlebars syntax in a string to prevent template injection.
@@ -271,14 +274,116 @@ export class DefaultMessageService implements IMessageService {
                 messageId?: string;
               }
             | undefined;
+          // Voice handling state
+          let firstSentenceSent = false;
+          let firstSentenceText = "";
+          const voiceCache = new VoiceCacheService();
+          await voiceCache.initialize(runtime);
+
           if (opts.onStreamChunk) {
             const extractor = new ResponseStreamExtractor();
             const onStreamChunk = opts.onStreamChunk;
+
+            let streamText = "";
+
             streamingContext = {
               onStreamChunk: async (chunk: string, msgId?: string) => {
                 if (extractor.done) return;
                 const textToStream = extractor.push(chunk);
                 if (textToStream) {
+                  streamText += textToStream;
+
+                  // Check for first sentence to send to voice
+                  if (!firstSentenceSent && hasFirstSentence(streamText)) {
+                    const { first } = extractFirstSentence(streamText);
+                    firstSentenceText = first;
+                    if (first.length > 5) {
+                      // Minimal length check
+                      firstSentenceSent = true;
+
+                      // Process voice in background
+                      (async () => {
+                        try {
+                          const voiceSettings = runtime.character.settings
+                            ?.voice as
+                            | {
+                                model?: string;
+                                url?: string;
+                                voiceId?: string;
+                              }
+                            | undefined;
+
+                          const model =
+                            voiceSettings?.model || "en_US-male-medium";
+                          const voiceId =
+                            voiceSettings?.url ||
+                            voiceSettings?.voiceId ||
+                            "default";
+
+                          const key = voiceCache.generateKey(
+                            first,
+                            voiceId,
+                            model,
+                          );
+                          let audioBuffer = voiceCache.getCached(key);
+
+                          if (!audioBuffer) {
+                            const result = await runtime.useModel(
+                              ModelType.TEXT_TO_SPEECH,
+                              // properties might differ by provider, usually 'text' or 'prompt'
+                              {
+                                text: first,
+                                voice: voiceId,
+                                model: model,
+                              } as any,
+                            );
+
+                            if (
+                              result instanceof ArrayBuffer ||
+                              Object.prototype.toString.call(result) ===
+                                "[object ArrayBuffer]"
+                            ) {
+                              audioBuffer = Buffer.from(result as ArrayBuffer);
+                            } else if (Buffer.isBuffer(result)) {
+                              audioBuffer = result;
+                            } else if (result instanceof Uint8Array) {
+                              audioBuffer = Buffer.from(result);
+                            }
+
+                            if (audioBuffer) {
+                              voiceCache.setCached(key, audioBuffer);
+                            }
+                          }
+
+                          if (audioBuffer && callback) {
+                            const audioBase64 = audioBuffer.toString("base64");
+                            await callback({
+                              text: "",
+                              attachments: [
+                                {
+                                  id: v4(),
+                                  url: `data:audio/wav;base64,${audioBase64}`,
+                                  title: "Voice Response",
+                                  source: "voice-cache",
+                                  description:
+                                    "Voice response for first sentence",
+                                  text: first,
+                                  contentType: ContentType.AUDIO,
+                                },
+                              ],
+                              source: "voice",
+                            });
+                          }
+                        } catch (error) {
+                          runtime.logger.error(
+                            { error },
+                            "Error generating voice for first sentence",
+                          );
+                        }
+                      })();
+                    }
+                  }
+
                   await onStreamChunk(textToStream, msgId);
                 }
               },
@@ -307,6 +412,76 @@ export class DefaultMessageService implements IMessageService {
 
           // Clean up timeout
           clearTimeout(timeoutId);
+
+          // Voice: Handle the rest of the message
+          if (firstSentenceSent && result.responseContent?.text) {
+            const fullText = result.responseContent.text;
+            const rest = fullText.replace(firstSentenceText, "").trim();
+            if (rest.length > 0) {
+              // Generate voice for rest
+              // (Async immediately)
+              (async () => {
+                try {
+                  const voiceSettings = runtime.character.settings?.voice as
+                    | {
+                        model?: string;
+                        url?: string;
+                        voiceId?: string;
+                      }
+                    | undefined;
+                  const model = voiceSettings?.model || "en_US-male-medium";
+                  const voiceId =
+                    voiceSettings?.url || voiceSettings?.voiceId || "default";
+
+                  const key = voiceCache.generateKey(rest, voiceId, model);
+                  let audioBuffer = voiceCache.getCached(key);
+
+                  if (!audioBuffer) {
+                    const result = await runtime.useModel(
+                      ModelType.TEXT_TO_SPEECH,
+                      { text: rest, voice: voiceId, model: model } as any,
+                    );
+                    if (
+                      result instanceof ArrayBuffer ||
+                      Object.prototype.toString.call(result) ===
+                        "[object ArrayBuffer]"
+                    ) {
+                      audioBuffer = Buffer.from(result as ArrayBuffer);
+                    } else if (Buffer.isBuffer(result)) {
+                      audioBuffer = result;
+                    } else if (result instanceof Uint8Array) {
+                      audioBuffer = Buffer.from(result);
+                    }
+                    if (audioBuffer) voiceCache.setCached(key, audioBuffer);
+                  }
+
+                  if (audioBuffer && callback) {
+                    const audioBase64 = audioBuffer.toString("base64");
+                    await callback({
+                      text: "",
+                      attachments: [
+                        {
+                          id: v4(),
+                          url: `data:audio/wav;base64,${audioBase64}`,
+                          title: "Voice Response",
+                          source: "voice-cache",
+                          description: "Voice response for remaining text",
+                          text: rest,
+                          contentType: ContentType.AUDIO,
+                        },
+                      ],
+                      source: "voice",
+                    });
+                  }
+                } catch (error) {
+                  runtime.logger.error(
+                    { error },
+                    "Error generating voice for remaining text",
+                  );
+                }
+              })();
+            }
+          }
 
           return result;
         } finally {
@@ -485,6 +660,8 @@ export class DefaultMessageService implements IMessageService {
       message,
       ["ANXIETY", "ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
       true,
+      false,
+      "generate",
     );
 
     // Get room and mention context
@@ -612,6 +789,7 @@ export class DefaultMessageService implements IMessageService {
             },
           ],
           options: {
+            contextCheckLevel: 0, // Set to 0 for now
             modelSize: opts.shouldRespondModel === "large" ? "large" : "small",
             preferredEncapsulation: "xml",
           },
@@ -683,7 +861,13 @@ export class DefaultMessageService implements IMessageService {
       }
 
       if (responseContent?.providers && responseContent.providers.length > 0) {
-        state = await runtime.composeState(message, responseContent.providers);
+        state = await runtime.composeState(
+          message,
+          responseContent.providers,
+          false,
+          false,
+          "multi_step_provider",
+        );
       }
 
       // Save response memory to database
@@ -1355,7 +1539,13 @@ export class DefaultMessageService implements IMessageService {
     opts: ResolvedMessageOptions,
     responseId: UUID,
   ): Promise<StrategyResult> {
-    state = await runtime.composeState(message, ["ACTIONS"]);
+    state = await runtime.composeState(
+      message,
+      ["ACTIONS"],
+      false,
+      false,
+      "evaluate",
+    );
 
     if (!state.values || !state.values.actionNames) {
       runtime.logger.warn(
@@ -1746,10 +1936,13 @@ Output ONLY the continuation, starting immediately after the last character abov
         "Starting multi-step iteration",
       );
 
-      accumulatedState = (await runtime.composeState(message, [
-        "RECENT_MESSAGES",
-        "ACTION_STATE",
-      ])) as MultiStepState;
+      accumulatedState = (await runtime.composeState(
+        message,
+        ["RECENT_MESSAGES", "ACTION_STATE"],
+        false,
+        false,
+        "multi_step_iteration",
+      )) as MultiStepState;
       accumulatedState.data.actionResults = traceActionResult;
 
       // Use dynamicPromptExecFromState for structured decision output
@@ -2103,10 +2296,13 @@ Output ONLY the continuation, starting immediately after the last character abov
       );
     }
 
-    accumulatedState = (await runtime.composeState(message, [
-      "RECENT_MESSAGES",
-      "ACTION_STATE",
-    ])) as MultiStepState;
+    accumulatedState = (await runtime.composeState(
+      message,
+      ["RECENT_MESSAGES", "ACTION_STATE"],
+      false,
+      false,
+      "multi_step_summary",
+    )) as MultiStepState;
 
     // Use dynamicPromptExecFromState for final summary generation
     // Stream the final summary for better UX

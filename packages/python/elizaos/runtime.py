@@ -29,7 +29,7 @@ from elizaos.types.components import (
     PreEvaluatorResult,
     Provider,
 )
-from elizaos.types.database import AgentRunSummaryResult, IDatabaseAdapter, Log
+from elizaos.types.database import AgentRunSummaryResult, IDatabaseAdapter, Log, MemorySearchOptions
 from elizaos.types.environment import Entity, Room, World
 from elizaos.types.events import EventType
 from elizaos.types.memory import Memory
@@ -144,7 +144,7 @@ class AgentRuntime(IAgentRuntime):
         conversation_length: int = 32,
         log_level: str = "ERROR",
         disable_basic_capabilities: bool = False,
-        enable_extended_capabilities: bool = False,
+        advanced_capabilities: bool = False,
         action_planning: bool | None = None,
         llm_mode: LLMMode | None = None,
         check_should_respond: bool | None = None,
@@ -163,7 +163,7 @@ class AgentRuntime(IAgentRuntime):
             is_anonymous = True
 
         self._capability_disable_basic = disable_basic_capabilities
-        self._capability_enable_extended = enable_extended_capabilities
+        self._capability_advanced = advanced_capabilities
         self._capability_enable_autonomy = enable_autonomy
         self._is_anonymous_character = is_anonymous
         self._action_planning_option = action_planning
@@ -340,8 +340,8 @@ class AgentRuntime(IAgentRuntime):
             disable_basic = self._capability_disable_basic or (
                 char_settings.get("DISABLE_BASIC_CAPABILITIES") in (True, "true")
             )
-            enable_extended = self._capability_enable_extended or (
-                char_settings.get("ENABLE_EXTENDED_CAPABILITIES") in (True, "true")
+            advanced_capabilities = self._capability_advanced or (
+                char_settings.get("ADVANCED_CAPABILITIES") in (True, "true")
             )
             skip_character_provider = self._is_anonymous_character
 
@@ -349,12 +349,12 @@ class AgentRuntime(IAgentRuntime):
                 char_settings.get("ENABLE_AUTONOMY") in (True, "true")
             )
 
-            if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
+            if disable_basic or advanced_capabilities or skip_character_provider or enable_autonomy:
                 from elizaos.bootstrap import CapabilityConfig, create_bootstrap_plugin
 
                 config = CapabilityConfig(
                     disable_basic=disable_basic,
-                    enable_extended=enable_extended,
+                    advanced_capabilities=advanced_capabilities,
                     skip_character_provider=skip_character_provider,
                     enable_autonomy=enable_autonomy,
                 )
@@ -1136,12 +1136,17 @@ class AgentRuntime(IAgentRuntime):
         include_list: list[str] | None = None,
         only_include: bool = False,
         skip_cache: bool = False,
+        trajectory_phase: str | None = None,
     ) -> State:
         # If we're running inside a trajectory step, always bypass the state cache
         # so providers are executed and logged for training/benchmark traces.
         traj_step_id: str | None = None
         if message.metadata is not None:
             maybe_step = getattr(message.metadata, "trajectoryStepId", None)
+            if not maybe_step and hasattr(message.metadata, "message"):
+                # Check nested MessageMetadata for parsing parity
+                maybe_step = message.metadata.message.trajectory_step_id
+
             if isinstance(maybe_step, str) and maybe_step:
                 traj_step_id = maybe_step
                 skip_cache = True
@@ -1212,6 +1217,9 @@ class AgentRuntime(IAgentRuntime):
                     out[k] = _as_json_scalar(v)
             return out
 
+        # Resolve the purpose label for trajectory provider accesses
+        traj_purpose = f"compose_state:{trajectory_phase}" if trajectory_phase else "compose_state"
+
         text_parts: list[str] = []
         for provider in providers_to_run:
             if provider.private:
@@ -1234,18 +1242,18 @@ class AgentRuntime(IAgentRuntime):
 
             # Log provider access to trajectory service (if available)
             if traj_step_id and traj_logger is not None:
-                try:
-                    user_text = message.content.text or ""
+                # Trajectory logging must never break core message flow.
+                with contextlib.suppress(Exception):
                     traj_logger.log_provider_access(
                         step_id=traj_step_id,
                         provider_name=provider.name,
-                        data=_as_json_dict(result.data or {}),
-                        purpose="compose_state",
-                        query={"message": _as_json_scalar(user_text)},
+                        data={
+                            "textLength": len(result.text) if result.text else 0,
+                            "hasValues": bool(result.values),
+                            "hasData": bool(result.data),
+                        },
+                        purpose=traj_purpose,
                     )
-                except Exception:
-                    # Trajectory logging must never break core message flow.
-                    pass
 
         state.text = "\n".join(text_parts)
         # Match TypeScript behavior: expose providers text under {{providers}}.
@@ -1339,16 +1347,25 @@ class AgentRuntime(IAgentRuntime):
                 max_tokens_raw = params.get("maxTokens") if isinstance(params, dict) else None
                 max_tokens = int(max_tokens_raw) if isinstance(max_tokens_raw, int) else 0
 
+                # Truncate embedding vectors to avoid bloating trajectory files
+                result_str = str(result)
+                is_embedding = "EMBEDDING" in str(effective_model_type).upper()
+                if is_embedding and len(result_str) > 200:
+                    dim = result_str.count(",") + 1
+                    result_str = f"[embedding vector dim={dim}]"
+                elif len(result_str) > 2000:
+                    result_str = result_str[:2000]
+
                 traj_svc.log_llm_call(  # type: ignore[call-arg]
                     step_id=step_id,
                     model=str(effective_model_type),
                     system_prompt=system_prompt,
-                    user_prompt=prompt,
-                    response=str(result),
+                    user_prompt=prompt[:2000] if prompt else "",
+                    response=result_str,
                     temperature=temperature,
                     max_tokens=max_tokens,
                     purpose="action",
-                    action_type="runtime.use_model",
+                    action_type="runtime.useModel",
                     latency_ms=max(0, end_ms - start_ms),
                 )
         except Exception:
@@ -1726,6 +1743,12 @@ class AgentRuntime(IAgentRuntime):
     async def delete_component(self, component_id: UUID) -> None:
         if self._adapter:
             await self._adapter.delete_component(component_id)
+
+    async def search_memories(self, params: MemorySearchOptions) -> list[Memory]:
+        """Search memories by embedding."""
+        if not self._adapter:
+            raise RuntimeError("Database adapter not set")
+        return await self._adapter.search_memories(params)
 
     async def get_memories(
         self,
@@ -2381,6 +2404,28 @@ end code: {final_code}
                     # Flush extractor and get final state
                     extractor.flush()
                     response_str = "".join(response_parts)
+
+                    # Log streaming response to trajectory (streaming bypasses use_model hook)
+                    try:
+                        from elizaos.trajectory_context import CURRENT_TRAJECTORY_STEP_ID
+
+                        step_id = CURRENT_TRAJECTORY_STEP_ID.get()
+                        traj_svc = self.get_service("trajectory_logger")
+                        if step_id and traj_svc is not None and hasattr(traj_svc, "log_llm_call"):
+                            traj_svc.log_llm_call(  # type: ignore[call-arg]
+                                step_id=step_id,
+                                model=stream_model_type,
+                                system_prompt="",
+                                user_prompt=str(params.get("prompt", ""))[:2000],
+                                response=response_str[:2000],
+                                temperature=0.0,
+                                max_tokens=int(params.get("maxTokens", 0)),
+                                purpose="action",
+                                action_type="dynamic_prompt_exec.stream",
+                                latency_ms=0,
+                            )
+                    except Exception:
+                        pass
                 else:
                     # Non-streaming mode: use use_model
                     response = await self.use_model(model_type_str, params)

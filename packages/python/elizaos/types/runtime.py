@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field
 
 from elizaos.logger import Logger
-from elizaos.types.database import IDatabaseAdapter
+from elizaos.types.database import IDatabaseAdapter, MemorySearchOptions
 from elizaos.types.primitives import UUID, Content
 
 if TYPE_CHECKING:
@@ -287,6 +287,7 @@ class IAgentRuntime(ABC):
         include_list: list[str] | None = None,
         only_include: bool = False,
         skip_cache: bool = False,
+        trajectory_phase: str | None = None,
     ) -> State: ...
 
     # Model usage
@@ -455,6 +456,9 @@ class IAgentRuntime(ABC):
 
     @abstractmethod
     async def get_relationships(self, params: dict[str, object]) -> list[object]: ...
+
+    @abstractmethod
+    async def search_memories(self, params: MemorySearchOptions) -> list[Memory]: ...
 
     @abstractmethod
     async def search_knowledge(self, query: str, limit: int = 5) -> list[object]: ...

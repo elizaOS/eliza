@@ -209,6 +209,15 @@ standalone.ts
 # Continuous Claude cache (local only)
 .claude/cache/
 
+# Local workspace artifacts
+.cursor/
+trained_models/
+
+# Generated local outputs
+packages/typescript/test_output.txt
+packages/rust/check_log*.txt
+packages/rust/src/**/*.bak
+
 # Proto-generated files (regenerated from schemas/)
 **/generated/**
 # But keep generated files needed for packages to work

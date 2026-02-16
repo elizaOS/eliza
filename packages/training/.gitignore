@@ -17,5 +17,11 @@ python/logs/
 python/.pytest_cache/
 python/**/.pytest_cache/
 
+# Local generated datasets/benchmarks
+should_respond_data.jsonl
+should_respond_eval.jsonl
+benchmark_results.json
+benchmark_chart.png
+
 #tmp
 TRAINING_ROADMAP.mdRUNPOD_QUICKSTART.md

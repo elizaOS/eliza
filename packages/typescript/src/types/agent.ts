@@ -42,7 +42,6 @@ export type CharacterSettings = Omit<
 > & {
   ENABLE_AUTONOMY?: boolean | string;
   DISABLE_BASIC_CAPABILITIES?: boolean | string;
-  ENABLE_EXTENDED_CAPABILITIES?: boolean | string;
   ADVANCED_CAPABILITIES?: boolean | string;
   secrets?: Record<string, string | boolean | number>;
   [key: string]: JsonValue | undefined;

@@ -74,6 +74,7 @@ export * from "./services/tool-policy";
 export * from "./services/trajectoryLogger";
 export * from "./services/triggerScheduling";
 export * from "./services/triggerWorker";
+export * from "./services/voice-cache";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";

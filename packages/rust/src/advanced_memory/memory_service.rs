@@ -6,10 +6,10 @@ use crate::types::database::GetMemoriesParams;
 use crate::types::memory::{Memory, MemoryMetadata};
 use crate::types::primitives::{Content, UUID};
 use anyhow::Result;
-use std::collections::HashMap;
-use std::sync::{Weak, Mutex};
 use std::any::Any;
-use tracing::{info, debug};
+use std::collections::HashMap;
+use std::sync::{Mutex, Weak};
+use tracing::{debug, info};
 
 pub struct MemoryService {
     runtime: Weak<AgentRuntime>,
@@ -34,7 +34,6 @@ impl Service for MemoryService {
         Ok(())
     }
 }
-
 
 impl MemoryService {
     pub fn new(runtime: Weak<AgentRuntime>, config: MemoryConfig) -> Self {
@@ -134,11 +133,11 @@ impl MemoryService {
 
     // ── Long-term memory operations ──────────────────────────────────
 
-    pub async fn store_long_term_memory(
-        &self,
-        memory: LongTermMemory,
-    ) -> Result<UUID> {
-        let runtime = self.runtime.upgrade().ok_or_else(|| anyhow::anyhow!("Runtime dropped"))?;
+    pub async fn store_long_term_memory(&self, memory: LongTermMemory) -> Result<UUID> {
+        let runtime = self
+            .runtime
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Runtime dropped"))?;
 
         let metadata = serde_json::to_value(&memory.metadata).unwrap_or(serde_json::Value::Null);
         let mut final_metadata = if let serde_json::Value::Object(map) = metadata {
@@ -146,7 +145,7 @@ impl MemoryService {
         } else {
             serde_json::Map::new()
         };
-        
+
         final_metadata.insert(
             "category".to_string(),
             serde_json::to_value(&memory.category).unwrap(),
@@ -177,17 +176,19 @@ impl MemoryService {
             },
             embedding: memory.embedding,
             room_id: UUID::default_uuid(),
-            metadata: Some(MemoryMetadata::Custom(serde_json::Value::Object(final_metadata))),
+            metadata: Some(MemoryMetadata::Custom(serde_json::Value::Object(
+                final_metadata,
+            ))),
             unique: Some(true),
             ..Default::default()
         };
 
         // Access database via generic adapter
-        let db = runtime.database()
+        let db = runtime
+            .database()
             .ok_or_else(|| anyhow::anyhow!("Database not available"))?;
-            
-        let id = db.create_memory(&mem, "long_term_memories")
-            .await?;
+
+        let id = db.create_memory(&mem, "long_term_memories").await?;
 
         info!(
             "Stored long-term memory: {:?} for entity {}",
@@ -207,7 +208,10 @@ impl MemoryService {
             return Ok(vec![]);
         }
 
-        let runtime = self.runtime.upgrade().ok_or_else(|| anyhow::anyhow!("Runtime dropped"))?;
+        let runtime = self
+            .runtime
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Runtime dropped"))?;
 
         // Do NOT pass count to DB — we need all memories to sort by
         // confidence first, then truncate (matches Python _top_k_by_confidence).
@@ -218,20 +222,33 @@ impl MemoryService {
             ..Default::default()
         };
 
-        let db = runtime.database()
+        let db = runtime
+            .database()
             .ok_or_else(|| anyhow::anyhow!("Database not available"))?;
-            
+
         let memories = db.get_memories(params).await?;
 
         let mut results = Vec::new();
 
         for mem in memories {
             let (category_val, confidence, source, access_count, extra_meta) =
-                if let Some(MemoryMetadata::Custom(serde_json::Value::Object(mut map))) = mem.metadata {
-                    let cat = map.remove("category").and_then(|v| serde_json::from_value(v).ok());
-                    let conf = map.remove("confidence").and_then(|v| v.as_f64()).map(|f| f as f32);
-                    let src = map.remove("source").and_then(|v| v.as_str().map(|s| s.to_string()));
-                    let acc = map.remove("accessCount").and_then(|v| v.as_i64()).map(|i| i as i32);
+                if let Some(MemoryMetadata::Custom(serde_json::Value::Object(mut map))) =
+                    mem.metadata
+                {
+                    let cat = map
+                        .remove("category")
+                        .and_then(|v| serde_json::from_value(v).ok());
+                    let conf = map
+                        .remove("confidence")
+                        .and_then(|v| v.as_f64())
+                        .map(|f| f as f32);
+                    let src = map
+                        .remove("source")
+                        .and_then(|v| v.as_str().map(|s| s.to_string()));
+                    let acc = map
+                        .remove("accessCount")
+                        .and_then(|v| v.as_i64())
+                        .map(|i| i as i32);
                     (cat, conf, src, acc, map)
                 } else {
                     (None, None, None, None, serde_json::Map::new())
@@ -244,7 +261,7 @@ impl MemoryService {
                     continue;
                 }
             }
-            
+
             let final_category = category_val.unwrap_or(LongTermMemoryCategory::Semantic);
 
             results.push(LongTermMemory {
@@ -281,10 +298,7 @@ impl MemoryService {
 
     /// Get formatted long-term memories grouped by category.
     /// Matches the TS `getFormattedLongTermMemories` service method.
-    pub async fn get_formatted_long_term_memories(
-        &self,
-        entity_id: UUID,
-    ) -> Result<String> {
+    pub async fn get_formatted_long_term_memories(&self, entity_id: UUID) -> Result<String> {
         let memories = self.get_long_term_memories(entity_id, None, 20).await?;
 
         if memories.is_empty() {
@@ -310,12 +324,18 @@ impl MemoryService {
                     let mut c = w.chars();
                     match c.next() {
                         None => String::new(),
-                        Some(first) => first.to_uppercase().to_string() + &c.as_str().to_lowercase(),
+                        Some(first) => {
+                            first.to_uppercase().to_string() + &c.as_str().to_lowercase()
+                        }
                     }
                 })
                 .collect::<Vec<_>>()
                 .join(" ");
-            let item_lines = items.iter().map(|m| format!("- {}", m.content)).collect::<Vec<_>>().join("\n");
+            let item_lines = items
+                .iter()
+                .map(|m| format!("- {}", m.content))
+                .collect::<Vec<_>>()
+                .join("\n");
             sections.push(format!("**{}**:\n{}", category_name, item_lines));
         }
 
@@ -330,7 +350,10 @@ impl MemoryService {
         &self,
         room_id: UUID,
     ) -> Result<Option<SessionSummary>> {
-        let runtime = self.runtime.upgrade().ok_or_else(|| anyhow::anyhow!("Runtime dropped"))?;
+        let runtime = self
+            .runtime
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Runtime dropped"))?;
 
         let params = GetMemoriesParams {
             room_id: Some(room_id),
@@ -340,7 +363,8 @@ impl MemoryService {
             ..Default::default()
         };
 
-        let db = runtime.database()
+        let db = runtime
+            .database()
             .ok_or_else(|| anyhow::anyhow!("Database not available"))?;
 
         let memories = db.get_memories(params).await?;
@@ -354,23 +378,41 @@ impl MemoryService {
     }
 
     /// Store a new session summary.
-    pub async fn store_session_summary(
-        &self,
-        summary: SessionSummary,
-    ) -> Result<UUID> {
-        let runtime = self.runtime.upgrade().ok_or_else(|| anyhow::anyhow!("Runtime dropped"))?;
+    pub async fn store_session_summary(&self, summary: SessionSummary) -> Result<UUID> {
+        let runtime = self
+            .runtime
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Runtime dropped"))?;
 
         let mut meta = serde_json::Map::new();
-        meta.insert("summary".to_string(), serde_json::Value::String(summary.summary.clone()));
-        meta.insert("messageCount".to_string(), serde_json::Value::Number(summary.message_count.into()));
-        meta.insert("lastMessageOffset".to_string(), serde_json::Value::Number(summary.last_message_offset.into()));
-        meta.insert("startTime".to_string(), serde_json::Value::Number(summary.start_time.into()));
-        meta.insert("endTime".to_string(), serde_json::Value::Number(summary.end_time.into()));
+        meta.insert(
+            "summary".to_string(),
+            serde_json::Value::String(summary.summary.clone()),
+        );
+        meta.insert(
+            "messageCount".to_string(),
+            serde_json::Value::Number(summary.message_count.into()),
+        );
+        meta.insert(
+            "lastMessageOffset".to_string(),
+            serde_json::Value::Number(summary.last_message_offset.into()),
+        );
+        meta.insert(
+            "startTime".to_string(),
+            serde_json::Value::Number(summary.start_time.into()),
+        );
+        meta.insert(
+            "endTime".to_string(),
+            serde_json::Value::Number(summary.end_time.into()),
+        );
         if let Some(topics) = &summary.topics {
             meta.insert("topics".to_string(), serde_json::to_value(topics).unwrap());
         }
         if let Some(extra) = &summary.metadata {
-            meta.insert("extra".to_string(), serde_json::Value::Object(extra.clone()));
+            meta.insert(
+                "extra".to_string(),
+                serde_json::Value::Object(extra.clone()),
+            );
         }
 
         let room_id_clone = summary.room_id.clone();
@@ -388,7 +430,8 @@ impl MemoryService {
             ..Default::default()
         };
 
-        let db = runtime.database()
+        let db = runtime
+            .database()
             .ok_or_else(|| anyhow::anyhow!("Database not available"))?;
 
         let id = db.create_memory(&mem, "session_summaries").await?;
@@ -404,8 +447,12 @@ impl MemoryService {
         room_id: UUID,
         updated: SessionSummary,
     ) -> Result<()> {
-        let runtime = self.runtime.upgrade().ok_or_else(|| anyhow::anyhow!("Runtime dropped"))?;
-        let db = runtime.database()
+        let runtime = self
+            .runtime
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("Runtime dropped"))?;
+        let db = runtime
+            .database()
             .ok_or_else(|| anyhow::anyhow!("Database not available"))?;
 
         // Delete old
@@ -445,7 +492,11 @@ impl MemoryService {
                 end_time = v.as_i64().unwrap_or(0);
             }
             if let Some(serde_json::Value::Array(arr)) = map.get("topics") {
-                topics = Some(arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+                topics = Some(
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect(),
+                );
             }
             if let Some(serde_json::Value::Object(m)) = map.get("extra") {
                 extra_meta = Some(m.clone());

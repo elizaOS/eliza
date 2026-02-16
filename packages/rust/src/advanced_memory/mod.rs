@@ -13,11 +13,11 @@ pub mod providers;
 /// Type definitions for memory categories, sessions, and extraction results.
 pub mod types;
 
-pub use memory_service::MemoryService;
-pub use providers::long_term_memory::LongTermMemoryProvider;
-pub use providers::context_summary::ContextSummaryProvider;
-pub use evaluators::summarization::SummarizationEvaluator;
 pub use evaluators::long_term_extraction::LongTermExtractionEvaluator;
+pub use evaluators::summarization::SummarizationEvaluator;
+pub use memory_service::MemoryService;
+pub use providers::context_summary::ContextSummaryProvider;
+pub use providers::long_term_memory::LongTermMemoryProvider;
 
 /// Create the advanced memory plugin with all providers and evaluators registered.
 pub fn create_advanced_memory_plugin(runtime: Weak<AgentRuntime>) -> Plugin {

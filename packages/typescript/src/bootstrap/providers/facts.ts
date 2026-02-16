@@ -52,28 +52,36 @@ const factsProvider: Provider = {
       .map((message) => message.content.text)
       .join("\n");
 
-    const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-      text: last5Messages,
-    });
+    const embeddings = recentMessages
+      .map((m) => m.embedding)
+      .filter((e): e is number[] => !!e && e.length > 0);
 
-    const [relevantFacts, recentFactsData] = await Promise.all([
-      runtime.searchMemories({
-        tableName: "facts",
-        embedding,
-        roomId: message.roomId,
-        worldId: message.worldId,
-        count: 6,
-        query: message.content.text,
-      }),
-      runtime.searchMemories({
-        embedding,
-        query: message.content.text,
-        tableName: "facts",
-        roomId: message.roomId,
-        entityId: message.entityId,
-        count: 6,
-      }),
-    ]);
+    const primaryEmbedding = embeddings.length > 0 ? embeddings[0] : null;
+
+    // If no embedding, we can't search facts by vector.
+    // We could fallback to keyword search if the adapter supports it (passing null/empty embedding?)
+    // For now, if no embedding, we just return empty (or skip search).
+
+    const [relevantFacts, recentFactsData] = primaryEmbedding
+      ? await Promise.all([
+          runtime.searchMemories({
+            tableName: "facts",
+            embedding: primaryEmbedding,
+            roomId: message.roomId,
+            worldId: message.worldId,
+            count: 6,
+            query: message.content.text,
+          }),
+          runtime.searchMemories({
+            embedding: primaryEmbedding,
+            query: message.content.text,
+            tableName: "facts",
+            roomId: message.roomId,
+            entityId: message.entityId,
+            count: 6,
+          }),
+        ])
+      : [[], []];
 
     // join the two and deduplicate
     const allFacts = [...relevantFacts, ...recentFactsData].filter(

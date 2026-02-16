@@ -29,24 +29,12 @@
 #![warn(missing_docs)]
 #![warn(rustdoc::missing_crate_level_docs)]
 
-#[cfg(all(
-    feature = "bootstrap-internal",
-    feature = "native",
-    not(feature = "wasm")
-))]
-pub mod advanced_capabilities;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod advanced_memory;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod advanced_planning;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod autonomy;
-#[cfg(all(
-    feature = "bootstrap-internal",
-    feature = "native",
-    not(feature = "wasm")
-))]
-pub mod basic_capabilities;
 #[cfg(all(
     feature = "bootstrap-internal",
     feature = "native",

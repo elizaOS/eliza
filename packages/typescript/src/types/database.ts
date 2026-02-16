@@ -183,6 +183,7 @@ export interface EmbeddingLogBody
     BaseLogBody {
   duration?: number | bigint;
   error?: string | Error;
+  hasIntent?: boolean;
 }
 
 /**

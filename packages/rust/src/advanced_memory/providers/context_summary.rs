@@ -67,10 +67,7 @@ impl ProviderHandler for ContextSummaryProvider {
         };
 
         let room_id = message.room_id.clone();
-        let current_summary = match memory_service
-            .get_current_session_summary(room_id)
-            .await
-        {
+        let current_summary = match memory_service.get_current_session_summary(room_id).await {
             Ok(Some(s)) => s,
             Ok(None) => return Ok(Self::empty_result()),
             Err(e) => {
@@ -88,19 +85,13 @@ impl ProviderHandler for ContextSummaryProvider {
         let mut summary_with_topics = summary_only.clone();
         if let Some(topics) = &current_summary.topics {
             if !topics.is_empty() {
-                summary_with_topics
-                    .push_str(&format!("\n*Topics: {}*", topics.join(", ")));
+                summary_with_topics.push_str(&format!("\n*Topics: {}*", topics.join(", ")));
             }
         }
 
-        let session_summaries = format!(
-            "# Conversation Summary\n\n{}",
-            summary_only
-        );
-        let session_summaries_with_topics = format!(
-            "# Conversation Summary\n\n{}",
-            summary_with_topics
-        );
+        let session_summaries = format!("# Conversation Summary\n\n{}", summary_only);
+        let session_summaries_with_topics =
+            format!("# Conversation Summary\n\n{}", summary_with_topics);
 
         Ok(ProviderResult {
             text: Some(session_summaries_with_topics.clone()),

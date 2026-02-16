@@ -3,6 +3,7 @@ export const __loggerTestHooks = {
   __noop: () => {},
 };
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import adze, {
   type ConsoleStyle,
   type LevelConfiguration,
@@ -43,6 +44,14 @@ type LogFn = (
   ...args: unknown[]
 ) => void;
 
+export interface LoggerScope {
+  runtime: any;
+  roomId: string;
+  logLevel?: string;
+}
+
+export const loggerScope = new AsyncLocalStorage<LoggerScope>();
+
 /**
  * Logger interface - elizaOS standard logger API
  */
@@ -81,7 +90,9 @@ export interface LogEntry {
   msg: string;
   agentName?: string;
   agentId?: string;
-  [key: string]: string | number | boolean | null | undefined;
+  roomId?: string;
+  runtime?: any;
+  [key: string]: string | number | boolean | null | undefined | any;
 }
 
 /**
@@ -169,8 +180,11 @@ const LEVEL_TO_NAME: Record<number, string> = {
  * Check if a message should be logged based on current level
  */
 function shouldLog(messageLevel: string, currentLevel: string): boolean {
+  const scope = loggerScope.getStore();
+  const effectiveLevel = scope?.logLevel || currentLevel;
   const messagePriority = LOG_LEVEL_PRIORITY[messageLevel.toLowerCase()] || 30;
-  const currentPriority = LOG_LEVEL_PRIORITY[currentLevel.toLowerCase()] || 30;
+  const currentPriority =
+    LOG_LEVEL_PRIORITY[effectiveLevel.toLowerCase()] || 30;
   return messagePriority >= currentPriority;
 }
 
@@ -787,6 +801,8 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       level:
         LOG_LEVEL_PRIORITY[method.toLowerCase()] || LOG_LEVEL_PRIORITY.info,
       msg,
+      roomId: loggerScope.getStore()?.roomId,
+      runtime: loggerScope.getStore()?.runtime,
     };
 
     globalInMemoryDestination.write(entry);

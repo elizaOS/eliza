@@ -217,6 +217,7 @@ async function main() {
     const config = {
         agentName: 'BenchmarkBot',
         taskPrompt: values.task as string,
+        //   bun packages/training/scripts/run_task_benchmark.ts --model "llama3.2" (requires Ollama running)
         iterations: parseInt(values.iterations as string, 10),
         model: values.model as string,
     };
