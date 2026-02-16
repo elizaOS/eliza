@@ -61,6 +61,7 @@ pub mod services;
 pub mod settings;
 pub mod template;
 pub mod types;
+pub mod validation;
 pub mod xml;
 
 /// Media utilities (MIME detection, hybrid search)

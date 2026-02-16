@@ -146,6 +146,7 @@ playwright-report/
 # Temporary files
 *.tmp
 *.temp
+*.bak
 temp/
 tmp/
 

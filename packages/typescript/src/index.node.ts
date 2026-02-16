@@ -13,6 +13,11 @@ export * from "./basic-capabilities/index";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 export * from "./character-loader";
+// Autonomy
+export * from "./autonomy/autonomousState";
+export * from "./autonomy/index";
+// Providers
+export * from "./providers/sessionKeys";
 // Export character utilities and loader (includes re-exports from constants)
 export * from "./character-utils";
 // Export additional constants not re-exported by character-utils
