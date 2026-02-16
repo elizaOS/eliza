@@ -1,9 +1,8 @@
-import { describe, expect, it } from "vitest";
 import {
+  advancedCapabilities,
   basicCapabilities,
   type CapabilityConfig,
   createBootstrapPlugin,
-  extendedCapabilities,
 } from "../index";
 
 // Create a bootstrap plugin instance for testing
@@ -33,15 +32,15 @@ describe("Capability System", () => {
       expect(plugin.actions?.map((a) => a.name)).not.toContain("UPDATE_ROLE");
     });
 
-    it("should include both basic and extended when enableExtended is true", () => {
-      const config: CapabilityConfig = { enableExtended: true };
+    it("should include both basic and extended when advancedCapabilities is true", () => {
+      const config: CapabilityConfig = { advancedCapabilities: true };
       const plugin = createBootstrapPlugin(config);
 
       const totalActions =
-        basicCapabilities.actions.length + extendedCapabilities.actions.length;
+        basicCapabilities.actions.length + advancedCapabilities.actions.length;
       const totalProviders =
         basicCapabilities.providers.length +
-        extendedCapabilities.providers.length;
+        advancedCapabilities.providers.length;
 
       expect(plugin.actions).toHaveLength(totalActions);
       expect(plugin.providers).toHaveLength(totalProviders);
@@ -78,17 +77,17 @@ describe("Capability System", () => {
       expect(plugin.events).toBeDefined();
     });
 
-    it("should include only extended when disableBasic and enableExtended are both true", () => {
+    it("should include only extended when disableBasic and advancedCapabilities are both true", () => {
       const config: CapabilityConfig = {
         disableBasic: true,
-        enableExtended: true,
+        advancedCapabilities: true,
       };
       const plugin = createBootstrapPlugin(config);
 
       // Should only have extended capabilities
-      expect(plugin.actions).toHaveLength(extendedCapabilities.actions.length);
+      expect(plugin.actions).toHaveLength(advancedCapabilities.actions.length);
       expect(plugin.providers).toHaveLength(
-        extendedCapabilities.providers.length,
+        advancedCapabilities.providers.length,
       );
 
       // Should NOT have basic actions
@@ -151,7 +150,7 @@ describe("Capability System", () => {
     });
 
     it("should have all required extended providers", () => {
-      const providerNames = extendedCapabilities.providers.map((p) => p.name);
+      const providerNames = advancedCapabilities.providers.map((p) => p.name);
       expect(providerNames).toContain("CHOICE");
       expect(providerNames).toContain("FACTS");
       expect(providerNames).toContain("RELATIONSHIPS");
@@ -160,7 +159,7 @@ describe("Capability System", () => {
     });
 
     it("should have all required extended actions", () => {
-      const actionNames = extendedCapabilities.actions.map((a) => a.name);
+      const actionNames = advancedCapabilities.actions.map((a) => a.name);
       expect(actionNames).toContain("CHOOSE_OPTION");
       expect(actionNames).toContain("FOLLOW_ROOM");
       expect(actionNames).toContain("UNFOLLOW_ROOM");
@@ -182,7 +181,7 @@ describe("Capability System", () => {
     });
 
     it("should have reflection evaluator in extended", () => {
-      expect(extendedCapabilities.evaluators.length).toBeGreaterThan(0);
+      expect(advancedCapabilities.evaluators.length).toBeGreaterThan(0);
     });
   });
 });

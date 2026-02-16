@@ -59,12 +59,17 @@ def load_and_process_data(input_file: str, min_score: float) -> List[Dict[str, A
             try:
                 traj = json.loads(line)
                 
+                # Check for direct messages format (SFT dataset)
+                if 'messages' in traj:
+                    samples.append(traj)
+                    continue
+
                 # Filter by score if present
                 if traj.get('isScored'):
                     if traj.get('score', 0) < min_score:
                         continue
                 
-                # Extract conversation
+                # Extract conversation (Trajectory format)
                 # We want to train the model to generate the ACTION based on observation
                 # Or generate the RESPONSE based on the task
                 
@@ -168,7 +173,7 @@ def main():
     parser.add_argument("--output", default="trained_models/jsonl_run", help="Output directory")
     parser.add_argument("--min-score", type=float, default=0.7, help="Minimum score to include")
     
-    parser.add_argument("--model", default="mlx-community/Qwen2.5-0.5B-Instruct-4bit", help="Base model")
+    parser.add_argument("--model", default="mlx-community/Qwen2.5-1.5B-Instruct-4bit", help="Base model (default: Qwen 1.5B 4bit for Mac)")
     parser.add_argument("--backend", choices=["mlx", "cuda", "cpu"], default=None)
     
     parser.add_argument("--iters", type=int, default=100, help="Training iterations")

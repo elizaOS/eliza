@@ -1,5 +1,7 @@
 use crate::advanced_memory::memory_service::MemoryService;
-use crate::advanced_memory::prompts::{INITIAL_SUMMARIZATION_TEMPLATE, UPDATE_SUMMARIZATION_TEMPLATE};
+use crate::advanced_memory::prompts::{
+    INITIAL_SUMMARIZATION_TEMPLATE, UPDATE_SUMMARIZATION_TEMPLATE,
+};
 use crate::advanced_memory::types::SummaryResult;
 use crate::runtime::AgentRuntime;
 use crate::types::components::{
@@ -14,7 +16,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, error, info, warn};
 
 fn now_unix() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
 }
 
 /// Check if a message is a dialogue message (not action_result).
@@ -194,7 +199,10 @@ impl EvaluatorHandler for SummarizationEvaluator {
             .get_current_session_summary(room_id.clone())
             .await
             .unwrap_or(None);
-        let last_offset = existing.as_ref().map(|s| s.last_message_offset).unwrap_or(0);
+        let last_offset = existing
+            .as_ref()
+            .map(|s| s.last_message_offset)
+            .unwrap_or(0);
 
         // Get all messages
         let params = GetMemoriesParams {
@@ -208,7 +216,10 @@ impl EvaluatorHandler for SummarizationEvaluator {
             .ok_or_else(|| anyhow::anyhow!("Database not available"))?;
         let all_messages = db.get_memories(params).await?;
 
-        let all_dialogue: Vec<&Memory> = all_messages.iter().filter(|m| is_dialogue_message(m)).collect();
+        let all_dialogue: Vec<&Memory> = all_messages
+            .iter()
+            .filter(|m| is_dialogue_message(m))
+            .collect();
         let total_dialogue_count = all_dialogue.len() as i32;
         let new_dialogue_count = total_dialogue_count - last_offset;
 
@@ -314,7 +325,11 @@ impl EvaluatorHandler for SummarizationEvaluator {
         let result = parse_summary_xml(&response);
         info!(
             "{} summary: {}...",
-            if existing.is_some() { "Updated" } else { "Generated" },
+            if existing.is_some() {
+                "Updated"
+            } else {
+                "Generated"
+            },
             &result.summary[..result.summary.len().min(100)]
         );
 
@@ -354,7 +369,10 @@ impl EvaluatorHandler for SummarizationEvaluator {
                 new_messages.len()
             );
         } else {
-            let first_ts = new_messages.first().and_then(|m| m.created_at).unwrap_or(now);
+            let first_ts = new_messages
+                .first()
+                .and_then(|m| m.created_at)
+                .unwrap_or(now);
             let new_summary = crate::advanced_memory::types::SessionSummary {
                 id: crate::types::primitives::UUID::new_v4(),
                 agent_id: runtime.agent_id.clone(),
@@ -394,7 +412,10 @@ impl EvaluatorHandler for SummarizationEvaluator {
 }
 
 /// Count dialogue messages in a room, excluding action results.
-async fn get_dialogue_count(runtime: &AgentRuntime, room_id: &crate::types::primitives::UUID) -> i32 {
+async fn get_dialogue_count(
+    runtime: &AgentRuntime,
+    room_id: &crate::types::primitives::UUID,
+) -> i32 {
     let params = GetMemoriesParams {
         room_id: Some(room_id.clone()),
         table_name: "messages".to_string(),
@@ -409,4 +430,68 @@ async fn get_dialogue_count(runtime: &AgentRuntime, room_id: &crate::types::prim
 
     let messages = db.get_memories(params).await.unwrap_or_default();
     messages.iter().filter(|m| is_dialogue_message(m)).count() as i32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_summary_xml_valid() {
+        let xml = r#"
+<summary>
+  <text>The user discussed their favorite coffee.</text>
+  <topics>coffee, preferences, beverages</topics>
+  <key_points>
+    <point>User prefers dark roast</point>
+    <point>User drinks 3 cups daily</point>
+  </key_points>
+</summary>"#;
+        let result = parse_summary_xml(xml);
+        assert_eq!(result.summary, "The user discussed their favorite coffee.");
+        assert_eq!(result.topics, vec!["coffee", "preferences", "beverages"]);
+        assert_eq!(result.key_points.len(), 2);
+        assert_eq!(result.key_points[0], "User prefers dark roast");
+        assert_eq!(result.key_points[1], "User drinks 3 cups daily");
+    }
+
+    #[test]
+    fn parse_summary_xml_malformed() {
+        let xml = "This is not XML at all";
+        let result = parse_summary_xml(xml);
+        assert_eq!(result.summary, "Summary not available");
+        assert!(result.topics.is_empty());
+        assert!(result.key_points.is_empty());
+    }
+
+    #[test]
+    fn parse_summary_xml_partial_tags() {
+        let xml = "<text>Just a summary</text>";
+        let result = parse_summary_xml(xml);
+        assert_eq!(result.summary, "Just a summary");
+        assert!(result.topics.is_empty());
+        assert!(result.key_points.is_empty());
+    }
+
+    #[test]
+    fn parse_summary_xml_empty_topics() {
+        let xml = "<text>Summary here</text><topics></topics>";
+        let result = parse_summary_xml(xml);
+        assert_eq!(result.summary, "Summary here");
+        assert!(result.topics.is_empty());
+    }
+
+    #[test]
+    fn compose_prompt_replaces_variables() {
+        let tmpl = "Hello {{name}}, welcome to {{place}}.";
+        let result = compose_prompt(tmpl, &[("name", "Alice"), ("place", "Wonderland")]);
+        assert_eq!(result, "Hello Alice, welcome to Wonderland.");
+    }
+
+    #[test]
+    fn compose_prompt_no_match() {
+        let tmpl = "No placeholders here.";
+        let result = compose_prompt(tmpl, &[("key", "val")]);
+        assert_eq!(result, "No placeholders here.");
+    }
 }

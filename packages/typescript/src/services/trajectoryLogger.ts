@@ -81,4 +81,12 @@ export class TrajectoryLoggerService extends Service {
   getLlmCallLogs(): readonly TrajectoryLlmCall[] {
     return this.llmCalls;
   }
+
+  completeStepByStepId(
+    stepId: string,
+    details: Record<string, unknown>,
+  ): Promise<void> {
+    // no-op (in-memory logs)
+    return Promise.resolve();
+  }
 }

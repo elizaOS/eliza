@@ -1192,15 +1192,13 @@ const events: PluginEvents = {
 /**
  * Configuration for bootstrap capabilities.
  * - Basic: Core functionality (reply, ignore, none actions; core providers; task/embedding services)
- * - Extended: Additional features (choice, mute/follow room, roles, settings, image generation)
+ * - Advanced: Additional features (choice, mute/follow room, roles, settings, image generation)
  * - Autonomy: Autonomous operation (autonomy service, admin communication, status providers)
  */
 export interface CapabilityConfig {
   /** Disable basic capabilities (default: false) */
   disableBasic?: boolean;
-  /** Enable extended/advanced capabilities (default: false) */
-  enableExtended?: boolean;
-  /** Alias for enableExtended - Enable advanced capabilities (default: false) */
+  /** Enable advanced capabilities (default: false) */
   advancedCapabilities?: boolean;
   /** Skip the character provider (used for anonymous agents without a character file) */
   skipCharacterProvider?: boolean;
@@ -1241,7 +1239,7 @@ const basic = {
   ] as ServiceClass[],
 };
 
-const extended = {
+const advanced = {
   providers: [
     providers.choiceProvider,
     providers.contactsProvider,
@@ -1286,6 +1284,7 @@ const autonomyCapabilities = {
   evaluators: [],
   services: [autonomy.AutonomyService] as ServiceClass[],
   routes: autonomy.autonomyRoutes,
+  events: {},
 };
 
 export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
@@ -1298,22 +1297,22 @@ export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
     description: "Agent bootstrap with basic actions and evaluators",
     actions: [
       ...(config.disableBasic ? [] : basic.actions),
-      ...(config.enableExtended ? extended.actions : []),
+      ...(config.advancedCapabilities ? advanced.actions : []),
       ...(config.enableAutonomy ? autonomyCapabilities.actions : []),
     ],
     providers: [
       ...(config.disableBasic ? [] : basicProviders),
-      ...(config.enableExtended ? extended.providers : []),
+      ...(config.advancedCapabilities ? advanced.providers : []),
       ...(config.enableAutonomy ? autonomyCapabilities.providers : []),
     ],
     evaluators: [
       ...(config.disableBasic ? [] : basic.evaluators),
-      ...(config.enableExtended ? extended.evaluators : []),
+      ...(config.advancedCapabilities ? advanced.evaluators : []),
       ...(config.enableAutonomy ? autonomyCapabilities.evaluators : []),
     ],
     services: [
       ...(config.disableBasic ? [] : basic.services),
-      ...(config.enableExtended ? extended.services : []),
+      ...(config.advancedCapabilities ? advanced.services : []),
       ...(config.enableAutonomy ? autonomyCapabilities.services : []),
     ],
     routes: [...(config.enableAutonomy ? autonomyCapabilities.routes : [])],
@@ -1327,9 +1326,9 @@ export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
 
 // Export capability arrays for direct access if needed
 export {
-  basic as basicCapabilities,
-  extended as extendedCapabilities,
+  advanced as advancedCapabilities,
   autonomyCapabilities,
+  basic as basicCapabilities,
 };
 
 export * from "../autonomy/index.ts";

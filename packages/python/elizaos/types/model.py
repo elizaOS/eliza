@@ -56,6 +56,9 @@ class ModelType(str, Enum):
     # Research models (deep research)
     RESEARCH = "RESEARCH"
 
+    # Safeguard models
+    SAFEGUARD = "SAFEGUARD"
+
 
 # Type for model type names - allows string for extensibility
 ModelTypeName = str
@@ -279,6 +282,30 @@ class ObjectGenerationParams(BaseModel):
     )
 
     model_config = {"populate_by_name": True, "extra": "allow"}
+
+
+# ============================================================================
+# Safeguard Model Types
+# ============================================================================
+
+
+class SafeguardParams(BaseModel):
+    """Parameters for safeguard (content moderation) models."""
+
+    input: str = Field(..., description="Input text to classify")
+    model_type: str = Field(..., alias="modelType", description="Model type (must be SAFEGUARD)")
+
+    model_config = {"populate_by_name": True}
+
+
+class SafeguardResult(BaseModel):
+    """Result from a safeguard model classification."""
+
+    violation: float = Field(..., description="Violation score (0-1)")
+    category: str | None = Field(default=None, description="Violation category if any")
+    rationale: str | None = Field(default=None, description="Rationale for the classification")
+
+    model_config = {"populate_by_name": True}
 
 
 # ============================================================================

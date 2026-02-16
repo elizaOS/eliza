@@ -9,8 +9,14 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::PluginResult;
+use crate::runtime::{DatabaseAdapter, EventHandler};
+use crate::types::database::SearchMemoriesParams;
 use crate::types::task::Task;
-use crate::types::{Character, Content, Entity, Memory, MemoryType, ModelType, Room, State, World};
+use crate::types::{
+    Character, Content, Entity, EventPayload, EventType, Memory, MemoryType, ModelType, Room,
+    State, World,
+};
+use std::any::Any;
 
 /// The agent runtime interface.
 ///
@@ -22,13 +28,13 @@ pub trait IAgentRuntime: Send + Sync {
     fn agent_id(&self) -> Uuid;
 
     /// Get the agent's character definition.
-    fn character(&self) -> &Character;
+    async fn character(&self) -> Character;
 
     /// Get a setting value.
-    fn get_setting(&self, key: &str) -> Option<String>;
+    async fn get_setting(&self, key: &str) -> Option<String>;
 
     /// Get all settings.
-    fn get_all_settings(&self) -> HashMap<String, String>;
+    async fn get_all_settings(&self) -> HashMap<String, String>;
 
     /// Set a setting value.
     async fn set_setting(&self, key: &str, value: &str) -> PluginResult<()>;
@@ -69,6 +75,9 @@ pub trait IAgentRuntime: Send + Sync {
 
     /// Search the knowledge base.
     async fn search_knowledge(&self, query: &str, limit: usize) -> PluginResult<Vec<Memory>>;
+
+    /// Search memories by embedding.
+    async fn search_memories(&self, params: SearchMemoriesParams) -> PluginResult<Vec<Memory>>;
 
     /// Compose state for a message.
     async fn compose_state(&self, message: &Memory, providers: &[&str]) -> PluginResult<State>;
@@ -128,7 +137,19 @@ pub trait IAgentRuntime: Send + Sync {
     async fn delete_task(&self, task_id: Uuid) -> PluginResult<bool>;
 
     /// Get the service for the given type.
-    fn get_service(&self, service_type: &str) -> Option<Arc<dyn std::any::Any + Send + Sync>>;
+    async fn get_service(
+        &self,
+        service_type: &str,
+    ) -> Option<Arc<dyn crate::types::service::Service>>;
+
+    /// Register an event handler.
+    async fn register_event(&self, event_type: EventType, handler: EventHandler);
+
+    /// Emit an event.
+    async fn emit_event(&self, event_type: EventType, payload: EventPayload) -> PluginResult<()>;
+
+    /// Get the database adapter.
+    fn get_adapter(&self) -> Option<Arc<dyn DatabaseAdapter>>;
 }
 
 /// Task worker trait - defines the contract for executing tasks.
@@ -158,7 +179,7 @@ pub trait TaskWorker: Send + Sync {
 }
 
 /// Parameters for model calls.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct ModelParams {
     /// Text prompt for the model
     pub prompt: Option<String>,

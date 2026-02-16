@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -182,13 +183,14 @@ class TestAutonomyService:
         test_runtime.get_setting = MagicMock(return_value=str(target_room_id))
 
         dup_id = as_uuid(TEST_MESSAGE_ID)
+        now_ms = int(time.time() * 1000)
         older = Memory(
             id=dup_id,
             room_id=target_room_id,
             entity_id=as_uuid(TEST_ENTITY_ID),
             agent_id=as_uuid(TEST_AGENT_ID),
             content=Content(text="old"),
-            created_at=10,
+            created_at=now_ms - 60_000,  # 1 minute ago (within 1-hour window)
         )
         newer = Memory(
             id=dup_id,
@@ -196,7 +198,7 @@ class TestAutonomyService:
             entity_id=as_uuid(TEST_ENTITY_ID),
             agent_id=as_uuid(TEST_AGENT_ID),
             content=Content(text="new"),
-            created_at=20,
+            created_at=now_ms - 30_000,  # 30 seconds ago (within 1-hour window)
         )
 
         async def get_memories(params):
@@ -445,11 +447,20 @@ class TestAutonomyIntegration:
             AutonomyService,
             admin_chat_provider,
             autonomy_status_provider,
+            disable_autonomy_action,
+            enable_autonomy_action,
+            post_action_evaluator,
             send_to_admin_action,
         )
 
         assert AutonomyService is not None
         assert AUTONOMY_SERVICE_TYPE == "AUTONOMY"
         assert send_to_admin_action is not None
+        assert enable_autonomy_action is not None
+        assert enable_autonomy_action.name == "ENABLE_AUTONOMY"
+        assert disable_autonomy_action is not None
+        assert disable_autonomy_action.name == "DISABLE_AUTONOMY"
+        assert post_action_evaluator is not None
+        assert post_action_evaluator.name == "POST_ACTION_EVALUATOR"
         assert admin_chat_provider is not None
         assert autonomy_status_provider is not None

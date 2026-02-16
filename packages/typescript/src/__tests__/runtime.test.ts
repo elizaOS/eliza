@@ -791,6 +791,30 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       expect(params.onStreamChunk).toBe(onStreamChunk);
       expect(params.stream).toBe(true);
     });
+    it("should retrieve model configuration", () => {
+      const modelHandler = vi.fn().mockResolvedValue("success");
+      const modelType = ModelType.TEXT_LARGE;
+
+      runtime.registerModel(
+        modelType,
+        modelHandler as (
+          runtime: IAgentRuntime,
+          params: Record<string, unknown>,
+        ) => Promise<unknown>,
+        "test-provider",
+      );
+
+      const config = runtime.getModelConfiguration(modelType);
+      expect(config).toBeDefined();
+      // ModelHandler does not store the model type itself, it's the key in the map
+      expect(config?.handler).toBe(modelHandler);
+      expect(config?.provider).toBe("test-provider");
+    });
+
+    it("should return undefined for unregistered model configuration", () => {
+      const config = runtime.getModelConfiguration("NON_EXISTENT_MODEL");
+      expect(config).toBeUndefined();
+    });
   });
 
   describe("Action Processing", () => {

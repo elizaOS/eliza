@@ -1840,7 +1840,7 @@ describe("actionsProvider", () => {
     expect(result.data.actionsData[0].name).toBe("REPLY");
   });
 
-  it("should use filter service when available and action count > threshold", async () => {
+  it("should use filter service for ranking but still include all validated actions", async () => {
     // Build 20 actions (above threshold of 15)
     const manyActions: Action[] = [];
     for (let i = 0; i < 20; i++) {
@@ -1871,9 +1871,8 @@ describe("actionsProvider", () => {
       createMockState(),
     );
 
-    // Should have filtered down from 20
-    expect(result.data.actionsData.length).toBeLessThan(20);
-    expect(result.data.actionsData.length).toBeGreaterThan(0);
+    // Provider now returns all validated actions (not just top-K filtered subset)
+    expect(result.data.actionsData.length).toBe(20);
 
     await filterService.stop();
   });

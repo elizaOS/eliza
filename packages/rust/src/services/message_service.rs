@@ -163,6 +163,21 @@ impl IMessageService for DefaultMessageService {
             } else {
                 debug!("Message already exists in memory, skipping save");
             }
+
+            // Emit embedding generation request
+            if let Ok(memory_json) = serde_json::to_value(message.clone()) {
+                let mut extra = HashMap::new();
+                extra.insert("memory".to_string(), memory_json);
+                let _ = runtime
+                    .emit_event(
+                        EventType::EmbeddingGenerationRequested,
+                        EventPayload {
+                            source: "message_service".to_string(),
+                            extra,
+                        },
+                    )
+                    .await;
+            }
         }
 
         // Compose state from providers (full provider set; mirrors TS/Python default behavior)
@@ -541,6 +556,21 @@ async fn persist_outbound_memories(runtime: &AgentRuntime, memories: &[Memory]) 
             }
         }
         adapter.create_memory(m, "messages").await?;
+
+        // Emit embedding generation request
+        if let Ok(memory_json) = serde_json::to_value(m.clone()) {
+            let mut extra = HashMap::new();
+            extra.insert("memory".to_string(), memory_json);
+            let _ = runtime
+                .emit_event(
+                    EventType::EmbeddingGenerationRequested,
+                    EventPayload {
+                        source: "message_service".to_string(),
+                        extra,
+                    },
+                )
+                .await;
+        }
     }
     Ok(())
 }
@@ -703,7 +733,9 @@ async fn run_multi_step(
     let mut last_thought = String::new();
 
     for _ in 0..max_iters.max(1) {
-        let iter_state = runtime.compose_state(message).await?;
+        let iter_state = runtime
+            .compose_state_filtered(message, Some(&["multi_step_iteration".to_string()]), false)
+            .await?;
 
         // Add action results to state for template rendering
         let mut iter_state = iter_state;

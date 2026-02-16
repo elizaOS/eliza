@@ -655,6 +655,21 @@ export class ActionFilterService extends Service {
   }
 
   /**
+   * Override the tracked action set for a room with the exact list that was
+   * presented in the prompt. This keeps miss detection accurate when callers
+   * use filter() for ranking but still include additional actions.
+   */
+  setRoomActionSet(roomId: string, actionNames: Iterable<string>): void {
+    this.lastFilteredByRoom.set(roomId, new Set(actionNames));
+    if (this.lastFilteredByRoom.size > this.maxTrackedRooms) {
+      const oldest = this.lastFilteredByRoom.keys().next().value;
+      if (oldest !== undefined) {
+        this.lastFilteredByRoom.delete(oldest);
+      }
+    }
+  }
+
+  /**
    * Run the full two-tier ranking pipeline on a set of candidate actions.
    * Returns RankedAction[] sorted by combinedScore descending.
    */

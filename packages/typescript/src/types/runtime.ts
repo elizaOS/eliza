@@ -59,6 +59,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
   routes: Route[];
   logger: Logger;
   stateCache: Map<string, State>;
+  logLevelOverrides: Map<string, string>;
 
   /** Whether the runtime is operating in sandbox mode. Default: false. */
   sandboxMode?: boolean;
@@ -256,6 +257,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
     includeList?: string[],
     onlyInclude?: boolean,
     skipCache?: boolean,
+    trajectoryPhase?: string,
   ): Promise<State>;
 
   /**
@@ -322,6 +324,16 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
         params: Record<string, JsonValue | object>,
       ) => Promise<JsonValue | object>)
     | undefined;
+
+  /**
+   * Get the registered model handler configuration for a specific model type.
+   * Returns the highest priority handler configuration if multiple are registered.
+   * @param modelType - The type of model to retrieve
+   * @returns The model handler configuration or undefined if not found
+   */
+  getModelConfiguration(
+    modelType: ModelTypeName | string,
+  ): import("./model").ModelHandler | undefined;
 
   registerEvent<T extends keyof EventPayloadMap>(
     event: T,
