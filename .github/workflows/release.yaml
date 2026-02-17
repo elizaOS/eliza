@@ -551,15 +551,23 @@ jobs:
           echo "Building packages with version v${{ steps.version.outputs.version }}..."
           bun run build
 
-      # Replace workspace:* references with actual versions before publishing
-      # This is required because Bun workspaces use workspace:* protocol
-      # which npm doesn't understand when the packages are published
+      # Lerna v9 resolves workspace links for publish candidates internally.
+      # Keep this as a no-op to avoid mutating tracked manifests pre-publish.
       - name: Replace workspace references
         id: replace_workspace
         run: |
-          echo "🔄 Replacing workspace:* references with actual versions..."
-          node scripts/replace-workspace-versions.js
-          echo "✅ Workspace references replaced"
+          echo "ℹ️ Skipping in-place workspace reference replacement (handled by Lerna)."
+
+      - name: Ensure clean tree before publish
+        run: |
+          # Build step regenerates this tracked file with a timestamp.
+          git checkout -- packages/elizaos/examples-manifest.json || true
+
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "❌ Working tree must be clean before publish."
+            git status --short
+            exit 1
+          fi
 
       # Publish to NPM (only after git operations succeed)
       - name: Publish to NPM
@@ -593,14 +601,11 @@ jobs:
 
           echo "✅ Successfully published to NPM with dist-tag: ${DIST_TAG}"
 
-      # Always restore workspace:* references after publish (success or failure)
-      # This keeps the repository clean for development
+      # Kept for workflow compatibility; no-op because replacement is no-op.
       - name: Restore workspace references
         if: always() && steps.replace_workspace.outcome == 'success'
         run: |
-          echo "🔄 Restoring workspace:* references..."
-          node scripts/restore-workspace-refs.js
-          echo "✅ Workspace references restored"
+          echo "ℹ️ No workspace reference restoration needed."
 
       # Create GitHub Release for alpha/beta (not for production, as it already exists)
       - name: Create GitHub release
