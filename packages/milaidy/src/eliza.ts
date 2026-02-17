@@ -1,7 +1,7 @@
 /**
- * ElizaOS runtime entry point for Milaidy.
+ * elizaOS runtime entry point for Milaidy.
  *
- * Starts the ElizaOS agent runtime with Milaidy's plugin configuration.
+ * Starts the elizaOS agent runtime with Milaidy's plugin configuration.
  * Can be run directly via: node --import tsx src/eliza.ts
  * Or via the CLI: milaidy start
  *
@@ -59,10 +59,10 @@ interface PluginModuleShape {
 
 /**
  * Maps Milaidy channel config fields to the environment variable names
- * that ElizaOS plugins expect.
+ * that elizaOS plugins expect.
  *
  * Milaidy stores channel credentials under `config.channels.<name>.<field>`,
- * while ElizaOS plugins read them from process.env.
+ * while elizaOS plugins read them from process.env.
  */
 const CHANNEL_ENV_MAP: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   discord: {
@@ -110,7 +110,7 @@ const CORE_PLUGINS: readonly string[] = [
   // "@elizaos/plugin-cron",     // Requires worldId; skip for dev
 ];
 
-/** Maps Milaidy channel names to ElizaOS plugin package names. */
+/** Maps Milaidy channel names to elizaOS plugin package names. */
 const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   discord: "@elizaos/plugin-discord",
   telegram: "@elizaos/plugin-telegram",
@@ -222,7 +222,7 @@ export function collectPluginNames(config: MilaidyConfig): Set<string> {
 
 /**
  * Resolve Milaidy plugins from config and auto-enable logic.
- * Returns an array of ElizaOS Plugin instances ready for AgentRuntime.
+ * Returns an array of elizaOS Plugin instances ready for AgentRuntime.
  */
 async function resolvePlugins(config: MilaidyConfig): Promise<ResolvedPlugin[]> {
   const plugins: ResolvedPlugin[] = [];
@@ -262,7 +262,7 @@ async function resolvePlugins(config: MilaidyConfig): Promise<ResolvedPlugin[]> 
 
 /**
  * Propagate channel credentials from Milaidy config into process.env so
- * that ElizaOS plugins can find them.
+ * that elizaOS plugins can find them.
  */
 /** @internal Exported for testing. */
 export function applyChannelSecretsToEnv(config: MilaidyConfig): void {
@@ -305,7 +305,7 @@ export function applyCloudConfigToEnv(config: MilaidyConfig): void {
 }
 
 /**
- * Build an ElizaOS Character from the Milaidy config.
+ * Build an elizaOS Character from the Milaidy config.
  *
  * Merges the deprecated `config.agent` object and the newer
  * `config.agents.defaults` into a single Character, collecting
@@ -323,7 +323,7 @@ export function buildCharacterFromConfig(config: MilaidyConfig): Character {
 
   const bio =
     legacyAgent?.bio ??
-    "An AI assistant powered by Milaidy and ElizaOS.";
+    "An AI assistant powered by Milaidy and elizaOS.";
 
   const systemPrompt = legacyAgent?.system_prompt;
 
@@ -374,7 +374,7 @@ export function buildCharacterFromConfig(config: MilaidyConfig): Character {
  *
  * Milaidy stores the model under `agents.defaults.model.primary` as an
  * AgentModelListConfig object. Returns undefined when no model is
- * explicitly configured (ElizaOS falls back to whichever model
+ * explicitly configured (elizaOS falls back to whichever model
  * plugin is loaded).
  */
 /** @internal Exported for testing. */
@@ -559,7 +559,7 @@ async function runFirstTimeSetup(config: MilaidyConfig): Promise<MilaidyConfig> 
 
   // ── Step 4: Persist character to config ────────────────────────────────
   const systemPrompt = [
-    `You are ${name}, an autonomous AI agent powered by ElizaOS.`,
+    `You are ${name}, an autonomous AI agent powered by elizaOS.`,
     styleDirective,
     SHARED_STYLE_RULES,
   ].join(" ");
@@ -586,7 +586,7 @@ async function runFirstTimeSetup(config: MilaidyConfig): Promise<MilaidyConfig> 
 // ---------------------------------------------------------------------------
 
 /**
- * Start the ElizaOS runtime with Milaidy's configuration.
+ * Start the elizaOS runtime with Milaidy's configuration.
  */
 export async function startEliza(): Promise<void> {
   // 1. Load Milaidy config from ~/.milaidy/milaidy.json
@@ -615,7 +615,7 @@ export async function startEliza(): Promise<void> {
   // 2b. Propagate cloud config into process.env for ElizaCloud plugin
   applyCloudConfigToEnv(config);
 
-  // 3. Build ElizaOS Character from Milaidy config
+  // 3. Build elizaOS Character from Milaidy config
   const character = buildCharacterFromConfig(config);
 
   const primaryModel = resolvePrimaryModel(config);

@@ -161,7 +161,7 @@ export async function runAcpClientInteractive(
     output: process.stdout,
   });
 
-  console.log("ElizaOS ACP client");
+  console.log("elizaOS ACP client");
   console.log(`Session: ${sessionId}`);
   console.log('Type a prompt, or "exit" to quit.\n');
 

@@ -117,7 +117,7 @@ Posts a new cast to Farcaster.
 
 ```typescript
 // Triggered by messages containing: post, cast, share, announce, farcaster, post
-"Please post about the new ElizaOS features on Farcaster";
+"Please post about the new elizaOS features on Farcaster";
 ```
 
 ### REPLY_TO_CAST

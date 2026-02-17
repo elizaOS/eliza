@@ -26,7 +26,7 @@ impl N8nAction for CreatePluginAction {
     }
 
     fn description(&self) -> &'static str {
-        "Create an ElizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation."
+        "Create an elizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation."
     }
 
     fn similes(&self) -> Vec<&'static str> {

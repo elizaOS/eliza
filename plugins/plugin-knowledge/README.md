@@ -1,4 +1,4 @@
-# Knowledge Plugin for ElizaOS
+# Knowledge Plugin for elizaOS
 
 Give your AI agent the ability to learn from documents and answer questions based on that knowledge. Works out of the box with zero configuration!
 
@@ -67,7 +67,7 @@ export const character = {
 
 ### Step 1: Add the Plugin
 
-The Knowledge plugin works automatically with any ElizaOS agent. Just add it to your agent's plugin list:
+The Knowledge plugin works automatically with any elizaOS agent. Just add it to your agent's plugin list:
 
 ```typescript
 // In your character file (e.g., character.ts)
@@ -364,4 +364,4 @@ await knowledgeService.addKnowledge({
 
 ## 📝 License
 
-MIT License - See the main ElizaOS license for details.
+MIT License - See the main elizaOS license for details.

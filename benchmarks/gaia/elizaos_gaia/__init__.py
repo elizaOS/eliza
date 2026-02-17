@@ -1,5 +1,5 @@
 """
-GAIA Benchmark Implementation for ElizaOS
+GAIA Benchmark Implementation for elizaOS
 
 A comprehensive implementation of the GAIA (General AI Assistants) benchmark
 for evaluating AI systems on real-world tasks requiring reasoning, multimodal

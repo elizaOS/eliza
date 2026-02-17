@@ -1,5 +1,5 @@
 /**
- * Repository for ElizaOS memories table (non-message memories).
+ * Repository for elizaOS memories table (non-message memories).
  *
  * Handles all database operations for memories without spinning up runtime.
  */
@@ -36,7 +36,7 @@ export interface SearchMemoriesOptions {
 }
 
 /**
- * Repository for ElizaOS memory database operations.
+ * Repository for elizaOS memory database operations.
  */
 export class MemoriesRepository {
   // ============================================================================

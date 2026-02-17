@@ -1,6 +1,6 @@
 # @elizaos/plugin-bluebubbles (Python)
 
-Python implementation of the BlueBubbles plugin for ElizaOS.
+Python implementation of the BlueBubbles plugin for elizaOS.
 
 ## Installation
 
@@ -10,4 +10,4 @@ pip install elizaos-plugin-bluebubbles
 
 ## Usage
 
-This plugin provides BlueBubbles iMessage integration capabilities for ElizaOS agents.
+This plugin provides BlueBubbles iMessage integration capabilities for elizaOS agents.

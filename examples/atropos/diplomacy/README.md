@@ -1,6 +1,6 @@
-# ElizaOS Atropos - Diplomacy Environment
+# elizaOS Atropos - Diplomacy Environment
 
-A multi-agent Diplomacy game environment for training ElizaOS agents using the Atropos RL framework.
+A multi-agent Diplomacy game environment for training elizaOS agents using the Atropos RL framework.
 
 ## Overview
 
@@ -62,7 +62,7 @@ python -m elizaos_atropos_diplomacy --mode press
 ### Victory Condition
 Control 18 of the 34 supply centers to win.
 
-## Usage with ElizaOS
+## Usage with elizaOS
 
 ```python
 from elizaos import AgentRuntime
@@ -143,11 +143,11 @@ elizaos_atropos_diplomacy/
 ├── map_data.py           # Map topology and supply centers
 ├── environment.py        # DiplomacyEnvironment class
 ├── adjudicator.py        # Order resolution logic
-├── agent.py              # ElizaOS agent integration
+├── agent.py              # elizaOS agent integration
 ├── negotiation.py        # Press/negotiation system
 └── cli.py                # Command-line interface
 ```
 
 ## License
 
-MIT License - Part of the ElizaOS project.
+MIT License - Part of the elizaOS project.

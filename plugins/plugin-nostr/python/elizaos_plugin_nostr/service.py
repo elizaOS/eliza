@@ -1,5 +1,5 @@
 """
-Nostr service implementation for ElizaOS.
+Nostr service implementation for elizaOS.
 """
 
 import asyncio
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 class NostrService:
-    """Nostr messaging service for ElizaOS agents."""
+    """Nostr messaging service for elizaOS agents."""
 
     service_type = NOSTR_SERVICE_NAME
 

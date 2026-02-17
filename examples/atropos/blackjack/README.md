@@ -1,11 +1,11 @@
-# ElizaOS Atropos - Blackjack Environment
+# elizaOS Atropos - Blackjack Environment
 
-A Blackjack environment for training ElizaOS agents using the Atropos RL framework.
+A Blackjack environment for training elizaOS agents using the Atropos RL framework.
 Integrates with OpenAI Gymnasium's Blackjack environment.
 
 ## Overview
 
-This environment wraps the Gymnasium Blackjack environment, allowing ElizaOS agents
+This environment wraps the Gymnasium Blackjack environment, allowing elizaOS agents
 to learn optimal blackjack strategy through reinforcement learning.
 
 ## Installation
@@ -45,7 +45,7 @@ python -m elizaos_atropos_blackjack --mode benchmark
 - `-1.0`: Loss (bust or dealer closer to 21)
 - `0.0`: Draw (push)
 
-## Usage with ElizaOS
+## Usage with elizaOS
 
 ```python
 from elizaos import AgentRuntime
@@ -56,7 +56,7 @@ from elizaos_atropos_blackjack import BlackjackEnvironment, BlackjackAgent
 env = BlackjackEnvironment()
 await env.initialize()
 
-# Create ElizaOS agent
+# Create elizaOS agent
 runtime = AgentRuntime(plugins=[get_openai_plugin()])
 await runtime.initialize()
 agent = BlackjackAgent(runtime)
@@ -105,4 +105,4 @@ The optimal basic strategy for blackjack depends on the player's hand and dealer
 
 ## License
 
-MIT License - Part of the ElizaOS project.
+MIT License - Part of the elizaOS project.

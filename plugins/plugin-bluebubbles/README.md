@@ -1,6 +1,6 @@
 # @elizaos/plugin-bluebubbles
 
-BlueBubbles iMessage bridge plugin for ElizaOS agents. Enables rich iMessage integration through the BlueBubbles macOS app and REST API.
+BlueBubbles iMessage bridge plugin for elizaOS agents. Enables rich iMessage integration through the BlueBubbles macOS app and REST API.
 
 ## Features
 
@@ -62,7 +62,7 @@ pnpm add @elizaos/plugin-bluebubbles
 
 1. Install BlueBubbles on your Mac from https://bluebubbles.app
 2. Set up the server and note your server URL and password
-3. Configure webhook URL in BlueBubbles pointing to your ElizaOS instance
+3. Configure webhook URL in BlueBubbles pointing to your elizaOS instance
 4. Optionally enable Private API for advanced features
 
 ## Usage

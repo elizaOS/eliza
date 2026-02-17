@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-ollama": "2.0.0-alpha.1",
-    "@elizaos/plugin-local-ai": "2.0.0-alpha.1",
+    "@elizaos/plugin-ollama": "workspace:*",
+    "@elizaos/plugin-local-ai": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-xai": "workspace:*",

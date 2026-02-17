@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-plugin-vision"
 version = "2.0.0"
-description = "Vision plugin for ElizaOS - provides camera integration and visual awareness"
+description = "Vision plugin for elizaOS - provides camera integration and visual awareness"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

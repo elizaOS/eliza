@@ -26,7 +26,7 @@ describe("SecretsService", () => {
 
   beforeEach(async () => {
     mockRuntime = createMockRuntime();
-    // Use static start() method which is the correct ElizaOS Service pattern
+    // Use static start() method which is the correct elizaOS Service pattern
     service = await SecretsService.start(mockRuntime as never);
   });
 

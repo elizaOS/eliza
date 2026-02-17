@@ -50,7 +50,7 @@ async function verifySetup() {
   console.log(
     chalk.bold.cyan(`
 =============================================================
-🔍 ElizaOS Auto-Trader Setup Verification
+🔍 elizaOS Auto-Trader Setup Verification
 =============================================================
 `),
   );

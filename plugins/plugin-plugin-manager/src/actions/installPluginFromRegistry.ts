@@ -3,7 +3,7 @@ import { PluginManagerService } from '../services/pluginManagerService';
 
 export const installPluginFromRegistryAction: Action = {
   name: 'INSTALL_PLUGIN_FROM_REGISTRY',
-  description: 'Install a plugin from the ElizaOS plugin registry',
+  description: 'Install a plugin from the elizaOS plugin registry',
   similes: [
     'install plugin from registry',
     'add plugin from registry',

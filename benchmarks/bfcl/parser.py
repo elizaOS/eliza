@@ -28,7 +28,7 @@ class FunctionCallParser:
     - JSON: {"name": "func", "arguments": {...}}
     - JSON array: [{"name": "func", "arguments": {...}}, ...]
     - XML: <function_call><name>func</name><arguments>...</arguments></function_call>
-    - ElizaOS params: <params><FUNC><arg>value</arg></FUNC></params>
+    - elizaOS params: <params><FUNC><arg>value</arg></FUNC></params>
     - Natural language: "I'll call func(arg=value)"
     """
 
@@ -87,7 +87,7 @@ class FunctionCallParser:
         if xml_calls:
             return xml_calls
 
-        # Try ElizaOS params format
+        # Try elizaOS params format
         params_calls = self._parse_elizaos_params(response)
         if params_calls:
             return params_calls
@@ -282,7 +282,7 @@ class FunctionCallParser:
         return calls
 
     def _parse_elizaos_params(self, response: str) -> list[FunctionCall]:
-        """Parse ElizaOS <params> format."""
+        """Parse elizaOS <params> format."""
         calls: list[FunctionCall] = []
 
         # Find params blocks

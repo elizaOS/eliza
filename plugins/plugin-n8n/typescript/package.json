@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-n8n",
   "version": "2.0.0-alpha.2",
-  "description": "N8n workflow integration plugin with AI-powered plugin creation for ElizaOS",
+  "description": "N8n workflow integration plugin with AI-powered plugin creation for elizaOS",
   "type": "module",
   "main": "dist/node/index.js",
   "module": "dist/node/index.js",
@@ -61,7 +61,7 @@
     "access": "public"
   },
   "license": "MIT",
-  "author": "ElizaOS",
+  "author": "elizaOS",
   "keywords": [
     "plugin",
     "elizaos",

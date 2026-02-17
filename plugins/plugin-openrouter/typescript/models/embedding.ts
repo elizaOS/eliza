@@ -65,7 +65,7 @@ export async function handleTextEmbedding(
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "HTTP-Referer": getSetting(runtime, "OPENROUTER_HTTP_REFERER") || "",
-        "X-Title": getSetting(runtime, "OPENROUTER_X_TITLE") || "ElizaOS",
+        "X-Title": getSetting(runtime, "OPENROUTER_X_TITLE") || "elizaOS",
       },
       body: JSON.stringify({
         model: embeddingModelName,

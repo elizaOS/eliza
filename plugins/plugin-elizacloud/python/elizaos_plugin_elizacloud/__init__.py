@@ -138,7 +138,7 @@ def get_plugin() -> dict[str, object]:
     return {
         "name": "@elizaos/plugin-elizacloud",
         "description": (
-            "ElizaOS Cloud plugin — Multi-model AI generation, container provisioning, "
+            "elizaOS Cloud plugin — Multi-model AI generation, container provisioning, "
             "agent bridge, and billing management"
         ),
         "version": __version__,

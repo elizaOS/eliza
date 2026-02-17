@@ -37,7 +37,7 @@ _CORE_ACTION_DOCS_JSON = """{
   "actions": [
     {
       "name": "CREATE_PLUGIN",
-      "description": "Create an ElizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation.",
+      "description": "Create an elizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation.",
       "similes": [
         "create plugin",
         "build plugin",
@@ -125,7 +125,7 @@ _CORE_ACTION_DOCS_JSON = """{
     },
     {
       "name": "DESCRIBE_PLUGIN",
-      "description": "Generate and create an ElizaOS plugin from a natural language description. Do NOT use for n8n workflow creation.",
+      "description": "Generate and create an elizaOS plugin from a natural language description. Do NOT use for n8n workflow creation.",
       "similes": [
         "describe plugin",
         "plugin from description",
@@ -160,7 +160,7 @@ _ALL_ACTION_DOCS_JSON = """{
   "actions": [
     {
       "name": "CREATE_PLUGIN",
-      "description": "Create an ElizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation.",
+      "description": "Create an elizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation.",
       "similes": [
         "create plugin",
         "build plugin",
@@ -248,7 +248,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "DESCRIBE_PLUGIN",
-      "description": "Generate and create an ElizaOS plugin from a natural language description. Do NOT use for n8n workflow creation.",
+      "description": "Generate and create an elizaOS plugin from a natural language description. Do NOT use for n8n workflow creation.",
       "similes": [
         "describe plugin",
         "plugin from description",

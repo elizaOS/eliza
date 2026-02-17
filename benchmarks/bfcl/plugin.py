@@ -1,7 +1,7 @@
 """
 BFCL Plugin Factory
 
-Creates dynamic ElizaOS plugins from BFCL test case function definitions.
+Creates dynamic elizaOS plugins from BFCL test case function definitions.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from benchmarks.bfcl.types import (
 logger = logging.getLogger(__name__)
 
 
-# Import ElizaOS types
+# Import elizaOS types
 try:
     from elizaos.types.components import (
         Action,
@@ -37,7 +37,7 @@ try:
     ELIZAOS_AVAILABLE = True
 except ImportError:
     ELIZAOS_AVAILABLE = False
-    logger.warning("ElizaOS not available, plugin creation will be limited")
+    logger.warning("elizaOS not available, plugin creation will be limited")
 
 
 class FunctionCallCapture:
@@ -111,9 +111,9 @@ def _convert_type_to_schema(param_type: str) -> str:
 def create_action_parameter(
     param: FunctionParameter,
 ) -> "ActionParameter":
-    """Convert a BFCL FunctionParameter to an ElizaOS ActionParameter."""
+    """Convert a BFCL FunctionParameter to an elizaOS ActionParameter."""
     if not ELIZAOS_AVAILABLE:
-        raise ImportError("ElizaOS is required for action parameter creation")
+        raise ImportError("elizaOS is required for action parameter creation")
 
     schema = ActionParameterSchema(
         type=_convert_type_to_schema(param.param_type),
@@ -135,7 +135,7 @@ def create_action_parameter(
 def create_mock_handler(func_name: str) -> "Action.handler":
     """Create a mock handler that captures function calls."""
     if not ELIZAOS_AVAILABLE:
-        raise ImportError("ElizaOS is required for handler creation")
+        raise ImportError("elizaOS is required for handler creation")
 
     async def handler(
         runtime: "IAgentRuntime",
@@ -172,7 +172,7 @@ def create_mock_handler(func_name: str) -> "Action.handler":
 def create_mock_validator() -> "Action.validate_fn":
     """Create a validator that always returns True."""
     if not ELIZAOS_AVAILABLE:
-        raise ImportError("ElizaOS is required for validator creation")
+        raise ImportError("elizaOS is required for validator creation")
 
     async def validate(
         runtime: "IAgentRuntime",
@@ -185,9 +185,9 @@ def create_mock_validator() -> "Action.validate_fn":
 
 
 def create_function_action(func_def: FunctionDefinition) -> "Action":
-    """Convert a BFCL FunctionDefinition to an ElizaOS Action."""
+    """Convert a BFCL FunctionDefinition to an elizaOS Action."""
     if not ELIZAOS_AVAILABLE:
-        raise ImportError("ElizaOS is required for action creation")
+        raise ImportError("elizaOS is required for action creation")
 
     # Convert parameters
     parameters = [
@@ -206,14 +206,14 @@ def create_function_action(func_def: FunctionDefinition) -> "Action":
 
 
 class BFCLPluginFactory:
-    """Factory for creating ElizaOS plugins from BFCL test cases."""
+    """Factory for creating elizaOS plugins from BFCL test cases."""
 
     def __init__(self) -> None:
         self._created_plugins: dict[str, "Plugin"] = {}
 
     def create_plugin(self, test_case: BFCLTestCase) -> "Plugin":
         """
-        Create an ElizaOS plugin with test case functions.
+        Create an elizaOS plugin with test case functions.
 
         Args:
             test_case: The BFCL test case
@@ -222,7 +222,7 @@ class BFCLPluginFactory:
             Plugin configured with the test case's functions
         """
         if not ELIZAOS_AVAILABLE:
-            raise ImportError("ElizaOS is required for plugin creation")
+            raise ImportError("elizaOS is required for plugin creation")
 
         plugin_name = f"bfcl_{test_case.id}"
 
@@ -257,7 +257,7 @@ class BFCLPluginFactory:
             Plugin with all unique functions from test cases
         """
         if not ELIZAOS_AVAILABLE:
-            raise ImportError("ElizaOS is required for plugin creation")
+            raise ImportError("elizaOS is required for plugin creation")
 
         # Collect unique functions by name
         unique_functions: dict[str, FunctionDefinition] = {}

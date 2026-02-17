@@ -1,11 +1,11 @@
-//! Edge TTS plugin definition for ElizaOS.
+//! Edge TTS plugin definition for elizaOS.
 
 use bytes::Bytes;
 
 use crate::services::EdgeTTSService;
 use crate::types::{EdgeTTSError, EdgeTTSParams, EdgeTTSSettings};
 
-/// Edge TTS plugin for ElizaOS.
+/// Edge TTS plugin for elizaOS.
 ///
 /// Provides free text-to-speech synthesis using Microsoft Edge's TTS service.
 /// No API key required - uses the same TTS engine as Microsoft Edge browser.

@@ -1,6 +1,6 @@
 # Browser Use Example - QuantumExplorer
 
-An autonomous ElizaOS agent that explores the web with curiosity, focusing on discovering new research in quantum physics.
+An autonomous elizaOS agent that explores the web with curiosity, focusing on discovering new research in quantum physics.
 
 ## Shared Configuration
 

@@ -1,4 +1,4 @@
-# ElizaOS Chat (Capacitor example)
+# elizaOS Chat (Capacitor example)
 
 This example is a **simple chat UI** (frontend) talking to a **local AgentRuntime backend** over HTTP.
 

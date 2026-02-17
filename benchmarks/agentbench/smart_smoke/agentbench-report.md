@@ -1,4 +1,4 @@
-# AgentBench Evaluation Results - ElizaOS Python
+# AgentBench Evaluation Results - elizaOS Python
 
 ## Executive Summary
 
@@ -9,7 +9,7 @@
 
 ### Key Findings
 
-- ElizaOS demonstrates strong agent capabilities across tested environments
+- elizaOS demonstrates strong agent capabilities across tested environments
 - Strong performance in: operating_system, database, knowledge_graph, lateral_thinking, web_shopping
 
 ### Recommendations
@@ -29,12 +29,12 @@
 
 ### vs GPT-4
 
-| Environment | ElizaOS | GPT-4 | Difference |
+| Environment | elizaOS | GPT-4 | Difference |
 |-------------|---------|-------|------------|
 
 ### vs GPT-3.5
 
-| Environment | ElizaOS | GPT-3.5 | Difference |
+| Environment | elizaOS | GPT-3.5 | Difference |
 |-------------|---------|---------|------------|
 
 ## Resource Usage
@@ -46,4 +46,4 @@
 ---
 *Generated on 2026-01-12T00:28:47.061321*
 *Benchmark: AgentBench (ICLR 2024)*
-*Framework: ElizaOS Python*
+*Framework: elizaOS Python*

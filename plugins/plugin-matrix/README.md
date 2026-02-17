@@ -1,6 +1,6 @@
 # @elizaos/plugin-matrix
 
-Matrix messaging integration plugin for ElizaOS agents.
+Matrix messaging integration plugin for elizaOS agents.
 
 ## Features
 

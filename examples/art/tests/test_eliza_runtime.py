@@ -1,7 +1,7 @@
 """
-Tests for full ElizaOS Runtime Integration.
+Tests for full elizaOS Runtime Integration.
 
-These tests verify that the ART demos use the CANONICAL ElizaOS pattern:
+These tests verify that the ART demos use the CANONICAL elizaOS pattern:
 - Full AgentRuntime with character and plugins
 - Message processing through message_service.handle_message
 - Actions registered and invoked properly

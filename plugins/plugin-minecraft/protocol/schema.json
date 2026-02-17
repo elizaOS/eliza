@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "ElizaOS Minecraft Bridge Protocol",
+  "title": "elizaOS Minecraft Bridge Protocol",
   "type": "object",
   "description": "JSON-over-WebSocket protocol between Eliza plugins and the Mineflayer bridge server.",
   "definitions": {

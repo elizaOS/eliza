@@ -1,7 +1,7 @@
 /**
- * iMessage Plugin for ElizaOS
+ * iMessage Plugin for elizaOS
  *
- * Provides iMessage integration for ElizaOS agents on macOS.
+ * Provides iMessage integration for elizaOS agents on macOS.
  * Uses AppleScript and/or CLI tools to send and receive messages.
  */
 
@@ -64,11 +64,11 @@ export {
 } from "./rpc.js";
 
 /**
- * iMessage plugin for ElizaOS agents.
+ * iMessage plugin for elizaOS agents.
  */
 const imessagePlugin: Plugin = {
   name: "imessage",
-  description: "iMessage plugin for ElizaOS agents (macOS only)",
+  description: "iMessage plugin for elizaOS agents (macOS only)",
 
   services: [IMessageService],
   actions: [sendMessage],

@@ -1,7 +1,7 @@
 /**
  * Secrets Service
  *
- * Core service for multi-level secret management in ElizaOS.
+ * Core service for multi-level secret management in elizaOS.
  * Provides unified API for accessing global, world, and user secrets
  * with encryption, access control, and change notification support.
  */

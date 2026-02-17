@@ -76,7 +76,7 @@ export function generateWebApplicationSchema() {
       "AI Image Generation",
       "AI Video Generation",
       "Voice Cloning",
-      "ElizaOS Agent Runtime",
+      "elizaOS Agent Runtime",
       "Container Deployment",
       "API Access",
     ],

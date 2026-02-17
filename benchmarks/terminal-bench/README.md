@@ -1,6 +1,6 @@
-# Terminal-Bench for ElizaOS
+# Terminal-Bench for elizaOS
 
-A benchmark evaluating AI agents' proficiency in performing complex tasks within terminal environments. This implementation integrates Terminal-Bench with the ElizaOS Python framework.
+A benchmark evaluating AI agents' proficiency in performing complex tasks within terminal environments. This implementation integrates Terminal-Bench with the elizaOS Python framework.
 
 ## Overview
 
@@ -91,14 +91,14 @@ async def main():
 asyncio.run(main())
 ```
 
-### Using with ElizaOS Runtime
+### Using with elizaOS Runtime
 
 ```python
 from elizaos.runtime import AgentRuntime
 from elizaos_terminal_bench import TerminalBenchRunner
 
 async def run_with_runtime():
-    # Initialize ElizaOS runtime
+    # Initialize elizaOS runtime
     runtime = AgentRuntime()
     await runtime.initialize()
     
@@ -228,7 +228,7 @@ Set your API key: `export OPENAI_API_KEY=sk-...`
 - [Terminal-Bench Official Site](https://tbench.ai)
 - [Terminal-Bench GitHub](https://github.com/laude-institute/terminal-bench)
 - [Terminal-Bench Leaderboard](https://tbench.ai/leaderboard/terminal-bench/2.0)
-- [ElizaOS Documentation](https://elizaos.dev)
+- [elizaOS Documentation](https://elizaos.dev)
 
 ## License
 

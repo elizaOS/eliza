@@ -1,4 +1,4 @@
-//! RLM (Recursive Language Model) plugin for ElizaOS.
+//! RLM (Recursive Language Model) plugin for elizaOS.
 //!
 //! This crate provides integration with Recursive Language Models (RLMs),
 //! enabling LLMs to process arbitrarily long contexts through recursive
@@ -80,7 +80,7 @@ pub fn get_rlm_plugin() -> AnyhowResult<RLMPlugin> {
     RLMPlugin::from_env().map_err(|e| anyhow::anyhow!("Failed to create RLM plugin: {}", e))
 }
 
-/// Create an ElizaOS plugin definition for RLM.
+/// Create an elizaOS plugin definition for RLM.
 pub fn create_rlm_elizaos_plugin() -> AnyhowResult<elizaos::types::Plugin> {
     use elizaos::types::{Plugin, PluginDefinition};
 

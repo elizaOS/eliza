@@ -33,7 +33,7 @@ export function isDebugTracingEnabled(): boolean {
 }
 
 // ============================================================================
-// Event Payload Types (from ElizaOS core)
+// Event Payload Types (from elizaOS core)
 // ============================================================================
 
 interface RunStartedPayload {
@@ -354,9 +354,9 @@ function formatDuration(ms: number): string {
 // ============================================================================
 
 // Build events object with both core and custom event handlers
-// ElizaOS runtime.emitEvent accepts any string event type, so custom events work at runtime
+// elizaOS runtime.emitEvent accepts any string event type, so custom events work at runtime
 const debugPluginEvents = {
-  // Core ElizaOS events
+  // Core elizaOS events
   [EventType.RUN_STARTED]: [
     handleRunStarted as (payload: unknown) => Promise<void>,
   ],
@@ -399,9 +399,9 @@ const debugPluginEvents = {
 
 export const debugPlugin: Plugin = {
   name: "eliza-debug",
-  description: "Debug tracing plugin for ElizaOS execution analysis",
+  description: "Debug tracing plugin for elizaOS execution analysis",
 
-  // Cast to Plugin['events'] since ElizaOS runtime accepts custom event types
+  // Cast to Plugin['events'] since elizaOS runtime accepts custom event types
   // even though the Plugin type definition only includes known EventType values
   events: debugPluginEvents as Plugin["events"],
 

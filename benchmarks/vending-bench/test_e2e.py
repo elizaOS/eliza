@@ -319,7 +319,7 @@ async def test_with_openai(results: TestResults):
 
 
 async def test_plugin_structure(results: TestResults):
-    """Test the ElizaOS plugin structure."""
+    """Test the elizaOS plugin structure."""
     print("\nTesting Plugin Structure...")
 
     try:

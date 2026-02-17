@@ -1,6 +1,6 @@
-//! LINE Plugin for ElizaOS
+//! LINE Plugin for elizaOS
 //!
-//! Provides LINE Messaging API integration for ElizaOS agents,
+//! Provides LINE Messaging API integration for elizaOS agents,
 //! supporting text, flex messages, locations, and more.
 
 pub mod types;

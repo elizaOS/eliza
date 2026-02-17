@@ -1,4 +1,4 @@
-# Browser Automation Plugin for ElizaOS (Rust)
+# Browser Automation Plugin for elizaOS (Rust)
 
 Browser automation plugin enabling AI agents to browse websites, interact with elements, and extract data.
 

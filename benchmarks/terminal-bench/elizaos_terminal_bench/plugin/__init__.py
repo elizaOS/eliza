@@ -1,9 +1,9 @@
 """
-ElizaOS Plugin for Terminal-Bench.
+elizaOS Plugin for Terminal-Bench.
 
-This plugin provides canonical ElizaOS actions and providers for terminal
+This plugin provides canonical elizaOS actions and providers for terminal
 operations during benchmarking. It enables the agent to interact with
-terminal environments through the standard ElizaOS action system.
+terminal environments through the standard elizaOS action system.
 """
 
 from elizaos.types import Plugin
@@ -19,7 +19,7 @@ def create_terminal_bench_plugin() -> Plugin:
     return Plugin(
         name="terminal-bench",
         description=(
-            "Terminal-Bench plugin for ElizaOS - provides terminal operation "
+            "Terminal-Bench plugin for elizaOS - provides terminal operation "
             "actions (EXECUTE, READ_FILE, WRITE_FILE, LIST_DIR, TASK_COMPLETE) "
             "and context providers for benchmark task execution."
         ),

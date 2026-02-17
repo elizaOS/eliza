@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-plugin-whatsapp"
 version = "2.0.0a1"
-description = "WhatsApp Cloud API plugin for ElizaOS agents"
+description = "WhatsApp Cloud API plugin for elizaOS agents"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

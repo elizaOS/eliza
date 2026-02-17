@@ -14,7 +14,7 @@ import {
   retry,
   testDataGenerators,
   waitFor,
-} from "../testing/test-utils";
+} from "./test-utils";
 
 describe("Testing Infrastructure", () => {
   describe("generateTestId", () => {

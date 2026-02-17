@@ -18,7 +18,7 @@ export class UserLpProfileService extends Service implements IUserLpProfileServi
         // No-op
     }
 
-    // Static methods required by ElizaOS Service architecture
+    // Static methods required by elizaOS Service architecture
     static async start(runtime: IAgentRuntime): Promise<UserLpProfileService> {
         const service = new UserLpProfileService(runtime);
         await service.start(runtime);

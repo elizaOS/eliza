@@ -75,14 +75,14 @@ Text commands such as:
 ### Using the Full elizaOS Agent
 
 ```python
-from elizaos_atropos_textworld import TextWorldEnvironment, ElizaOSAgent
+from elizaos_atropos_textworld import TextWorldEnvironment, elizaOSAgent
 
 # Create environment
 env = TextWorldEnvironment(game_type="treasure_hunt", difficulty="medium")
 await env.initialize()
 
 # Create elizaOS agent (uses OpenAI plugin internally)
-agent = ElizaOSAgent()
+agent = elizaOSAgent()
 await agent.initialize()
 
 # Game loop
@@ -284,7 +284,7 @@ elizaos_atropos_textworld/
 ├── types.py                 # Game types (GameState, Turn, Trajectory, etc.)
 ├── environment.py           # TextWorldEnvironment class
 ├── game_generator.py        # Procedural game generation
-├── agent.py                 # elizaOS agent (ElizaOSAgent, TextWorldAgent)
+├── agent.py                 # elizaOS agent (elizaOSAgent, TextWorldAgent)
 ├── atropos_integration.py   # Atropos RL integration
 ├── parser.py                # Natural language parser
 └── cli.py                   # Command-line interface

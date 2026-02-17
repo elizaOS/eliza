@@ -25,7 +25,7 @@ export async function refreshStateAfterAction(
 
 /**
  * Access runtime's stateCache for action results.
- * WARNING: Uses internal ElizaOS API - may break on core version upgrades.
+ * WARNING: Uses internal elizaOS API - may break on core version upgrades.
  * Returns empty array on failure with warning logged.
  */
 export function getActionResultsFromCache(
@@ -38,7 +38,7 @@ export function getActionResultsFromCache(
 
   if (!runtimeWithCache.stateCache) {
     logger.warn(
-      `[getActionResultsFromCache] runtime.stateCache not found - ElizaOS internal API may have changed. ` +
+      `[getActionResultsFromCache] runtime.stateCache not found - elizaOS internal API may have changed. ` +
       `Action results will not be captured. Check @elizaos/core version compatibility.`
     );
     return [];

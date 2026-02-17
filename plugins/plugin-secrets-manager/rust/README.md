@@ -1,6 +1,6 @@
-# ElizaOS Plugin - Secrets Manager (Rust)
+# elizaOS Plugin - Secrets Manager (Rust)
 
-Multi-level secrets management plugin for ElizaOS with encryption, validation, and dynamic plugin activation.
+Multi-level secrets management plugin for elizaOS with encryption, validation, and dynamic plugin activation.
 
 ## Features
 

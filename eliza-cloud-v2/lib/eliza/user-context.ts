@@ -138,7 +138,7 @@ export class UserContextService {
   }
 
   /**
-   * Get user's ElizaOS Cloud API key from database
+   * Get user's elizaOS Cloud API key from database
    * Centralized API key retrieval - no more scattered getUserElizaCloudApiKey calls
    */
   private async getUserApiKey(

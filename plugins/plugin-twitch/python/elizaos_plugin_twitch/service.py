@@ -1,5 +1,5 @@
 """
-Twitch service implementation for ElizaOS.
+Twitch service implementation for elizaOS.
 
 This service provides Twitch chat integration using the twitchio library.
 """
@@ -120,7 +120,7 @@ class TwitchBot(commands.Bot):
 
 
 class TwitchService:
-    """Twitch chat service for ElizaOS agents."""
+    """Twitch chat service for elizaOS agents."""
 
     service_type: str = TWITCH_SERVICE_NAME
 

@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-plugin-plugin-manager"
 version = "2.0.0"
-description = "Plugin manager plugin for ElizaOS - manages dynamic loading, unloading, and registry operations (Python)"
+description = "Plugin manager plugin for elizaOS - manages dynamic loading, unloading, and registry operations (Python)"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
-    { name = "ElizaOS Contributors" }
+    { name = "elizaOS Contributors" }
 ]
 keywords = [
     "elizaos",

@@ -59,7 +59,7 @@ def _load_dotenv() -> None:
 def create_parser() -> argparse.ArgumentParser:
     """Create command-line argument parser."""
     parser = argparse.ArgumentParser(
-        description="AgentBench benchmark for ElizaOS Python",
+        description="AgentBench benchmark for elizaOS Python",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
@@ -204,14 +204,14 @@ async def run_benchmark(args: argparse.Namespace) -> int:
                 await runtime.initialize()
                 if not runtime.has_model(ModelType.TEXT_LARGE):
                     logger.warning(
-                        "ElizaOS runtime has no TEXT_LARGE model handler; falling back to deterministic mock runtime"
+                        "elizaOS runtime has no TEXT_LARGE model handler; falling back to deterministic mock runtime"
                     )
                     await runtime.stop()
                     runtime = SmartMockRuntime()
                 else:
-                    logger.info("Using ElizaOS runtime (OpenAI)")
+                    logger.info("Using elizaOS runtime (OpenAI)")
         except ImportError:
-            logger.warning("ElizaOS runtime not available, using deterministic mock")
+            logger.warning("elizaOS runtime not available, using deterministic mock")
             runtime = SmartMockRuntime()
     else:
         logger.info("Using deterministic mock runtime (harness validation)")

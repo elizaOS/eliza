@@ -12,7 +12,7 @@ export { proseProvider, initProseService };
 export { proseRunAction, proseCompileAction, proseHelpAction };
 
 /**
- * plugin-prose: OpenProse VM integration for ElizaOS
+ * plugin-prose: OpenProse VM integration for elizaOS
  *
  * OpenProse is a programming language for AI sessions that allows
  * orchestrating multi-agent workflows. When a prose program is run,

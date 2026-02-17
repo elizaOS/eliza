@@ -2,7 +2,7 @@
  * Plugin Secrets Manager - Shared Type Definitions
  *
  * This module defines all core types for the multi-level secrets management system.
- * Designed for ElizaOS native storage: character settings, world metadata, and components.
+ * Designed for elizaOS native storage: character settings, world metadata, and components.
  */
 
 import type { UUID } from "@elizaos/core";

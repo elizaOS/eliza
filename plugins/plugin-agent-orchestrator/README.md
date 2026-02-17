@@ -1,6 +1,6 @@
 # Agent Orchestrator Plugin
 
-Multi-language orchestration plugin for ElizaOS that manages task lifecycles, subagent spawning, agent-to-agent communication, sandboxed execution, and cross-platform messaging.
+Multi-language orchestration plugin for elizaOS that manages task lifecycles, subagent spawning, agent-to-agent communication, sandboxed execution, and cross-platform messaging.
 
 ## Overview
 

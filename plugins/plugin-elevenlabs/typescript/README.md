@@ -1,6 +1,6 @@
 # ElevenLabs Plugin
 
-This plugin provides integration with ElevenLabs text-to-speech services through the ElizaOS platform.
+This plugin provides integration with ElevenLabs text-to-speech services through the elizaOS platform.
 
 ## Usage
 

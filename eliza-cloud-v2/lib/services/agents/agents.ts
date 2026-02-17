@@ -1,9 +1,9 @@
 /**
  * Agent Runtime Service
  *
- * This service deals ONLY with runtime agents (agents table - ElizaOS framework).
+ * This service deals ONLY with runtime agents (agents table - elizaOS framework).
  *
- * Domain: Agents (agents table - DO NOT MODIFY, ElizaOS framework)
+ * Domain: Agents (agents table - DO NOT MODIFY, elizaOS framework)
  * - Runtime agent information
  * - Room/message operations
  * - Agent-to-room communication
@@ -14,7 +14,7 @@
  * - Character discovery (use characterDeploymentDiscoveryService)
  *
  * Key Distinction:
- * - Agent = Running instance from ElizaOS (agents table)
+ * - Agent = Running instance from elizaOS (agents table)
  * - Character = User-created definition (user_characters table)
  * - When you deploy a character, it becomes an agent
  */

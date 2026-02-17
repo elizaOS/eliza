@@ -1,5 +1,5 @@
 """
-Main CLI for ElizaOS ART demos.
+Main CLI for elizaOS ART demos.
 
 Provides unified commands across all games.
 """
@@ -13,7 +13,7 @@ from rich.table import Table
 
 app = typer.Typer(
     name="elizaos-art",
-    help="ElizaOS ART (Adaptive Reinforcement Training) - Train LLMs with GRPO",
+    help="elizaOS ART (Adaptive Reinforcement Training) - Train LLMs with GRPO",
 )
 console = Console()
 
@@ -139,7 +139,7 @@ def clean(
 @app.command()
 def info() -> None:
     """Show information about supported models and configuration."""
-    console.print("\n[bold cyan]ElizaOS ART - Adaptive Reinforcement Training[/bold cyan]\n")
+    console.print("\n[bold cyan]elizaOS ART - Adaptive Reinforcement Training[/bold cyan]\n")
 
     console.print("[bold]Supported Local Models:[/bold]")
     models_table = Table(show_header=True)

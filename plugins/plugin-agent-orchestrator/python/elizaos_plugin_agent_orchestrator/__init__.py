@@ -1,5 +1,5 @@
 """
-Agent Orchestrator Plugin for ElizaOS.
+Agent Orchestrator Plugin for elizaOS.
 
 Orchestrates tasks across registered agent providers without performing
 file I/O directly - that responsibility belongs to sub-agent workers.

@@ -29,7 +29,7 @@ struct ControlState {
     paused: bool,
 }
 
-/// Runtime trait for abstracting the ElizaOS runtime
+/// Runtime trait for abstracting the elizaOS runtime
 #[async_trait::async_trait]
 pub trait Runtime: Send + Sync {
     fn agent_id(&self) -> &str;

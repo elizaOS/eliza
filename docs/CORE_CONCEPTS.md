@@ -1,4 +1,4 @@
-# Core Concepts (ElizaOS)
+# Core Concepts (elizaOS)
 
 ## Agent runtime
 
@@ -42,7 +42,7 @@ Persistence is abstracted behind `DatabaseAdapter` (`packages/typescript/src/dat
 
 ## Worlds, rooms, and entities
 
-ElizaOS models "where" a conversation happens and "who" is participating using three core concepts:
+elizaOS models "where" a conversation happens and "who" is participating using three core concepts:
 
 - **Entity**: a participant identity (user, agent, or external identity on a platform).
 - **Room**: a conversation space (a DM, channel, thread, etc.).
@@ -50,7 +50,7 @@ ElizaOS models "where" a conversation happens and "who" is participating using t
 
 ### Room vs channel (both exist)
 
-ElizaOS has both an internal **room** concept and a "channel" concept, but "channel" is treated as **platform-specific metadata**:
+elizaOS has both an internal **room** concept and a "channel" concept, but "channel" is treated as **platform-specific metadata**:
 
 - **Room**: the internal conversation record with a stable UUID `roomId` (`Room.id`).
 - **Channel type**: what kind of conversation it is (DM, GROUP, THREAD, etc.) via `ChannelType` (`Room.type`, and often also `Content.channelType`).
@@ -103,7 +103,7 @@ Providers (`Provider` in `packages/typescript/src/types/components.ts`) return a
 
 ## Models and inference
 
-ElizaOS treats LLM calls, embeddings, and image description as "models".
+elizaOS treats LLM calls, embeddings, and image description as "models".
 
 Plugins register model handlers via `plugin.models` (`packages/typescript/src/types/plugin.ts`). The runtime calls them through:
 

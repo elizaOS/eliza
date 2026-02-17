@@ -23,7 +23,7 @@ from elizaos_tau_bench.types import (
 from elizaos_tau_bench.dataset import TauBenchDataset
 from elizaos_tau_bench.evaluator import TauBenchEvaluator
 from elizaos_tau_bench.eliza_agent import (
-    ElizaOSTauAgent,
+    elizaOSTauAgent,
     MockTauAgent,
     create_tau_agent,
     ELIZAOS_AVAILABLE,
@@ -41,7 +41,7 @@ from elizaos_tau_bench.constants import LEADERBOARD_SCORES
 logger = logging.getLogger(__name__)
 
 # Type alias for agent
-TauAgentType = Union[ElizaOSTauAgent, MockTauAgent]
+TauAgentType = Union[elizaOSTauAgent, MockTauAgent]
 
 
 class MemoryTracker:
@@ -113,7 +113,7 @@ class TauBenchRunner:
             )
 
         if self._elizaos_mode:
-            logger.info("[TauBenchRunner] Running with ElizaOS integration (real LLM)")
+            logger.info("[TauBenchRunner] Running with elizaOS integration (real LLM)")
         else:
             logger.info("[TauBenchRunner] Running in mock mode (no LLM calls)")
 
@@ -212,7 +212,7 @@ class TauBenchRunner:
             if not task.policy_constraints:
                 task.policy_constraints = environment.get_policy_constraints()
 
-            # Create agent (mock, real ElizaOS, or milaidy TS agent)
+            # Create agent (mock, real elizaOS, or milaidy TS agent)
             if self.config.model_provider == "milaidy":
                 from milaidy_adapter.tau_bench import MilaidyTauAgent
 

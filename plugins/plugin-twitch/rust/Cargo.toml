@@ -2,7 +2,7 @@
 name = "elizaos-plugin-twitch"
 version = "2.0.0-alpha.1"
 edition = "2021"
-description = "Twitch chat integration plugin for ElizaOS agents"
+description = "Twitch chat integration plugin for elizaOS agents"
 license = "MIT"
 repository = "https://github.com/elizaos-plugins/plugin-twitch"
 keywords = ["elizaos", "plugin", "twitch", "chat", "streaming"]

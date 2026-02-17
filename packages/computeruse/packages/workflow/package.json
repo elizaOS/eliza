@@ -29,7 +29,7 @@
   "main": "dist/index.js",
   "name": "@mediar-ai/workflow",
   "peerDependencies": {
-    "@elizaos/computeruse": "^0.24.20"
+    "@elizaos/computeruse": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

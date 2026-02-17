@@ -117,7 +117,7 @@
     },
     {
       "name": "avatar",
-      "description": "This is a simple, browser-only demo that renders a VRM avatar and chats with an ElizaOS agent.",
+      "description": "This is a simple, browser-only demo that renders a VRM avatar and chats with an elizaOS agent.",
       "path": "/Users/shawwalters/eliza-ok/examples/avatar",
       "languages": [
         {
@@ -197,7 +197,7 @@
     },
     {
       "name": "browser-extension",
-      "description": "A cross-platform browser extension that lets you chat with any webpage using AI. Powered by ElizaOS ",
+      "description": "A cross-platform browser extension that lets you chat with any webpage using AI. Powered by elizaOS ",
       "path": "/Users/shawwalters/eliza-ok/examples/browser-extension",
       "languages": [
         {
@@ -213,7 +213,7 @@
     },
     {
       "name": "browser-use",
-      "description": "An autonomous ElizaOS agent that explores the web with curiosity, focusing on discovering new resear",
+      "description": "An autonomous elizaOS agent that explores the web with curiosity, focusing on discovering new resear",
       "path": "/Users/shawwalters/eliza-ok/examples/browser-use",
       "languages": [
         {
@@ -301,7 +301,7 @@
     },
     {
       "name": "code",
-      "description": "An async coding agent terminal app built on ElizaOS - like Claude Code, but with fully asynchronous ",
+      "description": "An async coding agent terminal app built on elizaOS - like Claude Code, but with fully asynchronous ",
       "path": "/Users/shawwalters/eliza-ok/examples/code",
       "languages": [
         {

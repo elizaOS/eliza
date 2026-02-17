@@ -1,10 +1,10 @@
-# Telegram Client Plugin for ElizaOS
+# Telegram Client Plugin for elizaOS
 
-This plugin integrates a Telegram client with ElizaOS, allowing characters in ElizaOS to interact via Telegram. It provides an easy setup for starting the Telegram client using the provided bot token and includes basic lifecycle management.
+This plugin integrates a Telegram client with elizaOS, allowing characters in elizaOS to interact via Telegram. It provides an easy setup for starting the Telegram client using the provided bot token and includes basic lifecycle management.
 
 ## Features
 
-- **Seamless Telegram Integration**: Connects ElizaOS characters to Telegram through the bot API.
+- **Seamless Telegram Integration**: Connects elizaOS characters to Telegram through the bot API.
 - **Configuration Validation**: Ensures required settings are properly configured before starting.
 - **Startup Logging**: Logs successful initialization of the Telegram client for better debugging.
 - **Future-proof Design**: Provides a basic structure for stopping the client (currently unsupported).
@@ -32,14 +32,14 @@ error: 409: Conflict: terminated by other getUpdates request; make sure that onl
 
 This indicates a fundamental architectural limitation with the Telegram Bot API. The Telegram API strictly enforces that only one active connection can exist per bot token at any given time. This is by design to ensure reliable message delivery and prevent message duplication or loss.
 
-In ElizaOS multi-agent environments, this error commonly occurs when:
+In elizaOS multi-agent environments, this error commonly occurs when:
 
 1. **Multiple Agents Using Same Token**: Two or more agents (such as "Eliza" and another character) each have the `@elizaos/plugin-telegram` plugin enabled in their configuration
 2. **Simultaneous Initialization**: Each agent independently attempts to initialize its own Telegram service during startup
 3. **Token Collision**: All agents use the same `TELEGRAM_BOT_TOKEN` from your environment configuration
 4. **Connection Rejection**: When a second agent tries to establish a connection while another is already active, Telegram rejects it with a 409 error
 
-This is not a bug in ElizaOS or the Telegram plugin, but rather a result of using a shared resource (the bot token) that can only accept one connection at a time.
+This is not a bug in elizaOS or the Telegram plugin, but rather a result of using a shared resource (the bot token) that can only accept one connection at a time.
 
 ## Example `<charactername>.character.json`
 

@@ -48,7 +48,10 @@ export * from "./plugins";
 export * from "./prompts";
 export * from "./roles";
 export * from "./runtime";
-// Export schemas
+// Export base table schemas (abstract SchemaTable definitions + buildBaseTables factory)
+export * from "./schemas/index";
+export { buildBaseTables, type BaseTables } from "./schemas/index";
+// Export character schemas
 export * from "./schemas/character";
 export * from "./search";
 export * from "./secrets";

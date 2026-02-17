@@ -1,5 +1,5 @@
 """
-Secrets Manager Plugin for ElizaOS.
+Secrets Manager Plugin for elizaOS.
 
 Multi-level secrets management with encryption, validation, and dynamic plugin activation.
 """

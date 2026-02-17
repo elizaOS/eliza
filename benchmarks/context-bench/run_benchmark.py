@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run the Context Benchmark against ElizaOS Python.
+Run the Context Benchmark against elizaOS Python.
 
 This script runs a comprehensive context benchmark evaluation
 and generates results for comparison with published leaderboards.
@@ -268,7 +268,7 @@ async def run_benchmark(
     _load_env_file(repo_root / ".env")
     
     print("=" * 60)
-    print("ElizaOS Context Benchmark")
+    print("elizaOS Context Benchmark")
     print("=" * 60)
     print(f"Provider: {provider}")
     print(f"Mode: {'Quick' if quick else 'Full'}")
@@ -437,7 +437,7 @@ async def run_eliza_agent_benchmark_mode(
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Run ElizaOS Context Benchmark"
+        description="Run elizaOS Context Benchmark"
     )
     parser.add_argument(
         "--provider",

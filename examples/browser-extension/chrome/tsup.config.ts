@@ -55,7 +55,7 @@ export default defineConfig([
     sourcemap: true,
     clean: false,
     noExternal: [/.*/], // Bundle everything
-    globalName: "ElizaOSBackground",
+    globalName: "elizaOSBackground",
     esbuildOptions(options) {
       options.define = {
         "process.env.NODE_ENV": '"production"',
@@ -87,7 +87,7 @@ export default defineConfig([
 if (typeof globalThis.process === 'undefined') {
   globalThis.process = { env: { NODE_ENV: 'production' }, cwd: () => '/', versions: {}, browser: true };
 }
-console.log("[ElizaOS] Offscreen bundle starting...");`,
+console.log("[elizaOS] Offscreen bundle starting...");`,
     },
     esbuildOptions(options) {
       options.define = {
@@ -123,9 +123,9 @@ console.log("[ElizaOS] Offscreen bundle starting...");`,
     sourcemap: true,
     clean: false,
     noExternal: [/.*/],
-    globalName: "ElizaOSContent",
+    globalName: "elizaOSContent",
   },
-  // Popup script - full ElizaOS version
+  // Popup script - full elizaOS version
   {
     entry: { popup: "src/popup-full.ts" },
     outDir: "dist",
@@ -141,7 +141,7 @@ console.log("[ElizaOS] Offscreen bundle starting...");`,
 if (typeof globalThis.process === 'undefined') {
   globalThis.process = { env: { NODE_ENV: 'production' }, cwd: () => '/', versions: {}, browser: true };
 }
-console.log("[ElizaOS] Bundle starting...");`,
+console.log("[elizaOS] Bundle starting...");`,
     },
     esbuildOptions(options) {
       options.define = {

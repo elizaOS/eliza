@@ -1,5 +1,5 @@
 /**
- * Repository for ElizaOS entities table.
+ * Repository for elizaOS entities table.
  *
  * Handles all database operations for entities without spinning up runtime.
  */
@@ -20,7 +20,7 @@ export interface CreateEntityInput {
 }
 
 /**
- * Repository for ElizaOS entity database operations.
+ * Repository for elizaOS entity database operations.
  */
 export class EntitiesRepository {
   // ============================================================================

@@ -14,7 +14,7 @@ struct ActiveConnection {
     next_request_id: u64,
 }
 
-/// WebSocket bridge to cloud-hosted ElizaOS agents.
+/// WebSocket bridge to cloud-hosted elizaOS agents.
 pub struct CloudBridgeService {
     connections: HashMap<String, ActiveConnection>,
 }

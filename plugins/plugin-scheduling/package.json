@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-scheduling-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "Scheduling and calendar coordination plugin for ElizaOS agents",
+  "description": "Scheduling and calendar coordination plugin for elizaOS agents",
   "main": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",
   "type": "module",
@@ -35,7 +35,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "exports": {
     "./package.json": "./package.json",

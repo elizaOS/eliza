@@ -1,4 +1,4 @@
-"""ElevenLabs plugin definition for ElizaOS."""
+"""ElevenLabs plugin definition for elizaOS."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class ElevenLabsPlugin:
-    """ElevenLabs plugin for ElizaOS.
+    """ElevenLabs plugin for elizaOS.
 
     Provides high-quality text-to-speech (TTS) and speech-to-text (STT) capabilities
     using the ElevenLabs API.

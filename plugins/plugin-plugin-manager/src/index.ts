@@ -13,7 +13,7 @@ import { registryPluginsProvider } from './providers/registryPluginsProvider';
 import './types'; // Ensure module augmentation is loaded
 
 /**
- * Plugin Manager Plugin for ElizaOS
+ * Plugin Manager Plugin for elizaOS
  *
  * Provides comprehensive plugin management capabilities including:
  * - Dynamic loading and unloading of plugins at runtime

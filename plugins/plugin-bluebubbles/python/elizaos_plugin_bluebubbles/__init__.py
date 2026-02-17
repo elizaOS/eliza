@@ -1,5 +1,5 @@
 """
-BlueBubbles iMessage bridge plugin for ElizaOS.
+BlueBubbles iMessage bridge plugin for elizaOS.
 
 This plugin provides iMessage integration via the BlueBubbles macOS app and REST API.
 """
@@ -58,7 +58,7 @@ def create_plugin():
 
     return Plugin(
         name=BLUEBUBBLES_SERVICE_NAME,
-        description="BlueBubbles iMessage bridge plugin for ElizaOS agents",
+        description="BlueBubbles iMessage bridge plugin for elizaOS agents",
         services=[BlueBubblesService],
         actions=[send_message_action],
         providers=[chat_state_provider],

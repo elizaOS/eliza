@@ -1,5 +1,5 @@
 /**
- * Twitch service implementation for ElizaOS.
+ * Twitch service implementation for elizaOS.
  *
  * This service provides Twitch chat integration using the @twurple library.
  */
@@ -30,7 +30,7 @@ import {
 } from "./types.js";
 
 /**
- * Twitch chat service for ElizaOS agents.
+ * Twitch chat service for elizaOS agents.
  */
 export class TwitchService extends Service implements ITwitchService {
   static serviceType: string = TWITCH_SERVICE_NAME;

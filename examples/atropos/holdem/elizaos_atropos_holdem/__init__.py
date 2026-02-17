@@ -1,7 +1,7 @@
 """
-ElizaOS Atropos Texas Hold'em Environment
+elizaOS Atropos Texas Hold'em Environment
 
-A Texas Hold'em poker environment for training ElizaOS agents.
+A Texas Hold'em poker environment for training elizaOS agents.
 """
 
 from elizaos_atropos_holdem.types import (

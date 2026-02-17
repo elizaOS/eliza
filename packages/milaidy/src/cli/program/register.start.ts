@@ -15,7 +15,7 @@ async function startAction() {
 export function registerStartCommand(program: Command) {
   program
     .command("start", { isDefault: true })
-    .description("Start the ElizaOS agent runtime")
+    .description("Start the elizaOS agent runtime")
     .addHelpText(
       "after",
       () =>

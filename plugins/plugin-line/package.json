@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-line",
   "version": "2.0.0-alpha.1",
-  "description": "LINE Messaging API plugin for ElizaOS agents",
+  "description": "LINE Messaging API plugin for elizaOS agents",
   "license": "MIT",
   "type": "module",
   "main": "./typescript/dist/index.js",
@@ -36,7 +36,7 @@
     "taiwan"
   ],
   "peerDependencies": {
-    "@elizaos/core": ">=2.0.0"
+    "@elizaos/core": "workspace:*"
   },
   "dependencies": {
     "@line/bot-sdk": "^10.5.0",

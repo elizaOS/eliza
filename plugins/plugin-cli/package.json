@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-cli",
   "version": "2.0.0-alpha.1",
-  "description": "CLI framework plugin for ElizaOS agents - provides command registration, execution, and utilities",
+  "description": "CLI framework plugin for elizaOS agents - provides command registration, execution, and utilities",
   "type": "module",
   "main": "./typescript/dist/index.js",
   "types": "./typescript/dist/index.d.ts",

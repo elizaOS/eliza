@@ -1,4 +1,4 @@
-# Browser Automation Plugin for ElizaOS
+# Browser Automation Plugin for elizaOS
 
 Multi-language browser automation plugin enabling AI agents to browse websites, interact with elements, and extract data. Available in **TypeScript**, **Python**, and **Rust** with full feature parity.
 

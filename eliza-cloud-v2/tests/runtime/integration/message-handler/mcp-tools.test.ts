@@ -152,7 +152,7 @@ describe("MCP Plugin Loading - Production Flow", () => {
     }
   }, 30000);
 
-  it("should create test user with ElizaOS entities", async () => {
+  it("should create test user with elizaOS entities", async () => {
     startTimer("user_creation");
 
     testUserContext = await createTestUser(
@@ -328,7 +328,7 @@ describe("MCP Assistant - Trending Tokens Query", () => {
     }
   }, 30000);
 
-  it("should create test user with ElizaOS entities", async () => {
+  it("should create test user with elizaOS entities", async () => {
     startTimer("user_creation");
 
     testUserContext = await createTestUser(

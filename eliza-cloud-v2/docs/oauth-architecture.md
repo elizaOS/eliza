@@ -40,7 +40,7 @@ This document explains how OAuth connections relate to users, organizations, and
 | **User** | belongs to 1 Organization | `user.organization_id` |
 | **Organization** | has many Users | Currently 1:1, but schema supports many |
 | **Organization** | has many OAuth Connections | Credentials scoped to org |
-| **User** | = `entityId` in ElizaOS | Used to identify user in messages |
+| **User** | = `entityId` in elizaOS | Used to identify user in messages |
 
 ### Why Organization-Scoped?
 
@@ -358,7 +358,7 @@ const { accessToken } = await tokenResponse.json();
 
 | Component | Role |
 |-----------|------|
-| **User** | Human identity, mapped to `entityId` in ElizaOS |
+| **User** | Human identity, mapped to `entityId` in elizaOS |
 | **Organization** | Credential scope, billing entity |
 | **OAuth Connection** | Platform credentials (Google, etc.) |
 | **Agent Runtime** | Loads plugins, processes messages |

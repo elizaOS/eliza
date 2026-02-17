@@ -1,5 +1,5 @@
 """
-Twitch chat integration plugin for ElizaOS agents.
+Twitch chat integration plugin for elizaOS agents.
 
 This plugin provides Twitch chat integration using the twitchio library.
 """
@@ -75,12 +75,12 @@ __all__ = [
 
 # Plugin metadata
 PLUGIN_NAME = "twitch"
-PLUGIN_DESCRIPTION = "Twitch chat integration plugin for ElizaOS with real-time messaging"
+PLUGIN_DESCRIPTION = "Twitch chat integration plugin for elizaOS with real-time messaging"
 PLUGIN_VERSION = "2.0.0-alpha"
 
 
 def get_plugin():
-    """Return the plugin definition for ElizaOS registration."""
+    """Return the plugin definition for elizaOS registration."""
     return {
         "name": PLUGIN_NAME,
         "description": PLUGIN_DESCRIPTION,

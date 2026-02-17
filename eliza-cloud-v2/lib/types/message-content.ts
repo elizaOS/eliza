@@ -120,12 +120,12 @@ export interface ElevenLabsVoice {
 
 /**
  * Extended metadata for dialogue messages in ElizaCloud.
- * Extends ElizaOS standard metadata with UI and categorization fields.
+ * Extends elizaOS standard metadata with UI and categorization fields.
  *
  * BACKWARDS COMPATIBLE: Works alongside legacy metadata formats.
  */
 export interface DialogueMetadata extends BaseMetadata {
-  /** Official ElizaOS type - always MESSAGE for dialogue */
+  /** Official elizaOS type - always MESSAGE for dialogue */
   type: MemoryType.MESSAGE;
 
   /** Semantic role: who created this message */

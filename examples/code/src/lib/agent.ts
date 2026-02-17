@@ -257,7 +257,7 @@ export async function initializeAgent(): Promise<AgentRuntime> {
     },
     {
       id: "elizaos-native",
-      label: "ElizaOS Native",
+      label: "elizaOS Native",
       executeTask: async (
         task: OrchestratedTask,
         ctx: ProviderTaskExecutionContext,

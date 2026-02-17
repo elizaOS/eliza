@@ -1,6 +1,6 @@
 # Brand Components
 
-This directory contains reusable brand-specific components that implement the ElizaOS Cloud design system. These components are used throughout the landing page and can be integrated across the dashboard.
+This directory contains reusable brand-specific components that implement the elizaOS Cloud design system. These components are used throughout the landing page and can be integrated across the dashboard.
 
 ## Design System
 

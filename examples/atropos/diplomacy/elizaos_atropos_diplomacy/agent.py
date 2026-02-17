@@ -1,5 +1,5 @@
 """
-ElizaOS agent for Diplomacy environment.
+elizaOS agent for Diplomacy environment.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 class DiplomacyAgent:
     """
-    ElizaOS-powered Diplomacy agent.
+    elizaOS-powered Diplomacy agent.
     
     Represents one of the seven great powers and can:
     - Analyze the board position
@@ -49,7 +49,7 @@ class DiplomacyAgent:
         Initialize the Diplomacy agent.
         
         Args:
-            runtime: ElizaOS AgentRuntime
+            runtime: elizaOS AgentRuntime
             power: The power this agent plays as
             use_llm: Whether to use LLM for decisions
             agent_id: Optional agent ID
@@ -156,7 +156,7 @@ class DiplomacyAgent:
         return orders
 
     async def _decide_with_eliza(self, state: GameState, *, trajectory_step_id: str | None = None) -> list[Order]:
-        """Use canonical ElizaOS message pipeline for decision making."""
+        """Use canonical elizaOS message pipeline for decision making."""
         if self._runtime is None:
             return self._decide_with_heuristics(state)
 

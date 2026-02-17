@@ -29,7 +29,7 @@ def _extract_xml_tag(text: str, tag: str) -> str | None:
 class MilaidyTauAgent:
     """Tau-bench agent that delegates to the milaidy TypeScript agent.
 
-    Drop-in replacement for ``ElizaOSTauAgent`` — same ``process_task``
+    Drop-in replacement for ``elizaOSTauAgent`` — same ``process_task``
     interface but routes LLM calls through the milaidy benchmark server.
     """
 

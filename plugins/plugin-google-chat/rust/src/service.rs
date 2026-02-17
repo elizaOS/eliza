@@ -1,4 +1,4 @@
-//! Google Chat service implementation for ElizaOS.
+//! Google Chat service implementation for elizaOS.
 
 use crate::types::*;
 use reqwest::Client;
@@ -9,7 +9,7 @@ use tracing::{debug, info};
 
 const CHAT_API_BASE: &str = "https://chat.googleapis.com/v1";
 
-/// Google Chat messaging service for ElizaOS agents.
+/// Google Chat messaging service for elizaOS agents.
 pub struct GoogleChatService {
     settings: GoogleChatSettings,
     client: Client,

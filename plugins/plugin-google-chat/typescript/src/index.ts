@@ -1,7 +1,7 @@
 /**
- * Google Chat Plugin for ElizaOS
+ * Google Chat Plugin for elizaOS
  *
- * Provides Google Chat messaging integration for ElizaOS agents,
+ * Provides Google Chat messaging integration for elizaOS agents,
  * supporting spaces, direct messages, threads, and reactions.
  */
 
@@ -28,7 +28,7 @@ export { spaceStateProvider, userContextProvider };
  */
 const googleChatPlugin: Plugin = {
   name: "google-chat",
-  description: "Google Chat integration plugin for ElizaOS agents",
+  description: "Google Chat integration plugin for elizaOS agents",
 
   services: [GoogleChatService],
 

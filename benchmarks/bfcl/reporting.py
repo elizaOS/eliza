@@ -364,7 +364,7 @@ class BFCLReporter:
         lines = [
             "# BFCL Leaderboard Comparison",
             "",
-            f"**ElizaOS Position:** #{position}",
+            f"**elizaOS Position:** #{position}",
             f"**Closest Model:** {closest}",
             "",
             "## Score Comparison",
@@ -382,10 +382,10 @@ class BFCLReporter:
 
         elizaos_added = False
         for i, (model_name, baseline) in enumerate(sorted_baselines, 1):
-            # Insert ElizaOS in the right position
+            # Insert elizaOS in the right position
             if not elizaos_added and metrics.overall_score > baseline.overall:
                 lines.append(
-                    f"| **{i}** | **ElizaOS** | "
+                    f"| **{i}** | **elizaOS** | "
                     f"**{metrics.overall_score:.2%}** | "
                     f"**{metrics.ast_accuracy:.2%}** | "
                     f"**{metrics.exec_accuracy:.2%}** |"
@@ -400,10 +400,10 @@ class BFCLReporter:
                 f"{baseline.exec:.2%} |"
             )
 
-        # Add ElizaOS at the end if not added
+        # Add elizaOS at the end if not added
         if not elizaos_added:
             lines.append(
-                f"| **{len(sorted_baselines) + 1}** | **ElizaOS** | "
+                f"| **{len(sorted_baselines) + 1}** | **elizaOS** | "
                 f"**{metrics.overall_score:.2%}** | "
                 f"**{metrics.ast_accuracy:.2%}** | "
                 f"**{metrics.exec_accuracy:.2%}** |"
@@ -421,7 +421,7 @@ class BFCLReporter:
             lines.extend([
                 "### vs GPT-4o",
                 "",
-                "| Category | ElizaOS | GPT-4o | Difference |",
+                "| Category | elizaOS | GPT-4o | Difference |",
                 "|----------|---------|--------|------------|",
             ])
 

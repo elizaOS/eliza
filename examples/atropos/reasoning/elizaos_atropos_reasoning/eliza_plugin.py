@@ -1,5 +1,5 @@
 """
-Canonical ElizaOS integration for Atropos Reasoning Gym.
+Canonical elizaOS integration for Atropos Reasoning Gym.
 
 Provides:
 - ATROPOS_REASONING provider with current problem + feedback
@@ -108,7 +108,7 @@ def create_reasoning_character(name: str = "ReasoningAgent") -> Character:
     template = create_action_only_template(
         task="Solve the problem for {{agentName}}.",
         instructions=(
-            "Solve the problem. Output ONLY one ElizaOS action: ATROPOS_REASONING_ACTION.\n"
+            "Solve the problem. Output ONLY one elizaOS action: ATROPOS_REASONING_ACTION.\n"
             "Put the final answer in params.answer (no extra text)."
         ),
         action_name="ATROPOS_REASONING_ACTION",

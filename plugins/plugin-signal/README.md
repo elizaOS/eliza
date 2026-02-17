@@ -1,6 +1,6 @@
 # @elizaos/plugin-signal
 
-Signal messaging integration plugin for ElizaOS agents with end-to-end encryption support.
+Signal messaging integration plugin for elizaOS agents with end-to-end encryption support.
 
 ## Features
 
@@ -41,7 +41,7 @@ Then register or link your Signal account:
 curl -X POST "http://localhost:8080/v1/register/+1234567890"
 
 # Or link to existing Signal account
-curl -X GET "http://localhost:8080/v1/qrcodelink?device_name=ElizaOS"
+curl -X GET "http://localhost:8080/v1/qrcodelink?device_name=elizaOS"
 ```
 
 ### Option 2: Signal CLI Direct

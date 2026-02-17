@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tau-bench Benchmark CLI for ElizaOS.
+Tau-bench Benchmark CLI for elizaOS.
 
 Usage:
     python -m elizaos_tau_bench.cli --all
@@ -59,7 +59,7 @@ def _maybe_load_dotenv() -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="ElizaOS Tau-bench Benchmark CLI",
+        description="elizaOS Tau-bench Benchmark CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -168,11 +168,11 @@ Examples:
         help="Use LLM to judge response quality",
     )
     
-    # ElizaOS integration options
+    # elizaOS integration options
     parser.add_argument(
         "--real-llm",
         action="store_true",
-        help="Use real LLM via ElizaOS (requires API key)",
+        help="Use real LLM via elizaOS (requires API key)",
     )
     parser.add_argument(
         "--temperature",
@@ -252,7 +252,7 @@ def create_config(args: argparse.Namespace) -> TauBenchConfig:
         enable_memory_tracking=not args.no_memory,
         use_llm_judge=args.llm_judge,
         verbose=args.verbose,
-        # ElizaOS integration
+        # elizaOS integration
         use_mock=not args.real_llm,
         temperature=args.temperature,
         model_provider=args.model_provider,
@@ -265,7 +265,7 @@ def print_banner() -> None:
     """Print the CLI banner."""
     print("""
 ╔═══════════════════════════════════════════════════════════════════════╗
-║                  ElizaOS Tau-bench Benchmark Runner                   ║
+║                  elizaOS Tau-bench Benchmark Runner                   ║
 ║           Tool-Agent-User Interaction in Real-World Domains           ║
 ╚═══════════════════════════════════════════════════════════════════════╝
 """)
@@ -283,7 +283,7 @@ def print_config(config: TauBenchConfig) -> None:
     print(f"   Timeout: {config.timeout_ms}ms")
     print(f"   Memory Tracking: {'✅' if config.enable_memory_tracking else '❌'}")
     print(f"   LLM Judge: {'✅' if config.use_llm_judge else '❌'}")
-    print(f"   Mode: {'🤖 Real LLM (ElizaOS)' if not config.use_mock else '🧪 Mock Mode'}")
+    print(f"   Mode: {'🤖 Real LLM (elizaOS)' if not config.use_mock else '🧪 Mock Mode'}")
     if not config.use_mock:
         print(f"   Temperature: {config.temperature}")
         print(f"   Provider: {config.model_provider or 'auto-detect'}")

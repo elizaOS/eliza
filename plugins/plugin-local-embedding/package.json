@@ -22,7 +22,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.2.1",
+    "@elizaos/core": "workspace:*",
     "@huggingface/transformers": "^3.5.1",
     "node-llama-cpp": "3.10.0",
     "nodejs-whisper": "0.2.9",

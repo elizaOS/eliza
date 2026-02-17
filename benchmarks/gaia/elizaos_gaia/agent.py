@@ -1,7 +1,7 @@
 """
 GAIA Agent Implementation
 
-An agent specialized for solving GAIA benchmark tasks using ElizaOS runtime.
+An agent specialized for solving GAIA benchmark tasks using elizaOS runtime.
 Supports multiple LLM providers: Groq (default), OpenAI, Anthropic, Ollama,
 LocalAI, OpenRouter, Google GenAI, and XAI.
 """
@@ -83,7 +83,7 @@ The answer should be concise and match what is being asked (a number, name, date
 
         Args:
             config: GAIA benchmark configuration
-            runtime: Optional ElizaOS runtime for LLM access
+            runtime: Optional elizaOS runtime for LLM access
         """
         if not isinstance(config, GAIAConfig):
             raise TypeError(f"config must be GAIAConfig, got {type(config).__name__}")
@@ -480,7 +480,7 @@ The answer should be concise and match what is being asked (a number, name, date
     async def _get_llm_response(self) -> tuple[str, int]:
         """Get response from LLM using configured provider."""
         if self.runtime:
-            # Use ElizaOS runtime
+            # Use elizaOS runtime
             from elizaos.types.model import ModelType
 
             result = await self.runtime.use_model(

@@ -1,4 +1,4 @@
-"""Plugin Registry Service - communicates with the ElizaOS plugin registry API."""
+"""Plugin Registry Service - communicates with the elizaOS plugin registry API."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ API_SERVICE_URL_DEFAULT = "https://www.dev.elizacloud.ai/api"
 
 
 class PluginRegistryService:
-    """Communicates with the ElizaOS plugin registry API."""
+    """Communicates with the elizaOS plugin registry API."""
 
     service_type = "registry"
 

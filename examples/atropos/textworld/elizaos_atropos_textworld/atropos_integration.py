@@ -64,7 +64,7 @@ from elizaos_atropos_textworld.types import (
 )
 from elizaos_atropos_textworld.environment import TextWorldEnvironment
 from elizaos_atropos_textworld.agent import (
-    ElizaOSAgent,
+    elizaOSAgent,
     create_heuristic_policy,
 )
 
@@ -639,9 +639,9 @@ async def generate_training_data(
 
     # Initialize agent if using elizaOS (otherwise use heuristics)
     # We create it once and reuse - AgentRuntime init is expensive
-    agent: ElizaOSAgent | None = None
+    agent: elizaOSAgent | None = None
     if config.use_elizaos:
-        agent = ElizaOSAgent()
+        agent = elizaOSAgent()
         await agent.initialize()
 
     trajectories: list[dict] = []
@@ -775,7 +775,7 @@ def create_atropos_env_class():
             # These are initialized in setup(), not here
             # WHY: __init__ should be fast; setup() does the slow stuff
             self.env: TextWorldEnvironment | None = None
-            self.agent: ElizaOSAgent | None = None
+            self.agent: elizaOSAgent | None = None
             self.collector = TrajectoryCollector()
             self.formatter: AtroposFormatter | None = None
             self._seed = 0
@@ -802,7 +802,7 @@ def create_atropos_env_class():
             self.formatter = AtroposFormatter(atropos_config)
 
             if self.config.use_elizaos:
-                self.agent = ElizaOSAgent()
+                self.agent = elizaOSAgent()
                 await self.agent.initialize()
 
             logger.info(

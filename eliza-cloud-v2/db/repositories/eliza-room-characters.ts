@@ -9,7 +9,7 @@ import {
 /**
  * Repository for Eliza room-character mapping database operations.
  *
- * Maps ElizaOS rooms to user-created characters, allowing each conversation
+ * Maps elizaOS rooms to user-created characters, allowing each conversation
  * room to use a different character.
  */
 export const elizaRoomCharactersRepository = {

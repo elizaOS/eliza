@@ -75,6 +75,46 @@ function createMockRuntime(): IAgentRuntime & {
       tasks.delete(id);
     }),
 
+    // Batch task methods (required by IDatabaseAdapter)
+    createTasks: vi.fn(async (tasksToCreate: Task[]) => {
+      const ids: UUID[] = [];
+      for (const task of tasksToCreate) {
+        const id = task.id ?? (`task-${++taskIdCounter}` as UUID);
+        const fullTask: Task = {
+          id,
+          name: task.name ?? "test-task",
+          description: task.description,
+          roomId: task.roomId,
+          entityId: task.entityId,
+          tags: task.tags ?? [],
+          metadata: task.metadata ?? {},
+          createdAt: task.createdAt ?? Date.now(),
+        };
+        tasks.set(id, fullTask);
+        ids.push(id);
+      }
+      return ids;
+    }),
+
+    getTasksByIds: vi.fn(async (ids: UUID[]) => {
+      return ids.map((id) => tasks.get(id)).filter(Boolean) as Task[];
+    }),
+
+    updateTasks: vi.fn(async (updates: Array<{ id: UUID; task: Partial<Task> }>) => {
+      for (const { id, task: taskUpdate } of updates) {
+        const existing = tasks.get(id);
+        if (existing) {
+          tasks.set(id, { ...existing, ...taskUpdate });
+        }
+      }
+    }),
+
+    deleteTasks: vi.fn(async (ids: UUID[]) => {
+      for (const id of ids) {
+        tasks.delete(id);
+      }
+    }),
+
     registerTaskWorker: vi.fn(
       (worker: { name: string; execute: Function; validate?: Function }) => {
         taskWorkers.set(worker.name, worker);

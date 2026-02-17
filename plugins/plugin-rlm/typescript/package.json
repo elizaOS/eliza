@@ -51,7 +51,7 @@
     "vitest": "^3.0.0"
   },
   "peerDependencies": {
-    "@elizaos/core": ">=0.1.0"
+    "@elizaos/core": "workspace:*"
   },
   "engines": {
     "node": ">=20"

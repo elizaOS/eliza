@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-browser-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "Browser automation plugin for ElizaOS - enables AI agents to browse websites, interact with elements, and extract data",
+  "description": "Browser automation plugin for elizaOS - enables AI agents to browse websites, interact with elements, and extract data",
   "type": "module",
   "main": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",
@@ -64,7 +64,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

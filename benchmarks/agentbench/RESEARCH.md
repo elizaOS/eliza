@@ -4,14 +4,14 @@
 
 AgentBench is a comprehensive benchmark introduced in 2023 by THUDM (Tsinghua University) to evaluate Large Language Models (LLMs) functioning as autonomous agents across diverse interactive environments. It is considered one of the most comprehensive agent benchmarks available.
 
-## Implementation Status: ✅ COMPLETE (with Full ElizaOS Integration)
+## Implementation Status: ✅ COMPLETE (with Full elizaOS Integration)
 
-The AgentBench benchmark has been fully implemented for ElizaOS Python with **canonical ElizaOS runtime integration**:
+The AgentBench benchmark has been fully implemented for elizaOS Python with **canonical elizaOS runtime integration**:
 
 | Component | Status | Location |
 |-----------|--------|----------|
 | Core Types | ✅ Complete | `python/elizaos_agentbench/types.py` |
-| **ElizaOS Harness** | ✅ Complete | `python/elizaos_agentbench/eliza_harness.py` |
+| **elizaOS Harness** | ✅ Complete | `python/elizaos_agentbench/eliza_harness.py` |
 | OS Environment | ✅ Complete | `python/elizaos_agentbench/adapters/os_adapter.py` |
 | Database Environment | ✅ Complete | `python/elizaos_agentbench/adapters/db_adapter.py` |
 | Knowledge Graph | ✅ Complete | `python/elizaos_agentbench/adapters/kg_adapter.py` |
@@ -24,12 +24,12 @@ The AgentBench benchmark has been fully implemented for ElizaOS Python with **ca
 | CLI Interface | ✅ Complete | `python/elizaos_agentbench/cli.py` |
 | Test Suite | ✅ Complete | `python/elizaos_agentbench/tests/` (42 tests) |
 
-### Full ElizaOS Pipeline Integration (Canonical Flow)
+### Full elizaOS Pipeline Integration (Canonical Flow)
 
-The benchmark uses the **canonical ElizaOS message processing pipeline**, exactly as implemented in `examples/chat/`:
+The benchmark uses the **canonical elizaOS message processing pipeline**, exactly as implemented in `examples/chat/`:
 
 ```python
-# Canonical ElizaOS pattern (same as examples/chat/python/chat.py)
+# Canonical elizaOS pattern (same as examples/chat/python/chat.py)
 message = Memory(
     entity_id=user_id,
     room_id=room_id,
@@ -59,14 +59,14 @@ pip install -e .
 # Run with deterministic mock (harness validation)
 python run_benchmark.py --env all
 
-# Run with FULL ElizaOS runtime (recommended)
+# Run with FULL elizaOS runtime (recommended)
 python run_benchmark.py --elizaos --env all
 
 # Single environment
 python run_benchmark.py --elizaos --env db --max-tasks 3
 ```
 
-### Latest Results (Full ElizaOS Pipeline + OpenAI)
+### Latest Results (Full elizaOS Pipeline + OpenAI)
 
 | Environment | Success Rate | GPT-4 Baseline | Difference |
 |-------------|-------------|----------------|------------|
@@ -167,8 +167,8 @@ benchmarks/agentbench/python/
 │   ├── __init__.py           # Package exports
 │   ├── types.py              # Core data types and baselines
 │   ├── runner.py             # Main benchmark orchestrator
-│   ├── eliza_harness.py      # Canonical ElizaOS integration (handle_message flow)
-│   ├── benchmark_actions.py  # ElizaOS Action definitions for benchmarks
+│   ├── eliza_harness.py      # Canonical elizaOS integration (handle_message flow)
+│   ├── benchmark_actions.py  # elizaOS Action definitions for benchmarks
 │   ├── cli.py                # Command-line interface
 │   ├── adapters/
 │   │   ├── base.py           # Abstract adapter interface
@@ -187,9 +187,9 @@ benchmarks/agentbench/python/
 └── run_benchmark.py
 ```
 
-### ElizaOS Harness Architecture
+### elizaOS Harness Architecture
 
-The `eliza_harness.py` module implements the canonical ElizaOS integration:
+The `eliza_harness.py` module implements the canonical elizaOS integration:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -270,9 +270,9 @@ cd benchmarks/agentbench/python
 python run_benchmark.py --env db kg --max-tasks 5
 ```
 
-### With ElizaOS Runtime
+### With elizaOS Runtime
 ```bash
-# Ensure ElizaOS is configured with an LLM provider
+# Ensure elizaOS is configured with an LLM provider
 python run_benchmark.py --elizaos --env all --output ./results
 ```
 
@@ -322,7 +322,7 @@ After benchmark execution:
 ## Future Work
 
 1. **Complete remaining environments**: Card Game, Householding (ALFWorld), Web Browsing
-2. **Real LLM evaluation**: Run with GPT-4, Claude, or local models via ElizaOS
+2. **Real LLM evaluation**: Run with GPT-4, Claude, or local models via elizaOS
 3. **Extended datasets**: Load full AgentBench dataset files
 4. **Docker integration**: Improve OS environment sandboxing
 5. **Performance optimization**: Parallel task execution

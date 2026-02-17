@@ -1,7 +1,7 @@
 """Embedding support for Context Benchmark.
 
 Provides real embedding functions using either:
-1. ElizaOS runtime's embedding model (if available)
+1. elizaOS runtime's embedding model (if available)
 2. Sentence-transformers (if installed)
 3. Simple hash-based fallback (for testing)
 """
@@ -185,7 +185,7 @@ def create_eliza_embedding_fn(runtime: "IAgentRuntime") -> AsyncEmbeddingFn | No
     """Create an async embedding function using Eliza's runtime.
 
     Args:
-        runtime: ElizaOS runtime instance.
+        runtime: elizaOS runtime instance.
 
     Returns:
         Async embedding function, or None if not available.

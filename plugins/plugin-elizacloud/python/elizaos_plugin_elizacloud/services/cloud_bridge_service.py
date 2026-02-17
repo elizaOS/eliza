@@ -3,7 +3,7 @@ CloudBridgeService — WebSocket bridge to cloud-hosted agents.
 
 Establishes a JSON-RPC 2.0 WebSocket connection per container, allowing
 the local client to send messages to and receive events from
-cloud-hosted ElizaOS agents. Handles reconnection with exponential
+cloud-hosted elizaOS agents. Handles reconnection with exponential
 backoff and heartbeat keepalive.
 """
 
@@ -52,7 +52,7 @@ class ActiveConnection:
 
 
 class CloudBridgeService:
-    """WebSocket bridge to cloud-hosted ElizaOS agents."""
+    """WebSocket bridge to cloud-hosted elizaOS agents."""
 
     service_type = "CLOUD_BRIDGE"
 

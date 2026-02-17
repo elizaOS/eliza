@@ -1,6 +1,6 @@
 # @elizaos/plugin-linear
 
-A comprehensive Linear integration plugin for ElizaOS, available in **TypeScript**, **Python**, and **Rust**.
+A comprehensive Linear integration plugin for elizaOS, available in **TypeScript**, **Python**, and **Rust**.
 
 ## Overview
 

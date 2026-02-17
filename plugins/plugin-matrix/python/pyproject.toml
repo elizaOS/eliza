@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-plugin-matrix"
 version = "2.0.0a1"
-description = "Matrix messaging integration plugin for ElizaOS agents"
+description = "Matrix messaging integration plugin for elizaOS agents"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

@@ -143,7 +143,7 @@ export const muteRoomAction: Action = {
 
     if (shouldMute) {
       try {
-        await runtime.setParticipantUserState(
+        await runtime.updateParticipantUserState(
           message.roomId,
           runtime.agentId,
           "MUTED",

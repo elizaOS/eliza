@@ -6,7 +6,7 @@ from elizaos_plugin_trajectory_logger.runtime_service import TrajectoryLoggerRun
 
 
 def get_trajectory_logger_plugin() -> Plugin:
-    """Return an ElizaOS Plugin that registers the trajectory logger runtime service."""
+    """Return an elizaOS Plugin that registers the trajectory logger runtime service."""
 
     return Plugin(
         name="trajectory-logger",

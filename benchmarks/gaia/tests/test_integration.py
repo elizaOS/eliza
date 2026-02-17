@@ -2,7 +2,7 @@
 Integration tests for GAIA benchmark.
 
 These tests verify the complete flow of the benchmark, including:
-- Plugin registration with ElizaOS runtime
+- Plugin registration with elizaOS runtime
 - Model handler functionality
 - Tool execution
 - End-to-end question solving
@@ -31,7 +31,7 @@ from elizaos_gaia.plugin import multi_provider_model_handler
 
 
 class TestPluginIntegration:
-    """Test plugin integration with ElizaOS runtime."""
+    """Test plugin integration with elizaOS runtime."""
     
     def test_plugin_has_required_components(self):
         """Test that plugin has all required components."""

@@ -169,7 +169,7 @@ class TestLeaderboardComparison(TestMetricsCalculator):
         assert comparison.our_score == 0.5
         assert comparison.rank >= 1
         assert comparison.total_entries > 0
-        assert "ElizaOS Agent" in comparison.comparison
+        assert "elizaOS Agent" in comparison.comparison
     
     def test_custom_leaderboard(self, calculator, sample_results):
         """Test with custom leaderboard."""

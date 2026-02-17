@@ -14,7 +14,7 @@ import type {
   PluginDiagnostic,
   PluginDiscoveryResult,
   PluginOrigin,
-  ElizaOSPackageManifest,
+  elizaOSPackageManifest,
   PackageManifest,
 } from "../types/plugin-manifest.ts";
 
@@ -82,11 +82,11 @@ function readPackageManifest(dir: string): PackageManifest | null {
 }
 
 /**
- * Get ElizaOS package manifest metadata from package.json.
+ * Get elizaOS package manifest metadata from package.json.
  */
 function getPackageManifestMetadata(
   manifest: PackageManifest | undefined,
-): ElizaOSPackageManifest | undefined {
+): elizaOSPackageManifest | undefined {
   if (!manifest) {
     return undefined;
   }
@@ -382,7 +382,7 @@ function discoverFromPath(params: {
 
 /**
  * Resolve the bundled plugins directory.
- * This looks for plugins bundled with the ElizaOS installation.
+ * This looks for plugins bundled with the elizaOS installation.
  */
 function resolveBundledPluginsDir(): string | null {
   try {
@@ -408,7 +408,7 @@ function resolveBundledPluginsDir(): string | null {
 }
 
 /**
- * Discover all ElizaOS plugins.
+ * Discover all elizaOS plugins.
  *
  * Search order (first match wins for duplicate IDs):
  * 1. Extra paths from config
@@ -549,7 +549,7 @@ export function discoverNpmPlugins(nodeModulesDir: string): PluginDiscoveryResul
 }
 
 /**
- * Check if an npm package is an ElizaOS plugin.
+ * Check if an npm package is an elizaOS plugin.
  */
 function checkNpmPackage(
   packageDir: string,

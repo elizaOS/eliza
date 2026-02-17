@@ -61,7 +61,7 @@ function App() {
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>⚡ ElizaOS Auto Trader</h1>
+        <h1>⚡ elizaOS Auto Trader</h1>
         <p>AI-powered autonomous trading on Solana</p>
       </header>
 
@@ -124,7 +124,7 @@ function App() {
           Only trade with funds you can afford to lose.
         </p>
         <p style={{ marginTop: '8px' }}>
-          Built with ElizaOS • <a href="https://github.com/elizaos/eliza" style={{ color: 'var(--accent-primary)' }}>GitHub</a>
+          Built with elizaOS • <a href="https://github.com/elizaos/eliza" style={{ color: 'var(--accent-primary)' }}>GitHub</a>
         </p>
       </footer>
     </div>

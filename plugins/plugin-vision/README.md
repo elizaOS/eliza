@@ -1,6 +1,6 @@
-# ElizaOS Vision Plugin
+# elizaOS Vision Plugin
 
-A powerful visual perception plugin for ElizaOS that provides agents with
+A powerful visual perception plugin for elizaOS that provides agents with
 real-time camera integration and scene analysis capabilities. This plugin
 enables agents to "see" their environment, describe scenes, detect people and
 objects, and make decisions based on visual input.
@@ -375,7 +375,7 @@ cargo test
 
 ## Contributing
 
-Contributions are welcome! Please see the main ElizaOS repository for
+Contributions are welcome! Please see the main elizaOS repository for
 contribution guidelines.
 
 ## License

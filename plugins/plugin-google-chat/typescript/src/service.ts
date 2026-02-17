@@ -1,5 +1,5 @@
 /**
- * Google Chat service implementation for ElizaOS.
+ * Google Chat service implementation for elizaOS.
  */
 
 import {

@@ -1,7 +1,7 @@
 [project]
 name = "elizaos-plugin-line"
 version = "2.0.0a1"
-description = "LINE Messaging API plugin for ElizaOS agents"
+description = "LINE Messaging API plugin for elizaOS agents"
 authors = [{ name = "elizaOS", email = "contact@elizaos.com" }]
 license = { text = "MIT" }
 readme = "README.md"

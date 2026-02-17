@@ -2,8 +2,8 @@
 name = "elizaos-plugin-secrets-manager"
 version = "0.1.0"
 edition = "2021"
-authors = ["ElizaOS Team"]
-description = "Multi-level secrets management plugin for ElizaOS with encryption and dynamic plugin activation"
+authors = ["elizaOS Team"]
+description = "Multi-level secrets management plugin for elizaOS with encryption and dynamic plugin activation"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
 documentation = "https://docs.rs/elizaos-plugin-secrets-manager"

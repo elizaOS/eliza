@@ -244,7 +244,7 @@ export function buildUserContext(
 }
 
 /**
- * Test user context for ElizaOS entities (world, room, entity)
+ * Test user context for elizaOS entities (world, room, entity)
  */
 export interface TestUserContext {
   userId: string;
@@ -254,7 +254,7 @@ export interface TestUserContext {
 }
 
 /**
- * Create ElizaOS entities for a test user (world, room, entity)
+ * Create elizaOS entities for a test user (world, room, entity)
  */
 export async function createTestUser(
   runtime: TestRuntime,

@@ -17,7 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.0.0",
@@ -25,6 +25,6 @@
     "vitest": "^3.0.0"
   },
   "peerDependencies": {
-    "@elizaos/core": ">=2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   }
 }

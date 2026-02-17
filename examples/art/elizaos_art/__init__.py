@@ -1,10 +1,10 @@
 """
-ElizaOS ART (Adaptive Reinforcement Training) Package
+elizaOS ART (Adaptive Reinforcement Training) Package
 
 Continuous reinforcement learning system for training local LLMs
 using OpenPipe's ART framework with GRPO.
 
-Integrates with ElizaOS plugins:
+Integrates with elizaOS plugins:
 - plugin-trajectory-logger: Trajectory capture and export
 - plugin-local-ai: Local GGUF model inference
 - plugin-localdb: Persistent storage
@@ -37,9 +37,9 @@ __all__ = [
 ]
 
 
-# Lazy import ElizaOS integration to avoid import errors when not installed
+# Lazy import elizaOS integration to avoid import errors when not installed
 def __getattr__(name: str):
-    """Lazy load ElizaOS integration components."""
+    """Lazy load elizaOS integration components."""
     eliza_exports = {
         "ElizaTrajectoryLogger",
         "ElizaLocalAIProvider",

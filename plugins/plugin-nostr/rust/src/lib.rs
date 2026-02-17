@@ -1,6 +1,6 @@
-//! Nostr Plugin for ElizaOS
+//! Nostr Plugin for elizaOS
 //!
-//! Provides Nostr decentralized messaging integration for ElizaOS agents,
+//! Provides Nostr decentralized messaging integration for elizaOS agents,
 //! supporting encrypted DMs via NIP-04 and profile management.
 
 pub mod types;

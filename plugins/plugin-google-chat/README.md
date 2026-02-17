@@ -1,6 +1,6 @@
-# Google Chat Plugin for ElizaOS
+# Google Chat Plugin for elizaOS
 
-Google Chat messaging integration for ElizaOS agents, providing full support for Google Workspace team communication.
+Google Chat messaging integration for elizaOS agents, providing full support for Google Workspace team communication.
 
 ## Features
 
@@ -103,7 +103,7 @@ const agent = createAgent({
 from elizaos_plugin_google_chat import get_plugin
 
 plugin = get_plugin()
-# Register with ElizaOS runtime
+# Register with elizaOS runtime
 ```
 
 ### Rust

@@ -52,7 +52,7 @@ class MockComponent:
 
 
 class MockAgentRuntime:
-    """Mock ElizaOS agent runtime for testing."""
+    """Mock elizaOS agent runtime for testing."""
 
     def __init__(self) -> None:
         self._agent_id = str(uuid.uuid4())

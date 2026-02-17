@@ -1,6 +1,6 @@
 # D&D VTT - AI-Powered Virtual Tabletop
 
-An AI-powered D&D 5e Virtual Tabletop powered by ElizaOS agents. Features an AI Dungeon Master that runs dynamic, narrative-driven adventures with AI party members that can act autonomously or be guided by players.
+An AI-powered D&D 5e Virtual Tabletop powered by elizaOS agents. Features an AI Dungeon Master that runs dynamic, narrative-driven adventures with AI party members that can act autonomously or be guided by players.
 
 ## Features
 
@@ -18,7 +18,7 @@ An AI-powered D&D 5e Virtual Tabletop powered by ElizaOS agents. Features an AI 
 dnd-vtt/
 ├── server/           # Backend game server
 │   ├── src/
-│   │   ├── agents/       # ElizaOS agent plugins
+│   │   ├── agents/       # elizaOS agent plugins
 │   │   │   ├── dm-agent/     # Dungeon Master AI
 │   │   │   └── player-agent/ # AI party member
 │   │   ├── api/          # WebSocket handlers
@@ -214,8 +214,8 @@ bun run seed     # Re-seed with starter content
 
 ## Contributing
 
-This is part of the ElizaOS examples. Contributions welcome!
+This is part of the elizaOS examples. Contributions welcome!
 
 ## License
 
-MIT License - See main ElizaOS repository for details.
+MIT License - See main elizaOS repository for details.

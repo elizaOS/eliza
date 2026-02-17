@@ -26,7 +26,7 @@ The following scripts were removed as they are no longer needed:
 
 ## Running Tests
 
-The recommended way to run tests is through the ElizaOS CLI:
+The recommended way to run tests is through the elizaOS CLI:
 
 ```bash
 # Run all tests

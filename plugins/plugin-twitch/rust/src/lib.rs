@@ -1,4 +1,4 @@
-//! Twitch chat integration plugin for ElizaOS agents.
+//! Twitch chat integration plugin for elizaOS agents.
 //!
 //! This plugin provides Twitch chat integration using IRC over WebSocket.
 
@@ -14,5 +14,5 @@ pub use providers::*;
 
 /// Plugin metadata
 pub const PLUGIN_NAME: &str = "twitch";
-pub const PLUGIN_DESCRIPTION: &str = "Twitch chat integration plugin for ElizaOS with real-time messaging";
+pub const PLUGIN_DESCRIPTION: &str = "Twitch chat integration plugin for elizaOS with real-time messaging";
 pub const PLUGIN_VERSION: &str = "2.0.0-alpha";

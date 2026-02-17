@@ -14,7 +14,7 @@ export function initializeOpenAI(
     try {
       if (!getApiKey(runtime) && !isBrowser()) {
         logger.warn(
-          "ELIZAOS_CLOUD_API_KEY is not set in environment - ElizaOS Cloud functionality will be limited",
+          "ELIZAOS_CLOUD_API_KEY is not set in environment - elizaOS Cloud functionality will be limited",
         );
         logger.info(
           "Get your API key from https://www.elizacloud.ai/dashboard/api-keys",
@@ -28,23 +28,23 @@ export function initializeOpenAI(
         });
         if (!response.ok) {
           logger.warn(
-            `ElizaOS Cloud API key validation failed: ${response.statusText}`,
+            `elizaOS Cloud API key validation failed: ${response.statusText}`,
           );
           logger.warn(
-            "ElizaOS Cloud functionality will be limited until a valid API key is provided",
+            "elizaOS Cloud functionality will be limited until a valid API key is provided",
           );
           logger.info(
             "Get your API key from https://www.elizacloud.ai/dashboard/api-keys",
           );
         } else {
-          logger.log("ElizaOS Cloud API key validated successfully");
+          logger.log("elizaOS Cloud API key validated successfully");
         }
       } catch (fetchError) {
         const message =
           fetchError instanceof Error ? fetchError.message : String(fetchError);
-        logger.warn(`Error validating ElizaOS Cloud API key: ${message}`);
+        logger.warn(`Error validating elizaOS Cloud API key: ${message}`);
         logger.warn(
-          "ElizaOS Cloud functionality will be limited until a valid API key is provided",
+          "elizaOS Cloud functionality will be limited until a valid API key is provided",
         );
       }
     } catch (error) {
@@ -54,7 +54,7 @@ export function initializeOpenAI(
           .join(", ") ||
         (error instanceof Error ? error.message : String(error));
       logger.warn(
-        `ElizaOS Cloud plugin configuration issue: ${message} - You need to configure the ELIZAOS_CLOUD_API_KEY in your environment variables`,
+        `elizaOS Cloud plugin configuration issue: ${message} - You need to configure the ELIZAOS_CLOUD_API_KEY in your environment variables`,
       );
       logger.info(
         "Get your API key from https://www.elizacloud.ai/dashboard/api-keys",

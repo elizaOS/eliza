@@ -1,7 +1,7 @@
 /**
  * Component Storage
  *
- * Stores user-level secrets as Components in the ElizaOS database.
+ * Stores user-level secrets as Components in the elizaOS database.
  * Each user's secrets are isolated via the component's entityId.
  */
 

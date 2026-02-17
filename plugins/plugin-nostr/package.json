@@ -1,7 +1,7 @@
 {
   "name": "@elizaos-plugins/plugin-nostr",
   "version": "2.0.0-alpha.1",
-  "description": "Nostr decentralized messaging plugin for ElizaOS agents",
+  "description": "Nostr decentralized messaging plugin for elizaOS agents",
   "type": "module",
   "main": "./dist/typescript/src/index.js",
   "types": "./dist/typescript/src/index.d.ts",

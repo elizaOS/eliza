@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-minecraft-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "Minecraft automation plugin for ElizaOS (Mineflayer bridge) - lets agents perceive the world and act in-game",
+  "description": "Minecraft automation plugin for elizaOS (Mineflayer bridge) - lets agents perceive the world and act in-game",
   "type": "module",
   "main": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",
@@ -68,7 +68,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

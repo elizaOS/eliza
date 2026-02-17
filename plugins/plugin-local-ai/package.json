@@ -45,7 +45,7 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.1",
+    "@elizaos/core": "workspace:*",
     "@huggingface/transformers": "^3.5.1",
     "node-llama-cpp": "3.10.0",
     "stream-browserify": "^3.0.0",

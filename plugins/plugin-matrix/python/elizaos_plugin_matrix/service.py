@@ -1,5 +1,5 @@
 """
-Matrix service implementation for ElizaOS.
+Matrix service implementation for elizaOS.
 
 This service provides Matrix messaging capabilities using matrix-nio.
 """
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 class MatrixService:
-    """Matrix messaging service for ElizaOS agents."""
+    """Matrix messaging service for elizaOS agents."""
 
     service_type: str = MATRIX_SERVICE_NAME
 

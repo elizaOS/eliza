@@ -1,4 +1,4 @@
-"""SWE-bench agent implementation using canonical ElizaOS message handling."""
+"""SWE-bench agent implementation using canonical elizaOS message handling."""
 
 from __future__ import annotations
 
@@ -172,7 +172,7 @@ def _parse_param_value(value: str) -> str | int | float | bool | None:
 
 
 class SWEAgent:
-    """Agent for solving SWE-bench issues using canonical ElizaOS message handling."""
+    """Agent for solving SWE-bench issues using canonical elizaOS message handling."""
 
     def __init__(
         self,
@@ -195,7 +195,7 @@ class SWEAgent:
         self._user_id = string_to_uuid("swebench:user")
 
     async def solve_issue(self, instance: SWEBenchInstance) -> SWEBenchResult:
-        """Attempt to solve a SWE-bench issue using canonical ElizaOS flow.
+        """Attempt to solve a SWE-bench issue using canonical elizaOS flow.
         
         This method:
         1. Sets up the repository
@@ -567,7 +567,7 @@ class SWEAgent:
     async def _execute_action(
         self, action_name: str, params: dict[str, str | int | float | bool | None]
     ) -> str:
-        """Execute an action via the ElizaOS runtime action system.
+        """Execute an action via the elizaOS runtime action system.
 
         This uses the canonical runtime.process_actions() method which:
         - Looks up the action by name

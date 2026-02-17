@@ -1,6 +1,6 @@
 # CloudBootstrapMessageService Internals Documentation
 
-This document explains how the CloudBootstrapMessageService works internally, including the ElizaOS framework methods it uses, the provider system, state composition, and multi-step execution flow. This is intended for Claude or developers who need to understand and optimize the message processing pipeline.
+This document explains how the CloudBootstrapMessageService works internally, including the elizaOS framework methods it uses, the provider system, state composition, and multi-step execution flow. This is intended for Claude or developers who need to understand and optimize the message processing pipeline.
 
 ---
 
@@ -8,7 +8,7 @@ This document explains how the CloudBootstrapMessageService works internally, in
 
 1. [Overview](#overview)
 2. [Architecture Overview](#architecture-overview)
-3. [Key ElizaOS Framework Methods](#key-elizaos-framework-methods)
+3. [Key elizaOS Framework Methods](#key-elizaos-framework-methods)
    - [composeState](#composestate)
    - [composePromptFromState](#composepromptfromstate)
    - [processActions](#processactions)
@@ -32,7 +32,7 @@ This document explains how the CloudBootstrapMessageService works internally, in
 
 ## Overview
 
-The `CloudBootstrapMessageService` (`lib/eliza/plugin-cloud-bootstrap/services/cloud-bootstrap-message-service.ts`) is a custom implementation of ElizaOS's `IMessageService` interface for the eliza-cloud-v2 platform. It extends the default message handling with:
+The `CloudBootstrapMessageService` (`lib/eliza/plugin-cloud-bootstrap/services/cloud-bootstrap-message-service.ts`) is a custom implementation of elizaOS's `IMessageService` interface for the eliza-cloud-v2 platform. It extends the default message handling with:
 
 - **Multi-step workflow execution**: Iteratively calls LLM to decide on actions, executes them ONE AT A TIME, refreshes state, and repeats
 - **Structured parameter extraction**: LLM outputs parameters in XML format, which are parsed and passed to action handlers
@@ -112,7 +112,7 @@ The multi-step execution uses a two-phase prompt architecture:
 
 ---
 
-## Key ElizaOS Framework Methods
+## Key elizaOS Framework Methods
 
 ### composeState
 
@@ -1093,7 +1093,7 @@ The CloudBootstrapMessageService implements a sophisticated multi-step execution
 5. **Refreshes state** after each action for up-to-date context via ACTION_STATE provider
 6. **Generates a summary** using accumulated action results
 
-### Key Differences from Default ElizaOS MessageService
+### Key Differences from Default elizaOS MessageService
 
 | Feature | Default MessageService | CloudBootstrapMessageService |
 |---------|----------------------|------------------------------|

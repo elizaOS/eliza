@@ -5,7 +5,7 @@ This integrates with the elizaOS trajectory logger plugin:
 `plugins/plugin-trajectory-logger/python/elizaos_plugin_trajectory_logger`.
 
 Goal:
-- Capture end-to-end ElizaOS flow (providers + model calls + tool execution) during benchmarks.
+- Capture end-to-end elizaOS flow (providers + model calls + tool execution) during benchmarks.
 - Export trajectories in ART / GRPO-friendly formats for downstream training.
 """
 

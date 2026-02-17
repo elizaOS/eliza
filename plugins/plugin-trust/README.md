@@ -1,6 +1,6 @@
 # @elizaos/plugin-trust
 
-A comprehensive trust, security, and permission management plugin for ElizaOS, providing multi-dimensional trust scoring, context-aware permissions, and advanced security features.
+A comprehensive trust, security, and permission management plugin for elizaOS, providing multi-dimensional trust scoring, context-aware permissions, and advanced security features.
 
 ## Features
 
@@ -17,7 +17,7 @@ A comprehensive trust, security, and permission management plugin for ElizaOS, p
 
 ## Installation
 
-As this is a workspace package, it's installed as part of the ElizaOS monorepo:
+As this is a workspace package, it's installed as part of the elizaOS monorepo:
 
 ```bash
 bun install
@@ -233,12 +233,12 @@ The plugin uses Drizzle ORM with the following main tables:
 - Permission elevation is temporary and logged for security
 - Trust profiles are recalculated based on recent interactions
 - Security threats immediately impact trust scores
-- The plugin integrates seamlessly with ElizaOS's world and role systems
+- The plugin integrates seamlessly with elizaOS's world and role systems
 - All actions respect the hierarchical role system (OWNER > ADMIN > NONE)
 
 ## Dependencies
 
-- `@elizaos/core`: Core ElizaOS functionality
+- `@elizaos/core`: Core elizaOS functionality
 - `@elizaos/plugin-anthropic`: LLM evaluation capabilities
 - `drizzle-orm`: Database ORM for trust data persistence
 - `dedent`: String formatting for templates

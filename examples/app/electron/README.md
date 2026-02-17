@@ -1,4 +1,4 @@
-# ElizaOS Chat (Electron example)
+# elizaOS Chat (Electron example)
 
 This example runs an elizaOS **AgentRuntime in the Electron main process** and exposes a tiny IPC bridge to a React renderer chat UI.
 

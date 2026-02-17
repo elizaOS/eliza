@@ -2,7 +2,7 @@
   "metadata": {
     "timestamp": "2026-01-12T00:50:41.909110",
     "variant": "lite",
-    "framework": "ElizaOS Python",
+    "framework": "elizaOS Python",
     "notes": "Harness validation run using ground-truth SWE-bench patches (not an agent/model score).",
     "how_to_reproduce": "python -m benchmarks.swe_bench.cli --gold --max-instances 2 --swebench-namespace ghcr.io/epoch-research --timeout 1800",
     "config": {

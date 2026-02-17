@@ -6,7 +6,7 @@ This module provides different agent implementations for playing text adventure 
 1. TextWorldAgent: Lightweight wrapper that can use an existing AgentRuntime
    or fall back to heuristics. Good for benchmarking and testing.
 
-2. ElizaOSAgent: Full elizaOS stack with its own runtime, character, and plugins.
+2. elizaOSAgent: Full elizaOS stack with its own runtime, character, and plugins.
    Good for trajectory generation where you want the complete elizaOS experience.
 
 3. Heuristic/Random policies: Baselines for comparison. No LLM calls, deterministic.
@@ -15,12 +15,12 @@ This module provides different agent implementations for playing text adventure 
 
 ### Why Multiple Agent Classes?
 
-TextWorldAgent and ElizaOSAgent serve different purposes:
+TextWorldAgent and elizaOSAgent serve different purposes:
 
 - TextWorldAgent: "Bring your own runtime". You control the runtime lifecycle.
   Useful when you're already using elizaOS and want to add game-playing capability.
 
-- ElizaOSAgent: Self-contained. Creates and manages its own runtime.
+- elizaOSAgent: Self-contained. Creates and manages its own runtime.
   Useful for trajectory generation where you just want "play games, generate data".
 
 ### Why Heuristics as Fallback?
@@ -33,7 +33,7 @@ The heuristic priority (take > open > go > look) comes from how treasure hunt
 games work: you need to collect items (take), find items in containers (open),
 and explore (go). "look" is a no-op that wastes a turn.
 
-### Why Temperature 0.7 for ElizaOSAgent?
+### Why Temperature 0.7 for elizaOSAgent?
 
 Temperature controls randomness in LLM outputs:
 - 0.0: Deterministic, always picks highest-probability token
@@ -66,7 +66,7 @@ logger = logging.getLogger(__name__)
 
 class TextWorldAgent:
     """
-    ElizaOS-powered TextWorld agent.
+    elizaOS-powered TextWorld agent.
     
     Uses LLM to understand game text and make decisions about
     which actions to take in text adventure games.
@@ -88,7 +88,7 @@ class TextWorldAgent:
         Initialize the TextWorld agent.
         
         Args:
-            runtime: ElizaOS AgentRuntime
+            runtime: elizaOS AgentRuntime
             use_llm: Whether to use LLM for decisions
             agent_id: Optional agent ID
         """
@@ -143,7 +143,7 @@ class TextWorldAgent:
         return "look"
 
     async def _decide_with_eliza(self, state: GameState, *, trajectory_step_id: str | None = None) -> str:
-        """Use canonical ElizaOS message pipeline for decision making."""
+        """Use canonical elizaOS message pipeline for decision making."""
         if self._runtime is None:
             return self._decide_with_heuristics(state)
 
@@ -271,7 +271,7 @@ async def create_random_policy(state: GameState) -> str:
 # =============================================================================
 
 
-class ElizaOSAgent:
+class elizaOSAgent:
     """
     Full elizaOS agent with AgentRuntime, Character, and plugins.
     
@@ -282,13 +282,13 @@ class ElizaOSAgent:
     
     WHY SEPARATE FROM TextWorldAgent:
     TextWorldAgent expects you to provide a runtime (dependency injection).
-    ElizaOSAgent creates its own runtime (self-contained). Different use cases:
+    elizaOSAgent creates its own runtime (self-contained). Different use cases:
     
     - TextWorldAgent: "I have a runtime, let me use it for games"
-    - ElizaOSAgent: "I just want to play games, handle the runtime for me"
+    - elizaOSAgent: "I just want to play games, handle the runtime for me"
     
     Example:
-        >>> agent = ElizaOSAgent()
+        >>> agent = elizaOSAgent()
         >>> await agent.initialize()
         >>> action = await agent.decide(game_state)
         >>> await agent.cleanup()

@@ -242,7 +242,7 @@ export async function POST(request: NextRequest) {
   await roomsService.createRoom({
     id: roomId,
     agentId, // Always set - either characterId or DEFAULT_AGENT_ID
-    entityId: userId, // User's ID (from auth) - not used in ElizaOS schema but useful for our queries
+    entityId: userId, // User's ID (from auth) - not used in elizaOS schema but useful for our queries
     source: "web",
     type: "DM",
     name: roomName || "New Chat",

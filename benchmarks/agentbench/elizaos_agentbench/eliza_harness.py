@@ -1,7 +1,7 @@
 """
-Full ElizaOS Agent Harness for AgentBench.
+Full elizaOS Agent Harness for AgentBench.
 
-This module provides a CANONICAL ElizaOS integration that uses the FULL pipeline:
+This module provides a CANONICAL elizaOS integration that uses the FULL pipeline:
 - message_service.handle_message() for processing (NO BYPASS)
 - Provider context gathering (compose_state)
 - Action selection via MESSAGE_HANDLER_TEMPLATE
@@ -9,7 +9,7 @@ This module provides a CANONICAL ElizaOS integration that uses the FULL pipeline
 - Evaluator execution via runtime.evaluate()
 - Proper Memory objects and conversation history
 
-This is the correct way to integrate with ElizaOS - no shortcuts or bypasses.
+This is the correct way to integrate with elizaOS - no shortcuts or bypasses.
 """
 
 from __future__ import annotations
@@ -653,15 +653,15 @@ def create_benchmark_plugin() -> "Plugin":
 
 
 # =============================================================================
-# ElizaOS Agent Harness - Full Canonical Flow
+# elizaOS Agent Harness - Full Canonical Flow
 # =============================================================================
 
 
 class ElizaAgentHarness:
     """
-    Full ElizaOS agent harness for running AgentBench evaluations.
+    Full elizaOS agent harness for running AgentBench evaluations.
 
-    This harness uses the CANONICAL ElizaOS message processing pipeline:
+    This harness uses the CANONICAL elizaOS message processing pipeline:
     1. Creates Memory objects for each turn
     2. Calls message_service.handle_message() for FULL processing
     3. Provider context is gathered via compose_state()
@@ -671,12 +671,12 @@ class ElizaAgentHarness:
     7. Message history is preserved
     8. (Optional) Trajectory logging for RL training
 
-    NO BYPASS - This is the real ElizaOS flow.
+    NO BYPASS - This is the real elizaOS flow.
     """
 
     def __init__(self, runtime: "AgentRuntime") -> None:
         """
-        Initialize the harness with a fully configured ElizaOS runtime.
+        Initialize the harness with a fully configured elizaOS runtime.
 
         Args:
             runtime: Initialized AgentRuntime with plugins loaded.
@@ -686,7 +686,7 @@ class ElizaAgentHarness:
 
     @property
     def runtime(self) -> "AgentRuntime":
-        """Get the ElizaOS runtime."""
+        """Get the elizaOS runtime."""
         return self._runtime
 
     def _get_trajectory_logger(self) -> "SupportsTrajectoryLogger | None":
@@ -701,7 +701,7 @@ class ElizaAgentHarness:
         adapter: "EnvironmentAdapterProtocol",
     ) -> AgentBenchResult:
         """
-        Run a single benchmark task through the FULL ElizaOS pipeline.
+        Run a single benchmark task through the FULL elizaOS pipeline.
 
         This method:
         1. Resets the environment to get initial observation
@@ -821,7 +821,7 @@ class ElizaAgentHarness:
 
                 # =====================================================
                 # CANONICAL FLOW: Use message_service.handle_message()
-                # This runs the FULL ElizaOS pipeline:
+                # This runs the FULL elizaOS pipeline:
                 # - Saves message to memory
                 # - Composes state from ALL providers (including BENCHMARK)
                 # - Uses MESSAGE_HANDLER_TEMPLATE for LLM response
@@ -1083,7 +1083,7 @@ async def create_benchmark_runtime(
     plugins: "list | None" = None,
 ) -> "AgentRuntime":
     """
-    Create and initialize an ElizaOS runtime for benchmarking.
+    Create and initialize an elizaOS runtime for benchmarking.
 
     This sets up the runtime with:
     - Bootstrap plugin for basic capabilities (providers, actions, evaluators)

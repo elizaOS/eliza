@@ -410,6 +410,6 @@ class TestImplementationGaps:
         Paper's key insight: "code running inside E must be able to invoke
         M on programmatically constructed transformations of P"
 
-        ElizaOS can't inject code into the RLM's REPL.
+        elizaOS can't inject code into the RLM's REPL.
         """
         pass  # Documented gap

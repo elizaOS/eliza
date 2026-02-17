@@ -1,5 +1,5 @@
 /**
- * BlueBubbles Plugin for ElizaOS
+ * BlueBubbles Plugin for elizaOS
  *
  * Provides iMessage integration via the BlueBubbles macOS app and REST API,
  * supporting text messages, reactions, effects, and more.
@@ -20,11 +20,11 @@ export { sendMessageAction, sendReactionAction };
 export { chatContextProvider };
 
 /**
- * BlueBubbles plugin for ElizaOS agents.
+ * BlueBubbles plugin for elizaOS agents.
  */
 const blueBubblesPlugin: Plugin = {
   name: "bluebubbles",
-  description: "BlueBubbles iMessage bridge plugin for ElizaOS agents",
+  description: "BlueBubbles iMessage bridge plugin for elizaOS agents",
 
   services: [BlueBubblesService],
   actions: [sendMessageAction, sendReactionAction],

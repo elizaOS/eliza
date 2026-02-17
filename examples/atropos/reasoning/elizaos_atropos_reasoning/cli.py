@@ -57,7 +57,7 @@ async def run_eval_mode(
         Difficulty,
     )
 
-    print("\n🧠 ElizaOS Atropos - Reasoning Gym")
+    print("\n🧠 elizaOS Atropos - Reasoning Gym")
     print("=" * 50)
     print(f"Mode: {'LLM-based' if use_llm else 'Heuristic'}")
     print(f"Task: {task_type}")
@@ -269,7 +269,7 @@ async def run_interactive_mode(
         Difficulty,
     )
 
-    print("\n🧠 ElizaOS Atropos - Reasoning Gym (Interactive)")
+    print("\n🧠 elizaOS Atropos - Reasoning Gym (Interactive)")
     print("=" * 50)
     print("Commands: type answer, 'hint' for hint, 'skip' to skip, 'quit' to exit")
     print("=" * 50)
@@ -355,7 +355,7 @@ async def run_benchmark_mode(
         BenchmarkResult,
     )
 
-    print("\n🧠 ElizaOS Atropos - Reasoning Gym Benchmark")
+    print("\n🧠 elizaOS Atropos - Reasoning Gym Benchmark")
     print("=" * 60)
     print(f"Problems per category: {num_problems}")
     print("=" * 60)
@@ -454,7 +454,7 @@ async def run_benchmark_mode(
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="ElizaOS Atropos Reasoning Gym Environment",
+        description="elizaOS Atropos Reasoning Gym Environment",
     )
 
     parser.add_argument(

@@ -1,7 +1,7 @@
 """
 Terminal-Bench Agent Implementation
 
-An agent specialized for solving Terminal-Bench tasks using ElizaOS runtime.
+An agent specialized for solving Terminal-Bench tasks using elizaOS runtime.
 """
 
 import asyncio
@@ -74,7 +74,7 @@ Think carefully and solve the task systematically."""
 
 
 class TerminalAgent:
-    """ElizaOS agent for Terminal-Bench tasks."""
+    """elizaOS agent for Terminal-Bench tasks."""
 
     def __init__(
         self,
@@ -89,7 +89,7 @@ class TerminalAgent:
         Initialize the Terminal Agent.
 
         Args:
-            runtime: ElizaOS runtime for LLM access (optional for standalone use)
+            runtime: elizaOS runtime for LLM access (optional for standalone use)
             environment: Terminal environment (created if not provided)
             max_iterations: Maximum agent iterations per task
             model_name: Model to use for generation
@@ -301,7 +301,7 @@ class TerminalAgent:
             return await self._get_response_via_api()
 
     async def _get_response_via_runtime(self) -> tuple[str, int]:
-        """Get response using ElizaOS runtime."""
+        """Get response using elizaOS runtime."""
         from elizaos.types.model import GenerateTextOptions, ModelType
 
         # Build prompt from conversation history (compatible with runtime.generate_text)

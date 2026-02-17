@@ -1,6 +1,6 @@
-# ElizaOS Tau-bench Benchmark
+# elizaOS Tau-bench Benchmark
 
-A comprehensive implementation of the **τ-bench (Tau-bench)** benchmark for evaluating ElizaOS agents on real-world tool-augmented customer service tasks.
+A comprehensive implementation of the **τ-bench (Tau-bench)** benchmark for evaluating elizaOS agents on real-world tool-augmented customer service tasks.
 
 ## Overview
 
@@ -44,7 +44,7 @@ python -m elizaos_tau_bench --sample --domain retail
 python -m elizaos_tau_bench --sample --trials 8
 ```
 
-### Run with a Real LLM (ElizaOS Runtime)
+### Run with a Real LLM (elizaOS Runtime)
 
 The Python benchmark currently supports the **OpenAI** model provider via the `elizaos-plugin-openai` package.
 
@@ -58,7 +58,7 @@ pip install -e ".[dev]"
 pip install -e ../../../plugins/plugin-openai/python
 
 # (Recommended) Install trajectory logger plugin (from this monorepo)
-# This captures full end-to-end ElizaOS trajectories and exports them for training.
+# This captures full end-to-end elizaOS trajectories and exports them for training.
 pip install -e ../../../plugins/plugin-trajectory-logger/python
 
 # Provide credentials
@@ -124,7 +124,7 @@ Options:
   --verbose             Enable verbose output
   --json                Output results as JSON to stdout
   --llm-judge           Use LLM to evaluate response quality
-  --real-llm            Use real LLM via ElizaOS runtime (default: mock agent)
+  --real-llm            Use real LLM via elizaOS runtime (default: mock agent)
   --temperature FLOAT   Temperature for model calls (provider-dependent)
   --model-provider STR  Provider selection (Python: openai)
   --trajectories        Enable trajectory logging + export (requires elizaos-plugin-trajectory-logger)
@@ -169,7 +169,7 @@ Results are saved to the output directory:
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════╗
-║                  ElizaOS Tau-bench Benchmark Runner                   ║
+║                  elizaOS Tau-bench Benchmark Runner                   ║
 ╚═══════════════════════════════════════════════════════════════════════╝
 
 📋 Configuration:
@@ -255,7 +255,7 @@ elizaos_tau_bench/
 ├── types.py              # Core type definitions
 ├── dataset.py            # Task loading and management
 ├── agent.py              # Legacy mock agent (kept for reference)
-├── eliza_agent.py        # Real LLM agent integration (ElizaOS runtime)
+├── eliza_agent.py        # Real LLM agent integration (elizaOS runtime)
 ├── executor.py           # Tool execution engine
 ├── evaluator.py          # Result evaluation and Pass^k
 ├── runner.py             # Benchmark runner

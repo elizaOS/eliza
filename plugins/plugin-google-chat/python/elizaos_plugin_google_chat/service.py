@@ -1,5 +1,5 @@
 """
-Google Chat service implementation for ElizaOS.
+Google Chat service implementation for elizaOS.
 """
 
 import json
@@ -33,7 +33,7 @@ CHAT_SCOPE = "https://www.googleapis.com/auth/chat.bot"
 
 
 class GoogleChatService:
-    """Google Chat messaging service for ElizaOS agents."""
+    """Google Chat messaging service for elizaOS agents."""
 
     service_type = GOOGLE_CHAT_SERVICE_NAME
 

@@ -1,14 +1,14 @@
 """
-BFCL Agent Wrapper - Full ElizaOS Integration
+BFCL Agent Wrapper - Full elizaOS Integration
 
-Uses the canonical ElizaOS runtime with:
+Uses the canonical elizaOS runtime with:
 - message_service.handle_message() for full pipeline
 - Actions registered for BFCL functions  
 - Providers giving context
 - Basic capabilities enabled (default)
 - Trajectory logging for training data capture
 
-This is NOT a bypass - it uses the full ElizaOS agent flow.
+This is NOT a bypass - it uses the full elizaOS agent flow.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ except Exception:
     logger.debug("Trajectory logger plugin not available - training data capture disabled")
 
 
-# Import ElizaOS types - required dependency for full agent
+# Import elizaOS types - required dependency for full agent
 try:
     from elizaos.runtime import AgentRuntime
     from elizaos.types.agent import Character
@@ -77,7 +77,7 @@ except ImportError:
     IAgentRuntime = None  # type: ignore[misc, assignment]
     State = None  # type: ignore[misc, assignment]
     ELIZAOS_AVAILABLE = False
-    logger.warning("ElizaOS not available, agent will use mock mode")
+    logger.warning("elizaOS not available, agent will use mock mode")
 
 
 def get_model_provider_plugin(
@@ -381,15 +381,15 @@ def _create_anthropic_plugin() -> Optional["Plugin"]:
 
 class BFCLAgent:
     """
-    Agent wrapper for BFCL benchmark execution using FULL ElizaOS pipeline.
+    Agent wrapper for BFCL benchmark execution using FULL elizaOS pipeline.
 
-    This agent uses the canonical ElizaOS flow:
+    This agent uses the canonical elizaOS flow:
     - message_service.handle_message() for full message processing
     - Actions registered for BFCL test functions
     - Providers giving context (bootstrap providers + BFCL functions)
     - Basic capabilities enabled (default)
     
-    This is NOT a bypass - it uses the complete ElizaOS agent architecture.
+    This is NOT a bypass - it uses the complete elizaOS agent architecture.
     
     Default Model:
     - Groq with llama-3.1-8b-instant (fast and efficient for function calling)
@@ -405,7 +405,7 @@ class BFCLAgent:
         model: Optional[str] = None,
     ):
         """
-        Initialize BFCL agent with full ElizaOS support.
+        Initialize BFCL agent with full elizaOS support.
 
         Args:
             config: BFCL benchmark configuration
@@ -437,10 +437,10 @@ class BFCLAgent:
 
     async def initialize(self) -> None:
         """
-        Initialize the agent runtime with FULL ElizaOS capabilities.
+        Initialize the agent runtime with FULL elizaOS capabilities.
         
         This sets up:
-        1. The ElizaOS AgentRuntime with bootstrap plugin (basic capabilities)
+        1. The elizaOS AgentRuntime with bootstrap plugin (basic capabilities)
         2. A model provider plugin (Groq default, or other providers)
         3. The message service for proper message handling
         
@@ -450,7 +450,7 @@ class BFCLAgent:
             return
 
         if not ELIZAOS_AVAILABLE:
-            logger.warning("ElizaOS not available, running in mock mode")
+            logger.warning("elizaOS not available, running in mock mode")
             self._initialized = True
             return
 
@@ -585,7 +585,7 @@ IMPORTANT:
 
     def _create_bfcl_test_plugin(self, test_case: BFCLTestCase) -> "Plugin":
         """
-        Create an ElizaOS plugin for a BFCL test case.
+        Create an elizaOS plugin for a BFCL test case.
         
         This creates:
         - BFCL_CALL action: Captures function calls made by the agent
@@ -733,7 +733,7 @@ Use the BFCL_CALL action to make function calls.""",
         timeout_ms: Optional[int] = None,
     ) -> tuple[list[FunctionCall], str, float]:
         """
-        Execute a BFCL query using the FULL ElizaOS agent pipeline.
+        Execute a BFCL query using the FULL elizaOS agent pipeline.
 
         This uses message_service.handle_message() for proper:
         - Provider context injection (BFCL_FUNCTIONS + bootstrap providers)
@@ -879,14 +879,14 @@ Use the BFCL_CALL action to make function calls.""",
         timeout_ms: int,
     ) -> str:
         """
-        Execute query using ElizaOS model handlers.
+        Execute query using elizaOS model handlers.
         
         For benchmarks, we use generate_text directly since:
         1. We don't need memory persistence (no database required)
         2. We handle function call parsing ourselves
         3. The benchmark evaluates raw function call output
         
-        This still uses the full ElizaOS model handler system with:
+        This still uses the full elizaOS model handler system with:
         - Character system prompts
         - Model provider plugins (Groq, OpenAI, etc.)
         - Provider-injected context (via the prompt)
@@ -900,14 +900,14 @@ Use the BFCL_CALL action to make function calls.""",
         timeout_ms: int,
     ) -> str:
         """
-        Execute using ElizaOS providers and model handlers.
+        Execute using elizaOS providers and model handlers.
         
         For benchmarks we don't need database persistence, so we:
         1. Build context from the BFCL functions (already in test_case)
         2. Add the character system prompt
         3. Call generate_text through the registered model handler
         
-        This uses the full ElizaOS model handler (Groq, OpenAI, etc.) and
+        This uses the full elizaOS model handler (Groq, OpenAI, etc.) and
         respects the character configuration.
         """
         from elizaos.types.model import GenerateTextOptions
@@ -920,7 +920,7 @@ Use the BFCL_CALL action to make function calls.""",
         # 3. User query
         prompt = self._build_full_prompt(test_case)
         
-        # Generate response using the ElizaOS model handler
+        # Generate response using the elizaOS model handler
         options = GenerateTextOptions(
             temperature=self.config.temperature,
             system=self.character.system if self.character else None,
@@ -975,7 +975,7 @@ Use the BFCL_CALL action to make function calls.""",
         return "\n".join(parts)
 
     async def _execute_mock(self, test_case: BFCLTestCase) -> str:
-        """Execute query in mock mode (no ElizaOS runtime)."""
+        """Execute query in mock mode (no elizaOS runtime)."""
         logger.debug(f"Mock execution for {test_case.id}")
         return f"MOCK_MODE: Test case {test_case.id}"
 
@@ -1126,7 +1126,7 @@ Use the BFCL_CALL action to make function calls.""",
 
 class MockBFCLAgent:
     """
-    Mock agent for testing benchmark infrastructure without ElizaOS.
+    Mock agent for testing benchmark infrastructure without elizaOS.
 
     Returns expected calls to verify the benchmark harness works correctly.
     """

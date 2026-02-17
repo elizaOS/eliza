@@ -1,5 +1,5 @@
 /**
- * LINE service implementation for ElizaOS.
+ * LINE service implementation for elizaOS.
  */
 
 import type { EventPayload, IAgentRuntime } from "@elizaos/core";
@@ -35,7 +35,7 @@ import {
 } from "./types.js";
 
 /**
- * LINE messaging service for ElizaOS agents.
+ * LINE messaging service for elizaOS agents.
  */
 export class LineService extends Service implements ILineService {
   static serviceType: string = LINE_SERVICE_NAME;

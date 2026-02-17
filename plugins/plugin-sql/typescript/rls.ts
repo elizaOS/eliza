@@ -1,7 +1,7 @@
 import { type IDatabaseAdapter, logger, validateUuid } from "@elizaos/core";
 import { eq, sql } from "drizzle-orm";
-import { agentTable } from "./schema/agent";
-import { serverTable } from "./schema/server";
+import { agentTable } from './tables';
+import { serverTable } from './tables';
 import { getDb } from "./types";
 
 export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<void> {

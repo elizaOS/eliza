@@ -4,7 +4,7 @@
  *
  * ## Design Rationale
  *
- * Form data is stored using ElizaOS's Component system because:
+ * Form data is stored using elizaOS's Component system because:
  *
  * 1. **Entity-Scoped**: Components belong to entities (users).
  *    This naturally scopes form data per-user.
@@ -12,7 +12,7 @@
  * 2. **Typed Storage**: Component type field allows different kinds
  *    of form data (sessions, submissions, autofill).
  *
- * 3. **No Custom Schema**: Uses existing ElizaOS infrastructure,
+ * 3. **No Custom Schema**: Uses existing elizaOS infrastructure,
  *    no need to create database tables.
  *
  * 4. **Room Scoping**: Component type includes roomId for session
@@ -513,7 +513,7 @@ export async function saveAutofillData(
  * Get all stale sessions (for nudge system).
  *
  * LIMITATION: This requires iterating over all entities, which is not
- * efficient with current ElizaOS component system. In production,
+ * efficient with current elizaOS component system. In production,
  * this would need a database-level query.
  *
  * WHY this is here:

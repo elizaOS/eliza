@@ -412,7 +412,7 @@ const reactionReceivedHandler = async ({
   runtime: IAgentRuntime;
   message: Memory;
 }) => {
-  await runtime.createMemory(message, "messages");
+  await runtime.createMemories([{ memory: message, tableName: "messages" }]);
 };
 
 const postGeneratedHandler = async ({
@@ -467,7 +467,7 @@ const postGeneratedHandler = async ({
     "ENTITIES",
   ]);
 
-  const entity = await runtime.getEntityById(runtime.agentId);
+  const entity = (await runtime.getEntitiesByIds([runtime.agentId]))[0] ?? null;
   interface XMetadata {
     x?: {
       userName?: string;
@@ -680,7 +680,7 @@ const syncSingleUser = async (
   type: ChannelType,
   source: string,
 ) => {
-  const entity = await runtime.getEntityById(entityId);
+  const entity = (await runtime.getEntitiesByIds([entityId]))[0] ?? null;
   runtime.logger.info(
     {
       src: "plugin:bootstrap",
@@ -745,7 +745,7 @@ const syncSingleUser = async (
     metadata: worldMetadata,
   });
 
-  const createdWorld = await runtime.getWorld(worldId);
+  const createdWorld = (await runtime.getWorldsByIds([worldId]))[0] ?? null;
   runtime.logger.info(
     {
       src: "plugin:bootstrap",
@@ -952,14 +952,14 @@ const events: PluginEvents = {
   [EventType.ENTITY_LEFT]: [
     async (payload: EntityPayload) => {
       // Update entity to inactive
-      const entity = await payload.runtime.getEntityById(payload.entityId);
+      const entity = (await payload.runtime.getEntitiesByIds([payload.entityId]))[0] ?? null;
       if (entity) {
         entity.metadata = {
           ...entity.metadata,
           status: "INACTIVE",
           leftAt: Date.now(),
         };
-        await payload.runtime.updateEntity(entity);
+        await payload.runtime.updateEntities([entity]);
       }
       payload.runtime.logger.info(
         {
@@ -995,7 +995,7 @@ const events: PluginEvents = {
       const contentActions = content?.actions;
       const actionName = contentActions?.[0] ?? "unknown";
 
-      await payload.runtime.log({
+      await payload.runtime.createLogs([{
         entityId: payload.runtime.agentId,
         roomId: payload.roomId,
         type: "action_event",
@@ -1009,7 +1009,7 @@ const events: PluginEvents = {
           planStep: (content?.planStep as string | undefined) ?? "",
           source: "actionHandler",
         } as ActionLogBody,
-      });
+      }]);
       logger.debug(
         {
           src: "plugin:bootstrap",
@@ -1073,7 +1073,7 @@ const events: PluginEvents = {
 
   [EventType.RUN_STARTED]: [
     async (payload: RunEventPayload) => {
-      await payload.runtime.log({
+      await payload.runtime.createLogs([{
         entityId: payload.entityId,
         roomId: payload.roomId,
         type: "run_event",
@@ -1086,7 +1086,7 @@ const events: PluginEvents = {
           startTime: payload.startTime,
           source: payload.source || "unknown",
         } as BaseLogBody,
-      });
+      }]);
       logger.debug(
         {
           src: "plugin:bootstrap",
@@ -1100,7 +1100,7 @@ const events: PluginEvents = {
 
   [EventType.RUN_ENDED]: [
     async (payload: RunEventPayload) => {
-      await payload.runtime.log({
+      await payload.runtime.createLogs([{
         entityId: payload.entityId,
         roomId: payload.roomId,
         type: "run_event",
@@ -1116,7 +1116,7 @@ const events: PluginEvents = {
           error: payload.error,
           source: payload.source || "unknown",
         } as BaseLogBody,
-      });
+      }]);
       logger.debug(
         {
           src: "plugin:bootstrap",
@@ -1131,7 +1131,7 @@ const events: PluginEvents = {
 
   [EventType.RUN_TIMEOUT]: [
     async (payload: RunEventPayload) => {
-      await payload.runtime.log({
+      await payload.runtime.createLogs([{
         entityId: payload.entityId,
         roomId: payload.roomId,
         type: "run_event",
@@ -1147,7 +1147,7 @@ const events: PluginEvents = {
           error: payload.error,
           source: payload.source || "unknown",
         } as BaseLogBody,
-      });
+      }]);
       logger.debug(
         {
           src: "plugin:bootstrap",

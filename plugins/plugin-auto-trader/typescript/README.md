@@ -1,8 +1,8 @@
-# ElizaOS AutoTrader Plugin (`plugin-auto-trader`)
+# elizaOS AutoTrader Plugin (`plugin-auto-trader`)
 
 ## 1. Overview
 
-The `plugin-auto-trader` is an ElizaOS plugin designed to provide autonomous and configurable cryptocurrency trading capabilities. It allows agents to execute trading strategies, simulate these strategies against historical data, and analyze their performance.
+The `plugin-auto-trader` is an elizaOS plugin designed to provide autonomous and configurable cryptocurrency trading capabilities. It allows agents to execute trading strategies, simulate these strategies against historical data, and analyze their performance.
 
 This plugin is built with a modular approach, enabling the easy addition of new trading strategies and data sources.
 
@@ -21,7 +21,7 @@ This plugin is built with a modular approach, enabling the easy addition of new 
         *   Configurable: `modelName`, `systemPrompt`, `customPromptPrefix/Suffix`, trade sizing defaults.
         *   Builds a detailed prompt based on market data and agent state.
         *   Parses JSON responses from the LLM.
-        *   *Note: Requires integration with a core ElizaOS LLM service.*
+        *   *Note: Requires integration with a core elizaOS LLM service.*
 *   **Simulation Engine:**
     *   **`HistoricalDataService`**: Fetches and caches historical OHLCV data.
         *   Supports a `mockSource` for testing and a conceptual `birdeye` API integration (requires `BIRDEYE_API_KEY` environment variable).
@@ -36,10 +36,10 @@ This plugin is built with a modular approach, enabling the easy addition of new 
 
 ## 3. Installation & Setup (Conceptual)
 
-This plugin is intended to be part of the ElizaOS ecosystem.
+This plugin is intended to be part of the elizaOS ecosystem.
 
-1.  Ensure `plugin-auto-trader` is included in your ElizaOS plugins directory.
-2.  The plugin will be initialized during ElizaOS startup via its `src/index.ts` (`initializePlugin` function).
+1.  Ensure `plugin-auto-trader` is included in your elizaOS plugins directory.
+2.  The plugin will be initialized during elizaOS startup via its `src/index.ts` (`initializePlugin` function).
 3.  **API Keys (Required for some features):**
     *   For Birdeye data via `HistoricalDataService`: Set the `BIRDEYE_API_KEY` environment variable.
 4.  **External Libraries (Future):**
@@ -47,11 +47,11 @@ This plugin is intended to be part of the ElizaOS ecosystem.
 
 ## 4. How to Use (Conceptual - via direct service calls for now)
 
-Currently, interaction with the plugin's services would typically be done programmatically within another ElizaOS plugin or service that has access to the auto-trader's registered services.
+Currently, interaction with the plugin's services would typically be done programmatically within another elizaOS plugin or service that has access to the auto-trader's registered services.
 
 ### 4.1. Accessing Services
 
-Services are registered with ElizaOS runtime (conceptually) during plugin initialization. You would typically retrieve them using `runtime.getService('serviceName')`:
+Services are registered with elizaOS runtime (conceptually) during plugin initialization. You would typically retrieve them using `runtime.getService('serviceName')`:
 
 *   `runtime.getService('auto-trader/StrategyRegistryService')`
 *   `runtime.getService('auto-trader/HistoricalDataService')`
@@ -126,7 +126,7 @@ const simulationParams = {
 
 *   **Real Data Source Integration**: `HistoricalDataService` currently uses mock data for most sources. Birdeye integration is conceptual and requires a valid API key. Full implementation of other sources (CoinMarketCap, Jupiter, CCXT) is pending.
 *   **Real Technical Indicators**: `RuleBasedStrategy` uses mock calculations for technical indicators. It needs to be integrated with a library like `technicalindicators`.
-*   **Real LLM Service**: `LLMStrategy` requires integration with a functional ElizaOS core LLM service.
+*   **Real LLM Service**: `LLMStrategy` requires integration with a functional elizaOS core LLM service.
 *   **Order Execution Service**: No real implementation for live/paper trading yet; only simulation.
 *   **Advanced Metrics**: Sharpe Ratio, Sortino Ratio, and other advanced financial metrics are placeholders.
 *   **Filesystem Cache**: The filesystem cache in `HistoricalDataService` is conceptual; actual file I/O operations are commented out.

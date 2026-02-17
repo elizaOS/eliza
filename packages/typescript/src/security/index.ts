@@ -1,5 +1,5 @@
 /**
- * Security utilities for ElizaOS.
+ * Security utilities for elizaOS.
  *
  * Provides:
  * - Sensitive text redaction (pattern-based and secrets-based)

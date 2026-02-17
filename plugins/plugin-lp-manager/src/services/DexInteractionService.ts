@@ -83,7 +83,7 @@ export class DexInteractionService extends Service implements IDexInteractionSer
     super(runtime);
   }
 
-  // Static methods required by ElizaOS Service architecture
+  // Static methods required by elizaOS Service architecture
   static async start(runtime: IAgentRuntime): Promise<DexInteractionService> {
     const service = new DexInteractionService(runtime);
     await service.start(runtime);
