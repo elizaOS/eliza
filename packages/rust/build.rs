@@ -53,6 +53,12 @@ pub struct DefaultUuid {}
         return Ok(());
     }
 
+    // Use vendored protoc in CI/containers that don't have protobuf-compiler installed.
+    if env::var_os("PROTOC").is_none() {
+        let protoc = protoc_bin_vendored::protoc_bin_path()?;
+        env::set_var("PROTOC", protoc);
+    }
+
     // Configure prost-build
     let mut config = prost_build::Config::new();
     config.out_dir(&out_dir);
