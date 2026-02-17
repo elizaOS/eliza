@@ -1,2 +1,2 @@
-export { reflectionEvaluator } from "./reflection";
-export { relationshipExtractionEvaluator } from "./relationshipExtraction";
+// Relationship evaluators are provided by @elizaos/plugin-rolodex.
+export {};
