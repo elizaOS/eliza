@@ -88,27 +88,63 @@ jobs:
       - name: Validate plugin manifests
         run: |
           set -euo pipefail
-          echo "🔎 Validating plugin manifest JSON..."
+          echo "🔎 Validating plugin manifests..."
           INVALID_COUNT=0
           shopt -s nullglob
+          declare -A PACKAGE_OWNER
+          declare -A PACKAGE_SOURCE
 
           for plugin_dir in plugins/plugin-*; do
             [ -d "$plugin_dir" ] || continue
-            invalid_manifest=""
+            invalid_reason=""
+            package_names=()
+            package_sources=()
 
             for manifest in "$plugin_dir/package.json" "$plugin_dir/typescript/package.json"; do
               [ -f "$manifest" ] || continue
-              if ! node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$manifest" >/dev/null 2>&1; then
-                invalid_manifest="$manifest"
+
+              pkg_name="$(node -e 'const fs=require("fs"); const pkg=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(typeof pkg.name === "string" ? pkg.name : "");' "$manifest" 2>/dev/null)" || {
+                invalid_reason="invalid JSON in $manifest"
                 break
+              }
+
+              if [ -n "$pkg_name" ]; then
+                for seen_name in "${package_names[@]}"; do
+                  if [ "$seen_name" = "$pkg_name" ]; then
+                    invalid_reason="duplicate workspace name '$pkg_name' within $plugin_dir"
+                    break
+                  fi
+                done
+                [ -z "$invalid_reason" ] || break
+
+                package_names+=("$pkg_name")
+                package_sources+=("$manifest")
               fi
             done
 
-            if [ -n "$invalid_manifest" ]; then
-              echo "  ⚠️ Excluding $plugin_dir due to invalid JSON in $invalid_manifest"
+            if [ -z "$invalid_reason" ]; then
+              for idx in "${!package_names[@]}"; do
+                pkg_name="${package_names[$idx]}"
+                owner="${PACKAGE_OWNER[$pkg_name]-}"
+                if [ -n "$owner" ] && [ "$owner" != "$plugin_dir" ]; then
+                  invalid_reason="duplicate workspace name '$pkg_name' already declared in ${PACKAGE_SOURCE[$pkg_name]}"
+                  break
+                fi
+              done
+            fi
+
+            if [ -n "$invalid_reason" ]; then
+              echo "  ⚠️ Excluding $plugin_dir due to $invalid_reason"
               rm -rf "$plugin_dir"
               INVALID_COUNT=$((INVALID_COUNT + 1))
+              continue
             fi
+
+            for idx in "${!package_names[@]}"; do
+              pkg_name="${package_names[$idx]}"
+              PACKAGE_OWNER["$pkg_name"]="$plugin_dir"
+              PACKAGE_SOURCE["$pkg_name"]="${package_sources[$idx]}"
+            done
           done
 
           echo "✅ Plugin manifest validation complete (excluded ${INVALID_COUNT} plugin repos)."
