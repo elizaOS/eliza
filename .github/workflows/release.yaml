@@ -167,10 +167,24 @@ jobs:
             git checkout -b release/production-${{ github.sha }}
           fi
 
-      - name: Install PostgreSQL client libraries
+      - name: Install Linux system libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpq-dev postgresql-client
+          sudo apt-get install -y \
+            libpq-dev \
+            postgresql-client \
+            pkg-config \
+            libatspi2.0-dev \
+            libgtk-3-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxcb-randr0-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libpipewire-0.3-dev \
+            libgbm-dev \
+            libdrm-dev \
+            libegl1-mesa-dev
 
       - name: Setup Node
         uses: actions/setup-node@v4
