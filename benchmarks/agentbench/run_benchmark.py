@@ -4,7 +4,7 @@ Run AgentBench benchmark and generate results report.
 
 Usage:
     python run_benchmark.py                  # Run with mock runtime
-    python run_benchmark.py --elizaos        # Run with ElizaOS runtime
+    python run_benchmark.py --elizaos        # Run with elizaOS runtime
     python run_benchmark.py --env os db      # Run specific environments
     python run_benchmark.py --trajectories   # Export trajectories for RL training
 """
@@ -71,7 +71,7 @@ async def main() -> int:
     parser.add_argument(
         "--elizaos",
         action="store_true",
-        help="Use ElizaOS runtime (requires elizaos package)",
+        help="Use elizaOS runtime (requires elizaos package)",
     )
     parser.add_argument(
         "--milaidy",
@@ -111,7 +111,7 @@ async def main() -> int:
     args = parser.parse_args()
 
     print("=" * 60)
-    print("AgentBench Evaluation - ElizaOS Python")
+    print("AgentBench Evaluation - elizaOS Python")
     print("=" * 60)
 
     # Create configuration
@@ -191,7 +191,7 @@ async def main() -> int:
                 runtime = SmartMockRuntime()
             else:
                 print("\n" + "=" * 60)
-                print("Initializing FULL ElizaOS Pipeline")
+                print("Initializing FULL elizaOS Pipeline")
                 print("=" * 60)
                 print("\n📦 Loading plugins:")
                 print("   • bootstrap (basicCapabilities: providers, actions, evaluators)")
@@ -238,14 +238,14 @@ async def main() -> int:
                     await runtime.stop()
                     runtime = SmartMockRuntime()
                 else:
-                    print("\n✅ ElizaOS runtime ready")
+                    print("\n✅ elizaOS runtime ready")
                     print("   • message_service: enabled (full pipeline)")
                     print(f"   • providers: {len(runtime.providers)} loaded")
                     print(f"   • actions: {len(runtime.actions)} registered")
                     print("=" * 60)
 
         except ImportError as e:
-            print(f"Warning: ElizaOS not available ({e})")
+            print(f"Warning: elizaOS not available ({e})")
             print("Falling back to deterministic mock runtime")
             runtime = SmartMockRuntime()
     elif args.milaidy:

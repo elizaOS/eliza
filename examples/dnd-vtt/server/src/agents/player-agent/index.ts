@@ -123,7 +123,7 @@ function generatePersonality(
 }
 
 /**
- * Create an ElizaOS character for a player agent
+ * Create an elizaOS character for a player agent
  */
 export function createPlayerCharacter(
   sheet: CharacterSheet,
@@ -336,7 +336,7 @@ export async function createPlayerAgent(
     ...options?.customPersonality,
   } as PlayerPersonality;
   
-  // Create ElizaOS character
+  // Create elizaOS character
   const character = createPlayerCharacter(sheet, personality);
   
   // Store character sheet and personality in agent settings
@@ -346,7 +346,7 @@ export async function createPlayerAgent(
   await runtime.setSetting('characterId', sheet.id ?? '');
   
   // The runtime would need to be configured with the character
-  // This depends on ElizaOS implementation details
+  // This depends on elizaOS implementation details
   
   return runtime;
 }

@@ -1,10 +1,10 @@
-//! Copilot Proxy model provider plugin for ElizaOS.
+//! Copilot Proxy model provider plugin for elizaOS.
 //!
 //! This crate provides:
 //! - A typed HTTP client for the Copilot Proxy server (`CopilotProxyClient`)
 //! - A service layer for managing proxy interactions (`CopilotProxyService`)
 //! - A high-level plugin wrapper (`CopilotProxyPlugin`)
-//! - A helper to construct an ElizaOS plugin definition
+//! - A helper to construct an elizaOS plugin definition
 
 #![warn(missing_docs)]
 
@@ -113,7 +113,7 @@ pub fn get_copilot_proxy_plugin() -> AnyhowResult<CopilotProxyPlugin> {
         .map_err(|e| anyhow::anyhow!("Failed to create Copilot Proxy plugin: {}", e))
 }
 
-/// Create an ElizaOS plugin wired to Copilot Proxy model handlers.
+/// Create an elizaOS plugin wired to Copilot Proxy model handlers.
 pub fn create_copilot_proxy_elizaos_plugin() -> AnyhowResult<elizaos::types::Plugin> {
     use elizaos::types::{Plugin, PluginDefinition};
     use std::collections::HashMap;

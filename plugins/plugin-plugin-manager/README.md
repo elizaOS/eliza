@@ -1,6 +1,6 @@
 # Plugin Manager Plugin
 
-The Plugin Manager Plugin for ElizaOS provides comprehensive plugin management capabilities including dynamic loading, unloading, registry integration, and configuration management.
+The Plugin Manager Plugin for elizaOS provides comprehensive plugin management capabilities including dynamic loading, unloading, registry integration, and configuration management.
 
 ## Features
 

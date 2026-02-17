@@ -1,7 +1,7 @@
 {
   "name": "@elizaos-plugins/plugin-google-chat",
   "version": "2.0.0-alpha.1",
-  "description": "Google Chat integration plugin for ElizaOS agents",
+  "description": "Google Chat integration plugin for elizaOS agents",
   "type": "module",
   "main": "./dist/typescript/src/index.js",
   "types": "./dist/typescript/src/index.d.ts",

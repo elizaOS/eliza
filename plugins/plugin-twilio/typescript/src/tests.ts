@@ -331,7 +331,7 @@ export class TwilioTestSuite implements TestSuite {
         try {
           const smsResult = await twilioService.sendSms(
             testNumber,
-            "🎉 Interactive test SMS from ElizaOS! Reply to test two-way messaging."
+            "🎉 Interactive test SMS from elizaOS! Reply to test two-way messaging."
           );
           logger.info(`✅ SMS sent! SID: ${smsResult.sid}`);
           logger.info(`   Status: ${smsResult.status}`);
@@ -346,7 +346,7 @@ export class TwilioTestSuite implements TestSuite {
         try {
           const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="alice">Hello from ElizaOS interactive test! This call confirms your Twilio integration is working.</Say>
+    <Say voice="alice">Hello from elizaOS interactive test! This call confirms your Twilio integration is working.</Say>
     <Play>https://api.twilio.com/cowbell.mp3</Play>
     <Say voice="alice">Thank you for testing. Goodbye!</Say>
 </Response>`;

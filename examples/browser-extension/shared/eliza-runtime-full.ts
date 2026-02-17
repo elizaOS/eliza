@@ -47,7 +47,7 @@ const BROWSER_ASSISTANT_CHARACTER = createCharacter({
   system: `You are a helpful browser assistant that can discuss the content of webpages with users.
 When the user asks about "this page", "this article", "this website", or similar, refer to the PAGE_CONTENT context.
 Be concise and helpful. Focus on answering questions about the page content when relevant.`,
-  bio: "An AI assistant built on ElizaOS that helps users understand and interact with web content.",
+  bio: "An AI assistant built on elizaOS that helps users understand and interact with web content.",
 });
 
 // ============================================
@@ -69,7 +69,7 @@ let cachedScreenshot: string | null = null;
 let lastScreenshotHash: string | null = null;
 
 export function updatePageContent(content: PageContent | null): void {
-  console.log("[ElizaOS Runtime] updatePageContent called:", content ? {
+  console.log("[elizaOS Runtime] updatePageContent called:", content ? {
     title: content.title,
     url: content.url,
     contentLength: content.content?.length,
@@ -338,18 +338,18 @@ export function getGreetingText(effectiveMode: ProviderMode): string {
 
 /**
  * Build message text with page context injected.
- * Since ElizaOS message service doesn't call custom providers by default,
+ * Since elizaOS message service doesn't call custom providers by default,
  * we inject the context directly into the message.
  */
 function buildMessageWithContext(userText: string): string {
-  console.log("[ElizaOS Runtime] Building message with context...");
-  console.log("[ElizaOS Runtime] cachedPageContent:", cachedPageContent ? {
+  console.log("[elizaOS Runtime] Building message with context...");
+  console.log("[elizaOS Runtime] cachedPageContent:", cachedPageContent ? {
     title: cachedPageContent.title,
     url: cachedPageContent.url,
     contentLength: cachedPageContent.content?.length,
     hasVisibleText: !!cachedPageContent.visibleText,
   } : null);
-  console.log("[ElizaOS Runtime] cachedSelectedText:", cachedSelectedText?.substring(0, 100));
+  console.log("[elizaOS Runtime] cachedSelectedText:", cachedSelectedText?.substring(0, 100));
   
   // Build context prefix
   let contextPrefix = "";
@@ -378,11 +378,11 @@ function buildMessageWithContext(userText: string): string {
     
     contextPrefix += `[END PAGE CONTEXT]\n\n`;
   } else {
-    console.warn("[ElizaOS Runtime] No page content available!");
+    console.warn("[elizaOS Runtime] No page content available!");
   }
   
   const result = contextPrefix + `User message: ${userText}`;
-  console.log("[ElizaOS Runtime] Final message length:", result.length, "Context prefix length:", contextPrefix.length);
+  console.log("[elizaOS Runtime] Final message length:", result.length, "Context prefix length:", contextPrefix.length);
   
   return result;
 }

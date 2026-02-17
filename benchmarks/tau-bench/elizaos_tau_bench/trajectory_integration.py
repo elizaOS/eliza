@@ -2,7 +2,7 @@
 Trajectory logging integration for Tau-bench.
 
 This module integrates `elizaos-plugin-trajectory-logger` (Python) with the
-Tau-bench harness to capture full end-to-end ElizaOS interactions suitable for
+Tau-bench harness to capture full end-to-end elizaOS interactions suitable for
 training and benchmarking:
 - Canonical `runtime.message_service.handle_message()` flow
 - Provider accesses (e.g., TAU_BENCH_CONTEXT)

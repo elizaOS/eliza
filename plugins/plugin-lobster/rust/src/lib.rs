@@ -1,4 +1,4 @@
-//! elizaos-plugin-lobster: Lobster workflow runtime integration for ElizaOS
+//! elizaos-plugin-lobster: Lobster workflow runtime integration for elizaOS
 //!
 //! Lobster is a local-first workflow execution tool for running multi-step
 //! pipelines with approval checkpoints.

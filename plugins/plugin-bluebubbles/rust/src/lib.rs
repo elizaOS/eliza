@@ -1,4 +1,4 @@
-//! BlueBubbles iMessage bridge plugin for ElizaOS
+//! BlueBubbles iMessage bridge plugin for elizaOS
 //!
 //! This plugin provides iMessage integration via the BlueBubbles macOS app and REST API.
 
@@ -25,7 +25,7 @@ pub const BLUEBUBBLES_SERVICE_NAME: &str = "bluebubbles";
 pub fn create_plugin() -> Plugin {
     Plugin {
         name: BLUEBUBBLES_SERVICE_NAME.to_string(),
-        description: "BlueBubbles iMessage bridge plugin for ElizaOS agents".to_string(),
+        description: "BlueBubbles iMessage bridge plugin for elizaOS agents".to_string(),
         services: vec![Box::new(BlueBubblesService::new())],
         actions: vec![
             Box::new(actions::SendMessageAction::new()),

@@ -1,4 +1,4 @@
-//! LINE service implementation for ElizaOS.
+//! LINE service implementation for elizaOS.
 
 use crate::types::*;
 use crate::webhook::{self, WebhookEvent};
@@ -10,7 +10,7 @@ use tracing::{debug, info, warn};
 
 const LINE_API_BASE: &str = "https://api.line.me/v2";
 
-/// LINE messaging service for ElizaOS agents
+/// LINE messaging service for elizaOS agents
 pub struct LineService {
     settings: Arc<RwLock<Option<LineSettings>>>,
     client: Client,

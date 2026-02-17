@@ -6,7 +6,7 @@ import { getAllPlugins } from '../services/pluginRegistryService';
 export const registryPluginsProvider: Provider = {
   name: 'registryPlugins',
   description:
-    'Provides available plugins from the ElizaOS registry, installed plugin status, and searchable plugin knowledge',
+    'Provides available plugins from the elizaOS registry, installed plugin status, and searchable plugin knowledge',
 
   async get(runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> {
     const pluginManagerService = runtime.getService('plugin_manager') as PluginManagerService;

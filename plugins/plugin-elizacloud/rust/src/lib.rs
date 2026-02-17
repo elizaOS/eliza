@@ -1,4 +1,4 @@
-//! ElizaCloud plugin for the ElizaOS runtime.
+//! ElizaCloud plugin for the elizaOS runtime.
 //!
 //! This plugin provides integration with ElizaCloud services including
 //! multi-model AI generation, container provisioning, agent bridge,

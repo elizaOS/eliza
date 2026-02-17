@@ -1,6 +1,6 @@
-# ElizaOS Atropos - Reasoning Gym Environment
+# elizaOS Atropos - Reasoning Gym Environment
 
-A reasoning and problem-solving environment for training ElizaOS agents using the Atropos RL framework.
+A reasoning and problem-solving environment for training elizaOS agents using the Atropos RL framework.
 
 ## Overview
 
@@ -222,10 +222,10 @@ elizaos_atropos_reasoning/
 │   └── puzzles.py        # Puzzle generators
 ├── evaluator.py          # Answer evaluation
 ├── environment.py        # ReasoningEnvironment class
-├── agent.py              # ElizaOS agent integration
+├── agent.py              # elizaOS agent integration
 └── cli.py                # Command-line interface
 ```
 
 ## License
 
-MIT License - Part of the ElizaOS project.
+MIT License - Part of the elizaOS project.

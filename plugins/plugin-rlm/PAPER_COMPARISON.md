@@ -29,7 +29,7 @@ The paper proposes a **general inference paradigm** that treats long prompts as 
 
 | Feature | Paper Specification | Our Implementation | Status |
 |---------|---------------------|-------------------|--------|
-| Plugin Architecture | Model adapter pattern | ElizaOS Plugin with model handlers | ✅ Correct |
+| Plugin Architecture | Model adapter pattern | elizaOS Plugin with model handlers | ✅ Correct |
 | Backend Abstraction | Backend-agnostic | Supports OpenAI, Anthropic, Gemini, Groq | ✅ Correct |
 | Stub Fallback | Graceful degradation | Returns `[RLM STUB]` when unavailable | ✅ Correct |
 | Message Normalization | String or message list | `normalize_messages()` in all 3 languages | ✅ Correct |

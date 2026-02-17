@@ -1,6 +1,6 @@
 # @elizaos/plugin-edge-tts
 
-Free text-to-speech plugin for ElizaOS using Microsoft Edge TTS. No API key required.
+Free text-to-speech plugin for elizaOS using Microsoft Edge TTS. No API key required.
 
 ## Features
 
@@ -18,7 +18,7 @@ npm install @elizaos/plugin-edge-tts
 
 ## Usage
 
-### As ElizaOS Plugin
+### As elizaOS Plugin
 
 ```typescript
 import { edgeTTSPlugin } from "@elizaos/plugin-edge-tts";

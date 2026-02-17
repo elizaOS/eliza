@@ -1,7 +1,7 @@
 """
 MINT Agent for Multi-turn Task Solving
 
-Uses the CANONICAL ElizaOS pipeline:
+Uses the CANONICAL elizaOS pipeline:
 - Memory/Content for messages
 - message_service.handle_message() for full processing
 - Providers compose state with context
@@ -63,7 +63,7 @@ class MINTAgent:
     """
     Agent for solving MINT benchmark tasks through multi-turn interaction.
     
-    Uses the CANONICAL ElizaOS message handling pipeline:
+    Uses the CANONICAL elizaOS message handling pipeline:
     - Creates Memory objects with Content
     - Calls message_service.handle_message() for full pipeline
     - Leverages providers for context composition
@@ -119,7 +119,7 @@ class MINTAgent:
         Initialize the MINT agent.
 
         Args:
-            runtime: ElizaOS runtime for CANONICAL message handling
+            runtime: elizaOS runtime for CANONICAL message handling
             tool_executor: Executor for Python code
             feedback_generator: Generator for feedback messages
             temperature: Temperature for model responses (0.0-1.0)
@@ -154,7 +154,7 @@ class MINTAgent:
         enable_feedback: bool = True,
     ) -> MINTTrajectory:
         """
-        Solve a MINT task using the CANONICAL ElizaOS pipeline.
+        Solve a MINT task using the CANONICAL elizaOS pipeline.
 
         Args:
             task: The MINT task to solve
@@ -490,7 +490,7 @@ class MINTAgent:
         task: MINTTask,
     ) -> str:
         """
-        Get response using the CANONICAL ElizaOS pipeline.
+        Get response using the CANONICAL elizaOS pipeline.
 
         This method uses message_service.handle_message() when available,
         falling back to compose_state + use_model for benchmarking control.

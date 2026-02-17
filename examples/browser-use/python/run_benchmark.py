@@ -2,7 +2,7 @@
 """
 Browser Use Example - Mind2Web Benchmark Runner
 
-Demonstrates running a browser-use agent with ElizaOS on the Mind2Web benchmark.
+Demonstrates running a browser-use agent with elizaOS on the Mind2Web benchmark.
 
 Examples:
     # Quick test with sample tasks (no API key needed)

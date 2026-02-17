@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-copilot-proxy-root",
   "version": "2.0.0-alpha.1",
-  "description": "ElizaOS Copilot Proxy Model Provider Plugin - OpenAI-compatible local proxy for VS Code Copilot",
+  "description": "elizaOS Copilot Proxy Model Provider Plugin - OpenAI-compatible local proxy for VS Code Copilot",
   "type": "module",
   "main": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",
@@ -64,7 +64,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

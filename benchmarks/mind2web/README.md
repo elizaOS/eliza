@@ -1,12 +1,12 @@
-# Mind2Web Benchmark for ElizaOS
+# Mind2Web Benchmark for elizaOS
 
 Web agent benchmark based on [OSU-NLP-Group/Mind2Web](https://github.com/OSU-NLP-Group/Mind2Web).
 
-Evaluates ElizaOS agents on real-world web navigation and interaction tasks.
+Evaluates elizaOS agents on real-world web navigation and interaction tasks.
 
 ## Features
 
-- **Canonical ElizaOS Integration**: Uses `runtime.message_service.handle_message()` for the full agent loop
+- **Canonical elizaOS Integration**: Uses `runtime.message_service.handle_message()` for the full agent loop
 - **Multiple Model Providers**: Groq (fast/cheap), OpenAI, Anthropic
 - **Comprehensive Metrics**: Task success, step accuracy, element accuracy, operation accuracy
 - **Multiple Splits**: Cross-Task, Cross-Website, Cross-Domain evaluation
@@ -63,7 +63,7 @@ Task Selection:
   --max-steps N         Maximum steps per task (default: 20)
 
 Model Configuration:
-  --real-llm            Use real LLM via ElizaOS (requires API key)
+  --real-llm            Use real LLM via elizaOS (requires API key)
   --provider PROVIDER   groq, openai, anthropic, or auto (default)
   --temperature T       LLM temperature (default: 0.0)
 
@@ -94,7 +94,7 @@ Output:
 
 ```
 Mind2Web Benchmark
-├── eliza_agent.py     # ElizaOS agent with MIND2WEB_ACTION action
+├── eliza_agent.py     # elizaOS agent with MIND2WEB_ACTION action
 ├── dataset.py         # Mind2Web dataset loader (HF + local + samples)
 ├── evaluator.py       # Step and task evaluation
 ├── runner.py          # Benchmark orchestration

@@ -1,7 +1,7 @@
 """
-ElizaOS Atropos Reasoning Gym Environment
+elizaOS Atropos Reasoning Gym Environment
 
-A reasoning and problem-solving environment for training ElizaOS agents.
+A reasoning and problem-solving environment for training elizaOS agents.
 """
 
 from elizaos_atropos_reasoning.types import (

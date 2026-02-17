@@ -15,7 +15,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
-/// BlueBubbles service for ElizaOS
+/// BlueBubbles service for elizaOS
 pub struct BlueBubblesService {
     client: Option<BlueBubblesClient>,
     config: Option<BlueBubblesConfig>,

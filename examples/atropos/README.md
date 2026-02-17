@@ -1,10 +1,10 @@
-# ElizaOS Atropos Environments
+# elizaOS Atropos Environments
 
-This directory contains ElizaOS integrations with the [Atropos](https://github.com/NousResearch/atropos) reinforcement learning framework by Nous Research.
+This directory contains elizaOS integrations with the [Atropos](https://github.com/NousResearch/atropos) reinforcement learning framework by Nous Research.
 
 ## Overview
 
-Atropos is a scalable RL framework for training large language models. These environments allow ElizaOS agents to learn through interaction across diverse tasks.
+Atropos is a scalable RL framework for training large language models. These environments allow elizaOS agents to learn through interaction across diverse tasks.
 
 ## Available Environments
 
@@ -59,15 +59,15 @@ python -m elizaos_atropos_holdem --mode auto
 python -m elizaos_atropos_reasoning --mode eval --task math
 ```
 
-## Using with ElizaOS Agents
+## Using with elizaOS Agents
 
-All environments follow a consistent pattern for integration with ElizaOS:
+All environments follow a consistent pattern for integration with elizaOS:
 
 ```python
 from elizaos import AgentRuntime
 from elizaos_plugin_openai import get_openai_plugin
 
-# Create an ElizaOS runtime
+# Create an elizaOS runtime
 runtime = AgentRuntime(plugins=[get_openai_plugin()])
 await runtime.initialize()
 
@@ -145,7 +145,7 @@ environment_name/
     ├── __init__.py              # Package exports
     ├── types.py                 # Type definitions
     ├── environment.py           # Main environment class
-    ├── agent.py                 # ElizaOS agent integration
+    ├── agent.py                 # elizaOS agent integration
     └── cli.py                   # Command-line interface
 ```
 
@@ -157,10 +157,10 @@ environment_name/
 
 ## License
 
-MIT License - Part of the ElizaOS project.
+MIT License - Part of the elizaOS project.
 
 ## References
 
 - [Atropos Framework](https://github.com/NousResearch/atropos)
 - [Nous Research](https://nousresearch.com/)
-- [ElizaOS](https://elizaos.ai/)
+- [elizaOS](https://elizaos.ai/)

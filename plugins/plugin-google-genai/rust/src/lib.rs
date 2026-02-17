@@ -1,4 +1,4 @@
-//! Google GenAI plugin for ElizaOS.
+//! Google GenAI plugin for elizaOS.
 //!
 //! This crate provides a client for interacting with Google's Generative AI (Gemini) API,
 //! supporting text generation, embeddings, and image analysis capabilities.

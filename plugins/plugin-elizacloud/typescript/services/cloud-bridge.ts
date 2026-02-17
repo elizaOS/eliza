@@ -3,7 +3,7 @@
  *
  * Establishes a JSON-RPC 2.0 WebSocket connection per container, allowing
  * the local milaidy client to send messages to and receive events from
- * cloud-hosted ElizaOS agents. Handles reconnection with exponential
+ * cloud-hosted elizaOS agents. Handles reconnection with exponential
  * backoff and heartbeat keepalive.
  */
 
@@ -37,7 +37,7 @@ interface ActiveConnection {
 
 export class CloudBridgeService extends Service {
   static serviceType = "CLOUD_BRIDGE";
-  capabilityDescription = "WebSocket bridge to cloud-hosted ElizaOS agents";
+  capabilityDescription = "WebSocket bridge to cloud-hosted elizaOS agents";
 
   private authService!: CloudAuthService;
   private readonly bridgeConfig = DEFAULT_CLOUD_CONFIG.bridge;

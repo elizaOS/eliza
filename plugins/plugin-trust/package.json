@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-trust",
   "version": "1.2.1",
-  "description": "Trust and permission management plugin for ElizaOS",
+  "description": "Trust and permission management plugin for elizaOS",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -16,8 +16,8 @@
     "lint": "prettier --write src/**/*.ts"
   },
   "dependencies": {
-    "@elizaos/core": "^1.2.1",
-    "@elizaos/plugin-anthropic": "1.0.3",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
     "dedent": "^1.6.0",
     "drizzle-orm": "^0.44.2"
   },
@@ -40,6 +40,6 @@
     "security",
     "rbac"
   ],
-  "author": "ElizaOS Contributors",
+  "author": "elizaOS Contributors",
   "license": "MIT"
 }

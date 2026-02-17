@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-form",
-  "description": "Guardrails for agent-guided user journeys - forms as agent guidance rails for ElizaOS",
+  "description": "Guardrails for agent-guided user journeys - forms as agent guidance rails for elizaOS",
   "version": "2.0.0-alpha.2",
   "type": "module",
   "main": "dist/index.js",

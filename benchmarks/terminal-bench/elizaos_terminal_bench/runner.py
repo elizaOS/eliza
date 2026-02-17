@@ -47,7 +47,7 @@ class TerminalBenchRunner:
         Initialize the benchmark runner.
 
         Args:
-            runtime: Optional ElizaOS runtime for LLM access
+            runtime: Optional elizaOS runtime for LLM access
             config: Benchmark configuration (uses defaults if not provided)
         """
         self.runtime = runtime
@@ -270,14 +270,14 @@ class TerminalBenchRunner:
 
         # Choose agent based on configuration
         if self.config.use_eliza_agent:
-            # Full ElizaOS agent with message_service, actions, providers
+            # Full elizaOS agent with message_service, actions, providers
             return await self._run_with_eliza_agent(task)
         else:
             # Standalone agent with direct API calls
             return await self._run_with_standalone_agent(task)
 
     async def _run_with_eliza_agent(self, task: TerminalTask) -> TerminalBenchResult:
-        """Run task with full ElizaOS agent (canonical)."""
+        """Run task with full elizaOS agent (canonical)."""
         from elizaos_terminal_bench.eliza_agent import ElizaTerminalAgent
 
         # Create environment
@@ -290,7 +290,7 @@ class TerminalBenchRunner:
         try:
             await env.start(task)
 
-            # Create ElizaOS agent
+            # Create elizaOS agent
             agent = ElizaTerminalAgent(
                 environment=env,
                 max_iterations=self.config.max_iterations,
@@ -533,7 +533,7 @@ async def run_terminal_bench(
     Convenience function to run Terminal-Bench evaluation.
 
     Args:
-        runtime: Optional ElizaOS runtime
+        runtime: Optional elizaOS runtime
         config: Optional configuration
         use_sample_tasks: Use sample tasks for testing
 

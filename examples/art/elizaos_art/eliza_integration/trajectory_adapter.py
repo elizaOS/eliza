@@ -1,13 +1,13 @@
 """
-Trajectory Adapter for ElizaOS plugin-trajectory-logger
+Trajectory Adapter for elizaOS plugin-trajectory-logger
 
-Maps ART trajectories to ElizaOS trajectory format for:
+Maps ART trajectories to elizaOS trajectory format for:
 - Persistent storage
 - Export to HuggingFace
 - GRPO grouping
 - RULER scoring integration
 
-This adapter provides end-to-end capture of the entire ElizaOS flow:
+This adapter provides end-to-end capture of the entire elizaOS flow:
 - All LLM calls (prompts, responses, latency, tokens)
 - Provider accesses (game state, context, etc.)
 - Action executions (parameters, results, rewards)
@@ -26,7 +26,7 @@ from elizaos_art.base import EpisodeResult, State, Trajectory
 
 @runtime_checkable
 class TrajectoryLoggerService(Protocol):
-    """Protocol matching ElizaOS TrajectoryLoggerService interface."""
+    """Protocol matching elizaOS TrajectoryLoggerService interface."""
 
     def start_trajectory(
         self,
@@ -108,7 +108,7 @@ class TrajectoryLoggerService(Protocol):
 @dataclass
 class ElizaEnvironmentState:
     """
-    Environment state in ElizaOS format.
+    Environment state in elizaOS format.
     
     Maps to EnvironmentState from plugin-trajectory-logger.
     """
@@ -137,7 +137,7 @@ class ElizaEnvironmentState:
 
 @dataclass
 class ElizaLLMCall:
-    """LLM call in ElizaOS format."""
+    """LLM call in elizaOS format."""
 
     model: str
     system_prompt: str
@@ -173,7 +173,7 @@ class ElizaLLMCall:
 
 @dataclass
 class ElizaProviderAccess:
-    """Provider access in ElizaOS format."""
+    """Provider access in elizaOS format."""
 
     provider_name: str
     data: dict
@@ -193,7 +193,7 @@ class ElizaProviderAccess:
 
 @dataclass
 class ElizaActionAttempt:
-    """Action attempt in ElizaOS format."""
+    """Action attempt in elizaOS format."""
 
     action_type: str
     action_name: str
@@ -219,11 +219,11 @@ class ElizaActionAttempt:
 
 class ElizaTrajectoryLogger:
     """
-    Adapter that wraps ART trajectory logging to ElizaOS format.
+    Adapter that wraps ART trajectory logging to elizaOS format.
     
     When an external TrajectoryLoggerService is available, uses it.
     Otherwise, provides a standalone implementation that stores
-    trajectories locally in ElizaOS-compatible format.
+    trajectories locally in elizaOS-compatible format.
     
     This adapter provides end-to-end capture of:
     - All LLM calls (prompts, responses, latency, tokens)
@@ -585,7 +585,7 @@ def convert_to_eliza_trajectory(
     agent_id: str,
 ) -> dict:
     """
-    Convert an ART Trajectory to ElizaOS trajectory format.
+    Convert an ART Trajectory to elizaOS trajectory format.
     
     This enables using trajectories collected by ART with the
     plugin-trajectory-logger export functions.

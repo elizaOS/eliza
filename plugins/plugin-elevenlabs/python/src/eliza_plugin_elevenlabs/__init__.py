@@ -1,4 +1,4 @@
-"""ElevenLabs plugin for ElizaOS - High-quality TTS and STT."""
+"""ElevenLabs plugin for elizaOS - High-quality TTS and STT."""
 
 from .plugin import ElevenLabsPlugin, elevenlabs_plugin
 from .services.elevenlabs_service import ElevenLabsService

@@ -1,10 +1,10 @@
-# Blooio Plugin for ElizaOS
+# Blooio Plugin for elizaOS
 
-Integrates Blooio iMessage/SMS messaging into ElizaOS with signed webhooks and outbound message sending.
+Integrates Blooio iMessage/SMS messaging into elizaOS with signed webhooks and outbound message sending.
 
 ## Overview
 
-The Blooio plugin enables ElizaOS agents to:
+The Blooio plugin enables elizaOS agents to:
 
 - Send messages to iMessage/SMS chats (phone, email, or group ID)
 - Receive inbound messages via Blooio webhooks

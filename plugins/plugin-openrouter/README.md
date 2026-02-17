@@ -1,6 +1,6 @@
 # @elizaos/plugin-openrouter
 
-This plugin provides integration with various models available through the OpenRouter API via the ElizaOS platform.
+This plugin provides integration with various models available through the OpenRouter API via the elizaOS platform.
 
 ## Usage
 

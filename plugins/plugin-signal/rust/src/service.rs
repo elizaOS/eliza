@@ -1,4 +1,4 @@
-//! Signal service implementation for ElizaOS.
+//! Signal service implementation for elizaOS.
 //!
 //! This service provides Signal messaging capabilities via the Signal CLI REST API.
 
@@ -11,7 +11,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 use url::Url;
 
-/// Signal messaging service for ElizaOS agents.
+/// Signal messaging service for elizaOS agents.
 pub struct SignalService {
     settings: SignalSettings,
     client: Client,

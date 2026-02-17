@@ -1,6 +1,6 @@
 # plugin-whatsapp
 
-WhatsApp Cloud API plugin for ElizaOS. Provides comprehensive integration with the WhatsApp Business Cloud API, enabling agents to send and receive messages, media, reactions, and interactive content via WhatsApp.
+WhatsApp Cloud API plugin for elizaOS. Provides comprehensive integration with the WhatsApp Business Cloud API, enabling agents to send and receive messages, media, reactions, and interactive content via WhatsApp.
 
 ## Features
 
@@ -328,7 +328,7 @@ service.on_event(WhatsAppEventType::MessageSent, |payload| {
 
 ## Actions
 
-The plugin provides the following actions for use with ElizaOS agents:
+The plugin provides the following actions for use with elizaOS agents:
 
 | Action | Description |
 |--------|-------------|

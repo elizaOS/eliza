@@ -35,7 +35,7 @@ import { executeJob, validateJobExecutability } from '../executor/job-executor.j
 import { startHeartbeat } from '../heartbeat/worker.js';
 
 /**
- * Cron scheduling service for ElizaOS
+ * Cron scheduling service for elizaOS
  *
  * Provides the ability to schedule recurring or one-time jobs that
  * execute prompts, actions, or emit events on a defined schedule.

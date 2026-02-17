@@ -1,5 +1,5 @@
 """
-iMessage service implementation for ElizaOS.
+iMessage service implementation for elizaOS.
 """
 
 import asyncio
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class IMessageService:
-    """iMessage service for ElizaOS agents (macOS only)."""
+    """iMessage service for elizaOS agents (macOS only)."""
 
     service_type = IMESSAGE_SERVICE_NAME
 

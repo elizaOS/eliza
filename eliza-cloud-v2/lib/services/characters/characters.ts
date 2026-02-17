@@ -216,7 +216,7 @@ export class CharactersService {
       username,
     });
 
-    // Also create the agent in the ElizaOS agents table
+    // Also create the agent in the elizaOS agents table
     const agent: Partial<Agent> = {
       id: character.id as `${string}-${string}-${string}-${string}-${string}`,
       name: character.name,
@@ -352,7 +352,7 @@ export class CharactersService {
       | undefined;
     const mergedSettings = {
       ...settings,
-      // Include avatarUrl in settings for provider/runtime access (camelCase for ElizaOS compatibility)
+      // Include avatarUrl in settings for provider/runtime access (camelCase for elizaOS compatibility)
       avatarUrl: character.avatar_url ?? undefined,
       ...(affiliateData || loreData
         ? {

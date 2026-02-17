@@ -1,10 +1,10 @@
-# Twilio Plugin for ElizaOS
+# Twilio Plugin for elizaOS
 
-A comprehensive Twilio integration plugin for ElizaOS that provides bidirectional voice and SMS/MMS messaging capabilities.
+A comprehensive Twilio integration plugin for elizaOS that provides bidirectional voice and SMS/MMS messaging capabilities.
 
 ## Overview
 
-The Twilio plugin enables ElizaOS agents to interact with users through:
+The Twilio plugin enables elizaOS agents to interact with users through:
 
 - SMS text messaging (sending and receiving)
 - MMS multimedia messaging with attachments
@@ -215,7 +215,7 @@ elizaos test --name "Interactive Test Mode"
 
 To test incoming webhooks on your local machine, use [ngrok](https://ngrok.com/) to expose your local server.
 
-1.  **Start the ElizaOS agent:**
+1.  **Start the elizaOS agent:**
     ```bash
     elizaos start
     ```
@@ -277,7 +277,7 @@ const call = await twilioService.makeCall(
 
 - Automatic conversation history caching
 - Context preservation across messages
-- Integration with ElizaOS memory system
+- Integration with elizaOS memory system
 
 ## Error Handling
 
@@ -324,7 +324,7 @@ For production applications, especially those with high volume, you must registe
 
 When contributing to the Twilio plugin:
 
-1. Follow the ElizaOS development workflow
+1. Follow the elizaOS development workflow
 2. Write tests for new features
 3. Update this documentation
 4. Test with real Twilio credentials
@@ -340,4 +340,4 @@ npm run clean
 
 ## License
 
-This plugin is part of the ElizaOS project and follows the same license terms.
+This plugin is part of the elizaOS project and follows the same license terms.

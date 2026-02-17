@@ -1,7 +1,7 @@
 """
-ElizaOS-integrated agent for Tau-bench.
+elizaOS-integrated agent for Tau-bench.
 
-This module provides proper integration with ElizaOS runtime using the FULL
+This module provides proper integration with elizaOS runtime using the FULL
 canonical agent flow:
 - Messages processed through runtime.message_service.handle_message()
 - Actions registered and executed via process_actions()
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Try to import ElizaOS - optional dependency
+# Try to import elizaOS - optional dependency
 try:
     from elizaos.runtime import AgentRuntime
     from elizaos.types.agent import Character
@@ -83,7 +83,7 @@ except ImportError:
     ModelType = None  # type: ignore[misc, assignment]
     as_uuid = None  # type: ignore[misc, assignment]
     ELIZAOS_AVAILABLE = False
-    logger.warning("ElizaOS not available, agent will use mock mode")
+    logger.warning("elizaOS not available, agent will use mock mode")
 
 
 def get_model_provider_plugin(provider: Optional[str] = None) -> Optional["Plugin"]:
@@ -124,7 +124,7 @@ def get_model_provider_plugin(provider: Optional[str] = None) -> Optional["Plugi
 
 
 # ---------------------------------------------------------------------------
-# TauBench Plugin: Actions and Providers for canonical ElizaOS integration
+# TauBench Plugin: Actions and Providers for canonical elizaOS integration
 # ---------------------------------------------------------------------------
 
 
@@ -496,7 +496,7 @@ def create_tau_bench_plugin(executor: ToolExecutor) -> "Plugin":
     - EXECUTE_TOOL action: Executes benchmark tools through canonical action system
     """
     if not ELIZAOS_AVAILABLE:
-        raise RuntimeError("ElizaOS is required for tau-bench plugin")
+        raise RuntimeError("elizaOS is required for tau-bench plugin")
 
     # Create action instance
     execute_tool = ExecuteToolAction()
@@ -584,15 +584,15 @@ IMPORTANT: Start with <response> immediately. If you see tool results in the con
 
 
 # ---------------------------------------------------------------------------
-# ElizaOS Agent Implementation using canonical message_service.handle_message()
+# elizaOS Agent Implementation using canonical message_service.handle_message()
 # ---------------------------------------------------------------------------
 
 
-class ElizaOSTauAgent:
+class elizaOSTauAgent:
     """
-    Agent that processes Tau-bench tasks using the FULL ElizaOS runtime.
+    Agent that processes Tau-bench tasks using the FULL elizaOS runtime.
 
-    This agent uses the canonical ElizaOS flow:
+    This agent uses the canonical elizaOS flow:
     - Messages processed through runtime.message_service.handle_message()
     - Actions (EXECUTE_TOOL) registered via plugin and executed via process_actions()
     - Providers (TAU_BENCH_CONTEXT) inject context into the state
@@ -622,12 +622,12 @@ class ElizaOSTauAgent:
         self._trajectory = trajectory
 
     async def initialize(self) -> None:
-        """Initialize the ElizaOS runtime with model providers and tau-bench plugin."""
+        """Initialize the elizaOS runtime with model providers and tau-bench plugin."""
         if self._initialized:
             return
 
         if not ELIZAOS_AVAILABLE:
-            logger.warning("ElizaOS not available, running in mock mode")
+            logger.warning("elizaOS not available, running in mock mode")
             self._initialized = True
             return
 
@@ -674,7 +674,7 @@ class ElizaOSTauAgent:
         self._has_model_provider = self.runtime.has_model("TEXT_LARGE")
 
         if self._has_model_provider:
-            logger.info("Tau-bench agent initialized with CANONICAL ElizaOS flow")
+            logger.info("Tau-bench agent initialized with CANONICAL elizaOS flow")
             logger.info(f"  - Actions: {[a.name for a in self.runtime.actions]}")
             logger.info(f"  - Providers: {[p.name for p in self.runtime.providers]}")
         else:
@@ -688,7 +688,7 @@ class ElizaOSTauAgent:
         self, task: TauBenchTask
     ) -> tuple[list[ToolCall], str, list[ConversationTurn]]:
         """
-        Process a Tau-bench task using the FULL ElizaOS message pipeline.
+        Process a Tau-bench task using the FULL elizaOS message pipeline.
 
         Uses runtime.message_service.handle_message() for canonical flow.
 
@@ -724,18 +724,18 @@ class ElizaOSTauAgent:
             ConversationTurn(role="user", content=task.user_instruction)
         )
 
-        # Check if we can use full ElizaOS pipeline
+        # Check if we can use full elizaOS pipeline
         if not ELIZAOS_AVAILABLE or not self.runtime or not self._has_model_provider:
             logger.debug("Using mock mode for task processing")
             return await self._process_task_mock(task, ctx)
 
-        # Use CANONICAL ElizaOS pipeline via message_service.handle_message()
+        # Use CANONICAL elizaOS pipeline via message_service.handle_message()
         return await self._process_task_canonical(task, ctx)
 
     async def _process_task_canonical(
         self, task: TauBenchTask, ctx: TauBenchContext
     ) -> tuple[list[ToolCall], str, list[ConversationTurn]]:
-        """Process task through the CANONICAL ElizaOS message service pipeline."""
+        """Process task through the CANONICAL elizaOS message service pipeline."""
         assert self.runtime is not None
         user_id = as_uuid(str(uuid4()))
 
@@ -791,7 +791,7 @@ class ElizaOSTauAgent:
 
                 # ============================================================
                 # CANONICAL FLOW: Use message_service.handle_message()
-                # This is the correct way to process messages in ElizaOS:
+                # This is the correct way to process messages in elizaOS:
                 # 1. Saves message to memory (if adapter available)
                 # 2. Composes state from ALL registered providers
                 # 3. Uses MESSAGE_HANDLER_TEMPLATE (or custom template)
@@ -905,7 +905,7 @@ class ElizaOSTauAgent:
 
 class MockTauAgent:
     """
-    Mock agent for testing benchmark infrastructure without ElizaOS.
+    Mock agent for testing benchmark infrastructure without elizaOS.
 
     This agent returns expected tool calls to verify benchmark correctness.
     """
@@ -986,27 +986,27 @@ def create_tau_agent(
     model_provider: Optional[str] = None,
     temperature: float = 0.0,
     trajectory: TauBenchTrajectoryIntegration | None = None,
-) -> ElizaOSTauAgent | MockTauAgent:
+) -> elizaOSTauAgent | MockTauAgent:
     """
     Factory function to create the appropriate agent.
 
     Args:
         executor: Tool executor for the environment
         max_turns: Maximum conversation turns
-        use_mock: Force mock mode even if ElizaOS is available
+        use_mock: Force mock mode even if elizaOS is available
         runtime: Optional pre-configured runtime
         model_plugin: Optional model provider plugin
         model_provider: Provider name (e.g., "openai")
         temperature: LLM temperature setting
 
     Returns:
-        ElizaOSTauAgent if ElizaOS is available and not in mock mode,
+        elizaOSTauAgent if elizaOS is available and not in mock mode,
         otherwise MockTauAgent.
     """
     if use_mock or not ELIZAOS_AVAILABLE:
         return MockTauAgent(executor=executor, max_turns=max_turns)
 
-    return ElizaOSTauAgent(
+    return elizaOSTauAgent(
         executor=executor,
         max_turns=max_turns,
         runtime=runtime,

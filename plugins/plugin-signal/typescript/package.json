@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-signal",
   "version": "2.0.0-alpha",
-  "description": "Signal messaging integration plugin for ElizaOS agents",
+  "description": "Signal messaging integration plugin for elizaOS agents",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",

@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-n8n-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "N8n workflow integration plugin with AI-powered plugin creation for ElizaOS",
+  "description": "N8n workflow integration plugin with AI-powered plugin creation for elizaOS",
   "type": "module",
   "main": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",
@@ -34,7 +34,7 @@
     "anthropic",
     "claude"
   ],
-  "author": "ElizaOS",
+  "author": "elizaOS",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -65,7 +65,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

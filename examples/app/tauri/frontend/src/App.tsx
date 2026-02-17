@@ -90,7 +90,7 @@ export function App(): React.JSX.Element {
     <div className="page">
       <header className="header">
         <div>
-          <div className="title">ElizaOS Chat (Tauri example)</div>
+          <div className="title">elizaOS Chat (Tauri example)</div>
           <div className="subtitle">Rust backend via Tauri commands</div>
         </div>
         <button className="btn" onClick={onReset} disabled={busy}>

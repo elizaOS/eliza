@@ -1,6 +1,6 @@
 # @elizaos/plugin-cron
 
-Cron job scheduling plugin for ElizaOS agents. Schedule recurring or one-time jobs that execute prompts, actions, or emit events.
+Cron job scheduling plugin for elizaOS agents. Schedule recurring or one-time jobs that execute prompts, actions, or emit events.
 
 ## Features
 

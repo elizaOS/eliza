@@ -1,4 +1,4 @@
-# ElizaOS Self-Modification Plugin
+# elizaOS Self-Modification Plugin
 
 This plugin enables agents to evolve their character files over time through conversation analysis, user feedback, and self-reflection. It implements AGI-like behavior where nothing in the agent's personality or capabilities is permanently fixed.
 
@@ -230,7 +230,7 @@ This plugin integrates with the packages/agent autonomy loop to enable truly aut
 
 ## Contributing
 
-1. Follow ElizaOS plugin development guidelines
+1. Follow elizaOS plugin development guidelines
 2. Add comprehensive tests for new features
 3. Ensure safety validation for all modifications
 4. Document configuration options and usage patterns

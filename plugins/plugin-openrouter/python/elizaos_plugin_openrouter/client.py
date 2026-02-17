@@ -39,7 +39,7 @@ class OpenRouterClient:
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {config.api_key}",
                 "HTTP-Referer": "https://elizaos.ai",
-                "X-Title": "ElizaOS",
+                "X-Title": "elizaOS",
             },
         )
 

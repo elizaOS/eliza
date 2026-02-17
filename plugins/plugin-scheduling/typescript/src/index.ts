@@ -1,6 +1,6 @@
 /**
  * @module plugin-scheduling
- * @description ElizaOS plugin for scheduling and calendar coordination
+ * @description elizaOS plugin for scheduling and calendar coordination
  *
  * This plugin provides:
  * - Multi-party availability coordination
@@ -28,7 +28,7 @@ export * from "./types.js";
 export * from "./utils/ical.js";
 
 /**
- * Scheduling plugin for ElizaOS
+ * Scheduling plugin for elizaOS
  *
  * Provides scheduling capabilities for coordinating meetings
  * between multiple participants.

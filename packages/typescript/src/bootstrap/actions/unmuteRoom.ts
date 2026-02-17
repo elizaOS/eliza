@@ -167,7 +167,7 @@ export const unmuteRoomAction: Action = {
 
     if (shouldUnmute) {
       try {
-        await runtime.setParticipantUserState(
+        await runtime.updateParticipantUserState(
           message.roomId,
           runtime.agentId,
           null,

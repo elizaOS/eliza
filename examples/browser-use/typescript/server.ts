@@ -1,7 +1,7 @@
 /**
  * Browser Use Example (TypeScript)
  *
- * An autonomous ElizaOS agent that explores the web with curiosity,
+ * An autonomous elizaOS agent that explores the web with curiosity,
  * focusing on understanding quantum physics and related concepts.
  *
  * The agent:

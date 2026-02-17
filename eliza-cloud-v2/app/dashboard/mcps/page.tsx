@@ -18,9 +18,9 @@ export const dynamic = "force-dynamic";
 const demoMcpServers = [
   {
     id: "eliza-cloud-mcp",
-    name: "ElizaOS Cloud MCP",
+    name: "elizaOS Cloud MCP",
     description:
-      "Core ElizaOS Cloud platform MCP with credit management, AI generation, memory, conversations, and agent interaction capabilities.",
+      "Core elizaOS Cloud platform MCP with credit management, AI generation, memory, conversations, and agent interaction capabilities.",
     endpoint: "/api/mcp",
     version: "1.0.0",
     category: "platform",

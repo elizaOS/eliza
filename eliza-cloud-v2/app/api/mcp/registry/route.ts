@@ -196,9 +196,9 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
   },
   {
     id: "eliza-platform",
-    name: "ElizaOS Platform",
+    name: "elizaOS Platform",
     description:
-      "Access ElizaOS platform features: credits, usage, generations, conversations, and agent management via MCP. Requires API key authentication.",
+      "Access elizaOS platform features: credits, usage, generations, conversations, and agent management via MCP. Requires API key authentication.",
     category: "platform",
     endpoint: "/api/mcp",
     type: "http",

@@ -178,7 +178,7 @@ function CliLoginContent() {
                 CLI Authentication
               </h2>
               <p className="text-sm text-neutral-500">
-                Sign in to connect your ElizaOS CLI to the cloud
+                Sign in to connect your elizaOS CLI to the cloud
               </p>
             </div>
             <Button

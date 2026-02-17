@@ -1,8 +1,8 @@
 /**
- * ElizaOS schema exports.
+ * elizaOS schema exports.
  *
- * Re-exports ElizaOS plugin-sql schema tables for integration with Drizzle migrations.
- * Provides database access to ElizaOS tables.
+ * Re-exports elizaOS plugin-sql schema tables for integration with Drizzle migrations.
+ * Provides database access to elizaOS tables.
  */
 import plugin from "@elizaos/plugin-sql/node";
 import {
@@ -12,7 +12,7 @@ import {
 } from "@elizaos/plugin-memory/node";
 
 /**
- * Re-exported ElizaOS plugin-sql tables.
+ * Re-exported elizaOS plugin-sql tables.
  */
 export const {
   agentTable,
@@ -35,6 +35,6 @@ export const {
 } = plugin.schema;
 
 /**
- * Re-exported ElizaOS memory plugin tables.
+ * Re-exported elizaOS memory plugin tables.
  */
 export { longTermMemories, sessionSummaries, memoryAccessLogs };

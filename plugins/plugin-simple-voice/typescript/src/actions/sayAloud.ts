@@ -96,7 +96,7 @@ export const sayAloudAction: Action = {
     [
       {
         name: "{{user1}}",
-        content: { text: "Please read this message aloud: Welcome to ElizaOS" },
+        content: { text: "Please read this message aloud: Welcome to elizaOS" },
       },
       {
         name: "{{agent}}",

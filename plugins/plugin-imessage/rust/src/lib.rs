@@ -1,4 +1,4 @@
-//! iMessage plugin for ElizaOS
+//! iMessage plugin for elizaOS
 //!
 //! This plugin provides iMessage integration for macOS. It uses AppleScript
 //! and/or a CLI tool to send and receive messages.
@@ -26,7 +26,7 @@ pub const IMESSAGE_SERVICE_NAME: &str = "imessage";
 pub fn create_plugin() -> Plugin {
     Plugin {
         name: IMESSAGE_SERVICE_NAME.to_string(),
-        description: "iMessage plugin for ElizaOS agents (macOS)".to_string(),
+        description: "iMessage plugin for elizaOS agents (macOS)".to_string(),
         services: vec![Box::new(IMessageService::new())],
         actions: vec![Box::new(actions::SendMessageAction::new())],
         providers: vec![Box::new(providers::ChatContextProvider::new())],

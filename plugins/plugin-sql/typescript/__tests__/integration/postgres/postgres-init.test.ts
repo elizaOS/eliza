@@ -19,7 +19,7 @@ describe("PostgreSQL Initialization Tests", () => {
       registerDatabaseAdapter: vi.fn(),
       registerService: vi.fn(),
       getService: vi.fn(),
-      hasElizaOS: vi.fn(() => false),
+      haselizaOS: vi.fn(() => false),
       logger: {
         info: vi.fn(() => {}),
         debug: vi.fn(() => {}),

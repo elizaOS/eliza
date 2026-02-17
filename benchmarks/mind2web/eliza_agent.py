@@ -1,7 +1,7 @@
 """
-ElizaOS-integrated agent for Mind2Web benchmark.
+elizaOS-integrated agent for Mind2Web benchmark.
 
-Uses the canonical ElizaOS flow:
+Uses the canonical elizaOS flow:
 - Messages processed through runtime.message_service.handle_message()
 - Actions executed via process_actions()
 - Providers inject page context into state
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Check ElizaOS availability
+# Check elizaOS availability
 ELIZAOS_AVAILABLE = False
 AgentRuntime = None  # type: ignore[misc,assignment]
 Character = None  # type: ignore[misc,assignment]
@@ -63,8 +63,8 @@ try:
 
     ELIZAOS_AVAILABLE = True
 except Exception as _elizaos_import_error:
-    # ElizaOS not available - will run in mock mode
-    logger.debug(f"ElizaOS not available: {_elizaos_import_error}")
+    # elizaOS not available - will run in mock mode
+    logger.debug(f"elizaOS not available: {_elizaos_import_error}")
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ def _get_model_type_value(name: str) -> str:
 
 
 def _create_groq_elizaos_plugin() -> "Plugin":
-    """Create a Groq ElizaOS plugin."""
+    """Create a Groq elizaOS plugin."""
     from elizaos import Plugin
     from elizaos.types.runtime import IAgentRuntime
 
@@ -294,7 +294,7 @@ async def get_mind2web_context_provider(
     _ = message
     _ = state
 
-    # Handle case when ElizaOS types aren't available
+    # Handle case when elizaOS types aren't available
     if ProviderResult is None:
         # Return a mock result for testing
         from dataclasses import dataclass
@@ -663,7 +663,7 @@ class Mind2WebActionHandler:
 def create_mind2web_plugin() -> "Plugin":
     """Create the Mind2Web benchmark plugin."""
     if not ELIZAOS_AVAILABLE:
-        raise RuntimeError("ElizaOS is required for Mind2Web plugin")
+        raise RuntimeError("elizaOS is required for Mind2Web plugin")
 
     action_impl = Mind2WebActionHandler()
     action = Action(
@@ -781,12 +781,12 @@ When task is complete:
 
 
 # ---------------------------------------------------------------------------
-# ElizaOS Mind2Web Agent
+# elizaOS Mind2Web Agent
 # ---------------------------------------------------------------------------
 
 
-class ElizaOSMind2WebAgent:
-    """ElizaOS-powered agent for Mind2Web benchmark."""
+class elizaOSMind2WebAgent:
+    """elizaOS-powered agent for Mind2Web benchmark."""
 
     def __init__(
         self,
@@ -808,7 +808,7 @@ class ElizaOSMind2WebAgent:
 
         if not ELIZAOS_AVAILABLE:
             if not self.config.use_mock:
-                raise RuntimeError("ElizaOS not available (required for real-llm mode)")
+                raise RuntimeError("elizaOS not available (required for real-llm mode)")
             self._initialized = True
             return
 
@@ -880,7 +880,7 @@ class ElizaOSMind2WebAgent:
     async def _process_task_canonical(
         self, task: Mind2WebTask, ctx: Mind2WebContext
     ) -> list[Mind2WebAction]:
-        """Process task using canonical ElizaOS message loop."""
+        """Process task using canonical elizaOS message loop."""
         assert self.runtime is not None
 
         user_id = as_uuid(str(uuid4()))
@@ -989,7 +989,7 @@ class MockMind2WebAgent:
 
 def create_mind2web_agent(
     config: Mind2WebConfig,
-) -> ElizaOSMind2WebAgent | MockMind2WebAgent:
+) -> elizaOSMind2WebAgent | MockMind2WebAgent:
     """Create a Mind2Web agent.
 
     Args:
@@ -1001,4 +1001,4 @@ def create_mind2web_agent(
     if config.use_mock or not ELIZAOS_AVAILABLE:
         return MockMind2WebAgent(config)
 
-    return ElizaOSMind2WebAgent(config)
+    return elizaOSMind2WebAgent(config)

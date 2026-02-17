@@ -25,13 +25,13 @@ const PLUGIN_REGISTRY = [
 export function registerPluginsCli(program: Command): void {
   const pluginsCommand = program
     .command("plugins")
-    .description("List available ElizaOS plugins");
+    .description("List available elizaOS plugins");
 
   pluginsCommand
     .command("list")
-    .description("List available ElizaOS plugins")
+    .description("List available elizaOS plugins")
     .action(() => {
-      console.log("\nAvailable ElizaOS plugins:\n");
+      console.log("\nAvailable elizaOS plugins:\n");
       for (const plugin of PLUGIN_REGISTRY) {
         console.log(`  ${plugin.name}`);
         console.log(`    ${plugin.description}\n`);

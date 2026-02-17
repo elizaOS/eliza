@@ -1,4 +1,4 @@
-# Minecraft Plugin for ElizaOS (Mineflayer Bridge)
+# Minecraft Plugin for elizaOS (Mineflayer Bridge)
 
 This plugin lets Eliza agents **connect to a Minecraft server, perceive world state, and perform in-game actions** via a local WebSocket bridge powered by [Mineflayer](https://github.com/PrismarineJS/mineflayer).
 

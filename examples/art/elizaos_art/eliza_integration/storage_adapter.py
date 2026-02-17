@@ -1,5 +1,5 @@
 """
-Storage Adapter for ElizaOS plugin-localdb
+Storage Adapter for elizaOS plugin-localdb
 
 Provides trajectory and checkpoint storage using:
 - Local JSON files (compatible with plugin-localdb format)

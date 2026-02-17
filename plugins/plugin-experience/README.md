@@ -1,6 +1,6 @@
 # @elizaos/plugin-experience
 
-Experience learning plugin for ElizaOS.
+Experience learning plugin for elizaOS.
 
 This plugin records transferable learnings (experiences) and retrieves relevant past experiences to improve future decisions.
 

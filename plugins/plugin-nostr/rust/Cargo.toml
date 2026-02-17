@@ -4,7 +4,7 @@ version = "2.0.0-alpha.1"
 edition = "2021"
 authors = ["elizaOS"]
 license = "MIT"
-description = "Nostr decentralized messaging plugin for ElizaOS agents"
+description = "Nostr decentralized messaging plugin for elizaOS agents"
 keywords = ["elizaos", "plugin", "nostr", "decentralized", "nip-04"]
 categories = ["messaging", "cryptography"]
 

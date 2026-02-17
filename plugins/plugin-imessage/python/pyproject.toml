@@ -1,7 +1,7 @@
 [project]
 name = "elizaos-plugin-imessage"
 version = "2.0.0a1"
-description = "iMessage plugin for ElizaOS agents (macOS)"
+description = "iMessage plugin for elizaOS agents (macOS)"
 authors = [{ name = "elizaOS", email = "contact@elizaos.com" }]
 license = { text = "MIT" }
 readme = "README.md"

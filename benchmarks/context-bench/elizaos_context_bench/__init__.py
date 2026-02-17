@@ -1,4 +1,4 @@
-"""ElizaOS Context Benchmark - Evaluating LLM Context Retrieval Capabilities.
+"""elizaOS Context Benchmark - Evaluating LLM Context Retrieval Capabilities.
 
 This benchmark suite evaluates how well LLMs retrieve and reason about information embedded
 in long contexts, including:

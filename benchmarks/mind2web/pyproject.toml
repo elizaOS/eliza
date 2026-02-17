@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-mind2web"
 version = "0.1.0"
-description = "Mind2Web benchmark for ElizaOS - web agent evaluation"
+description = "Mind2Web benchmark for elizaOS - web agent evaluation"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "ElizaOS Team" }
+    { name = "elizaOS Team" }
 ]
 keywords = ["benchmark", "mind2web", "web-agent", "elizaos", "browser-automation"]
 classifiers = [

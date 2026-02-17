@@ -1,6 +1,6 @@
 /**
  * @module plugin-cron
- * @description ElizaOS plugin for cron job scheduling
+ * @description elizaOS plugin for cron job scheduling
  *
  * This plugin provides:
  * - Scheduled job execution (cron expressions, intervals, one-time)
@@ -92,7 +92,7 @@ export type { SystemEvent, HeartbeatConfig, ActiveHours } from './heartbeat/inde
 import './cli/index.js';
 
 /**
- * Cron scheduling plugin for ElizaOS
+ * Cron scheduling plugin for elizaOS
  *
  * Provides the ability to schedule recurring or one-time jobs that
  * execute prompts, actions, or emit events on a defined schedule.

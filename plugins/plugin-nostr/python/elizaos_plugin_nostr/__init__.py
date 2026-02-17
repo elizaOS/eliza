@@ -1,7 +1,7 @@
 """
-Nostr Plugin for ElizaOS
+Nostr Plugin for elizaOS
 
-Provides Nostr decentralized messaging integration for ElizaOS agents,
+Provides Nostr decentralized messaging integration for elizaOS agents,
 supporting encrypted DMs via NIP-04 and profile management.
 """
 
@@ -38,10 +38,10 @@ from .types import (
 
 
 def get_plugin():
-    """Get the Nostr plugin definition for ElizaOS."""
+    """Get the Nostr plugin definition for elizaOS."""
     return {
         "name": "nostr",
-        "description": "Nostr decentralized messaging plugin for ElizaOS agents",
+        "description": "Nostr decentralized messaging plugin for elizaOS agents",
         "services": [NostrService],
         "actions": [
             send_dm_action,

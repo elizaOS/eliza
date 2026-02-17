@@ -100,7 +100,7 @@ class TestGenerateIcs:
         assert "DTSTART:20250120T150000Z" in ics
         assert "DTEND:20250120T153000Z" in ics
         assert "VERSION:2.0" in ics
-        assert "PRODID:-//ElizaOS//SchedulingPlugin//EN" in ics
+        assert "PRODID:-//elizaOS//SchedulingPlugin//EN" in ics
 
     def test_with_description_and_location(self) -> None:
         event = CalendarEvent(

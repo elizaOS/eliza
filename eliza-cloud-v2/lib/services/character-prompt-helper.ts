@@ -3,7 +3,7 @@
  *
  * Extracts character personality traits for use in social media post generation.
  * Provides a simplified interface for getting character voice/style without
- * needing the full ElizaOS runtime.
+ * needing the full elizaOS runtime.
  */
 
 import { charactersService } from "./characters/characters";

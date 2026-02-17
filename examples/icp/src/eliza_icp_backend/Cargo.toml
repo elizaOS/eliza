@@ -30,7 +30,7 @@ sha2 = "0.10"
 # Getrandom with custom feature for WASM
 getrandom = { version = "0.2", features = ["custom"] }
 
-# ElizaOS core with sync runtime (no tokio needed)
+# elizaOS core with sync runtime (no tokio needed)
 # Note: Using path for local development, would use crates.io version in production
 # elizaos = { version = "2.0", default-features = false, features = ["sync", "icp"] }
 

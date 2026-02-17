@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-secrets-manager-root",
-  "description": "Secret management plugin for ElizaOS",
+  "description": "Secret management plugin for elizaOS",
   "version": "1.0.0",
   "type": "module",
   "private": true,
@@ -10,7 +10,7 @@
   "packageType": "plugin",
   "platform": "node",
   "license": "UNLICENSED",
-  "author": "ElizaOS",
+  "author": "elizaOS",
   "keywords": [
     "plugin",
     "elizaos"

@@ -4,11 +4,11 @@ AgentBench benchmark runner.
 Orchestrates benchmark execution across all environments and generates reports.
 
 This runner supports two modes:
-1. Full ElizaOS pipeline: Uses message_service.handle_message() with Memory objects,
+1. Full elizaOS pipeline: Uses message_service.handle_message() with Memory objects,
    provider context, and the complete agent flow. This is the canonical way.
 2. Direct mode: Uses runtime.generate_text() directly for mock/test runtimes.
 
-The full ElizaOS mode is used when the runtime has a message_service attribute.
+The full elizaOS mode is used when the runtime has a message_service attribute.
 """
 
 import asyncio
@@ -48,10 +48,10 @@ logger = logging.getLogger(__name__)
 
 
 def _is_full_elizaos_runtime(runtime: AgentRuntimeProtocol | None) -> bool:
-    """Check if the runtime is a full ElizaOS runtime with message service."""
+    """Check if the runtime is a full elizaOS runtime with message service."""
     if runtime is None:
         return False
-    # Check for message_service attribute which indicates full ElizaOS runtime
+    # Check for message_service attribute which indicates full elizaOS runtime
     return hasattr(runtime, "message_service") and runtime.message_service is not None
 
 
@@ -106,8 +106,8 @@ class AgentBenchRunner:
 
     This runner supports two execution modes:
 
-    1. **Full ElizaOS Pipeline** (recommended):
-       When a real ElizaOS AgentRuntime is provided, uses the complete message
+    1. **Full elizaOS Pipeline** (recommended):
+       When a real elizaOS AgentRuntime is provided, uses the complete message
        processing pipeline with:
        - Memory objects for all messages
        - Provider context gathering (compose_state)
@@ -116,11 +116,11 @@ class AgentBenchRunner:
 
     2. **Direct Mode** (for testing):
        When a mock runtime is provided, directly calls generate_text() on the
-       runtime. This is useful for testing the harness without a full ElizaOS
+       runtime. This is useful for testing the harness without a full elizaOS
        setup.
 
     Usage:
-        # Full ElizaOS mode
+        # Full elizaOS mode
         runtime = AgentRuntime(character=character, plugins=[...])
         await runtime.initialize()
         runner = AgentBenchRunner(config=config, runtime=runtime)
@@ -142,12 +142,12 @@ class AgentBenchRunner:
         self._results: list[AgentBenchResult] = []
         self._harness: "ElizaAgentHarness | None" = None
 
-        # Initialize harness if we have a full ElizaOS runtime
+        # Initialize harness if we have a full elizaOS runtime
         if _is_full_elizaos_runtime(runtime):
             from elizaos_agentbench.eliza_harness import ElizaAgentHarness
 
             self._harness = ElizaAgentHarness(runtime)  # type: ignore[arg-type]
-            logger.info("[AgentBenchRunner] Using full ElizaOS pipeline with message_service")
+            logger.info("[AgentBenchRunner] Using full elizaOS pipeline with message_service")
 
     def _create_adapter(
         self,
@@ -201,9 +201,9 @@ class AgentBenchRunner:
                 env_config = self.config.get_env_config(env)
 
                 for task in tasks[: env_config.max_tasks]:
-                    # Use harness for full ElizaOS pipeline, otherwise use adapter directly
+                    # Use harness for full elizaOS pipeline, otherwise use adapter directly
                     if self._harness is not None:
-                        # Full ElizaOS mode: uses message_service.handle_message()
+                        # Full elizaOS mode: uses message_service.handle_message()
                         result = await self._harness.run_task(task, adapter)
                         # Clear conversation between tasks for fresh context
                         await self._harness.clear_conversation()
@@ -603,13 +603,13 @@ class AgentBenchRunner:
 
         if total_success_rate > 0.6:
             status = "strong"
-            key_findings.append("ElizaOS demonstrates strong agent capabilities across tested environments")
+            key_findings.append("elizaOS demonstrates strong agent capabilities across tested environments")
         elif total_success_rate > 0.3:
             status = "moderate"
-            key_findings.append("ElizaOS shows moderate agent capabilities with room for improvement")
+            key_findings.append("elizaOS shows moderate agent capabilities with room for improvement")
         else:
             status = "needs_improvement"
-            key_findings.append("ElizaOS agent capabilities need significant improvement")
+            key_findings.append("elizaOS agent capabilities need significant improvement")
 
         # Analyze per-environment performance
         strong_envs = [e.value for e, r in env_reports.items() if r.success_rate > 0.5]
@@ -738,7 +738,7 @@ class AgentBenchRunner:
 
     def _generate_markdown_report(self, report: AgentBenchReport) -> str:
         """Generate markdown report."""
-        md = f"""# AgentBench Evaluation Results - ElizaOS Python
+        md = f"""# AgentBench Evaluation Results - elizaOS Python
 
 ## Executive Summary
 
@@ -775,7 +775,7 @@ class AgentBenchRunner:
 
 ### vs GPT-4
 
-| Environment | ElizaOS | GPT-4 | Difference |
+| Environment | elizaOS | GPT-4 | Difference |
 |-------------|---------|-------|------------|
 """
         gpt4_comp = report.comparison_to_baseline.get("gpt4_comparison", {})
@@ -787,7 +787,7 @@ class AgentBenchRunner:
         md += """
 ### vs GPT-3.5
 
-| Environment | ElizaOS | GPT-3.5 | Difference |
+| Environment | elizaOS | GPT-3.5 | Difference |
 |-------------|---------|---------|------------|
 """
         gpt35_comp = report.comparison_to_baseline.get("gpt35_comparison", {})
@@ -813,7 +813,7 @@ class AgentBenchRunner:
 ---
 *Generated on {report.summary.get('timestamp', datetime.now().isoformat())}*
 *Benchmark: AgentBench (ICLR 2024)*
-*Framework: ElizaOS Python*
+*Framework: elizaOS Python*
 """
         return md
 
@@ -837,7 +837,7 @@ async def run_agentbench(
 
     Args:
         config: Benchmark configuration. If None, uses default config.
-        runtime: ElizaOS runtime instance. If None, uses mock responses.
+        runtime: elizaOS runtime instance. If None, uses mock responses.
 
     Returns:
         AgentBenchReport with full benchmark results.

@@ -66,7 +66,10 @@ export const plugin: Plugin = {
     const dataDir = runtime.getSetting("LOCALDB_DATA_DIR") as string | undefined;
     const adapter = createDatabaseAdapter({ dataDir }, runtime.agentId);
 
-    await adapter.init();
+    // Initialize the adapter (implementation-specific method)
+    if ('init' in adapter && typeof adapter.init === 'function') {
+      await adapter.init();
+    }
     runtime.registerDatabaseAdapter(adapter);
 
     logger.success({ src: "plugin:localdb" }, "Local database adapter registered successfully");

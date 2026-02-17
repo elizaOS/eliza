@@ -1,4 +1,4 @@
-/** Component-based persistence for scheduling data using ElizaOS Components */
+/** Component-based persistence for scheduling data using elizaOS Components */
 
 import type { Component, IAgentRuntime, Metadata, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";

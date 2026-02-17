@@ -1,7 +1,7 @@
 """
 Run all Atropos example environments and compute benchmark metrics.
 
-This runner uses the *canonical* ElizaOS message pipeline for each agent (via the
+This runner uses the *canonical* elizaOS message pipeline for each agent (via the
 environment-specific Eliza plugins + message_service.handle_message()) and reports
 high-level scores for comparison across runs.
 """

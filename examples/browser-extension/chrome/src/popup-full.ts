@@ -1,5 +1,5 @@
 /**
- * Full Popup Script with ElizaOS Runtime
+ * Full Popup Script with elizaOS Runtime
  * 
  * Supports multiple LLM providers and uses localdb for persistence
  */

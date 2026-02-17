@@ -1,6 +1,6 @@
 # Browser Use Example (Rust)
 
-An autonomous ElizaOS agent that explores the web with curiosity, focusing on understanding quantum physics.
+An autonomous elizaOS agent that explores the web with curiosity, focusing on understanding quantum physics.
 
 ## Features
 

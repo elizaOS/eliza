@@ -1,7 +1,7 @@
 """
-ElizaOS Slack Plugin
+elizaOS Slack Plugin
 
-Slack integration plugin for ElizaOS agents with Socket Mode support.
+Slack integration plugin for elizaOS agents with Socket Mode support.
 """
 
 from .service import SlackService, SLACK_SERVICE_NAME
@@ -99,7 +99,7 @@ def get_plugin():
     """Return the Slack plugin configuration."""
     return {
         "name": "slack",
-        "description": "Slack integration plugin for ElizaOS with Socket Mode support",
+        "description": "Slack integration plugin for elizaOS with Socket Mode support",
         "services": [SlackService],
         "actions": [
             send_message,

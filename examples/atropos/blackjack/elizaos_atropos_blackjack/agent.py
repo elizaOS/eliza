@@ -1,5 +1,5 @@
 """
-ElizaOS agent for Blackjack environment.
+elizaOS agent for Blackjack environment.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 class BlackjackAgent:
     """
-    ElizaOS-powered Blackjack agent.
+    elizaOS-powered Blackjack agent.
     
     This agent can use either:
     - LLM-based decisions (when runtime has model providers)
@@ -45,7 +45,7 @@ class BlackjackAgent:
         Initialize the Blackjack agent.
         
         Args:
-            runtime: ElizaOS AgentRuntime (optional for basic strategy mode)
+            runtime: elizaOS AgentRuntime (optional for basic strategy mode)
             use_llm: Whether to use LLM for decisions
             agent_id: Optional agent ID
         """
@@ -97,7 +97,7 @@ class BlackjackAgent:
         *,
         trajectory_step_id: str | None = None,
     ) -> BlackjackAction:
-        """Use canonical ElizaOS message pipeline for decision making."""
+        """Use canonical elizaOS message pipeline for decision making."""
         if self._runtime is None:
             return self._decide_with_strategy(state)
 

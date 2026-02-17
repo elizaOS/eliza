@@ -1,5 +1,5 @@
 /**
- * Debug Tracing Module for ElizaOS
+ * Debug Tracing Module for elizaOS
  *
  * Provides comprehensive execution tracing across all agent modes:
  * CHAT, ASSISTANT, BUILD, and MULTI_STEP

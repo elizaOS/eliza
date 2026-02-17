@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-form-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "Guardrails for agent-guided user journeys - conversational forms for ElizaOS",
+  "description": "Guardrails for agent-guided user journeys - conversational forms for elizaOS",
   "author": "Odilitime",
   "type": "module",
   "main": "typescript/dist/index.js",
@@ -46,7 +46,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1",
+    "@elizaos/core": "workspace:*",
     "whatwg-url": "7.1.0"
   },
   "scripts": {

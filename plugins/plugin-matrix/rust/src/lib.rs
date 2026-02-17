@@ -1,4 +1,4 @@
-//! Matrix messaging integration plugin for ElizaOS agents.
+//! Matrix messaging integration plugin for elizaOS agents.
 //!
 //! This plugin provides Matrix protocol integration with support for
 //! sending messages, reactions, and room management.

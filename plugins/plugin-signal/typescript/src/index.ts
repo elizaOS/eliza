@@ -17,7 +17,7 @@ import { normalizeE164 } from "./types";
 const signalPlugin: Plugin = {
   name: "signal",
   description:
-    "Signal messaging integration plugin for ElizaOS with end-to-end encryption",
+    "Signal messaging integration plugin for elizaOS with end-to-end encryption",
   services: [SignalService],
   actions: [sendMessage, sendReaction, listContacts, listGroups],
   providers: [conversationStateProvider],

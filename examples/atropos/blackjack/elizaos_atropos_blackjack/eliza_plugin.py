@@ -1,8 +1,8 @@
 """
-Canonical ElizaOS integration for Atropos Blackjack.
+Canonical elizaOS integration for Atropos Blackjack.
 
 This provides a provider + action pair so the agent can make decisions via the
-full ElizaOS message pipeline:
+full elizaOS message pipeline:
 
 - providers → compose_state()
 - message_service.handle_message()
@@ -129,7 +129,7 @@ def create_blackjack_character(name: str = "BlackjackAgent") -> Character:
         instructions=(
             "You must choose ONE action from the allowed actions.\n\n"
             "CRITICAL:\n"
-            "- Output ONLY one ElizaOS action: ATROPOS_BLACKJACK_ACTION\n"
+            "- Output ONLY one elizaOS action: ATROPOS_BLACKJACK_ACTION\n"
             "- Put the chosen action in params.action as either HIT or STAND"
         ),
         action_name="ATROPOS_BLACKJACK_ACTION",

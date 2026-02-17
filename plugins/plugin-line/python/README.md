@@ -1,6 +1,6 @@
 # @elizaos/plugin-line (Python)
 
-Python implementation of the LINE Messaging API plugin for ElizaOS.
+Python implementation of the LINE Messaging API plugin for elizaOS.
 
 ## Installation
 
@@ -10,4 +10,4 @@ pip install elizaos-plugin-line
 
 ## Usage
 
-This plugin provides LINE Messaging API integration capabilities for ElizaOS agents.
+This plugin provides LINE Messaging API integration capabilities for elizaOS agents.

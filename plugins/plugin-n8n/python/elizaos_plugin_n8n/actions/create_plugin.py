@@ -18,7 +18,7 @@ class ActionResult:
 
 class CreatePluginAction:
     name = "CREATE_PLUGIN"
-    description = "Create an ElizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation."
+    description = "Create an elizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation."
     similes = [
         "generate plugin",
         "build plugin",

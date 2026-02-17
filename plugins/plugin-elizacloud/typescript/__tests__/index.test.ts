@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { elizaOSCloudPlugin } from "../index.js";
 
-describe("ElizaOS Cloud Plugin", () => {
+describe("elizaOS Cloud Plugin", () => {
   describe("Plugin metadata", () => {
     it("has correct name", () => {
       expect(elizaOSCloudPlugin.name).toBe("elizaOSCloud");

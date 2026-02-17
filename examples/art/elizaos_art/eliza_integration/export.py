@@ -8,7 +8,7 @@ Provides export to:
 - RULER scoring format
 
 All exports are compatible with the plugin-trajectory-logger format
-for seamless integration with ElizaOS training pipelines.
+for seamless integration with elizaOS training pipelines.
 """
 
 import json
@@ -194,7 +194,7 @@ async def export_grouped_for_grpo(
 
 def _convert_to_art_format(eliza_traj: dict) -> dict:
     """
-    Convert ElizaOS trajectory to ART format.
+    Convert elizaOS trajectory to ART format.
     
     This preserves all the rich data captured by the trajectory logger:
     - LLM calls with full context
@@ -555,7 +555,7 @@ async def export_for_huggingface(
     dataset_card = f"""---
 dataset_info:
   name: {dataset_name}
-  description: ElizaOS agent trajectories for RL training
+  description: elizaOS agent trajectories for RL training
   size_categories:
     - {_size_category(n)}
   license: mit
@@ -566,7 +566,7 @@ dataset_info:
 
 # {dataset_name}
 
-ElizaOS agent trajectories exported for RL training.
+elizaOS agent trajectories exported for RL training.
 
 ## Dataset Statistics
 

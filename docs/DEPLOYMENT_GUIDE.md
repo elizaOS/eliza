@@ -1,8 +1,8 @@
-# Deployment Guide (ElizaOS)
+# Deployment Guide (elizaOS)
 
 ## Overview
 
-ElizaOS agents can be deployed to a variety of platforms. This repository includes **production-ready examples** in the `examples/` directory, with implementations in **TypeScript, Python, and Rust** for each deployment target.
+elizaOS agents can be deployed to a variety of platforms. This repository includes **production-ready examples** in the `examples/` directory, with implementations in **TypeScript, Python, and Rust** for each deployment target.
 
 The TypeScript runtime (`AgentRuntime`) is designed to run in both long-lived and serverless contexts.
 

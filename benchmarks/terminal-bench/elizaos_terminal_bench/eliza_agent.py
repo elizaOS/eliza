@@ -1,7 +1,7 @@
 """
-Canonical ElizaOS Agent for Terminal-Bench.
+Canonical elizaOS Agent for Terminal-Bench.
 
-This agent uses the full ElizaOS runtime with message_service.handle_message(),
+This agent uses the full elizaOS runtime with message_service.handle_message(),
 actions, providers, and evaluators - NO BYPASS.
 """
 
@@ -105,7 +105,7 @@ def _get_openai_plugin() -> Plugin:
 
 class ElizaTerminalAgent:
     """
-    Canonical ElizaOS agent for Terminal-Bench that uses the full runtime.
+    Canonical elizaOS agent for Terminal-Bench that uses the full runtime.
 
     This agent:
     - Creates an AgentRuntime with basicCapabilities enabled
@@ -142,7 +142,7 @@ class ElizaTerminalAgent:
         self._environment = env
 
     async def _initialize_runtime(self) -> AgentRuntime:
-        """Initialize the full ElizaOS runtime with all plugins."""
+        """Initialize the full elizaOS runtime with all plugins."""
         # Ensure the OpenAI plugin uses the requested model.
         # The python OpenAI plugin reads OPENAI_SMALL_MODEL / OPENAI_LARGE_MODEL at init time.
         os.environ.setdefault("OPENAI_SMALL_MODEL", self._model_name)
@@ -196,7 +196,7 @@ class ElizaTerminalAgent:
         await runtime.initialize()
 
         logger.info(
-            f"ElizaOS runtime initialized with {len(runtime.actions)} actions, "
+            f"elizaOS runtime initialized with {len(runtime.actions)} actions, "
             f"{len(runtime.providers)} providers"
         )
 
@@ -230,10 +230,10 @@ class ElizaTerminalAgent:
 
     async def solve_task(self, task: TerminalTask) -> TerminalBenchResult:
         """
-        Solve a terminal benchmark task using canonical ElizaOS flow.
+        Solve a terminal benchmark task using canonical elizaOS flow.
 
         This method:
-        1. Initializes the ElizaOS runtime (if not done)
+        1. Initializes the elizaOS runtime (if not done)
         2. Sets up the session and injects context
         3. Sends the task instruction as a message
         4. Lets the runtime handle message -> actions -> response

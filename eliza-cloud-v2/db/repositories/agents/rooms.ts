@@ -1,5 +1,5 @@
 /**
- * Repository for ElizaOS rooms table.
+ * Repository for elizaOS rooms table.
  *
  * Handles all database operations for rooms without spinning up runtime.
  */
@@ -11,7 +11,7 @@ import { eq, inArray, sql, and } from "drizzle-orm";
 import type { Room as BaseRoom } from "@elizaos/core";
 
 /**
- * Room type from ElizaOS core.
+ * Room type from elizaOS core.
  */
 export type Room = BaseRoom;
 
@@ -70,7 +70,7 @@ export interface UpdateRoomInput {
 }
 
 /**
- * Repository for ElizaOS room database operations.
+ * Repository for elizaOS room database operations.
  */
 export class RoomsRepository {
   /**

@@ -1,6 +1,6 @@
 /**
  * @module plugin-webhooks
- * @description ElizaOS plugin for HTTP webhook ingress.
+ * @description elizaOS plugin for HTTP webhook ingress.
  *
  * Exposes three route groups via the plugin `routes` array:
  *   POST /hooks/wake      - Enqueue system event + optional immediate heartbeat

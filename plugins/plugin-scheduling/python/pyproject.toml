@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-plugin-scheduling"
 version = "0.1.0"
-description = "ElizaOS plugin for scheduling and calendar coordination"
+description = "elizaOS plugin for scheduling and calendar coordination"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "ElizaOS Team" },
+    { name = "elizaOS Team" },
 ]
 keywords = ["elizaos", "scheduling", "calendar", "ics", "meetings"]
 classifiers = [

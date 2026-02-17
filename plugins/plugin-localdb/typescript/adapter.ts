@@ -1,3 +1,23 @@
+/**
+ * Local Storage Database Adapter
+ *
+ * WHY this adapter exists: Provides a file-system or localStorage-based
+ * database backend for environments without a running database server.
+ * Works in both Node.js (file-based) and browsers (localStorage).
+ *
+ * DESIGN: Same batch-first CRUD contract as the SQL adapter. Create methods
+ * return UUID[], update/delete return void and throw on failure.
+ *
+ * STORAGE: Data is persisted via IStorage interface (NodeStorage for files,
+ * BrowserStorage for localStorage). Each collection is a key-value store
+ * where keys are entity IDs.
+ *
+ * TRADE-OFFS:
+ * - Single-threaded writes (no concurrent access safety)
+ * - Linear scan for queries (no indexes)
+ * - No plugin schema support (registerPluginSchema/getPluginStore not implemented)
+ * - No messaging adapter support (IMessagingAdapter not implemented)
+ */
 import {
   type Agent,
   type Component,
@@ -181,13 +201,13 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null> {
+  async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[]> {
     const entities: Entity[] = [];
     for (const id of entityIds) {
       const entity = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, id);
       if (entity) entities.push(entity);
     }
-    return entities.length > 0 ? entities : null;
+    return entities;
   }
 
   async getEntitiesForRoom(roomId: UUID, includeComponents = false): Promise<Entity[]> {
@@ -213,12 +233,66 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return entities;
   }
 
-  async createEntities(entities: Entity[]): Promise<boolean> {
+  async createEntities(entities: Entity[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
     for (const entity of entities) {
       if (!entity.id) continue;
       await this.storage.set(COLLECTIONS.ENTITIES, entity.id, entity);
+      ids.push(entity.id);
     }
-    return true;
+    return ids;
+  }
+  
+  async upsertEntities(entities: Entity[]): Promise<void> {
+    // WHY: LocalDB uses file-backed storage where set() is naturally idempotent
+    for (const entity of entities) {
+      if (entity.id) {
+        await this.storage.set(COLLECTIONS.ENTITIES, entity.id, entity);
+      }
+    }
+  }
+  
+  async searchEntitiesByName(params: {
+    query: string;
+    agentId: UUID;
+    limit?: number;
+  }): Promise<Entity[]> {
+    const lowerQuery = params.query.toLowerCase();
+    const limit = params.limit ?? 10;
+    const allEntities = await this.storage.getAll<Entity>(COLLECTIONS.ENTITIES);
+    const matches: Entity[] = [];
+    
+    for (const entity of allEntities) {
+      if (entity.agentId !== params.agentId) continue;
+      
+      const hasMatch = entity.names?.some(name => 
+        name.toLowerCase().includes(lowerQuery)
+      );
+      
+      if (hasMatch) {
+        matches.push(entity);
+        if (matches.length >= limit) break;
+      }
+    }
+    
+    return matches;
+  }
+  
+  async getEntitiesByNames(params: { names: string[]; agentId: UUID }): Promise<Entity[]> {
+    const nameSet = new Set(params.names);
+    const allEntities = await this.storage.getAll<Entity>(COLLECTIONS.ENTITIES);
+    const matches: Entity[] = [];
+    
+    for (const entity of allEntities) {
+      if (entity.agentId !== params.agentId) continue;
+      
+      const hasMatch = entity.names?.some(name => nameSet.has(name));
+      if (hasMatch) {
+        matches.push(entity);
+      }
+    }
+    
+    return matches;
   }
 
   async updateEntity(entity: Entity): Promise<void> {
@@ -279,6 +353,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     end?: number;
     roomId?: UUID;
     worldId?: UUID;
+    metadata?: Record<string, unknown>;
   }): Promise<Memory[]> {
     let memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (params.entityId && m.entityId !== params.entityId) return false;
@@ -289,6 +364,16 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (params.start && m.createdAt && m.createdAt < params.start) return false;
       if (params.end && m.createdAt && m.createdAt > params.end) return false;
       if (params.unique && !m.unique) return false;
+      // WHY: In-memory metadata filtering uses deep equality check for each
+      // filter key. This is less efficient than SQL containment operators but
+      // correct for nested objects/arrays. Matches PG @> and MySQL JSON_CONTAINS semantics.
+      if (params.metadata) {
+        if (!m.metadata) return false;
+        for (const [key, value] of Object.entries(params.metadata)) {
+          if (!(key in m.metadata)) return false;
+          if (JSON.stringify(m.metadata[key]) !== JSON.stringify(value)) return false;
+        }
+      }
       return true;
     });
 
@@ -584,13 +669,13 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.set(COLLECTIONS.WORLDS, world.id, world);
   }
 
-  async getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null> {
+  async getRoomsByIds(roomIds: UUID[]): Promise<Room[]> {
     const rooms: Room[] = [];
     for (const id of roomIds) {
       const room = await this.storage.get<Room>(COLLECTIONS.ROOMS, id);
       if (room) rooms.push(room);
     }
-    return rooms.length > 0 ? rooms : null;
+    return rooms;
   }
 
   async createRooms(rooms: Room[]): Promise<UUID[]> {
@@ -601,6 +686,15 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
       ids.push(id);
     }
     return ids;
+  }
+  
+  async upsertRooms(rooms: Room[]): Promise<void> {
+    // WHY: File-backed storage.set() handles both insert and update atomically
+    for (const room of rooms) {
+      if (room.id) {
+        await this.storage.set(COLLECTIONS.ROOMS, room.id, room);
+      }
+    }
   }
 
   async deleteRoom(roomId: UUID): Promise<void> {
@@ -697,7 +791,8 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return participants.length > 0;
   }
 
-  async addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean> {
+  async createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]> {
+    const ids: UUID[] = [];
     for (const entityId of entityIds) {
       const exists = await this.isRoomParticipant(roomId, entityId);
       if (!exists) {
@@ -708,9 +803,13 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
           roomId,
         };
         await this.storage.set(COLLECTIONS.PARTICIPANTS, id, participant);
+        ids.push(id as UUID);
+      } else {
+        // Already exists - return the entityId as the participant ID
+        ids.push(entityId);
       }
     }
-    return true;
+    return ids;
   }
 
   async getParticipantUserState(
@@ -728,7 +827,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return null;
   }
 
-  async setParticipantUserState(
+  async updateParticipantUserState(
     roomId: UUID,
     entityId: UUID,
     state: "FOLLOWED" | "MUTED" | null
@@ -946,5 +1045,462 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async deletePairingAllowlistEntry(id: UUID): Promise<void> {
     await this.storage.delete(COLLECTIONS.PAIRING_ALLOWLIST, id);
+  }
+
+  // ===============================
+  // Batch Agent Methods
+  // ===============================
+
+  async getAgentsByIds(agentIds: UUID[]): Promise<Agent[]> {
+    const agents: Agent[] = [];
+    for (const id of agentIds) {
+      const agent = await this.getAgent(id);
+      if (agent) agents.push(agent);
+    }
+    return agents;
+  }
+
+  async createAgents(agents: Partial<Agent>[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const agent of agents) {
+      if (agent.id) {
+        await this.createAgent(agent);
+        ids.push(agent.id);
+      }
+    }
+    return ids;
+  }
+  
+  async upsertAgents(agents: Partial<Agent>[]): Promise<void> {
+    // WHY: storage.set() is idempotent for LocalDB's file-backed storage
+    for (const agent of agents) {
+      if (agent.id) {
+        await this.storage.set(COLLECTIONS.AGENTS, agent.id, agent);
+      }
+    }
+  }
+
+  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
+    for (const { agentId, agent } of updates) {
+      await this.updateAgent(agentId, agent);
+    }
+    return true;
+  }
+
+  async deleteAgents(agentIds: UUID[]): Promise<boolean> {
+    for (const id of agentIds) {
+      await this.deleteAgent(id);
+    }
+    return true;
+  }
+  
+  async countAgents(): Promise<number> {
+    const agents = await this.storage.getAll<Partial<Agent>>(COLLECTIONS.AGENTS);
+    return agents.length;
+  }
+  
+  async cleanupAgents(): Promise<void> {
+    // WHY no-op: LocalDB is file-backed but lacks time-based cleanup logic.
+    // Would need updatedAt tracking on all agents to implement properly.
+  }
+
+  // ===============================
+  // Batch Entity Methods
+  // ===============================
+
+  async updateEntities(entities: Entity[]): Promise<void> {
+    for (const entity of entities) {
+      await this.updateEntity(entity);
+    }
+  }
+
+  async deleteEntities(entityIds: UUID[]): Promise<void> {
+    for (const id of entityIds) {
+      await this.storage.delete(COLLECTIONS.ENTITIES, id);
+    }
+  }
+
+  // ===============================
+  // Batch Component Methods
+  // ===============================
+
+  async createComponents(components: Component[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const component of components) {
+      if (component.id) {
+        await this.createComponent(component);
+        ids.push(component.id);
+      }
+    }
+    return ids;
+  }
+
+  async getComponentsByIds(componentIds: UUID[]): Promise<Component[]> {
+    const components: Component[] = [];
+    for (const id of componentIds) {
+      const component = await this.storage.get<Component>(COLLECTIONS.COMPONENTS, id);
+      if (component) components.push(component);
+    }
+    return components;
+  }
+
+  async updateComponents(components: Component[]): Promise<void> {
+    for (const component of components) {
+      await this.updateComponent(component);
+    }
+  }
+
+  async deleteComponents(componentIds: UUID[]): Promise<void> {
+    for (const id of componentIds) {
+      await this.deleteComponent(id);
+    }
+  }
+
+  // ===============================
+  // Batch Memory Methods
+  // ===============================
+
+  async createMemories(
+    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>
+  ): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const { memory, tableName, unique } of memories) {
+      const id = await this.createMemory(memory, tableName, unique);
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  async updateMemories(
+    memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>
+  ): Promise<void> {
+    const errors: Array<{ index: number; id: UUID }> = [];
+    for (let i = 0; i < memories.length; i++) {
+      const success = await this.updateMemory(memories[i]);
+      if (!success) {
+        errors.push({ index: i, id: memories[i].id });
+      }
+    }
+    if (errors.length > 0) {
+      throw new Error(`Failed to update ${errors.length} of ${memories.length} memories`);
+    }
+  }
+
+  async deleteMemories(memoryIds: UUID[]): Promise<void> {
+    await this.deleteManyMemories(memoryIds);
+  }
+
+  // ===============================
+  // Batch Log Methods
+  // ===============================
+
+  async getLogsByIds(logIds: UUID[]): Promise<Log[]> {
+    const logs: Log[] = [];
+    for (const id of logIds) {
+      const log = await this.storage.get<Log>(COLLECTIONS.LOGS, id);
+      if (log) logs.push(log);
+    }
+    return logs;
+  }
+
+  async createLogs(
+    params: Array<{ body: LogBody; entityId: UUID; roomId: UUID; type: string }>
+  ): Promise<void> {
+    for (const param of params) {
+      await this.log(param);
+    }
+  }
+
+  async updateLogs(logs: Array<{ id: UUID; updates: Partial<Log> }>): Promise<void> {
+    for (const { id, updates } of logs) {
+      const log = await this.storage.get<Log>(COLLECTIONS.LOGS, id);
+      if (log) {
+        await this.storage.set(COLLECTIONS.LOGS, id, { ...log, ...updates });
+      }
+    }
+  }
+
+  async deleteLogs(logIds: UUID[]): Promise<void> {
+    for (const id of logIds) {
+      await this.deleteLog(id);
+    }
+  }
+
+  // ===============================
+  // Batch World Methods
+  // ===============================
+
+  async getWorldsByIds(worldIds: UUID[]): Promise<World[]> {
+    const worlds: World[] = [];
+    for (const id of worldIds) {
+      const world = await this.getWorld(id);
+      if (world) worlds.push(world);
+    }
+    return worlds;
+  }
+
+  async createWorlds(worlds: World[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const world of worlds) {
+      const id = await this.createWorld(world);
+      ids.push(id);
+    }
+    return ids;
+  }
+  
+  async upsertWorlds(worlds: World[]): Promise<void> {
+    // WHY: storage.set() handles insert/update atomically for LocalDB
+    for (const world of worlds) {
+      if (world.id) {
+        await this.storage.set(COLLECTIONS.WORLDS, world.id, world);
+      }
+    }
+  }
+
+  async deleteWorlds(worldIds: UUID[]): Promise<void> {
+    for (const id of worldIds) {
+      await this.removeWorld(id);
+    }
+  }
+
+  async updateWorlds(worlds: World[]): Promise<void> {
+    for (const world of worlds) {
+      await this.updateWorld(world);
+    }
+  }
+
+  // ===============================
+  // Batch Room Methods
+  // ===============================
+
+  async updateRooms(rooms: Room[]): Promise<void> {
+    for (const room of rooms) {
+      await this.updateRoom(room);
+    }
+  }
+
+  async deleteRooms(roomIds: UUID[]): Promise<void> {
+    for (const id of roomIds) {
+      await this.deleteRoom(id);
+    }
+  }
+
+  // ===============================
+  // Batch Participant Methods
+  // ===============================
+
+  async deleteParticipants(
+    participants: Array<{ entityId: UUID; roomId: UUID }>
+  ): Promise<boolean> {
+    for (const { entityId, roomId } of participants) {
+      await this.removeParticipant(entityId, roomId);
+    }
+    return true;
+  }
+
+  async updateParticipants(participants: Array<{
+    entityId: UUID;
+    roomId: UUID;
+    updates: Partial<Participant>;
+  }>): Promise<void> {
+    for (const { entityId, roomId, updates } of participants) {
+      // Find participant by entityId and roomId
+      const allParticipants = await this.storage.getAll<StoredParticipant>(COLLECTIONS.PARTICIPANTS);
+      const participant = allParticipants.find(
+        (p) => p.entityId === entityId && p.roomId === roomId
+      );
+      if (participant && participant.id) {
+        await this.storage.set(
+          COLLECTIONS.PARTICIPANTS,
+          participant.id,
+          { ...participant, ...updates }
+        );
+      }
+    }
+  }
+
+  // ===============================
+  // Batch Relationship Methods
+  // ===============================
+
+  async createRelationships(
+    relationships: Array<{
+      sourceEntityId: UUID;
+      targetEntityId: UUID;
+      tags?: string[];
+      metadata?: Metadata;
+    }>
+  ): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const rel of relationships) {
+      const id = crypto.randomUUID() as UUID;
+      const relationship: StoredRelationship = {
+        id,
+        sourceEntityId: rel.sourceEntityId,
+        targetEntityId: rel.targetEntityId,
+        agentId: this.agentId,
+        tags: rel.tags ?? [],
+        metadata: rel.metadata ?? ({} as Metadata),
+        createdAt: new Date().toISOString(),
+      };
+      await this.storage.set(COLLECTIONS.RELATIONSHIPS, id, relationship);
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  async getRelationshipsByIds(relationshipIds: UUID[]): Promise<Relationship[]> {
+    const relationships: Relationship[] = [];
+    for (const id of relationshipIds) {
+      const rel = await this.storage.get<StoredRelationship>(COLLECTIONS.RELATIONSHIPS, id);
+      if (rel) {
+        relationships.push({
+          id: rel.id as UUID,
+          sourceEntityId: rel.sourceEntityId as UUID,
+          targetEntityId: rel.targetEntityId as UUID,
+          agentId: (rel.agentId as UUID) ?? this.agentId,
+          tags: rel.tags ?? [],
+          metadata: rel.metadata ?? {},
+          createdAt: rel.createdAt,
+        });
+      }
+    }
+    return relationships;
+  }
+
+  async updateRelationships(relationships: Relationship[]): Promise<void> {
+    for (const rel of relationships) {
+      await this.updateRelationship(rel);
+    }
+  }
+
+  async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
+    for (const id of relationshipIds) {
+      await this.storage.delete(COLLECTIONS.RELATIONSHIPS, id);
+    }
+  }
+
+  // ===============================
+  // Batch Cache Methods
+  // ===============================
+
+  async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
+    const result = new Map<string, T>();
+    for (const key of keys) {
+      const value = await this.getCache<T>(key);
+      if (value !== undefined) {
+        result.set(key, value);
+      }
+    }
+    return result;
+  }
+
+  async setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean> {
+    for (const { key, value } of entries) {
+      await this.setCache(key, value);
+    }
+    return true;
+  }
+
+  async deleteCaches(keys: string[]): Promise<boolean> {
+    for (const key of keys) {
+      await this.deleteCache(key);
+    }
+    return true;
+  }
+
+  // ===============================
+  // Batch Task Methods
+  // ===============================
+
+  async createTasks(tasks: Task[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const task of tasks) {
+      const id = await this.createTask(task);
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  async getTasksByIds(taskIds: UUID[]): Promise<Task[]> {
+    const tasks: Task[] = [];
+    for (const id of taskIds) {
+      const task = await this.getTask(id);
+      if (task) tasks.push(task);
+    }
+    return tasks;
+  }
+
+  async updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void> {
+    for (const { id, task } of updates) {
+      await this.updateTask(id, task);
+    }
+  }
+
+  async deleteTasks(taskIds: UUID[]): Promise<void> {
+    for (const id of taskIds) {
+      await this.deleteTask(id);
+    }
+  }
+
+  // ===============================
+  // Batch Pairing Request Methods
+  // ===============================
+
+  async createPairingRequests(requests: PairingRequest[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const request of requests) {
+      const id = await this.createPairingRequest(request);
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  async updatePairingRequests(requests: PairingRequest[]): Promise<void> {
+    for (const request of requests) {
+      await this.updatePairingRequest(request);
+    }
+  }
+
+  async deletePairingRequests(ids: UUID[]): Promise<void> {
+    for (const id of ids) {
+      await this.deletePairingRequest(id);
+    }
+  }
+
+  // ===============================
+  // Batch Pairing Allowlist Methods
+  // ===============================
+
+  async createPairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const entry of entries) {
+      const id = await this.createPairingAllowlistEntry(entry);
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  async updatePairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<void> {
+    for (const entry of entries) {
+      if (!entry.id) continue;
+      const existing = await this.storage.get<PairingAllowlistEntry>(
+        COLLECTIONS.PAIRING_ALLOWLIST,
+        entry.id
+      );
+      if (existing) {
+        await this.storage.set(
+          COLLECTIONS.PAIRING_ALLOWLIST,
+          entry.id,
+          { ...existing, ...entry }
+        );
+      }
+    }
+  }
+
+  async deletePairingAllowlistEntries(ids: UUID[]): Promise<void> {
+    for (const id of ids) {
+      await this.deletePairingAllowlistEntry(id);
+    }
   }
 }

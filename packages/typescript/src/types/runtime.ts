@@ -1,5 +1,5 @@
 import type { Logger } from "../logger";
-import type { Character } from "./agent";
+import type { Agent, Character } from "./agent";
 import type {
   Action,
   ActionResult,
@@ -7,12 +7,13 @@ import type {
   HandlerCallback,
   Provider,
 } from "./components";
-import type { IDatabaseAdapter } from "./database";
-import type { Entity, Room, World } from "./environment";
+import type { IDatabaseAdapter, LogBody, PatchOp } from "./database";
+import type { Component, Entity, Metadata, Relationship, Room, World } from "./environment";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { Memory, MemoryMetadata } from "./memory";
+import type { PairingAllowlistEntry, PairingRequest } from "./pairing";
 import type { IMessageService } from "./message-service";
-import type { SendHandlerFunction, TargetInfo } from "./messaging";
+import type { IMessagingAdapter, SendHandlerFunction, TargetInfo } from "./messaging";
 import type {
   GenerateTextOptions,
   GenerateTextParams,
@@ -32,7 +33,7 @@ import type { ChannelType, Content, UUID } from "./primitives";
 import type { JsonValue } from "./proto.js";
 import type { Service, ServiceTypeName } from "./service";
 import type { State } from "./state";
-import type { TaskWorker } from "./task";
+import type { Task, TaskWorker } from "./task";
 import type { ToolPolicyConfig, ToolProfileId } from "./tools";
 
 /**
@@ -82,6 +83,17 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
   hasService(serviceType: ServiceTypeName | string): boolean;
 
   registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
+  
+  /**
+   * Get the messaging adapter if the current database adapter supports it
+   * 
+   * WHY: Messaging functionality is optional - only SQL adapters implement it.
+   * This method allows client plugins (Discord, Telegram) to check if messaging
+   * is available before using it.
+   * 
+   * @returns IMessagingAdapter if supported, null otherwise
+   */
+  getMessagingAdapter(): IMessagingAdapter | null;
 
   setSetting(
     key: string,
@@ -407,17 +419,46 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
   clearAllAgentMemories(): Promise<void>;
 
-  updateMemory(
-    memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
-  ): Promise<boolean>;
-
   // Run tracking methods
   createRunId(): UUID;
   startRun(roomId?: UUID): UUID;
   endRun(): void;
   getCurrentRunId(): UUID;
 
-  // easy/compat wrappers
+  registerSendHandler(source: string, handler: SendHandlerFunction): void;
+  sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
+
+  /**
+   * Redact secrets from a text string.
+   * @param text - The text to redact secrets from
+   * @returns The text with secrets redacted
+   */
+  redactSecrets(text: string): string;
+
+  // ========================================================================
+  // Single-item convenience wrappers
+  //
+  // WHY these exist: IAgentRuntime extends IDatabaseAdapter, so it inherits
+  // all batch methods. But most call sites in plugins, event handlers, and
+  // actions naturally deal with one item at a time -- one message to store,
+  // one entity to look up, one task to create. Forcing every caller to
+  // wrap in arrays ([item]) and unwrap ([0]) adds noise without value.
+  //
+  // These wrappers keep the common single-item case clean. They are NOT
+  // deprecated -- they are the preferred API for single-item operations.
+  // Use batch methods (createMemories, getAgentsByIds, etc.) when you
+  // have multiple items or want to minimize round-trips.
+  //
+  // Implementation note: AgentRuntime implements these by delegating to
+  // the corresponding batch adapter method. For example:
+  //   getAgent(id) → (await this.adapter.getAgentsByIds([id]))[0] ?? null
+  //   createMemory(mem, table) → this.adapter.createMemories([{mem, table}])
+  //
+  // The createMemory() wrapper is special: it also performs secret
+  // redaction before delegating to the adapter. This is why runtime.ts
+  // preserves createMemory() calls internally instead of going directly
+  // to the adapter in security-sensitive paths.
+  // ========================================================================
 
   getEntityById(entityId: UUID): Promise<Entity | null>;
   getRoom(roomId: UUID): Promise<Room | null>;
@@ -433,14 +474,83 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
   }: Room): Promise<UUID>;
   addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
   getRooms(worldId: UUID): Promise<Room[]>;
-  registerSendHandler(source: string, handler: SendHandlerFunction): void;
-  sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
   updateWorld(world: World): Promise<void>;
 
+  getAgent(agentId: UUID): Promise<Agent | null>;
+  createAgent(agent: Partial<Agent>): Promise<boolean>;
+  updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>;
+  deleteAgent(agentId: UUID): Promise<boolean>;
+
+  getWorld(id: UUID): Promise<World | null>;
+  createWorld(world: World): Promise<UUID>;
+  deleteWorld(id: UUID): Promise<void>;
+
+  createTask(task: Task): Promise<UUID>;
+  getTask(id: UUID): Promise<Task | null>;
+  updateTask(id: UUID, task: Partial<Task>): Promise<void>;
+  deleteTask(id: UUID): Promise<void>;
+
+  log(params: { body: LogBody; entityId: UUID; roomId: UUID; type: string }): Promise<void>;
+  deleteLog(logId: UUID): Promise<void>;
+
+  getCache<T>(key: string): Promise<T | undefined>;
+  setCache<T>(key: string, value: T): Promise<boolean>;
+  deleteCache(key: string): Promise<boolean>;
+
+  updateEntity(entity: Entity): Promise<void>;
+
+  createComponent(component: Component): Promise<boolean>;
+  updateComponent(component: Component): Promise<void>;
+  deleteComponent(componentId: UUID): Promise<void>;
+
   /**
-   * Redact secrets from a text string.
-   * @param text - The text to redact secrets from
-   * @returns The text with secrets redacted
+   * Upsert a single component (convenience wrapper for upsertComponents).
+   * WHY: Completes the singular convenience pattern (matches createComponent, updateComponent).
    */
-  redactSecrets(text: string): string;
+  upsertComponent(component: Component): Promise<void>;
+
+  /**
+   * Patch a single field in component data (convenience wrapper for patchComponent).
+   * WHY: Common case is updating one field. Single-op wrapper saves boilerplate.
+   * @example runtime.patchComponentField(id, { op: 'increment', path: 'count', value: 1 })
+   */
+  patchComponentField(componentId: UUID, op: PatchOp): Promise<void>;
+
+  /**
+   * Get all components of a specific type (convenience wrapper for queryEntities).
+   * WHY: Common query pattern. Wraps queryEntities and extracts components from entities.
+   * @param type Component type to filter by
+   * @param agentId Optional agent scope
+   * @returns Array of components (without entity metadata)
+   */
+  getComponentsByType(type: string, agentId?: UUID): Promise<Component[]>;
+
+  /**
+   * Upsert a single memory (convenience wrapper for upsertMemories).
+   * WHY: Completes the singular convenience pattern for memory operations.
+   */
+  upsertMemory(memory: Memory, tableName: string): Promise<void>;
+
+  createRelationship(params: {
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+    tags?: string[];
+    metadata?: Metadata;
+  }): Promise<boolean>;
+  updateRelationship(relationship: Relationship): Promise<void>;
+
+  getMemoryById(id: UUID): Promise<Memory | null>;
+  createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID>;
+  updateMemory(memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }): Promise<boolean>;
+  deleteMemory(memoryId: UUID): Promise<void>;
+
+  removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+  updateRoom(room: Room): Promise<void>;
+  deleteRoom(roomId: UUID): Promise<void>;
+
+  createPairingRequest(request: PairingRequest): Promise<UUID>;
+  updatePairingRequest(request: PairingRequest): Promise<void>;
+  deletePairingRequest(id: UUID): Promise<void>;
+  createPairingAllowlistEntry(entry: PairingAllowlistEntry): Promise<UUID>;
+  deletePairingAllowlistEntry(id: UUID): Promise<void>;
 }

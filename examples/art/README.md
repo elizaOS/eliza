@@ -1,4 +1,4 @@
-# ElizaOS ART (Adaptive Reinforcement Training) Demos
+# elizaOS ART (Adaptive Reinforcement Training) Demos
 
 Continuous reinforcement learning system for training local LLMs to play games and solve puzzles using OpenPipe's ART framework with GRPO (Group Relative Policy Optimization).
 
@@ -304,9 +304,9 @@ async def main():
 asyncio.run(main())
 ```
 
-## ElizaOS Integration
+## elizaOS Integration
 
-This package integrates seamlessly with ElizaOS plugins for production use:
+This package integrates seamlessly with elizaOS plugins for production use:
 
 ### plugin-trajectory-logger
 
@@ -398,4 +398,4 @@ trajectories = await runtime.rollout_batch(
 - [OpenPipe ART Documentation](https://art.openpipe.ai)
 - [GRPO Paper](https://arxiv.org/abs/2402.03300)
 - [Llama 3.2 Models](https://huggingface.co/meta-llama)
-- [ElizaOS Documentation](https://elizaos.ai)
+- [elizaOS Documentation](https://elizaos.ai)

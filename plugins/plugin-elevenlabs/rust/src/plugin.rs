@@ -1,11 +1,11 @@
-//! ElevenLabs plugin definition for ElizaOS.
+//! ElevenLabs plugin definition for elizaOS.
 
 use bytes::Bytes;
 
 use crate::services::ElevenLabsService;
 use crate::types::{ElevenLabsError, ElevenLabsSTTOptions, ElevenLabsTTSOptions};
 
-/// ElevenLabs plugin for ElizaOS.
+/// ElevenLabs plugin for elizaOS.
 ///
 /// Provides high-quality text-to-speech (TTS) and speech-to-text (STT) capabilities
 /// using the ElevenLabs API.

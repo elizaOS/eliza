@@ -1,7 +1,7 @@
 /**
  * ToolPolicyService
  *
- * Service for managing tool/action access policies in ElizaOS.
+ * Service for managing tool/action access policies in elizaOS.
  * Provides unified tool filtering based on profiles, character settings,
  * channel-specific overrides, and provider configurations.
  *

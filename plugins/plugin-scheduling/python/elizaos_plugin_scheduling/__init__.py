@@ -1,5 +1,5 @@
 """
-ElizaOS Scheduling Plugin - Python Implementation.
+elizaOS Scheduling Plugin - Python Implementation.
 
 Provides:
 - Multi-party availability coordination

@@ -1,6 +1,6 @@
 # @elizaos/plugin-simple-voice
 
-Retro 1980s SAM (Software Automatic Mouth) Text-to-Speech plugin for ElizaOS agents.
+Retro 1980s SAM (Software Automatic Mouth) Text-to-Speech plugin for elizaOS agents.
 
 Available in **TypeScript**, **Python**, and **Rust**.
 

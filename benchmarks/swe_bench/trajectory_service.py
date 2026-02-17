@@ -1,7 +1,7 @@
 """Trajectory logger service adapter for SWE-bench.
 
 This bridges the standalone `elizaos_plugin_trajectory_logger.TrajectoryLoggerService`
-into the ElizaOS runtime service registry under the canonical service key:
+into the elizaOS runtime service registry under the canonical service key:
 `trajectory_logger`.
 
 That lets core runtime code log:

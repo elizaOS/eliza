@@ -33,7 +33,7 @@ export interface PluginConfig {
 export const n8nPlugin: Plugin = {
   name: "@elizaos/plugin-n8n",
   description:
-    "N8n integration plugin for ElizaOS: create ElizaOS plugins with AI and " +
+    "N8n integration plugin for elizaOS: create elizaOS plugins with AI and " +
     "generate/manage n8n workflows from natural language.",
 
   config: {

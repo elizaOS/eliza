@@ -1,7 +1,7 @@
 """
-Tests for canonical ElizaOS agent usage in REALM benchmark.
+Tests for canonical elizaOS agent usage in REALM benchmark.
 
-These tests verify that the REALM agent uses the full ElizaOS message handling loop:
+These tests verify that the REALM agent uses the full elizaOS message handling loop:
 1. AgentRuntime with basicCapabilities enabled
 2. Custom REALM actions (GENERATE_PLAN, EXECUTE_STEP, etc.)
 3. Custom REALM providers (REALM_TASK, PLANNING_STATE)
@@ -24,9 +24,9 @@ from benchmarks.realm import (
 )
 
 
-@pytest.mark.skipif(not ELIZAOS_AVAILABLE, reason="ElizaOS not available")
+@pytest.mark.skipif(not ELIZAOS_AVAILABLE, reason="elizaOS not available")
 def test_elizaos_available() -> None:
-    """Verify ElizaOS is available for testing."""
+    """Verify elizaOS is available for testing."""
     assert ELIZAOS_AVAILABLE is True
 
 
@@ -79,10 +79,10 @@ def test_realm_task_provider() -> None:
     assert get_task_context() is None
 
 
-@pytest.mark.skipif(not ELIZAOS_AVAILABLE, reason="ElizaOS not available")
+@pytest.mark.skipif(not ELIZAOS_AVAILABLE, reason="elizaOS not available")
 @pytest.mark.asyncio
 async def test_agent_initialization() -> None:
-    """Test that REALMAgent initializes with ElizaOS runtime."""
+    """Test that REALMAgent initializes with elizaOS runtime."""
     agent = REALMAgent(use_llm=False)  # Don't require LLM for this test
     
     try:
@@ -113,7 +113,7 @@ async def test_agent_initialization() -> None:
         await agent.close()
 
 
-@pytest.mark.skipif(not ELIZAOS_AVAILABLE, reason="ElizaOS not available")
+@pytest.mark.skipif(not ELIZAOS_AVAILABLE, reason="elizaOS not available")
 @pytest.mark.asyncio
 async def test_agent_solve_task_heuristic() -> None:
     """Test solving a task with heuristic planning (no LLM)."""
@@ -241,7 +241,7 @@ async def test_execute_step_action_validation() -> None:
     set_task_context(None)
 
 
-@pytest.mark.skipif(not ELIZAOS_AVAILABLE, reason="ElizaOS not available")  
+@pytest.mark.skipif(not ELIZAOS_AVAILABLE, reason="elizaOS not available")  
 @pytest.mark.asyncio
 async def test_runtime_has_basic_capabilities() -> None:
     """Test that runtime has basicCapabilities enabled by default."""
@@ -319,7 +319,7 @@ async def test_agent_trajectory_logging_disabled() -> None:
 
 @pytest.mark.skipif(
     not (ELIZAOS_AVAILABLE and TRAJECTORY_LOGGER_AVAILABLE),
-    reason="ElizaOS and trajectory logger required"
+    reason="elizaOS and trajectory logger required"
 )
 @pytest.mark.asyncio
 async def test_agent_collects_trajectories() -> None:
@@ -376,7 +376,7 @@ async def test_agent_collects_trajectories() -> None:
 
 @pytest.mark.skipif(
     not (ELIZAOS_AVAILABLE and TRAJECTORY_LOGGER_AVAILABLE),
-    reason="ElizaOS and trajectory logger required"
+    reason="elizaOS and trajectory logger required"
 )
 @pytest.mark.asyncio
 async def test_agent_export_trajectories() -> None:

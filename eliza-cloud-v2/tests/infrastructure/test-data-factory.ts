@@ -196,7 +196,7 @@ export async function createTestDataSet(
 
 /**
  * Create a test room in the cloud database
- * Note: Rooms are primarily managed by ElizaOS, this is for cloud-specific room tracking
+ * Note: Rooms are primarily managed by elizaOS, this is for cloud-specific room tracking
  */
 export async function createTestRoom(
   connectionString: string,
@@ -207,7 +207,7 @@ export async function createTestRoom(
     metadata?: Record<string, unknown>;
   },
 ): Promise<{ id: string; name: string }> {
-  // Note: ElizaOS manages rooms via plugin-sql
+  // Note: elizaOS manages rooms via plugin-sql
   // This function is a placeholder for future cloud room integration
   const { name = `Test Room ${uuidv4().slice(0, 8)}` } = options;
   const roomId = uuidv4();

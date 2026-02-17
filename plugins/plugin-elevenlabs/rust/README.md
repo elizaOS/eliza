@@ -1,6 +1,6 @@
-# ElevenLabs Plugin for ElizaOS (Rust)
+# ElevenLabs Plugin for elizaOS (Rust)
 
-High-quality text-to-speech (TTS) and speech-to-text (STT) plugin for ElizaOS using the ElevenLabs API.
+High-quality text-to-speech (TTS) and speech-to-text (STT) plugin for elizaOS using the ElevenLabs API.
 
 ## Installation
 

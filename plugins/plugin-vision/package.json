@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-vision-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "Vision plugin for ElizaOS - provides camera integration and visual awareness",
+  "description": "Vision plugin for elizaOS - provides camera integration and visual awareness",
   "type": "module",
   "main": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",
@@ -33,7 +33,7 @@
     "computer-vision",
     "ai-vision"
   ],
-  "author": "ElizaOS",
+  "author": "elizaOS",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -64,7 +64,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

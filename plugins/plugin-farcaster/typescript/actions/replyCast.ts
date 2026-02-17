@@ -14,13 +14,13 @@ export const replyCastAction: Action = {
       {
         name: "user",
         content: {
-          text: "Someone asked about ElizaOS on Farcaster, can you reply?",
+          text: "Someone asked about elizaOS on Farcaster, can you reply?",
         },
       },
       {
         name: "assistant",
         content: {
-          text: "I'll reply to their question about ElizaOS.",
+          text: "I'll reply to their question about elizaOS.",
           actions: ["REPLY_TO_CAST"],
         },
       },

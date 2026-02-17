@@ -20,7 +20,7 @@ export function ContainersEmptyState() {
       <div className="text-center space-y-2">
         <h3 className="text-xl font-medium text-white">No containers yet</h3>
         <p className="text-sm text-neutral-500 max-w-sm">
-          Deploy your first ElizaOS container using the CLI
+          Deploy your first elizaOS container using the CLI
         </p>
       </div>
 

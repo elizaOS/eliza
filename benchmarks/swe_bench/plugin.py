@@ -1,4 +1,4 @@
-"""ElizaOS plugin for SWE-bench benchmark."""
+"""elizaOS plugin for SWE-bench benchmark."""
 
 from __future__ import annotations
 

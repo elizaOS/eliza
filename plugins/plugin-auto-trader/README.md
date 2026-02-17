@@ -1,6 +1,6 @@
 # @elizaos/plugin-auto-trader
 
-Autonomous trading plugin for ElizaOS with LLM-powered strategies, Jupiter DEX integration, and comprehensive safety features.
+Autonomous trading plugin for elizaOS with LLM-powered strategies, Jupiter DEX integration, and comprehensive safety features.
 
 ## Features
 

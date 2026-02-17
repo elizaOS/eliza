@@ -1,4 +1,4 @@
-"""Base types for action definitions following the ElizaOS plugin pattern."""
+"""Base types for action definitions following the elizaOS plugin pattern."""
 
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass

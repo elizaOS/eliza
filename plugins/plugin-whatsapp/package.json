@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-whatsapp-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "WhatsApp Cloud API plugin for ElizaOS",
+  "description": "WhatsApp Cloud API plugin for elizaOS",
   "type": "module",
   "main": "typescript/dist/index.js",
   "module": "typescript/dist/index.js",
@@ -47,7 +47,7 @@
     "vitest": "^3.0.0"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

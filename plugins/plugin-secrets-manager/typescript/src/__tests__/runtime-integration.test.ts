@@ -454,7 +454,7 @@ describe("Secrets Manager Runtime Integration", () => {
    *
    * NOTE: These tests are skipped because the CharacterSettingsStorage uses
    * runtime.getSetting() which doesn't support returning objects - this is a
-   * design limitation in the ElizaOS runtime API. The underlying storage logic
+   * design limitation in the elizaOS runtime API. The underlying storage logic
    * is correct but the runtime API can't persist nested objects.
    *
    * To properly test storage functionality, either:

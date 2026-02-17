@@ -1,4 +1,4 @@
-//! WhatsApp Cloud API plugin for ElizaOS
+//! WhatsApp Cloud API plugin for elizaOS
 //!
 //! This plugin provides WhatsApp integration via Meta's Cloud API.
 
@@ -33,7 +33,7 @@ impl WhatsAppPlugin {
     pub fn new() -> Self {
         Self {
             name: WHATSAPP_SERVICE_NAME.to_string(),
-            description: "WhatsApp Cloud API plugin for ElizaOS agents".to_string(),
+            description: "WhatsApp Cloud API plugin for elizaOS agents".to_string(),
         }
     }
 }

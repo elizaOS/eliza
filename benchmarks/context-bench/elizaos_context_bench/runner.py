@@ -1,7 +1,7 @@
 """Context Benchmark Runner.
 
 Main orchestrator for running context benchmarks and collecting results.
-Integrates with ElizaOS Python runtime.
+Integrates with elizaOS Python runtime.
 
 Supports three modes:
 1. Direct LLM query (llm_query_fn) - tests model layer only
@@ -400,10 +400,10 @@ async def run_eliza_benchmark(
     runtime: "IAgentRuntime",
     config: ContextBenchConfig | None = None,
 ) -> ContextBenchResults:
-    """Run context benchmark using an ElizaOS runtime.
+    """Run context benchmark using an elizaOS runtime.
 
     Args:
-        runtime: ElizaOS Python runtime instance.
+        runtime: elizaOS Python runtime instance.
         config: Optional benchmark configuration.
 
     Returns:
@@ -419,7 +419,7 @@ async def run_eliza_benchmark(
         )
 
     async def llm_query(context: str, question: str) -> str:
-        """Query the ElizaOS runtime for an answer."""
+        """Query the elizaOS runtime for an answer."""
         system = (
             "You are a helpful assistant that answers questions based ONLY on the provided context. "
             "Return ONLY the answer text (no extra words, no markdown)."
@@ -484,7 +484,7 @@ async def run_eliza_agent_benchmark(
     model layer but the entire agent architecture.
 
     Args:
-        runtime: Initialized ElizaOS runtime with context bench plugin registered.
+        runtime: Initialized elizaOS runtime with context bench plugin registered.
         config: Optional benchmark configuration.
         concurrency: Number of concurrent tasks (default 1 for sequential).
         progress_callback: Optional callback(suite_name, completed, total).

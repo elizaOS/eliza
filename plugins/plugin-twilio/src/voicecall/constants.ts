@@ -5,7 +5,7 @@ export const VOICE_CALL_SERVICE_NAME = "voice-call";
 export const VOICE_CALL_VERSION = "2.0.0-alpha.1";
 
 /** Plugin description */
-export const VOICE_CALL_DESCRIPTION = "Voice call integration for ElizaOS agents";
+export const VOICE_CALL_DESCRIPTION = "Voice call integration for elizaOS agents";
 
 /** Default webhook port */
 export const DEFAULT_WEBHOOK_PORT = 3334;

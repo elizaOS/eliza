@@ -1,6 +1,6 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
-  "Description": "ElizaOS Per-User Container Stack - Production Ready v2 - ECS with Auto Scaling Group, Capacity Provider, and Monitoring",
+  "Description": "elizaOS Per-User Container Stack - Production Ready v2 - ECS with Auto Scaling Group, Capacity Provider, and Monitoring",
   "Parameters": {
     "UserId": {
       "Type": "String",
@@ -178,9 +178,9 @@
           },
           { "Key": "UserId", "Value": { "Ref": "UserId" } },
           { "Key": "UserEmail", "Value": { "Ref": "UserEmail" } },
-          { "Key": "Project", "Value": "ElizaOS" },
+          { "Key": "Project", "Value": "elizaOS" },
           { "Key": "Environment", "Value": "production" },
-          { "Key": "BillingEntity", "Value": "ElizaOS" },
+          { "Key": "BillingEntity", "Value": "elizaOS" },
           { "Key": "CostCenter", "Value": { "Ref": "UserId" } },
           { "Key": "ManagedBy", "Value": "CloudFormation" }
         ]
@@ -205,9 +205,9 @@
           },
           { "Key": "UserId", "Value": { "Ref": "UserId" } },
           { "Key": "UserEmail", "Value": { "Ref": "UserEmail" } },
-          { "Key": "Project", "Value": "ElizaOS" },
+          { "Key": "Project", "Value": "elizaOS" },
           { "Key": "Environment", "Value": "production" },
-          { "Key": "BillingEntity", "Value": "ElizaOS" },
+          { "Key": "BillingEntity", "Value": "elizaOS" },
           { "Key": "CostCenter", "Value": { "Ref": "UserId" } },
           { "Key": "ManagedBy", "Value": "CloudFormation" }
         ]
@@ -287,9 +287,9 @@
           { "Key": "UserId", "Value": { "Ref": "UserId" } },
           { "Key": "ProjectName", "Value": { "Ref": "ProjectName" } },
           { "Key": "UserEmail", "Value": { "Ref": "UserEmail" } },
-          { "Key": "Project", "Value": "ElizaOS" },
+          { "Key": "Project", "Value": "elizaOS" },
           { "Key": "Environment", "Value": "production" },
-          { "Key": "BillingEntity", "Value": "ElizaOS" },
+          { "Key": "BillingEntity", "Value": "elizaOS" },
           { "Key": "CostCenter", "Value": { "Ref": "UserId" } },
           { "Key": "ManagedBy", "Value": "CloudFormation" }
         ]
@@ -333,8 +333,8 @@
         },
         "Tags": [
           { "Key": "UserId", "Value": { "Ref": "UserId" } },
-          { "Key": "Project", "Value": "ElizaOS" },
-          { "Key": "BillingEntity", "Value": "ElizaOS" },
+          { "Key": "Project", "Value": "elizaOS" },
+          { "Key": "BillingEntity", "Value": "elizaOS" },
           { "Key": "CostCenter", "Value": { "Ref": "UserId" } },
           { "Key": "ManagedBy", "Value": "CloudFormation" }
         ]
@@ -527,8 +527,8 @@
         ],
         "Tags": [
           { "Key": "UserId", "Value": { "Ref": "UserId" } },
-          { "Key": "Project", "Value": "ElizaOS" },
-          { "Key": "BillingEntity", "Value": "ElizaOS" },
+          { "Key": "Project", "Value": "elizaOS" },
+          { "Key": "BillingEntity", "Value": "elizaOS" },
           { "Key": "CostCenter", "Value": { "Ref": "UserId" } },
           { "Key": "ManagedBy", "Value": "CloudFormation" }
         ]
@@ -569,8 +569,8 @@
         ],
         "Tags": [
           { "Key": "UserId", "Value": { "Ref": "UserId" } },
-          { "Key": "Project", "Value": "ElizaOS" },
-          { "Key": "BillingEntity", "Value": "ElizaOS" },
+          { "Key": "Project", "Value": "elizaOS" },
+          { "Key": "BillingEntity", "Value": "elizaOS" },
           { "Key": "CostCenter", "Value": { "Ref": "UserId" } },
           { "Key": "ManagedBy", "Value": "CloudFormation" }
         ]

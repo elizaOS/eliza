@@ -101,14 +101,14 @@ export interface AffiliateTheme {
 
 export const AFFILIATE_THEMES: Record<string, AffiliateTheme> = {
   /**
-   * Default ElizaOS Cloud Theme
+   * Default elizaOS Cloud Theme
    * Professional indigo/purple aesthetic
    */
   default: {
     id: "default",
-    name: "ElizaOS Cloud",
+    name: "elizaOS Cloud",
     branding: {
-      title: "ElizaOS Cloud",
+      title: "elizaOS Cloud",
       tagline: "AI-powered conversations",
     },
     colors: {

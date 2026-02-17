@@ -1,7 +1,7 @@
 /**
- * LINE Plugin for ElizaOS
+ * LINE Plugin for elizaOS
  *
- * Provides LINE Messaging API integration for ElizaOS agents,
+ * Provides LINE Messaging API integration for elizaOS agents,
  * supporting text, flex messages, locations, and more.
  */
 
@@ -68,11 +68,11 @@ export {
 } from "./messaging.js";
 
 /**
- * LINE plugin for ElizaOS agents.
+ * LINE plugin for elizaOS agents.
  */
 const linePlugin: Plugin = {
   name: "line",
-  description: "LINE Messaging API plugin for ElizaOS agents",
+  description: "LINE Messaging API plugin for elizaOS agents",
 
   services: [LineService],
   actions: [sendMessage, sendFlexMessage, sendLocation],

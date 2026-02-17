@@ -1,7 +1,7 @@
 """
-ElizaOS Atropos Blackjack Environment
+elizaOS Atropos Blackjack Environment
 
-A Blackjack environment for training ElizaOS agents using reinforcement learning.
+A Blackjack environment for training elizaOS agents using reinforcement learning.
 Integrates with OpenAI Gymnasium's Blackjack environment.
 """
 

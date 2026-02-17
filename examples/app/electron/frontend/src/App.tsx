@@ -94,7 +94,7 @@ export function App(): React.JSX.Element {
     <div className="page">
       <header className="header">
         <div>
-          <div className="title">ElizaOS Chat (Electron example)</div>
+          <div className="title">elizaOS Chat (Electron example)</div>
           <div className="subtitle">Main-process agent via IPC</div>
         </div>
         <button className="btn" onClick={onReset} disabled={busy}>

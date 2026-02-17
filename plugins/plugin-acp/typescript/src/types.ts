@@ -37,7 +37,7 @@ export type AcpServerOptions = {
  */
 export const ACP_AGENT_INFO = {
   name: "elizaos-acp",
-  title: "ElizaOS ACP Gateway",
+  title: "elizaOS ACP Gateway",
   version: ACP_VERSION,
 };
 

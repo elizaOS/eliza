@@ -186,7 +186,7 @@ async function generateSpeech(
 }
 
 /**
- * Edge TTS Plugin for ElizaOS
+ * Edge TTS Plugin for elizaOS
  *
  * Provides free text-to-speech synthesis using Microsoft Edge's TTS service.
  * No API key required - uses the same TTS engine as Microsoft Edge browser.

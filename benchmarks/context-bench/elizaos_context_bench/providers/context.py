@@ -1,4 +1,4 @@
-"""Long Context Provider for ElizaOS.
+"""Long Context Provider for elizaOS.
 
 Provides long context data to the agent for context benchmark evaluation.
 """

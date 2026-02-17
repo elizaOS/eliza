@@ -1,5 +1,5 @@
 """
-ElizaOS Tau-bench - Tool-Agent-User Interaction Benchmark.
+elizaOS Tau-bench - Tool-Agent-User Interaction Benchmark.
 
 Tau-bench evaluates LLMs' ability to effectively utilize tools in real-world
 customer service scenarios across multiple domains:
@@ -33,7 +33,7 @@ from elizaos_tau_bench.dataset import DataValidationError
 from elizaos_tau_bench.evaluator import TauBenchEvaluator
 from elizaos_tau_bench.agent import TauAgent  # Legacy mock agent
 from elizaos_tau_bench.eliza_agent import (
-    ElizaOSTauAgent,
+    elizaOSTauAgent,
     MockTauAgent,
     create_tau_agent,
     ELIZAOS_AVAILABLE,
@@ -61,8 +61,8 @@ __all__ = [
     "TauBenchRunner",
     "TauBenchEvaluator",
     "TauAgent",
-    # ElizaOS-integrated agents
-    "ElizaOSTauAgent",
+    # elizaOS-integrated agents
+    "elizaOSTauAgent",
     "MockTauAgent",
     "create_tau_agent",
     "ELIZAOS_AVAILABLE",

@@ -1,5 +1,5 @@
 """
-Signal messaging integration plugin for ElizaOS agents.
+Signal messaging integration plugin for elizaOS agents.
 
 This plugin provides end-to-end encrypted messaging capabilities via Signal protocol.
 """
@@ -81,12 +81,12 @@ __all__ = [
 
 # Plugin metadata
 PLUGIN_NAME = "signal"
-PLUGIN_DESCRIPTION = "Signal messaging integration plugin for ElizaOS with end-to-end encryption"
+PLUGIN_DESCRIPTION = "Signal messaging integration plugin for elizaOS with end-to-end encryption"
 PLUGIN_VERSION = "2.0.0-alpha"
 
 
 def get_plugin():
-    """Return the plugin definition for ElizaOS registration."""
+    """Return the plugin definition for elizaOS registration."""
     return {
         "name": PLUGIN_NAME,
         "description": PLUGIN_DESCRIPTION,

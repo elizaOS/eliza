@@ -1,6 +1,6 @@
 /**
  * DM Agent
- * ElizaOS-powered Dungeon Master for D&D 5e campaigns
+ * elizaOS-powered Dungeon Master for D&D 5e campaigns
  */
 
 import type { AgentRuntime, Character, Plugin } from '@elizaos/core';

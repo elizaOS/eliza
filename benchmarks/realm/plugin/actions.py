@@ -2,7 +2,7 @@
 REALM Benchmark Actions.
 
 These actions enable the agent to generate and execute plans
-for REALM benchmark tasks using the full ElizaOS action system.
+for REALM benchmark tasks using the full elizaOS action system.
 """
 
 from __future__ import annotations

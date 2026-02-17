@@ -75,7 +75,7 @@ class TrajectoryExportConfig:
 
 class TrajectoryLoggerElizaService(Service):
     """
-    ElizaOS Service wrapper around the python TrajectoryLoggerService.
+    elizaOS Service wrapper around the python TrajectoryLoggerService.
 
     This allows core runtime components (message_service, compose_state, actions)
     to log trajectories end-to-end without importing plugin-specific model types.

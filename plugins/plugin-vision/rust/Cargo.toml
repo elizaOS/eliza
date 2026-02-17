@@ -2,7 +2,7 @@
 name = "elizaos-plugin-vision"
 version = "2.0.0"
 edition = "2021"
-description = "Vision plugin for ElizaOS - provides camera integration and visual awareness"
+description = "Vision plugin for elizaOS - provides camera integration and visual awareness"
 license = "MIT"
 authors = ["elizaOS Contributors"]
 repository = "https://github.com/elizaos/elizaos"

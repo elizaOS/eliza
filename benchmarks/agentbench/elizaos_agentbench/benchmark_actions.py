@@ -1,11 +1,11 @@
 """
-ElizaOS Actions for AgentBench Environments.
+elizaOS Actions for AgentBench Environments.
 
-This module defines proper ElizaOS Actions for each benchmark environment,
+This module defines proper elizaOS Actions for each benchmark environment,
 enabling the agent to interact with benchmark tasks through the canonical
 action system rather than just text parsing.
 
-These actions can be registered with the ElizaOS runtime to provide
+These actions can be registered with the elizaOS runtime to provide
 structured tool-use capabilities for benchmark execution.
 """
 
@@ -387,7 +387,7 @@ class LateralThinkingAction:
 # =============================================================================
 
 def create_benchmark_actions() -> "list[Action]":
-    """Create all benchmark actions as proper ElizaOS Action objects."""
+    """Create all benchmark actions as proper elizaOS Action objects."""
     from elizaos.types import Action
 
     actions = []
@@ -477,7 +477,7 @@ def create_benchmark_plugin() -> "Plugin":
 
     return Plugin(
         name="agentbench",
-        description="AgentBench benchmark actions for ElizaOS",
+        description="AgentBench benchmark actions for elizaOS",
         init=init_plugin,
         config={},
         actions=create_benchmark_actions(),

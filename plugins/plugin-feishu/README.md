@@ -1,10 +1,10 @@
-# Feishu/Lark Client Plugin for ElizaOS
+# Feishu/Lark Client Plugin for elizaOS
 
-This plugin integrates a Feishu (飞书) / Lark client with ElizaOS, allowing agents to interact via ByteDance's enterprise collaboration platform. It supports both the Chinese Feishu platform and the global Lark platform.
+This plugin integrates a Feishu (飞书) / Lark client with elizaOS, allowing agents to interact via ByteDance's enterprise collaboration platform. It supports both the Chinese Feishu platform and the global Lark platform.
 
 ## Features
 
-- **Seamless Feishu/Lark Integration**: Connects ElizaOS agents to Feishu/Lark through the Open Platform API.
+- **Seamless Feishu/Lark Integration**: Connects elizaOS agents to Feishu/Lark through the Open Platform API.
 - **WebSocket Real-time Events**: Receives messages and events via WebSocket for low-latency interactions.
 - **Multi-region Support**: Works with both Feishu (China) and Lark (Global) platforms.
 - **Configuration Validation**: Ensures required settings are properly configured before starting.

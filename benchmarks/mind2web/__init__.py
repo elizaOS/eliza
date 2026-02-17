@@ -1,5 +1,5 @@
 """
-Mind2Web Benchmark for ElizaOS
+Mind2Web Benchmark for elizaOS
 
 Web agent benchmark based on OSU-NLP-Group/Mind2Web dataset.
 Evaluates agents on real-world web navigation and interaction tasks.

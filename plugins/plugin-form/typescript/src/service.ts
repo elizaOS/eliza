@@ -156,7 +156,7 @@ import { registerBuiltinTypes } from "./builtins";
  * - Accessible from actions, evaluators, providers
  *
  * WHY static `start` method:
- * - ElizaOS service lifecycle pattern
+ * - elizaOS service lifecycle pattern
  * - Async initialization support
  * - Returns Service interface
  */

@@ -41,7 +41,7 @@ class FeedbackGenerator:
         Initialize the feedback generator.
 
         Args:
-            runtime: Optional ElizaOS runtime for LLM-based feedback
+            runtime: Optional elizaOS runtime for LLM-based feedback
             use_llm: Whether to use LLM for feedback generation
             feedback_model: Model to use for feedback generation
         """

@@ -1,5 +1,5 @@
 /**
- * Matrix service implementation for ElizaOS.
+ * Matrix service implementation for elizaOS.
  *
  * This service provides Matrix messaging capabilities using matrix-js-sdk.
  */
@@ -24,7 +24,7 @@ import {
 } from "./types.js";
 
 /**
- * Matrix messaging service for ElizaOS agents.
+ * Matrix messaging service for elizaOS agents.
  */
 export class MatrixService extends Service implements IMatrixService {
   static serviceType: string = MATRIX_SERVICE_NAME;

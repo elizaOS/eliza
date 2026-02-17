@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-experience-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "Experience learning plugin for ElizaOS - records and recalls transferable agent learnings",
+  "description": "Experience learning plugin for elizaOS - records and recalls transferable agent learnings",
   "type": "module",
   "main": "typescript/dist/node/index.node.js",
   "module": "typescript/dist/node/index.node.js",
@@ -50,7 +50,7 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.1",
+    "@elizaos/core": "workspace:*",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

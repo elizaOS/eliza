@@ -1,4 +1,4 @@
-//! ElizaOS Scheduling Plugin - Rust Implementation
+//! elizaOS Scheduling Plugin - Rust Implementation
 //!
 //! Provides:
 //! - Multi-party availability coordination

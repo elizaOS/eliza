@@ -240,7 +240,7 @@ async def test_context_and_provider() -> bool:
     assert result.values.get("mind2web_step") == 0
     assert result.values.get("mind2web_done") is False
 
-    # Only check for detailed elements when ElizaOS is available
+    # Only check for detailed elements when elizaOS is available
     if ELIZAOS_AVAILABLE:
         assert "Available Elements" in result.text, "Full provider should include elements"
 

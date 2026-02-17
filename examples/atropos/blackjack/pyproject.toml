@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-atropos-blackjack"
 version = "2.0.0"
-description = "Blackjack environment for ElizaOS RL training with Atropos"
+description = "Blackjack environment for elizaOS RL training with Atropos"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"

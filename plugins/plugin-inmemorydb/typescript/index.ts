@@ -59,7 +59,10 @@ export const plugin: Plugin = {
 
     const adapter = createDatabaseAdapter(runtime.agentId);
 
-    await adapter.init();
+    // Initialize the adapter (implementation-specific method)
+    if ('init' in adapter && typeof adapter.init === 'function') {
+      await adapter.init();
+    }
     runtime.registerDatabaseAdapter(adapter);
 
     logger.success(

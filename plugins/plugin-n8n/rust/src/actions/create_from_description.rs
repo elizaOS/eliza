@@ -26,7 +26,7 @@ impl N8nAction for CreateFromDescriptionAction {
     }
 
     fn description(&self) -> &'static str {
-        "Generate and create an ElizaOS plugin from a natural language description. Do NOT use for n8n workflow creation."
+        "Generate and create an elizaOS plugin from a natural language description. Do NOT use for n8n workflow creation."
     }
 
     fn similes(&self) -> Vec<&'static str> {

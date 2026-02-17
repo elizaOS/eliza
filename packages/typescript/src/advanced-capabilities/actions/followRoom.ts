@@ -163,7 +163,7 @@ export const followRoomAction: Action = {
 
     if (shouldFollow) {
       try {
-        await runtime.setParticipantUserState(
+        await runtime.updateParticipantUserState(
           message.roomId,
           runtime.agentId,
           "FOLLOWED",

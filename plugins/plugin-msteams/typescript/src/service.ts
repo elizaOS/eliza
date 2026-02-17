@@ -33,7 +33,7 @@ import {
 export const MSTEAMS_SERVICE_NAME = "msteams";
 
 /**
- * MS Teams Service for ElizaOS
+ * MS Teams Service for elizaOS
  *
  * Provides integration with Microsoft Teams via Bot Framework:
  * - Webhook handling for incoming messages

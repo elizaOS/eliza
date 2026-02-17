@@ -1,15 +1,15 @@
 /**
- * Bridges Milaidy session keys with ElizaOS rooms.
+ * Bridges Milaidy session keys with elizaOS rooms.
  *
  * Milaidy keys: agent:{agentId}:main (DMs), agent:{agentId}:{channel}:group:{id} (groups)
- * ElizaOS rooms: per-agent UUIDs via createUniqueUuid(runtime, channelId)
+ * elizaOS rooms: per-agent UUIDs via createUniqueUuid(runtime, channelId)
  */
 
 import type { IAgentRuntime, Memory, State, Provider, ProviderResult, Room } from "@elizaos/core";
 import { buildAgentMainSessionKey, parseAgentSessionKey, ChannelType } from "@elizaos/core";
 
 /**
- * Resolve an Milaidy session key from an ElizaOS room.
+ * Resolve an Milaidy session key from an elizaOS room.
  *
  * DMs -> agent:{agentId}:main
  * Groups -> agent:{agentId}:{channel}:group:{groupId}

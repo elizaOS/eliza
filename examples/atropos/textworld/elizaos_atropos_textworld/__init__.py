@@ -21,7 +21,7 @@ from elizaos_atropos_textworld.types import (
 from elizaos_atropos_textworld.environment import TextWorldEnvironment
 from elizaos_atropos_textworld.agent import (
     TextWorldAgent,
-    ElizaOSAgent,
+    elizaOSAgent,
     create_heuristic_policy,
     create_random_policy,
 )
@@ -45,7 +45,7 @@ __all__ = [
     "TextWorldEnvironment",
     # Agents
     "TextWorldAgent",
-    "ElizaOSAgent",
+    "elizaOSAgent",
     "create_heuristic_policy",
     "create_random_policy",
     # Generator

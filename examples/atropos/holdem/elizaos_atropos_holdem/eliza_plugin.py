@@ -1,5 +1,5 @@
 """
-Canonical ElizaOS integration for Atropos Texas Hold'em.
+Canonical elizaOS integration for Atropos Texas Hold'em.
 
 Provides:
 - ATROPOS_HOLDEM provider with the current table state + valid actions
@@ -116,7 +116,7 @@ def create_holdem_character(name: str = "HoldemAgent") -> Character:
     template = create_action_only_template(
         task="Choose the next Holdem action for {{agentName}}.",
         instructions=(
-            "Choose ONE action. Output ONLY one ElizaOS action: ATROPOS_HOLDEM_ACTION.\n"
+            "Choose ONE action. Output ONLY one elizaOS action: ATROPOS_HOLDEM_ACTION.\n"
             "Put the choice in params.action as one of: FOLD, CHECK, CALL, RAISE, ALL_IN."
         ),
         action_name="ATROPOS_HOLDEM_ACTION",

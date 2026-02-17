@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Mind2Web Benchmark CLI for ElizaOS.
+Mind2Web Benchmark CLI for elizaOS.
 
 Examples:
   # Run with sample tasks (fast, no API key needed)
@@ -64,7 +64,7 @@ def _maybe_load_dotenv() -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Mind2Web Benchmark CLI for ElizaOS",
+        description="Mind2Web Benchmark CLI for elizaOS",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -135,7 +135,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--real-llm",
         action="store_true",
-        help="Use real LLM via ElizaOS runtime (requires API key)",
+        help="Use real LLM via elizaOS runtime (requires API key)",
     )
     parser.add_argument(
         "--provider",

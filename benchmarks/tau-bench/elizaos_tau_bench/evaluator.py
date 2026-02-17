@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 @runtime_checkable
 class IAgentRuntime(Protocol):
-    """Protocol for ElizaOS agent runtime."""
+    """Protocol for elizaOS agent runtime."""
     
     async def generate_text(
         self, input_text: str, options: dict[str, str]

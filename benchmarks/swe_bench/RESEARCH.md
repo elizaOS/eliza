@@ -112,7 +112,7 @@ Pass `--swebench-namespace none` (or omit the flag if you configure it in code) 
 }
 ```
 
-## Implementation Plan for ElizaOS Python
+## Implementation Plan for elizaOS Python
 
 ### Phase 1: Core Framework (Week 1)
 
@@ -660,7 +660,7 @@ class SWEBenchRunner:
         )
 ```
 
-### Phase 6: ElizaOS Plugin (Week 6)
+### Phase 6: elizaOS Plugin (Week 6)
 
 ```python
 # benchmarks/swe-bench/plugin.py
@@ -705,11 +705,11 @@ swe_bench_plugin = Plugin(
 - [x] Docker-based test evaluation
 - [x] Baseline implementation complete (24% resolve rate)
 
-## ElizaOS Implementation
+## elizaOS Implementation
 
 ### Implemented Components
 
-The complete SWE-bench benchmark implementation for ElizaOS Python includes:
+The complete SWE-bench benchmark implementation for elizaOS Python includes:
 
 | Component | File | Description |
 |-----------|------|-------------|
@@ -717,10 +717,10 @@ The complete SWE-bench benchmark implementation for ElizaOS Python includes:
 | Dataset Loader | `dataset.py` | HuggingFace dataset integration |
 | Repository Manager | `repo_manager.py` | Git operations and file management |
 | Code Tools | `tools.py` | SEARCH_CODE, READ_FILE, EDIT_FILE, LIST_FILES, SUBMIT |
-| SWE Agent | `agent.py` | Agent loop with ElizaOS runtime |
+| SWE Agent | `agent.py` | Agent loop with elizaOS runtime |
 | Evaluator | `evaluator.py` | Docker-based and basic validation |
 | Runner | `runner.py` | Benchmark orchestration and reporting |
-| Plugin | `plugin.py` | ElizaOS plugin integration |
+| Plugin | `plugin.py` | elizaOS plugin integration |
 | CLI | `cli.py` | Command-line interface |
 
 ### Running the Benchmark
@@ -807,9 +807,9 @@ This produces `mode=agent` reports in `benchmark_results/swe-bench/`:
 - `swe-bench-lite-agent-YYYYMMDD_HHMMSS.json`
 - `swe-bench-lite-agent-YYYYMMDD_HHMMSS.md`
 
-### Canonical ElizaOS Integration
+### Canonical elizaOS Integration
 
-The SWE-bench implementation uses the **full canonical ElizaOS agent flow** with no bypasses:
+The SWE-bench implementation uses the **full canonical elizaOS agent flow** with no bypasses:
 
 #### Architecture
 

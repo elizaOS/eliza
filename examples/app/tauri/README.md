@@ -1,4 +1,4 @@
-# ElizaOS Chat (Tauri example)
+# elizaOS Chat (Tauri example)
 
 This example runs an elizaOS **Rust AgentRuntime** inside the Tauri backend and exposes chat over `tauri::command` calls.
 

@@ -571,7 +571,7 @@ export class MilaidyApp extends LitElement {
     );
 
     const systemPrompt = [
-      `You are ${this.onboardingName}, an autonomous AI agent powered by ElizaOS.`,
+      `You are ${this.onboardingName}, an autonomous AI agent powered by elizaOS.`,
       style?.style ?? "",
       this.onboardingOptions.sharedStyleRules,
     ].join(" ");

@@ -106,7 +106,7 @@ describe("Message Handler - Basic Message Processing", () => {
     console.log(`   Character: ${testRuntimeResult.runtime.character?.name}`);
   }, 120000);
 
-  it("should create test user with ElizaOS entities", async () => {
+  it("should create test user with elizaOS entities", async () => {
     startTimer("user_creation");
 
     testUserContext = await createTestUser(

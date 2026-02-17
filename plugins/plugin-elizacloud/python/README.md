@@ -1,6 +1,6 @@
 # elizaos-plugin-elizacloud
 
-Python implementation of the ElizaOS Cloud plugin for multi-model AI generation.
+Python implementation of the elizaOS Cloud plugin for multi-model AI generation.
 
 ## Installation
 
@@ -73,7 +73,7 @@ asyncio.run(main())
 
 | Setting                | Description                      | Default                            |
 | ---------------------- | -------------------------------- | ---------------------------------- |
-| `api_key`              | ElizaOS Cloud API key (required) | -                                  |
+| `api_key`              | elizaOS Cloud API key (required) | -                                  |
 | `base_url`             | Base URL for API requests        | `https://www.elizacloud.ai/api/v1` |
 | `small_model`          | Model for quick tasks            | `gpt-5-mini`                      |
 | `large_model`          | Model for complex tasks          | `gpt-5`                           |

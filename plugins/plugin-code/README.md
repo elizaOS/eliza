@@ -1,6 +1,6 @@
 # @elizaos/plugin-code
 
-Coder tools for ElizaOS: filesystem operations, shell execution, and git commands.
+Coder tools for elizaOS: filesystem operations, shell execution, and git commands.
 
 This plugin ships **TypeScript**, **Python**, and **Rust** implementations.
 

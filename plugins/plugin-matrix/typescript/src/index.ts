@@ -1,5 +1,5 @@
 /**
- * Matrix messaging integration plugin for ElizaOS.
+ * Matrix messaging integration plugin for elizaOS.
  *
  * This plugin provides Matrix protocol integration using matrix-js-sdk.
  */
@@ -35,7 +35,7 @@ import { MatrixService } from "./service.js";
  */
 const matrixPlugin: Plugin = {
   name: "matrix",
-  description: "Matrix messaging integration plugin for ElizaOS with E2EE support",
+  description: "Matrix messaging integration plugin for elizaOS with E2EE support",
 
   services: [MatrixService],
 

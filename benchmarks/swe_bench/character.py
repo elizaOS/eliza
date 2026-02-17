@@ -1,11 +1,11 @@
-"""SWE-bench agent character definition for ElizaOS."""
+"""SWE-bench agent character definition for elizaOS."""
 
 from __future__ import annotations
 
 from elizaos.types.agent import Character
 
 # Template for the main message handler - this is used when generating responses
-# The agent should output actions in the ElizaOS format
+# The agent should output actions in the elizaOS format
 SWE_BENCH_MESSAGE_HANDLER_TEMPLATE = """# SWE-bench Software Engineering Agent
 
 You are a software engineering agent tasked with resolving GitHub issues.

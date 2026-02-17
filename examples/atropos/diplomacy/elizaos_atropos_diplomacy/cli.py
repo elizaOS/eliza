@@ -52,7 +52,7 @@ async def run_auto_mode(
 
     from elizaos_atropos_diplomacy import DiplomacyEnvironment, DiplomacyAgent, Power
 
-    print("\n🌍 ElizaOS Atropos - Diplomacy")
+    print("\n🌍 elizaOS Atropos - Diplomacy")
     print("=" * 50)
     print(f"Mode: {'Press (with negotiation)' if press_mode else 'No-Press'}")
     print(f"Max years: {max_years}")
@@ -241,7 +241,7 @@ async def run_interactive_mode(nation: str = "france") -> None:
         print("Available: austria, england, france, germany, italy, russia, turkey")
         return
 
-    print("\n🌍 ElizaOS Atropos - Diplomacy (Interactive)")
+    print("\n🌍 elizaOS Atropos - Diplomacy (Interactive)")
     print("=" * 50)
     print(f"You are playing as: {player_power.full_name}")
     print("=" * 50)
@@ -335,7 +335,7 @@ async def run_interactive_mode(nation: str = "france") -> None:
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="ElizaOS Atropos Diplomacy Environment",
+        description="elizaOS Atropos Diplomacy Environment",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 

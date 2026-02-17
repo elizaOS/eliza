@@ -1,4 +1,4 @@
-//! Type definitions for the ElizaOS Slack plugin.
+//! Type definitions for the elizaOS Slack plugin.
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
