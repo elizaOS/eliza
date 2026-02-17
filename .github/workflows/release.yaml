@@ -103,8 +103,8 @@ jobs:
             for manifest in "$plugin_dir/package.json" "$plugin_dir/typescript/package.json"; do
               [ -f "$manifest" ] || continue
 
-              pkg_name="$(node -e 'const fs=require("fs"); const pkg=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(typeof pkg.name === "string" ? pkg.name : "");' "$manifest" 2>/dev/null)" || {
-                invalid_reason="invalid JSON in $manifest"
+              pkg_name="$(node -e 'const fs=require("fs"); const pkg=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if ("trustedDependencies" in pkg && (!Array.isArray(pkg.trustedDependencies) || pkg.trustedDependencies.some((dep) => typeof dep !== "string"))) { throw new Error("trustedDependencies must be an array of strings"); } process.stdout.write(typeof pkg.name === "string" ? pkg.name : "");' "$manifest" 2>/dev/null)" || {
+                invalid_reason="invalid manifest schema in $manifest"
                 break
               }
 
