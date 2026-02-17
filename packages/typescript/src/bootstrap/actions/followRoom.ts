@@ -72,7 +72,7 @@ export const followRoomAction: Action = {
     if (!state) {
       logger.error(
         {
-          src: "plugin:bootstrap:action:follow_room",
+          src: "plugin:core:action:follow_room",
           agentId: runtime.agentId,
         },
         "State is required for followRoomAction",
@@ -154,7 +154,7 @@ export const followRoomAction: Action = {
 
       logger.warn(
         {
-          src: "plugin:bootstrap:action:follow_room",
+          src: "plugin:core:action:follow_room",
           agentId: runtime.agentId,
           response,
         },
@@ -218,7 +218,7 @@ export const followRoomAction: Action = {
       } catch (error) {
         logger.error(
           {
-            src: "plugin:bootstrap:action:follow_room",
+            src: "plugin:core:action:follow_room",
             agentId: runtime.agentId,
             error: error instanceof Error ? error.message : String(error),
           },

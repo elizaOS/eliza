@@ -12,8 +12,6 @@ import { ActionFilterService } from "../services/action-filter.ts";
 import { AgentEventService } from "../services/agentEvent.ts";
 import { ApprovalService } from "../services/approval.ts";
 import { EmbeddingGenerationService } from "../services/embedding.ts";
-import { FollowUpService } from "../services/followUp.ts";
-import { RolodexService } from "../services/rolodex.ts";
 import { TaskService } from "../services/task.ts";
 import { ToolPolicyService } from "../services/tool-policy.ts";
 import { TrajectoryLoggerService } from "../services/trajectoryLogger.ts";
@@ -49,7 +47,6 @@ import { ChannelType, ContentType } from "../types/primitives.ts";
 import { getLocalServerUrl } from "../utils/node.ts";
 import { composePromptFromState, parseKeyValueXml } from "../utils.ts";
 import * as actions from "./actions/index.ts";
-import * as evaluators from "./evaluators/index.ts";
 import * as providers from "./providers/index.ts";
 
 interface ImageDescriptionXml {
@@ -119,7 +116,7 @@ export async function processAttachments(
   }
   runtime.logger.debug(
     {
-      src: "plugin:bootstrap",
+      src: "plugin:core",
       agentId: runtime.agentId,
       count: attachments.length,
     },
@@ -147,7 +144,7 @@ export async function processAttachments(
 
       runtime.logger.debug(
         {
-          src: "plugin:bootstrap",
+          src: "plugin:core",
           agentId: runtime.agentId,
           url: attachment.url,
         },
@@ -179,7 +176,7 @@ export async function processAttachments(
       } catch (err) {
         runtime.logger.error(
           {
-            src: "plugin:bootstrap",
+            src: "plugin:core",
             agentId: runtime.agentId,
             error: err instanceof Error ? err.message : String(err),
           },
@@ -202,7 +199,7 @@ export async function processAttachments(
 
           runtime.logger.debug(
             {
-              src: "plugin:bootstrap",
+              src: "plugin:core",
               agentId: runtime.agentId,
               descriptionPreview:
                 processedAttachment.description?.substring(0, 100) || undefined,
@@ -225,7 +222,7 @@ export async function processAttachments(
 
             runtime.logger.debug(
               {
-                src: "plugin:bootstrap",
+                src: "plugin:core",
                 agentId: runtime.agentId,
                 descriptionPreview:
                   processedAttachment.description?.substring(0, 100) ||
@@ -235,7 +232,7 @@ export async function processAttachments(
             );
           } else {
             runtime.logger.warn(
-              { src: "plugin:bootstrap", agentId: runtime.agentId },
+              { src: "plugin:core", agentId: runtime.agentId },
               "Failed to parse XML response for image description",
             );
           }
@@ -256,7 +253,7 @@ export async function processAttachments(
 
         runtime.logger.debug(
           {
-            src: "plugin:bootstrap",
+            src: "plugin:core",
             agentId: runtime.agentId,
             descriptionPreview:
               processedAttachment.description?.substring(0, 100) || undefined,
@@ -265,7 +262,7 @@ export async function processAttachments(
         );
       } else {
         runtime.logger.warn(
-          { src: "plugin:bootstrap", agentId: runtime.agentId },
+          { src: "plugin:core", agentId: runtime.agentId },
           "Unexpected response format for image description",
         );
       }
@@ -285,7 +282,7 @@ export async function processAttachments(
       if (isPlainText) {
         runtime.logger.debug(
           {
-            src: "plugin:bootstrap",
+            src: "plugin:core",
             agentId: runtime.agentId,
             url: attachment.url,
           },
@@ -298,7 +295,7 @@ export async function processAttachments(
 
         runtime.logger.debug(
           {
-            src: "plugin:bootstrap",
+            src: "plugin:core",
             agentId: runtime.agentId,
             textPreview:
               processedAttachment.text?.substring(0, 100) || undefined,
@@ -307,7 +304,7 @@ export async function processAttachments(
         );
       } else {
         runtime.logger.warn(
-          { src: "plugin:bootstrap", agentId: runtime.agentId, contentType },
+          { src: "plugin:core", agentId: runtime.agentId, contentType },
           "Skipping non-plain-text document",
         );
       }
@@ -436,7 +433,7 @@ const postGeneratedHandler = async ({
   source,
 }: InvokePayload) => {
   runtime.logger.info(
-    { src: "plugin:bootstrap", agentId: runtime.agentId },
+    { src: "plugin:core", agentId: runtime.agentId },
     "Generating new post",
   );
   // Ensure world exists first
@@ -542,7 +539,7 @@ const postGeneratedHandler = async ({
     if (!responseContentThoughtAfter || !responseContentActionsAfter) {
       runtime.logger.warn(
         {
-          src: "plugin:bootstrap",
+          src: "plugin:core",
           agentId: runtime.agentId,
           response,
           parsedXml,
@@ -570,7 +567,7 @@ const postGeneratedHandler = async ({
 
   if (!parsedXmlResponse) {
     runtime.logger.error(
-      { src: "plugin:bootstrap", agentId: runtime.agentId, xmlResponseText },
+      { src: "plugin:core", agentId: runtime.agentId, xmlResponseText },
       "Failed to parse XML response for post creation",
     );
     throw new Error("Failed to parse XML response for post creation");
@@ -597,7 +594,7 @@ const postGeneratedHandler = async ({
     for (const m of RMDataRecentMessages) {
       if (cleanedText === m.content.text) {
         runtime.logger.info(
-          { src: "plugin:bootstrap", agentId: runtime.agentId, cleanedText },
+          { src: "plugin:core", agentId: runtime.agentId, cleanedText },
           "Already recently posted that, retrying",
         );
         postGeneratedHandler({
@@ -631,7 +628,7 @@ const postGeneratedHandler = async ({
     generalRefusalRegex.test(cleanedText)
   ) {
     runtime.logger.info(
-      { src: "plugin:bootstrap", agentId: runtime.agentId, cleanedText },
+      { src: "plugin:core", agentId: runtime.agentId, cleanedText },
       "Got prompt moderation refusal, retrying",
     );
     postGeneratedHandler({
@@ -695,7 +692,7 @@ const syncSingleUser = async (
   const entity = await runtime.getEntityById(entityId);
   runtime.logger.info(
     {
-      src: "plugin:bootstrap",
+      src: "plugin:core",
       agentId: runtime.agentId,
       entityId,
       username: entity?.metadata?.username || undefined,
@@ -707,7 +704,7 @@ const syncSingleUser = async (
   if (!channelId) {
     runtime.logger.warn(
       {
-        src: "plugin:bootstrap",
+        src: "plugin:core",
         agentId: runtime.agentId,
         entityId: entity?.id || undefined,
       },
@@ -734,7 +731,7 @@ const syncSingleUser = async (
 
   runtime.logger.info(
     {
-      src: "plugin:bootstrap",
+      src: "plugin:core",
       agentId: runtime.agentId,
       type,
       isDM: type === ChannelType.DM,
@@ -760,7 +757,7 @@ const syncSingleUser = async (
   const createdWorld = await runtime.getWorld(worldId);
   runtime.logger.info(
     {
-      src: "plugin:bootstrap",
+      src: "plugin:core",
       agentId: runtime.agentId,
       worldId,
       metadata: createdWorld?.metadata || undefined,
@@ -770,7 +767,7 @@ const syncSingleUser = async (
 
   runtime.logger.success(
     {
-      src: "plugin:bootstrap",
+      src: "plugin:core",
       agentId: runtime.agentId,
       agentName: runtime.character.name,
       entityId: entity?.id || undefined,
@@ -792,7 +789,7 @@ const handleServerSync = async ({
 }: WorldPayload) => {
   runtime.logger.debug(
     {
-      src: "plugin:bootstrap",
+      src: "plugin:core",
       agentId: runtime.agentId,
       serverName: world.name,
     },
@@ -801,7 +798,7 @@ const handleServerSync = async ({
   await runtime.ensureConnections(entities, rooms, source ?? "unknown", world);
   runtime.logger.debug(
     {
-      src: "plugin:bootstrap",
+      src: "plugin:core",
       agentId: runtime.agentId,
       worldName: world.name,
     },
@@ -818,7 +815,7 @@ const controlMessageHandler = async ({
 }: ControlMessagePayload) => {
   runtime.logger.debug(
     {
-      src: "plugin:bootstrap",
+      src: "plugin:core",
       agentId: runtime.agentId,
       action: message.payload.action,
       roomId: message.roomId,
@@ -853,7 +850,7 @@ const controlMessageHandler = async ({
 
       runtime.logger.debug(
         {
-          src: "plugin:bootstrap",
+          src: "plugin:core",
           agentId: runtime.agentId,
           action: message.payload.action,
         },
@@ -861,13 +858,13 @@ const controlMessageHandler = async ({
       );
     } else {
       runtime.logger.error(
-        { src: "plugin:bootstrap", agentId: runtime.agentId },
+        { src: "plugin:core", agentId: runtime.agentId },
         "WebSocket service does not have sendMessage method",
       );
     }
   } else {
     runtime.logger.error(
-      { src: "plugin:bootstrap", agentId: runtime.agentId },
+      { src: "plugin:core", agentId: runtime.agentId },
       "No WebSocket service found to send control message",
     );
   }
@@ -890,7 +887,7 @@ const events: PluginEvents = {
     async (payload: MessagePayload) => {
       payload.runtime.logger.debug(
         {
-          src: "plugin:bootstrap",
+          src: "plugin:core",
           agentId: payload.runtime.agentId,
           text: payload.message.content.text,
         },
@@ -915,7 +912,7 @@ const events: PluginEvents = {
     async (payload: EntityPayload) => {
       payload.runtime.logger.debug(
         {
-          src: "plugin:bootstrap",
+          src: "plugin:core",
           agentId: payload.runtime.agentId,
           entityId: payload.entityId,
         },
@@ -924,14 +921,14 @@ const events: PluginEvents = {
 
       if (!payload.worldId) {
         payload.runtime.logger.error(
-          { src: "plugin:bootstrap", agentId: payload.runtime.agentId },
+          { src: "plugin:core", agentId: payload.runtime.agentId },
           "No worldId provided for entity joined",
         );
         return;
       }
       if (!payload.roomId) {
         payload.runtime.logger.error(
-          { src: "plugin:bootstrap", agentId: payload.runtime.agentId },
+          { src: "plugin:core", agentId: payload.runtime.agentId },
           "No roomId provided for entity joined",
         );
         return;
@@ -939,7 +936,7 @@ const events: PluginEvents = {
       const payloadMetadata = payload.metadata;
       if (!payloadMetadata || !payloadMetadata.type) {
         payload.runtime.logger.error(
-          { src: "plugin:bootstrap", agentId: payload.runtime.agentId },
+          { src: "plugin:core", agentId: payload.runtime.agentId },
           "No type provided for entity joined",
         );
         return;
@@ -975,7 +972,7 @@ const events: PluginEvents = {
       }
       payload.runtime.logger.info(
         {
-          src: "plugin:bootstrap",
+          src: "plugin:core",
           agentId: payload.runtime.agentId,
           entityId: payload.entityId,
           worldId: payload.worldId,
@@ -1024,7 +1021,7 @@ const events: PluginEvents = {
       });
       logger.debug(
         {
-          src: "plugin:bootstrap",
+          src: "plugin:core",
           agentId: payload.runtime.agentId,
           actionName: actionName,
         },
@@ -1056,7 +1053,7 @@ const events: PluginEvents = {
     async (payload: EvaluatorEventPayload) => {
       logger.debug(
         {
-          src: "plugin:bootstrap:evaluator",
+          src: "plugin:core:evaluator",
           agentId: payload.runtime.agentId,
           evaluatorName: payload.evaluatorName,
           evaluatorId: payload.evaluatorId,
@@ -1071,7 +1068,7 @@ const events: PluginEvents = {
       const status = payload.error ? "failed" : "completed";
       logger.debug(
         {
-          src: "plugin:bootstrap:evaluator",
+          src: "plugin:core:evaluator",
           agentId: payload.runtime.agentId,
           status,
           evaluatorName: payload.evaluatorName,
@@ -1101,7 +1098,7 @@ const events: PluginEvents = {
       });
       logger.debug(
         {
-          src: "plugin:bootstrap",
+          src: "plugin:core",
           agentId: payload.runtime.agentId,
           runId: payload.runId,
         },
@@ -1131,7 +1128,7 @@ const events: PluginEvents = {
       });
       logger.debug(
         {
-          src: "plugin:bootstrap",
+          src: "plugin:core",
           agentId: payload.runtime.agentId,
           runId: payload.runId,
           status: payload.status,
@@ -1162,7 +1159,7 @@ const events: PluginEvents = {
       });
       logger.debug(
         {
-          src: "plugin:bootstrap",
+          src: "plugin:core",
           agentId: payload.runtime.agentId,
           runId: payload.runId,
         },
@@ -1175,7 +1172,7 @@ const events: PluginEvents = {
     async (payload: ControlMessagePayload) => {
       if (!payload.message) {
         payload.runtime.logger.warn(
-          { src: "plugin:bootstrap" },
+          { src: "plugin:core" },
           "CONTROL_MESSAGE received without message property",
         );
         return;
@@ -1212,7 +1209,6 @@ const basic = {
     providers.actionsProvider,
     providers.actionStateProvider,
     providers.attachmentsProvider,
-    providers.capabilitiesProvider,
     providers.characterProvider,
     providers.contextBenchProvider,
     providers.entitiesProvider,
@@ -1242,38 +1238,25 @@ const basic = {
 const advanced = {
   providers: [
     providers.choiceProvider,
-    providers.contactsProvider,
-    providers.factsProvider,
-    providers.followUpsProvider,
     providers.knowledgeProvider,
-    providers.relationshipsProvider,
     providers.roleProvider,
     providers.settingsProvider,
   ],
   actions: [
-    withCanonicalActionDocs(actions.addContactAction),
     withCanonicalActionDocs(actions.choiceAction),
     withCanonicalActionDocs(actions.followRoomAction),
     withCanonicalActionDocs(actions.generateImageAction),
     withCanonicalActionDocs(actions.muteRoomAction),
-    withCanonicalActionDocs(actions.removeContactAction),
     withCanonicalActionDocs(actions.resetSessionAction),
-    withCanonicalActionDocs(actions.scheduleFollowUpAction),
-    withCanonicalActionDocs(actions.searchContactsAction),
-    withCanonicalActionDocs(actions.sendMessageAction),
     withCanonicalActionDocs(actions.statusAction),
     withCanonicalActionDocs(actions.unfollowRoomAction),
     withCanonicalActionDocs(actions.unmuteRoomAction),
-    withCanonicalActionDocs(actions.updateContactAction),
-    withCanonicalActionDocs(actions.updateEntityAction),
     withCanonicalActionDocs(actions.updateRoleAction),
     withCanonicalActionDocs(actions.updateSettingsAction),
   ],
-  evaluators: [
-    evaluators.reflectionEvaluator,
-    evaluators.relationshipExtractionEvaluator,
-  ],
-  services: [RolodexService, FollowUpService] as ServiceClass[],
+  // Relationship evaluators are owned by plugin-rolodex.
+  evaluators: [],
+  services: [] as ServiceClass[],
 };
 
 // Autonomy capabilities - opt-in

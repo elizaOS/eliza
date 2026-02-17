@@ -7,7 +7,7 @@ use elizaos::types::agent::{Bio, Character};
 use elizaos::types::{
     database::{GetMemoriesParams, SearchMemoriesParams},
     memory::Memory,
-    primitives::{Content, UUID},
+    primitives::UUID,
     Entity, Room, Task, World,
 };
 use std::collections::HashMap;

@@ -12,7 +12,5 @@ __all__ = [
     "advanced_evaluators",
 ]
 
-advanced_evaluators = [
-    reflection_evaluator,
-    relationship_extraction_evaluator,
-]
+# Relationship evaluators are owned by the plugin-rolodex package.
+advanced_evaluators: list = []

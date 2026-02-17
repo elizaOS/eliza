@@ -1,7 +1,6 @@
 export { actionStateProvider } from "./actionState";
 export { actionsProvider } from "./actions";
 export { attachmentsProvider } from "./attachments";
-export { capabilitiesProvider } from "./capabilities";
 export { characterProvider } from "./character";
 export { choiceProvider } from "./choice";
 export { contactsProvider } from "./contacts";

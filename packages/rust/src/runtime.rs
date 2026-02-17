@@ -1604,6 +1604,7 @@ impl AgentRuntime {
         self.adapter.clone()
     }
 
+    /// Get the configured database adapter (if present).
     pub fn database(&self) -> Option<Arc<dyn DatabaseAdapter>> {
         self.adapter.clone()
     }
@@ -2633,10 +2634,8 @@ fn parse_xml_to_json(xml: &str) -> Option<serde_json::Value> {
             // If result is {"response": {...}}, unwrap the nested object
             // This handles cases where wrapper extraction didn't work (whitespace, etc.)
             if map.len() == 1 {
-                if let Some(inner) = map.get("response") {
-                    if let Value::Object(inner_map) = inner {
-                        return Some(Value::Object(inner_map.clone()));
-                    }
+                if let Some(Value::Object(inner_map)) = map.get("response") {
+                    return Some(Value::Object(inner_map.clone()));
                 }
             }
             Some(Value::Object(map))

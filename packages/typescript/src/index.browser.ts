@@ -8,18 +8,18 @@
 
 // Export core modules (all browser-compatible after refactoring)
 export * from "./actions";
+// Autonomy
+export * from "./autonomy/autonomousState";
+export * from "./autonomy/index";
 export * from "./character";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
-// Autonomy
-export * from "./autonomy/autonomousState";
-export * from "./autonomy/index";
-// Providers
-export * from "./providers/sessionKeys";
 export * from "./logger";
 export * from "./memory";
 export * from "./prompts";
+// Providers
+export * from "./providers/sessionKeys";
 export * from "./request-context";
 export * from "./roles";
 export * from "./runtime";

@@ -123,5 +123,19 @@ def test_validate_action_regex():
 
     # Complex regex
     msg = create_mock_memory("user@example.com")
-    assert validate_action_regex(msg, [], r"^[\w\.-]+@([\w-]+\.)+[\w-]{2,4}$") == True   # Empty pattern
+    assert validate_action_regex(msg, [], r"^[\w\.-]+@([\w-]+\.)+[\w-]{2,4}$")  # Empty pattern
     assert not validate_action_regex(mock_message, mock_recent_messages, "")
+
+    # Unicode characters
+    msg = create_mock_memory("Transfer 100 €")
+    assert not validate_action_regex(msg, [], r"transfer \d+ €") # case sensitive
+    assert validate_action_regex(msg, [], r"(?i)transfer \d+ €")
+
+    # Special characters
+    msg = create_mock_memory("Hello (world) [ok]")
+    assert validate_action_regex(msg, [], r"\(world\)")
+
+    # Long inputs (basic DoS check)
+    long_text = "a" * 10000 + "transfer"
+    msg = create_mock_memory(long_text)
+    assert validate_action_regex(msg, [], r"transfer")

@@ -1,11 +1,10 @@
 """Advanced Capabilities - Extended features for agent operation.
 
 This module provides advanced capabilities that can be enabled with
-`advanced_capabilities=True` or `enable_extended=True`:
-- Extended actions (contacts, room management, image generation, etc.)
-- Extended providers (facts, knowledge, relationships, etc.)
-- Evaluators (reflection, relationship extraction)
-- Extended services (rolodex, follow-up scheduling)
+`advanced_capabilities=True` or `enable_extended=True`.
+
+Relationship/contact extraction and social-memory features are owned by
+`plugin-rolodex` and are intentionally not auto-registered here.
 """
 
 from .actions import (
@@ -15,7 +14,6 @@ from .actions import (
     generate_image_action,
     mute_room_action,
     remove_contact_action,
-    schedule_follow_up_action,
     search_contacts_action,
     send_message_action,
     unfollow_room_action,

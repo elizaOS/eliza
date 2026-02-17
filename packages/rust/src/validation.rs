@@ -44,6 +44,51 @@ pub fn validate_action_keywords(
     false
 }
 
+/// Validates if any of the recent message history matches the given regex pattern.
+///
+/// This function checks the current message content and the last 5 messages in the provided
+/// list against the provided regex pattern.
+pub fn validate_action_regex(
+    message: &Memory,
+    recent_messages: &[Memory],
+    regex_pattern: &str,
+) -> bool {
+    if regex_pattern.is_empty() {
+        return false;
+    }
+
+    let regex = match regex::Regex::new(regex_pattern) {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+
+    let mut relevant_text: Vec<String> = Vec::new();
+
+    // 1. Current message content
+    if let Some(text) = &message.content.text {
+        relevant_text.push(text.clone());
+    }
+
+    // 2. Recent messages (last 5)
+    let start_index = if recent_messages.len() > 5 {
+        recent_messages.len() - 5
+    } else {
+        0
+    };
+    for msg in &recent_messages[start_index..] {
+        if let Some(text) = &msg.content.text {
+            relevant_text.push(text.clone());
+        }
+    }
+
+    if relevant_text.is_empty() {
+        return false;
+    }
+
+    let combined_text = relevant_text.join("\n");
+    regex.is_match(&combined_text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,7 +139,7 @@ mod tests {
         let msg_caps = create_mock_memory("TRANSFER NOW");
         assert!(validate_action_keywords(&msg_caps, &[], &keywords));
 
-    // 5. Empty keywords
+        // 5. Empty keywords
         assert!(!validate_action_keywords(&msg, &[], &[]));
     }
 
@@ -120,51 +165,16 @@ mod tests {
 
         // 4. Invalid regex (should return false safely)
         assert!(!validate_action_regex(&msg, &[], r"["));
+
+        // 5. Unicode support
+        let msg_unicode = create_mock_memory("Transfer 100 €");
+        assert!(validate_action_regex(&msg_unicode, &[], r"(?i)transfer \d+ €"));
+
+        // 6. Special characters
+        let msg_special = create_mock_memory("Hello (world) [ok]");
+        assert!(validate_action_regex(&msg_special, &[], r"\(world\)"));
+
+        // 7. Empty input
+        assert!(!validate_action_regex(&msg, &[], ""));
     }
 }
-
-/// Validates if any of the recent message history matches the given regex pattern.
-///
-/// This function checks the current message content and the last 5 messages in the provided
-/// list against the provided regex pattern.
-pub fn validate_action_regex(
-    message: &Memory,
-    recent_messages: &[Memory],
-    regex_pattern: &str,
-) -> bool {
-    if regex_pattern.is_empty() {
-        return false;
-    }
-
-    let regex = match regex::Regex::new(regex_pattern) {
-        Ok(r) => r,
-        Err(_) => return false,
-    };
-
-    let mut relevant_text: Vec<String> = Vec::new();
-
-    // 1. Current message content
-    if let Some(text) = &message.content.text {
-        relevant_text.push(text.clone());
-    }
-
-    // 2. Recent messages (last 5)
-    let start_index = if recent_messages.len() > 5 {
-        recent_messages.len() - 5
-    } else {
-        0
-    };
-    for msg in &recent_messages[start_index..] {
-        if let Some(text) = &msg.content.text {
-            relevant_text.push(text.clone());
-        }
-    }
-
-    if relevant_text.is_empty() {
-        return false;
-    }
-
-    let combined_text = relevant_text.join("\n");
-    regex.is_match(&combined_text)
-}
-

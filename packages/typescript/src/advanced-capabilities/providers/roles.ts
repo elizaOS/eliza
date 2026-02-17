@@ -40,7 +40,7 @@ export const roleProvider: Provider = {
     if (!room) {
       logger.debug(
         {
-          src: "plugin:bootstrap:provider:roles",
+          src: "plugin:core:provider:roles",
           agentId: runtime.agentId,
         },
         "No room found for roles provider, skipping",
@@ -75,7 +75,7 @@ export const roleProvider: Provider = {
 
     logger.info(
       {
-        src: "plugin:bootstrap:provider:roles",
+        src: "plugin:core:provider:roles",
         agentId: runtime.agentId,
         worldId,
       },
@@ -88,7 +88,7 @@ export const roleProvider: Provider = {
     if (!world || !world.metadata?.ownership?.ownerId) {
       logger.info(
         {
-          src: "plugin:bootstrap:provider:roles",
+          src: "plugin:core:provider:roles",
           agentId: runtime.agentId,
           worldId,
         },
@@ -110,7 +110,7 @@ export const roleProvider: Provider = {
     if (Object.keys(roles).length === 0) {
       logger.info(
         {
-          src: "plugin:bootstrap:provider:roles",
+          src: "plugin:core:provider:roles",
           agentId: runtime.agentId,
           worldId,
         },
@@ -129,7 +129,7 @@ export const roleProvider: Provider = {
 
     logger.info(
       {
-        src: "plugin:bootstrap:provider:roles",
+        src: "plugin:core:provider:roles",
         agentId: runtime.agentId,
         roleCount: Object.keys(roles).length,
       },
@@ -167,7 +167,7 @@ export const roleProvider: Provider = {
       if (!name || !username || !names) {
         logger.warn(
           {
-            src: "plugin:bootstrap:provider:roles",
+            src: "plugin:core:provider:roles",
             agentId: runtime.agentId,
             entityId,
           },

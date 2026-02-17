@@ -13,7 +13,6 @@ from elizaos.types import (
     Content,
     ModelType,
 )
-from elizaos.utils.spec_examples import convert_spec_examples
 
 if TYPE_CHECKING:
     from elizaos.types import (
@@ -30,7 +29,22 @@ _spec = require_action_spec("ADD_CONTACT")
 
 def _convert_spec_examples() -> list[list[ActionExample]]:
     """Convert spec examples to ActionExample format."""
-    return convert_spec_examples(_spec)
+    spec_examples = _spec.get("examples", [])
+    if spec_examples:
+        return [
+            [
+                ActionExample(
+                    name=msg.get("name", ""),
+                    content=Content(
+                        text=msg.get("content", {}).get("text", ""),
+                        actions=msg.get("content", {}).get("actions"),
+                    ),
+                )
+                for msg in example
+            ]
+            for example in spec_examples
+        ]
+    return []
 
 
 @dataclass
@@ -89,18 +103,14 @@ class AddContactAction:
         notes = str(parsed.get("notes", ""))
         reason = str(parsed.get("reason", ""))
 
-        from uuid import UUID as StdUUID
-
         entity_id = message.entity_id
-        entity_id_uuid = StdUUID(str(entity_id)) if entity_id else None
         preferences = ContactPreferences(notes=notes) if notes else None
 
-        if entity_id_uuid:
-            await rolodex_service.add_contact(
-                entity_id=entity_id_uuid,
-                categories=categories,
-                preferences=preferences,
-            )
+        await rolodex_service.add_contact(
+            entity_id=entity_id,
+            categories=categories,
+            preferences=preferences,
+        )
 
         response_text = (
             f"I've added {contact_name} to your contacts as {', '.join(categories)}. {reason}"

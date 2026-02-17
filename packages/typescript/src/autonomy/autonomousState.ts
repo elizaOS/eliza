@@ -194,10 +194,10 @@ export function createAutonomousStateProvider(): Provider {
           })),
           heartbeat: heartbeat
             ? {
-              status: heartbeat.status,
-              ts: heartbeat.ts,
-              to: heartbeat.to ?? "",
-            }
+                status: heartbeat.status,
+                ts: heartbeat.ts,
+                to: heartbeat.to ?? "",
+              }
             : null,
         },
       };

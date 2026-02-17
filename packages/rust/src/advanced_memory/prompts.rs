@@ -1,5 +1,5 @@
-/// Prompt templates for the advanced memory evaluators.
-/// These match the TypeScript/Python templates exactly.
+//! Prompt templates for the advanced memory evaluators.
+//! These match the TypeScript/Python templates exactly.
 
 pub const INITIAL_SUMMARIZATION_TEMPLATE: &str = r#"# Task: Summarize Conversation
 
