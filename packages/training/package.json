@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/training",
-  "version": "2.0.0-alpha.11",
+  "version": "2.0.0-alpha.12",
   "description": "ElizaOS RL training pipeline with benchmarking and model publishing support",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -48,7 +48,6 @@
     "ethers": "^6.16.0",
     "uuid": "^11.1.0"
   },
-  "peerDependencies": {},
   "devDependencies": {
     "@types/node": "^24.10.0",
     "@types/uuid": "^10.0.0",

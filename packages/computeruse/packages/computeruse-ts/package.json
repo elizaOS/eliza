@@ -53,12 +53,12 @@
     }
   },
   "optionalDependencies": {
-    "@elizaos/computeruse-win32-arm64-msvc": "2.0.0-alpha.3",
-    "@elizaos/computeruse-win32-x64-msvc": "2.0.0-alpha.3",
     "@elizaos/computeruse-darwin-arm64": "2.0.0-alpha.3",
     "@elizaos/computeruse-darwin-x64": "2.0.0-alpha.3",
+    "@elizaos/computeruse-linux-arm64-gnu": "2.0.0-alpha.3",
     "@elizaos/computeruse-linux-x64-gnu": "2.0.0-alpha.3",
-    "@elizaos/computeruse-linux-arm64-gnu": "2.0.0-alpha.3"
+    "@elizaos/computeruse-win32-arm64-msvc": "2.0.0-alpha.3",
+    "@elizaos/computeruse-win32-x64-msvc": "2.0.0-alpha.3"
   },
   "repository": {
     "type": "git",
@@ -77,5 +77,5 @@
     "test-hook": "powershell.exe -ExecutionPolicy Bypass -File \"../../.git/hooks/pre-push.ps1\""
   },
   "types": "wrapper.d.ts",
-  "version": "2.0.0-alpha.11"
+  "version": "2.0.0-alpha.12"
 }
