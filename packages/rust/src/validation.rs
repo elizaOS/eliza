@@ -168,7 +168,11 @@ mod tests {
 
         // 5. Unicode support
         let msg_unicode = create_mock_memory("Transfer 100 €");
-        assert!(validate_action_regex(&msg_unicode, &[], r"(?i)transfer \d+ €"));
+        assert!(validate_action_regex(
+            &msg_unicode,
+            &[],
+            r"(?i)transfer \d+ €"
+        ));
 
         // 6. Special characters
         let msg_special = create_mock_memory("Hello (world) [ok]");
