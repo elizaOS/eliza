@@ -65,12 +65,12 @@
     "url": "https://github.com/elizaos/eliza"
   },
   "scripts": {
-    "artifacts": "npx napi artifacts",
-    "build": "npm run build:wrapper && npx napi build --platform --release --strip",
-    "build:debug": "npm run build:wrapper && npx napi build --platform",
-    "build:wrapper": "npx esbuild wrapper.ts --outfile=wrapper.js --platform=node --format=cjs --target=es2020",
+    "artifacts": "napi artifacts",
+    "build": "npm run build:wrapper && napi build --platform --release --strip",
+    "build:debug": "npm run build:wrapper && napi build --platform",
+    "build:wrapper": "esbuild wrapper.ts --outfile=wrapper.js --platform=node --format=cjs --target=es2020",
     "prepublish:ci": "npm run build:wrapper",
-    "prepublishOnly": "npm run build:wrapper && npx napi prepublish -t npm",
+    "prepublishOnly": "npm run build:wrapper && napi prepublish -t npm",
     "sync-version": "node scripts/sync-version.js",
     "test": "node tests/element-chaining.test.js && node tests/element-range.test.js && node tests/element-scroll-into-view.test.js && node tests/element-value.test.js && node tests/execute-browser-script-wrapper.test.js && node tests/comprehensive-ui-elements.test.js",
     "test:desktop": "node --test tests/*.test.js",
