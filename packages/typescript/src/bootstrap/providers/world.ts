@@ -22,7 +22,7 @@ export const worldProvider: Provider = {
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     logger.debug(
       {
-        src: "plugin:bootstrap:provider:world",
+        src: "plugin:core:provider:world",
         agentId: runtime.agentId,
         roomId: message.roomId,
       },
@@ -35,7 +35,7 @@ export const worldProvider: Provider = {
     if (!currentRoom) {
       logger.warn(
         {
-          src: "plugin:bootstrap:provider:world",
+          src: "plugin:core:provider:world",
           agentId: runtime.agentId,
           roomId: message.roomId,
         },
@@ -54,7 +54,7 @@ export const worldProvider: Provider = {
 
     logger.debug(
       {
-        src: "plugin:bootstrap:provider:world",
+        src: "plugin:core:provider:world",
         agentId: runtime.agentId,
         roomName: currentRoom.name,
         roomType: currentRoom.type,
@@ -68,7 +68,7 @@ export const worldProvider: Provider = {
     if (!worldId) {
       logger.warn(
         {
-          src: "plugin:bootstrap:provider:world",
+          src: "plugin:core:provider:world",
           agentId: runtime.agentId,
           roomId: message.roomId,
         },
@@ -90,7 +90,7 @@ export const worldProvider: Provider = {
     if (!world) {
       logger.warn(
         {
-          src: "plugin:bootstrap:provider:world",
+          src: "plugin:core:provider:world",
           agentId: runtime.agentId,
           worldId,
         },
@@ -109,7 +109,7 @@ export const worldProvider: Provider = {
 
     logger.debug(
       {
-        src: "plugin:bootstrap:provider:world",
+        src: "plugin:core:provider:world",
         agentId: runtime.agentId,
         worldName: world.name,
         worldId: world.id,
@@ -121,7 +121,7 @@ export const worldProvider: Provider = {
     const worldRooms = await runtime.getRooms(worldId);
     logger.debug(
       {
-        src: "plugin:bootstrap:provider:world",
+        src: "plugin:core:provider:world",
         agentId: runtime.agentId,
         roomCount: worldRooms.length,
         worldName: world.name,
@@ -133,7 +133,7 @@ export const worldProvider: Provider = {
     const participants = await runtime.getParticipantsForRoom(message.roomId);
     logger.debug(
       {
-        src: "plugin:bootstrap:provider:world",
+        src: "plugin:core:provider:world",
         agentId: runtime.agentId,
         participantCount: participants.length,
         roomName: currentRoom.name,
@@ -163,7 +163,7 @@ export const worldProvider: Provider = {
       if (!room?.id || !room.name) {
         logger.warn(
           {
-            src: "plugin:bootstrap:provider:world",
+            src: "plugin:core:provider:world",
             agentId: runtime.agentId,
             roomId: room?.id,
           },
@@ -258,7 +258,7 @@ export const worldProvider: Provider = {
     const formattedText = addHeader("# World Information", worldInfoText);
 
     logger.debug(
-      { src: "plugin:bootstrap:provider:world", agentId: runtime.agentId },
+      { src: "plugin:core:provider:world", agentId: runtime.agentId },
       "World provider completed successfully",
     );
 

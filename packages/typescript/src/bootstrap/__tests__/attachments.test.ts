@@ -178,7 +178,7 @@ describe("processAttachments", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual(imageAttachment); // Should return original
     expect(runtime.logger.warn).toHaveBeenCalledWith(
-      { src: "plugin:bootstrap", agentId: runtime.agentId },
+      { src: "plugin:core", agentId: runtime.agentId },
       "Failed to parse XML response for image description",
     );
   });
@@ -216,7 +216,7 @@ describe("processAttachments", () => {
     expect(result[1].description).toBe("Description of second image");
     expect(runtime.logger.error).toHaveBeenCalledWith(
       {
-        src: "plugin:bootstrap",
+        src: "plugin:core",
         agentId: runtime.agentId,
         error: expect.any(String),
       },

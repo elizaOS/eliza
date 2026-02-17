@@ -27,8 +27,8 @@ type ElizaCoreSessionHelpers = {
   };
   parseAgentSessionKey?: (key: string) =>
     | {
-      agentId?: string;
-    }
+        agentId?: string;
+      }
     | undefined;
 };
 
@@ -47,8 +47,8 @@ function buildAgentMainSessionKey(params: {
 
 function parseAgentSessionKey(key: string):
   | {
-    agentId?: string;
-  }
+      agentId?: string;
+    }
   | undefined {
   // Simple parsing based on the format: agent:{agentId}:{rest}
   const parts = key.split(":");

@@ -12,7 +12,5 @@ __all__ = [
     "advanced_services",
 ]
 
-advanced_services: list[type] = [
-    RolodexService,
-    FollowUpService,
-]
+# Rolodex/follow-up services are owned by plugin-rolodex.
+advanced_services: list[type] = []

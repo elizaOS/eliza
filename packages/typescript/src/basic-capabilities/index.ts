@@ -1,7 +1,7 @@
 /**
  * Basic Capabilities
  *
- * Core functionality included by default in the bootstrap plugin.
+ * Core functionality included by default in the core capabilities.
  * These provide essential agent behavior:
  * - Core providers (actions, character, entities, messages, etc.)
  * - Basic actions (reply, ignore, none)
@@ -1243,7 +1243,6 @@ export const basicProviders = [
   providers.actionsProvider,
   providers.actionStateProvider,
   providers.attachmentsProvider,
-  providers.capabilitiesProvider,
   providers.characterProvider,
   providers.choiceProvider,
   providers.contextBenchProvider,
@@ -1333,7 +1332,7 @@ export { autonomyCapabilities };
 export { advancedCapabilities as extendedCapabilities };
 
 /**
- * Creates the bootstrap plugin with the specified capability configuration.
+ * Creates the core capabilities with the specified capability configuration.
  * This is the main entry point for plugin creation.
  */
 export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {

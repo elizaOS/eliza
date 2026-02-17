@@ -8,16 +8,14 @@
 
 // Export all core modules
 export * from "./actions";
+// Autonomy
+export * from "./autonomy/autonomousState";
+export * from "./autonomy/index";
 // Export capabilities and plugin creation
 export * from "./basic-capabilities/index";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 export * from "./character-loader";
-// Autonomy
-export * from "./autonomy/autonomousState";
-export * from "./autonomy/index";
-// Providers
-export * from "./providers/sessionKeys";
 // Export character utilities and loader (includes re-exports from constants)
 export * from "./character-utils";
 // Export additional constants not re-exported by character-utils
@@ -51,6 +49,8 @@ export * from "./plugins";
 export * from "./prompts";
 // Export onboarding providers
 export * from "./providers/onboarding-progress";
+// Providers
+export * from "./providers/sessionKeys";
 // Export skill eligibility provider
 export * from "./providers/skill-eligibility";
 export * from "./request-context";

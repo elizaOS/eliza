@@ -30,17 +30,13 @@
 #![warn(rustdoc::missing_crate_level_docs)]
 
 #[cfg(all(feature = "native", not(feature = "wasm")))]
+#[allow(missing_docs)]
+/// Advanced memory capabilities (summaries, extraction, and long-term recall).
 pub mod advanced_memory;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod advanced_planning;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod autonomy;
-#[cfg(all(
-    feature = "bootstrap-internal",
-    feature = "native",
-    not(feature = "wasm")
-))]
-pub mod bootstrap;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod bootstrap_core;
 pub mod character;
@@ -61,6 +57,7 @@ pub mod services;
 pub mod settings;
 pub mod template;
 pub mod types;
+/// Validation helpers for keyword/regex checks and streaming extraction.
 pub mod validation;
 pub mod xml;
 

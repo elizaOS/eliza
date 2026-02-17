@@ -36,19 +36,13 @@ __all__ = [
     "advanced_actions",
 ]
 
+# Rolodex/contact actions are provided by plugin-rolodex.
 advanced_actions = [
-    add_contact_action,
     follow_room_action,
     generate_image_action,
     mute_room_action,
-    remove_contact_action,
-    schedule_follow_up_action,
-    search_contacts_action,
-    send_message_action,
     unfollow_room_action,
     unmute_room_action,
-    update_contact_action,
-    update_entity_action,
     update_role_action,
     update_settings_action,
 ]

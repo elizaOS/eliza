@@ -16,34 +16,21 @@ _spec = require_action_spec("UNMUTE_ROOM")
 def _convert_spec_examples() -> list[list[ActionExample]]:
     """Convert spec examples to ActionExample format."""
     spec_examples = _spec.get("examples", [])
-    if not isinstance(spec_examples, list):
-        return []
-    result: list[list[ActionExample]] = []
-    for example in spec_examples:
-        if not isinstance(example, list):
-            continue
-        row: list[ActionExample] = []
-        for msg in example:
-            if not isinstance(msg, dict):
-                continue
-            content = msg.get("content", {})
-            text = ""
-            actions: list[str] | None = None
-            if isinstance(content, dict):
-                text_val = content.get("text", "")
-                text = str(text_val) if text_val else ""
-                actions_val = content.get("actions")
-                if isinstance(actions_val, list) and all(isinstance(a, str) for a in actions_val):
-                    actions = list(actions_val)
-            row.append(
+    if spec_examples:
+        return [
+            [
                 ActionExample(
-                    name=str(msg.get("name", "")),
-                    content=Content(text=text, actions=actions),
+                    name=msg.get("name", ""),
+                    content=Content(
+                        text=msg.get("content", {}).get("text", ""),
+                        actions=msg.get("content", {}).get("actions"),
+                    ),
                 )
-            )
-        if row:
-            result.append(row)
-    return result
+                for msg in example
+            ]
+            for example in spec_examples
+        ]
+    return []
 
 
 @dataclass

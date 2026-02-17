@@ -13,7 +13,6 @@ from elizaos.types import (
     Content,
     ModelType,
 )
-from elizaos.utils.spec_examples import convert_spec_examples
 
 if TYPE_CHECKING:
     from elizaos.types import (
@@ -30,7 +29,22 @@ _spec = require_action_spec("REMOVE_CONTACT")
 
 def _convert_spec_examples() -> list[list[ActionExample]]:
     """Convert spec examples to ActionExample format."""
-    return convert_spec_examples(_spec)
+    spec_examples = _spec.get("examples", [])
+    if spec_examples:
+        return [
+            [
+                ActionExample(
+                    name=msg.get("name", ""),
+                    content=Content(
+                        text=msg.get("content", {}).get("text", ""),
+                        actions=msg.get("content", {}).get("actions"),
+                    ),
+                )
+                for msg in example
+            ]
+            for example in spec_examples
+        ]
+    return []
 
 
 @dataclass

@@ -1,8 +1,7 @@
 use anyhow::Result;
-use elizaos::runtime::{AgentRuntime, ModelSize, RuntimeModelHandler, RuntimeOptions};
+use elizaos::runtime::{AgentRuntime, RuntimeModelHandler, RuntimeOptions};
 use elizaos::types::Character;
 use serde_json::Value;
-use std::sync::Arc;
 
 #[tokio::test]
 async fn test_trajectory_parity_logging() -> Result<()> {
@@ -27,9 +26,6 @@ async fn test_trajectory_parity_logging() -> Result<()> {
     let _state = runtime.compose_state(&message).await?;
 
     // Verify provider logs
-    let logs = runtime.get_trajectory_logs();
-    let provider_logs = &logs.provider_access;
-
     // Should have logs from default providers (e.g. system prompt provider if any, or just empty if no providers)
     // Actually, default runtime might not have providers unless we reg them.
     // The newly created runtime has empty providers list by default unless bootstrap runs?

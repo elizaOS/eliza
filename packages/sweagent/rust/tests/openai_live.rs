@@ -23,9 +23,7 @@ struct ResponseMessage {
 
 #[derive(Debug, Deserialize)]
 struct Choice {
-    index: usize,
     message: ResponseMessage,
-    finish_reason: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,7 +37,6 @@ struct Usage {
 struct OpenAIResponse {
     id: String,
     object: String,
-    created: u64,
     model: String,
     choices: Vec<Choice>,
     usage: Usage,
@@ -184,7 +181,9 @@ async fn test_code_related_queries() {
         },
         Message {
             role: "user".to_string(),
-            content: "Write a Python function that adds two numbers. Only the function, no explanation.".to_string(),
+            content:
+                "Write a Python function that adds two numbers. Only the function, no explanation."
+                    .to_string(),
         },
     ];
 

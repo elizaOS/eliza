@@ -24,12 +24,9 @@ __all__ = [
     "advanced_providers",
 ]
 
+# Rolodex/contact providers are provided by plugin-rolodex.
 advanced_providers = [
-    contacts_provider,
-    facts_provider,
-    follow_ups_provider,
     knowledge_provider,
-    relationships_provider,
     roles_provider,
     agent_settings_provider,
     settings_provider,

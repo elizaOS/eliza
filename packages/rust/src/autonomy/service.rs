@@ -716,8 +716,10 @@ mod tests {
         is_autonomous: bool,
         event_type: Option<&str>,
     ) -> Memory {
-        let mut content = Content::default();
-        content.text = Some(text.to_string());
+        let mut content = Content {
+            text: Some(text.to_string()),
+            ..Default::default()
+        };
         if is_autonomous {
             content
                 .extra

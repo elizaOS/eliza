@@ -165,7 +165,7 @@ export const settingsProvider: Provider = {
     if (!room) {
       logger.debug(
         {
-          src: "plugin:bootstrap:provider:settings",
+          src: "plugin:core:provider:settings",
           agentId: runtime.agentId,
         },
         "No room found for settings provider, skipping",
@@ -184,7 +184,7 @@ export const settingsProvider: Provider = {
     if (!room.worldId) {
       logger.debug(
         {
-          src: "plugin:bootstrap:provider:settings",
+          src: "plugin:core:provider:settings",
           agentId: runtime.agentId,
         },
         "No world found for settings provider -- settings provider will be skipped",
@@ -226,7 +226,7 @@ export const settingsProvider: Provider = {
         await runtime.updateWorld(world);
         logger.info(
           {
-            src: "plugin:bootstrap:provider:settings",
+            src: "plugin:core:provider:settings",
             agentId: runtime.agentId,
             worldId: world.id,
           },
@@ -237,7 +237,7 @@ export const settingsProvider: Provider = {
       if (!world) {
         logger.error(
           {
-            src: "plugin:bootstrap:provider:settings",
+            src: "plugin:core:provider:settings",
             agentId: runtime.agentId,
           },
           "No world found for user during onboarding",
@@ -263,7 +263,7 @@ export const settingsProvider: Provider = {
       if (!world) {
         logger.error(
           {
-            src: "plugin:bootstrap:provider:settings",
+            src: "plugin:core:provider:settings",
             agentId: runtime.agentId,
             worldId: room.worldId,
           },
@@ -285,7 +285,7 @@ export const settingsProvider: Provider = {
       } else if (!serverId) {
         logger.debug(
           {
-            src: "plugin:bootstrap:provider:settings",
+            src: "plugin:core:provider:settings",
             agentId: runtime.agentId,
             worldId: room.worldId,
           },
@@ -298,7 +298,7 @@ export const settingsProvider: Provider = {
     if (!serverId) {
       logger.info(
         {
-          src: "plugin:bootstrap:provider:settings",
+          src: "plugin:core:provider:settings",
           agentId: runtime.agentId,
           entityId: message.entityId,
         },
@@ -329,7 +329,7 @@ export const settingsProvider: Provider = {
     if (!worldSettings) {
       logger.info(
         {
-          src: "plugin:bootstrap:provider:settings",
+          src: "plugin:core:provider:settings",
           agentId: runtime.agentId,
           messageServerId: serverId,
         },
