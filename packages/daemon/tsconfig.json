@@ -3,6 +3,7 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./typescript/src",
+    "types": ["node"],
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true
