@@ -84,6 +84,7 @@
     "adze": "^2.2.5",
     "crypto-browserify": "^3.12.0",
     "dedent": "^1.7.1",
+    "drizzle-orm": "^0.44.7",
     "dotenv": "^17.2.3",
     "fast-redact": "^3.5.0",
     "file-type": "^21.3.0",
