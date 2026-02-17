@@ -85,6 +85,34 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Validate plugin manifests
+        run: |
+          set -euo pipefail
+          echo "🔎 Validating plugin manifest JSON..."
+          INVALID_COUNT=0
+          shopt -s nullglob
+
+          for plugin_dir in plugins/plugin-*; do
+            [ -d "$plugin_dir" ] || continue
+            invalid_manifest=""
+
+            for manifest in "$plugin_dir/package.json" "$plugin_dir/typescript/package.json"; do
+              [ -f "$manifest" ] || continue
+              if ! node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$manifest" >/dev/null 2>&1; then
+                invalid_manifest="$manifest"
+                break
+              fi
+            done
+
+            if [ -n "$invalid_manifest" ]; then
+              echo "  ⚠️ Excluding $plugin_dir due to invalid JSON in $invalid_manifest"
+              rm -rf "$plugin_dir"
+              INVALID_COUNT=$((INVALID_COUNT + 1))
+            fi
+          done
+
+          echo "✅ Plugin manifest validation complete (excluded ${INVALID_COUNT} plugin repos)."
+
       - name: Setup Git
         run: |
           git config user.name "github-actions[bot]"

@@ -9,19 +9,16 @@
 
 // Re-export advanced capabilities from bootstrap
 pub use crate::bootstrap::actions::{
-    extended_actions as advanced_actions, AddContactAction, FollowRoomAction, GenerateImageAction,
-    MuteRoomAction, RemoveContactAction, ScheduleFollowUpAction, SearchContactsAction,
-    SendMessageAction, UnfollowRoomAction, UnmuteRoomAction, UpdateContactAction,
-    UpdateEntityAction, UpdateRoleAction, UpdateSettingsAction,
+    extended_actions as advanced_actions, FollowRoomAction, GenerateImageAction, MuteRoomAction,
+    UnfollowRoomAction, UnmuteRoomAction, UpdateRoleAction, UpdateSettingsAction,
 };
 // pub use crate::bootstrap::evaluators::{
 //     extended_evaluators as advanced_evaluators, Evaluator, ReflectionEvaluator,
 //     RelationshipExtractionEvaluator,
 // };
 pub use crate::bootstrap::providers::{
-    extended_providers as advanced_providers, AgentSettingsProvider, ContactsProvider,
-    FactsProvider, FollowUpsProvider, KnowledgeProvider, RelationshipsProvider, RolesProvider,
-    SettingsProvider,
+    extended_providers as advanced_providers, AgentSettingsProvider, KnowledgeProvider,
+    RolesProvider, SettingsProvider,
 };
 // pub use crate::bootstrap::services::{FollowUpService, RolodexService};
 
