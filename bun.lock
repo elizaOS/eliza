@@ -37,7 +37,7 @@
     },
     "packages/computeruse/packages/computeruse-ts": {
       "name": "@elizaos/computeruse",
-      "version": "2.0.0-alpha.23",
+      "version": "2.0.0-alpha.24",
       "dependencies": {
         "@mediar-ai/kv": "^0.23.30",
       },
@@ -113,7 +113,7 @@
     },
     "packages/daemon": {
       "name": "@elizaos/daemon",
-      "version": "2.0.0-alpha.23",
+      "version": "2.0.0-alpha.24",
       "devDependencies": {
         "@biomejs/biome": "^1.9.4",
         "@types/node": "^22.10.2",
@@ -127,7 +127,7 @@
     },
     "packages/elizaos": {
       "name": "elizaos",
-      "version": "2.0.0-alpha.23",
+      "version": "2.0.0-alpha.24",
       "bin": {
         "elizaos": "./dist/cli.js",
       },
@@ -143,7 +143,7 @@
     },
     "packages/interop": {
       "name": "@elizaos/interop",
-      "version": "2.0.0-alpha.23",
+      "version": "2.0.0-alpha.24",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -154,26 +154,26 @@
     },
     "packages/prompts": {
       "name": "@elizaos/prompts",
-      "version": "2.0.0-alpha.23",
+      "version": "2.0.0-alpha.24",
     },
     "packages/python": {
       "name": "@elizaos/python",
-      "version": "2.0.0-alpha.23",
+      "version": "2.0.0-alpha.24",
     },
     "packages/rust": {
       "name": "@elizaos/rust",
-      "version": "2.0.0-alpha.23",
+      "version": "2.0.0-alpha.24",
     },
     "packages/schemas": {
       "name": "@elizaos/schemas",
-      "version": "2.0.0-alpha.23",
+      "version": "2.0.0-alpha.24",
       "devDependencies": {
         "@bufbuild/buf": "^1.47.2",
       },
     },
     "packages/skills": {
       "name": "@elizaos/skills",
-      "version": "2.0.0-alpha.23",
+      "version": "2.0.0-alpha.24",
       "dependencies": {
         "yaml": "^2.8.2",
       },
@@ -183,7 +183,7 @@
     },
     "packages/sweagent": {
       "name": "@elizaos/sweagent-root",
-      "version": "2.0.0-alpha.23",
+      "version": "2.0.0-alpha.24",
       "devDependencies": {
         "@biomejs/biome": "^2.3.11",
         "@types/bun": "^1.3.5",
@@ -194,7 +194,7 @@
     },
     "packages/training": {
       "name": "@elizaos/training",
-      "version": "2.0.0-alpha.23",
+      "version": "2.0.0-alpha.24",
       "dependencies": {
         "@huggingface/hub": "^2.6.12",
         "@vercel/blob": "^0.27.1",
@@ -210,7 +210,7 @@
     },
     "packages/tui": {
       "name": "@elizaos/tui",
-      "version": "2.0.0-alpha.23",
+      "version": "2.0.0-alpha.24",
       "dependencies": {
         "@types/mime-types": "^2.1.4",
         "chalk": "^5.5.0",
@@ -226,7 +226,7 @@
     },
     "packages/typescript": {
       "name": "@elizaos/core",
-      "version": "2.0.0-alpha.23",
+      "version": "2.0.0-alpha.24",
       "dependencies": {
         "@bufbuild/protobuf": "^2.10.2",
         "@elizaos/prompts": "workspace:*",
