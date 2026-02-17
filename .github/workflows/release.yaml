@@ -62,6 +62,12 @@ jobs:
           echo "📦 Checking out all plugin repositories..."
           mkdir -p plugins
 
+          # Alpha releases on develop should not be blocked by external plugin repos.
+          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "ℹ️ Skipping external plugin checkout on develop branch."
+            exit 0
+          fi
+
           # Clone all plugin repos from the elizaos-plugins org
           REPOS=$(gh api /orgs/elizaos-plugins/repos --paginate -q '.[].name' | grep '^plugin-')
           TOTAL=$(echo "$REPOS" | wc -l | tr -d ' ')
