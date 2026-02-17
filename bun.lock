@@ -108,7 +108,7 @@
         "typescript": "^5.3.3",
       },
       "peerDependencies": {
-        "@elizaos/computeruse": "workspace:*",
+        "@elizaos/computeruse": "^2.0.0-alpha.3",
       },
     },
     "packages/daemon": {
