@@ -1,0 +1,97 @@
+{
+  "name": "@elizaos/plugin-scout",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Scout trust intelligence plugin for ElizaOS - x402 service verification, skill scanning, and transaction safety for autonomous agents",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup --format esm --dts",
+    "dev": "tsup --format esm --dts --watch",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rm -rf dist",
+    "lint": "biome lint .",
+    "lint:fix": "biome check --apply .",
+    "format": "biome format .",
+    "format:fix": "biome format --write ."
+  },
+  "keywords": [
+    "eliza",
+    "elizaos",
+    "plugin",
+    "scout",
+    "scoutscore",
+    "trust",
+    "x402",
+    "bazaar",
+    "security",
+    "ai-agents",
+    "mcp"
+  ],
+  "author": "Scout <hello@scoutscore.ai>",
+  "license": "MIT",
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-alpha.26"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@elizaos/core": "2.0.0-alpha.26",
+    "tsup": "^8.3.5",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza",
+    "directory": "packages/plugin-scout"
+  },
+  "engines": {
+    "node": ">=23.0.0"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SCOUT_API_URL": {
+        "type": "string",
+        "description": "Scout API base URL",
+        "optional": true
+      },
+      "SCOUT_API_KEY": {
+        "type": "string",
+        "description": "API key for authenticated endpoints",
+        "optional": true
+      },
+      "SCOUT_MIN_SERVICE_SCORE": {
+        "type": "string",
+        "description": "Minimum trust score (0-100) for x402 payments",
+        "optional": true
+      },
+      "SCOUT_AUTO_REJECT_FLAGS": {
+        "type": "string",
+        "description": "Comma-separated flags that auto-block transactions",
+        "optional": true
+      },
+      "SCOUT_CACHE_TTL": {
+        "type": "string",
+        "description": "Cache TTL in minutes",
+        "optional": true
+      },
+      "SCOUT_WATCHED_DOMAINS": {
+        "type": "string",
+        "description": "Comma-separated domains to monitor for trust changes",
+        "optional": true
+      },
+      "SCOUT_WATCH_INTERVAL": {
+        "type": "string",
+        "description": "Monitor check interval in minutes",
+        "optional": true
+      }
+    }
+  }
+}
