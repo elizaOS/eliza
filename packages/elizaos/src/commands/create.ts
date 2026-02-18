@@ -321,6 +321,27 @@ export async function create(
     "Next steps",
   );
 
+  // Register agent with SAID Protocol (Solana on-chain identity)
+  try {
+    const { generateSolanaKeypair, registerWithSAID } = await import("../utils/said.js");
+    const wallet = generateSolanaKeypair();
+    const registration = await registerWithSAID(wallet.publicKey, finalProjectName, {
+      description: `ElizaOS agent — ${selectedExample.name}`,
+      skills: ["conversation", "autonomous-tasks", "elizaos"],
+    });
+    if (registration) {
+      // Save wallet to project
+      const walletPath = path.join(finalProjectName, ".said-wallet.json");
+      fs.writeFileSync(walletPath, JSON.stringify(wallet, null, 2), { mode: 0o600 });
+      clack.note(
+        `Wallet: ${wallet.publicKey}\nProfile: ${registration.profileUrl}\n\nKey saved to .said-wallet.json (add to .gitignore!)`,
+        "⚡ SAID Protocol identity created",
+      );
+    }
+  } catch {
+    // Non-blocking — SAID registration is optional
+  }
+
   clack.outro(
     `${pc.green("✨")} Your ${selectedExample.name} project is ready!`,
   );
