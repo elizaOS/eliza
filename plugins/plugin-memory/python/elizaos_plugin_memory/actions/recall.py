@@ -16,6 +16,7 @@ from elizaos_plugin_memory.actions.base import (
 )
 from elizaos_plugin_memory.types import (
     MEMORY_SOURCE,
+    PLUGIN_MEMORY_TABLE,
     MemoryImportance,
     decode_memory_text,
 )
@@ -29,8 +30,7 @@ async def validate(
     _state: State | None = None,
 ) -> bool:
     try:
-        manager = runtime.get_memory_manager()
-        return manager is not None
+        return callable(getattr(runtime, "get_memories", None))
     except Exception:
         return False
 
@@ -43,10 +43,6 @@ async def handler(
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
     try:
-        manager = runtime.get_memory_manager()
-        if not manager:
-            raise RuntimeError("Memory manager not available")
-
         content_data = message.get("content", {})
         content = content_data.get("text", "")
         if not content:
@@ -66,8 +62,12 @@ async def handler(
             else 1
         )
 
-        memories = await manager.get_memories(
-            {"roomId": message.get("roomId", ""), "count": 100}
+        memories = await runtime.get_memories(
+            {
+                "roomId": message.get("roomId", ""),
+                "tableName": PLUGIN_MEMORY_TABLE,
+                "count": 100,
+            }
         )
 
         plugin_memories = [

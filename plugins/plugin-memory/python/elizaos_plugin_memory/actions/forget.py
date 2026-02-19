@@ -15,7 +15,11 @@ from elizaos_plugin_memory.actions.base import (
     State,
     create_action,
 )
-from elizaos_plugin_memory.types import MEMORY_SOURCE, decode_memory_text
+from elizaos_plugin_memory.types import (
+    MEMORY_SOURCE,
+    PLUGIN_MEMORY_TABLE,
+    decode_memory_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +30,9 @@ async def validate(
     _state: State | None = None,
 ) -> bool:
     try:
-        manager = runtime.get_memory_manager()
-        return manager is not None
+        return callable(getattr(runtime, "get_memories", None)) and callable(
+            getattr(runtime, "delete_memory", None)
+        )
     except Exception:
         return False
 
@@ -40,10 +45,6 @@ async def handler(
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
     try:
-        manager = runtime.get_memory_manager()
-        if not manager:
-            raise RuntimeError("Memory manager not available")
-
         content_data = message.get("content", {})
         content = content_data.get("text", "")
         if not content:
@@ -55,15 +56,19 @@ async def handler(
         # Direct removal by ID
         memory_id = str(options.get("memoryId", "")) if options else ""
         if memory_id:
-            await manager.remove_memory(memory_id)
+            await runtime.delete_memory(memory_id)
             success_message = f"Removed memory with ID: {memory_id}"
             if callback:
                 await callback({"text": success_message, "source": content_data.get("source")})
             return {"text": success_message, "success": True, "data": {"removedId": memory_id}}
 
         # Search for matching memory
-        memories = await manager.get_memories(
-            {"roomId": message.get("roomId", ""), "count": 100}
+        memories = await runtime.get_memories(
+            {
+                "roomId": message.get("roomId", ""),
+                "tableName": PLUGIN_MEMORY_TABLE,
+                "count": 100,
+            }
         )
 
         plugin_memories = [
@@ -112,7 +117,7 @@ async def handler(
         target_id = target.get("id", "")
 
         if target_id:
-            await manager.remove_memory(target_id)
+            await runtime.delete_memory(target_id)
 
         success_message = f'Removed memory: "{parsed.content}"'
         if callback:

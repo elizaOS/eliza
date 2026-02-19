@@ -144,7 +144,7 @@ export class CloudBridgeService extends Service {
       }, this.bridgeConfig.heartbeatIntervalMs);
     });
 
-    conn.ws.addEventListener("message", (event: MessageEvent) => {
+    conn.ws.addEventListener("message", (event: { data: string | Buffer | ArrayBuffer | Blob }) => {
       const raw = event.data;
       const data = typeof raw === "string" ? raw : raw instanceof Buffer ? raw.toString("utf-8") : String(raw);
       const message = JSON.parse(data) as BridgeMessage;

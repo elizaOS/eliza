@@ -17,7 +17,7 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noImplicitAny": false,
-    "types": ["node", "bun-types"],
+    "types": ["node", "bun"],
     "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "baseUrl": "../../..",

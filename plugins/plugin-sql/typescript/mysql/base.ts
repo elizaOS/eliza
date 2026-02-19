@@ -1138,7 +1138,7 @@ export abstract class BaseDrizzleAdapter
   // Transaction API
   // ===============================
 
-  async transaction<T>(callback: (tx: IDatabaseAdapter) => Promise<T>): Promise<T> {
+  async transaction<T>(callback: (tx: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>): Promise<T> {
     return this.db.transaction(async (drizzleTx) => {
       const proxy = Object.create(this) as BaseDrizzleAdapter;
       proxy.db = drizzleTx as any;

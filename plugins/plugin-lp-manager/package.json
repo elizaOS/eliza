@@ -31,6 +31,7 @@
     "@uniswap/v3-sdk": "^3.13.1",
     "bs58": "^6.0.0",
     "decimal.js": "^10.4.3",
+    "uuid": "^11.0.0",
     "viem": "^2.21.0"
   },
   "devDependencies": {

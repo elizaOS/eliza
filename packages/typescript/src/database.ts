@@ -9,6 +9,7 @@ import type {
   Memory,
   MemoryMetadata,
   Metadata,
+  PatchOp,
   PairingAllowlistEntry,
   PairingChannel,
   PairingRequest,
@@ -96,6 +97,12 @@ export abstract class DatabaseAdapter<DB extends object = object>
    */
   abstract getConnection(): Promise<DB>;
 
+  /**
+   * Execute a callback within a database transaction.
+   * InMemory adapter runs the callback directly without atomicity guarantees.
+   */
+  abstract transaction<T>(callback: (tx: IDatabaseAdapter<DB>) => Promise<T>): Promise<T>;
+
   abstract getEntitiesForRoom(
     roomId: UUID,
     includeComponents?: boolean,
@@ -132,6 +139,20 @@ export abstract class DatabaseAdapter<DB extends object = object>
    * @returns A Promise that resolves to matching entities.
    */
   abstract getEntitiesByNames(params: { names: string[]; agentId: UUID }): Promise<Entity[]>;
+
+  /**
+   * Query entities by component type and optional JSONB data filter.
+   */
+  abstract queryEntities(params: {
+    componentType?: string;
+    componentDataFilter?: Record<string, unknown>;
+    agentId?: UUID;
+    entityIds?: UUID[];
+    worldId?: UUID;
+    limit?: number;
+    offset?: number;
+    includeAllComponents?: boolean;
+  }): Promise<Entity[]>;
 
   /**
    * Retrieves a component by entity and type (query method).
@@ -171,6 +192,16 @@ export abstract class DatabaseAdapter<DB extends object = object>
   abstract getComponentsByIds(componentIds: UUID[]): Promise<Component[]>;
   abstract updateComponents(components: Component[]): Promise<void>;
   abstract deleteComponents(componentIds: UUID[]): Promise<void>;
+
+  /**
+   * Upsert components (insert or update by natural key).
+   */
+  abstract upsertComponents(components: Component[]): Promise<void>;
+
+  /**
+   * Atomic partial update to component JSONB data using JSON Patch operations.
+   */
+  abstract patchComponent(componentId: UUID, ops: PatchOp[]): Promise<void>;
 
   /**
    * Retrieves memories based on the specified parameters.
@@ -279,6 +310,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
   // ── Memory CRUD (batch-only) ─────────────────────────────────────────
   abstract createMemories(memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>): Promise<UUID[]>;
   abstract updateMemories(memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>): Promise<void>;
+  /**
+   * Upsert memories (insert or update by ID).
+   */
+  abstract upsertMemories(memories: Array<{ memory: Memory; tableName: string }>): Promise<void>;
   abstract deleteMemories(memoryIds: UUID[]): Promise<void>;
 
   /**
@@ -290,14 +325,21 @@ export abstract class DatabaseAdapter<DB extends object = object>
   abstract deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
 
   /**
-   * Counts the number of memories in a specific room.
-   * @param roomId The UUID of the room for which to count memories.
-   * @param unique Specifies whether to count only unique memories.
-   * @param tableName Optional table name to count memories from.
+   * Counts the number of memories matching criteria.
+   * Accepts either positional (roomId, unique?, tableName?) or a single params object.
    * @returns A Promise that resolves to the number of memories.
    */
   abstract countMemories(
-    roomId: UUID,
+    roomIdOrParams:
+      | UUID
+      | {
+          roomId?: UUID;
+          unique?: boolean;
+          tableName?: string;
+          entityId?: UUID;
+          agentId?: UUID;
+          metadata?: Record<string, unknown>;
+        },
     unique?: boolean,
     tableName?: string,
   ): Promise<number>;

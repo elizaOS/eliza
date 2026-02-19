@@ -9,6 +9,7 @@ import type {
 } from "@elizaos/core";
 import { MOLTBOOK_SERVICE_NAME } from "../constants";
 import type { MoltbookService } from "../service";
+import { isMoltbookFailure } from "../types";
 
 const moltbookBrowseAction: Action = {
   name: "MOLTBOOK_BROWSE",
@@ -72,7 +73,7 @@ const moltbookBrowseAction: Action = {
 
     const result = await service.moltbookBrowse(submolt, sort);
 
-    if (!result.success) {
+    if (isMoltbookFailure(result)) {
       if (callback) {
         await callback({
           text: `Failed to browse Moltbook: ${result.error}`,

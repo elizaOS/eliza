@@ -863,38 +863,23 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
   /**
    * Count memories matching criteria.
-   * 
-   * @deprecated Use object params: countMemories({ roomId, unique, tableName })
-   * Positional signature remains for backward compatibility but will be removed in v3.
+   * Accepts either positional (roomId, unique?, tableName?) or a single params object.
+   * Object params enable extensibility (entityId, agentId, metadata filters).
    */
   countMemories(
-    roomId: UUID,
+    roomIdOrParams:
+      | UUID
+      | {
+          roomId?: UUID;
+          unique?: boolean;
+          tableName?: string;
+          entityId?: UUID;
+          agentId?: UUID;
+          metadata?: Record<string, unknown>;
+        },
     unique?: boolean,
     tableName?: string,
   ): Promise<number>;
-
-  /**
-   * Count memories matching criteria (preferred object params signature).
-   * 
-   * WHY object params: The old positional signature created fragility when adding
-   * new filter criteria. Object params enable extensibility (adding agentId, entityId,
-   * metadata filters) without breaking existing code.
-   * 
-   * @param params.roomId Filter by room (required for positional compat, optional here)
-   * @param params.unique Filter by uniqueness flag
-   * @param params.tableName Filter by memory type/table
-   * @param params.entityId Filter by entity
-   * @param params.agentId Filter by agent
-   * @param params.metadata Filter by metadata fields
-   */
-  countMemories(params: {
-    roomId?: UUID;
-    unique?: boolean;
-    tableName?: string;
-    entityId?: UUID;
-    agentId?: UUID;
-    metadata?: Record<string, unknown>;
-  }): Promise<number>;
 
   getAllWorlds(): Promise<World[]>;
 

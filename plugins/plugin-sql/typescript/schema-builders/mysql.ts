@@ -124,7 +124,7 @@ export const mysqlAdapter: DialectAdapter = {
           "MySQL doesn't support NULLS NOT DISTINCT. NULLs will be treated as distinct (multiple NULLs allowed).",
         );
       }
-      return unique(name).on(...columns);
+      return unique(name).on(...(columns as [any, ...any[]]));
     };
   },
   buildForeignKey: (name: string, onUpdate?: string, onDelete?: string) => {
@@ -133,8 +133,8 @@ export const mysqlAdapter: DialectAdapter = {
       // so we don't need the targetTable parameter
       const fk = foreignKey({
         name,
-        columns,
-        foreignColumns: targetColumns,
+        columns: columns as [any, ...any[]],
+        foreignColumns: targetColumns as [any, ...any[]],
       });
       if (onUpdate) fk.onUpdate(onUpdate as any);
       if (onDelete) fk.onDelete(onDelete as any);

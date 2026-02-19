@@ -17,7 +17,8 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*"
+    "@elizaos/plugin-sql": "workspace:*",
+    "uuid": "^11.0.0"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",

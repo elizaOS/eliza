@@ -87,9 +87,9 @@ describe("REMEMBER Action", () => {
     expect(rememberAction.examples.length).toBeGreaterThan(0);
   });
 
-  it("should validate when memory manager is available", async () => {
+  it("should validate when runtime has createMemory", async () => {
     const runtime = {
-      getMemoryManager: vi.fn().mockReturnValue({ createMemory: vi.fn() }),
+      createMemory: vi.fn(),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = {
@@ -102,10 +102,8 @@ describe("REMEMBER Action", () => {
     expect(result).toBe(true);
   });
 
-  it("should fail validation when memory manager is unavailable", async () => {
-    const runtime = {
-      getMemoryManager: vi.fn().mockReturnValue(null),
-    } as Partial<IAgentRuntime> as IAgentRuntime;
+  it("should fail validation when createMemory is unavailable", async () => {
+    const runtime = {} as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = {
       agentId: "agent-1",
@@ -117,12 +115,11 @@ describe("REMEMBER Action", () => {
     expect(result).toBe(false);
   });
 
-  it("should store memory via memory manager", async () => {
-    const mockCreateMemory = vi.fn().mockResolvedValue(undefined);
-    const mockMemoryManager = { createMemory: mockCreateMemory };
+  it("should store memory via runtime.createMemory", async () => {
+    const mockCreateMemory = vi.fn().mockResolvedValue("mem-uuid");
 
     const runtime = {
-      getMemoryManager: vi.fn().mockReturnValue(mockMemoryManager),
+      createMemory: mockCreateMemory,
       agentId: "agent-1",
       useModel: vi.fn().mockResolvedValue(
         JSON.stringify({
@@ -159,11 +156,8 @@ describe("RECALL Action", () => {
   });
 
   it("should return empty results when no memories exist", async () => {
-    const mockMemoryManager = {
-      getMemories: vi.fn().mockResolvedValue([]),
-    };
     const runtime = {
-      getMemoryManager: vi.fn().mockReturnValue(mockMemoryManager),
+      getMemories: vi.fn().mockResolvedValue([]),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = {
@@ -193,11 +187,8 @@ describe("RECALL Action", () => {
       },
     ];
 
-    const mockMemoryManager = {
-      getMemories: vi.fn().mockResolvedValue(storedMemories),
-    };
     const runtime = {
-      getMemoryManager: vi.fn().mockReturnValue(mockMemoryManager),
+      getMemories: vi.fn().mockResolvedValue(storedMemories),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = {
@@ -232,11 +223,8 @@ describe("RECALL Action", () => {
       },
     ];
 
-    const mockMemoryManager = {
-      getMemories: vi.fn().mockResolvedValue(storedMemories),
-    };
     const runtime = {
-      getMemoryManager: vi.fn().mockReturnValue(mockMemoryManager),
+      getMemories: vi.fn().mockResolvedValue(storedMemories),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = {
@@ -262,10 +250,9 @@ describe("FORGET Action", () => {
   });
 
   it("should remove memory by ID when provided", async () => {
-    const mockRemove = vi.fn().mockResolvedValue(undefined);
-    const mockMemoryManager = { removeMemory: mockRemove };
+    const mockDeleteMemory = vi.fn().mockResolvedValue(undefined);
     const runtime = {
-      getMemoryManager: vi.fn().mockReturnValue(mockMemoryManager),
+      deleteMemory: mockDeleteMemory,
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = {
@@ -277,16 +264,13 @@ describe("FORGET Action", () => {
     const options = { parameters: { memoryId: "mem-123" } };
     const result = await forgetAction.handler(runtime, message, undefined, options);
     expect(result.success).toBe(true);
-    expect(mockRemove).toHaveBeenCalledWith("mem-123");
+    expect(mockDeleteMemory).toHaveBeenCalledWith("mem-123");
   });
 
   it("should report when no memories exist to remove", async () => {
-    const mockMemoryManager = {
-      getMemories: vi.fn().mockResolvedValue([]),
-      removeMemory: vi.fn(),
-    };
     const runtime = {
-      getMemoryManager: vi.fn().mockReturnValue(mockMemoryManager),
+      getMemories: vi.fn().mockResolvedValue([]),
+      deleteMemory: vi.fn(),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = {
@@ -310,11 +294,8 @@ describe("Memory Context Provider", () => {
   });
 
   it("should return no memories message when store is empty", async () => {
-    const mockMemoryManager = {
-      getMemories: vi.fn().mockResolvedValue([]),
-    };
     const runtime = {
-      getMemoryManager: vi.fn().mockReturnValue(mockMemoryManager),
+      getMemories: vi.fn().mockResolvedValue([]),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = {
@@ -348,11 +329,8 @@ describe("Memory Context Provider", () => {
       },
     ];
 
-    const mockMemoryManager = {
-      getMemories: vi.fn().mockResolvedValue(storedMemories),
-    };
     const runtime = {
-      getMemoryManager: vi.fn().mockReturnValue(mockMemoryManager),
+      getMemories: vi.fn().mockResolvedValue(storedMemories),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = {

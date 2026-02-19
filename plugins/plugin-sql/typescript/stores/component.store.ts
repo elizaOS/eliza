@@ -411,7 +411,7 @@ export async function patchComponent(
       .update(componentTable)
       .set({ data: dataExpr })
       .where(eq(componentTable.id, componentId))
-      .returning({ id: componentTable.id });
+      .returning();
 
     if (result.length === 0) {
       throw new Error(`Component not found: ${componentId}`);

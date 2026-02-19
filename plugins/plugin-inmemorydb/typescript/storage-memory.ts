@@ -37,6 +37,11 @@ export class MemoryStorage implements IStorage {
     return Array.from(col.values()) as T[];
   }
 
+  async list<T>(collection: string): Promise<[string, T][]> {
+    const col = this.getCollection(collection);
+    return Array.from(col.entries()) as [string, T][];
+  }
+
   async getWhere<T>(collection: string, predicate: (item: T) => boolean): Promise<T[]> {
     const all = await this.getAll<T>(collection);
     return all.filter(predicate);

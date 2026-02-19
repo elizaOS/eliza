@@ -103,11 +103,9 @@ export {
   type ResolvedSignalAccount,
   resolveDefaultSignalAccountId,
   resolveSignalAccount,
-  type SignalAccountConfig,
   type SignalDmConfig,
   type SignalGroupConfig,
   type SignalMultiAccountConfig,
-  type SignalReactionNotificationMode,
 } from "./accounts";
 export { listContacts } from "./actions/listContacts";
 export { listGroups } from "./actions/listGroups";

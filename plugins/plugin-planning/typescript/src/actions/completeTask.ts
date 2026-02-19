@@ -16,6 +16,7 @@ import {
   formatPlan,
   getPlanProgress,
   PLAN_SOURCE,
+  PLUGIN_PLANS_TABLE,
   PlanStatus,
   TaskStatus,
 } from "../types.js";
@@ -55,8 +56,7 @@ export const completeTaskAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> {
-    const memoryManager = runtime.getMemoryManager();
-    return !!memoryManager;
+    return typeof runtime.getMemories === "function" && typeof runtime.updateMemory === "function";
   },
 
   async handler(
@@ -67,11 +67,6 @@ export const completeTaskAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
-      const memoryManager = runtime.getMemoryManager();
-      if (!memoryManager) {
-        throw new Error("Memory manager not available");
-      }
-
       const content = message.content.text;
       if (!content) {
         const errorMsg = "Please specify which task to complete.";
@@ -82,8 +77,9 @@ export const completeTaskAction: Action = {
       const params = _options?.parameters as CompleteTaskParameters | undefined;
 
       // Retrieve plans
-      const memories = await memoryManager.getMemories({
+      const memories = await runtime.getMemories({
         roomId: message.roomId,
+        tableName: PLUGIN_PLANS_TABLE,
         count: 50,
       });
 
@@ -179,23 +175,20 @@ Return ONLY: {"index": <number or -1>}`;
       }
 
       // Save updated plan
-      const memoryId = targetMemory.id ?? "";
-      if (memoryId) {
-        await memoryManager.removeMemory(memoryId);
+      const memoryId = targetMemory.id;
+      if (!memoryId) {
+        const errorMsg = "Plan memory has no id.";
+        await callback?.({ text: errorMsg, source: message.content.source });
+        return { text: errorMsg, success: false };
       }
-
-      const updatedEntry: Memory = {
-        agentId: runtime.agentId,
-        roomId: message.roomId,
-        userId: message.userId,
+      await runtime.updateMemory({
+        id: memoryId,
         content: {
           text: encodePlan(targetPlan),
           source: PLAN_SOURCE,
         },
         createdAt: targetMemory.createdAt ?? Date.now(),
-      };
-
-      await memoryManager.createMemory(updatedEntry, true);
+      });
 
       const formatted = formatPlan(targetPlan);
       const completionNote = progress === 100 ? " All tasks completed - plan is now finished!" : "";

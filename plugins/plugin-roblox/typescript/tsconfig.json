@@ -20,7 +20,7 @@
     "isolatedModules": true,
     "allowSyntheticDefaultImports": true,
     "allowImportingTsExtensions": true,
-    "types": ["node", "bun-types"],
+    "types": ["node", "bun"],
     "baseUrl": "../../../",
     "paths": {
       "@elizaos/core": ["packages/typescript/dist/node"],

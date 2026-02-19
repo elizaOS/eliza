@@ -579,4 +579,6 @@ export interface LoadedSkillWithSource extends Skill {
   precedence: number;
   /** Whether this skill overrides another */
   overrides?: string;
+  /** When source is "bundled", the bundled directory path */
+  bundledDir?: string;
 }

@@ -14,6 +14,7 @@ import {
   encodePlan,
   formatPlan,
   PLAN_SOURCE,
+  PLUGIN_PLANS_TABLE,
   PlanStatus,
   type UpdatePlanParameters,
 } from "../types.js";
@@ -53,8 +54,7 @@ export const updatePlanAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> {
-    const memoryManager = runtime.getMemoryManager();
-    return !!memoryManager;
+    return typeof runtime.getMemories === "function" && typeof runtime.updateMemory === "function";
   },
 
   async handler(
@@ -65,11 +65,6 @@ export const updatePlanAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
-      const memoryManager = runtime.getMemoryManager();
-      if (!memoryManager) {
-        throw new Error("Memory manager not available");
-      }
-
       const content = message.content.text;
       if (!content) {
         const errorMessage = "Please describe what to update in the plan.";
@@ -80,8 +75,9 @@ export const updatePlanAction: Action = {
       const params = _options?.parameters as UpdatePlanParameters | undefined;
 
       // Retrieve all plans from memory
-      const memories = await memoryManager.getMemories({
+      const memories = await runtime.getMemories({
         roomId: message.roomId,
+        tableName: PLUGIN_PLANS_TABLE,
         count: 50,
       });
 
@@ -180,23 +176,20 @@ Return ONLY a JSON object with fields to change (omit unchanged fields):
       }
 
       // Save updated plan
-      const memoryId = targetMemory.id ?? "";
-      if (memoryId) {
-        await memoryManager.removeMemory(memoryId);
+      const memoryId = targetMemory.id;
+      if (!memoryId) {
+        const errorMsg = "Plan memory has no id.";
+        await callback?.({ text: errorMsg, source: message.content.source });
+        return { text: errorMsg, success: false };
       }
-
-      const updatedEntry: Memory = {
-        agentId: runtime.agentId,
-        roomId: message.roomId,
-        userId: message.userId,
+      await runtime.updateMemory({
+        id: memoryId,
         content: {
           text: encodePlan(targetPlan),
           source: PLAN_SOURCE,
         },
         createdAt: targetMemory.createdAt ?? Date.now(),
-      };
-
-      await memoryManager.createMemory(updatedEntry, true);
+      });
 
       const formatted = formatPlan(targetPlan);
       const successMsg = `Updated plan "${targetPlan.title}".\n\n${formatted}`;

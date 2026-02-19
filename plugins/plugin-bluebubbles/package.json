@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "npm run build:ts && npm run build:py",
+    "build": "npm run build:ts && (npm run build:py || echo 'Python build skipped (e.g. externally-managed env)')",
     "build:ts": "cd typescript && npm run build",
     "build:py": "cd python && pip install -e .",
     "build:rs": "cd rust && cargo build --release",

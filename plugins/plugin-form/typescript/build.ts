@@ -26,6 +26,7 @@ async function buildAll(): Promise<boolean> {
         "https",
         // Core dependency
         "@elizaos/core",
+        "uuid",
       ],
       sourcemap: true,
       minify: false,

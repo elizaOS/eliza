@@ -31,20 +31,6 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     maxOutputTokens: 16384,
     provider: "openai",
   },
-  "gpt-5": {
-    inputCostPer1k: 0.01,
-    outputCostPer1k: 0.03,
-    maxInputTokens: 128000,
-    maxOutputTokens: 4096,
-    provider: "openai",
-  },
-  "gpt-5": {
-    inputCostPer1k: 0.03,
-    outputCostPer1k: 0.06,
-    maxInputTokens: 8192,
-    maxOutputTokens: 8192,
-    provider: "openai",
-  },
   "gpt-3.5-turbo": {
     inputCostPer1k: 0.0005,
     outputCostPer1k: 0.0015,
@@ -54,20 +40,6 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   },
 
   // Future/Hypothetical OpenAI Models
-  "gpt-5": {
-    inputCostPer1k: 1.25,
-    outputCostPer1k: 10.0,
-    maxInputTokens: 128000,
-    maxOutputTokens: 4096,
-    provider: "openai",
-  },
-  "gpt-5-mini": {
-    inputCostPer1k: 0.25,
-    outputCostPer1k: 2.0,
-    maxInputTokens: 128000,
-    maxOutputTokens: 4096,
-    provider: "openai",
-  },
   "gpt-5-nano": {
     inputCostPer1k: 0.05,
     outputCostPer1k: 0.4,
@@ -192,20 +164,6 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     outputCostPer1k: 0.0006, // Same as gpt-5-mini
     maxInputTokens: 128000,
     maxOutputTokens: 16384,
-    provider: "azure",
-  },
-  "azure/gpt-5": {
-    inputCostPer1k: 0.03, // Same as gpt-5
-    outputCostPer1k: 0.06, // Same as gpt-5
-    maxInputTokens: 8192,
-    maxOutputTokens: 8192,
-    provider: "azure",
-  },
-  "azure/gpt-5": {
-    inputCostPer1k: 0.01, // Same as gpt-5
-    outputCostPer1k: 0.03, // Same as gpt-5
-    maxInputTokens: 128000,
-    maxOutputTokens: 4096,
     provider: "azure",
   },
   "azure/gpt-35-turbo": {

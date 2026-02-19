@@ -4,6 +4,7 @@ import {
   getPlanProgress,
   PLAN_SOURCE,
   PLAN_STATUS_LABELS,
+  PLUGIN_PLANS_TABLE,
   TASK_STATUS_LABELS,
   TaskStatus,
 } from "../types.js";
@@ -14,13 +15,9 @@ export const planStatusProvider: Provider = {
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     try {
-      const memoryManager = runtime.getMemoryManager();
-      if (!memoryManager) {
-        return { text: "Memory manager is not available" };
-      }
-
-      const memories = await memoryManager.getMemories({
+      const memories = await runtime.getMemories({
         roomId: message.roomId,
+        tableName: PLUGIN_PLANS_TABLE,
         count: 50,
       });
 

@@ -57,7 +57,7 @@
   "scripts": {
     "start": "elizaos start",
     "dev": "elizaos dev",
-    "build": "tsup && tsc --noEmit",
+    "build": "tsup",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",

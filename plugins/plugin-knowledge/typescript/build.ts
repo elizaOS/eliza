@@ -43,6 +43,7 @@ async function buildPlugin() {
       "react-force-graph-2d",
       "tailwind-merge",
       "unpdf",
+      "uuid",
       "zod",
     ],
   });
@@ -75,6 +76,7 @@ async function buildPlugin() {
       "react-force-graph-2d",
       "tailwind-merge",
       "unpdf",
+      "uuid",
       "zod",
     ],
   });

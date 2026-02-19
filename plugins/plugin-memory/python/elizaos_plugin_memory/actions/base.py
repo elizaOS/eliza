@@ -29,20 +29,15 @@ class ActionResult(TypedDict, total=False):
     data: dict[str, str | int | float | bool | list | dict | None]
 
 
-class MemoryQueryParams(TypedDict, total=False):
+class GetMemoriesParams(TypedDict, total=False):
     roomId: str
+    tableName: str
     count: int
 
 
-class MemoryManagerProtocol(Protocol):
-    async def create_memory(self, memory: Memory, unique: bool = False) -> None: ...
-
-    async def get_memories(self, params: MemoryQueryParams) -> list[Memory]: ...
-
-    async def remove_memory(self, memory_id: str) -> None: ...
-
-
 class RuntimeProtocol(Protocol):
+    """Runtime protocol aligned with current DB API (create_memory, get_memories, delete_memory)."""
+
     @property
     def agent_id(self) -> str: ...
 
@@ -50,7 +45,13 @@ class RuntimeProtocol(Protocol):
 
     def get_service(self, name: str) -> object | None: ...
 
-    def get_memory_manager(self) -> MemoryManagerProtocol | None: ...
+    async def create_memory(
+        self, memory: Memory, table_name: str, unique: bool = False
+    ) -> str: ...
+
+    async def get_memories(self, params: GetMemoriesParams) -> list[Memory]: ...
+
+    async def delete_memory(self, memory_id: str) -> None: ...
 
     async def use_model(self, model_type: str, params: dict[str, str]) -> str | None: ...
 

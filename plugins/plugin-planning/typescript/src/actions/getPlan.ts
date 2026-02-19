@@ -15,6 +15,7 @@ import {
   type GetPlanParameters,
   getPlanProgress,
   PLAN_SOURCE,
+  PLUGIN_PLANS_TABLE,
 } from "../types.js";
 
 export const getPlanAction: Action = {
@@ -52,8 +53,7 @@ export const getPlanAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> {
-    const memoryManager = runtime.getMemoryManager();
-    return !!memoryManager;
+    return typeof runtime.getMemories === "function";
   },
 
   async handler(
@@ -64,17 +64,13 @@ export const getPlanAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
-      const memoryManager = runtime.getMemoryManager();
-      if (!memoryManager) {
-        throw new Error("Memory manager not available");
-      }
-
       const content = message.content.text;
       const params = _options?.parameters as GetPlanParameters | undefined;
 
       // Retrieve all plans
-      const memories = await memoryManager.getMemories({
+      const memories = await runtime.getMemories({
         roomId: message.roomId,
+        tableName: PLUGIN_PLANS_TABLE,
         count: 50,
       });
 

@@ -14,6 +14,7 @@ import {
   MemoryImportance,
   MEMORY_SOURCE,
   type RememberParameters,
+  PLUGIN_MEMORY_TABLE,
 } from "../types.js";
 
 export const rememberAction: Action = {
@@ -53,8 +54,7 @@ export const rememberAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> {
-    const memoryManager = runtime.getMemoryManager();
-    return !!memoryManager;
+    return typeof runtime.createMemory === "function";
   },
 
   async handler(
@@ -65,11 +65,6 @@ export const rememberAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
-      const memoryManager = runtime.getMemoryManager();
-      if (!memoryManager) {
-        throw new Error("Memory manager not available");
-      }
-
       const content = message.content.text;
       if (!content) {
         const errorMessage = "Please provide content to remember.";
@@ -126,7 +121,7 @@ User message: "${content}"`;
       const memoryEntry: Memory = {
         agentId: runtime.agentId,
         roomId: message.roomId,
-        userId: message.userId,
+        entityId: (message as Memory & { entityId?: string; userId?: string }).entityId ?? (message as { userId?: string }).userId,
         content: {
           text: encodedText,
           source: MEMORY_SOURCE,
@@ -134,7 +129,7 @@ User message: "${content}"`;
         createdAt: Date.now(),
       };
 
-      await memoryManager.createMemory(memoryEntry, true);
+      await runtime.createMemory(memoryEntry, PLUGIN_MEMORY_TABLE, true);
 
       const tagSuffix = tags.length > 0 ? ` [tags: ${tags.join(", ")}]` : "";
       const successMessage = `Remembered: "${memoryText}"${tagSuffix}`;

@@ -10,7 +10,8 @@
     "paths": {
       "@elizaos/core": ["../../../packages/typescript/dist"]
     },
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "types": ["node"]
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist", "__tests__", "build.ts", "tests.ts"]

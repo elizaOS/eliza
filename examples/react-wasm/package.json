@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@elizaos/core": "workspace:*",
     "@elizaos/plugin-eliza-classic": "workspace:*",
     "@elizaos/plugin-localdb": "workspace:*",
     "react": "19.2.3",

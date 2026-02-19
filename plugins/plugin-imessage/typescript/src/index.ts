@@ -105,9 +105,5 @@ const imessagePlugin: Plugin = {
 
 export default imessagePlugin;
 
-// Channel configuration types
-export type {
-  IMessageAccountConfig,
-  IMessageConfig,
-  IMessageReactionNotificationMode,
-} from "./config.js";
+// Channel configuration types (IMessageAccountConfig already exported from accounts.js)
+export type { IMessageConfig, IMessageReactionNotificationMode } from "./config.js";
