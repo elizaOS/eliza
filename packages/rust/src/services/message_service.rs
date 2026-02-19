@@ -894,6 +894,12 @@ mod tests {
     async fn test_should_respond_ignore_short_circuits() {
         use crate::runtime::RuntimeOptions;
         use crate::types::agent::Character;
+        use crate::types::settings::{RuntimeSettings, SettingValue};
+
+        let mut settings = RuntimeSettings::default();
+        settings
+            .values
+            .insert("VALIDATION_LEVEL".to_string(), SettingValue::String("trusted".to_string()));
 
         let runtime = AgentRuntime::new(RuntimeOptions {
             character: Some(Character {
@@ -902,6 +908,7 @@ mod tests {
                 ..Default::default()
             }),
             check_should_respond: Some(true),
+            settings: Some(settings),
             ..Default::default()
         })
         .await

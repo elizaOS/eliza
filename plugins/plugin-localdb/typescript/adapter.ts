@@ -24,6 +24,7 @@ import {
   type Content,
   DatabaseAdapter,
   type Entity,
+  type IDatabaseAdapter,
   type Log,
   type LogBody,
   logger,
@@ -35,6 +36,7 @@ import {
   type PairingChannel,
   type PairingRequest,
   type Participant,
+  type PatchOp,
   type Relationship,
   type Room,
   type Task,
@@ -164,6 +166,66 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async getConnection(): Promise<IStorage> {
     return this.storage;
+  }
+
+  async transaction<T>(
+    callback: (tx: IDatabaseAdapter<IStorage>) => Promise<T>,
+  ): Promise<T> {
+    return callback(this);
+  }
+
+  async queryEntities(params: {
+    componentType?: string;
+    componentDataFilter?: Record<string, unknown>;
+    agentId?: UUID;
+    entityIds?: UUID[];
+    worldId?: UUID;
+    limit?: number;
+    offset?: number;
+    includeAllComponents?: boolean;
+  }): Promise<Entity[]> {
+    if (params.entityIds?.length) {
+      return this.getEntitiesByIds(params.entityIds);
+    }
+    return [];
+  }
+
+  async upsertComponents(components: Component[]): Promise<void> {
+    for (const component of components) {
+      const existing = await this.getComponent(
+        component.entityId,
+        component.type,
+        component.worldId,
+        component.sourceEntityId,
+      );
+      if (existing) {
+        await this.updateComponent(component);
+      } else {
+        await this.createComponent(component);
+      }
+    }
+  }
+
+  async patchComponent(_componentId: UUID, _ops: PatchOp[]): Promise<void> {
+    // LocalDB has no JSONB patch support; no-op for compatibility.
+  }
+
+  async upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+  ): Promise<void> {
+    for (const { memory, tableName } of memories) {
+      const id = memory.id;
+      if (id == null) {
+        await this.createMemories([{ memory, tableName }]);
+        continue;
+      }
+      const existing = await this.getMemoryById(id);
+      if (existing) {
+        await this.updateMemories([{ ...memory, id }]);
+      } else {
+        await this.createMemories([{ memory, tableName }]);
+      }
+    }
   }
 
   async getAgent(agentId: UUID): Promise<Agent | null> {

@@ -90,6 +90,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.11",
     "@types/tar-stream": "^3.1.4",
+    "@types/uuid": "^9.0.0",
     "@types/ws": "^8.18.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",

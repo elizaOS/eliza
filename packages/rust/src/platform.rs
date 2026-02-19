@@ -34,8 +34,11 @@ macro_rules! platform_async_trait {
 ///
 /// Usage:
 /// ```
+/// use elizaos::define_platform_trait;
+///
 /// define_platform_trait! {
-///     pub trait MyService {
+///     pub trait MyService []
+///     {
 ///         async fn process(&self) -> Result<(), anyhow::Error>;
 ///     }
 /// }
@@ -43,6 +46,8 @@ macro_rules! platform_async_trait {
 ///
 /// With bounds and generics:
 /// ```
+/// use elizaos::define_platform_trait;
+///
 /// define_platform_trait! {
 ///     pub trait MyService<T> [Clone] {
 ///         fn name(&self) -> &str;

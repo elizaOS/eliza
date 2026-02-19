@@ -9,6 +9,7 @@ import type {
 } from "@elizaos/core";
 import { MOLTBOOK_SERVICE_NAME } from "../constants";
 import type { MoltbookService } from "../service";
+import { isMoltbookFailure } from "../types";
 
 const moltbookSubmoltsAction: Action = {
   name: "MOLTBOOK_SUBMOLTS",
@@ -75,7 +76,7 @@ const moltbookSubmoltsAction: Action = {
     if (submoltName) {
       const submoltResult = await service.moltbookGetSubmolt(submoltName);
 
-      if (!submoltResult.success) {
+      if (isMoltbookFailure(submoltResult)) {
         if (callback) {
           await callback({
             text: `Failed to get submolt: ${submoltResult.error}`,
@@ -135,7 +136,7 @@ ${recentPosts || "  (no recent posts)"}
     // Otherwise, list all submolts
     const submoltsResult = await service.moltbookListSubmolts("popular");
 
-    if (!submoltsResult.success) {
+    if (isMoltbookFailure(submoltsResult)) {
       if (callback) {
         await callback({
           text: `Failed to get submolts: ${submoltsResult.error}`,

@@ -4798,11 +4798,20 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     await this.adapter.deleteAllMemories(roomId, tableName);
   }
   async countMemories(
-    roomId: UUID,
+    roomIdOrParams:
+      | UUID
+      | {
+          roomId?: UUID;
+          unique?: boolean;
+          tableName?: string;
+          entityId?: UUID;
+          agentId?: UUID;
+          metadata?: Record<string, unknown>;
+        },
     unique?: boolean,
     tableName?: string,
   ): Promise<number> {
-    return await this.adapter.countMemories(roomId, unique, tableName);
+    return await this.adapter.countMemories(roomIdOrParams, unique, tableName);
   }
   async getLogs(params: {
     entityId?: UUID;
@@ -5024,6 +5033,28 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return await this.adapter.deleteTasks(taskIds);
   }
 
+  async transaction<T>(
+    callback: (tx: IDatabaseAdapter<object>) => Promise<T>,
+  ): Promise<T> {
+    return await this.adapter.transaction(callback);
+  }
+
+  async queryEntities(params: {
+    componentType?: string;
+    componentDataFilter?: Record<string, unknown>;
+    agentId?: UUID;
+    entityIds?: UUID[];
+    worldId?: UUID;
+    limit?: number;
+    offset?: number;
+    includeAllComponents?: boolean;
+  }): Promise<Entity[]> {
+    return await this.adapter.queryEntities({
+      ...params,
+      agentId: params.agentId ?? this.agentId,
+    });
+  }
+
   // Batch entity methods
   async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[]> {
     return await this.adapter.getEntitiesByIds(entityIds);
@@ -5105,6 +5136,14 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return await this.adapter.upsertComponents([component]);
   }
 
+  async upsertComponents(components: Component[]): Promise<void> {
+    return await this.adapter.upsertComponents(components);
+  }
+
+  async patchComponent(componentId: UUID, ops: PatchOp[]): Promise<void> {
+    return await this.adapter.patchComponent(componentId, ops);
+  }
+
   async patchComponentField(componentId: UUID, op: PatchOp): Promise<void> {
     return await this.adapter.patchComponent(componentId, [op]);
   }
@@ -5143,6 +5182,10 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       };
     }
     return await this.adapter.upsertMemories([{ memory, tableName }]);
+  }
+
+  async upsertMemories(memories: Array<{ memory: Memory; tableName: string }>): Promise<void> {
+    return await this.adapter.upsertMemories(memories);
   }
 
   // Batch relationship methods

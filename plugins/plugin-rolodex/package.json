@@ -27,7 +27,8 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "uuid": "^11.0.3"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

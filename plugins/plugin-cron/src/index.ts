@@ -26,7 +26,7 @@
  * ```
  */
 
-import type { Plugin } from '@elizaos/core';
+import type { Plugin, PluginEvents } from '@elizaos/core';
 
 // Service
 import { CronService } from './services/cron-service.js';
@@ -176,7 +176,7 @@ export const cronPlugin: Plugin = {
   // HTTP routes for UI
   routes: cronRoutes,
 
-  // Event handlers for cross-plugin coordination
+  // Event handlers for cross-plugin coordination (custom events; cast for PluginEvents)
   events: {
     [CronPluginEvents.HEARTBEAT_WAKE]: [
       async (payload: Record<string, unknown>) => {
@@ -211,7 +211,7 @@ export const cronPlugin: Plugin = {
         }
       },
     ],
-  },
+  } as PluginEvents,
 };
 
 export default cronPlugin;

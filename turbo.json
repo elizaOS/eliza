@@ -314,6 +314,26 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["rust/target/release/**"]
     },
+    "ai-town#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-tlon-root#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-secrets-manager-root#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/computeruse#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-signal-root#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["typescript/dist/**"]
+    },
     "lint": {
       "outputs": []
     },

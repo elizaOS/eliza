@@ -83,7 +83,7 @@ export class GmailWatchService extends Service {
 
   private childProcess: ChildProcess | null = null;
   private renewTimer: ReturnType<typeof setInterval> | null = null;
-  private config: GmailWatchConfig | null = null;
+  private gmailConfig: GmailWatchConfig | null = null;
   private restartAttempts = 0;
   private static readonly MAX_RESTART_ATTEMPTS = 10;
   private static readonly INITIAL_RESTART_DELAY_MS = 10_000;
@@ -96,8 +96,8 @@ export class GmailWatchService extends Service {
   }
 
   private async initialize(): Promise<void> {
-    this.config = resolveGmailConfig(this.runtime);
-    if (!this.config) {
+    this.gmailConfig = resolveGmailConfig(this.runtime);
+    if (!this.gmailConfig) {
       logger.info('[GmailWatch] No hooks.gmail.account configured, skipping');
       return;
     }
@@ -113,7 +113,7 @@ export class GmailWatchService extends Service {
     this.startRenewTimer();
 
     logger.info(
-      `[GmailWatch] Started for ${this.config.account} (renew every ${this.config.renewEveryMinutes}m)`
+      `[GmailWatch] Started for ${this.gmailConfig.account} (renew every ${this.gmailConfig.renewEveryMinutes}m)`
     );
   }
 
@@ -130,30 +130,30 @@ export class GmailWatchService extends Service {
   }
 
   private async spawnWatcher(): Promise<void> {
-    if (!this.config) {
+    if (!this.gmailConfig) {
       return;
     }
 
     const args = [
       'gmail', 'watch', 'serve',
-      '--account', this.config.account,
-      '--bind', this.config.serve.bind,
-      '--port', String(this.config.serve.port),
-      '--path', this.config.serve.path,
-      '--hook-url', this.config.hookUrl,
+      '--account', this.gmailConfig.account,
+      '--bind', this.gmailConfig.serve.bind,
+      '--port', String(this.gmailConfig.serve.port),
+      '--path', this.gmailConfig.serve.path,
+      '--hook-url', this.gmailConfig.hookUrl,
     ];
 
-    if (this.config.hookToken) {
-      args.push('--hook-token', this.config.hookToken);
+    if (this.gmailConfig.hookToken) {
+      args.push('--hook-token', this.gmailConfig.hookToken);
     }
-    if (this.config.pushToken) {
-      args.push('--token', this.config.pushToken);
+    if (this.gmailConfig.pushToken) {
+      args.push('--token', this.gmailConfig.pushToken);
     }
-    if (this.config.includeBody) {
+    if (this.gmailConfig.includeBody) {
       args.push('--include-body');
     }
-    if (this.config.maxBytes) {
-      args.push('--max-bytes', String(this.config.maxBytes));
+    if (this.gmailConfig.maxBytes) {
+      args.push('--max-bytes', String(this.gmailConfig.maxBytes));
     }
 
     logger.debug(`[GmailWatch] Spawning: gog ${args.join(' ')}`);
@@ -185,7 +185,7 @@ export class GmailWatchService extends Service {
       this.childProcess = null;
 
       // Auto-restart with exponential backoff if the service is still active
-      if (this.renewTimer && this.config) {
+      if (this.renewTimer && this.gmailConfig) {
         this.restartAttempts++;
 
         if (this.restartAttempts > GmailWatchService.MAX_RESTART_ATTEMPTS) {
@@ -206,7 +206,7 @@ export class GmailWatchService extends Service {
         );
 
         setTimeout(() => {
-          if (this.config && this.renewTimer) {
+          if (this.gmailConfig && this.renewTimer) {
             this.spawnWatcher();
           }
         }, delayMs);
@@ -215,22 +215,22 @@ export class GmailWatchService extends Service {
   }
 
   private startRenewTimer(): void {
-    if (!this.config) {
+    if (!this.gmailConfig) {
       return;
     }
 
-    const intervalMs = this.config.renewEveryMinutes * 60 * 1000;
+    const intervalMs = this.gmailConfig.renewEveryMinutes * 60 * 1000;
     this.renewTimer = setInterval(async () => {
       await this.renewWatch();
     }, intervalMs);
   }
 
   private async renewWatch(): Promise<void> {
-    if (!this.config) {
+    if (!this.gmailConfig) {
       return;
     }
 
-    logger.info(`[GmailWatch] Renewing watch for ${this.config.account}`);
+    logger.info(`[GmailWatch] Renewing watch for ${this.gmailConfig.account}`);
 
     const gogPath = await which('gog');
     if (!gogPath) {
@@ -240,11 +240,11 @@ export class GmailWatchService extends Service {
 
     const args = [
       'gmail', 'watch', 'start',
-      '--account', this.config.account,
-      '--label', this.config.label,
+      '--account', this.gmailConfig.account,
+      '--label', this.gmailConfig.label,
     ];
-    if (this.config.topic) {
-      args.push('--topic', this.config.topic);
+    if (this.gmailConfig.topic) {
+      args.push('--topic', this.gmailConfig.topic);
     }
 
     const renewProcess = spawn('gog', args, {

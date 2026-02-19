@@ -72,37 +72,29 @@ class TestEncoding:
         assert decoded.content == content
 
 
-# --- Mock Runtime ---
-
-
-class MockMemoryManager:
-    def __init__(self, memories: list[dict] | None = None) -> None:
-        self._memories = memories or []
-        self.create_memory = AsyncMock()
-        self.remove_memory = AsyncMock()
-
-    async def get_memories(self, params: dict) -> list[dict]:
-        return self._memories
+# --- Mock Runtime (aligned with runtime DB API) ---
 
 
 class MockRuntime:
     def __init__(
         self,
-        memory_manager: MockMemoryManager | None = None,
+        memories: list[dict] | None = None,
         model_response: str | None = None,
     ) -> None:
-        self._memory_manager = memory_manager
+        self._memories = memories or []
         self._model_response = model_response
         self.agent_id = "test-agent"
+        self.create_memory = AsyncMock(return_value="mem-uuid")
+        self.delete_memory = AsyncMock()
+
+    async def get_memories(self, params: dict) -> list[dict]:
+        return self._memories
 
     def get_setting(self, key: str) -> str | None:
         return None
 
     def get_service(self, name: str) -> object | None:
         return None
-
-    def get_memory_manager(self) -> MockMemoryManager | None:
-        return self._memory_manager
 
     async def use_model(self, model_type: str, params: dict) -> str | None:
         return self._model_response
@@ -119,22 +111,21 @@ class TestRememberAction:
         assert len(remember_action.examples) > 0
 
     @pytest.mark.asyncio
-    async def test_validate_with_manager(self) -> None:
-        runtime = MockRuntime(memory_manager=MockMemoryManager())
+    async def test_validate_with_create_memory(self) -> None:
+        runtime = MockRuntime()
         result = await remember_action.validate(runtime, {"content": {"text": "test"}})
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_validate_without_manager(self) -> None:
-        runtime = MockRuntime(memory_manager=None)
+    async def test_validate_without_create_memory(self) -> None:
+        runtime = MockRuntime()
+        del runtime.create_memory
         result = await remember_action.validate(runtime, {"content": {"text": "test"}})
         assert result is False
 
     @pytest.mark.asyncio
     async def test_store_memory(self) -> None:
-        manager = MockMemoryManager()
         runtime = MockRuntime(
-            memory_manager=manager,
             model_response='{"memory": "User likes dark mode", "tags": ["preference"], "importance": 2}',
         )
         message = {
@@ -147,7 +138,7 @@ class TestRememberAction:
         result = await remember_action.handler(runtime, message)
         assert result["success"] is True
         assert "Remembered" in result["text"]
-        manager.create_memory.assert_called_once()
+        runtime.create_memory.assert_called_once()
 
 
 # --- RECALL Action ---
@@ -161,7 +152,7 @@ class TestRecallAction:
 
     @pytest.mark.asyncio
     async def test_no_memories(self) -> None:
-        runtime = MockRuntime(memory_manager=MockMemoryManager([]))
+        runtime = MockRuntime(memories=[])
         message = {"roomId": "r1", "content": {"text": "what do you remember?"}}
 
         result = await recall_action.handler(runtime, message)
@@ -180,7 +171,7 @@ class TestRecallAction:
                 "createdAt": 1700000000000,
             }
         ]
-        runtime = MockRuntime(memory_manager=MockMemoryManager(memories))
+        runtime = MockRuntime(memories=memories)
         message = {"roomId": "r1", "content": {"text": "color"}}
 
         result = await recall_action.handler(runtime, message)
@@ -200,18 +191,17 @@ class TestForgetAction:
 
     @pytest.mark.asyncio
     async def test_remove_by_id(self) -> None:
-        manager = MockMemoryManager()
-        runtime = MockRuntime(memory_manager=manager)
+        runtime = MockRuntime()
         message = {"roomId": "r1", "content": {"text": "forget this"}}
         options = {"memoryId": "mem-123"}
 
         result = await forget_action.handler(runtime, message, None, options)
         assert result["success"] is True
-        manager.remove_memory.assert_called_once_with("mem-123")
+        runtime.delete_memory.assert_called_once_with("mem-123")
 
     @pytest.mark.asyncio
     async def test_no_memories_to_remove(self) -> None:
-        runtime = MockRuntime(memory_manager=MockMemoryManager([]))
+        runtime = MockRuntime(memories=[])
         message = {"roomId": "r1", "content": {"text": "forget about colors"}}
 
         result = await forget_action.handler(runtime, message)
@@ -229,7 +219,7 @@ class TestMemoryContextProvider:
 
     @pytest.mark.asyncio
     async def test_empty_store(self) -> None:
-        runtime = MockRuntime(memory_manager=MockMemoryManager([]))
+        runtime = MockRuntime(memories=[])
         message = {"roomId": "r1", "content": {"text": ""}}
 
         result = await memory_context_provider.get(runtime, message, {})
@@ -245,7 +235,7 @@ class TestMemoryContextProvider:
                 "createdAt": 1000,
             }
         ]
-        runtime = MockRuntime(memory_manager=MockMemoryManager(memories))
+        runtime = MockRuntime(memories=memories)
         message = {"roomId": "r1", "content": {"text": ""}}
 
         result = await memory_context_provider.get(runtime, message, {})
@@ -260,7 +250,7 @@ class TestMemoryContextProvider:
             {"id": "m1", "content": {"text": low, "source": MEMORY_SOURCE}, "createdAt": 1000},
             {"id": "m2", "content": {"text": high, "source": MEMORY_SOURCE}, "createdAt": 2000},
         ]
-        runtime = MockRuntime(memory_manager=MockMemoryManager(memories))
+        runtime = MockRuntime(memories=memories)
         message = {"roomId": "r1", "content": {"text": ""}}
 
         result = await memory_context_provider.get(runtime, message, {})

@@ -103,7 +103,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     super();
     this.storage = storage;
     this.agentId = agentId;
-    this.db = storage;
     this.vectorIndex = new EphemeralHNSW();
   }
 
@@ -570,8 +569,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
       if (existingId) {
         // Update existing: merge mutable fields only
-        const existing = await this.storage.get(COLLECTIONS.COMPONENTS, existingId);
-        const updated = {
+        const existing = await this.storage.get<Component>(COLLECTIONS.COMPONENTS, existingId);
+        if (!existing) continue;
+        const updated: Component = {
           ...existing,
           data: component.data,
           agentId: component.agentId,
@@ -1820,7 +1820,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
    * @param callback Function that receives this adapter (not a proxy)
    * @returns Promise resolving to callback's return value
    */
-  async transaction<T>(callback: (tx: import("@elizaos/core").IDatabaseAdapter) => Promise<T>): Promise<T> {
+  async transaction<T>(
+    callback: (tx: import("@elizaos/core").IDatabaseAdapter<IStorage>) => Promise<T>,
+  ): Promise<T> {
     // No transaction semantics - just execute the callback with this adapter
     return callback(this);
   }

@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { decodeMemoryText, IMPORTANCE_LABELS, MemoryImportance, MEMORY_SOURCE } from "../types.js";
+import { decodeMemoryText, IMPORTANCE_LABELS, MemoryImportance, MEMORY_SOURCE, PLUGIN_MEMORY_TABLE } from "../types.js";
 
 export const memoryContextProvider: Provider = {
   name: "MEMORY_CONTEXT",
@@ -7,13 +7,9 @@ export const memoryContextProvider: Provider = {
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     try {
-      const memoryManager = runtime.getMemoryManager();
-      if (!memoryManager) {
-        return { text: "Memory manager is not available" };
-      }
-
-      const memories = await memoryManager.getMemories({
+      const memories = await runtime.getMemories({
         roomId: message.roomId,
+        tableName: PLUGIN_MEMORY_TABLE,
         count: 50,
       });
 

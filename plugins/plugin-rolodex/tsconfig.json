@@ -30,7 +30,7 @@
     "noEmitOnError": false,
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
-    "types": ["bun-types"]
+    "types": ["bun"]
   },
   "include": [
     "src/**/*.ts"

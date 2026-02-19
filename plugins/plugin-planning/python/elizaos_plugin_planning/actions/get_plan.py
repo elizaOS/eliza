@@ -17,6 +17,7 @@ from elizaos_plugin_planning.actions.base import (
 )
 from elizaos_plugin_planning.types import (
     PLAN_SOURCE,
+    PLUGIN_PLANS_TABLE,
     TaskStatus,
     decode_plan,
     format_plan,
@@ -30,7 +31,7 @@ async def validate(
     runtime: RuntimeProtocol, _message: Memory, _state: State | None = None
 ) -> bool:
     try:
-        return runtime.get_memory_manager() is not None
+        return callable(getattr(runtime, "get_memories", None))
     except Exception:
         return False
 
@@ -43,15 +44,15 @@ async def handler(
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
     try:
-        manager = runtime.get_memory_manager()
-        if not manager:
-            raise RuntimeError("Memory manager not available")
-
         content_data = message.get("content", {})
         content = content_data.get("text", "")
 
-        memories = await manager.get_memories(
-            {"roomId": message.get("roomId", ""), "count": 50}
+        memories = await runtime.get_memories(
+            {
+                "roomId": message.get("roomId", ""),
+                "tableName": PLUGIN_PLANS_TABLE,
+                "count": 50,
+            }
         )
         plan_memories = [m for m in memories if m.get("content", {}).get("source") == PLAN_SOURCE]
 

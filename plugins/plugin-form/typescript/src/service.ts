@@ -1611,6 +1611,7 @@ export class FormService extends Service {
         name: workerName,
         roomId: session.roomId,
         entityId: session.entityId,
+        tags: [],
       };
       await worker.execute(
         this.runtime,

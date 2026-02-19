@@ -14,6 +14,7 @@ import {
   MEMORY_SOURCE,
   type MemorySearchResult,
   type RecallParameters,
+  PLUGIN_MEMORY_TABLE,
 } from "../types.js";
 
 export const recallAction: Action = {
@@ -51,8 +52,7 @@ export const recallAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> {
-    const memoryManager = runtime.getMemoryManager();
-    return !!memoryManager;
+    return typeof runtime.getMemories === "function";
   },
 
   async handler(
@@ -63,11 +63,6 @@ export const recallAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
-      const memoryManager = runtime.getMemoryManager();
-      if (!memoryManager) {
-        throw new Error("Memory manager not available");
-      }
-
       const content = message.content.text;
       if (!content) {
         const errorMessage = "Please provide a query to recall memories.";
@@ -81,9 +76,10 @@ export const recallAction: Action = {
       const limit = params?.limit ?? 10;
       const minImportance = params?.minImportance ?? MemoryImportance.LOW;
 
-      // Retrieve all memories from the room
-      const memories = await memoryManager.getMemories({
+      // Retrieve plugin memories from the room
+      const memories = await runtime.getMemories({
         roomId: message.roomId,
+        tableName: PLUGIN_MEMORY_TABLE,
         count: 100,
       });
 

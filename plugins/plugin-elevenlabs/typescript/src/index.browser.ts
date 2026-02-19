@@ -170,7 +170,10 @@ export const elevenLabsPlugin: Plugin = {
   name: "elevenLabs",
   description:
     "ElevenLabs TTS (browser-safe build; use ELEVENLABS_BROWSER_URL proxy by default)",
-  async init(_config, _runtime): Promise<void> {
+  async init(
+    _config: Record<string, string>,
+    _runtime: IAgentRuntime,
+  ): Promise<void> {
     logger.debug("[plugin-elevenlabs] browser build initialized");
   },
   models: {

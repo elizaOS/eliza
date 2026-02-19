@@ -4,7 +4,7 @@ import clsx from 'clsx';
 
 export function ActionBar() {
   const [message, setMessage] = useState('');
-  const { sendMessage, sendAction, phase, inCombat, connected } = useGameStore();
+  const { sendMessage, sendAction, inCombat, connected } = useGameStore();
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();

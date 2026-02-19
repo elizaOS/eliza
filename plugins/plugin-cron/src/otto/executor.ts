@@ -134,6 +134,13 @@ async function executeAgentTurn(
   let status: CronJobStatus = 'ok';
   let error: string | undefined;
 
+  if (!runtime.messageService) {
+    return {
+      status: 'error',
+      durationMs: Date.now() - startedAtMs,
+      error: 'Runtime messageService is not available',
+    };
+  }
   const runPromise = runtime.messageService.handleMessage(runtime, memory, callback);
   await withTimeout(runPromise, timeoutMs).catch((err: Error) => {
     if (err.message === 'Job execution timeout') {

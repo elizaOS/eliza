@@ -111,7 +111,9 @@ pub use types::environment::{Component, Entity, Relationship, Room, World, World
 pub use types::memory::{Memory, MemoryMetadata};
 
 // Re-export database types (logs, query params, etc.)
-pub use types::database::{GetMemoriesParams, Log, LogBody, SearchMemoriesParams};
+pub use types::database::{
+    CreateMemoryItem, GetMemoriesParams, Log, LogBody, SearchMemoriesParams, UpdateMemoryItem,
+};
 
 // Re-export task types
 pub use types::task::{Task, TaskStatus};

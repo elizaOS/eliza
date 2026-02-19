@@ -56,6 +56,7 @@ export const workersConfig: BuildConfig = {
   splitting: false,
   sourcemap: true,
   external: [
+    "@elizaos/core",
     "sharp",
     "@tensorflow/tfjs-node",
     "@tensorflow-models/mobilenet",

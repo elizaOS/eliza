@@ -8,7 +8,11 @@
     "emitDeclarationOnly": true,
     "composite": false,
     "incremental": false,
-    "tsBuildInfoFile": null
+    "tsBuildInfoFile": null,
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../../packages/typescript/dist"]
+    }
   },
   "include": ["index.ts", "index.node.ts", "index.browser.ts"],
   "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts"]

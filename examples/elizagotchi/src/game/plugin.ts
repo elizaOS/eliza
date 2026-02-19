@@ -188,7 +188,7 @@ function makeGameAction(params: {
     name: params.name,
     description: params.description,
     similes: params.similes,
-    validate: async (runtime: IAgentRuntime, message) => {
+    validate: async (_runtime: IAgentRuntime, message) => {
       // Validate that this is an elizagotchi-related action by checking message content
       const text = (message?.content?.text ?? "").toLowerCase();
       const actionKeywords = params.similes.map(s => s.toLowerCase());

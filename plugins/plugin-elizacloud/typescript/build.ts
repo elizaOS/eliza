@@ -26,7 +26,7 @@ async function build() {
     format: "esm",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps, "undici"],
+    external: [...externalDeps, "undici", "node:sqlite"],
   });
   if (!nodeResult.success) {
     console.error(nodeResult.logs);
@@ -45,7 +45,7 @@ async function build() {
     format: "esm",
     sourcemap: "external",
     minify: true,
-    external: externalDeps,
+    external: [...externalDeps, "undici", "node:sqlite"],
   });
   if (!browserResult.success) {
     console.error(browserResult.logs);
@@ -64,7 +64,7 @@ async function build() {
     format: "cjs",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps, "undici"],
+    external: [...externalDeps, "undici", "node:sqlite"],
   });
   if (!cjsResult.success) {
     console.error(cjsResult.logs);

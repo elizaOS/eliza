@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
+    "@types/uuid": "^9.0.0",
     "vitest": "^4.0.0"
   },
   "scripts": {

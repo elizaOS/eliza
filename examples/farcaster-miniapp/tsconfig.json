@@ -22,7 +22,8 @@
         "noUncheckedSideEffectImports": true,
         "allowSyntheticDefaultImports": true,
         "esModuleInterop": true,
-        "resolveJsonModule": true
+        "resolveJsonModule": true,
+        "types": ["node"]
     },
     "include": [
         "src"

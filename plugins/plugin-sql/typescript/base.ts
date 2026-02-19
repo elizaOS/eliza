@@ -1146,7 +1146,7 @@ export abstract class BaseDrizzleAdapter
    * NESTED TRANSACTIONS: Drizzle uses SAVEPOINTs on PostgreSQL/PGLite, so nested
    * transactions work correctly. MySQL also supports SAVEPOINTs.
    */
-  async transaction<T>(callback: (tx: IDatabaseAdapter) => Promise<T>): Promise<T> {
+  async transaction<T>(callback: (tx: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>): Promise<T> {
     return this.db.transaction(async (drizzleTx) => {
       // Create a proxy that inherits all methods from this adapter
       const proxy = Object.create(this) as BaseDrizzleAdapter;

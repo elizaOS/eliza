@@ -10,6 +10,7 @@ from enum import Enum
 from typing import TypedDict
 
 PLAN_SOURCE = "plugin-planning"
+PLUGIN_PLANS_TABLE = "plans"
 
 
 class TaskStatus(str, Enum):

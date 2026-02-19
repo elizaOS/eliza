@@ -22,6 +22,7 @@ const externalDeps = [
   "undici",
   "@elizaos/core",
   "zod",
+  "viem",
 ];
 
 async function buildPlugin() {

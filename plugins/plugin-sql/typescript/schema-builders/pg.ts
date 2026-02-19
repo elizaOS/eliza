@@ -94,11 +94,12 @@ export const pgAdapter: DialectAdapter = {
   buildUniqueIndex: uniqueIndex,
   buildUniqueConstraint: (name: string, nullsNotDistinct?: boolean) => {
     return (columns: any[]) => {
+      const cols = columns as [any, ...any[]];
       if (nullsNotDistinct) {
         // Drizzle's unique() with nulls: 'not distinct' option for PostgreSQL 15+
-        return unique(name).on(...columns).nullsNotDistinct();
+        return unique(name).on(...cols).nullsNotDistinct();
       }
-      return unique(name).on(...columns);
+      return unique(name).on(...cols);
     };
   },
   buildForeignKey: (name: string, onUpdate?: string, onDelete?: string) => {
@@ -107,8 +108,8 @@ export const pgAdapter: DialectAdapter = {
       // so we don't need the targetTable parameter
       const fk = foreignKey({
         name,
-        columns,
-        foreignColumns: targetColumns,
+        columns: columns as [any, ...any[]],
+        foreignColumns: targetColumns as [any, ...any[]],
       });
       if (onUpdate) fk.onUpdate(onUpdate as any);
       if (onDelete) fk.onDelete(onDelete as any);

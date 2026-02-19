@@ -164,9 +164,9 @@ describe("CREATE_PLAN Action", () => {
     expect(createPlanAction.examples.length).toBeGreaterThan(0);
   });
 
-  it("should validate when memory manager is available", async () => {
+  it("should validate when runtime has createMemory", async () => {
     const runtime = {
-      getMemoryManager: vi.fn().mockReturnValue({ createMemory: vi.fn() }),
+      createMemory: vi.fn(),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = { agentId: "a", roomId: "r", content: { text: "t" } } as Memory;
@@ -174,11 +174,10 @@ describe("CREATE_PLAN Action", () => {
   });
 
   it("should create a plan with LLM-generated tasks", async () => {
-    const mockCreate = vi.fn().mockResolvedValue(undefined);
-    const mockMemoryManager = { createMemory: mockCreate };
+    const mockCreate = vi.fn().mockResolvedValue("plan-uuid");
 
     const runtime = {
-      getMemoryManager: vi.fn().mockReturnValue(mockMemoryManager),
+      createMemory: mockCreate,
       agentId: "agent-1",
       useModel: vi.fn().mockResolvedValue(
         JSON.stringify({
@@ -215,9 +214,7 @@ describe("UPDATE_PLAN Action", () => {
 
   it("should report no plans when none exist", async () => {
     const runtime = {
-      getMemoryManager: vi
-        .fn()
-        .mockReturnValue({ getMemories: vi.fn().mockResolvedValue([]) }),
+      getMemories: vi.fn().mockResolvedValue([]),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = {
@@ -270,15 +267,11 @@ describe("COMPLETE_TASK Action", () => {
       createdAt: 0,
     };
 
-    const mockRemove = vi.fn().mockResolvedValue(undefined);
-    const mockCreate = vi.fn().mockResolvedValue(undefined);
+    const mockUpdateMemory = vi.fn().mockResolvedValue(true);
 
     const runtime = {
-      getMemoryManager: vi.fn().mockReturnValue({
-        getMemories: vi.fn().mockResolvedValue([planMemory]),
-        removeMemory: mockRemove,
-        createMemory: mockCreate,
-      }),
+      getMemories: vi.fn().mockResolvedValue([planMemory]),
+      updateMemory: mockUpdateMemory,
       agentId: "a",
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
@@ -295,8 +288,7 @@ describe("COMPLETE_TASK Action", () => {
     expect(result.success).toBe(true);
     expect(result.text).toContain("Completed task");
     expect(result.text).toContain("100%");
-    expect(mockRemove).toHaveBeenCalledWith("mem-1");
-    expect(mockCreate).toHaveBeenCalledOnce();
+    expect(mockUpdateMemory).toHaveBeenCalledOnce();
   });
 });
 
@@ -308,9 +300,7 @@ describe("GET_PLAN Action", () => {
 
   it("should return no plans message when empty", async () => {
     const runtime = {
-      getMemoryManager: vi
-        .fn()
-        .mockReturnValue({ getMemories: vi.fn().mockResolvedValue([]) }),
+      getMemories: vi.fn().mockResolvedValue([]),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = {
@@ -335,9 +325,7 @@ describe("Plan Status Provider", () => {
 
   it("should return no plans message when empty", async () => {
     const runtime = {
-      getMemoryManager: vi
-        .fn()
-        .mockReturnValue({ getMemories: vi.fn().mockResolvedValue([]) }),
+      getMemories: vi.fn().mockResolvedValue([]),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = { agentId: "a", roomId: "r", content: { text: "" } } as Memory;
@@ -389,9 +377,7 @@ describe("Plan Status Provider", () => {
     };
 
     const runtime = {
-      getMemoryManager: vi
-        .fn()
-        .mockReturnValue({ getMemories: vi.fn().mockResolvedValue([planMemory]) }),
+      getMemories: vi.fn().mockResolvedValue([planMemory]),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     const message = { agentId: "a", roomId: "r", content: { text: "" } } as Memory;

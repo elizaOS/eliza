@@ -123,37 +123,30 @@ class TestTypes:
         assert "[-]" in format_plan(plan)
 
 
-# --- Mock Runtime ---
-
-
-class MockMemoryManager:
-    def __init__(self, memories: list[dict] | None = None) -> None:
-        self._memories = memories or []
-        self.create_memory = AsyncMock()
-        self.remove_memory = AsyncMock()
-
-    async def get_memories(self, params: dict) -> list[dict]:
-        return self._memories
+# --- Mock Runtime (aligned with runtime DB API) ---
 
 
 class MockRuntime:
     def __init__(
         self,
-        memory_manager: MockMemoryManager | None = None,
+        memories: list[dict] | None = None,
         model_response: str | None = None,
     ) -> None:
-        self._memory_manager = memory_manager
+        self._memories = memories or []
         self._model_response = model_response
         self.agent_id = "test-agent"
+        self.create_memory = AsyncMock(return_value="plan-uuid")
+        self.update_memory = AsyncMock(return_value=True)
+        self.delete_memory = AsyncMock()
+
+    async def get_memories(self, params: dict) -> list[dict]:
+        return self._memories
 
     def get_setting(self, key: str) -> str | None:
         return None
 
     def get_service(self, name: str) -> object | None:
         return None
-
-    def get_memory_manager(self) -> MockMemoryManager | None:
-        return self._memory_manager
 
     async def use_model(self, model_type: str, params: dict) -> str | None:
         return self._model_response
@@ -170,14 +163,12 @@ class TestCreatePlan:
 
     @pytest.mark.asyncio
     async def test_validate(self) -> None:
-        runtime = MockRuntime(memory_manager=MockMemoryManager())
+        runtime = MockRuntime()
         assert await create_plan_action.validate(runtime, {"content": {"text": "test"}}) is True
 
     @pytest.mark.asyncio
     async def test_create_plan_with_llm(self) -> None:
-        manager = MockMemoryManager()
         runtime = MockRuntime(
-            memory_manager=manager,
             model_response=json.dumps(
                 {
                     "title": "Website Launch",
@@ -195,7 +186,7 @@ class TestCreatePlan:
         assert result["success"] is True
         assert "Website Launch" in result["text"]
         assert "2 tasks" in result["text"]
-        manager.create_memory.assert_called_once()
+        runtime.create_memory.assert_called_once()
 
 
 # --- UPDATE_PLAN Action ---
@@ -208,7 +199,7 @@ class TestUpdatePlan:
 
     @pytest.mark.asyncio
     async def test_no_plans(self) -> None:
-        runtime = MockRuntime(memory_manager=MockMemoryManager([]))
+        runtime = MockRuntime(memories=[])
         message = {"roomId": "r1", "content": {"text": "update"}}
 
         result = await update_plan_action.handler(runtime, message)
@@ -235,8 +226,7 @@ class TestCompleteTask:
                 "createdAt": 1000,
             }
         ]
-        manager = MockMemoryManager(memories)
-        runtime = MockRuntime(memory_manager=manager)
+        runtime = MockRuntime(memories=memories)
         message = {"roomId": "r1", "userId": "u1", "content": {"text": "complete task"}}
         options = {"taskId": "task-1"}
 
@@ -244,11 +234,11 @@ class TestCompleteTask:
         assert result["success"] is True
         assert "Completed task" in result["text"]
         assert "100%" in result["text"]
-        manager.remove_memory.assert_called_once_with("mem-1")
+        runtime.update_memory.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_no_plans(self) -> None:
-        runtime = MockRuntime(memory_manager=MockMemoryManager([]))
+        runtime = MockRuntime(memories=[])
         message = {"roomId": "r1", "content": {"text": "done"}}
 
         result = await complete_task_action.handler(runtime, message)
@@ -266,7 +256,7 @@ class TestGetPlan:
 
     @pytest.mark.asyncio
     async def test_no_plans(self) -> None:
-        runtime = MockRuntime(memory_manager=MockMemoryManager([]))
+        runtime = MockRuntime(memories=[])
         message = {"roomId": "r1", "content": {"text": "show plans"}}
 
         result = await get_plan_action.handler(runtime, message)
@@ -278,7 +268,7 @@ class TestGetPlan:
         plan = make_test_plan([TaskStatus.COMPLETED, TaskStatus.PENDING])
         encoded = encode_plan(plan)
         memories = [{"content": {"text": encoded, "source": PLAN_SOURCE}}]
-        runtime = MockRuntime(memory_manager=MockMemoryManager(memories))
+        runtime = MockRuntime(memories=memories)
         message = {"roomId": "r1", "content": {"text": "show plans"}}
 
         result = await get_plan_action.handler(runtime, message)
@@ -297,7 +287,7 @@ class TestPlanStatusProvider:
 
     @pytest.mark.asyncio
     async def test_empty(self) -> None:
-        runtime = MockRuntime(memory_manager=MockMemoryManager([]))
+        runtime = MockRuntime(memories=[])
         result = await plan_status_provider.get(runtime, {"roomId": "r1"}, {})
         assert "No active plans" in result.text
 
@@ -308,7 +298,7 @@ class TestPlanStatusProvider:
         memories = [
             {"content": {"text": encoded, "source": PLAN_SOURCE}, "createdAt": 1000}
         ]
-        runtime = MockRuntime(memory_manager=MockMemoryManager(memories))
+        runtime = MockRuntime(memories=memories)
         result = await plan_status_provider.get(runtime, {"roomId": "r1"}, {})
 
         assert "Active Plans (1)" in result.text
@@ -322,7 +312,7 @@ class TestPlanStatusProvider:
         memories = [
             {"content": {"text": encoded, "source": PLAN_SOURCE}, "createdAt": 1000}
         ]
-        runtime = MockRuntime(memory_manager=MockMemoryManager(memories))
+        runtime = MockRuntime(memories=memories)
         result = await plan_status_provider.get(runtime, {"roomId": "r1"}, {})
 
         assert "Next: Task 2" in result.text

@@ -3,11 +3,13 @@ import type {
   Agent,
   Component,
   Entity,
+  IDatabaseAdapter,
   Log,
   LogBody,
   Memory,
   MemoryMetadata,
   Metadata,
+  PatchOp,
   PairingAllowlistEntry,
   PairingChannel,
   PairingRequest,
@@ -167,6 +169,28 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     // no-op
   }
 
+  async transaction<T>(
+    callback: (tx: IDatabaseAdapter<Record<string, never>>) => Promise<T>,
+  ): Promise<T> {
+    return callback(this);
+  }
+
+  async queryEntities(_params: {
+    componentType?: string;
+    componentDataFilter?: Record<string, unknown>;
+    agentId?: UUID;
+    entityIds?: UUID[];
+    worldId?: UUID;
+    limit?: number;
+    offset?: number;
+    includeAllComponents?: boolean;
+  }): Promise<Entity[]> {
+    if (_params.entityIds?.length) {
+      return this.getEntitiesByIds(_params.entityIds);
+    }
+    return [];
+  }
+
   async getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]> {
     // Get participant entity IDs for the given roomId from participantsByRoom
     const participantSet = this.participantsByRoom.get(String(roomId));
@@ -311,6 +335,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
   async deleteComponents(_componentIds: UUID[]): Promise<void> {
     // no-op
+  }
+
+  async upsertComponents(_components: Component[]): Promise<void> {
+    // InMemory does not persist components; no-op for compatibility.
+  }
+
+  async patchComponent(_componentId: UUID, _ops: PatchOp[]): Promise<void> {
+    // InMemory does not persist components; no-op for compatibility.
   }
 
   async getMemories(params: {
@@ -531,6 +563,21 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
   }
 
+  async upsertMemories(memories: Array<{ memory: Memory; tableName: string }>): Promise<void> {
+    for (const { memory, tableName } of memories) {
+      const id = memory.id;
+      if (id == null) {
+        await this.createMemories([{ memory, tableName }]);
+        continue;
+      }
+      if (this.memoriesById.has(String(id))) {
+        await this.updateMemories([{ ...memory, id }]);
+      } else {
+        await this.createMemories([{ memory, tableName }]);
+      }
+    }
+  }
+
   async deleteMemories(memoryIds: UUID[]): Promise<void> {
     const idSet = new Set(memoryIds.map(String));
     for (const id of memoryIds) {
@@ -556,10 +603,30 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     this.memoriesByRoom.delete(key);
   }
 
-  async countMemories(roomId: UUID, unique?: boolean, tableName?: string): Promise<number> {
-    const key = roomTableKey(tableName ?? "messages", roomId);
+  async countMemories(
+    roomIdOrParams:
+      | UUID
+      | {
+          roomId?: UUID;
+          unique?: boolean;
+          tableName?: string;
+          entityId?: UUID;
+          agentId?: UUID;
+          metadata?: Record<string, unknown>;
+        },
+    unique?: boolean,
+    tableName?: string,
+  ): Promise<number> {
+    const roomId: UUID | undefined =
+      typeof roomIdOrParams === "object" && roomIdOrParams !== null && "roomId" in roomIdOrParams
+        ? roomIdOrParams.roomId
+        : (roomIdOrParams as UUID);
+    const u = typeof roomIdOrParams === "object" && roomIdOrParams !== null && "unique" in roomIdOrParams ? roomIdOrParams.unique : unique;
+    const tbl = typeof roomIdOrParams === "object" && roomIdOrParams !== null && "tableName" in roomIdOrParams ? roomIdOrParams.tableName : tableName;
+    if (roomId == null) return 0;
+    const key = roomTableKey(tbl ?? "messages", roomId);
     const memories = this.memoriesByRoom.get(key) ?? [];
-    if (unique) {
+    if (u) {
       return memories.filter((m) => m.unique).length;
     }
     return memories.length;

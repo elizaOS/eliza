@@ -9,6 +9,7 @@ from typing import TypedDict
 
 MEMORY_METADATA_SEPARATOR = "\n---\n"
 MEMORY_SOURCE = "plugin-memory"
+PLUGIN_MEMORY_TABLE = "plugin_memory"
 
 IMPORTANCE_LABELS: dict[int, str] = {1: "low", 2: "normal", 3: "high", 4: "critical"}
 
