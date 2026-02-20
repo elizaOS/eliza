@@ -3,652 +3,876 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Virtually Ever After — Chat with Vera</title>
-  <meta name="description" content="Meet Vera, the AI guide for Virtually Ever After — your virtual wedding platform." />
-
-  <!-- Favicon emoji -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💍</text></svg>" />
+  <title>Virtually Ever After</title>
+  <meta name="description"
+        content="Virtually Ever After — Creative platform at the intersection of architecture, spatial design, and digital technology. Founded in Luxembourg." />
+  <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,5 95,50 50,95 5,50' fill='%23c8b89a'/></svg>" />
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --rose: #c5687b;
-      --rose-dark: #a84f63;
-      --rose-light: #fde8ed;
-      --gradient: linear-gradient(135deg, #c5687b 0%, #e8a0b0 100%);
-      --text: #2c1a1e;
-      --muted: #7a5e66;
+      --bg:       #0a0a0a;
+      --surface:  #111111;
+      --border:   rgba(255,255,255,0.07);
+      --text:     #e0e0e0;
+      --muted:    #666;
+      --accent:   #c8b89a;
+      --accent-d: #a89070;
     }
 
+    html { scroll-behavior: smooth; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-      background: #fff8f9;
+      background: var(--bg);
       color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif;
+      line-height: 1.6;
       min-height: 100vh;
     }
 
+    /* ── TYPOGRAPHY ── */
+    h1, h2, h3, h4 { font-weight: 500; letter-spacing: -0.02em; }
+
     /* ── NAV ── */
     nav {
-      background: #fff;
-      border-bottom: 1px solid #f0dde3;
-      padding: 0 32px;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 0 40px;
+      height: 60px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 64px;
-      position: sticky;
-      top: 0;
-      z-index: 100;
+      background: rgba(10,10,10,0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
     }
     .nav-logo {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--rose-dark);
-      text-decoration: none;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 400;
     }
-    .nav-links { display: flex; gap: 24px; }
+    .nav-logo svg {
+      width: 14px;
+      height: 14px;
+      fill: var(--accent);
+      flex-shrink: 0;
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
     .nav-links a {
       color: var(--muted);
       text-decoration: none;
-      font-size: 14px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
       transition: color 0.2s;
     }
-    .nav-links a:hover { color: var(--rose); }
+    .nav-links a:hover { color: var(--text); }
     .nav-cta {
-      background: var(--gradient);
-      color: #fff !important;
-      padding: 8px 18px;
-      border-radius: 20px;
-      font-weight: 600;
-      font-size: 14px !important;
-      transition: opacity 0.2s, transform 0.2s !important;
+      border: 1px solid rgba(200,184,154,0.25) !important;
+      color: var(--accent) !important;
+      padding: 7px 16px;
+      border-radius: 3px;
+      transition: background 0.2s, border-color 0.2s !important;
     }
-    .nav-cta:hover { opacity: 0.9; transform: translateY(-1px); color: #fff !important; }
+    .nav-cta:hover {
+      background: rgba(200,184,154,0.08) !important;
+      border-color: rgba(200,184,154,0.5) !important;
+    }
 
     /* ── HERO ── */
     .hero {
-      text-align: center;
-      padding: 80px 20px 64px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 0 40px 80px;
       position: relative;
       overflow: hidden;
     }
-    .hero::before {
+    .hero-bg {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 70% 60% at 80% 20%, rgba(200,184,154,0.04) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 40% at 10% 80%, rgba(200,184,154,0.03) 0%, transparent 50%);
+      pointer-events: none;
+    }
+    /* Grid lines */
+    .hero-bg::after {
       content: '';
       position: absolute;
       inset: 0;
-      background: radial-gradient(ellipse 80% 60% at 50% 0%, #fde8ed 0%, transparent 70%);
+      background-image:
+        linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+      background-size: 80px 80px;
       pointer-events: none;
     }
-    .hero-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: var(--rose-light);
-      color: var(--rose-dark);
-      border: 1px solid #f4c4cf;
-      border-radius: 20px;
-      padding: 5px 14px;
-      font-size: 13px;
-      font-weight: 600;
+    .hero-eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
       margin-bottom: 24px;
+      opacity: 0.7;
     }
     .hero h1 {
-      font-size: clamp(32px, 6vw, 64px);
-      font-weight: 800;
-      line-height: 1.1;
-      letter-spacing: -0.02em;
+      font-size: clamp(40px, 7vw, 88px);
+      line-height: 1.0;
+      letter-spacing: -0.04em;
+      font-weight: 300;
       color: var(--text);
-      margin-bottom: 20px;
-      max-width: 800px;
-      margin-left: auto;
-      margin-right: auto;
+      max-width: 780px;
+      margin-bottom: 32px;
     }
-    .hero h1 span { color: var(--rose); }
-    .hero p {
-      font-size: clamp(16px, 2vw, 20px);
+    .hero h1 em {
+      font-style: normal;
+      color: var(--accent);
+    }
+    .hero-desc {
+      max-width: 480px;
+      font-size: 15px;
       color: var(--muted);
-      max-width: 560px;
-      margin: 0 auto 36px;
-      line-height: 1.6;
+      line-height: 1.7;
+      margin-bottom: 44px;
     }
     .hero-actions {
       display: flex;
       gap: 14px;
-      justify-content: center;
       flex-wrap: wrap;
-      margin-bottom: 56px;
     }
-    .btn-primary {
-      background: var(--gradient);
-      color: #fff;
-      padding: 14px 28px;
-      border-radius: 28px;
-      font-size: 15px;
-      font-weight: 700;
-      text-decoration: none;
-      border: none;
-      cursor: pointer;
-      box-shadow: 0 4px 16px rgba(197,104,123,0.4);
-      transition: transform 0.2s, box-shadow 0.2s;
+    .btn {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-    }
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(197,104,123,0.45);
-    }
-    .btn-secondary {
-      background: #fff;
-      color: var(--rose-dark);
-      padding: 14px 28px;
-      border-radius: 28px;
-      font-size: 15px;
-      font-weight: 600;
-      text-decoration: none;
-      border: 1.5px solid #f4c4cf;
-      cursor: pointer;
-      transition: background 0.2s, border-color 0.2s;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .btn-secondary:hover { background: var(--rose-light); border-color: var(--rose); }
-
-    /* ── FEATURES ── */
-    .features {
-      background: #fff;
-      padding: 72px 20px;
-    }
-    .section-label {
-      text-align: center;
+      padding: 12px 24px;
+      border-radius: 3px;
       font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: var(--rose);
-      margin-bottom: 12px;
+      font-weight: 400;
+      text-decoration: none;
+      transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.15s;
+      font-family: inherit;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .btn-accent {
+      background: var(--accent);
+      color: #0a0a0a;
+      border-color: var(--accent);
+    }
+    .btn-accent:hover {
+      background: var(--accent-d);
+      border-color: var(--accent-d);
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border-color: var(--border);
+    }
+    .btn-ghost:hover {
+      color: var(--text);
+      border-color: rgba(255,255,255,0.15);
+    }
+    .hero-scroll {
+      position: absolute;
+      bottom: 40px;
+      right: 40px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      opacity: 0.4;
+    }
+    .hero-scroll::before {
+      content: '';
+      width: 32px;
+      height: 1px;
+      background: var(--muted);
+    }
+
+    /* ── SECTION WRAPPER ── */
+    section { padding: 100px 40px; }
+    .section-label {
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+      opacity: 0.6;
+      margin-bottom: 16px;
     }
     .section-title {
-      text-align: center;
-      font-size: clamp(24px, 4vw, 40px);
-      font-weight: 800;
-      margin-bottom: 12px;
-      letter-spacing: -0.01em;
+      font-size: clamp(28px, 4vw, 48px);
+      font-weight: 300;
+      letter-spacing: -0.03em;
+      margin-bottom: 16px;
+      color: var(--text);
     }
     .section-sub {
-      text-align: center;
+      font-size: 14px;
       color: var(--muted);
-      font-size: 16px;
-      margin-bottom: 52px;
       max-width: 480px;
-      margin-left: auto;
-      margin-right: auto;
-      line-height: 1.6;
+      line-height: 1.7;
+      margin-bottom: 64px;
     }
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 24px;
-      max-width: 1080px;
-      margin: 0 auto;
-    }
-    .feature-card {
-      background: #fff8f9;
-      border: 1px solid #f0dde3;
-      border-radius: 16px;
-      padding: 28px;
-      transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .feature-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 12px 32px rgba(197,104,123,0.12);
-    }
-    .feature-icon {
-      font-size: 32px;
-      margin-bottom: 14px;
-      display: block;
-    }
-    .feature-card h3 {
-      font-size: 17px;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-    .feature-card p {
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.6;
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 0 40px;
     }
 
-    /* ── HOW IT WORKS ── */
-    .how {
-      padding: 72px 20px;
-      background: #fff8f9;
-    }
-    .steps {
+    /* ── SERVICES ── */
+    .services-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 32px;
-      max-width: 900px;
-      margin: 0 auto;
-      counter-reset: step;
-    }
-    .step {
-      text-align: center;
-      position: relative;
-    }
-    .step-num {
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      background: var(--gradient);
-      color: #fff;
-      font-weight: 800;
-      font-size: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 16px;
-      box-shadow: 0 4px 14px rgba(197,104,123,0.4);
-    }
-    .step h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
-    .step p { color: var(--muted); font-size: 13px; line-height: 1.6; }
-
-    /* ── CHATBOT INTRO ── */
-    .chatbot-section {
-      background: #fff;
-      padding: 72px 20px;
-      text-align: center;
-    }
-    .chatbot-demo {
-      max-width: 400px;
-      margin: 40px auto 0;
-      background: #fafafa;
-      border: 1px solid #ece8f0;
-      border-radius: 18px;
+      grid-template-columns: repeat(3, 1fr);
+      border: 1px solid var(--border);
+      border-radius: 4px;
       overflow: hidden;
-      box-shadow: 0 12px 48px rgba(0,0,0,0.10);
+      max-width: 1100px;
     }
-    .chatbot-demo-header {
-      background: var(--gradient);
-      color: #fff;
-      padding: 14px 16px;
+    .service-card {
+      padding: 48px 36px;
+      border-right: 1px solid var(--border);
+      transition: background 0.2s;
+    }
+    .service-card:last-child { border-right: none; }
+    .service-card:hover { background: rgba(200,184,154,0.03); }
+    .service-num {
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      color: var(--accent);
+      opacity: 0.5;
+      margin-bottom: 24px;
+      font-weight: 400;
+    }
+    .service-card h3 {
+      font-size: 20px;
+      font-weight: 400;
+      letter-spacing: -0.01em;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+    .service-card p {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+    .service-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .service-list li {
+      font-size: 12px;
+      color: var(--muted);
       display: flex;
       align-items: center;
-      gap: 10px;
-      font-weight: 700;
-      font-size: 14px;
+      gap: 8px;
     }
-    .chatbot-demo-body {
-      padding: 20px 16px;
+    .service-list li::before {
+      content: '';
+      width: 16px;
+      height: 1px;
+      background: var(--accent);
+      opacity: 0.4;
+      flex-shrink: 0;
+    }
+
+    /* ── WORK ── */
+    .work-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      max-width: 1100px;
+    }
+    .work-item {
+      background: var(--bg);
+      padding: 48px;
       display: flex;
       flex-direction: column;
       gap: 12px;
+      transition: background 0.2s;
+      text-decoration: none;
     }
-    .demo-bubble {
-      background: #fff;
-      border: 1px solid #ece8f0;
-      border-radius: 14px;
+    .work-item:hover { background: rgba(200,184,154,0.03); }
+    .work-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .work-year {
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--accent);
+      opacity: 0.5;
+    }
+    .work-arrow {
+      font-size: 12px;
+      color: var(--muted);
+      transition: color 0.2s, transform 0.2s;
+    }
+    .work-item:hover .work-arrow {
+      color: var(--accent);
+      transform: translate(2px, -2px);
+    }
+    .work-title {
+      font-size: 24px;
+      font-weight: 300;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    .work-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .work-tag {
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      padding: 3px 8px;
+    }
+    .work-desc {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.65;
+      max-width: 400px;
+    }
+
+    /* ── ABOUT ── */
+    .about-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      max-width: 1100px;
+      align-items: start;
+    }
+    .about-text h2 { margin-bottom: 24px; }
+    .about-text p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.8;
+      margin-bottom: 16px;
+    }
+    .about-text p:last-child { margin-bottom: 0; }
+    .about-founder {
+      padding: 36px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    .founder-role {
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+      opacity: 0.6;
+      margin-bottom: 16px;
+    }
+    .founder-name {
+      font-size: 24px;
+      font-weight: 300;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      margin-bottom: 20px;
+    }
+    .founder-bio {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.75;
+    }
+    .founder-credentials {
+      margin-top: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .credential {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .credential::before {
+      content: '';
+      width: 20px;
+      height: 1px;
+      background: var(--accent);
+      opacity: 0.4;
+      flex-shrink: 0;
+      margin-top: 8px;
+    }
+
+    /* ── VERA SECTION ── */
+    .vera-section {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .vera-inner {
+      max-width: 1100px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+    }
+    .vera-chat-preview {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #0e0e0e;
+    }
+    .vcp-header {
+      background: #111;
+      border-bottom: 1px solid var(--border);
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .vcp-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(200,184,154,0.1);
+      border: 1px solid rgba(200,184,154,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .vcp-mark svg { width: 12px; height: 12px; fill: var(--accent); }
+    .vcp-name { font-size: 12px; color: #e0e0e0; font-weight: 500; }
+    .vcp-status { font-size: 10px; color: var(--muted); margin-top: 1px; }
+    .vcp-body { padding: 20px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .vcp-msg {
+      background: #161616;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px;
+      border-bottom-left-radius: 2px;
       padding: 10px 14px;
       font-size: 13px;
-      line-height: 1.5;
+      color: #ccc;
+      line-height: 1.55;
       max-width: 85%;
-      color: #333;
-      align-self: flex-start;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
     }
-    .demo-bubble.user {
-      background: var(--gradient);
-      color: #fff;
+    .vcp-msg.user {
+      background: #1e1e1e;
+      border-color: rgba(255,255,255,0.04);
+      border-bottom-left-radius: 10px;
+      border-bottom-right-radius: 2px;
       align-self: flex-end;
-      border: none;
+      color: #e0e0e0;
     }
-    .demo-arrow {
-      text-align: center;
-      font-size: 28px;
-      color: var(--rose);
-      animation: pulse 2s infinite ease-in-out;
-    }
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(1.15); opacity: 0.7; }
-    }
-
-    /* ── EMBED SNIPPET ── */
-    .embed-section {
-      background: #1a0d10;
-      padding: 72px 20px;
-      color: #f8e8ec;
-    }
-    .embed-section .section-label { color: #e8a0b0; }
-    .embed-section .section-title { color: #fff; }
-    .embed-section .section-sub { color: #c4a0a8; }
-    .code-block {
-      background: #2d1418;
-      border: 1px solid #4a2028;
-      border-radius: 12px;
-      padding: 24px 28px;
-      max-width: 600px;
-      margin: 0 auto;
-      overflow-x: auto;
-    }
-    .code-block pre {
-      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    .vera-info h2 { margin-bottom: 20px; }
+    .vera-info p {
       font-size: 14px;
-      line-height: 1.7;
-      color: #f0d0d8;
-      white-space: pre;
-    }
-    .code-block .tag { color: #e8a0b0; }
-    .code-block .attr { color: #f0e090; }
-    .code-block .val { color: #90d0a0; }
-    .copy-btn {
-      display: block;
-      margin: 16px auto 0;
-      background: var(--gradient);
-      color: #fff;
-      border: none;
-      border-radius: 20px;
-      padding: 9px 22px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity 0.2s;
-      font-family: inherit;
-    }
-    .copy-btn:hover { opacity: 0.88; }
-
-    /* ── TESTIMONIALS ── */
-    .testimonials {
-      padding: 72px 20px;
-      background: #fff8f9;
-    }
-    .testi-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 24px;
-      max-width: 960px;
-      margin: 0 auto;
-    }
-    .testi-card {
-      background: #fff;
-      border: 1px solid #f0dde3;
-      border-radius: 16px;
-      padding: 28px;
-    }
-    .testi-stars { color: #f4a93e; font-size: 16px; margin-bottom: 12px; }
-    .testi-text {
-      font-size: 14px;
-      line-height: 1.7;
-      color: #444;
-      margin-bottom: 16px;
-      font-style: italic;
-    }
-    .testi-author {
-      font-weight: 700;
-      font-size: 13px;
-      color: var(--rose-dark);
-    }
-    .testi-location { font-size: 12px; color: var(--muted); }
-
-    /* ── CTA BANNER ── */
-    .cta-banner {
-      padding: 80px 20px;
-      text-align: center;
-      background: var(--gradient);
-      color: #fff;
-    }
-    .cta-banner h2 {
-      font-size: clamp(26px, 5vw, 48px);
-      font-weight: 800;
-      margin-bottom: 16px;
-      letter-spacing: -0.02em;
-    }
-    .cta-banner p {
-      font-size: 17px;
-      opacity: 0.88;
+      color: var(--muted);
+      line-height: 1.75;
       margin-bottom: 32px;
-      max-width: 440px;
-      margin-left: auto;
-      margin-right: auto;
-      line-height: 1.5;
     }
-    .btn-white {
-      background: #fff;
-      color: var(--rose-dark);
-      padding: 14px 28px;
-      border-radius: 28px;
-      font-size: 15px;
-      font-weight: 700;
-      text-decoration: none;
-      display: inline-flex;
+
+    /* ── CONTACT ── */
+    .contact-inner {
+      max-width: 600px;
+    }
+    .contact-inner h2 { margin-bottom: 20px; }
+    .contact-inner > p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-bottom: 48px;
+    }
+    .contact-items {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .contact-item {
+      display: flex;
       align-items: center;
-      gap: 8px;
-      transition: transform 0.2s;
+      gap: 16px;
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 13px;
+      transition: color 0.2s;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
     }
-    .btn-white:hover { transform: translateY(-2px); }
+    .contact-item:last-child { border-bottom: none; }
+    .contact-item:hover { color: var(--text); }
+    .contact-item-label {
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--accent);
+      opacity: 0.6;
+      min-width: 60px;
+      flex-shrink: 0;
+    }
 
     /* ── FOOTER ── */
     footer {
-      background: #1a0d10;
-      color: #a08088;
-      text-align: center;
-      padding: 28px 20px;
-      font-size: 13px;
+      padding: 32px 40px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
     }
-    footer a { color: #c4a0a8; text-decoration: none; }
-    footer a:hover { color: #fff; }
+    footer .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    footer .logo svg { width: 12px; height: 12px; fill: var(--accent); }
+    footer .copy {
+      font-size: 11px;
+      color: var(--muted);
+      opacity: 0.5;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 900px) {
+      nav { padding: 0 20px; }
+      nav .nav-links { display: none; }
+      section { padding: 72px 20px; }
+      .hero { padding: 0 20px 72px; }
+      .divider { margin: 0 20px; }
+      .hero-scroll { display: none; }
+      .services-grid { grid-template-columns: 1fr; }
+      .service-card { border-right: none; border-bottom: 1px solid var(--border); }
+      .service-card:last-child { border-bottom: none; }
+      .work-grid { grid-template-columns: 1fr; }
+      .about-grid { grid-template-columns: 1fr; gap: 48px; }
+      .vera-inner { grid-template-columns: 1fr; gap: 48px; }
+      footer { padding: 24px 20px; }
+    }
   </style>
 </head>
 <body>
 
-  <!-- ── NAV ── -->
+  <!-- NAV -->
   <nav>
-    <a href="#" class="nav-logo">💍 Virtually Ever After</a>
+    <a href="#" class="nav-logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2L22 12L12 22L2 12Z"/></svg>
+      Virtually Ever After
+    </a>
     <div class="nav-links">
-      <a href="#features">Features</a>
-      <a href="#how-it-works">How it Works</a>
-      <a href="#embed">Embed</a>
-      <a href="mailto:hello@virtuallyeverafter.com" class="nav-cta">Contact Us</a>
+      <a href="#services">Services</a>
+      <a href="#work">Work</a>
+      <a href="#about">About</a>
+      <a href="#contact" class="nav-cta">Get in Touch</a>
     </div>
   </nav>
 
-  <!-- ── HERO ── -->
+  <!-- HERO -->
   <section class="hero">
-    <div class="hero-badge">✨ Your Virtual Wedding, Beautifully Done</div>
-    <h1>Love Has No<br /><span>Distance</span></h1>
-    <p>Host a breathtaking virtual or hybrid wedding and connect every guest, no matter where in the world they are.</p>
+    <div class="hero-bg"></div>
+    <div class="hero-eyebrow">Luxembourg · Est. 2025</div>
+    <h1>Architecture<br />meets the<br /><em>digital world</em></h1>
+    <p class="hero-desc">
+      VEA is a creative platform at the intersection of spatial design, real-time 3D environments, and emerging technology — dissolving the boundary between the physical and the digital.
+    </p>
     <div class="hero-actions">
-      <a href="mailto:hello@virtuallyeverafter.com" class="btn-primary">
-        💌 Book a Free Consultation
+      <a href="#work" class="btn btn-accent">View Work</a>
+      <a href="#contact" class="btn btn-ghost">Get in Touch</a>
+    </div>
+    <div class="hero-scroll">Scroll</div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- SERVICES -->
+  <section id="services">
+    <div class="section-label">What We Do</div>
+    <h2 class="section-title">Three disciplines.<br />One spatial vision.</h2>
+    <p class="section-sub">
+      We design the digital worlds that architecture, brands, and culture inhabit — from interactive 3D environments to identity systems and cinematic content.
+    </p>
+    <div class="services-grid">
+      <div class="service-card">
+        <div class="service-num">01</div>
+        <h3>Worldbuilding</h3>
+        <p>Designing the digital space a studio or brand inhabits — from navigable 3D environments to interactive archives and hybrid galleries.</p>
+        <ul class="service-list">
+          <li>Atmospheric Spatial Interfaces</li>
+          <li>Web-based 3D Interactivity</li>
+          <li>Hybrid Spatial Gallery</li>
+          <li>Index as Mapping</li>
+          <li>Exhibition Design</li>
+        </ul>
+      </div>
+      <div class="service-card">
+        <div class="service-num">02</div>
+        <h3>Identity Building</h3>
+        <p>Brand codes constructed for spatial and digital environments. Architectural precision applied to visual language — consistent across every physical and digital touchpoint.</p>
+        <ul class="service-list">
+          <li>Logo Design</li>
+          <li>Brand Identity Systems</li>
+          <li>Consistent Aesthetics</li>
+          <li>Booklet & Publication Design</li>
+          <li>Product Design</li>
+        </ul>
+      </div>
+      <div class="service-card">
+        <div class="service-num">03</div>
+        <h3>Digital Content</h3>
+        <p>Visual storytelling, cinematic reels, and creative direction that translate design intent into narrative — the lines that connect dots people feel but usually miss.</p>
+        <ul class="service-list">
+          <li>Cinematic Reels & Video</li>
+          <li>Visual Storytelling</li>
+          <li>Art Direction</li>
+          <li>Creative Direction</li>
+          <li>Motion Design</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- WORK -->
+  <section id="work">
+    <div class="section-label">Selected Work</div>
+    <h2 class="section-title">Recent projects</h2>
+    <p class="section-sub">
+      Each project is treated as a unique narrative — developed through close collaboration, combining design thinking with advanced technology.
+    </p>
+    <div class="work-grid">
+
+      <a class="work-item" href="https://status-co.com" target="_blank" rel="noopener">
+        <div class="work-meta">
+          <span class="work-year">2026</span>
+          <span class="work-arrow">↗</span>
+        </div>
+        <div class="work-title">Status CO</div>
+        <div class="work-tags">
+          <span class="work-tag">3D Website</span>
+          <span class="work-tag">Identity</span>
+          <span class="work-tag">Exhibition Space</span>
+          <span class="work-tag">Motion</span>
+        </div>
+        <p class="work-desc">
+          A unified spatial, digital, and experiential system. 3D exhibition environment, brand identity, packaging, and motion reels — positioning the brand as a collectible archive.
+        </p>
       </a>
-      <button class="btn-secondary" onclick="document.querySelector('#vea-chat-fab').click()">
-        💬 Chat with Vera
-      </button>
+
+      <a class="work-item" href="https://laila.nyc" target="_blank" rel="noopener">
+        <div class="work-meta">
+          <span class="work-year">2026</span>
+          <span class="work-arrow">↗</span>
+        </div>
+        <div class="work-title">Laila</div>
+        <div class="work-tags">
+          <span class="work-tag">Landing Page</span>
+          <span class="work-tag">Interface Design</span>
+          <span class="work-tag">Motion</span>
+        </div>
+        <p class="work-desc">
+          A cinematic digital gateway for an action-first NYC dating app — fluid motion, interactive archives, sophisticated nocturnal aesthetic. Positioned as a premium lifestyle destination.
+        </p>
+      </a>
+
+      <a class="work-item" href="https://novantatre.lu" target="_blank" rel="noopener">
+        <div class="work-meta">
+          <span class="work-year">2025–2026</span>
+          <span class="work-arrow">↗</span>
+        </div>
+        <div class="work-title">Novantatre</div>
+        <div class="work-tags">
+          <span class="work-tag">Architectural Film</span>
+          <span class="work-tag">Visual Storytelling</span>
+        </div>
+        <p class="work-desc">
+          Series of architectural film reels presenting selected projects in cinematic format — sequential archive-like narratives guiding the viewer through drawings, spatial layers, and materiality.
+        </p>
+      </a>
+
+      <a class="work-item" href="https://decentralize.design" target="_blank" rel="noopener">
+        <div class="work-meta">
+          <span class="work-year">2025</span>
+          <span class="work-arrow">↗</span>
+        </div>
+        <div class="work-title">Decentralize Design</div>
+        <div class="work-tags">
+          <span class="work-tag">Interactive Website</span>
+          <span class="work-tag">Logo</span>
+          <span class="work-tag">Cinematic</span>
+        </div>
+        <p class="work-desc">
+          "Clockwork" visual identity, interactive website, and a 2-minute cinematic showcase — merging motion graphics with spatial documentation to articulate the studio's technical process.
+        </p>
+      </a>
+
+      <a class="work-item" href="https://daspieces.com" target="_blank" rel="noopener">
+        <div class="work-meta">
+          <span class="work-year">2025</span>
+          <span class="work-arrow">↗</span>
+        </div>
+        <div class="work-title">DAS Pieces</div>
+        <div class="work-tags">
+          <span class="work-tag">Digital Narrative</span>
+          <span class="work-tag">Visual World</span>
+          <span class="work-tag">Product</span>
+        </div>
+        <p class="work-desc">
+          A digital visual world built around a minimal lamp collection — each piece situated within its own atmosphere, expressing the brand's relationship with light and space.
+        </p>
+      </a>
+
     </div>
   </section>
 
-  <!-- ── FEATURES ── -->
-  <section class="features" id="features">
-    <div class="section-label">What We Offer</div>
-    <h2 class="section-title">Everything for Your Perfect Day</h2>
-    <p class="section-sub">Full-service virtual ceremonies with professional tech, personalised touches, and heartfelt moments.</p>
+  <div class="divider"></div>
 
-    <div class="features-grid">
-      <div class="feature-card">
-        <span class="feature-icon">🎥</span>
-        <h3>HD Live Streaming</h3>
-        <p>Broadcast your ceremony in crystal-clear HD to guests worldwide, with multi-camera coverage and zero technical hassle.</p>
+  <!-- ABOUT -->
+  <section id="about">
+    <div class="about-grid">
+      <div class="about-text">
+        <div class="section-label">About</div>
+        <h2 class="section-title">Space as<br />narrative</h2>
+        <p>
+          Virtually Ever After is a creative platform that reimagines how we experience architecture and space in the digital age. Founded in Luxembourg, the studio blends spatial design, real-time 3D environments, and emerging technologies like AI and WebXR to craft immersive, interactive experiences that go far beyond traditional visualisations.
+        </p>
+        <p>
+          Our mission is to dissolve the boundaries between physical and digital spaces — turning static environments into living, navigable, and story-driven worlds.
+        </p>
+        <p>
+          We work with architects, developers, curators, brands, and institutions ready to embrace the future of spatial storytelling. Every project is treated as a unique narrative — developed through close collaboration.
+        </p>
       </div>
-      <div class="feature-card">
-        <span class="feature-icon">💬</span>
-        <h3>Interactive Guest Experience</h3>
-        <p>Live reactions, virtual toasts, and real-time chat so remote guests feel present — not like spectators.</p>
-      </div>
-      <div class="feature-card">
-        <span class="feature-icon">🎨</span>
-        <h3>Custom Digital Décor</h3>
-        <p>Beautiful themed backdrops, branded ceremony pages, and personalised digital touches that match your aesthetic.</p>
-      </div>
-      <div class="feature-card">
-        <span class="feature-icon">📸</span>
-        <h3>Virtual Photo Booth</h3>
-        <p>Guests capture shareable moments with custom frames and filters — your wedding album goes global.</p>
-      </div>
-      <div class="feature-card">
-        <span class="feature-icon">🎵</span>
-        <h3>Live Music Integration</h3>
-        <p>Stream live musicians or curated playlists seamlessly. Your soundtrack, your way.</p>
-      </div>
-      <div class="feature-card">
-        <span class="feature-icon">🎬</span>
-        <h3>48-Hour Recording Delivery</h3>
-        <p>Full HD recording plus a professionally edited highlights reel, delivered within 48 hours of your ceremony.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── HOW IT WORKS ── -->
-  <section class="how" id="how-it-works">
-    <div class="section-label">The Process</div>
-    <h2 class="section-title">Six Steps to Your Dream Day</h2>
-    <p class="section-sub">We handle every detail so you can focus on what matters most — each other.</p>
-
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">1</div>
-        <h3>Free Consultation</h3>
-        <p>Tell us your vision during a relaxed discovery call with our specialists.</p>
-      </div>
-      <div class="step">
-        <div class="step-num">2</div>
-        <h3>Package Selection</h3>
-        <p>We craft a bespoke proposal that fits your guest count and budget.</p>
-      </div>
-      <div class="step">
-        <div class="step-num">3</div>
-        <h3>Planning Sessions</h3>
-        <p>Your dedicated coordinator handles logistics, timeline, and all creative details.</p>
-      </div>
-      <div class="step">
-        <div class="step-num">4</div>
-        <h3>Tech Rehearsal</h3>
-        <p>Full run-through 48 hours before — we test everything so the big day is flawless.</p>
-      </div>
-      <div class="step">
-        <div class="step-num">5</div>
-        <h3>Your Big Day</h3>
-        <p>We run the show silently in the background. You simply enjoy every moment.</p>
-      </div>
-      <div class="step">
-        <div class="step-num">6</div>
-        <h3>Memories Delivered</h3>
-        <p>Receive your full recording and highlights reel within 48 hours. ✨</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── CHATBOT DEMO SECTION ── -->
-  <section class="chatbot-section">
-    <div class="section-label">Meet Vera</div>
-    <h2 class="section-title">Your AI Wedding Guide</h2>
-    <p class="section-sub">Have questions? Vera is available 24/7 to walk you through everything Virtually Ever After offers.</p>
-
-    <div class="chatbot-demo">
-      <div class="chatbot-demo-header">
-        <span style="font-size:22px">💍</span>
-        <div>
-          <div>Vera · Virtually Ever After</div>
-          <div style="font-size:11px;opacity:.8;margin-top:1px">● Online &amp; ready to help</div>
+      <div class="about-founder">
+        <div class="founder-role">Founder</div>
+        <div class="founder-name">Deniz Agaoglu</div>
+        <p class="founder-bio">
+          Architect and digital designer exploring the intersection between physical spaces and virtual environments. In 2025, she founded Virtually Ever After — a practice dedicated to crafting sensorial, narrative-driven virtual spaces through a multidisciplinary approach merging architecture, technology, and visual culture.
+        </p>
+        <div class="founder-credentials">
+          <div class="credential">M.Arch, Architecture & Urban Design — Politecnico di Milano</div>
+          <div class="credential">B.Arch, Architecture — Istanbul Bilgi University</div>
+          <div class="credential">co.arch studio, Milan — Furniture to urban-scale design</div>
+          <div class="credential">Based in Luxembourg · Active internationally</div>
         </div>
       </div>
-      <div class="chatbot-demo-body">
-        <div class="demo-bubble">Hi! I'm Vera, your Virtually Ever After guide. 💍 Ask me anything!</div>
-        <div class="demo-bubble user">What services do you offer?</div>
-        <div class="demo-bubble">We offer HD live streaming, interactive guest experiences, virtual photo booths, custom décor, live music integration, and full event coordination. Your dream wedding, delivered globally! ✨</div>
-      </div>
-    </div>
-
-    <div style="margin-top:32px">
-      <div class="demo-arrow">👇</div>
-      <p style="color:var(--muted);font-size:14px;margin-top:8px">Click the 💍 button in the bottom right to chat with Vera live!</p>
     </div>
   </section>
 
-  <!-- ── EMBED SNIPPET ── -->
-  <section class="embed-section" id="embed">
-    <div class="section-label">For Developers</div>
-    <h2 class="section-title" style="color:#fff">Add Vera to Any Page</h2>
-    <p class="section-sub" style="color:#c4a0a8">One line of HTML. No backend, no API key, no configuration required.</p>
+  <div class="divider"></div>
 
-    <div class="code-block">
-      <pre><span class="tag">&lt;script</span>
-  <span class="attr">src</span>=<span class="val">"https://your-site.github.io/chatbot.js"</span>
-  <span class="attr">data-theme</span>=<span class="val">"rose"</span>
-  <span class="attr">data-greeting</span>=<span class="val">"Hi! I'm Vera, ask me anything! 💍"</span>
-<span class="tag">&gt;&lt;/script&gt;</span></pre>
-    </div>
-    <button class="copy-btn" onclick="
-      navigator.clipboard.writeText('<script src=\"chatbot.js\" data-theme=\"rose\" data-greeting=\"Hi! I\'m Vera, ask me anything! 💍\"></script>').then(()=>{this.textContent='✓ Copied!';setTimeout(()=>this.textContent='Copy Snippet',2000)})
-    ">Copy Snippet</button>
-
-    <p style="text-align:center;color:#a08088;font-size:13px;margin-top:20px">
-      Themes available: <code style="color:#e8a0b0">rose</code> · <code style="color:#e8a0b0">gold</code> · <code style="color:#e8a0b0">sage</code>
-    </p>
-  </section>
-
-  <!-- ── TESTIMONIALS ── -->
-  <section class="testimonials">
-    <div class="section-label">Couples Love Us</div>
-    <h2 class="section-title">Stories from Our Families</h2>
-    <p class="section-sub">Over 1,000 couples have celebrated with Virtually Ever After.</p>
-
-    <div class="testi-grid">
-      <div class="testi-card">
-        <div class="testi-stars">★★★★★</div>
-        <p class="testi-text">"We had guests in 12 countries — VEA made it feel like everyone was in the same room. Absolutely magical."</p>
-        <div class="testi-author">Sarah &amp; James</div>
-        <div class="testi-location">Sydney, Australia</div>
+  <!-- VERA SECTION -->
+  <section class="vera-section">
+    <div class="vera-inner">
+      <div class="vera-chat-preview">
+        <div class="vcp-header">
+          <div class="vcp-mark">
+            <svg viewBox="0 0 24 24"><path d="M12 2L22 12L12 22L2 12Z"/></svg>
+          </div>
+          <div>
+            <div class="vcp-name">Vera · Virtually Ever After</div>
+            <div class="vcp-status">● Online</div>
+          </div>
+        </div>
+        <div class="vcp-body">
+          <div class="vcp-msg">Hello — I'm Vera, your guide to Virtually Ever After. What can I help you explore?</div>
+          <div class="vcp-msg user">What kind of projects do you work on?</div>
+          <div class="vcp-msg">VEA works across architecture, fashion, tech, and cultural institutions — anywhere a project has a spatial dimension that deserves a digital life. From interactive 3D websites to cinematic reels and full brand identities.</div>
+          <div class="vcp-msg user">How do we start?</div>
+          <div class="vcp-msg">A brief conversation is the best first step. Tell me about your project and I'll point you in the right direction — or connect you directly with the team at hello@virtuallyeverafter.xyz.</div>
+        </div>
       </div>
-      <div class="testi-card">
-        <div class="testi-stars">★★★★★</div>
-        <p class="testi-text">"Our grandparents couldn't travel but still had the best seats in the house. We cried happy tears all day."</p>
-        <div class="testi-author">Mei &amp; Carlos</div>
-        <div class="testi-location">Toronto, Canada</div>
-      </div>
-      <div class="testi-card">
-        <div class="testi-stars">★★★★★</div>
-        <p class="testi-text">"The team handled every single detail. On the day we just enjoyed being married — it was perfect!"</p>
-        <div class="testi-author">Priya &amp; Daniel</div>
-        <div class="testi-location">London, United Kingdom</div>
+      <div class="vera-info">
+        <div class="section-label">Vera · AI Guide</div>
+        <h2 class="section-title">Ask anything<br />about VEA</h2>
+        <p>
+          Vera is available around the clock to answer questions about VEA's services, past projects, process, and how we might collaborate — with tailored responses for your specific context.
+        </p>
+        <button class="btn btn-accent"
+                onclick="document.getElementById('vea-fab').click()"
+                style="margin-top:8px">
+          Start a Conversation
+        </button>
       </div>
     </div>
   </section>
 
-  <!-- ── CTA ── -->
-  <section class="cta-banner">
-    <h2>Ready to Say "I Do"? 💍</h2>
-    <p>Book a free consultation today and let us design the virtual wedding of your dreams.</p>
-    <a href="mailto:hello@virtuallyeverafter.com" class="btn-white">
-      💌 Book Free Consultation
-    </a>
+  <div class="divider"></div>
+
+  <!-- CONTACT -->
+  <section id="contact">
+    <div class="contact-inner">
+      <div class="section-label">Contact</div>
+      <h2 class="section-title">Let's talk<br />about your project</h2>
+      <p>
+        Whether you have a detailed brief or just the beginning of an idea, we're glad to hear it. The best ideas often start with a simple conversation.
+      </p>
+      <div class="contact-items">
+        <a class="contact-item" href="mailto:hello@virtuallyeverafter.xyz">
+          <span class="contact-item-label">Email</span>
+          hello@virtuallyeverafter.xyz
+        </a>
+        <a class="contact-item" href="https://virtuallyeverafter.xyz" target="_blank" rel="noopener">
+          <span class="contact-item-label">Web</span>
+          virtuallyeverafter.xyz
+        </a>
+        <a class="contact-item" href="https://www.instagram.com/virtuallyeverafter" target="_blank" rel="noopener">
+          <span class="contact-item-label">Instagram</span>
+          @virtuallyeverafter
+        </a>
+        <div class="contact-item" style="cursor:default">
+          <span class="contact-item-label">Location</span>
+          Luxembourg · Active internationally
+        </div>
+      </div>
+    </div>
   </section>
 
-  <!-- ── FOOTER ── -->
+  <!-- FOOTER -->
   <footer>
-    <p>© 2025 Virtually Ever After · Made with ❤️ for couples everywhere</p>
-    <p style="margin-top:8px">
-      <a href="mailto:hello@virtuallyeverafter.com">hello@virtuallyeverafter.com</a> ·
-      <a href="https://virtuallyeverafter.com">virtuallyeverafter.com</a>
-    </p>
+    <div class="logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2L22 12L12 22L2 12Z"/></svg>
+      Virtually Ever After
+    </div>
+    <div class="copy">© 2025 Virtually Ever After. All rights reserved.</div>
   </footer>
 
-  <!-- ── CHATBOT WIDGET ── -->
-  <script src="chatbot.js" data-theme="rose" data-greeting="Hi! I'm Vera, your Virtually Ever After guide. 💍 Ask me anything about virtual weddings!"></script>
+  <!-- CHATBOT WIDGET -->
+  <script src="chatbot.js" data-theme="dark"></script>
 
 </body>
 </html>

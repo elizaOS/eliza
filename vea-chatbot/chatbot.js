@@ -1,261 +1,404 @@
 /**
  * Virtually Ever After — Embedded Chatbot Widget
- * No backend, no API key required.
- * Drop one <script> tag onto any page to activate.
+ * Zero dependencies · No API key · No backend
  *
- * Usage:
+ * Usage (drop one tag anywhere):
  *   <script src="chatbot.js"></script>
- * Or with options:
- *   <script src="chatbot.js"
- *           data-position="bottom-right"
- *           data-theme="rose"
- *           data-greeting="Hi! Ask me anything about Virtually Ever After ✨">
- *   </script>
+ *
+ * Optional data-* overrides:
+ *   data-theme="dark|light"
+ *   data-greeting="Custom greeting text"
  */
 (function () {
   "use strict";
 
-  /* ───────────────────────────────────────────
-     0. CONFIG  (override via data-* attributes)
-  ─────────────────────────────────────────── */
+  /* ─────────────────────────────────────────
+     CONFIG
+  ───────────────────────────────────────── */
   const scriptEl =
     document.currentScript ||
     document.querySelector('script[src*="chatbot.js"]');
 
   const CFG = {
-    position: (scriptEl && scriptEl.dataset.position) || "bottom-right",
-    theme: (scriptEl && scriptEl.dataset.theme) || "rose",
-    greeting:
-      (scriptEl && scriptEl.dataset.greeting) ||
-      "Hi! I'm Vera, your Virtually Ever After guide. 💍 Ask me anything!",
-    botName: "Vera",
-    botAvatar: "💍",
+    theme:    (scriptEl && scriptEl.dataset.theme)    || "dark",
+    greeting: (scriptEl && scriptEl.dataset.greeting) ||
+      "Hello — I'm Vera, your guide to Virtually Ever After.\nWhat can I help you explore?",
+    botName:  "Vera · VEA",
   };
 
-  /* ───────────────────────────────────────────
-     1. KNOWLEDGE BASE
-  ─────────────────────────────────────────── */
+  /* ─────────────────────────────────────────
+     KNOWLEDGE BASE
+     Each entry: { tags[], reply, next[] }
+     next[] = quick-reply suggestions after this answer
+  ───────────────────────────────────────── */
   const KB = [
-    /* ── What is VEA ── */
+
+    /* ── GREETINGS ── */
     {
-      tags: ["what", "is", "virtually ever after", "about", "vea", "explain", "tell me"],
-      reply: `**Virtually Ever After (VEA)** is a premium virtual wedding & celebration platform that lets couples host beautiful, interactive ceremonies online — connecting guests from anywhere in the world in real time. 🌍💑
+      tags: ["hello","hi","hey","hiya","good morning","good afternoon","good evening","greetings","howdy","salut","ciao","merhaba"],
+      reply: `Hello — welcome to **Virtually Ever After**.
 
-Whether you're planning an intimate elopement or a grand celebration with hundreds of guests across continents, VEA makes it magical, personal, and stress-free.`,
+We're a creative studio at the intersection of architecture, spatial design, and digital technology. We build the digital worlds that your brand or project lives in.
+
+How can I help you today?`,
+      next: ["What is VEA?", "What services do you offer?", "Show me your work", "Who founded VEA?"],
     },
-    /* ── Services / What can they do ── */
+
+    /* ── WHAT IS VEA ── */
     {
-      tags: ["service", "offer", "do", "provide", "feature", "capability", "what can", "help"],
-      reply: `Here's what Virtually Ever After can do for you:
+      tags: ["what is","what are","about","vea","virtually ever after","explain","tell me","overview","who are you","describe","introduce"],
+      reply: `**Virtually Ever After (VEA)** is a creative platform that reimagines how we experience architecture and space in the digital age.
 
-✨ **Live Virtual Ceremonies** — Stream your wedding ceremony in HD to guests worldwide
-🎥 **Multi-Camera Broadcasts** — Cinematic coverage from multiple angles
-💬 **Interactive Guest Experience** — Live reactions, comments & virtual toasts
-🎵 **Live Music Integration** — Stream live musicians or curated playlists
-📸 **Virtual Photo Booth** — Shareable moments with custom frames & filters
-💐 **Décor & Theme Design** — Custom digital backdrops and branded experiences
-📋 **Full Event Coordination** — Dedicated event manager from planning to finale
-🌐 **Multi-Language Support** — Interpreters and subtitles for global guests
-🎁 **Digital Gift Registry** — Integrated gifting experience for remote guests`,
+Founded in Luxembourg, the studio blends **spatial design**, **real-time 3D environments**, and emerging technologies like AI and WebXR to craft immersive, interactive experiences that go far beyond traditional visualisations.
+
+Our mission is to dissolve the boundaries between physical and digital spaces — turning static environments into living, navigable, story-driven worlds.
+
+We work with architects, developers, curators, brands, and institutions ready to embrace the future of spatial storytelling.
+
+> *"VEA combines architecture and storytelling into a multidimensional universe for each individual story."*`,
+      next: ["What services do you offer?", "Who founded VEA?", "Show me your work", "Who is VEA for?"],
     },
-    /* ── Virtual Wedding ── */
+
+    /* ── SERVICES OVERVIEW ── */
     {
-      tags: ["virtual wedding", "online wedding", "remote wedding", "digital ceremony", "ceremony"],
-      reply: `VEA specialises in **virtual and hybrid weddings**! 🥂
+      tags: ["service","offer","what do you do","what can you do","help","capability","capabilities","provide","work","what you do"],
+      reply: `VEA's work spans three core disciplines:
 
-Our ceremonies feel as real and heartfelt as in-person events:
-• HD livestream to a custom branded wedding page
-• Guests receive personalised digital invitations
-• Interactive "front-row" seating for your closest VIPs
-• Real-time vow sharing with on-screen guest reactions
-• Recording delivered to you within 48 hours
+**01 — Worldbuilding**
+We design the digital space a studio or brand inhabits — from atmospheric spatial interfaces and interactive 3D websites to hybrid galleries and archive mappings.
 
-No matter where your loved ones are, they'll feel like they're right there with you. 💒`,
+**02 — Identity Building**
+We construct brand codes built for spatial and digital environments. Logo design, brand identity, and consistent visual systems — designed with architectural precision.
+
+**03 — Digital Content**
+Cinematic reels, visual storytelling, creative direction. We translate architectural and design work into narratives that connect — the lines people feel but usually miss.
+
+Which area is most relevant to what you're building?`,
+      next: ["Tell me about Worldbuilding", "Tell me about Identity Building", "Tell me about Digital Content", "Show me your work"],
     },
-    /* ── Hybrid events ── */
+
+    /* ── WORLDBUILDING ── */
     {
-      tags: ["hybrid", "in-person", "physical", "mix", "both"],
-      reply: `Absolutely — VEA supports **hybrid events**! 🏛️↔️💻
+      tags: ["worldbuilding","world building","3d website","spatial","metaverse","spatial web","interactive website","immersive","xr","webxr","three.js","threejs","virtual space","digital space","gamif","walk inside"],
+      reply: `**Worldbuilding** is VEA's core discipline — designing the digital "space" a studio lives in.
 
-Combine an in-person venue with virtual attendance so everyone can join:
-• Seamless sync between the live venue and the online stream
-• In-venue guests and remote guests interact together
-• Remote guests can throw virtual confetti and give toasts
-• Works with any venue — we handle the tech setup completely`,
+Think of it as architecture, but for the web:
+
+— **Atmospheric Spatial Interfaces** — Websites users walk inside and interact with. Objects become smart. Navigation becomes experience. Gamification of space.
+
+— **Web-based 3D Interactivity** — A framed narrative to showcase any design from multiple dimensions. Built with Three.js, WebXR, and custom rendering pipelines.
+
+— **Hybrid Spatial Gallery** — The medium between a flat 2D site and a fully interactive environment. Carefully calibrated for the project's context.
+
+— **Index as Mapping** — Re-organisation of a library or portfolio as a single navigable layout — where the relationship between works becomes as important as the works themselves.
+
+We've built spatial worlds for fashion brands, architecture studios, and cultural institutions. Want to tell me about your project?`,
+      next: ["Tell me about Identity Building", "Tell me about Digital Content", "Show me your work", "How do we start?"],
     },
-    /* ── Pricing ── */
+
+    /* ── IDENTITY BUILDING ── */
     {
-      tags: ["price", "cost", "pricing", "package", "how much", "fee", "plan", "affordable"],
-      reply: `VEA offers flexible packages to suit every couple:
+      tags: ["identity","brand","logo","branding","visual identity","brand identity","design system","brand code","typography","consistent","aesthetic","visual"],
+      reply: `**Identity Building** at VEA means constructing brand codes specifically for spatial and digital environments.
 
-💎 **Elopement** — Perfect for intimate ceremonies (up to 50 guests)
-💍 **Classic** — Most popular choice (up to 200 guests)
-👑 **Grand Celebration** — Full-service for 200+ guests worldwide
-🛠️ **Bespoke** — Fully custom experience for unique needs
+Architectural precision applied to visual language — ensuring a solid foundation for brands that exist in both physical and digital space.
 
-Every package includes a dedicated event coordinator, HD streaming, and post-event recording. Contact our team for a personalised quote — we love creating tailored proposals! 💌`,
+— **Logo Design** — Marks that hold meaning at every scale, from a screen pixel to a 3-metre installation.
+
+— **Brand Identity Systems** — Colour, typography, spatial grammar, and motion logic developed as a unified system.
+
+— **Consistent Aesthetics** — VEA acts as the messenger between maker and audience. Every touchpoint carries the same intentionality — packaging, digital, physical, motion.
+
+— **Booklet & Publication Design** — Curating digital and physical documentation as art objects. Bridging visualisation with tactile literature.
+
+We built the full identity for **Status CO** — from logo through to 3D space design and packaging — and the "clockwork" visual identity for **Decentralize Design**.
+
+What kind of project are you working on?`,
+      next: ["Tell me about Worldbuilding", "Tell me about Digital Content", "Show me your work", "How do we start?"],
     },
-    /* ── How it works ── */
+
+    /* ── DIGITAL CONTENT ── */
     {
-      tags: ["how", "work", "process", "step", "start", "begin", "get started", "booking"],
-      reply: `Getting started is easy! Here's the journey:
+      tags: ["content","video","reel","film","cinematic","motion","storytelling","direction","art direction","creative direction","photography","visual","narrative","documentation"],
+      reply: `**Digital Content** is how VEA translates solid work into living narrative.
 
-1️⃣ **Consultation** — Free discovery call with our wedding specialists
-2️⃣ **Package Selection** — We craft a proposal around your vision
-3️⃣ **Planning Session** — Your dedicated coordinator handles all details
-4️⃣ **Tech Rehearsal** — Full run-through 48 hours before the big day
-5️⃣ **Your Big Day** — We manage everything; you just enjoy the moment
-6️⃣ **After Party** — Receive your full HD recording + highlights reel 🎬
+— **Cinematic Reels & Video** — Short-form architectural and design films crafted for contemporary media. Not just renderings — compact visual stories built around proportion, light, and spatial sequence.
 
-Ready to begin? Reach out at **hello@virtuallyeverafter.com**!`,
+— **Visual Storytelling** — The line that connects dots people usually miss but feel subconsciously. We find the story underneath the project.
+
+— **Creative Direction** — Art direction for digital and physical presentations, ensuring every visual output is conceptually grounded.
+
+— **Exhibition Design** — The physical manifestation of digital thinking. We translate volumetric concepts into tangible spaces for events and presentations.
+
+For **Novantatre**, we produced architectural film reels that guided the viewer through drawings and spatial layers in an archive-like sequence. For **DAS Pieces**, we built a visual world around a lamp collection that expressed the brand's relationship with light.
+
+What are you looking to communicate?`,
+      next: ["Tell me about Worldbuilding", "Tell me about Identity Building", "Show me your work", "How do we start?"],
     },
-    /* ── Technology / Platform ── */
+
+    /* ── PROJECTS / WORK ── */
     {
-      tags: ["tech", "platform", "technology", "app", "software", "device", "browser", "phone", "mobile"],
-      reply: `VEA is **100% browser-based** — no app downloads needed! 📱💻
+      tags: ["project","work","portfolio","case study","example","previous","past","client","reference","show","done","built","made"],
+      reply: `Here's a selection of VEA's recent work:
 
-Guests simply click their invitation link and join instantly:
-• Works on any modern browser (Chrome, Safari, Firefox, Edge)
-• Mobile, tablet & desktop supported
-• Reliable HD streaming even on standard home internet
-• Encrypted end-to-end for privacy
-• Accessible features including closed captions & sign language interpretation`,
+**Status CO** — 2026
+Interactive website · 3D exhibition environment · Logo · Brand identity · Packaging · Motion reels. We translated the brand's concept into a unified spatial, digital, and experiential system. Positioned as a collectible archive.
+↗ status-co.com
+
+**Novantatre** — 2025–2026
+Series of architectural film reels for a Luxembourg architecture studio. Sequential, archive-like narratives guiding the viewer through spatial layers, drawings, and materiality.
+↗ novantatre.lu
+
+**DAS Pieces** — 2025
+Digital narrative for a lamp collection. A visual world that situates each piece within its own atmosphere — expressing the brand's relationship with light.
+↗ daspieces.com
+
+**Laila** — 2026
+Landing page for an action-first NYC dating app. Cinematic interface with fluid motion and interactive date archives — positioned as a premium lifestyle destination, not a utility.
+↗ laila.nyc
+
+**Decentralize Design** — 2025
+Interactive website · Logo · "Clockwork" visual identity · 2-minute cinematic showcase. A detailed visual narrative merging motion graphics with spatial documentation.
+↗ decentralize.design
+
+Is any of these close to what you have in mind?`,
+      next: ["Tell me more about Status CO", "Tell me more about Laila", "What services do you offer?", "How do we start?"],
     },
-    /* ── Guest experience ── */
+
+    /* ── STATUS CO ── */
     {
-      tags: ["guest", "attend", "join", "how do guests", "invitation"],
-      reply: `Your guests will have an **amazing experience**! 🥳
+      tags: ["status co","status_co","statco"],
+      reply: `**Status CO** is one of VEA's most complete collaborations.
 
-• They receive a personalised digital invitation with one-click access
-• No sign-up or account required — just click and join
-• Choose their own "seat" in the virtual venue
-• React with emoji, send messages, and participate in toasts
-• Access the virtual photo booth throughout the event
-• Receive a post-event highlight reel link as a keepsake
+During a key development phase, VEA translated the brand's concept into a cohesive spatial, digital, and experiential system:
 
-Guests from 5 continents have celebrated together on VEA! 🌍🌎🌏`,
+— 3D exhibition environment and 3D website — a unified space where objects, narrative, and interaction operate together
+— Motion reels and digital content for platform presence
+— Corporate identity framework and packaging system for consistency across every touchpoint
+— From DROP 001 storytelling to material applications — the brand was positioned as a **collectible archive** rather than a conventional product line
+
+↗ status-co.com`,
+      next: ["Show me your work", "What services do you offer?", "How do we start?"],
     },
-    /* ── Contact ── */
+
+    /* ── LAILA ── */
     {
-      tags: ["contact", "reach", "email", "phone", "talk", "speak", "human", "person", "support"],
-      reply: `We'd love to hear from you! 💌
+      tags: ["laila","dating","nyc","new york"],
+      reply: `**Laila** is a dating app built around action — not swiping.
 
-📧 **Email:** hello@virtuallyeverafter.com
-🌐 **Website:** www.virtuallyeverafter.com
-📸 **Instagram:** @virtuallyeverafter
-📅 **Book a free call:** www.virtuallyeverafter.com/consultation
+VEA collaborated to translate their philosophy into a digital gateway that captures the restless pulse of New York City:
 
-Our team typically responds within a few hours during business days. We can't wait to be part of your special day!`,
+— Seamless, cinematic interface where fluid motion and interactive date archives replace the friction of traditional apps
+— Sophisticated nocturnal aesthetic with an intuitive user journey
+— Positioned as a **premium lifestyle destination**, not a conventional utility
+
+↗ laila.nyc`,
+      next: ["Show me your work", "What services do you offer?", "How do we start?"],
     },
-    /* ── Testimonials / Reviews ── */
+
+    /* ── NOVANTATRE ── */
     {
-      tags: ["review", "testimonial", "experience", "feedback", "couple", "client", "happy", "success"],
-      reply: `Couples around the world love VEA! ❤️
+      tags: ["novantatre","film reel","architectural film","architecture film"],
+      reply: `**Novantatre** is a Luxembourg architecture studio. VEA produced a series of short architectural film reels presenting selected projects in cinematic format:
 
-*"We had guests in 12 countries — VEA made it feel like everyone was in the same room. Absolutely magical."* — Sarah & James, Sydney
+— One film structured the project as a **sequential, archive-like narrative** — guiding the viewer step by step through drawings and spatial layers
+— Another explored the building through **controlled camera movement and façade transformation**, emphasising proportion, detail, and materiality
+— Designed as compact visual stories for contemporary media — not static renderings
 
-*"Our grandparents couldn't travel but still had the best seats in the house. We cried happy tears all day."* — Mei & Carlos, Toronto
-
-*"The team handled every detail. On the day, we just enjoyed being married!"* — Priya & Daniel, London
-
-Over **1,000+ couples** have celebrated with us! 🎉`,
+↗ novantatre.lu`,
+      next: ["Tell me about Digital Content", "Show me your work", "How do we start?"],
     },
-    /* ── Why choose VEA ── */
+
+    /* ── DAS PIECES ── */
+
     {
-      tags: ["why", "choose", "benefit", "advantage", "difference", "compare", "better", "special", "unique"],
-      reply: `Here's why couples choose Virtually Ever After:
+      tags: ["das pieces","das","lamp","product","collection","minimal","light"],
+      reply: `**DAS Pieces** is a minimal lamp collection. VEA's collaboration reinterpreted the collection through a digital narrative lens:
 
-🌟 **Inclusivity** — No one misses out due to distance, disability or visa issues
-💚 **Sustainable** — A smaller carbon footprint than traditional weddings
-💰 **Cost-Effective** — Often significantly less than a traditional venue
-🎨 **Creative Freedom** — Unique digital décor impossible in physical spaces
-📹 **Always Recorded** — Never miss a moment; relive it forever
-🤝 **Expert Team** — Wedding specialists with deep technical know-how
-🌐 **Global Reach** — Guests across any timezone join seamlessly`,
+— A visual world was constructed that situates **each piece within its own atmosphere**
+— Not simply product presentation — but the expression of the brand's design philosophy and its relationship with light in a broader spatial perspective
+— The brand's **timeless and understated identity** translated into a carefully constructed digital setting
+
+↗ daspieces.com`,
+      next: ["Tell me about Digital Content", "Show me your work", "How do we start?"],
     },
-    /* ── Customisation ── */
+
+    /* ── DECENTRALIZE DESIGN ── */
     {
-      tags: ["custom", "personalise", "theme", "decor", "design", "brand", "color", "style"],
-      reply: `VEA is highly customisable to match your dream wedding aesthetic! 🎨
+      tags: ["decentralize","decentralize design","clockwork","spatial documentation"],
+      reply: `**Decentralize Design** is a spatial design studio. VEA built their complete digital presence:
 
-• Choose from 50+ digital backdrop themes or provide your own
-• Brand every touchpoint with your names & wedding colours
-• Custom ceremony programmes displayed for all guests
-• Personalised guest welcome messages
-• Branded virtual photo booth frames
-• Curated music queue that reflects your story
+— "**Clockwork**" visual identity — the studio's signature mark
+— Interactive website and logo
+— A **2-minute cinematic showcase** that deconstructs their technical process in virtual world-building
+— Precise motion graphics merged with spatial documentation to articulate the studio's role in complex digital environments
 
-Our design team loves collaborating on unique visions — the more creative the better! ✨`,
+↗ decentralize.design`,
+      next: ["Tell me about Identity Building", "Show me your work", "How do we start?"],
     },
-    /* ── Elopement ── */
+
+    /* ── FOUNDER ── */
     {
-      tags: ["elope", "elopement", "small", "intimate", "just us", "micro wedding"],
-      reply: `VEA is perfect for **elopements and micro-weddings**! 💕
+      tags: ["founder","deniz","agaoglu","who","person","team","behind","architect","founded","creator"],
+      reply: `VEA was founded by **Deniz Agaoglu** — architect and digital designer exploring the intersection between physical spaces and virtual environments.
 
-Whether it's just the two of you or a small circle of loved ones:
-• Intimate ceremony packages from our Elopement tier
-• Professional videography feel without a large crew
-• Share the moment live with family who supports you from afar
-• A beautiful, private, and personal experience
+Born in Alanya in 1995, she holds:
+— Bachelor's degree in Architecture, **Istanbul Bilgi University**
+— Master's degree in Architecture and Urban Design, **Politecnico di Milano**
 
-Some of our most moving ceremonies have been the smallest ones. 🥹`,
+Her professional journey began at **co.arch studio** in Milan, contributing to projects from furniture design to urban-scale interventions. In 2022, she relocated to **Luxembourg**, developing a strong focus on digital design and immersive storytelling.
+
+In 2025, Deniz founded Virtually Ever After — a practice dedicated to crafting sensorial, narrative-driven virtual spaces. Through a multidisciplinary approach merging **architecture, technology, and visual culture**, her work bridges the tangible and the digital.
+
+She collaborates internationally with architects, cultural institutions, and creatives.`,
+      next: ["What is VEA?", "Show me your work", "How do we start?"],
     },
-    /* ── Rehearsal / Prep ── */
+
+    /* ── WHERE / LOCATION ── */
     {
-      tags: ["rehearsal", "practice", "prepare", "preparation", "test", "run through"],
-      reply: `We never go live without a full rehearsal! 🎭
+      tags: ["where","location","based","luxembourg","city","country","office","studio"],
+      reply: `VEA is based in **Luxembourg** 🇱🇺, with an international scope — collaborating with architects, brands, and institutions across Europe and beyond.
 
-48 hours before your ceremony, our team runs a complete technical rehearsal:
-• All speakers and performers test their audio & video
-• You walk through the full ceremony flow
-• Officiant and couple practise their cues
-• Backup protocols tested
-
-On the day itself, our technical team is live in the background monitoring everything. You focus on your vows — we handle the rest! 💪`,
+The studio operates remotely and on-site depending on the project's nature.`,
+      next: ["What is VEA?", "How do we start?", "Contact & pricing"],
     },
-    /* ── Recording / Video ── */
+
+    /* ── WHO IS VEA FOR ── */
     {
-      tags: ["record", "recording", "video", "watch", "replay", "download", "film", "footage"],
-      reply: `Every VEA event is professionally recorded! 🎬
+      tags: ["who is","for who","for whom","target","client","suitable","right for","audience","architect","brand","institution","developer"],
+      reply: `VEA works at the intersection of design and technology — the studio's clients share one thing in common: **a project that deserves more than a standard presentation**.
 
-You'll receive:
-• Full HD ceremony recording (delivered within 48 hours)
-• Professionally edited highlights reel (2–3 minutes)
-• Raw footage from all camera angles (premium packages)
-• Photo gallery from virtual photo booth
+Our collaborators include:
 
-Your memories, preserved beautifully — forever. 💾💍`,
+— **Architecture studios** looking to present work cinematically or spatially online
+— **Fashion and product brands** building a digital world around their objects
+— **Cultural institutions** exploring immersive or interactive exhibition formats
+— **Tech companies and startups** that need spatial or editorial digital identities
+— **Creatives and makers** who want their portfolio to function as an experience, not a catalogue
+
+If your project has a spatial dimension — physical or conceptual — VEA can give it a digital life.
+
+What kind of project are you working on?`,
+      next: ["What services do you offer?", "Show me your work", "How do we start?"],
     },
-    /* ── Greetings ── */
+
+    /* ── TECHNOLOGY STACK ── */
     {
-      tags: ["hello", "hi", "hey", "greetings", "good morning", "good afternoon", "howdy", "hiya"],
-      reply: `Hello there! 👋 I'm **Vera**, the Virtually Ever After assistant.
+      tags: ["tech","technology","stack","three.js","webxr","ai","tools","platform","framework","build","code","engine"],
+      reply: `VEA's technical toolkit is assembled around the specifics of each project — we don't apply one-size solutions.
 
-I'm here to help you learn about our virtual wedding platform and how we can make your special day unforgettable — no matter where your guests are in the world! 🌍💍
+Core technologies include:
 
-What would you like to know?`,
+— **Three.js** — real-time 3D rendering in the browser, no plugin required
+— **WebXR** — immersive VR/AR experiences on the open web
+— **Custom AI integrations** — generative and interactive layers within spatial interfaces
+— **GSAP & motion libraries** — precise, high-quality animation and transitions
+— **Framer, Webflow, custom builds** — depending on the project's editorial or interactive needs
+
+Every project is browser-based. No app downloads, no hardware dependency.`,
+      next: ["Tell me about Worldbuilding", "What services do you offer?", "How do we start?"],
     },
-    /* ── Thank you ── */
+
+    /* ── PROCESS / HOW IT WORKS ── */
     {
-      tags: ["thank", "thanks", "appreciate", "helpful", "great", "awesome", "perfect", "wonderful"],
-      reply: `You're so welcome! 🥰 It's my pleasure to help.
+      tags: ["process","how","work together","collaboration","approach","method","step","begin","workflow","timeline","start","getting started"],
+      reply: `VEA's process is built around **close collaboration** — every project is treated as a unique narrative.
 
-If you have more questions or are ready to take the next step, don't hesitate to ask — or reach out to our team directly at **hello@virtuallyeverafter.com**.
+**01 Discovery**
+A focused conversation to understand your project, its context, and what it needs to communicate. We listen before we propose.
 
-Wishing you all the love in the world! 💕`,
+**02 Concept**
+We develop a clear spatial and editorial concept — what the experience will feel like, not just look like. Presented for your feedback before a line of code or frame is rendered.
+
+**03 Production**
+Design, build, and content production run in parallel. You receive progress updates and review stages throughout.
+
+**04 Delivery & Beyond**
+Final delivery — website, video, identity, or all three. We remain available for iterations, expansions, and future phases.
+
+The best place to start is a conversation. Want to tell me about your project?`,
+      next: ["How do we start?", "Contact & pricing", "Show me your work"],
     },
-    /* ── Goodbye ── */
+
+    /* ── PRICING ── */
     {
-      tags: ["bye", "goodbye", "see you", "later", "ciao", "farewell", "take care"],
-      reply: `Goodbye! 💍✨ Best of luck with your celebrations.
+      tags: ["price","pricing","cost","how much","fee","budget","rate","quote","package","afford","charge","invoice"],
+      reply: `Pricing at VEA is **project-specific** — we don't work with fixed packages, because no two projects have the same scope.
 
-Remember, wherever love takes you — Virtually Ever After will be there to make it magical. Don't hesitate to come back with any questions!`,
+What shapes a proposal:
+— The type of deliverable (3D website, cinematic reel, full identity, or a combination)
+— The scale of the project and the timeline
+— The level of creative direction involved
+
+The best first step is a **brief conversation** — it takes 20 minutes and gives us everything we need to send a clear, honest proposal.
+
+Reach out at **hello@virtuallyeverafter.xyz** or through the contact form on the site. We typically respond within one business day.`,
+      next: ["How do we start?", "What services do you offer?", "Show me your work"],
     },
-  ];
 
-  /* ───────────────────────────────────────────
-     2. NLP — simple weighted keyword matcher
-  ─────────────────────────────────────────── */
+    /* ── CONTACT ── */
+    {
+      tags: ["contact","reach","email","phone","message","talk","connect","get in touch","speak","meet","book","call","inquiry","enquiry","hello"],
+      reply: `To start a conversation with VEA:
+
+📧 **hello@virtuallyeverafter.xyz**
+🌐 **virtuallyeverafter.xyz**
+
+We respond to all enquiries within one business day. Whether you have a detailed brief or just the beginning of an idea — we're glad to hear it.`,
+      next: ["How do we start?", "What services do you offer?", "Show me your work"],
+    },
+
+    /* ── EXHIBITION / PHYSICAL ── */
+    {
+      tags: ["exhibition","exhibit","physical","installation","space","pop up","popup","pop-up","gallery","event","show","fair","venue"],
+      reply: `VEA brings digital thinking into physical space through **Exhibition Design** and **Pop-up Space Design**.
+
+This is the physical manifestation of what we do digitally — transforming volumetric concepts and spatial narratives into tangible environments for events, openings, and installations.
+
+For **Status CO**, VEA designed the pop-up space alongside the digital experience — creating continuity between what visitors encounter online and in person.
+
+If you're planning an event or installation, it's worth exploring how the digital and physical can speak the same spatial language.`,
+      next: ["What services do you offer?", "Show me your work", "How do we start?"],
+    },
+
+    /* ── PRODUCT DESIGN ── */
+    {
+      tags: ["product design","product","object","form","industrial","furniture","physical product","material"],
+      reply: `**Product Design** at VEA bridges the gap between pure utility and human interaction — through carefully engineered forms and intentional materiality.
+
+This service complements VEA's spatial and identity work: when a brand's physical object needs to carry the same intentionality as its digital presence.
+
+If you're working on a product that needs both design and narrative, let's talk.`,
+      next: ["Tell me about Identity Building", "What services do you offer?", "How do we start?"],
+    },
+
+    /* ── THANKS ── */
+    {
+      tags: ["thank","thanks","thank you","merci","grazie","teşekkür","appreciate","helpful","great","awesome","perfect","wonderful","brilliant"],
+      reply: `You're welcome — it's what we're here for.
+
+If you're ready to take the next step or have more questions, don't hesitate. The best ideas often start with a simple conversation.
+
+📧 hello@virtuallyeverafter.xyz`,
+      next: ["How do we start?", "What services do you offer?", "Show me your work"],
+    },
+
+    /* ── GOODBYE ── */
+    {
+      tags: ["bye","goodbye","see you","later","ciao","farewell","take care","adieu","auf wiedersehen","quit","close"],
+      reply: `Until next time.
+
+If something comes up — a project, a question, or just a vague idea — we're at **hello@virtuallyeverafter.xyz**.
+
+Take care.`,
+      next: [],
+    },
+
+  ]; // end KB
+
+  /* ─────────────────────────────────────────
+     NLP — weighted keyword matcher
+  ───────────────────────────────────────── */
   function tokenise(text) {
     return text
       .toLowerCase()
@@ -264,39 +407,24 @@ Remember, wherever love takes you — Virtually Ever After will be there to make
       .filter(Boolean);
   }
 
-  function scoreEntry(entry, tokens) {
-    let score = 0;
-    for (const tag of entry.tags) {
-      const tagTokens = tokenise(tag);
-      // Phrase match (higher weight)
-      if (tag.length > 6 && text.toLowerCase().includes(tag)) {
-        score += tagTokens.length * 3;
-      }
-      // Token overlap
-      for (const t of tagTokens) {
-        if (tokens.includes(t)) score += 1;
-      }
-    }
-    return score;
-  }
-
-  // We need `text` accessible in scoreEntry; pass it through a closure instead:
-  function findBestReply(userText) {
-    const tokens = tokenise(userText);
-    let best = null;
+  function findBestEntry(userText) {
+    const lower   = userText.toLowerCase();
+    const tokens  = tokenise(userText);
+    let best      = null;
     let bestScore = 0;
 
     for (const entry of KB) {
       let score = 0;
       for (const tag of entry.tags) {
-        const tagTokens = tokenise(tag);
-        // Multi-word phrase match
-        if (tag.length > 5 && userText.toLowerCase().includes(tag)) {
-          score += tagTokens.length * 3;
+        // Multi-word phrase match (higher weight)
+        if (tag.includes(" ") && lower.includes(tag)) {
+          score += tag.split(" ").length * 4;
+        } else if (tokens.includes(tag)) {
+          score += 2;
         }
-        // Individual token match
-        for (const t of tagTokens) {
-          if (tokens.includes(t)) score += 1;
+        // Partial token overlap for single-word tags
+        for (const t of tokens) {
+          if (t.length > 3 && tag.startsWith(t)) score += 1;
         }
       }
       if (score > bestScore) {
@@ -305,353 +433,424 @@ Remember, wherever love takes you — Virtually Ever After will be there to make
       }
     }
 
-    if (bestScore >= 1 && best) {
-      return best.reply;
-    }
-
-    // Fallback
-    return `That's a great question! 😊 Our team would be happy to give you a detailed answer.
-
-Feel free to reach out directly:
-📧 **hello@virtuallyeverafter.com**
-🌐 **www.virtuallyeverafter.com**
-
-Or ask me something else — I know a lot about virtual weddings! 💍`;
+    if (bestScore >= 2 && best) return best;
+    return null;
   }
 
-  /* ───────────────────────────────────────────
-     3. MARKDOWN → HTML (minimal subset)
-  ─────────────────────────────────────────── */
+  /* ─────────────────────────────────────────
+     MARKDOWN → HTML (bold, italic, blockquote, newlines)
+  ───────────────────────────────────────── */
   function mdToHtml(text) {
     return text
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*(.+?)\*/g, "<em>$1</em>")
-      .replace(/\n/g, "<br>");
+      .replace(/\*(.+?)\*/g,     "<em>$1</em>")
+      .replace(/^> (.+)$/gm,     "<blockquote>$1</blockquote>")
+      .replace(/↗ ([^\n]+)/g,    '<span class="vea-link">↗ $1</span>')
+      .replace(/\n/g,            "<br>");
   }
 
-  /* ───────────────────────────────────────────
-     4. STYLES
-  ─────────────────────────────────────────── */
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g,  "&amp;")
+      .replace(/</g,  "&lt;")
+      .replace(/>/g,  "&gt;")
+      .replace(/"/g,  "&quot;")
+      .replace(/'/g,  "&#039;");
+  }
+
+  /* ─────────────────────────────────────────
+     THEMES
+  ───────────────────────────────────────── */
   const THEMES = {
-    rose: {
-      primary: "#c5687b",
-      primaryDark: "#a84f63",
-      primaryLight: "#fde8ed",
-      accent: "#f7c5d0",
-      gradient: "linear-gradient(135deg, #c5687b 0%, #e8a0b0 100%)",
+    dark: {
+      bg:          "#0e0e0e",
+      surface:     "#161616",
+      surfaceHover:"#1e1e1e",
+      border:      "rgba(255,255,255,0.08)",
+      text:        "#e8e8e8",
+      muted:       "#888",
+      accent:      "#c8b89a",
+      accentDark:  "#a89070",
+      userBubble:  "#1e1e1e",
+      userText:    "#e8e8e8",
+      botBubble:   "#111111",
+      botText:     "#d8d8d8",
+      headerBg:    "#111111",
+      inputBg:     "#0e0e0e",
+      inputBorder: "rgba(255,255,255,0.12)",
+      scrollThumb: "rgba(255,255,255,0.1)",
+      qrBg:        "rgba(200,184,154,0.08)",
+      qrBorder:    "rgba(200,184,154,0.2)",
+      qrText:      "#c8b89a",
+      qrHoverBg:   "#c8b89a",
+      qrHoverText: "#0e0e0e",
+      fabBg:       "#1a1a1a",
+      fabBorder:   "rgba(200,184,154,0.3)",
+      fabColor:    "#c8b89a",
+      shadow:      "0 24px 64px rgba(0,0,0,0.6)",
     },
-    gold: {
-      primary: "#b8922a",
-      primaryDark: "#9a7820",
-      primaryLight: "#fdf3dc",
-      accent: "#f0d88a",
-      gradient: "linear-gradient(135deg, #b8922a 0%, #d4b054 100%)",
-    },
-    sage: {
-      primary: "#6a9b7c",
-      primaryDark: "#527a61",
-      primaryLight: "#e8f4ec",
-      accent: "#b5d9c2",
-      gradient: "linear-gradient(135deg, #6a9b7c 0%, #92c4a5 100%)",
+    light: {
+      bg:          "#ffffff",
+      surface:     "#f8f7f5",
+      surfaceHover:"#f0ede8",
+      border:      "rgba(0,0,0,0.08)",
+      text:        "#111111",
+      muted:       "#888",
+      accent:      "#8a7055",
+      accentDark:  "#6a5035",
+      userBubble:  "#111111",
+      userText:    "#ffffff",
+      botBubble:   "#f0ede8",
+      botText:     "#222222",
+      headerBg:    "#111111",
+      inputBg:     "#ffffff",
+      inputBorder: "rgba(0,0,0,0.12)",
+      scrollThumb: "rgba(0,0,0,0.1)",
+      qrBg:        "rgba(138,112,85,0.06)",
+      qrBorder:    "rgba(138,112,85,0.2)",
+      qrText:      "#8a7055",
+      qrHoverBg:   "#8a7055",
+      qrHoverText: "#ffffff",
+      fabBg:       "#111111",
+      fabBorder:   "rgba(0,0,0,0)",
+      fabColor:    "#c8b89a",
+      shadow:      "0 16px 48px rgba(0,0,0,0.18)",
     },
   };
 
-  const T = THEMES[CFG.theme] || THEMES.rose;
+  const T = THEMES[CFG.theme] || THEMES.dark;
 
+  /* ─────────────────────────────────────────
+     CSS
+  ───────────────────────────────────────── */
   const CSS = `
-    #vea-chat-fab {
+    #vea-fab {
       position: fixed;
-      bottom: 24px;
-      right: 24px;
+      bottom: 28px;
+      right: 28px;
       z-index: 99999;
-      width: 60px;
-      height: 60px;
+      width: 54px;
+      height: 54px;
       border-radius: 50%;
-      background: ${T.gradient};
-      border: none;
+      background: ${T.fabBg};
+      border: 1px solid ${T.fabBorder};
       cursor: pointer;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.22);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 26px;
+      box-shadow: ${T.shadow};
       transition: transform 0.2s ease, box-shadow 0.2s ease;
       outline: none;
+      color: ${T.fabColor};
     }
-    #vea-chat-fab:hover {
-      transform: scale(1.1);
-      box-shadow: 0 6px 28px rgba(0,0,0,0.28);
+    #vea-fab:hover {
+      transform: scale(1.06);
     }
-    #vea-chat-fab:active { transform: scale(0.96); }
-
-    #vea-chat-badge {
-      position: absolute;
-      top: -2px;
-      right: -2px;
-      width: 18px;
-      height: 18px;
-      background: #e74c3c;
-      border-radius: 50%;
-      border: 2px solid #fff;
-      font-size: 10px;
-      color: #fff;
+    #vea-fab:active {
+      transform: scale(0.96);
+    }
+    #vea-fab-icon {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 700;
-      font-family: sans-serif;
+      transition: opacity 0.15s;
     }
 
-    #vea-chat-window {
+    #vea-badge {
+      position: absolute;
+      top: -3px;
+      right: -3px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: ${T.accent};
+      border: 2px solid ${T.fabBg};
+    }
+
+    #vea-window {
       position: fixed;
       bottom: 96px;
-      right: 24px;
+      right: 28px;
       z-index: 99998;
-      width: 360px;
-      max-width: calc(100vw - 32px);
-      height: 520px;
-      max-height: calc(100vh - 120px);
-      border-radius: 18px;
-      box-shadow: 0 12px 48px rgba(0,0,0,0.18);
+      width: 380px;
+      max-width: calc(100vw - 40px);
+      height: 560px;
+      max-height: calc(100dvh - 120px);
+      background: ${T.bg};
+      border: 1px solid ${T.border};
+      border-radius: 16px;
+      box-shadow: ${T.shadow};
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      background: #fff;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif;
       transform-origin: bottom right;
-      transition: transform 0.28s cubic-bezier(0.34,1.56,0.64,1), opacity 0.22s ease;
+      transition: transform 0.3s cubic-bezier(0.34, 1.5, 0.64, 1), opacity 0.2s ease;
     }
-    #vea-chat-window.vea-hidden {
-      transform: scale(0.75) translateY(20px);
+    #vea-window.vea-closed {
+      transform: scale(0.85) translateY(16px);
       opacity: 0;
       pointer-events: none;
     }
 
-    #vea-chat-header {
-      background: ${T.gradient};
-      color: #fff;
-      padding: 14px 16px;
+    /* ── Header ── */
+    #vea-header {
+      background: ${T.headerBg};
+      padding: 16px 18px;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
       flex-shrink: 0;
+      border-bottom: 1px solid ${T.border};
     }
-    #vea-chat-header-avatar {
-      width: 38px;
-      height: 38px;
+    #vea-header-mark {
+      width: 34px;
+      height: 34px;
       border-radius: 50%;
-      background: rgba(255,255,255,0.25);
+      background: rgba(200,184,154,0.12);
+      border: 1px solid rgba(200,184,154,0.2);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 20px;
       flex-shrink: 0;
     }
-    #vea-chat-header-info { flex: 1; min-width: 0; }
-    #vea-chat-header-name {
-      font-weight: 700;
-      font-size: 15px;
-      letter-spacing: 0.01em;
+    #vea-header-mark svg {
+      width: 16px;
+      height: 16px;
+      fill: ${T.accent};
     }
-    #vea-chat-header-status {
+    #vea-header-info {
+      flex: 1;
+    }
+    #vea-header-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: 0.02em;
+    }
+    #vea-header-sub {
       font-size: 11px;
-      opacity: 0.85;
+      color: rgba(255,255,255,0.4);
+      margin-top: 2px;
       display: flex;
       align-items: center;
-      gap: 4px;
-      margin-top: 1px;
+      gap: 5px;
     }
-    .vea-status-dot {
-      width: 7px;
-      height: 7px;
+    .vea-dot {
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
-      background: #4cdd80;
+      background: #5adf88;
       flex-shrink: 0;
     }
-    #vea-chat-close {
+    #vea-close {
       background: none;
       border: none;
-      color: rgba(255,255,255,0.8);
+      color: rgba(255,255,255,0.35);
       cursor: pointer;
-      font-size: 20px;
+      font-size: 18px;
       line-height: 1;
-      padding: 4px;
-      border-radius: 50%;
+      padding: 4px 6px;
+      border-radius: 6px;
       transition: background 0.15s, color 0.15s;
+      font-family: inherit;
     }
-    #vea-chat-close:hover {
-      background: rgba(255,255,255,0.2);
-      color: #fff;
+    #vea-close:hover {
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.7);
     }
 
-    #vea-chat-messages {
+    /* ── Messages ── */
+    #vea-msgs {
       flex: 1;
       overflow-y: auto;
-      padding: 16px 12px;
+      padding: 20px 16px 12px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
       scroll-behavior: smooth;
-      background: #fafafa;
     }
-    #vea-chat-messages::-webkit-scrollbar { width: 5px; }
-    #vea-chat-messages::-webkit-scrollbar-thumb {
-      background: ${T.accent};
-      border-radius: 3px;
+    #vea-msgs::-webkit-scrollbar { width: 4px; }
+    #vea-msgs::-webkit-scrollbar-track { background: transparent; }
+    #vea-msgs::-webkit-scrollbar-thumb {
+      background: ${T.scrollThumb};
+      border-radius: 2px;
     }
 
-    .vea-msg {
+    .vea-row {
       display: flex;
-      gap: 8px;
-      max-width: 88%;
-      animation: veaFadeUp 0.25s ease both;
+      gap: 10px;
+      max-width: 92%;
+      animation: veaIn 0.22s ease both;
     }
-    @keyframes veaFadeUp {
-      from { opacity: 0; transform: translateY(10px); }
+    @keyframes veaIn {
+      from { opacity: 0; transform: translateY(8px); }
       to   { opacity: 1; transform: translateY(0); }
     }
-    .vea-msg.vea-bot { align-self: flex-start; }
-    .vea-msg.vea-user { align-self: flex-end; flex-direction: row-reverse; }
+    .vea-row.vea-bot  { align-self: flex-start; }
+    .vea-row.vea-user { align-self: flex-end; flex-direction: row-reverse; }
 
-    .vea-msg-avatar {
-      width: 30px;
-      height: 30px;
+    .vea-avatar {
+      width: 28px;
+      height: 28px;
       border-radius: 50%;
-      background: ${T.primaryLight};
+      background: rgba(200,184,154,0.1);
+      border: 1px solid rgba(200,184,154,0.15);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 16px;
       flex-shrink: 0;
       margin-top: 2px;
     }
+    .vea-avatar svg { width: 13px; height: 13px; fill: ${T.accent}; }
+    .vea-avatar-user { background: rgba(255,255,255,0.06); border-color: ${T.border}; }
+    .vea-avatar-user svg { fill: ${T.muted}; }
 
-    .vea-msg-bubble {
-      padding: 9px 13px;
-      border-radius: 16px;
+    .vea-bubble {
+      padding: 10px 14px;
+      border-radius: 12px;
       font-size: 13.5px;
-      line-height: 1.5;
+      line-height: 1.6;
       max-width: 100%;
       word-wrap: break-word;
     }
-    .vea-bot .vea-msg-bubble {
-      background: #fff;
-      color: #333;
-      border: 1px solid #ece8f0;
-      border-bottom-left-radius: 4px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    .vea-bot .vea-bubble {
+      background: ${T.botBubble};
+      color: ${T.botText};
+      border: 1px solid ${T.border};
+      border-bottom-left-radius: 3px;
     }
-    .vea-user .vea-msg-bubble {
-      background: ${T.gradient};
-      color: #fff;
-      border-bottom-right-radius: 4px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.14);
+    .vea-bot .vea-bubble strong { color: ${T.text}; }
+    .vea-bot .vea-bubble blockquote {
+      margin: 6px 0 0;
+      padding: 6px 10px;
+      border-left: 2px solid ${T.accent};
+      color: ${T.muted};
+      font-style: italic;
+      font-size: 12.5px;
     }
-    .vea-user .vea-msg-bubble strong { color: #fff; }
+    .vea-bot .vea-bubble .vea-link {
+      color: ${T.accent};
+      font-size: 12px;
+      letter-spacing: 0.02em;
+    }
+    .vea-user .vea-bubble {
+      background: ${T.userBubble};
+      color: ${T.userText};
+      border: 1px solid rgba(255,255,255,0.06);
+      border-bottom-right-radius: 3px;
+    }
 
-    /* Quick replies */
-    #vea-quick-replies {
+    /* ── Typing indicator ── */
+    .vea-typing {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      padding: 12px 14px;
+    }
+    .vea-typing span {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: ${T.accent};
+      opacity: 0.5;
+      animation: veaBounce 1.1s infinite ease-in-out;
+    }
+    .vea-typing span:nth-child(2) { animation-delay: 0.18s; }
+    .vea-typing span:nth-child(3) { animation-delay: 0.36s; }
+    @keyframes veaBounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+      30%            { transform: translateY(-5px); opacity: 1; }
+    }
+
+    /* ── Quick replies ── */
+    #vea-qr {
+      padding: 8px 16px 4px;
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
-      padding: 6px 12px 0;
       flex-shrink: 0;
     }
-    .vea-qr {
-      background: ${T.primaryLight};
-      color: ${T.primaryDark};
-      border: 1px solid ${T.accent};
-      border-radius: 14px;
+    .vea-qr-btn {
+      background: ${T.qrBg};
+      border: 1px solid ${T.qrBorder};
+      color: ${T.qrText};
+      border-radius: 20px;
       padding: 5px 12px;
       font-size: 12px;
       cursor: pointer;
-      transition: background 0.15s, color 0.15s, transform 0.1s;
+      transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
       white-space: nowrap;
       font-family: inherit;
+      letter-spacing: 0.01em;
     }
-    .vea-qr:hover {
-      background: ${T.primary};
-      color: #fff;
+    .vea-qr-btn:hover {
+      background: ${T.qrHoverBg};
+      color: ${T.qrHoverText};
+      border-color: transparent;
       transform: translateY(-1px);
     }
 
-    /* Typing indicator */
-    .vea-typing {
-      display: flex;
-      gap: 4px;
-      align-items: center;
-      padding: 10px 13px;
-    }
-    .vea-typing span {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: ${T.accent};
-      animation: veaBounce 1.2s infinite ease-in-out;
-    }
-    .vea-typing span:nth-child(2) { animation-delay: 0.2s; }
-    .vea-typing span:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes veaBounce {
-      0%, 60%, 100% { transform: translateY(0); }
-      30%            { transform: translateY(-6px); }
-    }
-
-    #vea-chat-input-area {
-      padding: 10px 12px 12px;
-      border-top: 1px solid #eee;
+    /* ── Input area ── */
+    #vea-input-area {
+      padding: 10px 14px 14px;
+      border-top: 1px solid ${T.border};
       display: flex;
       gap: 8px;
       align-items: flex-end;
-      background: #fff;
       flex-shrink: 0;
+      background: ${T.bg};
     }
-    #vea-chat-input {
+    #vea-input {
       flex: 1;
-      border: 1.5px solid #ddd;
-      border-radius: 20px;
-      padding: 9px 14px;
+      background: ${T.inputBg};
+      border: 1px solid ${T.inputBorder};
+      border-radius: 10px;
+      padding: 9px 13px;
       font-size: 13.5px;
+      color: ${T.text};
       outline: none;
       resize: none;
       font-family: inherit;
-      line-height: 1.4;
+      line-height: 1.45;
       max-height: 80px;
       overflow-y: auto;
       transition: border-color 0.2s;
     }
-    #vea-chat-input:focus { border-color: ${T.primary}; }
-    #vea-chat-input::placeholder { color: #aaa; }
+    #vea-input::placeholder { color: ${T.muted}; }
+    #vea-input:focus { border-color: rgba(200,184,154,0.35); }
 
-    #vea-chat-send {
-      width: 38px;
-      height: 38px;
-      border-radius: 50%;
-      background: ${T.gradient};
+    #vea-send {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      background: ${T.accent};
       border: none;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      transition: transform 0.15s, opacity 0.15s;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      transition: opacity 0.15s, transform 0.15s;
     }
-    #vea-chat-send:hover { transform: scale(1.08); }
-    #vea-chat-send:active { transform: scale(0.95); }
-    #vea-chat-send svg { fill: #fff; }
+    #vea-send:hover  { opacity: 0.85; }
+    #vea-send:active { transform: scale(0.93); }
+    #vea-send svg    { fill: #0e0e0e; width: 15px; height: 15px; }
 
-    #vea-chat-branding {
+    /* ── Branding ── */
+    #vea-brand {
       text-align: center;
       font-size: 10px;
-      color: #bbb;
-      padding: 4px 0 8px;
-      background: #fff;
+      color: ${T.muted};
+      padding: 5px 0 9px;
+      opacity: 0.5;
       flex-shrink: 0;
+      font-family: inherit;
     }
-    #vea-chat-branding a { color: #bbb; text-decoration: none; }
 
-    @media (max-width: 420px) {
-      #vea-chat-window {
+    /* ── Mobile full screen ── */
+    @media (max-width: 440px) {
+      #vea-window {
         right: 0;
         bottom: 0;
         width: 100vw;
@@ -659,74 +858,64 @@ Or ask me something else — I know a lot about virtual weddings! 💍`;
         height: 100dvh;
         max-height: 100dvh;
         border-radius: 0;
+        border: none;
       }
-      #vea-chat-fab { bottom: 16px; right: 16px; }
+      #vea-fab { bottom: 20px; right: 20px; }
     }
   `;
 
-  /* ───────────────────────────────────────────
-     5. QUICK REPLIES (shown after greeting)
-  ─────────────────────────────────────────── */
-  const QUICK_REPLIES = [
-    "What is Virtually Ever After?",
-    "What services do you offer?",
-    "How does it work?",
-    "Pricing & packages",
-    "Contact the team",
-  ];
+  /* ─────────────────────────────────────────
+     SVG ICONS
+  ───────────────────────────────────────── */
+  // Diamond/rhombus mark for VEA
+  const ICON_VEA = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L22 12L12 22L2 12L12 2Z"/></svg>`;
+  const ICON_SEND = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>`;
+  const ICON_USER = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>`;
 
-  /* ───────────────────────────────────────────
-     6. BUILD DOM
-  ─────────────────────────────────────────── */
+  /* ─────────────────────────────────────────
+     BUILD DOM
+  ───────────────────────────────────────── */
   function buildWidget() {
-    // Inject CSS
     const style = document.createElement("style");
     style.textContent = CSS;
     document.head.appendChild(style);
 
-    // FAB button
+    // FAB
     const fab = document.createElement("button");
-    fab.id = "vea-chat-fab";
+    fab.id = "vea-fab";
     fab.setAttribute("aria-label", "Chat with Virtually Ever After");
-    fab.innerHTML = `<span style="font-size:28px">💍</span>`;
+    fab.innerHTML = `
+      <span id="vea-fab-icon">${ICON_VEA}</span>
+      <span id="vea-badge"></span>
+    `;
+    fab.querySelector("#vea-fab-icon svg").style.cssText =
+      `width:20px;height:20px;fill:${T.fabColor}`;
 
-    const badge = document.createElement("span");
-    badge.id = "vea-chat-badge";
-    badge.textContent = "1";
-    fab.appendChild(badge);
-
-    // Chat window
+    // Window
     const win = document.createElement("div");
-    win.id = "vea-chat-window";
+    win.id = "vea-window";
     win.setAttribute("role", "dialog");
     win.setAttribute("aria-label", "Virtually Ever After chat");
-    win.classList.add("vea-hidden");
-
+    win.classList.add("vea-closed");
     win.innerHTML = `
-      <div id="vea-chat-header">
-        <div id="vea-chat-header-avatar">${CFG.botAvatar}</div>
-        <div id="vea-chat-header-info">
-          <div id="vea-chat-header-name">${CFG.botName} · Virtually Ever After</div>
-          <div id="vea-chat-header-status">
-            <span class="vea-status-dot"></span> Online &amp; ready to help
+      <div id="vea-header">
+        <div id="vea-header-mark">${ICON_VEA}</div>
+        <div id="vea-header-info">
+          <div id="vea-header-name">Vera · Virtually Ever After</div>
+          <div id="vea-header-sub">
+            <span class="vea-dot"></span>
+            <span>Online</span>
           </div>
         </div>
-        <button id="vea-chat-close" aria-label="Close chat">✕</button>
+        <button id="vea-close" aria-label="Close">✕</button>
       </div>
-      <div id="vea-chat-messages" role="log" aria-live="polite"></div>
-      <div id="vea-quick-replies"></div>
-      <div id="vea-chat-input-area">
-        <textarea id="vea-chat-input"
-          placeholder="Ask me anything…"
-          rows="1"
-          aria-label="Type your message"></textarea>
-        <button id="vea-chat-send" aria-label="Send message">
-          <svg width="18" height="18" viewBox="0 0 24 24">
-            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-          </svg>
-        </button>
+      <div id="vea-msgs" role="log" aria-live="polite"></div>
+      <div id="vea-qr"></div>
+      <div id="vea-input-area">
+        <textarea id="vea-input" placeholder="Ask anything…" rows="1" aria-label="Message"></textarea>
+        <button id="vea-send" aria-label="Send">${ICON_SEND}</button>
       </div>
-      <div id="vea-chat-branding">Powered by <a href="https://virtuallyeverafter.com" target="_blank">Virtually Ever After</a></div>
+      <div id="vea-brand">Virtually Ever After · virtuallyeverafter.xyz</div>
     `;
 
     document.body.appendChild(fab);
@@ -734,127 +923,148 @@ Or ask me something else — I know a lot about virtual weddings! 💍`;
 
     return {
       fab,
-      badge,
+      badge:   fab.querySelector("#vea-badge"),
       win,
-      messages: win.querySelector("#vea-chat-messages"),
-      quickReplies: win.querySelector("#vea-quick-replies"),
-      input: win.querySelector("#vea-chat-input"),
-      sendBtn: win.querySelector("#vea-chat-send"),
-      closeBtn: win.querySelector("#vea-chat-close"),
+      msgs:    win.querySelector("#vea-msgs"),
+      qr:      win.querySelector("#vea-qr"),
+      input:   win.querySelector("#vea-input"),
+      send:    win.querySelector("#vea-send"),
+      close:   win.querySelector("#vea-close"),
     };
   }
 
-  /* ───────────────────────────────────────────
-     7. MESSAGING LOGIC
-  ─────────────────────────────────────────── */
-  function appendMessage(el, role, htmlContent) {
+  /* ─────────────────────────────────────────
+     MESSAGE HELPERS
+  ───────────────────────────────────────── */
+  function appendMsg(container, role, html) {
     const isBot = role === "bot";
-    const msg = document.createElement("div");
-    msg.className = `vea-msg ${isBot ? "vea-bot" : "vea-user"}`;
+    const row   = document.createElement("div");
+    row.className = `vea-row vea-${role}`;
+
+    const avatar = document.createElement("div");
+    avatar.className = `vea-avatar ${isBot ? "" : "vea-avatar-user"}`;
+    avatar.innerHTML = isBot ? ICON_VEA : ICON_USER;
+
+    const bubble = document.createElement("div");
+    bubble.className = "vea-bubble";
+    bubble.innerHTML = html;
 
     if (isBot) {
-      msg.innerHTML = `
-        <div class="vea-msg-avatar">${CFG.botAvatar}</div>
-        <div class="vea-msg-bubble">${htmlContent}</div>
-      `;
+      row.appendChild(avatar);
+      row.appendChild(bubble);
     } else {
-      msg.innerHTML = `
-        <div class="vea-msg-bubble">${htmlContent}</div>
-        <div class="vea-msg-avatar">🙂</div>
-      `;
+      row.appendChild(bubble);
+      row.appendChild(avatar);
     }
 
-    el.appendChild(msg);
-    el.scrollTop = el.scrollHeight;
-    return msg;
+    container.appendChild(row);
+    container.scrollTop = container.scrollHeight;
+    return row;
   }
 
-  function showTyping(el) {
-    const typingMsg = document.createElement("div");
-    typingMsg.className = "vea-msg vea-bot";
-    typingMsg.innerHTML = `
-      <div class="vea-msg-avatar">${CFG.botAvatar}</div>
-      <div class="vea-msg-bubble vea-typing">
-        <span></span><span></span><span></span>
-      </div>
-    `;
-    el.appendChild(typingMsg);
-    el.scrollTop = el.scrollHeight;
-    return typingMsg;
+  function showTyping(container) {
+    const row = document.createElement("div");
+    row.className = "vea-row vea-bot";
+    const avatar = document.createElement("div");
+    avatar.className = "vea-avatar";
+    avatar.innerHTML = ICON_VEA;
+    const bubble = document.createElement("div");
+    bubble.className = "vea-bubble";
+    bubble.innerHTML = `<div class="vea-typing"><span></span><span></span><span></span></div>`;
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    container.appendChild(row);
+    container.scrollTop = container.scrollHeight;
+    return row;
   }
 
-  function showQuickReplies(container, replies, handler) {
-    container.innerHTML = "";
+  function setQuickReplies(qrEl, replies, handler) {
+    qrEl.innerHTML = "";
     for (const r of replies) {
       const btn = document.createElement("button");
-      btn.className = "vea-qr";
+      btn.className = "vea-qr-btn";
       btn.textContent = r;
       btn.addEventListener("click", () => handler(r));
-      container.appendChild(btn);
+      qrEl.appendChild(btn);
     }
   }
 
-  function clearQuickReplies(container) {
-    container.innerHTML = "";
-  }
-
-  /* ───────────────────────────────────────────
-     8. INIT & EVENT WIRING
-  ─────────────────────────────────────────── */
+  /* ─────────────────────────────────────────
+     INIT
+  ───────────────────────────────────────── */
   function init() {
-    const ui = buildWidget();
-    let isOpen = false;
+    const ui    = buildWidget();
+    let isOpen  = false;
     let greeted = false;
 
+    /* ── Open / close ── */
     function open() {
       isOpen = true;
-      ui.win.classList.remove("vea-hidden");
+      ui.win.classList.remove("vea-closed");
       ui.badge.style.display = "none";
-      ui.fab.innerHTML = `<span style="font-size:22px">✕</span>`;
+      ui.fab.querySelector("#vea-fab-icon").innerHTML =
+        `<svg viewBox="0 0 24 24" width="18" height="18" style="fill:${T.fabColor}"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
       ui.input.focus();
 
       if (!greeted) {
         greeted = true;
-        setTimeout(() => {
-          const typing = showTyping(ui.messages);
+        const delay = setTimeout(() => {
+          const t = showTyping(ui.msgs);
           setTimeout(() => {
-            typing.remove();
-            appendMessage(ui.messages, "bot", mdToHtml(CFG.greeting));
-            showQuickReplies(ui.quickReplies, QUICK_REPLIES, handleSend);
-          }, 900);
-        }, 200);
+            t.remove();
+            appendMsg(ui.msgs, "bot", mdToHtml(CFG.greeting));
+            setQuickReplies(ui.qr, [
+              "What is VEA?",
+              "What services do you offer?",
+              "Show me your work",
+              "Who founded VEA?",
+            ], handleSend);
+          }, 800);
+        }, 150);
       }
     }
 
     function close() {
       isOpen = false;
-      ui.win.classList.add("vea-hidden");
-      ui.fab.innerHTML = `<span style="font-size:28px">💍</span>`;
+      ui.win.classList.add("vea-closed");
+      ui.fab.querySelector("#vea-fab-icon").innerHTML =
+        `<span style="display:flex;align-items:center;justify-content:center">${ICON_VEA}</span>`;
+      ui.fab.querySelector("#vea-fab-icon svg").style.cssText =
+        `width:20px;height:20px;fill:${T.fabColor}`;
     }
 
+    /* ── Handle a user message ── */
     function handleSend(text) {
       text = (text || ui.input.value).trim();
       if (!text) return;
 
-      clearQuickReplies(ui.quickReplies);
-      appendMessage(ui.messages, "user", escapeHtml(text));
+      ui.qr.innerHTML = "";
+      appendMsg(ui.msgs, "user", escapeHtml(text));
       ui.input.value = "";
       ui.input.style.height = "auto";
 
-      const typing = showTyping(ui.messages);
-      const delay = 600 + Math.random() * 700;
+      const typing = showTyping(ui.msgs);
+      const delay  = 500 + Math.random() * 600;
 
       setTimeout(() => {
         typing.remove();
-        const reply = findBestReply(text);
-        appendMessage(ui.messages, "bot", mdToHtml(reply));
+        const entry  = findBestEntry(text);
+        const reply  = entry
+          ? entry.reply
+          : `That's a thoughtful question. For the most accurate answer, reach out directly to the team:\n\n📧 **hello@virtuallyeverafter.xyz**\n\nOr ask me something else — I'm happy to tell you more about VEA's work and services.`;
+        const nextQR = entry && entry.next && entry.next.length > 0
+          ? entry.next
+          : ["What services do you offer?", "Show me your work", "How do we start?"];
+
+        appendMsg(ui.msgs, "bot", mdToHtml(reply));
+        setQuickReplies(ui.qr, nextQR, handleSend);
       }, delay);
     }
 
-    ui.fab.addEventListener("click", () => (isOpen ? close() : open()));
-    ui.closeBtn.addEventListener("click", close);
-
-    ui.sendBtn.addEventListener("click", () => handleSend());
+    /* ── Events ── */
+    ui.fab.addEventListener("click",   () => isOpen ? close() : open());
+    ui.close.addEventListener("click", close);
+    ui.send.addEventListener("click",  () => handleSend());
 
     ui.input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -863,36 +1073,23 @@ Or ask me something else — I know a lot about virtual weddings! 💍`;
       }
     });
 
-    // Auto-grow textarea
     ui.input.addEventListener("input", () => {
       ui.input.style.height = "auto";
       ui.input.style.height = Math.min(ui.input.scrollHeight, 80) + "px";
     });
 
-    // Close on Escape
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && isOpen) close();
     });
   }
 
-  /* ───────────────────────────────────────────
-     UTIL: HTML escape for user input
-  ─────────────────────────────────────────── */
-  function escapeHtml(str) {
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
-
-  /* ───────────────────────────────────────────
+  /* ─────────────────────────────────────────
      BOOT
-  ─────────────────────────────────────────── */
+  ───────────────────────────────────────── */
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
   } else {
     init();
   }
+
 })();
