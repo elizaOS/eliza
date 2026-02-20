@@ -20,7 +20,7 @@
     document.querySelector('script[src*="chatbot.js"]');
 
   const CFG = {
-    theme:    (scriptEl && scriptEl.dataset.theme)    || "dark",
+    theme:    (scriptEl && scriptEl.dataset.theme)    || "light",
     greeting: (scriptEl && scriptEl.dataset.greeting) ||
       "Hello — I'm Vera, your guide to Virtually Ever After.\nWhat can I help you explore?",
     botName:  "Vera · VEA",
@@ -513,7 +513,7 @@ Take care.`,
       qrHoverText: "#ffffff",
       fabBg:       "#111111",
       fabBorder:   "rgba(0,0,0,0)",
-      fabColor:    "#c8b89a",
+      fabColor:    "#ffffff",
       shadow:      "0 16px 48px rgba(0,0,0,0.18)",
     },
   };
@@ -583,7 +583,7 @@ Take care.`,
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif;
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
       transform-origin: bottom right;
       transition: transform 0.3s cubic-bezier(0.34, 1.5, 0.64, 1), opacity 0.2s ease;
     }
@@ -867,10 +867,12 @@ Take care.`,
   /* ─────────────────────────────────────────
      SVG ICONS
   ───────────────────────────────────────── */
-  // Diamond/rhombus mark for VEA
+  // Diamond/rhombus mark for VEA (used in chat header & avatars)
   const ICON_VEA = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L22 12L12 22L2 12L12 2Z"/></svg>`;
   const ICON_SEND = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>`;
   const ICON_USER = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>`;
+  // Chat bubble with three-dot cutouts — used on the FAB button
+  const ICON_CHAT = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M3 2h18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-9.5L6 22v-4H3a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm4.5 9a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0zm4 0a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0zm4 0a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0z"/></svg>`;
 
   /* ─────────────────────────────────────────
      BUILD DOM
@@ -885,11 +887,11 @@ Take care.`,
     fab.id = "vea-fab";
     fab.setAttribute("aria-label", "Chat with Virtually Ever After");
     fab.innerHTML = `
-      <span id="vea-fab-icon">${ICON_VEA}</span>
+      <span id="vea-fab-icon">${ICON_CHAT}</span>
       <span id="vea-badge"></span>
     `;
     fab.querySelector("#vea-fab-icon svg").style.cssText =
-      `width:20px;height:20px;fill:${T.fabColor}`;
+      `width:22px;height:22px;color:${T.fabColor}`;
 
     // Window
     const win = document.createElement("div");
@@ -1027,10 +1029,9 @@ Take care.`,
     function close() {
       isOpen = false;
       ui.win.classList.add("vea-closed");
-      ui.fab.querySelector("#vea-fab-icon").innerHTML =
-        `<span style="display:flex;align-items:center;justify-content:center">${ICON_VEA}</span>`;
+      ui.fab.querySelector("#vea-fab-icon").innerHTML = ICON_CHAT;
       ui.fab.querySelector("#vea-fab-icon svg").style.cssText =
-        `width:20px;height:20px;fill:${T.fabColor}`;
+        `width:22px;height:22px;color:${T.fabColor}`;
     }
 
     /* ── Handle a user message ── */
