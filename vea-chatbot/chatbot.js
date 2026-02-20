@@ -491,30 +491,30 @@ Take care.`,
     },
     light: {
       bg:          "#ffffff",
-      surface:     "#f8f7f5",
-      surfaceHover:"#f0ede8",
-      border:      "rgba(0,0,0,0.08)",
+      surface:     "#f5f5f5",
+      surfaceHover:"#eeeeee",
+      border:      "rgba(0,0,0,0.1)",
       text:        "#111111",
-      muted:       "#888",
-      accent:      "#8a7055",
-      accentDark:  "#6a5035",
+      muted:       "#888888",
+      accent:      "#111111",
+      accentDark:  "#333333",
       userBubble:  "#111111",
       userText:    "#ffffff",
-      botBubble:   "#f0ede8",
-      botText:     "#222222",
+      botBubble:   "#f0f0f0",
+      botText:     "#111111",
       headerBg:    "#111111",
       inputBg:     "#ffffff",
       inputBorder: "rgba(0,0,0,0.12)",
       scrollThumb: "rgba(0,0,0,0.1)",
-      qrBg:        "rgba(138,112,85,0.06)",
-      qrBorder:    "rgba(138,112,85,0.2)",
-      qrText:      "#8a7055",
-      qrHoverBg:   "#8a7055",
+      qrBg:        "rgba(0,0,0,0.04)",
+      qrBorder:    "rgba(0,0,0,0.15)",
+      qrText:      "#111111",
+      qrHoverBg:   "#111111",
       qrHoverText: "#ffffff",
       fabBg:       "#111111",
       fabBorder:   "rgba(0,0,0,0)",
       fabColor:    "#ffffff",
-      shadow:      "0 16px 48px rgba(0,0,0,0.18)",
+      shadow:      "0 16px 48px rgba(0,0,0,0.15)",
     },
   };
 
@@ -818,7 +818,7 @@ Take care.`,
       transition: border-color 0.2s;
     }
     #vea-input::placeholder { color: ${T.muted}; }
-    #vea-input:focus { border-color: rgba(200,184,154,0.35); }
+    #vea-input:focus { border-color: rgba(0,0,0,0.35); }
 
     #vea-send {
       width: 36px;
@@ -835,7 +835,7 @@ Take care.`,
     }
     #vea-send:hover  { opacity: 0.85; }
     #vea-send:active { transform: scale(0.93); }
-    #vea-send svg    { fill: #0e0e0e; width: 15px; height: 15px; }
+    #vea-send svg    { fill: ${T.bg}; width: 15px; height: 15px; }
 
     /* ── Branding ── */
     #vea-brand {
@@ -851,16 +851,21 @@ Take care.`,
     /* ── Mobile full screen ── */
     @media (max-width: 440px) {
       #vea-window {
+        position: fixed;
         right: 0;
         bottom: 0;
-        width: 100vw;
-        max-width: 100vw;
-        height: 100dvh;
-        max-height: 100dvh;
+        top: 0;
+        left: 0;
+        width: 100%;
+        max-width: 100%;
+        height: 100%;
+        max-height: 100%;
         border-radius: 0;
         border: none;
+        transition: none;
       }
       #vea-fab { bottom: 20px; right: 20px; }
+      #vea-input { font-size: 16px; }
     }
   `;
 
@@ -1043,6 +1048,7 @@ Take care.`,
       appendMsg(ui.msgs, "user", escapeHtml(text));
       ui.input.value = "";
       ui.input.style.height = "auto";
+      ui.input.blur(); // dismiss mobile keyboard after send
 
       const typing = showTyping(ui.msgs);
       const delay  = 500 + Math.random() * 600;
@@ -1082,6 +1088,22 @@ Take care.`,
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && isOpen) close();
     });
+
+    /* ── Mobile: keyboard-aware layout via Visual Viewport API ── */
+    if (window.visualViewport) {
+      const onVVChange = () => {
+        if (!isOpen || window.innerWidth > 440) return;
+        const h = Math.round(window.visualViewport.height);
+        const t = Math.round(window.visualViewport.offsetTop);
+        ui.win.style.top    = t + "px";
+        ui.win.style.height = h + "px";
+        ui.win.style.bottom = "auto";
+        // keep message list scrolled to bottom
+        ui.msgs.scrollTop = ui.msgs.scrollHeight;
+      };
+      window.visualViewport.addEventListener("resize", onVVChange);
+      window.visualViewport.addEventListener("scroll", onVVChange);
+    }
   }
 
   /* ─────────────────────────────────────────
