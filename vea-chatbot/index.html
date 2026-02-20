@@ -13,13 +13,13 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #0a0a0a;
-      --surface:  #111111;
-      --border:   rgba(255,255,255,0.07);
-      --text:     #e0e0e0;
-      --muted:    #666;
-      --accent:   #c8b89a;
-      --accent-d: #a89070;
+      --bg:       #ffffff;
+      --surface:  #f4f4f4;
+      --border:   rgba(0,0,0,0.1);
+      --text:     #111111;
+      --muted:    #888888;
+      --accent:   #111111;
+      --accent-d: #333333;
     }
 
     html { scroll-behavior: smooth; }
@@ -27,7 +27,7 @@
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif;
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
       line-height: 1.6;
       min-height: 100vh;
     }
@@ -47,7 +47,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: rgba(10,10,10,0.85);
+      background: rgba(255,255,255,0.92);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
@@ -84,15 +84,15 @@
     }
     .nav-links a:hover { color: var(--text); }
     .nav-cta {
-      border: 1px solid rgba(200,184,154,0.25) !important;
-      color: var(--accent) !important;
+      border: 1px solid rgba(0,0,0,0.25) !important;
+      color: var(--text) !important;
       padding: 7px 16px;
       border-radius: 3px;
       transition: background 0.2s, border-color 0.2s !important;
     }
     .nav-cta:hover {
-      background: rgba(200,184,154,0.08) !important;
-      border-color: rgba(200,184,154,0.5) !important;
+      background: rgba(0,0,0,0.06) !important;
+      border-color: rgba(0,0,0,0.5) !important;
     }
 
     /* ── HERO ── */
@@ -109,8 +109,8 @@
       position: absolute;
       inset: 0;
       background:
-        radial-gradient(ellipse 70% 60% at 80% 20%, rgba(200,184,154,0.04) 0%, transparent 60%),
-        radial-gradient(ellipse 50% 40% at 10% 80%, rgba(200,184,154,0.03) 0%, transparent 50%);
+        radial-gradient(ellipse 70% 60% at 80% 20%, rgba(0,0,0,0.02) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 40% at 10% 80%, rgba(0,0,0,0.015) 0%, transparent 50%);
       pointer-events: none;
     }
     /* Grid lines */
@@ -119,8 +119,8 @@
       position: absolute;
       inset: 0;
       background-image:
-        linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+        linear-gradient(rgba(0,0,0,0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.055) 1px, transparent 1px);
       background-size: 80px 80px;
       pointer-events: none;
     }
@@ -175,7 +175,7 @@
     }
     .btn-accent {
       background: var(--accent);
-      color: #0a0a0a;
+      color: #ffffff;
       border-color: var(--accent);
     }
     .btn-accent:hover {
@@ -189,7 +189,7 @@
     }
     .btn-ghost:hover {
       color: var(--text);
-      border-color: rgba(255,255,255,0.15);
+      border-color: rgba(0,0,0,0.25);
     }
     .hero-scroll {
       position: absolute;
@@ -256,7 +256,7 @@
       transition: background 0.2s;
     }
     .service-card:last-child { border-right: none; }
-    .service-card:hover { background: rgba(200,184,154,0.03); }
+    .service-card:hover { background: rgba(0,0,0,0.02); }
     .service-num {
       font-size: 10px;
       letter-spacing: 0.2em;
@@ -295,8 +295,8 @@
       content: '';
       width: 16px;
       height: 1px;
-      background: var(--accent);
-      opacity: 0.4;
+      background: var(--text);
+      opacity: 0.3;
       flex-shrink: 0;
     }
 
@@ -320,7 +320,7 @@
       transition: background 0.2s;
       text-decoration: none;
     }
-    .work-item:hover { background: rgba(200,184,154,0.03); }
+    .work-item:hover { background: rgba(0,0,0,0.02); }
     .work-meta {
       display: flex;
       align-items: center;
@@ -436,7 +436,7 @@
 
     /* ── VERA SECTION ── */
     .vera-section {
-      background: var(--surface);
+      background: var(--bg);
       border-top: 1px solid var(--border);
       border-bottom: 1px solid var(--border);
     }
@@ -451,10 +451,10 @@
       border: 1px solid var(--border);
       border-radius: 12px;
       overflow: hidden;
-      background: #0e0e0e;
+      background: #ffffff;
     }
     .vcp-header {
-      background: #111;
+      background: #111111;
       border-bottom: 1px solid var(--border);
       padding: 14px 18px;
       display: flex;
@@ -465,34 +465,34 @@
       width: 28px;
       height: 28px;
       border-radius: 50%;
-      background: rgba(200,184,154,0.1);
-      border: 1px solid rgba(200,184,154,0.15);
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.15);
       display: flex;
       align-items: center;
       justify-content: center;
     }
-    .vcp-mark svg { width: 12px; height: 12px; fill: var(--accent); }
+    .vcp-mark svg { width: 12px; height: 12px; fill: #ffffff; }
     .vcp-name { font-size: 12px; color: #e0e0e0; font-weight: 500; }
-    .vcp-status { font-size: 10px; color: var(--muted); margin-top: 1px; }
-    .vcp-body { padding: 20px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .vcp-status { font-size: 10px; color: rgba(255,255,255,0.45); margin-top: 1px; }
+    .vcp-body { padding: 20px 16px; display: flex; flex-direction: column; gap: 10px; background: #f8f8f8; }
     .vcp-msg {
-      background: #161616;
-      border: 1px solid rgba(255,255,255,0.06);
+      background: #ffffff;
+      border: 1px solid rgba(0,0,0,0.1);
       border-radius: 10px;
       border-bottom-left-radius: 2px;
       padding: 10px 14px;
       font-size: 13px;
-      color: #ccc;
+      color: #333333;
       line-height: 1.55;
       max-width: 85%;
     }
     .vcp-msg.user {
-      background: #1e1e1e;
-      border-color: rgba(255,255,255,0.04);
+      background: #111111;
+      border-color: transparent;
       border-bottom-left-radius: 10px;
       border-bottom-right-radius: 2px;
       align-self: flex-end;
-      color: #e0e0e0;
+      color: #ffffff;
     }
     .vera-info h2 { margin-bottom: 20px; }
     .vera-info p {
@@ -872,7 +872,7 @@
   </footer>
 
   <!-- CHATBOT WIDGET -->
-  <script src="chatbot.js" data-theme="dark"></script>
+  <script src="chatbot.js"></script>
 
 </body>
 </html>
