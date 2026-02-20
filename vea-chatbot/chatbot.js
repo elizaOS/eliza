@@ -576,8 +576,10 @@ Take care.`,
       max-width: calc(100vw - 40px);
       height: 560px;
       max-height: calc(100dvh - 120px);
-      background: ${T.bg};
-      border: 1px solid ${T.border};
+      background: rgba(255,255,255,0.6);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid #111111;
       border-radius: 16px;
       box-shadow: ${T.shadow};
       display: flex;
@@ -636,29 +638,6 @@ Take care.`,
       align-items: center;
       gap: 5px;
     }
-    .vea-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #5adf88;
-      flex-shrink: 0;
-    }
-    #vea-close {
-      background: none;
-      border: none;
-      color: rgba(255,255,255,0.35);
-      cursor: pointer;
-      font-size: 18px;
-      line-height: 1;
-      padding: 4px 6px;
-      border-radius: 6px;
-      transition: background 0.15s, color 0.15s;
-      font-family: inherit;
-    }
-    #vea-close:hover {
-      background: rgba(255,255,255,0.06);
-      color: rgba(255,255,255,0.7);
-    }
 
     /* ── Messages ── */
     #vea-msgs {
@@ -669,6 +648,7 @@ Take care.`,
       flex-direction: column;
       gap: 12px;
       scroll-behavior: smooth;
+      background: transparent;
     }
     #vea-msgs::-webkit-scrollbar { width: 4px; }
     #vea-msgs::-webkit-scrollbar-track { background: transparent; }
@@ -861,10 +841,15 @@ Take care.`,
         height: 100%;
         max-height: 100%;
         border-radius: 0;
-        border: none;
+        border: 1px solid #111111;
         transition: none;
       }
-      #vea-fab { bottom: 20px; right: 20px; }
+      #vea-fab {
+        bottom: 16px;
+        right: 16px;
+        width: 44px;
+        height: 44px;
+      }
       #vea-input { font-size: 16px; }
     }
   `;
@@ -876,8 +861,8 @@ Take care.`,
   const ICON_VEA = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L22 12L12 22L2 12L12 2Z"/></svg>`;
   const ICON_SEND = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>`;
   const ICON_USER = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>`;
-  // Chat bubble with three-dot cutouts — used on the FAB button
-  const ICON_CHAT = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M3 2h18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-9.5L6 22v-4H3a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm4.5 9a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0zm4 0a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0zm4 0a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0z"/></svg>`;
+  // Chat bubble with three-dot cutouts — used on the FAB button (outline version)
+  const ICON_CHAT = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none"><path d="M3 2h18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-9.5L6 22v-4H3a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="7.5" cy="11" r="1.3" fill="currentColor"/><circle cx="12" cy="11" r="1.3" fill="currentColor"/><circle cx="16.5" cy="11" r="1.3" fill="currentColor"/></svg>`;
 
   /* ─────────────────────────────────────────
      BUILD DOM
@@ -910,11 +895,9 @@ Take care.`,
         <div id="vea-header-info">
           <div id="vea-header-name">Vera · Virtually Ever After</div>
           <div id="vea-header-sub">
-            <span class="vea-dot"></span>
             <span>Online</span>
           </div>
         </div>
-        <button id="vea-close" aria-label="Close">✕</button>
       </div>
       <div id="vea-msgs" role="log" aria-live="polite"></div>
       <div id="vea-qr"></div>
@@ -936,7 +919,6 @@ Take care.`,
       qr:      win.querySelector("#vea-qr"),
       input:   win.querySelector("#vea-input"),
       send:    win.querySelector("#vea-send"),
-      close:   win.querySelector("#vea-close"),
     };
   }
 
@@ -1011,6 +993,12 @@ Take care.`,
       ui.badge.style.display = "none";
       ui.fab.querySelector("#vea-fab-icon").innerHTML =
         `<svg viewBox="0 0 24 24" width="18" height="18" style="fill:${T.fabColor}"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
+      // On mobile, move FAB to top-right to avoid overlapping the send button
+      if (window.innerWidth <= 440) {
+        ui.fab.style.bottom = "auto";
+        ui.fab.style.top    = "14px";
+        ui.fab.style.right  = "14px";
+      }
       ui.input.focus();
 
       if (!greeted) {
@@ -1037,6 +1025,12 @@ Take care.`,
       ui.fab.querySelector("#vea-fab-icon").innerHTML = ICON_CHAT;
       ui.fab.querySelector("#vea-fab-icon svg").style.cssText =
         `width:22px;height:22px;color:${T.fabColor}`;
+      // Reset FAB to bottom-right on mobile
+      if (window.innerWidth <= 440) {
+        ui.fab.style.top    = "auto";
+        ui.fab.style.bottom = "16px";
+        ui.fab.style.right  = "16px";
+      }
     }
 
     /* ── Handle a user message ── */
@@ -1070,7 +1064,6 @@ Take care.`,
 
     /* ── Events ── */
     ui.fab.addEventListener("click",   () => isOpen ? close() : open());
-    ui.close.addEventListener("click", close);
     ui.send.addEventListener("click",  () => handleSend());
 
     ui.input.addEventListener("keydown", (e) => {
