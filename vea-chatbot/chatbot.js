@@ -19,6 +19,12 @@
     document.currentScript ||
     document.querySelector('script[src*="chatbot.js"]');
 
+  // Derive logo URL relative to chatbot.js location
+  const _scriptDir = (scriptEl && scriptEl.src)
+    ? scriptEl.src.replace(/\/[^/?#]*(\?.*)?$/, "/")
+    : "./";
+  const LOGO_SRC = _scriptDir + "VEA-LOGO.png";
+
   const CFG = {
     theme:    (scriptEl && scriptEl.dataset.theme)    || "light",
     greeting: (scriptEl && scriptEl.dataset.greeting) ||
@@ -595,55 +601,35 @@ Take care.`,
       pointer-events: none;
     }
 
-    /* ── Header ── */
-    #vea-header {
-      background: ${T.headerBg};
-      padding: 16px 18px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-shrink: 0;
-      border-bottom: 1px solid ${T.border};
-    }
-    #vea-header-mark {
-      width: 34px;
-      height: 34px;
+    /* ── Floating close button ── */
+    #vea-close-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 20;
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
-      background: rgba(200,184,154,0.12);
-      border: 1px solid rgba(200,184,154,0.2);
+      background: rgba(255,255,255,0.75);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(0,0,0,0.12);
+      cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-shrink: 0;
+      color: ${T.text};
+      font-size: 14px;
+      line-height: 1;
+      transition: background 0.15s;
     }
-    #vea-header-mark svg {
-      width: 16px;
-      height: 16px;
-      fill: ${T.accent};
-    }
-    #vea-header-info {
-      flex: 1;
-    }
-    #vea-header-name {
-      font-size: 13px;
-      font-weight: 600;
-      color: #fff;
-      letter-spacing: 0.02em;
-    }
-    #vea-header-sub {
-      font-size: 11px;
-      color: rgba(255,255,255,0.4);
-      margin-top: 2px;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
+    #vea-close-btn:hover { background: rgba(0,0,0,0.08); }
 
     /* ── Messages ── */
     #vea-msgs {
       flex: 1;
       overflow-y: auto;
-      padding: 20px 16px 12px;
+      padding: 50px 16px 12px;
       display: flex;
       flex-direction: column;
       gap: 12px;
@@ -817,17 +803,6 @@ Take care.`,
     #vea-send:active { transform: scale(0.93); }
     #vea-send svg    { fill: ${T.bg}; width: 15px; height: 15px; }
 
-    /* ── Branding ── */
-    #vea-brand {
-      text-align: center;
-      font-size: 10px;
-      color: ${T.muted};
-      padding: 5px 0 9px;
-      opacity: 0.5;
-      flex-shrink: 0;
-      font-family: inherit;
-    }
-
     /* ── Mobile full screen ── */
     @media (max-width: 440px) {
       #vea-window {
@@ -890,22 +865,13 @@ Take care.`,
     win.setAttribute("aria-label", "Virtually Ever After chat");
     win.classList.add("vea-closed");
     win.innerHTML = `
-      <div id="vea-header">
-        <div id="vea-header-mark">${ICON_VEA}</div>
-        <div id="vea-header-info">
-          <div id="vea-header-name">Vera · Virtually Ever After</div>
-          <div id="vea-header-sub">
-            <span>Online</span>
-          </div>
-        </div>
-      </div>
+      <button id="vea-close-btn" aria-label="Close chat">✕</button>
       <div id="vea-msgs" role="log" aria-live="polite"></div>
       <div id="vea-qr"></div>
       <div id="vea-input-area">
         <textarea id="vea-input" placeholder="Ask anything…" rows="1" aria-label="Message"></textarea>
         <button id="vea-send" aria-label="Send">${ICON_SEND}</button>
       </div>
-      <div id="vea-brand">Virtually Ever After · virtuallyeverafter.xyz</div>
     `;
 
     document.body.appendChild(fab);
@@ -913,12 +879,13 @@ Take care.`,
 
     return {
       fab,
-      badge:   fab.querySelector("#vea-badge"),
+      badge:    fab.querySelector("#vea-badge"),
       win,
-      msgs:    win.querySelector("#vea-msgs"),
-      qr:      win.querySelector("#vea-qr"),
-      input:   win.querySelector("#vea-input"),
-      send:    win.querySelector("#vea-send"),
+      closeBtn: win.querySelector("#vea-close-btn"),
+      msgs:     win.querySelector("#vea-msgs"),
+      qr:       win.querySelector("#vea-qr"),
+      input:    win.querySelector("#vea-input"),
+      send:     win.querySelector("#vea-send"),
     };
   }
 
@@ -932,7 +899,16 @@ Take care.`,
 
     const avatar = document.createElement("div");
     avatar.className = `vea-avatar ${isBot ? "" : "vea-avatar-user"}`;
-    avatar.innerHTML = isBot ? ICON_VEA : ICON_USER;
+    if (isBot) {
+      const img = document.createElement("img");
+      img.src   = LOGO_SRC;
+      img.alt   = "";
+      img.style.cssText = "width:18px;height:18px;border-radius:3px;object-fit:contain;";
+      img.onerror = () => { avatar.innerHTML = ICON_VEA; };
+      avatar.appendChild(img);
+    } else {
+      avatar.innerHTML = ICON_USER;
+    }
 
     const bubble = document.createElement("div");
     bubble.className = "vea-bubble";
@@ -956,7 +932,12 @@ Take care.`,
     row.className = "vea-row vea-bot";
     const avatar = document.createElement("div");
     avatar.className = "vea-avatar";
-    avatar.innerHTML = ICON_VEA;
+    const _tImg = document.createElement("img");
+    _tImg.src   = LOGO_SRC;
+    _tImg.alt   = "";
+    _tImg.style.cssText = "width:18px;height:18px;border-radius:3px;object-fit:contain;";
+    _tImg.onerror = () => { avatar.innerHTML = ICON_VEA; };
+    avatar.appendChild(_tImg);
     const bubble = document.createElement("div");
     bubble.className = "vea-bubble";
     bubble.innerHTML = `<div class="vea-typing"><span></span><span></span><span></span></div>`;
@@ -981,6 +962,28 @@ Take care.`,
   /* ─────────────────────────────────────────
      INIT
   ───────────────────────────────────────── */
+  /* ─────────────────────────────────────────
+     SESSION PERSISTENCE (survives close/reopen; cleared on page refresh)
+  ───────────────────────────────────────── */
+  const SESSION_KEY = "vea-session-" + location.pathname;
+
+  function sessionSave(role, html) {
+    try {
+      const msgs = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "[]");
+      msgs.push({ role, html });
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(msgs));
+    } catch(e) {}
+  }
+
+  function sessionRestore(msgsEl) {
+    try {
+      const msgs = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "[]");
+      if (!msgs.length) return false;
+      for (const m of msgs) appendMsg(msgsEl, m.role, m.html);
+      return true;
+    } catch(e) { return false; }
+  }
+
   function init() {
     const ui    = buildWidget();
     let isOpen  = false;
@@ -991,46 +994,51 @@ Take care.`,
       isOpen = true;
       ui.win.classList.remove("vea-closed");
       ui.badge.style.display = "none";
-      ui.fab.querySelector("#vea-fab-icon").innerHTML =
-        `<svg viewBox="0 0 24 24" width="18" height="18" style="fill:${T.fabColor}"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
-      // On mobile, move FAB to top-right to avoid overlapping the send button
+      // On mobile, hide FAB (close button is inside the window)
       if (window.innerWidth <= 440) {
-        ui.fab.style.bottom = "auto";
-        ui.fab.style.top    = "14px";
-        ui.fab.style.right  = "14px";
+        ui.fab.style.display = "none";
+      } else {
+        ui.fab.querySelector("#vea-fab-icon").innerHTML =
+          `<svg viewBox="0 0 24 24" width="18" height="18" style="fill:${T.fabColor}"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
       }
-      ui.input.focus();
+      // Do NOT focus the input — keyboard should not open automatically
 
       if (!greeted) {
         greeted = true;
-        const delay = setTimeout(() => {
-          const t = showTyping(ui.msgs);
+        // Try restoring a previous session first
+        const restored = sessionRestore(ui.msgs);
+        if (!restored) {
+          // Fresh session — show greeting
           setTimeout(() => {
-            t.remove();
-            appendMsg(ui.msgs, "bot", mdToHtml(CFG.greeting));
-            setQuickReplies(ui.qr, [
-              "What is VEA?",
-              "What services do you offer?",
-              "Show me your work",
-              "Who founded VEA?",
-            ], handleSend);
-          }, 800);
-        }, 150);
+            const t = showTyping(ui.msgs);
+            setTimeout(() => {
+              t.remove();
+              const greetHtml = mdToHtml(CFG.greeting);
+              appendMsg(ui.msgs, "bot", greetHtml);
+              sessionSave("bot", greetHtml);
+              setQuickReplies(ui.qr, [
+                "What is VEA?",
+                "What services do you offer?",
+                "Show me your work",
+                "Who founded VEA?",
+              ], handleSend);
+            }, 800);
+          }, 150);
+        } else {
+          // Restored — scroll to bottom
+          ui.msgs.scrollTop = ui.msgs.scrollHeight;
+        }
       }
     }
 
     function close() {
       isOpen = false;
       ui.win.classList.add("vea-closed");
+      // Restore FAB
+      ui.fab.style.display = "";
       ui.fab.querySelector("#vea-fab-icon").innerHTML = ICON_CHAT;
       ui.fab.querySelector("#vea-fab-icon svg").style.cssText =
         `width:22px;height:22px;color:${T.fabColor}`;
-      // Reset FAB to bottom-right on mobile
-      if (window.innerWidth <= 440) {
-        ui.fab.style.top    = "auto";
-        ui.fab.style.bottom = "16px";
-        ui.fab.style.right  = "16px";
-      }
     }
 
     /* ── Handle a user message ── */
@@ -1039,7 +1047,9 @@ Take care.`,
       if (!text) return;
 
       ui.qr.innerHTML = "";
-      appendMsg(ui.msgs, "user", escapeHtml(text));
+      const userHtml = escapeHtml(text);
+      appendMsg(ui.msgs, "user", userHtml);
+      sessionSave("user", userHtml);
       ui.input.value = "";
       ui.input.style.height = "auto";
       ui.input.blur(); // dismiss mobile keyboard after send
@@ -1057,14 +1067,17 @@ Take care.`,
           ? entry.next
           : ["What services do you offer?", "Show me your work", "How do we start?"];
 
-        appendMsg(ui.msgs, "bot", mdToHtml(reply));
+        const botHtml = mdToHtml(reply);
+        appendMsg(ui.msgs, "bot", botHtml);
+        sessionSave("bot", botHtml);
         setQuickReplies(ui.qr, nextQR, handleSend);
       }, delay);
     }
 
     /* ── Events ── */
-    ui.fab.addEventListener("click",   () => isOpen ? close() : open());
-    ui.send.addEventListener("click",  () => handleSend());
+    ui.fab.addEventListener("click",      () => isOpen ? close() : open());
+    ui.closeBtn.addEventListener("click", close);
+    ui.send.addEventListener("click",     () => handleSend());
 
     ui.input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -1091,12 +1104,22 @@ Take care.`,
         ui.win.style.top    = t + "px";
         ui.win.style.height = h + "px";
         ui.win.style.bottom = "auto";
-        // keep message list scrolled to bottom
         ui.msgs.scrollTop = ui.msgs.scrollHeight;
       };
       window.visualViewport.addEventListener("resize", onVVChange);
       window.visualViewport.addEventListener("scroll", onVVChange);
     }
+
+    /* ── Swipe-down from top to close (mobile) ── */
+    let _touchY0 = 0;
+    ui.win.addEventListener("touchstart", (e) => {
+      _touchY0 = e.touches[0].clientY;
+    }, { passive: true });
+    ui.win.addEventListener("touchend", (e) => {
+      const dy = e.changedTouches[0].clientY - _touchY0;
+      const dx = Math.abs(e.changedTouches[0].clientX - e.touches[0]?.clientX || 0);
+      if (dy > 72 && isOpen) close();
+    }, { passive: true });
   }
 
   /* ─────────────────────────────────────────
