@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Virtually Ever After — Chat with Vera</title>
+  <meta name="description" content="Meet Vera, the AI guide for Virtually Ever After — your virtual wedding platform." />
+
+  <!-- Favicon emoji -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💍</text></svg>" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --rose: #c5687b;
+      --rose-dark: #a84f63;
+      --rose-light: #fde8ed;
+      --gradient: linear-gradient(135deg, #c5687b 0%, #e8a0b0 100%);
+      --text: #2c1a1e;
+      --muted: #7a5e66;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      background: #fff8f9;
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── NAV ── */
+    nav {
+      background: #fff;
+      border-bottom: 1px solid #f0dde3;
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-logo {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--rose-dark);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .nav-links { display: flex; gap: 24px; }
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--rose); }
+    .nav-cta {
+      background: var(--gradient);
+      color: #fff !important;
+      padding: 8px 18px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 14px !important;
+      transition: opacity 0.2s, transform 0.2s !important;
+    }
+    .nav-cta:hover { opacity: 0.9; transform: translateY(-1px); color: #fff !important; }
+
+    /* ── HERO ── */
+    .hero {
+      text-align: center;
+      padding: 80px 20px 64px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% 0%, #fde8ed 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--rose-light);
+      color: var(--rose-dark);
+      border: 1px solid #f4c4cf;
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: clamp(32px, 6vw, 64px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      margin-bottom: 20px;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .hero h1 span { color: var(--rose); }
+    .hero p {
+      font-size: clamp(16px, 2vw, 20px);
+      color: var(--muted);
+      max-width: 560px;
+      margin: 0 auto 36px;
+      line-height: 1.6;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 56px;
+    }
+    .btn-primary {
+      background: var(--gradient);
+      color: #fff;
+      padding: 14px 28px;
+      border-radius: 28px;
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(197,104,123,0.4);
+      transition: transform 0.2s, box-shadow 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(197,104,123,0.45);
+    }
+    .btn-secondary {
+      background: #fff;
+      color: var(--rose-dark);
+      padding: 14px 28px;
+      border-radius: 28px;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      border: 1.5px solid #f4c4cf;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-secondary:hover { background: var(--rose-light); border-color: var(--rose); }
+
+    /* ── FEATURES ── */
+    .features {
+      background: #fff;
+      padding: 72px 20px;
+    }
+    .section-label {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--rose);
+      margin-bottom: 12px;
+    }
+    .section-title {
+      text-align: center;
+      font-size: clamp(24px, 4vw, 40px);
+      font-weight: 800;
+      margin-bottom: 12px;
+      letter-spacing: -0.01em;
+    }
+    .section-sub {
+      text-align: center;
+      color: var(--muted);
+      font-size: 16px;
+      margin-bottom: 52px;
+      max-width: 480px;
+      margin-left: auto;
+      margin-right: auto;
+      line-height: 1.6;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 24px;
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+    .feature-card {
+      background: #fff8f9;
+      border: 1px solid #f0dde3;
+      border-radius: 16px;
+      padding: 28px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .feature-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 32px rgba(197,104,123,0.12);
+    }
+    .feature-icon {
+      font-size: 32px;
+      margin-bottom: 14px;
+      display: block;
+    }
+    .feature-card h3 {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .feature-card p {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* ── HOW IT WORKS ── */
+    .how {
+      padding: 72px 20px;
+      background: #fff8f9;
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 32px;
+      max-width: 900px;
+      margin: 0 auto;
+      counter-reset: step;
+    }
+    .step {
+      text-align: center;
+      position: relative;
+    }
+    .step-num {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--gradient);
+      color: #fff;
+      font-weight: 800;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      box-shadow: 0 4px 14px rgba(197,104,123,0.4);
+    }
+    .step h3 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+    .step p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+
+    /* ── CHATBOT INTRO ── */
+    .chatbot-section {
+      background: #fff;
+      padding: 72px 20px;
+      text-align: center;
+    }
+    .chatbot-demo {
+      max-width: 400px;
+      margin: 40px auto 0;
+      background: #fafafa;
+      border: 1px solid #ece8f0;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 12px 48px rgba(0,0,0,0.10);
+    }
+    .chatbot-demo-header {
+      background: var(--gradient);
+      color: #fff;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .chatbot-demo-body {
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .demo-bubble {
+      background: #fff;
+      border: 1px solid #ece8f0;
+      border-radius: 14px;
+      padding: 10px 14px;
+      font-size: 13px;
+      line-height: 1.5;
+      max-width: 85%;
+      color: #333;
+      align-self: flex-start;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .demo-bubble.user {
+      background: var(--gradient);
+      color: #fff;
+      align-self: flex-end;
+      border: none;
+    }
+    .demo-arrow {
+      text-align: center;
+      font-size: 28px;
+      color: var(--rose);
+      animation: pulse 2s infinite ease-in-out;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.15); opacity: 0.7; }
+    }
+
+    /* ── EMBED SNIPPET ── */
+    .embed-section {
+      background: #1a0d10;
+      padding: 72px 20px;
+      color: #f8e8ec;
+    }
+    .embed-section .section-label { color: #e8a0b0; }
+    .embed-section .section-title { color: #fff; }
+    .embed-section .section-sub { color: #c4a0a8; }
+    .code-block {
+      background: #2d1418;
+      border: 1px solid #4a2028;
+      border-radius: 12px;
+      padding: 24px 28px;
+      max-width: 600px;
+      margin: 0 auto;
+      overflow-x: auto;
+    }
+    .code-block pre {
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 14px;
+      line-height: 1.7;
+      color: #f0d0d8;
+      white-space: pre;
+    }
+    .code-block .tag { color: #e8a0b0; }
+    .code-block .attr { color: #f0e090; }
+    .code-block .val { color: #90d0a0; }
+    .copy-btn {
+      display: block;
+      margin: 16px auto 0;
+      background: var(--gradient);
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      padding: 9px 22px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      font-family: inherit;
+    }
+    .copy-btn:hover { opacity: 0.88; }
+
+    /* ── TESTIMONIALS ── */
+    .testimonials {
+      padding: 72px 20px;
+      background: #fff8f9;
+    }
+    .testi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    .testi-card {
+      background: #fff;
+      border: 1px solid #f0dde3;
+      border-radius: 16px;
+      padding: 28px;
+    }
+    .testi-stars { color: #f4a93e; font-size: 16px; margin-bottom: 12px; }
+    .testi-text {
+      font-size: 14px;
+      line-height: 1.7;
+      color: #444;
+      margin-bottom: 16px;
+      font-style: italic;
+    }
+    .testi-author {
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--rose-dark);
+    }
+    .testi-location { font-size: 12px; color: var(--muted); }
+
+    /* ── CTA BANNER ── */
+    .cta-banner {
+      padding: 80px 20px;
+      text-align: center;
+      background: var(--gradient);
+      color: #fff;
+    }
+    .cta-banner h2 {
+      font-size: clamp(26px, 5vw, 48px);
+      font-weight: 800;
+      margin-bottom: 16px;
+      letter-spacing: -0.02em;
+    }
+    .cta-banner p {
+      font-size: 17px;
+      opacity: 0.88;
+      margin-bottom: 32px;
+      max-width: 440px;
+      margin-left: auto;
+      margin-right: auto;
+      line-height: 1.5;
+    }
+    .btn-white {
+      background: #fff;
+      color: var(--rose-dark);
+      padding: 14px 28px;
+      border-radius: 28px;
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: transform 0.2s;
+    }
+    .btn-white:hover { transform: translateY(-2px); }
+
+    /* ── FOOTER ── */
+    footer {
+      background: #1a0d10;
+      color: #a08088;
+      text-align: center;
+      padding: 28px 20px;
+      font-size: 13px;
+    }
+    footer a { color: #c4a0a8; text-decoration: none; }
+    footer a:hover { color: #fff; }
+  </style>
+</head>
+<body>
+
+  <!-- ── NAV ── -->
+  <nav>
+    <a href="#" class="nav-logo">💍 Virtually Ever After</a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it Works</a>
+      <a href="#embed">Embed</a>
+      <a href="mailto:hello@virtuallyeverafter.com" class="nav-cta">Contact Us</a>
+    </div>
+  </nav>
+
+  <!-- ── HERO ── -->
+  <section class="hero">
+    <div class="hero-badge">✨ Your Virtual Wedding, Beautifully Done</div>
+    <h1>Love Has No<br /><span>Distance</span></h1>
+    <p>Host a breathtaking virtual or hybrid wedding and connect every guest, no matter where in the world they are.</p>
+    <div class="hero-actions">
+      <a href="mailto:hello@virtuallyeverafter.com" class="btn-primary">
+        💌 Book a Free Consultation
+      </a>
+      <button class="btn-secondary" onclick="document.querySelector('#vea-chat-fab').click()">
+        💬 Chat with Vera
+      </button>
+    </div>
+  </section>
+
+  <!-- ── FEATURES ── -->
+  <section class="features" id="features">
+    <div class="section-label">What We Offer</div>
+    <h2 class="section-title">Everything for Your Perfect Day</h2>
+    <p class="section-sub">Full-service virtual ceremonies with professional tech, personalised touches, and heartfelt moments.</p>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <span class="feature-icon">🎥</span>
+        <h3>HD Live Streaming</h3>
+        <p>Broadcast your ceremony in crystal-clear HD to guests worldwide, with multi-camera coverage and zero technical hassle.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">💬</span>
+        <h3>Interactive Guest Experience</h3>
+        <p>Live reactions, virtual toasts, and real-time chat so remote guests feel present — not like spectators.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">🎨</span>
+        <h3>Custom Digital Décor</h3>
+        <p>Beautiful themed backdrops, branded ceremony pages, and personalised digital touches that match your aesthetic.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">📸</span>
+        <h3>Virtual Photo Booth</h3>
+        <p>Guests capture shareable moments with custom frames and filters — your wedding album goes global.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">🎵</span>
+        <h3>Live Music Integration</h3>
+        <p>Stream live musicians or curated playlists seamlessly. Your soundtrack, your way.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">🎬</span>
+        <h3>48-Hour Recording Delivery</h3>
+        <p>Full HD recording plus a professionally edited highlights reel, delivered within 48 hours of your ceremony.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── HOW IT WORKS ── -->
+  <section class="how" id="how-it-works">
+    <div class="section-label">The Process</div>
+    <h2 class="section-title">Six Steps to Your Dream Day</h2>
+    <p class="section-sub">We handle every detail so you can focus on what matters most — each other.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Free Consultation</h3>
+        <p>Tell us your vision during a relaxed discovery call with our specialists.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Package Selection</h3>
+        <p>We craft a bespoke proposal that fits your guest count and budget.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Planning Sessions</h3>
+        <p>Your dedicated coordinator handles logistics, timeline, and all creative details.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <h3>Tech Rehearsal</h3>
+        <p>Full run-through 48 hours before — we test everything so the big day is flawless.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <h3>Your Big Day</h3>
+        <p>We run the show silently in the background. You simply enjoy every moment.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">6</div>
+        <h3>Memories Delivered</h3>
+        <p>Receive your full recording and highlights reel within 48 hours. ✨</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CHATBOT DEMO SECTION ── -->
+  <section class="chatbot-section">
+    <div class="section-label">Meet Vera</div>
+    <h2 class="section-title">Your AI Wedding Guide</h2>
+    <p class="section-sub">Have questions? Vera is available 24/7 to walk you through everything Virtually Ever After offers.</p>
+
+    <div class="chatbot-demo">
+      <div class="chatbot-demo-header">
+        <span style="font-size:22px">💍</span>
+        <div>
+          <div>Vera · Virtually Ever After</div>
+          <div style="font-size:11px;opacity:.8;margin-top:1px">● Online &amp; ready to help</div>
+        </div>
+      </div>
+      <div class="chatbot-demo-body">
+        <div class="demo-bubble">Hi! I'm Vera, your Virtually Ever After guide. 💍 Ask me anything!</div>
+        <div class="demo-bubble user">What services do you offer?</div>
+        <div class="demo-bubble">We offer HD live streaming, interactive guest experiences, virtual photo booths, custom décor, live music integration, and full event coordination. Your dream wedding, delivered globally! ✨</div>
+      </div>
+    </div>
+
+    <div style="margin-top:32px">
+      <div class="demo-arrow">👇</div>
+      <p style="color:var(--muted);font-size:14px;margin-top:8px">Click the 💍 button in the bottom right to chat with Vera live!</p>
+    </div>
+  </section>
+
+  <!-- ── EMBED SNIPPET ── -->
+  <section class="embed-section" id="embed">
+    <div class="section-label">For Developers</div>
+    <h2 class="section-title" style="color:#fff">Add Vera to Any Page</h2>
+    <p class="section-sub" style="color:#c4a0a8">One line of HTML. No backend, no API key, no configuration required.</p>
+
+    <div class="code-block">
+      <pre><span class="tag">&lt;script</span>
+  <span class="attr">src</span>=<span class="val">"https://your-site.github.io/chatbot.js"</span>
+  <span class="attr">data-theme</span>=<span class="val">"rose"</span>
+  <span class="attr">data-greeting</span>=<span class="val">"Hi! I'm Vera, ask me anything! 💍"</span>
+<span class="tag">&gt;&lt;/script&gt;</span></pre>
+    </div>
+    <button class="copy-btn" onclick="
+      navigator.clipboard.writeText('<script src=\"chatbot.js\" data-theme=\"rose\" data-greeting=\"Hi! I\'m Vera, ask me anything! 💍\"></script>').then(()=>{this.textContent='✓ Copied!';setTimeout(()=>this.textContent='Copy Snippet',2000)})
+    ">Copy Snippet</button>
+
+    <p style="text-align:center;color:#a08088;font-size:13px;margin-top:20px">
+      Themes available: <code style="color:#e8a0b0">rose</code> · <code style="color:#e8a0b0">gold</code> · <code style="color:#e8a0b0">sage</code>
+    </p>
+  </section>
+
+  <!-- ── TESTIMONIALS ── -->
+  <section class="testimonials">
+    <div class="section-label">Couples Love Us</div>
+    <h2 class="section-title">Stories from Our Families</h2>
+    <p class="section-sub">Over 1,000 couples have celebrated with Virtually Ever After.</p>
+
+    <div class="testi-grid">
+      <div class="testi-card">
+        <div class="testi-stars">★★★★★</div>
+        <p class="testi-text">"We had guests in 12 countries — VEA made it feel like everyone was in the same room. Absolutely magical."</p>
+        <div class="testi-author">Sarah &amp; James</div>
+        <div class="testi-location">Sydney, Australia</div>
+      </div>
+      <div class="testi-card">
+        <div class="testi-stars">★★★★★</div>
+        <p class="testi-text">"Our grandparents couldn't travel but still had the best seats in the house. We cried happy tears all day."</p>
+        <div class="testi-author">Mei &amp; Carlos</div>
+        <div class="testi-location">Toronto, Canada</div>
+      </div>
+      <div class="testi-card">
+        <div class="testi-stars">★★★★★</div>
+        <p class="testi-text">"The team handled every single detail. On the day we just enjoyed being married — it was perfect!"</p>
+        <div class="testi-author">Priya &amp; Daniel</div>
+        <div class="testi-location">London, United Kingdom</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA ── -->
+  <section class="cta-banner">
+    <h2>Ready to Say "I Do"? 💍</h2>
+    <p>Book a free consultation today and let us design the virtual wedding of your dreams.</p>
+    <a href="mailto:hello@virtuallyeverafter.com" class="btn-white">
+      💌 Book Free Consultation
+    </a>
+  </section>
+
+  <!-- ── FOOTER ── -->
+  <footer>
+    <p>© 2025 Virtually Ever After · Made with ❤️ for couples everywhere</p>
+    <p style="margin-top:8px">
+      <a href="mailto:hello@virtuallyeverafter.com">hello@virtuallyeverafter.com</a> ·
+      <a href="https://virtuallyeverafter.com">virtuallyeverafter.com</a>
+    </p>
+  </footer>
+
+  <!-- ── CHATBOT WIDGET ── -->
+  <script src="chatbot.js" data-theme="rose" data-greeting="Hi! I'm Vera, your Virtually Ever After guide. 💍 Ask me anything about virtual weddings!"></script>
+
+</body>
+</html>
