@@ -307,6 +307,12 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.getEntitiesByNames(this.db, params));
   }
 
+  /**
+   * Query entities by component type and optional filters.
+   * WHY entityContext: When set (Postgres + ENABLE_DATA_ISOLATION), runs inside withEntityContext
+   * so RLS policies apply. We destructure entityContext out and pass only rest to the store—entityContext
+   * is connection context, not a query filter; stores do not accept it.
+   */
   async queryEntities(params: {
     componentType?: string;
     componentDataFilter?: Record<string, unknown>;
@@ -316,7 +322,14 @@ export abstract class BaseDrizzleAdapter
     limit?: number;
     offset?: number;
     includeAllComponents?: boolean;
+    entityContext?: UUID;
   }): Promise<Entity[]> {
+    const { entityContext, ...rest } = params;
+    if (entityContext != null) {
+      return this.withEntityContext(entityContext, (tx) =>
+        stores.queryEntities(tx, rest)
+      );
+    }
     return this.withDatabase(() => stores.queryEntities(this.db, params));
   }
 
@@ -379,12 +392,40 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.deleteComponents(this.db, componentIds));
   }
 
-  async upsertComponents(components: Component[]): Promise<void> {
+  /**
+   * Upsert components (insert or update by natural key).
+   * WHY entityContext: When set, runs inside withEntityContext so RLS restricts which rows
+   * are visible/updated. Only Postgres uses this; PGLite/MySQL adapters accept and ignore.
+   */
+  async upsertComponents(
+    components: Component[],
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    if (options?.entityContext != null) {
+      return this.withEntityContext(options.entityContext, (tx) =>
+        stores.upsertComponents(tx, components)
+      );
+    }
     return this.withDatabase(() => stores.upsertComponents(this.db, components));
   }
 
-  async patchComponent(componentId: UUID, ops: import("@elizaos/core").PatchOp[]): Promise<void> {
-    return this.withDatabase(() => stores.patchComponent(this.db, componentId, ops));
+  /**
+   * Patch component JSONB data with JSON Patch ops.
+   * WHY entityContext: Same as upsertComponents—scopes the patch to the entity when RLS is on.
+   */
+  async patchComponent(
+    componentId: UUID,
+    ops: import("@elizaos/core").PatchOp[],
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    if (options?.entityContext != null) {
+      return this.withEntityContext(options.entityContext, (tx) =>
+        stores.patchComponent(tx, componentId, ops)
+      );
+    }
+    return this.withDatabase(() =>
+      stores.patchComponent(this.db, componentId, ops)
+    );
   }
 
   // ===============================
@@ -497,7 +538,20 @@ export abstract class BaseDrizzleAdapter
     );
   }
 
-  async upsertMemories(memories: Array<{ memory: Memory; tableName: string }>): Promise<void> {
+  /**
+   * Upsert memories (insert or update by ID).
+   * WHY entityContext: When set, runs inside withEntityContext so RLS restricts memory rows
+   * to the current entity (e.g. user-scoped memories when ENABLE_DATA_ISOLATION=true).
+   */
+  async upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    if (options?.entityContext != null) {
+      return this.withEntityContext(options.entityContext, (tx) =>
+        stores.upsertMemories(tx, this.agentId, this.embeddingDimension, memories)
+      );
+    }
     return this.withDatabase(() =>
       stores.upsertMemories(this.db, this.agentId, this.embeddingDimension, memories)
     );
@@ -1137,23 +1191,44 @@ export abstract class BaseDrizzleAdapter
   // ===============================
 
   /**
+   * Create a proxy adapter that uses the given db/transaction for all operations.
+   * WHY shared helper: Both transaction() branches (with and without entityContext) must use
+   * the same proxy shape so that nested proxy.transaction(innerCb) uses the same connection
+   * (and thus the same app.entity_id when RLS is on). If we used a different code path for
+   * the entityContext branch, nested transactions could lose RLS context.
+   */
+  private createProxyWithDb(dbOrTx: DrizzleDatabase): BaseDrizzleAdapter {
+    const proxy = Object.create(this) as BaseDrizzleAdapter;
+    proxy.db = dbOrTx as any;
+    return proxy;
+  }
+
+  /**
    * Execute a callback within a database transaction using prototype proxy pattern.
-   * 
+   *
    * WHY prototype proxy: The tx parameter must route all adapter methods through
    * the Drizzle transaction context. Instead of manually wrapping all 100+ methods,
    * we create a proxy that inherits all methods and swaps only the db connection.
-   * 
-   * NESTED TRANSACTIONS: Drizzle uses SAVEPOINTs on PostgreSQL/PGLite, so nested
-   * transactions work correctly. MySQL also supports SAVEPOINTs.
+   *
+   * WHY entityContext branch uses withEntityContext (not this.db.transaction): When the
+   * caller passes entityContext, we must run the callback on a connection that has
+   * SET LOCAL app.entity_id applied. That connection is provided by withEntityContext;
+   * this.db.transaction would start a new transaction without that context and break RLS.
+   *
+   * NESTED TRANSACTIONS: Both branches use createProxyWithDb so nested proxy.transaction(innerCb)
+   * uses the same connection (and same RLS context). Drizzle uses SAVEPOINTs for nesting.
    */
-  async transaction<T>(callback: (tx: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>): Promise<T> {
+  async transaction<T>(
+    callback: (tx: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>,
+    options?: { entityContext?: UUID },
+  ): Promise<T> {
+    if (options?.entityContext != null) {
+      return this.withEntityContext(options.entityContext, (tx) =>
+        callback(this.createProxyWithDb(tx))
+      );
+    }
     return this.db.transaction(async (drizzleTx) => {
-      // Create a proxy that inherits all methods from this adapter
-      const proxy = Object.create(this) as BaseDrizzleAdapter;
-      // Swap the db connection to the transaction
-      proxy.db = drizzleTx as any;
-      // Call the user's callback with the transactional proxy
-      return callback(proxy);
+      return callback(this.createProxyWithDb(drizzleTx));
     });
   }
 }

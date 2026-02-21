@@ -5033,10 +5033,16 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return await this.adapter.deleteTasks(taskIds);
   }
 
+  /**
+   * Run callback in a database transaction. Forwards options.entityContext to the adapter.
+   * WHY forward only: RLS (withEntityContext) is implemented in the adapter (e.g. plugin-sql Postgres);
+   * runtime does not touch Postgres or connection context.
+   */
   async transaction<T>(
     callback: (tx: IDatabaseAdapter<object>) => Promise<T>,
+    options?: { entityContext?: UUID },
   ): Promise<T> {
-    return await this.adapter.transaction(callback);
+    return await this.adapter.transaction(callback, options);
   }
 
   async queryEntities(params: {
@@ -5048,6 +5054,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     limit?: number;
     offset?: number;
     includeAllComponents?: boolean;
+    entityContext?: UUID;
   }): Promise<Entity[]> {
     return await this.adapter.queryEntities({
       ...params,
@@ -5136,24 +5143,40 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return await this.adapter.upsertComponents([component]);
   }
 
-  async upsertComponents(components: Component[]): Promise<void> {
-    return await this.adapter.upsertComponents(components);
+  async upsertComponents(
+    components: Component[],
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return await this.adapter.upsertComponents(components, options);
   }
 
-  async patchComponent(componentId: UUID, ops: PatchOp[]): Promise<void> {
-    return await this.adapter.patchComponent(componentId, ops);
+  async patchComponent(
+    componentId: UUID,
+    ops: PatchOp[],
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return await this.adapter.patchComponent(componentId, ops, options);
   }
 
-  async patchComponentField(componentId: UUID, op: PatchOp): Promise<void> {
-    return await this.adapter.patchComponent(componentId, [op]);
+  async patchComponentField(
+    componentId: UUID,
+    op: PatchOp,
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return await this.adapter.patchComponent(componentId, [op], options);
   }
 
-  async getComponentsByType(type: string, agentId?: UUID): Promise<Component[]> {
+  async getComponentsByType(
+    type: string,
+    agentId?: UUID,
+    options?: { entityContext?: UUID },
+  ): Promise<Component[]> {
     // Wraps queryEntities and extracts components from entities
     const entities = await this.adapter.queryEntities({
       componentType: type,
       agentId: agentId ?? this.agentId,
       includeAllComponents: false, // Only return matched components
+      ...(options?.entityContext != null && { entityContext: options.entityContext }),
     });
 
     // Flatten components from all entities
@@ -5166,7 +5189,11 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return components;
   }
 
-  async upsertMemory(memory: Memory, tableName: string): Promise<void> {
+  async upsertMemory(
+    memory: Memory,
+    tableName: string,
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
     // Apply secret redaction (same as createMemory) to prevent plaintext secrets
     const secrets = this.getSecretsForRedaction();
     if (Object.keys(secrets).length > 0 && memory.content?.text) {
@@ -5181,11 +5208,14 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         },
       };
     }
-    return await this.adapter.upsertMemories([{ memory, tableName }]);
+    return await this.adapter.upsertMemories([{ memory, tableName }], options);
   }
 
-  async upsertMemories(memories: Array<{ memory: Memory; tableName: string }>): Promise<void> {
-    return await this.adapter.upsertMemories(memories);
+  async upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return await this.adapter.upsertMemories(memories, options);
   }
 
   // Batch relationship methods

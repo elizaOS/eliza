@@ -103,6 +103,28 @@ The adapter implements the following error handling configurations:
 }
 ```
 
+## Entity context and RLS
+
+When **ENABLE_DATA_ISOLATION** is `true`, Postgres RLS policies filter rows by `current_entity_id()`, which is set only when operations run inside **entity context**. The following methods accept an optional **entity context** so that when you are acting on behalf of a specific entity (e.g. a user), you can scope the operation to that entity’s data:
+
+- **transaction(callback, options?)** – `options.entityContext` runs the whole transaction under that entity’s RLS context. Nested calls inside the callback use the same connection, so you do not need to pass `entityContext` again.
+- **queryEntities(params)** – `params.entityContext` runs the query under that entity’s context. This is **RLS-only** (connection context); it is not a filter. Do not use `entityContext` as a query filter.
+- **upsertComponents(components, options?)** – `options.entityContext` runs the upsert under that entity’s context.
+- **patchComponent(componentId, ops, options?)** – `options.entityContext` runs the patch under that entity’s context.
+- **upsertMemories(memories, options?)** – `options.entityContext` runs the upsert under that entity’s context.
+
+**When to pass entity context:** Use it for any user- or entity-scoped flow (e.g. handling a message from a user, loading that user’s components). Omit it for system/admin operations (migrations, boot, server-wide queries).
+
+**If you omit entity context when RLS is on:** With STRICT RLS, policies may allow no rows when `app.entity_id` is not set, so you can get empty or wrong results. Pass `entityContext` for entity-scoped work when `ENABLE_DATA_ISOLATION=true`.
+
+**Where it applies:** Optional `entityContext` is supported on all adapters (they accept and ignore it). Only **plugin-sql Postgres** uses it for RLS; other adapters (PGLite, MySQL, InMemory, LocalDB) do not enforce entity RLS.
+
+### Why entity context?
+
+- **Why optional:** System paths (migrations, boot, admin) run without a user entity. Making `entityContext` required would break them. Optional keeps backward compatibility; entity-scoped call sites opt in when `ENABLE_DATA_ISOLATION=true`.
+- **Why per-call:** Per-call keeps behavior explicit and matches existing patterns (`getMemories` / `getLogs` with `params.entityId`). Request-scoped context (e.g. AsyncLocalStorage) can be added later if needed.
+- **Why not in stores:** RLS is enforced by the connection (`SET LOCAL app.entity_id`). Stores receive only the Drizzle db/tx; the adapter uses `entityContext` only to choose the connection via `withEntityContext`, then passes the rest of the params to the store.
+
 ## Requirements
 
 - PostgreSQL with vector extension installed

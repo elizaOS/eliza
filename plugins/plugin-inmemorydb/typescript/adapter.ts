@@ -341,6 +341,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     limit?: number;
     offset?: number;
     includeAllComponents?: boolean;
+    entityContext?: UUID;
   }): Promise<Entity[]> {
     const { componentType, componentDataFilter, agentId, entityIds, worldId, limit, offset, includeAllComponents = false } = params;
 
@@ -546,7 +547,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  async upsertComponents(components: Component[]): Promise<void> {
+  async upsertComponents(
+    components: Component[],
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
     // WHY: InMemory upsert finds existing components by natural key, NOT by id.
     // The natural key is (entityId, type, worldId, sourceEntityId).
     for (const component of components) {
@@ -589,7 +593,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  async patchComponent(componentId: UUID, ops: import("@elizaos/core").PatchOp[]): Promise<void> {
+  async patchComponent(
+    componentId: UUID,
+    ops: import("@elizaos/core").PatchOp[],
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
     if (ops.length === 0) return;
 
     const component = await this.storage.get<Component>(COLLECTIONS.COMPONENTS, componentId);
@@ -975,7 +983,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  async upsertMemories(memories: Array<{ memory: Memory; tableName: string }>): Promise<void> {
+  async upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
     for (const { memory, tableName } of memories) {
       const memoryId = memory.id ?? (crypto.randomUUID() as UUID);
       await this.storage.set(COLLECTIONS.MEMORIES, memoryId, {
@@ -1822,6 +1833,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
    */
   async transaction<T>(
     callback: (tx: import("@elizaos/core").IDatabaseAdapter<IStorage>) => Promise<T>,
+    _options?: { entityContext?: UUID },
   ): Promise<T> {
     // No transaction semantics - just execute the callback with this adapter
     return callback(this);

@@ -449,10 +449,15 @@ export interface IDatabaseAdapter<DB extends object = object> {
    * This is acceptable for dev/test but NOT for production critical paths.
    * 
    * @param callback Function that receives a transactional adapter proxy
+   * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), runs callback under RLS for this entity.
+   *        WHY optional: System paths (migrations, boot, admin) run without a user entity; required would break them.
    * @returns Promise resolving to callback's return value
    * @throws Error if any operation in the callback fails (SQL: rolls back, InMemory: does NOT)
    */
-  transaction<T>(callback: (tx: IDatabaseAdapter<DB>) => Promise<T>): Promise<T>;
+  transaction<T>(
+    callback: (tx: IDatabaseAdapter<DB>) => Promise<T>,
+    options?: { entityContext?: UUID },
+  ): Promise<T>;
 
   /** Get entities for room */
   getEntitiesForRoom(
@@ -580,6 +585,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
     limit?: number;
     offset?: number;
     includeAllComponents?: boolean; // default false
+    /** RLS only: when set (Postgres + ENABLE_DATA_ISOLATION), query runs under this entity context. Not a filter (WHY: RLS is connection-level; stores do not take entityContext). */
+    entityContext?: UUID;
   }): Promise<Entity[]>;
 
   /** Get component by entity and type (query method) */
@@ -645,8 +652,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
    * PostgreSQL will error: "ON CONFLICT DO UPDATE command cannot affect row a second time"
    * 
    * @param components Components to upsert (id, entityId, type, data required)
+   * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), upsert runs under RLS for this entity.
    */
-  upsertComponents(components: Component[]): Promise<void>;
+  upsertComponents(
+    components: Component[],
+    options?: { entityContext?: UUID },
+  ): Promise<void>;
 
   /**
    * Atomic partial update to component JSONB data using JSON Patch operations.
@@ -672,9 +683,14 @@ export interface IDatabaseAdapter<DB extends object = object> {
    * 
    * @param componentId The component to patch
    * @param ops Array of patch operations (applied in order, atomically)
+   * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), patch runs under RLS for this entity.
    * @throws Error if component not found, path invalid, or operation incompatible with data type
    */
-  patchComponent(componentId: UUID, ops: PatchOp[]): Promise<void>;
+  patchComponent(
+    componentId: UUID,
+    ops: PatchOp[],
+    options?: { entityContext?: UUID },
+  ): Promise<void>;
 
   /**
    * Get memories matching criteria
@@ -856,8 +872,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
    * is also upserted (ON CONFLICT on memory_id). This keeps embeddings in sync.
    * 
    * @param memories Array of {memory, tableName} to upsert (memory.id required)
+   * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), upsert runs under RLS for this entity.
    */
-  upsertMemories(memories: Array<{ memory: Memory; tableName: string }>): Promise<void>;
+  upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+    options?: { entityContext?: UUID },
+  ): Promise<void>;
 
   deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
 

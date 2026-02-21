@@ -318,8 +318,10 @@ export abstract class BaseDrizzleAdapter
     limit?: number;
     offset?: number;
     includeAllComponents?: boolean;
+    entityContext?: UUID;
   }): Promise<Entity[]> {
-    return this.withDatabase(() => stores.queryEntities(this.db, params));
+    const { entityContext: _entityContext, ...rest } = params;
+    return this.withDatabase(() => stores.queryEntities(this.db, rest));
   }
 
   // Batch entity methods
@@ -381,11 +383,18 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.deleteComponents(this.db, componentIds));
   }
 
-  async upsertComponents(components: Component[]): Promise<void> {
+  async upsertComponents(
+    components: Component[],
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
     return this.withDatabase(() => stores.upsertComponents(this.db, components));
   }
 
-  async patchComponent(componentId: UUID, ops: import("@elizaos/core").PatchOp[]): Promise<void> {
+  async patchComponent(
+    componentId: UUID,
+    ops: import("@elizaos/core").PatchOp[],
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
     return this.withDatabase(() => stores.patchComponent(this.db, componentId, ops));
   }
 
@@ -499,7 +508,10 @@ export abstract class BaseDrizzleAdapter
     );
   }
 
-  async upsertMemories(memories: Array<{ memory: Memory; tableName: string }>): Promise<void> {
+  async upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
     return this.withDatabase(() =>
       stores.upsertMemories(this.db, this.agentId, this.embeddingDimension, memories)
     );
@@ -1138,7 +1150,10 @@ export abstract class BaseDrizzleAdapter
   // Transaction API
   // ===============================
 
-  async transaction<T>(callback: (tx: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>): Promise<T> {
+  async transaction<T>(
+    callback: (tx: IDatabaseAdapter<DrizzleDatabase>) => Promise<T>,
+    _options?: { entityContext?: UUID },
+  ): Promise<T> {
     return this.db.transaction(async (drizzleTx) => {
       const proxy = Object.create(this) as BaseDrizzleAdapter;
       proxy.db = drizzleTx as any;

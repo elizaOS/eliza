@@ -100,8 +100,12 @@ export abstract class DatabaseAdapter<DB extends object = object>
   /**
    * Execute a callback within a database transaction.
    * InMemory adapter runs the callback directly without atomicity guarantees.
+   * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), runs under RLS for this entity.
    */
-  abstract transaction<T>(callback: (tx: IDatabaseAdapter<DB>) => Promise<T>): Promise<T>;
+  abstract transaction<T>(
+    callback: (tx: IDatabaseAdapter<DB>) => Promise<T>,
+    options?: { entityContext?: UUID },
+  ): Promise<T>;
 
   abstract getEntitiesForRoom(
     roomId: UUID,
@@ -142,6 +146,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 
   /**
    * Query entities by component type and optional JSONB data filter.
+   * @param params.entityContext RLS only: when set (Postgres + ENABLE_DATA_ISOLATION), query runs under this entity context. WHY optional: adapters that don't support RLS accept and ignore it.
    */
   abstract queryEntities(params: {
     componentType?: string;
@@ -152,6 +157,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
     limit?: number;
     offset?: number;
     includeAllComponents?: boolean;
+    entityContext?: UUID;
   }): Promise<Entity[]>;
 
   /**
@@ -195,13 +201,22 @@ export abstract class DatabaseAdapter<DB extends object = object>
 
   /**
    * Upsert components (insert or update by natural key).
+   * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), runs under RLS for this entity.
    */
-  abstract upsertComponents(components: Component[]): Promise<void>;
+  abstract upsertComponents(
+    components: Component[],
+    options?: { entityContext?: UUID },
+  ): Promise<void>;
 
   /**
    * Atomic partial update to component JSONB data using JSON Patch operations.
+   * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), runs under RLS for this entity.
    */
-  abstract patchComponent(componentId: UUID, ops: PatchOp[]): Promise<void>;
+  abstract patchComponent(
+    componentId: UUID,
+    ops: PatchOp[],
+    options?: { entityContext?: UUID },
+  ): Promise<void>;
 
   /**
    * Retrieves memories based on the specified parameters.
@@ -312,8 +327,12 @@ export abstract class DatabaseAdapter<DB extends object = object>
   abstract updateMemories(memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>): Promise<void>;
   /**
    * Upsert memories (insert or update by ID).
+   * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), runs under RLS for this entity.
    */
-  abstract upsertMemories(memories: Array<{ memory: Memory; tableName: string }>): Promise<void>;
+  abstract upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+    options?: { entityContext?: UUID },
+  ): Promise<void>;
   abstract deleteMemories(memoryIds: UUID[]): Promise<void>;
 
   /**
