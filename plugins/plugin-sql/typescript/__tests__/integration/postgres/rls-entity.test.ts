@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { plugin as sqlPlugin } from "../../../index";
 import { DatabaseMigrationService } from "../../../migration-service";
+import { PgDatabaseAdapter } from "../../../pg/adapter";
 import { PostgresConnectionManager } from "../../../pg/manager";
 import { applyEntityRLSToAllTables, applyRLSToNewTables, installRLSFunctions } from "../../../rls";
 
@@ -367,5 +368,14 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
     } finally {
       await wrongServerManager.close();
     }
+  });
+
+  it("should run adapter queryEntities with entityContext under RLS", async () => {
+    const adapter = new PgDatabaseAdapter(agentId as UUID, manager);
+    const entities = await adapter.queryEntities({
+      entityContext: aliceId as UUID,
+      limit: 10,
+    });
+    expect(Array.isArray(entities)).toBe(true);
   });
 });

@@ -170,6 +170,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async transaction<T>(
     callback: (tx: IDatabaseAdapter<IStorage>) => Promise<T>,
+    _options?: { entityContext?: UUID },
   ): Promise<T> {
     return callback(this);
   }
@@ -183,6 +184,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     limit?: number;
     offset?: number;
     includeAllComponents?: boolean;
+    entityContext?: UUID;
   }): Promise<Entity[]> {
     if (params.entityIds?.length) {
       return this.getEntitiesByIds(params.entityIds);
@@ -190,7 +192,10 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return [];
   }
 
-  async upsertComponents(components: Component[]): Promise<void> {
+  async upsertComponents(
+    components: Component[],
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
     for (const component of components) {
       const existing = await this.getComponent(
         component.entityId,
@@ -206,12 +211,17 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  async patchComponent(_componentId: UUID, _ops: PatchOp[]): Promise<void> {
+  async patchComponent(
+    _componentId: UUID,
+    _ops: PatchOp[],
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
     // LocalDB has no JSONB patch support; no-op for compatibility.
   }
 
   async upsertMemories(
     memories: Array<{ memory: Memory; tableName: string }>,
+    _options?: { entityContext?: UUID },
   ): Promise<void> {
     for (const { memory, tableName } of memories) {
       const id = memory.id;

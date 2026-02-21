@@ -44,11 +44,11 @@ describe("PgDatabaseAdapter", () => {
     (logger.warn as Mock).mockClear();
     (logger.error as Mock).mockClear();
 
-    // Create a mock manager
+    // Create a mock manager (withEntityContext for RLS entity-context tests)
     mockManager = {
       getDatabase: vi.fn(() => ({
         query: {},
-        transaction: vi.fn(() => {}),
+        transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb({})),
       })),
       getClient: vi.fn(() => {}),
       testConnection: vi.fn(() => Promise.resolve(true)),
@@ -57,6 +57,7 @@ describe("PgDatabaseAdapter", () => {
         connect: vi.fn(() => {}),
         end: vi.fn(() => {}),
       })),
+      withEntityContext: vi.fn((_entityId: UUID, callback: () => Promise<unknown>) => callback()),
     };
 
     adapter = new PgDatabaseAdapter(agentId, mockManager as PostgresConnectionManager);
@@ -155,10 +156,9 @@ describe("PgDatabaseAdapter", () => {
   describe("withDatabase pool-based connection", () => {
     it("should use shared pool-based db instance without acquiring individual clients", async () => {
       const mockDb = {
-        select: vi.fn().mockReturnThis(),
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue([]),
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockResolvedValue([]),
+        }),
         transaction: vi.fn(),
       };
 
@@ -175,8 +175,8 @@ describe("PgDatabaseAdapter", () => {
 
       const poolAdapter = new PgDatabaseAdapter(agentId, poolManager);
 
-      // Execute an operation
-      await poolAdapter.getAgent(agentId);
+      // Execute an operation (adapter has getAgents, not getAgent)
+      await poolAdapter.getAgents();
 
       // Verify getClient was NOT called (we use pool-based db now)
       expect(getClientMock).not.toHaveBeenCalled();
@@ -185,16 +185,11 @@ describe("PgDatabaseAdapter", () => {
     it("should handle concurrent operations without race conditions", async () => {
       const results: string[] = [];
       const mockDb = {
-        select: vi.fn().mockImplementation(() => {
-          return {
-            from: vi.fn().mockReturnThis(),
-            where: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockImplementation(async () => {
-              // Simulate async delay
-              await new Promise((resolve) => setTimeout(resolve, 10));
-              return [];
-            }),
-          };
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockImplementation(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            return [];
+          }),
         }),
         transaction: vi.fn(),
       };
@@ -210,11 +205,11 @@ describe("PgDatabaseAdapter", () => {
 
       const concurrentAdapter = new PgDatabaseAdapter(agentId, concurrentManager);
 
-      // Run multiple concurrent operations
+      // Run multiple concurrent operations (adapter has getAgents, not getAgent)
       const operations = [
-        concurrentAdapter.getAgent(agentId).then(() => results.push("op1")),
-        concurrentAdapter.getAgent(agentId).then(() => results.push("op2")),
-        concurrentAdapter.getAgent(agentId).then(() => results.push("op3")),
+        concurrentAdapter.getAgents().then(() => results.push("op1")),
+        concurrentAdapter.getAgents().then(() => results.push("op2")),
+        concurrentAdapter.getAgents().then(() => results.push("op3")),
       ];
 
       await Promise.all(operations);
@@ -224,6 +219,89 @@ describe("PgDatabaseAdapter", () => {
       expect(results).toContain("op1");
       expect(results).toContain("op2");
       expect(results).toContain("op3");
+    });
+  });
+
+  describe("entity context (RLS)", () => {
+    const entityId = "11111111-2222-3333-4444-555555555555" as UUID;
+
+    it("should call withEntityContext when queryEntities is called with entityContext", async () => {
+      const withEntityContextMock = vi.fn((_id: UUID, cb: (tx: unknown) => Promise<unknown>) => {
+        const emptyResult = Promise.resolve([]);
+        const mockTx = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                groupBy: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockReturnValue({
+                    offset: vi.fn().mockReturnValue(emptyResult),
+                    then: emptyResult.then.bind(emptyResult),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        };
+        return cb(mockTx);
+      });
+      const mgr = {
+        ...mockManager,
+        withEntityContext: withEntityContextMock,
+      } as PostgresConnectionManager;
+      const adp = new PgDatabaseAdapter(agentId, mgr);
+
+      await adp.queryEntities({ entityContext: entityId, limit: 1 });
+
+      expect(withEntityContextMock).toHaveBeenCalledWith(entityId, expect.any(Function));
+    });
+
+    it("should not call withEntityContext when queryEntities is called without entityContext", async () => {
+      const withEntityContextMock = vi.fn();
+      const emptyResult = Promise.resolve([]);
+      const limitReturn = {
+        offset: vi.fn().mockReturnValue(emptyResult),
+        then: emptyResult.then.bind(emptyResult),
+      };
+      const mgr = {
+        ...mockManager,
+        getDatabase: vi.fn(() => ({
+          query: {},
+          transaction: vi.fn(),
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                groupBy: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockReturnValue(limitReturn),
+                }),
+              }),
+            }),
+          }),
+        })),
+        withEntityContext: withEntityContextMock,
+      } as unknown as PostgresConnectionManager;
+      const adp = new PgDatabaseAdapter(agentId, mgr);
+
+      await adp.queryEntities({ limit: 1 });
+
+      expect(withEntityContextMock).not.toHaveBeenCalled();
+    });
+
+    it("should call withEntityContext when transaction is called with options.entityContext", async () => {
+      const withEntityContextMock = vi.fn((_id: UUID, cb: (tx: unknown) => Promise<unknown>) => {
+        return cb({});
+      });
+      const mgr = {
+        ...mockManager,
+        withEntityContext: withEntityContextMock,
+      } as PostgresConnectionManager;
+      const adp = new PgDatabaseAdapter(agentId, mgr);
+
+      await adp.transaction(
+        async () => "ok",
+        { entityContext: entityId }
+      );
+
+      expect(withEntityContextMock).toHaveBeenCalledWith(entityId, expect.any(Function));
     });
   });
 });

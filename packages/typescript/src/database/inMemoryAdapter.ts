@@ -171,6 +171,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
   async transaction<T>(
     callback: (tx: IDatabaseAdapter<Record<string, never>>) => Promise<T>,
+    _options?: { entityContext?: UUID },
   ): Promise<T> {
     return callback(this);
   }
@@ -184,6 +185,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     limit?: number;
     offset?: number;
     includeAllComponents?: boolean;
+    entityContext?: UUID;
   }): Promise<Entity[]> {
     if (_params.entityIds?.length) {
       return this.getEntitiesByIds(_params.entityIds);
@@ -337,11 +339,18 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     // no-op
   }
 
-  async upsertComponents(_components: Component[]): Promise<void> {
+  async upsertComponents(
+    _components: Component[],
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
     // InMemory does not persist components; no-op for compatibility.
   }
 
-  async patchComponent(_componentId: UUID, _ops: PatchOp[]): Promise<void> {
+  async patchComponent(
+    _componentId: UUID,
+    _ops: PatchOp[],
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
     // InMemory does not persist components; no-op for compatibility.
   }
 
@@ -563,7 +572,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
   }
 
-  async upsertMemories(memories: Array<{ memory: Memory; tableName: string }>): Promise<void> {
+  async upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
     for (const { memory, tableName } of memories) {
       const id = memory.id;
       if (id == null) {
