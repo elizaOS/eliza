@@ -8,7 +8,10 @@ import {
 } from "@elizaos/core";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { BaseDrizzleAdapter } from "../base";
-import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../schema/embedding";
+import {
+  DIMENSION_MAP,
+  type EmbeddingDimensionColumn,
+} from "../schema/embedding";
 import type { PostgresConnectionManager } from "./manager";
 
 export class PgDatabaseAdapter extends BaseDrizzleAdapter {
@@ -18,7 +21,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   constructor(
     agentId: UUID,
     manager: PostgresConnectionManager,
-    _schema?: Record<string, unknown>
+    _schema?: Record<string, unknown>,
   ) {
     super(agentId);
     this.manager = manager;
@@ -29,19 +32,25 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return this.manager;
   }
 
-  public async withEntityContext<T>(
+  public async withIsolationContext<T>(
     entityId: UUID | null,
-    callback: (tx: NodePgDatabase) => Promise<T>
+    callback: (tx: NodePgDatabase) => Promise<T>,
   ): Promise<T> {
-    return await this.manager.withEntityContext(entityId, callback);
+    return await this.manager.withIsolationContext(entityId, callback);
   }
 
   async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
     return this.getEntitiesByIds(entityIds);
   }
 
-  async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
-    logger.warn({ src: "plugin:sql" }, "getMemoriesByServerId called but not implemented");
+  async getMemoriesByServerId(_params: {
+    serverId: UUID;
+    count?: number;
+  }): Promise<Memory[]> {
+    logger.warn(
+      { src: "plugin:sql" },
+      "getMemoriesByServerId called but not implemented",
+    );
     return [];
   }
 
@@ -150,7 +159,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     entityId: UUID,
     type: string,
     worldId?: UUID,
-    sourceEntityId?: UUID
+    sourceEntityId?: UUID,
   ): Promise<Component | null> {
     return super.getComponent(entityId, type, worldId, sourceEntityId);
   }

@@ -53,8 +53,10 @@ export type LogBodyValue =
 /**
  * Base log body type with common properties
  */
-export interface BaseLogBody
-  extends Omit<ProtoBaseLogBody, "$typeName" | "$unknown" | "metadata"> {
+export interface BaseLogBody extends Omit<
+  ProtoBaseLogBody,
+  "$typeName" | "$unknown" | "metadata"
+> {
   runId?: string | UUID;
   parentRunId?: string | UUID;
   messageId?: UUID;
@@ -79,11 +81,10 @@ export interface ActionLogContent {
 /**
  * Action result structure for logging
  */
-export interface ActionLogResult
-  extends Omit<
-    ProtoActionLogResult,
-    "$typeName" | "$unknown" | "data" | "error"
-  > {
+export interface ActionLogResult extends Omit<
+  ProtoActionLogResult,
+  "$typeName" | "$unknown" | "data" | "error"
+> {
   data?: Record<string, LogBodyValue>;
   error?: string | Error;
 }
@@ -91,8 +92,10 @@ export interface ActionLogResult
 /**
  * Prompt tracking for action logs
  */
-export interface ActionLogPrompt
-  extends Omit<ProtoActionLogPrompt, "$typeName" | "$unknown" | "timestamp"> {
+export interface ActionLogPrompt extends Omit<
+  ProtoActionLogPrompt,
+  "$typeName" | "$unknown" | "timestamp"
+> {
   timestamp: number | bigint;
 }
 
@@ -100,7 +103,8 @@ export interface ActionLogPrompt
  * Log body for action logs
  */
 export interface ActionLogBody
-  extends Omit<
+  extends
+    Omit<
       ProtoActionLogBody,
       | "$typeName"
       | "$unknown"
@@ -132,10 +136,8 @@ export interface ActionLogBody
  * Log body for evaluator logs
  */
 export interface EvaluatorLogBody
-  extends Omit<
-      ProtoEvaluatorLogBody,
-      "$typeName" | "$unknown" | "base" | "state"
-    >,
+  extends
+    Omit<ProtoEvaluatorLogBody, "$typeName" | "$unknown" | "base" | "state">,
     BaseLogBody {
   messageId?: UUID;
   state?: Record<string, LogBodyValue>;
@@ -153,7 +155,8 @@ export type ModelActionContext = Omit<
  * Log body for model logs
  */
 export interface ModelLogBody
-  extends Omit<
+  extends
+    Omit<
       ProtoModelLogBody,
       | "$typeName"
       | "$unknown"
@@ -176,10 +179,8 @@ export interface ModelLogBody
  * Log body for embedding logs
  */
 export interface EmbeddingLogBody
-  extends Omit<
-      ProtoEmbeddingLogBody,
-      "$typeName" | "$unknown" | "base" | "duration"
-    >,
+  extends
+    Omit<ProtoEmbeddingLogBody, "$typeName" | "$unknown" | "base" | "duration">,
     BaseLogBody {
   duration?: number | bigint;
   error?: string | Error;
@@ -198,11 +199,10 @@ export type LogBody =
 /**
  * Represents a log entry
  */
-export interface Log
-  extends Omit<
-    ProtoLog,
-    "$typeName" | "$unknown" | "body" | "createdAt" | "entityId" | "roomId"
-  > {
+export interface Log extends Omit<
+  ProtoLog,
+  "$typeName" | "$unknown" | "body" | "createdAt" | "entityId" | "roomId"
+> {
   entityId: UUID;
   roomId?: UUID;
   body: LogBody;
@@ -211,20 +211,21 @@ export interface Log
 
 export type RunStatus = "started" | "completed" | "timeout" | "error";
 
-export interface AgentRunCounts
-  extends Omit<ProtoAgentRunCounts, "$typeName" | "$unknown"> {}
+export interface AgentRunCounts extends Omit<
+  ProtoAgentRunCounts,
+  "$typeName" | "$unknown"
+> {}
 
-export interface AgentRunSummary
-  extends Omit<
-    ProtoAgentRunSummary,
-    | "$typeName"
-    | "$unknown"
-    | "status"
-    | "startedAt"
-    | "endedAt"
-    | "durationMs"
-    | "metadata"
-  > {
+export interface AgentRunSummary extends Omit<
+  ProtoAgentRunSummary,
+  | "$typeName"
+  | "$unknown"
+  | "status"
+  | "startedAt"
+  | "endedAt"
+  | "durationMs"
+  | "metadata"
+> {
   status: RunStatus | ProtoDbRunStatus;
   startedAt: number | bigint | null;
   endedAt: number | bigint | null;
@@ -232,8 +233,10 @@ export interface AgentRunSummary
   metadata?: Record<string, JsonValue>;
 }
 
-export interface AgentRunSummaryResult
-  extends Omit<ProtoAgentRunSummaryResult, "$typeName" | "$unknown"> {}
+export interface AgentRunSummaryResult extends Omit<
+  ProtoAgentRunSummaryResult,
+  "$typeName" | "$unknown"
+> {}
 
 /**
  * Interface for database operations
@@ -282,12 +285,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
   getConnection(): Promise<DB>;
 
   /**
-   * Execute a callback with entity context for Entity RLS
+   * Execute a callback with full isolation context (Server RLS + Entity RLS).
    * @param entityId - The entity ID to set as context
-   * @param callback - The callback to execute within the entity context
+   * @param callback - The callback to execute within the isolation context
    * @returns The result of the callback
    */
-  withEntityContext?<T>(
+  withIsolationContext?<T>(
     entityId: UUID | null,
     callback: () => Promise<T>,
   ): Promise<T>;
@@ -605,19 +608,20 @@ export interface IDatabaseAdapter<DB extends object = object> {
 /**
  * Result interface for embedding similarity searches
  */
-export interface EmbeddingSearchResult
-  extends Omit<ProtoEmbeddingSearchResult, "levenshteinScore"> {
+export interface EmbeddingSearchResult extends Omit<
+  ProtoEmbeddingSearchResult,
+  "levenshteinScore"
+> {
   levenshtein_score?: number;
 }
 
 /**
  * Options for memory retrieval operations
  */
-export interface MemoryRetrievalOptions
-  extends Omit<
-    ProtoMemoryRetrievalOptions,
-    "roomId" | "agentId" | "start" | "end"
-  > {
+export interface MemoryRetrievalOptions extends Omit<
+  ProtoMemoryRetrievalOptions,
+  "roomId" | "agentId" | "start" | "end"
+> {
   roomId: UUID;
   agentId?: UUID;
   start?: number | bigint;
@@ -627,11 +631,10 @@ export interface MemoryRetrievalOptions
 /**
  * Options for memory search operations
  */
-export interface MemorySearchOptions
-  extends Omit<
-    ProtoMemorySearchOptions,
-    "roomId" | "agentId" | "metadata" | "matchThreshold"
-  > {
+export interface MemorySearchOptions extends Omit<
+  ProtoMemorySearchOptions,
+  "roomId" | "agentId" | "metadata" | "matchThreshold"
+> {
   roomId: UUID;
   agentId?: UUID;
   metadata?: Partial<MemoryMetadata>;
@@ -641,8 +644,10 @@ export interface MemorySearchOptions
 /**
  * Options for multi-room memory retrieval
  */
-export interface MultiRoomMemoryOptions
-  extends Omit<ProtoMultiRoomMemoryOptions, "roomIds" | "agentId"> {
+export interface MultiRoomMemoryOptions extends Omit<
+  ProtoMultiRoomMemoryOptions,
+  "roomIds" | "agentId"
+> {
   roomIds: UUID[];
   agentId?: UUID;
 }

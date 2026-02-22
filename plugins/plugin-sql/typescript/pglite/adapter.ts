@@ -1,7 +1,16 @@
-import { type Agent, type Entity, logger, type Memory, type UUID } from "@elizaos/core";
+import {
+  type Agent,
+  type Entity,
+  logger,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { BaseDrizzleAdapter } from "../base";
-import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../schema/embedding";
+import {
+  DIMENSION_MAP,
+  type EmbeddingDimensionColumn,
+} from "../schema/embedding";
 import type { PGliteClientManager } from "./manager";
 
 export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
@@ -14,9 +23,9 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     this.db = drizzle(this.manager.getConnection());
   }
 
-  public async withEntityContext<T>(
+  public async withIsolationContext<T>(
     _entityId: UUID | null,
-    callback: (tx: PgliteDatabase) => Promise<T>
+    callback: (tx: PgliteDatabase) => Promise<T>,
   ): Promise<T> {
     return this.db.transaction(callback);
   }
@@ -25,8 +34,14 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     return this.getEntitiesByIds(entityIds);
   }
 
-  async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
-    logger.warn({ src: "plugin:sql" }, "getMemoriesByServerId called but not implemented");
+  async getMemoriesByServerId(_params: {
+    serverId: UUID;
+    count?: number;
+  }): Promise<Memory[]> {
+    logger.warn(
+      { src: "plugin:sql" },
+      "getMemoriesByServerId called but not implemented",
+    );
     return [];
   }
 
@@ -62,7 +77,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
       const error = new Error("Database is shutting down - operation rejected");
       logger.warn(
         { src: "plugin:sql", error: error.message },
-        "Database operation rejected during shutdown"
+        "Database operation rejected during shutdown",
       );
       throw error;
     }
