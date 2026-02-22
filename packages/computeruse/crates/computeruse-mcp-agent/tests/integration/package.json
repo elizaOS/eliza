@@ -1,6 +1,6 @@
 {
   "type": "module",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.3"
+    "@modelcontextprotocol/sdk": "^1.26.0"
   }
 }
