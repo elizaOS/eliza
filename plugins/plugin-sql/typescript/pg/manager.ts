@@ -6,8 +6,11 @@ import { Pool, type PoolClient, type PoolConfig } from "pg";
 export class PostgresConnectionManager {
   private pool: Pool;
   private db: NodePgDatabase;
+  private readonly rlsServerId?: string;
 
   constructor(connectionString: string, rlsServerId?: string) {
+    this.rlsServerId = rlsServerId;
+
     const poolConfig: PoolConfig = {
       connectionString,
       max: 20,
@@ -19,10 +22,9 @@ export class PostgresConnectionManager {
     };
 
     if (rlsServerId) {
-      poolConfig.application_name = rlsServerId;
       logger.debug(
         { src: "plugin:sql", rlsServerId: rlsServerId.substring(0, 8) },
-        "Pool configured with RLS server"
+        "Pool configured with RLS server",
       );
     }
 
@@ -31,7 +33,7 @@ export class PostgresConnectionManager {
     this.pool.on("error", (err) => {
       logger.warn(
         { src: "plugin:sql", error: err?.message || String(err) },
-        "Pool client error (connection will be replaced)"
+        "Pool client error (connection will be replaced)",
       );
     });
 
@@ -62,7 +64,7 @@ export class PostgresConnectionManager {
           src: "plugin:sql",
           error: error instanceof Error ? error.message : String(error),
         },
-        "Failed to connect to the database"
+        "Failed to connect to the database",
       );
       return false;
     } finally {
@@ -72,32 +74,34 @@ export class PostgresConnectionManager {
     }
   }
 
-  public async withEntityContext<T>(
+  /**
+   * Execute a query with full isolation context (Server RLS + Entity RLS).
+   * Uses set_config() with parameterized queries for SQL injection protection.
+   */
+  public async withIsolationContext<T>(
     entityId: UUID | null,
-    callback: (tx: NodePgDatabase) => Promise<T>
+    callback: (tx: NodePgDatabase) => Promise<T>,
   ): Promise<T> {
     const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
 
     return await this.db.transaction(async (tx) => {
-      if (dataIsolationEnabled && entityId) {
-        if (!validateUuid(entityId)) {
-          throw new Error(`Invalid UUID format for entity context: ${entityId}`);
+      if (dataIsolationEnabled) {
+        if (this.rlsServerId) {
+          await tx.execute(
+            sql`SELECT set_config('app.server_id', ${this.rlsServerId}, true)`,
+          );
         }
 
-        try {
-          await tx.execute(sql.raw(`SET LOCAL app.entity_id = '${entityId}'`));
-          logger.debug(`[Entity Context] Set app.entity_id = ${entityId}`);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          logger.error(
-            { error, entityId },
-            `[Entity Context] Failed to set entity context: ${errorMessage}`
+        if (entityId) {
+          if (!validateUuid(entityId)) {
+            throw new Error(
+              `Invalid UUID format for entity context: ${entityId}`,
+            );
+          }
+          await tx.execute(
+            sql`SELECT set_config('app.entity_id', ${entityId}, true)`,
           );
-          throw error;
         }
-      } else if (!dataIsolationEnabled) {
-      } else {
-        logger.debug("[Entity Context] No entity context set (server operation)");
       }
 
       return await callback(tx);

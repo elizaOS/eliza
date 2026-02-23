@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * NOTE: This test expects rls-entity.test.ts to have run first (same BATCH_RLS),
  * which creates the schema and installs RLS functions.
  *
- * Uses eliza_test user for ALL connections (not superuser) - the application_name
+ * Uses eliza_test user for ALL connections (not superuser) - set_config('app.server_id', ...)
  * provides server context for RLS. Each server's data is set up via its own connection.
  */
 
@@ -24,7 +24,8 @@ describe.skipIf(!process.env.POSTGRES_URL)(
     let serverBClient: Client;
 
     const POSTGRES_URL =
-      process.env.POSTGRES_URL || "postgresql://eliza_test:test123@localhost:5432/eliza_test";
+      process.env.POSTGRES_URL ||
+      "postgresql://eliza_test:test123@localhost:5432/eliza_test";
     const serverAId = uuidv4();
     const serverBId = uuidv4();
     const agentAId = uuidv4();
@@ -34,44 +35,56 @@ describe.skipIf(!process.env.POSTGRES_URL)(
     const messageServerB1Id = uuidv4();
 
     beforeAll(async () => {
-      // Setup clients - each with its own server context
+      // Setup clients - each with its own server context via set_config
       setupClientA = new Client({
         connectionString: POSTGRES_URL,
-        application_name: serverAId,
       });
       setupClientB = new Client({
         connectionString: POSTGRES_URL,
-        application_name: serverBId,
       });
 
       await setupClientA.connect();
+      await setupClientA.query(
+        "SELECT set_config('app.server_id', $1, false)",
+        [serverAId],
+      );
       await setupClientB.connect();
+      await setupClientB.query(
+        "SELECT set_config('app.server_id', $1, false)",
+        [serverBId],
+      );
 
       // User clients (same as setup, just clearer naming)
       serverAClient = new Client({
         connectionString: POSTGRES_URL,
-        application_name: serverAId,
       });
       serverBClient = new Client({
         connectionString: POSTGRES_URL,
-        application_name: serverBId,
       });
 
       await serverAClient.connect();
+      await serverAClient.query(
+        "SELECT set_config('app.server_id', $1, false)",
+        [serverAId],
+      );
       await serverBClient.connect();
+      await serverBClient.query(
+        "SELECT set_config('app.server_id', $1, false)",
+        [serverBId],
+      );
 
       // Create RLS servers (servers table has no RLS)
       await setupClientA.query(
         `INSERT INTO servers (id, created_at, updated_at)
          VALUES ($1, NOW(), NOW())
          ON CONFLICT (id) DO NOTHING`,
-        [serverAId]
+        [serverAId],
       );
       await setupClientB.query(
         `INSERT INTO servers (id, created_at, updated_at)
          VALUES ($1, NOW(), NOW())
          ON CONFLICT (id) DO NOTHING`,
-        [serverBId]
+        [serverBId],
       );
 
       // Create agents for each server (each client creates its own server's agent)
@@ -79,13 +92,13 @@ describe.skipIf(!process.env.POSTGRES_URL)(
         `INSERT INTO agents (id, name, username, server_id, created_at, updated_at)
          VALUES ($1, 'Agent A', 'rls_test_agent_a', $2, NOW(), NOW())
          ON CONFLICT (id) DO NOTHING`,
-        [agentAId, serverAId]
+        [agentAId, serverAId],
       );
       await setupClientB.query(
         `INSERT INTO agents (id, name, username, server_id, created_at, updated_at)
          VALUES ($1, 'Agent B', 'rls_test_agent_b', $2, NOW(), NOW())
          ON CONFLICT (id) DO NOTHING`,
-        [agentBId, serverBId]
+        [agentBId, serverBId],
       );
 
       // Create message servers (each client creates its own)
@@ -95,39 +108,51 @@ describe.skipIf(!process.env.POSTGRES_URL)(
            ($1, 'discord', 'discord_a1', 'Discord Server A1', $3, NOW(), NOW()),
            ($2, 'discord', 'discord_a2', 'Discord Server A2', $3, NOW(), NOW())
          ON CONFLICT (id) DO NOTHING`,
-        [messageServerA1Id, messageServerA2Id, serverAId]
+        [messageServerA1Id, messageServerA2Id, serverAId],
       );
       await setupClientB.query(
         `INSERT INTO message_servers (id, source_type, source_id, name, server_id, created_at, updated_at)
          VALUES ($1, 'discord', 'discord_b1', 'Discord Server B1', $2, NOW(), NOW())
          ON CONFLICT (id) DO NOTHING`,
-        [messageServerB1Id, serverBId]
+        [messageServerB1Id, serverBId],
       );
     });
 
     afterAll(async () => {
       // Cleanup - each client cleans its own server's data (RLS enforced)
       try {
-        await setupClientA.query(`DELETE FROM message_server_agents WHERE agent_id = $1`, [
+        await setupClientA.query(
+          `DELETE FROM message_server_agents WHERE agent_id = $1`,
+          [agentAId],
+        );
+        await setupClientA.query(
+          `DELETE FROM message_servers WHERE id IN ($1, $2)`,
+          [messageServerA1Id, messageServerA2Id],
+        );
+        await setupClientA.query(`DELETE FROM agents WHERE id = $1`, [
           agentAId,
         ]);
-        await setupClientA.query(`DELETE FROM message_servers WHERE id IN ($1, $2)`, [
-          messageServerA1Id,
-          messageServerA2Id,
+        await setupClientA.query(`DELETE FROM servers WHERE id = $1`, [
+          serverAId,
         ]);
-        await setupClientA.query(`DELETE FROM agents WHERE id = $1`, [agentAId]);
-        await setupClientA.query(`DELETE FROM servers WHERE id = $1`, [serverAId]);
       } catch (err) {
         console.warn("Cleanup error (server A):", err);
       }
 
       try {
-        await setupClientB.query(`DELETE FROM message_server_agents WHERE agent_id = $1`, [
+        await setupClientB.query(
+          `DELETE FROM message_server_agents WHERE agent_id = $1`,
+          [agentBId],
+        );
+        await setupClientB.query(`DELETE FROM message_servers WHERE id = $1`, [
+          messageServerB1Id,
+        ]);
+        await setupClientB.query(`DELETE FROM agents WHERE id = $1`, [
           agentBId,
         ]);
-        await setupClientB.query(`DELETE FROM message_servers WHERE id = $1`, [messageServerB1Id]);
-        await setupClientB.query(`DELETE FROM agents WHERE id = $1`, [agentBId]);
-        await setupClientB.query(`DELETE FROM servers WHERE id = $1`, [serverBId]);
+        await setupClientB.query(`DELETE FROM servers WHERE id = $1`, [
+          serverBId,
+        ]);
       } catch (err) {
         console.warn("Cleanup error (server B):", err);
       }
@@ -145,7 +170,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       INSERT INTO message_server_agents (message_server_id, agent_id)
       VALUES ($1, $2), ($3, $2)
     `,
-        [messageServerA1Id, agentAId, messageServerA2Id]
+        [messageServerA1Id, agentAId, messageServerA2Id],
       );
 
       // Server B creates association
@@ -154,7 +179,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       INSERT INTO message_server_agents (message_server_id, agent_id)
       VALUES ($1, $2)
     `,
-        [messageServerB1Id, agentBId]
+        [messageServerB1Id, agentBId],
       );
 
       // Server A should only see its own associations (2 entries)
@@ -191,7 +216,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       VALUES ($1, $2)
       ON CONFLICT DO NOTHING
     `,
-        [messageServerA1Id, agentAId]
+        [messageServerA1Id, agentAId],
       );
 
       // Verify server_id was set automatically (query with same server context)
@@ -201,7 +226,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       FROM message_server_agents
       WHERE message_server_id = $1 AND agent_id = $2
     `,
-        [messageServerA1Id, agentAId]
+        [messageServerA1Id, agentAId],
       );
 
       expect(result.rows[0].server_id).toBe(serverAId);
@@ -216,7 +241,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       LEFT JOIN message_server_agents msa ON ms.id = msa.message_server_id
       WHERE ms.id IN ($1, $2, $3)
     `,
-        [messageServerA1Id, messageServerA2Id, messageServerB1Id]
+        [messageServerA1Id, messageServerA2Id, messageServerB1Id],
       );
 
       // Server A should only see its own message_servers (A1, A2)
@@ -266,7 +291,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       FROM message_server_agents
       WHERE message_server_id = $1
     `,
-        [messageServerB1Id]
+        [messageServerB1Id],
       );
 
       // Server A should see NOTHING because RLS filters by server_id
@@ -279,7 +304,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       FROM message_server_agents
       WHERE message_server_id = $1
     `,
-        [messageServerB1Id]
+        [messageServerB1Id],
       );
 
       expect(serverBResult.rows).toHaveLength(1);
@@ -294,7 +319,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       DELETE FROM message_server_agents
       WHERE message_server_id = $1 AND agent_id = $2
     `,
-        [messageServerA1Id, agentAId]
+        [messageServerA1Id, agentAId],
       );
 
       // Verify with Server A that its association still exists (delete was blocked by RLS)
@@ -304,10 +329,10 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       FROM message_server_agents
       WHERE message_server_id = $1 AND agent_id = $2
     `,
-        [messageServerA1Id, agentAId]
+        [messageServerA1Id, agentAId],
       );
 
       expect(result.rows.length).toBeGreaterThan(0);
     });
-  }
+  },
 );

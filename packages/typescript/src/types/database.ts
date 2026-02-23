@@ -50,8 +50,10 @@ export type LogBodyValue =
 /**
  * Base log body type with common properties
  */
-export interface BaseLogBody
-  extends Omit<ProtoBaseLogBody, "$typeName" | "$unknown" | "metadata"> {
+export interface BaseLogBody extends Omit<
+  ProtoBaseLogBody,
+  "$typeName" | "$unknown" | "metadata"
+> {
   runId?: string | UUID;
   parentRunId?: string | UUID;
   messageId?: UUID;
@@ -76,11 +78,10 @@ export interface ActionLogContent {
 /**
  * Action result structure for logging
  */
-export interface ActionLogResult
-  extends Omit<
-    ProtoActionLogResult,
-    "$typeName" | "$unknown" | "data" | "error"
-  > {
+export interface ActionLogResult extends Omit<
+  ProtoActionLogResult,
+  "$typeName" | "$unknown" | "data" | "error"
+> {
   data?: Record<string, LogBodyValue>;
   error?: string | Error;
 }
@@ -88,8 +89,10 @@ export interface ActionLogResult
 /**
  * Prompt tracking for action logs
  */
-export interface ActionLogPrompt
-  extends Omit<ProtoActionLogPrompt, "$typeName" | "$unknown" | "timestamp"> {
+export interface ActionLogPrompt extends Omit<
+  ProtoActionLogPrompt,
+  "$typeName" | "$unknown" | "timestamp"
+> {
   timestamp: number | bigint;
 }
 
@@ -97,7 +100,8 @@ export interface ActionLogPrompt
  * Log body for action logs
  */
 export interface ActionLogBody
-  extends Omit<
+  extends
+    Omit<
       ProtoActionLogBody,
       | "$typeName"
       | "$unknown"
@@ -129,10 +133,8 @@ export interface ActionLogBody
  * Log body for evaluator logs
  */
 export interface EvaluatorLogBody
-  extends Omit<
-      ProtoEvaluatorLogBody,
-      "$typeName" | "$unknown" | "base" | "state"
-    >,
+  extends
+    Omit<ProtoEvaluatorLogBody, "$typeName" | "$unknown" | "base" | "state">,
     BaseLogBody {
   messageId?: UUID;
   state?: Record<string, LogBodyValue>;
@@ -150,7 +152,8 @@ export type ModelActionContext = Omit<
  * Log body for model logs
  */
 export interface ModelLogBody
-  extends Omit<
+  extends
+    Omit<
       ProtoModelLogBody,
       | "$typeName"
       | "$unknown"
@@ -173,10 +176,8 @@ export interface ModelLogBody
  * Log body for embedding logs
  */
 export interface EmbeddingLogBody
-  extends Omit<
-      ProtoEmbeddingLogBody,
-      "$typeName" | "$unknown" | "base" | "duration"
-    >,
+  extends
+    Omit<ProtoEmbeddingLogBody, "$typeName" | "$unknown" | "base" | "duration">,
     BaseLogBody {
   duration?: number | bigint;
   error?: string | Error;
@@ -195,11 +196,10 @@ export type LogBody =
 /**
  * Represents a log entry
  */
-export interface Log
-  extends Omit<
-    ProtoLog,
-    "$typeName" | "$unknown" | "body" | "createdAt" | "entityId" | "roomId"
-  > {
+export interface Log extends Omit<
+  ProtoLog,
+  "$typeName" | "$unknown" | "body" | "createdAt" | "entityId" | "roomId"
+> {
   entityId: UUID;
   roomId?: UUID;
   body: LogBody;
@@ -210,17 +210,17 @@ export type RunStatus = "started" | "completed" | "timeout" | "error";
 
 /**
  * JSON Patch operation for atomic component data updates.
- * 
+ *
  * WHY: Enables race-free partial updates to component JSONB data without
  * read-modify-write cycles. All operations are applied in a single UPDATE
  * statement using dialect-specific JSONB functions.
- * 
+ *
  * OPERATIONS:
  * - set: Set a value at path (creates path if missing)
  * - push: Append value to array at path (errors if not array)
  * - remove: Delete the key/index at path (idempotent if missing)
  * - increment: Add numeric value to number at path (errors if not number)
- * 
+ *
  * PATH FORMAT:
  * - Dot-separated: "wallet.balance" or "positions.0.open"
  * - Only alphanumeric, underscore, and numeric array indices allowed
@@ -229,12 +229,12 @@ export type RunStatus = "started" | "completed" | "timeout" | "error";
 export interface PatchOp {
   /** Operation type */
   op: 'set' | 'push' | 'remove' | 'increment';
-  /** 
+  /**
    * Dot-separated path to the field (e.g., "wallet.balance", "items.0.name")
    * Validated against /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*|\.\d+)*$/
    */
   path: string;
-  /** 
+  /**
    * Value for the operation
    * - Required for: set, push, increment
    * - Ignored for: remove
@@ -245,17 +245,16 @@ export interface PatchOp {
 export interface AgentRunCounts
   extends Omit<ProtoAgentRunCounts, "$typeName" | "$unknown"> {}
 
-export interface AgentRunSummary
-  extends Omit<
-    ProtoAgentRunSummary,
-    | "$typeName"
-    | "$unknown"
-    | "status"
-    | "startedAt"
-    | "endedAt"
-    | "durationMs"
-    | "metadata"
-  > {
+export interface AgentRunSummary extends Omit<
+  ProtoAgentRunSummary,
+  | "$typeName"
+  | "$unknown"
+  | "status"
+  | "startedAt"
+  | "endedAt"
+  | "durationMs"
+  | "metadata"
+> {
   status: RunStatus | ProtoDbRunStatus;
   startedAt: number | bigint | null;
   endedAt: number | bigint | null;
@@ -263,8 +262,10 @@ export interface AgentRunSummary
   metadata?: Record<string, JsonValue>;
 }
 
-export interface AgentRunSummaryResult
-  extends Omit<ProtoAgentRunSummaryResult, "$typeName" | "$unknown"> {}
+export interface AgentRunSummaryResult extends Omit<
+  ProtoAgentRunSummaryResult,
+  "$typeName" | "$unknown"
+> {}
 
 /**
  * Interface for database operations.
@@ -343,26 +344,21 @@ export interface IDatabaseAdapter<DB extends object = object> {
   getConnection(): Promise<DB>;
 
   /**
-   * Execute a callback with entity context for Entity RLS
-   * 
-   * WHY: PostgreSQL Row Level Security (RLS) requires setting session variables
-   * before queries. This method sets the entity context and executes the callback
-   * within that context.
-   * 
-   * WHY unknown context parameter: Different database backends provide different
-   * context types (Drizzle transaction for SQL, nothing for in-memory). Callers
-   * that need the context (e.g., to make additional queries within the same
-   * transaction) can cast `ctx` to the appropriate type. Callers that don't need
-   * it can ignore the parameter.
-   * 
-   * USAGE: For SQL adapters, `ctx` is a Drizzle transaction object. For in-memory
-   * adapters, `ctx` is undefined (they don't need transactions for RLS).
-   * 
+   * Execute a callback with full isolation context (Server RLS + Entity RLS).
+   *
+   * WHY: PostgreSQL Row Level Security requires setting session variables before
+   * queries. This method sets the entity (and optionally server) context and
+   * executes the callback within that context.
+   *
+   * WHY unknown context parameter: Different backends provide different context
+   * types (Drizzle transaction for SQL, nothing for in-memory). Callers that
+   * need the context can cast `ctx` to the appropriate type.
+   *
    * @param entityId - The entity ID to set as context (null clears context)
-   * @param callback - Function to execute within entity context, receives context object
+   * @param callback - Function to execute within isolation context
    * @returns The result of the callback
    */
-  withEntityContext?<T>(
+  withIsolationContext?<T>(
     entityId: UUID | null,
     callback: (ctx: unknown) => Promise<T>,
   ): Promise<T>;
@@ -1253,11 +1249,99 @@ export interface IDatabaseAdapter<DB extends object = object> {
 /**
  * Result interface for embedding similarity searches
  */
-export interface EmbeddingSearchResult
-  extends Omit<ProtoEmbeddingSearchResult, "levenshteinScore"> {
+export interface EmbeddingSearchResult extends Omit<
+  ProtoEmbeddingSearchResult,
+  "levenshteinScore"
+> {
   levenshtein_score?: number;
 }
 
+/** Base shape for memory retrieval options (string IDs before UUID substitution) */
+interface ProtoMemoryRetrievalOptions {
+  roomId?: string;
+  agentId?: string;
+  start?: number;
+  end?: number;
+  limit?: number;
+  unique?: boolean;
+  tableName?: string;
+}
+
+/**
+ * Options for memory retrieval operations
+ */
+export interface MemoryRetrievalOptions extends Omit<
+  ProtoMemoryRetrievalOptions,
+  "roomId" | "agentId" | "start" | "end"
+> {
+  roomId: UUID;
+  agentId?: UUID;
+  start?: number | bigint;
+  end?: number | bigint;
+}
+
+/** Base shape for memory search options */
+interface ProtoMemorySearchOptions {
+  roomId?: string;
+  agentId?: string;
+  metadata?: unknown;
+  matchThreshold?: number;
+  limit?: number;
+  tableName?: string;
+}
+
+/**
+ * Options for memory search operations
+ */
+export interface MemorySearchOptions extends Omit<
+  ProtoMemorySearchOptions,
+  "roomId" | "agentId" | "metadata" | "matchThreshold"
+> {
+  roomId: UUID;
+  agentId?: UUID;
+  metadata?: Partial<MemoryMetadata>;
+  match_threshold?: number;
+}
+
+/** Base shape for multi-room memory options */
+interface ProtoMultiRoomMemoryOptions {
+  roomIds?: string[];
+  agentId?: string;
+  limit?: number;
+  tableName?: string;
+}
+
+/**
+ * Options for multi-room memory retrieval
+ */
+export interface MultiRoomMemoryOptions extends Omit<
+  ProtoMultiRoomMemoryOptions,
+  "roomIds" | "agentId"
+> {
+  roomIds: UUID[];
+  agentId?: UUID;
+}
+
+/**
+ * Standard options pattern for memory operations
+ * Provides a simpler, more consistent interface
+ */
+export interface StandardMemoryOptions {
+  roomId: UUID;
+  limit?: number; // Standard naming (replacing 'count')
+  agentId?: UUID; // Common optional parameter
+  unique?: boolean; // Common flag for duplication control
+  start?: number; // Pagination start
+  end?: number; // Pagination end
+}
+
+/**
+ * Specialized memory search options
+ */
+export interface MemorySearchParams extends StandardMemoryOptions {
+  embedding: number[];
+  similarity?: number; // Clearer name than 'match_threshold'
+}
 
 /**
  * Base interface for database connection objects.
