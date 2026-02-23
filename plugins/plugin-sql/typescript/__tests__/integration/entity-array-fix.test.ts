@@ -47,7 +47,7 @@ describe("Entity Array Serialization Fix Tests", () => {
       };
 
       const result = await adapter.createEntities([entity]);
-      expect(result).toBe(true);
+      expect(Array.isArray(result) && result.length > 0).toBe(true);
 
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
@@ -68,7 +68,7 @@ describe("Entity Array Serialization Fix Tests", () => {
       };
 
       const result = await adapter.createEntities([entity]);
-      expect(result).toBe(true);
+      expect(Array.isArray(result) && result.length > 0).toBe(true);
 
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
@@ -87,7 +87,7 @@ describe("Entity Array Serialization Fix Tests", () => {
       };
 
       const result = await adapter.createEntities([entity]);
-      expect(result).toBe(true);
+      expect(Array.isArray(result) && result.length > 0).toBe(true);
 
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
@@ -110,7 +110,7 @@ describe("Entity Array Serialization Fix Tests", () => {
       });
 
       const result = await adapter.createEntities([entity]);
-      expect(result).toBe(true);
+      expect(Array.isArray(result) && result.length > 0).toBe(true);
 
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
@@ -200,7 +200,7 @@ describe("Entity Array Serialization Fix Tests", () => {
       }));
 
       const result = await adapter.createEntities(entities);
-      expect(result).toBe(true);
+      expect(Array.isArray(result) && result.length > 0).toBe(true);
 
       const entityIds = entities.map((e) => e.id);
       const retrieved = await adapter.getEntitiesByIds(entityIds);
@@ -230,7 +230,7 @@ describe("Entity Array Serialization Fix Tests", () => {
       };
 
       const result = await adapter.createEntities([entity]);
-      expect(result).toBe(true);
+      expect(Array.isArray(result) && result.length > 0).toBe(true);
 
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
@@ -254,7 +254,7 @@ describe("Entity Array Serialization Fix Tests", () => {
       };
 
       const result = await adapter.createEntities([entity]);
-      expect(result).toBe(true);
+      expect(Array.isArray(result) && result.length > 0).toBe(true);
 
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();

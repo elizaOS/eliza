@@ -189,36 +189,33 @@ export async function updateRelationships(
 ): Promise<void> {
   if (relationships.length === 0) return;
 
-  try {
-    const ids = relationships.map((r) => r.id);
-
-    const tagsCases = relationships.map((r) => {
-      const tagsJson = JSON.stringify(r.tags || []);
-      return sql`WHEN ${relationshipTable.id} = ${r.id} THEN ${tagsJson}::jsonb`;
-    });
-
-    const metaCases = relationships.map((r) => {
-      const metaJson = JSON.stringify(r.metadata || {});
-      return sql`WHEN ${relationshipTable.id} = ${r.id} THEN ${metaJson}::jsonb`;
-    });
-
-    await db
-      .update(relationshipTable)
-      .set({
-        tags: sql`CASE ${sql.join(tagsCases, sql` `)} ELSE ${relationshipTable.tags} END`,
-        metadata: sql`CASE ${sql.join(metaCases, sql` `)} ELSE ${relationshipTable.metadata} END`,
-      })
-      .where(inArray(relationshipTable.id, ids));
-  } catch (error) {
-    logger.error(
-      {
-        src: "plugin:sql",
-        count: relationships.length,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Error updating relationships"
-    );
+  const ids = relationships.map((r) => r.id);
+  const missing = relationships.filter((_, i) => ids[i] == null);
+  if (missing.length > 0) {
+    throw new Error("updateRelationships: every relationship must have an id");
   }
+
+  const tagsCases = relationships.map((r) => {
+    const tags = r.tags || [];
+    const tagsLiteral =
+      tags.length === 0
+        ? sql`'{}'::text[]`
+        : sql`ARRAY[${sql.join(tags.map((t) => sql`${t}`), sql`, `)}]::text[]`;
+    return sql`WHEN ${relationshipTable.id} = ${r.id} THEN ${tagsLiteral}`;
+  });
+
+  const metaCases = relationships.map((r) => {
+    const metaJson = JSON.stringify(r.metadata || {});
+    return sql`WHEN ${relationshipTable.id} = ${r.id} THEN ${metaJson}::jsonb`;
+  });
+
+  await db
+    .update(relationshipTable)
+    .set({
+      tags: sql`CASE ${sql.join(tagsCases, sql` `)} ELSE ${relationshipTable.tags} END`,
+      metadata: sql`CASE ${sql.join(metaCases, sql` `)} ELSE ${relationshipTable.metadata} END`,
+    })
+    .where(inArray(relationshipTable.id, ids));
 }
 
 /**

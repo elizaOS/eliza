@@ -35,7 +35,7 @@ interface TableInfoRow {
 
 import { sql } from "drizzle-orm";
 import { RuntimeMigrator } from "../../runtime-migrator";
-import * as coreSchema from "../../schema";
+import * as coreSchema from "../../tables";
 import type { DrizzleDatabase } from "../../types";
 import { testPolymarketSchema } from "../fixtures/test-plugin-schema";
 import { createIsolatedTestDatabaseForMigration } from "../test-helpers";

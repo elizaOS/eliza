@@ -439,5 +439,5 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       });
       expect(Array.isArray(entities)).toBe(true);
     });
-  });
+  },
 );

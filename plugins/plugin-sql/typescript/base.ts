@@ -265,8 +265,20 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.getAgentsByIds(this.db, agentIds));
   }
 
+  /** Single-agent convenience; delegates to getAgentsByIds for compatibility with tests and callers. */
+  async getAgent(agentId: UUID): Promise<Agent | null> {
+    const agents = await this.getAgentsByIds([agentId]);
+    return agents[0] ?? null;
+  }
+
   async createAgents(agents: Partial<Agent>[]): Promise<UUID[]> {
     return this.withDatabase(() => stores.createAgents(this.db, agents as Agent[]));
+  }
+
+  /** Single-agent convenience; delegates to createAgents for compatibility with tests and callers. */
+  async createAgent(agent: Partial<Agent>): Promise<boolean> {
+    const ids = await this.createAgents([agent]);
+    return ids.length > 0;
   }
 
   async upsertAgents(agents: Partial<Agent>[]): Promise<void> {
@@ -277,8 +289,18 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.updateAgents(this.db, updates));
   }
 
+  /** Single-agent convenience; delegates to updateAgents for compatibility with tests and callers. */
+  async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
+    return this.updateAgents([{ agentId, agent }]);
+  }
+
   async deleteAgents(agentIds: UUID[]): Promise<boolean> {
     return this.withDatabase(() => stores.deleteAgents(this.db, agentIds));
+  }
+
+  /** Single-agent convenience; delegates to deleteAgents for compatibility with tests and callers. */
+  async deleteAgent(agentId: UUID): Promise<boolean> {
+    return this.deleteAgents([agentId]);
   }
 
   async countAgents(): Promise<number> {
@@ -350,8 +372,18 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.updateEntities(this.db, entities));
   }
 
+  /** Single-entity convenience; delegates to updateEntities for compatibility with tests and callers. */
+  async updateEntity(entity: Entity): Promise<void> {
+    return this.updateEntities([entity]);
+  }
+
   async deleteEntities(entityIds: UUID[]): Promise<void> {
     return this.withDatabase(() => stores.deleteEntities(this.db, entityIds));
+  }
+
+  /** Single-entity convenience; delegates to deleteEntities for compatibility with tests and callers. */
+  async deleteEntity(entityId: UUID): Promise<void> {
+    return this.deleteEntities([entityId]);
   }
 
   async searchEntitiesByName(params: {
@@ -388,6 +420,13 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.createComponents(this.db, components));
   }
 
+  /** Single-component convenience for tests and callers. */
+  async createComponent(component: Component): Promise<UUID> {
+    const ids = await this.createComponents([component]);
+    if (ids.length === 0) throw new Error("createComponents returned no id");
+    return ids[0];
+  }
+
   async getComponentsByIds(componentIds: UUID[]): Promise<Component[]> {
     return this.withDatabase(() => stores.getComponentsByIds(this.db, componentIds));
   }
@@ -396,8 +435,18 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.updateComponents(this.db, components));
   }
 
+  /** Single-component convenience for tests and callers. */
+  async updateComponent(component: Component): Promise<void> {
+    return this.updateComponents([component]);
+  }
+
   async deleteComponents(componentIds: UUID[]): Promise<void> {
     return this.withDatabase(() => stores.deleteComponents(this.db, componentIds));
+  }
+
+  /** Single-component convenience for tests and callers. */
+  async deleteComponent(componentId: UUID): Promise<void> {
+    return this.deleteComponents([componentId]);
   }
 
   /**
@@ -474,6 +523,12 @@ export abstract class BaseDrizzleAdapter
     );
   }
 
+  /** Single-memory convenience for tests and callers. */
+  async getMemoryById(memoryId: UUID, tableName?: string): Promise<Memory | null> {
+    const memories = await this.getMemoriesByIds([memoryId], tableName);
+    return memories[0] ?? null;
+  }
+
   async getCachedEmbeddings(opts: {
     query_table_name: string;
     query_threshold: number;
@@ -531,16 +586,33 @@ export abstract class BaseDrizzleAdapter
     );
   }
 
+  /** Single-memory convenience for tests and callers. */
+  async createMemory(memory: Memory | Partial<Memory>, tableName: string, unique?: boolean): Promise<UUID> {
+    const ids = await this.createMemories([{ memory: memory as Memory, tableName, unique }]);
+    if (ids.length === 0) throw new Error("createMemories returned no id");
+    return ids[0];
+  }
+
   async updateMemories(memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>): Promise<void> {
     return this.withDatabase(() =>
       stores.updateMemories(this.db, this.embeddingDimension, memories)
     );
   }
 
+  /** Single-memory convenience for tests and callers. */
+  async updateMemory(memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }): Promise<void> {
+    return this.updateMemories([memory]);
+  }
+
   async deleteMemories(memoryIds: UUID[]): Promise<void> {
     return this.withDatabase(() =>
       stores.deleteMemories(this.db, memoryIds)
     );
+  }
+
+  /** Single-memory convenience for tests and callers. */
+  async deleteMemory(memoryId: UUID): Promise<void> {
+    return this.deleteMemories([memoryId]);
   }
 
   /**
@@ -626,12 +698,22 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.createLogs(this.db, params));
   }
 
+  /** Single-log convenience for tests and callers. */
+  async log(params: { body: LogBody; entityId: UUID; roomId: UUID; type: string }): Promise<void> {
+    return this.createLogs([params]);
+  }
+
   async updateLogs(logs: Array<{ id: UUID; updates: Partial<Log> }>): Promise<void> {
     return this.withDatabase(() => stores.updateLogs(this.db, logs));
   }
 
   async deleteLogs(logIds: UUID[]): Promise<void> {
     return this.withDatabase(() => stores.deleteLogs(this.db, logIds));
+  }
+
+  /** Single-log convenience for tests and callers. */
+  async deleteLog(logId: UUID): Promise<void> {
+    return this.deleteLogs([logId]);
   }
 
   // ===============================
@@ -661,6 +743,16 @@ export abstract class BaseDrizzleAdapter
 
   async deleteRooms(roomIds: UUID[]): Promise<void> {
     return this.withDatabase(() => stores.deleteRooms(this.db, this.agentId, roomIds));
+  }
+
+  /** Single-room convenience for tests and callers. */
+  async deleteRoom(roomId: UUID): Promise<void> {
+    return this.deleteRooms([roomId]);
+  }
+
+  /** Single-room convenience for tests and callers. */
+  async updateRoom(room: Room): Promise<void> {
+    return this.updateRooms([room]);
   }
 
   async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
@@ -694,6 +786,17 @@ export abstract class BaseDrizzleAdapter
     );
   }
 
+  /** Single-participant convenience for tests and callers. */
+  async addParticipant(entityId: UUID, roomId: UUID): Promise<UUID> {
+    const ids = await this.createRoomParticipants([entityId], roomId);
+    return ids[0] ?? entityId;
+  }
+
+  /** Alias for createRoomParticipants for tests and callers. */
+  async addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<UUID[]> {
+    return this.createRoomParticipants(entityIds, roomId);
+  }
+
   async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
     return this.withDatabase(() => stores.getParticipantsForEntity(this.db, entityId));
   }
@@ -701,6 +804,11 @@ export abstract class BaseDrizzleAdapter
   // Batch participant methods
   async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean> {
     return this.withDatabase(() => stores.deleteParticipants(this.db, this.agentId, participants));
+  }
+
+  /** Single-participant convenience for tests and callers. */
+  async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
+    return this.deleteParticipants([{ entityId, roomId }]);
   }
 
   async updateParticipants(participants: Array<{
@@ -738,6 +846,15 @@ export abstract class BaseDrizzleAdapter
     );
   }
 
+  /** Alias for updateParticipantUserState for tests and callers. */
+  async setParticipantUserState(
+    roomId: UUID,
+    entityId: UUID,
+    state: "FOLLOWED" | "MUTED",
+  ): Promise<void> {
+    return this.updateParticipantUserState(roomId, entityId, state);
+  }
+
   // ===============================
   // Relationship Methods
   // ===============================
@@ -765,12 +882,29 @@ export abstract class BaseDrizzleAdapter
     );
   }
 
+  /** Single-relationship convenience for tests and callers. */
+  async createRelationship(rel: {
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+    tags?: string[];
+    metadata?: Metadata;
+  }): Promise<UUID> {
+    const ids = await this.createRelationships([rel]);
+    if (ids.length === 0) throw new Error("createRelationships returned no id");
+    return ids[0];
+  }
+
   async getRelationshipsByIds(relationshipIds: UUID[]): Promise<Relationship[]> {
     return this.withDatabase(() => stores.getRelationshipsByIds(this.db, relationshipIds));
   }
 
   async updateRelationships(relationships: Relationship[]): Promise<void> {
     return this.withDatabase(() => stores.updateRelationships(this.db, relationships));
+  }
+
+  /** Single-relationship convenience for tests and callers. */
+  async updateRelationship(relationship: Relationship): Promise<void> {
+    return this.updateRelationships([relationship]);
   }
 
   async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
@@ -790,8 +924,24 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.setCaches<T>(this.db, this.agentId, entries));
   }
 
+  /** Single-cache convenience for tests and callers. */
+  async setCache<T>(key: string, value: T): Promise<boolean> {
+    return this.setCaches([{ key, value }]);
+  }
+
+  /** Single-cache convenience for tests and callers. */
+  async getCache<T>(key: string): Promise<T | undefined> {
+    const map = await this.getCaches<T>([key]);
+    return map.get(key);
+  }
+
   async deleteCaches(keys: string[]): Promise<boolean> {
     return this.withDatabase(() => stores.deleteCaches(this.db, this.agentId, keys));
+  }
+
+  /** Single-cache convenience for tests and callers. */
+  async deleteCache(key: string): Promise<boolean> {
+    return this.deleteCaches([key]);
   }
 
   // ===============================
@@ -823,6 +973,31 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.updateWorlds(this.db, worlds));
   }
 
+  /** Single-world convenience; delegates to batch methods for compatibility with tests and callers. */
+  async createWorld(world: World): Promise<UUID> {
+    const ids = await this.createWorlds([world]);
+    if (ids.length === 0) throw new Error("createWorlds returned no id");
+    return ids[0];
+  }
+
+  async getWorld(id: UUID): Promise<World | null> {
+    const worlds = await this.getWorldsByIds([id]);
+    return worlds[0] ?? null;
+  }
+
+  async updateWorld(world: World): Promise<void> {
+    return this.updateWorlds([world]);
+  }
+
+  async deleteWorld(worldId: UUID): Promise<void> {
+    return this.deleteWorlds([worldId]);
+  }
+
+  /** Alias for deleteWorld for tests and callers. */
+  async removeWorld(worldId: UUID): Promise<void> {
+    return this.deleteWorld(worldId);
+  }
+
   // ===============================
   // Task Methods
   // ===============================
@@ -847,16 +1022,39 @@ export abstract class BaseDrizzleAdapter
     return this.withDatabase(() => stores.createTasks(this.db, this.agentId, tasks));
   }
 
+  /** Single-task convenience for tests and callers. */
+  async createTask(task: Task): Promise<UUID> {
+    const ids = await this.createTasks([task]);
+    if (ids.length === 0) throw new Error("createTasks returned no id");
+    return ids[0];
+  }
+
   async getTasksByIds(taskIds: UUID[]): Promise<Task[]> {
     return this.withDatabase(() => stores.getTasksByIds(this.db, this.agentId, taskIds));
+  }
+
+  /** Single-task convenience for tests and callers. */
+  async getTask(taskId: UUID): Promise<Task | null> {
+    const tasks = await this.getTasksByIds([taskId]);
+    return tasks[0] ?? null;
   }
 
   async updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void> {
     await this.withDatabase(() => stores.updateTasks(this.db, this.agentId, updates));
   }
 
+  /** Single-task convenience for tests and callers. */
+  async updateTask(taskId: UUID, task: Partial<Task>): Promise<void> {
+    return this.updateTasks([{ id: taskId, task }]);
+  }
+
   async deleteTasks(taskIds: UUID[]): Promise<void> {
     return this.withDatabase(() => stores.deleteTasks(this.db, taskIds));
+  }
+
+  /** Single-task convenience for tests and callers. */
+  async deleteTask(taskId: UUID): Promise<void> {
+    return this.deleteTasks([taskId]);
   }
 
   // ===============================

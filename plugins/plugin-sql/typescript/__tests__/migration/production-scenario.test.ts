@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseIntrospector } from "../../runtime-migrator/drizzle-adapters/database-introspector";
 import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
-import * as coreSchema from "../../schema";
+import * as coreSchema from "../../tables";
 
 /**
  * These tests simulate real production scenarios where:
