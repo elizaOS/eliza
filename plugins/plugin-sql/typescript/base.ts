@@ -32,7 +32,13 @@ import {
 } from "@elizaos/core";
 
 // JSON-serializable value type for metadata
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 import * as stores from "./stores";
 import type { DatabaseMigrationService } from "./migration-service";
@@ -69,9 +75,9 @@ export abstract class BaseDrizzleAdapter
 
   protected abstract withDatabase<T>(operation: () => Promise<T>): Promise<T>;
 
-  public abstract withEntityContext<T>(
+  public abstract withIsolationContext<T>(
     entityId: UUID | null,
-    callback: (tx: DrizzleDatabase) => Promise<T>
+    callback: (tx: DrizzleDatabase) => Promise<T>,
   ): Promise<T>;
 
   public abstract init(): Promise<void>;
@@ -94,12 +100,14 @@ export abstract class BaseDrizzleAdapter
       verbose?: boolean;
       force?: boolean;
       dryRun?: boolean;
-    }
+    },
   ): Promise<void> {
     if (!this.migrationService) {
       const { DatabaseMigrationService } = await import("./migration-service");
       this.migrationService = new DatabaseMigrationService();
-      await this.migrationService.initializeWithDatabase(this.db as DrizzleDatabase);
+      await this.migrationService.initializeWithDatabase(
+        this.db as DrizzleDatabase,
+      );
     }
 
     for (const plugin of plugins) {
@@ -309,7 +317,7 @@ export abstract class BaseDrizzleAdapter
 
   /**
    * Query entities by component type and optional filters.
-   * WHY entityContext: When set (Postgres + ENABLE_DATA_ISOLATION), runs inside withEntityContext
+   * WHY entityContext: When set (Postgres + ENABLE_DATA_ISOLATION), runs inside withIsolationContext
    * so RLS policies apply. We destructure entityContext out and pass only rest to the store—entityContext
    * is connection context, not a query filter; stores do not accept it.
    */
@@ -326,7 +334,7 @@ export abstract class BaseDrizzleAdapter
   }): Promise<Entity[]> {
     const { entityContext, ...rest } = params;
     if (entityContext != null) {
-      return this.withEntityContext(entityContext, (tx) =>
+      return this.withIsolationContext(entityContext, (tx) =>
         stores.queryEntities(tx, rest)
       );
     }
@@ -362,7 +370,7 @@ export abstract class BaseDrizzleAdapter
     entityId: UUID,
     type: string,
     worldId?: UUID,
-    sourceEntityId?: UUID
+    sourceEntityId?: UUID,
   ): Promise<Component | null> {
     return this.withDatabase(() =>
       stores.getComponent(this.db, entityId, type, worldId, sourceEntityId)
@@ -394,7 +402,7 @@ export abstract class BaseDrizzleAdapter
 
   /**
    * Upsert components (insert or update by natural key).
-   * WHY entityContext: When set, runs inside withEntityContext so RLS restricts which rows
+   * WHY entityContext: When set, runs inside withIsolationContext so RLS restricts which rows
    * are visible/updated. Only Postgres uses this; PGLite/MySQL adapters accept and ignore.
    */
   async upsertComponents(
@@ -402,7 +410,7 @@ export abstract class BaseDrizzleAdapter
     options?: { entityContext?: UUID },
   ): Promise<void> {
     if (options?.entityContext != null) {
-      return this.withEntityContext(options.entityContext, (tx) =>
+      return this.withIsolationContext(options.entityContext, (tx) =>
         stores.upsertComponents(tx, components)
       );
     }
@@ -419,7 +427,7 @@ export abstract class BaseDrizzleAdapter
     options?: { entityContext?: UUID },
   ): Promise<void> {
     if (options?.entityContext != null) {
-      return this.withEntityContext(options.entityContext, (tx) =>
+      return this.withIsolationContext(options.entityContext, (tx) =>
         stores.patchComponent(tx, componentId, ops)
       );
     }
@@ -428,10 +436,7 @@ export abstract class BaseDrizzleAdapter
     );
   }
 
-  // ===============================
-  // Memory Methods
-  // ===============================
-
+  // ========================
   async getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
@@ -448,7 +453,7 @@ export abstract class BaseDrizzleAdapter
     orderBy?: 'createdAt';
     orderDirection?: 'asc' | 'desc';
   }): Promise<Memory[]> {
-    return this.withEntityContext(params.entityId ?? null, (tx) =>
+    return this.withIsolationContext(params.entityId ?? null, (tx) =>
       stores.getMemories(tx, this.embeddingDimension, params)
     );
   }
@@ -506,7 +511,7 @@ export abstract class BaseDrizzleAdapter
       entityId?: UUID;
       unique?: boolean;
       tableName: string;
-    }
+    },
   ): Promise<Memory[]> {
     return this.withDatabase(() =>
       stores.searchMemoriesByEmbedding(
@@ -540,7 +545,7 @@ export abstract class BaseDrizzleAdapter
 
   /**
    * Upsert memories (insert or update by ID).
-   * WHY entityContext: When set, runs inside withEntityContext so RLS restricts memory rows
+   * WHY entityContext: When set, runs inside withIsolationContext so RLS restricts memory rows
    * to the current entity (e.g. user-scoped memories when ENABLE_DATA_ISOLATION=true).
    */
   async upsertMemories(
@@ -548,7 +553,7 @@ export abstract class BaseDrizzleAdapter
     options?: { entityContext?: UUID },
   ): Promise<void> {
     if (options?.entityContext != null) {
-      return this.withEntityContext(options.entityContext, (tx) =>
+      return this.withIsolationContext(options.entityContext, (tx) =>
         stores.upsertMemories(tx, this.agentId, this.embeddingDimension, memories)
       );
     }
@@ -594,7 +599,7 @@ export abstract class BaseDrizzleAdapter
     count?: number;
     offset?: number;
   }): Promise<Log[]> {
-    return this.withEntityContext(params.entityId ?? null, (tx) => stores.getLogs(tx, params));
+    return this.withIsolationContext(params.entityId ?? null, (tx) => stores.getLogs(tx, params));
   }
 
   async getAgentRunSummaries(
@@ -607,7 +612,7 @@ export abstract class BaseDrizzleAdapter
       entityId?: UUID;
     } = {}
   ): Promise<AgentRunSummaryResult> {
-    return this.withEntityContext(params.entityId ?? null, (tx) =>
+    return this.withIsolationContext(params.entityId ?? null, (tx) =>
       stores.getAgentRunSummaries(tx, this.agentId, params)
     );
   }
@@ -921,7 +926,7 @@ export abstract class BaseDrizzleAdapter
       topic?: string;
       metadata?: Metadata;
     },
-    participantIds?: UUID[]
+    participantIds?: UUID[],
   ): Promise<{
     id: UUID;
     messageServerId: UUID;
@@ -1068,7 +1073,7 @@ export abstract class BaseDrizzleAdapter
       sourceId?: string;
       metadata?: Metadata;
       inReplyToRootMessageId?: UUID;
-    }
+    },
   ): Promise<{
     id: UUID;
     channelId: UUID;
@@ -1088,7 +1093,7 @@ export abstract class BaseDrizzleAdapter
   async getMessagesForChannel(
     channelId: UUID,
     limit: number = 50,
-    beforeTimestamp?: Date
+    beforeTimestamp?: Date,
   ): Promise<
     Array<{
       id: UUID;
@@ -1116,7 +1121,7 @@ export abstract class BaseDrizzleAdapter
   async findOrCreateDmChannel(
     user1Id: UUID,
     user2Id: UUID,
-    messageServerId: UUID
+    messageServerId: UUID,
   ): Promise<{
     id: UUID;
     messageServerId: UUID;
@@ -1210,9 +1215,9 @@ export abstract class BaseDrizzleAdapter
    * the Drizzle transaction context. Instead of manually wrapping all 100+ methods,
    * we create a proxy that inherits all methods and swaps only the db connection.
    *
-   * WHY entityContext branch uses withEntityContext (not this.db.transaction): When the
+   * WHY entityContext branch uses withIsolationContext (not this.db.transaction): When the
    * caller passes entityContext, we must run the callback on a connection that has
-   * SET LOCAL app.entity_id applied. That connection is provided by withEntityContext;
+   * SET LOCAL app.entity_id applied. That connection is provided by withIsolationContext;
    * this.db.transaction would start a new transaction without that context and break RLS.
    *
    * NESTED TRANSACTIONS: Both branches use createProxyWithDb so nested proxy.transaction(innerCb)
@@ -1223,7 +1228,7 @@ export abstract class BaseDrizzleAdapter
     options?: { entityContext?: UUID },
   ): Promise<T> {
     if (options?.entityContext != null) {
-      return this.withEntityContext(options.entityContext, (tx) =>
+      return this.withIsolationContext(options.entityContext, (tx) =>
         callback(this.createProxyWithDb(tx))
       );
     }

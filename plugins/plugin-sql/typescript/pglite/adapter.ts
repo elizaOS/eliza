@@ -1,6 +1,7 @@
 import { type Entity, logger, type Memory, type UUID } from "@elizaos/core";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { BaseDrizzleAdapter } from "../base";
+import type { DrizzleDatabase } from "../types";
 import type { PGliteClientManager } from "./manager";
 
 export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
@@ -15,19 +16,25 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   // WHY no transaction: PGLite doesn't use RLS (entityId is ignored).
   // The old code opened a transaction on every call for snapshot isolation
   // overhead that provided no benefit. Pass db directly.
-  public async withEntityContext<T>(
+  public async withIsolationContext<T>(
     _entityId: UUID | null,
-    callback: (tx: PgliteDatabase) => Promise<T>
+    callback: (tx: DrizzleDatabase) => Promise<T>,
   ): Promise<T> {
-    return callback(this.db as PgliteDatabase);
+    return callback(this.db as DrizzleDatabase);
   }
 
   async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
     return this.getEntitiesByIds(entityIds);
   }
 
-  async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
-    logger.warn({ src: "plugin:sql" }, "getMemoriesByServerId called but not implemented");
+  async getMemoriesByServerId(_params: {
+    serverId: UUID;
+    count?: number;
+  }): Promise<Memory[]> {
+    logger.warn(
+      { src: "plugin:sql" },
+      "getMemoriesByServerId called but not implemented",
+    );
     return [];
   }
 
@@ -36,7 +43,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
       const error = new Error("Database is shutting down - operation rejected");
       logger.warn(
         { src: "plugin:sql", error: error.message },
-        "Database operation rejected during shutdown"
+        "Database operation rejected during shutdown",
       );
       throw error;
     }
