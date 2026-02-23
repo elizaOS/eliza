@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 import { vi } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type {
+  Agent,
   Character,
   Content,
   Entity,
@@ -81,6 +82,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
   const resolvedAgentId = agentId || createUUID();
 
   // In-memory storage
+  const agents = new Map<string, Partial<Agent>>();
   const memories = new Map<UUID, Memory>();
   const rooms = new Map<UUID, Room>();
   const worlds = new Map<UUID, World>();
@@ -98,11 +100,29 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     getConnection: vi.fn().mockResolvedValue({}),
     isReady: vi.fn().mockResolvedValue(true),
 
-    getAgentsByIds: vi.fn().mockResolvedValue([
-      { id: resolvedAgentId, name: "TestAgent" },
-    ]),
-    getAgents: vi.fn().mockResolvedValue([]),
-    createAgents: vi.fn().mockResolvedValue(true),
+    getAgentsByIds: vi.fn(async (agentIds: UUID[]) => {
+      return agentIds
+        .map((id) => agents.get(String(id)))
+        .filter((a): a is Partial<Agent> => a != null && a.id != null) as Agent[];
+    }),
+    getAgents: vi.fn(async () => Array.from(agents.values())),
+    createAgents: vi.fn(async (agentsToCreate: Partial<Agent>[]) => {
+      const ids: UUID[] = [];
+      for (const agent of agentsToCreate) {
+        if (agent.id) {
+          agents.set(String(agent.id), agent);
+          ids.push(agent.id);
+        }
+      }
+      return ids;
+    }),
+    upsertAgents: vi.fn(async (agentsToUpsert: Partial<Agent>[]) => {
+      for (const agent of agentsToUpsert) {
+        if (agent.id) {
+          agents.set(String(agent.id), agent);
+        }
+      }
+    }),
     updateAgents: vi.fn().mockResolvedValue(true),
     deleteAgents: vi.fn().mockResolvedValue(true),
     ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
@@ -165,12 +185,13 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     ),
     getEntitiesForRoom: vi.fn().mockResolvedValue([]),
     createEntities: vi.fn(async (newEntities: Entity[]) => {
+      const ids: UUID[] = [];
       for (const entity of newEntities) {
-        if (entity.id) {
-          entities.set(entity.id, entity);
-        }
+        const id = entity.id || createUUID();
+        entities.set(id, { ...entity, id });
+        ids.push(id);
       }
-      return true;
+      return ids;
     }),
     updateEntities: vi.fn(async (entitiesToUpdate: Entity[]) => {
       for (const entity of entitiesToUpdate) {
@@ -518,8 +539,9 @@ export async function setupActionTest(options?: {
  * Cleans up a test runtime
  */
 export async function cleanupTestRuntime(
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime | undefined,
 ): Promise<void> {
+  if (!runtime) return;
   await runtime.stop();
 }
 

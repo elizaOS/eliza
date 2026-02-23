@@ -164,7 +164,7 @@ describe("Follow Room Action", () => {
 
     // Spy on runtime methods
     vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
-    vi.spyOn(runtime, "setParticipantUserState").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "updateParticipantUserState").mockResolvedValue(undefined);
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
       stringToUuid("memory-id"),
     );
@@ -177,7 +177,7 @@ describe("Follow Room Action", () => {
       callback,
     );
 
-    expect(runtime.setParticipantUserState).toHaveBeenCalledWith(
+    expect(runtime.updateParticipantUserState).toHaveBeenCalledWith(
       message.roomId,
       runtime.agentId,
       "FOLLOWED",
@@ -211,7 +211,7 @@ describe("Follow Room Action", () => {
 
     // Create a specific error message
     const errorMessage = "Failed to update participant state: Database error";
-    vi.spyOn(runtime, "setParticipantUserState").mockRejectedValue(
+    vi.spyOn(runtime, "updateParticipantUserState").mockRejectedValue(
       new Error(errorMessage),
     );
 
@@ -224,7 +224,7 @@ describe("Follow Room Action", () => {
     );
 
     // Verify proper error handling with ActionResult
-    expect(runtime.setParticipantUserState).toHaveBeenCalled();
+    expect(runtime.updateParticipantUserState).toHaveBeenCalled();
     expect(result).toMatchObject({
       success: false,
       text: "Failed to follow room",
@@ -351,14 +351,14 @@ describe("Mute Room Action", () => {
 
     // Spy on runtime methods - useModel is needed for _shouldMute check
     vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
-    vi.spyOn(runtime, "setParticipantUserState").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "updateParticipantUserState").mockResolvedValue(undefined);
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
       stringToUuid("memory-id"),
     );
 
     await muteRoomAction.handler(runtime, message, state, {}, callback);
 
-    expect(runtime.setParticipantUserState).toHaveBeenCalledWith(
+    expect(runtime.updateParticipantUserState).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(String),
       "MUTED",
@@ -377,7 +377,7 @@ describe("Mute Room Action", () => {
 
     // Create a descriptive error
     const errorMessage = "Permission denied: Cannot modify participant state";
-    vi.spyOn(runtime, "setParticipantUserState").mockRejectedValue(
+    vi.spyOn(runtime, "updateParticipantUserState").mockRejectedValue(
       new Error(errorMessage),
     );
 
@@ -391,7 +391,7 @@ describe("Mute Room Action", () => {
     ) => {
       try {
         // This call will fail with our mocked error
-        await rt.setParticipantUserState(msg.roomId, rt.agentId, "MUTED");
+        await rt.updateParticipantUserState(msg.roomId, rt.agentId, "MUTED");
 
         // Won't reach this point
         await cb({
@@ -413,7 +413,7 @@ describe("Mute Room Action", () => {
     await customMuteErrorHandler(runtime, message, state, {}, callback);
 
     // Verify proper error handling with specific details
-    expect(runtime.setParticipantUserState).toHaveBeenCalled();
+    expect(runtime.updateParticipantUserState).toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining(errorMessage),
     );
@@ -489,14 +489,14 @@ describe("Unmute Room Action", () => {
 
     // Spy on runtime methods - useModel is needed for _shouldUnmute check
     vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
-    vi.spyOn(runtime, "setParticipantUserState").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "updateParticipantUserState").mockResolvedValue(undefined);
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
       stringToUuid("memory-id"),
     );
 
     await unmuteRoomAction.handler(runtime, message, state, {}, callback);
 
-    expect(runtime.setParticipantUserState).toHaveBeenCalledWith(
+    expect(runtime.updateParticipantUserState).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(String),
       null, // Set to null to clear MUTED state
@@ -520,7 +520,7 @@ describe("Unmute Room Action", () => {
 
     // Create a descriptive error
     const errorMessage = "Permission denied: Cannot modify participant state";
-    vi.spyOn(runtime, "setParticipantUserState").mockRejectedValue(
+    vi.spyOn(runtime, "updateParticipantUserState").mockRejectedValue(
       new Error(errorMessage),
     );
 
@@ -534,7 +534,7 @@ describe("Unmute Room Action", () => {
     ) => {
       try {
         // This call will fail with our mocked error
-        await rt.setParticipantUserState(msg.roomId, rt.agentId, null);
+        await rt.updateParticipantUserState(msg.roomId, rt.agentId, null);
 
         // Won't reach this point
         await cb({
@@ -556,7 +556,7 @@ describe("Unmute Room Action", () => {
     await customUnmuteErrorHandler(runtime, message, state, {}, callback);
 
     // Verify proper error handling with specific details
-    expect(runtime.setParticipantUserState).toHaveBeenCalled();
+    expect(runtime.updateParticipantUserState).toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining(errorMessage),
     );
@@ -628,14 +628,14 @@ describe("Unfollow Room Action", () => {
 
     // Spy on runtime methods - useModel is needed for _shouldUnfollow check
     vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
-    vi.spyOn(runtime, "setParticipantUserState").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "updateParticipantUserState").mockResolvedValue(undefined);
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
       stringToUuid("memory-id"),
     );
 
     await unfollowRoomAction.handler(runtime, message, state, {}, callback);
 
-    expect(runtime.setParticipantUserState).toHaveBeenCalledWith(
+    expect(runtime.updateParticipantUserState).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(String),
       null, // Set to null to clear FOLLOWED state
@@ -659,7 +659,7 @@ describe("Unfollow Room Action", () => {
 
     // Create a descriptive error
     const errorMessage = "Database connection error: Could not update state";
-    vi.spyOn(runtime, "setParticipantUserState").mockRejectedValue(
+    vi.spyOn(runtime, "updateParticipantUserState").mockRejectedValue(
       new Error(errorMessage),
     );
 
@@ -673,7 +673,7 @@ describe("Unfollow Room Action", () => {
     ) => {
       try {
         // This call will fail with our mocked error
-        await rt.setParticipantUserState(msg.roomId, rt.agentId, null);
+        await rt.updateParticipantUserState(msg.roomId, rt.agentId, null);
 
         // Won't reach this point
         await cb({
@@ -695,7 +695,7 @@ describe("Unfollow Room Action", () => {
     await customUnfollowErrorHandler(runtime, message, state, {}, callback);
 
     // Verify proper error handling with specific details
-    expect(runtime.setParticipantUserState).toHaveBeenCalled();
+    expect(runtime.updateParticipantUserState).toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining(errorMessage),
     );
