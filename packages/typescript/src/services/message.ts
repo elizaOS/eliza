@@ -1884,8 +1884,7 @@ Output ONLY the continuation, starting immediately after the last character abov
       responseContent?.actions &&
       responseContent.actions.length === 1 &&
       typeof responseContent.actions[0] === "string" &&
-      responseContent.actions[0].toUpperCase() === "REPLY" &&
-      (!responseContent.providers || responseContent.providers.length === 0);
+      responseContent.actions[0].toUpperCase() === "REPLY";
 
     responseContent.simple = isSimple;
     // Include message ID for streaming coordination (so broadcast uses same ID)
