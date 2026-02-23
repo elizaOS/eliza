@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../../runtime";
 import type {
+  Agent,
   Character,
   Entity,
   IAgentRuntime,
@@ -26,6 +27,7 @@ import { stringToUuid } from "../../utils";
  */
 function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
   // In-memory storage
+  const agents = new Map<string, Partial<Agent>>();
   const memories = new Map<UUID, Memory>();
   const rooms = new Map<UUID, Room>();
   const worlds = new Map<UUID, World>();
@@ -43,11 +45,25 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
     isReady: vi.fn().mockResolvedValue(true),
 
     // Agent methods
-    getAgentsByIds: vi.fn().mockResolvedValue([
-      { id: agentId, name: "TestAgent" },
-    ]),
-    getAgents: vi.fn().mockResolvedValue([]),
-    createAgents: vi.fn().mockResolvedValue(true),
+    getAgentsByIds: vi.fn(async (ids: UUID[]) =>
+      ids.map((id) => agents.get(String(id))).filter((a): a is Partial<Agent> => a != null && a.id != null) as Agent[],
+    ),
+    getAgents: vi.fn(async () => Array.from(agents.values())),
+    createAgents: vi.fn(async (agentsToCreate: Partial<Agent>[]) => {
+      const ids: UUID[] = [];
+      for (const agent of agentsToCreate) {
+        if (agent.id) {
+          agents.set(String(agent.id), agent);
+          ids.push(agent.id);
+        }
+      }
+      return ids;
+    }),
+    upsertAgents: vi.fn(async (agentsToUpsert: Partial<Agent>[]) => {
+      for (const agent of agentsToUpsert) {
+        if (agent.id) agents.set(String(agent.id), agent);
+      }
+    }),
     updateAgents: vi.fn().mockResolvedValue(true),
     deleteAgents: vi.fn().mockResolvedValue(true),
     ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
@@ -95,12 +111,13 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
     ),
     getEntitiesForRoom: vi.fn().mockResolvedValue([]),
     createEntities: vi.fn(async (newEntities: Entity[]) => {
+      const ids: UUID[] = [];
       for (const entity of newEntities) {
-        if (entity.id) {
-          entities.set(entity.id, entity);
-        }
+        const id = entity.id || (stringToUuid(uuidv4()) as UUID);
+        entities.set(id, { ...entity, id });
+        ids.push(id);
       }
-      return true;
+      return ids;
     }),
     updateEntities: vi.fn().mockResolvedValue(undefined),
     deleteEntities: vi.fn().mockResolvedValue(undefined),
@@ -129,6 +146,16 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
       return ids;
     }),
     updateRooms: vi.fn().mockResolvedValue(undefined),
+    upsertRooms: vi.fn(async (roomsToUpsert: Room[]) => {
+      for (const room of roomsToUpsert) {
+        if (room.id) {
+          rooms.set(room.id, { ...room, id: room.id });
+          if (!participants.has(room.id)) {
+            participants.set(room.id, new Set());
+          }
+        }
+      }
+    }),
     deleteRooms: vi.fn(async (ids: UUID[]) => {
       for (const id of ids) {
         rooms.delete(id);

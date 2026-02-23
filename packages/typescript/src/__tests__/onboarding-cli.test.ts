@@ -429,7 +429,7 @@ describe("Onboarding CLI Adapter", () => {
       const adapter = createMockAdapter({});
       const session = new CliOnboardingSession(config, adapter);
 
-      const validToken = "123456789:ABCdefGHIjklMNOpqrSTUvwxYZ12345678901";
+      const validToken = "123456789:ABCdefGHIjklMNOpqrSTUvwxYZ123456789";
       expect(session.parseInput("TELEGRAM_BOT_TOKEN", validToken).valid).toBe(true);
       expect(session.parseInput("TELEGRAM_BOT_TOKEN", "123:short").valid).toBe(false);
     });

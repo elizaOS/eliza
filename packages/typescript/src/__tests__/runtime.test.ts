@@ -71,7 +71,9 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   init: vi.fn().mockImplementation(async () => {
     adapterReady = true;
   }),
-  initialize: vi.fn().mockResolvedValue(undefined),
+  initialize: vi.fn().mockImplementation(async () => {
+    adapterReady = true;
+  }),
   isReady: vi.fn().mockImplementation(async () => adapterReady),
   close: vi.fn().mockImplementation(async () => {
     adapterReady = false;
@@ -538,7 +540,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
     it("should call adapter.init and core setup methods for an existing agent", async () => {
       await runtime.initialize();
 
-      expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
+      expect(mockDatabaseAdapter.initialize).toHaveBeenCalledTimes(1);
       expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
       // expect(mockDatabaseAdapter.getAgent).toHaveBeenCalledWith(agentId); // This is no longer called
       expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([
@@ -556,7 +558,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       // No need to override the spy, initialize should handle it.
       await runtime.initialize();
 
-      expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
+      expect(mockDatabaseAdapter.initialize).toHaveBeenCalledTimes(1);
       expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
       expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([
         agentId,
@@ -576,7 +578,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       await runtime.initialize();
 
       expect(mockDatabaseAdapter.isReady).toHaveBeenCalled();
-      expect(mockDatabaseAdapter.init).not.toHaveBeenCalled();
+      expect(mockDatabaseAdapter.initialize).not.toHaveBeenCalled();
       expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
       expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([
         agentId,
@@ -596,7 +598,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       await runtime.initialize();
 
       expect(mockDatabaseAdapter.isReady).toHaveBeenCalled();
-      expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
+      expect(mockDatabaseAdapter.initialize).toHaveBeenCalledTimes(1);
     });
 
     it("should throw if adapter is not available during initialize", async () => {

@@ -36,6 +36,7 @@ describe("autonomy service", () => {
         return [makeMemory(dupId, agentId, roomId, "new", 20)];
       },
       getRoomsForParticipant: async () => [roomId],
+      getRoomsForParticipants: async () => [roomId],
       getRoomsByIds: async () => [{ id: roomId, name: "Test Room" }],
       getMemoriesByRoomIds: async () => [
         makeMemory(dupId, agentId, roomId, "old", 10),

@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
-import type { Agent, Character, IDatabaseAdapter, UUID } from "../types";
+import type { Agent, Character, Entity, IDatabaseAdapter, UUID } from "../types";
 
 // Helper type for vitest mocks with additional methods
 interface VitestMockFunction<T extends (...args: never[]) => unknown> {
@@ -23,6 +23,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
   let agentId: UUID;
   let getAgentsByIdsMock: IDatabaseAdapter["getAgentsByIds"];
   let updateAgentsMock: IDatabaseAdapter["updateAgents"];
+  let upsertAgentsMock: IDatabaseAdapter["upsertAgents"];
   let getEntitiesByIdsMock: IDatabaseAdapter["getEntitiesByIds"];
   let getRoomsByIdsMock: IDatabaseAdapter["getRoomsByIds"];
   let getParticipantsForRoomMock: IDatabaseAdapter["getParticipantsForRoom"];
@@ -58,6 +59,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     updateAgentsMock = vi.fn(
       async () => true,
     ) as IDatabaseAdapter["updateAgents"];
+    upsertAgentsMock = vi.fn(async () => {}) as IDatabaseAdapter["upsertAgents"];
     getEntitiesByIdsMock = vi.fn(
       async () => [],
     ) as IDatabaseAdapter["getEntitiesByIds"];
@@ -68,7 +70,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
       async () => [],
     ) as IDatabaseAdapter["getParticipantsForRoom"];
     createEntitiesMock = vi.fn(
-      async () => true,
+      async (entities: Entity[]) => entities.map((e) => e.id ?? (uuidv4() as UUID)),
     ) as IDatabaseAdapter["createEntities"];
     createRoomsMock = vi.fn(async () => []) as IDatabaseAdapter["createRooms"];
     createRoomParticipantsMock = vi.fn(
@@ -84,7 +86,8 @@ describe("ensureAgentExists - Settings Persistence", () => {
       getConnection: vi.fn(async () => ({})),
       getAgentsByIds: getAgentsByIdsMock,
       getAgents: vi.fn(async () => []),
-      createAgents: vi.fn(async () => true),
+      createAgents: vi.fn(async (agents: Partial<Agent>[]) => agents.map((a) => a.id!).filter(Boolean)),
+      upsertAgents: upsertAgentsMock,
       updateAgents: updateAgentsMock,
       deleteAgents: vi.fn(async () => true),
       ensureEmbeddingDimension: vi.fn(async () => {}),
@@ -180,10 +183,15 @@ describe("ensureAgentExists - Settings Persistence", () => {
       },
     };
 
+    // ensureAgentExists: getAgentsByIds (no existing) -> upsertAgents -> getAgentsByIds (refreshed)
+    (
+      getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>
+    ).mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...agent, id: agentId } as Agent]);
+
     const result = await runtime.ensureAgentExists(agent);
 
     expect(mockAdapter.getAgentsByIds).toHaveBeenCalledWith([agentId]);
-    expect(mockAdapter.createAgents).toHaveBeenCalled();
+    expect(mockAdapter.upsertAgents).toHaveBeenCalled();
     expect(result.id).toBe(agentId);
   });
 
@@ -234,12 +242,12 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
     const _result = await runtime.ensureAgentExists(characterAgent);
 
-    // Verify updateAgents was called with merged settings
-    expect(mockAdapter.updateAgents).toHaveBeenCalled();
-    const updateCall = (
-      updateAgentsMock as VitestMockFunction<IDatabaseAdapter["updateAgents"]>
+    // Verify upsertAgents was called with merged settings
+    expect(mockAdapter.upsertAgents).toHaveBeenCalled();
+    const upsertCall = (
+      upsertAgentsMock as VitestMockFunction<IDatabaseAdapter["upsertAgents"]>
     ).mock.calls[0];
-    const updatedAgent = updateCall[0][0].agent as Partial<Agent>;
+    const updatedAgent = (upsertCall[0] as Partial<Agent>[])[0] as Partial<Agent>;
 
     // Check that DB settings were preserved
     expect(updatedAgent.settings?.SOLANA_PUBLIC_KEY).toBe(
@@ -304,10 +312,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
     await runtime.ensureAgentExists(characterAgent);
 
-    const updateCall = (
-      updateAgentsMock as VitestMockFunction<IDatabaseAdapter["updateAgents"]>
+    const upsertCall = (
+      upsertAgentsMock as VitestMockFunction<IDatabaseAdapter["upsertAgents"]>
     ).mock.calls[0];
-    const updatedAgent = updateCall[0][0].agent as Partial<Agent>;
+    const updatedAgent = (upsertCall[0] as Partial<Agent>[])[0] as Partial<Agent>;
 
     // MODEL should be overridden by character.json
     expect(updatedAgent.settings?.MODEL).toBe("gpt-5");
@@ -359,10 +367,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
     await runtime.ensureAgentExists(characterAgent);
 
-    const updateCall = (
-      updateAgentsMock as VitestMockFunction<IDatabaseAdapter["updateAgents"]>
+    const upsertCall = (
+      upsertAgentsMock as VitestMockFunction<IDatabaseAdapter["upsertAgents"]>
     ).mock.calls[0];
-    const updatedAgent = updateCall[0][0].agent as Partial<Agent>;
+    const updatedAgent = (upsertCall[0] as Partial<Agent>[])[0] as Partial<Agent>;
 
     // Both DB and character secrets should be present
     const updatedAgentSettings = updatedAgent.settings;
@@ -403,10 +411,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
     await runtime.ensureAgentExists(characterAgent);
 
-    const updateCall = (
-      updateAgentsMock as VitestMockFunction<IDatabaseAdapter["updateAgents"]>
+    const upsertCall = (
+      upsertAgentsMock as VitestMockFunction<IDatabaseAdapter["upsertAgents"]>
     ).mock.calls[0];
-    const updatedAgent = updateCall[0][0].agent as Partial<Agent>;
+    const updatedAgent = (upsertCall[0] as Partial<Agent>[])[0] as Partial<Agent>;
 
     // Should have character settings even though DB had none
     expect(updatedAgent.settings?.MODEL).toBe("gpt-5");
@@ -439,10 +447,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
     await runtime.ensureAgentExists(characterAgent);
 
-    const updateCall = (
-      updateAgentsMock as VitestMockFunction<IDatabaseAdapter["updateAgents"]>
+    const upsertCall = (
+      upsertAgentsMock as VitestMockFunction<IDatabaseAdapter["upsertAgents"]>
     ).mock.calls[0];
-    const updatedAgent = updateCall[0][0].agent as Partial<Agent>;
+    const updatedAgent = (upsertCall[0] as Partial<Agent>[])[0] as Partial<Agent>;
 
     // Should preserve DB settings
     expect(updatedAgent.settings?.DB_SETTING).toBe("value");
