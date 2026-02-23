@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseMigrationService } from "../../../migration-service";
 import { PgliteDatabaseAdapter } from "../../../pglite/adapter";
 import { PGliteClientManager } from "../../../pglite/manager";
-import * as schema from "../../../schema";
+import * as schema from "../../../tables";
 
 describe("PostgreSQL Adapter Integration Tests", () => {
   let adapter: PgliteDatabaseAdapter;

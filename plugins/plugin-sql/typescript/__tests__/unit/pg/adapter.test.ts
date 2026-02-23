@@ -44,7 +44,7 @@ describe("PgDatabaseAdapter", () => {
     (logger.warn as Mock).mockClear();
     (logger.error as Mock).mockClear();
 
-    // Create a mock manager (withEntityContext for RLS entity-context tests)
+    // Create a mock manager (withIsolationContext for RLS entity-context tests)
     mockManager = {
       getDatabase: vi.fn(() => ({
         query: {},
@@ -57,7 +57,7 @@ describe("PgDatabaseAdapter", () => {
         connect: vi.fn(() => {}),
         end: vi.fn(() => {}),
       })),
-      withEntityContext: vi.fn((_entityId: UUID, callback: () => Promise<unknown>) => callback()),
+      withIsolationContext: vi.fn((_entityId: UUID, callback: () => Promise<unknown>) => callback()),
     };
 
     adapter = new PgDatabaseAdapter(
@@ -231,8 +231,8 @@ describe("PgDatabaseAdapter", () => {
   describe("entity context (RLS)", () => {
     const entityId = "11111111-2222-3333-4444-555555555555" as UUID;
 
-    it("should call withEntityContext when queryEntities is called with entityContext", async () => {
-      const withEntityContextMock = vi.fn((_id: UUID, cb: (tx: unknown) => Promise<unknown>) => {
+    it("should call withIsolationContext when queryEntities is called with entityContext", async () => {
+      const withIsolationContextMock = vi.fn((_id: UUID, cb: (tx: unknown) => Promise<unknown>) => {
         const emptyResult = Promise.resolve([]);
         const mockTx = {
           select: vi.fn().mockReturnValue({
@@ -252,17 +252,17 @@ describe("PgDatabaseAdapter", () => {
       });
       const mgr = {
         ...mockManager,
-        withEntityContext: withEntityContextMock,
+        withIsolationContext: withIsolationContextMock,
       } as PostgresConnectionManager;
       const adp = new PgDatabaseAdapter(agentId, mgr);
 
       await adp.queryEntities({ entityContext: entityId, limit: 1 });
 
-      expect(withEntityContextMock).toHaveBeenCalledWith(entityId, expect.any(Function));
+      expect(withIsolationContextMock).toHaveBeenCalledWith(entityId, expect.any(Function));
     });
 
-    it("should not call withEntityContext when queryEntities is called without entityContext", async () => {
-      const withEntityContextMock = vi.fn();
+    it("should not call withIsolationContext when queryEntities is called without entityContext", async () => {
+      const withIsolationContextMock = vi.fn();
       const emptyResult = Promise.resolve([]);
       const limitReturn = {
         offset: vi.fn().mockReturnValue(emptyResult),
@@ -283,22 +283,22 @@ describe("PgDatabaseAdapter", () => {
             }),
           }),
         })),
-        withEntityContext: withEntityContextMock,
+        withIsolationContext: withIsolationContextMock,
       } as unknown as PostgresConnectionManager;
       const adp = new PgDatabaseAdapter(agentId, mgr);
 
       await adp.queryEntities({ limit: 1 });
 
-      expect(withEntityContextMock).not.toHaveBeenCalled();
+      expect(withIsolationContextMock).not.toHaveBeenCalled();
     });
 
-    it("should call withEntityContext when transaction is called with options.entityContext", async () => {
-      const withEntityContextMock = vi.fn((_id: UUID, cb: (tx: unknown) => Promise<unknown>) => {
+    it("should call withIsolationContext when transaction is called with options.entityContext", async () => {
+      const withIsolationContextMock = vi.fn((_id: UUID, cb: (tx: unknown) => Promise<unknown>) => {
         return cb({});
       });
       const mgr = {
         ...mockManager,
-        withEntityContext: withEntityContextMock,
+        withIsolationContext: withIsolationContextMock,
       } as PostgresConnectionManager;
       const adp = new PgDatabaseAdapter(agentId, mgr);
 
@@ -307,7 +307,7 @@ describe("PgDatabaseAdapter", () => {
         { entityContext: entityId }
       );
 
-      expect(withEntityContextMock).toHaveBeenCalledWith(entityId, expect.any(Function));
+      expect(withIsolationContextMock).toHaveBeenCalledWith(entityId, expect.any(Function));
     });
   });
 });

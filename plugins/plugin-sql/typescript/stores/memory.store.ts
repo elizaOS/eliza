@@ -1202,32 +1202,43 @@ export async function updateMemories(
   try {
     await db.transaction(async (tx) => {
       // ── 1. Batch UPDATE memory content/metadata via CASE ──────────────
-      const contentMemories = memories.filter((m) => m.content || m.metadata);
+      const contentMemories = memories.filter((m) => m.content != null || m.metadata != null);
       if (contentMemories.length > 0) {
         const memIds = contentMemories.map((m) => m.id);
 
-        const contentCases = contentMemories.map((m) => {
-          const contentStr =
-            typeof m.content === "string"
-              ? m.content
-              : JSON.stringify(m.content ?? {});
-          return sql`WHEN ${memoryTable.id} = ${m.id} THEN ${contentStr}::jsonb`;
-        });
-        const metaCases = contentMemories.map((m) => {
-          const metaStr =
-            typeof m.metadata === "string"
-              ? m.metadata
-              : JSON.stringify(m.metadata ?? {});
-          return sql`WHEN ${memoryTable.id} = ${m.id} THEN ${metaStr}::jsonb`;
-        });
+        // Only set content for memories that provide content; others preserve existing (ELSE column).
+        const contentCases = contentMemories
+          .filter((m) => m.content != null)
+          .map((m) => {
+            const contentStr =
+              typeof m.content === "string"
+                ? m.content
+                : JSON.stringify(m.content);
+            return sql`WHEN ${memoryTable.id} = ${m.id} THEN ${contentStr}::jsonb`;
+          });
+        const metaCases = contentMemories
+          .filter((m) => m.metadata != null)
+          .map((m) => {
+            const metaStr =
+              typeof m.metadata === "string"
+                ? m.metadata
+                : JSON.stringify(m.metadata);
+            return sql`WHEN ${memoryTable.id} = ${m.id} THEN ${metaStr}::jsonb`;
+          });
 
-        await tx
-          .update(memoryTable)
-          .set({
-            content: sql`CASE ${sql.join(contentCases, sql` `)} ELSE ${memoryTable.content} END`,
-            metadata: sql`CASE ${sql.join(metaCases, sql` `)} ELSE ${memoryTable.metadata} END`,
-          })
-          .where(inArray(memoryTable.id, memIds));
+        const setObj: Record<string, unknown> = {};
+        if (contentCases.length > 0) {
+          setObj.content = sql`CASE ${sql.join(contentCases, sql` `)} ELSE ${memoryTable.content} END`;
+        }
+        if (metaCases.length > 0) {
+          setObj.metadata = sql`CASE ${sql.join(metaCases, sql` `)} ELSE ${memoryTable.metadata} END`;
+        }
+        if (Object.keys(setObj).length > 0) {
+          await tx
+            .update(memoryTable)
+            .set(setObj)
+            .where(inArray(memoryTable.id, memIds));
+        }
       }
 
       // ── 2. Handle embeddings in batch ─────────────────────────────────

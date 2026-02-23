@@ -194,7 +194,7 @@ export async function createAgents(db: DrizzleDatabase, agents: Agent[]): Promis
       .values(agentsData as unknown as (typeof agentTable.$inferInsert)[])
       .onConflictDoNothing({ target: agentTable.id });
 
-    return agents.map(a => a.id);
+    return agents.map((a) => a.id);
   } catch (error) {
     logger.error(
       {

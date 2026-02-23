@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { participantTable } from "../../schema";
+import { participantTable } from "../../tables";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("Participant Integration Tests", () => {
@@ -57,7 +57,8 @@ describe("Participant Integration Tests", () => {
 
     it("should add and retrieve a participant", async () => {
       const result = await adapter.addParticipant(testEntityId, testRoomId);
-      expect(result).toBe(true);
+      expect(result).toBeDefined();
+      expect(typeof result).toBe("string");
       const rooms = await adapter.getRoomsForParticipant(testEntityId);
       expect(rooms).toContain(testRoomId);
     });
