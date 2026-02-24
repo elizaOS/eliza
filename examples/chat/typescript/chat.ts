@@ -26,6 +26,8 @@ interface LLMProvider {
   local?: boolean;
   /** How to detect if the local provider is available */
   detectUrl?: string;
+  /** If true, skip HTTP health check (for embedded inference engines) */
+  skipHealthCheck?: boolean;
 }
 
 const LLM_PROVIDERS: LLMProvider[] = [
@@ -109,14 +111,38 @@ async function loadLLMPlugin(): Promise<{ plugin: Plugin; providerName: string }
     if (provider.local) {
       const envUrl = process.env[provider.envKey];
       if (!envUrl) continue; // not explicitly configured — skip for now
-      // For local providers, derive health check URL from detectUrl or append a health path
-      const healthUrl = provider.detectUrl 
-        ? new URL(provider.detectUrl.split('/').slice(-2).join('/'), envUrl).href 
-        : envUrl;
-      const running = await isLocalServerRunning(healthUrl);
-      if (!running) {
-        console.warn(`⚠️  ${provider.name} configured at ${envUrl} but not reachable, skipping`);
-        continue;
+      
+      // Skip health check for embedded inference engines (no HTTP server)
+      if (!provider.skipHealthCheck) {
+        // For local providers with HTTP servers, derive health check URL from detectUrl path
+        let healthUrl = envUrl;
+        if (provider.detectUrl) {
+          try {
+            const detectUrlObj = new URL(provider.detectUrl);
+            const baseUrlObj = new URL(envUrl);
+            // Copy the pathname from detectUrl (e.g., "/api/tags") to the base URL
+            baseUrlObj.pathname = detectUrlObj.pathname;
+            baseUrlObj.search = detectUrlObj.search;
+            healthUrl = baseUrlObj.href;
+          } catch (error) {
+            // If URL construction fails, try appending detectUrl's path to envUrl
+            try {
+              const pathMatch = provider.detectUrl.match(/^https?:\/\/[^/]+(\/.*)/);
+              if (pathMatch) {
+                const baseTrimmed = envUrl.replace(/\/$/, '');
+                healthUrl = baseTrimmed + pathMatch[1];
+              }
+            } catch {
+              // Final fallback to envUrl
+              healthUrl = envUrl;
+            }
+          }
+        }
+        const running = await isLocalServerRunning(healthUrl);
+        if (!running) {
+          console.warn(`⚠️  ${provider.name} configured at ${envUrl} but not reachable, skipping`);
+          continue;
+        }
       }
       const result = await tryLoadPlugin(provider);
       if (result) return result;
