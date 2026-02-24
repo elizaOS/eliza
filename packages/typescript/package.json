@@ -78,8 +78,7 @@
     "vitest": "^4.0.0"
   },
   "dependencies": {
-    "@bufbuild/protobuf": "^2.10.2",
-    "@elizaos/prompts": "workspace:*",
+      "@anthropic-ai/sdk": "^0.32.1",
     "@langchain/core": "^1.1.12",
     "@langchain/textsplitters": "^1.0.1",
     "adze": "^2.2.5",

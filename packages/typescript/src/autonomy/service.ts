@@ -11,6 +11,10 @@
  * - Unified task management across all periodic operations
  */
 
+// Review: Autonomy templates imported from local ../prompts module. The @elizaos/prompts package
+// dependency should be audited in packages/typescript/package.json - if no other files import from
+// @elizaos/prompts, remove it from dependencies to avoid carrying unused workspace dependencies.
+// Audit command: grep -r "@elizaos/prompts" packages/typescript/src --exclude-dir=node_modules
 import {
   autonomyContinuousContinueTemplate,
   autonomyContinuousFirstTemplate,
