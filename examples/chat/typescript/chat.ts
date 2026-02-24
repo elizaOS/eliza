@@ -109,7 +109,11 @@ async function loadLLMPlugin(): Promise<{ plugin: Plugin; providerName: string }
     if (provider.local) {
       const envUrl = process.env[provider.envKey];
       if (!envUrl) continue; // not explicitly configured — skip for now
-      const running = await isLocalServerRunning(envUrl);
+      // For local providers, derive health check URL from detectUrl or append a health path
+      const healthUrl = provider.detectUrl 
+        ? new URL(provider.detectUrl.split('/').slice(-2).join('/'), envUrl).href 
+        : envUrl;
+      const running = await isLocalServerRunning(healthUrl);
       if (!running) {
         console.warn(`⚠️  ${provider.name} configured at ${envUrl} but not reachable, skipping`);
         continue;
@@ -140,7 +144,7 @@ function printAvailableProviders(): void {
   console.log("\n📋 Supported LLM providers:\n");
   console.log("   Local (no API key needed):");
   for (const provider of LLM_PROVIDERS.filter((p) => p.local)) {
-    console.log(`   ❌ ${provider.name.padEnd(25)} (not detected — start the server or set ${provider.envKey})`);
+    console.log(`   ❌ ${provider.name.padEnd(25)} (status not checked — start the server or set ${provider.envKey})`);
   }
   console.log("\n   Cloud (API key required):");
   for (const provider of LLM_PROVIDERS.filter((p) => !p.local)) {

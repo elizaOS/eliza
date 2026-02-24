@@ -103,6 +103,7 @@ const rootPkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 const patterns = rootPkg.workspaces || [];
 
 // 1. Discover all workspace directories and package names
+// Use Set to deduplicate overlapping glob patterns (e.g. examples/*/* and examples/app/*/*)
 const workspaceDirsSet = new Set();
 for (const pattern of patterns) {
   for (const dir of expandPattern(pattern)) {
@@ -186,12 +187,12 @@ if (RESTORE_MODE) {
       if (!pkg[section]) continue;
 
       for (const [depName, depVersion] of Object.entries(pkg[section])) {
-        // Only restore @elizaos/* workspace:* refs
-        if (depVersion !== "workspace:*") continue;
-        if (!depName.startsWith("@elizaos/")) continue;
+      // Only restore workspace:* refs for packages that exist in the workspace
+      if (depVersion !== "workspace:*") continue;
+      if (!nameToDir.has(depName)) continue;
 
-        // Look up the original version from the git ref
-        const oldVersion = oldPkg?.[section]?.[depName];
+      // Look up the original version from the git ref
+      const oldVersion = oldPkg?.[section]?.[depName];
 
         if (oldVersion && oldVersion !== "workspace:*") {
           if (!QUIET) {
