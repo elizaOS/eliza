@@ -40,6 +40,14 @@ const LLM_PROVIDERS: LLMProvider[] = [
     local: true,
     detectUrl: "http://localhost:11434/api/tags",
   },
+  {
+    name: "Local AI (embedded)",
+    envKey: "MODELS_DIR",
+    importPath: "@elizaos/plugin-local-ai",
+    exportName: "localAIPlugin",
+    local: true,
+    skipHealthCheck: true,
+  },
   // Cloud providers — require API keys
   {
     name: "OpenAI",
@@ -109,38 +117,38 @@ async function loadLLMPlugin(): Promise<{ plugin: Plugin; providerName: string }
   //         An explicit config always wins over auto-detection.
   for (const provider of LLM_PROVIDERS) {
     if (provider.local) {
-      const envUrl = process.env[provider.envKey];
-      if (!envUrl) continue; // not explicitly configured — skip for now
+      const envValue = process.env[provider.envKey];
+      if (!envValue) continue; // not explicitly configured — skip for now
       
       // Skip health check for embedded inference engines (no HTTP server)
       if (!provider.skipHealthCheck) {
         // For local providers with HTTP servers, derive health check URL from detectUrl path
-        let healthUrl = envUrl;
+        let healthUrl = envValue;
         if (provider.detectUrl) {
           try {
             const detectUrlObj = new URL(provider.detectUrl);
-            const baseUrlObj = new URL(envUrl);
+            const baseUrlObj = new URL(envValue);
             // Copy the pathname from detectUrl (e.g., "/api/tags") to the base URL
             baseUrlObj.pathname = detectUrlObj.pathname;
             baseUrlObj.search = detectUrlObj.search;
             healthUrl = baseUrlObj.href;
           } catch (error) {
-            // If URL construction fails, try appending detectUrl's path to envUrl
+            // If URL construction fails, try appending detectUrl's path to envValue
             try {
               const pathMatch = provider.detectUrl.match(/^https?:\/\/[^/]+(\/.*)/);
               if (pathMatch) {
-                const baseTrimmed = envUrl.replace(/\/$/, '');
+                const baseTrimmed = envValue.replace(/\/$/, '');
                 healthUrl = baseTrimmed + pathMatch[1];
               }
             } catch {
-              // Final fallback to envUrl
-              healthUrl = envUrl;
+              // Final fallback to envValue
+              healthUrl = envValue;
             }
           }
         }
         const running = await isLocalServerRunning(healthUrl);
         if (!running) {
-          console.warn(`⚠️  ${provider.name} configured at ${envUrl} but not reachable, skipping`);
+          console.warn(`⚠️  ${provider.name} configured at ${envValue} but not reachable, skipping`);
           continue;
         }
       }
@@ -170,7 +178,10 @@ function printAvailableProviders(): void {
   console.log("\n📋 Supported LLM providers:\n");
   console.log("   Local (no API key needed):");
   for (const provider of LLM_PROVIDERS.filter((p) => p.local)) {
-    console.log(`   ❌ ${provider.name.padEnd(25)} (status not checked — start the server or set ${provider.envKey})`);
+    const configMethod = provider.skipHealthCheck 
+      ? `set ${provider.envKey}` 
+      : `start the server or set ${provider.envKey}`;
+    console.log(`   ❌ ${provider.name.padEnd(25)} (status not checked — ${configMethod})`);
   }
   console.log("\n   Cloud (API key required):");
   for (const provider of LLM_PROVIDERS.filter((p) => !p.local)) {
