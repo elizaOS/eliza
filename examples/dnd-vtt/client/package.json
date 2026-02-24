@@ -15,6 +15,7 @@
     "zustand": "^4.5.0",
     "socket.io-client": "^4.7.0",
     "pixi.js": "^8.0.0",
+    // Review: stale — duplicate of issue_6 which covers the same React 18 vs @pixi/react v8 incompatibility
     "@pixi/react": "^8.0.0",
     "tailwindcss": "^3.4.0",
     "clsx": "^2.1.0",
