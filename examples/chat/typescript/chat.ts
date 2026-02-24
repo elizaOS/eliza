@@ -32,18 +32,11 @@ const LLM_PROVIDERS: LLMProvider[] = [
   // Local providers first — no API key needed
   {
     name: "Ollama (local)",
-    envKey: "OLLAMA_API_URL",
+    envKey: "OLLAMA_API_ENDPOINT",
     importPath: "@elizaos/plugin-ollama",
     exportName: "ollamaPlugin",
     local: true,
     detectUrl: "http://localhost:11434/api/tags",
-  },
-  {
-    name: "Local AI",
-    envKey: "LOCAL_AI_URL",
-    importPath: "@elizaos/plugin-local-ai",
-    exportName: "localAiPlugin",
-    local: true,
   },
   // Cloud providers — require API keys
   {

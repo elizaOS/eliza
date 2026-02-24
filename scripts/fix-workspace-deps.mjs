@@ -103,15 +103,17 @@ const rootPkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 const patterns = rootPkg.workspaces || [];
 
 // 1. Discover all workspace directories and package names
-const workspaceDirs = [];
+const workspaceDirsSet = new Set();
 for (const pattern of patterns) {
-  workspaceDirs.push(...expandPattern(pattern));
+  for (const dir of expandPattern(pattern)) {
+    workspaceDirsSet.add(dir);
+  }
 }
 
 // Always include the root itself
-if (!workspaceDirs.includes(ROOT)) {
-  workspaceDirs.unshift(ROOT);
-}
+workspaceDirsSet.add(ROOT);
+
+const workspaceDirs = Array.from(workspaceDirsSet);
 
 const nameToDir = new Map(); // package name -> directory
 for (const dir of workspaceDirs) {
@@ -240,7 +242,6 @@ if (RESTORE_MODE) {
 
 // 2. Scan and fix
 let fixCount = 0;
-let warnCount = 0;
 const issues = []; // for --check summary
 
 for (const dir of workspaceDirs) {

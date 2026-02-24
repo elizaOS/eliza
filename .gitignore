@@ -360,3 +360,5 @@ skills/.cache/
 # Terminal-bench: local test output artifacts
 /benchmarks/terminal-bench/python/test_output/terminal-bench-*.json
 /benchmarks/terminal-bench/python/test_output/terminal-bench-*.md
+# prr state file (auto-generated)
+.pr-resolver-state.json
