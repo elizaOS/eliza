@@ -74,7 +74,6 @@
     "@types/uuid": "^11.0.0",
     "@vitest/coverage-v8": "^4.0.0",
     "esbuild": "^0.25.0",
-    "sharp": "^0.33.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
   },
@@ -94,6 +93,7 @@
     "handlebars": "^4.7.8",
     "markdown-it": "^14.1.0",
     "pdfjs-dist": "^5.4.530",
+    "sharp": "^0.33.0",
     "undici": "^7.0.0",
     "unique-names-generator": "^4.7.1",
     "uuid": "^13.0.0",

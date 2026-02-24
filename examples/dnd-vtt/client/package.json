@@ -10,8 +10,8 @@
     "lint": "eslint src --ext ts,tsx"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "zustand": "^4.5.0",
     "socket.io-client": "^4.7.0",
     "pixi.js": "^8.0.0",
@@ -21,8 +21,8 @@
     "framer-motion": "^11.0.0"
   },
   "devDependencies": {
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.2.0",
     "autoprefixer": "^10.4.0",
     "postcss": "^8.4.0",

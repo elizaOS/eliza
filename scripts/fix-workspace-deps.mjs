@@ -30,7 +30,7 @@
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
@@ -139,7 +139,7 @@ if (!QUIET) {
 function gitShowFile(ref, filePath) {
   const relPath = relative(ROOT, filePath);
   try {
-    return execSync(`git show ${ref}:${relPath}`, { cwd: ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+    return execFileSync("git", ["show", `${ref}:${relPath}`], { cwd: ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
   } catch {
     return null; // file doesn't exist at that ref
   }
