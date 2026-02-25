@@ -17,6 +17,7 @@ import {
   autonomyTaskContinueTemplate,
   autonomyTaskFirstTemplate,
 } from "../prompts";
+// Review: Templates were relocated, and dependency on @elizaos/prompts is now obsolete in this module.
 import { v4 as uuidv4 } from "uuid";
 import {
   ChannelType,
