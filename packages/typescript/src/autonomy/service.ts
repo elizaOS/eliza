@@ -17,6 +17,7 @@ import {
   autonomyTaskContinueTemplate,
   autonomyTaskFirstTemplate,
 } from "../prompts";
+// Review: The templates import was changed to local, making the previous dependency unnecessary.
 import { v4 as uuidv4 } from "uuid";
 import {
   ChannelType,
