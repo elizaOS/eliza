@@ -5,7 +5,7 @@
  * Manages workspace dependency references in the monorepo. Two modes:
  *
  *   LOCAL mode (default):
- *     Rewrites every @elizaos/* dependency to "workspace:*" so bun resolves
+ *     Rewrites every workspace dependency to "workspace:*" so bun resolves
  *     to the local package. Use this for local development.
  *
  *   RESTORE mode (--restore):
@@ -102,19 +102,19 @@ function expandPattern(pattern) {
 const rootPkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 const patterns = rootPkg.workspaces || [];
 
-// 1. Discover all workspace directories and package names
-// Use Set to deduplicate overlapping glob patterns (e.g. examples/*/* and examples/app/*/*)
-const workspaceDirsSet = new Set();
-for (const pattern of patterns) {
-  for (const dir of expandPattern(pattern)) {
-    workspaceDirsSet.add(dir);
+// 1. Discover all workspace directories and package names (dedup overlapping globs)
+function collectWorkspaceDirs(patterns) {
+  const dirs = new Set();
+  for (const pattern of patterns) {
+    for (const dir of expandPattern(pattern)) {
+      dirs.add(dir);
+    }
   }
+  dirs.add(ROOT); // Always include the root itself
+  return Array.from(dirs);
 }
 
-// Always include the root itself
-workspaceDirsSet.add(ROOT);
-
-const workspaceDirs = Array.from(workspaceDirsSet);
+const workspaceDirs = collectWorkspaceDirs(patterns);
 
 const nameToDir = new Map(); // package name -> directory
 for (const dir of workspaceDirs) {
@@ -127,6 +127,8 @@ for (const dir of workspaceDirs) {
     // skip unparseable
   }
 }
+
+const isWorkspacePackage = (depName) => nameToDir.has(depName);
 
 if (!QUIET) {
   console.log(`Workspace packages: ${nameToDir.size}`);
@@ -187,9 +189,9 @@ if (RESTORE_MODE) {
       if (!pkg[section]) continue;
 
       for (const [depName, depVersion] of Object.entries(pkg[section])) {
-      // Only restore workspace:* refs for packages that exist in the workspace
-      if (depVersion !== "workspace:*") continue;
-      if (!nameToDir.has(depName)) continue;
+        // Only restore workspace:* refs for packages that exist in the workspace
+        if (depVersion !== "workspace:*") continue;
+        if (!isWorkspacePackage(depName)) continue;
 
       // Look up the original version from the git ref
       const oldVersion = oldPkg?.[section]?.[depName];
@@ -228,7 +230,7 @@ if (RESTORE_MODE) {
   if (parts.length > 0) {
     console.log(`Done: ${parts.join(", ")}.`);
   } else {
-    console.log(`Nothing to restore — no workspace:* refs found for @elizaos/* packages.`);
+    console.log(`Nothing to restore — no workspace:* refs found for workspace packages.`);
   }
   if (restoreCount > 0) {
     console.log(`\nRemember to run \`bun install\` to update the lockfile.`);
@@ -267,7 +269,7 @@ for (const dir of workspaceDirs) {
 
     for (const [depName, depVersion] of Object.entries(pkg[section])) {
       // Only care about packages that exist in this workspace
-      if (!nameToDir.has(depName)) continue;
+      if (!isWorkspacePackage(depName)) continue;
 
       // Skip self-references (shouldn't happen but be safe)
       if (depName === selfName) continue;
