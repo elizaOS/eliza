@@ -66,13 +66,22 @@
         "type": "string",
         "description": "DM policy: open, pairing, allowlist, disabled",
         "default": "pairing",
-        "enum": ["open", "pairing", "allowlist", "disabled"]
+        "enum": [
+          "open",
+          "pairing",
+          "allowlist",
+          "disabled"
+        ]
       },
       "LINE_GROUP_POLICY": {
         "type": "string",
         "description": "Group message policy: open, allowlist, disabled",
         "default": "allowlist",
-        "enum": ["open", "allowlist", "disabled"]
+        "enum": [
+          "open",
+          "allowlist",
+          "disabled"
+        ]
       },
       "LINE_ALLOW_FROM": {
         "type": "string",

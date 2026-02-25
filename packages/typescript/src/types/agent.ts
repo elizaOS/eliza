@@ -63,6 +63,10 @@ export type Character = Partial<
   secrets?: Record<string, string | number | boolean>;
   messageExamples?: MessageExampleGroup[];
   knowledge?: KnowledgeSourceItem[];
+  /** Enable advanced planning capabilities for this character */
+  advancedPlanning?: boolean;
+  /** Enable advanced memory capabilities for this character */
+  advancedMemory?: boolean;
 };
 
 export enum AgentStatus {

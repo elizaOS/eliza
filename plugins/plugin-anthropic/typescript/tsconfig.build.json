@@ -9,6 +9,7 @@
     "emitDeclarationOnly": true,
     "noEmit": false,
     "baseUrl": ".",
+    "types": ["node"],
     "paths": {
       "@elizaos/core": ["../../../packages/typescript/dist"]
     }
