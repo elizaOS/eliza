@@ -11,6 +11,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
+    "@elizaos/plugin-local-ai": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-xai": "workspace:*",
