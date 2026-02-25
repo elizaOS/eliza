@@ -17,7 +17,14 @@
     "typescript/dist",
     "README.md"
   ],
-  "keywords": ["elizaos", "plugin", "zalo", "messaging", "vietnam", "chat"],
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "zalo",
+    "messaging",
+    "vietnam",
+    "chat"
+  ],
   "author": "elizaOS",
   "license": "MIT",
   "repository": {

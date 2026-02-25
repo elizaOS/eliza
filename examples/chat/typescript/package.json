@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/example-chat",
   "version": "2.0.0-alpha",
-  "description": "Interactive CLI chat with an AI agent using elizaOS - supports OpenAI, Claude, xAI, Gemini, and Groq",
+  "description": "Interactive CLI chat with an AI agent using elizaOS - supports Ollama, local-ai, OpenAI, Claude, xAI, Gemini, and Groq",
   "type": "module",
   "private": true,
   "scripts": {
@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-ollama": "workspace:*",
+    "@elizaos/plugin-local-ai": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-xai": "workspace:*",

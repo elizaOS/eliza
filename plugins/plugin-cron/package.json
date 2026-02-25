@@ -39,7 +39,9 @@
   },
   "typesVersions": {
     "*": {
-      "otto": ["./dist/otto/index.d.ts"]
+      "otto": [
+        "./dist/otto/index.d.ts"
+      ]
     }
   },
   "files": [
