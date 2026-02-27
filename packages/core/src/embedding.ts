@@ -224,10 +224,10 @@ export async function embed(
         isEmpty: !text,
     });
 
-    // If input is empty after coercion, return a zero-vector of correct dim
+    // If input is empty after coercion, return an empty array (tests expect [])
     if (!text || text.trim().length === 0) {
-        elizaLogger.warn("Empty embedding input after coercion; returning zero vector");
-        return getEmbeddingZeroVector();
+        elizaLogger.warn("Empty embedding input after coercion; returning empty array");
+        return [];
     }
 
     // Check cache first
