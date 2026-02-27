@@ -320,7 +320,15 @@ class AgentRuntime(IAgentRuntime):
 
         self._init_complete = True
         self._init_event.set()
-        self.logger.info("AgentRuntime initialized successfully")
+        # Log registered actions for debugging action lookup issues
+        try:
+            action_names = ",".join([a.name for a in self._actions])
+        except Exception:
+            action_names = "<unavailable>"
+        self.logger.info(
+            "AgentRuntime initialized successfully",
+            registeredActions=action_names,
+        )
 
     async def register_plugin(self, plugin: Plugin) -> None:
         from elizaos.plugin import register_plugin
@@ -958,8 +966,24 @@ class AgentRuntime(IAgentRuntime):
     def _get_action_by_name(self, name: str) -> Action | None:
         """O(1) action lookup using cached name -> Action dict."""
         if self._action_by_name is None:
-            self._action_by_name = {a.name: a for a in self._actions}
-        return self._action_by_name.get(name)
+            # Build a mapping that tolerates case differences: register both
+            # the original action name and its upper-cased variant so model
+            # outputs like "IGNORE" or "reply" will resolve correctly.
+            m: dict[str, Action] = {}
+            for a in self._actions:
+                if a and getattr(a, "name", None):
+                    m[a.name] = a
+                    try:
+                        m[a.name.upper()] = a
+                    except Exception:
+                        pass
+            self._action_by_name = m
+
+        # Try exact match first, then a case-insensitive lookup.
+        action = self._action_by_name.get(name)
+        if action:
+            return action
+        return self._action_by_name.get(name.upper())
 
     def get_action_results(self, message_id: UUID) -> list[ActionResult]:
         return self._action_results.get(str(message_id), [])
