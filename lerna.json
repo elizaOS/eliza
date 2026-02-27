@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0-alpha.26",
+  "version": "2.0.0-alpha.27",
   "packages": [
     "packages/*",
     "packages/computeruse/packages/computeruse-ts",
