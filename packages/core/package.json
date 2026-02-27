@@ -1,0 +1,77 @@
+{
+    "name": "@elizaos/core",
+    "version": "0.25.9",
+    "description": "",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        "./package.json": "./package.json",
+        ".": {
+            "import": {
+                "@elizaos/source": "./src/index.ts",
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "watch": "tsc --watch",
+        "dev": "tsup --format esm --dts --watch",
+        "build:docs": "cd docs && pnpm run build",
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage",
+        "test:watch": "vitest"
+    },
+    "author": "",
+    "license": "MIT",
+    "devDependencies": {
+        "@types/glob": "^8.1.0",
+        "@types/node": "22.8.4",
+        "ts-node": "^10.9.1",
+        "tsup": "^8.5.1",
+        "typescript": "^5.9.3"
+    },
+    "dependencies": {
+        "@ai-sdk/amazon-bedrock": "1.1.6",
+        "@ai-sdk/anthropic": "*",
+        "@ai-sdk/google": "*",
+        "@ai-sdk/groq": "*",
+        "@ai-sdk/mistral": "*",
+        "@ai-sdk/openai": "*",
+        "@electric-sql/pglite": "^0.2.17",
+        "@elizaos/plugin-solana": "^1.2.6",
+        "@fal-ai/client": "1.2.3",
+        "@mem0/vercel-ai-provider": "^0.0.14",
+        "@supabase/supabase-js": "^2.49.1",
+        "@types/uuid": "10.0.0",
+        "ai": "*",
+        "better-sqlite3": "11.8.1",
+        "bignumber.js": "*",
+        "dotenv": "16.4.5",
+        "fastembed": "1.14.1",
+        "glob": "11.0.1",
+        "handlebars": "^4.7.8",
+        "js-sha1": "*",
+        "js-tiktoken": "1.0.19",
+        "ollama-ai-provider": "*",
+        "openai": "4.82.0",
+        "pino": "^8.16.0",
+        "pino-pretty": "^9.0.1",
+        "sql.js": "^1.12.0",
+        "together-ai": "*",
+        "unique-names-generator": "4.7.1",
+        "uuid": "11.0.3",
+        "viem": "*",
+        "vitest": "^3.0.5",
+        "zod": "^3.24.2"
+    },
+    "publishConfig": {
+        "access": "public"
+    }
+}
