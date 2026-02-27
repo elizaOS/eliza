@@ -1,0 +1,8 @@
+**/*.ts
+!dist/**/*.d.ts
+tsconfig*.json
+biome.json
+build.ts
+__tests__/
+node_modules/
+.turbo/

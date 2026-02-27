@@ -76,6 +76,10 @@ export const SECRET_KEY_ALIASES: Record<string, string> = {
   ELEVENLABS_KEY: "ELEVENLABS_API_KEY",
   ELEVEN_LABS_API_KEY: "ELEVENLABS_API_KEY",
 
+  // Avian aliases
+  AVIAN_KEY: "AVIAN_API_KEY",
+  AVIAN_TOKEN: "AVIAN_API_KEY",
+
   // WhatsApp aliases
   WHATSAPP_BOT_TOKEN: "WHATSAPP_TOKEN",
   WHATSAPP_API_TOKEN: "WHATSAPP_TOKEN",
@@ -103,6 +107,7 @@ export const CANONICAL_SECRET_KEYS = [
   "FIREWORKS_API_KEY",
   "PERPLEXITY_API_KEY",
   "DEEPSEEK_API_KEY",
+  "AVIAN_API_KEY",
 
   // Channel/Platform Tokens
   "DISCORD_BOT_TOKEN",
@@ -160,6 +165,7 @@ export const MODEL_PROVIDER_SECRETS: Record<string, string> = {
   fireworks: "FIREWORKS_API_KEY",
   perplexity: "PERPLEXITY_API_KEY",
   deepseek: "DEEPSEEK_API_KEY",
+  avian: "AVIAN_API_KEY",
 
   // Local inference (checks for URL instead of API key)
   ollama: "OLLAMA_BASE_URL",
