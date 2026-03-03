@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos-atropos-diplomacy"
-version = "2.0.0"
+version = "1.0.0"
 description = "Diplomacy multi-agent environment for elizaOS RL training with Atropos"
 readme = "README.md"
 requires-python = ">=3.11"
