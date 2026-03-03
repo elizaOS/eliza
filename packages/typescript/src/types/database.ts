@@ -1012,7 +1012,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
   // (adding multiple users to a channel is common). deleteParticipants
   // accepts {entityId, roomId} pairs for flexibility -- you might remove
   // different entities from different rooms in one call.
-  deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean>;
+  deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<void>;
   
   /**
    * Update participants (batch)
