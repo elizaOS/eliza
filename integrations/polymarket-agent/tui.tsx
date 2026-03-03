@@ -69,6 +69,8 @@ type InkKey = {
 import { v4 as uuidv4 } from "uuid";
 import { POLYMARKET_SERVICE_NAME } from "@elizaos/plugin-polymarket";
 import type { PolymarketService, Market, MarketsResponse } from "@elizaos/plugin-polymarket";
+const POLYMARKET_SERVICE_NAME = "polymarket";
+
 
 type ChatRole = "user" | "assistant" | "system";
 
