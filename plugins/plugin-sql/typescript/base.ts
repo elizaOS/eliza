@@ -645,8 +645,9 @@ export abstract class BaseDrizzleAdapter
     unique?: boolean,
     tableName?: string,
   ): Promise<number> {
+    // Note: roomIdOrParams accepts both UUID (legacy) and object params; stores.countMemories handles both signatures
     return this.withDatabase(() =>
-      stores.countMemories(this.db, roomIdOrParams as any, unique, tableName)
+      stores.countMemories(this.db, roomIdOrParams, unique, tableName)
     );
   }
 
