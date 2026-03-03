@@ -401,6 +401,7 @@ class BFCLReporter:
                 f"{baseline.ast:.2%} | "
                 f"{baseline.exec:.2%} |"
             )
+            rank += 1
 
         # Add elizaOS at the end if not added
         if not elizaos_added:
