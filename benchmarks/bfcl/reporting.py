@@ -380,9 +380,9 @@ class BFCLReporter:
             reverse=True,
         )
 
+        rank = 1
         elizaos_added = False
-        # Note: Rank tracking is intentional; elizaOS is inserted dynamically without altering enumeration.
-        for rank, (model_name, baseline) in enumerate(sorted_baselines, start=1):
+        for model_name, baseline in sorted_baselines:
             # Insert elizaOS in the right position
             if not elizaos_added and metrics.overall_score > baseline.overall:
                 lines.append(
@@ -395,7 +395,6 @@ class BFCLReporter:
                 rank += 1
 
             lines.append(
-                # Note: rank increment only updates local scope; elizaOS is prioritized in the loop.
                 f"| {rank} | {baseline.model_name} | "
                 f"{baseline.overall:.2%} | "
                 f"{baseline.ast:.2%} | "
