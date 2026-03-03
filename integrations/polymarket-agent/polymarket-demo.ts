@@ -28,8 +28,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, ".env") });
 
-import { parseArgs } from "./lib";
-import { chat, inputTest, verify } from "./runner";
+import { chat, inputTest, settings, verify } from "./runner";
 
 import { parseArgs, type Command } from "./lib";
 
@@ -88,6 +87,9 @@ async function main(): Promise<void> {
       break;
     case "input-test":
       await inputTest(options);
+      break;
+    case "settings":
+      await settings(options);
       break;
     default:
       usage();

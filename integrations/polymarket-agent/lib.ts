@@ -247,9 +247,7 @@ export function loadEnvConfig(options: CliOptions): EnvConfig {
     process.env.CLOB_API_PASSPHRASE ?? process.env.CLOB_PASS_PHRASE
   );
 
-  const creds =
-
-  const creds =
+    const creds =
     typeof key === "string" && typeof secret === "string" && typeof passphrase === "string"
       ? {
           key: z.string().min(1).parse(key),

@@ -53,16 +53,3 @@ describe("ResponseStreamExtractor behavior", () => {
   });
 });
 
-describe("TUI streaming integration", () => {
-  test("final text prefers streamed over callback", () => {
-    const streamedText = "Streamed";
-    const callbackText = "Callback";
-    expect((streamedText || callbackText).trim()).toBe("Streamed");
-  });
-
-  test("falls back to callback when no streaming", () => {
-    const streamedText = "";
-    const callbackText = "From action";
-    expect((streamedText || callbackText).trim()).toBe("From action");
-  });
-});

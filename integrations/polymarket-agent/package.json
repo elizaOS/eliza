@@ -3,7 +3,7 @@
   "version": "2.0.0-alpha",
   "description": "Autonomous Polymarket demo agent CLI (TypeScript) using plugin-evm + plugin-polymarket",
   "type": "module",
-  "private": false,
+  "private": true,
   "bin": {
     "polyagent": "./bin/polyagent.js"
   },
@@ -30,7 +30,8 @@
     "react": "19.2.3",
     "tsx": "^4.21.0",
     "uuid": "^11.1.0",
-    "zod": "^4.3.5"
+    "zod": "^4.3.5",
+    "@ethersproject/wallet": "^5.7.0"
   },
   "devDependencies": {
     "@types/react": "19.2.3",
