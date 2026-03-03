@@ -49,7 +49,7 @@
 ## 📚 Documentation Structure
 
 ```
-/root/eliza260106/
+project-root/
 │
 ├── DATABASE_API_DOCS_INDEX.md          ← START HERE (navigation)
 │   │
@@ -345,7 +345,7 @@
 - Transaction API design
 - Plugin schema registration design
 
-All documented in `/root/.cursor/plans/database_api_review_e3a9d084.plan.md`
+All documented in the project planning documents.
 
 ---
 
