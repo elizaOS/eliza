@@ -271,9 +271,35 @@ class ExecutionEvaluator:
 
         # Calculator mock
         async def calculate(expression: str) -> dict[str, object]:
-            # Simple eval for basic math (in production, use a safe parser)
+            # Safe expression evaluator using ast - only allows numeric literals and basic operators
+            import ast
+            import operator
+            
+            allowed_ops = {
+                ast.Add: operator.add,
+                ast.Sub: operator.sub,
+                ast.Mult: operator.mul,
+                ast.Div: operator.truediv,
+                ast.Pow: operator.pow,
+                ast.USub: operator.neg,
+                ast.UAdd: operator.pos,
+                ast.Mod: operator.mod,
+                ast.FloorDiv: operator.floordiv,
+            }
+            
+            def safe_eval(node: ast.AST) -> int | float:
+                if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+                    return node.value
+                elif isinstance(node, ast.BinOp) and type(node.op) in allowed_ops:
+                    return allowed_ops[type(node.op)](safe_eval(node.left), safe_eval(node.right))
+                elif isinstance(node, ast.UnaryOp) and type(node.op) in allowed_ops:
+                    return allowed_ops[type(node.op)](safe_eval(node.operand))
+                else:
+                    raise ValueError("Unsupported expression")
+            
             try:
-                result = eval(expression, {"__builtins__": {}})  # noqa: S307
+                tree = ast.parse(expression, mode='eval')
+                result = safe_eval(tree.body)
                 return {"expression": expression, "result": result}
             except Exception:
                 return {"expression": expression, "error": "Invalid expression"}
