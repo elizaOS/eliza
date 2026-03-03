@@ -247,12 +247,7 @@ export function loadEnvConfig(options: CliOptions): EnvConfig {
     process.env.CLOB_API_PASSPHRASE ?? process.env.CLOB_PASS_PHRASE
   );
 
-  console.log("🔍 env check:", {
-    CLOB_API_KEY: key?.[0] ?? "(missing)",
-    CLOB_API_SECRET: secret?.[0] ?? "(missing)",
-    CLOB_API_PASSPHRASE: passphrase?.[0] ?? "(missing)",
-    EVM_PRIVATE_KEY: privateKeyRaw?.[0] ?? "(missing)",
-  });
+  const creds =
 
   const creds =
     typeof key === "string" && typeof secret === "string" && typeof passphrase === "string"
