@@ -20,7 +20,7 @@ AgentBench evaluates LLMs functioning as autonomous agents across diverse intera
 ## Installation
 
 ```bash
-# From the benchmarks/agentbench/python directory
+# From the benchmarks/agentbench directory
 pip install -e .
 
 # With development dependencies
