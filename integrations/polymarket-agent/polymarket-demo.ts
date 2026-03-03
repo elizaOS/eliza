@@ -31,7 +31,7 @@ dotenv.config({ path: path.join(__dirname, ".env") });
 import { parseArgs } from "./lib";
 import { chat, inputTest, verify } from "./runner";
 
-type Command = "help" | "verify" | "chat" | "input-test";
+import { parseArgs, type Command } from "./lib";
 
 function usage(): void {
   const text = [
