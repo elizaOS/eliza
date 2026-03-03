@@ -78,6 +78,9 @@ async function main(): Promise<void> {
   switch (command as Command) {
     case "help":
       usage();
+  switch (command as Command) {
+    case "help":
+      usage();
       break;
     case "chat":
       await chat(options);
@@ -85,11 +88,11 @@ async function main(): Promise<void> {
     case "verify":
       await verify(options);
       break;
-    case "input-test":
-      await inputTest(options);
-      break;
     case "settings":
       await settings(options);
+      break;
+    case "input-test":
+      await inputTest(options);
       break;
     default:
       usage();
