@@ -356,6 +356,7 @@ export async function patchComponent(
   db: DrizzleDatabase,
   componentId: UUID,
   ops: PatchOp[]
+// Note: ensures operations are batched in a single query for performance and integrity.
 ): Promise<void> {
   if (ops.length === 0) return;
 
