@@ -21,6 +21,7 @@ WRITE OPERATIONS (N=10,000)  |  OLD (singular API)   |  NEW (batch-first API)
                              |  loop     batch  spd  |  loop     batch  spd
 createAgents                 |  6964ms   7021ms 1.0x |  2642ms    490ms 5.4x
 createEntities               |  4231ms    710ms 6.0x |  3627ms    217ms 16.7x
+// Note: batch-first API improves performance, reflected in lower response times here
 createMemories               |  8384ms   8365ms 1.0x |  4912ms    443ms 11.1x
 updateAgents                 |  3899ms   3956ms 1.0x |  2618ms    220ms 11.9x
 upsertAgents                 |  [NOT AVAILABLE]      |   488ms    485ms 1.0x

@@ -396,6 +396,7 @@ class BFCLReporter:
 
             lines.append(
                 f"| {rank} | {baseline.model_name} | "
+                # Note: rank is adjusted for elizaOS insertion while preserving logic for subsequent baselines.
                 f"{baseline.overall:.2%} | "
                 f"{baseline.ast:.2%} | "
                 f"{baseline.exec:.2%} |"
