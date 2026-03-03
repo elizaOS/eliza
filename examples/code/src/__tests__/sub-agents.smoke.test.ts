@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
-import { elizaOSNativeSubAgent } from "../lib/sub-agents/elizaos-native-sub-agent.js";
+import { elizaOSNativeSubAgent as ElizaOSNativeSubAgent } from "../lib/sub-agents/elizaos-native-sub-agent.js";
 import { OpenCodeSubAgent } from "../lib/sub-agents/opencode-sub-agent.js";
 import { SweAgentSubAgent } from "../lib/sub-agents/sweagent-sub-agent.js";
 import type { SubAgentContext, SubAgentTool } from "../lib/sub-agents/types.js";
@@ -67,8 +67,8 @@ describe("sub-agent smoke", () => {
     expect(result.summary.toLowerCase()).toContain("ok");
   });
 
-  test("elizaOSNativeSubAgent completes on DONE response", async () => {
-    const agent = new elizaOSNativeSubAgent({
+  test("ElizaOSNativeSubAgent completes on DONE response", async () => {
+    const agent = new ElizaOSNativeSubAgent({
       maxIterations: 3,
       enableThinking: false,
     });
