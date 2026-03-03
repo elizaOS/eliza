@@ -200,11 +200,25 @@ class MetricsCalculator:
         sorted_latencies = sorted(latencies)
         n = len(sorted_latencies)
 
+        def percentile(p: float) -> float:
+            """Compute the p-th percentile using linear interpolation."""
+            if n == 1:
+                return sorted_latencies[0]
+
+            idx = (n - 1) * p
+            lower = int(idx)
+            upper = min(lower + 1, n - 1)
+            weight = idx - lower
+
+            lower_val = sorted_latencies[lower]
+            upper_val = sorted_latencies[upper]
+            return lower_val * (1.0 - weight) + upper_val * weight
+
         return {
             "avg": statistics.mean(latencies),
-            "p50": sorted_latencies[int(n * 0.5)],
-            "p95": sorted_latencies[min(int(n * 0.95), n - 1)],
-            "p99": sorted_latencies[min(int(n * 0.99), n - 1)],
+            "p50": percentile(0.5),
+            "p95": percentile(0.95),
+            "p99": percentile(0.99),
         }
 
     def _analyze_errors(
@@ -225,10 +239,15 @@ class MetricsCalculator:
         }
 
         for result in results:
+            # Check execution error first (AST matched but exec failed)
+            if result.ast_match and not result.exec_success:
+                error_counts["execution_error"] += 1
+                continue
+
             if result.ast_match:
                 continue
 
-            # Categorize the error
+            # Categorize the error for non-AST-matching results
             if result.error:
                 if "timeout" in result.error.lower():
                     error_counts["timeout"] += 1
@@ -266,9 +285,6 @@ class MetricsCalculator:
 
             if not result.relevance_correct:
                 error_counts["relevance_error"] += 1
-
-            if not result.exec_success and result.ast_match:
-                error_counts["execution_error"] += 1
 
         return error_counts
 
