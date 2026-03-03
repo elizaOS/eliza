@@ -381,8 +381,7 @@ class BFCLReporter:
         )
 
         elizaos_added = False
-        rank = 1
-        for model_name, baseline in sorted_baselines:
+        for rank, (model_name, baseline) in enumerate(sorted_baselines, start=1):
             # Insert elizaOS in the right position
             if not elizaos_added and metrics.overall_score > baseline.overall:
                 lines.append(
@@ -400,12 +399,11 @@ class BFCLReporter:
                 f"{baseline.ast:.2%} | "
                 f"{baseline.exec:.2%} |"
             )
-            rank += 1
 
         # Add elizaOS at the end if not added
         if not elizaos_added:
             lines.append(
-                f"| **{rank}** | **elizaOS** | "
+                f"| **{len(sorted_baselines) + 1}** | **elizaOS** | "
                 f"**{metrics.overall_score:.2%}** | "
                 f"**{metrics.ast_accuracy:.2%}** | "
                 f"**{metrics.exec_accuracy:.2%}** |"
@@ -492,3 +490,4 @@ def print_results(results: BFCLBenchmarkResults) -> None:
     """Convenience function to print results to console."""
     reporter = BFCLReporter(results.config)
     reporter._print_console_summary(results)
+
