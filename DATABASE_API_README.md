@@ -115,8 +115,8 @@ const incomplete = await store.query("goals", { is_completed: false });
 | `getAgents()` | `Agent[]` | All agents |
 | `getAgentsByIds(ids)` | `Agent[]` | By ID list |
 | `createAgents(agents)` | `UUID[]` | Insert agents |
-| `updateAgents(updates)` | `void` | Modify agents |
-| `deleteAgents(ids)` | `void` | Remove agents |
+| `updateAgents(updates)` | `boolean` | Modify agents |
+| `deleteAgents(ids)` | `boolean` | Remove agents |
 | `upsertAgents(agents)` | `void` | Insert or update |
 | `countAgents()` | `number` | Total count |
 | `cleanupAgents()` | `void` | Remove stale agents |
@@ -133,8 +133,8 @@ const incomplete = await store.query("goals", { is_completed: false });
 | `deleteEntities(ids)` | `void` | Remove entities |
 | `createComponents(components)` | `UUID[]` | Insert components |
 | `getComponentsByIds(ids)` | `Component[]` | By ID list |
-| `updateComponents(components)` | `void` | Modify components |
-| `deleteComponents(ids)` | `void` | Remove components |
+| `updateComponents(components)` | `boolean` | Modify components |
+| `deleteComponents(ids)` | `boolean` | Remove components |
 
 ### Memory CRUD
 
@@ -143,8 +143,8 @@ const incomplete = await store.query("goals", { is_completed: false });
 | `getMemories(params)` | `Memory[]` | Query with filters |
 | `getMemoriesByIds(ids)` | `Memory[]` | By ID list |
 | `createMemories(memories)` | `UUID[]` | Insert memories |
-| `updateMemories(memories)` | `void` | Modify memories |
-| `deleteMemories(ids)` | `void` | Remove memories |
+| `updateMemories(memories)` | `boolean` | Modify memories |
+| `deleteMemories(ids)` | `boolean` | Remove memories |
 | `searchMemories(params)` | `Memory[]` | Vector similarity search |
 | `countMemories(roomId)` | `number` | Count in room |
 
@@ -159,8 +159,8 @@ const incomplete = await store.query("goals", { is_completed: false });
 | `upsertRooms(rooms)` | `void` | Insert or update |
 | `createRoomParticipants(entityIds, roomId)` | `UUID[]` | Add entities to room |
 | `deleteParticipants(participants)` | `void` | Remove from room |
-| `updateParticipants(participants)` | `void` | Modify participants |
-| `updateParticipantUserState(roomId, entityId, state)` | `void` | Set FOLLOWED/MUTED/null |
+| `updateParticipants(participants)` | `boolean` | Modify participants |
+| `updateParticipantUserState(roomId, entityId, state)` | `boolean` | Set FOLLOWED/MUTED/null |
 
 ### Relationship CRUD
 
@@ -170,8 +170,8 @@ const incomplete = await store.query("goals", { is_completed: false });
 | `getRelationships(params)` | `Relationship[]` | By entity+tags |
 | `createRelationships(relationships)` | `UUID[]` | Insert relationships |
 | `getRelationshipsByIds(ids)` | `Relationship[]` | By ID list |
-| `updateRelationships(relationships)` | `void` | Modify relationships |
-| `deleteRelationships(ids)` | `void` | Remove relationships |
+| `updateRelationships(relationships)` | `boolean` | Modify relationships |
+| `deleteRelationships(ids)` | `boolean` | Remove relationships |
 
 ### Task, Log, Cache, World, Pairing
 
@@ -222,7 +222,7 @@ To implement a new database adapter:
 1. Extend `DatabaseAdapter<YourConnectionType>`
 2. Implement all non-optional methods on `IDatabaseAdapter`
 3. Return `UUID[]` from all `create*` methods
-4. Throw errors from `update*`/`delete*` methods instead of returning booleans
+4. Return booleans from `update*`/`delete*` methods to indicate success
 5. Optionally implement `registerPluginSchema` and `getPluginStore` for plugin table support
 6. Optionally implement `IMessagingAdapter` methods for messaging support
 
@@ -233,9 +233,9 @@ class MyAdapter extends DatabaseAdapter<MyConnection> {
     // Throw on failure (don't return false)
   }
   
-  async updateMemories(memories: Array<...>): Promise<void> {
+  async updateMemories(memories: Array<...>): Promise<boolean> {
     // Update all memories
-    // Throw if any fail (don't return boolean[])
+    // Return true on success, false on failure
   }
 }
 ```
