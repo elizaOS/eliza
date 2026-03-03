@@ -301,15 +301,15 @@ export async function updateParticipants(
   if (participants.length === 0) return;
 
   // Build CASE expressions for each field being updated
-  const hasRoomStateUpdates = participants.some(p => (p.updates as any).roomState !== undefined);
-  const hasMetadataUpdates = participants.some(p => (p.updates as any).metadata !== undefined);
+  const hasRoomStateUpdates = participants.some(p => 'roomState' in p.updates);
+  const hasMetadataUpdates = participants.some(p => 'metadata' in p.updates);
   
   const setClauses: SQL<unknown>[] = [];
   
   if (hasRoomStateUpdates) {
     const roomStateCases = participants
-      .filter(p => (p.updates as any).roomState !== undefined)
-      .map(p => sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${(p.updates as any).roomState}`);
+      .filter(p => 'roomState' in p.updates)
+      .map(p => sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${p.updates.roomState}`);
     
     if (roomStateCases.length > 0) {
       setClauses.push(sql`${participantTable.roomState} = CASE ${sql.join(roomStateCases, sql` `)} ELSE ${participantTable.roomState} END`);
@@ -318,9 +318,9 @@ export async function updateParticipants(
   
   if (hasMetadataUpdates) {
     const metadataCases = participants
-      .filter(p => (p.updates as any).metadata !== undefined)
+      .filter(p => 'metadata' in p.updates)
       .map(p => {
-        const jsonString = JSON.stringify((p.updates as any).metadata);
+        const jsonString = JSON.stringify(p.updates.metadata);
         return sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${jsonString}::jsonb`;
       });
     
