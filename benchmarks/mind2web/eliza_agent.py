@@ -785,7 +785,7 @@ When task is complete:
 # ---------------------------------------------------------------------------
 
 
-class elizaOSMind2WebAgent:
+class ElizaOSMind2WebAgent:
     """elizaOS-powered agent for Mind2Web benchmark."""
 
     def __init__(
@@ -989,7 +989,7 @@ class MockMind2WebAgent:
 
 def create_mind2web_agent(
     config: Mind2WebConfig,
-) -> elizaOSMind2WebAgent | MockMind2WebAgent:
+) -> ElizaOSMind2WebAgent | MockMind2WebAgent:
     """Create a Mind2Web agent.
 
     Args:
@@ -1001,4 +1001,4 @@ def create_mind2web_agent(
     if config.use_mock or not ELIZAOS_AVAILABLE:
         return MockMind2WebAgent(config)
 
-    return elizaOSMind2WebAgent(config)
+    return ElizaOSMind2WebAgent(config)
