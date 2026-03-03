@@ -227,7 +227,7 @@ class ASTEvaluator:
 
     def _try_parse_number(self, value: object) -> Optional[int | float]:
         """Try to parse a value as a number."""
-        if isinstance(value, int | float):
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
             return value
         if isinstance(value, str):
             try:
