@@ -1,5 +1,8 @@
 # elizaOS Database API Benchmark — OLD vs NEW Comparison
 
+> [!NOTE]
+> This benchmark document summarizes the performance improvements achieved in the database refactor. The results show up to 18.9x speedup in common operations and demonstrate the new API's scalability with larger datasets.
+
 ## Setup
 
 - Backend: PGLite (in-process WASM PostgreSQL, fresh temp dir per run)
