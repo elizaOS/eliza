@@ -53,11 +53,13 @@ runtime.createMemory(memory, tableName, unique?): Promise<UUID>
 |--------|-----------|---------|
 | `create*` | INSERT | `UUID[]` (created IDs) |
 | `get*` / `search*` | SELECT | Entity arrays or `null` |
-| `update*` | UPDATE | `void` (throws on failure) |
-| `delete*` | DELETE | `void` (throws on failure) |
+| `update*` | UPDATE | `boolean` (true on success) |
+| `delete*` | DELETE | `boolean` (true on success) |
 | `upsert*` | INSERT ... ON CONFLICT UPDATE | `void` (caller already has IDs) |
 
 **WHY `upsert` returns `void`:** Upserts are idempotent by design. The caller already has the entity IDs (they're the lookup key). Returning `UUID[]` would suggest new IDs were generated, which is misleading when rows already exist.
+
+**WHY `update*`/`delete*` return `boolean`:** Returns `true` on success. Some implementations may return `false` if no rows matched, allowing callers to detect no-op updates. Critical failures still throw.
 
 ### 3. Interface Segregation
 
