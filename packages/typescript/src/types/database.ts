@@ -372,8 +372,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
   // Single-item wrappers live on AgentRuntime.
   getAgentsByIds(agentIds: UUID[]): Promise<Agent[]>;
   createAgents(agents: Partial<Agent>[]): Promise<UUID[]>;
-  updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean>;
-  deleteAgents(agentIds: UUID[]): Promise<boolean>;
+  updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<void>;
+  deleteAgents(agentIds: UUID[]): Promise<void>;
   
   /**
    * Upsert agents (insert or update by ID)
