@@ -51,9 +51,11 @@
 ## 📚 Documentation Structure
 
 ```
-project-root/
+/
 │
-├── DATABASE_API_DOCS_INDEX.md          ← START HERE (navigation)
+├── docs/
+│   │
+│   ├── DATABASE_API_DOCS_INDEX.md      ← START HERE (navigation)
 │   │
 │   ├─→ DATABASE_API_PHASE1.md          ← Overview (everyone)
 │   │
@@ -67,7 +69,7 @@ project-root/
 │   │
 │   └─→ PHASE1_CHANGELOG_ENTRY.md       ← For main CHANGELOG (release managers)
 │
-└── packages/typescript/src/types/
+└── src/
     └── database.ts                      ← Interface with WHY comments
 ```
 
@@ -347,7 +349,7 @@ project-root/
 - Transaction API design
 - Plugin schema registration design
 
-All documented in the project planning documents.
+All documented in future work planning documents.
 
 ---
 
