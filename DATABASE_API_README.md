@@ -115,8 +115,8 @@ const incomplete = await store.query("goals", { is_completed: false });
 | `getAgents()` | `Agent[]` | All agents |
 | `getAgentsByIds(ids)` | `Agent[]` | By ID list |
 | `createAgents(agents)` | `UUID[]` | Insert agents |
-| `updateAgents(updates)` | `boolean` | Modify agents |
-| `deleteAgents(ids)` | `boolean` | Remove agents |
+| `updateAgents(updates)` | `void` | Modify agents (throws on failure) |
+| `deleteAgents(ids)` | `void` | Remove agents (throws on failure) |
 | `upsertAgents(agents)` | `void` | Insert or update |
 | `countAgents()` | `number` | Total count |
 | `cleanupAgents()` | `void` | Remove stale agents |
@@ -158,7 +158,7 @@ const incomplete = await store.query("goals", { is_completed: false });
 | `deleteRooms(ids)` | `void` | Remove rooms |
 | `upsertRooms(rooms)` | `void` | Insert or update |
 | `createRoomParticipants(entityIds, roomId)` | `UUID[]` | Add entities to room |
-| `deleteParticipants(participants)` | `boolean` | Remove from room |
+| `deleteParticipants(participants)` | `void` | Remove from room (throws on failure) |
 | `updateParticipants(participants)` | `void` | Modify participants |
 | `updateParticipantUserState(roomId, entityId, state)` | `void` | Set FOLLOWED/MUTED/null |
 
