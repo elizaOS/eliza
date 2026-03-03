@@ -7,10 +7,12 @@ Uses mock functions for safe, reproducible testing.
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import logging
+import operator
 from collections.abc import Callable, Awaitable
-from typing import Optional
+from typing import Optional, Any
 
 from benchmarks.bfcl.types import ArgumentValue, FunctionCall, FunctionDefinition
 
@@ -19,6 +21,49 @@ logger = logging.getLogger(__name__)
 
 # Type for mock function handlers
 MockHandler = Callable[..., Awaitable[object] | object]
+
+
+def safe_eval(expr: str) -> Any:
+    """Safely evaluate simple numeric expressions."""
+    # Parse the expression into an AST
+    try:
+        tree = ast.parse(expr, mode='eval')
+    except SyntaxError:
+        raise ValueError(f"Invalid expression: {expr}")
+
+    # Define allowed operators
+    operators = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.USub: operator.neg,
+    }
+
+    def eval_node(node):
+        """Recursively evaluate AST nodes."""
+        if isinstance(node, ast.Expression):
+            return eval_node(node.body)
+        elif isinstance(node, ast.Num):
+            return node.n
+        elif isinstance(node, ast.Constant):
+            if isinstance(node.value, (int, float)):
+                return node.value
+            raise ValueError(f"Unsupported constant type: {type(node.value)}")
+        elif isinstance(node, ast.BinOp):
+            op_type = type(node.op)
+            if op_type not in operators:
+                raise ValueError(f"Unsupported operator: {op_type}")
+            left = eval_node(node.left)
+            right = eval_node(node.right)
+            return operators[op_type](left, right)
+        elif isinstance(node, ast.UnaryOp):
+            if not isinstance(node.op, ast.USub):
+                raise ValueError("Only negation is supported for unary operators")
+            return -eval_node(node.operand)
+        raise ValueError(f"Unsupported expression type: {type(node)}")
+
+    return eval_node(tree)
 
 
 class MockFunctionRegistry:

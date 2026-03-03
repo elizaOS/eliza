@@ -240,11 +240,9 @@ class MetricsCalculator:
 
         for result in results:
             # Check execution error first (AST matched but exec failed)
-            if result.ast_match and not result.exec_success:
-                error_counts["execution_error"] += 1
-                continue
-
             if result.ast_match:
+                if not result.exec_success:
+                    error_counts["execution_error"] += 1
                 continue
 
             # Categorize the error for non-AST-matching results
