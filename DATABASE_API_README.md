@@ -10,9 +10,9 @@
 |--------|-----------|---------|
 | `create*` | INSERT | `UUID[]` (created IDs) |
 | `get*` / `search*` | SELECT | Entity arrays or `null` |
-| `update*` | UPDATE | `void` | Modify agents |
-| `delete*` | DELETE | `void` | Remove agents |
-| `upsert*` | INSERT ... ON CONFLICT UPDATE | `void` | (caller already has IDs) |
+| `update*` | UPDATE | `void` |
+| `delete*` | DELETE | `void` |
+| `upsert*` | INSERT ... ON CONFLICT UPDATE | `void` |
 
 ...
 
