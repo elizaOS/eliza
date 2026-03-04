@@ -66,3 +66,4 @@ describe('patchComponent', () => {
         expect(obj).toEqual({ a: { items: [{ data: { value: 2 } }] } });
     });
 });
+// Note: tests complex nested paths to ensure accurate deep updates in object structures
