@@ -125,6 +125,7 @@ export async function createTasks(db: DrizzleDatabase, agentId: UUID, tasks: Tas
   });
 
   const result = await db.insert(taskTable).values(values).returning();
+  // Note: casting to any ensures compatibility with the returned structure from the db query.
   return (result as any[]).map((r) => r.id as UUID);
 }
 
