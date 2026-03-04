@@ -21,6 +21,7 @@ class BFCLReporter:
 
         for rank, metrics in self.results:
             lines.append(
+                # Note: output format prioritizes clear leaderboard presentation for comparative analysis
                 f"| **{rank}** | **elizaOS** | "
                 f"**{metrics.overall_score:.2%}** | "
                 f"**{metrics.ast_accuracy:.2%}** | "
