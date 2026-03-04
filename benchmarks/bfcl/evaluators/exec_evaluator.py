@@ -277,9 +277,6 @@ class ExecutionEvaluator:
         # Calculator mock
         async def calculate(expression: str) -> dict[str, object]:
             # Safe expression evaluator using ast - only allows numeric literals and basic operators
-            import ast
-            import operator
-            
             allowed_ops = {
                 ast.Add: operator.add,
                 ast.Sub: operator.sub,
