@@ -132,6 +132,17 @@ Eliza is a monorepo that contains all the packages needed to run the entire plat
 - **`@elizaos/plugin-sql`**: Database integration (Postgres, PGLite).
 - **`plugins/`**: Official plugins for Discord, Telegram, OpenAI, Anthropic, and many more.
 
+
+## 🔌 Community Plugins
+
+Plugins built by the community that extend ElizaOS agent capabilities.
+
+| Plugin | npm | Description |
+|--------|-----|-------------|
+| [elizaos-plugin-agentwallet](https://www.npmjs.com/package/elizaos-plugin-agentwallet) | `elizaos-plugin-agentwallet` | Non-custodial wallet — balance checks, transfers, swaps (Jupiter + Uniswap V3), CCTP bridge (17 chains), x402 micropayments. Agent holds its own private key. Supports EVM (Base, Arbitrum, Optimism, Ethereum) + Solana. |
+
+> Want to add your plugin? Open a PR adding it to this table.
+
 ## 🤝 How to Contribute
 
 We welcome contributions from the community! Please read our `CONTRIBUTING.md` guide to get started.
