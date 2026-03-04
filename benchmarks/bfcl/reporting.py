@@ -18,7 +18,15 @@ class BFCLReporter:
     def add_result(self, rank: int, metrics: Metrics):
         self.results.append((rank, metrics))
 
-    def generate_report(self) -> str:
+    async def generate_report(self, results: BFCLBenchmarkResults) -> str:
+        # Populate from results
+        metrics = Metrics(
+            results.metrics.overall_score,
+            results.metrics.ast_accuracy,
+            results.metrics.exec_accuracy
+        )
+        self.add_result(1, metrics)
+        
         lines = ["# BFCL Report", ""]
 
         for rank, metrics in self.results:
