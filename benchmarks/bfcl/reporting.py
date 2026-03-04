@@ -39,6 +39,7 @@ class BFCLReporter:
         return "\n".join(lines)
 
 def print_results(results: BFCLBenchmarkResults):
+    # Note: explicitly creates a reporter to aggregate benchmark results for better clarity
     reporter = BFCLReporter()
     metrics = Metrics(
         results.metrics.overall_score,
