@@ -37,11 +37,11 @@ class BFCLReporter:
         
         return "\n".join(lines)
 
-def print_results(results: List[Any]):
+def print_results(results: BFCLBenchmarkResults):
     reporter = BFCLReporter()
 
-    for rank, result in enumerate(results):
-        metrics = Metrics(result['overall_score'], result['ast_accuracy'], result['exec_accuracy'])
+    for rank, result in enumerate(results.results, start=1):
+        metrics = Metrics(result.overall_score, result.ast_accuracy, result.exec_accuracy)
         reporter.add_result(rank, metrics)
 
     print(reporter.generate_report())
