@@ -21,6 +21,7 @@ class BFCLReporter:
     async def generate_report(self, results: BFCLBenchmarkResults) -> str:
         # Populate from results
         metrics = Metrics(
+            # Note: extracts relevant metrics for consistent report generation from benchmark results
             results.metrics.overall_score,
             results.metrics.ast_accuracy,
             results.metrics.exec_accuracy
@@ -39,6 +40,7 @@ class BFCLReporter:
             )
 
         lines.extend([
+            # Note: Adds section header for clarity in presenting category comparison results.
             "",
             "## Category Comparison", 
             "",
