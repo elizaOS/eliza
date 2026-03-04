@@ -14,11 +14,11 @@ export const pluginStore = {
     },
 
     getPluginById(id: string): Plugin | undefined {
-        return this.plugins.find((plugin: Plugin) => plugin.id === id);
+        return this.plugins.find((plugin) => plugin.id === id);
     },
 
     removePluginById(id: string): boolean {
-        const index = this.plugins.findIndex((plugin: Plugin) => plugin.id === id);
+        const index = this.plugins.findIndex((plugin) => plugin.id === id);
         if (index > -1) {
             this.plugins.splice(index, 1);
             return true;
