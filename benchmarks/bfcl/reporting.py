@@ -383,8 +383,8 @@ class BFCLReporter:
         rank = 1
         elizaos_added = False
         for model_name, baseline in sorted_baselines:
-            # Insert elizaOS in the right position
-            if not elizaos_added and metrics.overall_score > baseline.overall:
+            # Insert elizaOS in the right position - handle ties by treating equals as greater
+            if not elizaos_added and metrics.overall_score >= baseline.overall:
                 lines.append(
                     f"| **{rank}** | **elizaOS** | "
                     f"**{metrics.overall_score:.2%}** | "
@@ -396,7 +396,6 @@ class BFCLReporter:
 
             lines.append(
                 f"| {rank} | {baseline.model_name} | "
-                # Note: rank is adjusted for elizaOS insertion while preserving logic for subsequent baselines.
                 f"{baseline.overall:.2%} | "
                 f"{baseline.ast:.2%} | "
                 f"{baseline.exec:.2%} |"
@@ -406,7 +405,7 @@ class BFCLReporter:
         # Add elizaOS at the end if not added
         if not elizaos_added:
             lines.append(
-                f"| **{len(sorted_baselines) + 1}** | **elizaOS** | "
+                f"| **{rank}** | **elizaOS** | "
                 f"**{metrics.overall_score:.2%}** | "
                 f"**{metrics.ast_accuracy:.2%}** | "
                 f"**{metrics.exec_accuracy:.2%}** |"
