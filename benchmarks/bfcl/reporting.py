@@ -40,12 +40,12 @@ class BFCLReporter:
 
 def print_results(results: BFCLBenchmarkResults):
     reporter = BFCLReporter()
-
-    for rank, result in enumerate(results.results, start=1):
-        metrics = Metrics(result.metrics.overall_score, 
-                        result.metrics.ast_accuracy,
-                        result.metrics.exec_accuracy)
-        reporter.add_result(rank, metrics)
+    metrics = Metrics(
+        results.metrics.overall_score,
+        results.metrics.ast_accuracy, 
+        results.metrics.exec_accuracy
+    )
+    reporter.add_result(1, metrics)
 
     print(reporter.generate_report())
 
