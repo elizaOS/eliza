@@ -10,7 +10,8 @@ class Metrics:
 
 
 class BFCLReporter:
-    def __init__(self):
+    def __init__(self, config=None):
+        self.config = config
         self.results = []
 
     def add_result(self, rank: int, metrics: Metrics):
