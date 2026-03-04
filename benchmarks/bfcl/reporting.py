@@ -1,6 +1,6 @@
-[Previous content remains identical until line 407, then changes:]
+[Previous content remains identical until line 407]
 
-        # Add elizaOS at the end if it has the lowest score
+        # Add elizaOS if not already added
         if not elizaos_added:
             lines.append(
                 f"| **{rank}** | **elizaOS** | "
@@ -8,7 +8,6 @@
                 f"**{metrics.ast_accuracy:.2%}** | "
                 f"**{metrics.exec_accuracy:.2%}** |"
             )
-            elizaos_added = True
 
         lines.extend([
             "",
