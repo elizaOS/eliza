@@ -1,5 +1,6 @@
 import json
 from typing import List, Any
+from benchmarks.bfcl.types import BFCLBenchmarkResults
 
 
 class Metrics:
@@ -41,7 +42,9 @@ def print_results(results: BFCLBenchmarkResults):
     reporter = BFCLReporter()
 
     for rank, result in enumerate(results.results, start=1):
-        metrics = Metrics(result.overall_score, result.ast_accuracy, result.exec_accuracy)
+        metrics = Metrics(result.metrics.overall_score, 
+                        result.metrics.ast_accuracy,
+                        result.metrics.exec_accuracy)
         reporter.add_result(rank, metrics)
 
     print(reporter.generate_report())
