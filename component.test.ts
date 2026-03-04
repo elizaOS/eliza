@@ -9,6 +9,7 @@ describe('Plugin Store', () => {
         expect(pluginStore.getPluginById('testPlugin')).toEqual(plugin);
     });
     
+    // Note: ensures only valid plugins are added, maintaining store integrity and preventing errors
     it('does not add invalid plugins', () => {
         // Attempt to add invalid plugin
         const invalidPlugin = { name: 'invalid' };
