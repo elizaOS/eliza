@@ -1,4 +1,5 @@
 import json
+import asyncio
 from typing import List, Any
 from benchmarks.bfcl.types import BFCLBenchmarkResults
 
@@ -12,13 +13,25 @@ class Metrics:
 
 class BFCLReporter:
     def __init__(self, config=None):
-        self.config = config
+        self.config = config or {}
         self.results = []
+        self.best_results = {}
+        self.output_paths = {
+            'json': self.config.get('json_output', 'report.json'),
+            'markdown': self.config.get('md_output', 'report.md'),
+            'leaderboard': self.config.get('leaderboard', 'leaderboard.json')
+        }
 
     def add_result(self, rank: int, metrics: Metrics):
         self.results.append((rank, metrics))
+        if metrics.overall_score > self.best_results.get(rank, {'overall_score': 0})['overall_score']:
+            self.best_results[rank] = {
+                'overall_score': metrics.overall_score,
+                'ast_accuracy': metrics.ast_accuracy,
+                'exec_accuracy': metrics.exec_accuracy
+            }
 
-    async def generate_report(self, results: BFCLBenchmarkResults) -> str:
+    async def generate_report(self, results: BFCLBenchmarkResults) -> dict:
         # Populate from results
         metrics = Metrics(
             # Note: extracts relevant metrics for consistent report generation from benchmark results
@@ -46,7 +59,40 @@ class BFCLReporter:
             "",
         ])
         
-        return "\n".join(lines)
+        report_md = "\n".join(lines)
+        
+        # Generate JSON output
+        report_json = {
+            'results': [
+                {
+                    'rank': rank,
+                    'overall_score': metrics.overall_score,
+                    'ast_accuracy': metrics.ast_accuracy,
+                    'exec_accuracy': metrics.exec_accuracy
+                }
+                for rank, metrics in self.results
+            ],
+            'best_results': self.best_results
+        }
+        
+        # Write outputs to files
+        with open(self.output_paths['json'], 'w') as f:
+            json.dump(report_json, f, indent=2)
+        with open(self.output_paths['markdown'], 'w') as f:
+            f.write(report_md)
+        with open(self.output_paths['leaderboard'], 'w') as f:
+            json.dump(self.best_results, f, indent=2)
+            
+        # Console summary
+        print("\nBenchmark Summary:")
+        print(f"Overall Best Score: {max(r['overall_score'] for r in self.best_results.values()):.2%}")
+        print(f"Reports written to: {', '.join(self.output_paths.values())}\n")
+        
+        return {
+            'markdown': report_md,
+            'json': report_json,
+            'paths': self.output_paths
+        }
 
 def print_results(results: BFCLBenchmarkResults):
     # Note: explicitly creates a reporter to aggregate benchmark results for better clarity
@@ -58,6 +104,6 @@ def print_results(results: BFCLBenchmarkResults):
     )
     reporter.add_result(1, metrics)
 
-    print(reporter.generate_report())
+    print(asyncio.run(reporter.generate_report(results)))
 
 # Note: ranks are assigned directly via enumerate; manual adjustment could cause duplication.
