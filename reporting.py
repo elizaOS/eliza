@@ -38,13 +38,13 @@ class Report:
     def add_entry(self, category, entry):
         self.data[category].append(entry)
 
-    def generate_report(self):
+    def print_report(self):  # Changed method name for consistency
         report_lines = []
         for category, entries in self.data.items():
             report_lines.append(f'Category: {category}')
             for entry in entries:
                 report_lines.append(f' - {entry}')
-        return "\n".join(report_lines)
+        print("\n".join(report_lines))  # Changed to print directly
 
 def print_results(results: BFCLBenchmarkResults):
     reporter = BFCLReporter()
