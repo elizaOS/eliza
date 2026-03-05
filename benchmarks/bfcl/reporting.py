@@ -1,6 +1,6 @@
 import json
 import asyncio
-from typing import List, Any
+from typing import List, Any, Dict, Optional
 from benchmarks.bfcl.types import BFCLBenchmarkResults
 
 
@@ -17,76 +17,157 @@ class BFCLReporter:
         self.config = dict(config.__dict__ if hasattr(config, '__dict__') else config or {})
         self.results = []
         self.best_results = {}
+        
+        # Model-specific output paths
+        model_name = self.config.get('model_name', 'default')
         self.output_paths = {
-            'json': self.config.get('json_output', 'report.json'),
-            'markdown': self.config.get('md_output', 'report.md'),
-            'leaderboard': self.config.get('leaderboard', 'leaderboard.json')
+            'json': f'reports/{model_name}_report.json',
+            'markdown': f'reports/{model_name}_report.md',
+            'leaderboard': f'reports/{model_name}_leaderboard.json',
+            'errors': f'reports/{model_name}_errors.json',
+            'latency': f'reports/{model_name}_latency.json'
         }
+        
+        self.error_analysis = {}
+        self.latency_stats = []
+        self.baseline_scores = self.config.get('baseline_scores', {})
 
-    def add_result(self, rank: int, metrics: Metrics):
-        self.results.append((rank, metrics))
+    def add_result(self, metrics: Metrics, *, error_data=None, latency_ms=None):
+        # Calculate proper leaderboard rank based on scores
+        rank = 1 + sum(1 for r in self.results if r['metrics'].overall_score > metrics.overall_score)
+        
+        result = {
+            'rank': rank,
+            'metrics': metrics,
+            'errors': error_data or {},
+            'latency_ms': latency_ms
+        }
+        self.results.append(result)
+        
+        # Track best results
         if metrics.overall_score > self.best_results.get(rank, {'overall_score': 0})['overall_score']:
             self.best_results[rank] = {
                 'overall_score': metrics.overall_score,
-                'ast_accuracy': metrics.ast_accuracy,
+                'ast_accuracy': metrics.ast_accuracy, 
                 'exec_accuracy': metrics.exec_accuracy
             }
-
-    def generate_report(self) -> str:
-def generate_report(self) -> str:
-        # Sort results by overall score for correct leaderboard ranking
-        sorted_results = sorted(self.results, 
-                             key=lambda x: x[1].overall_score,
-                             reverse=True)
         
-        # Calculate metrics across categories
-        avg_ast = sum(m.ast_accuracy for _, m in sorted_results) / len(sorted_results) if sorted_results else 0
-        avg_exec = sum(m.exec_accuracy for _, m in sorted_results) / len(sorted_results) if sorted_results else 0
+        # Collect error analysis data
+        if error_data:
+            for error_type, count in error_data.items():
+                self.error_analysis[error_type] = self.error_analysis.get(error_type, 0) + count
+                
+        # Track latency stats
+        if latency_ms is not None:
+            self.latency_stats.append(latency_ms)
+
+    async def generate_report(self, results: BFCLBenchmarkResults) -> dict:
+        # Sort results by scores for proper ranking
+        sorted_results = sorted(
+            self.results,
+            key=lambda x: (
+                x['metrics'].overall_score,
+                x['metrics'].ast_accuracy,
+                x['metrics'].exec_accuracy
+            ),
+            reverse=True
+        )
+        
+        # Recalculate ranks after sorting
+        for idx, result in enumerate(sorted_results, 1):
+            result['rank'] = idx
+        
+        # Calculate category averages
+        avg_ast = sum(r['metrics'].ast_accuracy for r in sorted_results) / len(sorted_results) if sorted_results else 0
+        avg_exec = sum(r['metrics'].exec_accuracy for r in sorted_results) / len(sorted_results) if sorted_results else 0
+        avg_latency = sum(self.latency_stats) / len(self.latency_stats) if self.latency_stats else 0
 
         lines = [
             "# BFCL Benchmark Report",
             "",
             "## Leaderboard",
             "",
-            "| Rank | Model | Overall | AST | Execution |",
-            "|------|-------|---------|-----|-----------|"
+            "| Rank | Model | Overall | AST | Execution | Latency (ms) |",
+            "|------|-------|---------|-----|-----------|--------------|"
         ]
-        
-        lines = ["# BFCL Report", ""]
 
-        for rank, metrics in self.results:
+        model_name = self.config.get('model_name', 'default')
+        for result in sorted_results:
             lines.append(
-                # Note: output format prioritizes clear leaderboard presentation for comparative analysis
-                f"| **{rank}** | **elizaOS** | "
-                f"**{metrics.overall_score:.2%}** | "
-                f"**{metrics.ast_accuracy:.2%}** | "
-                f"**{metrics.exec_accuracy:.2%}** |"
+                f"| {result['rank']} | {model_name} | "
+                f"{result['metrics'].overall_score:.2%} | "
+                f"{result['metrics'].ast_accuracy:.2%} | "
+                f"{result['metrics'].exec_accuracy:.2%} | "
+                f"{result.get('latency_ms', 'N/A')} |"
             )
 
+        # Add baseline comparison
+        if self.baseline_scores:
+            lines.extend([
+                "",
+                "## Baseline Comparison",
+                "",
+                "| Metric | Current | Baseline | Delta |",
+                "|--------|---------|-----------|-------|"
+            ])
+            for metric, baseline in self.baseline_scores.items():
+                current = sorted_results[0]['metrics'].__dict__.get(metric, 0)
+                delta = current - baseline
+                lines.append(
+                    f"| {metric} | {current:.2%} | {baseline:.2%} | {delta:+.2%} |"
+                )
+
+        # Add category breakdowns
         lines.extend([
-            # Note: Adds section header for clarity in presenting category comparison results.
             "",
-            "## Category Comparison", 
+            "## Category Performance",
             "",
+            f"- Average AST Accuracy: {avg_ast:.2%}",
+            f"- Average Execution Accuracy: {avg_exec:.2%}",
+            f"- Average Latency: {avg_latency:.2f}ms",
+            "",
+            "## Error Analysis",
+            ""
         ])
-        
+
+        if self.error_analysis:
+            lines.append("| Error Type | Count |")
+            lines.append("|------------|-------|")
+            for error_type, count in sorted(self.error_analysis.items()):
+                lines.append(f"| {error_type} | {count} |")
+
         report_md = "\n".join(lines)
         
-        # Generate JSON output
+        # Generate detailed JSON report
         report_json = {
             'results': [
                 {
-                    'rank': rank,
-                    'overall_score': metrics.overall_score,
-                    'ast_accuracy': metrics.ast_accuracy,
-                    'exec_accuracy': metrics.exec_accuracy
+                    'rank': r['rank'],
+                    'overall_score': r['metrics'].overall_score,
+                    'ast_accuracy': r['metrics'].ast_accuracy,
+                    'exec_accuracy': r['metrics'].exec_accuracy,
+                    'errors': r.get('errors', {}),
+                    'latency_ms': r.get('latency_ms')
                 }
-                for rank, metrics in self.results
+                for r in sorted_results
             ],
-            'best_results': self.best_results
+            'best_results': self.best_results,
+            'error_analysis': self.error_analysis,
+            'latency_stats': {
+                'mean': avg_latency,
+                'samples': self.latency_stats
+            },
+            'baseline_comparison': {
+                metric: {
+                    'current': sorted_results[0]['metrics'].__dict__.get(metric, 0),
+                    'baseline': baseline,
+                    'delta': sorted_results[0]['metrics'].__dict__.get(metric, 0) - baseline
+                }
+                for metric, baseline in self.baseline_scores.items()
+            }
         }
         
-        # Write outputs to files
+        # Write outputs
         with open(self.output_paths['json'], 'w') as f:
             json.dump(report_json, f, indent=2)
         with open(self.output_paths['markdown'], 'w') as f:
@@ -96,7 +177,10 @@ def generate_report(self) -> str:
             
         # Console summary
         print("\nBenchmark Summary:")
-        print(f"Overall Best Score: {max(r['overall_score'] for r in self.best_results.values()):.2%}")
+        print(f"Model: {model_name}")
+        print(f"Best Overall Score: {max(r['metrics'].overall_score for r in sorted_results):.2%}")
+        print(f"Error Types: {len(self.error_analysis)}")
+        print(f"Average Latency: {avg_latency:.2f}ms")
         print(f"Reports written to: {', '.join(self.output_paths.values())}\n")
         
         return {
@@ -105,17 +189,23 @@ def generate_report(self) -> str:
             'paths': self.output_paths
         }
 
+
 def print_results(results: BFCLBenchmarkResults):
-    # Note: explicitly creates a reporter to aggregate benchmark results for better clarity
+    # Create reporter with proper configuration
     reporter = BFCLReporter()
-    metrics = Metrics(
-        results.metrics.overall_score,
-        results.metrics.ast_accuracy, 
-        results.metrics.exec_accuracy
-    )
-    reporter.add_result(1, metrics)
-
-    # Run report generation synchronously since called from sync context
-    print(reporter.generate_report())
-
-# Note: ranks are assigned directly via enumerate; manual adjustment could cause duplication.
+    
+    # Process results maintaining proper rank order
+    for result in results.results:
+        metrics = Metrics(
+            result.overall_score,
+            result.ast_score,
+            result.exec_score
+        )
+        reporter.add_result(
+            metrics,
+            error_data=result.errors,
+            latency_ms=result.latency_ms
+        )
+    
+    # Generate report
+    asyncio.run(reporter.generate_report(results))
