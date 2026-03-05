@@ -132,7 +132,6 @@ for i in $(seq 1 $MAX_ATTEMPTS); do
     denied|timeout|failed)
       echo "Payment $status: $(echo "$response" | jq -r '.reason')"
       break
-      ;;
     pending|signing)
       sleep 3
       ;;
