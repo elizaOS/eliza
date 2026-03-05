@@ -455,6 +455,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
     options?: { entityContext?: UUID },
   ): Promise<T>;
 
+  /** Delete participants from rooms */
+  deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<void>;
+
   /** Get entities for room */
   getEntitiesForRoom(
     roomId: UUID,
