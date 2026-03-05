@@ -13,7 +13,8 @@ class Metrics:
 
 class BFCLReporter:
     def __init__(self, config=None):
-        self.config = config or {}
+        # Convert dataclass or config object to dict to normalize access
+        self.config = dict(config.__dict__ if hasattr(config, '__dict__') else config or {})
         self.results = []
         self.best_results = {}
         self.output_paths = {
@@ -31,15 +32,25 @@ class BFCLReporter:
                 'exec_accuracy': metrics.exec_accuracy
             }
 
-    async def generate_report(self, results: BFCLBenchmarkResults) -> dict:
-        # Populate from results
-        metrics = Metrics(
-            # Note: extracts relevant metrics for consistent report generation from benchmark results
-            results.metrics.overall_score,
-            results.metrics.ast_accuracy,
-            results.metrics.exec_accuracy
-        )
-        self.add_result(1, metrics)
+    def generate_report(self) -> str:
+def generate_report(self) -> str:
+        # Sort results by overall score for correct leaderboard ranking
+        sorted_results = sorted(self.results, 
+                             key=lambda x: x[1].overall_score,
+                             reverse=True)
+        
+        # Calculate metrics across categories
+        avg_ast = sum(m.ast_accuracy for _, m in sorted_results) / len(sorted_results) if sorted_results else 0
+        avg_exec = sum(m.exec_accuracy for _, m in sorted_results) / len(sorted_results) if sorted_results else 0
+
+        lines = [
+            "# BFCL Benchmark Report",
+            "",
+            "## Leaderboard",
+            "",
+            "| Rank | Model | Overall | AST | Execution |",
+            "|------|-------|---------|-----|-----------|"
+        ]
         
         lines = ["# BFCL Report", ""]
 
@@ -104,6 +115,7 @@ def print_results(results: BFCLBenchmarkResults):
     )
     reporter.add_result(1, metrics)
 
-    print(asyncio.run(reporter.generate_report(results)))
+    # Run report generation synchronously since called from sync context
+    print(reporter.generate_report())
 
 # Note: ranks are assigned directly via enumerate; manual adjustment could cause duplication.
