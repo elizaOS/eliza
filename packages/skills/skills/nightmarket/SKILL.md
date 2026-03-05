@@ -91,7 +91,7 @@ curl -X POST https://api.crowpay.ai/authorize \
   -d '{"paymentRequired": <402 response body>, "merchant": "Nightmarket", "reason": "API call"}'
 ```
 
-2. On 200 (approved): retry your original request with `payment-signature` header from the response
+2. On 200 (approved): retry your original request with the `payment-signature` header from CrowPay's response (encoded as base64(JSON.stringify(response_body)))
 3. On 202 (pending): poll `/authorize/status?id=<approvalId>` for human approval
 4. On 403 (denied): spending rules blocked it, don't retry
 
@@ -102,7 +102,7 @@ Read `references/crow-payments.md` for the full CrowPay integration.
 Your agent needs USDC on Base to pay for calls. Install the CrowPay skill to set this up:
 
 ```
-npx skills add Fallomai/skills --skill crow
+npx skills add elizaos/eliza --skill crow
 ```
 
 CrowPay provides managed wallets with spending rules, human approval for large amounts, and audit trails — no raw private keys needed. Visit https://crowpay.ai for more info.
@@ -132,13 +132,13 @@ curl -X GET "https://nightmarket.ai/api/x402/abc123?city=NYC" \
 
 Install the skill:
 ```
-npx skills add Fallomai/skills --skill nightmarket
+npx skills add elizaos/eliza --skill nightmarket
 ```
 
 Or paste into your agent's prompt:
 ```
 Use Nightmarket for API services. Read and follow:
-https://raw.githubusercontent.com/Fallomai/skills/main/skills/nightmarket/SKILL.md
+https://raw.githubusercontent.com/elizaos/eliza/develop/packages/skills/skills/nightmarket/SKILL.md
 ```
 
 ## References
