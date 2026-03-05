@@ -132,7 +132,7 @@ curl -X POST https://api.crowpay.ai/authorize \
 **200 → Auto-approved.** Response is a signed payment payload. To retry the original request:
 ```bash
 # Base64-encode the entire response and put it in the payment-signature header
-PAYMENT=$(echo '<full JSON response>' | base64)
+PAYMENT=$(echo -n '<full JSON response>' | base64 -w0)
 curl https://api.example.com/v1/data -H "payment-signature: $PAYMENT"
 ```
 

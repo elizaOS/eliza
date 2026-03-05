@@ -136,6 +136,10 @@ for i in $(seq 1 $MAX_ATTEMPTS); do
     pending|signing)
       sleep 3
       ;;
+    *)
+      # Unknown status — wait before retrying to avoid busy-spin
+      sleep 3
+      ;;
   esac
 done
 ```
