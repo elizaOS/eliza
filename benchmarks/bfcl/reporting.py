@@ -1,6 +1,7 @@
 import json
-import asyncio
+import os
 from typing import List, Any, Dict, Optional
+from pathlib import Path
 from benchmarks.bfcl.types import BFCLBenchmarkResults
 
 
@@ -18,14 +19,16 @@ class BFCLReporter:
         self.results = []
         self.best_results = {}
         
-        # Model-specific output paths
+        # Model-specific output paths with timestamp to prevent overwrites
         model_name = self.config.get('model_name', 'default')
+        timestamp = self.config.get('timestamp', '')
+        base_path = Path('reports') / f"{model_name}{timestamp}"
         self.output_paths = {
-            'json': f'reports/{model_name}_report.json',
-            'markdown': f'reports/{model_name}_report.md',
-            'leaderboard': f'reports/{model_name}_leaderboard.json',
-            'errors': f'reports/{model_name}_errors.json',
-            'latency': f'reports/{model_name}_latency.json'
+            'json': f'{base_path}_report.json',
+            'markdown': f'{base_path}_report.md',
+            'leaderboard': f'{base_path}_leaderboard.json',
+            'errors': f'{base_path}_errors.json',
+            'latency': f'{base_path}_latency.json'
         }
         
         self.error_analysis = {}
@@ -44,12 +47,15 @@ class BFCLReporter:
         }
         self.results.append(result)
         
-        # Track best results
-        if metrics.overall_score > self.best_results.get(rank, {'overall_score': 0})['overall_score']:
-            self.best_results[rank] = {
-                'overall_score': metrics.overall_score,
+        # Track best results by model name
+        model_name = self.config.get('model_name', 'default')
+        current_score = metrics.overall_score
+        if current_score > self.best_results.get(model_name, {}).get('overall_score', 0):
+            self.best_results[model_name] = {
+                'overall_score': current_score,
                 'ast_accuracy': metrics.ast_accuracy, 
-                'exec_accuracy': metrics.exec_accuracy
+                'exec_accuracy': metrics.exec_accuracy,
+                'rank': rank
             }
         
         # Collect error analysis data
@@ -62,6 +68,9 @@ class BFCLReporter:
             self.latency_stats.append(latency_ms)
 
     async def generate_report(self, results: BFCLBenchmarkResults) -> dict:
+        # Ensure output directory exists
+        os.makedirs('reports', exist_ok=True)
+        
         # Sort results by scores for proper ranking
         sorted_results = sorted(
             self.results,
@@ -196,16 +205,22 @@ def print_results(results: BFCLBenchmarkResults):
     
     # Process results maintaining proper rank order
     for result in results.results:
+        # Convert boolean flags to scores
+        overall_score = 1.0 if (result.ast_match and result.exec_success) else 0.0
+        ast_accuracy = 1.0 if result.ast_match else 0.0
+        exec_accuracy = 1.0 if result.exec_success else 0.0
+        
         metrics = Metrics(
-            result.overall_score,
-            result.ast_score,
-            result.exec_score
+            overall_score=overall_score,
+            ast_accuracy=ast_accuracy,
+            exec_accuracy=exec_accuracy
         )
+        
         reporter.add_result(
             metrics,
-            error_data=result.errors,
+            error_data=result.details if hasattr(result, 'details') else None,
             latency_ms=result.latency_ms
         )
     
-    # Generate report
-    asyncio.run(reporter.generate_report(results))
+    # Generate report (avoiding asyncio.run() since this may be called from async context)
+    return reporter.generate_report(results)
