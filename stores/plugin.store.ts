@@ -3,13 +3,13 @@ import { Plugin } from './types';
 export const pluginStore = {
     plugins: [] as Plugin[],
     
-    addPlugin(plugin: unknown) {
+    addPlugin(plugin: Partial<Plugin>) {
         if (this.isValidPlugin(plugin)) {
             this.plugins.push(plugin);
         }
     },
 
-    isValidPlugin(plugin: unknown): plugin is Plugin {
+    isValidPlugin(plugin: Partial<Plugin>): plugin is Plugin {
         return typeof plugin === 'object' && plugin !== null && 'id' in plugin;
     },
 
