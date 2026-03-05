@@ -132,7 +132,7 @@ The signed payment payload. Use this to retry the original request.
 
 To retry the original request with payment:
 ```bash
-PAYMENT=$(echo '{"x402Version":2,...}' | base64 -w0)
+PAYMENT=$(echo -n '{"x402Version":2,...}' | base64 -w0)
 curl https://api.example.com/v1/endpoint \
   -H "payment-signature: $PAYMENT"
 ```
