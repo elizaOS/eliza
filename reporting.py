@@ -49,6 +49,8 @@ class Report:
 def print_results(results: BFCLBenchmarkResults):
     reporter = BFCLReporter()
     for rank, result in enumerate(results.results, start=1):  # Use .results, start=1
-        metrics = Metrics(result.overall_score, result.ast_score, result.exec_score)
+        metrics = Metrics(result.overall_score, 
+                         float(result.ast_match),  # Convert bool to float
+                         float(result.exec_success))  # Convert bool to float
         reporter.add_result(rank, metrics)
     print(reporter.generate_report())
