@@ -81,9 +81,6 @@ Read `references/api.md` for all headers, request/response formats, and error co
 
 ## Paying with CrowPay (recommended)
 
-CrowPay handles 402 payments automatically — no wallet keys needed.
-
-1. Forward the 402 to CrowPay:
 ```bash
 curl -X POST https://api.crowpay.ai/authorize \
   -H "X-API-Key: crow_sk_..." \
