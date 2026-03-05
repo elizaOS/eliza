@@ -641,7 +641,14 @@ export abstract class BaseDrizzleAdapter
   }
 
   async countMemories(
-    roomIdOrParams: UUID | { roomId?: UUID; unique?: boolean; tableName?: string; entityId?: UUID; agentId?: UUID; metadata?: Record<string, unknown> },
+    roomIdOrParams: UUID | { 
+        roomId?: UUID; 
+        unique?: boolean; 
+        tableName?: string; 
+        entityId?: UUID; 
+        agentId?: UUID; 
+        metadata?: Record<string, JsonValue> 
+    },
     unique?: boolean,
     tableName?: string,
   ): Promise<number> {
