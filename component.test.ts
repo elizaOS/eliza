@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { pluginStore } from '../stores/plugin.store';
 import { patchComponent } from '../utils/component';
 
