@@ -9,6 +9,11 @@ Add to your agent's MCP config (`.claude/mcp.json`, `.cursor/mcp.json`, etc.):
 ```json
 {
   "nightmarket": {
+Add to your agent's MCP config (`.claude/mcp.json`, `.cursor/mcp.json`, etc.):
+
+```json
+{
+  "nightmarket": {
     "command": "npx",
     "args": ["-y", "nightmarket-mcp"],
     "env": {
@@ -16,8 +21,6 @@ Add to your agent's MCP config (`.claude/mcp.json`, `.cursor/mcp.json`, etc.):
     }
   }
 }
-```
-
 > ⚠️ **Security**: Never commit your `WALLET_KEY` to version control. Add these config files to `.gitignore`, or use environment variable injection (e.g., `$WALLET_KEY` from your shell) instead of hard-coding the value.
 
 Get a wallet key from https://crowpay.ai or use your own funded with USDC on Base.
