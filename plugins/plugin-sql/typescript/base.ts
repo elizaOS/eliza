@@ -641,16 +641,16 @@ export abstract class BaseDrizzleAdapter
   }
 
   async countMemories(
-    roomIdOrParams: UUID | { 
-        roomId?: UUID; 
-        unique?: boolean; 
-        tableName?: string; 
-        entityId?: UUID; 
-        agentId?: UUID; 
-        metadata?: Record<string, JsonValue> 
+    roomIdOrParams: UUID | {
+        roomId?: UUID;
+        unique?: boolean;
+        tableName?: string;
+        entityId?: UUID;
+        agentId?: UUID;
+        metadata?: Record<string, JsonValue>;
     },
     unique?: boolean,
-    tableName?: string,
+    tableName?: string
   ): Promise<number> {
     // Note: roomIdOrParams accepts both UUID (legacy) and object params; stores.countMemories handles both signatures
     return this.withDatabase(() =>
