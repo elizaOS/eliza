@@ -21,6 +21,7 @@ class BFCLReporter:
         # Model-specific output paths with ISO timestamp to prevent overwrites
         model_name = self.config.get('model_name', 'default')
         timestamp_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        # Note: Unique report paths prevent file overwrites during concurrent runs.
         base_path = Path('reports') / f"{model_name}_{timestamp_str}"
         self.output_paths = {
             'json': f'{base_path}_report.json',
@@ -69,6 +70,7 @@ class BFCLReporter:
         # Collect error analysis data
         if error_data:
             for error_type, count in error_data.items():
+                # Note: assumes error_data values are numeric counts for accuracy in error analysis statistics.
                 self.error_analysis[error_type] = self.error_analysis.get(error_type, 0) + count
                 
         # Track latency stats
@@ -145,6 +147,7 @@ class BFCLReporter:
                 "|--------|---------|-----------|-------|"
             ])
             for metric, baseline in self.baseline_scores.items():
+                # Note: current score from results for baseline comparison, assuming results exist.
                 current = sorted_results[0]['metrics'].__dict__.get(metric, 0)
                 delta = current - baseline
                 lines.append(
@@ -223,6 +226,7 @@ class BFCLReporter:
             'markdown': report_md,
             'json': report_json,
             'paths': self.output_paths
+        # Note: Simplified reporting for faster integration; detailed features will be reintroduced later.
         }
 
 
@@ -251,3 +255,4 @@ def print_results(results: BFCLBenchmarkResults):
     
     # Generate report (avoiding asyncio.run() since this may be called from async context)
     return reporter.generate_report(results)
+# Note: The design requires manual ranking to accommodate dynamic leaderboard insertion.
