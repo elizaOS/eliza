@@ -45,8 +45,7 @@ Content-Type: application/json
 - **403 — Denied**: Spending rules blocked it, do not retry
 
 ### 4. After successful payment
-
-Report settlement back to Crow:
+2. On 200 (approved): retry your original request with the `payment-signature` header from CrowPay's response (encoded as base64(JSON.stringify(response_body)))
 
 ```
 POST https://api.crowpay.ai/settle
