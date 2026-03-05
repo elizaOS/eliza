@@ -55,7 +55,7 @@
 ## 📚 Documentation Structure
 
 ```
-/
+./
 │
 ├── docs/
 │   │
@@ -343,10 +343,10 @@
 ### For Future Work
 
 **Phase 2 Planning:**
-- Upsert methods design (already documented in plan)
+- Upsert methods design
 - Exposed methods specification
-- CRUD gaps analysis (documented)
-- Type cleanup (documented)
+- CRUD gaps analysis
+- Type cleanup
 
 **Phase 3 Planning:**
 - Messaging API extraction design

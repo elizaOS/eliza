@@ -1,28 +1,27 @@
 import json
 import os
+import datetime
 from typing import List, Any, Dict, Optional
 from pathlib import Path
-from benchmarks.bfcl.types import BFCLBenchmarkResults
+from benchmarks.bfcl.types import BFCLBenchmarkResults, BFCLMetrics
 
 
-class Metrics:
-    def __init__(self, overall_score: float, ast_accuracy: float, exec_accuracy: float):
-        self.overall_score = overall_score
-        self.ast_accuracy = ast_accuracy
-        self.exec_accuracy = exec_accuracy
-
-
+# Re-using BFCLMetrics for consistency rather than duplicating fields
 class BFCLReporter:
     def __init__(self, config=None):
         # Convert dataclass or config object to dict to normalize access
         self.config = dict(config.__dict__ if hasattr(config, '__dict__') else config or {})
         self.results = []
-        self.best_results = {}
+        self.best_results_by_model = {}
+        self.categories = {
+            'ast': {'correct': 0, 'total': 0},
+            'execution': {'correct': 0, 'total': 0}
+        }
         
-        # Model-specific output paths with timestamp to prevent overwrites
+        # Model-specific output paths with ISO timestamp to prevent overwrites
         model_name = self.config.get('model_name', 'default')
-        timestamp = self.config.get('timestamp', '')
-        base_path = Path('reports') / f"{model_name}{timestamp}"
+        timestamp_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        base_path = Path('reports') / f"{model_name}_{timestamp_str}"
         self.output_paths = {
             'json': f'{base_path}_report.json',
             'markdown': f'{base_path}_report.md',
@@ -33,9 +32,10 @@ class BFCLReporter:
         
         self.error_analysis = {}
         self.latency_stats = []
+        self.leaderboard_scores = self.config.get('LEADERBOARD_SCORES', {})
         self.baseline_scores = self.config.get('baseline_scores', {})
 
-    def add_result(self, metrics: Metrics, *, error_data=None, latency_ms=None):
+    def add_result(self, metrics: BFCLMetrics, *, error_data=None, latency_ms=None):
         # Calculate proper leaderboard rank based on scores
         rank = 1 + sum(1 for r in self.results if r['metrics'].overall_score > metrics.overall_score)
         
@@ -50,13 +50,21 @@ class BFCLReporter:
         # Track best results by model name
         model_name = self.config.get('model_name', 'default')
         current_score = metrics.overall_score
-        if current_score > self.best_results.get(model_name, {}).get('overall_score', 0):
-            self.best_results[model_name] = {
+        if current_score > self.best_results_by_model.get(model_name, {}).get('overall_score', 0):
+            self.best_results_by_model[model_name] = {
                 'overall_score': current_score,
-                'ast_accuracy': metrics.ast_accuracy, 
+                'ast_accuracy': metrics.ast_accuracy,
                 'exec_accuracy': metrics.exec_accuracy,
                 'rank': rank
             }
+        
+        # Update category stats
+        self.categories['ast']['total'] += 1
+        self.categories['execution']['total'] += 1
+        if metrics.ast_accuracy > 0:
+            self.categories['ast']['correct'] += 1
+        if metrics.exec_accuracy > 0:
+            self.categories['execution']['correct'] += 1
         
         # Collect error analysis data
         if error_data:
@@ -86,9 +94,9 @@ class BFCLReporter:
         for idx, result in enumerate(sorted_results, 1):
             result['rank'] = idx
         
-        # Calculate category averages
-        avg_ast = sum(r['metrics'].ast_accuracy for r in sorted_results) / len(sorted_results) if sorted_results else 0
-        avg_exec = sum(r['metrics'].exec_accuracy for r in sorted_results) / len(sorted_results) if sorted_results else 0
+        # Calculate category accuracies
+        ast_accuracy = self.categories['ast']['correct'] / self.categories['ast']['total'] if self.categories['ast']['total'] > 0 else 0
+        exec_accuracy = self.categories['execution']['correct'] / self.categories['execution']['total'] if self.categories['execution']['total'] > 0 else 0
         avg_latency = sum(self.latency_stats) / len(self.latency_stats) if self.latency_stats else 0
 
         lines = [
@@ -96,21 +104,38 @@ class BFCLReporter:
             "",
             "## Leaderboard",
             "",
-            "| Rank | Model | Overall | AST | Execution | Latency (ms) |",
-            "|------|-------|---------|-----|-----------|--------------|"
+            "| Rank | Model | Overall | AST | Execution | Latency (ms) | vs Baseline |",
+            "|------|-------|---------|-----|-----------|--------------|-------------|"
         ]
 
         model_name = self.config.get('model_name', 'default')
         for result in sorted_results:
+            baseline_delta = ""
+            if model_name in self.leaderboard_scores:
+                delta = result['metrics'].overall_score - self.leaderboard_scores[model_name]
+                baseline_delta = f"{delta:+.2%}"
+            
             lines.append(
                 f"| {result['rank']} | {model_name} | "
                 f"{result['metrics'].overall_score:.2%} | "
                 f"{result['metrics'].ast_accuracy:.2%} | "
                 f"{result['metrics'].exec_accuracy:.2%} | "
-                f"{result.get('latency_ms', 'N/A')} |"
+                f"{result.get('latency_ms', 'N/A')} | "
+                f"{baseline_delta} |"
             )
 
-        # Add baseline comparison
+        # Add per-category breakdown
+        lines.extend([
+            "",
+            "## Category Performance",
+            "",
+            "| Category | Success Rate | Correct | Total |",
+            "|----------|--------------|---------|--------|",
+            f"| AST Parsing | {ast_accuracy:.2%} | {self.categories['ast']['correct']} | {self.categories['ast']['total']} |",
+            f"| Execution | {exec_accuracy:.2%} | {self.categories['execution']['correct']} | {self.categories['execution']['total']} |"
+        ])
+
+        # Add baseline comparison if available
         if self.baseline_scores:
             lines.extend([
                 "",
@@ -126,24 +151,22 @@ class BFCLReporter:
                     f"| {metric} | {current:.2%} | {baseline:.2%} | {delta:+.2%} |"
                 )
 
-        # Add category breakdowns
+        # Add error analysis
         lines.extend([
-            "",
-            "## Category Performance",
-            "",
-            f"- Average AST Accuracy: {avg_ast:.2%}",
-            f"- Average Execution Accuracy: {avg_exec:.2%}",
-            f"- Average Latency: {avg_latency:.2f}ms",
             "",
             "## Error Analysis",
             ""
         ])
 
         if self.error_analysis:
-            lines.append("| Error Type | Count |")
-            lines.append("|------------|-------|")
+            lines.extend([
+                "| Error Type | Count | Percentage |",
+                "|------------|-------|------------|"
+            ])
+            total_errors = sum(self.error_analysis.values())
             for error_type, count in sorted(self.error_analysis.items()):
-                lines.append(f"| {error_type} | {count} |")
+                percentage = count / total_errors if total_errors > 0 else 0
+                lines.append(f"| {error_type} | {count} | {percentage:.1%} |")
 
         report_md = "\n".join(lines)
         
@@ -160,7 +183,8 @@ class BFCLReporter:
                 }
                 for r in sorted_results
             ],
-            'best_results': self.best_results,
+            'best_results_by_model': self.best_results_by_model,
+            'categories': self.categories,
             'error_analysis': self.error_analysis,
             'latency_stats': {
                 'mean': avg_latency,
@@ -182,12 +206,15 @@ class BFCLReporter:
         with open(self.output_paths['markdown'], 'w') as f:
             f.write(report_md)
         with open(self.output_paths['leaderboard'], 'w') as f:
-            json.dump(self.best_results, f, indent=2)
+            json.dump(self.best_results_by_model, f, indent=2)
             
         # Console summary
         print("\nBenchmark Summary:")
         print(f"Model: {model_name}")
         print(f"Best Overall Score: {max(r['metrics'].overall_score for r in sorted_results):.2%}")
+        print(f"Categories:")
+        print(f"  AST Accuracy: {ast_accuracy:.2%}")
+        print(f"  Execution Accuracy: {exec_accuracy:.2%}")
         print(f"Error Types: {len(self.error_analysis)}")
         print(f"Average Latency: {avg_latency:.2f}ms")
         print(f"Reports written to: {', '.join(self.output_paths.values())}\n")
@@ -210,9 +237,9 @@ def print_results(results: BFCLBenchmarkResults):
         ast_accuracy = 1.0 if result.ast_match else 0.0
         exec_accuracy = 1.0 if result.exec_success else 0.0
         
-        metrics = Metrics(
+        metrics = BFCLMetrics(
             overall_score=overall_score,
-            ast_accuracy=ast_accuracy,
+            ast_accuracy=ast_accuracy, 
             exec_accuracy=exec_accuracy
         )
         
