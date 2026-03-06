@@ -1,5 +1,5 @@
 /**
- * Repository for ElizaOS participants table.
+ * Repository for elizaOS participants table.
  *
  * Handles all database operations for participants without spinning up runtime.
  */
@@ -20,7 +20,7 @@ export interface CreateParticipantInput {
 }
 
 /**
- * Repository for ElizaOS participant database operations.
+ * Repository for elizaOS participant database operations.
  */
 export class ParticipantsRepository {
   // ============================================================================

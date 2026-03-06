@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
-import type { Agent, Character, IDatabaseAdapter, UUID } from "../types";
+import type { Agent, Character, Entity, IDatabaseAdapter, UUID } from "../types";
 
 // Helper type for vitest mocks with additional methods
 interface VitestMockFunction<T extends (...args: never[]) => unknown> {
@@ -21,14 +21,15 @@ describe("ensureAgentExists - Settings Persistence", () => {
   let mockAdapter: IDatabaseAdapter;
   let testCharacter: Character;
   let agentId: UUID;
-  let getAgentMock: IDatabaseAdapter["getAgent"];
-  let updateAgentMock: IDatabaseAdapter["updateAgent"];
+  let getAgentsByIdsMock: IDatabaseAdapter["getAgentsByIds"];
+  let updateAgentsMock: IDatabaseAdapter["updateAgents"];
+  let upsertAgentsMock: IDatabaseAdapter["upsertAgents"];
   let getEntitiesByIdsMock: IDatabaseAdapter["getEntitiesByIds"];
   let getRoomsByIdsMock: IDatabaseAdapter["getRoomsByIds"];
   let getParticipantsForRoomMock: IDatabaseAdapter["getParticipantsForRoom"];
   let createEntitiesMock: IDatabaseAdapter["createEntities"];
   let createRoomsMock: IDatabaseAdapter["createRooms"];
-  let addParticipantsRoomMock: IDatabaseAdapter["addParticipantsRoom"];
+  let createRoomParticipantsMock: IDatabaseAdapter["createRoomParticipants"];
 
   beforeEach(() => {
     agentId = uuidv4() as UUID;
@@ -54,10 +55,11 @@ describe("ensureAgentExists - Settings Persistence", () => {
     };
 
     // Create mock adapter with proper types using vi.fn()
-    getAgentMock = vi.fn(async () => null) as IDatabaseAdapter["getAgent"];
-    updateAgentMock = vi.fn(
+    getAgentsByIdsMock = vi.fn(async () => []) as IDatabaseAdapter["getAgentsByIds"];
+    updateAgentsMock = vi.fn(
       async () => true,
-    ) as IDatabaseAdapter["updateAgent"];
+    ) as IDatabaseAdapter["updateAgents"];
+    upsertAgentsMock = vi.fn(async () => {}) as IDatabaseAdapter["upsertAgents"];
     getEntitiesByIdsMock = vi.fn(
       async () => [],
     ) as IDatabaseAdapter["getEntitiesByIds"];
@@ -68,12 +70,12 @@ describe("ensureAgentExists - Settings Persistence", () => {
       async () => [],
     ) as IDatabaseAdapter["getParticipantsForRoom"];
     createEntitiesMock = vi.fn(
-      async () => true,
+      async (entities: Entity[]) => entities.map((e) => e.id ?? (uuidv4() as UUID)),
     ) as IDatabaseAdapter["createEntities"];
     createRoomsMock = vi.fn(async () => []) as IDatabaseAdapter["createRooms"];
-    addParticipantsRoomMock = vi.fn(
-      async () => true,
-    ) as IDatabaseAdapter["addParticipantsRoom"];
+    createRoomParticipantsMock = vi.fn(
+      async () => [],
+    ) as IDatabaseAdapter["createRoomParticipants"];
 
     mockAdapter = {
       db: {},
@@ -82,72 +84,84 @@ describe("ensureAgentExists - Settings Persistence", () => {
       close: vi.fn(async () => {}),
       isReady: vi.fn(async () => true),
       getConnection: vi.fn(async () => ({})),
-      getAgent: getAgentMock,
+      getAgentsByIds: getAgentsByIdsMock,
       getAgents: vi.fn(async () => []),
-      createAgent: vi.fn(async () => true),
-      updateAgent: updateAgentMock,
-      deleteAgent: vi.fn(async () => true),
+      createAgents: vi.fn(async (agents: Partial<Agent>[]) => agents.map((a) => a.id!).filter(Boolean)),
+      upsertAgents: upsertAgentsMock,
+      updateAgents: updateAgentsMock,
+      deleteAgents: vi.fn(async () => true),
       ensureEmbeddingDimension: vi.fn(async () => {}),
-      log: vi.fn(async () => {}),
+      createLogs: vi.fn(async () => {}),
       runPluginMigrations: vi.fn(async () => {}),
       getEntitiesByIds: getEntitiesByIdsMock,
       getRoomsByIds: getRoomsByIdsMock,
       getParticipantsForRoom: getParticipantsForRoomMock,
       createEntities: createEntitiesMock,
-      addParticipantsRoom: addParticipantsRoomMock,
+      createRoomParticipants: createRoomParticipantsMock,
       createRooms: createRoomsMock,
       // Add other required methods with minimal implementations
       getEntitiesForRoom: vi.fn(async () => []),
-      updateEntity: vi.fn(async () => {}),
+      updateEntities: vi.fn(async () => {}),
+      deleteEntities: vi.fn(async () => {}),
       getComponent: vi.fn(async () => null),
       getComponents: vi.fn(async () => []),
-      createComponent: vi.fn(async () => true),
-      updateComponent: vi.fn(async () => {}),
-      deleteComponent: vi.fn(async () => {}),
+      getComponentsByIds: vi.fn(async () => []),
+      createComponents: vi.fn(async () => true),
+      updateComponents: vi.fn(async () => {}),
+      deleteComponents: vi.fn(async () => {}),
       getMemories: vi.fn(async () => []),
-      getMemoryById: vi.fn(async () => null),
       getMemoriesByIds: vi.fn(async () => []),
       getMemoriesByRoomIds: vi.fn(async () => []),
       getCachedEmbeddings: vi.fn(async () => []),
       getLogs: vi.fn(async () => []),
-      deleteLog: vi.fn(async () => {}),
+      deleteLogs: vi.fn(async () => {}),
       searchMemories: vi.fn(async () => []),
-      createMemory: vi.fn(async () => "memory-id" as UUID),
-      updateMemory: vi.fn(async () => true),
-      deleteMemory: vi.fn(async () => {}),
+      createMemories: vi.fn(async () => []),
+      updateMemories: vi.fn(async () => [true]),
+      deleteMemories: vi.fn(async () => {}),
       deleteManyMemories: vi.fn(async () => {}),
       deleteAllMemories: vi.fn(async () => {}),
       countMemories: vi.fn(async () => 0),
-      createWorld: vi.fn(async () => "world-id" as UUID),
-      getWorld: vi.fn(async () => null),
+      createWorlds: vi.fn(async () => ["world-id" as UUID]),
+      getWorldsByIds: vi.fn(async () => []),
       getAllWorlds: vi.fn(async () => []),
-      updateWorld: vi.fn(async () => {}),
-      removeWorld: vi.fn(async () => {}),
+      updateWorlds: vi.fn(async () => {}),
+      deleteWorlds: vi.fn(async () => {}),
       getRoomsByWorld: vi.fn(async () => []),
-      updateRoom: vi.fn(async () => {}),
-      deleteRoom: vi.fn(async () => {}),
+      updateRooms: vi.fn(async () => {}),
+      deleteRooms: vi.fn(async () => {}),
       deleteRoomsByWorldId: vi.fn(async () => {}),
       getRoomsForParticipant: vi.fn(async () => []),
       getRoomsForParticipants: vi.fn(async () => []),
-      removeParticipant: vi.fn(async () => true),
+      deleteParticipants: vi.fn(async () => true),
       getParticipantsForEntity: vi.fn(async () => []),
       isRoomParticipant: vi.fn(async () => false),
       getParticipantUserState: vi.fn(async () => null),
-      setParticipantUserState: vi.fn(async () => {}),
-      createRelationship: vi.fn(async () => true),
+      updateParticipantUserState: vi.fn(async () => {}),
+      createRelationships: vi.fn(async () => []),
       getRelationship: vi.fn(async () => null),
       getRelationships: vi.fn(async () => []),
-      updateRelationship: vi.fn(async () => {}),
-      getCache: vi.fn(async () => undefined),
-      setCache: vi.fn(async () => true),
-      deleteCache: vi.fn(async () => true),
-      createTask: vi.fn(async () => "task-id" as UUID),
+      getRelationshipsByIds: vi.fn(async () => []),
+      updateRelationships: vi.fn(async () => {}),
+      deleteRelationships: vi.fn(async () => {}),
+      getCaches: vi.fn(async () => new Map()),
+      setCaches: vi.fn(async () => true),
+      deleteCaches: vi.fn(async () => true),
+      createTasks: vi.fn(async () => []),
       getTasks: vi.fn(async () => []),
-      getTask: vi.fn(async () => null),
+      getTasksByIds: vi.fn(async () => []),
       getTasksByName: vi.fn(async () => []),
-      updateTask: vi.fn(async () => {}),
-      deleteTask: vi.fn(async () => {}),
+      updateTasks: vi.fn(async () => {}),
+      deleteTasks: vi.fn(async () => {}),
       getMemoriesByWorldId: vi.fn(async () => []),
+      getPairingRequests: vi.fn(async () => []),
+      getPairingAllowlist: vi.fn(async () => []),
+      createPairingRequests: vi.fn(async () => []),
+      updatePairingRequests: vi.fn(async () => {}),
+      deletePairingRequests: vi.fn(async () => {}),
+      createPairingAllowlistEntries: vi.fn(async () => []),
+      deletePairingAllowlistEntries: vi.fn(async () => {}),
+      getAgentRunSummaries: vi.fn(async () => ({ runs: [], totalCount: 0 })),
     } as IDatabaseAdapter;
 
     runtime = new AgentRuntime({
@@ -169,10 +183,15 @@ describe("ensureAgentExists - Settings Persistence", () => {
       },
     };
 
+    // ensureAgentExists: getAgentsByIds (no existing) -> upsertAgents -> getAgentsByIds (refreshed)
+    (
+      getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>
+    ).mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...agent, id: agentId } as Agent]);
+
     const result = await runtime.ensureAgentExists(agent);
 
-    expect(mockAdapter.getAgent).toHaveBeenCalledWith(agentId);
-    expect(mockAdapter.createAgent).toHaveBeenCalled();
+    expect(mockAdapter.getAgentsByIds).toHaveBeenCalledWith([agentId]);
+    expect(mockAdapter.upsertAgents).toHaveBeenCalled();
     expect(result.id).toBe(agentId);
   });
 
@@ -194,11 +213,11 @@ describe("ensureAgentExists - Settings Persistence", () => {
     } as Agent;
 
     (
-      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
-    ).mockResolvedValueOnce(existingAgentInDB);
+      getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>
+    ).mockResolvedValueOnce([existingAgentInDB]);
     (
-      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
-    ).mockResolvedValueOnce({
+      getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>
+    ).mockResolvedValueOnce([{
       ...existingAgentInDB,
       settings: {
         SOLANA_PUBLIC_KEY: "CioDPgLA1o8cuuhXZ7M3Fi1Lzqo2Cr8VudjY6ErtvYp4",
@@ -209,7 +228,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
         },
         OLD_SETTING: "should_be_kept",
       },
-    });
+    }]);
 
     // Character file has new settings but no wallet keys
     const characterAgent: Partial<Agent> = {
@@ -223,14 +242,12 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
     const _result = await runtime.ensureAgentExists(characterAgent);
 
-    // Verify updateAgent was called with merged settings
-    expect(mockAdapter.updateAgent).toHaveBeenCalled();
-    const updateCall = (
-      updateAgentMock as VitestMockFunction<IDatabaseAdapter["updateAgent"]>
+    // Verify upsertAgents was called with merged settings
+    expect(mockAdapter.upsertAgents).toHaveBeenCalled();
+    const upsertCall = (
+      upsertAgentsMock as VitestMockFunction<IDatabaseAdapter["upsertAgents"]>
     ).mock.calls[0];
-    // updateAgent signature: (agentId: UUID, agent: Partial<Agent>) => Promise<boolean>
-    // So updateCall[1] is Partial<Agent>
-    const updatedAgent = updateCall[1] as Partial<Agent>;
+    const updatedAgent = (upsertCall[0] as Partial<Agent>[])[0] as Partial<Agent>;
 
     // Check that DB settings were preserved
     expect(updatedAgent.settings?.SOLANA_PUBLIC_KEY).toBe(
@@ -269,11 +286,11 @@ describe("ensureAgentExists - Settings Persistence", () => {
     } as Agent;
 
     (
-      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
-    ).mockResolvedValueOnce(existingAgentInDB);
+      getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>
+    ).mockResolvedValueOnce([existingAgentInDB]);
     (
-      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
-    ).mockResolvedValueOnce({
+      getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>
+    ).mockResolvedValueOnce([{
       ...existingAgentInDB,
       settings: {
         MODEL: "gpt-5", // Updated by character.json
@@ -282,7 +299,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
           SOLANA_PRIVATE_KEY: "4zkwqei5hFqtHvqGTMFC6FDCBSPoJqTqN3v7pNDYrqFY...",
         },
       },
-    });
+    }]);
 
     // Character file has new MODEL value
     const characterAgent: Partial<Agent> = {
@@ -295,10 +312,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
     await runtime.ensureAgentExists(characterAgent);
 
-    const updateCall = (
-      updateAgentMock as VitestMockFunction<IDatabaseAdapter["updateAgent"]>
+    const upsertCall = (
+      upsertAgentsMock as VitestMockFunction<IDatabaseAdapter["upsertAgents"]>
     ).mock.calls[0];
-    const updatedAgent = updateCall[1] as Partial<Agent>;
+    const updatedAgent = (upsertCall[0] as Partial<Agent>[])[0] as Partial<Agent>;
 
     // MODEL should be overridden by character.json
     expect(updatedAgent.settings?.MODEL).toBe("gpt-5");
@@ -323,11 +340,11 @@ describe("ensureAgentExists - Settings Persistence", () => {
     } as Agent;
 
     (
-      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
-    ).mockResolvedValueOnce(existingAgentInDB);
+      getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>
+    ).mockResolvedValueOnce([existingAgentInDB]);
     (
-      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
-    ).mockResolvedValueOnce({
+      getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>
+    ).mockResolvedValueOnce([{
       ...existingAgentInDB,
       settings: {
         secrets: {
@@ -336,7 +353,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
           API_KEY: "from_character",
         },
       },
-    });
+    }]);
 
     const characterAgent: Partial<Agent> = {
       id: agentId,
@@ -350,10 +367,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
     await runtime.ensureAgentExists(characterAgent);
 
-    const updateCall = (
-      updateAgentMock as VitestMockFunction<IDatabaseAdapter["updateAgent"]>
+    const upsertCall = (
+      upsertAgentsMock as VitestMockFunction<IDatabaseAdapter["upsertAgents"]>
     ).mock.calls[0];
-    const updatedAgent = updateCall[1] as Partial<Agent>;
+    const updatedAgent = (upsertCall[0] as Partial<Agent>[])[0] as Partial<Agent>;
 
     // Both DB and character secrets should be present
     const updatedAgentSettings = updatedAgent.settings;
@@ -373,16 +390,16 @@ describe("ensureAgentExists - Settings Persistence", () => {
     } as Agent;
 
     (
-      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
-    ).mockResolvedValueOnce(existingAgentInDB);
+      getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>
+    ).mockResolvedValueOnce([existingAgentInDB]);
     (
-      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
-    ).mockResolvedValueOnce({
+      getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>
+    ).mockResolvedValueOnce([{
       ...existingAgentInDB,
       settings: {
         MODEL: "gpt-5",
       },
-    });
+    }]);
 
     const characterAgent: Partial<Agent> = {
       id: agentId,
@@ -394,10 +411,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
     await runtime.ensureAgentExists(characterAgent);
 
-    const updateCall = (
-      updateAgentMock as VitestMockFunction<IDatabaseAdapter["updateAgent"]>
+    const upsertCall = (
+      upsertAgentsMock as VitestMockFunction<IDatabaseAdapter["upsertAgents"]>
     ).mock.calls[0];
-    const updatedAgent = updateCall[1] as Partial<Agent>;
+    const updatedAgent = (upsertCall[0] as Partial<Agent>[])[0] as Partial<Agent>;
 
     // Should have character settings even though DB had none
     expect(updatedAgent.settings?.MODEL).toBe("gpt-5");
@@ -416,11 +433,11 @@ describe("ensureAgentExists - Settings Persistence", () => {
     } as Agent;
 
     (
-      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
-    ).mockResolvedValueOnce(existingAgentInDB);
+      getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>
+    ).mockResolvedValueOnce([existingAgentInDB]);
     (
-      getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>
-    ).mockResolvedValueOnce(existingAgentInDB);
+      getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>
+    ).mockResolvedValueOnce([existingAgentInDB]);
 
     const characterAgent: Partial<Agent> = {
       id: agentId,
@@ -430,10 +447,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
 
     await runtime.ensureAgentExists(characterAgent);
 
-    const updateCall = (
-      updateAgentMock as VitestMockFunction<IDatabaseAdapter["updateAgent"]>
+    const upsertCall = (
+      upsertAgentsMock as VitestMockFunction<IDatabaseAdapter["upsertAgents"]>
     ).mock.calls[0];
-    const updatedAgent = updateCall[1] as Partial<Agent>;
+    const updatedAgent = (upsertCall[0] as Partial<Agent>[])[0] as Partial<Agent>;
 
     // Should preserve DB settings
     expect(updatedAgent.settings?.DB_SETTING).toBe("value");
@@ -474,17 +491,17 @@ describe("ensureAgentExists - Settings Persistence", () => {
         },
       } as Agent;
 
-      // Mock getAgent to return DB agent on first call (ensureAgentExists)
+      // Mock getAgentsByIds to return DB agent on first call (ensureAgentExists)
       // and updated agent on second call (after update)
-      (getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>)
-        .mockResolvedValueOnce(dbAgent)
-        .mockResolvedValueOnce({
+      (getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>)
+        .mockResolvedValueOnce([dbAgent])
+        .mockResolvedValueOnce([{
           ...dbAgent,
           settings: {
             ...dbAgent.settings,
             MODEL: "gpt-5", // Added from character file
           },
-        });
+        }]);
 
       // Character file has different settings
       const character: Character = {
@@ -543,8 +560,8 @@ describe("ensureAgentExists - Settings Persistence", () => {
         createRoomsMock as VitestMockFunction<IDatabaseAdapter["createRooms"]>
       ).mockResolvedValue([agentId]);
       (
-        addParticipantsRoomMock as VitestMockFunction<
-          IDatabaseAdapter["addParticipantsRoom"]
+        createRoomParticipantsMock as VitestMockFunction<
+          IDatabaseAdapter["createRoomParticipants"]
         >
       ).mockResolvedValue(true);
 
@@ -589,15 +606,15 @@ describe("ensureAgentExists - Settings Persistence", () => {
         },
       } as Agent;
 
-      (getAgentMock as VitestMockFunction<IDatabaseAdapter["getAgent"]>)
-        .mockResolvedValueOnce(dbAgent)
-        .mockResolvedValueOnce({
+      (getAgentsByIdsMock as VitestMockFunction<IDatabaseAdapter["getAgentsByIds"]>)
+        .mockResolvedValueOnce([dbAgent])
+        .mockResolvedValueOnce([{
           ...dbAgent,
           settings: {
             MODEL: "gpt-5", // Updated by character file
             DB_ONLY_SETTING: "keep_me",
           },
-        });
+        }]);
 
       const character: Character = {
         id: agentId,
@@ -645,8 +662,8 @@ describe("ensureAgentExists - Settings Persistence", () => {
         createRoomsMock as VitestMockFunction<IDatabaseAdapter["createRooms"]>
       ).mockResolvedValue([agentId]);
       (
-        addParticipantsRoomMock as VitestMockFunction<
-          IDatabaseAdapter["addParticipantsRoom"]
+        createRoomParticipantsMock as VitestMockFunction<
+          IDatabaseAdapter["createRoomParticipants"]
         >
       ).mockResolvedValue(true);
 

@@ -1,10 +1,10 @@
-# ElizaOS Atropos - Texas Hold'em Poker Environment
+# elizaOS Atropos - Texas Hold'em Poker Environment
 
-A Texas Hold'em poker environment for training ElizaOS agents using the Atropos RL framework.
+A Texas Hold'em poker environment for training elizaOS agents using the Atropos RL framework.
 
 ## Overview
 
-This environment implements No-Limit Texas Hold'em poker, allowing ElizaOS agents to:
+This environment implements No-Limit Texas Hold'em poker, allowing elizaOS agents to:
 - Learn poker strategy through self-play
 - Understand betting dynamics and pot odds
 - Develop opponent modeling skills
@@ -67,7 +67,7 @@ python -m elizaos_atropos_holdem --players 6
 - Profit/loss at end of hand
 - Normalized by big blind
 
-## Usage with ElizaOS
+## Usage with elizaOS
 
 ```python
 from elizaos import AgentRuntime
@@ -167,10 +167,10 @@ elizaos_atropos_holdem/
 ├── deck.py               # Card deck and shuffling
 ├── hand_evaluator.py     # Hand strength evaluation
 ├── environment.py        # HoldemEnvironment class
-├── agent.py              # ElizaOS agent integration
+├── agent.py              # elizaOS agent integration
 └── cli.py                # Command-line interface
 ```
 
 ## License
 
-MIT License - Part of the ElizaOS project.
+MIT License - Part of the elizaOS project.

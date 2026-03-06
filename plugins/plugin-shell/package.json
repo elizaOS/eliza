@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-shell-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "Shell command execution plugin for ElizaOS with directory restrictions and history tracking",
+  "description": "Shell command execution plugin for elizaOS with directory restrictions and history tracking",
   "type": "module",
   "main": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",
@@ -61,7 +61,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

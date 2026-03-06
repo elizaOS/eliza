@@ -12,7 +12,7 @@ export const searchPluginAction: Action = {
   ],
 
   description:
-    'Search for plugins in the official ElizaOS registry using vectorized similarity search. Finds plugins by functionality, features, and natural language descriptions.',
+    'Search for plugins in the official elizaOS registry using vectorized similarity search. Finds plugins by functionality, features, and natural language descriptions.',
 
   examples: [
     [

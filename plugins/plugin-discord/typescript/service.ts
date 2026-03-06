@@ -40,7 +40,7 @@ import {
  *   Always succeeds. The same input always produces the same UUID output.
  *   Use this for Discord snowflake IDs.
  *
- * When working with Discord IDs in ElizaOS:
+ * When working with Discord IDs in elizaOS:
  *
  * 1. `stringToUuid(discordId)` - For storing Discord IDs in UUID fields (e.g., `messageServerId`).
  *
@@ -706,7 +706,7 @@ export class DiscordService extends Service implements IDiscordService {
     // 1. Discord native checks (before this event fires):
     //    - User has required permissions (default_member_permissions)
     //    - Command is available in this context (guild vs DM)
-    // 2. ElizaOS channel whitelist (here):
+    // 2. elizaOS channel whitelist (here):
     //    - If CHANNEL_IDS is set, check if channel is allowed
     //    - Unless command has bypassChannelWhitelist flag
     // 3. Custom validator (here):
@@ -739,7 +739,7 @@ export class DiscordService extends Service implements IDiscordService {
         "[DiscordService] interactionCreate received"
       );
 
-      // ElizaOS Channel Whitelist Check
+      // elizaOS Channel Whitelist Check
       // Follow-up interactions (modals, buttons, autocomplete) always bypass the channel whitelist
       // since they are responses to commands initiated by the user.
       // Slash commands respect the whitelist unless bypassChannelWhitelist: true.
@@ -800,7 +800,7 @@ export class DiscordService extends Service implements IDiscordService {
       // and our channel whitelist checks have already passed.
       //
       // Why validators?
-      // - ElizaOS-specific permission systems (when implemented)
+      // - elizaOS-specific permission systems (when implemented)
       // - Complex business logic (rate limiting, feature flags, etc.)
       // - Dynamic permissions based on runtime state
       // - Anything that can't be expressed via Discord's native permissions
@@ -1209,7 +1209,7 @@ export class DiscordService extends Service implements IDiscordService {
    *
    * **Event Design Note:**
    * We intentionally do NOT emit the standardized `EventType.ENTITY_JOINED` here.
-   * In ElizaOS's abstraction model:
+   * In elizaOS's abstraction model:
    * - A Discord "guild" maps to a "world" (the server/community)
    * - A Discord "channel" maps to a "room" (a specific conversation space)
    *
@@ -1270,14 +1270,14 @@ export class DiscordService extends Service implements IDiscordService {
    *
    * This method uses a hybrid permission system that combines:
    * 1. Discord's native permission features (default_member_permissions, contexts)
-   * 2. ElizaOS channel whitelist bypass (bypassChannelWhitelist flag)
+   * 2. elizaOS channel whitelist bypass (bypassChannelWhitelist flag)
    * 3. Custom validation functions (validator callback)
    *
    * ## Design Decisions
    *
    * ### Why Hybrid Approach?
    * - Discord's native permissions are powerful but limited to role-based access
-   * - ElizaOS needs programmatic control for channel restrictions and custom logic
+   * - elizaOS needs programmatic control for channel restrictions and custom logic
    * - Combining both gives developers the best of both worlds
    *
    * ### Why Transform Simple Flags?
@@ -1686,9 +1686,9 @@ export class DiscordService extends Service implements IDiscordService {
   }
 
   /**
-   * Transforms an ElizaOS slash command to Discord API format.
+   * Transforms an elizaOS slash command to Discord API format.
    * This bridges our developer-friendly API with Discord's native requirements.
-   * @param {DiscordSlashCommand} cmd - The ElizaOS command definition
+   * @param {DiscordSlashCommand} cmd - The elizaOS command definition
    * @returns {object} Discord API compatible command object
    * @private
    */
@@ -4006,7 +4006,7 @@ export class DiscordService extends Service implements IDiscordService {
 
   /**
    * Builds a Memory object from a Discord Message.
-   * This is a reusable helper for converting Discord messages to ElizaOS Memory format.
+   * This is a reusable helper for converting Discord messages to elizaOS Memory format.
    *
    * @param {Message} message - The Discord message to convert
    * @param {Object} options - Optional parameters

@@ -7,6 +7,7 @@ import type {
 } from "@elizaos/core";
 import { MOLTBOOK_SERVICE_NAME, URLS } from "../constants";
 import type { MoltbookService } from "../service";
+import { isMoltbookFailure } from "../types";
 
 /**
  * Provider that supplies Moltbook context to the agent
@@ -34,18 +35,18 @@ export const moltbookStateProvider: Provider = {
     // Get recent Moltbook posts for context
     let trendingPosts: string[] = [];
     const browseResult = await service.moltbookBrowse(undefined, "hot");
-    if (browseResult.success) {
+    if (isMoltbookFailure(browseResult)) {
+      // Log the error instead of silently swallowing it
+      console.warn(
+        `[moltbookStateProvider] Browse failed: ${browseResult.error}`,
+      );
+    } else {
       trendingPosts = browseResult.data
         .slice(0, 5)
         .map(
           (p) =>
             `[${p.submolt?.name || "general"}] ${p.title} (${p.upvotes || 0} votes)`,
         );
-    } else {
-      // Log the error instead of silently swallowing it
-      console.warn(
-        `[moltbookStateProvider] Browse failed: ${browseResult.error}`,
-      );
     }
 
     const data = {

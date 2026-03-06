@@ -1,6 +1,6 @@
 /**
  * @module plugin-gmail-watch
- * @description ElizaOS plugin for Gmail Pub/Sub push watcher.
+ * @description elizaOS plugin for Gmail Pub/Sub push watcher.
  *
  * This plugin manages the `gog gmail watch serve` child process that:
  *   1. Receives Google Pub/Sub push notifications for new emails

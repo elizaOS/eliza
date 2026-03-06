@@ -27,7 +27,7 @@
     "types"
   ],
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.1",
+    "@elizaos/core": "workspace:*",
     "@lifi/data-types": "5.15.5",
     "@lifi/sdk": "^3.7.9",
     "@lifi/types": "^17.18.0",

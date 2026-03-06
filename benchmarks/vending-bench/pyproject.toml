@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-vending-bench"
 version = "2.0.0"
-description = "Vending-Bench benchmark for ElizaOS - Long-term coherence evaluation"
+description = "Vending-Bench benchmark for elizaOS - Long-term coherence evaluation"
 readme = "../RESEARCH.md"
 license = "MIT"
 requires-python = ">=3.11"

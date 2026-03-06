@@ -1,6 +1,6 @@
 # Local AI Plugin
 
-This plugin provides local AI model capabilities through the ElizaOS platform, supporting text generation, image analysis, speech synthesis, and audio transcription.
+This plugin provides local AI model capabilities through the elizaOS platform, supporting text generation, image analysis, speech synthesis, and audio transcription.
 
 ## Usage
 

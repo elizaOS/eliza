@@ -36,7 +36,7 @@ def setup_logging(verbose: bool = False) -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Run SWE-bench benchmark on ElizaOS Python",
+        description="Run SWE-bench benchmark on elizaOS Python",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

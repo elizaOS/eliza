@@ -1,4 +1,4 @@
-# ElizaOS Enhanced Secret Management: Interaction Scenarios
+# elizaOS Enhanced Secret Management: Interaction Scenarios
 
 This document outlines 10 diverse interaction scenarios to test and validate the capabilities of the Enhanced Secret Management plugin. Each scenario includes a description, the characters involved, a detailed dialogue script, and the expected agent actions and outcomes.
 

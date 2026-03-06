@@ -1,7 +1,7 @@
 """
 Browser Use Agent for Mind2Web
 
-This module provides a high-level interface to the ElizaOS browser agent
+This module provides a high-level interface to the elizaOS browser agent
 for the Mind2Web benchmark.
 
 Example:
@@ -66,12 +66,12 @@ async def create_browser_agent(config: BrowserAgentConfig) -> "BrowserAgent":
 class BrowserAgent:
     """Browser agent for web navigation tasks.
 
-    Uses ElizaOS runtime with the Mind2Web benchmark plugin.
+    Uses elizaOS runtime with the Mind2Web benchmark plugin.
     """
 
     def __init__(self, config: BrowserAgentConfig) -> None:
         self.config = config
-        self._agent: "ElizaOSMind2WebAgent | None" = None
+        self._agent: "elizaOSMind2WebAgent | None" = None
         self._initialized = False
 
     async def initialize(self) -> None:
@@ -79,7 +79,7 @@ class BrowserAgent:
         if self._initialized:
             return
 
-        from benchmarks.mind2web.eliza_agent import ElizaOSMind2WebAgent
+        from benchmarks.mind2web.eliza_agent import elizaOSMind2WebAgent
         from benchmarks.mind2web.types import Mind2WebConfig
 
         # Create Mind2Web config
@@ -92,7 +92,7 @@ class BrowserAgent:
         )
 
         # Create the underlying agent
-        self._agent = ElizaOSMind2WebAgent(mind2web_config)
+        self._agent = elizaOSMind2WebAgent(mind2web_config)
         await self._agent.initialize()
         self._initialized = True
 

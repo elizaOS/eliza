@@ -76,6 +76,9 @@ export interface GetPlanParameters {
 /** Source identifier for plans created by this plugin */
 export const PLAN_SOURCE = "plugin-planning";
 
+/** Table name for plans in the runtime database */
+export const PLUGIN_PLANS_TABLE = "plans";
+
 /** Task status display labels */
 export const TASK_STATUS_LABELS: Record<string, string> = {
   [TaskStatus.PENDING]: "Pending",

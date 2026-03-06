@@ -1,5 +1,5 @@
 """
-REALM-Bench: Real-World Planning Benchmark for ElizaOS
+REALM-Bench: Real-World Planning Benchmark for elizaOS
 
 This benchmark evaluates the planning capabilities of LLM-based agents
 on complex, real-world tasks requiring multi-step reasoning and execution.
@@ -35,7 +35,7 @@ from benchmarks.realm.agent import (
 from benchmarks.realm.evaluator import REALMEvaluator, MetricsCalculator
 from benchmarks.realm.runner import REALMRunner
 
-# Plugin components (optional - requires ElizaOS)
+# Plugin components (optional - requires elizaOS)
 try:
     from benchmarks.realm.plugin import realm_plugin, create_realm_plugin
     REALM_PLUGIN_AVAILABLE = True

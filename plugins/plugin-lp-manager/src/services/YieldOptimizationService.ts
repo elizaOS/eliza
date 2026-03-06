@@ -86,7 +86,7 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
     super(runtime);
   }
 
-  // Static methods required by ElizaOS Service architecture
+  // Static methods required by elizaOS Service architecture
   static async start(runtime: IAgentRuntime): Promise<YieldOptimizationService> {
     const service = new YieldOptimizationService(runtime);
     await service.start(runtime);

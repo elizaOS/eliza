@@ -1,5 +1,5 @@
 """
-iMessage plugin for ElizaOS agents (macOS).
+iMessage plugin for elizaOS agents (macOS).
 """
 
 from .actions import send_message_action
@@ -69,7 +69,7 @@ def get_plugin():
     """Get the iMessage plugin configuration."""
     return {
         "name": "imessage",
-        "description": "iMessage plugin for ElizaOS agents (macOS)",
+        "description": "iMessage plugin for elizaOS agents (macOS)",
         "services": [IMessageService],
         "actions": [send_message_action],
         "providers": [chat_context_provider],

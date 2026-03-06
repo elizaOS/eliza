@@ -1,8 +1,8 @@
 """
-Vending-Bench ElizaOS Plugin - Canonical implementation using full ElizaOS runtime.
+Vending-Bench elizaOS Plugin - Canonical implementation using full elizaOS runtime.
 
 This plugin registers proper Actions and Providers for the vending machine benchmark,
-allowing the agent to use the standard ElizaOS message handling flow.
+allowing the agent to use the standard elizaOS message handling flow.
 """
 
 from __future__ import annotations

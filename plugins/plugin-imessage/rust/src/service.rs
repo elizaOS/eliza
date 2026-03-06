@@ -16,7 +16,7 @@ use tokio::process::Command;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
-/// iMessage service for ElizaOS
+/// iMessage service for elizaOS
 pub struct IMessageService {
     config: Arc<RwLock<Option<IMessageConfig>>>,
     connected: Arc<RwLock<bool>>,

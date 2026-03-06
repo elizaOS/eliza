@@ -1,8 +1,8 @@
 /**
  * Message Text Extraction Utility
  *
- * Provides a standardized way to extract text content from ElizaOS messages.
- * ElizaOS stores content in various formats depending on message type and source.
+ * Provides a standardized way to extract text content from elizaOS messages.
+ * elizaOS stores content in various formats depending on message type and source.
  */
 
 /**
@@ -32,7 +32,7 @@ const EXCLUDED_FIELDS = new Set([
 
 /**
  * Extract text content from a message content object.
- * Handles multiple storage formats used by ElizaOS.
+ * Handles multiple storage formats used by elizaOS.
  *
  * @param content - The parsed message content object
  * @returns The extracted text content, or empty string if not found
@@ -81,7 +81,7 @@ export function extractTextFromContent(content: unknown): string {
 
 /**
  * Extract text content from message metadata.
- * Some ElizaOS messages store text in metadata instead of content.
+ * Some elizaOS messages store text in metadata instead of content.
  *
  * @param metadata - The message metadata object
  * @returns The extracted text content, or empty string if not found

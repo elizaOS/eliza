@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-msteams",
   "version": "2.0.0-alpha.1",
-  "description": "Microsoft Teams integration for ElizaOS",
+  "description": "Microsoft Teams integration for elizaOS",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

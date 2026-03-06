@@ -1,4 +1,4 @@
-//! Matrix service implementation for ElizaOS.
+//! Matrix service implementation for elizaOS.
 
 use crate::types::*;
 use reqwest::Client;
@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
-/// Matrix messaging service for ElizaOS agents.
+/// Matrix messaging service for elizaOS agents.
 pub struct MatrixService {
     settings: MatrixSettings,
     client: Client,

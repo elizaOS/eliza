@@ -1,6 +1,6 @@
 # elizaos-plugin-whatsapp
 
-WhatsApp Cloud API plugin for ElizaOS agents.
+WhatsApp Cloud API plugin for elizaOS agents.
 
 ## Installation
 

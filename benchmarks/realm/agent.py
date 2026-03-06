@@ -2,10 +2,10 @@
 REALM-Bench Planning Agent
 
 Agent that executes planning tasks for the REALM benchmark.
-Integrates with ElizaOS runtime using the FULL canonical message handling loop.
+Integrates with elizaOS runtime using the FULL canonical message handling loop.
 
 This agent:
-1. Uses ElizaOS AgentRuntime with basicCapabilities enabled
+1. Uses elizaOS AgentRuntime with basicCapabilities enabled
 2. Processes messages through message_service.handle_message()
 3. Uses custom REALM actions (GENERATE_PLAN, EXECUTE_STEP, ADAPT_PLAN)
 4. Uses custom REALM providers for task context injection
@@ -52,7 +52,7 @@ except ImportError:
     logger.debug("[REALMAgent] Trajectory logger plugin not available - install elizaos-plugin-trajectory-logger for training export")
 
 
-# Try to import ElizaOS - required for canonical agent usage
+# Try to import elizaOS - required for canonical agent usage
 try:
     from elizaos.runtime import AgentRuntime
     from elizaos.types.agent import Character
@@ -71,7 +71,7 @@ except ImportError:
     Content = None  # type: ignore[misc, assignment]
     as_uuid = None  # type: ignore[misc, assignment]
     ELIZAOS_AVAILABLE = False
-    logger.warning("[REALMAgent] ElizaOS not available - install elizaos package for full agent support")
+    logger.warning("[REALMAgent] elizaOS not available - install elizaos package for full agent support")
 
 
 def get_model_provider_plugin() -> Optional["Plugin"]:
@@ -87,7 +87,7 @@ def get_model_provider_plugin() -> Optional["Plugin"]:
     if not ELIZAOS_AVAILABLE:
         return None
     
-    # OpenAI (supports ElizaOS runtime plugin in Python)
+    # OpenAI (supports elizaOS runtime plugin in Python)
     if os.environ.get("OPENAI_API_KEY"):
         try:
             from elizaos_plugin_openai import create_openai_elizaos_plugin
@@ -97,13 +97,13 @@ def get_model_provider_plugin() -> Optional["Plugin"]:
         except ImportError:
             logger.warning("[REALMAgent] OPENAI_API_KEY set but OpenAI plugin not installed")
 
-    # Anthropic (Python package exists in this repo, but no ElizaOS runtime plugin wrapper yet)
+    # Anthropic (Python package exists in this repo, but no elizaOS runtime plugin wrapper yet)
     if os.environ.get("ANTHROPIC_API_KEY"):
         logger.warning(
             "[REALMAgent] ANTHROPIC_API_KEY set but no Python runtime plugin wrapper is available"
         )
 
-    # Groq (Python package exists in this repo, but no ElizaOS runtime plugin wrapper yet)
+    # Groq (Python package exists in this repo, but no elizaOS runtime plugin wrapper yet)
     if os.environ.get("GROQ_API_KEY"):
         logger.warning(
             "[REALMAgent] GROQ_API_KEY set but no Python runtime plugin wrapper is available"
@@ -161,9 +161,9 @@ Execute plans step-by-step, handling failures gracefully.""",
 
 class REALMAgent:
     """
-    Agent for solving REALM benchmark tasks using canonical ElizaOS message handling.
+    Agent for solving REALM benchmark tasks using canonical elizaOS message handling.
     
-    This agent uses the FULL ElizaOS agent loop:
+    This agent uses the FULL elizaOS agent loop:
     - AgentRuntime with basicCapabilities enabled (default)
     - MessageService.handle_message() for processing
     - Custom REALM actions (GENERATE_PLAN, EXECUTE_STEP, ADAPT_PLAN, COMPLETE_TASK)
@@ -194,7 +194,7 @@ class REALMAgent:
         Initialize REALM agent.
 
         Args:
-            runtime: Optional pre-configured ElizaOS runtime
+            runtime: Optional pre-configured elizaOS runtime
             max_steps: Maximum execution steps per task
             execution_model: How to execute plan (sequential/parallel/dag)
             enable_adaptation: Enable plan adaptation on failure
@@ -226,10 +226,10 @@ class REALMAgent:
 
     async def initialize(self) -> None:
         """
-        Initialize the agent runtime with full ElizaOS capabilities.
+        Initialize the agent runtime with full elizaOS capabilities.
         
         This sets up:
-        1. The ElizaOS AgentRuntime with basicCapabilities (enabled by default)
+        1. The elizaOS AgentRuntime with basicCapabilities (enabled by default)
         2. A model provider plugin (OpenAI, Anthropic, etc.)
         3. The REALM benchmark plugin with planning actions/providers
         """
@@ -237,7 +237,7 @@ class REALMAgent:
             return
 
         if not ELIZAOS_AVAILABLE:
-            logger.warning("[REALMAgent] ElizaOS not available - running in heuristic-only mode")
+            logger.warning("[REALMAgent] elizaOS not available - running in heuristic-only mode")
             self._initialized = True
             return
 
@@ -352,7 +352,7 @@ class REALMAgent:
         test_case: Optional[REALMTestCase] = None,
     ) -> PlanningTrajectory:
         """
-        Solve a REALM benchmark task using the full ElizaOS agent loop.
+        Solve a REALM benchmark task using the full elizaOS agent loop.
 
         Args:
             task: The REALM task to solve
@@ -408,7 +408,7 @@ class REALMAgent:
 
         try:
             # Use full agent loop if:
-            # 1. ElizaOS is available
+            # 1. elizaOS is available
             # 2. Runtime is initialized
             # 3. REALM plugin is loaded
             # 4. Model provider is available (required for message handling)
@@ -422,7 +422,7 @@ class REALMAgent:
             )
             
             if use_full_loop:
-                logger.info("[REALMAgent] Using full ElizaOS agent loop")
+                logger.info("[REALMAgent] Using full elizaOS agent loop")
                 await self._solve_with_agent_loop(task, test_case, trajectory)
             else:
                 logger.info(
@@ -496,10 +496,10 @@ class REALMAgent:
         trajectory: PlanningTrajectory,
     ) -> None:
         """
-        Solve task using the full ElizaOS runtime with actions and providers.
+        Solve task using the full elizaOS runtime with actions and providers.
         
         This is the canonical approach that uses:
-        1. ElizaOS AgentRuntime with basicCapabilities
+        1. elizaOS AgentRuntime with basicCapabilities
         2. REALM plugin actions (GENERATE_PLAN, EXECUTE_STEP, etc.)
         3. REALM plugin providers (REALM_TASK, PLANNING_STATE)
         4. Direct action invocation for benchmark orchestration
@@ -864,7 +864,7 @@ class REALMAgent:
         trajectory: PlanningTrajectory,
     ) -> None:
         """
-        Send a message through the full ElizaOS message handling loop.
+        Send a message through the full elizaOS message handling loop.
         
         This uses runtime.message_service.handle_message() which:
         1. Saves message to memory
@@ -962,7 +962,7 @@ class REALMAgent:
         traj_id: str | None,
     ) -> None:
         """
-        Solve task using heuristic planning (fallback when ElizaOS not available).
+        Solve task using heuristic planning (fallback when elizaOS not available).
         """
         # Generate plan from expected actions or available tools
         plan: list[PlanningAction] = []
@@ -1196,7 +1196,7 @@ class REALMAgent:
 
 class MockREALMAgent:
     """
-    Mock agent for testing benchmark infrastructure without ElizaOS/LLM.
+    Mock agent for testing benchmark infrastructure without elizaOS/LLM.
 
     Returns expected results to verify benchmark correctness.
     """

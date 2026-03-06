@@ -62,7 +62,7 @@ export async function checkContainerHealth(
     method: "GET",
     signal: controller.signal,
     headers: {
-      "User-Agent": "ElizaOS-HealthMonitor/1.0",
+      "User-Agent": "elizaOS-HealthMonitor/1.0",
     },
   });
 

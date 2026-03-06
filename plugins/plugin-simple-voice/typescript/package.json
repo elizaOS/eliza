@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-simple-voice",
   "version": "2.0.0-alpha.2",
-  "description": "Retro 1980s SAM Text-to-Speech plugin for ElizaOS agents",
+  "description": "Retro 1980s SAM Text-to-Speech plugin for elizaOS agents",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -44,7 +44,7 @@
     "voice-synthesis",
     "1980s"
   ],
-  "author": "ElizaOS Team",
+  "author": "elizaOS Team",
   "license": "MIT",
   "dependencies": {
     "@elizaos/core": "workspace:*",

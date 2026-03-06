@@ -1,6 +1,6 @@
 # elizaos-plugin-linear
 
-Python implementation of the Linear integration plugin for ElizaOS.
+Python implementation of the Linear integration plugin for elizaOS.
 
 ## Features
 
@@ -32,7 +32,7 @@ export LINEAR_DEFAULT_TEAM_KEY=ENG          # Optional
 ```python
 from elizaos_plugin_linear import linear_plugin
 
-# Register with your ElizaOS agent
+# Register with your elizaOS agent
 agent.register_plugin(linear_plugin)
 ```
 

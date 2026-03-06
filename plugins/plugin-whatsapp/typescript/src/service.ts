@@ -14,7 +14,7 @@ import type {
 type EventHandler = (payload: unknown) => void | Promise<void>;
 
 /**
- * WhatsApp service for ElizaOS.
+ * WhatsApp service for elizaOS.
  * Provides comprehensive WhatsApp Cloud API integration.
  */
 export class WhatsAppService {

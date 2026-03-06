@@ -9,7 +9,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { decodeMemoryText, MEMORY_SOURCE, type ForgetParameters } from "../types.js";
+import { decodeMemoryText, MEMORY_SOURCE, type ForgetParameters, PLUGIN_MEMORY_TABLE } from "../types.js";
 
 export const forgetAction: Action = {
   name: "FORGET",
@@ -46,8 +46,7 @@ export const forgetAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> {
-    const memoryManager = runtime.getMemoryManager();
-    return !!memoryManager;
+    return typeof runtime.getMemories === "function" && typeof runtime.deleteMemory === "function";
   },
 
   async handler(
@@ -58,11 +57,6 @@ export const forgetAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
-      const memoryManager = runtime.getMemoryManager();
-      if (!memoryManager) {
-        throw new Error("Memory manager not available");
-      }
-
       const content = message.content.text;
       if (!content) {
         const errorMessage = "Please specify which memory to forget.";
@@ -74,15 +68,16 @@ export const forgetAction: Action = {
 
       // Direct removal by ID if provided
       if (params?.memoryId) {
-        await memoryManager.removeMemory(params.memoryId);
+        await runtime.deleteMemory(params.memoryId as import("@elizaos/core").UUID);
         const successMessage = `Removed memory with ID: ${params.memoryId}`;
         await callback?.({ text: successMessage, source: message.content.source });
         return { text: successMessage, success: true, data: { removedId: params.memoryId } };
       }
 
       // Search for matching memory to remove
-      const memories = await memoryManager.getMemories({
+      const memories = await runtime.getMemories({
         roomId: message.roomId,
+        tableName: PLUGIN_MEMORY_TABLE,
         count: 100,
       });
 
@@ -137,7 +132,7 @@ Return ONLY a JSON object (no markdown, no code blocks):
       const memoryId = targetMemory.id ?? "";
 
       if (memoryId) {
-        await memoryManager.removeMemory(memoryId);
+        await runtime.deleteMemory(memoryId as import("@elizaos/core").UUID);
       }
 
       const successMessage = `Removed memory: "${parsed.content}"`;

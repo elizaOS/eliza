@@ -114,7 +114,7 @@ export const characters = pgTable('characters', {
   campaignId: uuid('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
   
   playerType: varchar('player_type', { length: 20 }).notNull(), // 'human' or 'ai'
-  agentId: uuid('agent_id'), // ElizaOS agent ID if AI
+  agentId: uuid('agent_id'), // elizaOS agent ID if AI
   
   name: varchar('name', { length: 255 }).notNull(),
   sheet: jsonb('sheet').notNull(), // Full CharacterSheet

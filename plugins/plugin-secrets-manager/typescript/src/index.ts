@@ -1,7 +1,7 @@
 /**
  * @elizaos/plugin-secrets-manager
  *
- * Multi-level secret management for ElizaOS with:
+ * Multi-level secret management for elizaOS with:
  * - Conversational onboarding (Discord, Telegram)
  * - Web form-based secret collection
  * - Encryption at rest (AES-256-GCM)

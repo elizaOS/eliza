@@ -1,12 +1,12 @@
 """
-Integration tests for ElizaOS ART.
+Integration tests for elizaOS ART.
 
 Tests the integration between:
 - ART training pipeline
-- ElizaOS trajectory logging
+- elizaOS trajectory logging
 - Local AI model inference
 - Local database storage
-- Full ElizaOS AgentRuntime
+- Full elizaOS AgentRuntime
 """
 
 import asyncio

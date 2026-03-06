@@ -1,7 +1,7 @@
 """
 Secrets Service implementation.
 
-Core service for multi-level secret management in ElizaOS.
+Core service for multi-level secret management in elizaOS.
 """
 
 import time

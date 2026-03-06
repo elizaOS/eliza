@@ -1,7 +1,7 @@
 /**
  * Agents repository.
  *
- * Pure database operations for the ElizaOS agents table.
+ * Pure database operations for the elizaOS agents table.
  * Used to get agent info without spinning up the full runtime.
  *
  * Read operations → dbRead (read replica)
@@ -31,7 +31,7 @@ export interface AgentInfo {
 }
 
 /**
- * Repository for ElizaOS agent database operations.
+ * Repository for elizaOS agent database operations.
  */
 export class AgentsRepository {
   // ============================================================================

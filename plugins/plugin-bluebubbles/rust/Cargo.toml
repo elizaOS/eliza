@@ -2,9 +2,9 @@
 name = "elizaos-plugin-bluebubbles"
 version = "2.0.0-alpha.1"
 edition = "2021"
-description = "BlueBubbles iMessage bridge plugin for ElizaOS agents"
+description = "BlueBubbles iMessage bridge plugin for elizaOS agents"
 license = "MIT"
-authors = ["ElizaOS Contributors"]
+authors = ["elizaOS Contributors"]
 repository = "https://github.com/elizaos/eliza"
 keywords = ["elizaos", "plugin", "bluebubbles", "imessage", "apple"]
 categories = ["api-bindings", "asynchronous"]

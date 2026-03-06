@@ -171,7 +171,7 @@ def mock_slack_service():
 
 @pytest.fixture
 def mock_runtime(mock_slack_service):
-    """A MagicMock that mimics the ElizaOS runtime."""
+    """A MagicMock that mimics the elizaOS runtime."""
     rt = MagicMock()
     rt.get_service = MagicMock(return_value=mock_slack_service)
     rt.get_room = AsyncMock(return_value=MockRoom())

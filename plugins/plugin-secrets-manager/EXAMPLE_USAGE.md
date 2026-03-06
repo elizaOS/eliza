@@ -1,6 +1,6 @@
 # Example Usage: Enhanced Secrets Manager
 
-This document provides practical examples of how to use the enhanced secrets manager in your ElizaOS plugins.
+This document provides practical examples of how to use the enhanced secrets manager in your elizaOS plugins.
 
 ## Basic Setup
 

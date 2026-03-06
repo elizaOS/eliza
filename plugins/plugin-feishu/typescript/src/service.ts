@@ -29,7 +29,7 @@ import type {
 import { FeishuChatType, FeishuEventTypes } from "./types";
 
 /**
- * Feishu service for ElizaOS.
+ * Feishu service for elizaOS.
  */
 export class FeishuService extends Service {
   static serviceType = FEISHU_SERVICE_NAME;

@@ -19,7 +19,8 @@
     "noEmitOnError": false,
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "types": ["node"]
   },
   "include": ["src/**/*.ts", "e2e/**/*.ts", "__tests__/**/*.ts"]
 }

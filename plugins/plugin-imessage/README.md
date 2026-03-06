@@ -1,6 +1,6 @@
 # @elizaos/plugin-imessage
 
-iMessage plugin for ElizaOS agents. Enables chat integration with Apple's iMessage on macOS.
+iMessage plugin for elizaOS agents. Enables chat integration with Apple's iMessage on macOS.
 
 **Note: This plugin only works on macOS systems.**
 

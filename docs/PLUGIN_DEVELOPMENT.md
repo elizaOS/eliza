@@ -1,8 +1,8 @@
-# Plugin Development (ElizaOS)
+# Plugin Development (elizaOS)
 
 ## Overview
 
-In ElizaOS, a **plugin** is a plain object implementing the `Plugin` interface (`packages/typescript/src/types/plugin.ts`). Plugins extend the runtime by registering:
+In elizaOS, a **plugin** is a plain object implementing the `Plugin` interface (`packages/typescript/src/types/plugin.ts`). Plugins extend the runtime by registering:
 
 - **Actions** (things the agent can do)
 - **Providers** (context injected into prompts / state)

@@ -1,4 +1,4 @@
-//! Google Chat integration plugin for ElizaOS agents.
+//! Google Chat integration plugin for elizaOS agents.
 //!
 //! This plugin provides Google Chat integration with support for
 //! sending messages, reactions, and space management.

@@ -1,5 +1,5 @@
 """
-ElizaOS AgentBench - Comprehensive benchmark for evaluating LLMs as agents.
+elizaOS AgentBench - Comprehensive benchmark for evaluating LLMs as agents.
 
 AgentBench evaluates agents across 8 diverse environments:
 - Operating System (OS): Linux terminal interaction
@@ -12,7 +12,7 @@ AgentBench evaluates agents across 8 diverse environments:
 - Web Browsing: General web navigation
 
 The benchmark supports two execution modes:
-1. Full ElizaOS Pipeline: Uses message_service.handle_message() with the complete
+1. Full elizaOS Pipeline: Uses message_service.handle_message() with the complete
    agent flow including providers, memory, and conversation history.
 2. Direct Mode: Uses runtime.generate_text() directly for testing.
 
@@ -20,7 +20,7 @@ Usage:
     from elizaos_agentbench import AgentBenchRunner, AgentBenchConfig
     from elizaos_agentbench.eliza_harness import create_benchmark_runtime
 
-    # Create full ElizaOS runtime
+    # Create full elizaOS runtime
     runtime = await create_benchmark_runtime()
 
     # Run benchmarks with full pipeline
@@ -61,7 +61,7 @@ __all__ = [
     # Runner
     "AgentBenchRunner",
     "EnvironmentAdapter",
-    # ElizaOS Integration
+    # elizaOS Integration
     "ElizaAgentHarness",
     "create_benchmark_runtime",
     "create_benchmark_character",

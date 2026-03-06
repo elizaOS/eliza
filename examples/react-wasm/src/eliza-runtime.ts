@@ -817,7 +817,9 @@ async function initializeRuntime(): Promise<WasmAgentRuntime> {
     { prefix: "elizaos-wasm" } as { dataDir?: string },
     agentId,
   );
-  await dbAdapter.init();
+  if ("init" in dbAdapter && typeof (dbAdapter as { init(): Promise<void> }).init === "function") {
+    await (dbAdapter as { init(): Promise<void> }).init();
+  }
 
   console.log("[elizaOS] LocalDB storage initialized");
 
@@ -873,18 +875,20 @@ export async function sendMessage(text: string): Promise<string> {
 
   // Store the user message in LocalDB
   if (dbAdapter) {
-    await dbAdapter.createMemory(
+    await dbAdapter.createMemories([
       {
-        id: messageId as `${string}-${string}-${string}-${string}-${string}`,
-        entityId: userId as `${string}-${string}-${string}-${string}-${string}`,
-        roomId: roomId as `${string}-${string}-${string}-${string}-${string}`,
-        agentId:
-          runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,
-        content: { text },
-        createdAt: Date.now(),
+        memory: {
+          id: messageId as `${string}-${string}-${string}-${string}-${string}`,
+          entityId: userId as `${string}-${string}-${string}-${string}-${string}`,
+          roomId: roomId as `${string}-${string}-${string}-${string}-${string}`,
+          agentId:
+            runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,
+          content: { text },
+          createdAt: Date.now(),
+        },
+        tableName: "messages",
       },
-      "messages",
-    );
+    ]);
   }
 
   // Send to the Rust runtime
@@ -900,19 +904,21 @@ export async function sendMessage(text: string): Promise<string> {
   // Store the ELIZA response in LocalDB
   if (dbAdapter) {
     const responseId = wasm.generateUUID();
-    await dbAdapter.createMemory(
+    await dbAdapter.createMemories([
       {
-        id: responseId as `${string}-${string}-${string}-${string}-${string}`,
-        entityId:
-          runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,
-        roomId: roomId as `${string}-${string}-${string}-${string}-${string}`,
-        agentId:
-          runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,
-        content: { text: responseText },
-        createdAt: Date.now(),
+        memory: {
+          id: responseId as `${string}-${string}-${string}-${string}-${string}`,
+          entityId:
+            runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,
+          roomId: roomId as `${string}-${string}-${string}-${string}-${string}`,
+          agentId:
+            runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,
+          content: { text: responseText },
+          createdAt: Date.now(),
+        },
+        tableName: "messages",
       },
-      "messages",
-    );
+    ]);
   }
 
   return responseText;

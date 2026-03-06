@@ -160,7 +160,8 @@ export const describeSceneAction: Action = {
         );
 
         const objectDescriptions = Object.entries(objectTypes).map(
-          ([type, count]) => `${count} ${type}${count > 1 ? "s" : ""}`
+          ([type, count]: [string, number]) =>
+            `${count} ${type}${count > 1 ? "s" : ""}`
         );
         description += `\n\nObjects detected: ${objectDescriptions.join(", ")}.`;
       }

@@ -1,5 +1,5 @@
 """
-elizaos-plugin-prose: OpenProse VM integration for ElizaOS.
+elizaos-plugin-prose: OpenProse VM integration for elizaOS.
 
 OpenProse is a programming language for AI sessions that allows
 orchestrating multi-agent workflows.

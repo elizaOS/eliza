@@ -8,7 +8,7 @@
  *    - Marketplace items (public/private characters)
  *    - Repository: userCharactersRepository
  *
- * 2. **Agents** (agents table - ElizaOS framework)
+ * 2. **Agents** (agents table - elizaOS framework)
  *    - Running agent instances (DO NOT MODIFY - framework dependency)
  *    - Created when characters are deployed
  *    - Repository: agentsRepository
@@ -18,9 +18,9 @@
  *    - Links characters to deployed agent instances
  *    - Repository: containersRepository
  *
- * 4. **ElizaOS Tables** (rooms, memories, participants, etc.)
+ * 4. **elizaOS Tables** (rooms, memories, participants, etc.)
  *    - Framework-managed conversation data
- *    - DO NOT MODIFY - ElizaOS manages these
+ *    - DO NOT MODIFY - elizaOS manages these
  */
 
 // ============================================
@@ -53,14 +53,14 @@ export * from "./eliza-room-characters";
 export * from "./agent-events";
 
 // ============================================
-// Agent Domain (ElizaOS Runtime)
+// Agent Domain (elizaOS Runtime)
 // DO NOT MODIFY - Framework dependency
 // ============================================
 export * from "./agents";
 
 // ============================================
-// Agent Subdomain (ElizaOS Tables)
-// Direct database access to ElizaOS tables
+// Agent Subdomain (elizaOS Tables)
+// Direct database access to elizaOS tables
 // ============================================
 export * from "./agents/rooms";
 export * from "./agents/participants";

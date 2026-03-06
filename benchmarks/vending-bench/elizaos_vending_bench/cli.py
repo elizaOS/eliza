@@ -50,7 +50,7 @@ def setup_logging(verbose: bool = False) -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Run the Vending-Bench benchmark for ElizaOS",
+        description="Run the Vending-Bench benchmark for elizaOS",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -471,7 +471,7 @@ def generate_report_from_results(args: argparse.Namespace) -> int:
 def show_info() -> int:
     """Show benchmark information."""
     print("""
-Vending-Bench Benchmark for ElizaOS
+Vending-Bench Benchmark for elizaOS
 ===================================
 
 Vending-Bench evaluates LLM agents on long-term coherence by simulating

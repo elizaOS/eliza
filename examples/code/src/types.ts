@@ -112,12 +112,12 @@ export type TaskTraceEvent =
 
 /**
  * Available sub-agent types for task execution.
- * - eliza: Default ElizaOS tool-calling worker using runtime model
+ * - eliza: Default elizaOS tool-calling worker using runtime model
  * - claude-code: Claude Agent SDK-based worker
  * - codex: OpenAI Codex SDK-based worker
  * - opencode: OpenCode CLI-based worker (supports 75+ LLM providers)
  * - sweagent: SWE-agent methodology worker (Think/Act pattern, ACI)
- * - elizaos-native: Best-of-all native ElizaOS agent with monologue reasoning
+ * - elizaos-native: Best-of-all native elizaOS agent with monologue reasoning
  */
 export type SubAgentType =
   | "eliza"

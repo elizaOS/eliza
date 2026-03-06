@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ElizaOS Chat",
+  "productName": "elizaOS Chat",
   "version": "2.0.0-alpha",
   "identifier": "com.elizaos.example.tauri.chat",
   "build": {

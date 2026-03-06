@@ -469,7 +469,7 @@ impl PluginCreationClient {
 
     fn generate_initial_prompt(&self, spec: &PluginSpecification) -> String {
         let mut prompt = format!(
-            "You are creating an ElizaOS plugin with the following specification:\n\n\
+            "You are creating an elizaOS plugin with the following specification:\n\n\
              Name: {}\n\
              Description: {}\n\
              Version: {}\n\n",
@@ -493,10 +493,10 @@ impl PluginCreationClient {
         }
 
         prompt.push_str(
-            "Create an ElizaOS plugin implementation:\n\n\
+            "Create an elizaOS plugin implementation:\n\n\
              1. Create src/index.ts that exports the plugin object\n\
              2. Implement all specified components\n\
-             3. Follow ElizaOS plugin structure and conventions\n\
+             3. Follow elizaOS plugin structure and conventions\n\
              4. Include proper TypeScript types\n\
              5. Add error handling\n\
              6. Create unit tests\n\
@@ -516,7 +516,7 @@ impl PluginCreationClient {
             .join("\n\n");
 
         format!(
-            "The ElizaOS plugin {} has the following errors:\n\n{}\n\n\
+            "The elizaOS plugin {} has the following errors:\n\n{}\n\n\
              Current plugin specification:\n{}\n\n\
              Please fix all the errors and provide updated code with file paths marked.",
             spec.name,

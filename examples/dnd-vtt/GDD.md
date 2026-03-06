@@ -4,7 +4,7 @@
 
 **Project Name**: Eliza Dungeons - AI-Powered D&D 5e Virtual Tabletop  
 **Platform**: Web-based (Custom React VTT + Socket.io)  
-**AI Framework**: ElizaOS  
+**AI Framework**: elizaOS  
 **Target Experience**: A fully playable D&D 5e campaign with an AI Dungeon Master and fully autonomous AI agent party members, supporting multi-session campaigns with persistent world history
 
 ---
@@ -65,7 +65,7 @@
 │  ┌─────────────┐    ┌─────────────────────┐    ┌─────────────────────┐  │
 │  │   Human     │    │   AI Player Agents  │    │  AI Dungeon Master  │  │
 │  │   Players   │    │   (1-6 per party)   │    │       Agent         │  │
-│  │  (Browser)  │    │     (ElizaOS)       │    │     (ElizaOS)       │  │
+│  │  (Browser)  │    │     (elizaOS)       │    │     (elizaOS)       │  │
 │  └──────┬──────┘    └─────────┬───────────┘    └──────────┬──────────┘  │
 │         │                     │                           │             │
 │         ▼                     ▼                           ▼             │
@@ -95,8 +95,8 @@
 
 | Component | Technology | Responsibility |
 |-----------|------------|----------------|
-| DM Agent | ElizaOS Runtime | Narrative, NPCs, world state, encounter design, remembers campaign history |
-| Player Agents | ElizaOS Runtime (1 per AI PC) | Fully autonomous roleplay, tactical decisions, character memory |
+| DM Agent | elizaOS Runtime | Narrative, NPCs, world state, encounter design, remembers campaign history |
+| Player Agents | elizaOS Runtime (1 per AI PC) | Fully autonomous roleplay, tactical decisions, character memory |
 | Game Coordinator | TypeScript Service | Turn order, state sync, rules validation, session management |
 | Custom VTT | React + Socket.io + Canvas | Battle maps, tokens, dice, initiative tracker, character sheets |
 | Rules Engine | TypeScript | Combat math, spell effects, ability checks, condition tracking |
@@ -658,7 +658,7 @@ interface CharacterSheet {
   // Meta
   experiencePoints: number;
   isAI: boolean;
-  agentId?: string;  // ElizaOS agent ID if AI-controlled
+  agentId?: string;  // elizaOS agent ID if AI-controlled
 }
 ```
 
@@ -1074,7 +1074,7 @@ CREATE TABLE characters (
   id UUID PRIMARY KEY,
   campaign_id UUID REFERENCES campaigns(id),
   player_type VARCHAR(20) NOT NULL, -- 'human' or 'ai'
-  agent_id UUID,                     -- ElizaOS agent ID if AI
+  agent_id UUID,                     -- elizaOS agent ID if AI
   sheet JSONB NOT NULL,              -- Full character sheet
   memories JSONB DEFAULT '[]'::jsonb, -- Character-specific memories
   created_at TIMESTAMP DEFAULT NOW(),
@@ -1313,7 +1313,7 @@ async function retrieveRelevantEvents(
   currentContext: string,
   limit: number = 10
 ): Promise<WorldEvent[]> {
-  // Use ElizaOS memory system with embeddings
+  // Use elizaOS memory system with embeddings
   const embedding = await generateEmbedding(currentContext);
   
   const events = await db.query(`
@@ -1598,7 +1598,7 @@ examples/dnd-vtt/
     └── integration/
 ```
 
-### 10.2 ElizaOS Plugin Implementation
+### 10.2 elizaOS Plugin Implementation
 
 ```typescript
 // server/plugins/dnd-dm-plugin.ts
@@ -1975,7 +1975,7 @@ export function setupWebSocketServer(
 
 ### Phase 2: DM Agent (Weeks 3-4)
 
-- [ ] Implement DM agent with ElizaOS
+- [ ] Implement DM agent with elizaOS
 - [ ] Create DM plugin with core actions
 - [ ] Build narrative generation prompts
 - [ ] Implement NPC/monster control

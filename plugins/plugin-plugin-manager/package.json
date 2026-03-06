@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-plugin-manager",
-  "description": "Plugin manager for ElizaOS",
+  "description": "Plugin manager for elizaOS",
   "version": "1.0.0",
   "type": "module",
   "private": true,
@@ -10,7 +10,7 @@
   "packageType": "plugin",
   "platform": "node",
   "license": "MIT",
-  "author": "ElizaOS",
+  "author": "elizaOS",
   "keywords": [
     "plugin",
     "elizaos"
@@ -57,7 +57,7 @@
   "scripts": {
     "start": "elizaos start",
     "dev": "elizaos dev",
-    "build": "tsup && tsc --noEmit",
+    "build": "tsup",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",

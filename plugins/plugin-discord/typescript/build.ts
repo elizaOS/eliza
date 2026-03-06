@@ -29,6 +29,8 @@ async function buildAll(): Promise<boolean> {
         "@elizaos/core",
         // Discord.js and its dependencies
         "discord.js",
+        "discord-api-types",
+        "discord-api-types/v10",
         "@discordjs/opus",
         "@discordjs/rest",
         "@discordjs/voice",

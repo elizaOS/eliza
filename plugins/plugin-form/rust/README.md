@@ -2,7 +2,7 @@
 
 **Version:** 2.0.0-alpha.1
 
-Rust port of the ElizaOS plugin-form system — guardrails for agent-guided user journeys.
+Rust port of the elizaOS plugin-form system — guardrails for agent-guided user journeys.
 
 ## Overview
 

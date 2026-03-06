@@ -1,5 +1,5 @@
 /**
- * Utility functions for ElizaOS.
+ * Utility functions for elizaOS.
  *
  * Provides various utility functions including:
  * - Retry logic with exponential backoff

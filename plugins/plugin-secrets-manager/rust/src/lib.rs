@@ -1,10 +1,10 @@
-//! ElizaOS Secrets Manager Plugin
+//! elizaOS Secrets Manager Plugin
 //!
 //! Multi-level secrets management with encryption, validation, and dynamic plugin activation.
 //!
 //! # Overview
 //!
-//! This crate provides a comprehensive secrets management solution for ElizaOS agents:
+//! This crate provides a comprehensive secrets management solution for elizaOS agents:
 //!
 //! - **Multi-level storage**: Global (agent-wide), World (server/channel), and User (per-user) secrets
 //! - **Strong encryption**: AES-256-GCM encryption with secure key derivation

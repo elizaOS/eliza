@@ -1,6 +1,6 @@
 # Eliza Code
 
-An async coding agent terminal app built on ElizaOS - like Claude Code, but with fully asynchronous task execution and continuous conversation.
+An async coding agent terminal app built on elizaOS - like Claude Code, but with fully asynchronous task execution and continuous conversation.
 
 ## Features
 
@@ -114,7 +114,7 @@ bun run tsc --noEmit
 
 ## Built With
 
-- [ElizaOS](https://elizaos.github.io/eliza/) - Agent framework
+- [elizaOS](https://elizaos.github.io/eliza/) - Agent framework
 - [Ink](https://github.com/vadimdemedes/ink) - React for CLIs
 - [Zustand](https://zustand-demo.pmnd.rs/) - State management
 - [Claude](https://anthropic.com) - AI model via Anthropic plugin

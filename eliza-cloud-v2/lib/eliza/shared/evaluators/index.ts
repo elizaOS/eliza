@@ -1,5 +1,5 @@
 /**
- * Shared evaluators for ElizaOS plugins
+ * Shared evaluators for elizaOS plugins
  */
 
 export { roomTitleEvaluator } from "./room-title";

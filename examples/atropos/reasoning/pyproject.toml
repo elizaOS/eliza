@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-atropos-reasoning"
 version = "2.0.0"
-description = "Reasoning gym environment for ElizaOS RL training with Atropos"
+description = "Reasoning gym environment for elizaOS RL training with Atropos"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"

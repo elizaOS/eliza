@@ -62,7 +62,7 @@ class MINTRunner:
 
         Args:
             config: Benchmark configuration
-            runtime: Optional ElizaOS runtime for model interactions
+            runtime: Optional elizaOS runtime for model interactions
         """
         # Validate config
         if config.max_turns < 1:

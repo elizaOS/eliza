@@ -39,7 +39,7 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
 anyhow = "1"
 
-# ElizaOS types (optional, for integration)
+# elizaOS types (optional, for integration)
 # elizaos = { path = "../../../packages/rust", optional = true }
 
 [dev-dependencies]

@@ -9,6 +9,8 @@ export default defineConfig({
   format: ['esm'], // Ensure you're targeting CommonJS
   dts: false, // Disable dts generation, we'll use tsc directly
   external: [
+    'axios',
+    'uuid',
     'dotenv', // Externalize dotenv to prevent bundling
     'fs', // Externalize fs to use Node.js built-in module
     'path', // Externalize other built-ins if necessary

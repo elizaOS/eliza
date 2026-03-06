@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "elizaos-terminal-bench"
 version = "2.0.0"
-description = "Terminal-Bench benchmark for ElizaOS - AI agent terminal proficiency evaluation"
+description = "Terminal-Bench benchmark for elizaOS - AI agent terminal proficiency evaluation"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

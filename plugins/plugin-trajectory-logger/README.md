@@ -1,6 +1,6 @@
 # @elizaos/plugin-trajectory-logger
 
-Trajectory logger plugin for ElizaOS.
+Trajectory logger plugin for elizaOS.
 
 This plugin captures rich agent interaction trajectories and provides utilities to:
 

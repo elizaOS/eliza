@@ -17,13 +17,13 @@ import type {
 } from "./types.js";
 
 /**
- * ElizaOS Native system prompt - combines best practices from:
+ * elizaOS Native system prompt - combines best practices from:
  * - Claude Code: Built-in tools, session management, hooks
  * - Codex: Event streaming, file change tracking, structured output
  * - OpenCode: LSP-awareness, multi-session support, context management
  * - SWE-agent: Think/Act pattern, Agent-Computer Interface, trajectory tracking
  */
-const ELIZAOS_NATIVE_SYSTEM_PROMPT = `You are ElizaOS, an expert AI coding agent that combines the best practices from leading coding assistants.
+const ELIZAOS_NATIVE_SYSTEM_PROMPT = `You are elizaOS, an expert AI coding agent that combines the best practices from leading coding assistants.
 You are methodical, thorough, and precise in your work.
 
 ## YOUR METHODOLOGY
@@ -344,7 +344,7 @@ You can create todos to track progress on complex tasks using the createTodo too
 }
 
 /**
- * ElizaOSNativeSubAgent - The best-of-all native ElizaOS coding agent
+ * elizaOSNativeSubAgent - The best-of-all native elizaOS coding agent
  *
  * Combines best practices from:
  * - Claude Code: Built-in tools, hooks, session management
@@ -359,8 +359,8 @@ You can create todos to track progress on complex tasks using the createTodo too
  * - Goals and todo integration
  * - Comprehensive trace logging
  */
-export class ElizaOSNativeSubAgent implements SubAgent {
-  readonly name = "ElizaOS Native Worker";
+export class elizaOSNativeSubAgent implements SubAgent {
+  readonly name = "elizaOS Native Worker";
   readonly type = "elizaos-native" as const;
 
   private cancelled = false;
@@ -925,12 +925,12 @@ function redactSensitiveText(text: string): string {
 }
 
 /**
- * Factory function to create an ElizaOSNativeSubAgent
+ * Factory function to create an elizaOSNativeSubAgent
  */
-export function createElizaOSNativeSubAgent(config?: {
+export function createelizaOSNativeSubAgent(config?: {
   maxIterations?: number;
   debug?: boolean;
   enableThinking?: boolean;
 }): SubAgent {
-  return new ElizaOSNativeSubAgent(config);
+  return new elizaOSNativeSubAgent(config);
 }

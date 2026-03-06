@@ -108,7 +108,7 @@ export interface PluginManifest {
   optionalSecrets?: string[];
   /** Plugin dependencies (other plugin IDs) */
   dependencies?: string[];
-  /** Minimum ElizaOS version required */
+  /** Minimum elizaOS version required */
   minElizaVersion?: string;
   /** Plugin author */
   author?: string;
@@ -166,7 +166,7 @@ export interface PluginCandidate {
   /** Package directory */
   packageDir?: string;
   /** Extracted package manifest metadata */
-  packageManifest?: ElizaOSPackageManifest;
+  packageManifest?: elizaOSPackageManifest;
 }
 
 /**
@@ -272,9 +272,9 @@ export interface PluginPackageInstall {
 }
 
 /**
- * ElizaOS-specific metadata in package.json.
+ * elizaOS-specific metadata in package.json.
  */
-export interface ElizaOSPackageManifest {
+export interface elizaOSPackageManifest {
   /** Entry point extensions */
   extensions?: string[];
   /** Channel metadata */
@@ -284,7 +284,7 @@ export interface ElizaOSPackageManifest {
 }
 
 /**
- * Standard package.json structure with ElizaOS metadata.
+ * Standard package.json structure with elizaOS metadata.
  */
 export interface PackageManifest {
   /** Package name */
@@ -293,8 +293,8 @@ export interface PackageManifest {
   version?: string;
   /** Package description */
   description?: string;
-  /** ElizaOS-specific metadata */
-  elizaos?: ElizaOSPackageManifest;
+  /** elizaOS-specific metadata */
+  elizaos?: elizaOSPackageManifest;
 }
 
 /**

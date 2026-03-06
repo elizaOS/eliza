@@ -1,5 +1,5 @@
 /**
- * Session management utilities for ElizaOS.
+ * Session management utilities for elizaOS.
  *
  * Provides:
  * - Session key building and parsing

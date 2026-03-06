@@ -2,7 +2,7 @@
 
 This is a standalone WebSocket server that handles browser automation using
 Stagehand and Playwright. It's designed to run as a separate process from the
-main ElizaOS runtime to avoid dependency conflicts with Bun.
+main elizaOS runtime to avoid dependency conflicts with Bun.
 
 ## Architecture
 
@@ -10,9 +10,9 @@ The server runs as a separate Node.js process and communicates with the
 Stagehand plugin via WebSocket. This architecture allows:
 
 1. **Dependency Isolation**: Playwright and Stagehand run in a Node.js
-   environment while ElizaOS runs in Bun
+   environment while elizaOS runs in Bun
 2. **Process Management**: The plugin can start/stop the server as needed
-3. **Scalability**: Multiple ElizaOS instances can connect to the same server
+3. **Scalability**: Multiple elizaOS instances can connect to the same server
 4. **Flexibility**: The server can be deployed separately or bundled with the
    agent
 

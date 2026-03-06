@@ -1,12 +1,12 @@
 # @elizaos/plugin-prose
 
-OpenProse VM integration for ElizaOS - a programming language for AI sessions.
+OpenProse VM integration for elizaOS - a programming language for AI sessions.
 
 ## Overview
 
 OpenProse is a programming language designed for orchestrating multi-agent AI workflows. When a `.prose` program is run, the agent "becomes" the OpenProse VM and executes the program by interpreting each statement according to the VM specification.
 
-This plugin provides ElizaOS actions and providers that enable agents to:
+This plugin provides elizaOS actions and providers that enable agents to:
 - Run `.prose` programs with `PROSE_RUN`
 - Validate programs without execution with `PROSE_COMPILE`
 - Get help and examples with `PROSE_HELP`

@@ -4,7 +4,7 @@ version = "2.0.0-alpha.1"
 edition = "2021"
 authors = ["elizaOS"]
 license = "MIT"
-description = "LINE Messaging API plugin for ElizaOS agents"
+description = "LINE Messaging API plugin for elizaOS agents"
 keywords = ["elizaos", "plugin", "line", "messaging", "japan"]
 categories = ["messaging"]
 

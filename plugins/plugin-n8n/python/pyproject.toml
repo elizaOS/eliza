@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-plugin-n8n"
 version = "2.0.0"
-description = "elizaOS N8n Plugin - AI-powered plugin creation for ElizaOS"
+description = "elizaOS N8n Plugin - AI-powered plugin creation for elizaOS"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"

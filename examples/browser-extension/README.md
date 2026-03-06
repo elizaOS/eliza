@@ -1,6 +1,6 @@
 # Chat with Webpage - Browser Extension
 
-A cross-platform browser extension that lets you chat with any webpage using AI. Powered by ElizaOS with support for multiple AI providers.
+A cross-platform browser extension that lets you chat with any webpage using AI. Powered by elizaOS with support for multiple AI providers.
 
 ## Features
 
@@ -81,7 +81,7 @@ npm run convert
 browser-extension/
 ├── shared/                     # Shared TypeScript code
 │   ├── types.ts               # Type definitions
-│   ├── eliza-runtime.ts       # ElizaOS runtime setup
+│   ├── eliza-runtime.ts       # elizaOS runtime setup
 │   └── providers/
 │       └── pageContentProvider.ts  # Page context injection
 ├── chrome/                     # Chrome extension
@@ -103,7 +103,7 @@ browser-extension/
 1. **Content Script** (`content.ts`) - Runs on every page and extracts the main content (title, URL, text)
 2. **Background Script** (`background.ts`) - Manages communication between popup and content scripts
 3. **Popup** (`popup.ts`) - The chat interface that users interact with
-4. **Page Content Provider** - A custom ElizaOS provider that injects the current page content into the AI's context
+4. **Page Content Provider** - A custom elizaOS provider that injects the current page content into the AI's context
 5. **Eliza Runtime** - Manages the AI conversation with support for multiple providers
 
 ## Development

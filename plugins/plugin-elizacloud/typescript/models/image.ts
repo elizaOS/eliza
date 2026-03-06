@@ -129,7 +129,7 @@ export async function handleImageDescription(
     });
 
     if (!response.ok) {
-      throw new Error(`ElizaOS Cloud API error: ${response.status}`);
+      throw new Error(`elizaOS Cloud API error: ${response.status}`);
     }
 
     type OpenAIResponseType = {

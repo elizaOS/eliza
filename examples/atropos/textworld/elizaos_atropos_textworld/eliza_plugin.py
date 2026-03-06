@@ -1,5 +1,5 @@
 """
-Canonical ElizaOS integration for Atropos TextWorld.
+Canonical elizaOS integration for Atropos TextWorld.
 
 Provides:
 - ATROPOS_TEXTWORLD provider with current observation + admissible commands
@@ -112,7 +112,7 @@ def create_textworld_character(name: str = "TextWorldAgent") -> Character:
         task="Choose the next TextWorld command for {{agentName}}.",
         instructions=(
             "Choose exactly ONE admissible command from the list.\n"
-            "Output ONLY one ElizaOS action: ATROPOS_TEXTWORLD_ACTION with params.command."
+            "Output ONLY one elizaOS action: ATROPOS_TEXTWORLD_ACTION with params.command."
         ),
         action_name="ATROPOS_TEXTWORLD_ACTION",
         param_name="command",

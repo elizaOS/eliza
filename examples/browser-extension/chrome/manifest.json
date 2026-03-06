@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Chat with Webpage - ElizaOS",
+  "name": "Chat with Webpage - elizaOS",
   "version": "1.0.0",
-  "description": "Chat with any webpage using AI. Powered by ElizaOS with support for OpenAI, Claude, Groq, Gemini, and Grok.",
+  "description": "Chat with any webpage using AI. Powered by elizaOS with support for OpenAI, Claude, Groq, Gemini, and Grok.",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",

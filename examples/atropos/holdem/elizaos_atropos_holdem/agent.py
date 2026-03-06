@@ -1,5 +1,5 @@
 """
-ElizaOS agent for Texas Hold'em environment.
+elizaOS agent for Texas Hold'em environment.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 class HoldemAgent:
     """
-    ElizaOS-powered Texas Hold'em agent.
+    elizaOS-powered Texas Hold'em agent.
     
     Uses LLM or heuristics to make poker decisions.
     
@@ -48,7 +48,7 @@ class HoldemAgent:
         Initialize the Hold'em agent.
         
         Args:
-            runtime: ElizaOS AgentRuntime
+            runtime: elizaOS AgentRuntime
             position: Seat position at the table
             use_llm: Whether to use LLM for decisions
             agent_id: Optional agent ID
@@ -132,7 +132,7 @@ class HoldemAgent:
         return Action(ActionType.FOLD)
 
     async def _decide_with_eliza(self, state: GameState, *, trajectory_step_id: str | None = None) -> Action:
-        """Use canonical ElizaOS message pipeline for decision making."""
+        """Use canonical elizaOS message pipeline for decision making."""
         if self._runtime is None:
             return self._decide_with_heuristics(state)
 

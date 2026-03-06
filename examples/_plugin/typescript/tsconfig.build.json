@@ -5,7 +5,8 @@
     "sourceMap": true,
     "inlineSources": true,
     "declaration": true,
-    "noEmit": false
+    "noEmit": false,
+    "types": ["node"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": [
@@ -15,6 +16,7 @@
     "**/*.spec.ts",
     "**/*.cy.ts",
     "**/*.cy.tsx",
-    "src/__tests__/**"
+    "src/__tests__/**",
+    "src/frontend/**"
   ]
 }

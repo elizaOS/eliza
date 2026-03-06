@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-plugin-computeruse"
 version = "2.0.0"
-description = "Computer automation plugin for ElizaOS - enables AI agents to control the local machine (when supported) or a ComputerUse MCP server"
+description = "Computer automation plugin for elizaOS - enables AI agents to control the local machine (when supported) or a ComputerUse MCP server"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

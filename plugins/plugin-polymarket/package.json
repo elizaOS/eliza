@@ -36,8 +36,9 @@
     "types"
   ],
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.1",
+    "@elizaos/core": "workspace:*",
     "@elizaos/plugin-evm": "workspace:*",
+    "@ethersproject/wallet": "^5.7.0",
     "@polymarket/clob-client": "^5.2.0",
     "viem": "^2.21.0",
     "ws": "^8.17.0",

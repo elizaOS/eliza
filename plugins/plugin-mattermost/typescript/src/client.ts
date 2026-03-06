@@ -322,8 +322,8 @@ export async function uploadMattermostFile(
   const bytes =
     params.buffer instanceof Uint8Array ? params.buffer : Uint8Array.from(params.buffer);
   const blob = params.contentType
-    ? new Blob([bytes], { type: params.contentType })
-    : new Blob([bytes]);
+    ? new Blob([bytes as any], { type: params.contentType })
+    : new Blob([bytes as any]);
   form.append("files", blob, fileName);
   form.append("channel_id", params.channelId);
 

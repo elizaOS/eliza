@@ -1,7 +1,7 @@
 /**
  * @elizaos/plugin-cli
  *
- * CLI framework plugin for ElizaOS agents
+ * CLI framework plugin for elizaOS agents
  *
  * Provides:
  * - CLI command registration and management
@@ -63,7 +63,7 @@ export function buildProgram(options?: {
   const program = new Command()
     .name(cliName)
     .version(version)
-    .description(`${cliName} - ElizaOS agent CLI`);
+    .description(`${cliName} - elizaOS agent CLI`);
 
   const ctx: CliContext = {
     program,
@@ -105,7 +105,7 @@ export async function runCli(
 }
 
 /**
- * CLI Plugin for ElizaOS
+ * CLI Plugin for elizaOS
  *
  * Provides CLI command infrastructure for the agent runtime.
  *

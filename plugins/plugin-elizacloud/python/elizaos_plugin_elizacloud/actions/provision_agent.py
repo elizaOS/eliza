@@ -1,5 +1,5 @@
 """
-PROVISION_CLOUD_AGENT — Deploys an ElizaOS agent to ElizaCloud.
+PROVISION_CLOUD_AGENT — Deploys an elizaOS agent to ElizaCloud.
 
 Creates a container, waits for deployment, connects bridge, starts backup.
 """
@@ -69,7 +69,7 @@ def _extract_params(
 provision_cloud_agent_action: dict[str, object] = {
     "name": "PROVISION_CLOUD_AGENT",
     "description": (
-        "Deploy an ElizaOS agent to ElizaCloud. Provisions a container, "
+        "Deploy an elizaOS agent to ElizaCloud. Provisions a container, "
         "waits for deployment, connects the bridge, and starts auto-backup."
     ),
     "similes": [

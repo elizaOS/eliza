@@ -1,3 +1,6 @@
+/** Table name for plugin-memory long-term memories in the runtime database */
+export const PLUGIN_MEMORY_TABLE = "plugin_memory";
+
 /** Importance levels for stored memories */
 export enum MemoryImportance {
   LOW = 1,

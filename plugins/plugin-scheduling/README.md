@@ -1,6 +1,6 @@
 # @elizaos/plugin-scheduling
 
-Scheduling and calendar coordination plugin for ElizaOS agents.
+Scheduling and calendar coordination plugin for elizaOS agents.
 
 ## Features
 

@@ -35,9 +35,11 @@
     "@elizaos/plugin-solana": "workspace:*",
     "@solana/spl-token": "^0.4.0",
     "@solana/web3.js": "^1.95.0",
+    "axios": "^1.7.0",
     "bignumber.js": "^9.1.0",
     "bs58": "^6.0.0",
     "technicalindicators": "^3.1.0",
+    "uuid": "^11.0.0",
     "zod": "^4.3.6"
   },
   "optionalDependencies": {

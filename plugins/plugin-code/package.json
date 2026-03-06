@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-code-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "Coder tools plugin for ElizaOS (filesystem + shell + git) with multi-language implementations",
+  "description": "Coder tools plugin for elizaOS (filesystem + shell + git) with multi-language implementations",
   "type": "module",
   "main": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",
@@ -63,7 +63,7 @@
     "@elizaos/plugin-shell-root": "workspace:*"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

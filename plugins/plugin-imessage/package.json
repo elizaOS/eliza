@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-imessage",
   "version": "2.0.0-alpha.1",
-  "description": "iMessage plugin for ElizaOS agents (macOS)",
+  "description": "iMessage plugin for elizaOS agents (macOS)",
   "license": "MIT",
   "type": "module",
   "main": "./typescript/dist/index.js",
@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "npm run build:ts && npm run build:py",
+    "build": "npm run build:ts && (npm run build:py || echo 'Python build skipped (e.g. externally-managed env)')",
     "build:ts": "cd typescript && npm run build",
     "build:py": "cd python && pip install -e .",
     "build:rs": "cd rust && cargo build --release",
@@ -38,7 +38,7 @@
     "darwin"
   ],
   "peerDependencies": {
-    "@elizaos/core": ">=2.0.0"
+    "@elizaos/core": "workspace:*"
   },
   "dependencies": {
     "zod": "^4.3.6"

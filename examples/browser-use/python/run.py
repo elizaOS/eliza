@@ -2,7 +2,7 @@
 """
 Browser Use Example (Python)
 
-An autonomous ElizaOS agent that explores the web with curiosity,
+An autonomous elizaOS agent that explores the web with curiosity,
 focusing on understanding quantum physics and related concepts.
 
 The agent:
@@ -138,18 +138,18 @@ async def create_quantum_explorer(provider: str) -> tuple[object, object]:
     Returns:
         Tuple of (runtime, browser_plugin)
     """
-    # Check ElizaOS availability
+    # Check elizaOS availability
     try:
         from elizaos.runtime import AgentRuntime
         from elizaos.types.agent import Character
         from elizaos.types.plugin import Plugin
     except ImportError as e:
-        logger.error(f"ElizaOS not available: {e}")
+        logger.error(f"elizaOS not available: {e}")
         logger.error("Install with: pip install -e packages/python")
         logger.error("If protobuf version mismatch, try: pip install protobuf>=5.0")
         sys.exit(1)
     except Exception as e:
-        logger.error(f"Failed to import ElizaOS: {e}")
+        logger.error(f"Failed to import elizaOS: {e}")
         logger.error("This may be a protobuf version issue.")
         logger.error("Try: pip install protobuf>=5.0")
         sys.exit(1)

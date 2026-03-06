@@ -57,7 +57,7 @@ export function BuildPageClient({
   useSetPageHeader({
     title: "Build",
     description:
-      "Build and customize AI agents using the ElizaOS runtime with intelligent assistance.",
+      "Build and customize AI agents using the elizaOS runtime with intelligent assistance.",
   });
 
   // Track builder flow on mount - only for authenticated users

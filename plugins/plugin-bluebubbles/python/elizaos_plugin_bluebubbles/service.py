@@ -23,7 +23,7 @@ BLUEBUBBLES_SERVICE_NAME = "bluebubbles"
 
 
 class BlueBubblesService:
-    """BlueBubbles service for ElizaOS."""
+    """BlueBubbles service for elizaOS."""
 
     service_type = BLUEBUBBLES_SERVICE_NAME
     capability_description = (

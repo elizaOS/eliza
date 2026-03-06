@@ -368,7 +368,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       }
     }
   } catch (error) {
-    console.error("[ElizaOS Content Script] Error:", error);
+    console.error("[elizaOS Content Script] Error:", error);
     sendResponse({
       type: "ERROR",
       error: error instanceof Error ? error.message : "Unknown error",
@@ -381,7 +381,7 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 // Initialize
 // ============================================
 
-console.log("[ElizaOS Content Script] Loaded on:", window.location.href);
+console.log("[elizaOS Content Script] Loaded on:", window.location.href);
 
 // Notify background script that content script is ready
 chrome.runtime.sendMessage({ type: "CONTENT_SCRIPT_READY", url: window.location.href });

@@ -17,6 +17,7 @@ from elizaos_plugin_memory.actions.base import (
 )
 from elizaos_plugin_memory.types import (
     MEMORY_SOURCE,
+    PLUGIN_MEMORY_TABLE,
     MemoryImportance,
     encode_memory_text,
 )
@@ -30,8 +31,7 @@ async def validate(
     _state: State | None = None,
 ) -> bool:
     try:
-        manager = runtime.get_memory_manager()
-        return manager is not None
+        return callable(getattr(runtime, "create_memory", None))
     except Exception:
         return False
 
@@ -44,10 +44,6 @@ async def handler(
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
     try:
-        manager = runtime.get_memory_manager()
-        if not manager:
-            raise RuntimeError("Memory manager not available")
-
         content_data = message.get("content", {})
         content = content_data.get("text", "")
         if not content:
@@ -97,15 +93,16 @@ async def handler(
 
         encoded = encode_memory_text(memory_text, tags, importance)
 
+        entity_id = message.get("entityId") or message.get("userId", "")
         memory_entry: Memory = {
             "agentId": runtime.agent_id,
             "roomId": message.get("roomId", ""),
-            "userId": message.get("userId", ""),
+            "userId": entity_id,
             "content": {"text": encoded, "source": MEMORY_SOURCE},
             "createdAt": 0,
         }
 
-        await manager.create_memory(memory_entry, True)
+        await runtime.create_memory(memory_entry, PLUGIN_MEMORY_TABLE, True)
 
         tag_suffix = f" [tags: {', '.join(tags)}]" if tags else ""
         success_message = f'Remembered: "{memory_text}"{tag_suffix}'

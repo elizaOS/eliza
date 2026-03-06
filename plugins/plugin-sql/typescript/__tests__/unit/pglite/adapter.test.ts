@@ -145,8 +145,8 @@ describe("PgliteDatabaseAdapter", () => {
 
       const shuttingDownAdapter = new PgliteDatabaseAdapter(agentId, shuttingDownManager);
 
-      // Attempt operation during shutdown should throw
-      await expect(shuttingDownAdapter.getAgent(agentId)).rejects.toThrow(
+      // Attempt operation during shutdown should throw (adapter has getAgents, not getAgent)
+      await expect(shuttingDownAdapter.getAgents()).rejects.toThrow(
         "Database is shutting down - operation rejected"
       );
 
@@ -173,7 +173,7 @@ describe("PgliteDatabaseAdapter", () => {
       const shuttingDownAdapter = new PgliteDatabaseAdapter(agentId, shuttingDownManager);
 
       try {
-        await shuttingDownAdapter.getAgent(agentId);
+        await shuttingDownAdapter.getAgents();
         expect.unreachable("Should have thrown");
       } catch (error: unknown) {
         const err = error as Error;

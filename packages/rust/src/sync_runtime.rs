@@ -46,7 +46,9 @@ use crate::types::agent::{Agent, Bio, Character, CharacterSecrets, CharacterSett
 use crate::types::components::{
     ActionDefinition, ActionResult, EvaluatorDefinition, HandlerOptions, ProviderDefinition,
 };
-use crate::types::database::{GetMemoriesParams, SearchMemoriesParams};
+use crate::types::database::{
+    CreateMemoryItem, GetMemoriesParams, SearchMemoriesParams, UpdateMemoryItem,
+};
 use crate::types::environment::{Entity, Room, World};
 use crate::types::events::{EventPayload, EventType};
 use crate::types::memory::Memory;
@@ -134,6 +136,62 @@ pub trait UnifiedDatabaseAdapter: Send + Sync {
 
     /// Get a memory by ID
     async fn get_memory_by_id(&self, id: &UUID) -> Result<Option<Memory>>;
+
+    /// Get memories by IDs (batch; aligned with TypeScript getMemoriesByIds).
+    async fn get_memories_by_ids(&self, ids: &[UUID], table_name: Option<&str>) -> Result<Vec<Memory>> {
+        let _ = table_name;
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(m) = self.get_memory_by_id(id).await? {
+                out.push(m);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Batch create memories (aligned with TypeScript createMemories). Returns IDs in same order as input.
+    async fn create_memories(&self, items: &[CreateMemoryItem]) -> Result<Vec<UUID>> {
+        let mut ids = Vec::with_capacity(items.len());
+        for item in items {
+            ids.push(self.create_memory(&item.memory, &item.table_name).await?);
+        }
+        Ok(ids)
+    }
+
+    /// Batch update memories (partial updates; aligned with TypeScript updateMemories).
+    async fn update_memories(&self, items: &[UpdateMemoryItem]) -> Result<()> {
+        for item in items {
+            let mut existing = match self.get_memory_by_id(&item.id).await? {
+                Some(m) => m,
+                None => continue,
+            };
+            if let Some(ref c) = item.content {
+                existing.content = c.clone();
+            }
+            if let Some(ref meta) = item.metadata {
+                existing.metadata = Some(meta.clone());
+            }
+            if item.created_at.is_some() {
+                existing.created_at = item.created_at;
+            }
+            if item.embedding.is_some() {
+                existing.embedding = item.embedding.clone();
+            }
+            if item.unique.is_some() {
+                existing.unique = item.unique;
+            }
+            self.update_memory(&existing).await?;
+        }
+        Ok(())
+    }
+
+    /// Batch delete memories (aligned with TypeScript deleteMemories).
+    async fn delete_memories(&self, memory_ids: &[UUID]) -> Result<()> {
+        for id in memory_ids {
+            self.delete_memory(id).await?;
+        }
+        Ok(())
+    }
 
     // ----- World Operations -----
 

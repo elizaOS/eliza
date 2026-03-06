@@ -24,23 +24,25 @@ interface StatsRow {
 }
 
 // Import ALL production schemas
-import { agentTable } from "../../../schema/agent";
-import { cacheTable } from "../../../schema/cache";
-import { channelTable } from "../../../schema/channel";
-import { channelParticipantsTable } from "../../../schema/channelParticipant";
-import { componentTable } from "../../../schema/component";
-import { embeddingTable } from "../../../schema/embedding";
-import { entityTable } from "../../../schema/entity";
-import { logTable } from "../../../schema/log";
-import { memoryTable } from "../../../schema/memory";
-import { messageTable } from "../../../schema/message";
-import { messageServerTable } from "../../../schema/messageServer";
-import { messageServerAgentsTable } from "../../../schema/messageServerAgent";
-import { participantTable } from "../../../schema/participant";
-import { relationshipTable } from "../../../schema/relationship";
-import { roomTable } from "../../../schema/room";
-import { taskTable } from "../../../schema/tasks";
-import { worldTable } from "../../../schema/world";
+import {
+  agentTable,
+  cacheTable,
+  channelTable,
+  channelParticipantsTable,
+  componentTable,
+  embeddingTable,
+  entityTable,
+  logTable,
+  memoryTable,
+  messageTable,
+  messageServerTable,
+  messageServerAgentsTable,
+  participantTable,
+  relationshipTable,
+  roomTable,
+  taskTable,
+  worldTable,
+} from "../../../tables";
 
 /**
  * Schema Evolution Test 2: Dropping Tables with Foreign Key Relationships

@@ -1,5 +1,5 @@
 /**
- * Message Handler - Processes messages through ElizaOS runtime via CloudBootstrapMessageService.
+ * Message Handler - Processes messages through elizaOS runtime via CloudBootstrapMessageService.
  */
 
 import { v4 as uuidv4 } from "uuid";

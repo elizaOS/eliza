@@ -1,4 +1,4 @@
-//! PROVISION_CLOUD_AGENT — Deploy an ElizaOS agent to ElizaCloud.
+//! PROVISION_CLOUD_AGENT — Deploy an elizaOS agent to ElizaCloud.
 
 use std::collections::HashMap;
 
@@ -13,7 +13,7 @@ use crate::services::{CloudBackupService, CloudBridgeService, CloudContainerServ
 /// Action metadata.
 pub const ACTION_NAME: &str = "PROVISION_CLOUD_AGENT";
 pub const ACTION_DESCRIPTION: &str =
-    "Deploy an ElizaOS agent to ElizaCloud. Provisions a container, \
+    "Deploy an elizaOS agent to ElizaCloud. Provisions a container, \
      waits for deployment, connects the bridge, and starts auto-backup.";
 
 /// Extract params from options or metadata.

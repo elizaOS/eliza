@@ -2,7 +2,7 @@
 name = "elizaos-plugin-elevenlabs"
 version = "2.0.0"
 edition = "2021"
-description = "High-quality text-to-speech and speech-to-text plugin for ElizaOS using ElevenLabs API"
+description = "High-quality text-to-speech and speech-to-text plugin for elizaOS using ElevenLabs API"
 license = "MIT"
 authors = ["elizaOS Contributors"]
 repository = "https://github.com/elizaos-plugins/plugin-elevenlabs"

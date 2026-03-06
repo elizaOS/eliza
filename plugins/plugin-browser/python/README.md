@@ -1,4 +1,4 @@
-# Browser Automation Plugin for ElizaOS (Python)
+# Browser Automation Plugin for elizaOS (Python)
 
 Browser automation plugin enabling AI agents to browse websites, interact with elements, and extract data.
 

@@ -12,7 +12,9 @@
 
 import {
   logger,
+  type Component,
   type IAgentRuntime,
+  type TargetInfo,
   type UUID,
   type Content,
 } from '@elizaos/core';
@@ -78,7 +80,7 @@ async function writeLastRoute(runtime: IAgentRuntime, target: DeliveryTarget): P
       type: LAST_ROUTE_COMPONENT_TYPE,
       data,
       createdAt: Date.now(),
-    });
+    } as unknown as Component);
   }
 }
 
@@ -174,7 +176,7 @@ export async function deliverToTarget(
   }
 
   const deliveryError = await runtime.sendMessageToTarget(
-    { source: target.source, channelId: target.channelId },
+    { source: target.source, channelId: target.channelId } as TargetInfo,
     content,
   ).then(() => null, (err: Error) => err);
 

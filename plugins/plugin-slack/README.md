@@ -1,6 +1,6 @@
 # @elizaos/plugin-slack
 
-Slack integration plugin for ElizaOS agents with Socket Mode support.
+Slack integration plugin for elizaOS agents with Socket Mode support.
 
 ## Features
 

@@ -1,9 +1,9 @@
-//! OpenAI model provider plugin for ElizaOS.
+//! OpenAI model provider plugin for elizaOS.
 //!
 //! This crate provides:
 //! - A typed OpenAI HTTP client (`OpenAIClient`)
 //! - Convenience wrappers (`OpenAIPlugin`)
-//! - A helper to construct an ElizaOS plugin definition
+//! - A helper to construct an elizaOS plugin definition
 #![warn(missing_docs)]
 
 /// Audio helpers and endpoints.
@@ -115,7 +115,7 @@ pub fn get_openai_plugin() -> AnyhowResult<OpenAIPlugin> {
     OpenAIPlugin::new(config).map_err(|e| anyhow::anyhow!("Failed to create OpenAI plugin: {}", e))
 }
 
-/// Create an ElizaOS [`elizaos::types::Plugin`] wired to OpenAI model handlers.
+/// Create an elizaOS [`elizaos::types::Plugin`] wired to OpenAI model handlers.
 pub fn create_openai_elizaos_plugin() -> AnyhowResult<elizaos::types::Plugin> {
     use elizaos::types::{Plugin, PluginDefinition};
     use std::collections::HashMap;

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 import { useGameStore, LogEntry } from '../store/gameStore';
 import clsx from 'clsx';
@@ -30,6 +31,38 @@ export function AdventureLog() {
         )}
         <div ref={bottomRef} />
       </div>
+    </div>
+  );
+}
+
+function rollNode(entry: LogEntry): ReactNode {
+  if (!entry.metadata?.roll) return null;
+  const roll = entry.metadata.roll as { total: number; type: string };
+  return (
+    <div className="mt-2 inline-flex items-center gap-2 bg-slate-800 rounded px-2 py-1">
+      <span className="text-yellow-400">🎲</span>
+      <span className="font-bold text-lg text-white">{String(roll.total)}</span>
+      <span className="text-xs text-slate-400">({String(roll.type)})</span>
+    </div>
+  );
+}
+
+function damageNode(entry: LogEntry): ReactNode {
+  if (entry.metadata?.damage == null) return null;
+  return (
+    <div className="mt-2 inline-flex items-center gap-2 bg-red-900/50 rounded px-2 py-1">
+      <span className="text-red-400">💥</span>
+      <span className="font-bold text-red-300">{String(entry.metadata.damage)} damage</span>
+    </div>
+  );
+}
+
+function healingNode(entry: LogEntry): ReactNode {
+  if (!entry.metadata?.healing) return null;
+  return (
+    <div className="mt-2 inline-flex items-center gap-2 bg-green-900/50 rounded px-2 py-1">
+      <span className="text-green-400">💚</span>
+      <span className="font-bold text-green-300">{String(entry.metadata.healing)} healed</span>
     </div>
   );
 }
@@ -80,37 +113,11 @@ function LogEntryComponent({ entry }: { entry: LogEntry }) {
       </div>
       
       {/* Roll result display */}
-      {entry.metadata?.roll && (
-        <div className="mt-2 inline-flex items-center gap-2 bg-slate-800 rounded px-2 py-1">
-          <span className="text-yellow-400">🎲</span>
-          <span className="font-bold text-lg text-white">
-            {(entry.metadata.roll as { total: number }).total}
-          </span>
-          <span className="text-xs text-slate-400">
-            ({(entry.metadata.roll as { type: string }).type})
-          </span>
-        </div>
-      )}
-      
+      {rollNode(entry)}
       {/* Damage display */}
-      {entry.metadata?.damage && (
-        <div className="mt-2 inline-flex items-center gap-2 bg-red-900/50 rounded px-2 py-1">
-          <span className="text-red-400">💥</span>
-          <span className="font-bold text-red-300">
-            {entry.metadata.damage as number} damage
-          </span>
-        </div>
-      )}
-      
+      {damageNode(entry)}
       {/* Healing display */}
-      {entry.metadata?.healing && (
-        <div className="mt-2 inline-flex items-center gap-2 bg-green-900/50 rounded px-2 py-1">
-          <span className="text-green-400">💚</span>
-          <span className="font-bold text-green-300">
-            {entry.metadata.healing as number} healed
-          </span>
-        </div>
-      )}
+      {healingNode(entry)}
     </div>
   );
 }

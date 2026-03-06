@@ -17,7 +17,7 @@ import { normalizeE164 } from "./types";
 const signalPlugin: Plugin = {
   name: "signal",
   description:
-    "Signal messaging integration plugin for ElizaOS with end-to-end encryption",
+    "Signal messaging integration plugin for elizaOS with end-to-end encryption",
   services: [SignalService],
   actions: [sendMessage, sendReaction, listContacts, listGroups],
   providers: [conversationStateProvider],
@@ -103,11 +103,9 @@ export {
   type ResolvedSignalAccount,
   resolveDefaultSignalAccountId,
   resolveSignalAccount,
-  type SignalAccountConfig,
   type SignalDmConfig,
   type SignalGroupConfig,
   type SignalMultiAccountConfig,
-  type SignalReactionNotificationMode,
 } from "./accounts";
 export { listContacts } from "./actions/listContacts";
 export { listGroups } from "./actions/listGroups";

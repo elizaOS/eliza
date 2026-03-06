@@ -22,7 +22,7 @@ import { SlackService } from "./service";
 
 const slackPlugin: Plugin = {
   name: "slack",
-  description: "Slack integration plugin for ElizaOS with Socket Mode support",
+  description: "Slack integration plugin for elizaOS with Socket Mode support",
   services: [SlackService],
   actions: [
     sendMessage,

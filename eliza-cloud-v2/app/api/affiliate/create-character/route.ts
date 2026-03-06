@@ -369,7 +369,7 @@ export async function POST(request: NextRequest) {
         logger.warn("[Affiliate API] No avatar URL available for character");
       }
 
-      // Convert affiliate character format to ElizaOS character format
+      // Convert affiliate character format to elizaOS character format
       const elizaCharacter: ElizaCharacter = {
         name: character.name,
         bio: character.bio,

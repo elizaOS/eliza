@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-plugin-twitch"
 version = "2.0.0a1"
-description = "Twitch chat integration plugin for ElizaOS agents"
+description = "Twitch chat integration plugin for elizaOS agents"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

@@ -1,4 +1,4 @@
-# Feishu/Lark Plugin for ElizaOS (Python)
+# Feishu/Lark Plugin for elizaOS (Python)
 
 Python implementation of the Feishu/Lark plugin for elizaOS agents.
 
@@ -30,7 +30,7 @@ await service.start()
 # Send a message
 await service.send_message(
     chat_id="oc_xxx",
-    content=FeishuContent(text="Hello from ElizaOS!")
+    content=FeishuContent(text="Hello from elizaOS!")
 )
 
 # Stop service

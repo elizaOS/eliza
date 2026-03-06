@@ -1,6 +1,6 @@
 /**
  * DM Plugin
- * ElizaOS plugin providing DM capabilities
+ * elizaOS plugin providing DM capabilities
  */
 
 import type { 

@@ -58,7 +58,7 @@ export interface McpToolDefinition {
  * Context provided to sub-agents during execution
  */
 export interface SubAgentContext {
-  /** ElizaOS runtime for model access and services */
+  /** elizaOS runtime for model access and services */
   runtime: IAgentRuntime;
   /** Working directory for file operations */
   workingDirectory: string;
@@ -106,7 +106,7 @@ export interface SubAgent {
    * - codex: Codex-style worker (SDK or prompt-based)
    * - opencode: OpenCode CLI-based worker
    * - sweagent: SWE-agent methodology worker (Think/Act pattern)
-   * - elizaos-native: Best-of-all native ElizaOS agent
+   * - elizaos-native: Best-of-all native elizaOS agent
    *
    * Note: "claude" is kept for backwards compatibility and maps to "claude-code".
    */

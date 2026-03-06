@@ -235,7 +235,7 @@ export const createWorkflowAction: Action = {
     "Generate, preview, modify, and deploy n8n workflows from natural language. " +
     "Handles the full workflow lifecycle: generate a draft, show preview, then deploy on confirmation. " +
     "Also handles confirming, modifying, or cancelling a pending workflow draft. " +
-    "Do NOT use this for ElizaOS plugin creation — use CREATE_PLUGIN or DESCRIBE_PLUGIN instead. " +
+    "Do NOT use this for elizaOS plugin creation — use CREATE_PLUGIN or DESCRIBE_PLUGIN instead. " +
     "IMPORTANT: When a workflow draft is pending, this action MUST be used for ANY user response " +
     'about the draft — including "yes", "ok", "deploy", "cancel", or modification requests.',
 

@@ -1,12 +1,12 @@
 """
-Terminal-Bench Benchmark for ElizaOS
+Terminal-Bench Benchmark for elizaOS
 
 A benchmark evaluating AI agents' proficiency in performing complex tasks
 within terminal environments, including code compilation, system administration,
 and machine learning model training.
 
 Two agent modes are available:
-- ElizaTerminalAgent: Full ElizaOS runtime with message_service.handle_message(),
+- ElizaTerminalAgent: Full elizaOS runtime with message_service.handle_message(),
   actions, providers, and evaluators (canonical usage)
 - TerminalAgent: Standalone agent with direct OpenAI API calls (for testing)
 """

@@ -51,11 +51,11 @@ async function fetchTextToSpeech(
 
     if (!res.ok) {
       const err = await res.text();
-      throw new Error(`ElizaOS Cloud TTS error ${res.status}: ${err}`);
+      throw new Error(`elizaOS Cloud TTS error ${res.status}: ${err}`);
     }
 
     if (!res.body) {
-      throw new Error("ElizaOS Cloud TTS response body is null");
+      throw new Error("elizaOS Cloud TTS response body is null");
     }
 
     if (!isBrowser()) {
@@ -66,7 +66,7 @@ async function fetchTextToSpeech(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `Failed to fetch speech from ElizaOS Cloud TTS: ${message}`,
+      `Failed to fetch speech from elizaOS Cloud TTS: ${message}`,
     );
   }
 }

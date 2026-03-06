@@ -1,6 +1,6 @@
 # @elizaos/plugin-nostr
 
-Nostr decentralized messaging plugin for ElizaOS agents. Enables secure, encrypted direct messaging (NIP-04) over the Nostr protocol.
+Nostr decentralized messaging plugin for elizaOS agents. Enables secure, encrypted direct messaging (NIP-04) over the Nostr protocol.
 
 ## Features
 

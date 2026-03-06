@@ -2,7 +2,7 @@
     "name": "eliza-multichain-miniapp",
     "version": "1.0.0",
     "type": "module",
-    "description": "ElizaOS Multi-chain Trading Platform - Farcaster Mini App",
+    "description": "elizaOS Multi-chain Trading Platform - Farcaster Mini App",
     "scripts": {
         "dev": "vite",
         "build": "tsc && vite build",

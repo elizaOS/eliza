@@ -60,7 +60,7 @@ class TestFunctionCallParser:
         assert calls[0].arguments["location"] == "SF"
 
     def test_parse_elizaos_params_format(self, parser: FunctionCallParser) -> None:
-        """Test parsing ElizaOS params format."""
+        """Test parsing elizaOS params format."""
         response = '''<params>
             <GET_WEATHER>
                 <location>San Francisco</location>

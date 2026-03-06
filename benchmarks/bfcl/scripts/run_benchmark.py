@@ -2,7 +2,7 @@
 """
 BFCL Benchmark Runner Script
 
-Runs the BFCL benchmark against ElizaOS Python and generates results.
+Runs the BFCL benchmark against elizaOS Python and generates results.
 
 Usage:
     python benchmarks/bfcl/scripts/run_benchmark.py [OPTIONS]
@@ -54,7 +54,7 @@ async def main():
     runner = BFCLRunner(config, use_mock_agent=args.mock)
 
     print("\n" + "=" * 60)
-    print("BFCL BENCHMARK - ElizaOS Python")
+    print("BFCL BENCHMARK - elizaOS Python")
     print("=" * 60)
 
     try:
@@ -73,7 +73,7 @@ async def main():
         summary_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(summary_path, "w") as f:
-            f.write("# BFCL Benchmark Results - ElizaOS Python\n\n")
+            f.write("# BFCL Benchmark Results - elizaOS Python\n\n")
             f.write(f"## Overall Score: {results.metrics.overall_score:.2%}\n\n")
             f.write("| Metric | Score |\n")
             f.write("|--------|-------|\n")

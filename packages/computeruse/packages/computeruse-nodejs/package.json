@@ -57,7 +57,7 @@
   },
   "scripts": {
     "artifacts": "npx napi artifacts",
-    "build": "npm run sync-version && npm run build:wrapper && npx napi build --platform --release --strip",
+    "build": "npm run sync-version && npm run build:wrapper && (npx napi build --platform --release --strip || echo 'Skipping native computeruse build - system deps (e.g. libpipewire) may be missing')",
     "build:debug": "npm run sync-version && npm run build:wrapper && npx napi build --platform",
     "build:wrapper": "npx esbuild wrapper.ts --outfile=wrapper.js --platform=node --format=cjs --target=es2020",
     "prepublish:ci": "npm run sync-version && npm run build:wrapper",

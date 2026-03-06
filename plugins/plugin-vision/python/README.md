@@ -1,6 +1,6 @@
 # elizaos-plugin-vision
 
-Vision plugin for ElizaOS - provides camera integration and visual awareness.
+Vision plugin for elizaOS - provides camera integration and visual awareness.
 
 ## Installation
 

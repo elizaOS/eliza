@@ -1,4 +1,4 @@
-# ElizaOS App Examples
+# elizaOS App Examples
 
 This folder contains **simple chat** examples for different desktop/mobile shells.
 

@@ -13,7 +13,7 @@
     "module": "ESNext",
     "target": "ESNext",
     "lib": ["ESNext"],
-    "types": ["bun-types", "node"],
+    "types": ["bun", "node"],
     "allowImportingTsExtensions": true,
     "paths": {
       "@elizaos/core": ["packages/typescript/dist/node"],

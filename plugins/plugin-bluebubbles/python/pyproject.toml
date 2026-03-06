@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-plugin-bluebubbles"
 version = "2.0.0a1"
-description = "BlueBubbles iMessage bridge plugin for ElizaOS agents"
+description = "BlueBubbles iMessage bridge plugin for elizaOS agents"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

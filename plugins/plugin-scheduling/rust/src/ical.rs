@@ -84,7 +84,7 @@ pub fn generate_ics(event: &CalendarEvent) -> String {
     // Begin calendar
     lines.push("BEGIN:VCALENDAR".to_string());
     lines.push("VERSION:2.0".to_string());
-    lines.push("PRODID:-//ElizaOS//SchedulingPlugin//EN".to_string());
+    lines.push("PRODID:-//elizaOS//SchedulingPlugin//EN".to_string());
     lines.push("CALSCALE:GREGORIAN".to_string());
     lines.push("METHOD:REQUEST".to_string());
 

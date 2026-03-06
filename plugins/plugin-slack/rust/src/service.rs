@@ -1,4 +1,4 @@
-//! Slack service implementation for ElizaOS.
+//! Slack service implementation for elizaOS.
 
 use crate::types::*;
 use reqwest::Client;

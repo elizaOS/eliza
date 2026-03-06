@@ -2,9 +2,9 @@
 name = "elizaos-plugin-whatsapp"
 version = "2.0.0-alpha.1"
 edition = "2021"
-description = "WhatsApp Cloud API plugin for ElizaOS agents"
+description = "WhatsApp Cloud API plugin for elizaOS agents"
 license = "MIT"
-authors = ["ElizaOS Contributors"]
+authors = ["elizaOS Contributors"]
 repository = "https://github.com/elizaos/eliza"
 keywords = ["elizaos", "plugin", "whatsapp", "meta", "messaging"]
 categories = ["api-bindings", "asynchronous"]

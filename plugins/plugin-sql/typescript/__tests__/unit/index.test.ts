@@ -35,7 +35,7 @@ interface TestRuntimeConfig {
   registerService: Mock<() => void>;
   getService: Mock<() => void>;
   databaseAdapter: IDatabaseAdapter | undefined;
-  hasElizaOS: Mock<() => boolean>;
+  haselizaOS: Mock<() => boolean>;
   logger: {
     info: Mock<() => void>;
     debug: Mock<() => void>;
@@ -58,7 +58,7 @@ function createTestRuntime(
     registerService: vi.fn(() => {}),
     getService: vi.fn(() => {}),
     databaseAdapter: undefined,
-    hasElizaOS: vi.fn(() => false),
+    haselizaOS: vi.fn(() => false),
     logger: {
       info: vi.fn(() => {}),
       debug: vi.fn(() => {}),

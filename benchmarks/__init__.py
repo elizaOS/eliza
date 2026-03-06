@@ -1,5 +1,5 @@
 """
-ElizaOS Benchmarks
+elizaOS Benchmarks
 
-This package contains benchmark implementations for evaluating ElizaOS agents.
+This package contains benchmark implementations for evaluating elizaOS agents.
 """

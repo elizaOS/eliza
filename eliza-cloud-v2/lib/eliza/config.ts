@@ -1,10 +1,10 @@
 /**
- * ElizaOS Cloud Configuration
+ * elizaOS Cloud Configuration
  * Determines API URL based on environment
  */
 
 /**
- * Get the ElizaOS Cloud API base URL based on environment
+ * Get the elizaOS Cloud API base URL based on environment
  * - Local: http://localhost:3000/api/v1
  * - Test: http://localhost:3000/api/v1 (same as local)
  * - Development: https://www.dev.elizacloud.ai/api/v1

@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
-const externalDeps = ["@elizaos/core"];
+const externalDeps = ["@elizaos/core", "drizzle-orm", "drizzle-orm/pg-core", "uuid"];
 
 async function build(): Promise<boolean> {
   console.log("Building @elizaos/plugin-goals...");

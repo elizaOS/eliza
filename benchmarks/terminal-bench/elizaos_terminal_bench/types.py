@@ -218,7 +218,7 @@ class TerminalBenchConfig:
     oracle: bool = False
     
     # Agent mode
-    # When True, uses the full ElizaOS runtime with message_service.handle_message(),
+    # When True, uses the full elizaOS runtime with message_service.handle_message(),
     # actions, providers, and evaluators. When False, uses standalone agent with
     # direct OpenAI API calls.
     use_eliza_agent: bool = True

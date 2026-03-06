@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "elizaos-tau-bench"
 version = "2.0.0"
-description = "Tau-bench benchmark for ElizaOS - Tool-Agent-User Interaction evaluation"
+description = "Tau-bench benchmark for elizaOS - Tool-Agent-User Interaction evaluation"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

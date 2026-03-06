@@ -1,5 +1,5 @@
 /**
- * iMessage service implementation for ElizaOS.
+ * iMessage service implementation for elizaOS.
  */
 
 import { exec } from "node:child_process";
@@ -34,7 +34,7 @@ import {
 const execAsync = promisify(exec);
 
 /**
- * iMessage service for ElizaOS agents.
+ * iMessage service for elizaOS agents.
  * Note: This only works on macOS.
  */
 export class IMessageService extends Service implements IIMessageService {

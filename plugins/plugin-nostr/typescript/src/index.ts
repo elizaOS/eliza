@@ -1,7 +1,7 @@
 /**
- * Nostr Plugin for ElizaOS
+ * Nostr Plugin for elizaOS
  *
- * Provides Nostr decentralized messaging integration for ElizaOS agents,
+ * Provides Nostr decentralized messaging integration for elizaOS agents,
  * supporting encrypted DMs via NIP-04 and profile management.
  */
 
@@ -32,7 +32,7 @@ export { identityContextProvider, senderContextProvider };
  */
 const nostrPlugin: Plugin = {
   name: "nostr",
-  description: "Nostr decentralized messaging plugin for ElizaOS agents",
+  description: "Nostr decentralized messaging plugin for elizaOS agents",
 
   services: [NostrService],
 

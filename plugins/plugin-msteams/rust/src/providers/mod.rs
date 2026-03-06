@@ -19,7 +19,7 @@ pub struct ProviderContext {
     pub conversation_type: Option<String>,
     /// Activity ID.
     pub activity_id: Option<String>,
-    /// Room ID (ElizaOS internal).
+    /// Room ID (elizaOS internal).
     pub room_id: Option<String>,
 }
 

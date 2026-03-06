@@ -361,9 +361,8 @@ describe("isToolAllowedByPolicy()", () => {
 
     it("should allow with empty allow list (no restrictions)", () => {
       const policy: ToolPolicyConfig = { allow: [] };
-      // Empty allow list means nothing is explicitly allowed
-      // but since there are no tools in the list, none can match
-      expect(isToolAllowedByPolicy("read", policy)).toBe(false);
+      // Empty allow list is treated as "no allow restriction" => all tools allowed if not denied
+      expect(isToolAllowedByPolicy("read", policy)).toBe(true);
     });
   });
 

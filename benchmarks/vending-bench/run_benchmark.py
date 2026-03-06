@@ -52,7 +52,7 @@ async def main() -> int:
     runner = VendingBenchRunner(config)
 
     logger.info("=" * 70)
-    logger.info("Starting Vending-Bench Evaluation for ElizaOS")
+    logger.info("Starting Vending-Bench Evaluation for elizaOS")
     logger.info("=" * 70)
     logger.info("Configuration:")
     logger.info(f"  - Runs: {config.num_runs}")

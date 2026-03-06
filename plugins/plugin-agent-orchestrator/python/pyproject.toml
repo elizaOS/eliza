@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "elizaos-plugin-agent-orchestrator"
 version = "2.0.0"
-description = "Agent Orchestrator Plugin for ElizaOS - orchestrates tasks across agent providers"
+description = "Agent Orchestrator Plugin for elizaOS - orchestrates tasks across agent providers"
 readme = "README.md"
 license = "MIT"
 authors = [

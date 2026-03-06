@@ -251,13 +251,13 @@ describe("LocalDatabaseAdapter", () => {
 
     it("should add participants to room", async () => {
       await adapter.createRooms([{ id: roomId, name: "Test Room" }]);
-      const result = await adapter.addParticipantsRoom([entityId], roomId);
+      const result = await adapter.addRoomParticipants([entityId], roomId);
       expect(result).toBe(true);
     });
 
     it("should check if entity is room participant", async () => {
       await adapter.createRooms([{ id: roomId, name: "Test Room" }]);
-      await adapter.addParticipantsRoom([entityId], roomId);
+      await adapter.addRoomParticipants([entityId], roomId);
 
       const isParticipant = await adapter.isRoomParticipant(roomId, entityId);
       expect(isParticipant).toBe(true);
@@ -265,7 +265,7 @@ describe("LocalDatabaseAdapter", () => {
 
     it("should get participants for room", async () => {
       await adapter.createRooms([{ id: roomId, name: "Test Room" }]);
-      await adapter.addParticipantsRoom([entityId], roomId);
+      await adapter.addRoomParticipants([entityId], roomId);
 
       const participants = await adapter.getParticipantsForRoom(roomId);
       expect(participants).toContain(entityId);
@@ -273,7 +273,7 @@ describe("LocalDatabaseAdapter", () => {
 
     it("should remove participant from room", async () => {
       await adapter.createRooms([{ id: roomId, name: "Test Room" }]);
-      await adapter.addParticipantsRoom([entityId], roomId);
+      await adapter.addRoomParticipants([entityId], roomId);
       await adapter.removeParticipant(entityId, roomId);
 
       const isParticipant = await adapter.isRoomParticipant(roomId, entityId);

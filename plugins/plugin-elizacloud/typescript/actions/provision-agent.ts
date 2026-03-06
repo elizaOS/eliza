@@ -1,5 +1,5 @@
 /**
- * PROVISION_CLOUD_AGENT — Deploys an ElizaOS agent to ElizaCloud.
+ * PROVISION_CLOUD_AGENT — Deploys an elizaOS agent to ElizaCloud.
  *
  * Creates a container, waits for deployment, connects bridge, starts backup.
  */
@@ -35,7 +35,7 @@ function extractParams(message: Memory, options?: Record<string, unknown>): Reco
 export const provisionCloudAgentAction: Action = {
   name: "PROVISION_CLOUD_AGENT",
   description:
-    "Deploy an ElizaOS agent to ElizaCloud. Provisions a container, waits for deployment, connects the bridge, and starts auto-backup.",
+    "Deploy an elizaOS agent to ElizaCloud. Provisions a container, waits for deployment, connects the bridge, and starts auto-backup.",
   similes: ["deploy agent to cloud", "launch cloud agent", "start remote agent", "provision container"],
   tags: ["cloud", "container", "deployment"],
   parameters: [

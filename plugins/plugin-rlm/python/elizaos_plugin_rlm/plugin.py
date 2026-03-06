@@ -10,7 +10,7 @@ Reference:
 - Implementation: https://github.com/alexzhang13/rlm
 
 Design principles:
-- ElizaOS owns conversation state, memory, planning, tools, and autonomy
+- elizaOS owns conversation state, memory, planning, tools, and autonomy
 - RLM only receives messages and returns generated text
 - No system prompt injection from the plugin
 - Safe stub behavior when RLM backend is unavailable

@@ -1,6 +1,6 @@
 # Eliza Cloud V2
 
-A comprehensive AI agent development platform built with Next.js 15, featuring multi-model AI generation (text, image, video), full ElizaOS runtime integration, enterprise authentication, credit-based billing, and production-ready cloud infrastructure.
+A comprehensive AI agent development platform built with Next.js 15, featuring multi-model AI generation (text, image, video), full elizaOS runtime integration, enterprise authentication, credit-based billing, and production-ready cloud infrastructure.
 
 ## 📋 Table of Contents
 
@@ -26,9 +26,9 @@ A comprehensive AI agent development platform built with Next.js 15, featuring m
 Eliza Cloud V2 is a full-stack AI-as-a-Service platform that combines:
 
 - **Multi-Modal AI Generation**: Text chat, image creation, and video generation
-- **ElizaOS Integration**: Full-featured autonomous agent runtime with memory, rooms, and plugins
+- **elizaOS Integration**: Full-featured autonomous agent runtime with memory, rooms, and plugins
 - **SaaS Platform**: User management, API keys, credit-based billing, usage tracking
-- **Container Deployment**: Deploy ElizaOS projects via `elizaos deploy` CLI to AWS ECS
+- **Container Deployment**: Deploy elizaOS projects via `elizaos deploy` CLI to AWS ECS
 - **Enterprise Features**: Privy authentication with multi-provider support, Stripe billing, ECR image storage, health monitoring
 
 ## ✨ Key Features
@@ -53,7 +53,7 @@ Eliza Cloud V2 is a full-stack AI-as-a-Service platform that combines:
   - Automatic Vercel Blob upload
   - Fallback handling with error recovery
 
-### 🧠 ElizaOS Runtime Integration
+### 🧠 elizaOS Runtime Integration
 
 - **Full Agent Runtime**:
   - AgentRuntime from `@elizaos/core` with PostgreSQL database
@@ -64,11 +64,11 @@ Eliza Cloud V2 is a full-stack AI-as-a-Service platform that combines:
 - **Character Creator**:
   - AI-assisted character definition builder
   - Progressive JSON generation with live preview
-  - Import/export ElizaOS-compatible character files
+  - Import/export elizaOS-compatible character files
   - Support for all character fields (bio, style, plugins, knowledge, etc.)
 
 - **Agent Chat Interface**:
-  - Chat with deployed ElizaOS agents via rooms
+  - Chat with deployed elizaOS agents via rooms
   - Message persistence and history
   - Real-time WebSocket updates (future)
   - Multi-agent conversations
@@ -88,7 +88,7 @@ Eliza Cloud V2 is a full-stack AI-as-a-Service platform that combines:
   - Usage statistics and audit logs
 
 - **Container Deployments**:
-  - Deploy ElizaOS projects via `elizaos deploy` CLI
+  - Deploy elizaOS projects via `elizaos deploy` CLI
   - Docker-based deployments to AWS ECS (Elastic Container Service)
   - ECR (Elastic Container Registry) for Docker image storage
   - EC2-based ECS (t4g.small ARM instances, 1 per user)
@@ -150,7 +150,7 @@ eliza-cloud-v2/
 │   │   │   ├── character-assistant/  # Character creator AI
 │   │   │   ├── user/        # User info
 │   │   │   └── models/      # Available AI models
-│   │   ├── eliza/           # ElizaOS agent API
+│   │   ├── eliza/           # elizaOS agent API
 │   │   │   └── rooms/       # Agent rooms and messages
 │   │   ├── stripe/          # Stripe webhooks and checkout
 │   │   └── fal/             # Fal.ai proxy
@@ -165,7 +165,7 @@ eliza-cloud-v2/
 │   │   ├── analytics/       # Usage analytics
 │   │   ├── account/         # Account settings
 │   │   ├── character-creator/  # Character builder
-│   │   ├── eliza/           # ElizaOS agent chat
+│   │   ├── eliza/           # elizaOS agent chat
 │   │   └── storage/         # Storage management
 │   ├── actions/             # Server actions
 │   │   ├── auth.ts          # Auth actions
@@ -193,7 +193,7 @@ eliza-cloud-v2/
 ├── db/                      # Database layer
 │   ├── sass/                # SaaS platform schema
 │   │   └── schema.ts        # Organizations, users, API keys, credits, etc.
-│   ├── eliza/               # ElizaOS runtime schema
+│   ├── eliza/               # elizaOS runtime schema
 │   │   └── schema.ts        # Agents, memories, rooms, embeddings, etc.
 │   ├── drizzle.ts           # Database client
 │   └── migrations/          # Migration SQL files
@@ -211,10 +211,10 @@ eliza-cloud-v2/
 │   │   ├── ecs.ts           # AWS ECS deployment
 │   │   ├── health-monitor.ts  # Provider health checks
 │   │   └── containers.ts    # Container management
-│   ├── eliza/               # ElizaOS integration
+│   ├── eliza/               # elizaOS integration
 │   │   ├── agent-runtime.ts # AgentRuntime wrapper
 │   │   ├── agent.ts         # Agent management
-│   │   └── plugin-assistant/  # Custom ElizaOS plugin
+│   │   └── plugin-assistant/  # Custom elizaOS plugin
 │   ├── config/              # Configuration
 │   │   ├── env-validator.ts # Environment validation
 │   │   ├── env-consolidation.ts  # Config helpers
@@ -258,7 +258,7 @@ graph TD
     G -->|Image/Video| I[Gemini/Fal.ai]
     G -->|Data| J[Drizzle ORM]
     G -->|Container| K[AWS ECS/ECR]
-    G -->|ElizaOS| L[AgentRuntime]
+    G -->|elizaOS| L[AgentRuntime]
     H --> M[Response]
     I --> M
     J --> N[PostgreSQL]
@@ -278,7 +278,7 @@ The platform uses a single database with integrated schemas:
    - Containers (`db/schemas/containers.ts`), ECS/ECR deployments
    - Generations (`db/schemas/generations.ts` - image/video records)
    - Conversations (`db/schemas/conversations.ts` - platform-level chat)
-   - **ElizaOS Tables** (integrated via `@elizaos/plugin-sql` schema):
+   - **elizaOS Tables** (integrated via `@elizaos/plugin-sql` schema):
      - Agents (character definitions)
      - Memories with vector embeddings
      - Rooms and participants
@@ -298,7 +298,7 @@ The platform uses a single database with integrated schemas:
 
 - **PostgreSQL**: Single database with all tables
   - Platform tables: SaaS tables (users, credits, containers, etc.)
-  - ElizaOS tables: Agent runtime tables (agents, memories, rooms, etc.)
+  - elizaOS tables: Agent runtime tables (agents, memories, rooms, etc.)
 - **Drizzle ORM 0.44.6**: Type-safe SQL ORM
 - **Drizzle Kit 0.31.5**: Migrations and schema management
 - **pgvector**: Vector similarity search for embeddings
@@ -318,9 +318,9 @@ The platform uses a single database with integrated schemas:
 - **@ai-sdk/openai 2.0.43**: OpenAI provider
 - **@ai-sdk/react 2.0.60**: React hooks for AI
 - **@fal-ai/client 1.6.2**: Fal.ai video generation
-- **@elizaos/core 1.6.1**: ElizaOS agent runtime
-- **@elizaos/plugin-openai 1.5.15**: OpenAI plugin for ElizaOS
-- **@elizaos/plugin-sql 1.6.1**: SQL database plugin for ElizaOS
+- **@elizaos/core 1.6.1**: elizaOS agent runtime
+- **@elizaos/plugin-openai 1.5.15**: OpenAI plugin for elizaOS
+- **@elizaos/plugin-sql 1.6.1**: SQL database plugin for elizaOS
 
 ### Storage & Infrastructure
 
@@ -737,7 +737,7 @@ BLOB_READ_WRITE_TOKEN=vercel_blob_rw_your_token
 
 **Features**:
 
-- Deploy ElizaOS projects via `elizaos deploy` CLI
+- Deploy elizaOS projects via `elizaos deploy` CLI
 - **Multi-project support**: Deploy multiple different projects per user
 - **Multi-architecture support**: Auto-detects platform and deploys to matching AWS instance type
   - **ARM64**: t4g.small (AWS Graviton2, $15.76/month) - Recommended for cost savings
@@ -889,12 +889,12 @@ Authorization: Bearer eliza_your_api_key
 **Requirements**:
 
 - AWS account with ECS/ECR/EC2 access and CloudFormation permissions
-- ElizaOS Cloud account with API key
+- elizaOS Cloud account with API key
 - VPC with public subnets configured
 - IAM roles for ECS task execution
 - Environment variables set (see `example.env.local` and `docs/ENV_VARIABLES.md`)
 
-### 6. ElizaOS Agent Integration
+### 6. elizaOS Agent Integration
 
 **Location**: `/dashboard/chat` and `lib/eliza/`
 
@@ -943,7 +943,7 @@ POST /api/eliza/rooms/{roomId}/messages
 - AI-assisted character building using GPT-4o-mini
 - Progressive JSON generation
 - Live preview of character definition
-- Import/export ElizaOS-compatible JSON
+- Import/export elizaOS-compatible JSON
 - Support for all character fields:
   - name, username, bio, system prompt
   - messageExamples, postExamples
@@ -956,7 +956,7 @@ POST /api/eliza/rooms/{roomId}/messages
 2. AI generates JSON incrementally
 3. User sees live preview
 4. AI suggests improvements
-5. Export as ElizaOS character file
+5. Export as elizaOS character file
 
 **Example**:
 
@@ -1136,7 +1136,7 @@ See `docs/STRIPE_SETUP.md` for detailed Stripe configuration.
 4. **generate_image**: Generate images using Google Gemini 2.5
 5. **save_memory**: Save to long-term memory
 6. **retrieve_memories**: Search and retrieve memories
-7. **chat_with_agent**: Chat with deployed ElizaOS agents
+7. **chat_with_agent**: Chat with deployed elizaOS agents
 8. **list_agents**: List all available agents
 9. **list_containers**: List deployed containers
 
@@ -1229,7 +1229,7 @@ Add to your Claude Desktop config:
   - sequence_number for ordering
   - tokens, cost, processing_time
 
-- **user_characters**: User-created ElizaOS characters
+- **user_characters**: User-created elizaOS characters
   - character_data (full JSON)
   - is_template, is_public
   - Stored separately from agents
@@ -1249,9 +1249,9 @@ Add to your Claude Desktop config:
   - attempts, max_attempts
   - webhook_url for callbacks
 
-### ElizaOS Schema (Integrated)
+### elizaOS Schema (Integrated)
 
-Integrated into the main database via `@elizaos/plugin-sql` schema. These tables are managed by ElizaOS core:
+Integrated into the main database via `@elizaos/plugin-sql` schema. These tables are managed by elizaOS core:
 
 **Agent Runtime Tables**:
 
@@ -1508,7 +1508,7 @@ GET /api/v1/user
 }
 ```
 
-#### ElizaOS Agents
+#### elizaOS Agents
 
 ```bash
 # Create Room
@@ -1586,7 +1586,7 @@ git push origin main
 
 Add all variables from `.env.local` in Vercel dashboard:
 
-- `DATABASE_URL` - Single database for platform and ElizaOS tables
+- `DATABASE_URL` - Single database for platform and elizaOS tables
 - `NEXT_PUBLIC_PRIVY_APP_ID`, `PRIVY_APP_SECRET`, `PRIVY_WEBHOOK_SECRET`
 - `OPENAI_API_KEY` or `AI_GATEWAY_API_KEY`
 - `BLOB_READ_WRITE_TOKEN` (optional, for media gallery)
@@ -1746,11 +1746,11 @@ See `docs/DEPLOYMENT_TROUBLESHOOTING.md` for detailed troubleshooting.
 - [Drizzle ORM Docs](https://orm.drizzle.team/docs)
 - [Privy Documentation](https://docs.privy.io)
 - [Vercel AI SDK Docs](https://sdk.vercel.ai/docs)
-- [ElizaOS Documentation](https://github.com/elizaos/eliza)
+- [elizaOS Documentation](https://github.com/elizaos/eliza)
 
 ## 🚀 AWS ECS Container Deployment
 
-Deploy ElizaOS agents to AWS ECS (Elastic Container Service) using Docker containers. Each user gets a dedicated EC2 instance (t4g.small ARM, Graviton2) managed via CloudFormation.
+Deploy elizaOS agents to AWS ECS (Elastic Container Service) using Docker containers. Each user gets a dedicated EC2 instance (t4g.small ARM, Graviton2) managed via CloudFormation.
 
 ### Quick Start
 
@@ -1765,7 +1765,7 @@ export ELIZAOS_API_KEY="your-api-key-here"
 docker --version
 docker info
 
-# 4. Deploy your ElizaOS project
+# 4. Deploy your elizaOS project
 cd your-elizaos-project
 elizaos deploy
 ```
@@ -1920,7 +1920,7 @@ Container deployments are billed **daily**:
 - [OpenAI API Documentation](https://platform.openai.com/docs)
 - [Anthropic Claude API](https://docs.anthropic.com)
 - [Fal.ai Documentation](https://fal.ai/docs)
-- [ElizaOS Repository](https://github.com/elizaos/eliza)
+- [elizaOS Repository](https://github.com/elizaos/eliza)
 
 ### Authentication & Billing
 
@@ -1959,4 +1959,4 @@ See the LICENSE file in the repository root.
 
 ---
 
-**Built with ❤️ for the ElizaOS ecosystem**
+**Built with ❤️ for the elizaOS ecosystem**

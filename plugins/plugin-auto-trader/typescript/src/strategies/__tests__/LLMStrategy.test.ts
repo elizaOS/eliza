@@ -13,7 +13,7 @@ import { LLMStrategy, type LLMStrategyParams } from "../LLMStrategy.ts";
 const MOCK_SYMBOL = "SOL/USDC";
 const _MIN_TRADE_QUANTITY_THRESHOLD = 1e-8;
 
-// Mock ElizaOSLLMService
+// Mock elizaOSLLMService
 const mockLlmService = {
   generateText: vi.fn(),
 };

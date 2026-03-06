@@ -1,5 +1,5 @@
 /**
- * Channel Utilities for ElizaOS
+ * Channel Utilities for elizaOS
  *
  * Generic cross-platform utilities for messaging channels.
  * These utilities are platform-agnostic and can be used by any channel plugin.

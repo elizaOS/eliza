@@ -5,7 +5,7 @@ import { characterEvolutionEvaluator } from './evaluators/character-evolution';
 import { modifyCharacterAction } from './actions/modify-character';
 import { CharacterFileManager } from './services/character-file-manager';
 /**
- * Self-Modification Plugin for ElizaOS
+ * Self-Modification Plugin for elizaOS
  *
  * Enables agents to evolve their character files over time through:
  * - Conversation analysis and learning

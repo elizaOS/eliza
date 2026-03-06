@@ -3,7 +3,7 @@ import { logger } from "@/lib/utils/logger";
 import { requireAuth } from "@/lib/auth";
 import type { ElizaCharacter } from "@/lib/types";
 
-const createSystemPrompt = `You are an AI assistant helping users create character definitions for ElizaOS agents.
+const createSystemPrompt = `You are an AI assistant helping users create character definitions for elizaOS agents.
 
 Your goal is to help users craft detailed, engaging character personalities through conversation. 
 
@@ -44,7 +44,7 @@ Be creative, encouraging, and help users think deeply about their character's pe
 
 const editSystemPrompt = (
   character: ElizaCharacter,
-) => `You are an AI assistant helping users edit and refine an existing ElizaOS agent character.
+) => `You are an AI assistant helping users edit and refine an existing elizaOS agent character.
 
 You are currently editing the character **"${character.name}"**.
 
@@ -93,7 +93,7 @@ Always include a JSON block in your response showing the current character state
 
 /**
  * POST /api/v1/character-assistant
- * AI assistant for creating and editing ElizaOS character definitions.
+ * AI assistant for creating and editing elizaOS character definitions.
  * Uses GPT-4o to help users build character configurations progressively.
  *
  * @param request - Request body with messages array and optional character for editing.

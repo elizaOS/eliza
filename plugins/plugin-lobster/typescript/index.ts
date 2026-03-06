@@ -8,7 +8,7 @@ import { lobsterRunAction } from "./actions/run";
 import { lobsterProvider } from "./providers/lobster";
 
 /**
- * Lobster Plugin for ElizaOS
+ * Lobster Plugin for elizaOS
  *
  * Provides integration with the Lobster workflow runtime for executing
  * deterministic multi-step pipelines with approval checkpoints.

@@ -528,7 +528,7 @@ export default defineConfig({
   }
 
   private generateInitialPrompt(spec: PluginSpecification): string {
-    return `You are creating an ElizaOS plugin with the following specification:
+    return `You are creating an elizaOS plugin with the following specification:
 
 Name: ${spec.name}
 Description: ${spec.description}
@@ -562,11 +562,11 @@ ${spec.evaluators.map((e) => `- ${e.name}: ${e.description}`).join("\n")}`
     : ""
 }
 
-Create a complete ElizaOS plugin implementation following these requirements:
+Create a complete elizaOS plugin implementation following these requirements:
 
 1. Create src/index.ts that exports the plugin object
 2. Implement all specified components (actions, providers, services, evaluators)
-3. Follow ElizaOS plugin structure and conventions
+3. Follow elizaOS plugin structure and conventions
 4. Include proper TypeScript types
 5. Add comprehensive error handling
 6. Create unit tests for each component in src/__tests__/
@@ -587,7 +587,7 @@ Error: ${e.error}
       )
       .join("\n");
 
-    return `The ElizaOS plugin ${job.specification.name} has the following errors that need to be fixed:
+    return `The elizaOS plugin ${job.specification.name} has the following errors that need to be fixed:
 
 ${errorSummary}
 
@@ -599,7 +599,7 @@ Please fix all the errors by:
 2. Ensuring the code compiles (TypeScript)
 3. Fixing any linting issues
 4. Making sure all tests pass
-5. Following ElizaOS conventions
+5. Following elizaOS conventions
 
 Provide the updated code with file paths clearly marked.`;
   }
@@ -697,7 +697,7 @@ Provide the updated code with file paths clearly marked.`;
     try {
       const codeFiles = await this.collectCodeFiles(job.outputPath);
 
-      const validationPrompt = `Review this ElizaOS plugin:
+      const validationPrompt = `Review this elizaOS plugin:
 
 Plugin: ${job.specification.name}
 Specification: ${JSON.stringify(job.specification, null, 2)}
@@ -717,7 +717,7 @@ ${f.content}
 Evaluate:
 1. Does it implement all specified features?
 2. Is the code complete without stubs?
-3. Does it follow ElizaOS conventions?
+3. Does it follow elizaOS conventions?
 4. Is error handling comprehensive?
 5. Are the tests adequate?
 6. Is it production ready?

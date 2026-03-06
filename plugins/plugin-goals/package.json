@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-goals-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "Goals management plugin for ElizaOS - tracking and achieving objectives",
+  "description": "Goals management plugin for elizaOS - tracking and achieving objectives",
   "type": "module",
   "main": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",
@@ -64,7 +64,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

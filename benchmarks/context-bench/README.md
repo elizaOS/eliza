@@ -1,6 +1,6 @@
-# ElizaOS Context Benchmark
+# elizaOS Context Benchmark
 
-A comprehensive benchmark suite for evaluating LLM context retrieval and reasoning capabilities, integrated with the ElizaOS Python runtime.
+A comprehensive benchmark suite for evaluating LLM context retrieval and reasoning capabilities, integrated with the elizaOS Python runtime.
 
 ## Overview
 
@@ -58,7 +58,7 @@ async def main():
 asyncio.run(main())
 ```
 
-### With ElizaOS Runtime
+### With elizaOS Runtime
 
 ```python
 from elizaos.runtime import AgentRuntime
@@ -262,7 +262,7 @@ elizaos_context_bench/
 │   ├── niah.py          # NIAH benchmark suite
 │   └── multihop.py      # Multi-hop benchmark suite
 └── providers/
-    └── context.py       # ElizaOS context providers
+    └── context.py       # elizaOS context providers
 ```
 
 ## References

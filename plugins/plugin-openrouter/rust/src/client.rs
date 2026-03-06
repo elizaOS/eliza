@@ -30,7 +30,7 @@ impl OpenRouterClient {
             "HTTP-Referer",
             HeaderValue::from_static("https://elizaos.ai"),
         );
-        headers.insert("X-Title", HeaderValue::from_static("ElizaOS"));
+        headers.insert("X-Title", HeaderValue::from_static("elizaOS"));
 
         let http_client = reqwest::Client::builder()
             .timeout(Duration::from_secs(config.timeout_seconds()))

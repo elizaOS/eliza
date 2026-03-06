@@ -1,6 +1,6 @@
 # @elizaos/plugin-discord
 
-A Discord plugin implementation for ElizaOS, enabling rich integration with Discord servers for managing interactions, voice, and message handling.
+A Discord plugin implementation for elizaOS, enabling rich integration with Discord servers for managing interactions, voice, and message handling.
 
 ## Features
 
@@ -20,7 +20,7 @@ A Discord plugin implementation for ElizaOS, enabling rich integration with Disc
 
 ## Installation
 
-As this is a workspace package, it's installed as part of the ElizaOS monorepo:
+As this is a workspace package, it's installed as part of the elizaOS monorepo:
 
 ```bash
 bun install
@@ -89,7 +89,7 @@ Settings can also be configured in your character file under `settings.discord`:
 
 ## Slash Command Permissions
 
-The plugin uses a hybrid permission system that combines Discord's native features with ElizaOS-specific controls.
+The plugin uses a hybrid permission system that combines Discord's native features with elizaOS-specific controls.
 
 ### Permission Layers
 
@@ -99,7 +99,7 @@ Commands go through multiple permission checks in this order:
    - User must have required Discord permissions
    - Command must be available in the current context (guild vs DM)
 
-2. **ElizaOS Channel Whitelist** (if `CHANNEL_IDS` is set):
+2. **elizaOS Channel Whitelist** (if `CHANNEL_IDS` is set):
    - Commands only work in whitelisted channels
    - Unless command has `bypassChannelWhitelist: true`
 
@@ -190,7 +190,7 @@ From Discord.js `PermissionFlagsBits`:
 **Why Hybrid Approach?**
 
 - Discord's native permissions are powerful but limited to role-based access
-- ElizaOS needs programmatic control for channel restrictions and custom logic
+- elizaOS needs programmatic control for channel restrictions and custom logic
 - Combining both gives developers the best of both worlds
 
 **Why Simple Flags?**
@@ -262,7 +262,7 @@ The plugin emits the following Discord-specific events:
 
 ### DiscordService
 
-Main service class that extends ElizaOS Service:
+Main service class that extends elizaOS Service:
 
 - Handles authentication and session management
 - Manages Discord client connection

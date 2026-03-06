@@ -2,7 +2,7 @@
 name = "elizaos-plugin-scheduling"
 version = "0.1.0"
 edition = "2021"
-description = "ElizaOS plugin for scheduling and calendar coordination"
+description = "elizaOS plugin for scheduling and calendar coordination"
 license = "MIT"
 keywords = ["elizaos", "scheduling", "calendar", "ics", "meetings"]
 

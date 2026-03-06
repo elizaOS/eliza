@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "ElizaOS Team" }
+    { name = "elizaOS Team" }
 ]
 keywords = ["browser", "autonomous-agent", "quantum-physics", "elizaos", "web-automation"]
 classifiers = [

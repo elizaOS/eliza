@@ -2,7 +2,7 @@
  * REST API server for the Milaidy Control UI.
  *
  * Exposes HTTP endpoints that the UI frontend expects, backed by the
- * ElizaOS AgentRuntime. Designed to run on port 3001 alongside the
+ * elizaOS AgentRuntime. Designed to run on port 3001 alongside the
  * Vite dev server on port 3000 (which proxies /api and /ws here).
  */
 import http from "node:http";

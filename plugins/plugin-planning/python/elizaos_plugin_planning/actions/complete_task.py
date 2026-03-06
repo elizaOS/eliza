@@ -18,6 +18,7 @@ from elizaos_plugin_planning.actions.base import (
 )
 from elizaos_plugin_planning.types import (
     PLAN_SOURCE,
+    PLUGIN_PLANS_TABLE,
     PlanStatus,
     TaskStatus,
     decode_plan,
@@ -33,7 +34,9 @@ async def validate(
     runtime: RuntimeProtocol, _message: Memory, _state: State | None = None
 ) -> bool:
     try:
-        return runtime.get_memory_manager() is not None
+        return callable(getattr(runtime, "get_memories", None)) and callable(
+            getattr(runtime, "update_memory", None)
+        )
     except Exception:
         return False
 
@@ -46,10 +49,6 @@ async def handler(
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
     try:
-        manager = runtime.get_memory_manager()
-        if not manager:
-            raise RuntimeError("Memory manager not available")
-
         content_data = message.get("content", {})
         content = content_data.get("text", "")
         if not content:
@@ -58,8 +57,12 @@ async def handler(
                 await callback({"text": err, "source": content_data.get("source")})
             return {"text": err, "success": False}
 
-        memories = await manager.get_memories(
-            {"roomId": message.get("roomId", ""), "count": 50}
+        memories = await runtime.get_memories(
+            {
+                "roomId": message.get("roomId", ""),
+                "tableName": PLUGIN_PLANS_TABLE,
+                "count": 50,
+            }
         )
         plan_memories = [m for m in memories if m.get("content", {}).get("source") == PLAN_SOURCE]
 
@@ -146,19 +149,21 @@ async def handler(
         if progress == 100:
             target_plan.status = PlanStatus.COMPLETED
 
-        # Save
+        # Save via runtime DB API
         mem_id = target_mem.get("id", "")
-        if mem_id:
-            await manager.remove_memory(mem_id)
+        if not mem_id:
+            err = "Plan memory has no id."
+            if callback:
+                await callback({"text": err, "source": content_data.get("source")})
+            return {"text": err, "success": False}
 
-        entry: Memory = {
-            "agentId": runtime.agent_id,
-            "roomId": message.get("roomId", ""),
-            "userId": message.get("userId", ""),
-            "content": {"text": encode_plan(target_plan), "source": PLAN_SOURCE},
-            "createdAt": target_mem.get("createdAt", now),
-        }
-        await manager.create_memory(entry, True)
+        await runtime.update_memory(
+            {
+                "id": mem_id,
+                "content": {"text": encode_plan(target_plan), "source": PLAN_SOURCE},
+                "createdAt": target_mem.get("createdAt", now),
+            }
+        )
 
         formatted = format_plan(target_plan)
         note = " All tasks completed - plan is now finished!" if progress == 100 else ""

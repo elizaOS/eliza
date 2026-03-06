@@ -156,7 +156,7 @@ import { registerBuiltinTypes } from "./builtins";
  * - Accessible from actions, evaluators, providers
  *
  * WHY static `start` method:
- * - ElizaOS service lifecycle pattern
+ * - elizaOS service lifecycle pattern
  * - Async initialization support
  * - Returns Service interface
  */
@@ -1611,6 +1611,7 @@ export class FormService extends Service {
         name: workerName,
         roomId: session.roomId,
         entityId: session.entityId,
+        tags: [],
       };
       await worker.execute(
         this.runtime,

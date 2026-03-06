@@ -1,5 +1,5 @@
 /**
- * Milaidy plugin for ElizaOS — workspace context and session keys.
+ * Milaidy plugin for elizaOS — workspace context and session keys.
  *
  * Compaction is now a built-in runtime action (COMPACT_SESSION in basic-capabilities).
  * Memory search/get actions are superseded by plugin-scratchpad.

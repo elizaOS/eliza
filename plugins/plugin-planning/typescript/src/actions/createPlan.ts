@@ -17,6 +17,7 @@ import {
   generateTaskId,
   type Plan,
   PLAN_SOURCE,
+  PLUGIN_PLANS_TABLE,
   PlanStatus,
   type Task,
   TaskStatus,
@@ -57,8 +58,7 @@ export const createPlanAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> {
-    const memoryManager = runtime.getMemoryManager();
-    return !!memoryManager;
+    return typeof runtime.createMemory === "function";
   },
 
   async handler(
@@ -69,11 +69,6 @@ export const createPlanAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
-      const memoryManager = runtime.getMemoryManager();
-      if (!memoryManager) {
-        throw new Error("Memory manager not available");
-      }
-
       const content = message.content.text;
       if (!content) {
         const errorMessage = "Please describe what you want to plan.";
@@ -120,8 +115,8 @@ User request: "${content}"`;
               description?: string;
               tasks?: Array<{ title: string; description?: string; dependencies?: string[] }>;
             } = JSON.parse(cleaned);
-            planTitle = parsed.title ?? planTitle || content.substring(0, 80);
-            planDescription = parsed.description ?? planDescription || content;
+            planTitle = parsed.title ?? (planTitle || content.substring(0, 80));
+            planDescription = parsed.description ?? (planDescription || content);
             taskDefs =
               Array.isArray(parsed.tasks) && parsed.tasks.length > 0 ? parsed.tasks : taskDefs;
           } catch (parseError) {
@@ -163,7 +158,7 @@ User request: "${content}"`;
       const memoryEntry: Memory = {
         agentId: runtime.agentId,
         roomId: message.roomId,
-        userId: message.userId,
+        entityId: (message as Memory & { entityId?: string; userId?: string }).entityId ?? (message as { userId?: string }).userId,
         content: {
           text: encodePlan(plan),
           source: PLAN_SOURCE,
@@ -171,7 +166,7 @@ User request: "${content}"`;
         createdAt: now,
       };
 
-      await memoryManager.createMemory(memoryEntry, true);
+      await runtime.createMemory(memoryEntry, PLUGIN_PLANS_TABLE, true);
 
       const formatted = formatPlan(plan);
       const successMessage = `Created plan "${plan.title}" with ${tasks.length} task${tasks.length === 1 ? "" : "s"}.\n\n${formatted}`;

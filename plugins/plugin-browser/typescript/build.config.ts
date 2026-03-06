@@ -27,6 +27,7 @@ export const buildConfig: BuildConfig = {
     'dotenv',
     'zod',
     '@elizaos/core',
+    '@elizaos/plugin-cli',
     'playwright',
     'playwright-core',
     '@stagehand/web',

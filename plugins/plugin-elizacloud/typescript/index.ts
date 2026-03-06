@@ -44,7 +44,7 @@ const env = getProcessEnv();
 export const elizaOSCloudPlugin: Plugin = {
   name: "elizaOSCloud",
   description:
-    "ElizaOS Cloud plugin — Multi-model AI generation, container provisioning, agent bridge, and billing management",
+    "elizaOS Cloud plugin — Multi-model AI generation, container provisioning, agent bridge, and billing management",
 
   config: {
     ELIZAOS_CLOUD_API_KEY: env.ELIZAOS_CLOUD_API_KEY ?? null,

@@ -1,7 +1,7 @@
 [project]
 name = "elizaos-agentbench"
 version = "2.0.0"
-description = "AgentBench benchmark implementation for ElizaOS Python"
+description = "AgentBench benchmark implementation for elizaOS Python"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"

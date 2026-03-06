@@ -21,7 +21,7 @@ export function registerSetupCommand(program: Command) {
         const {
           ensureAgentWorkspace,
           resolveDefaultAgentWorkspaceDir,
-        } = await import("../../agents/workspace.js");
+        } = await import("../../providers/workspace.js");
 
         let config: Record<string, unknown> = {};
         try {

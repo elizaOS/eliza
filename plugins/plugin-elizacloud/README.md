@@ -1,6 +1,6 @@
 # @elizaos/plugin-elizacloud
 
-ElizaOS Cloud plugin - Multi-model AI generation with text, image, and audio support.
+elizaOS Cloud plugin - Multi-model AI generation with text, image, and audio support.
 
 Available in **TypeScript**, **Python**, and **Rust** with uniform APIs.
 

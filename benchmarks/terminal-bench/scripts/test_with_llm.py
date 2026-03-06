@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# When running inside the monorepo, add local ElizaOS + plugins to PYTHONPATH
+# When running inside the monorepo, add local elizaOS + plugins to PYTHONPATH
 _repo_root = Path(__file__).resolve().parents[4]
 _local_elizaos = _repo_root / "packages" / "python"
 _local_openai_plugin = _repo_root / "plugins" / "plugin-openai" / "python"
@@ -105,8 +105,8 @@ python3 /workspace/hello.py""",
 
 
 async def test_with_elizaos_runtime() -> bool:
-    """Test the agent with ElizaOS runtime (requires OpenAI plugin setup)."""
-    logger.info("\nTesting ElizaOS Runtime Mode")
+    """Test the agent with elizaOS runtime (requires OpenAI plugin setup)."""
+    logger.info("\nTesting elizaOS Runtime Mode")
     logger.info("=" * 60)
     
     try:
@@ -114,8 +114,8 @@ async def test_with_elizaos_runtime() -> bool:
         from elizaos.types.agent import Character
         from elizaos_plugin_openai import get_openai_plugin
     except ImportError as e:
-        logger.warning(f"ElizaOS runtime not available: {e}")
-        logger.info("Skipping ElizaOS runtime test")
+        logger.warning(f"elizaOS runtime not available: {e}")
+        logger.info("Skipping elizaOS runtime test")
         return True  # Not a failure, just not available
     
     from elizaos_terminal_bench.agent import TerminalAgent
@@ -141,7 +141,7 @@ exit 1
     )
     
     try:
-        # Create ElizaOS runtime with OpenAI plugin
+        # Create elizaOS runtime with OpenAI plugin
         character = Character(
             name="TerminalBenchAgent",
             bio="An agent specialized in terminal tasks",
@@ -173,7 +173,7 @@ exit 1
         return result.success
         
     except Exception as e:
-        logger.error(f"ElizaOS runtime test failed: {e}")
+        logger.error(f"elizaOS runtime test failed: {e}")
         return False
 
 
@@ -258,13 +258,13 @@ async def main() -> int:
         logger.error(f"Standalone test failed: {e}")
         results.append(("Standalone Mode", False))
     
-    # Test 2: ElizaOS runtime mode
+    # Test 2: elizaOS runtime mode
     try:
         success = await test_with_elizaos_runtime()
-        results.append(("ElizaOS Runtime", success))
+        results.append(("elizaOS Runtime", success))
     except Exception as e:
         logger.error(f"Runtime test failed: {e}")
-        results.append(("ElizaOS Runtime", False))
+        results.append(("elizaOS Runtime", False))
     
     # Test 3: Sample benchmark
     try:

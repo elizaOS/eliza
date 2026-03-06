@@ -188,7 +188,7 @@ def create_plugin(**kwargs: Any) -> CopilotProxyPlugin:
 
 
 def create_copilot_proxy_elizaos_plugin() -> Plugin:
-    """Create an ElizaOS plugin wired to Copilot Proxy model handlers."""
+    """Create an elizaOS plugin wired to Copilot Proxy model handlers."""
     from elizaos import Plugin
     from elizaos.types.model import ModelType
     from elizaos.types.runtime import IAgentRuntime

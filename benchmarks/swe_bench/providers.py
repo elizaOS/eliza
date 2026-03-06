@@ -1,4 +1,4 @@
-"""SWE-bench providers for context injection into ElizaOS runtime."""
+"""SWE-bench providers for context injection into elizaOS runtime."""
 
 from __future__ import annotations
 

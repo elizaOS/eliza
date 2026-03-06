@@ -19,3 +19,4 @@ export const GENERATE_POST_TEMPLATE = generatePostTemplate;
 export const truncatePostTemplate = `Shorten to under {{maxLength}} characters: "{{text}}"`;
 
 export const TRUNCATE_POST_TEMPLATE = truncatePostTemplate;
+

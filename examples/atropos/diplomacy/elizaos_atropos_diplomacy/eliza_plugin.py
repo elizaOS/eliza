@@ -1,5 +1,5 @@
 """
-Canonical ElizaOS integration for Atropos Diplomacy.
+Canonical elizaOS integration for Atropos Diplomacy.
 
 Provides:
 - ATROPOS_DIPLOMACY provider with current board summary for a given power
@@ -117,7 +117,7 @@ def create_diplomacy_character(name: str = "DiplomacyAgent") -> Character:
     template = create_action_only_template(
         task="Choose orders for {{agentName}} in Diplomacy.",
         instructions=(
-            "Decide orders for ALL of your units. Output ONLY one ElizaOS action: ATROPOS_DIPLOMACY_ORDERS.\n"
+            "Decide orders for ALL of your units. Output ONLY one elizaOS action: ATROPOS_DIPLOMACY_ORDERS.\n"
             "Put the newline-separated order block into params.orders."
         ),
         action_name="ATROPOS_DIPLOMACY_ORDERS",

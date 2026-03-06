@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "elizaos-webshop"
 version = "2.0.0"
-description = "WebShop benchmark for ElizaOS - web interaction shopping evaluation"
+description = "WebShop benchmark for elizaOS - web interaction shopping evaluation"
 readme = "RESEARCH.md"
 license = "MIT"
 requires-python = ">=3.10"

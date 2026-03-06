@@ -351,7 +351,7 @@ async def _call_openai_compatible(
     # Add provider-specific headers
     if config.provider == ModelProvider.OPENROUTER:
         headers["HTTP-Referer"] = "https://elizaos.ai"
-        headers["X-Title"] = "ElizaOS GAIA Benchmark"
+        headers["X-Title"] = "elizaOS GAIA Benchmark"
 
     headers.update(config.extra_headers)
 

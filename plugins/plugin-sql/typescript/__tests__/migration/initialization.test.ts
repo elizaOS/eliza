@@ -36,7 +36,7 @@ interface TableInfoRow {
 import type { UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { RuntimeMigrator } from "../../runtime-migrator";
-import * as originalSchema from "../../schema";
+import * as originalSchema from "../../tables";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabaseForMigration } from "../test-helpers";
 

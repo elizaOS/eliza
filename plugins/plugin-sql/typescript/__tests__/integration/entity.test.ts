@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { entityTable } from "../../schema";
+import { entityTable } from "../../tables";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("Entity Integration Tests", () => {
@@ -43,7 +43,7 @@ describe("Entity Integration Tests", () => {
       };
 
       const result = await adapter.createEntities([entity]);
-      expect(result).toBe(true);
+      expect(Array.isArray(result) && result.length > 0).toBe(true);
 
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
@@ -66,7 +66,7 @@ describe("Entity Integration Tests", () => {
       };
 
       const createResult = await adapter.createEntities([entity]);
-      expect(createResult).toBe(true);
+      expect(Array.isArray(createResult) && createResult.length > 0).toBe(true);
 
       const updatedEntity = {
         ...entity,
@@ -102,7 +102,7 @@ describe("Entity Integration Tests", () => {
       ];
 
       const result = await adapter.createEntities(entities);
-      expect(result).toBe(true);
+      expect(Array.isArray(result) && result.length > 0).toBe(true);
 
       const retrieved = await adapter.getEntitiesByIds([entity1Id, entity2Id]);
       expect(retrieved).not.toBeNull();
@@ -119,7 +119,7 @@ describe("Entity Integration Tests", () => {
       };
 
       const result = await adapter.createEntities([entity]);
-      expect(result).toBe(true);
+      expect(Array.isArray(result) && result.length > 0).toBe(true);
 
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
@@ -135,7 +135,7 @@ describe("Entity Integration Tests", () => {
       };
 
       const result = await adapter.createEntities([entity]);
-      expect(result).toBe(true);
+      expect(Array.isArray(result) && result.length > 0).toBe(true);
 
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();

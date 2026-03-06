@@ -28,4 +28,4 @@ This table compares results across all tested models for this dataset. Results a
 
 
 ---
-*Updated automatically by ElizaOS GAIA Benchmark Runner*
+*Updated automatically by elizaOS GAIA Benchmark Runner*

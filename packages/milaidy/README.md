@@ -1,6 +1,6 @@
 # Milaidy — Personal AI Assistant
 
-**Milaidy** is a _personal AI assistant_ you run on your own devices, built on [ElizaOS](https://github.com/elizaos).
+**Milaidy** is a _personal AI assistant_ you run on your own devices, built on [elizaOS](https://github.com/elizaos).
 The Gateway is the control plane that manages sessions, tools, and events. It connects to messaging platforms, companion apps, and a WebChat UI.
 
 If you want a personal, single-user assistant that feels local, fast, and always-on, this is it.

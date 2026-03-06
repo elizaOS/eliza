@@ -1,6 +1,6 @@
 # elizaos-plugin-linear
 
-Rust implementation of the Linear integration plugin for ElizaOS.
+Rust implementation of the Linear integration plugin for elizaOS.
 
 ## Features
 
