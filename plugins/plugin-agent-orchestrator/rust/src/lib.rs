@@ -1,4 +1,4 @@
-//! Agent Orchestrator Plugin for ElizaOS.
+//! Agent Orchestrator Plugin for elizaOS.
 //!
 //! Orchestrates tasks across registered agent providers without performing
 //! file I/O directly - that responsibility belongs to sub-agent workers.
@@ -18,7 +18,7 @@ pub use error::OrchestratorError;
 pub use service::AgentOrchestratorService;
 pub use types::*;
 
-/// Plugin definition for ElizaOS
+/// Plugin definition for elizaOS
 pub fn create_plugin() -> Plugin {
     Plugin {
         name: "agent-orchestrator".to_string(),

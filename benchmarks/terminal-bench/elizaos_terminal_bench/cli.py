@@ -178,7 +178,7 @@ For more information, visit: https://tbench.ai
     parser.add_argument(
         "--standalone",
         action="store_true",
-        help="Use standalone agent (direct API calls) instead of full ElizaOS runtime",
+        help="Use standalone agent (direct API calls) instead of full elizaOS runtime",
     )
     parser.add_argument(
         "-v", "--verbose",

@@ -35,7 +35,7 @@ from elizaos_plugin_twitch.types import (
 
 
 # ---------------------------------------------------------------------------
-# Mock message class (mimics ElizaOS Memory)
+# Mock message class (mimics elizaOS Memory)
 # ---------------------------------------------------------------------------
 
 
@@ -45,7 +45,7 @@ class MockContent(dict):
 
 
 class MockMessage:
-    """Lightweight mock of an ElizaOS Memory object."""
+    """Lightweight mock of an elizaOS Memory object."""
 
     def __init__(self, source: str = "twitch", text: str = "hello", metadata: Optional[dict] = None):
         self.content = MockContent(
@@ -64,7 +64,7 @@ class MockMessage:
 
 
 class MockRuntime:
-    """Lightweight mock of an ElizaOS IAgentRuntime."""
+    """Lightweight mock of an elizaOS IAgentRuntime."""
 
     def __init__(
         self,

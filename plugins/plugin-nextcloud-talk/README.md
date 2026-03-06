@@ -47,7 +47,7 @@ cargo add elizaos-plugin-nextcloud-talk
 ```bash
 sudo -u www-data php occ talk:bot:install \
     --output json \
-    "My ElizaOS Bot" \
+    "My elizaOS Bot" \
     "your_secret_here" \
     "https://your-server.com/nextcloud-talk-webhook" \
     "An AI-powered assistant"

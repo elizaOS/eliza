@@ -1,5 +1,5 @@
 """
-Vending-Bench Benchmark Implementation for ElizaOS
+Vending-Bench Benchmark Implementation for elizaOS
 
 A comprehensive implementation of the Vending-Bench benchmark for evaluating
 LLM agent coherence in a simulated vending machine business.
@@ -53,7 +53,7 @@ from elizaos_vending_bench.types import (
 
 # Plugin (lazy import to avoid circular dependencies)
 def get_plugin():
-    """Get the ElizaOS plugin for Vending-Bench."""
+    """Get the elizaOS plugin for Vending-Bench."""
     from elizaos_vending_bench.plugin import vending_bench_plugin
 
     return vending_bench_plugin

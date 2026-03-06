@@ -26,7 +26,7 @@ WHATSAPP_SERVICE_NAME = "whatsapp"
 
 
 class WhatsAppService(Service):
-    """WhatsApp service for ElizaOS."""
+    """WhatsApp service for elizaOS."""
 
     service_type = WHATSAPP_SERVICE_NAME
 

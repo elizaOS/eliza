@@ -48,7 +48,7 @@ import type {
 import { ZaloUserChatType, ZaloUserEventTypes } from "./types";
 
 /**
- * Zalo User Service for ElizaOS.
+ * Zalo User Service for elizaOS.
  * Provides personal Zalo account integration via zca-cli.
  */
 export class ZaloUserService extends Service {

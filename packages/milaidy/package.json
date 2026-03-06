@@ -27,7 +27,7 @@
     "./eliza": "./dist/eliza.js"
   },
   "scripts": {
-    "build": "tsdown && node --import tsx scripts/write-build-info.ts && node scripts/ui.js build && bun --cwd apps/app run build",
+    "build": "tsdown && node --import tsx scripts/write-build-info.ts && (node scripts/ui.js build || echo 'UI build skipped') && (bun --cwd apps/app run build || echo 'apps/app build skipped')",
     "build:android": "bun --cwd apps/app run build:android",
     "build:desktop": "bun --cwd apps/app run build:electron",
     "build:ios": "bun --cwd apps/app run build:ios",

@@ -1,20 +1,20 @@
 # Ollama Plugin
 
-This plugin provides integration with [Ollama](https://ollama.com/)'s local models through the ElizaOS platform. It allows you to leverage locally running LLMs for text generation, embeddings, and object generation.
+This plugin provides integration with [Ollama](https://ollama.com/)'s local models through the elizaOS platform. It allows you to leverage locally running LLMs for text generation, embeddings, and object generation.
 
 ## Overview
 
-Ollama enables running large language models locally on your machine. This plugin connects ElizaOS with your local Ollama installation, giving your characters access to powerful language models running on your own hardware.
+Ollama enables running large language models locally on your machine. This plugin connects elizaOS with your local Ollama installation, giving your characters access to powerful language models running on your own hardware.
 
 ## Requirements
 
 - [Ollama](https://ollama.com/) installed and running on your system
-- ElizaOS platform
+- elizaOS platform
 - At least one Ollama model pulled and available (e.g., `llama3`, `gemma3:latest`)
 
 ## Installation
 
-1. Install this plugin in your ElizaOS project:
+1. Install this plugin in your elizaOS project:
 
    ```bash
    bun add @elizaos/plugin-ollama

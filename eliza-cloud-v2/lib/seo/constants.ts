@@ -52,20 +52,20 @@ export const ROUTE_METADATA = {
   containers: {
     title: "Containers",
     description:
-      "Deploy and manage ElizaOS containers on AWS ECS. Monitor health, view logs, and scale your deployments.",
+      "Deploy and manage elizaOS containers on AWS ECS. Monitor health, view logs, and scale your deployments.",
     keywords: [
       "containers",
       "deployment",
       "AWS ECS",
       "Docker",
-      "ElizaOS deploy",
+      "elizaOS deploy",
     ],
   },
   eliza: {
     title: "Chat",
     description:
-      "Chat with AI agents using the full ElizaOS runtime with persistent memory and room-based conversations.",
-    keywords: ["Chat", "AI chat", "ElizaOS runtime", "AI agent"],
+      "Chat with AI agents using the full elizaOS runtime with persistent memory and room-based conversations.",
+    keywords: ["Chat", "AI chat", "elizaOS runtime", "AI agent"],
   },
   characterCreator: {
     title: "Character Creator",
@@ -75,7 +75,7 @@ export const ROUTE_METADATA = {
       "character creator",
       "AI characters",
       "agent builder",
-      "ElizaOS characters",
+      "elizaOS characters",
     ],
   },
   myAgents: {

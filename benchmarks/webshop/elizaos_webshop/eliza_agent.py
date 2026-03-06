@@ -1,7 +1,7 @@
 """
-ElizaOS-integrated agent for WebShop.
+elizaOS-integrated agent for WebShop.
 
-This follows the canonical ElizaOS flow (like tau-bench):
+This follows the canonical elizaOS flow (like tau-bench):
 - Messages processed through runtime.message_service.handle_message()
 - Actions executed via process_actions()
 - Providers inject environment/task context into state
@@ -96,7 +96,7 @@ def get_model_provider_plugin(provider: str | None = None) -> "Plugin | None":
 
 def get_localdb_plugin() -> "Plugin | None":
     """
-    Return a proper ElizaOS Plugin for LocalDB.
+    Return a proper elizaOS Plugin for LocalDB.
 
     The localdb package ships a dict-shaped plugin for JS parity, but AgentRuntime
     expects the Pydantic Plugin model. We wrap init_localdb to match that API.
@@ -426,7 +426,7 @@ class WebShopAction:
 
 def create_webshop_plugin() -> "Plugin":
     if not ELIZAOS_AVAILABLE:
-        raise RuntimeError("ElizaOS is required for webshop plugin")
+        raise RuntimeError("elizaOS is required for webshop plugin")
 
     action_impl = WebShopAction()
     action = Action(
@@ -497,7 +497,7 @@ For final response (after buy):
 </output>"""
 
 
-class ElizaOSWebShopAgent:
+class elizaOSWebShopAgent:
     def __init__(
         self,
         env: WebShopEnvironment,
@@ -528,7 +528,7 @@ class ElizaOSWebShopAgent:
             return
         if not ELIZAOS_AVAILABLE:
             if self._require_real_llm:
-                raise RuntimeError("ElizaOS is not installed/available (required for real-llm mode)")
+                raise RuntimeError("elizaOS is not installed/available (required for real-llm mode)")
             self._initialized = True
             return
 
@@ -580,7 +580,7 @@ class ElizaOSWebShopAgent:
         await self.runtime.initialize()
         self._has_model_provider = self.runtime.has_model("TEXT_LARGE")
         if self._require_real_llm and not self._has_model_provider:
-            raise RuntimeError("ElizaOS runtime initialized but no TEXT_LARGE model is available")
+            raise RuntimeError("elizaOS runtime initialized but no TEXT_LARGE model is available")
         self._initialized = True
 
     async def process_task(
@@ -753,10 +753,10 @@ class MockWebShopAgent:
     async def process_task(
         self, task: WebShopTask
     ) -> tuple[list[EpisodeStep], str, PageObservation | None]:
-        # Run the same simple heuristic loop used by ElizaOSWebShopAgent mock mode.
+        # Run the same simple heuristic loop used by elizaOSWebShopAgent mock mode.
         set_webshop_context(task, self.env, trajectory=None, trial_number=1)
         ctx = get_webshop_context()
-        return await ElizaOSWebShopAgent(self.env, max_turns=self.max_turns)._process_task_mock(
+        return await elizaOSWebShopAgent(self.env, max_turns=self.max_turns)._process_task_mock(
             task, ctx
         )
 
@@ -772,10 +772,10 @@ def create_webshop_agent(
     model_provider: str | None = None,
     temperature: float = 0.0,
     trajectory: WebShopTrajectoryIntegration | None = None,
-) -> ElizaOSWebShopAgent | MockWebShopAgent:
+) -> elizaOSWebShopAgent | MockWebShopAgent:
     if use_mock or not ELIZAOS_AVAILABLE:
         return MockWebShopAgent(env=env, max_turns=max_turns)
-    return ElizaOSWebShopAgent(
+    return elizaOSWebShopAgent(
         env=env,
         max_turns=max_turns,
         model_provider=model_provider,

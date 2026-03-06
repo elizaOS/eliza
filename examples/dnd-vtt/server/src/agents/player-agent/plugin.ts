@@ -1,6 +1,6 @@
 /**
  * Player Plugin
- * ElizaOS plugin providing player character capabilities
+ * elizaOS plugin providing player character capabilities
  */
 
 import type { Plugin } from '@elizaos/core';

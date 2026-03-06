@@ -1,4 +1,4 @@
-//! Twitch service implementation for ElizaOS.
+//! Twitch service implementation for elizaOS.
 //!
 //! This service provides Twitch chat integration using IRC over WebSocket.
 
@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 const TWITCH_IRC_URL: &str = "wss://irc-ws.chat.twitch.tv:443";
 
-/// Twitch chat service for ElizaOS agents.
+/// Twitch chat service for elizaOS agents.
 pub struct TwitchService {
     settings: TwitchSettings,
     connected: Arc<RwLock<bool>>,

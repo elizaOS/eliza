@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-experience",
-  "description": "Experience learning plugin for ElizaOS - records and recalls transferable agent learnings",
+  "description": "Experience learning plugin for elizaOS - records and recalls transferable agent learnings",
   "version": "2.0.0-alpha.2",
   "type": "module",
   "main": "dist/node/index.node.js",

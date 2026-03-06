@@ -82,7 +82,7 @@ def generate_ics(event: CalendarEvent) -> str:
     # Begin calendar
     lines.append("BEGIN:VCALENDAR")
     lines.append("VERSION:2.0")
-    lines.append("PRODID:-//ElizaOS//SchedulingPlugin//EN")
+    lines.append("PRODID:-//elizaOS//SchedulingPlugin//EN")
     lines.append("CALSCALE:GREGORIAN")
     lines.append("METHOD:REQUEST")
 

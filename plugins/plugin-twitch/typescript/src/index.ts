@@ -1,5 +1,5 @@
 /**
- * Twitch chat integration plugin for ElizaOS.
+ * Twitch chat integration plugin for elizaOS.
  *
  * This plugin provides Twitch chat integration using the @twurple library.
  */
@@ -36,7 +36,7 @@ import { TwitchService } from "./service.js";
 const twitchPlugin: Plugin = {
   name: "twitch",
   description:
-    "Twitch chat integration plugin for ElizaOS with real-time messaging",
+    "Twitch chat integration plugin for elizaOS with real-time messaging",
 
   services: [TwitchService],
 

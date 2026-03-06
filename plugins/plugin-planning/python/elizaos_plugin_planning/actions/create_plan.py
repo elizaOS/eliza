@@ -35,7 +35,7 @@ async def validate(
     runtime: RuntimeProtocol, _message: Memory, _state: State | None = None
 ) -> bool:
     try:
-        return runtime.get_memory_manager() is not None
+        return callable(getattr(runtime, "create_memory", None))
     except Exception:
         return False
 
@@ -48,10 +48,6 @@ async def handler(
     callback: HandlerCallback | None = None,
 ) -> ActionResult:
     try:
-        manager = runtime.get_memory_manager()
-        if not manager:
-            raise RuntimeError("Memory manager not available")
-
         content_data = message.get("content", {})
         content = content_data.get("text", "")
         if not content:
@@ -127,15 +123,16 @@ async def handler(
         )
 
         encoded = encode_plan(plan)
+        entity_id = message.get("entityId") or message.get("userId", "")
         entry: Memory = {
             "agentId": runtime.agent_id,
             "roomId": message.get("roomId", ""),
-            "userId": message.get("userId", ""),
+            "userId": entity_id,
             "content": {"text": encoded, "source": PLAN_SOURCE},
             "createdAt": now,
         }
 
-        await manager.create_memory(entry, True)
+        await runtime.create_memory(entry, PLUGIN_PLANS_TABLE, True)
 
         formatted = format_plan(plan)
         task_count = len(tasks)

@@ -450,7 +450,7 @@ export class OpenCodeSubAgent implements SubAgent {
   }
 
   /**
-   * Execute task using prompt-based approach (ElizaOS runtime)
+   * Execute task using prompt-based approach (elizaOS runtime)
    */
   private async executeWithPrompt(
     task: CodeTask,

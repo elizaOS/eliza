@@ -143,7 +143,7 @@ function buildBenchmarkCharacter(config: MilaidyConfig): Character {
   const name = config.agent?.name ?? "Milaidy";
   const bio =
     config.agent?.bio ??
-    "An AI assistant powered by Milaidy and ElizaOS, executing benchmark tasks with precision.";
+    "An AI assistant powered by Milaidy and elizaOS, executing benchmark tasks with precision.";
 
   // Collect API secrets from env
   const secretKeys = [

@@ -4,6 +4,7 @@ export interface IStorage {
   isReady(): Promise<boolean>;
   get<T>(collection: string, id: string): Promise<T | null>;
   getAll<T>(collection: string): Promise<T[]>;
+  list<T>(collection: string): Promise<[string, T][]>;
   getWhere<T>(collection: string, predicate: (item: T) => boolean): Promise<T[]>;
   set<T>(collection: string, id: string, data: T): Promise<void>;
   delete(collection: string, id: string): Promise<boolean>;

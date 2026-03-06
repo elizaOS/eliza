@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-plugin-webhooks"
 version = "0.1.0"
-description = "HTTP webhook ingress plugin for ElizaOS"
+description = "HTTP webhook ingress plugin for elizaOS"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"

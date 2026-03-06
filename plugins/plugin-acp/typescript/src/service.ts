@@ -100,7 +100,7 @@ export class ACPService extends Service {
       prefixCwd: process.env.ACP_PREFIX_CWD !== "false",
       verbose: process.env.ACP_VERBOSE === "true",
       clientName: process.env.ACP_CLIENT_NAME || "elizaos-acp",
-      clientDisplayName: process.env.ACP_CLIENT_DISPLAY_NAME || "ElizaOS ACP",
+      clientDisplayName: process.env.ACP_CLIENT_DISPLAY_NAME || "elizaOS ACP",
       clientVersion: process.env.ACP_CLIENT_VERSION || "1.0.0",
       clientMode: process.env.ACP_CLIENT_MODE || "cli",
       // Session persistence options
@@ -302,7 +302,7 @@ export function serveAcpGateway(opts: ServeAcpGatewayOptions = {}): void {
     token: opts.gatewayToken,
     password: opts.gatewayPassword,
     clientName: "elizaos-acp",
-    clientDisplayName: "ElizaOS ACP",
+    clientDisplayName: "elizaOS ACP",
     clientVersion: "1.0.0",
     mode: "cli",
     onEvent: (evt: EventFrame) => {

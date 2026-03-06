@@ -1,4 +1,4 @@
-"""Edge TTS plugin definition for ElizaOS."""
+"""Edge TTS plugin definition for elizaOS."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class EdgeTTSPlugin:
-    """Edge TTS plugin for ElizaOS.
+    """Edge TTS plugin for elizaOS.
 
     Provides free text-to-speech synthesis using Microsoft Edge's TTS service.
     No API key required - uses the same TTS engine as Microsoft Edge browser.

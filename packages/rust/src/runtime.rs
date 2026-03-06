@@ -9,7 +9,9 @@ use crate::types::components::{
     ActionDefinition, ActionHandler, ActionResult, EvaluatorDefinition, EvaluatorHandler,
     HandlerOptions, ProviderDefinition, ProviderHandler,
 };
-use crate::types::database::{GetMemoriesParams, SearchMemoriesParams};
+use crate::types::database::{
+    CreateMemoryItem, GetMemoriesParams, SearchMemoriesParams, UpdateMemoryItem,
+};
 use crate::types::environment::{Entity, Room, World};
 use crate::types::events::{EventPayload, EventType};
 use crate::types::memory::Memory;
@@ -69,17 +71,67 @@ pub trait DatabaseAdapter: Send + Sync {
     /// Search memories by embedding
     async fn search_memories(&self, params: SearchMemoriesParams) -> Result<Vec<Memory>>;
 
-    /// Create a memory
-    async fn create_memory(&self, memory: &Memory, table_name: &str) -> Result<UUID>;
+    // ----- Memory CRUD: batch-only (aligned with TypeScript adapter API) -----
 
-    /// Update a memory
-    async fn update_memory(&self, memory: &Memory) -> Result<bool>;
+    /// Batch create memories. Returns IDs in same order as input. Adapters implement this.
+    async fn create_memories(&self, items: &[CreateMemoryItem]) -> Result<Vec<UUID>>;
 
-    /// Delete a memory
-    async fn delete_memory(&self, memory_id: &UUID) -> Result<()>;
+    /// Batch update memories (partial updates). Adapters implement this.
+    async fn update_memories(&self, items: &[UpdateMemoryItem]) -> Result<()>;
 
-    /// Get a memory by ID
+    /// Batch delete memories by ID. Adapters implement this.
+    async fn delete_memories(&self, memory_ids: &[UUID]) -> Result<()>;
+
+    /// Get a memory by ID (single read)
     async fn get_memory_by_id(&self, id: &UUID) -> Result<Option<Memory>>;
+
+    /// Get memories by IDs (batch; aligned with TypeScript getMemoriesByIds).
+    /// Default: calls [get_memory_by_id] for each id. Adapters may override for efficiency.
+    async fn get_memories_by_ids(&self, ids: &[UUID], _table_name: Option<&str>) -> Result<Vec<Memory>> {
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(m) = self.get_memory_by_id(id).await? {
+                out.push(m);
+            }
+        }
+        Ok(out)
+    }
+
+    // ----- Convenience single-item helpers (call batch with one element) -----
+
+    /// Create a single memory. Default: calls [create_memories] with one item.
+    async fn create_memory(&self, memory: &Memory, table_name: &str) -> Result<UUID> {
+        self.create_memory_with_unique(memory, table_name, None).await
+    }
+
+    /// Create a single memory with optional unique flag. Default: calls [create_memories].
+    async fn create_memory_with_unique(
+        &self,
+        memory: &Memory,
+        table_name: &str,
+        unique: Option<bool>,
+    ) -> Result<UUID> {
+        let items = [CreateMemoryItem {
+            memory: memory.clone(),
+            table_name: table_name.to_string(),
+            unique,
+        }];
+        let ids = self.create_memories(&items).await?;
+        ids.into_iter().next().context("create_memories returned empty")
+    }
+
+    /// Update a single memory. Default: calls [update_memories] with one item.
+    async fn update_memory(&self, memory: &Memory) -> Result<bool> {
+        let item = UpdateMemoryItem::from_memory(memory)
+            .context("update_memory requires memory.id")?;
+        self.update_memories(&[item]).await?;
+        Ok(true)
+    }
+
+    /// Delete a single memory. Default: calls [delete_memories] with one ID.
+    async fn delete_memory(&self, memory_id: &UUID) -> Result<()> {
+        self.delete_memories(&[memory_id.clone()]).await
+    }
 
     /// Create a world
     async fn create_world(&self, world: &World) -> Result<UUID>;

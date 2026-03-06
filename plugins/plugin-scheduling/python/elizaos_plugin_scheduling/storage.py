@@ -1,5 +1,5 @@
 """
-Component-based persistence for scheduling data using ElizaOS Components.
+Component-based persistence for scheduling data using elizaOS Components.
 
 Mirrors the TypeScript storage layer with component-type keyed storage,
 indexing for meetings by room and participant, and reminder registries.
@@ -31,7 +31,7 @@ REMINDER_REGISTRY = "scheduling_reminder_registry"
 
 @runtime_checkable
 class Component(Protocol):
-    """Minimal component protocol matching ElizaOS Component."""
+    """Minimal component protocol matching elizaOS Component."""
 
     id: str
     entity_id: str
@@ -46,7 +46,7 @@ class Component(Protocol):
 
 @runtime_checkable
 class AgentRuntime(Protocol):
-    """Protocol for the ElizaOS agent runtime that storage needs."""
+    """Protocol for the elizaOS agent runtime that storage needs."""
 
     @property
     def agent_id(self) -> str: ...

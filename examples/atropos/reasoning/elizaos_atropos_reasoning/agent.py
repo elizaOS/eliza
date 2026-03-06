@@ -1,5 +1,5 @@
 """
-ElizaOS agent for Reasoning Gym environment.
+elizaOS agent for Reasoning Gym environment.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 class ReasoningAgent:
     """
-    ElizaOS-powered reasoning agent.
+    elizaOS-powered reasoning agent.
     
     Uses LLM to solve reasoning problems with chain-of-thought prompting.
     
@@ -43,7 +43,7 @@ class ReasoningAgent:
         Initialize the reasoning agent.
         
         Args:
-            runtime: ElizaOS AgentRuntime
+            runtime: elizaOS AgentRuntime
             use_llm: Whether to use LLM for reasoning
             agent_id: Optional agent ID
         """
@@ -85,7 +85,7 @@ class ReasoningAgent:
         )
 
     async def _reason_with_eliza(self, state: StepResult, *, trajectory_step_id: str | None = None) -> Response:
-        """Use canonical ElizaOS message pipeline for reasoning."""
+        """Use canonical elizaOS message pipeline for reasoning."""
         if self._runtime is None:
             return self._reason_with_heuristics(state)
 

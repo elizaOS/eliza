@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-planning",
   "version": "2.0.0-alpha",
-  "description": "Planning and task management plugin for ElizaOS (TypeScript)",
+  "description": "Planning and task management plugin for elizaOS (TypeScript)",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -45,7 +45,7 @@
     "typescript",
     "task-management"
   ],
-  "author": "ElizaOS Contributors",
+  "author": "elizaOS Contributors",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/elizaos/eliza/issues"

@@ -1,8 +1,8 @@
 """
-REALM Benchmark Plugin for ElizaOS.
+REALM Benchmark Plugin for elizaOS.
 
 This plugin provides actions and providers for the REALM benchmark,
-enabling the agent to generate and execute plans using the full ElizaOS
+enabling the agent to generate and execute plans using the full elizaOS
 message handling loop.
 """
 

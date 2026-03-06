@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-twitch",
   "version": "2.0.0-alpha.1",
-  "description": "Twitch chat integration plugin for ElizaOS agents",
+  "description": "Twitch chat integration plugin for elizaOS agents",
   "type": "module",
   "main": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",

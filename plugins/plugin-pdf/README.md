@@ -1,6 +1,6 @@
 # @elizaos/plugin-pdf
 
-PDF text extraction plugin for ElizaOS.
+PDF text extraction plugin for elizaOS.
 
 ## Installation
 

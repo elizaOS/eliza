@@ -1,6 +1,6 @@
 # @elizaos/plugin-rolodex
 
-A comprehensive contact and relationship management plugin for ElizaOS agents, providing CRM-like capabilities with automated follow-ups, relationship analytics, and cross-platform identity management.
+A comprehensive contact and relationship management plugin for elizaOS agents, providing CRM-like capabilities with automated follow-ups, relationship analytics, and cross-platform identity management.
 
 ## Features
 
@@ -16,7 +16,7 @@ A comprehensive contact and relationship management plugin for ElizaOS agents, p
 - Schedule reminders to follow up with contacts
 - Automated follow-up suggestions based on relationship patterns
 - Recurring check-ins with priority levels
-- Integration with ElizaOS task system
+- Integration with elizaOS task system
 
 ### 🔍 Intelligent Search
 
@@ -46,7 +46,7 @@ npm install @elizaos/plugin-rolodex
 
 ## Configuration
 
-Add the plugin to your ElizaOS agent configuration:
+Add the plugin to your elizaOS agent configuration:
 
 ```typescript
 import { rolodexPlugin } from '@elizaos/plugin-rolodex';
@@ -215,7 +215,7 @@ await rolodexService.addContact(
 
 ## Contributing
 
-Contributions are welcome! Please see the main ElizaOS contributing guidelines.
+Contributions are welcome! Please see the main elizaOS contributing guidelines.
 
 ## License
 

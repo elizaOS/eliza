@@ -1,6 +1,6 @@
 # Agent Orchestrator Plugin (Python)
 
-Python implementation of the Agent Orchestrator plugin for ElizaOS.
+Python implementation of the Agent Orchestrator plugin for elizaOS.
 
 ## Overview
 

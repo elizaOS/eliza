@@ -122,7 +122,14 @@ describe("Entity RLS Column Detection", () => {
   describe("Table Schema Detection", () => {
     it("should detect memories table as room-based", () => {
       // memories table schema
-      const tableColumns = ["id", "entity_id", "agent_id", "room_id", "content", "created_at"];
+      const tableColumns = [
+        "id",
+        "entity_id",
+        "agent_id",
+        "room_id",
+        "content",
+        "created_at",
+      ];
 
       const has_room_id = tableColumns.includes("room_id");
       const has_entity_id = tableColumns.includes("entity_id");
@@ -200,7 +207,8 @@ describe("Entity RLS Policy Types", () => {
     });
 
     it("should use channel_id from participants table", () => {
-      const subquery = "SELECT channel_id FROM participants WHERE entity_id = current_entity_id()";
+      const subquery =
+        "SELECT channel_id FROM participants WHERE entity_id = current_entity_id()";
 
       expect(subquery).toContain("channel_id");
       expect(subquery).not.toContain("room_id"); // participants use channel_id
@@ -244,7 +252,9 @@ describe("Entity RLS Function Names", () => {
 
     expect(functions.currentEntityId).toBe("current_entity_id");
     expect(functions.addEntityIsolation).toBe("add_entity_isolation");
-    expect(functions.applyEntityRlsToAllTables).toBe("apply_entity_rls_to_all_tables");
+    expect(functions.applyEntityRlsToAllTables).toBe(
+      "apply_entity_rls_to_all_tables",
+    );
   });
 
   it("should use different function names than Server RLS", () => {
@@ -259,8 +269,12 @@ describe("Entity RLS Function Names", () => {
     };
 
     // Should be different to avoid conflicts
-    expect(entityFunctions.currentEntityId).not.toBe(serverFunctions.currentServerId);
-    expect(entityFunctions.addEntityIsolation).not.toBe(serverFunctions.addServerIsolation);
+    expect(entityFunctions.currentEntityId).not.toBe(
+      serverFunctions.currentServerId,
+    );
+    expect(entityFunctions.addEntityIsolation).not.toBe(
+      serverFunctions.addServerIsolation,
+    );
   });
 });
 
@@ -319,7 +333,7 @@ describe("Entity RLS Security Properties", () => {
       const sessionVar = "app.entity_id";
 
       expect(sessionVar).toBe("app.entity_id");
-      expect(sessionVar).not.toBe("application_name"); // Different from Server RLS
+      expect(sessionVar).not.toBe("app.server_id"); // Different from Server RLS
     });
 
     it("should be transaction-scoped (SET LOCAL)", () => {
@@ -347,9 +361,11 @@ describe("Entity RLS Security Properties", () => {
 
       // Both should be valid UUIDs
       expect(aliceEntityId).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
       );
-      expect(bobEntityId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      expect(bobEntityId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      );
     });
 
     it("should generate consistent entity IDs from platform usernames", () => {
@@ -378,12 +394,12 @@ describe("Entity RLS Security Properties", () => {
 
       // Alice should see messages from room-123
       const aliceCanSee = participants.some(
-        (p) => p.entity_id === aliceEntityId && p.channel_id === "room-123"
+        (p) => p.entity_id === aliceEntityId && p.channel_id === "room-123",
       );
 
       // Agent should see messages from room-123
       const agentCanSee = participants.some(
-        (p) => p.entity_id === agentEntityId && p.channel_id === "room-123"
+        (p) => p.entity_id === agentEntityId && p.channel_id === "room-123",
       );
 
       expect(aliceCanSee).toBe(true);
@@ -401,7 +417,7 @@ describe("Entity RLS Security Properties", () => {
 
       // Bob should NOT see messages from room-123
       const bobCanSee = participants.some(
-        (p) => p.entity_id === bobEntityId && p.channel_id === "room-123"
+        (p) => p.entity_id === bobEntityId && p.channel_id === "room-123",
       );
 
       expect(bobCanSee).toBe(false);
@@ -429,7 +445,7 @@ describe("Entity RLS Security Properties", () => {
 });
 
 describe("Entity RLS Integration", () => {
-  describe("withEntityContext Helper", () => {
+  describe("withIsolationContext Helper", () => {
     it("should set entity context before query execution", () => {
       const entityId = stringToUuid("alice");
       const sessionCommand = `SET LOCAL app.entity_id = '${entityId}'`;
@@ -464,23 +480,26 @@ describe("Entity RLS Integration", () => {
   });
 
   describe("elizaOS Integration Point", () => {
-    it("should check for withEntityContext method availability", () => {
+    it("should check for withIsolationContext method availability", () => {
       const postgresAdapter = {
-        withEntityContext: async <T>(_entityId: string, callback: () => Promise<T>) => {
+        withIsolationContext: async <T>(
+          _entityId: string,
+          callback: () => Promise<T>,
+        ) => {
           return callback();
         },
       };
 
       const pgliteAdapter = {
-        // No withEntityContext method (not supported)
+        // No withIsolationContext method (not supported)
       };
 
       // PostgreSQL adapter should have method
-      expect(typeof postgresAdapter.withEntityContext).toBe("function");
+      expect(typeof postgresAdapter.withIsolationContext).toBe("function");
 
       // PGLite adapter should NOT have method (it's not in the public interface)
       // Check that the method doesn't exist on the adapter instance
-      expect("withEntityContext" in pgliteAdapter).toBe(false);
+      expect("withIsolationContext" in pgliteAdapter).toBe(false);
     });
 
     it("should extract entityId from user message", () => {
@@ -492,7 +511,9 @@ describe("Entity RLS Integration", () => {
       const entityId = userMessage.entityId;
 
       expect(entityId).toBeDefined();
-      expect(entityId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      expect(entityId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      );
     });
   });
 });
@@ -538,13 +559,16 @@ describe("Entity RLS Backward Compatibility", () => {
 
   describe("No Breaking Changes", () => {
     it("should not modify existing API interfaces", () => {
-      // withEntityContext is OPTIONAL
+      // withIsolationContext is OPTIONAL
       interface IDatabaseAdapter {
-        withEntityContext?<T>(entityId: string | null, callback: () => Promise<T>): Promise<T>;
+        withIsolationContext?<T>(
+          entityId: string | null,
+          callback: () => Promise<T>,
+        ): Promise<T>;
       }
 
       const adapter: IDatabaseAdapter = {
-        // No withEntityContext - still valid!
+        // No withIsolationContext - still valid!
       };
 
       expect(adapter).toBeDefined();

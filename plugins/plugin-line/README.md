@@ -1,6 +1,6 @@
 # @elizaos/plugin-line
 
-LINE Messaging API plugin for ElizaOS agents. Enables chatbot integration with LINE, a popular messaging platform in Japan, Taiwan, and Thailand.
+LINE Messaging API plugin for elizaOS agents. Enables chatbot integration with LINE, a popular messaging platform in Japan, Taiwan, and Thailand.
 
 ## Features
 

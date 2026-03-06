@@ -1,5 +1,5 @@
 /**
- * Session store for ElizaOS.
+ * Session store for elizaOS.
  *
  * Provides file-based session storage with caching, locking, and
  * atomic updates. Designed to be used as the primary session

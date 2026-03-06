@@ -1,4 +1,4 @@
-# Polymarket Plugin for ElizaOS
+# Polymarket Plugin for elizaOS
 
 This plugin provides integration with Polymarket prediction markets through the CLOB (Central Limit Order Book) API, enabling AI agents to interact with prediction markets.
 
@@ -13,7 +13,7 @@ This plugin provides integration with Polymarket prediction markets through the 
 
 ## Installation
 
-This plugin is part of the ElizaOS ecosystem. To use it:
+This plugin is part of the elizaOS ecosystem. To use it:
 
 ```bash
 # Install dependencies
@@ -49,7 +49,7 @@ POLYMARKET_PRIVATE_KEY=your_private_key_here
 
 ### Plugin Activation
 
-The plugin is automatically activated when `CLOB_API_URL` is set in your environment. This follows the same pattern as other ElizaOS plugins:
+The plugin is automatically activated when `CLOB_API_URL` is set in your environment. This follows the same pattern as other elizaOS plugins:
 
 ```typescript
 // In eliza.ts character configuration
@@ -135,7 +135,7 @@ Retrieves a simplified market list as a parameterized view of `GET_MARKETS`.
 ```typescript
 import { retrieveAllMarketsAction } from "@elizaos/plugin-polymarket";
 
-// Use in your ElizaOS agent (message should request simplified view)
+// Use in your elizaOS agent (message should request simplified view)
 const result = await retrieveAllMarketsAction.handler(
   runtime,
   message,
@@ -198,7 +198,7 @@ Retrieves historical price data for a Polymarket token, providing time-series da
 ```typescript
 import { getPriceHistory } from "@elizaos/plugin-polymarket";
 
-// Use in your ElizaOS agent
+// Use in your elizaOS agent
 const result = await getPriceHistory.handler(runtime, message, state);
 
 // Access price history data
@@ -309,7 +309,7 @@ Top 5 Asks:
 ```typescript
 import { getOrderBookSummaryAction } from "@elizaos/plugin-polymarket";
 
-// Use in your ElizaOS agent
+// Use in your elizaOS agent
 const result = await getOrderBookSummaryAction.handler(runtime, message, state);
 
 // Access order book data
@@ -398,7 +398,7 @@ Summary:
 ```typescript
 import { getOrderBookDepthAction } from "@elizaos/plugin-polymarket";
 
-// Use in your ElizaOS agent
+// Use in your elizaOS agent
 const result = await getOrderBookDepthAction.handler(runtime, message, state);
 
 // Access order book array and summary
@@ -616,6 +616,6 @@ MIT License - see LICENSE file for details.
 
 For issues and questions:
 
-- Check the ElizaOS documentation
+- Check the elizaOS documentation
 - Review Polymarket API documentation
 - File issues in the project repository

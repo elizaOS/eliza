@@ -12,7 +12,7 @@ import { scratchpadWriteAction } from "./actions/write";
 import { scratchpadProvider } from "./providers/scratchpad";
 
 /**
- * Scratchpad Plugin for ElizaOS
+ * Scratchpad Plugin for elizaOS
  *
  * Provides file-based memory storage that persists across sessions.
  * The agent can write, read, search, and manage scratchpad entries

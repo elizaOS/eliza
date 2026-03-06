@@ -1,5 +1,5 @@
 /**
- * Shared providers for ElizaOS plugins
+ * Shared providers for elizaOS plugins
  */
 
 export { recentMessagesProvider } from "./recent-messages";

@@ -1,4 +1,4 @@
-//! ElevenLabs plugin for ElizaOS - High-quality TTS and STT.
+//! ElevenLabs plugin for elizaOS - High-quality TTS and STT.
 //!
 //! This crate provides text-to-speech (TTS) and speech-to-text (STT) capabilities
 //! using the ElevenLabs API.

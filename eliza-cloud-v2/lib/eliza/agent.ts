@@ -13,7 +13,7 @@ const character: Character = {
   settings: {
     POSTGRES_URL: process.env.DATABASE_URL!,
     DATABASE_URL: process.env.DATABASE_URL!,
-    // ElizaOS Cloud Configuration (replaces OpenAI)
+    // elizaOS Cloud Configuration (replaces OpenAI)
     ELIZAOS_CLOUD_BASE_URL: getElizaCloudApiUrl(),
     ELIZAOS_CLOUD_SMALL_MODEL: getDefaultModels().small,
     ELIZAOS_CLOUD_LARGE_MODEL: getDefaultModels().large,

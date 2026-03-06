@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-personality-root",
   "version": "2.0.0-alpha.1",
-  "description": "Agent self-modification and character evolution plugin for ElizaOS",
+  "description": "Agent self-modification and character evolution plugin for elizaOS",
   "type": "module",
   "main": "typescript/dist/node/index.node.js",
   "module": "typescript/dist/node/index.node.js",
@@ -46,7 +46,7 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.1",
+    "@elizaos/core": "workspace:*",
     "fs-extra": "^11.2.0",
     "zod": "^3.22.4"
   },

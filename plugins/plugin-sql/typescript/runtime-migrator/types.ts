@@ -1,6 +1,22 @@
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 
+// Re-export abstract schema types from core — these are now the canonical
+// source for SchemaTable, SchemaColumn, SchemaIndex, etc.
+export type {
+  IndexColumn,
+  SchemaCheckConstraint,
+  SchemaColumn,
+  SchemaEnum,
+  SchemaForeignKey,
+  SchemaIndex,
+  SchemaMeta,
+  SchemaPrimaryKey,
+  SchemaSnapshot,
+  SchemaTable,
+  SchemaUniqueConstraint,
+} from "@elizaos/core";
+
 export type DrizzleDB = NodePgDatabase | PgliteDatabase;
 
 export interface Journal {
@@ -22,104 +38,6 @@ export interface MigrationMeta {
   folderMillis: number;
   hash: string;
   bps: boolean;
-}
-
-// Schema column definition
-export interface SchemaColumn {
-  name: string;
-  type: string;
-  primaryKey?: boolean;
-  notNull?: boolean;
-  default?: string | number | boolean;
-  isUnique?: boolean;
-  uniqueName?: string;
-  uniqueType?: string;
-}
-
-// Index column definition
-export interface IndexColumn {
-  expression: string;
-  isExpression: boolean;
-  asc?: boolean;
-  nulls?: string;
-}
-
-// Index definition
-export interface SchemaIndex {
-  name: string;
-  columns: IndexColumn[];
-  isUnique: boolean;
-  method?: string;
-  where?: string;
-  concurrently?: boolean;
-}
-
-// Foreign key definition
-export interface SchemaForeignKey {
-  name: string;
-  tableFrom: string;
-  schemaFrom?: string;
-  tableTo: string;
-  schemaTo: string;
-  columnsFrom: string[];
-  columnsTo: string[];
-  onDelete?: string;
-  onUpdate?: string;
-}
-
-// Primary key definition
-export interface SchemaPrimaryKey {
-  name: string;
-  columns: string[];
-}
-
-// Unique constraint definition
-export interface SchemaUniqueConstraint {
-  name: string;
-  columns: string[];
-  nullsNotDistinct?: boolean;
-}
-
-// Check constraint definition
-export interface SchemaCheckConstraint {
-  name: string;
-  value: string;
-}
-
-// Table definition
-export interface SchemaTable {
-  name: string;
-  schema: string;
-  columns: Record<string, SchemaColumn>;
-  indexes: Record<string, SchemaIndex>;
-  foreignKeys: Record<string, SchemaForeignKey>;
-  compositePrimaryKeys: Record<string, SchemaPrimaryKey>;
-  uniqueConstraints: Record<string, SchemaUniqueConstraint>;
-  checkConstraints: Record<string, SchemaCheckConstraint>;
-}
-
-// Enum definition
-export interface SchemaEnum {
-  name: string;
-  schema: string;
-  values: string[];
-}
-
-// Meta information
-export interface SchemaMeta {
-  schemas: Record<string, string>;
-  tables: Record<string, string>;
-  columns: Record<string, string>;
-}
-
-export interface SchemaSnapshot {
-  version: string;
-  dialect: string;
-  tables: Record<string, SchemaTable>;
-  schemas: Record<string, string>;
-  enums?: Record<string, SchemaEnum>;
-  _meta: SchemaMeta;
-  internal?: Record<string, unknown>;
 }
 
 // Database introspection row types

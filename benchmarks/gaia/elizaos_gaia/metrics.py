@@ -168,7 +168,7 @@ class MetricsCalculator:
 
         # Build comparison dict with our score added
         comparison = {
-            "ElizaOS Agent": {
+            "elizaOS Agent": {
                 "level_1": our_level_scores[GAIALevel.LEVEL_1],
                 "level_2": our_level_scores[GAIALevel.LEVEL_2],
                 "level_3": our_level_scores[GAIALevel.LEVEL_3],

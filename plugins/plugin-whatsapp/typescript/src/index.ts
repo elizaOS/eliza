@@ -44,7 +44,7 @@ export class WhatsAppPlugin implements Plugin {
  */
 const whatsappPlugin: Plugin = {
     name: 'whatsapp',
-    description: 'WhatsApp Cloud API integration for ElizaOS',
+    description: 'WhatsApp Cloud API integration for elizaOS',
     actions: [sendMessageAction, sendReactionAction],
 };
 

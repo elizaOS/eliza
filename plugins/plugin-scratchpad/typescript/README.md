@@ -1,10 +1,10 @@
 # @elizaos/plugin-scratchpad
 
-File-based memory storage plugin for ElizaOS. Provides persistent notes and memories that can be written, read, searched, and managed across sessions.
+File-based memory storage plugin for elizaOS. Provides persistent notes and memories that can be written, read, searched, and managed across sessions.
 
 ## Overview
 
-This plugin enables agents to maintain a persistent scratchpad of notes and memories stored as markdown files. It's inspired by the Otto memory-core extension and provides similar functionality adapted for the ElizaOS plugin architecture.
+This plugin enables agents to maintain a persistent scratchpad of notes and memories stored as markdown files. It's inspired by the Otto memory-core extension and provides similar functionality adapted for the elizaOS plugin architecture.
 
 ## Features
 

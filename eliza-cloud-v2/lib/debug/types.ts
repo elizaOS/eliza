@@ -1,5 +1,5 @@
 /**
- * Debug Tracing Types for ElizaOS
+ * Debug Tracing Types for elizaOS
  *
  * Comprehensive type definitions for execution tracing across all agent modes:
  * CHAT, ASSISTANT, BUILD, and MULTI_STEP

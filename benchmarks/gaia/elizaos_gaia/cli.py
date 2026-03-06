@@ -103,7 +103,7 @@ def parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(
         prog="gaia-benchmark",
-        description="GAIA Benchmark for ElizaOS - Evaluate AI assistants on real-world tasks",
+        description="GAIA Benchmark for elizaOS - Evaluate AI assistants on real-world tasks",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

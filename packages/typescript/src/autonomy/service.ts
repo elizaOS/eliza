@@ -88,7 +88,7 @@ export class AutonomyService extends Service {
 
   private async getTargetRoomContextText(): Promise<string> {
     const targetRoomId = this.getTargetRoomId();
-    const participantRooms = await this.runtime.getRoomsForParticipant(
+    const participantRooms = await this.runtime.getRoomsForParticipants(
       this.runtime.agentId,
     );
     const orderedRoomIds: UUID[] = [];

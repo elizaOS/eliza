@@ -2,7 +2,7 @@
 name = "eliza-plugin-edge-tts"
 version = "2.0.0"
 edition = "2021"
-description = "Free text-to-speech plugin for ElizaOS using Microsoft Edge TTS - no API key required"
+description = "Free text-to-speech plugin for elizaOS using Microsoft Edge TTS - no API key required"
 license = "MIT"
 authors = ["elizaOS Contributors"]
 repository = "https://github.com/elizaos-plugins/plugin-edge-tts"

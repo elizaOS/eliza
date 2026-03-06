@@ -1,6 +1,6 @@
 # @elizaos/plugin-shell
 
-A comprehensive shell command execution plugin for ElizaOS with PTY support, background execution, session management, and security restrictions.
+A comprehensive shell command execution plugin for elizaOS with PTY support, background execution, session management, and security restrictions.
 
 **Key Features:**
 

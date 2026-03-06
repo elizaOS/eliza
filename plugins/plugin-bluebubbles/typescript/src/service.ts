@@ -1,5 +1,5 @@
 /**
- * BlueBubbles service for ElizaOS
+ * BlueBubbles service for elizaOS
  */
 import {
   ChannelType,

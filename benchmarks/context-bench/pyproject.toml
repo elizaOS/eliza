@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "elizaos-context-bench"
 version = "2.0.0"
-description = "Context retrieval benchmark for ElizaOS - evaluating LLM context handling capabilities"
+description = "Context retrieval benchmark for elizaOS - evaluating LLM context handling capabilities"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

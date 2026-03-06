@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-computeruse-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "Computer automation plugin for ElizaOS - enables AI agents to control the local machine (when supported) or a remote ComputerUse MCP server",
+  "description": "Computer automation plugin for elizaOS - enables AI agents to control the local machine (when supported) or a remote ComputerUse MCP server",
   "type": "module",
   "main": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",
@@ -64,7 +64,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

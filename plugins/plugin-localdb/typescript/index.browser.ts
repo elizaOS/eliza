@@ -65,7 +65,10 @@ export const plugin: Plugin = {
     const prefix = runtime.getSetting("LOCALDB_PREFIX") as string | undefined;
     const adapter = createDatabaseAdapter({ prefix }, runtime.agentId);
 
-    await adapter.init();
+    // Initialize the adapter (implementation-specific method)
+    if ('init' in adapter && typeof adapter.init === 'function') {
+      await adapter.init();
+    }
     runtime.registerDatabaseAdapter(adapter);
 
     logger.success({ src: "plugin:localdb" }, "Local database adapter registered successfully");

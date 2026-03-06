@@ -1,5 +1,5 @@
 """
-Type definitions for the ElizaOS Slack plugin.
+Type definitions for the elizaOS Slack plugin.
 """
 
 from dataclasses import dataclass, field

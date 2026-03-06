@@ -1,4 +1,4 @@
-//! Core types for ElizaOS Secrets Manager.
+//! Core types for elizaOS Secrets Manager.
 //!
 //! Defines all type definitions for multi-level secret management.
 

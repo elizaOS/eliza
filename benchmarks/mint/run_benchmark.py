@@ -2,7 +2,7 @@
 """
 MINT Benchmark CLI Runner
 
-Run the MINT benchmark evaluation on ElizaOS Python runtime.
+Run the MINT benchmark evaluation on elizaOS Python runtime.
 
 Usage:
     python run_benchmark.py [options]
@@ -58,7 +58,7 @@ def setup_logging(verbose: bool = False) -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Run MINT benchmark on ElizaOS Python runtime",
+        description="Run MINT benchmark on elizaOS Python runtime",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -405,7 +405,7 @@ def main() -> int:
     setup_logging(args.verbose)
 
     print("=" * 60)
-    print("MINT BENCHMARK - ElizaOS Python Runtime Evaluation")
+    print("MINT BENCHMARK - elizaOS Python Runtime Evaluation")
     print("=" * 60)
     print()
 

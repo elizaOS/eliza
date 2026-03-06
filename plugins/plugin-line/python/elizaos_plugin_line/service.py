@@ -1,5 +1,5 @@
 """
-LINE service implementation for ElizaOS.
+LINE service implementation for elizaOS.
 """
 
 import logging
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 class LineService:
-    """LINE messaging service for ElizaOS agents."""
+    """LINE messaging service for elizaOS agents."""
 
     service_type = LINE_SERVICE_NAME
 

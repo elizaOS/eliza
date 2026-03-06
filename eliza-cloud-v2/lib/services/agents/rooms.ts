@@ -238,9 +238,9 @@ export class RoomsService {
   async createRoom(input: CreateRoomInput): Promise<Room> {
     const roomId = input.id || uuidv4();
 
-    // Create room with agentId - required for ElizaOS room lookup
+    // Create room with agentId - required for elizaOS room lookup
     // The API route ensures agent exists before calling this
-    // ElizaOS's ensureConnection creates entity/participant when first message is sent
+    // elizaOS's ensureConnection creates entity/participant when first message is sent
     const [room] = await dbWrite
       .insert(roomTable)
       .values({

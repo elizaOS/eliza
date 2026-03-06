@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-secrets-manager",
   "version": "1.0.0",
-  "description": "Multi-level secret management plugin for ElizaOS with encryption and dynamic plugin activation",
+  "description": "Multi-level secret management plugin for elizaOS with encryption and dynamic plugin activation",
   "main": "dist/index.js",
   "type": "module",
   "types": "dist/index.d.ts",

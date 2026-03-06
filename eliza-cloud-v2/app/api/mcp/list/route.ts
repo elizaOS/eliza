@@ -4,9 +4,9 @@ import { NextResponse } from "next/server";
 const mcpDefinitions = [
   {
     id: "eliza-cloud-mcp",
-    name: "ElizaOS Cloud MCP",
+    name: "elizaOS Cloud MCP",
     description:
-      "Core ElizaOS Cloud platform MCP with credit management, AI generation, memory, conversations, and agent interaction capabilities",
+      "Core elizaOS Cloud platform MCP with credit management, AI generation, memory, conversations, and agent interaction capabilities",
     version: "1.0.0",
     endpoint: "/api/mcp",
     category: "platform",
@@ -163,7 +163,7 @@ const mcpDefinitions = [
       {
         name: "chat_with_agent",
         description:
-          "Send a message to your deployed ElizaOS agent and receive a response. Supports streaming via SSE.",
+          "Send a message to your deployed elizaOS agent and receive a response. Supports streaming via SSE.",
         parameters: {
           message: {
             type: "string",
@@ -188,7 +188,7 @@ const mcpDefinitions = [
       {
         name: "list_agents",
         description:
-          "List all available agents, characters, and deployed ElizaOS instances.",
+          "List all available agents, characters, and deployed elizaOS instances.",
         parameters: {
           filters: {
             type: "object",

@@ -1,7 +1,7 @@
 import { ClaudeAgentSdkSubAgent } from "./claude-agent-sdk-sub-agent.js";
 import { CodexSdkSubAgent } from "./codex-sdk-sub-agent.js";
 import { ElizaSubAgent } from "./eliza-sub-agent.js";
-import { ElizaOSNativeSubAgent } from "./elizaos-native-sub-agent.js";
+import { elizaOSNativeSubAgent } from "./elizaos-native-sub-agent.js";
 import { OpenCodeSubAgent } from "./opencode-sub-agent.js";
 import { SweAgentSubAgent } from "./sweagent-sub-agent.js";
 import type { SubAgent } from "./types.js";
@@ -81,7 +81,7 @@ export function createSubAgent(type: SubAgent["type"]): SubAgent {
     case "sweagent":
       return new SweAgentSubAgent();
     case "elizaos-native":
-      return new ElizaOSNativeSubAgent();
+      return new elizaOSNativeSubAgent();
     default:
       return new ElizaSubAgent({
         name: "Eliza Worker",

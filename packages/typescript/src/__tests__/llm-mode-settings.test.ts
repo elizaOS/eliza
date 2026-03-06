@@ -8,7 +8,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
-import { createTestCharacter } from "../testing/test-utils";
+import { createTestCharacter } from "./test-utils";
 import type { IDatabaseAdapter } from "../types";
 import { LLMMode, ModelType } from "../types";
 

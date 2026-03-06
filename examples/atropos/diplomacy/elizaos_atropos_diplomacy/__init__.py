@@ -1,7 +1,7 @@
 """
-ElizaOS Atropos Diplomacy Environment
+elizaOS Atropos Diplomacy Environment
 
-A multi-agent Diplomacy game environment for training ElizaOS agents.
+A multi-agent Diplomacy game environment for training elizaOS agents.
 """
 
 from elizaos_atropos_diplomacy.types import (

@@ -1,6 +1,6 @@
-# GAIA Benchmark for ElizaOS
+# GAIA Benchmark for elizaOS
 
-A comprehensive implementation of the [GAIA (General AI Assistants)](https://gaiabenchmark.com/) benchmark for evaluating ElizaOS agents on real-world tasks requiring reasoning, multimodal processing, web browsing, and tool use.
+A comprehensive implementation of the [GAIA (General AI Assistants)](https://gaiabenchmark.com/) benchmark for evaluating elizaOS agents on real-world tasks requiring reasoning, multimodal processing, web browsing, and tool use.
 
 ## Overview
 
@@ -75,17 +75,17 @@ async def main():
 asyncio.run(main())
 ```
 
-### Integration with ElizaOS
+### Integration with elizaOS
 
 ```python
 from elizaos.runtime import AgentRuntime
 from elizaos_gaia import GAIAConfig, GAIARunner
 
-# Create ElizaOS runtime with your plugins
+# Create elizaOS runtime with your plugins
 runtime = AgentRuntime(...)
 await runtime.initialize()
 
-# Run benchmark with ElizaOS agent
+# Run benchmark with elizaOS agent
 config = GAIAConfig(model_name="gpt-4")
 runner = GAIARunner(config, runtime=runtime)
 results = await runner.run_benchmark()
@@ -130,7 +130,7 @@ After running the benchmark, you'll get:
 ### Sample Report
 
 ```
-# GAIA Benchmark Results - ElizaOS Python
+# GAIA Benchmark Results - elizaOS Python
 
 ## Executive Summary
 

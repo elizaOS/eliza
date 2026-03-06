@@ -78,7 +78,7 @@ export function ContainersSection({
                 side="right"
                 className="max-w-[180px] text-xs bg-zinc-900 text-white/80 border border-white/10"
               >
-                Cloud-hosted ElizaOS instances running 24/7.
+                Cloud-hosted elizaOS instances running 24/7.
               </TooltipContent>
             </Tooltip>
           </div>

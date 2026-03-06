@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-linear-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "Linear integration plugin for ElizaOS (TypeScript)",
+  "description": "Linear integration plugin for elizaOS (TypeScript)",
   "type": "module",
   "main": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",
@@ -33,7 +33,7 @@
     "project-management",
     "issue-tracking"
   ],
-  "author": "ElizaOS Contributors",
+  "author": "elizaOS Contributors",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -65,7 +65,7 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

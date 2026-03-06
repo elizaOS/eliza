@@ -2,7 +2,7 @@
 name = "elizaos-plugin-webhooks"
 version = "0.1.0"
 edition = "2021"
-description = "HTTP webhook ingress plugin for ElizaOS"
+description = "HTTP webhook ingress plugin for elizaOS"
 license = "MIT"
 
 [dependencies]

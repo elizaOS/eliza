@@ -1,5 +1,5 @@
 /**
- * Runtime Factory - Creates configured ElizaOS runtimes per user/agent context.
+ * Runtime Factory - Creates configured elizaOS runtimes per user/agent context.
  */
 import {
   AgentRuntime,

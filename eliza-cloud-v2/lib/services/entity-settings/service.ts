@@ -9,7 +9,7 @@
  * 2. Global entity settings (user only, agent = null)
  * 3. OAuth sessions (user's OAuth tokens)
  * 4. Platform credentials (user's platform-specific credentials)
- * 5. API keys (user's ElizaOS API keys)
+ * 5. API keys (user's elizaOS API keys)
  *
  * These settings are then injected into the request context and take
  * highest priority in runtime.getSetting() resolution.
@@ -245,7 +245,7 @@ export class EntitySettingsService {
   }
 
   /**
-   * Fetch user's ElizaOS API key
+   * Fetch user's elizaOS API key
    */
   private async fetchUserApiKey(
     userId: string,

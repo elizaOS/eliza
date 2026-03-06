@@ -1,7 +1,7 @@
 """
 Environment adapters for AgentBench.
 
-Each adapter interfaces between the ElizaOS runtime and a specific
+Each adapter interfaces between the elizaOS runtime and a specific
 AgentBench environment.
 """
 

@@ -72,7 +72,7 @@ export const generateIcs = (event: CalendarEvent): string => {
   // Begin calendar
   lines.push("BEGIN:VCALENDAR");
   lines.push("VERSION:2.0");
-  lines.push("PRODID:-//ElizaOS//SchedulingPlugin//EN");
+  lines.push("PRODID:-//elizaOS//SchedulingPlugin//EN");
   lines.push("CALSCALE:GREGORIAN");
   lines.push("METHOD:REQUEST");
 

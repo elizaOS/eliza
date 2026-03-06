@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { logTable } from "../../schema";
+import { logTable } from "../../tables";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("Log Integration Tests", () => {

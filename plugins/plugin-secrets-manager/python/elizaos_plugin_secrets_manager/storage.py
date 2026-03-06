@@ -1,7 +1,7 @@
 """
 Storage implementations for secrets.
 
-Provides in-memory storage and interfaces for ElizaOS-native storage.
+Provides in-memory storage and interfaces for elizaOS-native storage.
 """
 
 from abc import ABC, abstractmethod

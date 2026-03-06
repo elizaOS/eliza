@@ -20,7 +20,7 @@
     "noImplicitAny": false,
     "strictPropertyInitialization": false,
     "useUnknownInCatchVariables": false,
-    "types": ["node", "bun-types"]
+    "types": ["node", "bun"]
   },
   "include": ["./**/*.ts"],
   "exclude": [

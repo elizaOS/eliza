@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-shell",
   "version": "2.0.0-alpha.2",
-  "description": "Shell command execution plugin for ElizaOS with directory restrictions and history tracking",
+  "description": "Shell command execution plugin for elizaOS with directory restrictions and history tracking",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -44,6 +44,7 @@
     "@biomejs/biome": "^2.3.11",
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "^25.0.3",
+    "@types/uuid": "^9.0.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
   },

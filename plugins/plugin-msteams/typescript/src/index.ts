@@ -1,4 +1,4 @@
-// MS Teams Plugin for ElizaOS
+// MS Teams Plugin for elizaOS
 // Provides integration with Microsoft Teams via Bot Framework
 
 // Export actions
@@ -67,7 +67,7 @@ export { MSTeamsEventType } from "./types";
 export const PLUGIN_NAME = "msteams";
 export const PLUGIN_VERSION = "2.0.0-alpha.1";
 export const PLUGIN_DESCRIPTION =
-  "Microsoft Teams integration for ElizaOS agents via Bot Framework";
+  "Microsoft Teams integration for elizaOS agents via Bot Framework";
 
 // Default export: Plugin definition
 import type { Plugin } from "@elizaos/core";

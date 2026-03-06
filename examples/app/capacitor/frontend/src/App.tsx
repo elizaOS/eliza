@@ -132,7 +132,7 @@ export function App(): React.JSX.Element {
     <div className="page">
       <header className="header">
         <div>
-          <div className="title">ElizaOS Chat (Capacitor example)</div>
+          <div className="title">elizaOS Chat (Capacitor example)</div>
           <div className="subtitle">
             Backend: <code>{backendUrl}</code>
           </div>

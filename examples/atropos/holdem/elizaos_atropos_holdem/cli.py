@@ -51,7 +51,7 @@ async def run_auto_mode(
 
     from elizaos_atropos_holdem import HoldemEnvironment, HoldemAgent
 
-    print("\n🃏 ElizaOS Atropos - Texas Hold'em")
+    print("\n🃏 elizaOS Atropos - Texas Hold'em")
     print("=" * 50)
     print(f"Mode: {'LLM-based' if use_llm else 'Heuristic'}")
     print(f"Players: {num_players}")
@@ -268,7 +268,7 @@ async def run_interactive_mode(num_players: int = 2) -> None:
         ActionType,
     )
 
-    print("\n🃏 ElizaOS Atropos - Texas Hold'em (Interactive)")
+    print("\n🃏 elizaOS Atropos - Texas Hold'em (Interactive)")
     print("=" * 50)
     print("You are Player 0")
     print("Commands: f=fold, c=check/call, r=raise, a=all-in, q=quit")
@@ -383,7 +383,7 @@ async def run_tournament_mode(
     """Run tournament simulation."""
     from elizaos_atropos_holdem import HoldemEnvironment, HoldemAgent
 
-    print("\n🃏 ElizaOS Atropos - Hold'em Tournament")
+    print("\n🃏 elizaOS Atropos - Hold'em Tournament")
     print("=" * 50)
     print(f"Players: {num_players}")
     print(f"Hands: {num_hands}")
@@ -449,7 +449,7 @@ async def run_tournament_mode(
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="ElizaOS Atropos Texas Hold'em Environment",
+        description="elizaOS Atropos Texas Hold'em Environment",
     )
 
     parser.add_argument(

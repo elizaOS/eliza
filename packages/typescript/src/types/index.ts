@@ -13,11 +13,13 @@ export * from "./events";
 export * from "./hook";
 export * from "./knowledge";
 export * from "./memory";
+export * from "./memory-storage";
 export * from "./messaging";
 export * from "./model";
 export * from "./pairing";
 export * from "./payment";
 export * from "./plugin";
+export * from "./plugin-store";
 export * from "./primitives";
 export * from "./prompts";
 // Proto-generated types (single source of truth)
@@ -28,6 +30,8 @@ export * as proto from "./proto.js";
 // JsonValue is also exported from primitives.ts, but we explicitly export it here for clarity
 export { fromJson, type JsonObject, type JsonValue, toJson } from "./proto.js";
 export * from "./runtime";
+export * from "./schema";
+export * from "./schema-builder";
 export * from "./service";
 export * from "./service-interfaces";
 export * from "./settings";

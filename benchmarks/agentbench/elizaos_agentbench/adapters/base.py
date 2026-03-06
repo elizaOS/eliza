@@ -23,7 +23,7 @@ class EnvironmentAdapter(ABC):
     """
     Abstract base class for environment adapters.
 
-    Each environment adapter implements the interface between the ElizaOS
+    Each environment adapter implements the interface between the elizaOS
     runtime and a specific AgentBench environment.
     """
 
@@ -249,7 +249,7 @@ class EnvironmentAdapter(ABC):
             raise ValueError("Prompt cannot be empty")
 
         if self.runtime is not None:
-            # Use ElizaOS runtime for text generation
+            # Use elizaOS runtime for text generation
             result = await self.runtime.generate_text(prompt)
             return result.text
         else:

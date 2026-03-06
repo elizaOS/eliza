@@ -174,7 +174,7 @@ class MessageRouterService {
 
   /**
    * Process a message with an agent and get a response
-   * Integrates with ElizaOS agent runtime via rooms and entities
+   * Integrates with elizaOS agent runtime via rooms and entities
    */
   async processWithAgent(
     agentId: string,

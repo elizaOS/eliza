@@ -1,7 +1,7 @@
 """
 Vending-Bench Agent
 
-ElizaOS agent integration for the Vending-Bench benchmark.
+elizaOS agent integration for the Vending-Bench benchmark.
 Provides the interface between the LLM and the vending environment.
 """
 

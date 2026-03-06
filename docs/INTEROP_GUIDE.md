@@ -2,7 +2,7 @@
 
 ## Overview
 
-ElizaOS supports **cross-language plugins** and runtime interoperability via the `packages/interop/` package.
+elizaOS supports **cross-language plugins** and runtime interoperability via the `packages/interop/` package.
 
 The design goals are:
 

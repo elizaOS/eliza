@@ -65,9 +65,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
       createMockMessage(5000, "Message at 5000", roomId),
     ];
 
-    for (const msg of messages) {
-      await adapter.createMemory(msg, "messages", false);
-    }
+    await adapter.createMemories(messages.map(msg => ({ memory: msg, tableName: "messages", unique: false })));
 
     // Get messages after start = 2500
     const result = await adapter.getMemories({
@@ -98,9 +96,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
       createMockMessage(5000, "Message at 5000", roomId),
     ];
 
-    for (const msg of messages) {
-      await adapter.createMemory(msg, "messages", false);
-    }
+    await adapter.createMemories(messages.map(msg => ({ memory: msg, tableName: "messages", unique: false })));
 
     // Get messages before end = 3500
     const result = await adapter.getMemories({
@@ -131,9 +127,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
       createMockMessage(5000, "Message at 5000", roomId),
     ];
 
-    for (const msg of messages) {
-      await adapter.createMemory(msg, "messages", false);
-    }
+    await adapter.createMemories(messages.map(msg => ({ memory: msg, tableName: "messages", unique: false })));
 
     // Get messages between 1500 and 4500
     const result = await adapter.getMemories({
@@ -157,11 +151,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 
     const roomId = "room-1" as UUID;
 
-    await adapter.createMemory(
-      createMockMessage(1000, "Exact", roomId),
-      "messages",
-      false,
-    );
+    await adapter.createMemories([{ memory: createMockMessage(1000, "Exact", roomId), tableName: "messages", unique: false }]);
 
     // Start exactly at message time (should include)
     const resultStart = await adapter.getMemories({
@@ -190,11 +180,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 
     const roomId = "room-1" as UUID;
 
-    await adapter.createMemory(
-      createMockMessage(1000, "Old", roomId),
-      "messages",
-      false,
-    );
+    await adapter.createMemories([{ memory: createMockMessage(1000, "Old", roomId), tableName: "messages", unique: false }]);
 
     // Start after all messages
     const result = await adapter.getMemories({
@@ -217,11 +203,11 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
     const roomId = "room-1" as UUID;
 
     for (let i = 1; i <= 10; i++) {
-      await adapter.createMemory(
-        createMockMessage(i * 1000, `Message ${i}`, roomId),
-        "messages",
-        false,
-      );
+      await adapter.createMemories([{
+        memory: createMockMessage(i * 1000, `Message ${i}`, roomId),
+        tableName: "messages",
+        unique: false,
+      }]);
     }
 
     // Get messages after 3000, but limit to 3
@@ -256,8 +242,10 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 
     const msgWithCreatedAt = createMockMessage(5000, "Has timestamp", roomId);
 
-    await adapter.createMemory(msgWithoutCreatedAt, "messages", false);
-    await adapter.createMemory(msgWithCreatedAt, "messages", false);
+    await adapter.createMemories([
+      { memory: msgWithoutCreatedAt, tableName: "messages", unique: false },
+      { memory: msgWithCreatedAt, tableName: "messages", unique: false }
+    ]);
 
     // Start at 1000 - message without createdAt (treated as 0) should be filtered
     const result = await adapter.getMemories({
@@ -906,9 +894,7 @@ describe("RECENT_MESSAGES provider compaction integration", () => {
       createMockMessage(5000, "After reset 2", roomId),
     ];
 
-    for (const msg of messages) {
-      await adapter.createMemory(msg, "messages", false);
-    }
+    await adapter.createMemories(messages.map(msg => ({ memory: msg, tableName: "messages", unique: false })));
 
     // Simulate what RECENT_MESSAGES provider does
     const lastCompactionAt = 3500;
@@ -941,11 +927,7 @@ describe("Edge cases", () => {
     const roomId = "room-1" as UUID;
 
     // Message from "the distant past"
-    await adapter.createMemory(
-      createMockMessage(1, "Ancient message", roomId),
-      "messages",
-      false,
-    );
+    await adapter.createMemories([{ memory: createMockMessage(1, "Ancient message", roomId), tableName: "messages", unique: false }]);
 
     // Compaction at a very old time (but after the message)
     const result = await adapter.getMemories({
@@ -967,11 +949,7 @@ describe("Edge cases", () => {
 
     const roomId = "room-1" as UUID;
 
-    await adapter.createMemory(
-      createMockMessage(Date.now(), "Recent message", roomId),
-      "messages",
-      false,
-    );
+    await adapter.createMemories([{ memory: createMockMessage(Date.now(), "Recent message", roomId), tableName: "messages", unique: false }]);
 
     // Compaction in the future (filters out everything)
     const result = await adapter.getMemories({

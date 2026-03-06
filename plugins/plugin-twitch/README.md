@@ -1,6 +1,6 @@
 # @elizaos/plugin-twitch
 
-Twitch chat integration plugin for ElizaOS agents.
+Twitch chat integration plugin for elizaOS agents.
 
 ## Features
 

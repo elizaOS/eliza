@@ -93,7 +93,7 @@ def load_root_env() -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="REALM-Bench: Real-World Planning Benchmark for ElizaOS",
+        description="REALM-Bench: Real-World Planning Benchmark for elizaOS",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -223,7 +223,7 @@ def print_banner() -> None:
     print("""
 ╔═══════════════════════════════════════════════════════════════════╗
 ║            REALM-Bench: Real-World Planning Benchmark             ║
-║                        for ElizaOS                                ║
+║                        for elizaOS                                ║
 ╠═══════════════════════════════════════════════════════════════════╣
 ║  Paper: https://arxiv.org/abs/2412.13102                         ║
 ║  GitHub: https://github.com/genglongling/REALM-Bench             ║
@@ -258,7 +258,7 @@ def print_leaderboard() -> None:
 
 
 def check_environment() -> dict[str, bool]:
-    """Check environment for API keys and ElizaOS availability."""
+    """Check environment for API keys and elizaOS availability."""
     results: dict[str, bool] = {}
     
     # Check API keys
@@ -276,8 +276,8 @@ def check_environment() -> dict[str, bool]:
         status = "✅ Found" if has_key else "❌ Not set"
         print(f"   {name}: {status}")
     
-    # Check ElizaOS availability
-    print("\n📦 ElizaOS Status:")
+    # Check elizaOS availability
+    print("\n📦 elizaOS Status:")
     import importlib.util
 
     if importlib.util.find_spec("elizaos.runtime") is not None:
@@ -321,7 +321,7 @@ def check_environment() -> dict[str, bool]:
     has_runtime = results.get("elizaos", False)
 
     # Compatibility notes:
-    # - OpenAI has a Python ElizaOS runtime plugin wrapper in this repo
+    # - OpenAI has a Python elizaOS runtime plugin wrapper in this repo
     # - Anthropic/Groq Python packages currently provide clients/types but not runtime plugin wrappers
     openai_ready = bool(results.get("OPENAI_API_KEY")) and bool(
         results.get("elizaos_plugin_openai")
@@ -333,12 +333,12 @@ def check_environment() -> dict[str, bool]:
     elif has_runtime and ollama_ready:
         print("   ✅ Ready for LLM-based benchmarking (Ollama)!")
     elif has_runtime:
-        print("   ⚠️  ElizaOS available but no compatible model plugin detected.")
+        print("   ⚠️  elizaOS available but no compatible model plugin detected.")
         if results.get("ANTHROPIC_API_KEY") or results.get("GROQ_API_KEY"):
             print("   ℹ️  Note: Anthropic/Groq keys detected, but Python runtime plugin wrappers are not available yet.")
         print("   → Benchmark will run in heuristic/mock mode unless OpenAI/Ollama is configured.")
     else:
-        print("   ⚠️  ElizaOS not available - will use heuristic/mock mode")
+        print("   ⚠️  elizaOS not available - will use heuristic/mock mode")
     
     print()
     return results

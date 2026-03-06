@@ -76,7 +76,7 @@ const PluginSpecificationSchema = z.object({
 export const createPluginAction: Action = {
   name: "CREATE_PLUGIN",
   description:
-    "Create an ElizaOS plugin from a structured JSON specification that defines actions, providers, services, and evaluators. " +
+    "Create an elizaOS plugin from a structured JSON specification that defines actions, providers, services, and evaluators. " +
     "Use this when the user provides a complete plugin spec as JSON. " +
     "Do NOT use this for n8n workflow creation — use CREATE_N8N_WORKFLOW instead. " +
     "Do NOT use this for natural language plugin descriptions — use DESCRIBE_PLUGIN instead.",
@@ -505,7 +505,7 @@ export const cancelPluginCreationAction: Action = {
 export const createPluginFromDescriptionAction: Action = {
   name: "DESCRIBE_PLUGIN",
   description:
-    "Generate and create an ElizaOS plugin from a natural language description. " +
+    "Generate and create an elizaOS plugin from a natural language description. " +
     "Use this when the user describes what they want a plugin to do in plain English without providing a JSON spec. " +
     "Do NOT use this for n8n workflow creation — use CREATE_N8N_WORKFLOW instead.",
   similes: [

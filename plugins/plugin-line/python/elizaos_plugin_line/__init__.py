@@ -1,5 +1,5 @@
 """
-LINE Messaging API plugin for ElizaOS agents.
+LINE Messaging API plugin for elizaOS agents.
 """
 
 from .actions import (
@@ -115,7 +115,7 @@ def get_plugin():
     """Get the LINE plugin configuration."""
     return {
         "name": "line",
-        "description": "LINE Messaging API plugin for ElizaOS agents",
+        "description": "LINE Messaging API plugin for elizaOS agents",
         "services": [LineService],
         "actions": [
             send_message_action,

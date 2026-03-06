@@ -1,6 +1,6 @@
 # Auto-Trader E2E Test Scenarios
 
-This directory contains end-to-end test scenarios for the auto-trader plugin that simulate realistic trading interactions with the ElizaOS agent runtime.
+This directory contains end-to-end test scenarios for the auto-trader plugin that simulate realistic trading interactions with the elizaOS agent runtime.
 
 ## Test Suites
 

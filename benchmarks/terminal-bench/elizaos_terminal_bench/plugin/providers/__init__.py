@@ -1,4 +1,4 @@
-"""Terminal-Bench Providers for ElizaOS."""
+"""Terminal-Bench Providers for elizaOS."""
 
 from .task_context import task_context_provider
 from .terminal_state import terminal_state_provider

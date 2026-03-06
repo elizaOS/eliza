@@ -2,7 +2,7 @@
 name = "elizaos-plugin-simple-voice"
 version = "2.0.0"
 edition = "2021"
-description = "Retro 1980s SAM Text-to-Speech plugin for ElizaOS agents"
+description = "Retro 1980s SAM Text-to-Speech plugin for elizaOS agents"
 license = "MIT"
 authors = ["elizaOS Contributors"]
 repository = "https://github.com/elizaos/eliza"

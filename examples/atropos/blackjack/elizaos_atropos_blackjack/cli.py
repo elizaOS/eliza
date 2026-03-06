@@ -50,7 +50,7 @@ async def run_auto_mode(
     from elizaos_atropos_blackjack import BlackjackAgent, BlackjackEnvironment
     from elizaos_atropos_blackjack.types import EpisodeResult
 
-    print("\n🃏 ElizaOS Atropos - Blackjack")
+    print("\n🃏 elizaOS Atropos - Blackjack")
     print("=" * 40)
     print(f"Mode: {'LLM-based' if use_llm else 'Optimal Strategy'}")
     print(f"Episodes: {num_episodes}")
@@ -164,7 +164,7 @@ async def run_auto_mode(
                 except Exception:
                     token = None
 
-            # Decide action (canonical ElizaOS pipeline)
+            # Decide action (canonical elizaOS pipeline)
             action = await agent.decide(
                 state,
                 env.get_available_actions(),
@@ -282,7 +282,7 @@ async def run_interactive_mode(use_llm: bool = False) -> None:
     from elizaos_atropos_blackjack import BlackjackEnvironment, BlackjackAction
     from elizaos_atropos_blackjack.strategy import BasicStrategy
 
-    print("\n🃏 ElizaOS Atropos - Blackjack (Interactive)")
+    print("\n🃏 elizaOS Atropos - Blackjack (Interactive)")
     print("=" * 40)
     print("Commands: h=hit, s=stand, q=quit, r=reset")
     print("=" * 40)
@@ -356,7 +356,7 @@ async def run_benchmark_mode(num_episodes: int = 10000) -> None:
     from elizaos_atropos_blackjack.agent import create_optimal_policy, create_random_policy
     from elizaos_atropos_blackjack.strategy import SimpleStrategy, ConservativeStrategy, AggressiveStrategy
 
-    print("\n🃏 ElizaOS Atropos - Blackjack Benchmark")
+    print("\n🃏 elizaOS Atropos - Blackjack Benchmark")
     print("=" * 50)
     print(f"Episodes per strategy: {num_episodes}")
     print("=" * 50)
@@ -411,7 +411,7 @@ async def run_benchmark_mode(num_episodes: int = 10000) -> None:
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="ElizaOS Atropos Blackjack Environment",
+        description="elizaOS Atropos Blackjack Environment",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

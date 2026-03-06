@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @runtime_checkable
 class IAgentRuntime(Protocol):
-    """Protocol for ElizaOS agent runtime."""
+    """Protocol for elizaOS agent runtime."""
     
     async def generate_text(
         self, input_text: str, options: dict[str, str]
@@ -38,7 +38,7 @@ class GenerateTextResult(Protocol):
 
 
 class TauAgent:
-    """Agent that processes Tau-bench tasks using the ElizaOS runtime."""
+    """Agent that processes Tau-bench tasks using the elizaOS runtime."""
 
     def __init__(
         self,
@@ -88,7 +88,7 @@ class TauAgent:
 
             try:
                 if self.runtime is not None:
-                    # Use ElizaOS runtime for generation
+                    # Use elizaOS runtime for generation
                     response = await self.runtime.generate_text(
                         input_text=prompt,
                         options={"model_type": "text_large"},

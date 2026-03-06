@@ -21,10 +21,10 @@ if TYPE_CHECKING:
 
 class BlackjackEnvironment:
     """
-    Blackjack environment for ElizaOS agents.
+    Blackjack environment for elizaOS agents.
     
     Wraps OpenAI Gymnasium's Blackjack-v1 environment with a cleaner interface
-    for use with ElizaOS agents and Atropos training.
+    for use with elizaOS agents and Atropos training.
     
     Example:
         >>> env = BlackjackEnvironment()

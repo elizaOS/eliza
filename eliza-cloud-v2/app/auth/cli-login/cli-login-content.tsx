@@ -167,7 +167,7 @@ export function CliLoginContent() {
             </div>
             <CardTitle>CLI Authentication</CardTitle>
             <CardDescription>
-              Sign in to connect your ElizaOS CLI to the cloud
+              Sign in to connect your elizaOS CLI to the cloud
             </CardDescription>
           </CardHeader>
           <CardContent>

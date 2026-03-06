@@ -1,6 +1,6 @@
 # Eliza Chat Example
 
-Interactive CLI chat with an AI agent using ElizaOS. Supports multiple LLM providers.
+Interactive CLI chat with an AI agent using elizaOS. Supports multiple LLM providers.
 
 ## Supported Providers
 

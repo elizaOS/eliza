@@ -27,7 +27,7 @@ export function DeployFromCLI() {
           <div>
             <p className="text-sm font-medium text-white">Deploy from CLI</p>
             <p className="text-xs text-neutral-500">
-              Deploy additional ElizaOS projects using the command line
+              Deploy additional elizaOS projects using the command line
             </p>
           </div>
         </div>
@@ -62,7 +62,7 @@ export function DeployFromCLI() {
             </button>
           </div>
           <p className="text-xs text-neutral-500 mt-2">
-            Run this command from your ElizaOS project directory
+            Run this command from your elizaOS project directory
           </p>
         </div>
       </div>

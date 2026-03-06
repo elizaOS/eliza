@@ -1,7 +1,7 @@
 """
-Vending-Bench ElizaOS Plugin
+Vending-Bench elizaOS Plugin
 
-Provides proper ElizaOS integration for the Vending-Bench benchmark with:
+Provides proper elizaOS integration for the Vending-Bench benchmark with:
 - OpenAI/Anthropic model provider for LLM calls
 - Actions for vending machine operations
 - Provider for business state context
@@ -146,7 +146,7 @@ async def openai_model_handler(
 
 def create_vending_actions() -> list[Action]:
     """
-    Create ElizaOS Action objects for vending machine operations.
+    Create elizaOS Action objects for vending machine operations.
     """
     from elizaos.types.components import (
         Action,
@@ -612,7 +612,7 @@ def create_vending_provider() -> Provider:
 
 def create_vending_bench_plugin() -> Plugin:
     """
-    Create the Vending-Bench ElizaOS plugin.
+    Create the Vending-Bench elizaOS plugin.
 
     This plugin provides:
     - OpenAI model handler for TEXT_LARGE

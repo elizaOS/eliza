@@ -1,5 +1,5 @@
 /**
- * Nostr service implementation for ElizaOS.
+ * Nostr service implementation for elizaOS.
  */
 
 import {

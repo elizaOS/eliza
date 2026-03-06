@@ -99,7 +99,7 @@ async def initialized_temporal_env():
 
 @pytest.fixture
 def mock_eliza_storage(temp_data_dir):
-    """Create a mock ElizaOS storage adapter."""
+    """Create a mock elizaOS storage adapter."""
     from elizaos_art.eliza_integration.storage_adapter import ElizaStorageAdapter
 
     return ElizaStorageAdapter(data_dir=temp_data_dir)

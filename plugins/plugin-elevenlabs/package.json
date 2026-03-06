@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-elevenlabs-root",
   "private": true,
   "version": "2.0.0-alpha.1",
-  "description": "High-quality text-to-speech and speech-to-text plugin for ElizaOS using ElevenLabs API",
+  "description": "High-quality text-to-speech and speech-to-text plugin for elizaOS using ElevenLabs API",
   "type": "module",
   "main": "typescript/dist/node/index.node.js",
   "types": "typescript/dist/index.d.ts",
@@ -44,7 +44,7 @@
     "transcription",
     "ai"
   ],
-  "author": "ElizaOS Team",
+  "author": "elizaOS Team",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -75,7 +75,7 @@
     "typescript": "^5.9.2"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.1"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

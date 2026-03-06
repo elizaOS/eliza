@@ -6,7 +6,7 @@ Each game provides:
 - Agent: LLM-based decision making
 - CLI: Command-line interface for play/train/benchmark
 
-All environments use the canonical ElizaOS agent pattern:
+All environments use the canonical elizaOS agent pattern:
 - Full AgentRuntime with character and plugins
 - Message processing through message_service
 - Actions registered and invoked

@@ -60,7 +60,7 @@ def _as_json_dict(data: Mapping[str, object] | None) -> dict[str, object]:
 
 
 class TrajectoryLoggerRuntimeService(Service):
-    """ElizaOS runtime service wrapper for plugin-trajectory-logger.
+    """elizaOS runtime service wrapper for plugin-trajectory-logger.
 
     The Eliza runtime and message service optionally look for a service named
     `"trajectory_logger"` and call methods like `log_llm_call(...)` and

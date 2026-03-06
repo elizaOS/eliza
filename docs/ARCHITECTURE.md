@@ -1,8 +1,8 @@
-# ElizaOS Architecture
+# elizaOS Architecture
 
 ## Overview
 
-ElizaOS is a **plugin-based agent runtime** implemented primarily in TypeScript (`@elizaos/core`), with **parallel Rust and Python implementations** and a **cross-language interop layer**. The core runtime orchestrates:
+elizaOS is a **plugin-based agent runtime** implemented primarily in TypeScript (`@elizaos/core`), with **parallel Rust and Python implementations** and a **cross-language interop layer**. The core runtime orchestrates:
 
 - **Message ingestion** (from a client/app)
 - **State composition** (via providers)
@@ -106,7 +106,7 @@ At runtime initialization (`AgentRuntime.initialize()` in `packages/typescript/s
 
 ## Persistence: database + memories
 
-ElizaOS uses a pluggable database adapter (`DatabaseAdapter` in `packages/typescript/src/database.ts`):
+elizaOS uses a pluggable database adapter (`DatabaseAdapter` in `packages/typescript/src/database.ts`):
 
 - The runtime requires an adapter at init time (commonly `@elizaos/plugin-sql`).
 - Plugin schemas can be migrated via `adapter.runPluginMigrations(...)` (invoked by `runtime.runPluginMigrations()`).

@@ -1,5 +1,5 @@
 /**
- * Session provider for ElizaOS runtime.
+ * Session provider for elizaOS runtime.
  *
  * Exposes session context to agents during message processing.
  *

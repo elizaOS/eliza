@@ -193,8 +193,8 @@ if (RESTORE_MODE) {
         if (depVersion !== "workspace:*") continue;
         if (!isWorkspacePackage(depName)) continue;
 
-      // Look up the original version from the git ref
-      const oldVersion = oldPkg?.[section]?.[depName];
+        // Look up the original version from the git ref
+        const oldVersion = oldPkg?.[section]?.[depName];
 
         if (oldVersion && oldVersion !== "workspace:*") {
           if (!QUIET) {

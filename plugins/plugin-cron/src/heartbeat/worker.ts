@@ -169,6 +169,10 @@ async function runHeartbeatTick(runtime: IAgentRuntime, config: HeartbeatConfig)
     `[Heartbeat] Running tick (${events.length} pending events, HEARTBEAT.md: ${heartbeatMd ? 'yes' : 'no'})`
   );
 
+  if (!runtime.messageService) {
+    logger.warn('[Heartbeat] Runtime messageService is not available, skipping');
+    return;
+  }
   await runtime.messageService.handleMessage(runtime, memory, callback);
 
   // 6. Check response

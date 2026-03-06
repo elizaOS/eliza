@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-vision",
-  "description": "Vision plugin for ElizaOS - provides camera integration and visual awareness",
+  "description": "Vision plugin for elizaOS - provides camera integration and visual awareness",
   "version": "2.0.0-alpha.2",
   "type": "module",
   "main": "dist/index.js",
@@ -9,7 +9,7 @@
   "packageType": "plugin",
   "platform": "node",
   "license": "MIT",
-  "author": "ElizaOS",
+  "author": "elizaOS",
   "keywords": [
     "plugin",
     "elizaos",

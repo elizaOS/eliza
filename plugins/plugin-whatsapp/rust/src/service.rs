@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-/// WhatsApp service for ElizaOS
+/// WhatsApp service for elizaOS
 pub struct WhatsAppService {
     client: Arc<RwLock<Option<WhatsAppClient>>>,
     config: Arc<RwLock<Option<WhatsAppConfig>>>,

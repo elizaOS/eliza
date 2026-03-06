@@ -56,7 +56,7 @@ async def run_auto_mode(
         Difficulty,
     )
 
-    print("\n📖 ElizaOS Atropos - TextWorld")
+    print("\n📖 elizaOS Atropos - TextWorld")
     print("=" * 50)
     print(f"Mode: {'LLM-based' if use_llm else 'Heuristic'}")
     print(f"Difficulty: {difficulty}")
@@ -276,7 +276,7 @@ async def run_interactive_mode(difficulty: str = "medium") -> None:
         Difficulty,
     )
 
-    print("\n📖 ElizaOS Atropos - TextWorld (Interactive)")
+    print("\n📖 elizaOS Atropos - TextWorld (Interactive)")
     print("=" * 50)
     print("Commands: type any action, or 'quit' to exit")
     print("=" * 50)

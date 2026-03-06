@@ -1,7 +1,7 @@
 """
-Vending-Bench ElizaOS Runner - Uses the full ElizaOS runtime canonically.
+Vending-Bench elizaOS Runner - Uses the full elizaOS runtime canonically.
 
-This module runs the benchmark using the proper ElizaOS agent flow:
+This module runs the benchmark using the proper elizaOS agent flow:
 - AgentRuntime with basicCapabilities enabled
 - Actions registered through the plugin system
 - Providers inject context into the agent's prompt
@@ -114,7 +114,7 @@ Available actions: PLACE_ORDER, RESTOCK_SLOT, SET_PRICE, COLLECT_CASH, ADVANCE_D
 
 @dataclass
 class ElizaRunResult:
-    """Result of a single ElizaOS benchmark run."""
+    """Result of a single elizaOS benchmark run."""
 
     run_id: str
     simulation_days: int
@@ -134,7 +134,7 @@ class ElizaRunResult:
 
 class ElizaVendingRunner:
     """
-    Benchmark runner using the canonical ElizaOS runtime.
+    Benchmark runner using the canonical elizaOS runtime.
 
     This runner:
     1. Creates an AgentRuntime with the vending-bench plugin
@@ -155,7 +155,7 @@ class ElizaVendingRunner:
         self._room_id: UUID | None = None
 
     async def _create_runtime(self) -> AgentRuntime:
-        """Create and initialize the ElizaOS runtime."""
+        """Create and initialize the elizaOS runtime."""
         _load_dotenv_fallback()
         # Ensure OpenAI plugin uses the benchmark's requested model.
         os.environ.setdefault("OPENAI_LARGE_MODEL", self.model_name)
@@ -194,7 +194,7 @@ class ElizaVendingRunner:
         text: str,
     ) -> tuple[str, list[str], int]:
         """
-        Send a message through the ElizaOS runtime and get response.
+        Send a message through the elizaOS runtime and get response.
 
         Returns: (response_text, actions_taken, tokens_used)
         """
@@ -227,7 +227,7 @@ class ElizaVendingRunner:
         return response_text, actions or [], tokens
 
     async def run_single(self, run_id: str) -> ElizaRunResult:
-        """Run a single benchmark simulation using ElizaOS."""
+        """Run a single benchmark simulation using elizaOS."""
         logger.info(f"[ElizaVendingRunner] Starting run {run_id}")
 
         # Create fresh runtime for this run
@@ -260,7 +260,7 @@ class ElizaVendingRunner:
                 while day_actions < max_actions_per_day:
                     start_time = time.time()
 
-                    # Send message through ElizaOS runtime
+                    # Send message through elizaOS runtime
                     response, actions, tokens = await self._send_message(
                         runtime,
                         day_prompt
@@ -465,7 +465,7 @@ Yesterday's Summary:
                 "best_net_worth": str(metrics.max_net_worth),
                 "avg_net_worth": str(metrics.avg_net_worth),
                 "coherence_score": f"{metrics.coherence_score:.1%}",
-                "runtime_type": "ElizaOS (canonical)",
+                "runtime_type": "elizaOS (canonical)",
             },
         )
 
@@ -532,10 +532,10 @@ async def run_eliza_benchmark(
     output_dir: str | None = None,
 ) -> VendingBenchReport:
     """
-    Run the Vending-Bench using the canonical ElizaOS runtime.
+    Run the Vending-Bench using the canonical elizaOS runtime.
 
     This is the proper way to run the benchmark - using the full
-    ElizaOS agent with message handling, action selection, and
+    elizaOS agent with message handling, action selection, and
     provider context injection.
     """
     config = VendingBenchConfig(

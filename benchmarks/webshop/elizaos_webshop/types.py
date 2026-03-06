@@ -99,7 +99,7 @@ class WebShopConfig:
     timeout_ms: int = 120000
     verbose: bool = False
     save_detailed_logs: bool = True
-    # ElizaOS integration
+    # elizaOS integration
     use_mock: bool = True
     temperature: float = 0.0
     model_provider: str | None = None

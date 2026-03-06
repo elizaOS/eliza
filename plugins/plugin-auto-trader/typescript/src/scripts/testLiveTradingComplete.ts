@@ -24,7 +24,7 @@ const LIVE_TRADING_CONFIG = {
 };
 
 async function main() {
-  console.log("🚀 ElizaOS Auto-Trader Live Trading Test");
+  console.log("🚀 elizaOS Auto-Trader Live Trading Test");
   console.log("========================================\n");
 
   console.log("⚠️  WARNING: This will execute REAL trades on Solana mainnet!");

@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-prose",
   "version": "1.0.0",
-  "description": "OpenProse VM integration for ElizaOS - a programming language for AI sessions",
+  "description": "OpenProse VM integration for elizaOS - a programming language for AI sessions",
   "type": "module",
   "main": "dist/cjs/index.cjs",
   "module": "dist/esm/index.js",
@@ -76,7 +76,7 @@
     "orchestration",
     "multi-agent"
   ],
-  "author": "ElizaOS",
+  "author": "elizaOS",
   "license": "MIT",
   "milaidy": {
     "platforms": [

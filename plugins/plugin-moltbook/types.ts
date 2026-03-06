@@ -123,6 +123,13 @@ export type MoltbookResult<T> =
   | { success: true; data: T }
   | { success: false; error: string; data?: undefined };
 
+/** Type guard for failure branch so TS narrows when accessing .error */
+export function isMoltbookFailure<T>(
+  r: MoltbookResult<T>,
+): r is { success: false; error: string } {
+  return !r.success;
+}
+
 /**
  * Helper to create a successful result
  */

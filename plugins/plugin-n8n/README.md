@@ -1,6 +1,6 @@
 # 🤖 elizaOS N8n Plugin
 
-> **Comprehensive n8n integration for ElizaOS** - Create ElizaOS plugins and manage n8n workflows using AI-powered natural language processing.
+> **Comprehensive n8n integration for elizaOS** - Create elizaOS plugins and manage n8n workflows using AI-powered natural language processing.
 
 [![npm version](https://img.shields.io/npm/v/@elizaos/plugin-n8n.svg)](https://www.npmjs.com/package/@elizaos/plugin-n8n)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -9,7 +9,7 @@
 
 The N8n plugin provides two powerful capabilities:
 
-1. **AI-Powered ElizaOS Plugin Creation** - Transform natural language into production-ready ElizaOS plugins using Claude models
+1. **AI-Powered elizaOS Plugin Creation** - Transform natural language into production-ready elizaOS plugins using Claude models
 2. **n8n Workflow Management** - Generate and manage n8n workflows from natural language using a RAG pipeline
 
 Available in **TypeScript**, **Python**, and **Rust** with full feature parity.
@@ -20,7 +20,7 @@ Available in **TypeScript**, **Python**, and **Rust** with full feature parity.
 - 🧠 **AI-Powered Generation** - Claude models generate complete plugin implementations
 - 🔄 **Iterative Refinement** - Automatic error fixing through build/lint/test cycles
 - ✅ **Quality Assurance** - Built-in testing and validation
-- 🚀 **Production Ready** - Generated code follows ElizaOS best practices
+- 🚀 **Production Ready** - Generated code follows elizaOS best practices
 - 🌐 **Multi-Language** - Use from TypeScript, Python, or Rust
 
 #### Workflow Management
@@ -109,7 +109,7 @@ const agent = new Agent({
 });
 
 // The agent can now:
-// 1. Create ElizaOS plugins: "Create a weather plugin that fetches current conditions"
+// 1. Create elizaOS plugins: "Create a weather plugin that fetches current conditions"
 // 2. Create n8n workflows: "Create a workflow that sends me Stripe payment summaries every Monday via Gmail"
 ```
 
@@ -159,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
 
 ## 💬 Conversational Usage
 
-### Creating ElizaOS Plugins
+### Creating elizaOS Plugins
 
 ```
 User: Create a plugin that helps manage todo lists with add, remove, and list functionality
@@ -272,7 +272,7 @@ Say "deploy" to create this workflow, or "modify" to make changes.
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
-│                         ElizaOS Runtime                           │
+│                         elizaOS Runtime                           │
 │                                                                   │
 │  ┌─────────────┐  ┌──────────────────┐  ┌──────────────────────┐ │
 │  │  Services    │  │  Actions          │  │  Providers           │ │
@@ -401,7 +401,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-- Built with ❤️ by the ElizaOS community
+- Built with ❤️ by the elizaOS community
 - Powered by [Anthropic's Claude](https://www.anthropic.com)
 - Inspired by [n8n](https://n8n.io) workflow automation
 

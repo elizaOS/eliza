@@ -91,7 +91,7 @@ export const unfollowRoomAction: Action = {
 
     if (state && (await _shouldUnfollow(state))) {
       try {
-        await runtime.setParticipantUserState(
+        await runtime.updateParticipantUserState(
           message.roomId,
           runtime.agentId,
           null,

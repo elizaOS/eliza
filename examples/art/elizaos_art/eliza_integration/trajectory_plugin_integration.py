@@ -413,7 +413,7 @@ def create_trajectory_backend(*, output_dir: str | Path) -> TrajectoryBackend:
 
         return _PluginTrajectoryBackend(output_dir=out)
     except Exception:
-        # Fallback: local file-based adapter (still ElizaOS-compatible JSON)
+        # Fallback: local file-based adapter (still elizaOS-compatible JSON)
         from elizaos_art.eliza_integration.trajectory_adapter import ElizaTrajectoryLogger
 
         class _FallbackBackend:

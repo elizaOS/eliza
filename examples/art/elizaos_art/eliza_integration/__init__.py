@@ -1,14 +1,14 @@
 """
-ElizaOS Integration for ART Training
+elizaOS Integration for ART Training
 
-Full integration with the ElizaOS agent runtime:
+Full integration with the elizaOS agent runtime:
 - Uses REAL AgentRuntime with character and plugins
 - Message processing through message_service.handle_message
 - Actions registered and invoked properly
 - Providers supplying context
 - basicCapabilities enabled by default
 
-Integrates with ElizaOS plugins:
+Integrates with elizaOS plugins:
 - plugin-trajectory-logger: Trajectory capture and export
 - plugin-local-ai: Local GGUF model inference
 - plugin-localdb: Persistent storage for trajectories and checkpoints

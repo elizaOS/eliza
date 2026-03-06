@@ -7,7 +7,7 @@
  * Domain Model:
  * - Characters (user_characters) = User-created definitions
  * - Containers (containers) = Deployment infrastructure
- * - Agents (agents) = Running instances (created by ElizaOS when container starts)
+ * - Agents (agents) = Running instances (created by elizaOS when container starts)
  *
  * Key Insight: This service operates at the CHARACTER level, not the agent level.
  * It answers questions like "which characters are deployed?" not "which agents exist?"

@@ -1,6 +1,6 @@
 # Agent Orchestrator Plugin (Rust)
 
-Rust implementation of the Agent Orchestrator plugin for ElizaOS.
+Rust implementation of the Agent Orchestrator plugin for elizaOS.
 
 ## Overview
 

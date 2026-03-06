@@ -1,7 +1,7 @@
 [project]
 name = "elizaos-plugin-nostr"
 version = "2.0.0a1"
-description = "Nostr decentralized messaging plugin for ElizaOS agents"
+description = "Nostr decentralized messaging plugin for elizaOS agents"
 authors = [{ name = "elizaOS", email = "contact@elizaos.com" }]
 license = { text = "MIT" }
 readme = "README.md"

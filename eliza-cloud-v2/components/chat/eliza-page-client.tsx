@@ -134,7 +134,7 @@ export function ElizaPageClient({
   useSetPageHeader({
     title: "Chat",
     description:
-      "Chat with AI agents using the full ElizaOS runtime with persistent memory and room-based conversations.",
+      "Chat with AI agents using the full elizaOS runtime with persistent memory and room-based conversations.",
   });
 
   // Memoize transformed characters to prevent unnecessary re-renders

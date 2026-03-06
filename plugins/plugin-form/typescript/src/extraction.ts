@@ -246,7 +246,7 @@ Respond in this exact XML format:
  *
  * WHY XML parsing:
  * - Structured output is easier to parse than free text
- * - ElizaOS has parseKeyValueXml helper
+ * - elizaOS has parseKeyValueXml helper
  * - Falls back to regex if parsing fails
  *
  * @param response - LLM's XML response string

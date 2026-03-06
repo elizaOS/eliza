@@ -1,6 +1,6 @@
 # VRM Voice Chat Demo (Browser)
 
-This is a simple, browser-only demo that renders a VRM avatar and chats with an ElizaOS agent.
+This is a simple, browser-only demo that renders a VRM avatar and chats with an elizaOS agent.
 
 ## Run
 

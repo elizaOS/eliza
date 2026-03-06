@@ -106,7 +106,8 @@ describe("Secret Validation Patterns", () => {
     const pattern = SECRET_VALIDATION_PATTERNS.TELEGRAM_BOT_TOKEN;
 
     it("should validate correct Telegram bot tokens", () => {
-      expect(pattern.pattern.test("123456789:ABCdefGHIjklMNOpqrSTUvwxYZ12345678901")).toBe(true);
+      // Pattern requires exactly 35 chars after colon: \d{8,10}:[A-Za-z0-9_-]{35}
+      expect(pattern.pattern.test("123456789:ABCdefGHIjklMNOpqrSTUvwxYZ123456789")).toBe(true);
       expect(pattern.pattern.test("1234567890:abcdefghijklmnopqrstuvwxyz123456789")).toBe(true);
     });
 

@@ -427,7 +427,7 @@ export function BuildModeAssistant({
     localStorage.setItem("build-mode-model-tier", selectedTier);
   }, [selectedTier]);
 
-  // Send message to ElizaOS stream endpoint with BUILD workflow
+  // Send message to elizaOS stream endpoint with BUILD workflow
   const sendElizaMessage = useCallback(
     async (text: string) => {
       if (!text.trim() || !builderRoomId) return;

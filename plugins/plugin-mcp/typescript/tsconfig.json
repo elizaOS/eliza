@@ -18,7 +18,7 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noImplicitAny": false,
-    "types": ["node", "bun-types"],
+    "types": ["node", "bun"],
     "baseUrl": "../../.."
   },
   "include": ["./**/*.ts", "../../../packages/typescript/src/**/*.ts"],

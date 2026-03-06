@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 console.log(
   chalk.bold.cyan(`
 =============================================================
-🚀 ElizaOS Auto-Trader Full Pipeline
+🚀 elizaOS Auto-Trader Full Pipeline
 =============================================================
 `),
 );
@@ -144,7 +144,7 @@ async function runPipeline() {
 function generateReport(results: any) {
   const reportPath = path.join(__dirname, "../../BACKTEST_REPORT.md");
 
-  let report = `# ElizaOS Auto-Trader Backtest Report
+  let report = `# elizaOS Auto-Trader Backtest Report
 
 Generated: ${new Date().toISOString()}
 

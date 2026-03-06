@@ -1,5 +1,5 @@
 """
-elizaos-plugin-webhooks – HTTP webhook ingress for ElizaOS.
+elizaos-plugin-webhooks – HTTP webhook ingress for elizaOS.
 
 Usage::
 

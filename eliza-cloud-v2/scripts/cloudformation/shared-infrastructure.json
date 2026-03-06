@@ -1,6 +1,6 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
-  "Description": "ElizaOS Shared Infrastructure v2 - Production Ready - VPC, ALB, IAM Roles (Deploy Once)",
+  "Description": "elizaOS Shared Infrastructure v2 - Production Ready - VPC, ALB, IAM Roles (Deploy Once)",
   "Parameters": {
     "Environment": {
       "Type": "String",
@@ -25,7 +25,7 @@
             "Value": { "Fn::Sub": "${Environment}-elizaos-vpc" }
           },
           { "Key": "Environment", "Value": { "Ref": "Environment" } },
-          { "Key": "BillingEntity", "Value": "ElizaOS" },
+          { "Key": "BillingEntity", "Value": "elizaOS" },
           { "Key": "CostCenter", "Value": "shared-infrastructure" }
         ]
       }
@@ -38,7 +38,7 @@
             "Key": "Name",
             "Value": { "Fn::Sub": "${Environment}-elizaos-igw" }
           },
-          { "Key": "BillingEntity", "Value": "ElizaOS" }
+          { "Key": "BillingEntity", "Value": "elizaOS" }
         ]
       }
     },
@@ -61,7 +61,7 @@
             "Key": "Name",
             "Value": { "Fn::Sub": "${Environment}-elizaos-public-1" }
           },
-          { "Key": "BillingEntity", "Value": "ElizaOS" }
+          { "Key": "BillingEntity", "Value": "elizaOS" }
         ]
       }
     },
@@ -77,7 +77,7 @@
             "Key": "Name",
             "Value": { "Fn::Sub": "${Environment}-elizaos-public-2" }
           },
-          { "Key": "BillingEntity", "Value": "ElizaOS" }
+          { "Key": "BillingEntity", "Value": "elizaOS" }
         ]
       }
     },
@@ -90,7 +90,7 @@
             "Key": "Name",
             "Value": { "Fn::Sub": "${Environment}-elizaos-public-rt" }
           },
-          { "Key": "BillingEntity", "Value": "ElizaOS" }
+          { "Key": "BillingEntity", "Value": "elizaOS" }
         ]
       }
     },
@@ -121,7 +121,7 @@
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
         "GroupName": { "Fn::Sub": "${Environment}-elizaos-alb-sg" },
-        "GroupDescription": "Security group for ElizaOS ALB",
+        "GroupDescription": "Security group for elizaOS ALB",
         "VpcId": { "Ref": "VPC" },
         "SecurityGroupIngress": [
           {
@@ -142,7 +142,7 @@
             "Key": "Name",
             "Value": { "Fn::Sub": "${Environment}-elizaos-alb-sg" }
           },
-          { "Key": "BillingEntity", "Value": "ElizaOS" }
+          { "Key": "BillingEntity", "Value": "elizaOS" }
         ]
       }
     },
@@ -167,7 +167,7 @@
             "Value": { "Fn::Sub": "${Environment}-elizaos-alb" }
           },
           { "Key": "Environment", "Value": { "Ref": "Environment" } },
-          { "Key": "BillingEntity", "Value": "ElizaOS" },
+          { "Key": "BillingEntity", "Value": "elizaOS" },
           { "Key": "CostCenter", "Value": "shared-infrastructure" }
         ]
       }
@@ -248,7 +248,7 @@
           }
         ],
         "Tags": [
-          { "Key": "BillingEntity", "Value": "ElizaOS" },
+          { "Key": "BillingEntity", "Value": "elizaOS" },
           { "Key": "CostCenter", "Value": "shared-infrastructure" }
         ]
       }
@@ -286,7 +286,7 @@
           }
         ],
         "Tags": [
-          { "Key": "BillingEntity", "Value": "ElizaOS" },
+          { "Key": "BillingEntity", "Value": "elizaOS" },
           { "Key": "CostCenter", "Value": "shared-infrastructure" }
         ]
       }
@@ -306,7 +306,7 @@
           ]
         },
         "Tags": [
-          { "Key": "BillingEntity", "Value": "ElizaOS" },
+          { "Key": "BillingEntity", "Value": "elizaOS" },
           { "Key": "CostCenter", "Value": "shared-infrastructure" }
         ]
       }

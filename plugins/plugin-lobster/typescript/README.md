@@ -1,10 +1,10 @@
 # @elizaos/plugin-lobster
 
-Lobster workflow runtime plugin for ElizaOS. Enables deterministic multi-step pipelines with approval checkpoints.
+Lobster workflow runtime plugin for elizaOS. Enables deterministic multi-step pipelines with approval checkpoints.
 
 ## Overview
 
-Lobster executes multi-step workflows as a local-first runtime with typed JSON envelopes and resumable approvals. This plugin integrates Lobster into ElizaOS agents.
+Lobster executes multi-step workflows as a local-first runtime with typed JSON envelopes and resumable approvals. This plugin integrates Lobster into elizaOS agents.
 
 ## When to Use Lobster
 

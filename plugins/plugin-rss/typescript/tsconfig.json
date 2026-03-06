@@ -12,7 +12,7 @@
     "declarationMap": true,
     "outDir": "./dist",
     "rootDir": ".",
-    "types": ["bun-types", "node"],
+    "types": ["bun", "node"],
     "resolveJsonModule": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,

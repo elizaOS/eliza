@@ -11,7 +11,7 @@ import type {
 export type MSTeamsConversationType = "personal" | "groupChat" | "channel";
 
 /**
- * MS Teams channel type mapping to ElizaOS
+ * MS Teams channel type mapping to elizaOS
  */
 export enum MSTeamsChannelType {
   PERSONAL = "personal",

@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-cron",
   "version": "2.0.0-alpha.1",
-  "description": "Cron scheduling plugin for ElizaOS agents - schedule recurring or one-time jobs that execute actions, run prompts, or trigger events",
+  "description": "Cron scheduling plugin for elizaOS agents - schedule recurring or one-time jobs that execute actions, run prompts, or trigger events",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -12,9 +12,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.1",
-    "@elizaos/plugin-cli": "2.0.0-alpha.1",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-cli": "workspace:*",
     "croner": "9.0.0",
+    "json5": "^2.2.3",
     "uuid": "11.0.5"
   },
   "devDependencies": {

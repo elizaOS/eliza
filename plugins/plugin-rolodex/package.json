@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-rolodex",
-  "description": "A plugin for ElizaOS that allows you to manage entites, relationships and associations",
+  "description": "A plugin for elizaOS that allows you to manage entites, relationships and associations",
   "version": "1.0.0",
   "type": "module",
   "main": "dist/index.js",
@@ -27,7 +27,8 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "1.7.0"
+    "@elizaos/core": "workspace:*",
+    "uuid": "^11.0.3"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

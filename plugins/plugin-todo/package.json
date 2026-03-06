@@ -61,7 +61,7 @@
     "url": "https://github.com/elizaos-plugins/plugin-todo/issues"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.1",
+    "@elizaos/core": "workspace:*",
     "drizzle-orm": "^0.30.10",
     "zod": "^4.3.6"
   },

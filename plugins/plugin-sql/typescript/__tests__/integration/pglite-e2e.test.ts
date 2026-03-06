@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseMigrationService } from "../../migration-service";
 import { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { PGliteClientManager } from "../../pglite/manager";
-import * as schema from "../../schema";
+import * as schema from "../../tables";
 import type { DrizzleDatabase } from "../../types";
 
 // Use PGLite for testing instead of real PostgreSQL
@@ -144,7 +144,7 @@ describe("PostgreSQL E2E Tests", () => {
       ];
 
       const created = await adapter.createEntities(entities);
-      expect(created).toBe(true);
+      expect(Array.isArray(created) && created.length > 0).toBe(true);
 
       const entityIds = entities.map((e) => e.id).filter((id): id is UUID => id !== undefined);
       const retrieved = await adapter.getEntitiesByIds(entityIds);
@@ -301,13 +301,11 @@ describe("PostgreSQL E2E Tests", () => {
 
       const memoryId = await adapter.createMemory(memory, "memories");
 
-      const updated = await adapter.updateMemory({
+      await adapter.updateMemory({
         id: memoryId,
         content: { text: "Updated content" },
         metadata: { type: "custom", edited: true },
       });
-
-      expect(updated).toBe(true);
 
       const retrieved = await adapter.getMemoryById(memoryId);
       expect(retrieved).not.toBeNull();
@@ -415,7 +413,8 @@ describe("PostgreSQL E2E Tests", () => {
       };
 
       const created = await adapter.createComponent(component);
-      expect(created).toBe(true);
+      expect(created).toBeDefined();
+      expect(typeof created).toBe("string");
 
       const retrieved = await adapter.getComponent(
         entityId,
@@ -504,7 +503,7 @@ describe("PostgreSQL E2E Tests", () => {
         });
 
       const results = await Promise.all(operations);
-      expect(results.every((r) => r === true)).toBe(true);
+      expect(results.every((r) => Array.isArray(r) && r.length > 0)).toBe(true);
 
       await adapter.close();
     });
@@ -528,7 +527,7 @@ describe("PostgreSQL E2E Tests", () => {
         }));
 
       const created = await adapter.createEntities(entities);
-      expect(created).toBe(true);
+      expect(Array.isArray(created) && created.length > 0).toBe(true);
 
       const entityIds = entities.map((e) => e.id).filter((id): id is UUID => id !== undefined);
       const retrieved = await adapter.getEntitiesByIds(entityIds);
@@ -549,7 +548,8 @@ describe("PostgreSQL E2E Tests", () => {
 
       await adapter.createAgent(agent as Agent);
       const secondCreate = await adapter.createAgent(agent as Agent);
-      expect(secondCreate).toBe(false);
+      // onConflictDoNothing: second create succeeds idempotently
+      expect(secondCreate).toBe(true);
 
       await adapter.close();
     });

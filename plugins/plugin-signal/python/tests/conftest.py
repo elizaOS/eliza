@@ -22,7 +22,7 @@ from elizaos_plugin_signal.types import (
 
 
 # ---------------------------------------------------------------------------
-# Helpers – lightweight stand-ins for ElizaOS runtime objects
+# Helpers – lightweight stand-ins for elizaOS runtime objects
 # ---------------------------------------------------------------------------
 
 class MockMessage:

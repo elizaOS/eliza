@@ -1427,7 +1427,7 @@ export const FORM_DEFINITION_DEFAULTS = {
  * Component type prefix for form sessions.
  *
  * WHY component-based storage:
- * - Components are ElizaOS's entity data storage
+ * - Components are elizaOS's entity data storage
  * - Scoped to entity, can include room in type
  * - Automatic CRUD via runtime
  */

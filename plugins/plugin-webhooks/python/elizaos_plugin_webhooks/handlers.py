@@ -29,7 +29,7 @@ logger = logging.getLogger("elizaos.plugin.webhooks")
 
 
 # ---------------------------------------------------------------------------
-# Runtime protocol – thin abstraction of the ElizaOS agent runtime
+# Runtime protocol – thin abstraction of the elizaOS agent runtime
 # ---------------------------------------------------------------------------
 
 

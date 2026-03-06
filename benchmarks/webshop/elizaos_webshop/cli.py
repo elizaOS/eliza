@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-WebShop Benchmark CLI for ElizaOS.
+WebShop Benchmark CLI for elizaOS.
 
 Examples:
   python -m elizaos_webshop --sample
@@ -55,7 +55,7 @@ def _maybe_load_dotenv() -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="ElizaOS WebShop Benchmark CLI")
+    p = argparse.ArgumentParser(description="elizaOS WebShop Benchmark CLI")
     p.add_argument("--sample", action="store_true", help="Use built-in sample tasks/products")
     p.add_argument("--hf", action="store_true", help="Load tasks from HuggingFace (tasks only)")
     p.add_argument("--split", type=str, default="test", help="HF split (default: test)")
@@ -69,7 +69,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--json", action="store_true", help="Print results json to stdout")
 
     # Eliza integration
-    p.add_argument("--real-llm", action="store_true", help="Use real LLM via ElizaOS runtime")
+    p.add_argument("--real-llm", action="store_true", help="Use real LLM via elizaOS runtime")
     p.add_argument("--temperature", type=float, default=0.0, help="LLM temperature")
     p.add_argument(
         "--model-provider",

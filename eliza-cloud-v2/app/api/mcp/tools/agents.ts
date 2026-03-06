@@ -1,6 +1,6 @@
 /**
  * Agent MCP tools
- * Tools for managing and interacting with ElizaOS agents
+ * Tools for managing and interacting with elizaOS agents
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -30,7 +30,7 @@ export function registerAgentTools(server: McpServer): void {
     "chat_with_agent",
     {
       description:
-        "Send a message to your deployed ElizaOS agent and receive a response. Supports streaming via SSE. Charges $0.0001-$0.01 based on token usage.",
+        "Send a message to your deployed elizaOS agent and receive a response. Supports streaming via SSE. Charges $0.0001-$0.01 based on token usage.",
       inputSchema: {
         message: z
           .string()
@@ -171,7 +171,7 @@ export function registerAgentTools(server: McpServer): void {
     "list_agents",
     {
       description:
-        "List all available agents, characters, and deployed ElizaOS instances. FREE tool.",
+        "List all available agents, characters, and deployed elizaOS instances. FREE tool.",
       inputSchema: {
         filters: z
           .object({

@@ -358,7 +358,7 @@ class PluginCreationClient:
                 f"- {e.name}: {e.description}" for e in spec.evaluators
             )
 
-        return f"""You are creating an ElizaOS plugin with the following specification:
+        return f"""You are creating an elizaOS plugin with the following specification:
 
 Name: {spec.name}
 Description: {spec.description}
@@ -369,11 +369,11 @@ Version: {spec.version}
 {services_text}
 {evaluators_text}
 
-Create a complete ElizaOS plugin implementation following these requirements:
+Create a complete elizaOS plugin implementation following these requirements:
 
 1. Create src/index.ts that exports the plugin object
 2. Implement all specified components
-3. Follow ElizaOS plugin structure and conventions
+3. Follow elizaOS plugin structure and conventions
 4. Include proper TypeScript types
 5. Add comprehensive error handling
 6. Create unit tests
@@ -389,7 +389,7 @@ Provide the complete implementation with file paths clearly marked."""
     ) -> str:
         error_summary = "\n".join(f"Phase: {e.phase}\nError: {e.error}" for e in errors)
 
-        return f"""The ElizaOS plugin {job.specification.name} has the following errors:
+        return f"""The elizaOS plugin {job.specification.name} has the following errors:
 
 {error_summary}
 
@@ -472,7 +472,7 @@ Please fix all the errors and provide updated code with file paths marked."""
                 return f"File: {f['path']}\n```typescript\n{f['content']}\n```"
 
             code_section = "\n".join(format_code_file(f) for f in code_files)
-            validation_prompt = f"""Review this ElizaOS plugin:
+            validation_prompt = f"""Review this elizaOS plugin:
 
 Plugin: {job.specification.name}
 

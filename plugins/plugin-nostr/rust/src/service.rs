@@ -1,4 +1,4 @@
-//! Nostr service implementation for ElizaOS.
+//! Nostr service implementation for elizaOS.
 
 use crate::types::*;
 use dashmap::DashMap;
@@ -11,7 +11,7 @@ use tokio::sync::RwLock;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, info, warn};
 
-/// Nostr messaging service for ElizaOS agents
+/// Nostr messaging service for elizaOS agents
 pub struct NostrService {
     settings: Arc<RwLock<Option<NostrSettings>>>,
     private_key: Arc<RwLock<Option<[u8; 32]>>>,

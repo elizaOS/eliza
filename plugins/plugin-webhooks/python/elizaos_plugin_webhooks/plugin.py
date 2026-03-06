@@ -1,5 +1,5 @@
 """
-ElizaOS plugin definition for HTTP webhook ingress.
+elizaOS plugin definition for HTTP webhook ingress.
 
 Exposes three route groups:
   POST /hooks/wake      – Enqueue system event + optional immediate heartbeat

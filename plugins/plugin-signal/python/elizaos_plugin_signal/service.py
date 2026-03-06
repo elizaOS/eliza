@@ -1,5 +1,5 @@
 """
-Signal service implementation for ElizaOS.
+Signal service implementation for elizaOS.
 
 This service provides Signal messaging capabilities via the Signal CLI REST API.
 """
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 class SignalService:
     """
-    Signal messaging service for ElizaOS agents.
+    Signal messaging service for elizaOS agents.
 
     Communicates with the Signal protocol via the Signal CLI REST API.
     """

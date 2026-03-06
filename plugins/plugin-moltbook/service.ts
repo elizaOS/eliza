@@ -25,6 +25,7 @@ import {
   MoltbookEventTypes,
   type MoltbookPost,
   type MoltbookResult,
+  isMoltbookFailure,
   type MoltbookSettings,
   type MoltbookSubmolt,
   moltbookFailure,
@@ -834,10 +835,10 @@ Be creative but stay in character. If you POST, make it engaging and relevant to
         case this.AUTONOMY_ACTIONS.BROWSE: {
           const submolt = parsedAction.submolt;
           const browseRes = await this.moltbookBrowse(submolt, "hot");
-          if (browseRes.success) {
-            actionResult = `BROWSED ${submolt ? `r/${submolt}` : "front page"}: found ${browseRes.data.length} posts`;
-          } else {
+          if (isMoltbookFailure(browseRes)) {
             actionResult = `BROWSE failed: ${browseRes.error}`;
+          } else {
+            actionResult = `BROWSED ${submolt ? `r/${submolt}` : "front page"}: found ${browseRes.data.length} posts`;
           }
           this.runtime.logger.info(`Autonomy step ${stepNum}: ${actionResult}`);
           break;

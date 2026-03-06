@@ -1,5 +1,5 @@
 """
-Local AI Adapter for ElizaOS plugin-local-ai
+Local AI Adapter for elizaOS plugin-local-ai
 
 Provides model inference using local GGUF models via:
 - llama.cpp (via node-llama-cpp in TypeScript)

@@ -12,7 +12,7 @@ import { DeployFromCLI } from "./deploy-from-cli";
 export const metadata: Metadata = {
   title: "Containers",
   description:
-    "Deploy and manage ElizaOS containers. Monitor health, view logs, and scale your AI agent deployments with our cloud infrastructure.",
+    "Deploy and manage elizaOS containers. Monitor health, view logs, and scale your AI agent deployments with our cloud infrastructure.",
 };
 
 export const dynamic = "force-dynamic";

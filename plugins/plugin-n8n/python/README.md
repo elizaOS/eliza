@@ -1,6 +1,6 @@
 # elizaOS N8n Plugin - Python
 
-AI-powered plugin creation for ElizaOS using Claude models.
+AI-powered plugin creation for elizaOS using Claude models.
 
 ## Installation
 

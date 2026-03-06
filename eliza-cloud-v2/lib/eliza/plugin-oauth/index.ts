@@ -1,7 +1,7 @@
 /**
  * Plugin OAuth
  *
- * OAuth toolkit for ElizaOS agents.
+ * OAuth toolkit for elizaOS agents.
  * Enables users to connect/manage OAuth platforms (Google) through chat.
  *
  * Actions are registered via cloud-bootstrap plugin.

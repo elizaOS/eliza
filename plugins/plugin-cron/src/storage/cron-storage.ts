@@ -1,6 +1,6 @@
 /**
  * @module cron-storage
- * @description Component-based persistence for cron job data using ElizaOS Components
+ * @description Component-based persistence for cron job data using elizaOS Components
  *
  * Storage strategy:
  * - Each job is stored as a separate component with type "cron_job:{jobId}"

@@ -1,5 +1,5 @@
 """
-WhatsApp Cloud API plugin for ElizaOS.
+WhatsApp Cloud API plugin for elizaOS.
 
 This plugin provides WhatsApp integration via Meta's Cloud API.
 """
@@ -44,7 +44,7 @@ def create_plugin():
 
     return Plugin(
         name=WHATSAPP_SERVICE_NAME,
-        description="WhatsApp Cloud API plugin for ElizaOS agents",
+        description="WhatsApp Cloud API plugin for elizaOS agents",
         services=[WhatsAppService],
         actions=[send_message_action],
         providers=[chat_state_provider],

@@ -1,5 +1,5 @@
 """
-ElizaOS Secrets Manager Plugin
+elizaOS Secrets Manager Plugin
 
 Multi-level secrets management with encryption, validation, and dynamic plugin activation.
 

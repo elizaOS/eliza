@@ -1,7 +1,7 @@
 """
-Full ElizaOS Runtime Integration for ART Training
+Full elizaOS Runtime Integration for ART Training
 
-This is the CANONICAL integration that uses the full ElizaOS agent runtime:
+This is the CANONICAL integration that uses the full elizaOS agent runtime:
 - Full AgentRuntime with character and plugins
 - Message processing through message_service.handle_message
 - Actions registered and invoked properly
@@ -60,7 +60,7 @@ A = TypeVar("A", bound=GameAction)
 
 @dataclass
 class ARTRuntimeConfig:
-    """Configuration for ART runtime with full ElizaOS integration."""
+    """Configuration for ART runtime with full elizaOS integration."""
 
     # Agent identification
     agent_id: str = "art-training-agent"
@@ -101,7 +101,7 @@ def create_game_state_provider(
     """
     Create a Provider that supplies game state context to the agent.
 
-    This is registered with the ElizaOS runtime and called during compose_state().
+    This is registered with the elizaOS runtime and called during compose_state().
     Automatically logs provider access to the trajectory logger.
     """
 
@@ -185,7 +185,7 @@ def create_game_action(
     """
     Create an Action that executes game moves.
 
-    This is the canonical way to handle actions in ElizaOS.
+    This is the canonical way to handle actions in elizaOS.
     Automatically logs action execution to the trajectory logger.
     """
 
@@ -330,7 +330,7 @@ def create_art_plugin(
     """
     Create a Plugin that provides game-specific actions and providers.
 
-    This plugin is registered with the ElizaOS runtime alongside the bootstrap plugin.
+    This plugin is registered with the elizaOS runtime alongside the bootstrap plugin.
     Includes trajectory logging for all interactions.
     """
 
@@ -360,7 +360,7 @@ def create_art_plugin(
 
 class ARTRuntime(Generic[S, A]):
     """
-    Full ElizaOS Runtime for ART Training.
+    Full elizaOS Runtime for ART Training.
 
     This uses the REAL AgentRuntime with:
     - Full message processing through message_service.handle_message
@@ -369,7 +369,7 @@ class ARTRuntime(Generic[S, A]):
     - basicCapabilities enabled by default
     - End-to-end trajectory logging for RL training
 
-    NO SHORTCUTS - this is canonical ElizaOS agent usage with full telemetry.
+    NO SHORTCUTS - this is canonical elizaOS agent usage with full telemetry.
     """
 
     def __init__(
@@ -386,7 +386,7 @@ class ARTRuntime(Generic[S, A]):
         self._current_state_holder: dict = {}
         self._action_result_holder: dict = {}
 
-        # ElizaOS runtime
+        # elizaOS runtime
         self._runtime: AgentRuntime | None = None
         self._initialized = False
 
@@ -430,7 +430,7 @@ class ARTRuntime(Generic[S, A]):
         )
 
     async def initialize(self) -> None:
-        """Initialize the full ElizaOS runtime."""
+        """Initialize the full elizaOS runtime."""
         if self._initialized:
             return
 
@@ -485,7 +485,7 @@ class ARTRuntime(Generic[S, A]):
         """
         Send a message to the agent and get response.
 
-        This goes through the FULL ElizaOS message handling pipeline:
+        This goes through the FULL elizaOS message handling pipeline:
         1. Create message memory
         2. Call message_service.handle_message
         3. Actions are invoked
@@ -559,7 +559,7 @@ class ARTRuntime(Generic[S, A]):
         max_steps: int = 1000,
     ) -> Trajectory:
         """
-        Execute a single rollout using the FULL ElizaOS agent.
+        Execute a single rollout using the FULL elizaOS agent.
 
         This is NOT a shortcut - it goes through proper message handling.
         All interactions are logged to trajectory for RL training.
@@ -623,7 +623,7 @@ class ARTRuntime(Generic[S, A]):
             user_prompt = self.agent.format_action_prompt(state, available_actions)
             messages.append({"role": "user", "content": user_prompt})
 
-            # Send message through FULL ElizaOS pipeline
+            # Send message through FULL elizaOS pipeline
             response_text, action_results = await self._send_message_to_agent(user_prompt)
 
             messages.append({"role": "assistant", "content": response_text})
@@ -799,9 +799,9 @@ def create_art_runtime(
     config: ARTRuntimeConfig | None = None,
 ) -> ARTRuntime:
     """
-    Create an ART runtime with FULL ElizaOS integration and trajectory logging.
+    Create an ART runtime with FULL elizaOS integration and trajectory logging.
 
-    This uses the canonical ElizaOS agent pattern:
+    This uses the canonical elizaOS agent pattern:
     - Full AgentRuntime with character
     - Message processing through message_service
     - Actions registered and invoked

@@ -1,6 +1,6 @@
 # @elizaos/plugin-linear-ts
 
-TypeScript implementation of the Linear integration plugin for ElizaOS.
+TypeScript implementation of the Linear integration plugin for elizaOS.
 
 ## Features
 
@@ -34,7 +34,7 @@ LINEAR_DEFAULT_TEAM_KEY=ENG          # Optional
 ```typescript
 import { linearPlugin } from "@elizaos/plugin-linear-ts";
 
-// Register with your ElizaOS agent
+// Register with your elizaOS agent
 agent.registerPlugin(linearPlugin);
 ```
 

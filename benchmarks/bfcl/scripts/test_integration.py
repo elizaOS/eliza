@@ -304,7 +304,7 @@ async def main() -> int:
     
     # Check environment
     print("\n📋 Environment Check:")
-    print(f"  ElizaOS Available: {ELIZAOS_AVAILABLE}")
+    print(f"  elizaOS Available: {ELIZAOS_AVAILABLE}")
     
     keys = check_environment()
     for key, available in keys.items():

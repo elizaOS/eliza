@@ -1,3 +1,20 @@
+/**
+ * In-Memory Database Adapter
+ *
+ * WHY this adapter exists: Provides a zero-dependency database backend for
+ * testing, ephemeral agents, and environments where no persistent database
+ * is available. All data lives in a Map-based storage and is lost on restart.
+ *
+ * DESIGN: Implements the full IDatabaseAdapter interface with batch-first
+ * CRUD methods. Create methods return UUID[], update/delete methods return
+ * void and throw on failure. This matches the SQL adapter contract exactly.
+ *
+ * TRADE-OFFS:
+ * - No persistence (data lost on restart)
+ * - No vector search optimization (brute-force similarity scan)
+ * - No plugin schema support (registerPluginSchema/getPluginStore not implemented)
+ * - No messaging adapter support (IMessagingAdapter not implemented)
+ */
 import {
   type Agent,
   type Component,
@@ -86,7 +103,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     super();
     this.storage = storage;
     this.agentId = agentId;
-    this.db = storage;
     this.vectorIndex = new EphemeralHNSW();
   }
 
@@ -126,6 +142,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return this.storage;
   }
 
+  // ===============================
+  // Agent Methods
+  // ===============================
+
   async getAgent(agentId: UUID): Promise<Agent | null> {
     return this.storage.get<Agent>(COLLECTIONS.AGENTS, agentId);
   }
@@ -134,10 +154,39 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return this.storage.getAll<Agent>(COLLECTIONS.AGENTS);
   }
 
+  async getAgentsByIds(agentIds: UUID[]): Promise<Agent[]> {
+    const agents: Agent[] = [];
+    for (const id of agentIds) {
+      const agent = await this.getAgent(id);
+      if (agent) agents.push(agent);
+    }
+    return agents;
+  }
+
   async createAgent(agent: Partial<Agent>): Promise<boolean> {
     if (!agent.id) return false;
     await this.storage.set(COLLECTIONS.AGENTS, agent.id, agent);
     return true;
+  }
+
+  async createAgents(agents: Partial<Agent>[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const agent of agents) {
+      if (agent.id) {
+        await this.createAgent(agent);
+        ids.push(agent.id);
+      }
+    }
+    return ids;
+  }
+  
+  async upsertAgents(agents: Partial<Agent>[]): Promise<void> {
+    // WHY: InMemoryDB uses storage.set() which naturally handles both insert and update
+    for (const agent of agents) {
+      if (agent.id) {
+        await this.storage.set(COLLECTIONS.AGENTS, agent.id, agent);
+      }
+    }
   }
 
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
@@ -150,8 +199,32 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return true;
   }
 
+  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
+    for (const { agentId, agent } of updates) {
+      await this.updateAgent(agentId, agent);
+    }
+    return true;
+  }
+
   async deleteAgent(agentId: UUID): Promise<boolean> {
     return this.storage.delete(COLLECTIONS.AGENTS, agentId);
+  }
+
+  async deleteAgents(agentIds: UUID[]): Promise<boolean> {
+    for (const id of agentIds) {
+      await this.deleteAgent(id);
+    }
+    return true;
+  }
+  
+  async countAgents(): Promise<number> {
+    const agents = await this.storage.getAll<Partial<Agent>>(COLLECTIONS.AGENTS);
+    return agents.length;
+  }
+  
+  async cleanupAgents(): Promise<void> {
+    // WHY no-op: InMemoryDB persists to disk but has no time-based cleanup logic.
+    // Cleanup would require adding updatedAt tracking to all agent records.
   }
 
   async ensureEmbeddingDimension(dimension: number): Promise<void> {
@@ -161,13 +234,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
-  async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null> {
+  // ===============================
+  // Entity Methods
+  // ===============================
+
+  async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[]> {
     const entities: Entity[] = [];
     for (const id of entityIds) {
       const entity = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, id);
       if (entity) entities.push(entity);
     }
-    return entities.length > 0 ? entities : null;
+    return entities;
   }
 
   async getEntitiesForRoom(roomId: UUID, includeComponents = false): Promise<Entity[]> {
@@ -193,11 +270,185 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return entities;
   }
 
-  async createEntities(entities: Entity[]): Promise<boolean> {
+  async createEntities(entities: Entity[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
     for (const entity of entities) {
       if (!entity.id) continue;
       await this.storage.set(COLLECTIONS.ENTITIES, entity.id, entity);
+      ids.push(entity.id);
     }
+    return ids;
+  }
+  
+  async upsertEntities(entities: Entity[]): Promise<void> {
+    // WHY: storage.set() is idempotent - overwrites if exists, inserts if not
+    for (const entity of entities) {
+      if (entity.id) {
+        await this.storage.set(COLLECTIONS.ENTITIES, entity.id, entity);
+      }
+    }
+  }
+  
+  async searchEntitiesByName(params: {
+    query: string;
+    agentId: UUID;
+    limit?: number;
+  }): Promise<Entity[]> {
+    const lowerQuery = params.query.toLowerCase();
+    const limit = params.limit ?? 10;
+    const allEntities = await this.storage.getAll<Entity>(COLLECTIONS.ENTITIES);
+    const matches: Entity[] = [];
+    
+    for (const entity of allEntities) {
+      if (entity.agentId !== params.agentId) continue;
+      
+      const hasMatch = entity.names?.some(name => 
+        name.toLowerCase().includes(lowerQuery)
+      );
+      
+      if (hasMatch) {
+        matches.push(entity);
+        if (matches.length >= limit) break;
+      }
+    }
+    
+    return matches;
+  }
+  
+  async getEntitiesByNames(params: { names: string[]; agentId: UUID }): Promise<Entity[]> {
+    const nameSet = new Set(params.names);
+    const allEntities = await this.storage.getAll<Entity>(COLLECTIONS.ENTITIES);
+    const matches: Entity[] = [];
+    
+    for (const entity of allEntities) {
+      if (entity.agentId !== params.agentId) continue;
+      
+      const hasMatch = entity.names?.some(name => nameSet.has(name));
+      if (hasMatch) {
+        matches.push(entity);
+      }
+    }
+    
+    return matches;
+  }
+
+  async queryEntities(params: {
+    componentType?: string;
+    componentDataFilter?: Record<string, unknown>;
+    agentId?: UUID;
+    entityIds?: UUID[];
+    worldId?: UUID;
+    limit?: number;
+    offset?: number;
+    includeAllComponents?: boolean;
+    entityContext?: UUID;
+  }): Promise<Entity[]> {
+    const { componentType, componentDataFilter, agentId, entityIds, worldId, limit, offset, includeAllComponents = false } = params;
+
+    // TRAP: Prevent full table scans - require at least one meaningful filter OR explicit limit
+    const hasFilter = componentType || componentDataFilter || entityIds || agentId || worldId;
+    if (!hasFilter && !limit) {
+      throw new Error('queryEntities requires at least one filter (componentType, componentDataFilter, entityIds, agentId, worldId) or an explicit limit');
+    }
+
+    const allComponents = await this.storage.getAll<Component>(COLLECTIONS.COMPONENTS);
+    const matchingEntityIds = new Set<UUID>();
+
+    // Filter components to find matching entities
+    for (const component of allComponents) {
+      // Apply filters
+      if (agentId && component.agentId !== agentId) continue;
+      if (worldId && component.worldId !== worldId) continue;
+      if (entityIds && !entityIds.includes(component.entityId)) continue;
+      if (componentType && component.type !== componentType) continue;
+      
+      if (componentDataFilter) {
+        // TRAP: InMemory must implement deep-contains, not shallow equality
+        if (!this.deepContains(component.data || {}, componentDataFilter)) continue;
+      }
+      
+      matchingEntityIds.add(component.entityId);
+    }
+
+    // Fetch entities and their components
+    // TRAP: Only count entities that actually exist (storage.get returns non-null).
+    // If we counted null entities, they'd burn pagination slots and callers would
+    // get fewer results than requested.
+    const entities: Entity[] = [];
+    let skipped = 0;
+    let collected = 0;
+    const startIdx = offset ?? 0;
+    const maxCount = limit ?? Infinity;
+
+    for (const entityId of matchingEntityIds) {
+      if (collected >= maxCount) break;
+
+      const entity = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, entityId);
+      if (!entity) continue;
+
+      // Apply offset (skip first N real entities)
+      if (skipped < startIdx) {
+        skipped++;
+        continue;
+      }
+
+      // Attach components
+      const entityComponents: Component[] = [];
+      for (const comp of allComponents) {
+        if (comp.entityId !== entityId) continue;
+
+        if (!includeAllComponents && componentType && comp.type !== componentType) {
+          continue;
+        }
+
+        entityComponents.push(comp);
+      }
+
+      entities.push({
+        ...entity,
+        components: entityComponents,
+      });
+
+      collected++;
+    }
+
+    return entities;
+  }
+
+  /**
+   * Deep containment check: does target contain all keys/values from filter?
+   * For primitives: exact equality
+   * For objects: recursive containment
+   * For arrays: filter array must be subset of target array
+   */
+  private deepContains(target: unknown, filter: unknown): boolean {
+    if (filter === null || filter === undefined) return true;
+    if (target === null || target === undefined) return false;
+    
+    // Primitive equality
+    if (typeof filter !== 'object') {
+      return target === filter;
+    }
+    
+    // Array containment: filter array must be subset of target array
+    if (Array.isArray(filter)) {
+      if (!Array.isArray(target)) return false;
+      return filter.every(filterItem =>
+        target.some(targetItem => this.deepContains(targetItem, filterItem))
+      );
+    }
+    
+    // Object containment: all filter keys must exist in target with matching values
+    if (typeof target !== 'object' || Array.isArray(target)) return false;
+    
+    const filterObj = filter as Record<string, unknown>;
+    const targetObj = target as Record<string, unknown>;
+    
+    for (const key of Object.keys(filterObj)) {
+      if (!(key in targetObj)) return false;
+      if (!this.deepContains(targetObj[key], filterObj[key])) return false;
+    }
+    
     return true;
   }
 
@@ -205,6 +456,22 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     if (!entity.id) return;
     await this.storage.set(COLLECTIONS.ENTITIES, entity.id, entity);
   }
+
+  async updateEntities(entities: Entity[]): Promise<void> {
+    for (const entity of entities) {
+      await this.updateEntity(entity);
+    }
+  }
+
+  async deleteEntities(entityIds: UUID[]): Promise<void> {
+    for (const id of entityIds) {
+      await this.storage.delete(COLLECTIONS.ENTITIES, id);
+    }
+  }
+
+  // ===============================
+  // Component Methods
+  // ===============================
 
   async getComponent(
     entityId: UUID,
@@ -239,19 +506,235 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return true;
   }
 
+  async createComponents(components: Component[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const component of components) {
+      if (component.id) {
+        await this.createComponent(component);
+        ids.push(component.id);
+      }
+    }
+    return ids;
+  }
+
+  async getComponentsByIds(componentIds: UUID[]): Promise<Component[]> {
+    const components: Component[] = [];
+    for (const id of componentIds) {
+      const c = await this.storage.get<Component>(COLLECTIONS.COMPONENTS, id);
+      if (c) components.push(c);
+    }
+    return components;
+  }
+
   async updateComponent(component: Component): Promise<void> {
     if (!component.id) return;
     await this.storage.set(COLLECTIONS.COMPONENTS, component.id, component);
+  }
+
+  async updateComponents(components: Component[]): Promise<void> {
+    for (const component of components) {
+      await this.updateComponent(component);
+    }
   }
 
   async deleteComponent(componentId: UUID): Promise<void> {
     await this.storage.delete(COLLECTIONS.COMPONENTS, componentId);
   }
 
+  async deleteComponents(componentIds: UUID[]): Promise<void> {
+    for (const id of componentIds) {
+      await this.deleteComponent(id);
+    }
+  }
+
+  async upsertComponents(
+    components: Component[],
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
+    // WHY: InMemory upsert finds existing components by natural key, NOT by id.
+    // The natural key is (entityId, type, worldId, sourceEntityId).
+    for (const component of components) {
+      // Find existing component by natural key
+      const allComponents = await this.storage.list(COLLECTIONS.COMPONENTS);
+      let existingId: UUID | null = null;
+      
+      for (const [id, existing] of allComponents) {
+        const comp = existing as Component;
+        if (
+          comp.entityId === component.entityId &&
+          comp.type === component.type &&
+          (comp.worldId ?? null) === (component.worldId ?? null) &&
+          (comp.sourceEntityId ?? null) === (component.sourceEntityId ?? null)
+        ) {
+          existingId = id as UUID;
+          break;
+        }
+      }
+
+      if (existingId) {
+        // Update existing: merge mutable fields only
+        const existing = await this.storage.get<Component>(COLLECTIONS.COMPONENTS, existingId);
+        if (!existing) continue;
+        const updated: Component = {
+          ...existing,
+          data: component.data,
+          agentId: component.agentId,
+          roomId: component.roomId,
+          // Preserve: id, entityId, type, worldId, sourceEntityId, createdAt
+        };
+        await this.storage.set(COLLECTIONS.COMPONENTS, existingId, updated);
+      } else {
+        // Insert new with provided id
+        await this.storage.set(COLLECTIONS.COMPONENTS, component.id, {
+          ...component,
+          createdAt: component.createdAt ?? Date.now(),
+        });
+      }
+    }
+  }
+
+  async patchComponent(
+    componentId: UUID,
+    ops: import("@elizaos/core").PatchOp[],
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
+    if (ops.length === 0) return;
+
+    const component = await this.storage.get<Component>(COLLECTIONS.COMPONENTS, componentId);
+    if (!component) {
+      throw new Error(`Component not found: ${componentId}`);
+    }
+
+    // Clone data to avoid mutating original
+    const data = JSON.parse(JSON.stringify(component.data || {}));
+
+    // Apply each operation
+    for (const op of ops) {
+      const segments = this.validatePatchPath(op.path);
+
+      switch (op.op) {
+        case 'set': {
+          if (op.value === undefined) {
+            throw new Error(`'set' operation requires a value`);
+          }
+          this.setNestedValue(data, segments, op.value);
+          break;
+        }
+        
+        case 'push': {
+          if (op.value === undefined) {
+            throw new Error(`'push' operation requires a value`);
+          }
+          const arr = this.getNestedValue(data, segments);
+          if (!Array.isArray(arr)) {
+            throw new Error(`Cannot push to non-array at path "${op.path}"`);
+          }
+          arr.push(op.value);
+          break;
+        }
+        
+        case 'remove': {
+          // Idempotent: no error if path doesn't exist
+          this.removeNestedValue(data, segments);
+          break;
+        }
+        
+        case 'increment': {
+          if (op.value === undefined) {
+            throw new Error(`'increment' operation requires a value`);
+          }
+          const current = this.getNestedValue(data, segments);
+          if (typeof current !== 'number') {
+            throw new Error(`Cannot increment non-numeric value at path "${op.path}"`);
+          }
+          this.setNestedValue(data, segments, current + Number(op.value));
+          break;
+        }
+        
+        default:
+          throw new Error(`Unknown patch operation: ${(op as import("@elizaos/core").PatchOp).op}`);
+      }
+    }
+
+    // Save updated component
+    await this.storage.set(COLLECTIONS.COMPONENTS, componentId, {
+      ...component,
+      data,
+    });
+  }
+
+  /**
+   * Validate patch path segments (same logic as SQL adapters)
+   */
+  private validatePatchPath(path: string): string[] {
+    const PATH_SEGMENT_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+    const segments = path.split('.');
+    for (const seg of segments) {
+      if (!PATH_SEGMENT_RE.test(seg) && !/^\d+$/.test(seg)) {
+        throw new Error(
+          `Invalid patch path segment: "${seg}". Only alphanumeric, underscore, and numeric indices allowed.`
+        );
+      }
+    }
+    return segments;
+  }
+
+  /**
+   * Get value at nested path in object
+   */
+  private getNestedValue(obj: any, segments: string[]): any {
+    let current = obj;
+    for (const seg of segments) {
+      if (current == null) return undefined;
+      current = current[seg];
+    }
+    return current;
+  }
+
+  /**
+   * Set value at nested path in object (creates path if missing)
+   */
+  private setNestedValue(obj: any, segments: string[], value: unknown): void {
+    let current = obj;
+    for (let i = 0; i < segments.length - 1; i++) {
+      const seg = segments[i];
+      if (current[seg] == null) {
+        // Create intermediate object or array based on next segment
+        const nextSeg = segments[i + 1];
+        current[seg] = /^\d+$/.test(nextSeg) ? [] : {};
+      }
+      current = current[seg];
+    }
+    current[segments[segments.length - 1]] = value;
+  }
+
+  /**
+   * Remove value at nested path in object (idempotent if missing)
+   */
+  private removeNestedValue(obj: any, segments: string[]): void {
+    if (segments.length === 0) return;
+    
+    let current = obj;
+    for (let i = 0; i < segments.length - 1; i++) {
+      if (current == null) return; // Path doesn't exist - idempotent
+      current = current[segments[i]];
+    }
+    
+    if (current != null) {
+      delete current[segments[segments.length - 1]];
+    }
+  }
+
+  // ===============================
+  // Memory Methods
+  // ===============================
+
   async getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
+    /** @deprecated use limit */
     count?: number;
+    limit?: number;
     offset?: number;
     unique?: boolean;
     tableName: string;
@@ -259,6 +742,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     end?: number;
     roomId?: UUID;
     worldId?: UUID;
+    metadata?: Record<string, unknown>;
+    orderBy?: 'createdAt';
+    orderDirection?: 'asc' | 'desc';
   }): Promise<Memory[]> {
     let memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (params.entityId && m.entityId !== params.entityId) return false;
@@ -269,16 +755,29 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (params.start && m.createdAt && m.createdAt < params.start) return false;
       if (params.end && m.createdAt && m.createdAt > params.end) return false;
       if (params.unique && !m.unique) return false;
+      if (params.metadata) {
+        if (!m.metadata) return false;
+        for (const [key, value] of Object.entries(params.metadata)) {
+          if (!(key in m.metadata)) return false;
+          if (JSON.stringify(m.metadata[key]) !== JSON.stringify(value)) return false;
+        }
+      }
       return true;
     });
 
-    memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    // Sort by createdAt; default DESC (newest first) to match SQL adapter behavior
+    if (params.orderDirection === 'asc') {
+      memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+    } else {
+      memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    }
 
     if (params.offset) {
       memories = memories.slice(params.offset);
     }
-    if (params.count) {
-      memories = memories.slice(0, params.count);
+    const effectiveLimit = params.limit ?? params.count;
+    if (effectiveLimit) {
+      memories = memories.slice(0, effectiveLimit);
     }
 
     return toMemories(memories);
@@ -363,49 +862,6 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return 1;
   }
 
-  async log(params: { body: LogBody; entityId: UUID; roomId: UUID; type: string }): Promise<void> {
-    const id = crypto.randomUUID() as UUID;
-    const log: Log = {
-      id,
-      entityId: params.entityId,
-      roomId: params.roomId,
-      body: params.body,
-      type: params.type,
-      createdAt: new Date(),
-    };
-    await this.storage.set(COLLECTIONS.LOGS, id, log);
-  }
-
-  async getLogs(params: {
-    entityId?: UUID;
-    roomId?: UUID;
-    type?: string;
-    count?: number;
-    offset?: number;
-  }): Promise<Log[]> {
-    let logs = await this.storage.getWhere<Log>(COLLECTIONS.LOGS, (l) => {
-      if (params.entityId && l.entityId !== params.entityId) return false;
-      if (params.roomId && l.roomId !== params.roomId) return false;
-      if (params.type && l.type !== params.type) return false;
-      return true;
-    });
-
-    logs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    if (params.offset) {
-      logs = logs.slice(params.offset);
-    }
-    if (params.count) {
-      logs = logs.slice(0, params.count);
-    }
-
-    return logs;
-  }
-
-  async deleteLog(logId: UUID): Promise<void> {
-    await this.storage.delete(COLLECTIONS.LOGS, logId);
-  }
-
   async searchMemories(params: {
     tableName: string;
     embedding: number[];
@@ -467,6 +923,16 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return id;
   }
 
+  async createMemories(
+    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>
+  ): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const { memory, tableName, unique } of memories) {
+      ids.push(await this.createMemory(memory, tableName, unique));
+    }
+    return ids;
+  }
+
   async updateMemory(
     memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }
   ): Promise<boolean> {
@@ -491,25 +957,109 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return true;
   }
 
+  async updateMemories(
+    memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>
+  ): Promise<void> {
+    const errors: Array<{ index: number; id: UUID }> = [];
+    for (let i = 0; i < memories.length; i++) {
+      const success = await this.updateMemory(memories[i]);
+      if (!success) {
+        errors.push({ index: i, id: memories[i].id });
+      }
+    }
+    if (errors.length > 0) {
+      throw new Error(`Failed to update ${errors.length} of ${memories.length} memories`);
+    }
+  }
+
   async deleteMemory(memoryId: UUID): Promise<void> {
     await this.storage.delete(COLLECTIONS.MEMORIES, memoryId);
     await this.vectorIndex.remove(memoryId);
   }
 
-  async deleteManyMemories(memoryIds: UUID[]): Promise<void> {
+  async deleteMemories(memoryIds: UUID[]): Promise<void> {
     for (const id of memoryIds) {
       await this.deleteMemory(id);
     }
   }
 
+  async upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+    _options?: { entityContext?: UUID },
+  ): Promise<void> {
+    for (const { memory, tableName } of memories) {
+      const memoryId = memory.id ?? (crypto.randomUUID() as UUID);
+      await this.storage.set(COLLECTIONS.MEMORIES, memoryId, {
+        ...memory,
+        id: memoryId,
+        type: tableName,
+        createdAt: memory.createdAt ?? Date.now(),
+        metadata: {
+          ...(memory.metadata ?? {}),
+          type: tableName,
+        } as StoredMemory["metadata"],
+      });
+
+      // Update vector index so upserted memories are visible to searchMemories
+      if (memory.embedding && memory.embedding.length > 0) {
+        await this.vectorIndex.add(memoryId, memory.embedding);
+      }
+    }
+  }
+
+  async deleteManyMemories(memoryIds: UUID[]): Promise<void> {
+    await this.deleteMemories(memoryIds);
+  }
+
   async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
     const memories = await this.getMemories({ roomId, tableName });
-    await this.deleteManyMemories(
+    await this.deleteMemories(
       memories.map((m) => m.id).filter((id): id is UUID => id !== undefined)
     );
   }
 
-  async countMemories(roomId: UUID, unique = false, tableName?: string): Promise<number> {
+  async countMemories(
+    roomIdOrParams: UUID | {
+      roomId?: UUID;
+      unique?: boolean;
+      tableName?: string;
+      entityId?: UUID;
+      agentId?: UUID;
+      metadata?: Record<string, unknown>;
+    },
+    unique?: boolean,
+    tableName?: string,
+  ): Promise<number> {
+    // Runtime type detection: object arg = new API, string arg = legacy positional
+    const isObjectParams = typeof roomIdOrParams === 'object' && roomIdOrParams !== null && !unique && !tableName;
+
+    if (isObjectParams) {
+      const params = roomIdOrParams as {
+        roomId?: UUID;
+        unique?: boolean;
+        tableName?: string;
+        entityId?: UUID;
+        agentId?: UUID;
+        metadata?: Record<string, unknown>;
+      };
+      return this.storage.count<StoredMemory>(COLLECTIONS.MEMORIES, (memory) => {
+        if (params.roomId && memory.roomId !== params.roomId) return false;
+        if (params.unique && !memory.unique) return false;
+        if (params.tableName && memory.metadata?.type !== params.tableName) return false;
+        if (params.entityId && memory.entityId !== params.entityId) return false;
+        if (params.agentId && memory.agentId !== params.agentId) return false;
+        if (params.metadata) {
+          const data = memory.metadata ?? {};
+          for (const [key, value] of Object.entries(params.metadata)) {
+            if (data[key] !== value) return false;
+          }
+        }
+        return true;
+      });
+    }
+
+    // Legacy positional params
+    const roomId = roomIdOrParams as UUID;
     return this.storage.count<StoredMemory>(COLLECTIONS.MEMORIES, (memory) => {
       if (memory.roomId !== roomId) return false;
       if (unique && !memory.unique) return false;
@@ -538,18 +1088,133 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return toMemories(memories);
   }
 
+  // ===============================
+  // Log Methods
+  // ===============================
+
+  async log(params: { body: LogBody; entityId: UUID; roomId: UUID; type: string }): Promise<void> {
+    const id = crypto.randomUUID() as UUID;
+    const log: Log = {
+      id,
+      entityId: params.entityId,
+      roomId: params.roomId,
+      body: params.body,
+      type: params.type,
+      createdAt: new Date(),
+    };
+    await this.storage.set(COLLECTIONS.LOGS, id, log);
+  }
+
+  async getLogsByIds(logIds: UUID[]): Promise<Log[]> {
+    const logs: Log[] = [];
+    for (const id of logIds) {
+      const log = await this.storage.get<Log>(COLLECTIONS.LOGS, id);
+      if (log) logs.push(log);
+    }
+    return logs;
+  }
+
+  async createLogs(
+    params: Array<{ body: LogBody; entityId: UUID; roomId: UUID; type: string }>
+  ): Promise<void> {
+    for (const param of params) {
+      await this.log(param);
+    }
+  }
+
+  async updateLogs(logs: Array<{ id: UUID; updates: Partial<Log> }>): Promise<void> {
+    for (const { id, updates } of logs) {
+      const log = await this.storage.get<Log>(COLLECTIONS.LOGS, id);
+      if (log) {
+        await this.storage.set(COLLECTIONS.LOGS, id, { ...log, ...updates });
+      }
+    }
+  }
+
+  async getLogs(params: {
+    entityId?: UUID;
+    roomId?: UUID;
+    type?: string;
+    count?: number;
+    offset?: number;
+  }): Promise<Log[]> {
+    let logs = await this.storage.getWhere<Log>(COLLECTIONS.LOGS, (l) => {
+      if (params.entityId && l.entityId !== params.entityId) return false;
+      if (params.roomId && l.roomId !== params.roomId) return false;
+      if (params.type && l.type !== params.type) return false;
+      return true;
+    });
+
+    logs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    if (params.offset) {
+      logs = logs.slice(params.offset);
+    }
+    if (params.count) {
+      logs = logs.slice(0, params.count);
+    }
+
+    return logs;
+  }
+
+  async deleteLog(logId: UUID): Promise<void> {
+    await this.storage.delete(COLLECTIONS.LOGS, logId);
+  }
+
+  async deleteLogs(logIds: UUID[]): Promise<void> {
+    for (const id of logIds) {
+      await this.deleteLog(id);
+    }
+  }
+
+  // ===============================
+  // World Methods
+  // ===============================
+
   async createWorld(world: World): Promise<UUID> {
     const id = world.id ?? (crypto.randomUUID() as UUID);
     await this.storage.set(COLLECTIONS.WORLDS, id, { ...world, id });
     return id;
   }
 
+  async createWorlds(worlds: World[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const world of worlds) {
+      ids.push(await this.createWorld(world));
+    }
+    return ids;
+  }
+  
+  async upsertWorlds(worlds: World[]): Promise<void> {
+    // WHY: storage.set() handles both insert (new id) and update (existing id)
+    for (const world of worlds) {
+      if (world.id) {
+        await this.storage.set(COLLECTIONS.WORLDS, world.id, world);
+      }
+    }
+  }
+
   async getWorld(id: UUID): Promise<World | null> {
     return this.storage.get<World>(COLLECTIONS.WORLDS, id);
   }
 
+  async getWorldsByIds(worldIds: UUID[]): Promise<World[]> {
+    const worlds: World[] = [];
+    for (const id of worldIds) {
+      const world = await this.getWorld(id);
+      if (world) worlds.push(world);
+    }
+    return worlds;
+  }
+
   async removeWorld(id: UUID): Promise<void> {
     await this.storage.delete(COLLECTIONS.WORLDS, id);
+  }
+
+  async deleteWorlds(worldIds: UUID[]): Promise<void> {
+    for (const id of worldIds) {
+      await this.removeWorld(id);
+    }
   }
 
   async getAllWorlds(): Promise<World[]> {
@@ -561,13 +1226,23 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.set(COLLECTIONS.WORLDS, world.id, world);
   }
 
-  async getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null> {
+  async updateWorlds(worlds: World[]): Promise<void> {
+    for (const world of worlds) {
+      await this.updateWorld(world);
+    }
+  }
+
+  // ===============================
+  // Room Methods
+  // ===============================
+
+  async getRoomsByIds(roomIds: UUID[]): Promise<Room[]> {
     const rooms: Room[] = [];
     for (const id of roomIds) {
       const room = await this.storage.get<Room>(COLLECTIONS.ROOMS, id);
       if (room) rooms.push(room);
     }
-    return rooms.length > 0 ? rooms : null;
+    return rooms;
   }
 
   async createRooms(rooms: Room[]): Promise<UUID[]> {
@@ -579,6 +1254,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
     return ids;
   }
+  
+  async upsertRooms(rooms: Room[]): Promise<void> {
+    // WHY: storage.set() is atomic upsert for key-value stores
+    for (const room of rooms) {
+      if (room.id) {
+        await this.storage.set(COLLECTIONS.ROOMS, room.id, room);
+      }
+    }
+  }
 
   async deleteRoom(roomId: UUID): Promise<void> {
     await this.storage.delete(COLLECTIONS.ROOMS, roomId);
@@ -587,6 +1271,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       (p) => p.roomId === roomId
     );
     await this.storage.deleteWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => m.roomId === roomId);
+  }
+
+  async deleteRooms(roomIds: UUID[]): Promise<void> {
+    for (const id of roomIds) {
+      await this.deleteRoom(id);
+    }
   }
 
   async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
@@ -601,6 +1291,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async updateRoom(room: Room): Promise<void> {
     if (!room.id) return;
     await this.storage.set(COLLECTIONS.ROOMS, room.id, room);
+  }
+
+  async updateRooms(rooms: Room[]): Promise<void> {
+    for (const room of rooms) {
+      await this.updateRoom(room);
+    }
   }
 
   async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
@@ -623,6 +1319,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return this.storage.getWhere<Room>(COLLECTIONS.ROOMS, (r) => r.worldId === worldId);
   }
 
+  // ===============================
+  // Participant Methods
+  // ===============================
+
   async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
     const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
@@ -637,6 +1337,37 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       }
     }
     return true;
+  }
+
+  async deleteParticipants(
+    participants: Array<{ entityId: UUID; roomId: UUID }>
+  ): Promise<boolean> {
+    for (const { entityId, roomId } of participants) {
+      await this.removeParticipant(entityId, roomId);
+    }
+    return true;
+  }
+
+  async updateParticipants(participants: Array<{
+    entityId: UUID;
+    roomId: UUID;
+    updates: Partial<Participant>;
+  }>): Promise<void> {
+    for (const { entityId, roomId, updates } of participants) {
+      const stored = await this.storage.getWhere<StoredParticipant>(
+        COLLECTIONS.PARTICIPANTS,
+        (p) => p.entityId === entityId && p.roomId === roomId
+      );
+      if (stored.length > 0) {
+        const participant = stored[0];
+        if (participant.id) {
+          await this.storage.set(COLLECTIONS.PARTICIPANTS, participant.id, {
+            ...participant,
+            ...updates,
+          });
+        }
+      }
+    }
   }
 
   async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
@@ -674,7 +1405,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return participants.length > 0;
   }
 
-  async addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean> {
+  async createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]> {
+    const ids: UUID[] = [];
     for (const entityId of entityIds) {
       const exists = await this.isRoomParticipant(roomId, entityId);
       if (!exists) {
@@ -685,9 +1417,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
           roomId,
         };
         await this.storage.set(COLLECTIONS.PARTICIPANTS, id, participant);
+        ids.push(id as UUID);
+      } else {
+        // Already exists - return the entityId as the participant ID
+        ids.push(entityId);
       }
     }
-    return true;
+    return ids;
   }
 
   async getParticipantUserState(
@@ -705,7 +1441,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return null;
   }
 
-  async setParticipantUserState(
+  async updateParticipantUserState(
     roomId: UUID,
     entityId: UUID,
     state: "FOLLOWED" | "MUTED" | null
@@ -725,12 +1461,16 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
+  // ===============================
+  // Relationship Methods
+  // ===============================
+
   async createRelationship(params: {
     sourceEntityId: UUID;
     targetEntityId: UUID;
     tags?: string[];
     metadata?: Metadata;
-  }): Promise<boolean> {
+  }): Promise<UUID> {
     const id = crypto.randomUUID() as UUID;
     const relationship: StoredRelationship = {
       id,
@@ -742,7 +1482,23 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       createdAt: new Date().toISOString(),
     };
     await this.storage.set(COLLECTIONS.RELATIONSHIPS, id, relationship);
-    return true;
+    return id;
+  }
+
+  async createRelationships(
+    relationships: Array<{
+      sourceEntityId: UUID;
+      targetEntityId: UUID;
+      tags?: string[];
+      metadata?: Metadata;
+    }>
+  ): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const rel of relationships) {
+      const id = await this.createRelationship(rel);
+      ids.push(id);
+    }
+    return ids;
   }
 
   async getRelationship(params: {
@@ -794,6 +1550,25 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }));
   }
 
+  async getRelationshipsByIds(relationshipIds: UUID[]): Promise<Relationship[]> {
+    const relationships: Relationship[] = [];
+    for (const id of relationshipIds) {
+      const r = await this.storage.get<StoredRelationship>(COLLECTIONS.RELATIONSHIPS, id);
+      if (r) {
+        relationships.push({
+          id: r.id as UUID,
+          sourceEntityId: r.sourceEntityId as UUID,
+          targetEntityId: r.targetEntityId as UUID,
+          agentId: (r.agentId as UUID) ?? this.agentId,
+          tags: r.tags ?? [],
+          metadata: r.metadata ?? {},
+          createdAt: r.createdAt,
+        });
+      }
+    }
+    return relationships;
+  }
+
   async updateRelationship(relationship: Relationship): Promise<void> {
     const existing = await this.getRelationship({
       sourceEntityId: relationship.sourceEntityId,
@@ -815,6 +1590,22 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.set(COLLECTIONS.RELATIONSHIPS, existing.id, stored);
   }
 
+  async updateRelationships(relationships: Relationship[]): Promise<void> {
+    for (const rel of relationships) {
+      await this.updateRelationship(rel);
+    }
+  }
+
+  async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
+    for (const id of relationshipIds) {
+      await this.storage.delete(COLLECTIONS.RELATIONSHIPS, id);
+    }
+  }
+
+  // ===============================
+  // Cache Methods
+  // ===============================
+
   async getCache<T>(key: string): Promise<T | undefined> {
     const cached = await this.storage.get<{ value: T; expiresAt?: number }>(COLLECTIONS.CACHE, key);
     if (!cached) return undefined;
@@ -827,8 +1618,24 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return cached.value;
   }
 
+  async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
+    const map = new Map<string, T>();
+    for (const key of keys) {
+      const value = await this.getCache<T>(key);
+      if (value !== undefined) map.set(key, value);
+    }
+    return map;
+  }
+
   async setCache<T>(key: string, value: T): Promise<boolean> {
     await this.storage.set(COLLECTIONS.CACHE, key, { value });
+    return true;
+  }
+
+  async setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean> {
+    for (const { key, value } of entries) {
+      await this.setCache(key, value);
+    }
     return true;
   }
 
@@ -836,10 +1643,29 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return this.storage.delete(COLLECTIONS.CACHE, key);
   }
 
+  async deleteCaches(keys: string[]): Promise<boolean> {
+    for (const key of keys) {
+      await this.deleteCache(key);
+    }
+    return true;
+  }
+
+  // ===============================
+  // Task Methods
+  // ===============================
+
   async createTask(task: Task): Promise<UUID> {
     const id = task.id ?? (crypto.randomUUID() as UUID);
     await this.storage.set(COLLECTIONS.TASKS, id, { ...task, id });
     return id;
+  }
+
+  async createTasks(tasks: Task[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const task of tasks) {
+      ids.push(await this.createTask(task));
+    }
+    return ids;
   }
 
   async getTasks(params: { roomId?: UUID; tags?: string[]; entityId?: UUID }): Promise<Task[]> {
@@ -857,6 +1683,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return this.storage.get<Task>(COLLECTIONS.TASKS, id);
   }
 
+  async getTasksByIds(taskIds: UUID[]): Promise<Task[]> {
+    const tasks: Task[] = [];
+    for (const id of taskIds) {
+      const task = await this.getTask(id);
+      if (task) tasks.push(task);
+    }
+    return tasks;
+  }
+
   async getTasksByName(name: string): Promise<Task[]> {
     return this.storage.getWhere<Task>(COLLECTIONS.TASKS, (t) => t.name === name);
   }
@@ -867,8 +1702,20 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     await this.storage.set(COLLECTIONS.TASKS, id, { ...existing, ...task });
   }
 
+  async updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void> {
+    for (const { id, task } of updates) {
+      await this.updateTask(id, task);
+    }
+  }
+
   async deleteTask(id: UUID): Promise<void> {
     await this.storage.delete(COLLECTIONS.TASKS, id);
+  }
+
+  async deleteTasks(taskIds: UUID[]): Promise<void> {
+    for (const id of taskIds) {
+      await this.deleteTask(id);
+    }
   }
 
   // ===============================
@@ -888,6 +1735,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return id;
   }
 
+  async createPairingRequests(requests: PairingRequest[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const request of requests) {
+      ids.push(await this.createPairingRequest(request));
+    }
+    return ids;
+  }
+
   async updatePairingRequest(request: PairingRequest): Promise<void> {
     const existing = await this.storage.get<PairingRequest>(
       COLLECTIONS.PAIRING_REQUESTS,
@@ -901,8 +1756,20 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     }
   }
 
+  async updatePairingRequests(requests: PairingRequest[]): Promise<void> {
+    for (const request of requests) {
+      await this.updatePairingRequest(request);
+    }
+  }
+
   async deletePairingRequest(id: UUID): Promise<void> {
     await this.storage.delete(COLLECTIONS.PAIRING_REQUESTS, id);
+  }
+
+  async deletePairingRequests(ids: UUID[]): Promise<void> {
+    for (const id of ids) {
+      await this.deletePairingRequest(id);
+    }
   }
 
   async getPairingAllowlist(
@@ -921,7 +1788,54 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return id;
   }
 
+  async createPairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<UUID[]> {
+    const ids: UUID[] = [];
+    for (const entry of entries) {
+      ids.push(await this.createPairingAllowlistEntry(entry));
+    }
+    return ids;
+  }
+
+  async updatePairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<void> {
+    for (const entry of entries) {
+      if (!entry.id) continue;
+      const existing = await this.storage.get<PairingAllowlistEntry>(
+        COLLECTIONS.PAIRING_ALLOWLIST,
+        entry.id
+      );
+      if (existing) {
+        await this.storage.set(COLLECTIONS.PAIRING_ALLOWLIST, entry.id, { ...existing, ...entry });
+      }
+    }
+  }
+
   async deletePairingAllowlistEntry(id: UUID): Promise<void> {
     await this.storage.delete(COLLECTIONS.PAIRING_ALLOWLIST, id);
+  }
+
+  async deletePairingAllowlistEntries(ids: UUID[]): Promise<void> {
+    for (const id of ids) {
+      await this.deletePairingAllowlistEntry(id);
+    }
+  }
+
+  /**
+   * Execute a callback (NOT atomic - InMemory does not support true transactions).
+   * 
+   * WARNING: InMemory transactions are NOT atomic. Changes are not rolled back on error.
+   * If step 2 of a callback fails, step 1's changes are ALREADY APPLIED and NOT reversed.
+   * 
+   * This is acceptable for dev/test environments but NOT for production critical paths
+   * where atomicity is required. Use SQL adapters (PostgreSQL/MySQL) for true transactions.
+   * 
+   * @param callback Function that receives this adapter (not a proxy)
+   * @returns Promise resolving to callback's return value
+   */
+  async transaction<T>(
+    callback: (tx: import("@elizaos/core").IDatabaseAdapter<IStorage>) => Promise<T>,
+    _options?: { entityContext?: UUID },
+  ): Promise<T> {
+    // No transaction semantics - just execute the callback with this adapter
+    return callback(this);
   }
 }

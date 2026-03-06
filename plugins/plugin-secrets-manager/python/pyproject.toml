@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "elizaos-plugin-secrets-manager"
 version = "0.1.0"
-description = "Multi-level secrets management plugin for ElizaOS with encryption and dynamic plugin activation"
+description = "Multi-level secrets management plugin for elizaOS with encryption and dynamic plugin activation"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
-    { name = "ElizaOS Team" }
+    { name = "elizaOS Team" }
 ]
 keywords = [
     "elizaos",

@@ -2,9 +2,9 @@
 name = "elizaos-plugin-imessage"
 version = "2.0.0-alpha.1"
 edition = "2021"
-description = "iMessage plugin for ElizaOS agents (macOS)"
+description = "iMessage plugin for elizaOS agents (macOS)"
 license = "MIT"
-authors = ["ElizaOS Contributors"]
+authors = ["elizaOS Contributors"]
 repository = "https://github.com/elizaos/eliza"
 keywords = ["elizaos", "plugin", "imessage", "apple", "macos"]
 categories = ["api-bindings", "asynchronous"]

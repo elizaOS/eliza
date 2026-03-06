@@ -6,7 +6,7 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
   "actions": [
     {
       "name": "CREATE_PLUGIN",
-      "description": "Create an ElizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation.",
+      "description": "Create an elizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation.",
       "similes": [
         "create plugin",
         "build plugin",
@@ -94,7 +94,7 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "DESCRIBE_PLUGIN",
-      "description": "Generate and create an ElizaOS plugin from a natural language description. Do NOT use for n8n workflow creation.",
+      "description": "Generate and create an elizaOS plugin from a natural language description. Do NOT use for n8n workflow creation.",
       "similes": [
         "describe plugin",
         "plugin from description",
@@ -129,7 +129,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
   "actions": [
     {
       "name": "CREATE_PLUGIN",
-      "description": "Create an ElizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation.",
+      "description": "Create an elizaOS plugin from a structured JSON specification. Use this when the user provides a complete plugin spec as JSON. Do NOT use for n8n workflow creation.",
       "similes": [
         "create plugin",
         "build plugin",
@@ -217,7 +217,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "DESCRIBE_PLUGIN",
-      "description": "Generate and create an ElizaOS plugin from a natural language description. Do NOT use for n8n workflow creation.",
+      "description": "Generate and create an elizaOS plugin from a natural language description. Do NOT use for n8n workflow creation.",
       "similes": [
         "describe plugin",
         "plugin from description",

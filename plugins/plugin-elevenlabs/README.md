@@ -1,6 +1,6 @@
-# ElevenLabs Plugin for ElizaOS
+# ElevenLabs Plugin for elizaOS
 
-High-quality text-to-speech (TTS) and speech-to-text (STT) plugin for ElizaOS using the ElevenLabs API.
+High-quality text-to-speech (TTS) and speech-to-text (STT) plugin for elizaOS using the ElevenLabs API.
 
 ## Features
 
@@ -207,5 +207,5 @@ MIT
 ## Links
 
 - [ElevenLabs API Documentation](https://docs.elevenlabs.io/)
-- [ElizaOS Documentation](https://elizaos.github.io/)
+- [elizaOS Documentation](https://elizaos.github.io/)
 - [GitHub Repository](https://github.com/elizaos-plugins/plugin-elevenlabs)

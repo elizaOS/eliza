@@ -6,6 +6,7 @@ from elizaos_plugin_planning.providers.base import Provider, ProviderResult
 from elizaos_plugin_planning.types import (
     PLAN_SOURCE,
     PLAN_STATUS_LABELS,
+    PLUGIN_PLANS_TABLE,
     TaskStatus,
     decode_plan,
     get_plan_progress,
@@ -14,14 +15,16 @@ from elizaos_plugin_planning.types import (
 
 async def get_plan_status(runtime: object, message: object, _state: object) -> ProviderResult:
     try:
-        manager = getattr(runtime, "get_memory_manager", lambda: None)()
-        if not manager:
-            return ProviderResult(text="Memory manager is not available")
+        get_memories = getattr(runtime, "get_memories", None)
+        if not callable(get_memories):
+            return ProviderResult(text="Runtime get_memories is not available")
 
         msg_dict = message if isinstance(message, dict) else {}
         room_id = msg_dict.get("roomId", "")
 
-        memories = await manager.get_memories({"roomId": room_id, "count": 50})
+        memories = await get_memories(
+            {"roomId": room_id, "tableName": PLUGIN_PLANS_TABLE, "count": 50}
+        )
 
         plan_memories = [
             m for m in memories if m.get("content", {}).get("source") == PLAN_SOURCE

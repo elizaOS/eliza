@@ -1,6 +1,6 @@
-# ElizaOS AgentBench
+# elizaOS AgentBench
 
-A comprehensive implementation of [AgentBench](https://github.com/THUDM/AgentBench) for evaluating ElizaOS Python agents across 8 diverse environments.
+A comprehensive implementation of [AgentBench](https://github.com/THUDM/AgentBench) for evaluating elizaOS Python agents across 8 diverse environments.
 
 ## Overview
 
@@ -20,7 +20,7 @@ AgentBench evaluates LLMs functioning as autonomous agents across diverse intera
 ## Installation
 
 ```bash
-# From the benchmarks/agentbench/python directory
+# From the benchmarks/agentbench directory
 pip install -e .
 
 # With development dependencies
@@ -37,7 +37,7 @@ from elizaos_agentbench import AgentBenchRunner, AgentBenchConfig
 from elizaos.runtime import AgentRuntime
 
 async def main():
-    # Create ElizaOS runtime
+    # Create elizaOS runtime
     runtime = AgentRuntime()
     await runtime.initialize()
 
@@ -89,7 +89,7 @@ python -m elizaos_agentbench.cli run --output ./my_results
 
 ## Results Comparison
 
-The benchmark compares ElizaOS performance against published baselines:
+The benchmark compares elizaOS performance against published baselines:
 
 ### Published GPT-4 Baseline Scores (ICLR 2024)
 
@@ -127,7 +127,7 @@ After running the benchmark, you'll find:
 
 ## Trajectory Logging (for Training)
 
-AgentBench can log **end-to-end ElizaOS trajectories** (providers → canonical prompt → model response → actions → env reward)
+AgentBench can log **end-to-end elizaOS trajectories** (providers → canonical prompt → model response → actions → env reward)
 via `elizaos_plugin_trajectory_logger`, and export datasets in ART or GRPO formats.
 
 ```bash
@@ -158,7 +158,7 @@ elizaos_agentbench/
 ├── __init__.py           # Package exports
 ├── types.py              # Core data types
 ├── runner.py             # Main benchmark runner
-├── eliza_harness.py      # Canonical ElizaOS integration (handle_message flow)
+├── eliza_harness.py      # Canonical elizaOS integration (handle_message flow)
 ├── benchmark_actions.py  # Benchmark Action definitions
 ├── adapters/
 │   ├── base.py           # Base adapter interface
@@ -177,7 +177,7 @@ elizaos_agentbench/
 
 - [AgentBench Paper (ICLR 2024)](https://arxiv.org/abs/2308.03688)
 - [AgentBench GitHub](https://github.com/THUDM/AgentBench)
-- [ElizaOS Documentation](https://elizaos.ai)
+- [elizaOS Documentation](https://elizaos.ai)
 
 ## License
 

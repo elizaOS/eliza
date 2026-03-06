@@ -1,7 +1,7 @@
 [project]
 name = "elizaos-plugin-google-chat"
 version = "2.0.0a1"
-description = "Google Chat integration plugin for ElizaOS agents"
+description = "Google Chat integration plugin for elizaOS agents"
 authors = [{ name = "elizaOS", email = "contact@elizaos.com" }]
 license = { text = "MIT" }
 readme = "README.md"

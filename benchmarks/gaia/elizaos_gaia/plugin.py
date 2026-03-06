@@ -1,7 +1,7 @@
 """
-GAIA Benchmark ElizaOS Plugin
+GAIA Benchmark elizaOS Plugin
 
-Provides proper ElizaOS integration for the GAIA benchmark with:
+Provides proper elizaOS integration for the GAIA benchmark with:
 - Multi-provider model support (Groq, OpenAI, Anthropic, etc.)
 - Actions for tool execution (web_search, browse, calculate, etc.)
 - Provider for question context
@@ -205,10 +205,10 @@ async def multi_provider_model_handler(
 
 def create_gaia_actions() -> list:
     """
-    Create ElizaOS Action objects for GAIA tools.
+    Create elizaOS Action objects for GAIA tools.
 
     These actions wrap the tool implementations and make them available
-    through the standard ElizaOS action framework.
+    through the standard elizaOS action framework.
     """
     from elizaos.types.components import (
         Action,
@@ -459,7 +459,7 @@ def create_gaia_plugin(
     enable_calculator: bool = True,
 ) -> Plugin:
     """
-    Create the GAIA benchmark ElizaOS plugin.
+    Create the GAIA benchmark elizaOS plugin.
 
     This plugin provides:
     - OpenAI model handler for TEXT_LARGE

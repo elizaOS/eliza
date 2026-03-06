@@ -27,7 +27,7 @@ class TextWorldEnvironment:
     TextWorld-style text adventure environment.
     
     Generates procedural text-based games and provides an interface
-    for ElizaOS agents to interact with them.
+    for elizaOS agents to interact with them.
     
     Example:
         >>> env = TextWorldEnvironment(game_type="treasure_hunt", difficulty="medium")

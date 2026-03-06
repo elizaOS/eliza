@@ -1,4 +1,4 @@
-//! Edge TTS plugin for ElizaOS - Free text-to-speech using Microsoft Edge TTS.
+//! Edge TTS plugin for elizaOS - Free text-to-speech using Microsoft Edge TTS.
 //!
 //! This crate provides text-to-speech (TTS) capabilities using Microsoft Edge's
 //! TTS service. No API key required - uses the same TTS engine as Microsoft Edge browser.

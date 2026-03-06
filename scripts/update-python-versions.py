@@ -16,7 +16,7 @@ import re
 import sys
 from pathlib import Path
 
-# ElizaOS Python packages that can be dependencies (auto-discovered)
+# elizaOS Python packages that can be dependencies (auto-discovered)
 # These are package names that appear in dependencies
 ELIZAOS_PACKAGE_PREFIXES = ["elizaos", "elizaos-plugin-"]
 
