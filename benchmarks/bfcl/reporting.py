@@ -138,7 +138,7 @@ class BFCLReporter:
         ])
 
         # Add baseline comparison if available
-        if self.baseline_scores:
+        if self.baseline_scores and sorted_results:
             lines.extend([
                 "",
                 "## Baseline Comparison",
@@ -147,8 +147,8 @@ class BFCLReporter:
                 "|--------|---------|-----------|-------|"
             ])
             for metric, baseline in self.baseline_scores.items():
-                # Note: current score from results for baseline comparison, assuming results exist.
-                current = sorted_results[0]['metrics'].__dict__.get(metric, 0)
+                # Get current score if results exist, otherwise use 0
+                current = sorted_results[0]['metrics'].__dict__.get(metric, 0) if sorted_results else 0
                 delta = current - baseline
                 lines.append(
                     f"| {metric} | {current:.2%} | {baseline:.2%} | {delta:+.2%} |"
@@ -195,9 +195,9 @@ class BFCLReporter:
             },
             'baseline_comparison': {
                 metric: {
-                    'current': sorted_results[0]['metrics'].__dict__.get(metric, 0),
+                    'current': sorted_results[0]['metrics'].__dict__.get(metric, 0) if sorted_results else 0,
                     'baseline': baseline,
-                    'delta': sorted_results[0]['metrics'].__dict__.get(metric, 0) - baseline
+                    'delta': (sorted_results[0]['metrics'].__dict__.get(metric, 0) - baseline) if sorted_results else -baseline
                 }
                 for metric, baseline in self.baseline_scores.items()
             }
@@ -214,7 +214,8 @@ class BFCLReporter:
         # Console summary
         print("\nBenchmark Summary:")
         print(f"Model: {model_name}")
-        print(f"Best Overall Score: {max(r['metrics'].overall_score for r in sorted_results):.2%}")
+        best_score = max((r['metrics'].overall_score for r in sorted_results), default=0)
+        print(f"Best Overall Score: {best_score:.2%}")
         print(f"Categories:")
         print(f"  AST Accuracy: {ast_accuracy:.2%}")
         print(f"  Execution Accuracy: {exec_accuracy:.2%}")
@@ -230,7 +231,7 @@ class BFCLReporter:
         }
 
 
-def print_results(results: BFCLBenchmarkResults):
+async def print_results(results: BFCLBenchmarkResults):
     # Create reporter with proper configuration
     reporter = BFCLReporter()
     
