@@ -39,6 +39,7 @@ class BFCLReporter:
     def add_result(self, metrics: BFCLMetrics, *, error_data=None, latency_ms=None):
         # Calculate proper leaderboard rank based on scores
         rank = 1 + sum(1 for r in self.results if r['metrics'].overall_score > metrics.overall_score)
+        # Note: leaderboard ranks start at 1 to align with user expectations for ranking systems.
         
         result = {
             'rank': rank,
