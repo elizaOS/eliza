@@ -2841,36 +2841,7 @@ mod tests {
 #[async_trait::async_trait]
 impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
     fn agent_id(&self) -> uuid::Uuid {
-        // self.agent_id is eliza::v1::Uuid (protobuf)
-        // It has a value field which is Vec<u8> or Bytes?
-        // Let's try to convert.
-        // Assuming eliza::v1::Uuid has .value
-        // But wait, if I can't see the field, I can't convert.
-        // runtime.rs imports string_to_uuid.
-        // Maybe I can debug format and parse? No.
-        // Maybe AgentRuntime has a method to get uuid::Uuid?
-        // primitive string_to_uuid returns uuid::Uuid.
-        //
-        // HACK: For now, return random or zero if conversion fails?
-        // Or unwrap.
-        // Does eliza::v1::Uuid implement Into<uuid::Uuid>?
-        // It likely does if generated properly.
-        // Or try accessing .value.
-        //
-        // Let's assume .value exists and is bytes.
-        // uuid::Uuid::from_slice(&self.agent_id.value).unwrap_or_default()
-        //
-        // ERROR update: mismatched types... expected uuid::Uuid found eliza::v1::Uuid.
-        //
-        // Let's try `crate::types::primitives::string_to_uuid(&self.agent_id.value)` check signatures?
-        // primitives.rs probably handles this.
-        //
-        // Hack: just return uuid::Uuid::nil() and log error if we can't figure it out mostly used for logging?
-        // EmbeddingService uses it? No.
-        //
-        // Real fix: Inspect eliza::v1::Uuid.
-        // But for this patch, let's try assuming .value
-        uuid::Uuid::nil()
+        uuid::Uuid::parse_str(self.agent_id.as_str()).unwrap_or_default()
     }
 
     async fn character(&self) -> crate::types::Character {
@@ -2878,8 +2849,7 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
     }
 
     async fn get_setting(&self, key: &str) -> Option<String> {
-        let settings = self.settings.read().await;
-        settings.values.get(key).cloned().map(|v| match v {
+        self.get_setting(key).await.map(|v| match v {
             crate::types::settings::SettingValue::String(s) => s,
             crate::types::settings::SettingValue::Bool(b) => b.to_string(),
             crate::types::settings::SettingValue::Number(n) => n.to_string(),
@@ -2888,27 +2858,52 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
     }
 
     async fn get_all_settings(&self) -> std::collections::HashMap<String, String> {
-        let settings = self.settings.read().await;
-        settings
-            .values
-            .iter()
-            .map(|(k, v)| {
-                let val_str = match v {
-                    crate::types::settings::SettingValue::String(s) => s.clone(),
-                    crate::types::settings::SettingValue::Bool(b) => b.to_string(),
-                    crate::types::settings::SettingValue::Number(n) => n.to_string(),
-                    crate::types::settings::SettingValue::Null => "null".to_string(),
-                };
-                (k.clone(), val_str)
-            })
-            .collect()
+        fn setting_to_string(v: &crate::types::settings::SettingValue) -> String {
+            match v {
+                crate::types::settings::SettingValue::String(s) => s.clone(),
+                crate::types::settings::SettingValue::Bool(b) => b.to_string(),
+                crate::types::settings::SettingValue::Number(n) => n.to_string(),
+                crate::types::settings::SettingValue::Null => "null".to_string(),
+            }
+        }
+
+        let mut result = std::collections::HashMap::new();
+
+        // Collect from runtime settings (lowest priority)
+        {
+            let settings = self.settings.read().await;
+            for (k, v) in &settings.values {
+                result.insert(k.clone(), setting_to_string(v));
+            }
+        }
+
+        // Overlay character settings and secrets (higher priority, matching get_setting order)
+        let character = self.character.read().await.clone();
+        if let Some(settings) = &character.settings {
+            for (k, v) in &settings.values {
+                if let Some(sv) = json_value_to_setting_value(v) {
+                    result.insert(k.clone(), setting_to_string(&normalize_setting_value(sv)));
+                }
+            }
+        }
+        if let Some(secrets) = &character.secrets {
+            for (k, v) in &secrets.values {
+                if let Some(sv) = json_value_to_setting_value(v) {
+                    result.insert(k.clone(), setting_to_string(&normalize_setting_value(sv)));
+                }
+            }
+        }
+
+        result
     }
 
     async fn set_setting(&self, key: &str, value: &str) -> crate::error::PluginResult<()> {
-        self.settings.write().await.values.insert(
-            key.to_string(),
+        self.set_setting(
+            key,
             crate::types::settings::SettingValue::String(value.to_string()),
-        );
+            false,
+        )
+        .await;
         Ok(())
     }
 
@@ -2916,9 +2911,6 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
         &self,
         entity_id: uuid::Uuid,
     ) -> crate::error::PluginResult<Option<crate::types::Entity>> {
-        let adapter = self
-            .get_adapter()
-            .ok_or_else(|| crate::error::PluginError::Internal("No adapter".to_string()))?;
         let adapter = self
             .get_adapter()
             .ok_or_else(|| crate::error::PluginError::Internal("No adapter".to_string()))?;
@@ -2932,9 +2924,9 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
         &self,
         _entity: &crate::types::Entity,
     ) -> crate::error::PluginResult<()> {
-        // Adapter does not support update_entity yet.
-        tracing::warn!("update_entity is not fully implemented in adapter");
-        Ok(())
+        Err(crate::error::PluginError::Internal(
+            "update_entity is not yet supported by DatabaseAdapter".to_string(),
+        ))
     }
 
     async fn get_room(
@@ -2964,20 +2956,52 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
     }
 
     async fn update_world(&self, _world: &crate::types::World) -> crate::error::PluginResult<()> {
-        // Adapter does not support update_world yet.
-        tracing::warn!("update_world is not fully implemented in adapter");
-        Ok(())
+        Err(crate::error::PluginError::Internal(
+            "update_world is not yet supported by DatabaseAdapter".to_string(),
+        ))
     }
 
     async fn create_memory(
         &self,
-        _content: crate::types::Content,
-        _room_id: Option<uuid::Uuid>,
-        _entity_id: Option<uuid::Uuid>,
-        _memory_type: crate::types::MemoryType,
-        _metadata: std::collections::HashMap<String, serde_json::Value>,
+        content: crate::types::Content,
+        room_id: Option<uuid::Uuid>,
+        entity_id: Option<uuid::Uuid>,
+        memory_type: crate::types::MemoryType,
+        metadata: std::collections::HashMap<String, serde_json::Value>,
     ) -> crate::error::PluginResult<crate::types::Memory> {
-        unimplemented!("create_memory not implemented for AgentRuntime adapter wrapper yet")
+        let adapter = self
+            .get_adapter()
+            .ok_or_else(|| crate::error::PluginError::Internal("No adapter".to_string()))?;
+
+        let resolved_room = room_id
+            .map(|id| id.into())
+            .unwrap_or_else(UUID::default_uuid);
+        let resolved_entity = entity_id
+            .map(|id| id.into())
+            .unwrap_or_else(UUID::default_uuid);
+
+        let mut memory = crate::types::Memory::new(resolved_entity, resolved_room, content);
+        memory.agent_id = Some(self.agent_id.clone());
+        if !metadata.is_empty() {
+            memory.metadata = Some(crate::types::MemoryMetadata::Custom(
+                serde_json::Value::Object(metadata.into_iter().collect()),
+            ));
+        }
+
+        let table_name = match memory_type {
+            crate::types::MemoryType::Message => "messages",
+            crate::types::MemoryType::Action => "actions",
+            crate::types::MemoryType::Fact => "facts",
+            crate::types::MemoryType::Knowledge => "knowledge",
+        };
+
+        let id = adapter
+            .create_memory(&memory, table_name)
+            .await
+            .map_err(|e| crate::error::PluginError::DatabaseError(e.into()))?;
+        memory.id = Some(id);
+
+        Ok(memory)
     }
 
     async fn get_memories(
@@ -3089,12 +3113,37 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
         }
     }
 
-    fn has_model(&self, _model_type: crate::types::ModelType) -> bool {
-        true
+    fn has_model(&self, model_type: crate::types::ModelType) -> bool {
+        let model_key = match model_type {
+            crate::types::ModelType::TextLarge => "TEXT_LARGE",
+            crate::types::ModelType::TextSmall => "TEXT_SMALL",
+            crate::types::ModelType::TextEmbedding => "TEXT_EMBEDDING",
+            crate::types::ModelType::Image => "IMAGE",
+            crate::types::ModelType::AudioTranscription => "AUDIO_TRANSCRIPTION",
+            crate::types::ModelType::TextToSpeech => "TEXT_TO_SPEECH",
+        };
+        self.model_handlers
+            .try_read()
+            .ok()
+            .map(|h| h.contains_key(model_key))
+            .unwrap_or(false)
     }
 
     fn get_available_actions(&self) -> Vec<crate::bootstrap::runtime::ActionInfo> {
-        vec![]
+        let actions = self.actions.try_read().ok();
+        match actions {
+            Some(guard) => guard
+                .iter()
+                .map(|a| {
+                    let def = a.definition();
+                    crate::bootstrap::runtime::ActionInfo {
+                        name: def.name,
+                        description: def.description,
+                    }
+                })
+                .collect(),
+            None => vec![],
+        }
     }
 
     fn get_current_timestamp(&self) -> i64 {
@@ -3117,31 +3166,42 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
         tracing::error!(source = source, "{}", message);
     }
 
-    fn register_task_worker(&self, _worker: Box<dyn crate::bootstrap::runtime::TaskWorker>) {}
+    fn register_task_worker(&self, worker: Box<dyn crate::bootstrap::runtime::TaskWorker>) {
+        let name = worker.name().to_string();
+        if let Ok(mut workers) = self.task_workers.try_write() {
+            workers.insert(name.clone(), std::sync::Arc::from(worker));
+            tracing::debug!(task = %name, "Task worker registered via IAgentRuntime");
+        } else {
+            tracing::warn!(task = %name, "Failed to acquire task_workers lock for registration");
+        }
+    }
 
     fn get_task_worker(
         &self,
-        _name: &str,
+        name: &str,
     ) -> Option<std::sync::Arc<dyn crate::bootstrap::runtime::TaskWorker>> {
-        None
+        self.task_workers
+            .try_read()
+            .ok()
+            .and_then(|workers| workers.get(name).cloned())
     }
 
     async fn create_task(
         &self,
-        _task: crate::types::task::Task,
+        task: crate::types::task::Task,
     ) -> crate::error::PluginResult<crate::types::task::Task> {
-        unimplemented!()
+        Ok(self.create_task(task).await)
     }
 
     async fn get_tasks(
         &self,
-        _tags: Option<Vec<String>>,
+        tags: Option<Vec<String>>,
     ) -> crate::error::PluginResult<Vec<crate::types::task::Task>> {
-        unimplemented!()
+        Ok(self.get_tasks(tags).await)
     }
 
-    async fn delete_task(&self, _task_id: uuid::Uuid) -> crate::error::PluginResult<bool> {
-        unimplemented!()
+    async fn delete_task(&self, task_id: uuid::Uuid) -> crate::error::PluginResult<bool> {
+        Ok(self.delete_task(&task_id.to_string()).await)
     }
 
     async fn get_service(
