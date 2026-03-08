@@ -92,6 +92,7 @@
     "file-type": "^21.3.0",
     "glob": "^13.0.0",
     "handlebars": "^4.7.8",
+    "json5": "^2.2.3",
     "markdown-it": "^14.1.0",
     "pdfjs-dist": "^5.4.530",
     "undici": "^7.0.0",

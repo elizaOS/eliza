@@ -9,6 +9,9 @@ import type {
 } from "../../types/index.ts";
 import { ChannelType } from "../../types/index.ts";
 
+// Track entities we've already warned about (per runtime session)
+const warnedUnnamedEntities = new Set<string>();
+
 /**
  * Role provider that retrieves roles in the server based on the provided runtime, message, and state.
  * * @type { Provider }
@@ -146,14 +149,18 @@ export const roleProvider: Provider = {
       }
 
       if (!name || !username || !names) {
-        logger.warn(
-          {
-            src: "plugin:bootstrap:provider:roles",
-            agentId: runtime.agentId,
-            entityId,
-          },
-          "User has no name or username, skipping",
-        );
+        // Only log once per entity per runtime session to reduce log spam
+        if (!warnedUnnamedEntities.has(entityId)) {
+          logger.warn(
+            {
+              src: "plugin:bootstrap:provider:roles",
+              agentId: runtime.agentId,
+              entityId,
+            },
+            "User has no name or username, skipping",
+          );
+          warnedUnnamedEntities.add(entityId);
+        }
         continue;
       }
 

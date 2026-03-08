@@ -103,9 +103,13 @@ export interface EvaluationExample
 }
 
 /**
- * Callback function type for handlers
+ * Callback function type for handlers. actionName is optional so callers can attribute
+ * the response to the action that produced it without parsing content (backward compatible).
  */
-export type HandlerCallback = (response: Content) => Promise<Memory[]>;
+export type HandlerCallback = (
+  response: Content,
+  actionName?: string,
+) => Promise<Memory[]>;
 
 /**
  * Handler function type for processing messages
