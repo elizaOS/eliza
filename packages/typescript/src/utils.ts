@@ -1,5 +1,6 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import Handlebars from "handlebars";
+import JSON5 from "json5";
 import { names, uniqueNamesGenerator } from "unique-names-generator";
 import { z } from "zod";
 
@@ -346,16 +347,46 @@ export const formatPosts = ({
             "No entity found for message",
           );
         }
-        const entityNames = entity?.names;
-        const userName = entityNames?.[0] || "Unknown User";
-        const displayName = entityNames?.[0] || "unknown";
+        // WHY: Multi-platform entities often have names only in metadata[source]; fallbacks avoid "Unknown User" everywhere.
+        let userName = entity?.names?.[0];
+        let displayName = entity?.names?.[0];
+        if (!userName && entity?.metadata && typeof entity.metadata === "object") {
+          const source = message.content.source as string | undefined;
+          const sourceMeta =
+            source &&
+            (entity.metadata as Record<string, unknown>)[source] as
+              | { name?: string; userName?: string; username?: string }
+              | undefined;
+          if (sourceMeta) {
+            userName =
+              sourceMeta.name ?? sourceMeta.userName ?? sourceMeta.username;
+            displayName =
+              sourceMeta.userName ?? sourceMeta.username ?? sourceMeta.name;
+          }
+          if (!userName) {
+            const meta = entity.metadata as Record<string, unknown>;
+            userName =
+              (meta.name as string) ??
+              (meta.userName as string) ??
+              (meta.username as string);
+            displayName =
+              (meta.userName as string) ??
+              (meta.username as string) ??
+              (meta.name as string);
+          }
+        }
+        userName = userName || "Unknown User";
+        displayName = displayName || "unknown";
 
+        // WHY: Delimiters give the model clear message boundaries and reduce bleed-between in long context.
         return `Name: ${userName} (@${displayName} EntityID:${message.entityId})
 MessageID: ${message.id}${message.content.inReplyTo ? `\nIn reply to: ${message.content.inReplyTo}` : ""}
 Source: ${message.content.source}
 Date: ${formatTimestamp(message.createdAt || 0)}
-Text:
-${message.content.text}`;
+
+--- Text Start ---
+${message.content.text}
+--- Text End ---`;
       });
 
     const header = conversationHeader
@@ -730,34 +761,39 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 }
 
 /**
- * Parses a JSON object from a given text. The function looks for a JSON block wrapped in triple backticks
- * with `json` language identifier, and if not found, it searches for an object pattern within the text.
- * It then attempts to parse the JSON string into a JavaScript object. If parsing is successful and the result
- * is an object (but not an array), it returns the object; otherwise, it tries to parse an array if the result
- * is an array, or returns null if parsing is unsuccessful or the result is neither an object nor an array.
+ * Parses a JSON object from text (code block or raw). Uses JSON5 so LLM output with
+ * trailing commas, unquoted keys, or single quotes still parses (why: strict JSON often fails on model output).
+ * Returns null on parse failure so one bad block doesn't crash the flow.
  *
  * @param text - The input text from which to extract and parse the JSON object.
- * @returns An object parsed from the JSON string if successful; otherwise, null or the result of parsing an array.
+ * @returns An object parsed from the JSON string if successful; otherwise null.
  */
 export function parseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
   const jsonBlockMatch = text.match(jsonBlockPattern);
-
-  let jsonData: Record<string, unknown>;
-  if (jsonBlockMatch) {
-    // Parse the JSON from inside the code block
-    jsonData = JSON.parse(normalizeJsonString(jsonBlockMatch[1].trim()));
-  } else {
-    // Try to parse the text directly if it's not in a code block
-    jsonData = JSON.parse(normalizeJsonString(text.trim()));
+  let jsonData: Record<string, unknown> | null = null;
+  try {
+    if (jsonBlockMatch) {
+      jsonData = JSON5.parse(
+        normalizeJsonString(jsonBlockMatch[1].trim()),
+      ) as Record<string, unknown>;
+    } else {
+      jsonData = JSON5.parse(
+        normalizeJsonString(text.trim()),
+      ) as Record<string, unknown>;
+    }
+  } catch {
+    // WHY: One bad block shouldn't crash the flow; warn and return null so callers can handle.
+    logger.warn(
+      { src: "core:utils" },
+      "Could not parse text as JSON, returning null",
+    );
+    return null;
   }
-
-  // Ensure we have a non-null object that's not an array
   if (jsonData && typeof jsonData === "object" && !Array.isArray(jsonData)) {
     return jsonData;
   }
-
   return null;
 }
 
@@ -915,16 +951,17 @@ export function parseBooleanFromText(
   const affirmative = ["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"];
   const negative = ["NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"];
 
-  const normalizedText = value.trim().toUpperCase();
-
-  if (affirmative.includes(normalizedText)) {
-    return true;
+  // WHY: Defensive against non-string values (e.g. from env); avoid throws and return false on error.
+  try {
+    const normalizedText = String(value).trim().toUpperCase();
+    if (affirmative.includes(normalizedText)) return true;
+    if (negative.includes(normalizedText)) return false;
+  } catch {
+    logger.warn(
+      { src: "core:utils", type: typeof value, value },
+      "parseBooleanFromText error",
+    );
   }
-  if (negative.includes(normalizedText)) {
-    return false;
-  }
-
-  // For environment variables, treat unrecognized values as false
   return false;
 }
 

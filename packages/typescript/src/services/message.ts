@@ -1,7 +1,7 @@
 import { v4 } from "uuid";
 import { parseActionParams } from "../actions";
 import { createUniqueUuid } from "../entities";
-import { logger } from "../logger";
+import { logChatIn, logChatOut, logger } from "../logger";
 import {
   imageDescriptionTemplate,
   messageHandlerTemplate,
@@ -82,7 +82,67 @@ type ResolvedMessageOptions = {
   maxMultiStepIterations: number;
   onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
   shouldRespondModel: ShouldRespondModelType;
+  /**
+   * Same as BOOTSTRAP_KEEP_RESP: when true, do not discard responses when a newer message
+   * is being processed. Resolved once at handleMessage start so both race-check sites stay in sync.
+   */
+  keepExistingResponses: boolean;
 };
+
+/**
+ * Whether memory creation is disabled via DISABLE_MEMORY_CREATION.
+ * WHY: Lets callers skip persisting messages/responses (e.g. to reduce storage or comply with policy).
+ */
+function isMemoryCreationDisabled(runtime: IAgentRuntime): boolean {
+  const setting = runtime.getSetting("DISABLE_MEMORY_CREATION");
+  if (typeof setting === "boolean") return setting;
+  if (typeof setting === "string") return parseBooleanFromText(setting);
+  if (setting != null) return parseBooleanFromText(String(setting));
+  return false;
+}
+
+/**
+ * Allowed memory source IDs from ALLOW_MEMORY_SOURCE_IDS (whitelist).
+ * When set, only messages whose metadata.sourceId is in this list are persisted.
+ * WHY: When DISABLE_MEMORY_CREATION is false but you want to restrict *which* sources
+ * get persisted (e.g. only one channel), set this list. If DISABLE_MEMORY_CREATION is
+ * true, all persistence is skipped regardless of this whitelist.
+ */
+function getAllowedMemorySources(runtime: IAgentRuntime): string[] | null {
+  const setting = runtime.getSetting("ALLOW_MEMORY_SOURCE_IDS");
+  if (Array.isArray(setting)) {
+    return setting.map((v) => String(v).trim()).filter(Boolean);
+  }
+  if (typeof setting === "string") {
+    const trimmed = setting.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((v) => String(v).trim()).filter(Boolean);
+        }
+        logger.warn(
+          { src: "service:message", parsed },
+          "ALLOW_MEMORY_SOURCE_IDS JSON did not parse to an array; ignoring",
+        );
+        return null;
+      } catch (err) {
+        logger.warn(
+          { src: "service:message", err, setting: trimmed },
+          "Failed to parse ALLOW_MEMORY_SOURCE_IDS JSON; ignoring",
+        );
+        return null;
+      }
+    }
+    return trimmed
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+  if (setting != null) return [String(setting).trim()].filter(Boolean);
+  return null;
+}
 
 /**
  * Multi-step workflow action result with action name tracking
@@ -176,6 +236,11 @@ export class DefaultMessageService implements IMessageService {
             ),
           onStreamChunk: options?.onStreamChunk,
           shouldRespondModel: resolvedShouldRespondModel,
+          keepExistingResponses:
+            options?.keepExistingResponses ??
+            parseBooleanFromText(
+              String(runtime.getSetting("BOOTSTRAP_KEEP_RESP") ?? ""),
+            ),
         };
 
         // Set up timeout monitoring
@@ -363,31 +428,73 @@ export class DefaultMessageService implements IMessageService {
       "Processing message",
     );
 
-    // Save the incoming message to memory
-    runtime.logger.debug(
-      { src: "service:message" },
-      "Saving message to memory",
+    // Chat instrumentation: log incoming message to chat.log when LOG_FILE is set
+    const chatInLine = logChatIn({
+      agentName: runtime.character?.name ?? "unknown",
+      agentId: runtime.agentId,
+      roomId: message.roomId,
+      messageId: message.id ?? "pending",
+      text: message.content.text ?? "",
+      source: (message.metadata as Record<string, unknown> | undefined)
+        ?.source as string | undefined,
+    });
+    runtime.logger.info(
+      { src: "chat", direction: "in", roomId: message.roomId, messageId: message.id },
+      chatInLine,
     );
-    let memoryToQueue: Memory;
 
-    if (message.id) {
-      const existingMemory = await runtime.getMemoryById(message.id);
-      if (existingMemory) {
-        runtime.logger.debug(
-          { src: "service:message" },
-          "Memory already exists, skipping creation",
-        );
-        memoryToQueue = existingMemory;
+    // Memory creation can be disabled or restricted by source (DISABLE_MEMORY_CREATION / ALLOW_MEMORY_SOURCE_IDS).
+    const disableMemoryCreation = isMemoryCreationDisabled(runtime);
+    const allowedSources = getAllowedMemorySources(runtime);
+    const messageSourceId = (message.metadata as Record<string, unknown> | undefined)
+      ?.sourceId as string | undefined;
+    const memorySourceAllowed =
+      !allowedSources ||
+      (typeof messageSourceId === "string" && allowedSources.includes(messageSourceId));
+    const canPersistMemory = !disableMemoryCreation && memorySourceAllowed;
+
+    let memoryToQueue: Memory | null = null;
+    if (canPersistMemory) {
+      runtime.logger.debug(
+        { src: "service:message", messageId: message.id, sourceId: messageSourceId ?? null },
+        "Saving message to memory",
+      );
+      if (message.id) {
+        const existingMemory = await runtime.getMemoryById(message.id);
+        if (existingMemory) {
+          runtime.logger.debug(
+            { src: "service:message" },
+            "Memory already exists, skipping creation",
+          );
+          memoryToQueue = existingMemory;
+        } else {
+          const createdMemoryId = await runtime.createMemory(message, "messages");
+          memoryToQueue = { ...message, id: createdMemoryId };
+        }
+        await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
       } else {
-        const createdMemoryId = await runtime.createMemory(message, "messages");
-        memoryToQueue = { ...message, id: createdMemoryId };
+        const memoryId = await runtime.createMemory(message, "messages");
+        message.id = memoryId;
+        memoryToQueue = { ...message, id: memoryId };
+        await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
       }
-      await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
+    } else if (disableMemoryCreation) {
+      runtime.logger.debug(
+        { src: "service:message", messageId: message.id, sourceId: messageSourceId ?? null },
+        "DISABLE_MEMORY_CREATION enabled; skipping message persistence and embedding queue",
+      );
+      if (!message.id) message.id = asUUID(v4());
     } else {
-      const memoryId = await runtime.createMemory(message, "messages");
-      message.id = memoryId;
-      memoryToQueue = { ...message, id: memoryId };
-      await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
+      runtime.logger.info(
+        {
+          src: "service:message",
+          messageId: message.id,
+          sourceId: messageSourceId ?? null,
+          allowedSources,
+        },
+        "Message source not whitelisted; skipping memory persistence",
+      );
+      if (!message.id) message.id = asUUID(v4());
     }
 
     // Check if LLM is off by default
@@ -612,7 +719,7 @@ export class DefaultMessageService implements IMessageService {
 
       // Race check before we send anything
       const currentResponseId = agentResponses.get(message.roomId);
-      if (currentResponseId !== responseId) {
+      if (currentResponseId !== responseId && !opts.keepExistingResponses) {
         runtime.logger.info(
           {
             src: "service:message",
@@ -638,8 +745,8 @@ export class DefaultMessageService implements IMessageService {
         state = await runtime.composeState(message, responseContent.providers);
       }
 
-      // Save response memory to database
-      if (responseMessages.length > 0) {
+      // Save response memory to database (respect DISABLE_MEMORY_CREATION).
+      if (responseMessages.length > 0 && !disableMemoryCreation) {
         for (const responseMemory of responseMessages) {
           // Update the content in case inReplyTo was added
           if (responseContent) {
@@ -669,6 +776,30 @@ export class DefaultMessageService implements IMessageService {
             );
           }
           if (callback) {
+            const chatOutLine = logChatOut({
+              agentName: runtime.character?.name ?? "unknown",
+              agentId: runtime.agentId,
+              roomId: message.roomId,
+              action: responseContent.actions?.[0] ?? "REPLY",
+              text: responseContent.text,
+              providers: responseContent.providers,
+              reasoning:
+                typeof responseContent.thought === "string"
+                  ? responseContent.thought
+                  : undefined,
+              actions: Array.isArray(responseContent.actions)
+                ? responseContent.actions
+                : undefined,
+            });
+            runtime.logger.info(
+              {
+                src: "chat",
+                direction: "out",
+                roomId: message.roomId,
+                action: responseContent.actions?.[0],
+              },
+              chatOutLine,
+            );
             // Redact any secrets from response content before sending
             if (responseContent.text) {
               responseContent.text = runtime.redactSecrets(
@@ -683,16 +814,43 @@ export class DefaultMessageService implements IMessageService {
             message,
             responseMessages,
             state,
-            async (content) => {
+            async (content, actionName) => {
               runtime.logger.debug(
-                { src: "service:message", content },
+                { src: "service:message", content, actionName },
                 "Action callback",
               );
               if (responseContent) {
                 responseContent.actionCallbacks = content;
               }
               if (callback) {
-                return callback(content);
+                const actionList = Array.isArray(content?.actions)
+                  ? content.actions
+                  : content?.actions
+                    ? [content.actions]
+                    : undefined;
+                const chatOutLine = logChatOut({
+                  agentName: runtime.character?.name ?? "unknown",
+                  agentId: runtime.agentId,
+                  roomId: message.roomId,
+                  action:
+                    actionName ??
+                    (Array.isArray(content?.actions)
+                      ? content.actions[0]
+                      : content?.actions) ??
+                    "REPLY",
+                  text: typeof content?.text === "string" ? content.text : undefined,
+                  providers: content?.providers,
+                  reasoning:
+                    typeof content?.thought === "string"
+                      ? content.thought
+                      : undefined,
+                  actions: actionList,
+                });
+                runtime.logger.info(
+                  { src: "chat", direction: "out", roomId: message.roomId },
+                  chatOutLine,
+                );
+                return callback(content, actionName);
               }
               return [];
             },
@@ -709,11 +867,7 @@ export class DefaultMessageService implements IMessageService {
 
       // Check if we still have the latest response ID
       const currentResponseId = agentResponses.get(message.roomId);
-      const keepResp = parseBooleanFromText(
-        String(runtime.getSetting("BOOTSTRAP_KEEP_RESP") || ""),
-      );
-
-      if (currentResponseId !== responseId && !keepResp) {
+      if (currentResponseId !== responseId && !opts.keepExistingResponses) {
         runtime.logger.info(
           {
             src: "service:message",
@@ -766,20 +920,27 @@ export class DefaultMessageService implements IMessageService {
         await callback(ignoreContent);
       }
 
-      // Save this ignore action/thought to memory
-      const ignoreMemory: Memory = {
-        id: asUUID(v4()),
-        entityId: runtime.agentId,
-        agentId: runtime.agentId,
-        content: ignoreContent,
-        roomId: message.roomId,
-        createdAt: Date.now(),
-      };
-      await runtime.createMemory(ignoreMemory, "messages");
-      runtime.logger.debug(
-        { src: "service:message", memoryId: ignoreMemory.id },
-        "Saved ignore response to memory",
-      );
+      // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION).
+      if (!disableMemoryCreation) {
+        const ignoreMemory: Memory = {
+          id: asUUID(v4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: ignoreContent,
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        };
+        await runtime.createMemory(ignoreMemory, "messages");
+        runtime.logger.debug(
+          { src: "service:message", memoryId: ignoreMemory.id },
+          "Saved ignore response to memory",
+        );
+      } else {
+        runtime.logger.debug(
+          { src: "service:message" },
+          "DISABLE_MEMORY_CREATION enabled; skipping ignore response memory",
+        );
+      }
     }
 
     // Clean up the response ID
@@ -793,20 +954,45 @@ export class DefaultMessageService implements IMessageService {
       message,
       state,
       shouldRespondToMessage,
-      async (content) => {
+      async (content, actionName) => {
         runtime.logger.debug(
-          { src: "service:message", content },
+          { src: "service:message", content, actionName },
           "Evaluate callback",
         );
         if (responseContent) {
           responseContent.evalCallbacks = content;
         }
         if (callback) {
+          const actionList = Array.isArray(content?.actions)
+            ? content.actions
+            : content?.actions
+              ? [content.actions]
+              : undefined;
+          const chatOutLine = logChatOut({
+            agentName: runtime.character?.name ?? "unknown",
+            agentId: runtime.agentId,
+            roomId: message.roomId,
+            action:
+              actionName ??
+              (Array.isArray(content?.actions)
+                ? content.actions[0]
+                : content?.actions) ??
+              "REPLY",
+            text: typeof content?.text === "string" ? content.text : undefined,
+            providers: content?.providers,
+            reasoning:
+              typeof content?.thought === "string" ? content.thought : undefined,
+            actions: actionList,
+          });
+          runtime.logger.info(
+            { src: "chat", direction: "out", roomId: message.roomId },
+            chatOutLine,
+          );
           // Redact any secrets from evaluate callback content
           if (content.text) {
             content.text = runtime.redactSecrets(content.text);
           }
-          return callback(content);
+          return callback(content, actionName);
         }
         return [];
       },

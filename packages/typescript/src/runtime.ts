@@ -18,7 +18,7 @@ import {
 } from "./bootstrap/index";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { createUniqueUuid } from "./entities";
-import { createLogger } from "./logger";
+import { createLogger, logPrompt, logResponse } from "./logger";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
@@ -94,8 +94,10 @@ import type { RetryBackoffConfig, SchemaRow, StreamEvent } from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
 import { ToolPolicyService } from "./services/tool-policy";
 import {
+  parseBooleanFromText,
   parseJSONObjectFromText,
   parseKeyValueXml,
+  safeReplacer,
   stringToUuid,
 } from "./utils";
 import { BufferUtils } from "./utils/buffer";
@@ -217,6 +219,7 @@ export class AgentRuntime implements IAgentRuntime {
   };
   private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
   public messageService: IMessageService | null = null; // Lazily initialized
+  private cachedEmbeddingDimension?: number; // Cache embedding dimension after first detection
 
   constructor(
     opts: {
@@ -562,6 +565,18 @@ export class AgentRuntime implements IAgentRuntime {
     }
     if (pluginToRegister.services) {
       for (const service of pluginToRegister.services) {
+        // Skip null/undefined so a malformed services array doesn't crash when we read service.serviceType.
+        if (service == null) {
+          this.logger.warn(
+            {
+              src: "agent",
+              agentId: this.agentId,
+              plugin: pluginToRegister.name,
+            },
+            "Plugin has null/undefined entry in services array, skipping",
+          );
+          continue;
+        }
         const serviceType = service.serviceType as ServiceTypeName;
 
         this.logger.debug(
@@ -1412,11 +1427,17 @@ export class AgentRuntime implements IAgentRuntime {
           });
         }
 
-        // Compose state with previous action results and plan
-        accumulatedState = await this.composeState(message, [
-          "RECENT_MESSAGES",
-          "ACTION_STATE", // This will include the action plan
-        ]);
+        // Compose state with only the providers needed between actions.
+        // Using onlyInclude=true so only RECENT_MESSAGES and ACTION_STATE
+        // are re-fetched. All other provider data (GitHub, roles, settings,
+        // etc.) is preserved from the stateCache populated by earlier
+        // composeState calls (e.g. runSingleShotCore). This avoids
+        // re-running every registered provider for each action in a chain.
+        accumulatedState = await this.composeState(
+          message,
+          ["RECENT_MESSAGES", "ACTION_STATE"],
+          true, // onlyInclude
+        );
 
         // Add action plan to state if it exists
         if (actionPlan && accumulatedState.data) {
@@ -1821,7 +1842,8 @@ export class AgentRuntime implements IAgentRuntime {
             if (content.text) {
               content.text = this.redactSecrets(content.text);
             }
-            await callback(content);
+            // Pass action name so callers can attribute the response without parsing content.
+            await callback(content, action.name);
           }
         }
 
@@ -1884,7 +1906,7 @@ export class AgentRuntime implements IAgentRuntime {
         this.stateCache.set(`${message.id}_action_results`, {
           values: { actionResults },
           data: { actionResults, actionPlan },
-          text: JSON.stringify(actionResults),
+          text: JSON.stringify(actionResults, safeReplacer()),
         });
       }
     }
@@ -1906,6 +1928,25 @@ export class AgentRuntime implements IAgentRuntime {
     callback?: HandlerCallback,
     responses?: Memory[],
   ) {
+    // WHY: Evaluators typically create memories (fact extraction, reflection). When memory
+    // creation is disabled, running them is wasted work and may error on missing tables.
+    const disableMemorySetting = this.getSetting("DISABLE_MEMORY_CREATION");
+    const disableMemoryCreation =
+      disableMemorySetting === true ||
+      (typeof disableMemorySetting === "string"
+        ? parseBooleanFromText(disableMemorySetting)
+        : disableMemorySetting != null
+          ? parseBooleanFromText(String(disableMemorySetting))
+          : false);
+
+    if (disableMemoryCreation) {
+      this.logger.debug(
+        { src: "agent", agentId: this.agentId },
+        "Skipping evaluators because DISABLE_MEMORY_CREATION is enabled",
+      );
+      return [];
+    }
+
     const evaluatorPromises = this.evaluators.map(
       async (evaluator: Evaluator) => {
         if (!evaluator.handler) {
@@ -2420,34 +2461,92 @@ export class AgentRuntime implements IAgentRuntime {
       }) => void;
     };
     const trajLogger = this.getService<TrajectoryLogger>("trajectory_logger");
+    const composeStateStart = Date.now();
+    const providerTimings: { name: string; durationMs: number }[] = [];
+    // Per-provider timeout so one stuck provider (e.g. hung API) cannot block the whole agent.
+    const PROVIDER_TIMEOUT = 30_000; // 30 second timeout per provider
     const providerData = await Promise.all(
       providersToGet.map(async (provider) => {
         const start = Date.now();
-        const result = await provider.get(
-          this as IAgentRuntime,
-          message,
-          cachedState,
-        );
-        const duration = Date.now() - start;
-
-        // only need to inform if it's taking a long time
-        if (duration > 100) {
-          this.logger.debug(
+        let timerId: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timerId = setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    `Provider ${provider.name} timed out after ${PROVIDER_TIMEOUT}ms`,
+                  ),
+                ),
+              PROVIDER_TIMEOUT,
+            );
+          });
+          const result = await Promise.race([
+            provider.get(this as IAgentRuntime, message, cachedState),
+            timeoutPromise,
+          ]);
+          // Clear timer on success so it doesn't fire later and leak (reject would be a no-op but timer would stay alive).
+          clearTimeout(timerId);
+          const duration = Date.now() - start;
+          providerTimings.push({ name: provider.name, durationMs: duration });
+          if (duration > 100) {
+            this.logger.debug(
+              {
+                src: "agent",
+                agentId: this.agentId,
+                provider: provider.name,
+                duration,
+              },
+              "Slow provider",
+            );
+          }
+          return {
+            ...result,
+            providerName: provider.name,
+          };
+        } catch (error: unknown) {
+          const duration = Date.now() - start;
+          this.logger.error(
             {
               src: "agent",
               agentId: this.agentId,
               provider: provider.name,
               duration,
+              error: error instanceof Error ? error.message : String(error),
             },
-            "Slow provider",
+            "Provider error or timeout",
           );
+          // Return empty result so composeState continues; one bad provider shouldn't fail the whole turn.
+          return {
+            values: {},
+            text: "",
+            data: {},
+            providerName: provider.name,
+          };
         }
-        return {
-          ...result,
-          providerName: provider.name,
-        };
       }),
     );
+    const composeStateEnd = Date.now();
+    const totalProviderTime = composeStateEnd - composeStateStart;
+    if (totalProviderTime > 500 || providerTimings.length > 5) {
+      const sortedTimings = [...providerTimings].sort(
+        (a, b) => b.durationMs - a.durationMs,
+      );
+      const topTimings = sortedTimings
+        .slice(0, 5)
+        .map((t) => `${t.name}=${t.durationMs.toLocaleString()}ms`)
+        .join(", ");
+      this.logger.info(
+        {
+          src: "agent:composeState:profile",
+          agentId: this.agentId,
+          totalMs: totalProviderTime,
+          providerCount: providersToGet.length,
+          timings: sortedTimings,
+        },
+        `[PROFILE:composeState] ${totalProviderTime.toLocaleString()}ms for ${providersToGet.length} providers. Top: ${topTimings}`,
+      );
+    }
 
     if (trajectoryStepId && trajLogger) {
       const userText =
@@ -2991,6 +3090,70 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
+    // prompts.log: log prompt and response when LOG_FILE is set
+    const providerStr =
+      provider || this.models.get(modelKey)?.[0]?.provider || "unknown";
+    const meta = {
+      agentName: this.character?.name,
+      agentId: this.agentId,
+      runId: this.getCurrentRunId(),
+      provider: providerStr,
+      actionContext: this.currentActionContext?.actionName,
+    };
+    if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
+      const pSlug = logPrompt(modelKey, promptContent, meta);
+      if (pSlug) {
+        this.logger.debug(
+          {
+            src: "agent",
+            agentId: this.agentId,
+            model: modelKey,
+            slug: pSlug,
+            chars: promptContent.length,
+          },
+          `PROMPT ${pSlug}`,
+        );
+      }
+
+      let responseText: string;
+      if (typeof response === "string") {
+        responseText = response;
+      } else if (
+        Array.isArray(response) &&
+        response.every((x) => typeof x === "number")
+      ) {
+        responseText = "[embedding-array]";
+      } else {
+        try {
+          const raw = JSON.stringify(response);
+          responseText =
+            raw.length > 100_000
+              ? raw.substring(0, 100_000) +
+                `... [truncated, ${raw.length} total chars]`
+              : raw;
+        } catch {
+          responseText = "[non-serializable response]";
+        }
+      }
+      const rSlug = logResponse(modelKey, responseText, {
+        ...meta,
+        duration: Number(elapsedTime.toFixed(2)),
+      });
+      if (rSlug) {
+        this.logger.debug(
+          {
+            src: "agent",
+            agentId: this.agentId,
+            model: modelKey,
+            slug: rSlug,
+            duration: Number(elapsedTime.toFixed(2)),
+            chars: responseText.length,
+          },
+          `RESPONSE ${rSlug}`,
+        );
+      }
+    }
+
     // Log to database
     const responseValue =
       Array.isArray(response) && response.every((x) => typeof x === "number")
@@ -3030,6 +3193,29 @@ export class AgentRuntime implements IAgentRuntime {
   ): Promise<R> {
     let modelKey =
       typeof modelType === "string" ? modelType : ModelType[modelType];
+
+    // Get call stack to identify caller
+    const stack = new Error().stack;
+    const callerInfo =
+      stack
+        ?.split("\n")
+        .slice(2, 5) // Get first 3 frames after this function
+        .map((line) => line.trim().replace(/^at\s+/, ""))
+        .join(" <- ") || "unknown";
+
+    // Log model usage with caller information
+    this.logger.debug(
+      {
+        src: "agent",
+        agentId: this.agentId,
+        model: modelKey,
+        caller: callerInfo,
+        provider: provider || "default",
+        actionContext: this.currentActionContext?.actionName,
+        runId: this.getCurrentRunId(),
+      },
+      "useModel called",
+    );
 
     // Apply LLM mode override for text generation models
     const llmMode = this.getLLMMode();
@@ -3254,15 +3440,19 @@ export class AgentRuntime implements IAgentRuntime {
         typeof performance.now === "function"
           ? performance.now()
           : Date.now()) - startTime;
-      this.logger.trace(
+      this.logger.debug(
         {
           src: "agent",
           agentId: this.agentId,
           model: modelKey,
           duration: Number(elapsedTime.toFixed(2)),
           streaming: true,
+          caller: callerInfo,
+          provider:
+            provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
+          actionContext: this.currentActionContext?.actionName,
         },
-        "Model output (stream with callback complete)",
+        "useModel completed (stream with callback complete)",
       );
 
       this.logModelCall(
@@ -3330,15 +3520,19 @@ export class AgentRuntime implements IAgentRuntime {
         ? performance.now()
         : Date.now()) - startTime;
 
-    // Log timing / response (keep debug log if useful)
-    this.logger.trace(
+    // Log timing / response with caller info for debugging
+    this.logger.debug(
       {
         src: "agent",
         agentId: this.agentId,
         model: modelKey,
         duration: Number(elapsedTime.toFixed(2)),
+        caller: callerInfo,
+        provider:
+          provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
+        actionContext: this.currentActionContext?.actionName,
       },
-      "Model output",
+      "useModel completed",
     );
 
     this.logModelCall(
@@ -4405,12 +4599,17 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       throw new Error("No TEXT_EMBEDDING model registered");
     }
 
-    // Pass null to get a test vector for dimension detection
-    // Model handlers should return a zero-filled vector of the correct dimension when null is passed
-    const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
+    // Use a non-empty test string to avoid warnings from embedding providers
+    // Some providers (like OpenAI) reject empty strings as invalid input
+    const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
+      text: "test",
+    });
     if (!embedding || !embedding.length) {
       throw new Error("Invalid embedding received");
     }
+
+    // Cache the dimension for future use
+    this.cachedEmbeddingDimension = embedding.length;
 
     await this.adapter.ensureEmbeddingDimension(embedding.length);
     this.logger.debug(
@@ -4618,9 +4817,28 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     if (!memoryText) {
       throw new Error("Cannot generate embedding: Memory content is empty");
     }
-    memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
-      text: memoryText,
-    });
+    try {
+      memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
+        text: memoryText,
+      });
+    } catch (error: unknown) {
+      this.logger.error(
+        {
+          src: "agent",
+          agentId: this.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Embedding generation failed",
+      );
+      // Return zero vector as fallback instead of trying to embed empty string
+      // Use cached dimension if available, otherwise default to 1536 (OpenAI's dimension)
+      const dimension = this.cachedEmbeddingDimension || 1536;
+      memory.embedding = new Array(dimension).fill(0);
+      this.logger.warn(
+        { src: "agent", agentId: this.agentId, dimension },
+        "Using zero vector for failed embedding",
+      );
+    }
     return memory;
   }
 
