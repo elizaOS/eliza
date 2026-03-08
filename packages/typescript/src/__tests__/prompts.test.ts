@@ -35,8 +35,8 @@ describe("Prompts", () => {
       expect(messageHandlerTemplate).toContain("</response>");
       expect(messageHandlerTemplate).toContain("<thought>");
       expect(messageHandlerTemplate).toContain("<actions>");
-      expect(messageHandlerTemplate).toContain("<providers>");
       expect(messageHandlerTemplate).toContain("<text>");
+      expect(messageHandlerTemplate).toContain("<params>");
 
       // Check for important action ordering rules
       expect(messageHandlerTemplate).toContain(
@@ -53,12 +53,9 @@ describe("Prompts", () => {
       expect(messageHandlerTemplate).toContain("fenced code blocks");
       expect(messageHandlerTemplate).toContain("single backticks");
 
-      // Check for provider selection rules
-      expect(messageHandlerTemplate).toContain(
+      expect(messageHandlerTemplate).not.toContain(
         "IMPORTANT PROVIDER SELECTION RULES",
       );
-      expect(messageHandlerTemplate).toContain("ATTACHMENTS");
-      expect(messageHandlerTemplate).toContain("ENTITIES");
     });
 
     it("postCreationTemplate should contain required placeholders and examples", () => {
@@ -78,9 +75,12 @@ describe("Prompts", () => {
       expect(postCreationTemplate).toContain("A post about");
     });
 
-    it("booleanFooter should be a simple instruction", () => {
-      expect(booleanFooter).toBe("Respond with only a YES or a NO.");
-      expect(booleanFooter).toMatch(/^Respond with only a YES or a NO\.$/);
+    it("booleanFooter should require an XML decision response", () => {
+      expect(booleanFooter).toContain("<response>");
+      expect(booleanFooter).toContain("<decision>true | false</decision>");
+      expect(booleanFooter).toContain(
+        "IMPORTANT: Your response must ONLY contain the <response></response> XML block above.",
+      );
     });
 
     it("imageDescriptionTemplate should contain proper XML structure", () => {

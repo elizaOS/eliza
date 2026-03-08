@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelType, EventType, ModelType } from "../index";
-import { DefaultMessageService } from "../services/message";
+import {
+  DefaultMessageService,
+  isSimpleReplyResponse,
+} from "../services/message";
 import type { Content, HandlerCallback, Memory, UUID } from "../types";
 import type { IMessageService } from "../types/message-service";
 import type { GenerateTextParams } from "../types/model";
@@ -65,7 +68,7 @@ describe("DefaultMessageService", () => {
         // Response for message handler - now with streaming support
         // Must include <response> wrapper for parseKeyValueXml to work
         const responseText =
-          "<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>";
+          "<response><thought>Processing message</thought><actions>REPLY</actions><text>Hello! How can I help you?</text></response>";
         const textParams = params as GenerateTextParams;
         if (textParams?.stream) {
           // Return TextStreamResult for streaming - simulate chunked response
@@ -73,7 +76,7 @@ describe("DefaultMessageService", () => {
             textStream: (async function* () {
               // Yield in chunks to simulate real streaming
               yield "<response><thought>Processing message</thought>";
-              yield "<actions>REPLY</actions><providers></providers>";
+              yield "<actions>REPLY</actions>";
               yield "<text>Hello! How can I help you?</text></response>";
             })(),
             text: Promise.resolve(responseText),
@@ -500,6 +503,21 @@ describe("DefaultMessageService", () => {
         }),
         "messages",
       );
+    });
+
+    it("treats a single REPLY as simple even when providers are present", () => {
+      expect(
+        isSimpleReplyResponse({
+          actions: ["REPLY"],
+          providers: ["ATTACHMENTS"],
+        } as Content),
+      ).toBe(true);
+      expect(
+        isSimpleReplyResponse({
+          actions: ["REPLY", "CALL_MCP_TOOL"],
+          providers: ["ATTACHMENTS"],
+        } as Content),
+      ).toBe(false);
     });
   });
 

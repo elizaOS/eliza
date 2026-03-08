@@ -76,17 +76,7 @@ Create a `.env` file in the project root:
 OPENAI_API_KEY=your_api_key_here
 ```
 
-### 3. Run an Example Agent
-
-```bash
-# Interactive chat
-OPENAI_API_KEY=your_key bun run examples/typescript/chat.ts
-
-# Basic message processing
-OPENAI_API_KEY=your_key bun run examples/typescript/standalone.ts
-```
-
-### 4. Use the Library in Your Own Project
+### 3. Use the Library in Your Own Project
 
 Install the core package:
 
@@ -124,7 +114,6 @@ Eliza is a monorepo that contains all the packages needed to run the entire plat
 │   ├── rust/           # Rust implementation (native + WASM)
 │   └── ...             # Other packages and utilities
 ├── plugins/            # Official plugins (discord, telegram, openai, etc.)
-├── examples/           # Example agents and usage patterns
 └── ...
 ```
 

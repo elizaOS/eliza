@@ -300,10 +300,11 @@ describe("dynamicPromptExecFromState", () => {
       expect(result?.text).toBe("Hello!");
     });
 
-    it("should parse JSON format when specified", async () => {
+    it("should honor explicit XML format requests", async () => {
       runtime.registerModel(
         ModelType.TEXT_LARGE,
-        async () => '{"thought": "I should respond", "text": "Hello!"}',
+        async () =>
+          "<response><thought>I should respond</thought><text>Hello!</text></response>",
         "mock",
       );
 
@@ -317,7 +318,7 @@ describe("dynamicPromptExecFromState", () => {
         ],
         options: {
           contextCheckLevel: 0,
-          forceFormat: "json",
+          forceFormat: "xml",
         },
       });
 
@@ -514,9 +515,9 @@ describe("dynamicPromptExecFromState", () => {
           modelReceivedStream = params.stream === true;
           return {
             textStream: (async function* () {
-              yield '{"text":"Hello"}';
+              yield "<response><text>Hello</text></response>";
             })(),
-            text: Promise.resolve('{"text":"Hello"}'),
+            text: Promise.resolve("<response><text>Hello</text></response>"),
             usage: Promise.resolve(undefined),
             finishReason: Promise.resolve("stop"),
           };
@@ -531,7 +532,7 @@ describe("dynamicPromptExecFromState", () => {
         schema: [{ field: "text", description: "Response" }],
         options: {
           contextCheckLevel: 0,
-          forceFormat: "json",
+          forceFormat: "xml",
           onStreamChunk: (chunk) => {
             chunks.push(chunk);
           },

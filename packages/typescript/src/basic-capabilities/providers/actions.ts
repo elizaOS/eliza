@@ -1,9 +1,4 @@
-import {
-  composeActionCallExamples,
-  composeActionExamples,
-  formatActionNames,
-  formatActions,
-} from "../../actions.ts";
+import { formatActionNames, formatActions } from "../../actions.ts";
 import { buildConversationSeed } from "../../deterministic";
 import { requireProviderSpec } from "../../generated/spec-helpers.ts";
 import { logger } from "../../logger.ts";

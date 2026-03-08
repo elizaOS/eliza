@@ -163,7 +163,9 @@ describe("Follow Room Action", () => {
     }
 
     // Spy on runtime methods
-    vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
+    vi.spyOn(runtime, "useModel").mockResolvedValue(
+      "<response><decision>yes</decision></response>",
+    );
     vi.spyOn(runtime, "setParticipantUserState").mockResolvedValue(undefined);
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
       stringToUuid("memory-id"),
@@ -207,7 +209,9 @@ describe("Follow Room Action", () => {
     callback = setup.callback as HandlerCallback;
 
     // Spy on runtime methods
-    vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
+    vi.spyOn(runtime, "useModel").mockResolvedValue(
+      "<response><decision>yes</decision></response>",
+    );
 
     // Create a specific error message
     const errorMessage = "Failed to update participant state: Database error";
@@ -350,7 +354,9 @@ describe("Mute Room Action", () => {
     callback = setup.callback as HandlerCallback;
 
     // Spy on runtime methods - useModel is needed for _shouldMute check
-    vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
+    vi.spyOn(runtime, "useModel").mockResolvedValue(
+      "<response><decision>yes</decision></response>",
+    );
     vi.spyOn(runtime, "setParticipantUserState").mockResolvedValue(undefined);
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
       stringToUuid("memory-id"),
@@ -488,7 +494,9 @@ describe("Unmute Room Action", () => {
     }
 
     // Spy on runtime methods - useModel is needed for _shouldUnmute check
-    vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
+    vi.spyOn(runtime, "useModel").mockResolvedValue(
+      "<response><decision>yes</decision></response>",
+    );
     vi.spyOn(runtime, "setParticipantUserState").mockResolvedValue(undefined);
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
       stringToUuid("memory-id"),
@@ -627,7 +635,9 @@ describe("Unfollow Room Action", () => {
     }
 
     // Spy on runtime methods - useModel is needed for _shouldUnfollow check
-    vi.spyOn(runtime, "useModel").mockResolvedValue("yes");
+    vi.spyOn(runtime, "useModel").mockResolvedValue(
+      "<response><decision>yes</decision></response>",
+    );
     vi.spyOn(runtime, "setParticipantUserState").mockResolvedValue(undefined);
     vi.spyOn(runtime, "createMemory").mockResolvedValue(
       stringToUuid("memory-id"),

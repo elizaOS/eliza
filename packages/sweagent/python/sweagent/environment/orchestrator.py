@@ -1,5 +1,7 @@
 
-import asyncio
+# We can't import ProviderTaskExecutionContext directly as it is in the benchmark code,
+# so we will treat it as Any / duck-typed.
+from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Any
 
@@ -14,12 +16,6 @@ from swerex.runtime.abstract import (
     WriteFileRequest,
 )
 
-# We can't import ProviderTaskExecutionContext directly as it is in the benchmark code,
-# so we will treat it as Any / duck-typed.
-
-
-
-from dataclasses import dataclass
 
 @dataclass
 class BashActionResult:

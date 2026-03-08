@@ -2603,13 +2603,13 @@ describe("actionsProvider filtered path integration", () => {
       createMockState(),
     );
 
-    // Check that values contain all expected keys
+    // Check that values contain the compact action prompt fields
     expect(result.values.actionNames).toContain("SWAP_TOKENS");
     expect(result.values.actionsWithDescriptions).toContain(
       "Swap cryptocurrency tokens",
     );
-    expect(typeof result.values.actionExamples).toBe("string");
-    expect(typeof result.values.actionCallExamples).toBe("string");
+    expect(result.values).not.toHaveProperty("actionExamples");
+    expect(result.values).not.toHaveProperty("actionCallExamples");
 
     // Text should be the joined sections
     expect(result.text).toContain("Possible response actions:");
@@ -2639,8 +2639,8 @@ describe("actionsProvider filtered path integration", () => {
 
     expect(result.data.actionsData.length).toBe(0);
     expect(result.values.actionsWithDescriptions).toBe("");
-    expect(result.values.actionExamples).toBe("");
-    expect(result.values.actionCallExamples).toBe("");
+    expect(result.values).not.toHaveProperty("actionExamples");
+    expect(result.values).not.toHaveProperty("actionCallExamples");
   });
 
   it("should handle multiple validators throwing with different error types", async () => {

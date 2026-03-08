@@ -68,7 +68,7 @@
     "inquirer": "^9.3.7",
     "js-yaml": "^4.1.0",
     "jsonl": "^1.1.2",
-    "minimatch": "^9.0.5",
+    "minimatch": "^10.2.2",
     "ora": "^7.0.1",
     "pino": "^8.21.0",
     "pino-pretty": "^10.3.1",

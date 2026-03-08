@@ -1071,6 +1071,41 @@ export function parseBooleanFromText(
   return false;
 }
 
+export function parseXmlBooleanResponse(
+  text: string,
+  key = "decision",
+): boolean | null {
+  const parsed = parseKeyValueXml<Record<string, unknown>>(text);
+  if (!parsed) {
+    return null;
+  }
+
+  const value = parsed[key];
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) {
+    return null;
+  }
+
+  const affirmative = new Set(["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"]);
+  const negative = new Set(["NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"]);
+
+  if (affirmative.has(normalized)) {
+    return true;
+  }
+  if (negative.has(normalized)) {
+    return false;
+  }
+
+  return null;
+}
+
 // UUID Utils
 
 const uuidSchema = z

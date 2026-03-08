@@ -9,10 +9,18 @@ import type {
   State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import { composePromptFromState } from "../../utils.ts";
+import {
+  composePromptFromState,
+  parseXmlBooleanResponse,
+} from "../../utils.ts";
 
 // Inline to avoid circular import issues
-const booleanFooter = "Respond with only a YES or a NO.";
+const booleanFooter = `Respond using XML format like this:
+<response>
+  <decision>true | false</decision>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
 
 /**
  * Template for determining if an agent should unmute a previously muted room.
@@ -28,12 +36,12 @@ const shouldUnmuteTemplate = `# Task: Decide if {{agentName}} should unmute this
 {{recentMessages}}
 
 Should {{agentName}} unmute this previously muted room and start considering it for responses again?
-Respond with YES if:
+Set <decision>true</decision> if:
 - The user has explicitly asked {{agentName}} to start responding again
 - The user seems to want to re-engage with {{agentName}} in a respectful manner
 - The tone of the conversation has improved and {{agentName}}'s input would be welcome
 
-Otherwise, respond with NO.
+Otherwise, set <decision>false</decision>.
 ${booleanFooter}`;
 
 /**
@@ -84,16 +92,9 @@ export const unmuteRoomAction: Action = {
         stopSequences: [],
       });
 
-      const cleanedResponse = response.trim().toLowerCase();
+      const parsedResponse = parseXmlBooleanResponse(response);
 
-      // Handle various affirmative responses
-      if (
-        cleanedResponse === "true" ||
-        cleanedResponse === "yes" ||
-        cleanedResponse === "y" ||
-        cleanedResponse.includes("true") ||
-        cleanedResponse.includes("yes")
-      ) {
+      if (parsedResponse === true) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -111,14 +112,7 @@ export const unmuteRoomAction: Action = {
         return true;
       }
 
-      // Handle various negative responses
-      if (
-        cleanedResponse === "false" ||
-        cleanedResponse === "no" ||
-        cleanedResponse === "n" ||
-        cleanedResponse.includes("false") ||
-        cleanedResponse.includes("no")
-      ) {
+      if (parsedResponse === false) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -135,14 +129,13 @@ export const unmuteRoomAction: Action = {
         return false;
       }
 
-      // Default to false if response is unclear
       logger.warn(
         {
           src: "plugin:core:action:unmute_room",
           agentId: runtime.agentId,
           response,
         },
-        "Unclear boolean response, defaulting to false",
+        "Unclear XML decision response, defaulting to false",
       );
       return false;
     }

@@ -84,6 +84,64 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
     },
   );
 
+  it("should remove deleted memories from room indexes", async () => {
+    const { InMemoryDatabaseAdapter } = await import(
+      "../database/inMemoryAdapter.ts"
+    );
+
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.init();
+
+    const roomId = "room-1" as UUID;
+    const message = createMockMessage(1000, "Delete me", roomId);
+
+    await adapter.createMemory(message, "messages", false);
+    expect(
+      (
+        await adapter.getMemories({
+          tableName: "messages",
+          roomId,
+        })
+      ).length,
+    ).toBe(1);
+
+    await adapter.deleteMemory(message.id);
+
+    expect(
+      (
+        await adapter.getMemories({
+          tableName: "messages",
+          roomId,
+        })
+      ).length,
+    ).toBe(0);
+    expect(await adapter.countMemories(roomId, false, "messages")).toBe(0);
+  });
+
+  it("should scope deleteAllMemories and countMemories by table", async () => {
+    const { InMemoryDatabaseAdapter } = await import(
+      "../database/inMemoryAdapter.ts"
+    );
+
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.init();
+
+    const roomId = "room-1" as UUID;
+    const message = createMockMessage(1000, "Message table entry", roomId);
+    const memory = createMockMessage(2000, "Memory table entry", roomId);
+
+    await adapter.createMemory(message, "messages", false);
+    await adapter.createMemory(memory, "memories", false);
+
+    expect(await adapter.countMemories(roomId, false, "messages")).toBe(1);
+    expect(await adapter.countMemories(roomId, false, "memories")).toBe(1);
+
+    await adapter.deleteAllMemories(roomId, "messages");
+
+    expect(await adapter.countMemories(roomId, false, "messages")).toBe(0);
+    expect(await adapter.countMemories(roomId, false, "memories")).toBe(1);
+  });
+
   it(
     "should filter messages by end timestamp",
     { timeout: 30000 },

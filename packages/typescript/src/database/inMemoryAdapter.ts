@@ -309,21 +309,67 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
   }
 
   async deleteMemory(memoryId: UUID): Promise<void> {
-    this.memoriesById.delete(String(memoryId));
+    const id = String(memoryId);
+    this.memoriesById.delete(id);
+
+    for (const [key, list] of this.memoriesByRoom) {
+      const filtered = list.filter((memory) => String(memory.id) !== id);
+      if (filtered.length === list.length) {
+        continue;
+      }
+      if (filtered.length === 0) {
+        this.memoriesByRoom.delete(key);
+      } else {
+        this.memoriesByRoom.set(key, filtered);
+      }
+    }
   }
 
   async deleteManyMemories(memoryIds: UUID[]): Promise<void> {
     for (const id of memoryIds) {
-      this.memoriesById.delete(String(id));
+      await this.deleteMemory(id);
     }
   }
 
-  async deleteAllMemories(roomId: UUID): Promise<void> {
-    this.memoriesByRoom.delete(String(roomId));
+  async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
+    const key = roomTableKey(tableName, roomId);
+    const memories = this.memoriesByRoom.get(key) ?? [];
+    for (const memory of memories) {
+      if (memory.id) {
+        this.memoriesById.delete(String(memory.id));
+      }
+    }
+    this.memoriesByRoom.delete(key);
   }
 
-  async countMemories(roomId: UUID): Promise<number> {
-    return (this.memoriesByRoom.get(String(roomId)) ?? []).length;
+  async countMemories(
+    roomId: UUID,
+    unique?: boolean,
+    tableName?: string,
+  ): Promise<number> {
+    const keys = tableName
+      ? [roomTableKey(tableName, roomId)]
+      : Array.from(this.memoriesByRoom.keys()).filter((key) =>
+          key.endsWith(`:${String(roomId)}`),
+        );
+
+    if (unique) {
+      const ids = new Set<string>();
+      for (const key of keys) {
+        for (const memory of this.memoriesByRoom.get(key) ?? []) {
+          if (memory.id) {
+            ids.add(String(memory.id));
+          }
+        }
+      }
+      return ids.size;
+    }
+
+    let total = 0;
+    for (const key of keys) {
+      total += (this.memoriesByRoom.get(key) ?? []).length;
+    }
+    return total;
   }
 
   async createWorld(world: World): Promise<UUID> {

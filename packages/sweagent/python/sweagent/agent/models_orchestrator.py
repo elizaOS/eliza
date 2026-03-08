@@ -1,11 +1,11 @@
 
 import asyncio
-from typing import Any, List, Dict
-import threading
+from typing import Any
 
 from sweagent.agent.models import AbstractModel, GenericAPIModelConfig, InstanceStats
-from sweagent.types import History
 from sweagent.tools.tools import ToolConfig
+from sweagent.types import History
+
 
 class OrchestratorModelConfig(GenericAPIModelConfig):
     name: str = "orchestrator"
@@ -28,7 +28,7 @@ class OrchestratorModel(AbstractModel):
         # Assumption: `SWEAgentProvider` will run `agent.step()` in a strictly synchronous manner 
         # (potentially in a `run_in_executor`).
         
-    def query(self, history: History, action_prompt: str = "> ") -> Dict[str, Any]:
+    def query(self, history: History, action_prompt: str = "> ") -> dict[str, Any]:
         """Synchronous query method that bridges to async runtime."""
         messages = self._history_to_messages(history)
         
@@ -47,7 +47,7 @@ class OrchestratorModel(AbstractModel):
         
         return asyncio.run(self._async_query(messages))
 
-    async def _async_query(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+    async def _async_query(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         # Construct parameters for runtime.use_model
         params = {
             "messages": messages,
@@ -70,7 +70,7 @@ class OrchestratorModel(AbstractModel):
             "thinking_blocks": response.get("thinking_blocks", [])
         }
 
-    def _history_to_messages(self, history: History) -> List[Dict[str, str]]:
+    def _history_to_messages(self, history: History) -> list[dict[str, str]]:
         # helper to convert sweagent history to standard messages
         messages = []
         for item in history:

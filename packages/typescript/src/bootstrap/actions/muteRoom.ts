@@ -9,9 +9,17 @@ import type {
   State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import { composePromptFromState } from "../../utils.ts";
+import {
+  composePromptFromState,
+  parseXmlBooleanResponse,
+} from "../../utils.ts";
 
-const booleanFooter = "Respond with only a YES or a NO.";
+const booleanFooter = `Respond using XML format like this:
+<response>
+  <decision>true | false</decision>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
 
 const shouldMuteTemplate = `# Task: Decide if {{agentName}} should mute this room and stop responding unless explicitly mentioned.
 
@@ -19,12 +27,12 @@ const shouldMuteTemplate = `# Task: Decide if {{agentName}} should mute this roo
 
 Should {{agentName}} mute this room and stop responding unless explicitly mentioned?
 
-Respond with YES if:
+Set <decision>true</decision> if:
 - The user is being aggressive, rude, or inappropriate
 - The user has directly asked {{agentName}} to stop responding or be quiet
 - {{agentName}}'s responses are not well-received or are annoying the user(s)
 
-Otherwise, respond with NO.
+Otherwise, set <decision>false</decision>.
 ${booleanFooter}`;
 
 export const muteRoomAction: Action = {
@@ -85,15 +93,9 @@ export const muteRoomAction: Action = {
         stopSequences: [],
       });
 
-      const cleanedResponse = response.trim().toLowerCase();
+      const parsedResponse = parseXmlBooleanResponse(response);
 
-      if (
-        cleanedResponse === "true" ||
-        cleanedResponse === "yes" ||
-        cleanedResponse === "y" ||
-        cleanedResponse.includes("true") ||
-        cleanedResponse.includes("yes")
-      ) {
+      if (parsedResponse === true) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -110,13 +112,7 @@ export const muteRoomAction: Action = {
         return true;
       }
 
-      if (
-        cleanedResponse === "false" ||
-        cleanedResponse === "no" ||
-        cleanedResponse === "n" ||
-        cleanedResponse.includes("false") ||
-        cleanedResponse.includes("no")
-      ) {
+      if (parsedResponse === false) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -138,7 +134,7 @@ export const muteRoomAction: Action = {
           agentId: runtime.agentId,
           response,
         },
-        "Unclear boolean response, defaulting to false",
+        "Unclear XML decision response, defaulting to false",
       );
       return false;
     }

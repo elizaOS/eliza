@@ -74,6 +74,7 @@ export {
   deleteSessionEntry,
   getSessionEntry,
   getSessionEntryById,
+  getSessionStoreCacheSizeForTest,
   type LoadSessionStoreOptions,
   listSessionKeys,
   listSessions,
