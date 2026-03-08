@@ -1,15 +1,18 @@
 /**
  * Tests for memory leak fixes across the codebase:
  * - logListeners cap (logger.ts)
- * - latestResponseIds cleanup on error (message.ts)
+ * - AgentEventService run tracking caps/cleanup (agentEvent.ts)
+ * - PlanningService active plan retention (planning-service.ts)
  * - MemoryService Map cleanup + size caps (memory-service.ts)
  * - RECENT_MESSAGES autonomy cap (recentMessages.ts)
  */
 
 import { v4 as uuidv4 } from "uuid";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { MemoryService } from "../advanced-memory/services/memory-service";
+import { PlanningService } from "../advanced-planning/services/planning-service";
 import { addLogListener, type LogListener, removeLogListener } from "../logger";
+import { AgentEventService } from "../services/agentEvent";
 import type { IAgentRuntime, UUID } from "../types";
 
 // ===========================================================================
@@ -67,10 +70,7 @@ describe("logListeners — safety cap", () => {
   });
 
   test("cleanup function correctly removes listener", () => {
-    let callCount = 0;
-    const listener: LogListener = () => {
-      callCount++;
-    };
+    const listener: LogListener = () => {};
     const cleanup = addLogListener(listener);
     addedCleanups.push(cleanup);
 
@@ -79,6 +79,105 @@ describe("logListeners — safety cap", () => {
 
     // Remove from our tracking since we already cleaned it up
     addedCleanups.pop();
+  });
+});
+
+// ===========================================================================
+// AgentEventService — run tracking bounds
+// ===========================================================================
+
+describe("AgentEventService — run tracking bounds", () => {
+  test("clears per-run state after terminal lifecycle events", () => {
+    const service = new AgentEventService();
+    const serviceInternal = service as unknown as {
+      seqByRun: Map<string, number>;
+      runContextById: Map<string, unknown>;
+      lastTouchedAtByRun: Map<string, number>;
+    };
+
+    service.registerRunContext("run-1", {
+      sessionKey: "session-1",
+    } as never);
+
+    service.emit({
+      runId: "run-1",
+      stream: "lifecycle",
+      data: { type: "run_end" },
+    } as never);
+
+    expect(serviceInternal.seqByRun.size).toBe(0);
+    expect(serviceInternal.runContextById.size).toBe(0);
+    expect(serviceInternal.lastTouchedAtByRun.size).toBe(0);
+  });
+
+  test("caps tracked runs to prevent unbounded growth", () => {
+    const service = new AgentEventService();
+    const serviceInternal = service as unknown as {
+      seqByRun: Map<string, number>;
+      runContextById: Map<string, unknown>;
+      lastTouchedAtByRun: Map<string, number>;
+    };
+
+    for (let i = 0; i < 1200; i++) {
+      const runId = `run-${i}`;
+      service.registerRunContext(runId, {
+        sessionKey: `session-${i}`,
+      } as never);
+      service.emit({
+        runId,
+        stream: "message",
+        data: { type: "received" },
+      } as never);
+    }
+
+    expect(serviceInternal.seqByRun.size).toBeLessThanOrEqual(1000);
+    expect(serviceInternal.runContextById.size).toBeLessThanOrEqual(1000);
+    expect(serviceInternal.lastTouchedAtByRun.size).toBeLessThanOrEqual(1000);
+    expect(service.getRunContext("run-0")).toBeUndefined();
+    expect(service.getCurrentSeq("run-0")).toBe(0);
+  });
+});
+
+// ===========================================================================
+// PlanningService — active plan retention
+// ===========================================================================
+
+describe("PlanningService — active plan retention", () => {
+  function createPlanningMessage(text: string) {
+    return {
+      id: uuidv4() as UUID,
+      entityId: uuidv4() as UUID,
+      agentId: uuidv4() as UUID,
+      roomId: uuidv4() as UUID,
+      content: { text },
+      createdAt: Date.now(),
+    };
+  }
+
+  test("caps retained active plans for abandoned plan creation", async () => {
+    const service = new PlanningService({} as IAgentRuntime);
+    const serviceInternal = service as unknown as {
+      activePlans: Map<UUID, unknown>;
+    };
+    const planIds: UUID[] = [];
+
+    for (let i = 0; i < 125; i++) {
+      const plan = await service.createSimplePlan(
+        {} as IAgentRuntime,
+        createPlanningMessage(`message ${i}`) as never,
+        { values: {}, data: {}, text: "" } as never,
+      );
+      expect(plan).not.toBeNull();
+      if (plan?.id) {
+        planIds.push(plan.id);
+      }
+    }
+
+    expect(serviceInternal.activePlans.size).toBeLessThanOrEqual(100);
+    expect(serviceInternal.activePlans.has(planIds[0] as UUID)).toBe(false);
+    expect(
+      serviceInternal.activePlans.has(planIds[planIds.length - 1] as UUID),
+    ).toBe(true);
   });
 });
 
@@ -217,7 +316,7 @@ describe("recentMessages provider — autonomy cap", () => {
         "../basic-capabilities/providers/recentMessages"
       );
 
-      const { mockRuntime, getCapturedCount, roomId, agentId } =
+      const { mockRuntime, getCapturedCount, roomId } =
         createProviderMockRuntime();
 
       // Create a message with autonomy metadata

@@ -120,6 +120,17 @@ interface StrategyResult {
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
 
+export function isSimpleReplyResponse(
+  responseContent: Pick<Content, "actions"> | null | undefined,
+): boolean {
+  return !!(
+    responseContent?.actions &&
+    responseContent.actions.length === 1 &&
+    typeof responseContent.actions[0] === "string" &&
+    responseContent.actions[0].toUpperCase() === "REPLY"
+  );
+}
+
 /**
  * Default implementation of the MessageService interface.
  * This service handles the complete message processing pipeline including:
@@ -1595,13 +1606,6 @@ export class DefaultMessageService implements IMessageService {
           streamField: false,
         },
         {
-          field: "providers",
-          description:
-            "List of providers to use for additional context (comma-separated)",
-          validateField: false,
-          streamField: false,
-        },
-        {
           field: "actions",
           description: "List of actions to take (comma-separated)",
           required: true,
@@ -1660,20 +1664,11 @@ export class DefaultMessageService implements IMessageService {
           ? [normalizedActions[0]]
           : normalizedActions;
 
-      const providers = Array.isArray(parsedXml.providers)
-        ? parsedXml.providers.filter((p): p is string => typeof p === "string")
-        : typeof parsedXml.providers === "string"
-          ? parsedXml.providers
-              .split(",")
-              .map((p) => String(p).trim())
-              .filter((p) => p.length > 0)
-          : [];
-
       responseContent = {
         ...parsedXml,
         thought: String(parsedXml.thought || ""),
         actions: finalActions.length > 0 ? finalActions : ["IGNORE"],
-        providers,
+        providers: [],
         text: String(parsedXml.text || ""),
         simple: parsedXml.simple === true || parsedXml.simple === "true",
       };
@@ -1880,12 +1875,7 @@ Output ONLY the continuation, starting immediately after the last character abov
     }
 
     // Automatically determine if response is simple
-    const isSimple =
-      responseContent?.actions &&
-      responseContent.actions.length === 1 &&
-      typeof responseContent.actions[0] === "string" &&
-      responseContent.actions[0].toUpperCase() === "REPLY" &&
-      (!responseContent.providers || responseContent.providers.length === 0);
+    const isSimple = isSimpleReplyResponse(responseContent);
 
     responseContent.simple = isSimple;
     // Include message ID for streaming coordination (so broadcast uses same ID)
@@ -1938,7 +1928,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 
       accumulatedState = (await runtime.composeState(
         message,
-        ["RECENT_MESSAGES", "ACTION_STATE"],
+        ["RECENT_MESSAGES", "ACTION_STATE", "PROVIDERS"],
         false,
         false,
         "multi_step_iteration",
@@ -1980,9 +1970,9 @@ Output ONLY the continuation, starting immediately after the last character abov
           // WHY parameters: Actions need input data. Without this field in the schema,
           // the LLM won't be instructed to output parameters, breaking action execution.
           {
-            field: "parameters",
+            field: "params",
             description:
-              "JSON object with parameter names and values for the action (use {} if no parameters needed)",
+              "Optional XML parameters for the selected action. Use nested XML tags only when the action needs input.",
             validateField: false,
             streamField: false,
           },
@@ -2232,8 +2222,8 @@ Output ONLY the continuation, starting immediately after the last character abov
           actions: [action],
           thought: thought || "",
         };
-        if (parsedStep && typeof parsedStep.parameters === "string") {
-          actionContent.params = parsedStep.parameters;
+        if (parsedStep && typeof parsedStep.params === "string") {
+          actionContent.params = parsedStep.params;
         }
 
         await runtime.processActions(

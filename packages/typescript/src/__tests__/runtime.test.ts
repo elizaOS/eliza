@@ -893,6 +893,18 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       );
     });
 
+    it("should tolerate upstream IGNORE when no IGNORE action is registered", async () => {
+      responseMemory.content.actions = ["IGNORE"];
+
+      await runtime.processActions(message, [responseMemory]);
+
+      expect(mockActionHandler).not.toHaveBeenCalled();
+      expect(mockDatabaseAdapter.createMemory).not.toHaveBeenCalled();
+      expect(mockDatabaseAdapter.log).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "action" }),
+      );
+    });
+
     it("should prioritize exact action name matches over fuzzy matches", async () => {
       // Create two actions where one name is a substring of another
       const replyHandler = vi.fn().mockResolvedValue(undefined);

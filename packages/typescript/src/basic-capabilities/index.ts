@@ -1249,7 +1249,6 @@ export const basicProviders = [
   providers.currentTimeProvider,
   providers.entitiesProvider,
   providers.evaluatorsProvider,
-  providers.providersProvider,
   providers.recentMessagesProvider,
   providers.timeProvider,
   providers.worldProvider,

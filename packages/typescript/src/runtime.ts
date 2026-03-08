@@ -112,7 +112,6 @@ import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
 import {
   DEFAULT_MAX_PROMPT_TOKENS,
   estimateTokens,
-  parseJSONObjectFromText,
   parseKeyValueXml,
   stringToUuid,
   trimTokens,
@@ -1778,6 +1777,19 @@ export class AgentRuntime implements IAgentRuntime {
           }
         }
         if (!action) {
+          if (normalizedResponseAction === "ignore") {
+            this.logger.debug(
+              {
+                src: "agent",
+                agentId: this.agentId,
+                action: responseAction,
+              },
+              "Skipping upstream IGNORE action without registered handler",
+            );
+            actionIndex++;
+            continue;
+          }
+
           const errorMsg = `Action not found: ${responseAction}`;
           this.logger.error(
             { src: "agent", agentId: this.agentId, action: responseAction },
@@ -4010,8 +4022,8 @@ export class AgentRuntime implements IAgentRuntime {
       key?: string;
       modelSize?: "small" | "large";
       model?: string;
-      preferredEncapsulation?: "json" | "xml";
-      forceFormat?: "json" | "xml";
+      preferredEncapsulation?: "xml";
+      forceFormat?: "xml";
       requiredFields?: string[];
       contextCheckLevel?: 0 | 1 | 2 | 3;
       maxRetries?: number;
@@ -4128,12 +4140,17 @@ export class AgentRuntime implements IAgentRuntime {
       const output = templateFunction({ ...filteredState, ...state.values });
 
       // Process format options
-      let format = "XML";
-      if (options.forceFormat) {
-        format = options.forceFormat.toUpperCase();
-      } else if (options.preferredEncapsulation === "json") {
-        format = "JSON";
+      if (options.forceFormat === "xml") {
+        this.logger.debug(
+          "dynamicPromptExecFromState: explicit XML format requested",
+        );
       }
+      if (options.preferredEncapsulation === "xml") {
+        this.logger.debug(
+          "dynamicPromptExecFromState: preferred encapsulation is XML",
+        );
+      }
+      const format = "XML";
 
       /**
        * Rough token count estimate for logging/debugging purposes only.
@@ -4238,20 +4255,13 @@ export class AgentRuntime implements IAgentRuntime {
       }
 
       // Generate prompt with format example
-      const isXML = format === "XML";
-      const CONTAINER_START = isXML ? "<response>" : "{";
-      const CONTAINER_END = isXML ? "</response>" : "}";
+      const CONTAINER_START = "<response>";
+      const CONTAINER_END = "</response>";
 
       let EXAMPLE = `${CONTAINER_START}\n`;
       for (let i = 0; i < extSchema.length; i++) {
         const s = extSchema[i];
-        const isLast = i === extSchema.length - 1;
-        if (isXML) {
-          EXAMPLE += `  <${s.field}>${s.description}</${s.field}>\n`;
-        } else {
-          // No trailing comma on last field for valid JSON
-          EXAMPLE += `  "${s.field}": "${s.description}"${isLast ? "" : ","}\n`;
-        }
+        EXAMPLE += `  <${s.field}>${s.description}</${s.field}>\n`;
       }
       EXAMPLE += `${CONTAINER_END}\n`;
 
@@ -4272,8 +4282,8 @@ export class AgentRuntime implements IAgentRuntime {
       const smartRetryContext =
         (state as Record<string, unknown>)._smartRetryContext || "";
 
-      const section_start = isXML ? "<output>" : "# Strict Output instructions";
-      const section_end = isXML ? "</output>" : "";
+      const section_start = "<output>";
+      const section_end = "</output>";
 
       let prompt =
         "initial code: " +
@@ -4372,10 +4382,8 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         }
       }
 
-      // Create ValidationStreamExtractor on first iteration if streaming
-      // Only use ValidationStreamExtractor for XML format - it parses XML tags
-      // JSON streaming should bypass this extractor (or use a JSON-specific one later)
-      if (currentRetry === 0 && options.onStreamChunk && !extractor && isXML) {
+      // Create ValidationStreamExtractor on first iteration if streaming.
+      if (currentRetry === 0 && options.onStreamChunk && !extractor) {
         const hasRichConsumer = !!options.onStreamEvent;
 
         const streamFields = schema
@@ -4541,9 +4549,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
 
       let responseContent: Record<string, unknown> | null = null;
       try {
-        responseContent = isXML
-          ? parseKeyValueXml(cleanResponse)
-          : parseJSONObjectFromText(cleanResponse);
+        responseContent = parseKeyValueXml(cleanResponse);
         this.logger.debug(
           `dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`,
         );

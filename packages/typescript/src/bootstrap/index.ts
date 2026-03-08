@@ -1213,7 +1213,6 @@ const basic = {
     providers.contextBenchProvider,
     providers.entitiesProvider,
     providers.evaluatorsProvider,
-    providers.providersProvider,
     providers.recentMessagesProvider,
     providers.timeProvider,
     providers.worldProvider,

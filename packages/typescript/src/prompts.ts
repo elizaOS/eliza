@@ -39,7 +39,7 @@ export const messageHandlerTemplate = `<task>Generate dialog and actions for the
 </providers>
 
 <instructions>
-Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
+Write a thought and plan for {{agentName}} and decide what actions to take.
 
 IMPORTANT ACTION ORDERING RULES:
 - Actions are executed in the ORDER you list them - the order MATTERS!
@@ -60,28 +60,6 @@ IMPORTANT ACTION PARAMETERS:
 - Required parameters MUST be provided; optional parameters can be omitted if not mentioned
 - If you cannot determine a required parameter value, ask the user for clarification in your <text>
 
-EXAMPLE (action parameters):
-User message: "Send a message to @dev_guru on telegram saying Hello!"
-Actions: REPLY,SEND_MESSAGE
-Params:
-<params>
-    <SEND_MESSAGE>
-        <targetType>user</targetType>
-        <source>telegram</source>
-        <target>dev_guru</target>
-        <text>Hello!</text>
-    </SEND_MESSAGE>
-</params>
-
-IMPORTANT PROVIDER SELECTION RULES:
-- Only include providers if they are needed to respond accurately.
-- If the message mentions images, photos, pictures, attachments, or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
-- If the message asks about or references specific people, include "ENTITIES" in your providers list  
-- If the message asks about relationships or connections between people, include "RELATIONSHIPS" in your providers list
-- If the message asks about facts or specific information, include "FACTS" in your providers list
-- If the message asks about the environment or world context, include "WORLD" in your providers list
-- If no additional context is needed, you may leave the providers list empty.
-
 IMPORTANT CODE BLOCK FORMATTING RULES:
 - If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with \`\`\` fenced code blocks (specify the language if known, e.g., \`\`\`python).
 - ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
@@ -94,7 +72,6 @@ First, think about what you want to do next and plan your actions. Then, write t
 <keys>
 "thought" should be a short description of what the agent is thinking about and planning.
 "actions" should be a comma-separated list of the actions {{agentName}} plans to take based on the thought, IN THE ORDER THEY SHOULD BE EXECUTED (if none, use IGNORE, if simply responding with text, use REPLY)
-"providers" should be a comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting (NEVER use "IGNORE" as a provider - use specific provider names like ATTACHMENTS, ENTITIES, FACTS, KNOWLEDGE, etc.)
 "text" should be the text of the next message for {{agentName}} which they will send to the conversation.
 "params" (optional) should contain action parameters when actions require input. Format as nested XML with action name as wrapper.
 </keys>
@@ -107,7 +84,6 @@ Respond using XML format like this:
 <response>
     <thought>Your thought here</thought>
     <actions>ACTION1,ACTION2</actions>
-    <providers>PROVIDER1,PROVIDER2</providers>
     <text>Your response text here</text>
     <params>
         <ACTION1>
@@ -172,7 +148,12 @@ Go directly to the XML response format without any preamble or explanation.
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
-export const booleanFooter = "Respond with only a YES or a NO.";
+export const booleanFooter = `Respond using XML format like this:
+<response>
+  <decision>true | false</decision>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
 
 export const imageDescriptionTemplate = `<task>Analyze the provided image and generate a comprehensive description with multiple levels of detail.</task>
 
@@ -231,6 +212,7 @@ These are the actions or data provider calls that have already been used in this
 "thought" Clearly explain your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request.
 "action"  Name of the action to execute after providers return (can be empty if no action is needed).
 "providers" List of provider names to call in this step (can be empty if none are needed).
+"params" Optional XML parameters for the selected action. Use nested XML only when the action needs input.
 "isFinish" Set to true only if the task is fully complete.
 </keys>
 
@@ -241,6 +223,11 @@ These are the actions or data provider calls that have already been used in this
   <thought>Your thought here</thought>
   <action>ACTION</action>
   <providers>PROVIDER1,PROVIDER2</providers>
+  <params>
+    <ACTION>
+      <paramName>value</paramName>
+    </ACTION>
+  </params>
   <isFinish>true | false</isFinish>
 </response>
 </output>`;
@@ -590,26 +577,26 @@ export const shouldFollowRoomTemplate = `# Task: Decide if {{agentName}} should 
 {{recentMessages}}
 
 Should {{agentName}} start following this room, eagerly participating without explicit mentions?
-Respond with YES if:
+Set <decision>true</decision> if:
 - The user has directly asked {{agentName}} to follow the conversation or participate more actively
 - The conversation topic is highly engaging and {{agentName}}'s input would add significant value
 - {{agentName}} has unique insights to contribute and the users seem receptive
 
-Otherwise, respond with NO.
-Respond with only a YES or a NO.`;
+Otherwise, set <decision>false</decision>.
+${booleanFooter}`;
 
 export const shouldUnfollowRoomTemplate = `# Task: Decide if {{agentName}} should stop closely following this previously followed room and only respond when mentioned.
 
 {{recentMessages}}
 
 Should {{agentName}} stop closely following this previously followed room and only respond when mentioned?
-Respond with YES if:
+Set <decision>true</decision> if:
 - The user has suggested that {{agentName}} is over-participating or being disruptive
 - {{agentName}}'s eagerness to contribute is not well-received by the users
 - The conversation has shifted to a topic where {{agentName}} has less to add
 
-Otherwise, respond with NO.
-Respond with only a YES or a NO.`;
+Otherwise, set <decision>false</decision>.
+${booleanFooter}`;
 
 export const shouldMuteRoomTemplate = `# Task: Decide if {{agentName}} should mute this room and stop responding unless explicitly mentioned.
 
@@ -617,26 +604,26 @@ export const shouldMuteRoomTemplate = `# Task: Decide if {{agentName}} should mu
 
 Should {{agentName}} mute this room and stop responding unless explicitly mentioned?
 
-Respond with YES if:
+Set <decision>true</decision> if:
 - The user is being aggressive, rude, or inappropriate
 - The user has directly asked {{agentName}} to stop responding or be quiet
 - {{agentName}}'s responses are not well-received or are annoying the user(s)
 
-Otherwise, respond with NO.
-Respond with only a YES or a NO.`;
+Otherwise, set <decision>false</decision>.
+${booleanFooter}`;
 
 export const shouldUnmuteRoomTemplate = `# Task: Decide if {{agentName}} should unmute this previously muted room and start considering it for responses again.
 
 {{recentMessages}}
 
 Should {{agentName}} unmute this previously muted room and start considering it for responses again?
-Respond with YES if:
+Set <decision>true</decision> if:
 - The user has explicitly asked {{agentName}} to start responding again
 - The user seems to want to re-engage with {{agentName}} in a respectful manner
 - The tone of the conversation has improved and {{agentName}}'s input would be welcome
 
-Otherwise, respond with NO.
-Respond with only a YES or a NO.`;
+Otherwise, set <decision>false</decision>.
+${booleanFooter}`;
 
 // Target extraction template
 export const targetExtractionTemplate = `# Task: Extract Target and Source Information

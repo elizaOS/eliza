@@ -78,7 +78,7 @@ impl ProviderHandler for ContextSummaryProvider {
 
         // Format summary without topics
         let message_range = format!("{} messages", current_summary.message_count);
-        let mut summary_only = format!("**Previous Conversation** ({})\\n", message_range);
+        let mut summary_only = format!("**Previous Conversation** ({})\n", message_range);
         summary_only.push_str(&current_summary.summary);
 
         // Format with topics

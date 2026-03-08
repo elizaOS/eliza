@@ -85,6 +85,9 @@ export function resolveHeartbeatIndicator(
   }
 }
 
+const MAX_TRACKED_RUNS = 1000;
+const RUN_STATE_TTL_MS = 60 * 60 * 1000;
+
 /**
  * AgentEventService provides a unified interface for agent event streaming.
  * It manages event emission, subscription, and run context tracking.
@@ -105,6 +108,9 @@ export class AgentEventService extends Service {
 
   /** Run context by run ID */
   private runContextById = new Map<string, AgentRunContext>();
+
+  /** Last touch timestamp by run ID for LRU/TTL pruning */
+  private lastTouchedAtByRun = new Map<string, number>();
 
   /** Last heartbeat event (for UI status) */
   private lastHeartbeat: HeartbeatEventPayload | null = null;
@@ -130,8 +136,48 @@ export class AgentEventService extends Service {
     this.heartbeatListeners.clear();
     this.seqByRun.clear();
     this.runContextById.clear();
+    this.lastTouchedAtByRun.clear();
     this.lastHeartbeat = null;
     logger.debug({ src: "service:agent_event" }, "AgentEventService stopped");
+  }
+
+  private touchRun(runId: string, touchedAt = Date.now()): void {
+    if (!runId) {
+      return;
+    }
+
+    if (this.lastTouchedAtByRun.has(runId)) {
+      this.lastTouchedAtByRun.delete(runId);
+    }
+    this.lastTouchedAtByRun.set(runId, touchedAt);
+    this.pruneRunState(touchedAt);
+  }
+
+  private pruneRunState(now = Date.now()): void {
+    for (const [runId, touchedAt] of this.lastTouchedAtByRun) {
+      if (now - touchedAt <= RUN_STATE_TTL_MS) {
+        continue;
+      }
+      this.clearRunContext(runId);
+    }
+
+    while (this.lastTouchedAtByRun.size > MAX_TRACKED_RUNS) {
+      const oldestRunId = this.lastTouchedAtByRun.keys().next().value;
+      if (!oldestRunId) {
+        break;
+      }
+      this.clearRunContext(oldestRunId);
+    }
+  }
+
+  private isTerminalLifecycleEvent(event: AgentEventInput): boolean {
+    return (
+      event.stream === "lifecycle" &&
+      typeof event.data === "object" &&
+      event.data !== null &&
+      "type" in event.data &&
+      (event.data as { type?: unknown }).type === "run_end"
+    );
   }
 
   /**
@@ -141,6 +187,8 @@ export class AgentEventService extends Service {
     if (!runId) {
       return;
     }
+
+    this.touchRun(runId);
 
     const existing = this.runContextById.get(runId);
     if (!existing) {
@@ -185,6 +233,7 @@ export class AgentEventService extends Service {
   clearRunContext(runId: string): void {
     this.runContextById.delete(runId);
     this.seqByRun.delete(runId);
+    this.lastTouchedAtByRun.delete(runId);
   }
 
   /**
@@ -193,12 +242,15 @@ export class AgentEventService extends Service {
   clearAllRunContexts(): void {
     this.runContextById.clear();
     this.seqByRun.clear();
+    this.lastTouchedAtByRun.clear();
   }
 
   /**
    * Emit an agent event
    */
   emit(event: AgentEventInput): void {
+    const now = Date.now();
+    this.touchRun(event.runId, now);
     const nextSeq = (this.seqByRun.get(event.runId) ?? 0) + 1;
     this.seqByRun.set(event.runId, nextSeq);
 
@@ -212,7 +264,7 @@ export class AgentEventService extends Service {
       ...event,
       sessionKey,
       seq: nextSeq,
-      ts: Date.now(),
+      ts: now,
     };
 
     const errors: Array<{ listener: AgentEventListener; error: unknown }> = [];
@@ -246,6 +298,10 @@ export class AgentEventService extends Service {
         },
         sessionKey: event.sessionKey,
       });
+    }
+
+    if (this.isTerminalLifecycleEvent(event)) {
+      this.clearRunContext(event.runId);
     }
   }
 

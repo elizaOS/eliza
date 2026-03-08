@@ -398,8 +398,8 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
       key?: string;
       modelSize?: "small" | "large";
       model?: string;
-      preferredEncapsulation?: "json" | "xml";
-      forceFormat?: "json" | "xml";
+      preferredEncapsulation?: "xml";
+      forceFormat?: "xml";
       requiredFields?: string[];
       contextCheckLevel?: 0 | 1 | 2 | 3;
       maxRetries?: number;

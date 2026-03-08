@@ -12,7 +12,10 @@ import type {
   State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import { composePromptFromState } from "../../utils.ts";
+import {
+  composePromptFromState,
+  parseXmlBooleanResponse,
+} from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("MUTE_ROOM");
@@ -69,15 +72,9 @@ export const muteRoomAction: Action = {
         stopSequences: [],
       });
 
-      const cleanedResponse = response.trim().toLowerCase();
+      const parsedResponse = parseXmlBooleanResponse(response);
 
-      if (
-        cleanedResponse === "true" ||
-        cleanedResponse === "yes" ||
-        cleanedResponse === "y" ||
-        cleanedResponse.includes("true") ||
-        cleanedResponse.includes("yes")
-      ) {
+      if (parsedResponse === true) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -94,13 +91,7 @@ export const muteRoomAction: Action = {
         return true;
       }
 
-      if (
-        cleanedResponse === "false" ||
-        cleanedResponse === "no" ||
-        cleanedResponse === "n" ||
-        cleanedResponse.includes("false") ||
-        cleanedResponse.includes("no")
-      ) {
+      if (parsedResponse === false) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -122,7 +113,7 @@ export const muteRoomAction: Action = {
           agentId: runtime.agentId,
           response,
         },
-        "Unclear boolean response, defaulting to false",
+        "Unclear XML decision response, defaulting to false",
       );
       return false;
     }

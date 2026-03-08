@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 import yaml
 from swerex.exceptions import SwerexException

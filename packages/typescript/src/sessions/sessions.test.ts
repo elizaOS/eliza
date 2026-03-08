@@ -24,6 +24,7 @@ import {
   extractSessionContext,
   getSessionEntry,
   getSessionProviders,
+  getSessionStoreCacheSizeForTest,
   isValidSessionEntry,
   listSessionKeys,
   // Store
@@ -32,7 +33,6 @@ import {
   normalizeAgentId,
   parseAgentSessionKey,
   resolveAgentSessionsDir,
-  resolveDefaultSessionStorePath,
   resolveSessionTranscriptPath,
   // Paths
   resolveStateDir,
@@ -164,6 +164,33 @@ describe("session store", () => {
       await fs.promises.writeFile(storePath, "not valid json", "utf-8");
       const store = loadSessionStore(storePath);
       expect(store).toEqual({});
+    });
+
+    it("caps cached store paths to avoid unbounded path retention", () => {
+      for (let i = 0; i < 160; i++) {
+        const uniqueStorePath = path.join(tempDir, `sessions-${i}.json`);
+        loadSessionStore(uniqueStorePath);
+      }
+
+      expect(getSessionStoreCacheSizeForTest()).toBeLessThanOrEqual(128);
+    });
+
+    it("prunes expired cache entries even when the original path is not revisited", async () => {
+      const originalTtl = process.env.ELIZA_SESSION_CACHE_TTL_MS;
+      process.env.ELIZA_SESSION_CACHE_TTL_MS = "1";
+
+      try {
+        loadSessionStore(storePath);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        expect(getSessionStoreCacheSizeForTest()).toBe(0);
+      } finally {
+        if (originalTtl === undefined) {
+          delete process.env.ELIZA_SESSION_CACHE_TTL_MS;
+        } else {
+          process.env.ELIZA_SESSION_CACHE_TTL_MS = originalTtl;
+        }
+        clearSessionStoreCacheForTest();
+      }
     });
   });
 

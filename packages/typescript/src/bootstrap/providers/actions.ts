@@ -1,9 +1,4 @@
-import {
-  composeActionCallExamples,
-  composeActionExamples,
-  formatActionNames,
-  formatActions,
-} from "../../actions.ts";
+import { formatActionNames, formatActions } from "../../actions.ts";
 import { buildConversationSeed } from "../../deterministic";
 import { logger } from "../../logger.ts";
 import type { ActionFilterService } from "../../services/action-filter.ts";
@@ -103,35 +98,12 @@ export const actionsProvider: Provider = {
           )
         : "";
 
-    const actionExamples =
-      actionsData.length > 0
-        ? addHeader(
-            "# Action Examples",
-            composeActionExamples(actionsData, 10, `${actionSeed}:examples`),
-          )
-        : "";
-
-    const actionCallExamples =
-      actionsData.length > 0
-        ? addHeader(
-            "# Action Call Examples (with <params>)",
-            composeActionCallExamples(actionsData, 5),
-          )
-        : "";
-
     const values = {
       actionNames,
-      actionExamples,
-      actionCallExamples,
       actionsWithDescriptions,
     };
 
-    const text = [
-      actionNames,
-      actionsWithDescriptions,
-      actionExamples,
-      actionCallExamples,
-    ]
+    const text = [actionNames, actionsWithDescriptions]
       .filter(Boolean)
       .join("\n\n");
 
