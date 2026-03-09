@@ -23,8 +23,9 @@ export function sliceToFitBudget<T>(
 
   if (fromEnd) {
     for (let index = items.length - 1; index >= 0; index--) {
-      if (total + estimateChars(items[index]) > targetChars) break;
-      total += estimateChars(items[index]);
+      const size = estimateChars(items[index]);
+      if (total + size > targetChars) break;
+      total += size;
       count++;
     }
     const take = count > 0 ? count : 1;
@@ -32,8 +33,9 @@ export function sliceToFitBudget<T>(
   }
 
   for (; count < items.length; count++) {
-    if (total + estimateChars(items[count]) > targetChars) break;
-    total += estimateChars(items[count]);
+    const size = estimateChars(items[count]);
+    if (total + size > targetChars) break;
+    total += size;
   }
 
   const take = count > 0 ? count : 1;
