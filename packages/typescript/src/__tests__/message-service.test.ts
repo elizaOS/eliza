@@ -896,9 +896,11 @@ describe("DefaultMessageService", () => {
         content: {
           text: "Test message from allowed source",
           source: "test",
-          sourceId: "allowed-source-123",
           channelType: ChannelType.DM,
         } as Content,
+        metadata: {
+          sourceId: "allowed-source-123",
+        },
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
         agentId: runtime.agentId,
@@ -923,9 +925,11 @@ describe("DefaultMessageService", () => {
         content: {
           text: "Test message from blocked source",
           source: "test",
-          sourceId: "blocked-source-456",
           channelType: ChannelType.DM,
         } as Content,
+        metadata: {
+          sourceId: "blocked-source-456",
+        },
         entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
         agentId: runtime.agentId,
