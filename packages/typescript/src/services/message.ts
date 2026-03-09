@@ -464,7 +464,7 @@ export class DefaultMessageService implements IMessageService {
     const memorySourceAllowed =
       !allowedSources ||
       (typeof messageSourceId === "string" && allowedSources.includes(messageSourceId));
-    const canPersistMemory = (!disableMemoryCreation || (allowedSources && memorySourceAllowed)) && memorySourceAllowed;
+    const canPersistMemory = ((!disableMemoryCreation && memorySourceAllowed) || (allowedSources && memorySourceAllowed));
 
     let memoryToQueue: Memory | null = null;
     if (canPersistMemory) {
@@ -765,7 +765,7 @@ export class DefaultMessageService implements IMessageService {
         : "agent_response"; // Use semantic default that can be added to allowlist
       // Agent responses bypass source validation since they're internally generated
       const isSourceAllowed = !allowedSources || allowedSources.includes(responseSourceId) || message.entityId === runtime.agentId;
-      const canPersistMemory = !disableMemoryCreation && isSourceAllowed;
+      const canPersistMemory = ((!disableMemoryCreation && isSourceAllowed) || (allowedSources && isSourceAllowed));
       if (responseMessages.length > 0 && canPersistMemory) {
         for (const responseMemory of responseMessages) {
           // Update the content in case inReplyTo was added
@@ -2011,7 +2011,7 @@ Output ONLY the continuation, starting immediately after the last character abov
       // Since providers run in parallel, this is the max wall-clock time allowed
       // Default increased to 5000ms to accommodate providers making external API calls
       const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(
-        String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "5000"),
+        String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
         10,
       );
 
