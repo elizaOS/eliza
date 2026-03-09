@@ -181,13 +181,7 @@ interface StrategyResult {
  * Note: Using WeakMap would break functionality since keys must be agent IDs (strings).
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
-// Prune old agent entries when map grows too large (implementation-specific threshold)
-if (latestResponseIds.size > 1000) {
-  const keysToDelete = Array.from(latestResponseIds.keys()).slice(0, 500);
-  for (const key of keysToDelete) {
-    latestResponseIds.delete(key);
-  }
-}
+// Note: Pruning moved to handleMessage() to run during processing, not at module load
 
 /**
  * Default implementation of the MessageService interface.
@@ -212,6 +206,13 @@ export class DefaultMessageService implements IMessageService {
     callback?: HandlerCallback,
     options?: MessageProcessingOptions,
   ): Promise<MessageProcessingResult> {
+    // Prune old agent entries when map grows too large
+    if (latestResponseIds.size > 1000) {
+      const keysToDelete = Array.from(latestResponseIds.keys()).slice(0, 500);
+      for (const key of keysToDelete) {
+        latestResponseIds.delete(key);
+      }
+    }
     const trajectoryStepId =
       typeof message.metadata === "object" &&
       message.metadata !== null &&
@@ -757,8 +758,10 @@ export class DefaultMessageService implements IMessageService {
         state = await runtime.composeState(message, responseContent.providers);
       }
 
-      // Save response memory to database (respect DISABLE_MEMORY_CREATION).
-      if (responseMessages.length > 0 && !disableMemoryCreation) {
+      // Save response memory to database (respect DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS).
+      const allowedSources = getAllowedMemorySources(runtime);
+      const canPersistMemory = !disableMemoryCreation && (!allowedSources || allowedSources.includes(runtime.agentId));
+      if (responseMessages.length > 0 && canPersistMemory) {
         for (const responseMemory of responseMessages) {
           // Update the content in case inReplyTo was added
           if (responseContent) {
