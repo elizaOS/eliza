@@ -12,7 +12,7 @@
     "lint:fix": "ruff check --fix . && ruff format .",
     "format": "ruff format .",
     "format:check": "ruff format --check .",
-    "typecheck": "python3.13 -m mypy elizaos || echo 'mypy not installed, skipping typecheck'"
+    "typecheck": "python3.13 -c \"import importlib.util, subprocess, sys; spec = importlib.util.find_spec('mypy'); sys.exit(0 if spec is None and print('mypy not installed, skipping typecheck') is None else subprocess.call([sys.executable, '-m', 'mypy', 'elizaos']))\""
   },
   "author": "elizaOS",
   "license": "MIT"

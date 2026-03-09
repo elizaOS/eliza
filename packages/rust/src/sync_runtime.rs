@@ -151,6 +151,11 @@ pub trait UnifiedDatabaseAdapter: Send + Sync {
     /// Get a room by ID
     async fn get_room(&self, id: &UUID) -> Result<Option<Room>>;
 
+    /// Update an existing room
+    async fn update_room(&self, _room: &Room) -> Result<bool> {
+        Ok(false)
+    }
+
     /// Delete a room and associated data
     async fn delete_room(&self, room_id: &UUID) -> Result<()> {
         let _ = room_id;

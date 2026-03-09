@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.types import Action, ActionExample, ActionResult, Content
@@ -15,7 +15,7 @@ _spec = require_action_spec("FOLLOW_ROOM")
 
 def _convert_spec_examples() -> list[list[ActionExample]]:
     """Convert spec examples to ActionExample format."""
-    spec_examples = _spec.get("examples", [])
+    spec_examples = cast(list[list[dict[str, Any]]], _spec.get("examples", []))
     if spec_examples:
         return [
             [

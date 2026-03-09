@@ -25,12 +25,17 @@ async def get_recent_messages_context(
 
     sections: list[str] = []
     message_list: list[dict[str, str | int]] = []
+    room = await runtime.get_room(room_id)
+    last_compaction_at = None
+    if room and getattr(room, "metadata", None):
+        last_compaction_at = room.metadata.get("lastCompactionAt")
 
     recent_messages = await runtime.get_memories(
         room_id=room_id,
         limit=20,
         order_by="created_at",
         order_direction="desc",
+        start=last_compaction_at,
     )
 
     recent_messages = list(reversed(recent_messages))

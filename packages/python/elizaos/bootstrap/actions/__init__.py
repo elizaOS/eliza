@@ -7,6 +7,7 @@ from .mute_room import mute_room_action
 from .none import none_action
 from .remove_contact import remove_contact_action
 from .reply import reply_action
+from .reset_session import reset_session_action
 from .roles import update_role_action
 from .schedule_follow_up import schedule_follow_up_action
 from .search_contacts import search_contacts_action
@@ -26,6 +27,7 @@ __all__ = [
     "mute_room_action",
     "none_action",
     "remove_contact_action",
+    "reset_session_action",
     "reply_action",
     "schedule_follow_up_action",
     "search_contacts_action",
@@ -54,6 +56,7 @@ EXTENDED_ACTIONS = [
     generate_image_action,
     mute_room_action,
     remove_contact_action,
+    reset_session_action,
     schedule_follow_up_action,
     search_contacts_action,
     send_message_action,

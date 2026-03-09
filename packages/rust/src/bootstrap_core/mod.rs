@@ -384,11 +384,21 @@ impl ProviderHandler for RecentMessagesProvider {
             return Ok(ProviderResult::default());
         };
 
+        let last_compaction_at = adapter
+            .get_room(&message.room_id)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|room| room.metadata)
+            .and_then(|metadata| metadata.values.get("lastCompactionAt").cloned())
+            .and_then(|value| value.as_i64());
+
         let memories = adapter
             .get_memories(GetMemoriesParams {
                 table_name: "messages".to_string(),
                 room_id: Some(message.room_id.clone()),
                 count: Some(20),
+                start: last_compaction_at,
                 unique: Some(false),
                 ..Default::default()
             })
