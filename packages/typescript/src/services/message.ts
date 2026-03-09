@@ -930,6 +930,7 @@ export class DefaultMessageService implements IMessageService {
       // Call the callback with the ignore content
       if (callback) {
         await callback(ignoreContent);
+      // Note: deliberately bypasses allowlist to enable flexible memory creation for ignore actions.
       }
 
       // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION).

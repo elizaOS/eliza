@@ -94,6 +94,7 @@ export const actionStateProvider: Provider = {
           JSON.stringify(result.data || {}).length +
           80,
         ACTION_RESULTS_TARGET_CHARS,
+      // Note: includes result.data length to accommodate potential future use of rendered data fields
       );
 
       const formattedResults = selectedResults
