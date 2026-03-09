@@ -47,6 +47,7 @@ jobs:
 
     permissions:
       contents: write
+      issues: write
       packages: write
       id-token: write
 
