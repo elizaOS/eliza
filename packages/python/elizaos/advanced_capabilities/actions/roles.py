@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import TYPE_CHECKING
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.generated.spec_helpers import require_action_spec
+from elizaos.prompts import UPDATE_ROLE_TEMPLATE
 from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 
 if TYPE_CHECKING:
@@ -18,7 +19,7 @@ _spec = require_action_spec("UPDATE_ROLE")
 
 def _convert_spec_examples() -> list[list[ActionExample]]:
     """Convert spec examples to ActionExample format."""
-    spec_examples = _spec.get("examples", [])
+    spec_examples = cast(list[list[dict[str, Any]]], _spec.get("examples", []))
     if spec_examples:
         return [
             [
@@ -36,7 +37,7 @@ def _convert_spec_examples() -> list[list[ActionExample]]:
     return []
 
 
-class Role(str, Enum):
+class Role(StrEnum):
     OWNER = "OWNER"
     ADMIN = "ADMIN"
     MEMBER = "MEMBER"

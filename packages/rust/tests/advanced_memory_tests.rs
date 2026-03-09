@@ -27,6 +27,7 @@ struct MockDatabaseAdapter {
     worlds: Mutex<HashMap<String, World>>,
     tasks: Mutex<HashMap<String, Task>>,
     initialized: Mutex<bool>,
+    last_get_memories_params: Mutex<Option<GetMemoriesParams>>,
 }
 
 #[async_trait]
@@ -79,6 +80,11 @@ impl DatabaseAdapter for MockDatabaseAdapter {
     }
 
     async fn get_memories(&self, params: GetMemoriesParams) -> Result<Vec<Memory>> {
+        {
+            let mut last_params = self.last_get_memories_params.lock().unwrap();
+            *last_params = Some(params.clone());
+        }
+
         let memories = self.memories.lock().unwrap();
         let mut result: Vec<Memory> = memories.values().cloned().collect();
 
@@ -90,6 +96,10 @@ impl DatabaseAdapter for MockDatabaseAdapter {
         // Filter by room_id if provided
         if let Some(room_id) = &params.room_id {
             result.retain(|m| m.room_id.as_str() == room_id.as_str());
+        }
+
+        if let Some(start) = params.start {
+            result.retain(|m| m.created_at.unwrap_or_default() >= start);
         }
 
         // Filter by count
@@ -165,6 +175,12 @@ impl DatabaseAdapter for MockDatabaseAdapter {
     async fn get_room(&self, id: &UUID) -> Result<Option<Room>> {
         let rooms = self.rooms.lock().unwrap();
         Ok(rooms.get(id.as_str()).cloned())
+    }
+
+    async fn update_room(&self, room: &Room) -> Result<bool> {
+        let mut rooms = self.rooms.lock().unwrap();
+        rooms.insert(room.id.as_str().to_string(), room.clone());
+        Ok(true)
     }
 
     async fn create_entity(&self, entity: &Entity) -> Result<bool> {
@@ -732,5 +748,178 @@ async fn config_returns_independent_copy() -> Result<()> {
         config2.short_term_summarization_threshold,
         original_threshold
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn advanced_memory_registers_reset_session_action_and_updates_compaction_marker() -> Result<()>
+{
+    let adapter = Arc::new(MockDatabaseAdapter::default());
+    let owner_id = UUID::new_v4();
+    let world_id = UUID::new_v4();
+    let room_id = UUID::new_v4();
+
+    adapter
+        .create_world(&World {
+            id: world_id.clone(),
+            name: Some("test-world".to_string()),
+            agent_id: owner_id.clone(),
+            message_server_id: None,
+            metadata: Some(elizaos::types::WorldMetadata {
+                ownership: None,
+                roles: HashMap::from([(owner_id.to_string(), "OWNER".to_string())]),
+                extra: HashMap::new(),
+            }),
+        })
+        .await?;
+
+    adapter
+        .create_room(&Room {
+            id: room_id.clone(),
+            name: Some("test-room".to_string()),
+            agent_id: Some(owner_id.clone()),
+            source: "test".to_string(),
+            room_type: "GROUP".to_string(),
+            channel_id: None,
+            message_server_id: None,
+            world_id: Some(world_id),
+            metadata: Some(elizaos::types::RoomMetadata {
+                values: HashMap::from([("lastCompactionAt".to_string(), serde_json::json!(1000))]),
+            }),
+        })
+        .await?;
+
+    let runtime = AgentRuntime::new(RuntimeOptions {
+        character: Some(Character {
+            name: "CompactionAgent".to_string(),
+            bio: Bio::Single("Test".to_string()),
+            advanced_memory: Some(true),
+            ..Default::default()
+        }),
+        adapter: Some(adapter.clone()),
+        ..Default::default()
+    })
+    .await?;
+    runtime.initialize().await?;
+
+    let action_names: Vec<_> = runtime
+        .list_action_definitions()
+        .await
+        .into_iter()
+        .map(|definition| definition.name)
+        .collect();
+    assert!(action_names.iter().any(|name| name == "RESET_SESSION"));
+
+    let message = Memory {
+        id: Some(UUID::new_v4()),
+        entity_id: owner_id,
+        agent_id: Some(runtime.agent_id.clone()),
+        created_at: Some(2000),
+        content: elizaos::types::Content {
+            text: Some("reset this session".to_string()),
+            ..Default::default()
+        },
+        embedding: None,
+        room_id: room_id.clone(),
+        world_id: None,
+        unique: Some(true),
+        similarity: None,
+        metadata: None,
+    };
+
+    let results = runtime
+        .process_selected_actions(
+            &message,
+            &elizaos::types::State::new(),
+            &["RESET_SESSION".to_string()],
+            &HashMap::new(),
+        )
+        .await?;
+
+    assert_eq!(results.len(), 1);
+    assert!(results[0].success);
+
+    let updated_room = adapter
+        .get_room(&room_id)
+        .await?
+        .expect("room should exist");
+    let updated_metadata = updated_room.metadata.expect("room metadata should exist");
+    let new_compaction = updated_metadata
+        .values
+        .get("lastCompactionAt")
+        .and_then(|value| value.as_i64())
+        .expect("lastCompactionAt should be set");
+    assert!(new_compaction >= 1000);
+
+    let compaction_history = updated_metadata
+        .values
+        .get("compactionHistory")
+        .and_then(|value| value.as_array())
+        .expect("compactionHistory should be recorded");
+    assert_eq!(compaction_history.len(), 1);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn bootstrap_recent_messages_provider_respects_last_compaction_boundary() -> Result<()> {
+    let adapter = Arc::new(MockDatabaseAdapter::default());
+    let room_id = UUID::new_v4();
+
+    adapter
+        .create_room(&Room {
+            id: room_id.clone(),
+            name: Some("history-room".to_string()),
+            agent_id: Some(UUID::new_v4()),
+            source: "test".to_string(),
+            room_type: "GROUP".to_string(),
+            channel_id: None,
+            message_server_id: None,
+            world_id: None,
+            metadata: Some(elizaos::types::RoomMetadata {
+                values: HashMap::from([("lastCompactionAt".to_string(), serde_json::json!(4242))]),
+            }),
+        })
+        .await?;
+
+    let runtime = AgentRuntime::new(RuntimeOptions {
+        character: Some(Character {
+            name: "RecentMessagesAgent".to_string(),
+            bio: Bio::Single("Test".to_string()),
+            ..Default::default()
+        }),
+        adapter: Some(adapter.clone()),
+        ..Default::default()
+    })
+    .await?;
+    runtime.initialize().await?;
+
+    let message = Memory {
+        id: Some(UUID::new_v4()),
+        entity_id: UUID::new_v4(),
+        agent_id: Some(runtime.agent_id.clone()),
+        created_at: Some(5000),
+        content: elizaos::types::Content {
+            text: Some("show recent messages".to_string()),
+            ..Default::default()
+        },
+        embedding: None,
+        room_id,
+        world_id: None,
+        unique: Some(true),
+        similarity: None,
+        metadata: None,
+    };
+
+    let _ = runtime.compose_state(&message).await?;
+
+    let last_params = adapter
+        .last_get_memories_params
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("provider should fetch recent messages");
+    assert_eq!(last_params.start, Some(4242));
+
     Ok(())
 }

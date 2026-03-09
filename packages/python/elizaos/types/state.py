@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 from elizaos.types.generated.eliza.v1 import state_pb2
 
@@ -97,7 +97,7 @@ class RetryBackoffConfig:
         return min(int(delay), self.max_ms)
 
 
-class StreamEventType(str, Enum):
+class StreamEventType(StrEnum):
     """Stream event types for validation-aware streaming.
 
     Rich consumers receive these typed events for custom UX handling.

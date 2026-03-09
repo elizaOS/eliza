@@ -24,7 +24,7 @@ use serde_json::Value;
 // ActionParameters is a type alias for HashMap<String, Value>.
 use std::any::Any;
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 use std::sync::{Arc, Weak};
 
@@ -583,10 +583,45 @@ struct ExecutionState {
 #[derive(Default)]
 pub struct PlanningService {
     active_plans: Mutex<HashMap<UUID, ActionPlan>>,
+    active_plan_order: Mutex<VecDeque<UUID>>,
     executions: Mutex<HashMap<UUID, ExecutionState>>,
 }
 
 impl PlanningService {
+    const MAX_RETAINED_PLANS: usize = 100;
+
+    fn remember_plan(&self, plan: ActionPlan) {
+        let plan_id = plan.id.clone();
+        let mut active_plans = self.active_plans.lock().expect("lock poisoned");
+        let mut order = self.active_plan_order.lock().expect("lock poisoned");
+
+        if let Some(index) = order.iter().position(|existing| existing == &plan_id) {
+            order.remove(index);
+        }
+
+        active_plans.insert(plan_id.clone(), plan);
+        order.push_back(plan_id.clone());
+
+        while active_plans.len() > Self::MAX_RETAINED_PLANS {
+            let Some(oldest_plan_id) = order.pop_front() else {
+                break;
+            };
+            active_plans.remove(&oldest_plan_id);
+        }
+    }
+
+    fn forget_plan(&self, plan_id: &UUID) {
+        self.active_plans
+            .lock()
+            .expect("lock poisoned")
+            .remove(plan_id);
+
+        let mut order = self.active_plan_order.lock().expect("lock poisoned");
+        if let Some(index) = order.iter().position(|existing| existing == plan_id) {
+            order.remove(index);
+        }
+    }
+
     /// Create a best-effort single/multi-step plan using heuristics.
     pub fn create_simple_plan(&self, message: &Memory) -> ActionPlan {
         let text = message.content.text.as_deref().unwrap_or("").to_lowercase();
@@ -633,10 +668,7 @@ impl PlanningService {
             execution_model: ExecutionModel::Sequential,
         };
 
-        self.active_plans
-            .lock()
-            .expect("lock poisoned")
-            .insert(plan.id.clone(), plan.clone());
+        self.remember_plan(plan.clone());
 
         plan
     }
@@ -681,10 +713,7 @@ impl PlanningService {
         let response = runtime.use_model(model_type::TEXT_LARGE, params).await?;
         let plan = parse_plan_from_xml(&response, &goal);
 
-        self.active_plans
-            .lock()
-            .expect("lock poisoned")
-            .insert(plan.id.clone(), plan.clone());
+        self.remember_plan(plan.clone());
 
         Ok(plan)
     }
@@ -794,49 +823,55 @@ impl PlanningService {
             .expect("lock poisoned")
             .insert(plan.id.clone(), ExecutionState { aborted: false });
 
-        let mut results: Vec<ActionResult> = Vec::new();
+        let outcome = async {
+            let mut results: Vec<ActionResult> = Vec::new();
 
-        match plan.execution_model {
-            ExecutionModel::Sequential => {
-                for step in &plan.steps {
-                    self.check_abort(&plan.id)?;
-                    let step_results = self.execute_step(runtime, step, message, state).await?;
-                    results.extend(step_results);
+            match plan.execution_model {
+                ExecutionModel::Sequential => {
+                    for step in &plan.steps {
+                        self.check_abort(&plan.id)?;
+                        let step_results = self.execute_step(runtime, step, message, state).await?;
+                        results.extend(step_results);
+                    }
+                }
+                ExecutionModel::Parallel => {
+                    let futs = plan.steps.iter().map(|step| async move {
+                        self.execute_step(runtime, step, message, state).await
+                    });
+                    let out = futures::future::join_all(futs).await;
+                    for r in out {
+                        self.check_abort(&plan.id)?;
+                        results.extend(r?);
+                    }
+                }
+                ExecutionModel::Dag => {
+                    let order = Self::dag_execution_order(&plan.steps)?;
+                    for idx in order {
+                        self.check_abort(&plan.id)?;
+                        let step = &plan.steps[idx];
+                        let step_results = self.execute_step(runtime, step, message, state).await?;
+                        results.extend(step_results);
+                    }
                 }
             }
-            ExecutionModel::Parallel => {
-                let futs = plan.steps.iter().map(|step| async move {
-                    self.execute_step(runtime, step, message, state).await
-                });
-                let out = futures::future::join_all(futs).await;
-                for r in out {
-                    self.check_abort(&plan.id)?;
-                    results.extend(r?);
-                }
-            }
-            ExecutionModel::Dag => {
-                let order = Self::dag_execution_order(&plan.steps)?;
-                for idx in order {
-                    self.check_abort(&plan.id)?;
-                    let step = &plan.steps[idx];
-                    let step_results = self.execute_step(runtime, step, message, state).await?;
-                    results.extend(step_results);
-                }
-            }
+
+            Ok(PlanExecutionResult {
+                plan_id: plan.id.clone(),
+                success: true,
+                completed_steps: results.len(),
+                total_steps: plan.steps.len(),
+                results,
+            })
         }
+        .await;
 
         self.executions
             .lock()
             .expect("lock poisoned")
             .remove(&plan.id);
+        self.forget_plan(&plan.id);
 
-        Ok(PlanExecutionResult {
-            plan_id: plan.id.clone(),
-            success: true,
-            completed_steps: results.len(),
-            total_steps: plan.steps.len(),
-            results,
-        })
+        outcome
     }
 
     async fn execute_step(
@@ -890,6 +925,12 @@ impl Service for PlanningService {
     }
 
     async fn stop(&self) -> Result<()> {
+        self.active_plans.lock().expect("lock poisoned").clear();
+        self.active_plan_order
+            .lock()
+            .expect("lock poisoned")
+            .clear();
+        self.executions.lock().expect("lock poisoned").clear();
         Ok(())
     }
 }
@@ -1160,5 +1201,104 @@ mod tests {
 
         let result = PlanningService::dag_execution_order(&steps);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn caps_retained_plans() {
+        let planning = PlanningService::default();
+
+        for index in 0..150 {
+            let text = format!("message {}", index);
+            let message = Memory::message(UUID::new_v4(), UUID::new_v4(), &text);
+            let _ = planning.create_simple_plan(&message);
+        }
+
+        assert_eq!(
+            planning.active_plans.lock().expect("lock poisoned").len(),
+            PlanningService::MAX_RETAINED_PLANS
+        );
+        assert_eq!(
+            planning
+                .active_plan_order
+                .lock()
+                .expect("lock poisoned")
+                .len(),
+            PlanningService::MAX_RETAINED_PLANS
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_plan_clears_execution_state_on_error() -> Result<()> {
+        let character = Character {
+            name: "AdvPlanningRustFailure".to_string(),
+            bio: Bio::Single("Test".to_string()),
+            advanced_planning: Some(true),
+            ..Default::default()
+        };
+
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(character),
+            ..Default::default()
+        })
+        .await?;
+        runtime.initialize().await?;
+
+        let svc = runtime
+            .get_service("planning")
+            .await
+            .expect("planning service");
+        let planning = svc
+            .as_any()
+            .downcast_ref::<PlanningService>()
+            .expect("PlanningService downcast");
+
+        let plan = ActionPlan {
+            id: UUID::new_v4(),
+            goal: "Fail".to_string(),
+            steps: {
+                let step_a_id = UUID::new_v4();
+                let step_b_id = UUID::new_v4();
+                vec![
+                    ActionStep {
+                        id: step_a_id.clone(),
+                        action_name: "REPLY".to_string(),
+                        parameters: HashMap::new(),
+                        dependencies: vec![step_b_id.clone()],
+                        retry_policy: RetryPolicy::default(),
+                    },
+                    ActionStep {
+                        id: step_b_id.clone(),
+                        action_name: "REPLY".to_string(),
+                        parameters: HashMap::new(),
+                        dependencies: vec![step_a_id.clone()],
+                        retry_policy: RetryPolicy::default(),
+                    },
+                ]
+            },
+            execution_model: ExecutionModel::Dag,
+        };
+        planning.remember_plan(plan.clone());
+
+        let message = Memory::message(UUID::new_v4(), UUID::new_v4(), "fail");
+        let state = runtime.compose_state(&message).await?;
+
+        let result = planning
+            .execute_plan(&runtime, &plan, &message, &state)
+            .await;
+        assert!(result.is_err());
+        assert!(planning
+            .executions
+            .lock()
+            .expect("lock poisoned")
+            .get(&plan.id)
+            .is_none());
+        assert!(planning
+            .active_plans
+            .lock()
+            .expect("lock poisoned")
+            .get(&plan.id)
+            .is_none());
+
+        Ok(())
     }
 }

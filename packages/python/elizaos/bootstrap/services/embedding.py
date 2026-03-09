@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from elizaos.types import ModelType, Service, ServiceType
@@ -21,10 +22,14 @@ class EmbeddingService(Service):
 
     def __init__(self) -> None:
         self._runtime: IAgentRuntime | None = None
-        self._cache: dict[str, list[float]] = {}
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
         self._cache_enabled: bool = True
         self._max_cache_size: int = 1000
-        self._queue: asyncio.Queue = asyncio.Queue()
+        self._queue_max_size: int = 1000
+        self._queue: asyncio.Queue[tuple[str | None, Any]] = asyncio.Queue(
+            maxsize=self._queue_max_size
+        )
+        self._pending_payload_keys: set[str] = set()
         self._worker_task: asyncio.Task | None = None
 
     @classmethod
@@ -60,6 +65,8 @@ class EmbeddingService(Service):
                 agentId=str(self._runtime.agent_id),
             )
         self._cache.clear()
+        self._pending_payload_keys.clear()
+        self._queue = asyncio.Queue(maxsize=self._queue_max_size)
         self._runtime = None
 
     # Max characters for embedding input (~8K tokens at ~4 chars/token)
@@ -70,7 +77,9 @@ class EmbeddingService(Service):
             raise ValueError("Embedding service not started - no runtime available")
 
         if self._cache_enabled and text in self._cache:
-            return self._cache[text]
+            embedding = self._cache.pop(text)
+            self._cache[text] = embedding
+            return embedding
 
         # Truncate to stay within embedding model token limits
         embed_text = text
@@ -106,9 +115,10 @@ class EmbeddingService(Service):
         return embeddings
 
     def _add_to_cache(self, text: str, embedding: list[float]) -> None:
-        if len(self._cache) >= self._max_cache_size:
-            oldest_key = next(iter(self._cache))
-            del self._cache[oldest_key]
+        if text in self._cache:
+            self._cache.pop(text)
+        elif len(self._cache) >= self._max_cache_size:
+            self._cache.popitem(last=False)
         self._cache[text] = embedding
 
     def clear_cache(self) -> None:
@@ -124,8 +134,7 @@ class EmbeddingService(Service):
             raise ValueError("Cache size must be positive")
         self._max_cache_size = size
         while len(self._cache) > self._max_cache_size:
-            oldest_key = next(iter(self._cache))
-            del self._cache[oldest_key]
+            self._cache.popitem(last=False)
 
     async def similarity(self, text1: str, text2: str) -> float:
         embedding1 = await self.embed(text1)
@@ -142,13 +151,45 @@ class EmbeddingService(Service):
 
     async def _handle_embedding_request(self, payload: Any) -> None:
         """Handle embedding generation request event."""
-        await self._queue.put(payload)
+        payload_key = self._get_payload_key(payload)
+        if payload_key is not None:
+            if payload_key in self._pending_payload_keys:
+                return
+            self._pending_payload_keys.add(payload_key)
+
+        try:
+            await self._queue.put((payload_key, payload))
+        except Exception:
+            if payload_key is not None:
+                self._pending_payload_keys.discard(payload_key)
+            raise
+
+    def _get_payload_key(self, payload: Any) -> str | None:
+        memory_data = getattr(payload, "memory", None)
+        if memory_data is None:
+            extra = getattr(payload, "extra", None)
+            if hasattr(extra, "__getitem__"):
+                with contextlib.suppress(Exception):
+                    if "memory" in extra:
+                        memory_data = extra["memory"]
+        if memory_data is None and isinstance(payload, dict):
+            memory_data = payload.get("memory")
+        if memory_data is None:
+            return None
+
+        if isinstance(memory_data, dict):
+            memory_id = memory_data.get("id")
+        else:
+            memory_id = getattr(memory_data, "id", None)
+        if memory_id is None:
+            return None
+        return str(memory_id)
 
     async def _worker(self) -> None:
         """Background worker for processing embedding requests."""
         while True:
             try:
-                payload = await self._queue.get()
+                payload_key, payload = await self._queue.get()
             except asyncio.CancelledError:
                 break
 
@@ -158,6 +199,8 @@ class EmbeddingService(Service):
                 if self._runtime:
                     self._runtime.logger.error(f"Error in embedding worker: {e}", exc_info=True)
             finally:
+                if payload_key is not None:
+                    self._pending_payload_keys.discard(payload_key)
                 self._queue.task_done()
 
     async def _process_embedding_request(self, payload: Any) -> None:
