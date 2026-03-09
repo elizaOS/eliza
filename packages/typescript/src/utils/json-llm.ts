@@ -11,26 +11,7 @@ import { logger } from "../logger.js";
 
 const jsonBlockPattern = /```(?:json|json5)\s*\r?\n([\s\S]*?)\r?\n```/i;
 
-export function normalizeJsonLikeString(value: string): string {
-  let normalized = value.replace(/\{\s+/, "{").replace(/\s+\}/, "}").trim();
 
-  normalized = normalized.replace(
-    /("[\w\d_-]+")\s*: \s*(?!"|\[)([\s\S]+?)(?=(,\s*"|\}$))/g,
-    '$1: "$2"',
-  );
-
-  normalized = normalized.replace(
-    /"([^"]+)"\s*:\s*'([^']*)'/g,
-    (_match, key, innerValue) => `"${key}": "${innerValue}"`,
-  );
-
-  normalized = normalized.replace(
-    /("[\w\d_-]+")\s*:\s*([A-Za-z_]+)(?!["\w])/g,
-    '$1: "$2"',
-  );
-
-  return normalized;
-}
 
 export function extractAndParseJSONObjectFromText(
   text: string,
