@@ -464,7 +464,7 @@ export class DefaultMessageService implements IMessageService {
     const memorySourceAllowed =
       !allowedSources ||
       (typeof messageSourceId === "string" && allowedSources.includes(messageSourceId));
-    const canPersistMemory = ((!disableMemoryCreation && memorySourceAllowed) || (allowedSources && memorySourceAllowed));
+    const canPersistMemory = !disableMemoryCreation && memorySourceAllowed;
 
     let memoryToQueue: Memory | null = null;
     if (canPersistMemory) {
@@ -764,8 +764,8 @@ export class DefaultMessageService implements IMessageService {
         ? responseContent.metadata.sourceId 
         : "agent_response"; // Use semantic default that can be added to allowlist
       // Agent responses bypass source validation since they're internally generated
-      const isSourceAllowed = !allowedSources || allowedSources.includes(responseSourceId) || message.entityId === runtime.agentId;
-      const canPersistMemory = ((!disableMemoryCreation && isSourceAllowed) || (allowedSources && isSourceAllowed));
+      const isSourceAllowed = !allowedSources || allowedSources.includes(responseSourceId) || responseSourceId === "agent_response";
+      const canPersistMemory = !disableMemoryCreation && isSourceAllowed;
       if (responseMessages.length > 0 && canPersistMemory) {
         for (const responseMemory of responseMessages) {
           // Update the content in case inReplyTo was added
