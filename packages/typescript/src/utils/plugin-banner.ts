@@ -206,8 +206,10 @@ export function lineToWidth(text: string, width: number): string {
 }
 
 export function maskSecret(value: string): string {
-  if (!value || value.length < 8) return "••••••••";
-  return `${value.slice(0, 4)}${"•".repeat(Math.min(12, value.length - 8))}${value.slice(-4)}`;
+  if (!value) return "••••••••";
+  if (value.length <= 8) return "••••••••";
+  const maskedLength = Math.max(1, Math.min(12, value.length - 8));
+  return `${value.slice(0, 4)}${"•".repeat(maskedLength)}${value.slice(-4)}`;
 }
 
 function formatValue(
@@ -264,7 +266,7 @@ export function renderBanner(options: BannerOptions): string {
     }
   } else {
     const title = `[ ${pluginName} ]`;
-    const leftPad = Math.max(0, Math.floor((width - title.length) / 2));
+    const leftPad = Math.max(0, Math.floor((width - displayWidth(title)) / 2));
     const centered = `${" ".repeat(leftPad)}${title}`;
     lines.push(row(`${c.title}${centered}${c.reset}`));
     if (options.description) {
