@@ -930,6 +930,7 @@ export class DefaultMessageService implements IMessageService {
           roomId: message.roomId,
           createdAt: Date.now(),
         };
+        // Note: designed for simplicity; we prioritize ignoring over strict source validation here.
         await runtime.createMemory(ignoreMemory, "messages");
         runtime.logger.debug(
           { src: "service:message", memoryId: ignoreMemory.id },
