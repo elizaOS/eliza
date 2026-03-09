@@ -5,6 +5,11 @@
 
 import type { IAgentRuntime } from "../types/index.ts";
 import { logger } from "../logger.ts";
+import {
+  displayWidth,
+  renderBanner,
+  type PluginSetting,
+} from "../utils/plugin-banner.js";
 
 const c = {
   reset: "\x1b[0m",
@@ -22,51 +27,6 @@ const c = {
   brightCyan: "\x1b[96m",
 };
 
-interface SettingDisplay {
-  name: string;
-  value: string | undefined | null;
-  isSecret?: boolean;
-  defaultValue?: string;
-  required?: boolean;
-}
-
-function formatSettingValue(setting: SettingDisplay): string {
-  const isSet =
-    setting.value !== undefined &&
-    setting.value !== null &&
-    setting.value !== "";
-  const isDefault = !isSet && setting.defaultValue !== undefined;
-
-  let displayValue: string;
-  let statusColor: string;
-  let statusText: string;
-
-  if (isSet) {
-    if (setting.isSecret) {
-      displayValue = "***configured***";
-    } else {
-      displayValue = String(setting.value).substring(0, 28);
-      if (String(setting.value).length > 28) displayValue += "...";
-    }
-    statusColor = c.green;
-    statusText = "(set)";
-  } else if (isDefault) {
-    displayValue = setting.defaultValue!.substring(0, 28);
-    statusColor = c.dim;
-    statusText = "(default)";
-  } else {
-    displayValue = "not set";
-    statusColor = setting.required ? c.red : c.dim;
-    statusText = setting.required ? "(required!)" : "(optional)";
-  }
-
-  const nameCol = `${c.yellow}${setting.name.padEnd(28)}${c.reset}`;
-  const valueCol = `${c.white}${displayValue.padEnd(26)}${c.reset}`;
-  const statusCol = `${statusColor}${statusText}${c.reset}`;
-
-  return `${c.dim}|${c.reset} ${nameCol}${c.dim}|${c.reset} ${valueCol}${statusCol}`;
-}
-
 export function printBootstrapBanner(runtime: IAgentRuntime): void {
   // Get settings - Bootstrap uses channel/source bypass and memory settings
   const alwaysRespondChannels = runtime.getSetting("ALWAYS_RESPOND_CHANNELS");
@@ -77,7 +37,7 @@ export function printBootstrapBanner(runtime: IAgentRuntime): void {
   const disableMemoryCreation = runtime.getSetting("DISABLE_MEMORY_CREATION");
   const allowMemorySourceIds = runtime.getSetting("ALLOW_MEMORY_SOURCE_IDS");
 
-  const settings: SettingDisplay[] = [
+  const settings: PluginSetting[] = [
     {
       name: "ALWAYS_RESPOND_CHANNELS",
       value: (alwaysRespondChannels || bypassTypes) as string,
@@ -122,18 +82,11 @@ export function printBootstrapBanner(runtime: IAgentRuntime): void {
     ["                                             \\__/     ", sym[5]], // 50 + 7 = 57
   ];
 
-  const border = `${c.bright}${c.brightBlue}+${"-".repeat(78)}+${c.reset}`;
-  const pipe = `${c.bright}${c.brightBlue}|${c.reset}`;
-
   function artLine(cyanText: string, symPart: string, suffix = ""): string {
-    // Strip ANSI to count visible chars in symPart
-    const symVisible = symPart.replace(/\x1b\[[0-9;]*m/g, "");
-    const suffixVisible = suffix.replace(/\x1b\[[0-9;]*m/g, "");
-    // Count visible chars of cyanText (backslashes in template literal are single chars at runtime)
-    const cyanVisible = cyanText.length;
-    const used = cyanVisible + symVisible.length + suffixVisible.length;
+    const used =
+      displayWidth(cyanText) + displayWidth(symPart) + displayWidth(suffix);
     const pad = Math.max(0, 78 - used);
-    return `${pipe}${c.brightCyan}${cyanText}${c.reset}${symPart}${suffix}${" ".repeat(pad)}${pipe}`;
+    return `${c.brightCyan}${cyanText}${c.reset}${symPart}${suffix}${" ".repeat(pad)}`;
   }
 
   /*
@@ -149,29 +102,39 @@ export function printBootstrapBanner(runtime: IAgentRuntime): void {
    * |                                             \__/          |   plugin         |
    * +------------------------------------------------------------------------------+
    */
-  const artContent = [
+  const headerLines = [
     artLine(artLines[0][0], artLines[0][1]),
     artLine(artLines[1][0], artLines[1][1]),
     artLine(artLines[2][0], artLines[2][1]),
     artLine(artLines[3][0], artLines[3][1]),
     artLine(artLines[4][0], artLines[4][1]),
     artLine(artLines[5][0], artLines[5][1], `${c.dim}plugin${c.reset}`),
-  ].join("\n");
+  ];
 
-  const banner = `
-${border}
-${artContent}
-${border}
-${c.dim}|  Core agent: actions, evaluators, providers & event handlers                |${c.reset}
-${c.bright}${c.brightBlue}+----------------------------+----------------------------+------------------+${c.reset}
-${c.dim}| SETTING                    | VALUE                      | STATUS           |${c.reset}
-${c.brightBlue}+----------------------------+----------------------------+------------------+${c.reset}
-${settings.map((s) => formatSettingValue(s)).join("\n")}
-${c.brightBlue}+------------------------------------------------------------------------------+${c.reset}
-${c.dim}| To configure: Add settings to your .env file or character settings          |${c.reset}
-${c.dim}| Channel/source lists: JSON arrays like '["DM", "VOICE_DM"]'                  |${c.reset}
-${c.brightBlue}+------------------------------------------------------------------------------+${c.reset}
-`;
+  const banner = renderBanner({
+    pluginName: "bootstrap",
+    description: "Core agent: actions, evaluators, providers & event handlers",
+    runtime,
+    settings,
+    headerLines,
+    footerLines: [
+      "Core agent: actions, evaluators, providers & event handlers",
+      "To configure: Add settings to your .env file or character settings",
+      `Channel/source lists: JSON arrays like '["DM", "VOICE_DM"]'`,
+    ],
+    colors: {
+      border: c.brightBlue,
+      bright: c.bright,
+      dim: c.dim,
+      title: c.brightCyan,
+      name: c.yellow,
+      value: c.white,
+      custom: c.green,
+      default: c.dim,
+      required: c.red,
+      reset: c.reset,
+    },
+  });
 
   logger.info(`\n${banner}\n`);
 }

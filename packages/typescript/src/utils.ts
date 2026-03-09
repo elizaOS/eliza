@@ -1,10 +1,10 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import Handlebars from "handlebars";
-import JSON5 from "json5";
 import { names, uniqueNamesGenerator } from "unique-names-generator";
 import { z } from "zod";
 
 import logger from "./logger";
+import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 import type {
   Content,
   Entity,
@@ -507,8 +507,6 @@ export const formatTimestamp = (messageDate: number) => {
   return `${days} day${days !== 1 ? "s" : ""} ago`;
 };
 
-const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
-
 /**
  * Parses key-value pairs from a simple XML structure within a given text.
  * It looks for an XML block (e.g., <response>...</response>) and extracts
@@ -771,30 +769,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 export function parseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
-  const jsonBlockMatch = text.match(jsonBlockPattern);
-  let jsonData: Record<string, unknown> | null = null;
-  try {
-    if (jsonBlockMatch) {
-      jsonData = JSON5.parse(
-        normalizeJsonString(jsonBlockMatch[1].trim()),
-      ) as Record<string, unknown>;
-    } else {
-      jsonData = JSON5.parse(
-        normalizeJsonString(text.trim()),
-      ) as Record<string, unknown>;
-    }
-  } catch {
-    // WHY: One bad block shouldn't crash the flow; warn and return null so callers can handle.
-    logger.warn(
-      { src: "core:utils" },
-      "Could not parse text as JSON, returning null",
-    );
-    return null;
-  }
-  if (jsonData && typeof jsonData === "object" && !Array.isArray(jsonData)) {
-    return jsonData;
-  }
-  return null;
+  return extractAndParseJSONObjectFromText(text);
 }
 
 /**
