@@ -399,12 +399,15 @@ function ensureFileLog(): boolean {
     const logFilePath = isBooleanFlag
       ? pathMod.join(process.cwd(), "output.log")
       : logFileEnv.trim();
-    const promptLogPath = pathMod.join(process.cwd(), "prompts.log");
-    const chatLogPath = pathMod.join(process.cwd(), "chat.log");
+    const logDir = isBooleanFlag
+      ? process.cwd()
+      : pathMod.dirname(logFileEnv.trim());
+    const promptLogPath = pathMod.join(logDir, "prompts.log");
+    const chatLogPath = pathMod.join(logDir, "chat.log");
 
-    _fileLogFd = fs.openSync(logFilePath, "w");
-    _promptLogFd = fs.openSync(promptLogPath, "w");
-    _chatLogFd = fs.openSync(chatLogPath, "w");
+    _fileLogFd = fs.openSync(logFilePath, "a");
+    _promptLogFd = fs.openSync(promptLogPath, "a");
+    _chatLogFd = fs.openSync(chatLogPath, "a");
     _fileLogState = "active";
 
     process.on("exit", () => {
@@ -542,13 +545,14 @@ export function logResponse(
     runId?: string;
     provider?: string;
     duration?: number;
+    promptSlug?: string;
     [key: string]: unknown;
   },
 ): string {
   if (!ensureFileLog()) return "";
-  _promptLogCounter++;
+  // Use the promptSlug from metadata if provided (for correlation), otherwise generate new
   const agentName = metadata?.agentName ?? "unknown";
-  const slug = promptSlug(_promptLogCounter, agentName, modelType);
+  const slug = metadata?.promptSlug || promptSlug(_promptLogCounter, agentName, modelType);
   writeToPromptLog(slug, "RESPONSE", modelType, response, metadata);
   return slug;
 }
