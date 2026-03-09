@@ -84,7 +84,7 @@ export const actionsProvider: Provider = {
     });
 
     // Format action-related texts
-    const actionNames = `Possible response actions: ${formatActionNames(actionsData, `${actionSeed}:names`)}`;
+    const actionNames = `\n ## Possible response actions: ${formatActionNames(actionsData, `${actionSeed}:names`)}`;
 
     const actionsWithDescriptions =
       actionsData.length > 0
@@ -94,40 +94,13 @@ export const actionsProvider: Provider = {
           )
         : "";
 
-    const actionExamples =
-      actionsData.length > 0
-        ? addHeader(
-            "# Action Examples",
-            composeActionExamples(actionsData, 10, `${actionSeed}:examples`),
-          )
-        : "";
-
-    const actionCallExamples =
-      actionsData.length > 0
-        ? addHeader(
-            "# Action Call Examples (with <params>)",
-            composeActionCallExamples(actionsData, 5),
-          )
-        : "";
-
-    const _data = {
-      actionsData,
-    };
-
     const values = {
       actionNames,
-      actionExamples,
-      actionCallExamples,
       actionsWithDescriptions,
     };
 
     // Combine all text sections - now including actionsWithDescriptions
-    const text = [
-      actionNames,
-      actionsWithDescriptions,
-      actionExamples,
-      actionCallExamples,
-    ]
+    const text = [actionNames, actionsWithDescriptions]
       .filter(Boolean)
       .join("\n\n");
 
