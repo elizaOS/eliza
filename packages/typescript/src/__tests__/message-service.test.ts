@@ -827,6 +827,7 @@ describe("DefaultMessageService", () => {
     });
   });
 
+  // Note: This test ensures memory creation is skipped based on configuration settings.
   describe("DISABLE_MEMORY_CREATION", () => {
     it("should skip memory creation when DISABLE_MEMORY_CREATION is true", async () => {
       vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {

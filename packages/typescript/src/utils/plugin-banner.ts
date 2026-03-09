@@ -9,6 +9,7 @@
  */
 
 import type { IAgentRuntime } from "../types/runtime";
+// Note: regex captures ANSI codes for consistent banner formatting across plugins.
 
 // Pattern for matching ANSI escape sequences (without /g to avoid state)
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/;
