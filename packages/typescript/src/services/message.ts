@@ -760,7 +760,11 @@ export class DefaultMessageService implements IMessageService {
 
       // Save response memory to database (respect DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS).
       const allowedSources = getAllowedMemorySources(runtime);
-      const canPersistMemory = !disableMemoryCreation && (!allowedSources || allowedSources.includes(runtime.agentId));
+      const responseSourceId = typeof responseContent?.metadata?.sourceId === "string" 
+        ? responseContent.metadata.sourceId 
+        : runtime.agentId;
+      const isSourceAllowed = !allowedSources || allowedSources.includes(responseSourceId);
+      const canPersistMemory = !disableMemoryCreation && isSourceAllowed;
       if (responseMessages.length > 0 && canPersistMemory) {
         for (const responseMemory of responseMessages) {
           // Update the content in case inReplyTo was added
