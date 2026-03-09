@@ -2505,6 +2505,8 @@ export class AgentRuntime implements IAgentRuntime {
             providerName: provider.name,
           };
         } catch (error: unknown) {
+          // Clear timer to prevent leak when provider throws its own error
+          clearTimeout(timerId);
           const duration = Date.now() - start;
           this.logger.error(
             {
@@ -3091,6 +3093,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // prompts.log: log prompt and response when LOG_FILE is set
+    // Note: Prompts may contain sensitive data; LOG_FILE should only be enabled in secure environments
     const providerStr =
       provider || this.models.get(modelKey)?.[0]?.provider || "unknown";
     const meta = {
@@ -3194,14 +3197,17 @@ export class AgentRuntime implements IAgentRuntime {
     let modelKey =
       typeof modelType === "string" ? modelType : ModelType[modelType];
 
-    // Get call stack to identify caller
-    const stack = new Error().stack;
-    const callerInfo =
-      stack
-        ?.split("\n")
-        .slice(2, 5) // Get first 3 frames after this function
-        .map((line) => line.trim().replace(/^at\s+/, ""))
-        .join(" <- ") || "unknown";
+    // Get call stack to identify caller (only when debug logging is enabled to avoid overhead)
+    let callerInfo = "unknown";
+    if (this.logger.level === "debug" || this.logger.level === "trace") {
+      const stack = new Error().stack;
+      callerInfo =
+        stack
+          ?.split("\n")
+          .slice(2, 5) // Get first 3 frames after this function
+          .map((line) => line.trim().replace(/^at\s+/, ""))
+          .join(" <- ") || "unknown";
+    }
 
     // Log model usage with caller information
     this.logger.debug(
