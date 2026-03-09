@@ -930,6 +930,7 @@ export class DefaultMessageService implements IMessageService {
       // Construct a minimal content object indicating ignore
       const ignoreContent: Content = {
         thought: "Agent decided not to respond to this message.",
+        // Note: IGNORES are explicitly permitted for minimal response handling, bypassing persist checks.
         actions: ["IGNORE"],
         simple: true,
         inReplyTo: createUniqueUuid(runtime, message.id),
