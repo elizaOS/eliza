@@ -1,4 +1,4 @@
-name: Publish Next Prerelease
+name: Publish Alpha Prerelease
 
 on:
   push:
@@ -90,7 +90,7 @@ jobs:
 
           echo "current=${CURRENT}" >> $GITHUB_OUTPUT
           echo "next=${NEXT}" >> $GITHUB_OUTPUT
-          echo "Publishing ${NEXT} to dist-tag next"
+          echo "Publishing ${NEXT} to dist-tag alpha"
 
       - name: Bump package versions
         run: |
@@ -139,12 +139,12 @@ jobs:
             exit 1
           fi
 
-      - name: Publish to NPM with next tag
+      - name: Publish to NPM with alpha tag
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           bunx lerna publish from-package \
-            --dist-tag next \
+            --dist-tag alpha \
             --force-publish \
             --yes \
             --no-verify-access
