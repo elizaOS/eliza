@@ -9,7 +9,7 @@
 import JSON5 from "json5";
 import { logger } from "../logger.js";
 
-const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
+const jsonBlockPattern = /```(?:json|json5)\s*\r?\n([\s\S]*?)\r?\n```/i;
 
 export function normalizeJsonLikeString(value: string): string {
   let normalized = value.replace(/\{\s+/, "{").replace(/\s+\}/, "}").trim();
