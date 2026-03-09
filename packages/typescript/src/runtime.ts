@@ -3104,7 +3104,8 @@ export class AgentRuntime implements IAgentRuntime {
       actionContext: this.currentActionContext?.actionName,
     };
     if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
-      const pSlug = logPrompt(modelKey, promptContent, meta);
+      const redactedPrompt = this.redactSecrets(promptContent);
+      const pSlug = logPrompt(modelKey, redactedPrompt, meta);
       if (pSlug) {
         this.logger.debug(
           {
@@ -3120,7 +3121,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       let responseText: string;
       if (typeof response === "string") {
-        responseText = response;
+        responseText = this.redactSecrets(response);
       } else if (
         Array.isArray(response) &&
         response.every((x) => typeof x === "number")
@@ -3128,7 +3129,7 @@ export class AgentRuntime implements IAgentRuntime {
         responseText = "[embedding-array]";
       } else {
         try {
-          const raw = JSON.stringify(response);
+          const raw = this.redactSecrets(JSON.stringify(response));
           responseText =
             raw.length > 100_000
               ? raw.substring(0, 100_000) +
