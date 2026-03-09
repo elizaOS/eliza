@@ -762,8 +762,9 @@ export class DefaultMessageService implements IMessageService {
       const allowedSources = getAllowedMemorySources(runtime);
       const responseSourceId = typeof responseContent?.metadata?.sourceId === "string" 
         ? responseContent.metadata.sourceId 
-        : runtime.agentId;
-      const isSourceAllowed = !allowedSources || allowedSources.includes(responseSourceId);
+        : "agent_response"; // Use semantic default that can be added to allowlist
+      // Agent responses bypass source validation since they're internally generated
+      const isSourceAllowed = !allowedSources || allowedSources.includes(responseSourceId) || message.entityId === runtime.agentId;
       const canPersistMemory = !disableMemoryCreation && isSourceAllowed;
       if (responseMessages.length > 0 && canPersistMemory) {
         for (const responseMemory of responseMessages) {
