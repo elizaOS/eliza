@@ -90,8 +90,13 @@ export const actionStateProvider: Provider = {
         (result) =>
           String(result.text || "").length +
           String(result.error || "").length +
-          JSON.stringify(result.values || {}).length +
-          JSON.stringify(result.data || {}).length +
+          (() => {
+            try {
+              return JSON.stringify(result.values || {}).length;
+            } catch {
+              return 0;
+            }
+          })() +
           80,
         ACTION_RESULTS_TARGET_CHARS,
       // Note: includes result.data length to accommodate potential future use of rendered data fields
