@@ -217,7 +217,7 @@ export const actionStateProvider: Provider = {
           return textChars + runId.length + 80;
         },
         ACTION_HISTORY_TARGET_CHARS,
-        { fromEnd: true },
+        { fromEnd: false },
       );
 
       const formattedMemories = selectedRuns
