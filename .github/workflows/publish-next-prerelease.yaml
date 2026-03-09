@@ -98,6 +98,7 @@ jobs:
             --force-publish \
             --yes \
             --no-private \
+            --allow-branch shaw/release-clean-tree-fix \
             --no-git-tag-version \
             --no-push
 
