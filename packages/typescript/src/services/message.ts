@@ -934,9 +934,9 @@ export class DefaultMessageService implements IMessageService {
         inReplyTo: createUniqueUuid(runtime, message.id),
       };
 
-      // Call the callback with the ignore content
+      // Call the callback with the ignore content and action name
       if (callback) {
-        await callback(ignoreContent);
+        await callback(ignoreContent, "IGNORE");
       // Note: deliberately bypasses allowlist to enable flexible memory creation for ignore actions.
       }
 
