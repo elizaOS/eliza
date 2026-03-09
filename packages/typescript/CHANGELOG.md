@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Utils: typed plugin config loading helpers**
+  - **What:** Added `resolveSettingRaw`, `collectSettings`, `getStringSetting`, `getBooleanSetting`, `getNumberSetting`, `getEnumSetting`, `getCsvSetting`, `formatConfigErrors`, and `loadPluginConfig` to the shared utils surface.
+  - **Why:** Many plugins needed the same config-loading boilerplate: runtime-first setting lookup, optional env fallback, type coercion, Zod parsing, and readable startup errors. Centralizing the common pieces reduces copy-paste drift while keeping plugin-specific schema rules local.
+
 - **Message processing: `keepExistingResponses` option**
   - **What:** New optional `keepExistingResponses` on `MessageProcessingOptions`. When `true`, the message service does not discard a response when a newer message is being processed (same behavior as env `BOOTSTRAP_KEEP_RESP`).
   - **Why:** Callers need a programmatic override without changing runtime settings. Unifies config (env) and API: options take precedence, then `BOOTSTRAP_KEEP_RESP` is used so behavior is consistent and explicit in one place.

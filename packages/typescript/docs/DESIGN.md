@@ -67,6 +67,35 @@ Plugin arrays can be built from config or composition; a `null` or `undefined` e
 
 ## Parsing and formatting
 
+### Why a small shared config-loading helper instead of a full config framework?
+
+Many plugins repeat the same setup code:
+
+- read from `runtime.getSetting(key)`
+- optionally fall back to `process.env[key]`
+- coerce booleans, numbers, enums, or CSV lists
+- collect raw values into an object
+- validate that object with Zod
+- format startup errors for logs
+
+That repeated plumbing is a good fit for core because it is common and low-policy. But a full framework would be premature because the higher-level rules still vary a lot between plugins.
+
+So the first pass is intentionally small:
+
+- `resolveSettingRaw()` owns runtime-first precedence
+- `collectSettings()` builds the raw object
+- typed getters handle common coercions
+- `loadPluginConfig()` and `formatConfigErrors()` centralize validation and failure formatting
+
+**Why not more in v1?** Some config behavior is still too plugin-specific:
+
+- alias keys for a single logical setting
+- character-settings merges
+- derived values from multiple sources
+- writing normalized values back to env/runtime
+
+Pulling those rules into core too early would create a helper that looks generic but hides too much policy. The current design favors a small shared layer plus plugin-local composition.
+
 ### Why JSON5 for LLM output?
 
 Model output often has trailing commas, unquoted keys, or single quotes. Strict `JSON.parse` fails on these and would force retries or fallbacks. JSON5 accepts common “almost JSON” and reduces spurious parse failures. We still use try/catch and return `null` on failure so one bad block doesn’t crash the flow.

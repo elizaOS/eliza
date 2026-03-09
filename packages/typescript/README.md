@@ -12,6 +12,7 @@ The `@elizaos/core` package provides a robust foundation for building AI agents 
 - **Evaluators:** Process conversation data to extract insights, build long-term memory, and maintain contextual awareness.
 - **Plugin System:** Extensible architecture allowing for modular addition of functionalities.
 - **Entity and Memory Management:** Core support for tracking entities and their associated information.
+- **Shared Config Helpers:** Common utilities for runtime-first setting resolution, typed coercion, and schema-based config validation.
 
 ## Installation
 
@@ -99,6 +100,75 @@ Key behaviors and APIs are documented with their **reasons** so future changes s
 - **[ROADMAP.md](ROADMAP.md)** — Planned work and rationale (observability, robustness, API consistency, performance).
 
 When adding or changing behavior, update these docs so the WHY stays accurate.
+
+### Shared config helpers (WHY)
+
+`@elizaos/core` now exports a small config-loading helper layer for the repeated setup work that many plugins need:
+
+- `resolveSettingRaw()`
+- `collectSettings()`
+- `getStringSetting()`
+- `getBooleanSetting()`
+- `getNumberSetting()`
+- `getEnumSetting()`
+- `getCsvSetting()`
+- `formatConfigErrors()`
+- `loadPluginConfig()`
+
+These helpers live in `src/utils/plugin-config.ts` and are re-exported from `@elizaos/core`.
+
+**Why this exists:** many plugins need the same boring plumbing:
+
+- read a setting from `runtime.getSetting(key)`
+- optionally fall back to `process.env`
+- coerce the raw value into a useful type
+- pass the collected object into a Zod schema
+- report validation failures in one consistent format
+
+Putting that plumbing in core reduces copy-paste drift without forcing all plugins into one config framework.
+
+**What it intentionally does not do yet:**
+
+- alias keys for one field
+- character-settings merges
+- plugin-specific derived values
+- writing normalized values back into env/runtime
+
+**Why those are excluded:** those behaviors vary too much by plugin, so lifting them into core too early would create a helper that is harder to reason about than the duplication it replaces.
+
+**Example:**
+
+```typescript
+import {
+  collectSettings,
+  loadPluginConfig,
+  type SettingSourceOptions,
+} from "@elizaos/core";
+import { z } from "zod";
+
+const schema = z.object({
+  EXAMPLE_ENABLED: z.boolean().default(false),
+  EXAMPLE_TIMEOUT_MS: z.coerce.number().min(0).default(1000),
+});
+
+const sourceOptions: SettingSourceOptions = {
+  runtime,
+  envFallback: true,
+};
+
+const raw = collectSettings(
+  ["EXAMPLE_ENABLED", "EXAMPLE_TIMEOUT_MS"],
+  sourceOptions,
+);
+
+const config = loadPluginConfig({
+  schema,
+  raw,
+  scope: "Example",
+});
+```
+
+**Why the API is split into `collectSettings()` and `loadPluginConfig()`:** callers can still override or derive a few fields locally before validation, while the shared precedence and error formatting stay centralized.
 
 ### Benchmark & Trajectory Tracing
 

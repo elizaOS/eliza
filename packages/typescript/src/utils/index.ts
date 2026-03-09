@@ -70,6 +70,21 @@ export { deferStartupWork } from "./defer-startup-work.js";
 
 export { extractAndParseJSONObjectFromText } from "./json-llm.js";
 
+export {
+  type ConfigSettingValue,
+  type LoadPluginConfigOptions,
+  type SettingSourceOptions,
+  collectSettings,
+  formatConfigErrors,
+  getBooleanSetting,
+  getCsvSetting,
+  getEnumSetting,
+  getNumberSetting,
+  getStringSetting,
+  loadPluginConfig,
+  resolveSettingRaw,
+} from "./plugin-config.js";
+
 export { sliceToFitBudget } from "./slice-to-fit-budget.js";
 
 export {

@@ -21,6 +21,8 @@ Planned improvements and directions for `@elizaos/core` (packages/typescript). I
 ### API consistency
 - **Message update flow (MESSAGE_UPDATED / UpdateHandlerCallback)**  
   **Why:** Editing or replacing a sent message is a common product need; defining the event and callback contract in core allows plugins and clients to implement it consistently.
+- **Adopt the shared config-loading helpers across plugin ports**  
+  **Why:** The new core helper removes the repeated runtime/env lookup and schema error boilerplate, but most callers still need to migrate one by one. A phased adoption pass will prove the helper across a few common patterns before widening it further.
 
 ---
 
@@ -43,6 +45,8 @@ Planned improvements and directions for `@elizaos/core` (packages/typescript). I
   **Why:** Plugins that depend on others (e.g. services) need a clear init order and readiness signal so they don’t run before dependencies are registered.
 - **Validation for critical env/settings at startup**  
   **Why:** Failing fast on missing or invalid config (e.g. model keys, adapter) saves debugging time and makes deployment errors obvious.
+- **Decide which config behaviors stay plugin-local vs. move into core**  
+  **Why:** Alias keys, character-setting merges, and plugin-specific derived values are intentionally out of scope for the first helper pass. We should only promote them after repeated adoption proves they are truly common and not accidental duplication.
 
 ---
 
