@@ -385,7 +385,7 @@ Source: ${message.content.source}
 Date: ${formatTimestamp(message.createdAt || 0)}
 
 --- Text Start ---
-${message.content.text}
+${message.content.text ?? ""}
 --- Text End ---`;
       });
 
