@@ -375,6 +375,7 @@ export default function Chat({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const inputDisabledRef = useRef<boolean>(false);
+  const hasSentMessageRef = useRef<boolean>(false);
   const hasHandledInitialUrl = useRef<boolean>(false);
   const chatTitleRef = useRef<string>('');
 
@@ -699,7 +700,10 @@ export default function Chat({
 
   useEffect(() => {
     inputDisabledRef.current = chatState.inputDisabled;
-  }, [chatState.inputDisabled]);
+    if (!chatState.inputDisabled && hasSentMessageRef.current && !chatState.isMobile) {
+      inputRef.current?.focus();
+    }
+  }, [chatState.inputDisabled, chatState.isMobile]);
 
   useEffect(() => {
     const currentChannel = agentDmChannels.find((c) => c.id === chatState.currentDmChannelId);
@@ -1020,6 +1024,7 @@ export default function Chat({
     let messageText = chatState.input.trim();
     const currentInputVal = chatState.input;
     updateChatState({ input: '', inputDisabled: true });
+    hasSentMessageRef.current = true;
     const currentSelectedFiles = [...selectedFiles];
     clearFiles();
     formRef.current?.reset();
@@ -1120,6 +1125,7 @@ export default function Chat({
       return;
     }
     updateChatState({ inputDisabled: true });
+    hasSentMessageRef.current = true;
     const retryMessageId = randomUUID() as UUID;
     const finalTextContent =
       message.text?.trim() || `Shared ${message.attachments?.length} file(s).`;
