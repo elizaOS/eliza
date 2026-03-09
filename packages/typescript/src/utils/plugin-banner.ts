@@ -1,3 +1,4 @@
+```
 /**
  * Shared plugin banner utilities.
  *
@@ -169,7 +170,6 @@ export function sliceByWidth(text: string, maxWidth: number): string {
       continue;
     }
 
-    const textSegment = remaining.slice(0, ansiMatch?.index ?? remaining.length);
     const segments = [...segmenter.segment(remaining)];
     if (segments.length === 0) break;
 
@@ -355,3 +355,5 @@ export function renderBanner(options: BannerOptions): string {
 export function printBanner(options: BannerOptions): void {
   console.log(renderBanner(options));
 }
+
+```
