@@ -103,6 +103,10 @@ export const replyAction = {
       responses?.flatMap((res) => res.content?.providers || []) || [];
 
     // Skip composeState when state already has all requested providers (251204 optimization)
+    const recentActionsNeeded = ["RECENT_MESSAGES", "ACTION_STATE"].some(
+      (provider) => !Object.prototype.hasOwnProperty.call(state!.data!.providers!, provider)
+    );
+
     const hasRequestedInState =
       state != null &&
       allProviders.length > 0 &&
@@ -110,7 +114,8 @@ export const replyAction = {
       typeof state.data.providers === "object" &&
       allProviders.every((p) =>
         Object.prototype.hasOwnProperty.call(state!.data!.providers!, p),
-      );
+      ) &&
+      !recentActionsNeeded;
 
     state =
       hasRequestedInState && state != null
