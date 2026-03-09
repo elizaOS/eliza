@@ -38,4 +38,4 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
-          node scripts/sync-prerelease-dist-tags.js "${{ inputs.source_tag }}" "${{ inputs.target_tag }}"
+          node scripts/sync-prerelease-dist-tags.js "${{ inputs.source_tag || 'alpha' }}" "${{ inputs.target_tag || 'next' }}"
