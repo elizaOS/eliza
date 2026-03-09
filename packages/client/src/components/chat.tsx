@@ -699,6 +699,9 @@ export default function Chat({
 
   useEffect(() => {
     inputDisabledRef.current = chatState.inputDisabled;
+    if (!chatState.inputDisabled) {
+      inputRef.current?.focus();
+    }
   }, [chatState.inputDisabled]);
 
   useEffect(() => {
