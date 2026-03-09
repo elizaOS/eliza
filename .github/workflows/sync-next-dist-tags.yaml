@@ -1,6 +1,9 @@
 name: Sync Next Dist-Tags
 
 on:
+  push:
+    branches:
+      - shaw/release-clean-tree-fix
   workflow_dispatch:
     inputs:
       source_tag:
