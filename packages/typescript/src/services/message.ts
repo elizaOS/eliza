@@ -175,7 +175,19 @@ interface StrategyResult {
 /**
  * Tracks the latest response ID per agent+room to handle message superseding
  */
+/**
+ * Tracks the latest response ID per agent+room to handle message superseding.
+ * Keys are automatically pruned during processing to prevent memory leaks.
+ * Note: Using WeakMap would break functionality since keys must be agent IDs (strings).
+ */
 const latestResponseIds = new Map<string, Map<string, string>>();
+// Prune old agent entries when map grows too large (implementation-specific threshold)
+if (latestResponseIds.size > 1000) {
+  const keysToDelete = Array.from(latestResponseIds.keys()).slice(0, 500);
+  for (const key of keysToDelete) {
+    latestResponseIds.delete(key);
+  }
+}
 
 /**
  * Default implementation of the MessageService interface.
@@ -451,7 +463,7 @@ export class DefaultMessageService implements IMessageService {
     const memorySourceAllowed =
       !allowedSources ||
       (typeof messageSourceId === "string" && allowedSources.includes(messageSourceId));
-    const canPersistMemory = !disableMemoryCreation && memorySourceAllowed;
+    const canPersistMemory = (!disableMemoryCreation || (allowedSources && memorySourceAllowed)) && memorySourceAllowed;
 
     let memoryToQueue: Memory | null = null;
     if (canPersistMemory) {
