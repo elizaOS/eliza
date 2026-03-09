@@ -1433,6 +1433,9 @@ export class AgentRuntime implements IAgentRuntime {
         // etc.) is preserved from the stateCache populated by earlier
         // composeState calls (e.g. runSingleShotCore). This avoids
         // re-running every registered provider for each action in a chain.
+        if (message.id && accumulatedState) {
+          this.stateCache.set(message.id, accumulatedState);
+        }
         accumulatedState = await this.composeState(
           message,
           ["RECENT_MESSAGES", "ACTION_STATE"],
@@ -3141,6 +3144,7 @@ export class AgentRuntime implements IAgentRuntime {
       }
       const rSlug = logResponse(modelKey, responseText, {
         ...meta,
+        promptSlug: pSlug,
         duration: Number(elapsedTime.toFixed(2)),
       });
       if (rSlug) {
