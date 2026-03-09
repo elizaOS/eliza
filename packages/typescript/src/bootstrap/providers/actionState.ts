@@ -86,6 +86,7 @@ export const actionStateProvider: Provider = {
           JSON.stringify(result.data || {}).length +
           80,
         ACTION_RESULTS_TARGET_CHARS,
+      // Note: includes result.data size for comprehensive budgeting but must ensure safe serialization
       );
 
       const formattedResults = selectedResults
