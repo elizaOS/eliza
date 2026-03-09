@@ -36,18 +36,12 @@ export function extractAndParseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
   const jsonBlockMatch = text.match(jsonBlockPattern);
+  let textToParse = jsonBlockMatch ? jsonBlockMatch[1].trim() : text.trim();
   let jsonData: Record<string, unknown> | null = null;
 
   try {
-    if (jsonBlockMatch) {
-      jsonData = JSON5.parse(
-        normalizeJsonLikeString(jsonBlockMatch[1].trim()),
-      ) as Record<string, unknown>;
-    } else {
-      jsonData = JSON5.parse(
-        normalizeJsonLikeString(text.trim()),
-      ) as Record<string, unknown>;
-    }
+    // Use JSON5.parse directly - it already handles unquoted keys, single quotes, trailing commas
+    jsonData = JSON5.parse(textToParse) as Record<string, unknown>;
   } catch {
     logger.warn(
       { src: "core:utils:json-llm" },
