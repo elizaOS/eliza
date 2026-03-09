@@ -28,6 +28,20 @@ export {
 export { formatRelativeTime } from "./time-format.js";
 
 export {
+  type BannerColors,
+  type BannerOptions,
+  type PluginSetting,
+  displayWidth,
+  lineToWidth,
+  maskSecret,
+  padToWidth,
+  printBanner,
+  renderBanner,
+  sliceByWidth,
+  stripAnsi,
+} from "./plugin-banner.js";
+
+export {
   type BinaryDetectResult,
   type BinariesCheckResult,
   type Platform,
@@ -51,3 +65,17 @@ export {
   detectPip,
   detectCargo,
 } from "./binary-detect.js";
+
+export { deferStartupWork } from "./defer-startup-work.js";
+
+export { extractAndParseJSONObjectFromText } from "./json-llm.js";
+
+export { sliceToFitBudget } from "./slice-to-fit-budget.js";
+
+export {
+  cosineSimilarity,
+  levenshteinDistance,
+  similarityRatio,
+  tokenize,
+  wordOverlapSimilarity,
+} from "./text-similarity.js";
