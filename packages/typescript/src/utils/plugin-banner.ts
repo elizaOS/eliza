@@ -9,7 +9,8 @@
 
 import type { IAgentRuntime } from "../types/runtime";
 
-const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
+// Pattern for matching ANSI escape sequences (without /g to avoid state)
+const ANSI_PATTERN = /\x1b\[[0-9;]*m/;
 
 export type BannerColors = {
   border: string;
@@ -57,7 +58,7 @@ const DEFAULT_COLORS: BannerColors = {
 };
 
 export function stripAnsi(text: string): string {
-  return text.replace(ANSI_PATTERN, "");
+  return text.replace(/\x1b\[[0-9;]*m/g, ""); // Use regex literal with /g only in replace
 }
 
 /**
@@ -160,15 +161,15 @@ export function sliceByWidth(text: string, maxWidth: number): string {
   let index = 0;
 
   while (index < text.length && width < maxWidth) {
-    ANSI_PATTERN.lastIndex = index;
-    const ansiMatch = ANSI_PATTERN.exec(text);
-    if (ansiMatch && ansiMatch.index === index) {
+    const remaining = text.slice(index);
+    const ansiMatch = remaining.match(ANSI_PATTERN);
+    if (ansiMatch && ansiMatch.index === 0) {
       result += ansiMatch[0];
-      index = ANSI_PATTERN.lastIndex;
+      index += ansiMatch[0].length;
       continue;
     }
 
-    const remaining = text.slice(index, ansiMatch?.index ?? text.length);
+    const textSegment = remaining.slice(0, ansiMatch?.index ?? remaining.length);
     const segments = [...segmenter.segment(remaining)];
     if (segments.length === 0) break;
 
@@ -181,13 +182,13 @@ export function sliceByWidth(text: string, maxWidth: number): string {
     width += graphemeCols;
   }
 
-  ANSI_PATTERN.lastIndex = index;
-  let trailingAnsi = ANSI_PATTERN.exec(text);
-  while (trailingAnsi && trailingAnsi.index === index) {
+  let remaining = text.slice(index);
+  let trailingAnsi = remaining.match(ANSI_PATTERN);
+  while (trailingAnsi && trailingAnsi.index === 0) {
     result += trailingAnsi[0];
-    index = ANSI_PATTERN.lastIndex;
-    ANSI_PATTERN.lastIndex = index;
-    trailingAnsi = ANSI_PATTERN.exec(text);
+    index += trailingAnsi[0].length;
+    remaining = text.slice(index);
+    trailingAnsi = remaining.match(ANSI_PATTERN);
   }
 
   return result;
