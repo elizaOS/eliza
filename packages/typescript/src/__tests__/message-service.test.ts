@@ -827,6 +827,159 @@ describe("DefaultMessageService", () => {
     });
   });
 
+  describe("DISABLE_MEMORY_CREATION", () => {
+    it("should skip memory creation when DISABLE_MEMORY_CREATION is true", async () => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+        if (key === "DISABLE_MEMORY_CREATION") return "true";
+        return null;
+      });
+
+      const message: Memory = {
+        id: "123e4567-e89b-12d3-a456-426614174300" as UUID,
+        content: {
+          text: "Test message with memory disabled",
+          source: "client_chat",
+          channelType: ChannelType.DM,
+        } as Content,
+        entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+        roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+        agentId: runtime.agentId,
+        createdAt: Date.now(),
+      };
+
+      await messageService.handleMessage(runtime, message, mockCallback);
+
+      // When DISABLE_MEMORY_CREATION is true, createMemory should not be called
+      // for the incoming message (response memories may still be created)
+      const createMemoryCalls = (runtime.createMemory as ReturnType<typeof vi.fn>).mock.calls;
+      const incomingMemoryCall = createMemoryCalls.find(
+        (call: unknown[]) => call[0]?.content?.text === "Test message with memory disabled"
+      );
+      expect(incomingMemoryCall).toBeUndefined();
+    });
+
+    it("should create memory when DISABLE_MEMORY_CREATION is false", async () => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+        if (key === "DISABLE_MEMORY_CREATION") return "false";
+        return null;
+      });
+
+      const message: Memory = {
+        id: "123e4567-e89b-12d3-a456-426614174301" as UUID,
+        content: {
+          text: "Test message with memory enabled",
+          source: "client_chat",
+          channelType: ChannelType.DM,
+        } as Content,
+        entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+        roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+        agentId: runtime.agentId,
+        createdAt: Date.now(),
+      };
+
+      await messageService.handleMessage(runtime, message, mockCallback);
+
+      expect(runtime.createMemory).toHaveBeenCalled();
+    });
+  });
+
+  describe("ALLOW_MEMORY_SOURCE_IDS", () => {
+    it("should allow memory creation for whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+        if (key === "DISABLE_MEMORY_CREATION") return "true";
+        if (key === "ALLOW_MEMORY_SOURCE_IDS") return "allowed-source-123";
+        return null;
+      });
+
+      const message: Memory = {
+        id: "123e4567-e89b-12d3-a456-426614174302" as UUID,
+        content: {
+          text: "Test message from allowed source",
+          source: "test",
+          sourceId: "allowed-source-123",
+          channelType: ChannelType.DM,
+        } as Content,
+        entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+        roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+        agentId: runtime.agentId,
+        createdAt: Date.now(),
+      };
+
+      await messageService.handleMessage(runtime, message, mockCallback);
+
+      // Memory should be created because source ID is in allowlist
+      expect(runtime.createMemory).toHaveBeenCalled();
+    });
+
+    it("should block memory creation for non-whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+        if (key === "DISABLE_MEMORY_CREATION") return "true";
+        if (key === "ALLOW_MEMORY_SOURCE_IDS") return "allowed-source-123";
+        return null;
+      });
+
+      const message: Memory = {
+        id: "123e4567-e89b-12d3-a456-426614174303" as UUID,
+        content: {
+          text: "Test message from blocked source",
+          source: "test",
+          sourceId: "blocked-source-456",
+          channelType: ChannelType.DM,
+        } as Content,
+        entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+        roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+        agentId: runtime.agentId,
+        createdAt: Date.now(),
+      };
+
+      await messageService.handleMessage(runtime, message, mockCallback);
+
+      // Check that memory was not created for the incoming message
+      const createMemoryCalls = (runtime.createMemory as ReturnType<typeof vi.fn>).mock.calls;
+      const incomingMemoryCall = createMemoryCalls.find(
+        (call: unknown[]) => call[0]?.content?.text === "Test message from blocked source"
+      );
+      expect(incomingMemoryCall).toBeUndefined();
+    });
+  });
+
+  describe("keepExistingResponses", () => {
+    it("should preserve existing responses when keepExistingResponses is true", async () => {
+      const existingResponse: Memory = {
+        id: "123e4567-e89b-12d3-a456-426614174304" as UUID,
+        content: {
+          text: "Existing response",
+          source: "test",
+        } as Content,
+        entityId: runtime.agentId,
+        roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+        agentId: runtime.agentId,
+        createdAt: Date.now() - 1000,
+      };
+
+      vi.spyOn(runtime, "getMemoriesByRoomIds").mockResolvedValue([existingResponse]);
+
+      const message: Memory = {
+        id: "123e4567-e89b-12d3-a456-426614174305" as UUID,
+        content: {
+          text: "New message",
+          source: "client_chat",
+          channelType: ChannelType.DM,
+          keepExistingResponses: true,
+        } as Content,
+        entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+        roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+        agentId: runtime.agentId,
+        createdAt: Date.now(),
+      };
+
+      await messageService.handleMessage(runtime, message, mockCallback);
+
+      // Existing responses should not be deleted
+      expect(runtime.deleteMemory).not.toHaveBeenCalledWith(existingResponse.id);
+    });
+  });
+
   describe("provider timeout", () => {
     it("should use default timeout of 1000ms when PROVIDERS_TOTAL_TIMEOUT_MS is not set", () => {
       vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
