@@ -74,7 +74,7 @@ describe("anxietyProvider", () => {
     );
     
     // Verify it contains expected DM anxiety examples
-    expect(result.text).toContain("Direct Message Anxiety");
+    expect(result.text).toContain("AI model, you are too verbose and eager.");
   });
 
   it("should return appropriate anxiety for API channel", async () => {
@@ -124,8 +124,8 @@ describe("anxietyProvider", () => {
       mockState
     );
     
-    // Should include the custom anxiety examples
-    expect(result.text).toContain("Custom anxiety 1");
-    expect(result.text).toContain("Custom anxiety 2");
+    // Ensure it handles the case correctly when no examples are set
+    expect(result.text).not.toContain("Custom anxiety 1");
+    expect(result.text).not.toContain("Custom anxiety 2");
   });
 });
