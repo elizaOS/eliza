@@ -523,7 +523,7 @@ describe("DefaultMessageService", () => {
 
       const result = await messageService.handleMessage(
         runtime,
-        voiceMessage,
+        message,
         mockCallback,
       );
 
