@@ -773,7 +773,7 @@ export function parseJSONObjectFromText(
   try {
     const result = extractAndParseJSONObjectFromText(text);
     if (!result) {
-      throw new Error("Could not extract a valid JSON object from text");
+      return null;
     }
     // Normalize numeric values to strings for backward compatibility
     for (const key in result) {
