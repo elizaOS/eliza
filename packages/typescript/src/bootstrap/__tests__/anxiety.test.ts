@@ -33,7 +33,7 @@ describe("anxietyProvider", () => {
     
     // Verify it contains expected group anxiety examples
     expect(result.text).toContain("IGNORE");
-    expect(result.text).toContain("Group Anxiety");
+    expect(result.text).toContain("AI model, you are too verbose and eager.");
   });
 
   it("should return DM anxiety examples for DM channel", async () => {
@@ -53,7 +53,7 @@ describe("anxietyProvider", () => {
     );
     
     // Verify it contains expected DM anxiety examples
-    expect(result.text).toContain("Direct Message Anxiety");
+    expect(result.text).toContain("AI model, you are too verbose and eager.");
     expect(result.text).not.toContain("Group Anxiety");
   });
 
@@ -100,6 +100,9 @@ describe("anxietyProvider", () => {
   it("should handle custom anxiety examples from ANXIETY_EXAMPLES setting", async () => {
     // Configure mock to return custom examples
     mockRuntime.getSetting = vi.fn((key) => {
+        if (key === "_runtime") {
+            return null; // Return the desired mock response
+        }
       if (key === "ANXIETY_EXAMPLES") {
         return "Custom anxiety 1,Custom anxiety 2";
       }
