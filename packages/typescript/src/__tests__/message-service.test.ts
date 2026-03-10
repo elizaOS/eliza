@@ -916,10 +916,6 @@ describe("DefaultMessageService", () => {
         // When DISABLE_MEMORY_CREATION is true, memory is never created regardless of allowlist
         expect(runtime.createMemory).not.toHaveBeenCalled();
       });
-        (call: unknown[]) => call[0]?.content?.text === "Test message from allowed source"
-      );
-      expect(incomingMemoryCall).toBeUndefined();
-    });
 
     it("should block memory creation for non-whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
       vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
