@@ -126,6 +126,7 @@ export const replyAction = {
             ...(allProviders ?? []),
             "RECENT_MESSAGES",
             "ACTION_STATE",
+          // Note: optimization relies on existing state to reduce unnecessary data retrieval.
           ]);
 
     const prompt = composePromptFromState({
