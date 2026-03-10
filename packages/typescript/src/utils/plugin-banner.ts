@@ -1,4 +1,3 @@
-```
 /**
  * Shared plugin banner utilities.
  *
@@ -357,4 +356,4 @@ export function printBanner(options: BannerOptions): void {
   console.log(renderBanner(options));
 }
 
-```
+
