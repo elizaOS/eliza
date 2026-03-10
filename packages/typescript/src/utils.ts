@@ -784,6 +784,7 @@ export function parseJSONObjectFromText(
     return result;
   } catch (error) {
     // Maintain old behavior of throwing on parse failure
+    // Note: ensures consistent error handling by re-throwing caught exceptions for clarity.
     throw new Error(`Failed to parse JSON object from text: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
