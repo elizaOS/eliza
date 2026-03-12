@@ -879,7 +879,7 @@ async function getGraphNodesHandler(
 
     const totalDocuments = await service.countMemories({
       tableName: "documents",
-      roomId: agentId,
+      roomIds: [agentId],
       unique: false,
     });
 

@@ -55,6 +55,7 @@ import { gmailWatchPlugin } from '../index.js';
 function makeRuntime(settings: Record<string, object> = {}): IAgentRuntime {
   return {
     character: { settings },
+    registerTaskWorker: vi.fn(),
   } as unknown as IAgentRuntime;
 }
 
@@ -299,13 +300,9 @@ describe('Service lifecycle', () => {
     const runtime = makeRuntime(makeFullSettings());
     const service = await GmailWatchService.start(runtime);
 
-    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
-
     await service.stop();
 
-    expect(clearIntervalSpy).toHaveBeenCalled();
     expect(mockKill).toHaveBeenCalledWith('SIGTERM');
-    clearIntervalSpy.mockRestore();
   });
 
   it('stop is safe to call multiple times', async () => {
@@ -368,10 +365,9 @@ describe('Renewal timing', () => {
     expect(intervalMs).toBe(1_800_000);
   });
 
-  it('setInterval is called with correct interval for renewal', async () => {
-    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
-    setIntervalSpy.mockClear();
-
+  it('createTask is called with correct interval for renewal', async () => {
+    const createTaskMock = vi.fn().mockResolvedValue('task-id-1');
+    const getTasksByNameMock = vi.fn().mockResolvedValue([]);
     const runtime = makeRuntime({
       hooks: {
         gmail: {
@@ -379,18 +375,18 @@ describe('Renewal timing', () => {
           renewEveryMinutes: 60,
         },
       },
-    });
+    }) as IAgentRuntime & { createTask: ReturnType<typeof vi.fn>; getTasksByName: ReturnType<typeof vi.fn> };
+    runtime.createTask = createTaskMock;
+    runtime.getTasksByName = getTasksByNameMock;
+
     const service = await GmailWatchService.start(runtime);
 
-    // Renewal timer should have been set with 60 * 60 * 1000 = 3_600_000ms
-    const calls = setIntervalSpy.mock.calls;
-    const intervalCall = calls.find((call) => {
-      const ms = call[1];
-      return ms === 3_600_000;
-    });
-    expect(intervalCall).toBeDefined();
+    // Renewal task should be created with 60 * 60 * 1000 = 3_600_000ms in metadata
+    expect(createTaskMock).toHaveBeenCalled();
+    const call = createTaskMock.mock.calls[0]?.[0];
+    expect(call?.metadata?.updateInterval).toBe(3_600_000);
+    expect(call?.metadata?.baseInterval).toBe(3_600_000);
 
     await service.stop();
-    setIntervalSpy.mockRestore();
   });
 });

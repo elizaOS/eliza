@@ -668,7 +668,7 @@ const roomMessagesProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> => {
-    const roomIds = await runtime.getRoomsForParticipants(runtime.agentId);
+    const roomIds = await runtime.getRoomsForParticipant(runtime.agentId);
     if (roomIds.length === 0) {
       throw new Error("No rooms found for agent.");
     }

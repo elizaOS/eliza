@@ -373,8 +373,9 @@ impl NostrService {
             .map_err(|e| NostrPluginError::crypto(format!("Failed to create cipher: {}", e)))?;
 
         let mut buffer = padded;
+        let len = buffer.len();
         let ciphertext = encryptor
-            .encrypt_padded_mut::<aes::cipher::block_padding::NoPadding>(&mut buffer, buffer.len())
+            .encrypt_padded_mut::<aes::cipher::block_padding::NoPadding>(&mut buffer, len)
             .map_err(|e| NostrPluginError::crypto(format!("Encryption failed: {}", e)))?;
 
         // Encode as base64

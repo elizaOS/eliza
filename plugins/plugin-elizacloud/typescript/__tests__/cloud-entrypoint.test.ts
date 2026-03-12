@@ -16,6 +16,7 @@ interface AgentState {
   config: Record<string, unknown>;
   workspaceFiles: Record<string, string>;
   startedAt: string;
+  timestamp?: string;
 }
 
 let healthServer: http.Server;

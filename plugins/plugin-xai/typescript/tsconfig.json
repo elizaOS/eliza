@@ -10,6 +10,7 @@
     "allowSyntheticDefaultImports": true,
     "strict": true,
     "allowImportingTsExtensions": true,
+    "types": ["node"],
     "baseUrl": "../../..",
     "paths": {
       "@elizaos/core": ["packages/typescript/src/index.node.ts"],

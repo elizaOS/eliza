@@ -3,8 +3,10 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  MemoryMetadata,
   MemoryType,
   Service,
+  type Task,
   type TaskWorker,
 } from "@elizaos/core";
 import { createEmptyFeed, parseRssToJson } from "./parser";
@@ -57,7 +59,7 @@ export class RssService extends Service {
         }
       }
 
-      const subscriptionMemory: Memory = {
+      const subscriptionMemory = {
         id: feedId,
         entityId: this.runtime.agentId,
         agentId: this.runtime.agentId,
@@ -73,7 +75,7 @@ export class RssService extends Service {
           lastChecked: 0,
           lastItemCount: 0,
         },
-      };
+      } as unknown as Memory;
 
       await this.runtime.createMemory(subscriptionMemory, "feedsubscriptions");
       logger.info({ url, title: feedTitle }, "Subscribed to RSS feed");
@@ -156,7 +158,7 @@ export class RssService extends Service {
             ) {
               const itemId = item.guid ? primaryId : fallbackId;
 
-              const itemMemory: Memory = {
+              const itemMemory = {
                 id: itemId,
                 entityId: this.runtime.agentId,
                 agentId: this.runtime.agentId,
@@ -179,7 +181,7 @@ export class RssService extends Service {
                   comments: item.comments,
                   guid: item.guid,
                 },
-              };
+              } as unknown as Memory;
 
               await this.runtime.createMemory(itemMemory, "feeditems");
               newItemCount++;
@@ -197,7 +199,7 @@ export class RssService extends Service {
               subscribedAt: currentMetadata.subscribedAt ?? Date.now(),
               lastChecked: Date.now(),
               lastItemCount: feedData.items.length,
-            },
+            } as unknown as MemoryMetadata,
           });
 
           if (newItemCount > 0) {
@@ -309,7 +311,7 @@ export class RssService extends Service {
           updateInterval: intervalInMs,
         },
         tags: ["queue", "repeat", "rss"],
-      });
+      } as unknown as Task);
 
       logger.info({ interval: checkIntervalMinutes }, "RSS periodic feed check task created");
 

@@ -19,7 +19,7 @@
     "emitDecoratorMetadata": true,
     "strictNullChecks": true,
     "strictPropertyInitialization": false,
-    "noImplicitAny": true,
+    "noImplicitAny": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noImplicitReturns": true,

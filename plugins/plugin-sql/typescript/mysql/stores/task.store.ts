@@ -14,22 +14,24 @@ import type { DrizzleDatabase } from "../types";
  */
 export async function getTasks(
   db: DrizzleDatabase,
-  agentId: UUID,
   params: {
     roomId?: UUID;
     tags?: string[];
     entityId?: UUID;
+    agentIds: UUID[];
     limit?: number;
     offset?: number;
   }
 ): Promise<Task[]> {
+  if (params.agentIds.length === 0) return [];
+
   // BUG FIX: entityId was accepted but never applied as a WHERE filter.
   let query = db
     .select()
     .from(taskTable)
     .where(
       and(
-        eq(taskTable.agentId, agentId),
+        inArray(taskTable.agentId, params.agentIds),
         ...(params.roomId ? [eq(taskTable.roomId, params.roomId)] : []),
         ...(params.entityId ? [eq(taskTable.entityId, params.entityId)] : []),
         ...(params.tags && params.tags.length > 0

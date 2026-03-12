@@ -389,7 +389,7 @@ export class MessagingService extends Service {
    */
   private async sendViaDiscord(params: SendMessageParams): Promise<SendMessageResult> {
     // Get Discord service
-    const discordService = this.runtime.getService("DISCORD") as
+    const discordService = this.runtime.getService("DISCORD") as unknown as
       | { client: { channels: { fetch: (id: string) => Promise<unknown> } } }
       | undefined;
 

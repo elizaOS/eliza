@@ -548,6 +548,7 @@ describe("STATUS action", () => {
       agentId: "agent-12345678" as UUID,
       character: { name: "MyTestAgent" },
       getRoom: vi.fn(async () => createMockRoom()),
+      getService: vi.fn(() => null),
       getTasks: vi.fn(async () => []),
     } as unknown as IAgentRuntime;
 
@@ -584,6 +585,7 @@ describe("STATUS action", () => {
       agentId: "agent-1" as UUID,
       character: { name: "TestAgent" },
       getRoom: vi.fn(async () => mockRoom),
+      getService: vi.fn(() => null),
       getTasks: vi.fn(async () => []),
     } as unknown as IAgentRuntime;
 
@@ -618,6 +620,7 @@ describe("STATUS action", () => {
       agentId: "agent-1" as UUID,
       character: { name: "TestAgent" },
       getRoom: vi.fn(async () => mockRoom),
+      getService: vi.fn(() => null),
       getTasks: vi.fn(async () => []),
     } as unknown as IAgentRuntime;
 
@@ -650,6 +653,7 @@ describe("STATUS action", () => {
       agentId: "agent-1" as UUID,
       character: { name: "TestAgent" },
       getRoom: vi.fn(async () => createMockRoom()),
+      getService: vi.fn(() => null),
       getTasks: vi.fn(async () => [
         {
           id: "task-1" as UUID,
@@ -704,6 +708,7 @@ describe("STATUS action", () => {
       agentId: "agent-1" as UUID,
       character: { name: "TestAgent" },
       getRoom: vi.fn(async () => createMockRoom()),
+      getService: vi.fn(() => null),
       getTasks: vi.fn(async () => []),
     } as unknown as IAgentRuntime;
 
@@ -736,6 +741,7 @@ describe("STATUS action", () => {
       agentId: "agent-1" as UUID,
       character: { name: "TestAgent" },
       getRoom: vi.fn(async () => createMockRoom()),
+      getService: vi.fn(() => null),
       getTasks: vi.fn(async () => [
         {
           id: "task-1" as UUID,
@@ -783,6 +789,7 @@ describe("STATUS action", () => {
       agentId: "agent-1" as UUID,
       character: { name: "TestAgent" },
       getRoom: vi.fn(async () => mockRoom),
+      getService: vi.fn(() => null),
       getTasks: vi.fn(async () => []),
     } as unknown as IAgentRuntime;
 
@@ -825,6 +832,7 @@ describe("STATUS action", () => {
       agentId: "agent-1" as UUID,
       character: { name: "TestAgent" },
       getRoom: vi.fn(async () => createMockRoom()),
+      getService: vi.fn(() => null),
       getTasks: vi.fn(async () => [
         {
           id: "task-1" as UUID,

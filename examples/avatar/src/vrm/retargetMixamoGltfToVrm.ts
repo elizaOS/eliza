@@ -84,7 +84,7 @@ export function retargetMixamoGltfToVrm(
       new THREE.QuaternionKeyframeTrack(
         `${vrmNode.name}.quaternion`,
         track.times,
-        values.map((v, i) => (isVrm0(vrm) && i % 2 === 0 ? -v : v)),
+        values.map((v: number, i: number) => (isVrm0(vrm) && i % 2 === 0 ? -v : v)),
       ),
     );
   }

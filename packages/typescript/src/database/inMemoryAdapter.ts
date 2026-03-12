@@ -3,17 +3,22 @@ import type {
   Agent,
   Component,
   Entity,
+  EntitiesForRoomsResult,
   IDatabaseAdapter,
   Log,
   LogBody,
   Memory,
   MemoryMetadata,
   Metadata,
+  PairingAllowlistsResult,
+  PairingRequestsResult,
+  Participant,
+  ParticipantsForRoomsResult,
+  ParticipantUserState,
   PatchOp,
   PairingAllowlistEntry,
   PairingChannel,
   PairingRequest,
-  Participant,
   Relationship,
   Room,
   Task,
@@ -193,31 +198,20 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     return [];
   }
 
-  async getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]> {
-    // Get participant entity IDs for the given roomId from participantsByRoom
-    const participantSet = this.participantsByRoom.get(String(roomId));
-    if (!participantSet || participantSet.size === 0) {
-      return [];
-    }
-
-    // Return all entities that are participants in that room
-    const entities: Entity[] = [];
-    for (const entityIdStr of participantSet) {
-      const entity = this.entities.get(entityIdStr);
-      if (entity) {
-        entities.push(entity);
+  async getEntitiesForRooms(roomIds: UUID[], includeComponents?: boolean): Promise<EntitiesForRoomsResult> {
+    const result: EntitiesForRoomsResult = [];
+    for (const roomId of roomIds) {
+      const participantSet = this.participantsByRoom.get(String(roomId));
+      const entities: Entity[] = [];
+      if (participantSet) {
+        for (const entityIdStr of participantSet) {
+          const entity = this.entities.get(entityIdStr);
+          if (entity) entities.push(entity);
+        }
       }
+      result.push({ roomId, entities });
     }
-
-    // If includeComponents is requested, include component data
-    // Note: For in-memory adapter, components are not tracked per entity,
-    // so this is effectively a no-op, but we maintain the interface contract
-    if (includeComponents) {
-      // Components would be attached here if we tracked them
-      // For now, entities are returned as-is
-    }
-
-    return entities;
+    return result;
   }
 
   async createEntities(entities: Entity[]): Promise<UUID[]> {
@@ -283,17 +277,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     return matches;
   }
 
-  async getComponent(
-    _entityId: UUID,
-    _type: string,
-    _worldId?: UUID,
-    _sourceEntityId?: UUID,
-  ): Promise<Component | null> {
-    return null;
+  async getComponentsByNaturalKeys(
+    keys: Array<{ entityId: UUID; type: string; worldId?: UUID; sourceEntityId?: UUID }>,
+  ): Promise<(Component | null)[]> {
+    return keys.map(() => null);
   }
 
-  async getComponents(
-    _entityId: UUID,
+  async getComponentsForEntities(
+    _entityIds: UUID[],
     _worldId?: UUID,
     _sourceEntityId?: UUID,
   ): Promise<Component[]> {
@@ -346,9 +337,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     // InMemory does not persist components; no-op for compatibility.
   }
 
-  async patchComponent(
-    _componentId: UUID,
-    _ops: PatchOp[],
+  async patchComponents(
+    _updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
     _options?: { entityContext?: UUID },
   ): Promise<void> {
     // InMemory does not persist components; no-op for compatibility.
@@ -606,42 +596,50 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
   }
 
-  async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
-    const key = roomTableKey(tableName, roomId);
-    const memories = this.memoriesByRoom.get(key) ?? [];
-    for (const mem of memories) {
-      this.memoriesById.delete(String(mem.id));
+  async deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void> {
+    for (const roomId of roomIds) {
+      const key = roomTableKey(tableName, roomId);
+      const memories = this.memoriesByRoom.get(key) ?? [];
+      for (const mem of memories) {
+        this.memoriesById.delete(String(mem.id));
+      }
+      this.memoriesByRoom.delete(key);
     }
-    this.memoriesByRoom.delete(key);
   }
 
-  async countMemories(
-    roomIdOrParams:
-      | UUID
-      | {
-          roomId?: UUID;
-          unique?: boolean;
-          tableName?: string;
-          entityId?: UUID;
-          agentId?: UUID;
-          metadata?: Record<string, unknown>;
-        },
-    unique?: boolean,
-    tableName?: string,
-  ): Promise<number> {
-    const roomId: UUID | undefined =
-      typeof roomIdOrParams === "object" && roomIdOrParams !== null && "roomId" in roomIdOrParams
-        ? roomIdOrParams.roomId
-        : (roomIdOrParams as UUID);
-    const u = typeof roomIdOrParams === "object" && roomIdOrParams !== null && "unique" in roomIdOrParams ? roomIdOrParams.unique : unique;
-    const tbl = typeof roomIdOrParams === "object" && roomIdOrParams !== null && "tableName" in roomIdOrParams ? roomIdOrParams.tableName : tableName;
-    if (roomId == null) return 0;
-    const key = roomTableKey(tbl ?? "messages", roomId);
-    const memories = this.memoriesByRoom.get(key) ?? [];
-    if (u) {
-      return memories.filter((m) => m.unique).length;
+  async countMemories(params: {
+    roomIds?: UUID[];
+    unique?: boolean;
+    tableName?: string;
+    entityId?: UUID;
+    agentId?: UUID;
+    metadata?: Record<string, unknown>;
+  }): Promise<number> {
+    const roomIds = params.roomIds ?? [];
+    const tbl = params.tableName ?? "messages";
+    const u = params.unique;
+    let total = 0;
+    if (roomIds.length === 0) {
+      // No room filter: count all memories matching tableName and other filters (consistent with SQL/store behavior)
+      const prefix = `${tbl}:`;
+      for (const [key, memories] of this.memoriesByRoom) {
+        if (!key.startsWith(prefix)) continue;
+        let list = memories;
+        if (params.entityId) list = list.filter((m) => m.entityId === params.entityId);
+        if (params.agentId) list = list.filter((m) => m.agentId === params.agentId);
+        total += u ? list.filter((m) => m.unique).length : list.length;
+      }
+      return total;
     }
-    return memories.length;
+    for (const roomId of roomIds) {
+      const key = roomTableKey(tbl, roomId);
+      const memories = this.memoriesByRoom.get(key) ?? [];
+      let list = memories;
+      if (params.entityId) list = list.filter((m) => m.entityId === params.entityId);
+      if (params.agentId) list = list.filter((m) => m.agentId === params.agentId);
+      total += u ? list.filter((m) => m.unique).length : list.length;
+    }
+    return total;
   }
 
   // Batch world methods
@@ -726,15 +724,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
   }
 
-  async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
-    const set = this.roomsByParticipant.get(String(entityId));
-    if (!set) return [];
-    return Array.from(set.values()).map(asUuid);
-  }
-
-  async getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]> {
+  async getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]> {
     const out = new Set<string>();
-    for (const id of userIds) {
+    for (const id of entityIds) {
       const set = this.roomsByParticipant.get(String(id));
       if (!set) continue;
       for (const roomId of set.values()) out.add(roomId);
@@ -742,34 +734,36 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     return Array.from(out.values()).map(asUuid);
   }
 
-  async getRoomsByWorld(worldId: UUID, limit?: number, offset?: number): Promise<Room[]> {
+  async getRoomsByWorlds(worldIds: UUID[], limit?: number, offset?: number): Promise<Room[]> {
     let out: Room[] = [];
     for (const room of this.rooms.values()) {
-      if (room.worldId && room.worldId === worldId) {
+      if (room.worldId && worldIds.includes(room.worldId)) {
         out.push(room);
       }
     }
-
-    // WHY: Apply pagination to limit result size. Previously returned ALL rooms in world.
     const off = offset ?? 0;
     out = out.slice(off);
-    if (limit) {
-      out = out.slice(0, limit);
-    }
-
+    if (limit != null) out = out.slice(0, limit);
     return out;
   }
 
-  async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
-    const entity = this.entities.get(String(entityId));
-    if (!entity) return [];
-    return [{ id: entityId, entity }];
+  async getParticipantsForEntities(entityIds: UUID[]): Promise<Participant[]> {
+    const out: Participant[] = [];
+    for (const entityId of entityIds) {
+      const entity = this.entities.get(String(entityId));
+      if (entity) out.push({ id: entityId, entity });
+    }
+    return out;
   }
 
-  async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
-    const set = this.participantsByRoom.get(String(roomId));
-    if (!set) return [];
-    return Array.from(set.values()).map(asUuid);
+  async getParticipantsForRooms(roomIds: UUID[]): Promise<ParticipantsForRoomsResult> {
+    const result: ParticipantsForRoomsResult = [];
+    for (const roomId of roomIds) {
+      const set = this.participantsByRoom.get(String(roomId));
+      const entityIds = set ? Array.from(set.values()).map(asUuid) : [];
+      result.push({ roomId, entityIds });
+    }
+    return result;
   }
 
   async createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]> {
@@ -830,35 +824,33 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
   }
 
-  async isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean> {
-    const set = this.participantsByRoom.get(String(roomId));
-    if (!set) return false;
-    return set.has(String(entityId));
+  async areRoomParticipants(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<boolean[]> {
+    return pairs.map(({ roomId, entityId }) => {
+      const set = this.participantsByRoom.get(String(roomId));
+      return set ? set.has(String(entityId)) : false;
+    });
   }
 
-  async getParticipantUserState(
-    roomId: UUID,
-    entityId: UUID,
-  ): Promise<"FOLLOWED" | "MUTED" | null> {
-    const key = `${String(roomId)}:${String(entityId)}`;
-    return this.participantUserState.get(key) ?? null;
+  async getParticipantUserStates(pairs: Array<{ roomId: UUID; entityId: UUID }>): Promise<ParticipantUserState[]> {
+    return pairs.map(({ roomId, entityId }) => {
+      const key = `${String(roomId)}:${String(entityId)}`;
+      return this.participantUserState.get(key) ?? null;
+    });
   }
 
-  async updateParticipantUserState(
-    roomId: UUID,
-    entityId: UUID,
-    state: "FOLLOWED" | "MUTED" | null,
-  ): Promise<void> {
-    const key = `${String(roomId)}:${String(entityId)}`;
-    this.participantUserState.set(key, state);
+  async updateParticipantUserStates(updates: Array<{ roomId: UUID; entityId: UUID; state: ParticipantUserState }>): Promise<void> {
+    for (const { roomId, entityId, state } of updates) {
+      const key = `${String(roomId)}:${String(entityId)}`;
+      this.participantUserState.set(key, state);
+    }
   }
 
-  async getRelationship(): Promise<Relationship | null> {
-    return null;
+  async getRelationshipsByPairs(_pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>): Promise<(Relationship | null)[]> {
+    return _pairs.map(() => null);
   }
 
   async getRelationships(_params: {
-    entityId: UUID;
+    entityIds?: UUID[];
     tags?: string[];
     limit?: number;
     offset?: number;
@@ -925,13 +917,16 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     roomId?: UUID;
     tags?: string[];
     entityId?: UUID;
+    agentIds: UUID[];
     limit?: number;
     offset?: number;
   }): Promise<Task[]> {
+    if (params.agentIds.length === 0) return [];
     const all = Array.from(this.tasks.values());
     let filtered = all.filter((t) => {
       if (params.roomId && t.roomId !== params.roomId) return false;
       if (params.entityId && t.entityId !== params.entityId) return false;
+      if (t.agentId == null || !params.agentIds.includes(t.agentId)) return false;
       if (params.tags && params.tags.length > 0) {
         for (const tag of params.tags) {
           if (!t.tags.includes(tag)) return false;
@@ -999,28 +994,27 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
   }
 
   async getMemoriesByWorldId(params: {
-    worldId: UUID;
+    worldIds?: UUID[];
     /** @deprecated use limit */
     count?: number;
     limit?: number;
     tableName?: string;
   }): Promise<Memory[]> {
-    const rooms = await this.getRoomsByWorld(params.worldId);
+    const worldIds = params.worldIds ?? [];
+    if (worldIds.length === 0) return [];
+    const rooms = await this.getRoomsByWorlds(worldIds);
     const roomIds = rooms.map((r) => r.id);
     const effectiveLimit = params.limit ?? params.count ?? 50;
-
     const out: Memory[] = [];
     for (const rid of roomIds) {
       if (params.tableName) {
-        const list =
-          this.memoriesByRoom.get(roomTableKey(params.tableName, rid)) ?? [];
+        const list = this.memoriesByRoom.get(roomTableKey(params.tableName, rid)) ?? [];
         for (const m of list) {
           out.push(m);
           if (out.length >= effectiveLimit) return out;
         }
         continue;
       }
-
       for (const [key, list] of this.memoriesByRoom.entries()) {
         if (!key.endsWith(`:${String(rid)}`)) continue;
         for (const m of list) {
@@ -1032,27 +1026,21 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     return out;
   }
 
-  async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
-    const rooms = await this.getRoomsByWorld(worldId);
-    for (const room of rooms) {
-      const roomKey = String(room.id);
-      this.rooms.delete(roomKey);
-      for (const key of this.memoriesByRoom.keys()) {
-        if (key.endsWith(`:${roomKey}`)) {
-          this.memoriesByRoom.delete(key);
+  async deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void> {
+    for (const worldId of worldIds) {
+      const rooms = await this.getRoomsByWorlds([worldId]);
+      for (const room of rooms) {
+        const roomKey = String(room.id);
+        this.rooms.delete(roomKey);
+        for (const key of this.memoriesByRoom.keys()) {
+          if (key.endsWith(`:${roomKey}`)) this.memoriesByRoom.delete(key);
         }
-      }
-      this.participantsByRoom.delete(roomKey);
-      // remove room membership from roomsByParticipant
-      for (const [entityKey, roomSet] of this.roomsByParticipant.entries()) {
-        if (roomSet.delete(roomKey) && roomSet.size === 0) {
-          this.roomsByParticipant.delete(entityKey);
+        this.participantsByRoom.delete(roomKey);
+        for (const [entityKey, roomSet] of this.roomsByParticipant.entries()) {
+          if (roomSet.delete(roomKey) && roomSet.size === 0) this.roomsByParticipant.delete(entityKey);
         }
-      }
-      // remove participant user states for this room
-      for (const key of this.participantUserState.keys()) {
-        if (key.startsWith(`${roomKey}:`)) {
-          this.participantUserState.delete(key);
+        for (const key of this.participantUserState.keys()) {
+          if (key.startsWith(`${roomKey}:`)) this.participantUserState.delete(key);
         }
       }
     }
@@ -1062,20 +1050,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
   // Pairing Methods
   // ===============================
 
-  async getPairingRequests(
-    channel: PairingChannel,
-    agentId: UUID,
-  ): Promise<PairingRequest[]> {
-    const results: PairingRequest[] = [];
-    for (const request of this.pairingRequests.values()) {
-      if (request.channel === channel && request.agentId === agentId) {
-        results.push(request);
+  async getPairingRequests(queries: Array<{ channel: PairingChannel; agentId: UUID }>): Promise<PairingRequestsResult> {
+    const result: PairingRequestsResult = [];
+    for (const { channel, agentId } of queries) {
+      const requests: PairingRequest[] = [];
+      for (const request of this.pairingRequests.values()) {
+        if (request.channel === channel && request.agentId === agentId) {
+          requests.push(request);
+        }
       }
+      requests.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      result.push({ channel, agentId, requests });
     }
-    return results.sort(
-      (a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    );
+    return result;
   }
 
   // Batch pairing request methods
@@ -1112,20 +1099,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
   }
 
-  async getPairingAllowlist(
-    channel: PairingChannel,
-    agentId: UUID,
-  ): Promise<PairingAllowlistEntry[]> {
-    const results: PairingAllowlistEntry[] = [];
-    for (const entry of this.pairingAllowlist.values()) {
-      if (entry.channel === channel && entry.agentId === agentId) {
-        results.push(entry);
+  async getPairingAllowlists(queries: Array<{ channel: PairingChannel; agentId: UUID }>): Promise<PairingAllowlistsResult> {
+    const result: PairingAllowlistsResult = [];
+    for (const { channel, agentId } of queries) {
+      const entries: PairingAllowlistEntry[] = [];
+      for (const entry of this.pairingAllowlist.values()) {
+        if (entry.channel === channel && entry.agentId === agentId) {
+          entries.push(entry);
+        }
       }
+      entries.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      result.push({ channel, agentId, entries });
     }
-    return results.sort(
-      (a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    );
+    return result;
   }
 
   // Batch pairing allowlist methods

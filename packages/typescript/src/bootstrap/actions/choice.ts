@@ -51,6 +51,7 @@ export const choiceAction: Action = {
     const pendingTasks = await runtime.getTasks({
       roomId: message.roomId,
       tags: ["AWAITING_CHOICE"],
+      agentIds: [runtime.agentId],
     });
 
     return (
@@ -71,6 +72,7 @@ export const choiceAction: Action = {
     const pendingTasks = await runtime.getTasks({
       roomId: message.roomId,
       tags: ["AWAITING_CHOICE"],
+      agentIds: [runtime.agentId],
     });
 
     if (!pendingTasks || pendingTasks.length === 0) {
@@ -257,6 +259,30 @@ export const choiceAction: Action = {
 
       const taskWorker = runtime.getTaskWorker(selectedTask.name);
       if (taskWorker) {
+        if (taskWorker.canExecute) {
+          const stateForCanExecute = _state ?? ({} as State);
+          const allowed = await taskWorker.canExecute(
+            runtime,
+            message,
+            stateForCanExecute,
+          );
+          if (!allowed) {
+            if (callback) {
+              await callback({
+                text: "You don't have permission to execute this task.",
+              });
+            }
+            return {
+              text: "You don't have permission to execute this task.",
+              values: { success: false, error: "FORBIDDEN" },
+              data: {
+                actionName: "CHOOSE_OPTION",
+                error: "You don't have permission to execute this task.",
+              },
+              success: false,
+            };
+          }
+        }
         await taskWorker.execute(
           runtime,
           { option: selectedOption },

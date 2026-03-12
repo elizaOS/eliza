@@ -23,8 +23,9 @@ import sqlPlugin from "@elizaos/plugin-sql";
 
 import { v4 as uuidv4 } from "uuid";
 
-// Type assertion needed due to namespace import inference
+// Type assertions needed due to optional/shim imports
 const typedSqlPlugin = sqlPlugin as Plugin;
+const typedOpenaiPlugin = openaiPlugin as Plugin;
 
 // Character configuration
 // Pass environment variables via character.secrets so getSetting() can find them
@@ -59,7 +60,7 @@ async function getRuntime(): Promise<IAgentRuntime> {
 
       const newRuntime = new AgentRuntime({
         character,
-        plugins: [typedSqlPlugin, openaiPlugin],
+        plugins: [typedSqlPlugin, typedOpenaiPlugin],
       });
 
       await newRuntime.initialize();

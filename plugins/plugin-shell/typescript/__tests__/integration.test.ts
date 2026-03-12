@@ -29,7 +29,7 @@ describe("Shell Plugin Integration Tests", () => {
       const { shellPlugin } = await import("../index");
       expect(shellPlugin.actions).toBeDefined();
       expect(Array.isArray(shellPlugin.actions)).toBe(true);
-      expect(shellPlugin.actions?.length).toBe(2);
+      expect(shellPlugin.actions?.length).toBe(3);
     });
   });
 

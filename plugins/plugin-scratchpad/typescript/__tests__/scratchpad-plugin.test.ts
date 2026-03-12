@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import type { IAgentRuntime, TestSuite } from "@elizaos/core";
 import { createMessageMemory, logger, type UUID } from "@elizaos/core";
 
@@ -260,3 +261,9 @@ export const ScratchpadPluginE2ETestSuite: TestSuite = {
     },
   ],
 };
+
+describe(ScratchpadPluginE2ETestSuite.name, () => {
+  it("exports a non-empty test suite for E2E runner", () => {
+    expect(ScratchpadPluginE2ETestSuite.tests.length).toBeGreaterThan(0);
+  });
+});

@@ -54,9 +54,9 @@ export const commandsListAction: Action = {
 
   examples: [
     [
-      { user: "user", content: { text: "/commands" } },
+      { name: "user", content: { text: "/commands" } },
       {
-        user: "assistant",
+        name: "assistant",
         content: {
           text: "**Commands (15):**\n\n• **help**: /help, /h, /?\n• **status**: /status, /s...",
         },

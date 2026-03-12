@@ -1,4 +1,4 @@
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import {
   CACHE_REFRESH_INTERVAL_MS,
   EVM_SERVICE_NAME,
@@ -6,6 +6,8 @@ import {
 } from "./constants";
 import { initWalletProvider, type WalletProvider } from "./providers/wallet";
 import { EVMError, EVMErrorCode, type SupportedChain } from "./types";
+
+const EVM_REFRESH_WALLET_TASK = "EVM_REFRESH_WALLET";
 
 export interface EVMWalletData {
   readonly address: string;
@@ -24,7 +26,7 @@ export class EVMService extends Service {
   capabilityDescription = "EVM blockchain wallet access";
 
   private walletProvider: WalletProvider | null = null;
-  private refreshInterval: ReturnType<typeof setInterval> | null = null;
+  private refreshTaskId: UUID | null = null;
 
   static async start(runtime: IAgentRuntime): Promise<EVMService> {
     logger.log("Initializing EVMService");
@@ -33,17 +35,41 @@ export class EVMService extends Service {
     evmService.walletProvider = await initWalletProvider(runtime);
     await evmService.refreshWalletData();
 
-    if (evmService.refreshInterval) {
-      clearInterval(evmService.refreshInterval);
-    }
-
-    evmService.refreshInterval = setInterval(
-      () => evmService.refreshWalletData(),
-      CACHE_REFRESH_INTERVAL_MS
-    );
+    evmService.registerRefreshWorker();
+    await evmService.ensureRefreshTask();
 
     logger.log("EVM service initialized");
     return evmService;
+  }
+
+  private registerRefreshWorker(): void {
+    this.runtime.registerTaskWorker({
+      name: EVM_REFRESH_WALLET_TASK,
+      execute: async () => {
+        await this.refreshWalletData();
+      },
+    });
+  }
+
+  private async ensureRefreshTask(): Promise<void> {
+    const rt = this.runtime;
+    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    const agentId = rt.agentId;
+    const existing = await rt.getTasksByName(EVM_REFRESH_WALLET_TASK);
+    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    if (mine?.id) {
+      this.refreshTaskId = mine.id;
+      return;
+    }
+    this.refreshTaskId = await rt.createTask({
+      name: EVM_REFRESH_WALLET_TASK,
+      tags: ["queue", "repeat"],
+      metadata: {
+        updateInterval: CACHE_REFRESH_INTERVAL_MS,
+        baseInterval: CACHE_REFRESH_INTERVAL_MS,
+        updatedAt: Date.now(),
+      },
+    });
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
@@ -58,9 +84,9 @@ export class EVMService extends Service {
   }
 
   async stop(): Promise<void> {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-      this.refreshInterval = null;
+    if (this.refreshTaskId && typeof this.runtime.deleteTask === "function") {
+      await this.runtime.deleteTask(this.refreshTaskId).catch(() => {});
+      this.refreshTaskId = null;
     }
     logger.log("EVM service shutdown");
   }

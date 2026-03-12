@@ -1,3 +1,18 @@
+# Generated _pb2 files use "from eliza.v1 import ..."; make that resolve to elizaos.types.generated.eliza.v1
+import os
+import sys
+import types
+
+if "eliza.v1" not in sys.modules:
+    _eliza = types.ModuleType("eliza")
+    _v1_path = os.path.join(os.path.dirname(__file__), "types", "generated", "eliza", "v1")
+    _v1 = types.ModuleType("eliza.v1")
+    _v1.__path__ = [_v1_path]
+    _v1.__package__ = "eliza.v1"
+    sys.modules["eliza"] = _eliza
+    sys.modules["eliza.v1"] = _v1
+    _eliza.v1 = _v1
+
 from elizaos.character import parse_character, validate_character_config
 from elizaos.generated.action_docs import (
     ActionDoc,

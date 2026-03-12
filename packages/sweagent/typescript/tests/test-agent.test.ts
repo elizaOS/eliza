@@ -2,7 +2,7 @@
  * Agent tests converted from test_agent.py
  */
 
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { beforeEach, describe, expect, it, jest } from "./jest-globals";
 import {
   DEFAULT_TEMPLATE_CONFIG,
   DefaultAgent,

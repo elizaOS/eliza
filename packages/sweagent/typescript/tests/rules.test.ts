@@ -2,6 +2,7 @@
  * Tests for the SWE-agent rules module
  */
 
+import { describe, expect, test } from "./jest-globals";
 import {
   exportAllRulesToCursor,
   formatValidationResults,

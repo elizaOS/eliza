@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { CharacterFileManager } from '../../services/character-file-manager';
 import type { IAgentRuntime } from '@elizaos/core';
 

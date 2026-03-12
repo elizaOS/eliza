@@ -3,11 +3,13 @@ import { RobloxClient } from "../client/RobloxClient";
 import { type ManagerHealthStatus, ROBLOX_SERVICE_NAME, type RobloxConfig } from "../types";
 import { hasRobloxEnabled, validateRobloxConfig } from "../utils/config";
 
+const ROBLOX_POLL_TASK = "ROBLOX_POLL";
+
 class RobloxAgentManager {
   public runtime: IAgentRuntime;
   public client: RobloxClient;
   public config: RobloxConfig;
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private pollTaskId: UUID | null = null;
   private isRunning = false;
 
   constructor(runtime: IAgentRuntime, config: RobloxConfig) {
@@ -28,40 +30,55 @@ class RobloxAgentManager {
     );
 
     if (this.config.pollInterval > 0) {
-      this.startPolling();
+      this.registerPollWorker();
+      await this.ensurePollTask();
     }
   }
 
   async stop(): Promise<void> {
     this.isRunning = false;
-    this.stopPolling();
+    if (this.pollTaskId && typeof this.runtime.deleteTask === "function") {
+      await this.runtime.deleteTask(this.pollTaskId).catch(() => {});
+      this.pollTaskId = null;
+    }
     this.runtime.logger.info("Roblox agent manager stopped");
   }
 
-  private startPolling(): void {
-    if (this.pollTimer) {
-      return;
-    }
-
-    const pollIntervalMs = this.config.pollInterval * 1000;
-    this.pollTimer = setInterval(() => {
-      this.poll().catch((error) => {
-        this.runtime.logger.error({ error }, "Error during Roblox polling");
-      });
-    }, pollIntervalMs);
-
-    this.runtime.logger.debug(
-      { intervalSeconds: this.config.pollInterval },
-      "Roblox polling started"
-    );
+  private registerPollWorker(): void {
+    this.runtime.registerTaskWorker({
+      name: ROBLOX_POLL_TASK,
+      execute: async () => {
+        await this.poll().catch((error) => {
+          this.runtime.logger.error({ error }, "Error during Roblox polling");
+        });
+      },
+    });
   }
 
-  private stopPolling(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-      this.runtime.logger.debug("Roblox polling stopped");
+  private async ensurePollTask(): Promise<void> {
+    const rt = this.runtime;
+    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    const agentId = rt.agentId;
+    const existing = await rt.getTasksByName(ROBLOX_POLL_TASK);
+    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    if (mine?.id) {
+      this.pollTaskId = mine.id;
+      return;
     }
+    const pollIntervalMs = this.config.pollInterval * 1000;
+    this.pollTaskId = await rt.createTask({
+      name: ROBLOX_POLL_TASK,
+      tags: ["queue", "repeat"],
+      metadata: {
+        updateInterval: pollIntervalMs,
+        baseInterval: pollIntervalMs,
+        updatedAt: Date.now(),
+      },
+    });
+    this.runtime.logger.debug(
+      { intervalSeconds: this.config.pollInterval },
+      "Roblox polling task ensured"
+    );
   }
 
   private async poll(): Promise<void> {}

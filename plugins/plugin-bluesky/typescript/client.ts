@@ -47,8 +47,8 @@ function isReplyWithPostViews(
     reply !== null &&
     "root" in reply &&
     "parent" in reply &&
-    isPostView(reply.root) &&
-    isPostView(reply.parent)
+    isPostView(reply.root as Parameters<typeof isPostView>[0]) &&
+    isPostView(reply.parent as Parameters<typeof isPostView>[0])
   );
 }
 

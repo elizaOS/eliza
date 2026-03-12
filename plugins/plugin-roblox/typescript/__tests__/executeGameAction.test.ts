@@ -1,7 +1,10 @@
 import { ChannelType, createMessageMemory, type UUID } from "@elizaos/core";
-import { v4 as uuidv4 } from "uuid";
 import { describe, expect, it } from "vitest";
 import executeGameAction from "../actions/executeGameAction";
+
+function uuid(): UUID {
+  return crypto.randomUUID() as UUID;
+}
 
 class FakeRobloxService {
   calls: Array<{
@@ -25,14 +28,14 @@ describe("EXECUTE_ROBLOX_ACTION parsing", () => {
   it("parses move_npc waypoint from user message", async () => {
     const service = new FakeRobloxService();
     const runtime = {
-      agentId: uuidv4() as UUID,
+      agentId: uuid() as UUID,
       getService: <T>(_name: string) => service as never as T,
     };
 
     const msg = createMessageMemory({
-      id: uuidv4() as UUID,
-      entityId: uuidv4() as UUID,
-      roomId: uuidv4() as UUID,
+      id: uuid() as UUID,
+      entityId: uuid() as UUID,
+      roomId: uuid() as UUID,
       content: { text: "move the npc to spawn", source: "test", channelType: ChannelType.DM },
     });
 
@@ -46,14 +49,14 @@ describe("EXECUTE_ROBLOX_ACTION parsing", () => {
   it("parses move_npc coordinates from user message", async () => {
     const service = new FakeRobloxService();
     const runtime = {
-      agentId: uuidv4() as UUID,
+      agentId: uuid() as UUID,
       getService: <T>(_name: string) => service as never as T,
     };
 
     const msg = createMessageMemory({
-      id: uuidv4() as UUID,
-      entityId: uuidv4() as UUID,
-      roomId: uuidv4() as UUID,
+      id: uuid() as UUID,
+      entityId: uuid() as UUID,
+      roomId: uuid() as UUID,
       content: { text: "move to (1, 2, 3)", source: "test", channelType: ChannelType.DM },
     });
 

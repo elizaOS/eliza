@@ -3,7 +3,7 @@
  */
 
 import * as child_process from "node:child_process";
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { beforeEach, describe, expect, it, jest } from "./jest-globals";
 import { vi } from "vitest";
 import { SWEBenchMultimodalProblemStatement } from "../src/agent/problem-statement";
 

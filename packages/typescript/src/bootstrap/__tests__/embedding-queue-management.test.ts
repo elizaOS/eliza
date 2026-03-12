@@ -17,9 +17,9 @@ interface EmbeddingQueueItem {
   runId?: string;
 }
 
-// Interface for accessing private properties in tests
+// Interface for accessing private properties in tests (drain is now driven by EMBEDDING_DRAIN task; mock runtime has no task APIs so no auto-drain)
 interface TestableEmbeddingService {
-  processingInterval: NodeJS.Timeout | null;
+  drainTaskId: import("../../types/primitives").UUID | null;
   queue: EmbeddingQueueItem[];
   maxQueueSize: number;
   processQueue(): Promise<void>;
@@ -53,6 +53,11 @@ function createMockRuntime(
     },
     // Add log method used by EmbeddingGenerationService
     log: vi.fn().mockResolvedValue(undefined),
+    // Task system (embedding drain is driven by EMBEDDING_DRAIN queue task; mock so no real scheduler runs)
+    registerTaskWorker: vi.fn(),
+    getTasksByName: vi.fn().mockResolvedValue([]),
+    createTask: vi.fn().mockResolvedValue("test-embedding-drain-task" as UUID),
+    deleteTask: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -76,12 +81,6 @@ describe("EmbeddingGenerationService - Queue Management", () => {
 
   afterEach(async () => {
     if (service) {
-      // Stop the processing interval before cleanup
-      const testService = service as TestableEmbeddingService;
-      if (testService.processingInterval) {
-        clearInterval(testService.processingInterval);
-        testService.processingInterval = null;
-      }
       await service.stop();
       service = null;
     }
@@ -344,12 +343,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
         EventType.EMBEDDING_GENERATION_REQUESTED,
       );
 
-      // Stop automatic processing
-      const testService = service as TestableEmbeddingService;
-      if (testService.processingInterval) {
-        clearInterval(testService.processingInterval);
-        testService.processingInterval = null;
-      }
+      // Mock runtime has no task APIs, so no EMBEDDING_DRAIN task runs automatically
 
       // Mock useModel to fail on first call
       let callCount = 0;
@@ -394,13 +388,6 @@ describe("EmbeddingGenerationService - Queue Management", () => {
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
       );
-
-      // Stop automatic processing
-      const testService = service as TestableEmbeddingService;
-      if (testService.processingInterval) {
-        clearInterval(testService.processingInterval);
-        testService.processingInterval = null;
-      }
 
       // Mock useModel to always fail
       agentRuntime.useModel = vi
@@ -485,13 +472,6 @@ describe("EmbeddingGenerationService - Queue Management", () => {
       const handler = registeredHandlers.get(
         EventType.EMBEDDING_GENERATION_REQUESTED,
       );
-
-      // Stop automatic processing
-      const testService = service as TestableEmbeddingService;
-      if (testService.processingInterval) {
-        clearInterval(testService.processingInterval);
-        testService.processingInterval = null;
-      }
 
       // Add items
       for (let i = 0; i < 5; i++) {

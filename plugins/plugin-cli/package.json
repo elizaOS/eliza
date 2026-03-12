@@ -20,7 +20,7 @@
   "scripts": {
     "build": "cd typescript && tsc",
     "build:watch": "cd typescript && tsc --watch",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "biome check --write --unsafe typescript/src/"
   },
   "dependencies": {

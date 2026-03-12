@@ -510,7 +510,7 @@ async function main() {
       const label = "countMemories";
       const targetRoom = seedRooms[0];
       const ms = await bench(label, async () => {
-        await adapter.countMemories(targetRoom, false, "memories");
+        await adapter.countMemories({ roomIds: [targetRoom], unique: false, tableName: "memories" });
       });
       if (!isDryRun) console.log(`${label} (room+type idx): ${ms.toFixed(1)}ms`);
     }

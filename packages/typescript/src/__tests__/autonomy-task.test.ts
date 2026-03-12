@@ -9,28 +9,16 @@ import type { IAgentRuntime, Memory, Task, UUID } from "../types";
 
 const asTestUuid = (id: string): UUID => id as UUID;
 
-const makeMemory = (
-  id: UUID,
-  entityId: UUID,
-  roomId: UUID,
-  text: string,
-  createdAt: number,
-): Memory => ({
-  id,
-  entityId,
-  roomId,
-  content: { text },
-  createdAt,
-});
-
-describe("autonomy service task-based implementation", () => {
+describe("autonomy service (prompt batcher Option A, no Task)", () => {
   let mockRuntime: IAgentRuntime;
-  let registeredTaskWorkers: Map<string, { name: string; execute: Function }>;
+  let thinkCalls: Array<{ id: string; opts: unknown }>;
+  let removeSectionCalls: string[];
   let createdTasks: Task[];
   let deletedTaskIds: UUID[];
 
   beforeEach(() => {
-    registeredTaskWorkers = new Map();
+    thinkCalls = [];
+    removeSectionCalls = [];
     createdTasks = [];
     deletedTaskIds = [];
 
@@ -47,6 +35,7 @@ describe("autonomy service task-based implementation", () => {
       },
       getMemories: async () => [],
       getRoomsForParticipant: async () => [roomId],
+      getRoomsForParticipants: async () => [roomId],
       getRoomsByIds: async () => [{ id: roomId, name: "Test Room" }],
       getMemoriesByRoomIds: async () => [],
       getEntityById: async () => ({ id: agentId, names: ["Test Agent"] }),
@@ -62,10 +51,16 @@ describe("autonomy service task-based implementation", () => {
           responseContent: { actions: [] },
         }),
       },
+      promptBatcher: {
+        think: vi.fn((id: string, opts: unknown) => {
+          thinkCalls.push({ id, opts });
+        }),
+        removeSection: vi.fn((id: string) => {
+          removeSectionCalls.push(id);
+        }),
+      },
       emitEvent: async () => undefined,
-      registerTaskWorker: vi.fn((worker) => {
-        registeredTaskWorkers.set(worker.name, worker);
-      }),
+      registerTaskWorker: vi.fn(),
       getTasks: async () => createdTasks,
       createTask: async (task) => {
         const newTask = { ...task, id: asTestUuid(uuidv4()) };
@@ -85,91 +80,85 @@ describe("autonomy service task-based implementation", () => {
     } as unknown as IAgentRuntime;
   });
 
-  test("exports task constants", () => {
+  test("exports task constants (used for orphan cleanup)", () => {
     expect(AUTONOMY_TASK_NAME).toBe("AUTONOMY_THINK");
     expect(AUTONOMY_TASK_TAGS).toEqual(["repeat", "autonomy", "internal"]);
   });
 
-  test("registers task worker on initialization", async () => {
+  test("does not register task worker on initialization", async () => {
     const service = await AutonomyService.start(mockRuntime);
 
-    expect(mockRuntime.registerTaskWorker).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: AUTONOMY_TASK_NAME,
-      }),
-    );
-
-    expect(registeredTaskWorkers.has(AUTONOMY_TASK_NAME)).toBe(true);
+    expect(mockRuntime.registerTaskWorker).not.toHaveBeenCalled();
 
     await service.stop();
   });
 
-  test("creates recurring task when autonomy is enabled", async () => {
-    mockRuntime.enableAutonomy = true;
+  test("registers batcher section when autonomy is enabled", async () => {
+    (mockRuntime as { enableAutonomy: boolean }).enableAutonomy = true;
     const service = await AutonomyService.start(mockRuntime);
 
-    expect(createdTasks.length).toBe(1);
-    expect(createdTasks[0].name).toBe(AUTONOMY_TASK_NAME);
-    expect(createdTasks[0].tags).toEqual([...AUTONOMY_TASK_TAGS]);
-    expect(createdTasks[0].metadata?.blocking).toBe(true);
-    expect(createdTasks[0].metadata?.updateInterval).toBe(30000);
+    expect(thinkCalls.length).toBe(1);
+    expect(thinkCalls[0].id).toBe("autonomy");
+    expect(thinkCalls[0].opts).toMatchObject({
+      minCycleMs: 30000,
+      preamble: expect.any(String),
+      schema: expect.any(Array),
+    });
 
     await service.stop();
   });
 
-  test("does not create task when autonomy is disabled", async () => {
-    mockRuntime.enableAutonomy = false;
+  test("does not register section when autonomy is disabled", async () => {
+    (mockRuntime as { enableAutonomy: boolean }).enableAutonomy = false;
     const service = await AutonomyService.start(mockRuntime);
 
-    expect(createdTasks.length).toBe(0);
+    expect(thinkCalls.length).toBe(0);
 
     await service.stop();
   });
 
-  test("enableAutonomy creates task", async () => {
-    mockRuntime.enableAutonomy = false;
+  test("enableAutonomy registers batcher section", async () => {
+    (mockRuntime as { enableAutonomy: boolean }).enableAutonomy = false;
     const service = await AutonomyService.start(mockRuntime);
 
-    expect(createdTasks.length).toBe(0);
+    expect(thinkCalls.length).toBe(0);
 
     await service.enableAutonomy();
 
-    expect(createdTasks.length).toBe(1);
+    expect(thinkCalls.length).toBe(1);
+    expect(thinkCalls[0].id).toBe("autonomy");
     expect(service.isLoopRunning()).toBe(true);
 
     await service.stop();
   });
 
-  test("disableAutonomy deletes task", async () => {
-    mockRuntime.enableAutonomy = true;
+  test("disableAutonomy removes batcher section", async () => {
+    (mockRuntime as { enableAutonomy: boolean }).enableAutonomy = true;
     const service = await AutonomyService.start(mockRuntime);
 
-    expect(createdTasks.length).toBe(1);
-    const taskId = createdTasks[0].id;
+    expect(thinkCalls.length).toBe(1);
 
     await service.disableAutonomy();
 
-    expect(deletedTaskIds).toContain(taskId);
+    expect(removeSectionCalls).toContain("autonomy");
     expect(service.isLoopRunning()).toBe(false);
 
     await service.stop();
   });
 
-  test("setLoopInterval recreates task with new interval", async () => {
-    mockRuntime.enableAutonomy = true;
+  test("setLoopInterval re-registers batcher section with new interval", async () => {
+    (mockRuntime as { enableAutonomy: boolean }).enableAutonomy = true;
     const service = await AutonomyService.start(mockRuntime);
 
-    const originalTaskId = createdTasks[0].id;
+    thinkCalls.length = 0;
+    removeSectionCalls.length = 0;
 
     await service.setLoopInterval(60000);
 
-    // Old task should be deleted
-    expect(deletedTaskIds).toContain(originalTaskId);
-
-    // New task should be created with new interval
-    const newTask = createdTasks.find((t) => t.id !== originalTaskId);
-    expect(newTask).toBeDefined();
-    expect(newTask?.metadata?.updateInterval).toBe(60000);
+    expect(removeSectionCalls).toContain("autonomy");
+    expect(thinkCalls.length).toBe(1);
+    expect(thinkCalls[0].opts).toMatchObject({ minCycleMs: 60000 });
+    expect(service.getLoopInterval()).toBe(60000);
 
     await service.stop();
   });
@@ -177,19 +166,17 @@ describe("autonomy service task-based implementation", () => {
   test("setLoopInterval clamps values to valid range", async () => {
     const service = await AutonomyService.start(mockRuntime);
 
-    // Test minimum clamping
-    await service.setLoopInterval(1000); // Below minimum
+    await service.setLoopInterval(1000);
     expect(service.getLoopInterval()).toBe(5000);
 
-    // Test maximum clamping
-    await service.setLoopInterval(1000000); // Above maximum
+    await service.setLoopInterval(1000000);
     expect(service.getLoopInterval()).toBe(600000);
 
     await service.stop();
   });
 
   test("getStatus returns correct status", async () => {
-    mockRuntime.enableAutonomy = true;
+    (mockRuntime as { enableAutonomy: boolean }).enableAutonomy = true;
     const service = await AutonomyService.start(mockRuntime);
 
     const status = service.getStatus();
@@ -202,51 +189,29 @@ describe("autonomy service task-based implementation", () => {
     await service.stop();
   });
 
-  test("stop deletes autonomy task", async () => {
-    mockRuntime.enableAutonomy = true;
+  test("stop removes batcher section", async () => {
+    (mockRuntime as { enableAutonomy: boolean }).enableAutonomy = true;
     const service = await AutonomyService.start(mockRuntime);
 
-    const taskId = createdTasks[0].id;
+    removeSectionCalls.length = 0;
 
     await service.stop();
 
-    expect(deletedTaskIds).toContain(taskId);
+    expect(removeSectionCalls).toContain("autonomy");
   });
 
-  test("cleans up existing tasks before creating new one", async () => {
-    // Simulate existing task
+  test("cleans up orphaned tasks on init when autonomy enabled", async () => {
     createdTasks.push({
       id: asTestUuid(uuidv4()),
       name: AUTONOMY_TASK_NAME,
       tags: [...AUTONOMY_TASK_TAGS],
     } as Task);
 
-    mockRuntime.enableAutonomy = true;
+    (mockRuntime as { enableAutonomy: boolean }).enableAutonomy = true;
     const service = await AutonomyService.start(mockRuntime);
 
-    // Should have deleted old and created new
     expect(deletedTaskIds.length).toBe(1);
-    expect(createdTasks.length).toBe(1);
-
-    await service.stop();
-  });
-
-  test("task worker executes performAutonomousThink", async () => {
-    mockRuntime.enableAutonomy = true;
-    const service = await AutonomyService.start(mockRuntime);
-
-    const worker = registeredTaskWorkers.get(AUTONOMY_TASK_NAME);
-    expect(worker).toBeDefined();
-
-    // Mock the performAutonomousThink method
-    const performSpy = vi
-      .spyOn(service, "performAutonomousThink")
-      .mockResolvedValue();
-
-    // Execute the task worker
-    await worker?.execute(mockRuntime, {}, { id: asTestUuid(uuidv4()) });
-
-    expect(performSpy).toHaveBeenCalled();
+    expect(thinkCalls.length).toBe(1);
 
     await service.stop();
   });

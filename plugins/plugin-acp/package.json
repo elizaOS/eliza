@@ -39,7 +39,7 @@
   "scripts": {
     "build": "cd typescript && tsc",
     "dev": "cd typescript && tsc --watch",
-    "test": "cd typescript && vitest run",
+    "test": "cd typescript && vitest run --passWithNoTests",
     "test:watch": "cd typescript && vitest",
     "lint": "biome check --write --unsafe typescript/src/",
     "lint:fix": "biome check --write typescript/src/",

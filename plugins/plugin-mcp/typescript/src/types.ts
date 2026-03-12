@@ -26,7 +26,6 @@ export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "fa
 
 export interface ConnectionState {
   status: ConnectionStatus;
-  pingInterval?: ReturnType<typeof setInterval>;
   reconnectTimeout?: ReturnType<typeof setTimeout>;
   reconnectAttempts: number;
   lastConnected?: Date;

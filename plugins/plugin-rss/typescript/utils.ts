@@ -12,7 +12,7 @@ export function createMessageReply(
     source: message.content.source ?? "",
     channelType: message.content.channelType,
     inReplyTo: createUniqueUuid(runtime, message.id ?? ""),
-  };
+  } as unknown as Content;
 }
 
 export function extractUrls(text: string): string[] {

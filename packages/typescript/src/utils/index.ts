@@ -11,7 +11,11 @@
  * @module utils
  */
 
-export { type BooleanParseOptions, parseBooleanValue } from "./boolean.js";
+export {
+  type BooleanParseOptions,
+  parseBooleanText,
+  parseBooleanValue,
+} from "./boolean.js";
 
 export {
   type BackoffPolicy,
@@ -25,7 +29,29 @@ export {
   sleepWithAbort,
 } from "./retry.js";
 
-export { formatRelativeTime } from "./time-format.js";
+export { formatRelativeTime, formatTimestamp } from "./time-format.js";
+
+export { flattenTextValues, toMultilineText } from "./text-normalize.js";
+
+export {
+  pickFields,
+  PromptBatcher,
+  PromptDispatcher,
+} from "./prompt-batcher.js";
+
+export {
+  BatcherDisposedError,
+  type BatcherStats,
+  type ContextResolver,
+  type DrainLog,
+  type DrainMeta,
+  type PreCallbackHandler,
+  type PromptSection,
+  type ResolvedSection,
+  type SectionFrequency,
+} from "../types/prompt-batcher.js";
+
+export { type SchemaValueSpec, type SchemaValueType } from "../types/state.js";
 
 export {
   type BinaryDetectResult,

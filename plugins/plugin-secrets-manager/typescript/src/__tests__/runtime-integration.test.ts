@@ -22,9 +22,8 @@ import {
   type Room,
   type Plugin,
   ChannelType,
-  type IDatabaseAdapter,
+  InMemoryDatabaseAdapter,
 } from "@elizaos/core";
-import { v4 as uuidv4 } from "uuid";
 
 import { secretsManagerPlugin } from "../plugin";
 import { SecretsService, SECRETS_SERVICE_TYPE } from "../services/secrets";
@@ -53,7 +52,7 @@ function stringToUuid(str: string): UUID {
 }
 
 function createUUID(): UUID {
-  return stringToUuid(uuidv4());
+  return crypto.randomUUID() as UUID;
 }
 
 const DEFAULT_TEST_CHARACTER: Character = {
@@ -97,211 +96,6 @@ function createTestCharacter(overrides: Partial<Character> = {}): Character {
 }
 
 /**
- * Entity interface for testing.
- */
-interface Entity {
-  id: UUID;
-  names?: string[];
-  agentId?: UUID;
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * Creates an in-memory database adapter for testing.
- */
-function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
-  const resolvedAgentId = agentId || createUUID();
-
-  const memories = new Map<UUID, Memory>();
-  const rooms = new Map<UUID, Room>();
-  const worlds = new Map<UUID, World>();
-  const entities = new Map<UUID, Entity>();
-  const components = new Map<string, unknown>();
-  const cache = new Map<string, unknown>();
-  const participants = new Map<UUID, Set<UUID>>();
-
-  return {
-    db: {},
-    init: vi.fn().mockResolvedValue(undefined),
-    initialize: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn().mockResolvedValue(undefined),
-    getConnection: vi.fn().mockResolvedValue({}),
-    isReady: vi.fn().mockResolvedValue(true),
-
-    getAgent: vi
-      .fn()
-      .mockResolvedValue({ id: resolvedAgentId, name: "TestAgent" }),
-    getAgents: vi.fn().mockResolvedValue([]),
-    createAgent: vi.fn().mockResolvedValue(true),
-    updateAgent: vi.fn().mockResolvedValue(true),
-    deleteAgent: vi.fn().mockResolvedValue(true),
-    ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
-
-    getMemories: vi.fn(async (params: { roomId?: UUID }) => {
-      const result: Memory[] = [];
-      for (const mem of memories.values()) {
-        if (!params.roomId || mem.roomId === params.roomId) {
-          result.push(mem);
-        }
-      }
-      return result;
-    }),
-    getMemoryById: vi.fn(async (id: UUID) => memories.get(id) || null),
-    getMemoriesByIds: vi.fn(
-      async (ids: UUID[]) =>
-        ids.map((id) => memories.get(id)).filter(Boolean) as Memory[],
-    ),
-    getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
-    getCachedEmbeddings: vi.fn().mockResolvedValue([]),
-    searchMemories: vi.fn().mockResolvedValue([]),
-    createMemory: vi.fn(async (memory: Memory) => {
-      const id = memory.id || createUUID();
-      memories.set(id, { ...memory, id });
-      return id;
-    }),
-    updateMemory: vi.fn().mockResolvedValue(true),
-    deleteMemory: vi.fn(async (id: UUID) => {
-      memories.delete(id);
-    }),
-    deleteManyMemories: vi.fn().mockResolvedValue(undefined),
-    deleteAllMemories: vi.fn().mockResolvedValue(undefined),
-    countMemories: vi.fn().mockResolvedValue(0),
-    getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
-
-    // Entity methods - key for runtime initialization
-    getEntitiesByIds: vi.fn(async (ids: UUID[]) => {
-      return ids.map((id) => entities.get(id)).filter(Boolean) as Entity[];
-    }),
-    getEntitiesForRoom: vi.fn().mockResolvedValue([]),
-    createEntities: vi.fn(async (newEntities: Entity[]) => {
-      for (const entity of newEntities) {
-        if (entity.id) {
-          entities.set(entity.id, entity);
-        }
-      }
-      return true;
-    }),
-    updateEntity: vi.fn().mockResolvedValue(undefined),
-
-    getComponent: vi.fn(async (_entityId: UUID, type: string) => {
-      return components.get(type) || null;
-    }),
-    getComponents: vi.fn(async (entityId: UUID) => {
-      const result: unknown[] = [];
-      for (const [key, value] of components.entries()) {
-        if (key.startsWith(`${entityId}:`)) {
-          result.push(value);
-        }
-      }
-      return result;
-    }),
-    createComponent: vi.fn(
-      async (component: { entityId: UUID; type: string; data: unknown }) => {
-        components.set(`${component.entityId}:${component.type}`, component);
-        return true;
-      },
-    ),
-    updateComponent: vi.fn().mockResolvedValue(undefined),
-    deleteComponent: vi.fn().mockResolvedValue(undefined),
-
-    getRoomsByIds: vi.fn(
-      async (ids: UUID[]) =>
-        ids.map((id) => rooms.get(id)).filter(Boolean) as Room[],
-    ),
-    createRooms: vi.fn(async (newRooms: Room[]) => {
-      const ids: UUID[] = [];
-      for (const room of newRooms) {
-        const id = room.id || createUUID();
-        rooms.set(id, { ...room, id });
-        participants.set(id, new Set());
-        ids.push(id);
-      }
-      return ids;
-    }),
-    deleteRoom: vi.fn(async (id: UUID) => {
-      rooms.delete(id);
-      participants.delete(id);
-    }),
-    deleteRoomsByWorldId: vi.fn().mockResolvedValue(undefined),
-    updateRoom: vi.fn(async (room: Room) => {
-      if (room.id) rooms.set(room.id, room);
-    }),
-    getRoomsForParticipant: vi.fn().mockResolvedValue([]),
-    getRoomsForParticipants: vi.fn().mockResolvedValue([]),
-    getRoomsByWorld: vi.fn(async (worldId: UUID) => {
-      const result: Room[] = [];
-      for (const room of rooms.values()) {
-        if (room.worldId === worldId) {
-          result.push(room);
-        }
-      }
-      return result;
-    }),
-
-    addParticipantsRoom: vi.fn(async (entityIds: UUID[], roomId: UUID) => {
-      let roomParticipants = participants.get(roomId);
-      if (!roomParticipants) {
-        roomParticipants = new Set();
-        participants.set(roomId, roomParticipants);
-      }
-      for (const id of entityIds) {
-        roomParticipants.add(id);
-      }
-      return true;
-    }),
-    removeParticipant: vi.fn().mockResolvedValue(true),
-    getParticipantsForEntity: vi.fn().mockResolvedValue([]),
-    getParticipantsForRoom: vi.fn(async (roomId: UUID) => {
-      const roomParticipants = participants.get(roomId);
-      return roomParticipants ? Array.from(roomParticipants) : [];
-    }),
-    isRoomParticipant: vi.fn().mockResolvedValue(false),
-    getParticipantUserState: vi.fn().mockResolvedValue(null),
-    setParticipantUserState: vi.fn().mockResolvedValue(undefined),
-
-    createWorld: vi.fn(async (world: World) => {
-      const id = world.id || createUUID();
-      worlds.set(id, { ...world, id });
-      return id;
-    }),
-    getWorld: vi.fn(async (id: UUID) => worlds.get(id) || null),
-    removeWorld: vi.fn(async (id: UUID) => {
-      worlds.delete(id);
-    }),
-    getAllWorlds: vi.fn(async () => Array.from(worlds.values())),
-    updateWorld: vi.fn(async (world: World) => {
-      if (world.id) worlds.set(world.id, world);
-    }),
-
-    createRelationship: vi.fn().mockResolvedValue(true),
-    updateRelationship: vi.fn().mockResolvedValue(undefined),
-    getRelationship: vi.fn().mockResolvedValue(null),
-    getRelationships: vi.fn().mockResolvedValue([]),
-
-    getCache: vi.fn(async <T>(key: string) => cache.get(key) as T | undefined),
-    setCache: vi.fn(async <T>(key: string, value: T) => {
-      cache.set(key, value);
-      return true;
-    }),
-    deleteCache: vi.fn(async (key: string) => {
-      cache.delete(key);
-      return true;
-    }),
-
-    createTask: vi.fn().mockResolvedValue(createUUID()),
-    getTasks: vi.fn().mockResolvedValue([]),
-    getTask: vi.fn().mockResolvedValue(null),
-    getTasksByName: vi.fn().mockResolvedValue([]),
-    updateTask: vi.fn().mockResolvedValue(undefined),
-    deleteTask: vi.fn().mockResolvedValue(undefined),
-
-    log: vi.fn().mockResolvedValue(undefined),
-    getLogs: vi.fn().mockResolvedValue([]),
-    deleteLog: vi.fn().mockResolvedValue(undefined),
-  } as IDatabaseAdapter;
-}
-
-/**
  * Creates a test runtime with the secrets manager plugin.
  */
 async function createTestRuntime(
@@ -312,7 +106,8 @@ async function createTestRuntime(
 ): Promise<IAgentRuntime> {
   const character = createTestCharacter(options.character);
   const agentId = character.id || createUUID();
-  const adapter = createTestDatabaseAdapter(agentId);
+  const adapter = new InMemoryDatabaseAdapter();
+  await adapter.initialize();
 
   // Include secrets manager plugin
   const plugins = [secretsManagerPlugin, ...(options.plugins || [])];
@@ -491,7 +286,7 @@ describe("Secrets Manager Runtime Integration", () => {
 
       // Create a world
       const world = createTestWorld(runtime);
-      await (runtime as AgentRuntime)["adapter"].createWorld(world);
+      await (runtime as AgentRuntime)["adapter"].createWorlds([world]);
 
       // Set a world secret - signature: setWorld(key, value, worldId)
       const setResult = await secretsService.setWorld(
@@ -518,7 +313,7 @@ describe("Secrets Manager Runtime Integration", () => {
 
       // Create a world
       const world = createTestWorld(runtime);
-      await (runtime as AgentRuntime)["adapter"].createWorld(world);
+      await (runtime as AgentRuntime)["adapter"].createWorlds([world]);
 
       // Set same key at different levels
       await secretsService.setGlobal("SHARED_KEY", "global-value");
@@ -540,8 +335,8 @@ describe("Secrets Manager Runtime Integration", () => {
       // Create two worlds
       const world1 = createTestWorld(runtime, { name: "World 1" });
       const world2 = createTestWorld(runtime, { name: "World 2" });
-      await (runtime as AgentRuntime)["adapter"].createWorld(world1);
-      await (runtime as AgentRuntime)["adapter"].createWorld(world2);
+      await (runtime as AgentRuntime)["adapter"].createWorlds([world1]);
+      await (runtime as AgentRuntime)["adapter"].createWorlds([world2]);
 
       // Set same key in both worlds - signature: setWorld(key, value, worldId)
       await secretsService.setWorld(
@@ -1111,7 +906,7 @@ describe("Secrets Manager Runtime Integration", () => {
       const world = createTestWorld(runtime);
 
       // Create the world in the database first
-      await (runtime as AgentRuntime)["adapter"].createWorld(world);
+      await (runtime as AgentRuntime)["adapter"].createWorlds([world]);
 
       const config = createOnboardingConfig(["OPENAI_API_KEY"]);
       await onboardingService.initializeOnboarding(world, config);

@@ -10,7 +10,12 @@
  * - Implementation: https://github.com/alexzhang13/rlm
  */
 
-import type { GenerateTextParams, IAgentRuntime, Plugin } from "@elizaos/core";
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  Plugin,
+  TestSuite,
+} from "@elizaos/core";
 import { ModelType, logger } from "@elizaos/core";
 
 import { RLMClient, stubResult } from "./client";
@@ -206,7 +211,7 @@ export const rlmPlugin: Plugin = {
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const text = await runtime.useModel(ModelType.TEXT_LARGE, {
               prompt: "Say 'hello' in exactly one word.",
-            });
+            } as unknown as GenerateTextParams);
 
             if (typeof text !== "string") {
               throw new Error("TEXT_LARGE should return string");
@@ -220,7 +225,7 @@ export const rlmPlugin: Plugin = {
           fn: async (runtime: IAgentRuntime): Promise<void> => {
             const text = await runtime.useModel(ModelType.TEXT_LARGE, {
               prompt: "What is 2 + 2?",
-            });
+            } as unknown as GenerateTextParams);
 
             if (typeof text !== "string") {
               throw new Error("TEXT_LARGE with prompt should return string");
@@ -231,7 +236,7 @@ export const rlmPlugin: Plugin = {
         },
       ],
     },
-  ],
+  ] as unknown as TestSuite[],
 };
 
 export default rlmPlugin;

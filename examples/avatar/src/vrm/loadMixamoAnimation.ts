@@ -43,7 +43,7 @@ function findObjectByNameVariants(asset: THREE.Object3D, rawName: string): THREE
 
   // Slow path: traverse and match by suffix (handles nested names like "Armature|mixamorigHips")
   let found: THREE.Object3D | null = null;
-  asset.traverse((obj) => {
+  asset.traverse((obj: THREE.Object3D) => {
     if (found) return;
     for (const name of candidates) {
       if (obj.name === name || obj.name.endsWith(`|${name}`)) {
@@ -136,14 +136,14 @@ export async function loadMixamoAnimation(url: string, vrm: VRM): Promise<THREE.
         new THREE.QuaternionKeyframeTrack(
           `${vrmNodeName}.${propertyName}`,
           track.times,
-          values.map((v, i) => (isVrm0(vrm) && i % 2 === 0 ? -v : v)),
+          values.map((v: number, i: number) => (isVrm0(vrm) && i % 2 === 0 ? -v : v)),
         ),
       );
       continue;
     }
 
     if (track instanceof THREE.VectorKeyframeTrack) {
-      const values = track.values.map((v, i) => {
+      const values = track.values.map((v: number, i: number) => {
         const signFixed = isVrm0(vrm) && i % 3 !== 1 ? -v : v;
         return signFixed * hipsPositionScale;
       });

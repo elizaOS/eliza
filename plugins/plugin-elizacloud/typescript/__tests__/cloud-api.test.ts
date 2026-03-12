@@ -179,7 +179,7 @@ describe("error handling", () => {
   it("throws CloudApiError on 400 JSON response", async () => {
     setResponse(400, { success: false, error: "Invalid input", details: { field: "name" } });
     const client = new CloudApiClient(baseUrl);
-    const err = await client.get("/bad").catch((e: CloudApiError) => e);
+    const err = (await client.get("/bad").catch((e) => e)) as CloudApiError;
     expect(err).toBeInstanceOf(CloudApiError);
     expect(err.statusCode).toBe(400);
     expect(err.message).toBe("Invalid input");
@@ -189,7 +189,7 @@ describe("error handling", () => {
   it("throws CloudApiError on 500 JSON response", async () => {
     setResponse(500, { success: false, error: "Internal server error" });
     const client = new CloudApiClient(baseUrl);
-    const err = await client.post("/explode", {}).catch((e: CloudApiError) => e);
+    const err = (await client.post("/explode", {}).catch((e) => e)) as CloudApiError;
     expect(err).toBeInstanceOf(CloudApiError);
     expect(err.statusCode).toBe(500);
   });
@@ -197,7 +197,7 @@ describe("error handling", () => {
   it("throws InsufficientCreditsError on 402 response", async () => {
     setResponse(402, { success: false, error: "Insufficient balance", requiredCredits: 10.5 });
     const client = new CloudApiClient(baseUrl);
-    const err = await client.post("/containers", { name: "x" }).catch((e: InsufficientCreditsError) => e);
+    const err = (await client.post("/containers", { name: "x" }).catch((e) => e)) as InsufficientCreditsError;
     expect(err).toBeInstanceOf(InsufficientCreditsError);
     expect(err).toBeInstanceOf(CloudApiError);
     expect(err.statusCode).toBe(402);
@@ -208,14 +208,14 @@ describe("error handling", () => {
   it("InsufficientCreditsError defaults requiredCredits to 0 when missing", async () => {
     setResponse(402, { success: false, error: "No credits" });
     const client = new CloudApiClient(baseUrl);
-    const err = await client.get("/x").catch((e: InsufficientCreditsError) => e);
+    const err = (await client.get("/x").catch((e) => e)) as InsufficientCreditsError;
     expect(err.requiredCredits).toBe(0);
   });
 
   it("throws CloudApiError on non-JSON error response", async () => {
     setTextResponse(503, "Service Unavailable");
     const client = new CloudApiClient(baseUrl);
-    const err = await client.get("/down").catch((e: CloudApiError) => e);
+    const err = (await client.get("/down").catch((e) => e)) as CloudApiError;
     expect(err).toBeInstanceOf(CloudApiError);
     expect(err.statusCode).toBe(503);
     expect(err.message).toContain("503");
@@ -231,7 +231,7 @@ describe("error handling", () => {
   it("throws CloudApiError for 403 quota exceeded", async () => {
     setResponse(403, { success: false, error: "Quota exceeded", quota: { current: 5, max: 5 } });
     const client = new CloudApiClient(baseUrl);
-    const err = await client.post("/containers", {}).catch((e: CloudApiError) => e);
+    const err = (await client.post("/containers", {}).catch((e) => e)) as CloudApiError;
     expect(err.statusCode).toBe(403);
     expect(err.errorBody.quota).toEqual({ current: 5, max: 5 });
   });

@@ -7,6 +7,7 @@ import {
   logger,
   Service,
   type TargetInfo,
+  type Task,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -52,7 +53,10 @@ export class ZaloService extends Service {
   private webhookServer: ReturnType<typeof import("http").createServer> | null =
     null;
   private pollingAbortController: AbortController | null = null;
+  private pollTaskId: UUID | null = null;
   private isRunning = false;
+
+  private static readonly ZALO_POLL_TASK = "ZALO_POLL";
 
   /**
    * Get the current OA info
@@ -195,7 +199,10 @@ export class ZaloService extends Service {
       timestamp: Date.now(),
     } as EventPayload);
 
-    // Stop polling
+    if (this.pollTaskId && typeof this.runtime.deleteTask === "function") {
+      await this.runtime.deleteTask(this.pollTaskId).catch(() => {});
+      this.pollTaskId = null;
+    }
     if (this.pollingAbortController) {
       this.pollingAbortController.abort();
       this.pollingAbortController = null;
@@ -271,21 +278,41 @@ export class ZaloService extends Service {
   }
 
   /**
-   * Start polling mode (development only)
+   * Start polling mode (development only). Driven by ZALO_POLL queue task.
    */
   private async startPolling(): Promise<void> {
     logger.info("Zalo polling mode started (for development only)");
     this.pollingAbortController = new AbortController();
+    this.runtime.registerTaskWorker({
+      name: ZaloService.ZALO_POLL_TASK,
+      execute: async () => {
+        if (this.pollingAbortController?.signal.aborted) return;
+        // Polling implementation would go here if Zalo supported it
+      },
+    });
+    await this.ensurePollTask();
+  }
 
-    // Note: Zalo OA API doesn't have a native long-polling endpoint
-    // In production, use webhooks. This is a placeholder for development.
-    const pollInterval = setInterval(async () => {
-      if (this.pollingAbortController?.signal.aborted) {
-        clearInterval(pollInterval);
-        return;
-      }
-      // Polling implementation would go here if Zalo supported it
-    }, DEFAULT_POLLING_TIMEOUT * 1000);
+  private async ensurePollTask(): Promise<void> {
+    const rt = this.runtime;
+    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    const agentId = rt.agentId;
+    const existing = await rt.getTasksByName(ZaloService.ZALO_POLL_TASK);
+    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    if (mine?.id) {
+      this.pollTaskId = mine.id;
+      return;
+    }
+    const intervalMs = DEFAULT_POLLING_TIMEOUT * 1000;
+    this.pollTaskId = await rt.createTask({
+      name: ZaloService.ZALO_POLL_TASK,
+      tags: ["queue", "repeat"],
+      metadata: {
+        updateInterval: intervalMs,
+        baseInterval: intervalMs,
+        updatedAt: Date.now(),
+      },
+    } as unknown as Task);
   }
 
   /**

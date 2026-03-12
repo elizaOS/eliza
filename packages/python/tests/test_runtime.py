@@ -295,15 +295,15 @@ class TestAgentRuntimeLogLevel:
 class TestAgentRuntimeLLMMode:
     def test_default_llm_mode_is_default(self, character: Character) -> None:
         runtime = AgentRuntime(character=character)
-        assert runtime.get_llm_mode() == LLMMode.LLM_MODE_DEFAULT
+        assert runtime.get_llm_mode() == LLMMode.DEFAULT
 
     def test_constructor_option_small(self, character: Character) -> None:
-        runtime = AgentRuntime(character=character, llm_mode=LLMMode.LLM_MODE_SMALL)
-        assert runtime.get_llm_mode() == LLMMode.LLM_MODE_SMALL
+        runtime = AgentRuntime(character=character, llm_mode=LLMMode.SMALL)
+        assert runtime.get_llm_mode() == LLMMode.SMALL
 
     def test_constructor_option_large(self, character: Character) -> None:
-        runtime = AgentRuntime(character=character, llm_mode=LLMMode.LLM_MODE_LARGE)
-        assert runtime.get_llm_mode() == LLMMode.LLM_MODE_LARGE
+        runtime = AgentRuntime(character=character, llm_mode=LLMMode.LARGE)
+        assert runtime.get_llm_mode() == LLMMode.LARGE
 
     @pytest.mark.skip(reason="CharacterSettings proto doesn't have LLM_MODE field")
     def test_character_setting_small(self) -> None:
@@ -313,7 +313,7 @@ class TestAgentRuntimeLLMMode:
             settings={"LLM_MODE": "SMALL"},
         )
         runtime = AgentRuntime(character=character)
-        assert runtime.get_llm_mode() == LLMMode.LLM_MODE_SMALL
+        assert runtime.get_llm_mode() == LLMMode.SMALL
 
     @pytest.mark.skip(reason="CharacterSettings proto doesn't have LLM_MODE field")
     def test_constructor_option_takes_precedence(self) -> None:
@@ -322,8 +322,8 @@ class TestAgentRuntimeLLMMode:
             bio=["Test"],
             settings={"LLM_MODE": "SMALL"},
         )
-        runtime = AgentRuntime(character=character, llm_mode=LLMMode.LLM_MODE_LARGE)
-        assert runtime.get_llm_mode() == LLMMode.LLM_MODE_LARGE
+        runtime = AgentRuntime(character=character, llm_mode=LLMMode.LARGE)
+        assert runtime.get_llm_mode() == LLMMode.LARGE
 
     @pytest.mark.skip(reason="CharacterSettings proto doesn't have LLM_MODE field")
     def test_case_insensitive_character_setting(self) -> None:
@@ -333,7 +333,7 @@ class TestAgentRuntimeLLMMode:
             settings={"LLM_MODE": "small"},
         )
         runtime = AgentRuntime(character=character)
-        assert runtime.get_llm_mode() == LLMMode.LLM_MODE_SMALL
+        assert runtime.get_llm_mode() == LLMMode.SMALL
 
     @pytest.mark.skip(reason="CharacterSettings proto doesn't have LLM_MODE field")
     def test_invalid_setting_defaults_to_default(self) -> None:
@@ -343,11 +343,11 @@ class TestAgentRuntimeLLMMode:
             settings={"LLM_MODE": "invalid"},
         )
         runtime = AgentRuntime(character=character)
-        assert runtime.get_llm_mode() == LLMMode.LLM_MODE_DEFAULT
+        assert runtime.get_llm_mode() == LLMMode.DEFAULT
 
     @pytest.mark.asyncio
     async def test_use_model_override_small(self, character: Character) -> None:
-        runtime = AgentRuntime(character=character, llm_mode=LLMMode.LLM_MODE_SMALL)
+        runtime = AgentRuntime(character=character, llm_mode=LLMMode.SMALL)
 
         async def small_handler(rt: IAgentRuntime, params: dict[str, Any]) -> Any:
             return "small response"
@@ -363,7 +363,7 @@ class TestAgentRuntimeLLMMode:
 
     @pytest.mark.asyncio
     async def test_use_model_override_large(self, character: Character) -> None:
-        runtime = AgentRuntime(character=character, llm_mode=LLMMode.LLM_MODE_LARGE)
+        runtime = AgentRuntime(character=character, llm_mode=LLMMode.LARGE)
 
         async def small_handler(rt: IAgentRuntime, params: dict[str, Any]) -> Any:
             return "small response"

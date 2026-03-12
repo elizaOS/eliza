@@ -1053,6 +1053,7 @@ describe("Choice Action (Extended)", () => {
       const foundTasks = await rt.getTasks({
         roomId: msg.roomId,
         tags: ["AWAITING_CHOICE"],
+        agentIds: [rt.agentId],
       });
 
       if (!foundTasks || foundTasks.length === 0) {
@@ -1088,10 +1089,11 @@ describe("Choice Action (Extended)", () => {
     // Call our custom handler
     await customChoiceHandler(runtime, message, state, {}, callback);
 
-    // Verify proper task lookup
+    // Verify proper task lookup (handler passes roomId, tags, agentIds)
     expect(runtime.getTasks).toHaveBeenCalledWith({
       roomId: message.roomId,
       tags: ["AWAITING_CHOICE"],
+      agentIds: [runtime.agentId],
     });
 
     // Verify callback contains formatted options from all tasks
@@ -1139,6 +1141,7 @@ describe("Choice Action (Extended)", () => {
       const foundTasks = await rt.getTasks({
         roomId: msg.roomId,
         tags: ["AWAITING_CHOICE"],
+        agentIds: [rt.agentId],
       });
 
       if (!foundTasks || foundTasks.length === 0) {

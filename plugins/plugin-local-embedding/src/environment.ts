@@ -41,30 +41,28 @@ export function validateConfig(): Config {
       LOCAL_EMBEDDING_DIMENSIONS: process.env.LOCAL_EMBEDDING_DIMENSIONS, // Read embedding dimensions
     };
 
-    logger.debug("Validating configuration for local AI plugin from env:", {
-      LOCAL_EMBEDDING_MODEL: configToParse.LOCAL_EMBEDDING_MODEL,
-      MODELS_DIR: configToParse.MODELS_DIR,
-      CACHE_DIR: configToParse.CACHE_DIR,
-      LOCAL_EMBEDDING_DIMENSIONS: configToParse.LOCAL_EMBEDDING_DIMENSIONS,
-    });
+    logger.debug(
+      `Validating configuration for local AI plugin from env: ${JSON.stringify(configToParse)}`,
+    );
 
     const validatedConfig = configSchema.parse(configToParse);
 
-    logger.info("Using local AI configuration:", validatedConfig);
+    logger.info(`Using local AI configuration: ${JSON.stringify(validatedConfig)}`);
 
     return validatedConfig;
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const errorMessages = error.errors
-        .map((err) => `${err.path.join(".")}: ${err.message}`)
+      const errorMessages = error.issues
+        .map((err: z.ZodIssue) =>
+          `${err.path.map(String).join(".")}: ${err.message}`,
+        )
         .join("\n");
-      logger.error("Zod validation failed:", errorMessages);
+      logger.error(`Zod validation failed: ${errorMessages}`);
       throw new Error(`Configuration validation failed:\n${errorMessages}`);
     }
-    logger.error("Configuration validation failed:", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
+    logger.error(
+      `Configuration validation failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
     throw error;
   }
 }

@@ -37,7 +37,7 @@ export class CacheManager {
   }
 
   private initialize(): void {
-    setInterval(() => this.cleanup(), 60000);
+    // Cleanup is driven by queue task TODO_CACHE_CLEANUP (see TodoReminderService).
     logger.info("CacheManager initialized");
   }
 
@@ -180,7 +180,8 @@ export class CacheManager {
     }
   }
 
-  private cleanup(): void {
+  /** Called by TODO_CACHE_CLEANUP queue task (TodoReminderService). */
+  cleanup(): void {
     const _now = Date.now();
     const keysToDelete: string[] = [];
 

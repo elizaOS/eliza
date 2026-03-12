@@ -27,7 +27,7 @@ export const selfModificationPlugin: Plugin = {
   // Core components
   evaluators: [characterEvolutionEvaluator],
   actions: [modifyCharacterAction],
-  services: [CharacterFileManager],
+  services: [CharacterFileManager as import('@elizaos/core').ServiceClass],
 
   // Plugin configuration
   config: {
@@ -70,7 +70,7 @@ export const selfModificationPlugin: Plugin = {
         hasSystemPrompt: !!character.system,
       };
 
-      logger.debug('Current character state', characterStats);
+      logger.debug(characterStats, 'Current character state');
 
       // Plugin init() runs during runtime.initialize() BEFORE the agent
       // entity and room rows are created (those happen after all plugins
@@ -121,7 +121,7 @@ export const selfModificationPlugin: Plugin = {
               type: MemoryType.CUSTOM,
               plugin: '@elizaos/plugin-personality',
               timestamp: Date.now(),
-              characterBaseline: characterStats,
+              characterBaseline: characterStats as unknown as Record<string, unknown>,
             } as CustomMetadata,
           };
 
@@ -136,14 +136,17 @@ export const selfModificationPlugin: Plugin = {
         );
       }
 
-      logger.debug('Self-Modification Plugin initialized successfully', {
-        evolutionEnabled: config.ENABLE_AUTO_EVOLUTION !== 'false',
-        confidenceThreshold: config.MODIFICATION_CONFIDENCE_THRESHOLD || '0.7',
-        characterHasSystem: characterStats.hasSystemPrompt,
-        entityReady,
-      });
+      logger.debug(
+        {
+          evolutionEnabled: config.ENABLE_AUTO_EVOLUTION !== 'false',
+          confidenceThreshold: config.MODIFICATION_CONFIDENCE_THRESHOLD || '0.7',
+          characterHasSystem: characterStats.hasSystemPrompt,
+          entityReady,
+        },
+        'Self-Modification Plugin initialized successfully'
+      );
     } catch (error) {
-      logger.error('Critical error during plugin initialization', error);
+      logger.error({ err: error }, 'Critical error during plugin initialization');
       throw error;
     }
   },

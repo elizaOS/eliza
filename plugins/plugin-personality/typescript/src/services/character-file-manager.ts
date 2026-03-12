@@ -79,10 +79,10 @@ export class CharacterFileManager extends Service {
     // Try to detect the character file path
     await this.detectCharacterFile();
 
-    logger.debug('CharacterFileManager initialized', {
-      characterFile: this.characterFilePath,
-      backupDir: this.backupDir,
-    });
+    logger.debug(
+      { characterFile: this.characterFilePath, backupDir: this.backupDir },
+      'CharacterFileManager initialized'
+    );
   }
 
   private async detectCharacterFile(): Promise<void> {
@@ -113,7 +113,7 @@ export class CharacterFileManager extends Service {
           const content = await fs.readJSON(filePath);
           if (content.name === character.name) {
             this.characterFilePath = filePath;
-            logger.debug('Character file detected', { path: filePath });
+            logger.debug({ path: filePath }, 'Character file detected');
             return;
           }
         } catch {
@@ -127,10 +127,11 @@ export class CharacterFileManager extends Service {
 
   private setupValidationRules(): void {
     // Name validation - ensure safe and reasonable names
-    this.validationRules.set('name', (name: string) => {
-      if (typeof name !== 'string') {
+    this.validationRules.set('name', (value: unknown) => {
+      if (typeof value !== 'string') {
         return false;
       }
+      const name = value;
       return (
         name.length > 0 &&
         name.length < 100 &&
@@ -144,10 +145,11 @@ export class CharacterFileManager extends Service {
     });
 
     // System prompt validation - ensure safe and reasonable content
-    this.validationRules.set('system', (system: string) => {
-      if (typeof system !== 'string') {
+    this.validationRules.set('system', (value: unknown) => {
+      if (typeof value !== 'string') {
         return false;
       }
+      const system = value;
       return (
         system.length > 10 && // Minimum meaningful length
         system.length < 10000 && // Maximum reasonable length
@@ -162,10 +164,11 @@ export class CharacterFileManager extends Service {
     });
 
     // Bio validation - ensure reasonable length and content
-    this.validationRules.set('bio', (bio: string[]) => {
-      if (!Array.isArray(bio)) {
+    this.validationRules.set('bio', (value: unknown) => {
+      if (!Array.isArray(value)) {
         return false;
       }
+      const bio = value as string[];
       return bio.every(
         (item) =>
           typeof item === 'string' &&
@@ -177,10 +180,11 @@ export class CharacterFileManager extends Service {
     });
 
     // Topics validation
-    this.validationRules.set('topics', (topics: string[]) => {
-      if (!Array.isArray(topics)) {
+    this.validationRules.set('topics', (value: unknown) => {
+      if (!Array.isArray(value)) {
         return false;
       }
+      const topics = value as string[];
       return topics.every(
         (topic) =>
           typeof topic === 'string' &&
@@ -207,10 +211,10 @@ export class CharacterFileManager extends Service {
       // Clean up old backups
       await this.cleanupOldBackups();
 
-      logger.info('Character backup created', { backupPath });
+      logger.info({ backupPath }, 'Character backup created');
       return backupPath;
     } catch (error) {
-      logger.error('Failed to create character backup', error);
+      logger.error({ err: error }, 'Failed to create character backup');
       return null;
     }
   }
@@ -237,7 +241,7 @@ export class CharacterFileManager extends Service {
         logger.info(`Cleaned up ${filesToDelete.length} old backups`);
       }
     } catch (error) {
-      logger.error('Error cleaning up old backups', error);
+      logger.error({ err: error }, 'Error cleaning up old backups');
     }
   }
 
@@ -300,10 +304,7 @@ export class CharacterFileManager extends Service {
       if (modification.name) {
         const oldName = currentCharacter.name;
         currentCharacter.name = modification.name;
-        logger.info('Character name changed', {
-          oldName,
-          newName: modification.name,
-        });
+        logger.info({ oldName, newName: modification.name }, 'Character name changed');
       }
 
       // Handle system prompt modification - this is a direct replacement, not additive
@@ -311,17 +312,17 @@ export class CharacterFileManager extends Service {
         const oldSystem = currentCharacter.system || 'No system prompt';
         currentCharacter.system = modification.system;
 
-        logger.info('System prompt modified', {
-          oldLength: oldSystem.length,
-          newLength: modification.system.length,
-          changed: oldSystem !== modification.system,
-        });
+        logger.info(
+          { oldLength: oldSystem.length, newLength: modification.system.length, changed: oldSystem !== modification.system },
+          'System prompt modified'
+        );
       }
 
       if (modification.bio) {
-        const currentBio = Array.isArray(currentCharacter.bio)
+        const currentBioRaw = Array.isArray(currentCharacter.bio)
           ? currentCharacter.bio
           : [currentCharacter.bio];
+        const currentBio = currentBioRaw.filter((x): x is string => typeof x === 'string');
 
         // Add new bio elements, avoiding duplicates
         const newBioElements = modification.bio.filter(
@@ -347,21 +348,22 @@ export class CharacterFileManager extends Service {
         currentCharacter.messageExamples = [
           ...currentExamples,
           ...modification.messageExamples,
-        ] as MessageExample[][];
+        ] as typeof currentCharacter.messageExamples;
       }
 
       if (modification.style) {
         currentCharacter.style = {
           ...currentCharacter.style,
           ...modification.style,
-        };
+          $typeName: 'eliza.v1.StyleGuides' as const,
+        } as typeof currentCharacter.style;
       }
 
       if (modification.settings) {
         currentCharacter.settings = {
           ...currentCharacter.settings,
           ...modification.settings,
-        };
+        } as typeof currentCharacter.settings;
       }
 
       // Update runtime character
@@ -388,7 +390,7 @@ export class CharacterFileManager extends Service {
             service: PersonalityServiceType,
             action: 'character_modified',
             timestamp: Date.now(),
-            filePath: this.characterFilePath,
+            filePath: this.characterFilePath ?? undefined,
             modificationType: 'file_update',
           },
         },
@@ -397,7 +399,7 @@ export class CharacterFileManager extends Service {
 
       return { success: true };
     } catch (error) {
-      logger.error('Failed to apply character modification', error);
+      logger.error({ err: error }, 'Failed to apply character modification');
       return {
         success: false,
         error: `Application failed: ${(error as Error).message}`,
@@ -416,10 +418,11 @@ export class CharacterFileManager extends Service {
 
     return memories.map((memory) => {
       const meta = memory.metadata as Record<string, unknown> | undefined;
+      const filePath = meta?.filePath;
       return {
         timestamp: typeof meta?.timestamp === 'number' ? meta.timestamp : undefined,
         modification: meta?.modification,
-        filePath: typeof meta?.filePath === 'string' ? meta.filePath : undefined,
+        filePath: typeof filePath === 'string' ? filePath : undefined,
       };
     });
   }
@@ -513,15 +516,14 @@ export class CharacterFileManager extends Service {
         'character_modifications'
       );
 
-      logger.info('Character restored from backup', {
-        backupPath,
-        characterName: backupContent.name,
-        currentBackup: currentBackupPath,
-      });
+      logger.info(
+        { backupPath, characterName: backupContent.name, currentBackup: currentBackupPath },
+        'Character restored from backup'
+      );
 
       return { success: true };
     } catch (error) {
-      logger.error('Failed to restore from backup', error);
+      logger.error({ err: error }, 'Failed to restore from backup');
       return {
         success: false,
         error: `Restoration failed: ${(error as Error).message}`,
@@ -543,8 +545,9 @@ export class CharacterFileManager extends Service {
 
     // Find the corresponding backup file
     const backups = await this.getAvailableBackups();
+    const entryTs = entry.timestamp ?? 0;
     const backup = backups.find(
-      (b) => Math.abs(b.timestamp - entry.timestamp) < 60000 // Within 1 minute
+      (b) => Math.abs(b.timestamp - entryTs) < 60000 // Within 1 minute
     );
 
     if (!backup) {

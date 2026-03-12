@@ -1,4 +1,4 @@
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
 import { Wallet } from "@ethersproject/wallet";
 import type { ApiKeysResponse as ClobApiKeysResponse } from "@polymarket/clob-client";
 import { AssetType, ClobClient } from "@polymarket/clob-client";
@@ -403,11 +403,11 @@ export class PolymarketService extends Service {
 
   private clobClient: ClobClient | null = null;
   private authenticatedClient: ClobClient | null = null;
-  private refreshInterval: ReturnType<typeof setInterval> | null = null;
+  private refreshTaskId: UUID | null = null;
   private websocket: WebSocket | null = null;
   private websocketStatus: WebsocketStatus = "disconnected";
   private websocketUrl: string | null = null;
-  private wsPingInterval: ReturnType<typeof setInterval> | null = null;
+  private wsPingTaskId: UUID | null = null;
   private wsReconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private wsReconnectAttempts = 0;
   private wsLastError: string | null = null;
@@ -419,9 +419,13 @@ export class PolymarketService extends Service {
   private cachedApiCredentials: CachedApiCredentials | null = null;
   private apiCredentialsPromise: Promise<ApiKeyCreds | null> | null = null;
   private cachedAccountState: CachedAccountState | null = null;
-  private accountStateRefreshInterval: ReturnType<typeof setInterval> | null = null;
+  private accountStateTaskId: UUID | null = null;
   private accountStatePromise: Promise<CachedAccountState | null> | null = null;
   private cachedActivityContext: ActivityContext | null = null;
+
+  private static readonly POLYMARKET_REFRESH_WALLET_TASK = "POLYMARKET_REFRESH_WALLET";
+  private static readonly POLYMARKET_REFRESH_ACCOUNT_TASK = "POLYMARKET_REFRESH_ACCOUNT";
+  private static readonly POLYMARKET_WS_PING_TASK = "POLYMARKET_WS_PING";
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
@@ -434,14 +438,8 @@ export class PolymarketService extends Service {
     await service.initializeClobClient();
     await service.initializeAuthenticatedClient();
 
-    if (service.refreshInterval) {
-      clearInterval(service.refreshInterval);
-    }
-
-    service.refreshInterval = setInterval(
-      () => service.refreshWalletData(),
-      CACHE_REFRESH_INTERVAL_MS,
-    );
+    service.registerTaskWorkers();
+    await service.ensureRefreshTasks();
 
     // Initialize account state on startup
     await service.refreshAccountState();
@@ -449,16 +447,76 @@ export class PolymarketService extends Service {
     // If balance is 0 but we have trades, try to detect proxy from trade history
     await service.tryDetectProxyFromTrades();
 
-    // Set up periodic refresh for account state (every 5 minutes to check TTL)
-    if (service.accountStateRefreshInterval) {
-      clearInterval(service.accountStateRefreshInterval);
-    }
-    service.accountStateRefreshInterval = setInterval(
-      () => service.refreshAccountStateIfNeeded(),
-      CACHE_REFRESH_INTERVAL_MS,
-    );
-
     return service;
+  }
+
+  private registerTaskWorkers(): void {
+    const rt = this.polymarketRuntime;
+    rt.registerTaskWorker({
+      name: PolymarketService.POLYMARKET_REFRESH_WALLET_TASK,
+      execute: async () => {
+        await this.refreshWalletData();
+      },
+    });
+    rt.registerTaskWorker({
+      name: PolymarketService.POLYMARKET_REFRESH_ACCOUNT_TASK,
+      execute: async () => {
+        await this.refreshAccountStateIfNeeded();
+      },
+    });
+    rt.registerTaskWorker({
+      name: PolymarketService.POLYMARKET_WS_PING_TASK,
+      execute: async () => {
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+          this.websocket.ping();
+        }
+      },
+    });
+  }
+
+  private async ensureRefreshTasks(): Promise<void> {
+    const rt = this.polymarketRuntime;
+    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    const agentId = rt.agentId;
+
+    const ensureOne = async (
+      taskName: string,
+      intervalMs: number,
+      idField: "refreshTaskId" | "accountStateTaskId" | "wsPingTaskId",
+    ): Promise<void> => {
+      const existing = await rt.getTasksByName(taskName);
+      const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+      if (mine?.id) {
+        (this as Record<string, UUID | null>)[idField] = mine.id;
+        return;
+      }
+      const id = await rt.createTask({
+        name: taskName,
+        tags: ["queue", "repeat"],
+        metadata: {
+          updateInterval: intervalMs,
+          baseInterval: intervalMs,
+          updatedAt: Date.now(),
+        },
+      });
+      (this as Record<string, UUID | null>)[idField] = id;
+    };
+
+    await ensureOne(
+      PolymarketService.POLYMARKET_REFRESH_WALLET_TASK,
+      CACHE_REFRESH_INTERVAL_MS,
+      "refreshTaskId",
+    );
+    await ensureOne(
+      PolymarketService.POLYMARKET_REFRESH_ACCOUNT_TASK,
+      CACHE_REFRESH_INTERVAL_MS,
+      "accountStateTaskId",
+    );
+    await ensureOne(
+      PolymarketService.POLYMARKET_WS_PING_TASK,
+      WS_PING_INTERVAL_MS,
+      "wsPingTaskId",
+    );
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
@@ -472,13 +530,14 @@ export class PolymarketService extends Service {
   }
 
   async stop(): Promise<void> {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-      this.refreshInterval = null;
-    }
-    if (this.accountStateRefreshInterval) {
-      clearInterval(this.accountStateRefreshInterval);
-      this.accountStateRefreshInterval = null;
+    const rt = this.polymarketRuntime;
+    if (typeof rt.deleteTask === "function") {
+      for (const id of [this.refreshTaskId, this.accountStateTaskId, this.wsPingTaskId]) {
+        if (id) await rt.deleteTask(id).catch(() => {});
+      }
+      this.refreshTaskId = null;
+      this.accountStateTaskId = null;
+      this.wsPingTaskId = null;
     }
     await this.stopWebsocket();
   }
@@ -1546,21 +1605,11 @@ export class PolymarketService extends Service {
   }
 
   private startPing(): void {
-    if (this.wsPingInterval) {
-      clearInterval(this.wsPingInterval);
-    }
-    this.wsPingInterval = setInterval(() => {
-      if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-        this.websocket.ping();
-      }
-    }, WS_PING_INTERVAL_MS);
+    // Ping is driven by POLYMARKET_WS_PING queue task (created in ensureRefreshTasks).
   }
 
   private stopPing(): void {
-    if (this.wsPingInterval) {
-      clearInterval(this.wsPingInterval);
-      this.wsPingInterval = null;
-    }
+    // Task is deleted in stop().
   }
 
   private scheduleReconnect(): void {

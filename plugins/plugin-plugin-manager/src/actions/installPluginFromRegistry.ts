@@ -1,4 +1,4 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
+import type { Action, ActionResult, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
 import { PluginManagerService } from '../services/pluginManagerService';
 
 export const installPluginFromRegistryAction: Action = {
@@ -36,7 +36,7 @@ export const installPluginFromRegistryAction: Action = {
     state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<void> {
+  ): Promise<ActionResult> {
     const pluginManagerService = runtime.getService('plugin_manager') as PluginManagerService;
 
     if (!pluginManagerService) {
@@ -45,7 +45,7 @@ export const installPluginFromRegistryAction: Action = {
           text: 'Plugin manager service not available',
         });
       }
-      return;
+      return { success: false };
     }
 
     // Extract plugin name from message content
@@ -82,7 +82,7 @@ export const installPluginFromRegistryAction: Action = {
           text: 'Please specify a plugin name to install. Example: "install plugin @elizaos/plugin-example"',
         });
       }
-      return;
+      return { success: false };
     }
 
     try {
@@ -99,7 +99,7 @@ export const installPluginFromRegistryAction: Action = {
               '\n\nUse "configure plugin" to set up the required environment variables.',
           });
         }
-        return;
+        return { success: true };
       }
 
       if (callback) {
@@ -115,7 +115,9 @@ export const installPluginFromRegistryAction: Action = {
           text: `Failed to install plugin ${pluginName}: ${error instanceof Error ? error.message : 'Unknown error'}`,
         });
       }
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
+    return { success: true };
   },
 
   async validate(runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> {

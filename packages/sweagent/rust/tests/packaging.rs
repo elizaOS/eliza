@@ -26,14 +26,20 @@ fn test_version_matches_python_and_typescript() {
 
 #[test]
 fn test_crate_exports() {
-    // Verify main types are exported
+    // Verify main types are exported (compile-time check)
+    #[allow(unused_imports)]
     use elizaos_sweagent::types::{History, HistoryItem, StepOutput, Trajectory, TrajectoryStep};
+    #[allow(unused_imports)]
     use elizaos_sweagent::SWEAgentError;
+    #[allow(unused_imports)]
     use elizaos_sweagent::{
         AgentConfig, AgentRunResult, DefaultAgent, DefaultAgentConfig, RetryAgent, RetryAgentConfig,
     };
+    #[allow(unused_imports)]
     use elizaos_sweagent::{Bundle, BundleConfig, ParseFunction, ToolConfig, ToolHandler};
+    #[allow(unused_imports)]
     use elizaos_sweagent::{DeploymentConfig, EnvironmentConfig, RepoConfig, SWEEnv};
+    #[allow(unused_imports)]
     use elizaos_sweagent::{RunBatch, RunBatchConfig, RunSingle, RunSingleConfig};
 }
 

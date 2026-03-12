@@ -74,7 +74,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     ) as IDatabaseAdapter["createEntities"];
     createRoomsMock = vi.fn(async () => []) as IDatabaseAdapter["createRooms"];
     createRoomParticipantsMock = vi.fn(
-      async () => [],
+      async (entityIds: UUID[]) => entityIds,
     ) as IDatabaseAdapter["createRoomParticipants"];
 
     mockAdapter = {
@@ -96,6 +96,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
       getEntitiesByIds: getEntitiesByIdsMock,
       getRoomsByIds: getRoomsByIdsMock,
       getParticipantsForRoom: getParticipantsForRoomMock,
+      getParticipantsForRooms: vi.fn(async () => []),
+      getParticipantUserStates: vi.fn(async () => []),
+      setParticipantUserState: vi.fn(async () => {}),
+      getEntitiesForRooms: vi.fn(async () => []),
       createEntities: createEntitiesMock,
       createRoomParticipants: createRoomParticipantsMock,
       createRooms: createRoomsMock,
@@ -563,7 +567,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
         createRoomParticipantsMock as VitestMockFunction<
           IDatabaseAdapter["createRoomParticipants"]
         >
-      ).mockResolvedValue(true);
+      ).mockImplementation(async (entityIds: UUID[]) => entityIds);
 
       // Initialize runtime (should load DB settings into character)
       await testRuntime.initialize();
@@ -665,7 +669,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
         createRoomParticipantsMock as VitestMockFunction<
           IDatabaseAdapter["createRoomParticipants"]
         >
-      ).mockResolvedValue(true);
+      ).mockImplementation(async (entityIds: UUID[]) => entityIds);
 
       await testRuntime.initialize();
 

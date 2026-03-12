@@ -255,6 +255,7 @@ export async function startHeartbeat(runtime: IAgentRuntime): Promise<void> {
   const existingTasks = await runtime.getTasks({
     roomId: runtime.agentId as UUID,
     tags: ['heartbeat', 'queue', 'repeat'],
+    agentIds: [runtime.agentId],
   });
 
   const alreadyExists = existingTasks.some(
