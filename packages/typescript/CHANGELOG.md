@@ -4,6 +4,15 @@
 
 ### Added
 
+- **Prompt cache hints (PromptSegment, promptSegments).** The core can pass ordered segments with stability metadata so providers can use prompt-caching APIs. `GenerateTextParams` now has optional `promptSegments?: PromptSegment[]` where each segment is `{ content: string; stable: boolean }`. When set, `prompt` must equal `promptSegments.map(s => s.content).join("")`.
+  - **Why:** Repeated calls often share the same instructions/format while only context changes; provider caches (Anthropic ephemeral, OpenAI/Gemini prefix) can reuse tokens for the stable part, reducing cost and latency. A single invariant lets providers opt in or ignore segments without breaking behavior.
+- **Runtime segment building in dynamicPromptExecFromState.** The runtime builds `promptSegments` from the dynamic prompt: variable block (unstable), format prefix (stable), validation/middle block (unstable), format suffix (stable), end block (unstable). Only content that is identical for the same schema/character is marked stable; validation instructions that contain per-call UUIDs are kept in an unstable segment.
+  - **Why:** Marking validation or variable content as stable would prevent cache hits because that content changes every call; splitting format from validation ensures the stable segments are actually cacheable.
+- **Anthropic plugin: segment-aware requests.** When `promptSegments` is present, the plugin sends a Messages payload with one content block per segment and `cache_control: { type: "ephemeral" }` on blocks where `stable === true`; otherwise it uses the single `prompt` path.
+  - **Why:** Anthropic’s API caches at the block level when cache_control is set; one block per segment lets the API cache only the stable blocks.
+- **OpenAI and Gemini plugins: prefix ordering.** When `promptSegments` is present, the prompt sent to the API is built with stable segments first, then unstable (same total text, reordered).
+  - **Why:** OpenAI and Gemini use prefix-based caching; putting stable content first maximizes the cacheable prefix. No new API parameters; ordering is the hint.
+
 - **Prompt batcher thenable API.** `onDrain(id, opts)` now returns `Promise<BatcherResult<T> | null>` that resolves when the section’s first result is delivered (or `null` if the section ID was already registered). Result shape is `{ fields: T, meta: DrainMeta }`. `onResult` is optional; when omitted, callers use `const result = await onDrain(...); if (result) { const { fields, meta } = result; ... }`.
   - **Why:** Large inline `onResult` callbacks split “register” and “handle result” and made control flow hard to follow. A thenable lets evaluators (e.g. reflection) write linear code and use standard promise patterns (await, .then(), .catch()).
 - **BatcherResult<T>** type (in `types/prompt-batcher.ts`). Generic `T` defaults to `Record<string, unknown>`. All section promises (addSection, onDrain) resolve with this shape; askOnce/askNow unwrap to `fields` only for backward compatibility.

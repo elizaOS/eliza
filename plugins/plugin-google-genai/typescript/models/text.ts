@@ -1,4 +1,8 @@
-import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  PromptSegment,
+} from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import {
   createGoogleGenAI,
@@ -9,10 +13,27 @@ import {
 import { emitModelUsageEvent } from "../utils/events";
 import { countTokens } from "../utils/tokenization";
 
+/**
+ * Build prompt with stable segments first when core provides promptSegments.
+ * Why: Gemini uses prefix-based caching; putting stable content first maximizes cache hits.
+ */
+function promptForRequest(params: GenerateTextParams): string {
+  const segments = params.promptSegments;
+  if (!Array.isArray(segments) || segments.length === 0) {
+    return params.prompt;
+  }
+  return [...(segments as PromptSegment[])]
+    .sort((a, b) => (a.stable === b.stable ? 0 : a.stable ? -1 : 1))
+    .map((s) => s.content)
+    .join("");
+}
+
 export async function handleTextSmall(
   runtime: IAgentRuntime,
-  { prompt, stopSequences = [], maxTokens = 8192, temperature = 0.7 }: GenerateTextParams
+  params: GenerateTextParams
 ): Promise<string> {
+  const { stopSequences = [], maxTokens = 8192, temperature = 0.7 } = params;
+  const prompt = promptForRequest(params);
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");
@@ -58,8 +79,10 @@ export async function handleTextSmall(
 
 export async function handleTextLarge(
   runtime: IAgentRuntime,
-  { prompt, stopSequences = [], maxTokens = 8192, temperature = 0.7 }: GenerateTextParams
+  params: GenerateTextParams
 ): Promise<string> {
+  const { stopSequences = [], maxTokens = 8192, temperature = 0.7 } = params;
+  const prompt = promptForRequest(params);
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
     throw new Error("Google Generative AI client not initialized");

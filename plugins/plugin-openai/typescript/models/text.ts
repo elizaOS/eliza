@@ -4,7 +4,12 @@
  * Provides text generation using OpenAI's language models.
  */
 
-import type { GenerateTextParams, IAgentRuntime, ModelTypeName } from "@elizaos/core";
+import type {
+  GenerateTextParams,
+  IAgentRuntime,
+  ModelTypeName,
+  PromptSegment,
+} from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText, type LanguageModelUsage, streamText } from "ai";
 import { createOpenAIClient } from "../providers";
@@ -76,9 +81,20 @@ async function generateTextByModelType(
   // gpt-5 and gpt-5-mini (reasoning models) don't support temperature,
   // frequencyPenalty, presencePenalty, or stop parameters - use defaults only
   const model = openai.chat(modelName);
+
+  // When core provides segments, reorder to stable-first so OpenAI's prefix cache (≥1024 tokens) can hit.
+  const segments = params.promptSegments;
+  const promptForRequest =
+    Array.isArray(segments) && segments.length > 0
+      ? [...(segments as PromptSegment[])]
+          .sort((a, b) => (a.stable === b.stable ? 0 : a.stable ? -1 : 1))
+          .map((s) => s.content)
+          .join("")
+      : params.prompt;
+
   const generateParams = {
     model,
-    prompt: params.prompt,
+    prompt: promptForRequest,
     system: systemPrompt,
     maxOutputTokens: params.maxTokens ?? 8192,
     experimental_telemetry: { isEnabled: getExperimentalTelemetry(runtime) },
