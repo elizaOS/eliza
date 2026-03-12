@@ -213,6 +213,19 @@ export const MODEL_SETTINGS = {
 } as const;
 
 /**
+ * A segment of prompt content with stability metadata for provider-level prompt caching.
+ * Providers may use `stable: true` segments for caching (Anthropic cache_control,
+ * OpenAI/Gemini prefix caching). Only mark content stable when it is identical across
+ * calls for the same schema/character—e.g. instructions, format, examples. Per-call
+ * content (state, validation UUIDs) must be unstable so caches can actually hit.
+ */
+export interface PromptSegment {
+  content: string;
+  /** true = same across calls for same schema/character; false = changes per call */
+  stable: boolean;
+}
+
+/**
  * Parameters for generating text using a language model.
  * This structure is typically passed to `AgentRuntime.useModel` when the `modelType` is one of
  * `ModelType.TEXT_SMALL`, `ModelType.TEXT_LARGE`, `ModelType.TEXT_REASONING_SMALL`,
@@ -233,6 +246,13 @@ export interface GenerateTextParams
   stopSequences?: string[];
   onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
   user?: string;
+  /**
+   * Optional ordered segments for prompt cache hints. When set, must satisfy:
+   * prompt === promptSegments.map(s => s.content).join("")
+   * Why: providers that ignore segments still get correct behavior via prompt;
+   * those that use segments must send the same total text so model behavior is unchanged.
+   */
+  promptSegments?: PromptSegment[];
 }
 
 /**

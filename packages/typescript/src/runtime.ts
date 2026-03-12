@@ -48,6 +48,7 @@ import {
   type GenerateTextOptions,
   type GenerateTextParams,
   type GenerateTextResult,
+  type PromptSegment,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -4050,7 +4051,7 @@ export class AgentRuntime implements IAgentRuntime {
       const section_start = isXML ? "<output>" : "# Strict Output instructions";
       const section_end = isXML ? "</output>" : "";
 
-      const prompt =
+      const variableBlock =
         "initial code: " +
         initCode +
         "\n" +
@@ -4058,23 +4059,40 @@ export class AgentRuntime implements IAgentRuntime {
         smartRetryContext +
         "middle code: " +
         midCode +
-        "\n" +
+        "\n";
+      // Prompt cache hints: build segments so providers can cache the stable prefix.
+      // WHY: We only mark content stable when it is identical across calls for the same
+      // schema/character. VALIDATION_INSTRUCTIONS contains per-call UUIDs (perFieldCodes,
+      // checkpoint codes), so it must be in an unstable segment; otherwise provider caches
+      // would never hit. Format instructions and example (same for same schema) are stable.
+      const formatStablePrefix =
         section_start +
         `
 Do NOT include any thinking, reasoning, or <think> sections in your response.
 Go directly to the ${format} response format without any preamble or explanation.
 
-${VALIDATION_INSTRUCTIONS}
-
+`;
+      const formatStableSuffix =
+        `
 Respond using ${format} format like this:
 ${EXAMPLE}
 
 IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END} ${format} block above. Do not include any text, thinking, or reasoning before or after this ${format} block. Start your response immediately with ${CONTAINER_START} and end with ${CONTAINER_END}.
-` +
-        section_end +
-        "\nend code: " +
-        finalCode +
-        "\n";
+` + section_end;
+      const endBlock = "\nend code: " + finalCode + "\n";
+      // Middle block: validation text when present (unstable); else "\n\n" so prompt string is unchanged.
+      const formatMiddleBlock = VALIDATION_INSTRUCTIONS
+        ? VALIDATION_INSTRUCTIONS + "\n\n"
+        : "\n\n";
+
+      const segments: PromptSegment[] = [
+        { content: variableBlock, stable: false },
+        { content: formatStablePrefix, stable: true },
+        { content: formatMiddleBlock, stable: false },
+        { content: formatStableSuffix, stable: true },
+        { content: endBlock, stable: false },
+      ];
+      const prompt = segments.map((s) => s.content).join("");
 
       // Token estimate used for:
       // 1. Debug logging of prompt size
@@ -4134,9 +4152,11 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
           ? ModelType.TEXT_SMALL
           : ModelType.TEXT_LARGE;
 
+      // Pass promptSegments so providers can use cache hints when supported (Anthropic block cache, OpenAI/Gemini prefix).
       const modelParams = {
         ...params,
         prompt,
+        promptSegments: segments,
         providerOptions: {
           agentName: this.character.name,
         },

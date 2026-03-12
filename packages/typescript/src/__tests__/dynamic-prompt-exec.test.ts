@@ -353,6 +353,45 @@ describe("dynamicPromptExecFromState", () => {
     });
   });
 
+  describe("promptSegments invariant", () => {
+    it("should set promptSegments and satisfy prompt === concat(segments)", async () => {
+      let capturedParams: { prompt?: string; promptSegments?: Array<{ content: string; stable: boolean }> } = {};
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_, params) => {
+          capturedParams = {
+            prompt: params.prompt as string,
+            promptSegments: params.promptSegments as Array<{ content: string; stable: boolean }>,
+          };
+          return "<response><thought>ok</thought><text>Hi</text></response>";
+        },
+        "mock",
+      );
+
+      const state = createMockState();
+      await runtime.dynamicPromptExecFromState({
+        state,
+        params: { prompt: "Test prompt" },
+        schema: [
+          { field: "thought", description: "Reasoning" },
+          { field: "text", description: "Response" },
+        ],
+        options: {
+          contextCheckLevel: 0,
+        },
+      });
+
+      expect(capturedParams.promptSegments).toBeDefined();
+      expect(Array.isArray(capturedParams.promptSegments)).toBe(true);
+      const reconstructed = (capturedParams.promptSegments ?? [])
+        .map((s) => s.content)
+        .join("");
+      expect(capturedParams.prompt).toBe(reconstructed);
+      const hasStable = (capturedParams.promptSegments ?? []).some((s) => s.stable === true);
+      expect(hasStable).toBe(true);
+    });
+  });
+
   describe("format handling", () => {
     it("should parse XML format by default", async () => {
       runtime.registerModel(

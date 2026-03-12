@@ -99,6 +99,30 @@ The canonical message loop expects model outputs in the `<response>...</response
 
 Some deterministic/offline backends may return **plain text** instead. In that case, the runtime will treat the raw output as a simple **`REPLY`** so the system remains usable even when strict XML formatting is unavailable.
 
+### Prompt cache hints
+
+The core can pass **prompt segments** to model providers so they can use prompt-caching APIs when supported. Each segment has `content` (string) and `stable` (boolean). **Stable** means the content is the same across calls for the same schema/character (e.g. instructions, format, examples); **unstable** means it changes every call (e.g. state, validation codes).
+
+**Why this exists:** Repeated calls (e.g. message handling, batched evaluators) often send the same instructions and format while only the context/state changes. Provider caching (Anthropic ephemeral cache, OpenAI/Gemini prefix cache) can reuse tokens for the stable prefix, reducing cost and latency. The core describes which parts are stable so providers can opt in without parsing the prompt.
+
+- **Invariant:** When `promptSegments` is set on generation params, `prompt` MUST equal `promptSegments.map(s => s.content).join("")`. **Why:** Providers that ignore segments still get correct behavior by using `prompt`; those that use segments must send the same total text so model behavior is unchanged.
+- **Providers:** Anthropic uses the Messages API with `cache_control: { type: "ephemeral" }` on stable blocks so the API can cache those blocks. OpenAI and Gemini use **prefix ordering**: when segments are present, the prompt sent to the API is built with stable segments first, then unstable. **Why:** OpenAI and Gemini cache by prefix (e.g. OpenAI ≥1024 tokens); putting stable content first maximizes cache hits.
+
+**Pitfalls for operators:**
+
+- OpenAI caching only applies when the prompt is ≥1024 tokens; very short prompts will not show cache savings.
+- Small or low-parameter models may not support or benefit from caching; behavior is unchanged.
+- Caching is a performance/cost optimization; correctness does not depend on it.
+
+**Pitfalls for implementers:**
+
+- Do not mutate segment objects; always create new `{ content, stable }` objects. **Why:** Params may be passed to multiple handlers or stored; mutation can cause cross-request bugs.
+- Segment order must match the order in which the prompt string is built; add an assertion that `prompt === promptSegments.map(s => s.content).join("")`. **Why:** Wrong order breaks the invariant and can send the wrong prompt to the model.
+- When using segments in the API (e.g. messages or reordered prompt), ensure the final text seen by the model equals the intended full prompt (e.g. `params.prompt` or the stable-first concatenation).
+- Only mark content as `stable: true` if it is identical across calls for the same schema/character. **Why:** Content that includes per-call UUIDs or changing state will never cache; mislabeling it as stable wastes cache capacity and can confuse operators.
+
+For more detail, implementer pitfalls, and rollback, see [docs/PROMPT_CACHE_HINTS.md](docs/PROMPT_CACHE_HINTS.md).
+
 ## Core Architecture
 
 `@elizaos/core` is built around a few key concepts that work together within the `AgentRuntime`.
