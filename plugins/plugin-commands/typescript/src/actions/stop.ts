@@ -74,18 +74,18 @@ export const stopAction: Action = {
 
   examples: [
     [
-      { user: "user", content: { text: "/stop" } },
+      { name: "user", content: { text: "/stop" } },
       {
-        user: "assistant",
+        name: "assistant",
         content: {
           text: "✓ Stop requested. Current operations will be cancelled.",
         },
       },
     ],
     [
-      { user: "user", content: { text: "/abort" } },
+      { name: "user", content: { text: "/abort" } },
       {
-        user: "assistant",
+        name: "assistant",
         content: {
           text: "✓ Stop requested. Current operations will be cancelled.",
         },

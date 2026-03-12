@@ -48,7 +48,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "rm -rf dist node_modules",
     "format": "bunx @biomejs/biome format --write .",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",

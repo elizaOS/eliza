@@ -69,11 +69,11 @@ export const longTermExtractionEvaluator: Evaluator = {
       return false;
     }
 
-    const currentMessageCount = await runtime.countMemories(
-      message.roomId,
-      false,
-      "messages",
-    );
+    const currentMessageCount = await runtime.countMemories({
+      roomIds: [message.roomId],
+      unique: false,
+      tableName: "messages",
+    });
     return memoryService.shouldRunExtraction(
       message.entityId,
       message.roomId,
@@ -178,11 +178,11 @@ export const longTermExtractionEvaluator: Evaluator = {
         }),
       );
 
-      const currentMessageCount = await runtime.countMemories(
-        roomId,
-        false,
-        "messages",
-      );
+      const currentMessageCount = await runtime.countMemories({
+        roomIds: [roomId],
+        unique: false,
+        tableName: "messages",
+      });
       await memoryService.setLastExtractionCheckpoint(
         entityId,
         roomId,

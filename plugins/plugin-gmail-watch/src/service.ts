@@ -19,6 +19,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { which } from './utils.js';
 
 const GMAIL_WATCH_SERVICE_TYPE = 'GMAIL_WATCH';
+const GMAIL_RENEW_WATCH_TASK = 'GMAIL_RENEW_WATCH';
 const DEFAULT_BIND = '127.0.0.1';
 const DEFAULT_PORT = 8788;
 const DEFAULT_PATH = '/gmail-pubsub';
@@ -82,7 +83,7 @@ export class GmailWatchService extends Service {
   capabilityDescription = 'Manages Gmail Pub/Sub watch and push forwarding via gog CLI';
 
   private childProcess: ChildProcess | null = null;
-  private renewTimer: ReturnType<typeof setInterval> | null = null;
+  private renewTaskId: import('@elizaos/core').UUID | null = null;
   private gmailConfig: GmailWatchConfig | null = null;
   private restartAttempts = 0;
   private static readonly MAX_RESTART_ATTEMPTS = 10;
@@ -110,7 +111,8 @@ export class GmailWatchService extends Service {
     }
 
     await this.spawnWatcher();
-    this.startRenewTimer();
+    this.registerRenewWorker();
+    await this.ensureRenewTask();
 
     logger.info(
       `[GmailWatch] Started for ${this.gmailConfig.account} (renew every ${this.gmailConfig.renewEveryMinutes}m)`
@@ -118,9 +120,9 @@ export class GmailWatchService extends Service {
   }
 
   async stop(): Promise<void> {
-    if (this.renewTimer) {
-      clearInterval(this.renewTimer);
-      this.renewTimer = null;
+    if (this.renewTaskId && typeof this.runtime.deleteTask === 'function') {
+      await this.runtime.deleteTask(this.renewTaskId).catch(() => {});
+      this.renewTaskId = null;
     }
     if (this.childProcess) {
       this.childProcess.kill('SIGTERM');
@@ -185,7 +187,7 @@ export class GmailWatchService extends Service {
       this.childProcess = null;
 
       // Auto-restart with exponential backoff if the service is still active
-      if (this.renewTimer && this.gmailConfig) {
+      if (this.renewTaskId != null && this.gmailConfig) {
         this.restartAttempts++;
 
         if (this.restartAttempts > GmailWatchService.MAX_RESTART_ATTEMPTS) {
@@ -206,7 +208,7 @@ export class GmailWatchService extends Service {
         );
 
         setTimeout(() => {
-          if (this.gmailConfig && this.renewTimer) {
+          if (this.gmailConfig && this.renewTaskId != null) {
             this.spawnWatcher();
           }
         }, delayMs);
@@ -214,15 +216,37 @@ export class GmailWatchService extends Service {
     });
   }
 
-  private startRenewTimer(): void {
-    if (!this.gmailConfig) {
+  private registerRenewWorker(): void {
+    this.runtime.registerTaskWorker({
+      name: GMAIL_RENEW_WATCH_TASK,
+      execute: async () => {
+        await this.renewWatch();
+      },
+    });
+  }
+
+  private async ensureRenewTask(): Promise<void> {
+    if (!this.gmailConfig) return;
+    const rt = this.runtime;
+    if (typeof rt.getTasksByName !== 'function' || typeof rt.createTask !== 'function') return;
+
+    const agentId = rt.agentId;
+    const existing = await rt.getTasksByName(GMAIL_RENEW_WATCH_TASK);
+    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    if (mine?.id) {
+      this.renewTaskId = mine.id;
       return;
     }
-
     const intervalMs = this.gmailConfig.renewEveryMinutes * 60 * 1000;
-    this.renewTimer = setInterval(async () => {
-      await this.renewWatch();
-    }, intervalMs);
+    this.renewTaskId = await rt.createTask({
+      name: GMAIL_RENEW_WATCH_TASK,
+      tags: ['queue', 'repeat'],
+      metadata: {
+        updateInterval: intervalMs,
+        baseInterval: intervalMs,
+        updatedAt: Date.now(),
+      },
+    });
   }
 
   private async renewWatch(): Promise<void> {

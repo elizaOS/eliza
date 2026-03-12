@@ -1,10 +1,9 @@
 //! Type definitions for the Nostr plugin.
 
-use bech32::{FromBase32, ToBase32, Variant};
+use bech32::{Bech32, DecodeError, EncodeError, Hrp};
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use thiserror::Error;
 
 /// Maximum message length for Nostr
@@ -246,17 +245,14 @@ pub fn normalize_pubkey(input: &str) -> Result<String, NostrPluginError> {
 
     // npub format - decode to hex
     if trimmed.starts_with("npub1") {
-        let (hrp, data, _variant) = bech32::decode(trimmed)
-            .map_err(|e| NostrPluginError::crypto(format!("Invalid npub key: {}", e)))?;
+        let (hrp, data) = bech32::decode(trimmed)
+            .map_err(|e: DecodeError| NostrPluginError::crypto(format!("Invalid npub key: {}", e)))?;
 
-        if hrp != "npub" {
+        if hrp.as_str() != "npub" {
             return Err(NostrPluginError::crypto("Invalid npub key: wrong prefix"));
         }
 
-        let converted = Vec::<u8>::from_base32(&data)
-            .map_err(|e| NostrPluginError::crypto(format!("Invalid npub key: {}", e)))?;
-
-        return Ok(hex::encode(converted));
+        return Ok(hex::encode(&data));
     }
 
     // Already hex - validate and return lowercase
@@ -275,8 +271,9 @@ pub fn pubkey_to_npub(hex_pubkey: &str) -> Result<String, NostrPluginError> {
     let data = hex::decode(&normalized)
         .map_err(|e| NostrPluginError::crypto(format!("Invalid hex pubkey: {}", e)))?;
 
-    let encoded = bech32::encode("npub", data.to_base32(), Variant::Bech32)
-        .map_err(|e| NostrPluginError::crypto(format!("Failed to encode npub: {}", e)))?;
+    let hrp = Hrp::parse("npub").map_err(|e| NostrPluginError::crypto(format!("Invalid hrp: {}", e)))?;
+    let encoded = bech32::encode::<Bech32>(hrp, &data)
+        .map_err(|e: EncodeError| NostrPluginError::crypto(format!("Failed to encode npub: {}", e)))?;
 
     Ok(encoded)
 }
@@ -287,22 +284,19 @@ pub fn validate_private_key(key: &str) -> Result<[u8; 32], NostrPluginError> {
 
     // Handle nsec (bech32) format
     if trimmed.starts_with("nsec1") {
-        let (hrp, data, _variant) = bech32::decode(trimmed)
+        let (hrp, data) = bech32::decode(trimmed)
             .map_err(|e| NostrPluginError::crypto(format!("Invalid nsec key: {}", e)))?;
 
-        if hrp != "nsec" {
+        if hrp.as_str() != "nsec" {
             return Err(NostrPluginError::crypto("Invalid nsec key: wrong prefix"));
         }
 
-        let converted = Vec::<u8>::from_base32(&data)
-            .map_err(|e| NostrPluginError::crypto(format!("Invalid nsec key: {}", e)))?;
-
-        if converted.len() != 32 {
+        if data.len() != 32 {
             return Err(NostrPluginError::crypto("Invalid nsec key: wrong length"));
         }
 
         let mut result = [0u8; 32];
-        result.copy_from_slice(&converted);
+        result.copy_from_slice(&data);
         return Ok(result);
     }
 

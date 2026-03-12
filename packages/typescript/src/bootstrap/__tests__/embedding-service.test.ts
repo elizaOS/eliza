@@ -9,6 +9,9 @@ import type {
 import { EventType, ModelType } from "../../types/index.ts";
 import { cleanupTestRuntime, createTestRuntime } from "./test-utils.ts";
 
+/** Capture so tests can run the embedding drain worker (queue is not auto-processed in test runtime). */
+let drainExecute: (() => Promise<void>) | null = null;
+
 describe("EmbeddingGenerationService", () => {
   let service: EmbeddingGenerationService;
   let runtime: IAgentRuntime;
@@ -18,6 +21,7 @@ describe("EmbeddingGenerationService", () => {
   >;
 
   beforeEach(async () => {
+    drainExecute = null;
     // Track registered event handlers
     registeredEventHandlers = new Map();
 
@@ -25,6 +29,13 @@ describe("EmbeddingGenerationService", () => {
 
     // Mock getModel to return a valid model handler (so service isn't disabled)
     vi.spyOn(runtime, "getModel").mockReturnValue(async () => [0.1, 0.2, 0.3]);
+
+    // Capture drain worker so we can run it in tests (no task scheduler in test runtime)
+    vi.spyOn(runtime, "registerTaskWorker").mockImplementation((opts) => {
+      if (opts.name === "EMBEDDING_DRAIN") {
+        drainExecute = opts.execute;
+      }
+    });
 
     // Spy on runtime methods
     vi.spyOn(runtime, "registerEvent").mockImplementation(
@@ -300,8 +311,8 @@ describe("EmbeddingGenerationService", () => {
         });
       }
 
-      // Wait for processing to complete (queue processes every 100ms + embedding takes 10ms)
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Run drain worker (no task scheduler in test runtime)
+      if (drainExecute) await drainExecute();
 
       expect(runtime.useModel).toHaveBeenCalledWith(ModelType.TEXT_EMBEDDING, {
         text: "Generate embedding for this",
@@ -394,8 +405,11 @@ describe("EmbeddingGenerationService", () => {
         });
       }
 
-      // Wait for retries to complete
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Run drain worker until retries complete (3 attempts)
+      for (let i = 0; i < 3 && drainExecute; i++) {
+        await drainExecute();
+        await new Promise((r) => setTimeout(r, 20));
+      }
 
       expect(callCount).toBe(3); // Failed twice, succeeded on third try
       expect(runtime.updateMemory).toHaveBeenCalled();
@@ -432,8 +446,11 @@ describe("EmbeddingGenerationService", () => {
         });
       }
 
-      // Wait for retries to exhaust
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Run drain worker until retries exhaust (2 attempts then failure event)
+      for (let i = 0; i < 3 && drainExecute; i++) {
+        await drainExecute();
+        await new Promise((r) => setTimeout(r, 20));
+      }
 
       expect(runtime.emitEvent).toHaveBeenCalledWith(
         EventType.EMBEDDING_GENERATION_FAILED,
@@ -534,8 +551,11 @@ describe("EmbeddingGenerationService", () => {
 
       expect(service.getQueueSize()).toBe(20);
 
-      // Wait for processing
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Run drain worker until queue is empty (batch size 10, so 2+ runs)
+      for (let i = 0; i < 5 && drainExecute && service.getQueueSize() > 0; i++) {
+        await drainExecute();
+        await new Promise((r) => setTimeout(r, 30));
+      }
 
       // All should be processed
       expect(processedCount).toBe(20);

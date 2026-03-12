@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type IAgentRuntime,
   type Memory,
   type State,
@@ -71,7 +72,7 @@ export const unloadPluginAction: Action = {
     state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<void> {
+  ): Promise<ActionResult> {
     const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
 
     if (!pluginManager) {
@@ -81,7 +82,7 @@ export const unloadPluginAction: Action = {
           actions: ['UNLOAD_PLUGIN'],
         });
       }
-      return;
+      return { success: false };
     }
 
     // Extract plugin name from message
@@ -111,7 +112,7 @@ export const unloadPluginAction: Action = {
             actions: ['UNLOAD_PLUGIN'],
           });
         }
-        return;
+        return { success: false };
       }
 
       if (callback) {
@@ -120,7 +121,7 @@ export const unloadPluginAction: Action = {
           actions: ['UNLOAD_PLUGIN'],
         });
       }
-      return;
+      return { success: false };
     }
 
     // Check if plugin can be unloaded
@@ -132,7 +133,7 @@ export const unloadPluginAction: Action = {
           actions: ['UNLOAD_PLUGIN'],
         });
       }
-      return;
+      return { success: false };
     }
 
     logger.info(`[unloadPluginAction] Unloading plugin: ${pluginToUnload.name}`);
@@ -154,6 +155,8 @@ export const unloadPluginAction: Action = {
           actions: ['UNLOAD_PLUGIN'],
         });
       }
+      return { success: false };
     }
+    return { success: true };
   },
 };

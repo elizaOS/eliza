@@ -365,6 +365,7 @@ export class ApprovalService extends Service {
     const tasks = await this.runtime.getTasks({
       roomId,
       tags: ["AWAITING_CHOICE", "APPROVAL"],
+      agentIds: [this.runtime.agentId],
     });
     return tasks;
   }
@@ -499,7 +500,7 @@ export class ApprovalService extends Service {
     const worker: TaskWorker = {
       name: request.name,
 
-      validate: async (
+      canExecute: async (
         runtime: IAgentRuntime,
         message: Memory,
         _state: State,
@@ -508,6 +509,7 @@ export class ApprovalService extends Service {
         const tasks = await runtime.getTasks({
           roomId: message.roomId,
           tags: ["AWAITING_CHOICE", "APPROVAL"],
+          agentIds: [runtime.agentId],
         });
 
         const matchingTask = tasks.find((t) => t.name === request.name);

@@ -226,8 +226,11 @@ export class SignalService extends Service implements ISignalService {
   private settings: SignalSettings;
   private contactCache: Map<string, SignalContact> = new Map();
   private groupCache: Map<string, SignalGroup> = new Map();
-  private pollInterval: NodeJS.Timeout | null = null;
+  private pollTaskId: UUID | null = null;
   private isPolling = false;
+
+  private static readonly SIGNAL_POLL_TASK = "SIGNAL_POLL";
+  private static readonly SIGNAL_POLL_INTERVAL_MS = 2000;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -340,12 +343,15 @@ export class SignalService extends Service implements ISignalService {
 
     this.isConnected = true;
 
-    // Start polling for messages
-    this.startPolling();
+    this.registerPollWorker();
+    await this.ensurePollTask();
   }
 
   private async shutdown(): Promise<void> {
-    this.stopPolling();
+    if (this.pollTaskId && typeof this.runtime.deleteTask === "function") {
+      await this.runtime.deleteTask(this.pollTaskId).catch(() => {});
+      this.pollTaskId = null;
+    }
     this.client = null;
     this.isConnected = false;
 
@@ -355,19 +361,34 @@ export class SignalService extends Service implements ISignalService {
     );
   }
 
-  private startPolling(): void {
-    if (this.pollInterval) return;
-
-    this.pollInterval = setInterval(async () => {
-      await this.pollMessages();
-    }, 2000); // Poll every 2 seconds
+  private registerPollWorker(): void {
+    this.runtime.registerTaskWorker({
+      name: SignalService.SIGNAL_POLL_TASK,
+      execute: async () => {
+        await this.pollMessages();
+      },
+    });
   }
 
-  private stopPolling(): void {
-    if (this.pollInterval) {
-      clearInterval(this.pollInterval);
-      this.pollInterval = null;
+  private async ensurePollTask(): Promise<void> {
+    const rt = this.runtime;
+    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    const agentId = rt.agentId;
+    const existing = await rt.getTasksByName(SignalService.SIGNAL_POLL_TASK);
+    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    if (mine?.id) {
+      this.pollTaskId = mine.id;
+      return;
     }
+    this.pollTaskId = await rt.createTask({
+      name: SignalService.SIGNAL_POLL_TASK,
+      tags: ["queue", "repeat"],
+      metadata: {
+        updateInterval: SignalService.SIGNAL_POLL_INTERVAL_MS,
+        baseInterval: SignalService.SIGNAL_POLL_INTERVAL_MS,
+        updatedAt: Date.now(),
+      },
+    });
   }
 
   private async pollMessages(): Promise<void> {

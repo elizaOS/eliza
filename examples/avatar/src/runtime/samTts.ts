@@ -32,7 +32,7 @@ function sanitizeForSam(text: string): string {
 }
 
 export function synthesizeSamWav(runtime: AgentRuntime, text: string, options: SamOptions): ArrayBuffer {
-  const service = runtime.getService("SAM_TTS") as SamTTSService | null;
+  const service = runtime.getService("SAM_TTS") as { generateAudio(text: string, opts: SamOptions): number[]; createWAVBuffer(audio: number[]): ArrayBuffer } | null;
   if (!service) {
     throw new Error("SAM_TTS service is not available (plugin-simple-voice not loaded?)");
   }
@@ -40,9 +40,13 @@ export function synthesizeSamWav(runtime: AgentRuntime, text: string, options: S
   const audio = service.generateAudio(sanitized, options);
   const wav = service.createWAVBuffer(audio);
   // Ensure return is a plain ArrayBuffer (not SharedArrayBuffer)
-  const out = new Uint8Array(wav.byteLength);
-  out.set(wav);
-  return out.buffer;
+  const out = new Uint8Array(wav instanceof ArrayBuffer ? wav.byteLength : (wav as number[]).length);
+  if (wav instanceof ArrayBuffer) {
+    out.set(new Uint8Array(wav));
+  } else {
+    out.set(wav as ArrayLike<number>);
+  }
+  return out.buffer as ArrayBuffer;
 }
 
 export function splitForTts(text: string, maxChunkChars = 220): string[] {

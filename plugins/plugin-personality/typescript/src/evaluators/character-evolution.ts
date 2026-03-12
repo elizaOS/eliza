@@ -1,4 +1,5 @@
 import {
+  type ActionResult,
   type Evaluator,
   type IAgentRuntime,
   type Memory,
@@ -71,7 +72,8 @@ export const characterEvolutionEvaluator: Evaluator = {
     }
 
     // Only evaluate if conversation has substantial content
-    const conversationLength = state?.data?.messageCount || 0;
+    const rawCount = state?.data?.messageCount;
+    const conversationLength = typeof rawCount === 'number' ? rawCount : Number(rawCount) || 0;
     if (conversationLength < 3) {
       return false;
     }
@@ -132,11 +134,14 @@ Return JSON: {"hasEvolutionTrigger": boolean, "triggerType": string, "reasoning"
         triggerAnalysis.hasEvolutionTrigger && triggerAnalysis.confidence > 0.6;
 
       if (hasEvolutionTriggers) {
-        logger.info('Evolution trigger detected', {
-          type: triggerAnalysis.triggerType,
-          reasoning: triggerAnalysis.reasoning,
-          confidence: triggerAnalysis.confidence,
-        });
+        logger.info(
+          {
+            type: triggerAnalysis.triggerType,
+            reasoning: triggerAnalysis.reasoning,
+            confidence: triggerAnalysis.confidence,
+          },
+          'Evolution trigger detected'
+        );
       }
     } catch {
       // Fallback to basic pattern matching if LLM analysis fails
@@ -157,7 +162,7 @@ Return JSON: {"hasEvolutionTrigger": boolean, "triggerType": string, "reasoning"
     return hasEvolutionTriggers;
   },
 
-  handler: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<void> => {
+  handler: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<ActionResult | undefined> => {
     try {
       await runtime.setCache('character-evolution:last-check', Date.now().toString());
 
@@ -257,19 +262,19 @@ Return JSON analysis with specific, measurable reasoning for any suggested modif
         const parsed = JSON.parse(response as string);
         evolution = CharacterEvolutionSchema.parse(parsed);
       } catch (parseError) {
-        logger.warn('Failed to parse character evolution analysis', parseError);
-        return;
+        logger.warn({ err: parseError }, 'Failed to parse character evolution analysis');
+        return undefined;
       }
 
       // Only proceed if modification is recommended with sufficient confidence
       if (!evolution.shouldModify || evolution.confidence < 0.7) {
-        return;
+        return undefined;
       }
 
       // Ensure gradual change
       if (!evolution.gradualChange) {
         logger.info('Skipping character evolution - change too dramatic');
-        return;
+        return undefined;
       }
 
       // Store evolution suggestion for potential application
@@ -289,21 +294,25 @@ Return JSON analysis with specific, measurable reasoning for any suggested modif
             evolutionData: {
               shouldModify: evolution.shouldModify,
               gradualChange: evolution.gradualChange,
-              modifications: evolution.modifications,
+              modifications: evolution.modifications as Record<string, unknown>,
             },
-          },
+          } as Record<string, unknown>,
         },
         'character_evolution'
       );
 
-      logger.info('Character evolution analysis completed', {
-        shouldModify: evolution.shouldModify,
-        confidence: evolution.confidence,
-        reasoning: evolution.reasoning.slice(0, 100),
-      });
+      logger.info(
+        {
+          shouldModify: evolution.shouldModify,
+          confidence: evolution.confidence,
+          reasoning: evolution.reasoning.slice(0, 100),
+        },
+        'Character evolution analysis completed'
+      );
     } catch (error) {
-      logger.error('Error in character evolution evaluator', error);
+      logger.error({ err: error }, 'Error in character evolution evaluator');
     }
+    return undefined;
   },
 
   examples: [

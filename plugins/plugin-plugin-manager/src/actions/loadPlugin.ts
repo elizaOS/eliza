@@ -69,7 +69,7 @@ export const loadPluginAction: Action = {
     state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<void> {
+  ): Promise<import('@elizaos/core').ActionResult> {
     const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
 
     if (!pluginManager) {
@@ -79,7 +79,7 @@ export const loadPluginAction: Action = {
           actions: ['LOAD_PLUGIN'],
         });
       }
-      return;
+      return { success: false };
     }
 
     // Extract plugin name from message
@@ -112,7 +112,7 @@ export const loadPluginAction: Action = {
           actions: ['LOAD_PLUGIN'],
         });
       }
-      return;
+      return { success: false };
     }
 
     logger.info(`[loadPluginAction] Loading plugin: ${pluginToLoad.name}`);
@@ -134,6 +134,8 @@ export const loadPluginAction: Action = {
           actions: ['LOAD_PLUGIN'],
         });
       }
+      return { success: false };
     }
+    return { success: true };
   },
 };

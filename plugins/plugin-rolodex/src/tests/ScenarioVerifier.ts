@@ -141,7 +141,7 @@ export class ScenarioVerifier {
     entityB: UUID,
     expected: RelationshipExpectations
   ): Promise<void> {
-    const relationships = await this.runtime.getRelationships({ entityId: entityA });
+    const relationships = await this.runtime.getRelationships({ entityIds: [entityA] });
 
     const relationship = relationships.find(
       (r) =>

@@ -1,3 +1,5 @@
+import { parseBooleanValue } from "./boolean.js";
+
 /**
  * Browser and Node.js compatible environment variable abstraction
  * This module provides a cross-platform interface for accessing environment variables
@@ -184,10 +186,7 @@ class Environment {
    */
   getBoolean(key: string, defaultValue = false): boolean {
     const value = this.get(key);
-    if (value === undefined) {
-      return defaultValue;
-    }
-    return ["true", "1", "yes", "on"].includes(value.toLowerCase());
+    return parseBooleanValue(value) ?? defaultValue;
   }
 
   /**

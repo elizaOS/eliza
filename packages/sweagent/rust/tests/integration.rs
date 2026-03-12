@@ -1,7 +1,7 @@
 //! Integration tests for SWE-agent Rust implementation
 
 use elizaos_sweagent::agent::models::{
-    GenericApiModelConfig, GlobalStats, InstanceStats, InstantEmptySubmitModel, Model,
+    GlobalStats, InstanceStats, InstantEmptySubmitModel, Model,
 };
 use elizaos_sweagent::agent::problem_statement::{
     EmptyProblemStatement, ProblemStatement, TextProblemStatement,
@@ -11,7 +11,6 @@ use elizaos_sweagent::run::{RunBatchConfig, RunSingleConfig};
 use elizaos_sweagent::tools::{ParseFunction, ThoughtActionParser, ToolConfig, ToolHandler};
 use elizaos_sweagent::types::{Content, HistoryItem, Role};
 use elizaos_sweagent::VERSION;
-use std::sync::Arc;
 
 #[test]
 fn test_version() {

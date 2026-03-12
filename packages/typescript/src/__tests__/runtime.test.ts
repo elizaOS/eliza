@@ -125,14 +125,19 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   getRoomsForParticipant: vi.fn().mockResolvedValue([]),
   getRoomsForParticipants: vi.fn().mockResolvedValue([]),
   getRoomsByWorld: vi.fn().mockResolvedValue([]),
+  getRoomsByWorlds: vi.fn().mockResolvedValue([]),
 
   // Participant methods
-  createRoomParticipants: vi.fn().mockResolvedValue([]),
+  createRoomParticipants: vi.fn().mockImplementation(async (entityIds: UUID[]) => entityIds),
   deleteParticipants: vi.fn().mockResolvedValue(true),
   getParticipantsForEntity: vi.fn().mockResolvedValue([]),
   getParticipantsForRoom: vi.fn().mockResolvedValue([]),
+  getParticipantsForRooms: vi.fn().mockResolvedValue([]),
   getParticipantUserState: vi.fn().mockResolvedValue(null),
+  getParticipantUserStates: vi.fn().mockResolvedValue([]),
+  setParticipantUserState: vi.fn().mockResolvedValue(undefined),
   updateParticipantUserState: vi.fn().mockResolvedValue(undefined),
+  getEntitiesForRooms: vi.fn().mockResolvedValue([]),
 
   // World methods
   createWorlds: vi.fn().mockResolvedValue([stringToUuid(uuidv4())]),

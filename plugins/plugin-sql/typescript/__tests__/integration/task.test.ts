@@ -198,6 +198,7 @@ describe("Task Integration Tests", () => {
       const filteredTasks = await adapter.getTasks({
         roomId: roomId1,
         tags: ["urgent"],
+        agentIds: [testAgentId],
       });
       expect(filteredTasks.length).toBe(1);
       expect(filteredTasks[0].id).toBe(task1.id as UUID);

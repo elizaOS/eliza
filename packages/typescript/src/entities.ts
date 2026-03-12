@@ -254,7 +254,7 @@ export async function findEntityByName(
   );
 
   const relationships = await runtime.getRelationships({
-    entityId: message.entityId,
+    entityIds: [message.entityId],
   });
 
   const relationshipEntities = await Promise.all(

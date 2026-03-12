@@ -11,7 +11,7 @@ import { IAgentRuntime, Service, type ServiceTypeName } from '@elizaos/core';
 /**
  * Extended runtime interface with plugin management methods
  */
-export interface ExtendedRuntime extends IAgentRuntime {
+export interface ExtendedRuntime extends Omit<IAgentRuntime, 'events'> {
   unregisterEvent?: (event: string, handler: (params: Record<string, unknown>) => Promise<void>) => void;
   unregisterAction?: (actionName: string) => void;
   unregisterProvider?: (providerName: string) => void;
@@ -25,7 +25,7 @@ export interface ExtendedRuntime extends IAgentRuntime {
  * This allows plugins to remove their event handlers when unloaded
  */
 export function extendRuntimeWithEventUnregistration(runtime: IAgentRuntime): void {
-  const extendedRuntime = runtime as ExtendedRuntime;
+  const extendedRuntime = runtime as unknown as ExtendedRuntime;
 
   // Add unregisterEvent method if it doesn't exist
   if (!extendedRuntime.unregisterEvent) {
@@ -51,7 +51,7 @@ export function extendRuntimeWithEventUnregistration(runtime: IAgentRuntime): vo
  * These are needed for proper plugin unloading
  */
 export function extendRuntimeWithComponentUnregistration(runtime: IAgentRuntime): void {
-  const extendedRuntime = runtime as ExtendedRuntime;
+  const extendedRuntime = runtime as unknown as ExtendedRuntime;
 
   // Add unregisterAction method if it doesn't exist
   if (!extendedRuntime.unregisterAction) {

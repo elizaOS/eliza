@@ -374,10 +374,11 @@ export function loadPluginManifestRegistry(params: {
     const manifestRes = loadPluginManifest(candidate.rootDir);
 
     if (!manifestRes.ok) {
+      const errRes = manifestRes as { ok: false; error: string; manifestPath: string };
       diagnostics.push({
         level: "error",
-        message: manifestRes.error,
-        source: manifestRes.manifestPath,
+        message: errRes.error,
+        source: errRes.manifestPath,
       });
       continue;
     }

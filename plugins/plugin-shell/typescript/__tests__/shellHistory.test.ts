@@ -82,7 +82,7 @@ describe("Shell History Tracking", () => {
   it("should track command history per conversation", async () => {
     const conversationId = "test-conversation-1";
 
-    vi.spyOn(shellService as never, "runCommand").mockResolvedValue({
+    vi.spyOn(shellService as never, "runCommandSimple").mockResolvedValue({
       success: true,
       stdout: "file1.txt\nfile2.txt",
       stderr: "",
@@ -104,7 +104,7 @@ describe("Shell History Tracking", () => {
     const conversationId = "test-conversation-2";
 
     // Mock the runCommand method
-    vi.spyOn(shellService as never, "runCommand").mockResolvedValue({
+    vi.spyOn(shellService as never, "runCommandSimple").mockResolvedValue({
       success: true,
       stdout: "",
       stderr: "",
@@ -126,7 +126,7 @@ describe("Shell History Tracking", () => {
   it("should clear history for a specific conversation", async () => {
     const conversationId = "test-conversation-3";
 
-    vi.spyOn(shellService as never, "runCommand").mockResolvedValue({
+    vi.spyOn(shellService as never, "runCommandSimple").mockResolvedValue({
       success: true,
       stdout: "output",
       stderr: "",
@@ -149,7 +149,7 @@ describe("Shell History Tracking", () => {
     const conversation1 = "conv-1";
     const conversation2 = "conv-2";
 
-    vi.spyOn(shellService as never, "runCommand").mockResolvedValue({
+    vi.spyOn(shellService as never, "runCommandSimple").mockResolvedValue({
       success: true,
       stdout: "output",
       stderr: "",
@@ -175,7 +175,7 @@ describe("Shell History Tracking", () => {
   it("should detect various file operations", async () => {
     const conversationId = "test-file-ops";
 
-    vi.spyOn(shellService as never, "runCommand").mockResolvedValue({
+    vi.spyOn(shellService as never, "runCommandSimple").mockResolvedValue({
       success: true,
       stdout: "",
       stderr: "",

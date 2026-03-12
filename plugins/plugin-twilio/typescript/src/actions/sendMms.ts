@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -45,7 +46,7 @@ const sendMmsAction: Action = {
     state?: State,
     options?: any,
     callback?: HandlerCallback
-  ) => {
+  ): Promise<ActionResult> => {
     try {
       const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
       if (!twilioService) {
@@ -97,19 +98,21 @@ const sendMmsAction: Action = {
       logger.info(`MMS sent to ${phoneNumber} with ${mediaUrls.length} media attachment(s)`);
 
       if (callback) {
-        callback({
+        await callback({
           text: `MMS sent successfully to ${phoneNumber} with ${mediaUrls.length} media attachment(s)`,
           success: true,
         });
       }
+      return { success: true };
     } catch (error) {
       logger.error({ error: String(error) }, "Error sending MMS");
       if (callback) {
-        callback({
+        await callback({
           text: `Failed to send MMS: ${error instanceof Error ? error.message : "Unknown error"}`,
           success: false,
         });
       }
+      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
     }
   },
   examples: [

@@ -59,18 +59,18 @@ describe("Participant Integration Tests", () => {
       const result = await adapter.addParticipant(testEntityId, testRoomId);
       expect(result).toBeDefined();
       expect(typeof result).toBe("string");
-      const rooms = await adapter.getRoomsForParticipant(testEntityId);
+      const rooms = await adapter.getRoomsForParticipants([testEntityId]);
       expect(rooms).toContain(testRoomId);
     });
 
     it("should remove a participant from a room", async () => {
       await adapter.addParticipant(testEntityId, testRoomId);
-      let rooms = await adapter.getRoomsForParticipant(testEntityId);
+      let rooms = await adapter.getRoomsForParticipants([testEntityId]);
       expect(rooms).toContain(testRoomId);
 
       const result = await adapter.removeParticipant(testEntityId, testRoomId);
       expect(result).toBe(true);
-      rooms = await adapter.getRoomsForParticipant(testEntityId);
+      rooms = await adapter.getRoomsForParticipants([testEntityId]);
       expect(rooms).not.toContain(testRoomId);
     });
 
@@ -87,24 +87,24 @@ describe("Participant Integration Tests", () => {
 
     it("should check if entity is room participant", async () => {
       // Initially not a participant
-      let isParticipant = await adapter.isRoomParticipant(testRoomId, testEntityId);
+      let [isParticipant] = await adapter.areRoomParticipants([{ roomId: testRoomId, entityId: testEntityId }]);
       expect(isParticipant).toBe(false);
 
       // Add as participant
       await adapter.addParticipant(testEntityId, testRoomId);
-      isParticipant = await adapter.isRoomParticipant(testRoomId, testEntityId);
+      [isParticipant] = await adapter.areRoomParticipants([{ roomId: testRoomId, entityId: testEntityId }]);
       expect(isParticipant).toBe(true);
 
       // Remove participant
       await adapter.removeParticipant(testEntityId, testRoomId);
-      isParticipant = await adapter.isRoomParticipant(testRoomId, testEntityId);
+      [isParticipant] = await adapter.areRoomParticipants([{ roomId: testRoomId, entityId: testEntityId }]);
       expect(isParticipant).toBe(false);
     });
 
     it("should return false for non-existent room participant check", async () => {
       const nonExistentRoomId = uuidv4() as UUID;
       const nonExistentEntityId = uuidv4() as UUID;
-      const isParticipant = await adapter.isRoomParticipant(nonExistentRoomId, nonExistentEntityId);
+      const [isParticipant] = await adapter.areRoomParticipants([{ roomId: nonExistentRoomId, entityId: nonExistentEntityId }]);
       expect(isParticipant).toBe(false);
     });
   });

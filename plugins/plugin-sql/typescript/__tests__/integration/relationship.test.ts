@@ -122,7 +122,7 @@ describe("Relationship Integration Tests", () => {
       });
 
       const results = await adapter.getRelationships({
-        entityId: testEntityId,
+        entityIds: [testEntityId],
         tags: ["friend"],
       });
       expect(results).toHaveLength(1);

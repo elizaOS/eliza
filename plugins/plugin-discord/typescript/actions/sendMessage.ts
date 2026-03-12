@@ -10,11 +10,11 @@ import {
   type Memory,
   ModelType,
   parseJSONObjectFromText,
+  requireActionSpec,
   type State,
 } from "@elizaos/core";
 import type { TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
-import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { DiscordService } from "../service";
 
 const sendMessageTemplate = `You are helping to extract send message parameters.

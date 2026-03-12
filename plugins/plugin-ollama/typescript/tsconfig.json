@@ -20,7 +20,8 @@
     "exactOptionalPropertyTypes": false,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "types": ["node"]
   },
   "include": ["./**/*.ts"],
   "exclude": ["node_modules", "dist", "__tests__"]

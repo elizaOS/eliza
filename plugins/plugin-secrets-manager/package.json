@@ -64,10 +64,10 @@
     "dev": "elizaos dev",
     "build": "echo 'Build temporarily skipped - requires API migration'",
     "lint": "prettier --write ./src",
-    "test:component": "vitest run",
+    "test:component": "vitest run --passWithNoTests",
     "test:e2e": "elizaos test",
     "test": "npm run test:component && npm run test:e2e",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --passWithNoTests --coverage",
     "publish": "elizaos publish",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"

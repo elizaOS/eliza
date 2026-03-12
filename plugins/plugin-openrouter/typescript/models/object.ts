@@ -30,11 +30,13 @@ async function generateObjectWithModel(
         schema: jsonSchema(params.schema as JSONSchema7),
       }),
       output: params.schema ? "object" : "no-schema",
-      prompt: params.prompt,
+      messages: [{ role: "user" as const, content: params.prompt }],
       temperature: temperature,
     };
 
-    const { object, usage } = await generateObject(generateParams);
+    const { object, usage } = await generateObject(
+      generateParams as Parameters<typeof generateObject>[0],
+    );
 
     if (usage) {
       emitModelUsageEvent(runtime, modelType, params.prompt, usage);

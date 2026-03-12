@@ -184,6 +184,21 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
         ids.map((id) => entities.get(id)).filter(Boolean) as Entity[],
     ),
     getEntitiesForRoom: vi.fn().mockResolvedValue([]),
+    getEntitiesForRooms: vi.fn(async (roomIds: UUID[]) => {
+      const result: Array<{ roomId: UUID; entities: Entity[] }> = [];
+      for (const roomId of roomIds) {
+        const roomParticipants = participants.get(roomId);
+        const entitiesForRoom: Entity[] = [];
+        if (roomParticipants) {
+          for (const entityId of roomParticipants) {
+            const entity = entities.get(entityId);
+            if (entity) entitiesForRoom.push(entity);
+          }
+        }
+        result.push({ roomId, entities: entitiesForRoom });
+      }
+      return result;
+    }),
     createEntities: vi.fn(async (newEntities: Entity[]) => {
       const ids: UUID[] = [];
       for (const entity of newEntities) {
@@ -270,10 +285,34 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       const roomParticipants = participants.get(roomId);
       return roomParticipants ? Array.from(roomParticipants) : [];
     }),
+    getParticipantsForRooms: vi.fn(async (roomIds: UUID[]) => {
+      return roomIds.map((roomId) => {
+        const roomParticipants = participants.get(roomId);
+        return {
+          roomId,
+          entityIds: roomParticipants ? Array.from(roomParticipants) : [],
+        };
+      });
+    }),
     isRoomParticipant: vi.fn().mockResolvedValue(false),
     getParticipantUserState: vi.fn(async (roomId: UUID, entityId: UUID) => {
       return participantStates.get(`${roomId}-${entityId}`) || null;
     }),
+    getParticipantUserStates: vi.fn(
+      async (pairs: Array<{ roomId: UUID; entityId: UUID }>) =>
+        pairs.map(
+          ({ roomId, entityId }) =>
+            (participantStates.get(`${roomId}-${entityId}`) as
+              | "FOLLOWED"
+              | "MUTED"
+              | null) ?? null,
+        ),
+    ),
+    setParticipantUserState: vi.fn(
+      async (roomId: UUID, entityId: UUID, state: string | null) => {
+        participantStates.set(`${roomId}-${entityId}`, state);
+      },
+    ),
     updateParticipantUserState: vi.fn(
       async (roomId: UUID, entityId: UUID, state: string | null) => {
         participantStates.set(`${roomId}-${entityId}`, state);

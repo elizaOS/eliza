@@ -95,7 +95,7 @@ export class EntityResolutionService extends Service {
     if (!entity) return [];
 
     // 1. Build the local neighborhood (2 hops in social graph)
-    const allRelationships = await this.runtime.getRelationships({ entityId });
+    const allRelationships = await this.runtime.getRelationships({ entityIds: [entityId] });
     const graph = buildAdjacencyGraph(allRelationships);
     const neighborhood = getNeighborhood(graph, entityId, 2, 200);
 

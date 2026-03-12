@@ -5,7 +5,11 @@
  * Optional: POSTGRES_URL (defaults to PGLite)
  */
 
-import { AgentRuntime, createCharacter } from "@elizaos/core";
+import {
+  AgentRuntime,
+  type CharacterSettings,
+  createCharacter,
+} from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
 import telegramPlugin from "@elizaos/plugin-telegram";
@@ -30,7 +34,7 @@ Keep responses short - suitable for mobile chat.`,
       // (read by @elizaos/plugin-openai).
       OPENAI_SMALL_MODEL: "gpt-5-mini",
       OPENAI_LARGE_MODEL: "gpt-5-mini",
-    },
+    } as unknown as CharacterSettings,
     // Optional: pass through secrets so plugins can read via runtime.getSetting()
     secrets: {
       TELEGRAM_BOT_TOKEN: telegramBotToken,

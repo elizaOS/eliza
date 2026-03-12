@@ -79,7 +79,7 @@ async function handleGET(req: NextRequest) {
     // Get total count
     const total = await knowledgeService.countMemories({
       tableName: "documents",
-      roomId,
+      roomIds: [roomId],
       unique: false,
     });
 

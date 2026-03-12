@@ -71,9 +71,8 @@ export class FollowUpService extends Service {
       );
     }
 
-    // Register task workers
+    // Register task workers. WHY no recurring_check_in: no code path created such tasks; recurring check-ins can be implemented by creating tasks with name "follow_up", tags ["queue", "repeat"], and updateInterval (see DESIGN.md).
     this.registerFollowUpWorker();
-    this.registerRecurringCheckInWorker();
 
     logger.info("[FollowUpService] Initialized successfully");
   }
@@ -103,7 +102,7 @@ export class FollowUpService extends Service {
       throw new Error(`Contact ${entityId} not found`);
     }
 
-    // Create follow-up task
+    // Create follow-up task. WHY queue + dueAt: scheduler runs one-shot queue tasks when now >= dueAt, then deletes (run at time X).
     const task: Task = {
       id: createUniqueUuid(this.runtime, `followup-${entityId}-${Date.now()}`),
       name: "follow_up",
@@ -111,7 +110,8 @@ export class FollowUpService extends Service {
       entityId: this.runtime.agentId,
       roomId: stringToUuid(`rolodex-${this.runtime.agentId}`),
       worldId: stringToUuid(`rolodex-world-${this.runtime.agentId}`),
-      tags: ["follow-up", priority, "rolodex"],
+      tags: ["follow-up", priority, "rolodex", "queue"],
+      dueAt: scheduledAt.getTime(),
       metadata: {
         targetEntityId: entityId,
         reason,
@@ -148,10 +148,11 @@ export class FollowUpService extends Service {
     const now = Date.now();
     const futureDate = now + days * 24 * 60 * 60 * 1000;
 
-    // Get all follow-up tasks
+    // Get all follow-up tasks. WHY agentIds: multi-tenant safety; only this agent's follow-ups.
     const tasks = await this.runtime.getTasks({
       entityId: this.runtime.agentId,
       tags: ["follow-up"],
+      agentIds: [this.runtime.agentId],
     });
 
     const upcomingFollowUps: Array<{ task: Task; contact: ContactInfo }> = [];
@@ -354,9 +355,11 @@ export class FollowUpService extends Service {
   private registerFollowUpWorker(): void {
     const worker: TaskWorker = {
       name: "follow_up",
-      validate: async (_runtime: IAgentRuntime, _message: Memory) => {
-        // This validate function is for action/evaluator use, not for task execution
-        return true;
+      shouldRun: async (runtime: IAgentRuntime, task: Task): Promise<boolean> => {
+        const targetEntityId = task.metadata?.targetEntityId as UUID | undefined;
+        if (!targetEntityId) return false;
+        const entity = await runtime.getEntityById(targetEntityId);
+        return entity != null;
       },
       execute: async (
         runtime: IAgentRuntime,
@@ -421,54 +424,6 @@ export class FollowUpService extends Service {
         } catch (error) {
           logger.error(
             "[FollowUpService] Error executing follow-up:",
-            error instanceof Error ? error.message : String(error),
-          );
-          throw error;
-        }
-      },
-    };
-
-    this.runtime.registerTaskWorker(worker);
-  }
-
-  private registerRecurringCheckInWorker(): void {
-    const worker: TaskWorker = {
-      name: "recurring_check_in",
-      validate: async (_runtime: IAgentRuntime, _message: Memory) => {
-        return true;
-      },
-      execute: async (
-        runtime: IAgentRuntime,
-        options: { [key: string]: JsonValue | object },
-        task: Task,
-      ) => {
-        try {
-          // Execute the check-in (similar to follow-up)
-          const followUpWorker = runtime.getTaskWorker("follow_up");
-          if (followUpWorker) {
-            await followUpWorker.execute(runtime, options, task);
-          }
-
-          // Schedule next occurrence if updateInterval is set
-          if (task.metadata?.updateInterval && task.id) {
-            const updateInterval = task.metadata.updateInterval as number;
-            const nextDate = new Date(Date.now() + updateInterval);
-
-            await runtime.updateTask(task.id, {
-              metadata: {
-                ...task.metadata,
-                scheduledAt: nextDate.toISOString(),
-                lastExecuted: new Date().toISOString(),
-              },
-            });
-
-            logger.info(
-              `[FollowUpService] Scheduled next check-in for ${nextDate.toISOString()}`,
-            );
-          }
-        } catch (error) {
-          logger.error(
-            "[FollowUpService] Error executing recurring check-in:",
             error instanceof Error ? error.message : String(error),
           );
           throw error;

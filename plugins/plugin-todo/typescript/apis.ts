@@ -94,7 +94,7 @@ export const routes: Route[] = [
       try {
         const dataService = createTodoDataService(runtime);
 
-        const agentRoomIds = await runtime.getRoomsForParticipants(runtime.agentId);
+        const agentRoomIds = await runtime.getRoomsForParticipant(runtime.agentId);
         if (!agentRoomIds || agentRoomIds.length === 0) {
           logger.debug(
             `[API /api/todos] Agent ${runtime.agentId} is not a participant in any rooms.`

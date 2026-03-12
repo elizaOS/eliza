@@ -6,6 +6,7 @@ import {
   type Content,
   createMessageMemory,
   LLMMode,
+  type Plugin,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -187,7 +188,7 @@ export async function getOrCreateRuntime(config: DemoConfig): Promise<RuntimeBun
 
     const runtime = new AgentRuntime({
       character: DEMO_CHARACTER,
-      plugins: buildPlugins(effectiveMode),
+      plugins: buildPlugins(effectiveMode) as Plugin[],
       actionPlanning: false,
       llmMode: LLMMode.SMALL,
     });

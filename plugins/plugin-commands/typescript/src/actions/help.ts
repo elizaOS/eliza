@@ -88,18 +88,18 @@ export const helpAction: Action = {
 
   examples: [
     [
-      { user: "user", content: { text: "/help" } },
+      { name: "user", content: { text: "/help" } },
       {
-        user: "assistant",
+        name: "assistant",
         content: {
           text: "**Available Commands:**\n\n**Status:**\n• /help - Show available commands...",
         },
       },
     ],
     [
-      { user: "user", content: { text: "/?" } },
+      { name: "user", content: { text: "/?" } },
       {
-        user: "assistant",
+        name: "assistant",
         content: {
           text: "**Available Commands:**\n\n**Status:**\n• /help - Show available commands...",
         },

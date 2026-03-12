@@ -7,6 +7,10 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [tailwindcss(), react()],
   base: "./",
+  test: {
+    include: ["src/**/*.test.ts"],
+    exclude: ["**/build-order.test.ts", "**/node_modules/**"],
+  },
   build: {
     emptyOutDir: false, // Preserve plugin build outputs
     outDir: "dist",

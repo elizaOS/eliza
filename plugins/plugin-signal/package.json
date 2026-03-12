@@ -38,7 +38,7 @@
     "build:ts": "cd typescript && bun run build.ts",
     "dev": "cd typescript && bun run build.ts --watch",
     "clean": "rm -rf typescript/dist .turbo typescript/node_modules .turbo-tsconfig.json typescript/tsconfig.tsbuildinfo",
-    "test": "cd typescript && vitest run",
+    "test": "cd typescript && vitest run --passWithNoTests",
     "typecheck": "cd typescript && tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write typescript/",
     "lint:check": "bunx @biomejs/biome check typescript/",

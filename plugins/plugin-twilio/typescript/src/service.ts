@@ -4,6 +4,7 @@ import {
   createMessageMemory,
   createUniqueUuid,
   EventType,
+  type EventPayload,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -115,7 +116,8 @@ export class TwilioService extends Service implements TwilioServiceInterface {
       phoneNumber: normalizedPhoneNumber,
       webhookUrl: runtime.getSetting("TWILIO_WEBHOOK_URL") as string,
       webhookPort: parseInt(
-        runtime.getSetting("TWILIO_WEBHOOK_PORT") || "3000",
+        String(runtime.getSetting("TWILIO_WEBHOOK_PORT") ?? "3000"),
+        10,
       ),
     };
 
@@ -277,9 +279,10 @@ export class TwilioService extends Service implements TwilioServiceInterface {
         this.voiceStreams.delete(callSid);
         // Emit event through runtime if available
         if (this.runtime) {
-          this.runtime.emitEvent(TwilioEventType.VOICE_STREAM_ENDED, {
-            callSid,
-          });
+          this.runtime.emitEvent(
+            TwilioEventType.VOICE_STREAM_ENDED as string,
+            { callSid } as unknown as EventPayload,
+          );
         }
       });
     });
@@ -296,7 +299,10 @@ export class TwilioService extends Service implements TwilioServiceInterface {
 
     this.voiceStreams.set(callSid, stream);
     if (this.runtime) {
-      this.runtime.emitEvent(TwilioEventType.VOICE_STREAM_STARTED, { stream });
+      this.runtime.emitEvent(
+        TwilioEventType.VOICE_STREAM_STARTED as string,
+        { stream } as unknown as EventPayload,
+      );
     }
   }
 
@@ -309,18 +315,24 @@ export class TwilioService extends Service implements TwilioServiceInterface {
 
     // Emit audio data for processing by other services
     if (this.runtime) {
-      this.runtime.emitEvent("audio:received", {
-        callSid,
-        audio: audioBuffer,
-        timestamp: message.media.timestamp,
-      });
+      this.runtime.emitEvent(
+        "audio:received",
+        {
+          callSid,
+          audio: audioBuffer,
+          timestamp: message.media.timestamp,
+        } as unknown as EventPayload,
+      );
     }
   }
 
   private handleStreamStop(callSid: string): void {
     this.voiceStreams.delete(callSid);
     if (this.runtime) {
-      this.runtime.emitEvent(TwilioEventType.VOICE_STREAM_ENDED, { callSid });
+      this.runtime.emitEvent(
+        TwilioEventType.VOICE_STREAM_ENDED as string,
+        { callSid } as unknown as EventPayload,
+      );
     }
   }
 
@@ -417,7 +429,10 @@ export class TwilioService extends Service implements TwilioServiceInterface {
       );
 
       if (this.runtime) {
-        this.runtime.emitEvent(TwilioEventType.SMS_SENT, twilioMessage);
+        this.runtime.emitEvent(
+          TwilioEventType.SMS_SENT as string,
+          twilioMessage as unknown as EventPayload,
+        );
       }
       return twilioMessage;
     } catch (error: any) {
@@ -497,7 +512,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
     if (webhook.NumMedia && parseInt(webhook.NumMedia) > 0) {
       message.media = [];
       // Twilio sends media as MediaUrl0, MediaUrl1, etc.
-      const webhookRecord = webhook as Record<string, string | undefined>;
+      const webhookRecord = webhook as unknown as Record<string, string | undefined>;
       for (let i = 0; i < parseInt(webhook.NumMedia); i++) {
         const mediaUrl = webhookRecord[`MediaUrl${i}`];
         const contentType = webhookRecord[`MediaContentType${i}`];
@@ -527,7 +542,10 @@ export class TwilioService extends Service implements TwilioServiceInterface {
     );
 
     if (this.runtime) {
-      this.runtime.emitEvent(TwilioEventType.SMS_RECEIVED, message);
+      this.runtime.emitEvent(
+        TwilioEventType.SMS_RECEIVED as string,
+        message as unknown as EventPayload,
+      );
     }
 
     // Process message with agent runtime
@@ -552,7 +570,10 @@ export class TwilioService extends Service implements TwilioServiceInterface {
     );
 
     if (this.runtime) {
-      this.runtime.emitEvent(TwilioEventType.CALL_RECEIVED, call);
+      this.runtime.emitEvent(
+        TwilioEventType.CALL_RECEIVED as string,
+        call as unknown as EventPayload,
+      );
     }
 
     // Generate TwiML response for voice streaming
@@ -630,6 +651,7 @@ export class TwilioService extends Service implements TwilioServiceInterface {
       } else {
         logger.warn("messageService unavailable; falling back to event emit");
         await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+          runtime: this.runtime,
           message: memory,
           callback,
           source,

@@ -97,7 +97,7 @@ describe("AutoTradingManager", () => {
       };
 
       await expect(manager.startTrading(config)).rejects.toThrow(
-        "Strategy unknown-strategy not found",
+        /Strategy "unknown-strategy" not found/,
       );
     });
 
@@ -148,7 +148,8 @@ describe("AutoTradingManager", () => {
       };
 
       const txId = await manager.executeTrade(order);
-      expect(txId).toMatch(/^mock_tx_\d+_[a-z0-9]+$/);
+      // Paper mode returns paper_<timestamp>_<id>; live mode would return mock_tx_...
+      expect(txId).toMatch(/^(paper|mock_tx)_\d+_[a-z0-9]+$/);
     });
 
     it("should throw error when executing trade while not trading", async () => {

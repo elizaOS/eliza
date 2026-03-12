@@ -1,86 +1,36 @@
 import { v4 } from "uuid";
-import { z } from "zod";
 import { getEntityDetails } from "../../entities.ts";
-import { reflectionEvaluatorTemplate } from "../../prompts.ts";
 import type {
   ActionResult,
   Entity,
   Evaluator,
   IAgentRuntime,
   Memory,
-  State,
   UUID,
 } from "../../types/index.ts";
-import { asUUID, ModelType } from "../../types/index.ts";
-import { composePrompt, parseKeyValueXml } from "../../utils.ts";
+import { asUUID } from "../../types/index.ts";
 
 /** Shape of a single fact in the XML response */
 interface FactXml {
   claim?: string;
   type?: string;
-  in_bio?: string;
-  already_known?: string;
+  in_bio?: boolean | string;
+  already_known?: boolean | string;
 }
 
 /** Shape of a single relationship in the XML response */
 interface RelationshipXml {
   sourceEntityId?: string;
   targetEntityId?: string;
-  tags?: string;
+  tags?: string[] | string;
   metadata?: Record<string, unknown>;
 }
 
-/** Shape of the reflection XML response */
-interface ReflectionXmlResult {
-  facts?: {
-    fact?: FactXml | FactXml[];
-  };
-  relationships?: {
-    relationship?: RelationshipXml | RelationshipXml[];
-  };
+/** Shape of the batcher result fields for reflection. Used as generic T in onDrain<T> so result.fields is typed. WHY: Avoids casting; runtime still returns Record<string, unknown> from the model. */
+interface ReflectionFields {
+  facts: FactXml[];
+  relationships: RelationshipXml[];
 }
-
-// Schema definitions for the reflection output
-const relationshipSchema = z.object({
-  sourceEntityId: z.string(),
-  targetEntityId: z.string(),
-  tags: z.array(z.string()),
-  metadata: z
-    .object({
-      interactions: z.number(),
-    })
-    .optional(),
-});
-
-/**
- * Defines a schema for reflecting on a topic, including facts and relationships.
- * @type {import("zod").object}
- * @property {import("zod").array<import("zod").object<{claim: import("zod").string(), type: import("zod").string(), in_bio: import("zod").boolean(), already_known: import("zod").boolean()}>} facts Array of facts about the topic
- * @property {import("zod").array<import("zod").object>} relationships Array of relationships related to the topic
- */
-/**
- * JSDoc comment for reflectionSchema object:
- *
- * Represents a schema for an object containing 'facts' and 'relationships'.
- * 'facts' is an array of objects with properties 'claim', 'type', 'in_bio', and 'already_known'.
- * 'relationships' is an array of objects following the relationshipSchema.
- */
-
-z.object({
-  // reflection: z.string(),
-  facts: z.array(
-    z.object({
-      claim: z.string(),
-      type: z.string(),
-      in_bio: z.boolean(),
-      already_known: z.boolean(),
-    }),
-  ),
-  relationships: z.array(relationshipSchema),
-});
-
-// Use the shared template from prompts
-const reflectionTemplate = reflectionEvaluatorTemplate;
 
 /**
  * Resolve an entity name to their UUID
@@ -135,7 +85,6 @@ function resolveEntity(entityId: string, entities: Entity[]): UUID {
 async function handler(
   runtime: IAgentRuntime,
   message: Memory,
-  state?: State,
 ): Promise<ActionResult | undefined> {
   const { agentId, roomId } = message;
 
@@ -151,207 +100,234 @@ async function handler(
     return undefined;
   }
 
-  // Run all queries in parallel
-  const [existingRelationships, entities, knownFacts] = await Promise.all([
-    runtime.getRelationships({
-      entityId: message.entityId,
-    }),
-    getEntityDetails({ runtime, roomId }),
-    runtime.getMemories({
-      tableName: "facts",
-      roomId,
-      count: 30,
-      unique: true,
-    }),
-  ]);
-
-  const prompt = composePrompt({
-    state: {
-      ...(state?.values || {}),
-      knownFacts: formatFacts(knownFacts),
-      roomType: message.content.channelType as string,
-      entitiesInRoom: JSON.stringify(entities),
-      existingRelationships: JSON.stringify(existingRelationships),
-      senderId: message.entityId,
-    },
-    template:
-      runtime.character.templates?.reflectionTemplate || reflectionTemplate,
-  });
-
-  // Use the model without schema validation
-  const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-    prompt,
-  });
-
-  if (!response) {
-    runtime.logger.warn(
+  // Register a per-drain section and await the first result. WHY: Thenable API gives linear
+  // flow (await + if (result)) instead of a large onResult callback; result is null when the
+  // section ID was already registered (e.g. duplicate message), so we skip processing.
+  const result = await runtime.promptBatcher.onDrain<ReflectionFields>(`reflection-${message.roomId}`, {
+    providers: ["*"],
+    room: String(message.roomId),
+    model: "small",
+    preamble: [
+      "Reflect on the recent conversation and extract structured memory signals.",
+      "Populate the `facts` field with fact entries containing claim, type, in_bio, and already_known.",
+      "Populate the `relationships` field with relationship entries containing sourceEntityId, targetEntityId, tags, and metadata.",
+      "Use entity IDs when available in context.",
+      "Be conservative. Do not invent facts or relationships.",
+      "For `in_bio` and `already_known`, use boolean values.",
+    ].join("\n"),
+    schema: [
       {
-        src: "plugin:bootstrap:evaluator:reflection",
-        agentId: runtime.agentId,
-      },
-      "Getting reflection failed - empty response",
-    );
-    return undefined;
-  }
-
-  // Parse XML response
-  const reflection = parseKeyValueXml<ReflectionXmlResult>(response);
-
-  if (!reflection) {
-    runtime.logger.warn(
-      {
-        src: "plugin:bootstrap:evaluator:reflection",
-        agentId: runtime.agentId,
-      },
-      "Getting reflection failed - failed to parse XML",
-    );
-    return undefined;
-  }
-
-  // Perform basic structure validation
-  if (!reflection.facts) {
-    runtime.logger.warn(
-      {
-        src: "plugin:bootstrap:evaluator:reflection",
-        agentId: runtime.agentId,
-      },
-      "Getting reflection failed - invalid facts structure",
-    );
-    return undefined;
-  }
-
-  if (!reflection.relationships) {
-    runtime.logger.warn(
-      {
-        src: "plugin:bootstrap:evaluator:reflection",
-        agentId: runtime.agentId,
-      },
-      "Getting reflection failed - invalid relationships structure",
-    );
-    return undefined;
-  }
-
-  // Handle facts - parseKeyValueXml returns nested structures differently
-  // Facts might be a single object or an array depending on the count
-  let factsArray: FactXml[] = [];
-  if (reflection.facts.fact) {
-    // Normalize to array
-    factsArray = Array.isArray(reflection.facts.fact)
-      ? reflection.facts.fact
-      : [reflection.facts.fact];
-  }
-
-  // Store new facts - filter for valid new facts with claim text
-  const newFacts = factsArray.filter(
-    (fact): fact is FactXml & { claim: string } =>
-      fact != null &&
-      fact.already_known === "false" &&
-      fact.in_bio === "false" &&
-      typeof fact.claim === "string" &&
-      fact.claim.trim() !== "",
-  );
-
-  await Promise.all(
-    newFacts.map(async (fact) => {
-      const factMemory = {
-        id: asUUID(v4()),
-        entityId: agentId,
-        agentId,
-        content: { text: fact.claim },
-        roomId,
-        createdAt: Date.now(),
-      };
-      // Create memory first and capture the returned ID
-      const createdMemoryId = await runtime.createMemory(
-        factMemory,
-        "facts",
-        true,
-      );
-      // Update the memory object with the actual ID from the database
-      const createdMemory = { ...factMemory, id: createdMemoryId };
-      // Queue embedding generation asynchronously for the memory with correct ID
-      await runtime.queueEmbeddingGeneration(createdMemory, "low");
-      return createdMemory;
-    }),
-  );
-
-  // Handle relationships - similar structure normalization
-  let relationshipsArray: RelationshipXml[] = [];
-  if (reflection.relationships.relationship) {
-    relationshipsArray = Array.isArray(reflection.relationships.relationship)
-      ? reflection.relationships.relationship
-      : [reflection.relationships.relationship];
-  }
-
-  // Update or create relationships
-  for (const relationship of relationshipsArray) {
-    if (!relationship.sourceEntityId || !relationship.targetEntityId) {
-      console.warn(
-        "Skipping relationship with missing entity IDs:",
-        relationship,
-      );
-      continue;
-    }
-
-    let sourceId: UUID;
-    let target: UUID;
-
-    try {
-      sourceId = resolveEntity(relationship.sourceEntityId, entities);
-      target = resolveEntity(relationship.targetEntityId, entities);
-    } catch (error) {
-      console.warn("Failed to resolve relationship entities:", error);
-      console.warn("relationship:\n", relationship);
-      continue; // Skip this relationship if we can't resolve the IDs
-    }
-
-    const existingRelationship = existingRelationships.find((r) => {
-      return r.sourceEntityId === sourceId && r.targetEntityId === target;
-    });
-
-    // Parse tags from comma-separated string
-    const tags = relationship.tags
-      ? relationship.tags
-          .split(",")
-          .map((tag: string) => tag.trim())
-          .filter(Boolean)
-      : [];
-
-    if (existingRelationship) {
-      const updatedMetadata = {
-        ...existingRelationship.metadata,
-        interactions:
-          ((existingRelationship.metadata?.interactions as
-            | number
-            | undefined) || 0) + 1,
-      };
-
-      const updatedTags = Array.from(
-        new Set([...(existingRelationship.tags || []), ...tags]),
-      );
-
-      await runtime.updateRelationship({
-        ...existingRelationship,
-        tags: updatedTags,
-        metadata: updatedMetadata,
-      });
-    } else {
-      await runtime.createRelationship({
-        sourceEntityId: sourceId,
-        targetEntityId: target,
-        tags,
-        metadata: {
-          interactions: 1,
-          ...(relationship.metadata || {}),
+        field: "facts",
+        description: "Fact entries describing claims from the conversation.",
+        type: "array",
+        required: true,
+        items: {
+          description: "One fact entry",
+          type: "object",
+          properties: [
+            {
+              field: "claim",
+              description: "Fact claim extracted from the conversation",
+              required: true,
+            },
+            {
+              field: "type",
+              description: "fact|opinion|preference",
+              required: true,
+            },
+            {
+              field: "in_bio",
+              description: "Whether this fact is already present in the bio",
+              type: "boolean",
+              required: true,
+            },
+            {
+              field: "already_known",
+              description: "Whether this fact is already known from memory",
+              type: "boolean",
+              required: true,
+            },
+          ],
         },
-      });
-    }
-  }
+      },
+      {
+        field: "relationships",
+        description:
+          "Relationship entries connecting entities from the conversation.",
+        type: "array",
+        required: true,
+        items: {
+          description: "One relationship entry",
+          type: "object",
+          properties: [
+            {
+              field: "sourceEntityId",
+              description: "Source entity ID",
+              required: true,
+            },
+            {
+              field: "targetEntityId",
+              description: "Target entity ID",
+              required: true,
+            },
+            {
+              field: "tags",
+              description: "Relationship tags",
+              type: "array",
+              items: {
+                description: "One relationship tag",
+                type: "string",
+              },
+            },
+            {
+              field: "metadata",
+              description: "Additional relationship metadata",
+              type: "object",
+              properties: [
+                {
+                  field: "interactions",
+                  description: "Interaction count",
+                  type: "number",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+    fallback: {
+      facts: [],
+      relationships: [],
+    },
+  });
 
-  await runtime.setCache<string>(
-    `${message.roomId}-reflection-last-processed`,
-    message?.id || "",
-  );
+  if (result) {
+    const { fields, meta } = result;
+    const [existingRelationships, entities] = await Promise.all([
+      runtime.getRelationships({
+        entityIds: [message.entityId],
+      }),
+      getEntityDetails({ runtime, roomId }),
+    ]);
+
+    const factsArray = Array.isArray(fields.facts) ? fields.facts : [];
+    const newFacts = factsArray.filter(
+      (fact): fact is FactXml & { claim: string } =>
+        fact != null &&
+        fact.already_known !== true &&
+        fact.already_known !== "true" &&
+        fact.in_bio !== true &&
+        fact.in_bio !== "true" &&
+        typeof fact.claim === "string" &&
+        fact.claim.trim() !== "",
+    );
+
+    await Promise.all(
+      newFacts.map(async (fact) => {
+        const factMemory = {
+          id: asUUID(v4()),
+          entityId: agentId,
+          agentId,
+          content: { text: fact.claim },
+          roomId,
+          createdAt: Date.now(),
+        } as Memory;
+        const createdMemoryId = await runtime.createMemory(
+          factMemory,
+          "facts",
+          true,
+        );
+        const createdMemory = { ...factMemory, id: createdMemoryId };
+        await runtime.queueEmbeddingGeneration(createdMemory, "low");
+        return createdMemory;
+      }),
+    );
+
+    const relationshipsArray = Array.isArray(fields.relationships) ? fields.relationships : [];
+    for (const relationship of relationshipsArray) {
+      if (!relationship.sourceEntityId || !relationship.targetEntityId) {
+        runtime.logger.warn(
+          {
+            src: "plugin:bootstrap:evaluator:reflection",
+            agentId: runtime.agentId,
+            relationship,
+          },
+          "Skipping reflection relationship with missing entity IDs",
+        );
+        continue;
+      }
+
+      let sourceId: UUID;
+      let target: UUID;
+
+      try {
+        sourceId = resolveEntity(relationship.sourceEntityId, entities);
+        target = resolveEntity(relationship.targetEntityId, entities);
+      } catch (error) {
+        runtime.logger.warn(
+          {
+            src: "plugin:bootstrap:evaluator:reflection",
+            agentId: runtime.agentId,
+            relationship,
+            error,
+          },
+          "Failed to resolve reflection relationship entities",
+        );
+        continue;
+      }
+
+      const existingRelationship = existingRelationships.find((r) => {
+        return r.sourceEntityId === sourceId && r.targetEntityId === target;
+      });
+
+      const tags = Array.isArray(relationship.tags)
+        ? relationship.tags
+            .map((tag) => String(tag).trim())
+            .filter(Boolean)
+        : typeof relationship.tags === "string"
+          ? relationship.tags
+              .split(",")
+              .map((tag: string) => tag.trim())
+              .filter(Boolean)
+          : [];
+
+      if (existingRelationship) {
+        const updatedMetadata = {
+          ...existingRelationship.metadata,
+          interactions:
+            ((existingRelationship.metadata?.interactions as
+              | number
+              | undefined) || 0) + 1,
+        };
+
+        const updatedTags = Array.from(
+          new Set([...(existingRelationship.tags || []), ...tags]),
+        );
+
+        await runtime.updateRelationship({
+          ...existingRelationship,
+          tags: updatedTags,
+          metadata: updatedMetadata,
+        });
+      } else {
+        await runtime.createRelationship({
+          sourceEntityId: sourceId,
+          targetEntityId: target,
+          tags,
+          metadata: {
+            interactions: 1,
+            ...(relationship.metadata || {}),
+          },
+        });
+      }
+    }
+
+    const lastProcessedMessage = meta.messages.at(-1)?.id ?? message.id ?? "";
+    await runtime.setCache<string>(
+      `${message.roomId}-reflection-last-processed`,
+      lastProcessedMessage,
+    );
+  }
 }
 
 export const reflectionEvaluator: Evaluator = {
@@ -556,11 +532,3 @@ Message Sender: Lisa (user-789)`,
     },
   ],
 };
-
-// Helper function to format facts for context
-function formatFacts(facts: Memory[]) {
-  return facts
-    .reverse()
-    .map((fact: Memory) => fact.content.text)
-    .join("\n");
-}

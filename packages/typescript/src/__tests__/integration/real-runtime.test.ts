@@ -110,6 +110,19 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
         ids.map((id) => entities.get(id)).filter(Boolean) as Entity[],
     ),
     getEntitiesForRoom: vi.fn().mockResolvedValue([]),
+    getEntitiesForRooms: vi.fn(async (roomIds: UUID[]) => {
+      return roomIds.map((roomId) => {
+        const roomParticipants = participants.get(roomId);
+        const entitiesForRoom: Entity[] = [];
+        if (roomParticipants) {
+          for (const entityId of roomParticipants) {
+            const entity = entities.get(entityId);
+            if (entity) entitiesForRoom.push(entity);
+          }
+        }
+        return { roomId, entities: entitiesForRoom };
+      });
+    }),
     createEntities: vi.fn(async (newEntities: Entity[]) => {
       const ids: UUID[] = [];
       for (const entity of newEntities) {
@@ -174,6 +187,15 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
       }
       return result;
     }),
+    getRoomsByWorlds: vi.fn(async (worldIds: UUID[]) => {
+      const result: Room[] = [];
+      for (const room of rooms.values()) {
+        if (room.worldId && worldIds.includes(room.worldId)) {
+          result.push(room);
+        }
+      }
+      return result;
+    }),
 
     // Participant methods
     createRoomParticipants: vi.fn(async (entityIds: UUID[], roomId: UUID) => {
@@ -193,9 +215,22 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
       const roomParticipants = participants.get(roomId);
       return roomParticipants ? Array.from(roomParticipants) : [];
     }),
+    getParticipantsForRooms: vi.fn(async (roomIds: UUID[]) => {
+      return roomIds.map((roomId) => {
+        const roomParticipants = participants.get(roomId);
+        return {
+          roomId,
+          entityIds: roomParticipants ? Array.from(roomParticipants) : [],
+        };
+      });
+    }),
     isRoomParticipant: vi.fn().mockResolvedValue(false),
     getParticipantUserState: vi.fn().mockResolvedValue(null),
+    getParticipantUserStates: vi.fn(async (pairs: Array<{ roomId: UUID; entityId: UUID }>) =>
+      pairs.map(() => null),
+    ),
     updateParticipantUserState: vi.fn().mockResolvedValue(undefined),
+    setParticipantUserState: vi.fn().mockResolvedValue(undefined),
 
     // World methods
     createWorlds: vi.fn(async (worldsToCreate: World[]) => {

@@ -122,10 +122,10 @@ export class PairingService extends Service {
   async listPendingRequests(
     channel: PairingChannel,
   ): Promise<PairingRequest[]> {
-    const requests = await this.runtime.getPairingRequests(
-      channel,
-      this.runtime.agentId,
-    );
+    const [result] = await this.runtime.getPairingRequests([
+      { channel, agentId: this.runtime.agentId },
+    ]);
+    const requests = result?.requests ?? [];
 
     // Filter out expired requests
     const validRequests = requests.filter((r) => !this.isExpired(r));
@@ -292,7 +292,10 @@ export class PairingService extends Service {
   async getAllowlist(
     channel: PairingChannel,
   ): Promise<PairingAllowlistEntry[]> {
-    return this.runtime.getPairingAllowlist(channel, this.runtime.agentId);
+    const [result] = await this.runtime.getPairingAllowlists([
+      { channel, agentId: this.runtime.agentId },
+    ]);
+    return result?.entries ?? [];
   }
 
   /**

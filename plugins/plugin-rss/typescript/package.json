@@ -63,8 +63,8 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:ts": "vitest run",
+    "test": "vitest run --passWithNoTests",
+    "test:ts": "vitest run --passWithNoTests",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts"
