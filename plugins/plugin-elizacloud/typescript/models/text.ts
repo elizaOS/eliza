@@ -40,7 +40,8 @@ function buildGenerateParams(
   const systemPrompt =
     rawSystem != null && String(rawSystem).trim() !== ""
       ? String(rawSystem).trim()
-      : " "; // use single space when empty so API never gets empty content
+      : undefined; // omit system message entirely when empty
+
   const promptText = prompt != null && String(prompt).trim() !== "" ? prompt : "";
   if (promptText === "") {
     const msg =
@@ -48,10 +49,11 @@ function buildGenerateParams(
     logger.warn(msg);
     throw new Error(msg);
   }
+
   const generateParams = {
     model,
     prompt: promptText,
-    system: systemPrompt,
+    ...(systemPrompt ? { system: systemPrompt } : {}),
     temperature: temperature,
     maxOutputTokens: maxTokens,
     frequencyPenalty: frequencyPenalty,
@@ -63,7 +65,7 @@ function buildGenerateParams(
   };
 
   logger.debug(
-    `[ELIZAOS_CLOUD] buildGenerateParams: model=${modelLabel}, promptLength=${promptText.length}, systemLength=${systemPrompt.length}`,
+    `[ELIZAOS_CLOUD] buildGenerateParams: model=${modelLabel}, promptLength=${promptText.length}, systemLength=${systemPrompt?.length ?? 0}`,
   );
   return { generateParams, modelName, modelLabel, prompt: promptText };
 }
