@@ -49,9 +49,9 @@ export async function createTestDatabase(
     const runtime = new AgentRuntime({
       character: { ...mockCharacter, id: undefined },
       agentId: testAgentId,
+      adapter,
       plugins: [sqlPlugin, ...testPlugins],
     });
-    runtime.registerDatabaseAdapter(adapter);
 
     const schemaName = `test_${testAgentId.replace(/-/g, "_")}`;
     const db = connectionManager.getDatabase();
@@ -90,9 +90,9 @@ export async function createTestDatabase(
     const runtime = new AgentRuntime({
       character: { ...mockCharacter, id: undefined },
       agentId: testAgentId,
+      adapter,
       plugins: [sqlPlugin, ...testPlugins],
     });
-    runtime.registerDatabaseAdapter(adapter);
 
     const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(adapter.getDatabase());
@@ -175,9 +175,9 @@ export async function createIsolatedTestDatabase(
     const runtime = new AgentRuntime({
       character: { ...mockCharacter, id: undefined },
       agentId: testAgentId,
+      adapter,
       plugins: [sqlPlugin, ...testPlugins],
     });
-    runtime.registerDatabaseAdapter(adapter);
 
     // Run migrations on clean database
     const migrationService = new DatabaseMigrationService();
@@ -214,9 +214,9 @@ export async function createIsolatedTestDatabase(
     const runtime = new AgentRuntime({
       character: { ...mockCharacter, id: undefined },
       agentId: testAgentId,
+      adapter,
       plugins: [sqlPlugin, ...testPlugins],
     });
-    runtime.registerDatabaseAdapter(adapter);
 
     // Run migrations
     const migrationService = new DatabaseMigrationService();

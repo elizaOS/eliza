@@ -1,4 +1,4 @@
-import { AgentRuntime, type Character } from "@elizaos/core";
+import { AgentRuntime, InMemoryDatabaseAdapter, type Character } from "@elizaos/core";
 import {
   type AgentProvider,
   agentOrchestratorPlugin,
@@ -81,15 +81,18 @@ async function main(): Promise<void> {
     activeProviderEnvVar: "ORCHESTRATOR_ACTIVE_PROVIDER",
   });
 
+  const adapter = new InMemoryDatabaseAdapter();
+  await adapter.initialize();
   const runtime = new AgentRuntime({
     character,
+    adapter,
     plugins: [agentOrchestratorPlugin],
     logLevel: "info",
   });
 
   await runtime.initialize();
 
-  const svc = runtime.getService("CODE_TASK");
+  const svc = await runtime.getService("CODE_TASK");
   if (!svc) throw new Error("CODE_TASK service missing");
 
   const service = svc as {

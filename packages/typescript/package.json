@@ -26,6 +26,16 @@
         "types": "./dist/node/index.d.ts",
         "default": "./dist/node/index.node.js"
       },
+      "edge-light": {
+        "types": "./dist/edge/index.d.ts",
+        "import": "./dist/edge/index.edge.js",
+        "default": "./dist/edge/index.edge.js"
+      },
+      "workerd": {
+        "types": "./dist/edge/index.d.ts",
+        "import": "./dist/edge/index.edge.js",
+        "default": "./dist/edge/index.edge.js"
+      },
       "default": "./dist/node/index.node.js"
     },
     "./node": {

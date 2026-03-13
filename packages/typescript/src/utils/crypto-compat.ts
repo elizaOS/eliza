@@ -219,18 +219,24 @@ export function createHash(algorithm: string): {
     };
   }
 
-  // Use crypto-browserify in browser
-  const cryptoBrowserify = require("crypto-browserify");
-  const hash = cryptoBrowserify.createHash(algorithm);
-  return {
-    update(data: string | Uint8Array) {
-      hash.update(data);
-      return this;
-    },
-    digest() {
-      return new Uint8Array(hash.digest());
-    },
-  };
+  // Browser/edge: try crypto-browserify; if unavailable (e.g. edge), throw so callers use createHashAsync
+  try {
+    const cryptoBrowserify = require("crypto-browserify");
+    const hash = cryptoBrowserify.createHash(algorithm);
+    return {
+      update(data: string | Uint8Array) {
+        hash.update(data);
+        return this;
+      },
+      digest() {
+        return new Uint8Array(hash.digest());
+      },
+    };
+  } catch {
+    throw new Error(
+      "Sync createHash is not available in this environment (e.g. edge). Use createHashAsync instead.",
+    );
+  }
 }
 
 /**
@@ -302,31 +308,36 @@ export function createCipheriv(
     };
   }
 
-  // Use crypto-browserify in browser
-  const cryptoBrowserify = require("crypto-browserify");
-  const cipher = cryptoBrowserify.createCipheriv(algorithm, key, iv);
-  return {
-    update(
-      data: string,
-      inputEncoding: string,
-      outputEncoding: string,
-    ): string {
-      const result = cipher.update(
-        Buffer.from(data, inputEncoding as BufferEncoding),
-        undefined,
-        outputEncoding as BufferEncoding,
-      );
-      return typeof result === "string"
-        ? result
-        : result.toString(outputEncoding as BufferEncoding);
-    },
-    final(encoding: string): string {
-      const result = cipher.final(encoding as BufferEncoding);
-      return typeof result === "string"
-        ? result
-        : result.toString(encoding as BufferEncoding);
-    },
-  };
+  try {
+    const cryptoBrowserify = require("crypto-browserify");
+    const cipher = cryptoBrowserify.createCipheriv(algorithm, key, iv);
+    return {
+      update(
+        data: string,
+        inputEncoding: string,
+        outputEncoding: string,
+      ): string {
+        const result = cipher.update(
+          Buffer.from(data, inputEncoding as BufferEncoding),
+          undefined,
+          outputEncoding as BufferEncoding,
+        );
+        return typeof result === "string"
+          ? result
+          : result.toString(outputEncoding as BufferEncoding);
+      },
+      final(encoding: string): string {
+        const result = cipher.final(encoding as BufferEncoding);
+        return typeof result === "string"
+          ? result
+          : result.toString(encoding as BufferEncoding);
+      },
+    };
+  } catch {
+    throw new Error(
+      "Sync createCipheriv is not available in this environment (e.g. edge).",
+    );
+  }
 }
 
 /**
@@ -372,31 +383,36 @@ export function createDecipheriv(
     };
   }
 
-  // Use crypto-browserify in browser
-  const cryptoBrowserify = require("crypto-browserify");
-  const decipher = cryptoBrowserify.createDecipheriv(algorithm, key, iv);
-  return {
-    update(
-      data: string,
-      inputEncoding: string,
-      outputEncoding: string,
-    ): string {
-      const result = decipher.update(
-        Buffer.from(data, inputEncoding as BufferEncoding),
-        undefined,
-        outputEncoding as BufferEncoding,
-      );
-      return typeof result === "string"
-        ? result
-        : result.toString(outputEncoding as BufferEncoding);
-    },
+  try {
+    const cryptoBrowserify = require("crypto-browserify");
+    const decipher = cryptoBrowserify.createDecipheriv(algorithm, key, iv);
+    return {
+      update(
+        data: string,
+        inputEncoding: string,
+        outputEncoding: string,
+      ): string {
+        const result = decipher.update(
+          Buffer.from(data, inputEncoding as BufferEncoding),
+          undefined,
+          outputEncoding as BufferEncoding,
+        );
+        return typeof result === "string"
+          ? result
+          : result.toString(outputEncoding as BufferEncoding);
+      },
     final(encoding: string): string {
       const result = decipher.final(encoding as BufferEncoding);
       return typeof result === "string"
         ? result
         : result.toString(encoding as BufferEncoding);
     },
-  };
+    };
+  } catch {
+    throw new Error(
+      "Sync createDecipheriv is not available in this environment (e.g. edge).",
+    );
+  }
 }
 
 /**
@@ -480,17 +496,23 @@ export function encryptAes256Gcm(
     return { ciphertext: new Uint8Array(ciphertext), tag: new Uint8Array(tag) };
   }
 
-  const cryptoBrowserify = require("crypto-browserify");
-  const cipher = cryptoBrowserify.createCipheriv("aes-256-gcm", key, iv);
-  if (aad && aad.length > 0) {
-    cipher.setAAD(Buffer.from(aad));
+  try {
+    const cryptoBrowserify = require("crypto-browserify");
+    const cipher = cryptoBrowserify.createCipheriv("aes-256-gcm", key, iv);
+    if (aad && aad.length > 0) {
+      cipher.setAAD(Buffer.from(aad));
+    }
+    const ciphertext = Buffer.concat([
+      cipher.update(Buffer.from(plaintext)),
+      cipher.final(),
+    ]);
+    const tag = cipher.getAuthTag();
+    return { ciphertext: new Uint8Array(ciphertext), tag: new Uint8Array(tag) };
+  } catch {
+    throw new Error(
+      "Sync encryptAes256Gcm is not available in this environment (e.g. edge).",
+    );
   }
-  const ciphertext = Buffer.concat([
-    cipher.update(Buffer.from(plaintext)),
-    cipher.final(),
-  ]);
-  const tag = cipher.getAuthTag();
-  return { ciphertext: new Uint8Array(ciphertext), tag: new Uint8Array(tag) };
 }
 
 /**
@@ -524,15 +546,21 @@ export function decryptAes256Gcm(
     return new Uint8Array(plaintext);
   }
 
-  const cryptoBrowserify = require("crypto-browserify");
-  const decipher = cryptoBrowserify.createDecipheriv("aes-256-gcm", key, iv);
-  if (aad && aad.length > 0) {
-    decipher.setAAD(Buffer.from(aad));
+  try {
+    const cryptoBrowserify = require("crypto-browserify");
+    const decipher = cryptoBrowserify.createDecipheriv("aes-256-gcm", key, iv);
+    if (aad && aad.length > 0) {
+      decipher.setAAD(Buffer.from(aad));
+    }
+    decipher.setAuthTag(Buffer.from(tag));
+    const plaintext = Buffer.concat([
+      decipher.update(Buffer.from(ciphertext)),
+      decipher.final(),
+    ]);
+    return new Uint8Array(plaintext);
+  } catch {
+    throw new Error(
+      "Sync decryptAes256Gcm is not available in this environment (e.g. edge).",
+    );
   }
-  decipher.setAuthTag(Buffer.from(tag));
-  const plaintext = Buffer.concat([
-    decipher.update(Buffer.from(ciphertext)),
-    decipher.final(),
-  ]);
-  return new Uint8Array(plaintext);
 }

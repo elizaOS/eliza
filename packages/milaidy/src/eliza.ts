@@ -15,7 +15,10 @@ import {
   ChannelType,
   createCharacter,
   createMessageMemory,
+  InMemoryDatabaseAdapter,
   logger,
+  provisionAgent,
+  mergeDbSettings,
   stringToUuid,
   type Character,
   type Plugin,
@@ -641,17 +644,21 @@ export async function startEliza(): Promise<void> {
     throw new Error("No plugins loaded");
   }
 
-  // 7. Create the AgentRuntime with Milaidy plugin + resolved plugins
-  //    plugin-sql must be registered first so its database adapter is available
-  //    before other plugins (e.g. plugin-personality) run their init functions.
-  //    runtime.initialize() registers all characterPlugins in parallel, so we
-  //    pre-register plugin-sql here to avoid the race condition.
-  const sqlPlugin = resolvedPlugins.find((p) => p.name === "@elizaos/plugin-sql");
-  const otherPlugins = resolvedPlugins.filter((p) => p.name !== "@elizaos/plugin-sql");
+  // 7. Create database adapter (required by runtime). Use Postgres if POSTGRES_URL is set, else in-memory.
+  const agentIdUuid = stringToUuid(agentId);
+  const adapter = process.env.POSTGRES_URL
+    ? (await import("@elizaos/plugin-sql")).createDatabaseAdapter(
+        { postgresUrl: process.env.POSTGRES_URL },
+        agentIdUuid,
+      )
+    : new InMemoryDatabaseAdapter();
+  await adapter.initialize();
+
+  // Merge DB settings into character (secrets, settings) before building runtime.
+  const characterWithSettings = await mergeDbSettings(character, adapter, agentIdUuid);
 
   // Resolve the runtime log level from config (AgentRuntime doesn't support
   // "silent", so we map it to "fatal" as the quietest supported level).
-  // Default to "info" to keep runtime logs visible for diagnostics.
   const runtimeLogLevel = (() => {
     const lvl = config.logging?.level ?? process.env.LOG_LEVEL;
     if (!lvl) return "info" as const;
@@ -660,24 +667,28 @@ export async function startEliza(): Promise<void> {
   })();
 
   const runtime = new AgentRuntime({
-    character,
-    plugins: [milaidyPlugin, ...otherPlugins.map((p) => p.plugin)],
+    character: characterWithSettings,
+    adapter,
+    plugins: [milaidyPlugin, ...resolvedPlugins.map((p) => p.plugin)],
     ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
     settings: {
-      // Forward Milaidy config env vars as runtime settings
       ...(primaryModel ? { MODEL_PROVIDER: primaryModel } : {}),
     },
   });
 
-  // 7b. Pre-register plugin-sql so the adapter is ready before other plugins init
-  if (sqlPlugin) {
-    await runtime.registerPlugin(sqlPlugin.plugin);
-  }
-
-  // 8. Initialize the runtime (registers remaining plugins, starts services)
+  // 8. Initialize the runtime (registers plugins, creates message service; no provisioning).
   await runtime.initialize();
 
-  // 9. Graceful shutdown handler
+  // 9. Provision agent (migrations, agent/entity/room/participant rows). Daemon runs this once at boot.
+  await provisionAgent(runtime, { runMigrations: true });
+
+  // 10. Start task timer explicitly (daemon mode; not started automatically).
+  const taskService = await runtime.getService("task");
+  if (taskService && typeof (taskService as { startTimer?: () => void }).startTimer === "function") {
+    (taskService as { startTimer: () => void }).startTimer();
+  }
+
+  // 11. Graceful shutdown handler
   let isShuttingDown = false;
 
   const shutdown = async (): Promise<void> => {

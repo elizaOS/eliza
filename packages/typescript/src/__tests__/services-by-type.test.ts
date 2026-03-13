@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { beforeEach, describe, expect, it } from "vitest";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import { ServiceType, type UUID } from "../types";
 import type { IAgentRuntime } from "../types/runtime";
@@ -49,6 +50,7 @@ describe("Service Type System", () => {
   let runtime: AgentRuntime;
 
   beforeEach(async () => {
+    const adapter = new InMemoryDatabaseAdapter();
     runtime = new AgentRuntime({
       agentId: uuidv4() as UUID,
       character: {
@@ -56,6 +58,7 @@ describe("Service Type System", () => {
         username: "test",
         clients: [],
       },
+      adapter,
     });
     // Resolve initPromise directly since these tests don't require DB setup
     // Access private resolver for test purposes

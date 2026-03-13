@@ -48,7 +48,7 @@ export const removeContactAction: Action = {
     message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    const hasService = !!runtime.getService("rolodex");
+    const hasService = !!await runtime.getService("rolodex");
     const hasIntent = message.content.text
       ?.toLowerCase()
       .match(/remove|delete|drop.*contact|remove.*from.*rolodex/);
@@ -63,7 +63,7 @@ export const removeContactAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     try {
-      const rolodexService = runtime.getService("rolodex") as RolodexService;
+      const rolodexService = await runtime.getService("rolodex") as RolodexService;
       if (!rolodexService) {
         throw new Error("RolodexService not available");
       }

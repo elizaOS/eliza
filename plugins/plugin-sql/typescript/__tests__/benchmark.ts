@@ -126,9 +126,9 @@ async function setupDatabase() {
   const runtime = new AgentRuntime({
     character: { ...mockCharacter, id: undefined },
     agentId: testAgentId,
+    adapter,
     plugins: [sqlPlugin],
   });
-  runtime.registerDatabaseAdapter(adapter);
 
   const migrationService = new DatabaseMigrationService();
   await migrationService.initializeWithDatabase(adapter.getDatabase());

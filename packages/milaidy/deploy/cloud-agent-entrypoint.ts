@@ -51,6 +51,9 @@ async function initRuntime(): Promise<void> {
       AgentRuntime,
       createCharacter,
       createMessageMemory,
+      InMemoryDatabaseAdapter,
+      mergeDbSettings,
+      provisionAgent,
       stringToUuid,
       ChannelType,
     } = await import("@elizaos/core");
@@ -73,20 +76,34 @@ async function initRuntime(): Promise<void> {
 
     const plugins = [];
 
-    // Load ElizaCloud plugin for inference if available
     const cloudPlugin = await import("@elizaos/plugin-elizacloud")
       .then((m) => m.default ?? m.elizaOSCloudPlugin)
       .catch(() => null);
     if (cloudPlugin) plugins.push(cloudPlugin);
 
-    // Load SQL plugin for persistence if available
-    const sqlPlugin = await import("@elizaos/plugin-sql")
-      .then((m) => m.default ?? m.sqlPlugin)
-      .catch(() => null);
+    const sqlPluginModule = await import("@elizaos/plugin-sql").catch(() => null);
+    const sqlPlugin = sqlPluginModule?.default ?? sqlPluginModule?.sqlPlugin ?? null;
     if (sqlPlugin) plugins.push(sqlPlugin);
 
-    const runtime = new AgentRuntime({ character, plugins });
+    const agentId = stringToUuid(character.name ?? "CloudAgent");
+    const adapter = process.env.POSTGRES_URL && sqlPluginModule?.createDatabaseAdapter
+      ? sqlPluginModule.createDatabaseAdapter(
+          { postgresUrl: process.env.POSTGRES_URL },
+          agentId,
+        )
+      : new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+
+    const characterWithSettings = await mergeDbSettings(character, adapter, agentId);
+
+    const runtime = new AgentRuntime({ character: characterWithSettings, adapter, plugins });
     await runtime.initialize();
+    await provisionAgent(runtime, { runMigrations: true });
+
+    const taskService = await runtime.getService("task");
+    if (taskService && typeof (taskService as { startTimer?: () => void }).startTimer === "function") {
+      (taskService as { startTimer: () => void }).startTimer();
+    }
 
     const userId = crypto.randomUUID() as ReturnType<typeof stringToUuid>;
     const roomId = stringToUuid("cloud-agent-bridge-room");

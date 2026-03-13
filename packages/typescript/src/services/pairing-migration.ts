@@ -108,7 +108,7 @@ function isExpired(
  */
 function getPairingService(runtime: IAgentRuntime): PairingService | null {
   try {
-    return runtime.getService(ServiceType.PAIRING) as PairingService | null;
+    return (await runtime.getService(ServiceType.PAIRING)) as PairingService | null;
   } catch {
     return null;
   }

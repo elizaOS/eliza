@@ -11,7 +11,7 @@ import { createBuildRunner } from "../../build-utils";
 const TS_SRC = "src";
 
 // Ensure dist directories exist
-["dist", "dist/node", "dist/browser"].forEach((dir) => {
+["dist", "dist/node", "dist/browser", "dist/edge"].forEach((dir) => {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
@@ -99,6 +99,34 @@ async function buildBrowser() {
 }
 
 /**
+ * Build for edge runtimes (Vercel Edge, Cloudflare Workers, Deno Deploy)
+ */
+async function buildEdge() {
+  console.log("⚡ Building for Edge...");
+  const startTime = Date.now();
+
+  const runEdge = createBuildRunner({
+    ...sharedConfig,
+    buildOptions: {
+      entrypoints: [`${TS_SRC}/index.edge.ts`],
+      outdir: "dist/edge",
+      target: "browser",
+      format: "esm",
+      external: browserExternals,
+      sourcemap: true,
+      minify: false,
+      generateDts: false,
+      selfPackageName: "@elizaos/core",
+    },
+  });
+
+  await runEdge();
+
+  const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+  console.log(`✅ Edge build complete in ${duration}s`);
+}
+
+/**
  * Build testing module (Node.js only)
  */
 async function buildTesting() {
@@ -134,7 +162,7 @@ async function buildAll() {
   const totalStart = Date.now();
 
   // Build JS in parallel first
-  await Promise.all([buildNode(), buildBrowser(), buildTesting()]);
+  await Promise.all([buildNode(), buildBrowser(), buildEdge(), buildTesting()]);
 
   // Generate TypeScript declarations AFTER JS builds complete
   // This prevents race conditions where buildNode() might clean dist/node
@@ -162,6 +190,7 @@ async function generateTypeScriptDeclarations() {
   // Ensure directories exist for conditional exports
   await fs.mkdir("dist/node", { recursive: true });
   await fs.mkdir("dist/browser", { recursive: true });
+  await fs.mkdir("dist/edge", { recursive: true });
 
   // Create re-export files for conditional exports structure
   // dist/node/index.d.ts - points to the Node.js entry point
@@ -175,6 +204,12 @@ async function generateTypeScriptDeclarations() {
   await fs.writeFile(
     "dist/browser/index.d.ts",
     `// Type definitions for @elizaos/core (Browser)\nexport * from '../index.browser.js';\n`,
+  );
+
+  // dist/edge/index.d.ts - points to the edge entry point
+  await fs.writeFile(
+    "dist/edge/index.d.ts",
+    `// Type definitions for @elizaos/core (Edge)\nexport * from './index.edge.js';\n`,
   );
 
   // Create main index.js for runtime fallback (when conditional exports don't match)

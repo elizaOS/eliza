@@ -1,8 +1,8 @@
 /**
  * Vercel Edge Function - Chat Endpoint
  *
- * This Edge Function processes chat messages and returns AI responses
- * using the full elizaOS runtime with OpenAI as the LLM provider.
+ * Uses the elizaOS runtime with edge-compatible imports (InMemory adapter, no SQL).
+ * For persistent storage use a Node.js API route with POSTGRES_URL and createDatabaseAdapter.
  */
 
 import {
@@ -11,18 +11,17 @@ import {
   type Character,
   createCharacter,
   createMessageMemory,
+  InMemoryDatabaseAdapter,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 
 export const config = {
   runtime: "edge",
 };
 
-// Types
 interface ChatRequest {
   message: string;
   userId?: string;
@@ -35,42 +34,44 @@ interface ChatResponse {
   timestamp: string;
 }
 
-// Character configuration
 function getCharacter(): Character {
   const secrets: Record<string, string> = {};
-  if (process.env.OPENAI_API_KEY) {
+  if (typeof process !== "undefined" && process.env?.OPENAI_API_KEY) {
     secrets.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   }
   return createCharacter({
-    name: process.env.CHARACTER_NAME ?? "Eliza",
-    bio: process.env.CHARACTER_BIO ?? "A helpful AI assistant.",
+    name:
+      (typeof process !== "undefined" && process.env?.CHARACTER_NAME) ?? "Eliza",
+    bio:
+      (typeof process !== "undefined" && process.env?.CHARACTER_BIO) ??
+      "A helpful AI assistant.",
     system:
-      process.env.CHARACTER_SYSTEM ??
+      (typeof process !== "undefined" && process.env?.CHARACTER_SYSTEM) ??
       "You are a helpful, concise AI assistant. Respond thoughtfully to user messages.",
     secrets,
   });
 }
 
-// Singleton runtime
 let runtime: AgentRuntime | null = null;
 let initializationPromise: Promise<AgentRuntime> | null = null;
 
 async function initializeRuntime(): Promise<AgentRuntime> {
   if (runtime) return runtime;
-
-  if (initializationPromise) {
-    return initializationPromise;
-  }
+  if (initializationPromise) return initializationPromise;
 
   initializationPromise = (async () => {
-    console.log("Initializing elizaOS runtime...");
     const character = getCharacter();
+    const agentId = stringToUuid(character.name ?? "Eliza");
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+
     const newRuntime = new AgentRuntime({
       character,
-      plugins: [sqlPlugin, openaiPlugin], // bootstrapPlugin auto-included by runtime
+      adapter,
+      plugins: [openaiPlugin],
     });
     await newRuntime.initialize();
-    console.log("elizaOS runtime initialized successfully");
+
     runtime = newRuntime;
     return newRuntime;
   })();

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import type { Character } from "../types";
 import { ModelType } from "../types/model";
@@ -28,12 +29,12 @@ describe("generateText", () => {
   };
 
   beforeEach(() => {
-    // Create a minimal runtime instance
+    const adapter = new InMemoryDatabaseAdapter();
     runtime = new AgentRuntime({
       character: mockCharacter,
+      adapter,
     });
 
-    // Mock the useModel method
     mockUseModel = vi.fn().mockResolvedValue("Generated response text");
     runtime.useModel = mockUseModel;
   });
@@ -179,6 +180,7 @@ describe("generateText", () => {
 
     runtime = new AgentRuntime({
       character: characterWithArrayBio,
+      adapter: new InMemoryDatabaseAdapter(),
     });
     mockUseModel = vi.fn().mockResolvedValue("Response");
     runtime.useModel = mockUseModel;
@@ -209,6 +211,7 @@ describe("generateText", () => {
 
     runtime = new AgentRuntime({
       character: minimalCharacter,
+      adapter: new InMemoryDatabaseAdapter(),
     });
     mockUseModel = vi.fn().mockResolvedValue("Response");
     runtime.useModel = mockUseModel;
@@ -248,6 +251,7 @@ describe("generateText", () => {
 
     runtime = new AgentRuntime({
       character: characterNoStyle,
+      adapter: new InMemoryDatabaseAdapter(),
     });
     mockUseModel = vi.fn().mockResolvedValue("Response");
     runtime.useModel = mockUseModel;
@@ -342,6 +346,7 @@ describe("generateText", () => {
 
     runtime = new AgentRuntime({
       character: characterNoName,
+      adapter: new InMemoryDatabaseAdapter(),
     });
     mockUseModel = vi.fn().mockResolvedValue("Response");
     runtime.useModel = mockUseModel;
@@ -370,6 +375,7 @@ describe("generateText", () => {
         plugins: [],
         secrets: {},
       } as Character,
+      adapter: new InMemoryDatabaseAdapter(),
     });
     mockUseModel = vi.fn().mockResolvedValue("Response");
     runtime.useModel = mockUseModel;

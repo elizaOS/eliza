@@ -19,7 +19,7 @@ export const followUpsProvider: Provider = {
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> => {
-    const followUpService = runtime.getService("follow_up") as FollowUpService;
+    const followUpService = await runtime.getService("follow_up") as FollowUpService;
     if (!followUpService) {
       runtime.logger.warn("[FollowUpsProvider] FollowUpService not available");
       return { text: "", values: {}, data: {} };
