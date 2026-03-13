@@ -48,12 +48,12 @@ function getEmbeddingConfig(runtime: IAgentRuntime) {
     "ELIZAOS_CLOUD_EMBEDDING_MODEL",
     "text-embedding-3-small",
   );
-  const embeddingDimension = Number.parseInt(
-    getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", "1536") || "1536",
+  const embeddingDimension: number = Number.parseInt(
+    String(getSetting(runtime, "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS", "1536") ?? "1536"),
     10,
-  ) as (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
+  );
 
-  if (!Object.values(VECTOR_DIMS).includes(embeddingDimension)) {
+  if (!(Object.values(VECTOR_DIMS) as number[]).includes(embeddingDimension)) {
     const errorMsg = `Invalid embedding dimension: ${embeddingDimension}. Must be one of: ${Object.values(VECTOR_DIMS).join(", ")}`;
     logger.error(errorMsg);
     throw new Error(errorMsg);
@@ -86,8 +86,8 @@ export async function handleTextEmbedding(
   let text: string;
   if (typeof params === "string") {
     text = params;
-  } else if (typeof params === "object" && params.text) {
-    text = params.text;
+  } else if (typeof params === "object" && params.text != null) {
+    text = Array.isArray(params.text) ? (params.text[0] ?? "") : params.text;
   } else {
     logger.warn("Invalid input format for embedding");
     return createErrorVector(embeddingDimension, 0.2);
