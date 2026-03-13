@@ -1030,12 +1030,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
   // ── Participant CRUD (batch-only for mutations) ─────────────────────
   // WHY batch-only: createRoomParticipants accepts an array of entity IDs
-  // (adding multiple users to a channel is common). deleteParticipants
-  // accepts {entityId, roomId} pairs for flexibility -- you might remove
-  // different entities from different rooms in one call.
-  // WHY Promise<boolean>: Same as first deleteParticipants overload — callers
-  // need success/failure for UX and error handling; consistent with other mutations.
-  deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean>;
+  // (adding multiple users to a channel is common).
   
   /**
    * Update participants (batch)
