@@ -66,7 +66,7 @@ async def main():
             results = await runner.run()
 
         # Print results
-        print_results(results)
+        await print_results(results)
 
         # Save results summary
         summary_path = Path(args.output) / "RESULTS.md"
