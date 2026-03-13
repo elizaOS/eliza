@@ -40,7 +40,7 @@ async function build() {
   if (existsSync(nodeOut)) {
     let code = readFileSync(nodeOut, "utf8");
     if (code.includes("default2 as default")) {
-      code = code.replace("default2 as default", "elizaOSCloudPlugin as default");
+      code = code.replace(/default2 as default/g, "elizaOSCloudPlugin as default");
       writeFileSync(nodeOut, code);
     }
   }

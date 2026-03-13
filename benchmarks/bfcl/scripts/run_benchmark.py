@@ -65,7 +65,7 @@ async def main():
             print("\nRunning full benchmark...\n")
             results = await runner.run()
 
-        # Print results
+        # Print results 
         await print_results(results)
 
         # Save results summary
