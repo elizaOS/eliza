@@ -29,8 +29,8 @@ async function generateObjectWithModel(
       ...(params.schema && {
         schema: jsonSchema(params.schema as JSONSchema7),
       }),
-      output: params.schema ? "object" : "no-schema",
-      prompt: params.prompt,
+      output: (params.schema ? "object" : "no-schema") as "object" | "no-schema",
+      messages: [{ role: "user" as const, content: params.prompt }],
       temperature: temperature,
     };
 

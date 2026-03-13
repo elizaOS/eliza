@@ -56,7 +56,8 @@ export class TelegramService extends Service {
   constructor(runtime: IAgentRuntime) {
     super(runtime);
 
-    const botToken = runtime.getSetting("TELEGRAM_BOT_TOKEN") as string;
+    // Fallback to process.env so .env is respected (getSetting() does not read process.env).
+    const botToken = (runtime.getSetting("TELEGRAM_BOT_TOKEN") ?? process.env.TELEGRAM_BOT_TOKEN) as string;
     if (!botToken || botToken.trim() === "") {
       logger.warn("Telegram Bot Token not provided - Telegram functionality will be unavailable");
       this.bot = null;

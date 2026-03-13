@@ -70,9 +70,12 @@ export const elizaOSCloudPlugin: Plugin = {
       env.ELIZAOS_CLOUD_IMAGE_GENERATION_MODEL ?? null,
   },
 
-  async init(config, runtime) {
+  async init(
+    config: Record<string, string | number | boolean | null>,
+    runtime: IAgentRuntime,
+  ) {
     // Initialize inference (OpenAI-compatible client)
-    initializeOpenAI(config, runtime);
+    initializeOpenAI(config as Record<string, string | null>, runtime);
   },
 
   // ─── Cloud Services ──────────────────────────────────────────────────
@@ -158,9 +161,9 @@ export const elizaOSCloudPlugin: Plugin = {
         {
           name: "ELIZAOS_CLOUD_test_text_large",
           fn: async (runtime: IAgentRuntime) => {
-            const text = await runtime.useModel(ModelType.TEXT_LARGE, {
+            const text = (await runtime.useModel(ModelType.TEXT_LARGE, {
               prompt: "What is the nature of reality in 10 words?",
-            });
+            })) as string;
             if (text.length === 0) {
               throw new Error("Failed to generate text");
             }
@@ -170,9 +173,9 @@ export const elizaOSCloudPlugin: Plugin = {
         {
           name: "ELIZAOS_CLOUD_test_text_small",
           fn: async (runtime: IAgentRuntime) => {
-            const text = await runtime.useModel(ModelType.TEXT_SMALL, {
+            const text = (await runtime.useModel(ModelType.TEXT_SMALL, {
               prompt: "What is the nature of reality in 10 words?",
-            });
+            })) as string;
             if (text.length === 0) {
               throw new Error("Failed to generate text");
             }

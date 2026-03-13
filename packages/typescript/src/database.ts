@@ -434,6 +434,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
   ): Promise<UUID[]>;
 
   // ── Participant mutations (batch-only) ───────────────────────────────
+  /** WHY boolean: Callers need success/failure for error handling/UX; see IDatabaseAdapter in types/database.ts. */
   abstract deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean>;
   abstract updateParticipants(participants: Array<{
     entityId: UUID;
@@ -525,8 +526,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
   // ── Agent CRUD (batch-only) ──────────────────────────────────────────
   abstract getAgentsByIds(agentIds: UUID[]): Promise<Agent[]>;
   abstract createAgents(agents: Partial<Agent>[]): Promise<UUID[]>;
+  /** WHY boolean: Success/failure signal for callers; see IDatabaseAdapter in types/database.ts. */
   abstract updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean>;
   abstract upsertAgents(agents: Partial<Agent>[]): Promise<void>;
+  /** WHY boolean: Success/failure signal for callers; see IDatabaseAdapter in types/database.ts. */
   abstract deleteAgents(agentIds: UUID[]): Promise<boolean>;
   abstract countAgents(): Promise<number>;
   abstract cleanupAgents(): Promise<void>;

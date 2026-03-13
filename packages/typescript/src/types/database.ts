@@ -372,8 +372,21 @@ export interface IDatabaseAdapter<DB extends object = object> {
   // Single-item wrappers live on AgentRuntime.
   getAgentsByIds(agentIds: UUID[]): Promise<Agent[]>;
   createAgents(agents: Partial<Agent>[]): Promise<UUID[]>;
-  updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<void>;
-  deleteAgents(agentIds: UUID[]): Promise<void>;
+  /**
+   * Update agents by ID (batch).
+   * WHY Promise<boolean>: Callers (e.g. runtime, admin APIs) need to know if the
+   * operation succeeded so they can surface errors or retry. SQL adapters return
+   * true when the write commits; false on constraint/connection failure. InMemory
+   * returns true when all updates are applied. Aligns with deleteAgents/deleteParticipants.
+   */
+  updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean>;
+  /**
+   * Delete agents by ID (batch).
+   * WHY Promise<boolean>: Callers need success/failure for error handling and UX
+   * (e.g. "Agent removed" vs "Failed to remove"). All adapters (SQL, InMemory,
+   * LocalDB) implement this as a boolean for consistency with updateAgents.
+   */
+  deleteAgents(agentIds: UUID[]): Promise<boolean>;
   
   /**
    * Upsert agents (insert or update by ID)
@@ -455,8 +468,13 @@ export interface IDatabaseAdapter<DB extends object = object> {
     options?: { entityContext?: UUID },
   ): Promise<T>;
 
-  /** Delete participants from rooms */
-  deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<void>;
+  /**
+   * Delete participants from rooms (batch).
+   * WHY Promise<boolean>: Callers need to know if removal succeeded (e.g. for
+   * unfollow/mute flows and admin APIs). Matches updateAgents/deleteAgents so
+   * all mutation methods have a consistent success signal across adapters.
+   */
+  deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean>;
 
   /** Get entities for room */
   getEntitiesForRoom(
@@ -1015,7 +1033,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
   // (adding multiple users to a channel is common). deleteParticipants
   // accepts {entityId, roomId} pairs for flexibility -- you might remove
   // different entities from different rooms in one call.
-  deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<void>;
+  // WHY Promise<boolean>: Same as first deleteParticipants overload — callers
+  // need success/failure for UX and error handling; consistent with other mutations.
+  deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean>;
   
   /**
    * Update participants (batch)

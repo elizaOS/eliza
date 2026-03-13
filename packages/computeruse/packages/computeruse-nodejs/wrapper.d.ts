@@ -1,6 +1,13 @@
 // Re-export everything from the native bindings
 export * from "./index";
 
+// Explicit exports for type-only consumers when ./index has no .d.ts (e.g. before native build)
+export const Desktop: new (useBackgroundApps?: boolean, activateApp?: boolean) => import("./index").Desktop;
+export const Element: new (...args: unknown[]) => import("./index").Element;
+export const Locator: new (...args: unknown[]) => import("./index").Locator;
+export const Selector: new (...args: unknown[]) => import("./index").Selector;
+export const WindowManager: new (...args: unknown[]) => import("./index").WindowManager;
+
 /** Thrown when an element is not found. */
 export class ElementNotFoundError extends Error {
   constructor(message: string);
