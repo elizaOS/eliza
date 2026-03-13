@@ -149,7 +149,7 @@ export interface Plugin {
 }
 
 export abstract class Service {
-  protected runtime!: IAgentRuntime;
+  protected runtime: IAgentRuntime;
   constructor(runtime?: IAgentRuntime);
   abstract stop(): Promise<void>;
   static serviceType: string;
