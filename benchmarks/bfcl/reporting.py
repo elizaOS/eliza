@@ -82,6 +82,14 @@ class BFCLReporter:
         # Ensure output directory exists
         os.makedirs('reports', exist_ok=True)
         
+        # Merge config from passed results
+        if hasattr(results.config, '__dict__'):
+            self.config.update(results.config.__dict__)
+        if results.model_name:
+            self.config['model_name'] = results.model_name
+        if results.baseline_comparison:
+            self.baseline_scores = results.baseline_comparison
+            
         # Sort results by scores for proper ranking
         sorted_results = sorted(
             self.results,
@@ -234,7 +242,13 @@ class BFCLReporter:
 
 async def print_results(results: BFCLBenchmarkResults):
     # Create reporter with proper configuration
-    reporter = BFCLReporter()
+    config = {
+        'model_name': results.model_name or 'default',
+        'baseline_scores': results.baseline_comparison or {},
+    }
+    if hasattr(results.config, '__dict__'):
+        config.update(results.config.__dict__)
+    reporter = BFCLReporter(config)
     
     # Process results maintaining proper rank order
     for result in results.results:
@@ -256,5 +270,5 @@ async def print_results(results: BFCLBenchmarkResults):
         )
     
     # Generate report (avoiding asyncio.run() since this may be called from async context)
-    return reporter.generate_report(results)
+    return await reporter.generate_report(results)
 # Note: The design requires manual ranking to accommodate dynamic leaderboard insertion.
