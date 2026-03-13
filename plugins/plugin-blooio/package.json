@@ -3,9 +3,9 @@
   "private": true,
   "version": "2.0.0-alpha.1",
   "type": "module",
-  "main": "typescript/dist/index.js",
-  "module": "typescript/dist/index.js",
-  "types": "typescript/dist/index.d.ts",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaos-plugins/plugin-blooio.git"
@@ -14,13 +14,13 @@
     "./package.json": "./package.json",
     ".": {
       "import": {
-        "types": "./typescript/dist/index.d.ts",
-        "default": "./typescript/dist/index.js"
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       }
     }
   },
   "files": [
-    "typescript/dist"
+    "dist"
   ],
   "dependencies": {
     "body-parser": "^1.20.2",
