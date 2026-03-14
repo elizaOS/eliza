@@ -86,15 +86,16 @@ const deleteMessage: Action = {
       });
 
       const parsedResponse = parseJSONObjectFromText(response);
-      if (parsedResponse && 
-          typeof parsedResponse === 'object' && 
-          'messageId' in parsedResponse && 
-          typeof parsedResponse.messageId === 'string' &&
-          (!('channelRef' in parsedResponse) || typeof parsedResponse.channelRef === 'string')) {
-        deleteParams = {
-          messageId: parsedResponse.messageId,
-          channelRef: 'channelRef' in parsedResponse ? parsedResponse.channelRef : undefined
-        };
+      function isDeleteMessageParams(obj: unknown): obj is DeleteMessageParams {
+        return typeof obj === 'object' && 
+               obj !== null &&
+               'messageId' in obj &&
+               typeof (obj as any).messageId === 'string' &&
+               (!('channelRef' in obj) || typeof (obj as any).channelRef === 'string');
+      }
+      
+      if (isDeleteMessageParams(parsedResponse)) {
+        deleteParams = parsedResponse;
         break;
       }
     }
