@@ -4,7 +4,6 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const { name: pluginName } = JSON.parse(readFileSync('./package.json', 'utf8'));
 const externalDeps = ["@elizaos/core", "@ai-sdk/openai", "ai", "js-tiktoken"];
 
 async function build() {
