@@ -2,8 +2,6 @@
 name: junct-defi
 description: Access DeFi protocols via remote MCP servers hosted on junct.dev. Covers exchanges, DEXs, bridges, oracles, lending, staking, yield, and naming across 15 protocols and 700+ tools.
 homepage: https://junct.dev
-required-bins:
-  - mcporter
 metadata:
   {
     "otto":
