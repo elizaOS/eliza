@@ -90,6 +90,26 @@ class BFCLReporter:
         if results.baseline_comparison:
             self.baseline_scores = results.baseline_comparison
             
+        # Process the passed results if they haven't been added yet
+        if not self.results:
+            for result in results.results:
+                # Convert boolean flags to scores
+                overall_score = 1.0 if (result.ast_match and result.exec_success) else 0.0
+                ast_accuracy = 1.0 if result.ast_match else 0.0
+                exec_accuracy = 1.0 if result.exec_success else 0.0
+                
+                metrics = BFCLMetrics(
+                    overall_score=overall_score,
+                    ast_accuracy=ast_accuracy, 
+                    exec_accuracy=exec_accuracy
+                )
+                
+                self.add_result(
+                    metrics,
+                    error_data=result.details if hasattr(result, 'details') else None,
+                    latency_ms=result.latency_ms
+                )
+            
         # Sort results by scores for proper ranking
         sorted_results = sorted(
             self.results,
