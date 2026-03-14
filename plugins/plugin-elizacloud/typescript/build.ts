@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+const { name: pluginName } = JSON.parse(readFileSync('./package.json', 'utf8'));
 const externalDeps = ["@elizaos/core", "@ai-sdk/openai", "ai", "js-tiktoken"];
 
 async function build() {
@@ -40,7 +41,7 @@ async function build() {
   if (existsSync(nodeOut)) {
     let code = readFileSync(nodeOut, "utf8");
     if (code.includes("default2 as default")) {
-      code = code.replace(/default2 as default/g, "elizaOSCloudPlugin as default");
+      code = code.replace(/default2 as default/g, "${pluginName} as default");
       writeFileSync(nodeOut, code);
     }
   }
