@@ -290,5 +290,5 @@ async def print_results(results: BFCLBenchmarkResults):
         )
     
     # Generate report (avoiding asyncio.run() since this may be called from async context)
-        return await reporter.generate_report(results)
+    return await reporter.generate_report(results)
     # Note: The design requires manual ranking to accommodate dynamic leaderboard insertion.
