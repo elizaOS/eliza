@@ -130,7 +130,7 @@ export class PluginActivatorService extends Service {
 
     // Get secrets service
     this.secretsService =
-      this.runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
+      await this.runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
     if (!this.secretsService) {
       logger.warn(
         "[PluginActivator] SecretsService not available, activation will be limited",

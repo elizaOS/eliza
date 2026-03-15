@@ -47,7 +47,7 @@ export const guildInfoProvider: Provider = {
       };
     }
 
-    const discordService = runtime.getService(ServiceType.DISCORD) as DiscordService;
+    const discordService = (await runtime.getService(ServiceType.DISCORD)) as DiscordService;
     if (!discordService?.client) {
       runtime.logger.warn(
         {

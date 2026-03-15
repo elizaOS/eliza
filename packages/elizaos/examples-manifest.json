@@ -1,16 +1,16 @@
 {
   "version": "1.0.0",
-  "generatedAt": "2026-02-19T01:04:31.915Z",
+  "generatedAt": "2026-03-13T02:55:37.361Z",
   "repoUrl": "https://github.com/elizaos/eliza",
   "examples": [
     {
       "name": "plugin",
       "description": "Plugin starter templates",
-      "path": "/root/eliza260106/examples/_plugin",
+      "path": "/root/eliza-260308/examples/_plugin",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/_plugin/python",
+          "path": "/root/eliza-260308/examples/_plugin/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -18,7 +18,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/_plugin/rust",
+          "path": "/root/eliza-260308/examples/_plugin/rust",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -26,7 +26,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/_plugin/typescript",
+          "path": "/root/eliza-260308/examples/_plugin/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -38,11 +38,11 @@
     {
       "name": "a2a",
       "description": "This directory contains A2A (Agent-to-Agent) server implementations that expose an elizaOS agent as ",
-      "path": "/root/eliza260106/examples/a2a",
+      "path": "/root/eliza-260308/examples/a2a",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/a2a/python",
+          "path": "/root/eliza-260308/examples/a2a/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -50,7 +50,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/a2a/rust",
+          "path": "/root/eliza-260308/examples/a2a/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -58,7 +58,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/a2a/typescript",
+          "path": "/root/eliza-260308/examples/a2a/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -70,11 +70,11 @@
     {
       "name": "art",
       "description": "Continuous reinforcement learning system for training local LLMs to play games and solve puzzles usi",
-      "path": "/root/eliza260106/examples/art",
+      "path": "/root/eliza-260308/examples/art",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/art",
+          "path": "/root/eliza-260308/examples/art",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -86,11 +86,11 @@
     {
       "name": "autonomous",
       "description": "This folder contains **three** minimal, sandboxed “always-on” autonomous loop examples (TypeScript, ",
-      "path": "/root/eliza260106/examples/autonomous",
+      "path": "/root/eliza-260308/examples/autonomous",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/autonomous/python",
+          "path": "/root/eliza-260308/examples/autonomous/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -98,7 +98,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/autonomous/rust",
+          "path": "/root/eliza-260308/examples/autonomous/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -106,7 +106,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/autonomous/typescript",
+          "path": "/root/eliza-260308/examples/autonomous/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -118,11 +118,11 @@
     {
       "name": "avatar",
       "description": "This is a simple, browser-only demo that renders a VRM avatar and chats with an elizaOS agent.",
-      "path": "/root/eliza260106/examples/avatar",
+      "path": "/root/eliza-260308/examples/avatar",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/avatar",
+          "path": "/root/eliza-260308/examples/avatar",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -134,11 +134,11 @@
     {
       "name": "aws",
       "description": "Deploy AI chat agents as serverless AWS Lambda functions. These examples show how to run an elizaOS ",
-      "path": "/root/eliza260106/examples/aws",
+      "path": "/root/eliza-260308/examples/aws",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/aws/python",
+          "path": "/root/eliza-260308/examples/aws/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -146,7 +146,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/aws/rust",
+          "path": "/root/eliza-260308/examples/aws/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -154,7 +154,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/aws/typescript",
+          "path": "/root/eliza-260308/examples/aws/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -166,11 +166,11 @@
     {
       "name": "bluesky",
       "description": "A full-featured AI agent running on Bluesky, implemented in TypeScript, Python, and Rust. This agent",
-      "path": "/root/eliza260106/examples/bluesky",
+      "path": "/root/eliza-260308/examples/bluesky",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/bluesky/python",
+          "path": "/root/eliza-260308/examples/bluesky/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -178,7 +178,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/bluesky/rust",
+          "path": "/root/eliza-260308/examples/bluesky/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -186,7 +186,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/bluesky/typescript",
+          "path": "/root/eliza-260308/examples/bluesky/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -198,11 +198,11 @@
     {
       "name": "browser-extension",
       "description": "A cross-platform browser extension that lets you chat with any webpage using AI. Powered by elizaOS ",
-      "path": "/root/eliza260106/examples/browser-extension",
+      "path": "/root/eliza-260308/examples/browser-extension",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/browser-extension",
+          "path": "/root/eliza-260308/examples/browser-extension",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -214,11 +214,11 @@
     {
       "name": "browser-use",
       "description": "An autonomous elizaOS agent that explores the web with curiosity, focusing on discovering new resear",
-      "path": "/root/eliza260106/examples/browser-use",
+      "path": "/root/eliza-260308/examples/browser-use",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/browser-use/python",
+          "path": "/root/eliza-260308/examples/browser-use/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -226,7 +226,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/browser-use/rust",
+          "path": "/root/eliza-260308/examples/browser-use/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -234,7 +234,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/browser-use/typescript",
+          "path": "/root/eliza-260308/examples/browser-use/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -246,11 +246,11 @@
     {
       "name": "chat",
       "description": "Interactive CLI chat applications",
-      "path": "/root/eliza260106/examples/chat",
+      "path": "/root/eliza-260308/examples/chat",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/chat/python",
+          "path": "/root/eliza-260308/examples/chat/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -258,7 +258,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/chat/rust",
+          "path": "/root/eliza-260308/examples/chat/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -266,7 +266,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/chat/typescript",
+          "path": "/root/eliza-260308/examples/chat/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -274,7 +274,7 @@
         },
         {
           "language": "rust-wasm",
-          "path": "/root/eliza260106/examples/chat/rust-wasm",
+          "path": "/root/eliza-260308/examples/chat/rust-wasm",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -286,11 +286,11 @@
     {
       "name": "cloudflare",
       "description": "Deploy elizaOS agents as serverless functions on Cloudflare Workers.",
-      "path": "/root/eliza260106/examples/cloudflare",
+      "path": "/root/eliza-260308/examples/cloudflare",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/cloudflare",
+          "path": "/root/eliza-260308/examples/cloudflare",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -302,11 +302,11 @@
     {
       "name": "code",
       "description": "An async coding agent terminal app built on elizaOS - like Claude Code, but with fully asynchronous ",
-      "path": "/root/eliza260106/examples/code",
+      "path": "/root/eliza-260308/examples/code",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/code",
+          "path": "/root/eliza-260308/examples/code",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -318,11 +318,11 @@
     {
       "name": "computer-use",
       "description": "End-to-end examples showing an elizaOS agent with **ComputerUse** abilities.",
-      "path": "/root/eliza260106/examples/computer-use",
+      "path": "/root/eliza-260308/examples/computer-use",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/computer-use/python",
+          "path": "/root/eliza-260308/examples/computer-use/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -330,7 +330,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/computer-use/rust",
+          "path": "/root/eliza-260308/examples/computer-use/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -338,7 +338,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/computer-use/typescript",
+          "path": "/root/eliza-260308/examples/computer-use/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -350,11 +350,11 @@
     {
       "name": "convex",
       "description": "Deploy an elizaOS agent as a Convex backend. Messages are processed through `runtime.messageService.",
-      "path": "/root/eliza260106/examples/convex",
+      "path": "/root/eliza-260308/examples/convex",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/convex",
+          "path": "/root/eliza-260308/examples/convex",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -366,11 +366,11 @@
     {
       "name": "discord",
       "description": "Full-featured Discord AI agents using elizaOS, available in **TypeScript**, **Python**, and **Rust**",
-      "path": "/root/eliza260106/examples/discord",
+      "path": "/root/eliza-260308/examples/discord",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/discord/python",
+          "path": "/root/eliza-260308/examples/discord/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -378,7 +378,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/discord/rust",
+          "path": "/root/eliza-260308/examples/discord/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -386,7 +386,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/discord/typescript",
+          "path": "/root/eliza-260308/examples/discord/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -398,11 +398,11 @@
     {
       "name": "dnd-vtt",
       "description": "An AI-powered D&D 5e Virtual Tabletop powered by elizaOS agents. Features an AI Dungeon Master that ",
-      "path": "/root/eliza260106/examples/dnd-vtt",
+      "path": "/root/eliza-260308/examples/dnd-vtt",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/dnd-vtt",
+          "path": "/root/eliza-260308/examples/dnd-vtt",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -414,11 +414,11 @@
     {
       "name": "elizagotchi",
       "description": "A Tamagotchi-style virtual pet game running on **elizaOS** with **NO LLM required**!",
-      "path": "/root/eliza260106/examples/elizagotchi",
+      "path": "/root/eliza-260308/examples/elizagotchi",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/elizagotchi",
+          "path": "/root/eliza-260308/examples/elizagotchi",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -430,11 +430,11 @@
     {
       "name": "farcaster",
       "description": "A self-contained reference showing how to run an elizaOS agent that monitors and posts on [Farcaster",
-      "path": "/root/eliza260106/examples/farcaster",
+      "path": "/root/eliza-260308/examples/farcaster",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/farcaster/python",
+          "path": "/root/eliza-260308/examples/farcaster/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -442,7 +442,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/farcaster/rust",
+          "path": "/root/eliza-260308/examples/farcaster/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -450,7 +450,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/farcaster/typescript",
+          "path": "/root/eliza-260308/examples/farcaster/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -462,11 +462,11 @@
     {
       "name": "farcaster-miniapp",
       "description": "This demo is intentionally **chat-only**: no portfolio, swap, bridge, or social feed.",
-      "path": "/root/eliza260106/examples/farcaster-miniapp",
+      "path": "/root/eliza-260308/examples/farcaster-miniapp",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/farcaster-miniapp",
+          "path": "/root/eliza-260308/examples/farcaster-miniapp",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -478,11 +478,11 @@
     {
       "name": "game-of-life",
       "description": "A multi-agent evolution simulation demonstrating elizaOS's ability to run autonomous agents **withou",
-      "path": "/root/eliza260106/examples/game-of-life",
+      "path": "/root/eliza-260308/examples/game-of-life",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/game-of-life/python",
+          "path": "/root/eliza-260308/examples/game-of-life/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -490,7 +490,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/game-of-life/rust",
+          "path": "/root/eliza-260308/examples/game-of-life/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -498,7 +498,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/game-of-life/typescript",
+          "path": "/root/eliza-260308/examples/game-of-life/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -510,11 +510,11 @@
     {
       "name": "gcp",
       "description": "Deploy elizaOS agents as serverless GCP Cloud Run services. This example shows how to run an AI agen",
-      "path": "/root/eliza260106/examples/gcp",
+      "path": "/root/eliza-260308/examples/gcp",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/gcp/python",
+          "path": "/root/eliza-260308/examples/gcp/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -522,7 +522,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/gcp/rust",
+          "path": "/root/eliza-260308/examples/gcp/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -530,7 +530,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/gcp/typescript",
+          "path": "/root/eliza-260308/examples/gcp/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -542,11 +542,11 @@
     {
       "name": "html",
       "description": "A browser-based demo of the **full elizaOS AgentRuntime** using:",
-      "path": "/root/eliza260106/examples/html",
+      "path": "/root/eliza-260308/examples/html",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/html",
+          "path": "/root/eliza-260308/examples/html",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -558,11 +558,11 @@
     {
       "name": "icp",
       "description": "Deploy an elizaOS AI agent as a canister on the Internet Computer (ICP). This example demonstrates h",
-      "path": "/root/eliza260106/examples/icp",
+      "path": "/root/eliza-260308/examples/icp",
       "languages": [
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/icp",
+          "path": "/root/eliza-260308/examples/icp",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -574,11 +574,11 @@
     {
       "name": "lp-manager",
       "description": "An autonomous liquidity position (LP) management agent for DeFi. This agent monitors LP positions ac",
-      "path": "/root/eliza260106/examples/lp-manager",
+      "path": "/root/eliza-260308/examples/lp-manager",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/lp-manager/typescript",
+          "path": "/root/eliza-260308/examples/lp-manager/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -590,11 +590,11 @@
     {
       "name": "mcp",
       "description": "This directory contains MCP (Model Context Protocol) server implementations that expose an elizaOS a",
-      "path": "/root/eliza260106/examples/mcp",
+      "path": "/root/eliza-260308/examples/mcp",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/mcp/python",
+          "path": "/root/eliza-260308/examples/mcp/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -602,7 +602,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/mcp/rust",
+          "path": "/root/eliza-260308/examples/mcp/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -610,7 +610,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/mcp/typescript",
+          "path": "/root/eliza-260308/examples/mcp/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -622,11 +622,11 @@
     {
       "name": "minecraft",
       "description": "This example shows how to run an Eliza agent that can **connect to a Minecraft server** and act usin",
-      "path": "/root/eliza260106/examples/minecraft",
+      "path": "/root/eliza-260308/examples/minecraft",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/minecraft/python",
+          "path": "/root/eliza-260308/examples/minecraft/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -634,7 +634,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/minecraft/rust",
+          "path": "/root/eliza-260308/examples/minecraft/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -642,7 +642,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/minecraft/typescript",
+          "path": "/root/eliza-260308/examples/minecraft/typescript",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -654,11 +654,11 @@
     {
       "name": "moltbook",
       "description": "An autonomous Eliza agent that spreads the gospel of the original ELIZA chatbot across Moltbook.",
-      "path": "/root/eliza260106/examples/moltbook",
+      "path": "/root/eliza-260308/examples/moltbook",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/moltbook",
+          "path": "/root/eliza-260308/examples/moltbook",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -670,11 +670,11 @@
     {
       "name": "next",
       "description": "A full-stack Next.js chat application using elizaOS AgentRuntime with PGLite and OpenAI.",
-      "path": "/root/eliza260106/examples/next",
+      "path": "/root/eliza-260308/examples/next",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/next",
+          "path": "/root/eliza-260308/examples/next",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -686,11 +686,11 @@
     {
       "name": "polymarket",
       "description": "This folder contains a small **autonomous Polymarket demo agent** with a CLI in:",
-      "path": "/root/eliza260106/examples/polymarket",
+      "path": "/root/eliza-260308/examples/polymarket",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/polymarket/python",
+          "path": "/root/eliza-260308/examples/polymarket/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -698,7 +698,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/polymarket/rust",
+          "path": "/root/eliza-260308/examples/polymarket/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -706,7 +706,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/polymarket/typescript",
+          "path": "/root/eliza-260308/examples/polymarket/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -718,11 +718,11 @@
     {
       "name": "react",
       "description": "A React implementation of the classic ELIZA chatbot powered by **elizaOS**, featuring a beautiful re",
-      "path": "/root/eliza260106/examples/react",
+      "path": "/root/eliza-260308/examples/react",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/react",
+          "path": "/root/eliza-260308/examples/react",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -734,11 +734,11 @@
     {
       "name": "react-wasm",
       "description": "A React implementation of the classic ELIZA chatbot powered by **elizaOS Rust WASM runtime**, featur",
-      "path": "/root/eliza260106/examples/react-wasm",
+      "path": "/root/eliza-260308/examples/react-wasm",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/react-wasm",
+          "path": "/root/eliza-260308/examples/react-wasm",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -750,11 +750,11 @@
     {
       "name": "rest-api",
       "description": "This directory contains REST API examples for elizaOS using various web frameworks across TypeScript",
-      "path": "/root/eliza260106/examples/rest-api",
+      "path": "/root/eliza-260308/examples/rest-api",
       "languages": [
         {
           "language": "rocket",
-          "path": "/root/eliza260106/examples/rest-api/rocket",
+          "path": "/root/eliza-260308/examples/rest-api/rocket",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -762,7 +762,7 @@
         },
         {
           "language": "axum",
-          "path": "/root/eliza260106/examples/rest-api/axum",
+          "path": "/root/eliza-260308/examples/rest-api/axum",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -770,7 +770,7 @@
         },
         {
           "language": "flask",
-          "path": "/root/eliza260106/examples/rest-api/flask",
+          "path": "/root/eliza-260308/examples/rest-api/flask",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -778,7 +778,7 @@
         },
         {
           "language": "elysia",
-          "path": "/root/eliza260106/examples/rest-api/elysia",
+          "path": "/root/eliza-260308/examples/rest-api/elysia",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -786,7 +786,7 @@
         },
         {
           "language": "hono",
-          "path": "/root/eliza260106/examples/rest-api/hono",
+          "path": "/root/eliza-260308/examples/rest-api/hono",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -794,7 +794,7 @@
         },
         {
           "language": "actix",
-          "path": "/root/eliza260106/examples/rest-api/actix",
+          "path": "/root/eliza-260308/examples/rest-api/actix",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -802,7 +802,7 @@
         },
         {
           "language": "fastapi",
-          "path": "/root/eliza260106/examples/rest-api/fastapi",
+          "path": "/root/eliza-260308/examples/rest-api/fastapi",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -810,7 +810,7 @@
         },
         {
           "language": "express",
-          "path": "/root/eliza260106/examples/rest-api/express",
+          "path": "/root/eliza-260308/examples/rest-api/express",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -822,11 +822,11 @@
     {
       "name": "roblox",
       "description": "This folder shows how to run an **elizaOS agent** that can talk to a Roblox experience and trigger i",
-      "path": "/root/eliza260106/examples/roblox",
+      "path": "/root/eliza-260308/examples/roblox",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/roblox/python",
+          "path": "/root/eliza-260308/examples/roblox/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -834,7 +834,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/roblox/rust",
+          "path": "/root/eliza-260308/examples/roblox/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -842,7 +842,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/roblox/typescript",
+          "path": "/root/eliza-260308/examples/roblox/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -854,11 +854,11 @@
     {
       "name": "supabase",
       "description": "Deploy AI chat agents as serverless Supabase Edge Functions. These examples show how to run an eliza",
-      "path": "/root/eliza260106/examples/supabase",
+      "path": "/root/eliza-260308/examples/supabase",
       "languages": [
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/supabase/rust",
+          "path": "/root/eliza-260308/examples/supabase/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -870,11 +870,11 @@
     {
       "name": "telegram",
       "description": "Telegram bots using elizaOS with the full message pipeline (providers → LLM → actions → evaluators).",
-      "path": "/root/eliza260106/examples/telegram",
+      "path": "/root/eliza-260308/examples/telegram",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/telegram/python",
+          "path": "/root/eliza-260308/examples/telegram/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -882,7 +882,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/telegram/rust",
+          "path": "/root/eliza-260308/examples/telegram/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -890,7 +890,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/telegram/typescript",
+          "path": "/root/eliza-260308/examples/telegram/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -902,11 +902,11 @@
     {
       "name": "text-adventure",
       "description": "Text adventure games with AI decision making",
-      "path": "/root/eliza260106/examples/text-adventure",
+      "path": "/root/eliza-260308/examples/text-adventure",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/text-adventure/python",
+          "path": "/root/eliza-260308/examples/text-adventure/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -914,7 +914,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/text-adventure/rust",
+          "path": "/root/eliza-260308/examples/text-adventure/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -922,7 +922,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/text-adventure/typescript",
+          "path": "/root/eliza-260308/examples/text-adventure/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -930,7 +930,7 @@
         },
         {
           "language": "rust-wasm",
-          "path": "/root/eliza260106/examples/text-adventure/rust-wasm",
+          "path": "/root/eliza-260308/examples/text-adventure/rust-wasm",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -942,11 +942,11 @@
     {
       "name": "tic-tac-toe",
       "description": "A tic-tac-toe game demonstrating elizaOS's ability to run agents **without an LLM**.",
-      "path": "/root/eliza260106/examples/tic-tac-toe",
+      "path": "/root/eliza-260308/examples/tic-tac-toe",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/tic-tac-toe/python",
+          "path": "/root/eliza-260308/examples/tic-tac-toe/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -954,7 +954,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/tic-tac-toe/rust",
+          "path": "/root/eliza-260308/examples/tic-tac-toe/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -962,7 +962,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/tic-tac-toe/typescript",
+          "path": "/root/eliza-260308/examples/tic-tac-toe/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -974,11 +974,11 @@
     {
       "name": "town",
       "description": "A mafia game (WIP) based on AI Town https://github.com/a16z-infra/ai-town",
-      "path": "/root/eliza260106/examples/town",
+      "path": "/root/eliza-260308/examples/town",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/town",
+          "path": "/root/eliza-260308/examples/town",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -990,11 +990,11 @@
     {
       "name": "trader",
       "description": "A simple trading bot interface that demonstrates the `@elizaos/plugin-auto-trader` capabilities.",
-      "path": "/root/eliza260106/examples/trader",
+      "path": "/root/eliza-260308/examples/trader",
       "languages": [
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/trader/typescript",
+          "path": "/root/eliza-260308/examples/trader/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -1006,11 +1006,11 @@
     {
       "name": "twitter-xai",
       "description": "A full-featured elizaOS agent that runs on **X (formerly Twitter)** and uses:",
-      "path": "/root/eliza260106/examples/twitter-xai",
+      "path": "/root/eliza-260308/examples/twitter-xai",
       "languages": [
         {
           "language": "python",
-          "path": "/root/eliza260106/examples/twitter-xai/python",
+          "path": "/root/eliza-260308/examples/twitter-xai/python",
           "hasPackageJson": false,
           "hasRequirementsTxt": true,
           "hasCargoToml": false,
@@ -1018,7 +1018,7 @@
         },
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/twitter-xai/rust",
+          "path": "/root/eliza-260308/examples/twitter-xai/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,
@@ -1026,7 +1026,7 @@
         },
         {
           "language": "typescript",
-          "path": "/root/eliza260106/examples/twitter-xai/typescript",
+          "path": "/root/eliza-260308/examples/twitter-xai/typescript",
           "hasPackageJson": true,
           "hasRequirementsTxt": false,
           "hasCargoToml": false,
@@ -1038,11 +1038,11 @@
     {
       "name": "vercel",
       "description": "Deploy AI chat agents as serverless Vercel Edge Functions. These examples show how to run an elizaOS",
-      "path": "/root/eliza260106/examples/vercel",
+      "path": "/root/eliza-260308/examples/vercel",
       "languages": [
         {
           "language": "rust",
-          "path": "/root/eliza260106/examples/vercel/rust",
+          "path": "/root/eliza-260308/examples/vercel/rust",
           "hasPackageJson": false,
           "hasRequirementsTxt": false,
           "hasCargoToml": true,

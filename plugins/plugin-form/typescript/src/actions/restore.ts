@@ -99,7 +99,7 @@ export const formRestoreAction: Action = {
         return false;
       }
 
-      const formService = runtime.getService("FORM") as FormService;
+      const formService = (await runtime.getService("FORM")) as FormService;
       if (!formService) {
         return false;
       }
@@ -134,7 +134,7 @@ export const formRestoreAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
-      const formService = runtime.getService("FORM") as FormService;
+      const formService = (await runtime.getService("FORM")) as FormService;
       if (!formService) {
         await callback?.({
           text: "Sorry, I couldn't find the form service.",

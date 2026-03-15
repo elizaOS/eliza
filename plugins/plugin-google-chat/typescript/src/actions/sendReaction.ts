@@ -14,6 +14,7 @@ import {
   type State,
 } from "@elizaos/core";
 import type { GoogleChatService } from "../service.js";
+import type { GoogleChatReaction } from "../types.js";
 import { GOOGLE_CHAT_SERVICE_NAME } from "../types.js";
 
 interface SendReactionParams {
@@ -67,7 +68,7 @@ export const sendReaction: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const gchatService = runtime.getService<GoogleChatService>(
+    const gchatService = await runtime.getService<GoogleChatService>(
       GOOGLE_CHAT_SERVICE_NAME,
     );
 
@@ -141,7 +142,7 @@ export const sendReaction: Action = {
     if (reactionInfo.remove) {
       const reactions = await gchatService.listReactions(targetMessage);
       const botUser = gchatService.getBotUser();
-      const toRemove = reactions.filter((r) => {
+      const toRemove = reactions.filter((r: GoogleChatReaction) => {
         const userName = r.user?.name;
         if (botUser && userName !== botUser && userName !== "users/app") {
           return false;

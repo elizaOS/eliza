@@ -116,9 +116,9 @@ export class SolanaWalletService extends Service {
     if (!runtime) throw new Error("runtime is required for SolanaWalletService");
   }
 
-  private get solanaService(): SolanaService {
+  private async getSolanaService(): Promise<SolanaService> {
     if (!this._solanaService) {
-      this._solanaService = this.runtime.getService("chain_solana") as SolanaService;
+      this._solanaService = (await this.runtime.getService("chain_solana")) as SolanaService;
       if (!this._solanaService) {
         throw new Error("Solana Service is required for Solana Wallet Service");
       }
@@ -127,14 +127,15 @@ export class SolanaWalletService extends Service {
   }
 
   public async getPortfolio(owner?: string): Promise<WalletPortfolioType> {
-    const publicKey = await this.solanaService.getPublicKey();
+    const solanaService = await this.getSolanaService();
+    const publicKey = await solanaService.getPublicKey();
     const publicKeyBase58 = publicKey?.toBase58();
     if (owner && publicKeyBase58 && owner !== publicKeyBase58) {
       throw new Error(
         `This SolanaService instance can only get the portfolio for its configured wallet: ${publicKeyBase58}`
       );
     }
-    const wp: WalletPortfolio = await this.solanaService.updateWalletData(true);
+    const wp: WalletPortfolio = await solanaService.updateWalletData(true);
     const out: WalletPortfolioType = {
       totalValueUsd: parseFloat(wp.totalUsd),
       assets: wp.items.map((i) => ({
@@ -149,7 +150,8 @@ export class SolanaWalletService extends Service {
   }
 
   public async getBalance(assetAddress: string, owner?: string): Promise<number> {
-    const publicKey = await this.solanaService.getPublicKey();
+    const solanaService = await this.getSolanaService();
+    const publicKey = await solanaService.getPublicKey();
     const publicKeyBase58 = publicKey ? publicKey.toBase58() : null;
     const ownerAddress: string | null = owner ?? publicKeyBase58;
     if (!ownerAddress) {
@@ -159,12 +161,12 @@ export class SolanaWalletService extends Service {
       assetAddress.toUpperCase() === "SOL" ||
       assetAddress === PROVIDER_CONFIG.TOKEN_ADDRESSES.SOL
     ) {
-      const balances = await this.solanaService.getBalancesByAddrs([ownerAddress]);
+      const balances = await solanaService.getBalancesByAddrs([ownerAddress]);
       const balance = balances[ownerAddress] ?? 0;
       return balance;
     }
     const tokensBalances: Record<string, KeyedParsedTokenAccount[]> =
-      await this.solanaService.getTokenAccountsByKeypairs([ownerAddress]);
+      await solanaService.getTokenAccountsByKeypairs([ownerAddress]);
     const heldTokens = tokensBalances[ownerAddress] || [];
     for (const t of heldTokens) {
       if (t.account.data.parsed.info.mint === assetAddress) {
@@ -177,11 +179,12 @@ export class SolanaWalletService extends Service {
 
   public async transferSol(from: Keypair, to: PublicKey, lamports: number): Promise<string> {
     try {
-      const payerKey = await this.solanaService.getPublicKey();
+      const solanaService = await this.getSolanaService();
+      const payerKey = await solanaService.getPublicKey();
       if (!payerKey) {
         throw new Error("SolanaService is not initialized with a fee payer key");
       }
-      const connection = this.solanaService.getConnection();
+      const connection = solanaService.getConnection();
 
       const transaction = new TransactionMessage({
         payerKey,
@@ -197,7 +200,7 @@ export class SolanaWalletService extends Service {
 
       const versionedTransaction = new VersionedTransaction(transaction);
 
-      const serviceKeypair = await this.solanaService.getWalletKeypair();
+      const serviceKeypair = await solanaService.getWalletKeypair();
       versionedTransaction.sign([from, serviceKeypair]);
 
       const signature = await connection.sendTransaction(versionedTransaction, {
@@ -226,7 +229,7 @@ export class SolanaWalletService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const client = runtime.getService(ServiceType.WALLET) as SolanaService | null;
+    const client = (await runtime.getService(ServiceType.WALLET)) as SolanaService | null;
     if (!client) {
       logger.error("SolanaWalletService not found during static stop");
       return;
@@ -274,7 +277,7 @@ export class SolanaService extends Service {
     this.connection = new Connection(rpcUrlStr);
 
     runtime.getServiceLoadPromise("JUPITER_SERVICE" as ServiceTypeName).then(async () => {
-      const service = runtime.getService("JUPITER_SERVICE" as ServiceTypeName);
+      const service = await runtime.getService("JUPITER_SERVICE" as ServiceTypeName);
       if (this.isJupiterService(service)) {
         this.jupiterService = service;
       } else {
@@ -1957,7 +1960,7 @@ export class SolanaService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const client = runtime.getService(SOLANA_SERVICE_NAME) as SolanaService | null;
+    const client = (await runtime.getService(SOLANA_SERVICE_NAME)) as SolanaService | null;
     if (!client) {
       runtime.logger.error("SolanaService not found during static stop");
       return;

@@ -74,7 +74,7 @@ export const processKnowledgeAction: Action = {
     const pathPattern = /(?:\/[\w.-]+)+|(?:[a-zA-Z]:[\\/][\w\s.-]+(?:[\\/][\w\s.-]+)*)/;
     const hasPath = pathPattern.test(text);
 
-    const service = runtime.getService(KnowledgeService.serviceType);
+    const service = await runtime.getService(KnowledgeService.serviceType);
     if (!service) {
       logger.warn("Knowledge service not available for PROCESS_KNOWLEDGE action");
       return false;
@@ -91,7 +91,7 @@ export const processKnowledgeAction: Action = {
     callback?: HandlerCallback
   ) => {
     try {
-      const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
+      const service = await runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
       if (!service) {
         throw new Error("Knowledge service not available");
       }
@@ -236,7 +236,7 @@ export const searchKnowledgeAction: Action = {
     const hasSearchKeyword = searchKeywords.some((keyword) => text.includes(keyword));
     const hasKnowledgeKeyword = knowledgeKeywords.some((keyword) => text.includes(keyword));
 
-    const service = runtime.getService(KnowledgeService.serviceType);
+    const service = await runtime.getService(KnowledgeService.serviceType);
     if (!service) {
       return false;
     }
@@ -252,7 +252,7 @@ export const searchKnowledgeAction: Action = {
     callback?: HandlerCallback
   ) => {
     try {
-      const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
+      const service = await runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
       if (!service) {
         throw new Error("Knowledge service not available");
       }

@@ -35,7 +35,7 @@ export const secretsStatusProvider: Provider = {
     state?: State,
   ): Promise<ProviderResult> => {
     const secretsService =
-      runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
+      await runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
     if (!secretsService) {
       return { text: "" };
     }
@@ -95,7 +95,7 @@ No secrets are currently configured. The agent may need API keys or other creden
       }
 
       // Check plugin activator for pending plugins
-      const activatorService = runtime.getService<PluginActivatorService>(
+      const activatorService = await runtime.getService<PluginActivatorService>(
         PLUGIN_ACTIVATOR_SERVICE_TYPE,
       );
       if (activatorService) {
@@ -142,7 +142,7 @@ export const secretsInfoProvider: Provider = {
     state?: State,
   ): Promise<ProviderResult> => {
     const secretsService =
-      runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
+      await runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
     if (!secretsService) {
       return { text: "" };
     }

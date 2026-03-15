@@ -176,7 +176,7 @@ export class AgentRuntime implements IAgentRuntime {
     this.character = opts.character;
 
     if (opts.adapter) {
-      this.registerDatabaseAdapter(opts.adapter);
+      this.adapter = opts.adapter;
     }
 
     this.characterPlugins = opts.plugins || [];

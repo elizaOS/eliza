@@ -122,7 +122,7 @@ async function uploadKnowledgeHandler(
   res: ExtendedResponse,
   runtime: IAgentRuntime
 ) {
-  const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
+  const service = await runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
     return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }
@@ -354,7 +354,7 @@ async function getKnowledgeDocumentsHandler(
   res: ExtendedResponse,
   runtime: IAgentRuntime
 ) {
-  const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
+  const service = await runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
     return sendError(
       res,
@@ -427,7 +427,7 @@ async function deleteKnowledgeDocumentHandler(
   res: ExtendedResponse,
   runtime: IAgentRuntime
 ) {
-  const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
+  const service = await runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
     return sendError(
       res,
@@ -468,7 +468,7 @@ async function getKnowledgeByIdHandler(
   res: ExtendedResponse,
   runtime: IAgentRuntime
 ) {
-  const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
+  const service = await runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
     return sendError(
       res,
@@ -684,7 +684,7 @@ async function getKnowledgeChunksHandler(
   res: ExtendedResponse,
   runtime: IAgentRuntime
 ) {
-  const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
+  const service = await runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
     return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }
@@ -764,7 +764,7 @@ async function searchKnowledgeHandler(
   res: ExtendedResponse,
   runtime: IAgentRuntime
 ) {
-  const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
+  const service = await runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
     return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }
@@ -862,7 +862,7 @@ async function getGraphNodesHandler(
   res: ExtendedResponse,
   runtime: IAgentRuntime
 ) {
-  const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
+  const service = await runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
     return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }
@@ -964,7 +964,7 @@ async function getGraphNodeDetailsHandler(
   res: ExtendedResponse,
   runtime: IAgentRuntime
 ) {
-  const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
+  const service = await runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
     return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }
@@ -1048,7 +1048,7 @@ async function expandDocumentGraphHandler(
   res: ExtendedResponse,
   runtime: IAgentRuntime
 ) {
-  const service = runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
+  const service = await runtime.getService<KnowledgeService>(KnowledgeService.serviceType);
   if (!service) {
     return sendError(res, 500, "SERVICE_NOT_FOUND", "KnowledgeService not found");
   }

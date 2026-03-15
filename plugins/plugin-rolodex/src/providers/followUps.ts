@@ -6,7 +6,7 @@ export const followUpsProvider: Provider = {
   description: 'Provides information about upcoming follow-ups and reminders',
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     try {
-      const followUpService = runtime.getService('follow_up') as FollowUpService;
+      const followUpService = (await runtime.getService('follow_up')) as FollowUpService;
       if (!followUpService) {
         logger.warn('[FollowUpsProvider] FollowUpService not available');
         return { text: '' };

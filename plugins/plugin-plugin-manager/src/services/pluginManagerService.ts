@@ -659,7 +659,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
       for (const ServiceClass of plugin.services) {
         const serviceType = ServiceClass.serviceType;
         if (!this.originalServices.has(serviceType)) {
-          const services = this.runtime.getServicesByType(serviceType as ServiceTypeName);
+          const services = await this.runtime.getServicesByType(serviceType as ServiceTypeName);
           if (services && services.length > 0) {
             for (const service of services) {
               await service.stop();

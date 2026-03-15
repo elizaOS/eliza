@@ -20,7 +20,7 @@ export const moltbookStateProvider: Provider = {
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> => {
-    const service = runtime.getService(MOLTBOOK_SERVICE_NAME) as
+    const service = await runtime.getService(MOLTBOOK_SERVICE_NAME) as
       | MoltbookService
       | undefined;
 

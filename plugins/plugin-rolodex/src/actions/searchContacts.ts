@@ -84,7 +84,7 @@ export const searchContactsAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     // Check if RolodexService is available
-    const rolodexService = runtime.getService('rolodex') as RolodexService;
+    const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
     if (!rolodexService) {
       logger.warn('[SearchContacts] RolodexService not available');
       return false;
@@ -114,7 +114,7 @@ export const searchContactsAction: Action = {
     _options?: { [key: string]: unknown },
     callback?: HandlerCallback
   ): Promise<ActionResult | void> => {
-    const rolodexService = runtime.getService('rolodex') as RolodexService;
+    const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
 
     if (!rolodexService) {
       throw new Error('RolodexService not available');

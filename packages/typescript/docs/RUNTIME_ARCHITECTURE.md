@@ -2,6 +2,8 @@
 
 This document describes how `AgentRuntime` is structured after the "Runtime Diet" refactor and how to use it in different deployment environments. It focuses on **what** changed and **why**.
 
+For **building blocks** to load characters and create runtimes (e.g. `loadCharacters`, `createRuntimes`, the bootstrap vs runtime settings divide), see [Runtime composition](RUNTIME_COMPOSITION.md).
+
 ---
 
 ## Design goals (WHY the refactor)
@@ -130,7 +132,8 @@ Both use `void fetch(...).catch(() => {})` so failures are not thrown back to th
 | `runtime.ts`        | `AgentRuntime`: constructor (adapter required), slim `initialize()`, async `getService()`, `ensureConnection()` delegate, companion URL handling. |
 | `provisioning.ts`   | Node-only: `provisionAgent`, `runPluginMigrations`, `ensureAgentInfrastructure`, `ensureEmbeddingDimension`, `mergeDbSettings`. |
 | `connection.ts`     | Standalone: `ensureConnections`, `ensureConnection` (batch-first). |
-| `index.node.ts`     | Node entry point; exports provisioning and connection. |
+| `runtime-composition.ts` | Node-only: `loadCharacters`, `getBootstrapSettings`, `mergeSettingsInto`, `createRuntimes`. See [Runtime composition](RUNTIME_COMPOSITION.md). |
+| `index.node.ts`     | Node entry point; exports provisioning, connection, and runtime composition. |
 | `index.edge.ts`     | Edge entry point; does **not** export provisioning; exports connection, runtime, in-memory adapter. |
 | `services/task.ts`   | `TaskService`; `startTimer()` is public for explicit daemon use. |
 

@@ -138,7 +138,7 @@ export class TlonService extends Service {
    * Stop the Tlon service
    */
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(TLON_SERVICE_NAME) as
+    const service = (await runtime.getService(TLON_SERVICE_NAME)) as
       | TlonService
       | undefined;
     if (service) {

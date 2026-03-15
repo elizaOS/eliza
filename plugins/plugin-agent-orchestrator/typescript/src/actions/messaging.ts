@@ -85,7 +85,7 @@ export const sendCrossPlatformMessageAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     // Check if messaging service is available
-    const messagingService = runtime.getService("MESSAGING");
+    const messagingService = await runtime.getService("MESSAGING");
     if (!messagingService) {
       return false;
     }
@@ -110,7 +110,7 @@ export const sendCrossPlatformMessageAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const messagingService = runtime.getService("MESSAGING") as MessagingService | undefined;
+    const messagingService = (await runtime.getService("MESSAGING")) as MessagingService | undefined;
 
     if (!messagingService) {
       if (callback) {
@@ -257,7 +257,7 @@ export const sendToDeliveryContextAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     // Check if messaging service is available
-    const messagingService = runtime.getService("MESSAGING");
+    const messagingService = await runtime.getService("MESSAGING");
     if (!messagingService) {
       return false;
     }
@@ -280,7 +280,7 @@ export const sendToDeliveryContextAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const messagingService = runtime.getService("MESSAGING") as MessagingService | undefined;
+    const messagingService = (await runtime.getService("MESSAGING")) as MessagingService | undefined;
 
     if (!messagingService) {
       if (callback) {
@@ -383,7 +383,7 @@ export const sendToRoomAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     // Check if messaging service is available
-    const messagingService = runtime.getService("MESSAGING");
+    const messagingService = await runtime.getService("MESSAGING");
     if (!messagingService) {
       return false;
     }
@@ -406,7 +406,7 @@ export const sendToRoomAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const messagingService = runtime.getService("MESSAGING") as MessagingService | undefined;
+    const messagingService = (await runtime.getService("MESSAGING")) as MessagingService | undefined;
 
     if (!messagingService) {
       if (callback) {
@@ -504,7 +504,7 @@ export const sendToSessionMessageAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     // Check if messaging service is available
-    const messagingService = runtime.getService("MESSAGING");
+    const messagingService = await runtime.getService("MESSAGING");
     if (!messagingService) {
       return false;
     }
@@ -527,7 +527,7 @@ export const sendToSessionMessageAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const messagingService = runtime.getService("MESSAGING") as MessagingService | undefined;
+    const messagingService = (await runtime.getService("MESSAGING")) as MessagingService | undefined;
 
     if (!messagingService) {
       if (callback) {
@@ -624,7 +624,7 @@ export const listMessagingChannelsAction: Action = {
 
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
     // This action only requires the messaging service to be available
-    const messagingService = runtime.getService("MESSAGING");
+    const messagingService = await runtime.getService("MESSAGING");
     return !!messagingService;
   },
 
@@ -635,7 +635,7 @@ export const listMessagingChannelsAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const messagingService = runtime.getService("MESSAGING") as MessagingService | undefined;
+    const messagingService = (await runtime.getService("MESSAGING")) as MessagingService | undefined;
 
     if (!messagingService) {
       if (callback) {

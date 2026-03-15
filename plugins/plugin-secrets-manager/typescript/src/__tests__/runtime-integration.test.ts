@@ -407,7 +407,7 @@ describe("Secrets Manager Runtime Integration", () => {
     it("should register SecretsService with runtime", async () => {
       runtime = await createTestRuntime();
 
-      const secretsService = runtime.getService(SECRETS_SERVICE_TYPE);
+      const secretsService = await runtime.getService(SECRETS_SERVICE_TYPE);
       expect(secretsService).toBeDefined();
       expect(secretsService).toBeInstanceOf(SecretsService);
     });
@@ -415,7 +415,7 @@ describe("Secrets Manager Runtime Integration", () => {
     it("should register PluginActivatorService with runtime", async () => {
       runtime = await createTestRuntime();
 
-      const activatorService = runtime.getService(
+      const activatorService = await runtime.getService(
         PLUGIN_ACTIVATOR_SERVICE_TYPE,
       );
       expect(activatorService).toBeDefined();
@@ -425,7 +425,7 @@ describe("Secrets Manager Runtime Integration", () => {
     it("should register OnboardingService with runtime", async () => {
       runtime = await createTestRuntime();
 
-      const onboardingService = runtime.getService(ONBOARDING_SERVICE_TYPE);
+      const onboardingService = await runtime.getService(ONBOARDING_SERVICE_TYPE);
       expect(onboardingService).toBeDefined();
       expect(onboardingService).toBeInstanceOf(OnboardingService);
     });
@@ -435,7 +435,7 @@ describe("Secrets Manager Runtime Integration", () => {
     it("should start and stop cleanly", async () => {
       runtime = await createTestRuntime();
 
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       expect(secretsService).toBeDefined();
@@ -468,7 +468,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should set and get global secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -485,7 +485,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should set and get world secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -512,7 +512,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should isolate secrets by level", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -533,7 +533,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should isolate world secrets by world ID", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -569,7 +569,7 @@ describe("Secrets Manager Runtime Integration", () => {
 
     // Test that the storage types are correct
     it("should have correct storage backends configured", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       expect(secretsService).toBeDefined();
@@ -597,7 +597,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should encrypt and decrypt secrets correctly", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const secretValue = "super-secret-api-key-12345";
@@ -626,7 +626,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should handle unicode in secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const unicodeValue = "Japanese: 日本語, Emoji: 🔐🔑, Chinese: 中文";
@@ -637,7 +637,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should handle empty strings", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -647,7 +647,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should handle long secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const longValue = "x".repeat(10000);
@@ -658,7 +658,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should have a key manager initialized", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       expect(secretsService).toBeDefined();
@@ -680,7 +680,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should encrypt values correctly", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const keyManager = secretsService.getKeyManager();
@@ -708,7 +708,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should delete global secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -729,7 +729,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should return false when deleting non-existent secret", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -748,7 +748,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should list all secrets for a context", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -778,7 +778,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should check plugin requirements correctly", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -817,7 +817,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should report ready when all required secrets present", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -849,7 +849,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should report all secrets missing when none are set", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -884,7 +884,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should notify on secret change", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const callback = vi.fn();
@@ -901,7 +901,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should notify global listeners on any change", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const callback = vi.fn();
@@ -914,7 +914,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should unsubscribe correctly", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const callback = vi.fn();
@@ -935,7 +935,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should log access attempts", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -947,7 +947,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should filter access logs by key", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -961,7 +961,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should clear access logs", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -979,7 +979,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should activate plugin with no secret requirements", async () => {
-      const activatorService = runtime.getService(
+      const activatorService = await runtime.getService(
         PLUGIN_ACTIVATOR_SERVICE_TYPE,
       ) as PluginActivatorService;
 
@@ -999,7 +999,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should keep plugin pending when secrets are missing", async () => {
-      const activatorService = runtime.getService(
+      const activatorService = await runtime.getService(
         PLUGIN_ACTIVATOR_SERVICE_TYPE,
       ) as PluginActivatorService;
 
@@ -1024,7 +1024,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should track activated and pending plugins correctly", async () => {
-      const activatorService = runtime.getService(
+      const activatorService = await runtime.getService(
         PLUGIN_ACTIVATOR_SERVICE_TYPE,
       ) as PluginActivatorService;
 
@@ -1105,7 +1105,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should initialize onboarding for a world", async () => {
-      const onboardingService = runtime.getService(
+      const onboardingService = await runtime.getService(
         ONBOARDING_SERVICE_TYPE,
       ) as OnboardingService;
       const world = createTestWorld(runtime);
@@ -1129,7 +1129,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should validate and reject invalid secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const context: SecretContext = {
@@ -1146,7 +1146,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should validate with proper OpenAI key format", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -1167,7 +1167,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should return available validation strategies", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -1185,7 +1185,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should work with explicit SecretContext", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
 
@@ -1209,7 +1209,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should return null for non-existent secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const context: SecretContext = {
@@ -1222,7 +1222,7 @@ describe("Secrets Manager Runtime Integration", () => {
     });
 
     it("should return false for exists check on non-existent secrets", async () => {
-      const secretsService = runtime.getService(
+      const secretsService = await runtime.getService(
         SECRETS_SERVICE_TYPE,
       ) as SecretsService;
       const context: SecretContext = {

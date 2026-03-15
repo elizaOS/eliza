@@ -2,19 +2,11 @@
  * Telegram bot using elizaOS with full message pipeline.
  *
  * Required env vars: TELEGRAM_BOT_TOKEN, OPENAI_API_KEY
- * Optional: POSTGRES_URL (defaults to in-memory; use createDatabaseAdapter for persistence)
+ * Optional: POSTGRES_URL (with it: plugin-sql; without: in-memory via plugin-inmemorydb)
  */
 
-import {
-  AgentRuntime,
-  createCharacter,
-  InMemoryDatabaseAdapter,
-  mergeDbSettings,
-  provisionAgent,
-  stringToUuid,
-} from "@elizaos/core";
+import { loadCharacters, createRuntimes } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
 import telegramPlugin from "@elizaos/plugin-telegram";
 
 async function main() {
@@ -26,12 +18,15 @@ async function main() {
     process.exit(1);
   }
 
-  const character = createCharacter({
+  const adapterPlugin = process.env.POSTGRES_URL ? "@elizaos/plugin-sql" : "@elizaos/plugin-inmemorydb";
+
+  const characterInput = {
     name: "TelegramEliza",
     bio: "A helpful AI assistant on Telegram.",
     system: `You are TelegramEliza, a helpful AI assistant on Telegram.
 Be friendly, concise, and genuinely helpful.
 Keep responses short - suitable for mobile chat.`,
+    plugins: [adapterPlugin],
     settings: {
       OPENAI_SMALL_MODEL: "gpt-5-mini",
       OPENAI_LARGE_MODEL: "gpt-5-mini",
@@ -40,36 +35,29 @@ Keep responses short - suitable for mobile chat.`,
       TELEGRAM_BOT_TOKEN: telegramBotToken,
       OPENAI_API_KEY: openaiApiKey,
     },
-  });
+  };
 
   console.log("Starting TelegramEliza...");
 
-  const agentId = stringToUuid(character.name ?? "TelegramEliza");
-  const adapter = process.env.POSTGRES_URL
-    ? (await import("@elizaos/plugin-sql")).createDatabaseAdapter(
-        { postgresUrl: process.env.POSTGRES_URL },
-        agentId,
-      )
-    : new InMemoryDatabaseAdapter();
-  await adapter.initialize();
-
-  const characterWithSettings = await mergeDbSettings(character, adapter, agentId);
-
-  const runtime = new AgentRuntime({
-    character: characterWithSettings,
-    adapter,
-    plugins: [sqlPlugin, openaiPlugin, telegramPlugin],
+  const characters = await loadCharacters([characterInput]);
+  const runtimes = await createRuntimes(characters, {
+    sharedPlugins: [openaiPlugin, telegramPlugin],
+    provision: true,
+    logLevel: "info",
   });
 
-  await runtime.initialize();
-  await provisionAgent(runtime, { runMigrations: true });
-
-  const taskService = await runtime.getService("task");
-  if (taskService && typeof (taskService as { startTimer?: () => void }).startTimer === "function") {
-    (taskService as { startTimer: () => void }).startTimer();
+  const runtime = runtimes[0];
+  if (!runtime) {
+    throw new Error("No runtime created");
   }
 
-  console.log(`${character.name} is running. Press Ctrl+C to stop.`);
+  const taskService = await runtime.getService("task");
+  const taskWithTimer = taskService as unknown as { startTimer?: () => void };
+  if (taskWithTimer?.startTimer) {
+    taskWithTimer.startTimer();
+  }
+
+  console.log(`${runtime.character.name} is running. Press Ctrl+C to stop.`);
 
   process.on("SIGINT", async () => {
     await runtime.stop();

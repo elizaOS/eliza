@@ -10,7 +10,7 @@ export const farcasterWebhookRoutes: Route[] = [
         const webhookData = req.body as { type?: string };
         const eventType = webhookData.type;
 
-        const farcasterService = runtime?.getService?.("farcaster") as {
+        const farcasterService = await runtime?.getService?.("farcaster") as {
           managers?: {
             get?: (id: string) => {
               interactions?: {

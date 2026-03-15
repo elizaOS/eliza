@@ -47,7 +47,7 @@ export class EVMService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(EVM_SERVICE_NAME);
+    const service = await runtime.getService(EVM_SERVICE_NAME);
     if (!service) {
       logger.error("EVMService not found");
       return;

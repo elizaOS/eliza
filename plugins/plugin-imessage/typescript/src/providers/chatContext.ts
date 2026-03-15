@@ -30,7 +30,7 @@ export const chatContextProvider: Provider = {
       };
     }
 
-    const imessageService = runtime.getService<IMessageService>(
+    const imessageService = await runtime.getService<IMessageService>(
       IMESSAGE_SERVICE_NAME,
     );
 

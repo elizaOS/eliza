@@ -93,7 +93,7 @@ export class NextcloudTalkService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(NEXTCLOUD_TALK_SERVICE_NAME) as
+    const service = (await runtime.getService(NEXTCLOUD_TALK_SERVICE_NAME)) as
       | NextcloudTalkService
       | undefined;
     if (service) {

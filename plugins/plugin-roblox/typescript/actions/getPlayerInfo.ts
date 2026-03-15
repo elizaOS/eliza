@@ -87,7 +87,7 @@ const getPlayerInfo: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
     try {
-      const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
+      const service = await runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
       if (!service) {
         logger.error("Roblox service not found");
         if (callback) {

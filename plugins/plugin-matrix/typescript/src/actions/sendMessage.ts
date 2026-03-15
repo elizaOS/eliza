@@ -55,7 +55,7 @@ export const sendMessage: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
-    const matrixService = runtime.getService(MATRIX_SERVICE_NAME) as MatrixService | undefined;
+    const matrixService = (await runtime.getService(MATRIX_SERVICE_NAME)) as MatrixService | undefined;
 
     if (!matrixService || !matrixService.isConnected()) {
       if (callback) {

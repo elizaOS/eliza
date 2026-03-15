@@ -1,4 +1,4 @@
-import { AgentRuntime, type Plugin } from '@elizaos/core';
+import { AgentRuntime, InMemoryDatabaseAdapter, type Plugin } from '@elizaos/core';
 import autoTraderPlugin from '@elizaos/plugin-auto-trader';
 import { traderCharacter } from './character';
 
@@ -48,6 +48,7 @@ async function initializeRuntime(config: RuntimeConfig): Promise<AgentRuntime> {
   const runtime = new AgentRuntime({
     character,
     plugins,
+    adapter: new InMemoryDatabaseAdapter(),
   });
 
   await runtime.initialize();

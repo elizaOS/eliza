@@ -447,7 +447,7 @@ export class TelegramService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime) {
-    const tgClient = runtime.getService(TELEGRAM_SERVICE_NAME);
+    const tgClient = await runtime.getService(TELEGRAM_SERVICE_NAME);
     if (tgClient) {
       await tgClient.stop();
     }

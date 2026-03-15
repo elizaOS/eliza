@@ -103,7 +103,7 @@ export const setSecretAction: Action = {
 
     // Check if secrets service is available
     const secretsService =
-      runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
+      await runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
     return secretsService !== null;
   },
 
@@ -117,7 +117,7 @@ export const setSecretAction: Action = {
     logger.info("[SetSecret] Processing secret set request");
 
     const secretsService =
-      runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
+      await runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
     if (!secretsService) {
       if (callback) {
         await callback({

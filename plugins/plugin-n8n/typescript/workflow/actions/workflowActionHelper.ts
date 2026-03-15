@@ -43,7 +43,7 @@ export async function executeWorkflowAction(params: WorkflowActionParams): Promi
   const { runtime, message, state, callback, actionLabel, noWorkflowsMessage, execute } = params;
   const logSrc = `plugin:n8n:action:${actionLabel}`;
 
-  const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+  const service = await runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
 
   if (!service) {
     logger.error({ src: logSrc }, "N8n Workflow service not available");
@@ -105,5 +105,5 @@ export async function executeWorkflowAction(params: WorkflowActionParams): Promi
 
 /** Shared validate: returns true when the workflow service is available. */
 export async function validateWorkflowService(runtime: IAgentRuntime): Promise<boolean> {
-  return !!runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
+  return !!await runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
 }

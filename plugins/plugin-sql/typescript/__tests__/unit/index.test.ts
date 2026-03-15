@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { IAgentRuntime, IDatabaseAdapter, UUID } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import type { IDatabaseAdapter, UUID } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDatabaseAdapter, plugin } from "../../index";
 
 /**
@@ -22,55 +22,6 @@ interface PluginSqlSingletons {
  */
 interface GlobalWithSingletons {
   [key: symbol]: PluginSqlSingletons | undefined;
-}
-
-/**
- * Minimal test runtime interface for testing plugin-sql initialization.
- * This interface only includes the properties that plugin.init actually uses.
- */
-interface TestRuntimeConfig {
-  agentId: UUID;
-  getSetting: Mock<(key: string) => string | boolean | number | null>;
-  registerDatabaseAdapter: Mock<(adapter: IDatabaseAdapter) => void>;
-  registerService: Mock<() => void>;
-  getService: Mock<() => void>;
-  databaseAdapter: IDatabaseAdapter | undefined;
-  haselizaOS: Mock<() => boolean>;
-  logger: {
-    info: Mock<() => void>;
-    debug: Mock<() => void>;
-    warn: Mock<() => void>;
-    error: Mock<() => void>;
-  };
-}
-
-/**
- * Creates a test runtime for testing plugin-sql.
- * The runtime is typed to satisfy IAgentRuntime for use with plugin.init.
- */
-function createTestRuntime(
-  overrides: Partial<TestRuntimeConfig> = {}
-): TestRuntimeConfig & IAgentRuntime {
-  const baseRuntime: TestRuntimeConfig = {
-    agentId: "00000000-0000-0000-0000-000000000000" as UUID,
-    getSetting: vi.fn(() => null),
-    registerDatabaseAdapter: vi.fn(() => {}),
-    registerService: vi.fn(() => {}),
-    getService: vi.fn(() => {}),
-    databaseAdapter: undefined,
-    haselizaOS: vi.fn(() => false),
-    logger: {
-      info: vi.fn(() => {}),
-      debug: vi.fn(() => {}),
-      warn: vi.fn(() => {}),
-      error: vi.fn(() => {}),
-    },
-    ...overrides,
-  };
-
-  // Return the runtime as IAgentRuntime - the plugin only uses the properties defined above.
-  // This is safe because plugin.init only accesses these specific properties.
-  return baseRuntime as TestRuntimeConfig & IAgentRuntime;
 }
 
 /**
@@ -110,35 +61,22 @@ async function cleanupGlobalSingletons() {
 }
 
 describe("SQL Plugin", () => {
-  let runtime: TestRuntimeConfig & IAgentRuntime;
   let tempDir: string;
 
   beforeEach(async () => {
-    // Clean up any existing singletons from previous tests
     await cleanupGlobalSingletons();
-
-    // Create a temporary directory for tests
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-plugin-sql-test-"));
-
-    // Reset environment variables
     delete process.env.POSTGRES_URL;
     delete process.env.POSTGRES_USER;
     delete process.env.POSTGRES_PASSWORD;
     delete process.env.PGLITE_DATA_DIR;
-
-    runtime = createTestRuntime();
   });
 
   afterEach(async () => {
-    // Clean up singletons BEFORE deleting the directory
     await cleanupGlobalSingletons();
-
-    // Clean up temporary directory
     if (tempDir && fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
-
-    // Reset environment variables
     delete process.env.PGLITE_DATA_DIR;
   });
 
@@ -159,98 +97,9 @@ describe("SQL Plugin", () => {
       expect(plugin.schema).toHaveProperty("memoryTable");
     });
 
-    it("should have init function", () => {
-      expect(plugin.init).toBeDefined();
-      expect(typeof plugin.init).toBe("function");
-    });
-  });
-
-  describe("Plugin Initialization", () => {
-    it("should skip initialization if adapter already exists", async () => {
-      // Set up runtime with existing adapter using a minimal mock adapter
-      const existingAdapter: IDatabaseAdapter = {
-        db: {},
-        init: async () => {},
-        close: async () => {},
-        isReady: async () => true,
-        getConnection: async () => ({}),
-      } as IDatabaseAdapter;
-      runtime.databaseAdapter = existingAdapter;
-
-      if (plugin.init) {
-        await plugin.init({}, runtime);
-      }
-
-      // Logger calls can be tested with vi.spyOn() in vitest
-      // Just verify that registerDatabaseAdapter wasn't called
-      expect(runtime.registerDatabaseAdapter).not.toHaveBeenCalled();
-    });
-
-    it("should register database adapter when none exists", async () => {
-      // Set PGLITE_DATA_DIR to temp directory to avoid directory creation issues
-      process.env.PGLITE_DATA_DIR = tempDir;
-      runtime.getSetting = vi.fn((key) => {
-        // Return temp directory for database paths to avoid directory creation issues
-        if (key === "PGLITE_DATA_DIR") {
-          return tempDir;
-        }
-        return null;
-      });
-
-      if (plugin.init) {
-        await plugin.init({}, runtime);
-      }
-
-      expect(runtime.registerDatabaseAdapter).toHaveBeenCalled();
-    });
-
-    it("should use POSTGRES_URL when available", async () => {
-      runtime.getSetting = vi.fn((key) => {
-        if (key === "POSTGRES_URL") return "postgresql://localhost:5432/test";
-        return null;
-      });
-
-      if (plugin.init) {
-        await plugin.init({}, runtime);
-      }
-
-      expect(runtime.registerDatabaseAdapter).toHaveBeenCalled();
-    });
-
-    it("should use PGLITE_DATA_DIR when provided", async () => {
-      const customDir = path.join(tempDir, "custom-pglite");
-      runtime.getSetting = vi.fn((key) => {
-        if (key === "PGLITE_DATA_DIR") return customDir;
-        return null;
-      });
-
-      if (plugin.init) {
-        await plugin.init({}, runtime);
-      }
-
-      expect(runtime.registerDatabaseAdapter).toHaveBeenCalled();
-    });
-
-    it("should use default path if PGLITE_DATA_DIR is not set", async () => {
-      runtime.getSetting = vi.fn(() => null);
-
-      if (plugin.init) {
-        await plugin.init({}, runtime);
-      }
-
-      expect(runtime.registerDatabaseAdapter).toHaveBeenCalled();
-    });
-
-    it("should prefer to use PGLITE_DATA_DIR when environment variable is set", async () => {
-      // Set PGLITE_DATA_DIR to temp directory to avoid directory creation issues
-      process.env.PGLITE_DATA_DIR = tempDir;
-      runtime.getSetting = vi.fn(() => null);
-
-      if (plugin.init) {
-        await plugin.init({}, runtime);
-      }
-
-      expect(runtime.registerDatabaseAdapter).toHaveBeenCalled();
+    it("should have adapter factory", () => {
+      expect(plugin.adapter).toBeDefined();
+      expect(typeof plugin.adapter).toBe("function");
     });
   });
 

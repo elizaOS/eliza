@@ -4,6 +4,7 @@ import {
   type Content,
   createMessageMemory,
   EventType,
+  InMemoryDatabaseAdapter,
   type Memory,
   stringToUuid,
   type UUID,
@@ -60,6 +61,7 @@ async function initializeRuntime(): Promise<AgentRuntime> {
       ],
     },
     plugins: [localdbPlugin, elizagotchiPlugin],
+    adapter: new InMemoryDatabaseAdapter(),
   });
 
   await runtime.initialize();

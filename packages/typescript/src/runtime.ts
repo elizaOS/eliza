@@ -195,6 +195,8 @@ export class AgentRuntime implements IAgentRuntime {
   private settings: RuntimeSettings;
   private servicePromiseHandlers = new Map<string, ServicePromiseHandler>(); // Combined handlers for resolve/reject
   private servicePromises = new Map<string, Promise<Service>>(); // read
+  /** In-flight service start promises; dedupes concurrent getService() for the same type. */
+  private startingServices = new Map<string, Promise<Service | null>>();
   private serviceRegistrationStatus = new Map<
     ServiceTypeName,
     "pending" | "registering" | "registered" | "failed"
@@ -218,6 +220,8 @@ export class AgentRuntime implements IAgentRuntime {
   private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
   public messageService: IMessageService | null = null; // Lazily initialized
   public companionUrl?: string;
+  /** Set when stop() has been called; prevents new service starts and use-after-stop. */
+  private stopped = false;
 
   constructor(
     opts: {
@@ -505,9 +509,8 @@ export class AgentRuntime implements IAgentRuntime {
     if (pluginToRegister.adapter) {
       this.logger.debug(
         { src: "agent", agentId: this.agentId, plugin: pluginToRegister.name },
-        "Registering database adapter",
+        "Plugin declares adapter factory (handled pre-construction)",
       );
-      this.registerDatabaseAdapter(pluginToRegister.adapter);
     }
     if (pluginToRegister.actions) {
       for (const action of pluginToRegister.actions) {
@@ -594,11 +597,34 @@ export class AgentRuntime implements IAgentRuntime {
     return this.services;
   }
 
+  /**
+   * Stops all started services and clears runtime caches/handlers.
+   * For full teardown (including DB/adapter connection), call close() after stop().
+   */
   async stop() {
+    if (this.stopped) {
+      this.logger.debug(
+        { src: "agent", agentId: this.agentId },
+        "Runtime already stopped",
+      );
+      return;
+    }
+    this.stopped = true;
     this.logger.debug(
       { src: "agent", agentId: this.agentId },
       "Stopping runtime",
     );
+
+    // Wait for any in-flight service starts so we don't leave services running
+    const inFlight = Array.from(this.startingServices.values());
+    if (inFlight.length > 0) {
+      this.logger.debug(
+        { src: "agent", agentId: this.agentId, count: inFlight.length },
+        "Waiting for in-flight service starts before stopping",
+      );
+      await Promise.all(inFlight);
+    }
+
     for (const [serviceType, services] of this.services) {
       this.logger.debug(
         { src: "agent", agentId: this.agentId, serviceType },
@@ -616,6 +642,20 @@ export class AgentRuntime implements IAgentRuntime {
         }
       }
     }
+
+    // Reject any pending service load promises so callers don't hang
+    const stopError = new Error("Runtime stopped");
+    for (const handler of this.servicePromiseHandlers.values()) {
+      handler.reject(stopError);
+    }
+
+    // Clear caches and handlers to avoid use-after-stop and release references
+    this.eventHandlers.clear();
+    this.events = {};
+    this.stateCache.clear();
+    this.servicePromises.clear();
+    this.servicePromiseHandlers.clear();
+    this.startingServices.clear();
   }
 
   /**
@@ -901,26 +941,6 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Default to true (check should respond is enabled)
     return true;
-  }
-
-  /**
-   * Register a database adapter.
-   * @deprecated Adapter must be passed in the constructor. This method is retained only for plugin.adapter during transition and will be removed in a future major version.
-   * WHY deprecated: Constructor injection is the single source of truth and avoids races (e.g. migrations before adapter set). Plugins that expose adapter are no-oped when adapter already exists.
-   */
-  registerDatabaseAdapter(adapter: IDatabaseAdapter) {
-    if (this.adapter) {
-      this.logger.warn(
-        { src: "agent", agentId: this.agentId },
-        "Database adapter already registered, ignoring",
-      );
-    } else {
-      this.adapter = adapter;
-      this.logger.debug(
-        { src: "agent", agentId: this.agentId },
-        "Database adapter registered",
-      );
-    }
   }
 
   /**
@@ -2277,9 +2297,11 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   /** WHY lazy: Service is started on first getService() so unused features don't pay startup cost; callers must await getService(). */
+  /** Dedupes concurrent getService() for the same type via startingServices so only one start runs. */
   private async _ensureServiceStarted(
     serviceType: ServiceTypeName | string,
   ): Promise<Service | null> {
+    if (this.stopped) return null;
     const key = serviceType as ServiceTypeName;
     const instances = this.services.get(key);
     if (instances && instances.length > 0) {
@@ -2289,9 +2311,26 @@ export class AgentRuntime implements IAgentRuntime {
     if (!classes || classes.length === 0) {
       return null;
     }
+    let inFlight = this.startingServices.get(key);
+    if (!inFlight) {
+      inFlight = this._runServiceStart(key, serviceType, classes[0]);
+      this.startingServices.set(key, inFlight);
+    }
+    try {
+      return await inFlight;
+    } finally {
+      this.startingServices.delete(key);
+    }
+  }
+
+  /** Runs one service start; used by _ensureServiceStarted with startingServices dedupe. */
+  private async _runServiceStart(
+    key: ServiceTypeName,
+    serviceType: string,
+    serviceDef: ServiceClass,
+  ): Promise<Service | null> {
     this.serviceRegistrationStatus.set(key, "registering");
     await this.initPromise;
-    const serviceDef = classes[0];
     if (typeof serviceDef.start !== "function") {
       this.logger.error(
         { src: "agent", agentId: this.agentId, serviceType },
@@ -4142,6 +4181,9 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   async init(): Promise<void> {
     await this.adapter.initialize();
   }
+  /**
+   * Closes the database adapter. Call after stop() for full teardown (stops services then closes DB/connection).
+   */
   async close(): Promise<void> {
     if (this.adapter) {
       await this.adapter.close();

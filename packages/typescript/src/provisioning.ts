@@ -121,7 +121,7 @@ export async function ensureAgentInfrastructure(
         id: agentId,
         names: [character.name ?? "Agent"],
         metadata: {},
-        agentId: existingAgent.id,
+        agentId: existingAgent.id ?? agentId,
       },
     ]);
     const refetched = await adapter.getEntitiesByIds([agentId]);
@@ -136,7 +136,7 @@ export async function ensureAgentInfrastructure(
     await adapter.createRooms([
       {
         id: agentId,
-        name: character.name,
+        name: character.name ?? "Agent",
         source: "elizaos",
         type: ChannelType.SELF,
         channelId: agentId,

@@ -154,7 +154,7 @@ export class SchedulingService extends Service {
       issues.push("Runtime missing createComponent method");
     }
 
-    const emailService = this.runtime.getService("EMAIL");
+    const emailService = await this.runtime.getService("EMAIL");
     if (!emailService) {
       issues.push("EMAIL service not available");
     }
@@ -753,7 +753,7 @@ export class SchedulingService extends Service {
       const invite = this.generateCalendarInvite(meeting, participant.email, participant.name);
       invites.push(invite);
 
-      const emailService = this.runtime.getService("EMAIL");
+      const emailService = await this.runtime.getService("EMAIL");
       const emailServiceAny = emailService as unknown as {
         sendEmail?: (
           to: string,

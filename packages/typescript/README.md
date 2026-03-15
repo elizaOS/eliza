@@ -150,6 +150,26 @@ The runtime requires a **database adapter** at construction and no longer runs m
 
 For full deployment patterns (daemon, ephemeral, edge, tests) and WHYs, see [Runtime architecture](docs/RUNTIME_ARCHITECTURE.md). For a concise change list and migration guide, see [CHANGELOG.md](CHANGELOG.md).
 
+## Runtime composition (building blocks)
+
+The **runtime composition** API provides small, composable functions so hosts (daemon, cloud, serverless, milaidy) can set up runtimes without duplicating adapter creation, plugin resolution, or settings merge logic. **WHY:** Different hosts need different flows; composable building blocks let each use the pieces it needs (e.g. cloud may use only helpers with its own adapter pool).
+
+- **`loadCharacters(sources)`** – Load characters from file paths and/or inline objects. Returns validated `Character[]`.
+- **`getBootstrapSettings(character)`** – Flatten character + env into a string-only record for adapter factories. **Bootstrap** settings only (e.g. `POSTGRES_URL`, `PGLITE_DATA_DIR`); runtime settings from the DB are merged later. **WHY:** Adapters are created before the DB is connected, so they cannot read DB-backed settings.
+- **`mergeSettingsInto(character, agentRecord)`** – Pure merge of DB agent settings/secrets into a character (for custom pipelines that load agent records themselves).
+- **`createRuntimes(characters, options?)`** – Full pipeline: resolve plugins (batch), create adapters from plugin factory, init adapters, batch merge DB settings, create and initialize runtimes; optional `provision: true`. **WHY:** One call for the common daemon path; batching reduces plugin resolution and DB round-trips.
+
+**Example (daemon):**
+
+```typescript
+import { loadCharacters, createRuntimes } from "@elizaos/core";
+
+const characters = await loadCharacters(["./character.json"]);
+const runtimes = await createRuntimes(characters, { provision: true });
+```
+
+Composition APIs are **Node-only** (exported from the main entry point, not browser/edge). See [Runtime composition](docs/RUNTIME_COMPOSITION.md) for the settings divide (bootstrap vs runtime), full API, and examples (daemon, milaidy, cloud, serverless).
+
 ## Getting Started
 
 ### Initializing with `corePlugin`
@@ -223,6 +243,10 @@ The `@elizaos/core` package uses **vitest** for testing.
     npx vitest
     ```
     Test results will be displayed in the terminal.
+
+### Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned improvements and future work (runtime composition, plugins, testing).
 
 ### TODO Items
 

@@ -19,7 +19,7 @@ const moltbookCommentAction: Action = {
     message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    const service = runtime.getService(
+    const service = await runtime.getService(
       MOLTBOOK_SERVICE_NAME,
     ) as MoltbookService;
     if (!service) {
@@ -42,7 +42,7 @@ const moltbookCommentAction: Action = {
     options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ) => {
-    const service = runtime.getService(
+    const service = await runtime.getService(
       MOLTBOOK_SERVICE_NAME,
     ) as MoltbookService;
     if (!service) {

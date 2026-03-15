@@ -34,7 +34,7 @@ export const listGroupsAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
   ): Promise<boolean> => {
-    const service = runtime.getService(ZALOUSER_SERVICE_NAME);
+    const service = await runtime.getService(ZALOUSER_SERVICE_NAME);
     return !!service;
   },
 
@@ -45,7 +45,7 @@ export const listGroupsAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = runtime.getService(ZALOUSER_SERVICE_NAME) as
+    const service = await runtime.getService(ZALOUSER_SERVICE_NAME) as
       | ZaloUserService
       | undefined;
 

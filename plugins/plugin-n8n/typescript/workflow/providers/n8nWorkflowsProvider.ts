@@ -63,7 +63,7 @@ export const n8nWorkflowsProvider: Provider = {
 
     // --- Workflow List ---
     try {
-      const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+      const service = await runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
 
       if (service) {
         const userId = message.entityId;

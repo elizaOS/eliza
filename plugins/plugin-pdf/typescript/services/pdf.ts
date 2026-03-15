@@ -28,7 +28,7 @@ export class PdfService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(ServiceType.PDF);
+    const service = await runtime.getService(ServiceType.PDF);
     if (service) {
       await service.stop();
     }

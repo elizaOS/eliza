@@ -69,10 +69,7 @@ When a plugin is registered with the runtime:
 Components are registered in this specific sequence. For component details, see [Plugin Components](/plugins/components).
 
 ```typescript
-// 1. Database adapter (if provided)
-if (plugin.adapter) {
-  this.registerDatabaseAdapter(plugin.adapter);
-}
+// 1. Database adapter: supplied at construction by the host (e.g. from plugin.adapter(agentId, settings)); not registered at plugin load time.
 
 // 2. Actions
 if (plugin.actions) {
@@ -215,9 +212,11 @@ export const plugin: Plugin = {
     "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema,
-  init: async (_, runtime: IAgentRuntime) => {
-    const dbAdapter = createDatabaseAdapter(config, runtime.agentId);
-    runtime.registerDatabaseAdapter(dbAdapter);
+  adapter(agentId, settings) {
+    return createDatabaseAdapter(
+      settings.POSTGRES_URL ? { postgresUrl: settings.POSTGRES_URL } : { dataDir: settings.PGLITE_DATA_DIR },
+      agentId,
+    );
   },
 };
 ```

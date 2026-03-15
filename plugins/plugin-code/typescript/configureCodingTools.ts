@@ -30,12 +30,12 @@ import type {
  * @param options - Configuration options for the tools
  * @returns Array of CodingAction instances
  */
-export function configureCodingTools(
+export async function configureCodingTools(
   runtime: IAgentRuntime,
   options?: CodingToolsOptions,
-): CodingAction[] {
-  const shellService = runtime.getService<ShellService>("shell");
-  const coderService = runtime.getService<CoderService>("coder");
+): Promise<CodingAction[]> {
+  const shellService = await runtime.getService<ShellService>("shell");
+  const coderService = await runtime.getService<CoderService>("coder");
 
   const defaultCwd = options?.cwd ?? process.cwd();
   const scopeKey = options?.scopeKey;

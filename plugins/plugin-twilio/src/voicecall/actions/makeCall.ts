@@ -33,7 +33,7 @@ export const voiceCallMakeCallAction: Action = {
   description: "Make an outbound voice call to a phone number",
 
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
-    const service = runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
+    const service = await runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
     return !!service?.isConnected();
   },
 
@@ -44,7 +44,7 @@ export const voiceCallMakeCallAction: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
+    const service = await runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
 
     if (!service || !service.isConnected()) {
       if (callback) {

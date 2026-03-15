@@ -711,7 +711,7 @@ export class MessageManager {
 
     for (const url of urls) {
       // Use string literal type for getService, assume methods exist at runtime
-      const videoService = this.runtime.getService(ServiceType.VIDEO) as
+      const videoService = (await this.runtime.getService(ServiceType.VIDEO)) as
         | ({
             isVideoUrl?: (url: string) => boolean;
             processVideo?: (
@@ -743,7 +743,7 @@ export class MessageManager {
         }
       } else {
         // Use string literal type for getService, assume methods exist at runtime
-        const browserService = this.runtime.getService(ServiceType.BROWSER) as
+        const browserService = (await this.runtime.getService(ServiceType.BROWSER)) as
           | ({
               getPageContent?: (
                 url: string,

@@ -578,9 +578,8 @@ export class RuntimeFactory {
       plugins: filteredPlugins,
       agentId,
       settings: ephemeralSettings as Record<string, string | boolean | number>,
+      adapter: dbAdapter,
     });
-
-    runtime.registerDatabaseAdapter(dbAdapter);
     this.ensureRuntimeLogger(runtime);
 
     await this.initializeRuntime(runtime, character, agentId);

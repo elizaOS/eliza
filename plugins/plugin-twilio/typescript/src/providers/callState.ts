@@ -7,7 +7,7 @@ const callStateProvider: Provider = {
   description: "Provides information about active voice calls and streams",
   get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     try {
-      const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
+      const twilioService = await runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
       if (!twilioService) {
         return {
           text: "No Twilio call state available - service not initialized",

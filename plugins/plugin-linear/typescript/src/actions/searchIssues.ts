@@ -86,7 +86,7 @@ export const searchIssuesAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
-      const linearService = runtime.getService<LinearService>("linear");
+      const linearService = await runtime.getService<LinearService>("linear");
       if (!linearService) {
         throw new Error("Linear service not available");
       }

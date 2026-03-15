@@ -6,7 +6,7 @@ export const contactsProvider: Provider = {
   description: 'Provides contact information from the rolodex',
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     try {
-      const rolodexService = runtime.getService('rolodex') as RolodexService;
+      const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
       if (!rolodexService) {
         logger.warn('[ContactsProvider] RolodexService not available');
         return { text: '' };

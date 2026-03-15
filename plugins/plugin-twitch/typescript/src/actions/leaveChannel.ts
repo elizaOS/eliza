@@ -61,7 +61,7 @@ export const leaveChannel: Action = {
     callback?: (response: { text: string; source?: string }) => void,
   ): Promise<ActionResult> => {
     const twitchService =
-      runtime.getService<TwitchService>(TWITCH_SERVICE_NAME);
+      await runtime.getService<TwitchService>(TWITCH_SERVICE_NAME);
 
     if (!twitchService || !twitchService.isConnected()) {
       if (callback) {

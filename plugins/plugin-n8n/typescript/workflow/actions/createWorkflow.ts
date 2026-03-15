@@ -240,7 +240,7 @@ export const createWorkflowAction: Action = {
     'about the draft — including "yes", "ok", "deploy", "cancel", or modification requests.',
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    return !!runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
+    return !!await runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
   },
 
   handler: async (
@@ -250,7 +250,7 @@ export const createWorkflowAction: Action = {
     _options?: unknown,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+    const service = await runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
 
     if (!service) {
       logger.error(

@@ -22,7 +22,7 @@ export const chatStateProvider: Provider = {
     message: Memory,
     _state: State
   ): Promise<ProviderResult> => {
-    const service = runtime.getService<BlueBubblesService>(BLUEBUBBLES_SERVICE_NAME);
+    const service = await runtime.getService<BlueBubblesService>(BLUEBUBBLES_SERVICE_NAME);
 
     if (!service || !service.getIsRunning()) {
       return { text: "" };

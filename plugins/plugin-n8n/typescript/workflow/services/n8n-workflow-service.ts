@@ -179,7 +179,7 @@ export class N8nWorkflowService extends Service {
     }
 
     // ── Integration availability check ──
-    const rawProvider = this.runtime.getService(N8N_CREDENTIAL_PROVIDER_TYPE);
+    const rawProvider = await this.runtime.getService(N8N_CREDENTIAL_PROVIDER_TYPE);
     const credProvider = isCredentialProvider(rawProvider) ? rawProvider : null;
 
     if (credProvider?.checkCredentialTypes) {
@@ -318,11 +318,11 @@ export class N8nWorkflowService extends Service {
     const config = this.getConfig();
     const client = this.getClient();
 
-    const credStore = this.runtime.getService(N8N_CREDENTIAL_STORE_TYPE) as unknown as
+    const credStore = await this.runtime.getService(N8N_CREDENTIAL_STORE_TYPE) as unknown as
       | N8nCredentialStoreApi
       | undefined;
 
-    const rawProvider = this.runtime.getService(N8N_CREDENTIAL_PROVIDER_TYPE);
+    const rawProvider = await this.runtime.getService(N8N_CREDENTIAL_PROVIDER_TYPE);
     const credProvider = isCredentialProvider(rawProvider) ? rawProvider : null;
 
     const credentialResult = await resolveCredentials(

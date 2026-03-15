@@ -122,7 +122,7 @@ export const processAction: Action = {
     message: Memory,
     state?: State
   ): Promise<ActionResult> => {
-    const shellService = runtime.getService<ShellService>("shell");
+    const shellService = await runtime.getService<ShellService>("shell");
     if (!shellService) {
       return {
         success: false,

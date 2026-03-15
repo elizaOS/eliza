@@ -89,8 +89,8 @@ export const scheduleFollowUpAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     // Check if both services are available
-    const rolodexService = runtime.getService('rolodex') as RolodexService;
-    const followUpService = runtime.getService('follow_up') as FollowUpService;
+    const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
+    const followUpService = (await runtime.getService('follow_up')) as FollowUpService;
 
     if (!rolodexService || !followUpService) {
       logger.warn('[ScheduleFollowUp] Required services not available');
@@ -119,8 +119,8 @@ export const scheduleFollowUpAction: Action = {
     _options?: { [key: string]: unknown },
     callback?: HandlerCallback
   ): Promise<ActionResult | void> => {
-    const rolodexService = runtime.getService('rolodex') as RolodexService;
-    const followUpService = runtime.getService('follow_up') as FollowUpService;
+    const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
+    const followUpService = (await runtime.getService('follow_up')) as FollowUpService;
 
     if (!rolodexService || !followUpService) {
       throw new Error('Required services not available');

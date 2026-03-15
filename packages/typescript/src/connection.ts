@@ -10,7 +10,7 @@
 
 import type { Entity, Room, World } from "./types";
 import type { IDatabaseAdapter } from "./types/database";
-import type { JsonValue, UUID } from "./types";
+import type { JsonValue, Metadata, UUID } from "./types";
 import { ChannelType } from "./types";
 import { stringToUuid } from "./utils";
 
@@ -90,8 +90,9 @@ export async function ensureConnections(
 
     const world: World = {
       id: worldId,
-      name:
-        c.worldName || c.messageServerId
+      name: c.worldName
+        ? c.worldName
+        : c.messageServerId
           ? `World for server ${c.messageServerId}`
           : `World for room ${c.roomId}`,
       agentId,
@@ -137,9 +138,9 @@ export async function ensureConnections(
     const names = existing
       ? [...new Set([...(existing.names || []), ...v.names])].filter(Boolean)
       : v.names;
-    const metadata = existing
+    const metadata = (existing
       ? { ...existing.metadata, ...v.metadata }
-      : v.metadata;
+      : v.metadata) as Metadata;
     entities.push({
       id: v.entityId,
       names,

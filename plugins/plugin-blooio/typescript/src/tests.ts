@@ -10,7 +10,7 @@ export class BlooioTestSuite implements TestSuite {
     {
       name: "Service Initialization Test",
       fn: async (runtime: IAgentRuntime) => {
-        const blooioService = runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
+        const blooioService = await runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
         if (!blooioService) {
           throw new Error("Blooio service not initialized");
         }
@@ -25,7 +25,7 @@ export class BlooioTestSuite implements TestSuite {
     {
       name: "Send Message Test",
       fn: async (runtime: IAgentRuntime) => {
-        const blooioService = runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
+        const blooioService = await runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
         if (!blooioService) {
           throw new Error("Blooio service not initialized");
         }
@@ -46,7 +46,7 @@ export class BlooioTestSuite implements TestSuite {
     {
       name: "Conversation History Test",
       fn: async (runtime: IAgentRuntime) => {
-        const blooioService = runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
+        const blooioService = await runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
         if (!blooioService) {
           throw new Error("Blooio service not initialized");
         }
@@ -73,7 +73,7 @@ export class BlooioTestSuite implements TestSuite {
     {
       name: "Error Handling Test",
       fn: async (runtime: IAgentRuntime) => {
-        const blooioService = runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
+        const blooioService = await runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
         if (!blooioService) {
           throw new Error("Blooio service not initialized");
         }

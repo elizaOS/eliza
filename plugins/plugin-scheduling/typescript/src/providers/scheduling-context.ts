@@ -27,7 +27,7 @@ export const schedulingContextProvider: Provider = {
   name: "SCHEDULING_CONTEXT",
   description: "Provides context about upcoming meetings and scheduling requests",
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    const schedulingService = runtime.getService<SchedulingService>("SCHEDULING");
+    const schedulingService = await runtime.getService<SchedulingService>("SCHEDULING");
     if (!schedulingService) {
       return { text: "" };
     }

@@ -28,9 +28,11 @@ export const plugin: Plugin = {
     "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema,
-  init: async (_, runtime: IAgentRuntime) => {
-    const dbAdapter = createDatabaseAdapter(config, runtime.agentId);
-    runtime.registerDatabaseAdapter(dbAdapter);
+  adapter(agentId, settings) {
+    return createDatabaseAdapter(
+      settings.POSTGRES_URL ? { postgresUrl: settings.POSTGRES_URL } : { dataDir: settings.PGLITE_DATA_DIR },
+      agentId,
+    );
   },
 };
 ```

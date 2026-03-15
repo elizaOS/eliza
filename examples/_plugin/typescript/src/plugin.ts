@@ -146,11 +146,11 @@ export class StarterService extends Service {
   static async stop(runtime: IAgentRuntime) {
     logger.info("Stopping starter service");
     // get the service from the runtime
-    const service = runtime.getService(StarterService.serviceType);
+    const service = await runtime.getService(StarterService.serviceType);
     if (!service) {
       throw new Error("Starter service not found");
     }
-    service.stop();
+    await service.stop();
   }
 
   async stop() {

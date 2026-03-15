@@ -92,7 +92,7 @@ export const StarterPluginTestSuite: TestSuite = {
           );
         }
         // Verify the plugin is loaded properly
-        const service = runtime.getService("starter");
+        const service = await runtime.getService("starter");
         if (!service) {
           throw new Error("Starter service not found");
         }
@@ -241,7 +241,7 @@ export const StarterPluginTestSuite: TestSuite = {
       name: "starter_service_test",
       fn: async (runtime: IAgentRuntime) => {
         // Get the service from the runtime
-        const service = runtime.getService("starter");
+        const service = await runtime.getService("starter");
         if (!service) {
           throw new Error("Starter service not found");
         }

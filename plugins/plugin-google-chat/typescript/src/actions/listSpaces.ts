@@ -11,6 +11,7 @@ import type {
   State,
 } from "@elizaos/core";
 import type { GoogleChatService } from "../service.js";
+import type { GoogleChatSpace } from "../types.js";
 import {
   GOOGLE_CHAT_SERVICE_NAME,
   getSpaceDisplayName,
@@ -41,7 +42,7 @@ export const listSpaces: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const gchatService = runtime.getService<GoogleChatService>(
+    const gchatService = await runtime.getService<GoogleChatService>(
       GOOGLE_CHAT_SERVICE_NAME,
     );
 
@@ -71,7 +72,7 @@ export const listSpaces: Action = {
     }
 
     // Format space list
-    const spaceLines = spaces.map((space) => {
+    const spaceLines = spaces.map((space: GoogleChatSpace) => {
       const name = getSpaceDisplayName(space);
       const type = isDirectMessage(space) ? "DM" : space.type || "SPACE";
       const threaded = space.threaded ? " (threaded)" : "";
@@ -91,7 +92,7 @@ export const listSpaces: Action = {
       success: true,
       data: {
         spaceCount: spaces.length,
-        spaces: spaces.map((s) => ({
+        spaces: spaces.map((s: GoogleChatSpace) => ({
           name: s.name,
           displayName: s.displayName,
           type: s.type,

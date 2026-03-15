@@ -26,7 +26,7 @@ export const continueCallAction: Action = {
     _message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    const service = runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
+    const service = await runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
     if (!service?.isConnected()) return false;
     // Must have at least one active call
     return service.getActiveCalls().length > 0;
@@ -39,7 +39,7 @@ export const continueCallAction: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
+    const service = await runtime.getService<VoiceCallService>(VOICE_CALL_SERVICE_NAME);
 
     if (!service || !service.isConnected()) {
       if (callback) {

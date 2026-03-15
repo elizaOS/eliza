@@ -25,7 +25,7 @@ export const modifyCharacterAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     // Check if character file manager service is available
-    const fileManager = runtime.getService<CharacterFileManager>('character-file-manager');
+    const fileManager = await runtime.getService<CharacterFileManager>('character-file-manager');
     if (!fileManager) {
       return false;
     }
@@ -146,7 +146,7 @@ Return JSON: {"isModificationRequest": boolean, "requestType": "explicit"|"sugge
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
-      const fileManager = runtime.getService<CharacterFileManager>('character-file-manager');
+      const fileManager = await runtime.getService<CharacterFileManager>('character-file-manager');
       if (!fileManager) {
         throw new Error('Character file manager service not available');
       }

@@ -40,7 +40,7 @@ export const sendMessageAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const msTeamsService = runtime.getService(
+    const msTeamsService = await runtime.getService(
       MSTEAMS_SERVICE_NAME,
     ) as unknown as MSTeamsService | undefined;
     if (!msTeamsService) {
@@ -160,7 +160,7 @@ export const sendPollAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const msTeamsService = runtime.getService(
+    const msTeamsService = await runtime.getService(
       MSTEAMS_SERVICE_NAME,
     ) as unknown as MSTeamsService | undefined;
     if (!msTeamsService) {
@@ -283,7 +283,7 @@ export const sendAdaptiveCardAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const msTeamsService = runtime.getService(
+    const msTeamsService = await runtime.getService(
       MSTEAMS_SERVICE_NAME,
     ) as unknown as MSTeamsService | undefined;
     if (!msTeamsService) {

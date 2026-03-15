@@ -86,9 +86,6 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
   hasService(serviceType: ServiceTypeName | string): boolean;
 
-  /** @deprecated Pass adapter in the constructor. Will be removed in a future major version. */
-  registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
-  
   /**
    * Get the messaging adapter if the current database adapter supports it
    * 

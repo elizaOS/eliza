@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/handler.js",
   "scripts": {
-    "build": "bun build handler.ts --outdir=dist --target=node --format=esm --outfile=dist/handler.js",
+    "build": "bun build handler.ts --outdir=dist --target=node --format=esm --outfile=dist/handler.js --external=@elizaos/core --external=@elizaos/plugin-openai --external=@elizaos/plugin-sql",
     "build:watch": "bun run build --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",

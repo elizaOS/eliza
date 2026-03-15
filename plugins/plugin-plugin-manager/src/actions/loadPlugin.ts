@@ -53,7 +53,7 @@ export const loadPluginAction: Action = {
 
   async validate(runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> {
     // Precondition: plugin manager service must be available
-    const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
+    const pluginManager = await runtime.getService('plugin_manager') as PluginManagerService;
     if (!pluginManager) {
       return false;
     }
@@ -70,7 +70,7 @@ export const loadPluginAction: Action = {
     options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<void> {
-    const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
+    const pluginManager = await runtime.getService('plugin_manager') as PluginManagerService;
 
     if (!pluginManager) {
       if (callback) {

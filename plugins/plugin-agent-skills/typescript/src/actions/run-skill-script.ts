@@ -27,7 +27,7 @@ export const runSkillScriptAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
   ): Promise<boolean> => {
-    const service = runtime.getService<AgentSkillsService>(
+    const service = await runtime.getService<AgentSkillsService>(
       "AGENT_SKILLS_SERVICE",
     );
     return !!service;
@@ -41,7 +41,7 @@ export const runSkillScriptAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
-      const service = runtime.getService<AgentSkillsService>(
+      const service = await runtime.getService<AgentSkillsService>(
         "AGENT_SKILLS_SERVICE",
       );
       if (!service) {

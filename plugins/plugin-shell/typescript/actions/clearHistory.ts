@@ -19,7 +19,7 @@ export const clearHistory: Action = {
   similes: spec.similes ? [...spec.similes] : [],
   description: spec.description,
   validate: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<boolean> => {
-    const shellService = runtime.getService<ShellService>("shell");
+    const shellService = await runtime.getService<ShellService>("shell");
     if (!shellService) {
       return false;
     }
@@ -40,7 +40,7 @@ export const clearHistory: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback
   ) => {
-    const shellService = runtime.getService<ShellService>("shell");
+    const shellService = await runtime.getService<ShellService>("shell");
 
     if (!shellService) {
       if (callback) {

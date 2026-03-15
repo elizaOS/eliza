@@ -99,7 +99,7 @@ export class OnboardingService extends Service {
     logger.info("[OnboardingService] Starting");
 
     // Get secrets service
-    this.secretsService = this.runtime.getService("SECRETS") as SecretsService;
+    this.secretsService = (await this.runtime.getService("SECRETS")) as SecretsService;
 
     // Register platform events
     this.registerEvents();
@@ -377,7 +377,7 @@ export class OnboardingService extends Service {
     }
 
     // Send deep link message to group
-    const telegramService = this.runtime.getService("telegram") as {
+    const telegramService = (await this.runtime.getService("telegram")) as {
       messageManager: {
         sendMessage: (
           chatId: string | number,

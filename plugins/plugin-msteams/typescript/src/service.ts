@@ -95,7 +95,7 @@ export class MSTeamsService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(MSTEAMS_SERVICE_NAME) as
+    const service = (await runtime.getService(MSTEAMS_SERVICE_NAME)) as
       | MSTeamsService
       | undefined;
     if (service) {

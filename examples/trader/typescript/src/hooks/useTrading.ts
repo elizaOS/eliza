@@ -77,7 +77,7 @@ export function useTrading(runtime: AgentRuntime | null) {
   const refreshStatus = useCallback(async () => {
     if (!runtime) return;
 
-    const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager | undefined;
+    const tradingManager = (await runtime.getService('AutoTradingManager')) as AutoTradingManager | undefined;
     if (!tradingManager) return;
 
     const status = tradingManager.getStatus();
@@ -116,7 +116,7 @@ export function useTrading(runtime: AgentRuntime | null) {
   const refreshWallet = useCallback(async () => {
     if (!runtime) return;
 
-    const swapService = runtime.getService('SwapService') as unknown as { getWalletAddress(): string | null; getWalletBalances(): Promise<{ solBalance: number }> } | undefined;
+    const swapService = (await runtime.getService('SwapService')) as unknown as { getWalletAddress(): string | null; getWalletBalances(): Promise<{ solBalance: number }> } | undefined;
     if (!swapService) return;
 
     const address = swapService.getWalletAddress();
@@ -146,7 +146,7 @@ export function useTrading(runtime: AgentRuntime | null) {
     setLoading(true);
     setError(null);
 
-    const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager | undefined;
+    const tradingManager = (await runtime.getService('AutoTradingManager')) as AutoTradingManager | undefined;
     if (!tradingManager) {
       setError('Trading service not available');
       setLoading(false);
@@ -173,7 +173,7 @@ export function useTrading(runtime: AgentRuntime | null) {
     setLoading(true);
     setError(null);
 
-    const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager | undefined;
+    const tradingManager = (await runtime.getService('AutoTradingManager')) as AutoTradingManager | undefined;
     if (!tradingManager) {
       setError('Trading service not available');
       setLoading(false);

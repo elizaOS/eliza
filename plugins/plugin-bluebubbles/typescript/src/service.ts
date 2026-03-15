@@ -113,7 +113,7 @@ export class BlueBubblesService extends Service {
   }
 
   static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService<BlueBubblesService>(
+    const service = await runtime.getService<BlueBubblesService>(
       BLUEBUBBLES_SERVICE_NAME,
     );
     if (service) {

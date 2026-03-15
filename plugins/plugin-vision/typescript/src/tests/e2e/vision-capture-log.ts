@@ -13,7 +13,7 @@ export class VisionCaptureLogTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         console.log("Starting 30-second vision capture test...");
 
-        const visionService = runtime.getService<VisionService>("VISION");
+        const visionService = await runtime.getService<VisionService>("VISION");
         if (!visionService) {
           throw new Error("Vision service not available");
         }

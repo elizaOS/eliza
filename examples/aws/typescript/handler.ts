@@ -13,11 +13,12 @@ import {
   type Character,
   createCharacter,
   createMessageMemory,
+  InMemoryDatabaseAdapter,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
+import sqlPlugin, { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
@@ -84,9 +85,18 @@ async function initializeRuntime(): Promise<AgentRuntime> {
     console.log("Initializing elizaOS runtime...");
 
     const character = getCharacter();
+    const agentId = stringToUuid(character.name ?? "Eliza");
+    const adapter = process.env.POSTGRES_URL
+      ? createDatabaseAdapter(
+          { postgresUrl: process.env.POSTGRES_URL },
+          agentId,
+        )
+      : new InMemoryDatabaseAdapter();
+
     runtime = new AgentRuntime({
       character,
       plugins: [sqlPlugin, openaiPlugin],
+      adapter,
     });
 
     await runtime.initialize();

@@ -375,7 +375,7 @@ export class CoderService extends Service {
     // Use ShellService for execution if available
     const shellService =
       typeof this.runtime?.getService === "function"
-        ? this.runtime.getService<ShellService>("shell")
+        ? await this.runtime.getService<ShellService>("shell")
         : null;
     if (shellService) {
       const execResult = await shellService.exec(trimmed, {

@@ -37,7 +37,7 @@ export const conversationStateProvider: Provider = {
     let groupName = "";
     const channelId = room.channelId ?? "";
 
-    const signalService = runtime.getService(
+    const signalService = await runtime.getService(
       ServiceType.SIGNAL,
     ) as SignalService;
     if (!signalService || !signalService.isServiceConnected()) {

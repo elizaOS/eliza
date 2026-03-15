@@ -46,7 +46,7 @@ export const sendMessageAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const tlonService = runtime.getService(TLON_SERVICE_NAME) as
+    const tlonService = (await runtime.getService(TLON_SERVICE_NAME)) as
       | TlonService
       | undefined;
 

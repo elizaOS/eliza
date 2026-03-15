@@ -55,7 +55,7 @@ export class CloudContainerService extends Service {
 
   private async initialize(): Promise<void> {
     // Get auth service reference
-    const auth = this.runtime.getService("CLOUD_AUTH");
+    const auth = await this.runtime.getService("CLOUD_AUTH");
     if (!auth) {
       logger.warn("[CloudContainer] CloudAuthService not available, container operations will fail");
       return;

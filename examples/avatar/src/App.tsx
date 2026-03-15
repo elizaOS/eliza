@@ -226,7 +226,7 @@ export default function App() {
             const apiKey = (config.provider.elevenlabsApiKey ?? "").trim();
             if (!apiKey) {
               // No key: fall back to robot voice.
-              const wav = synthesizeSamWav(bundle.runtime, chunk, config.sam);
+              const wav = await synthesizeSamWav(bundle.runtime, chunk, config.sam);
               await lipSyncPlayerRef.current.playWav(wav);
               continue;
             }
@@ -267,7 +267,7 @@ export default function App() {
 
             await lipSyncPlayerRef.current.playWav(buffer);
           } else {
-            const wav = synthesizeSamWav(bundle.runtime, chunk, config.sam);
+            const wav = await synthesizeSamWav(bundle.runtime, chunk, config.sam);
             await lipSyncPlayerRef.current.playWav(wav);
           }
         }

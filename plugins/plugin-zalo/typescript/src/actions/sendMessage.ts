@@ -39,7 +39,7 @@ export const sendMessageAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const zaloService = runtime.getService(ZALO_SERVICE_NAME) as
+    const zaloService = (await runtime.getService(ZALO_SERVICE_NAME)) as
       | ZaloService
       | undefined;
 

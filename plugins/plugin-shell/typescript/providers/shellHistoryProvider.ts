@@ -21,7 +21,7 @@ export const shellHistoryProvider: Provider = {
     "Provides recent shell command history, current working directory, and file operations within the restricted environment",
   position: 99,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    const shellService = runtime.getService<ShellService>("shell");
+    const shellService = await runtime.getService<ShellService>("shell");
 
     if (!shellService) {
       logger.warn("[shellHistoryProvider] Shell service not found");

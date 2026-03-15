@@ -7,7 +7,7 @@ export const provider: Provider = {
   description: "Information about connected MCP servers, tools, and resources",
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
-    const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME);
+    const mcpService = await runtime.getService<McpService>(MCP_SERVICE_NAME);
     if (!mcpService) {
       return {
         values: {},

@@ -67,8 +67,8 @@ export class MessagingService extends Service {
     // Discord adapter (service name: "DISCORD")
     this.registerAdapter({
       channel: "discord",
-      isAvailable: () => {
-        const service = this.runtime.getService("DISCORD");
+      isAvailable: async () => {
+        const service = await this.runtime.getService("DISCORD");
         return !!service;
       },
       send: async (params) => this.sendViaDiscord(params),
@@ -77,8 +77,8 @@ export class MessagingService extends Service {
     // Telegram adapter (service name: "TELEGRAM")
     this.registerAdapter({
       channel: "telegram",
-      isAvailable: () => {
-        const service = this.runtime.getService("TELEGRAM");
+      isAvailable: async () => {
+        const service = await this.runtime.getService("TELEGRAM");
         return !!service;
       },
       send: async (params) => this.sendViaTelegram(params),
@@ -87,8 +87,8 @@ export class MessagingService extends Service {
     // Slack adapter (service name: "slack")
     this.registerAdapter({
       channel: "slack",
-      isAvailable: () => {
-        const service = this.runtime.getService("slack");
+      isAvailable: async () => {
+        const service = await this.runtime.getService("slack");
         return !!service;
       },
       send: async (params) => this.sendViaSlack(params),
@@ -97,8 +97,8 @@ export class MessagingService extends Service {
     // WhatsApp adapter (service name: "whatsapp")
     this.registerAdapter({
       channel: "whatsapp",
-      isAvailable: () => {
-        const service = this.runtime.getService("whatsapp");
+      isAvailable: async () => {
+        const service = await this.runtime.getService("whatsapp");
         return !!service;
       },
       send: async (params) => this.sendViaWhatsApp(params),
@@ -107,8 +107,8 @@ export class MessagingService extends Service {
     // Twitch adapter (service name: "twitch")
     this.registerAdapter({
       channel: "twitch",
-      isAvailable: () => {
-        const service = this.runtime.getService("twitch");
+      isAvailable: async () => {
+        const service = await this.runtime.getService("twitch");
         return !!service;
       },
       send: async (params) => this.sendViaTwitch(params),
@@ -389,7 +389,7 @@ export class MessagingService extends Service {
    */
   private async sendViaDiscord(params: SendMessageParams): Promise<SendMessageResult> {
     // Get Discord service
-    const discordService = this.runtime.getService("DISCORD") as
+    const discordService = (await this.runtime.getService("DISCORD")) as
       | { client: { channels: { fetch: (id: string) => Promise<unknown> } } }
       | undefined;
 
@@ -444,7 +444,7 @@ export class MessagingService extends Service {
    * Sends via Telegram.
    */
   private async sendViaTelegram(params: SendMessageParams): Promise<SendMessageResult> {
-    const telegramService = this.runtime.getService("TELEGRAM") as
+    const telegramService = (await this.runtime.getService("TELEGRAM")) as
       | {
           bot?: {
             telegram: {
@@ -507,7 +507,7 @@ export class MessagingService extends Service {
    * Uses SlackService.sendMessage(channelId, text, options) which returns { ts, channelId }.
    */
   private async sendViaSlack(params: SendMessageParams): Promise<SendMessageResult> {
-    const slackService = this.runtime.getService("slack") as
+    const slackService = (await this.runtime.getService("slack")) as
       | {
           sendMessage?: (
             channelId: string,
@@ -560,7 +560,7 @@ export class MessagingService extends Service {
    * The response contains { messages: [{ id: string }], messaging_product: "whatsapp" }.
    */
   private async sendViaWhatsApp(params: SendMessageParams): Promise<SendMessageResult> {
-    const whatsappService = this.runtime.getService("whatsapp") as
+    const whatsappService = (await this.runtime.getService("whatsapp")) as
       | {
           sendText?: (
             to: string,
@@ -610,7 +610,7 @@ export class MessagingService extends Service {
    * Returns TwitchSendResult { success: boolean; messageId?: string }.
    */
   private async sendViaTwitch(params: SendMessageParams): Promise<SendMessageResult> {
-    const twitchService = this.runtime.getService("twitch") as
+    const twitchService = (await this.runtime.getService("twitch")) as
       | {
           sendMessage?: (
             text: string,

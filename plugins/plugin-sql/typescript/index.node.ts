@@ -89,6 +89,13 @@ export const plugin: Plugin = {
   description: "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema: schema,
+  adapter(agentId, settings) {
+    const postgresUrl = settings.POSTGRES_URL || settings.DATABASE_URL;
+    return createDatabaseAdapter(
+      postgresUrl ? { postgresUrl } : { dataDir: settings.PGLITE_DATA_DIR },
+      agentId,
+    );
+  },
 };
 
 export default plugin;

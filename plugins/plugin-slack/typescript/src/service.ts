@@ -178,7 +178,7 @@ export class SlackService extends Service implements ISlackService {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(SLACK_SERVICE_NAME) as
+    const service = (await runtime.getService(SLACK_SERVICE_NAME)) as
       | SlackService
       | undefined;
     if (service) {

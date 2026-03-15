@@ -33,12 +33,12 @@ interface AcpStatusOpts {
 /**
  * Get the ACP service from runtime
  */
-function getAcpService(ctx: CliContext): ACPService | null {
+async function getAcpService(ctx: CliContext): Promise<ACPService | null> {
   const runtime = ctx.getRuntime?.();
   if (!runtime) {
     return null;
   }
-  return runtime.getService<ACPService>(ACP_SERVICE_TYPE);
+  return await runtime.getService<ACPService>(ACP_SERVICE_TYPE);
 }
 
 /**
@@ -78,8 +78,8 @@ export function registerAcpCli(ctx: CliContext): void {
       false,
     )
     .option("--verbose, -v", "Verbose logging to stderr", false)
-    .action((opts: AcpServerOpts) => {
-      const service = getAcpService(ctx);
+    .action(async (opts: AcpServerOpts) => {
+      const service = await getAcpService(ctx);
 
       if (service) {
         // Use the service if available (runtime connected)
@@ -138,8 +138,8 @@ export function registerAcpCli(ctx: CliContext): void {
     .command("status")
     .description("Show ACP service status")
     .option("--json", "Output as JSON", false)
-    .action((opts: AcpStatusOpts) => {
-      const service = getAcpService(ctx);
+    .action(async (opts: AcpStatusOpts) => {
+      const service = await getAcpService(ctx);
 
       const status = {
         serviceAvailable: service !== null,

@@ -31,6 +31,12 @@ export const plugin: Plugin = {
   description: "A plugin for SQL database access (PGlite WASM in browser).",
   priority: 0,
   schema: schema,
+  adapter(agentId, settings) {
+    return createDatabaseAdapter(
+      { dataDir: settings.PGLITE_DATA_DIR },
+      agentId,
+    );
+  },
 };
 
 export default plugin;

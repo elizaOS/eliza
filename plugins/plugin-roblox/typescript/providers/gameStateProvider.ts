@@ -14,7 +14,7 @@ export const gameStateProvider: Provider = {
     _state?: State
   ): Promise<ProviderResult> => {
     try {
-      const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
+      const service = await runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
       if (!service) {
         return { text: "", data: {}, values: {} };
       }

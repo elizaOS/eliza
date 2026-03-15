@@ -52,7 +52,7 @@ export const editMessageAction: Action = {
     if (source !== "telegram") return false;
     
     // Check if telegram service is available and initialized
-    const telegramService = runtime.getService(TELEGRAM_SERVICE_NAME) as TelegramService | undefined;
+    const telegramService = await runtime.getService(TELEGRAM_SERVICE_NAME) as TelegramService | undefined;
     return telegramService?.isInitialized() ?? false;
   },
 
@@ -63,7 +63,7 @@ export const editMessageAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const telegramService = runtime.getService(TELEGRAM_SERVICE_NAME) as
+    const telegramService = await runtime.getService(TELEGRAM_SERVICE_NAME) as
       | TelegramService
       | undefined;
     if (!telegramService) {

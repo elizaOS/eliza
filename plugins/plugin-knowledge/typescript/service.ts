@@ -128,7 +128,7 @@ export class KnowledgeService extends Service {
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
     logger.info(`Stopping Knowledge service for agent: ${runtime.agentId}`);
-    const service = runtime.getService(KnowledgeService.serviceType);
+    const service = await runtime.getService(KnowledgeService.serviceType);
     if (!service) {
       logger.warn(`KnowledgeService not found for agent ${runtime.agentId} during stop.`);
     }

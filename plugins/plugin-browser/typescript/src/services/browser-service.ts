@@ -61,7 +61,7 @@ export class BrowserService extends Service {
 
   static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
     logger.info("Stopping browser automation service");
-    const service = runtime.getService<BrowserService>(BrowserService.serviceType);
+    const service = await runtime.getService<BrowserService>(BrowserService.serviceType);
     if (!service) {
       throw new Error("Browser service not found");
     }

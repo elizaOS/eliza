@@ -134,7 +134,7 @@ export const formEvaluator: Evaluator = {
     _state?: State,
   ): Promise<boolean> => {
     try {
-      const formService = runtime.getService("FORM") as FormService;
+      const formService = (await runtime.getService("FORM")) as FormService;
       if (!formService) return false;
 
       const entityId = message.entityId as UUID;
@@ -173,7 +173,7 @@ export const formEvaluator: Evaluator = {
     state?: State,
   ): Promise<ActionResult | undefined> => {
     try {
-      const formService = runtime.getService("FORM") as FormService;
+      const formService = (await runtime.getService("FORM")) as FormService;
       if (!formService) return undefined;
 
       const entityId = message.entityId as UUID;

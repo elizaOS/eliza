@@ -199,7 +199,7 @@ export class LLMStrategy implements TradingStrategy {
     }
 
     // Pre-validate tokens to filter out obvious scams/honeypots BEFORE LLM analysis
-    const validationService = runtime.getService("TokenValidationService") as
+    const validationService = (await runtime.getService("TokenValidationService")) as
       | TokenValidationService
       | undefined;
     let validTokens = trendingTokens;

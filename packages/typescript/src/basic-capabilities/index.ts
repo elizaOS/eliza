@@ -861,7 +861,7 @@ const controlMessageHandler = async ({
   );
 
   if (websocketServiceName) {
-    const websocketService = runtime.getService(websocketServiceName);
+    const websocketService = await runtime.getService(websocketServiceName);
     interface WebSocketServiceWithSendMessage {
       sendMessage: (message: {
         type: string;
