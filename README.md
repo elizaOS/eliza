@@ -42,7 +42,7 @@ For complete guides and API references, visit our official **[documentation](htt
 ## 🚀 Key Features
 
 - 🔌 **Rich Connectivity**: Out-of-the-box connectors for Discord, Telegram, Farcaster, and more.
-- 🧠 **Model Agnostic**: Supports all major models, including OpenAI, Gemini, Anthropic, Llama, and Grok.
+- 🧠 **Model Agnostic**: Supports all major models, including OpenAI, Gemini, Anthropic, Llama, Grok, and [MiniMax](https://platform.minimax.io/).
 - 🖥️ **Modern Web UI**: A professional dashboard for managing agents, groups, and conversations in real-time.
 - 🤖 **Multi-Agent Architecture**: Designed from the ground up for creating and orchestrating groups of specialized agents.
 - 📄 **Document Ingestion**: Easily ingest documents and allow agents to retrieve information and answer questions from your data (RAG).

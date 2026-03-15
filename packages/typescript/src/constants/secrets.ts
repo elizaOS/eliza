@@ -72,6 +72,10 @@ export const SECRET_KEY_ALIASES: Record<string, string> = {
   TOGETHER_KEY: "TOGETHER_API_KEY",
   TOGETHER_TOKEN: "TOGETHER_API_KEY",
 
+  // MiniMax aliases
+  MINIMAX_KEY: "MINIMAX_API_KEY",
+  MINIMAX_TOKEN: "MINIMAX_API_KEY",
+
   // ElevenLabs aliases
   ELEVENLABS_KEY: "ELEVENLABS_API_KEY",
   ELEVEN_LABS_API_KEY: "ELEVENLABS_API_KEY",
@@ -103,6 +107,7 @@ export const CANONICAL_SECRET_KEYS = [
   "FIREWORKS_API_KEY",
   "PERPLEXITY_API_KEY",
   "DEEPSEEK_API_KEY",
+  "MINIMAX_API_KEY",
 
   // Channel/Platform Tokens
   "DISCORD_BOT_TOKEN",
@@ -160,6 +165,7 @@ export const MODEL_PROVIDER_SECRETS: Record<string, string> = {
   fireworks: "FIREWORKS_API_KEY",
   perplexity: "PERPLEXITY_API_KEY",
   deepseek: "DEEPSEEK_API_KEY",
+  minimax: "MINIMAX_API_KEY",
 
   // Local inference (checks for URL instead of API key)
   ollama: "OLLAMA_BASE_URL",

@@ -1,0 +1,35 @@
+{
+  "name": "@elizaos/plugin-minimax",
+  "version": "1.0.0",
+  "description": "MiniMax AI provider plugin for ElizaOS - Chat completion and TTS support",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "minimax",
+    "llm",
+    "tts",
+    "ai"
+  ],
+  "license": "MIT",
+  "dependencies": {},
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "MINIMAX_API_KEY": {
+        "type": "string",
+        "description": "MiniMax API key for authentication",
+        "required": true
+      },
+      "MINIMAX_BASE_URL": {
+        "type": "string",
+        "description": "MiniMax API base URL (default: https://api.minimax.io/v1)",
+        "required": false
+      }
+    }
+  }
+}
