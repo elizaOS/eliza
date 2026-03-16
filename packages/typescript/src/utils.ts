@@ -770,7 +770,13 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 export function parseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
-  const result = extractAndParseJSONObjectFromText(text);
+  let result: Record<string, unknown> | null;
+  try {
+    result = extractAndParseJSONObjectFromText(text);
+  } catch (error) {
+    // Re-throw parse errors as documented in @throws JSDoc
+    throw error;
+  }
   // Return null for arrays or failed parses (backward compatible behavior)
   if (!result || Array.isArray(result)) {
     return null;

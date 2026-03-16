@@ -13,22 +13,34 @@ const jsonBlockPattern = /```(?:json|json5)\s*\r?\n([\s\S]*?)\r?\n```/i;
 
 
 
+/**
+ * Extract and parse JSON from text using JSON5 for LLM output tolerance.
+ * Throws on parse failure for invalid JSON.
+ * 
+ * @param text - The input text containing JSON
+ * @returns Parsed object/array
+ * @throws {Error} If the JSON is invalid or parsing fails
+ */
 export function extractAndParseJSONObjectFromText(
   text: string,
-): Record<string, unknown> | null {
-  const jsonBlockMatch = text.match(jsonBlockPattern);
-  let textToParse = jsonBlockMatch ? jsonBlockMatch[1].trim() : text.trim();
-  let jsonData: Record<string, unknown> | null = null;
+): Record<string, unknown> | unknown[] {
+  if (!text || typeof text !== "string") {
+    throw new Error("Invalid input: text must be a non-empty string");
+  }
 
+  // First try to extract JSON from code blocks if present
+  const match = text.match(jsonBlockPattern);
+  const textToParse = match ? match[1].trim() : text.trim();
+
+  // Use JSON5.parse directly - it already handles unquoted keys, single quotes, trailing commas
   try {
-    // Use JSON5.parse directly - it already handles unquoted keys, single quotes, trailing commas
-    jsonData = JSON5.parse(textToParse) as Record<string, unknown>;
-  } catch {
+    return JSON5.parse(textToParse) as Record<string, unknown>;
+  } catch (err) {
     logger.warn(
-      { src: "core:utils:json-llm" },
-      "Could not parse text as JSON, returning null",
+      { src: "core:utils:json-llm", err },
+      "Failed to parse text as JSON"
     );
-    return null;
+    throw new Error("Failed to parse invalid JSON");
   }
 
   if (jsonData && typeof jsonData === "object" && !Array.isArray(jsonData)) {
