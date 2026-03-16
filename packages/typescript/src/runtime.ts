@@ -1963,6 +1963,9 @@ export class AgentRuntime implements IAgentRuntime {
       async (evaluator: Evaluator) => {
         if (!evaluator.handler) {
           return null;
+        } finally {
+          // Always clear timer to prevent leaks
+          clearTimeout(timerId);
         }
         if (!didRespond && !evaluator.alwaysRun) {
           return null;
@@ -2493,12 +2496,15 @@ export class AgentRuntime implements IAgentRuntime {
               PROVIDER_TIMEOUT,
             );
           });
-          const result = await Promise.race([
-            provider.get(this as IAgentRuntime, message, cachedState),
-            timeoutPromise,
-          ]);
-          // Clear timer on success so it doesn't fire later and leak (reject would be a no-op but timer would stay alive).
-          clearTimeout(timerId);
+          try {
+            const result = await Promise.race([
+              provider.get(this as IAgentRuntime, message, cachedState),
+              timeoutPromise,
+            ]);
+            return result;
+          } finally {
+            clearTimeout(timerId); // Ensure timer is cleared regardless of success/failure
+          }
           const duration = Date.now() - start;
           providerTimings.push({ name: provider.name, durationMs: duration });
           if (duration > 100) {
@@ -3233,20 +3239,6 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // Log model usage with caller information 
-    this.logger.debug(
-      {
-        src: "agent",
-        agentId: this.agentId,
-        model: modelKey,
-        caller: callerInfo,
-        provider: provider || "default",
-        actionContext: this.currentActionContext?.actionName,
-        runId: this.getCurrentRunId(),
-      },
-      "useModel called"
-    );
-
-    // Log model usage with caller information
     this.logger.debug(
       {
         src: "agent",
