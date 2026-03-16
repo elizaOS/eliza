@@ -1,3 +1,4 @@
+// Note: tests are structured to verify replyAction behavior in isolation.
 import { replyAction } from './reply.ts';
 
 describe('replyAction', () => {
