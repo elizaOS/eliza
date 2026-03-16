@@ -30,7 +30,7 @@
     "linux"
   ],
   "main": "wrapper.js",
-  "name": "@elizaos/computeruse",
+  "name": "@elizaos/computeruse-nodejs",
   "napi": {
     "name": "computeruse",
     "triples": {
