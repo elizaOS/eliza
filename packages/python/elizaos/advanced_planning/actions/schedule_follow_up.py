@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID as StdUUID
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
@@ -32,7 +32,7 @@ _spec = require_action_spec("SCHEDULE_FOLLOW_UP")
 
 def _convert_spec_examples() -> list[list[ActionExample]]:
     """Convert spec examples to ActionExample format."""
-    spec_examples = _spec.get("examples", [])
+    spec_examples = cast(list[list[dict[str, Any]]], _spec.get("examples", []))
     if spec_examples:
         return [
             [

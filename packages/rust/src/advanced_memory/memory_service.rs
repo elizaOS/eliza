@@ -7,7 +7,7 @@ use crate::types::memory::{Memory, MemoryMetadata};
 use crate::types::primitives::{Content, UUID};
 use anyhow::Result;
 use std::any::Any;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex, Weak};
 use tracing::{debug, info};
 
@@ -16,8 +16,10 @@ pub struct MemoryService {
     config: Mutex<MemoryConfig>,
     /// In-memory message counts per room (for threshold tracking)
     session_message_counts: Mutex<HashMap<UUID, i32>>,
+    session_message_count_order: Mutex<VecDeque<UUID>>,
     /// In-memory extraction checkpoints: key = "entityId:roomId" -> message count
     last_extraction_checkpoints: Mutex<HashMap<String, i32>>,
+    last_extraction_checkpoint_order: Mutex<VecDeque<String>>,
 }
 
 #[async_trait::async_trait]
@@ -31,17 +33,50 @@ impl Service for MemoryService {
     }
 
     async fn stop(&self) -> Result<()> {
+        self.session_message_counts.lock().unwrap().clear();
+        self.session_message_count_order.lock().unwrap().clear();
+        self.last_extraction_checkpoints.lock().unwrap().clear();
+        self.last_extraction_checkpoint_order
+            .lock()
+            .unwrap()
+            .clear();
         Ok(())
     }
 }
 
 impl MemoryService {
+    const MAX_LOCAL_SESSION_ENTRIES: usize = 500;
+
     pub fn new(runtime: Weak<AgentRuntime>, config: MemoryConfig) -> Self {
         Self {
             runtime,
             config: Mutex::new(config),
             session_message_counts: Mutex::new(HashMap::new()),
+            session_message_count_order: Mutex::new(VecDeque::new()),
             last_extraction_checkpoints: Mutex::new(HashMap::new()),
+            last_extraction_checkpoint_order: Mutex::new(VecDeque::new()),
+        }
+    }
+
+    fn touch_lru_key<K>(order: &mut VecDeque<K>, key: &K)
+    where
+        K: Clone + PartialEq,
+    {
+        if let Some(index) = order.iter().position(|existing| existing == key) {
+            order.remove(index);
+        }
+        order.push_back(key.clone());
+    }
+
+    fn prune_lru_map<K, V>(map: &mut HashMap<K, V>, order: &mut VecDeque<K>, max_entries: usize)
+    where
+        K: Clone + Eq + std::hash::Hash,
+    {
+        while map.len() > max_entries {
+            let Some(oldest) = order.pop_front() else {
+                break;
+            };
+            map.remove(&oldest);
         }
     }
 
@@ -59,14 +94,23 @@ impl MemoryService {
 
     pub fn increment_message_count(&self, room_id: UUID) -> i32 {
         let mut counts = self.session_message_counts.lock().unwrap();
-        let count = counts.entry(room_id).or_insert(0);
-        *count += 1;
-        *count
+        let mut order = self.session_message_count_order.lock().unwrap();
+        let new_count = {
+            let count = counts.entry(room_id.clone()).or_insert(0);
+            *count += 1;
+            *count
+        };
+        Self::touch_lru_key(&mut order, &room_id);
+        Self::prune_lru_map(&mut counts, &mut order, Self::MAX_LOCAL_SESSION_ENTRIES);
+        new_count
     }
 
     pub fn reset_message_count(&self, room_id: UUID) {
         let mut counts = self.session_message_counts.lock().unwrap();
-        counts.insert(room_id, 0);
+        let mut order = self.session_message_count_order.lock().unwrap();
+        counts.insert(room_id.clone(), 0);
+        Self::touch_lru_key(&mut order, &room_id);
+        Self::prune_lru_map(&mut counts, &mut order, Self::MAX_LOCAL_SESSION_ENTRIES);
     }
 
     // ── Extraction checkpointing ─────────────────────────────────────
@@ -76,10 +120,17 @@ impl MemoryService {
     }
 
     pub fn get_last_extraction_checkpoint(&self, entity_id: &UUID, room_id: &UUID) -> i32 {
+        let key = Self::extraction_key(entity_id, room_id);
         let checkpoints = self.last_extraction_checkpoints.lock().unwrap();
-        *checkpoints
-            .get(&Self::extraction_key(entity_id, room_id))
-            .unwrap_or(&0)
+        let value = *checkpoints.get(&key).unwrap_or(&0);
+        drop(checkpoints);
+
+        if value != 0 {
+            let mut order = self.last_extraction_checkpoint_order.lock().unwrap();
+            Self::touch_lru_key(&mut order, &key);
+        }
+
+        value
     }
 
     pub fn set_last_extraction_checkpoint(
@@ -89,7 +140,15 @@ impl MemoryService {
         message_count: i32,
     ) {
         let mut checkpoints = self.last_extraction_checkpoints.lock().unwrap();
-        checkpoints.insert(Self::extraction_key(entity_id, room_id), message_count);
+        let mut order = self.last_extraction_checkpoint_order.lock().unwrap();
+        let key = Self::extraction_key(entity_id, room_id);
+        checkpoints.insert(key.clone(), message_count);
+        Self::touch_lru_key(&mut order, &key);
+        Self::prune_lru_map(
+            &mut checkpoints,
+            &mut order,
+            Self::MAX_LOCAL_SESSION_ENTRIES,
+        );
         debug!(
             "Set extraction checkpoint for {} in room {} at {}",
             entity_id, room_id, message_count
@@ -519,5 +578,56 @@ impl MemoryService {
             created_at: mem.created_at.unwrap_or(0),
             updated_at: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_message_count_cache_is_bounded() {
+        let service = MemoryService::new(Weak::new(), MemoryConfig::default());
+
+        for index in 0..600 {
+            service.increment_message_count(UUID::new_v4());
+            if index % 3 == 0 {
+                service.reset_message_count(UUID::new_v4());
+            }
+        }
+
+        assert_eq!(
+            service.session_message_counts.lock().unwrap().len(),
+            MemoryService::MAX_LOCAL_SESSION_ENTRIES
+        );
+        assert_eq!(
+            service.session_message_count_order.lock().unwrap().len(),
+            MemoryService::MAX_LOCAL_SESSION_ENTRIES
+        );
+    }
+
+    #[test]
+    fn extraction_checkpoint_cache_is_bounded() {
+        let service = MemoryService::new(Weak::new(), MemoryConfig::default());
+
+        for index in 0..600 {
+            let entity_id = UUID::new_v4();
+            let room_id = UUID::new_v4();
+            service.set_last_extraction_checkpoint(&entity_id, &room_id, index);
+            let _ = service.get_last_extraction_checkpoint(&entity_id, &room_id);
+        }
+
+        assert_eq!(
+            service.last_extraction_checkpoints.lock().unwrap().len(),
+            MemoryService::MAX_LOCAL_SESSION_ENTRIES
+        );
+        assert_eq!(
+            service
+                .last_extraction_checkpoint_order
+                .lock()
+                .unwrap()
+                .len(),
+            MemoryService::MAX_LOCAL_SESSION_ENTRIES
+        );
     }
 }

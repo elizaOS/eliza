@@ -47,6 +47,7 @@ jobs:
 
     permissions:
       contents: write
+      issues: write
       packages: write
       id-token: write
 
@@ -600,6 +601,14 @@ jobs:
           fi
 
           echo "✅ Successfully published to NPM with dist-tag: ${DIST_TAG}"
+
+      - name: Sync next dist-tag for 2.0 prereleases
+        if: steps.release_type.outputs.type == 'alpha'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          node scripts/sync-prerelease-dist-tags.js alpha next
 
       # Kept for workflow compatibility; no-op because replacement is no-op.
       - name: Restore workspace references

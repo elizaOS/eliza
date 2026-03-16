@@ -1680,11 +1680,11 @@ class AgentRuntime(IAgentRuntime):
         if self._adapter:
             await self._adapter.ensure_embedding_dimension(dimension)
 
-    async def get_entity(self, entity_id: UUID) -> Any | None:
+    async def get_entity(self, entity_id: UUID | str) -> Any | None:
         """Get a single entity by ID."""
         if not self._adapter:
             return None
-        entities = await self._adapter.get_entities_by_ids([entity_id])
+        entities = await self._adapter.get_entities_by_ids([str(entity_id)])
         return entities[0] if entities else None
 
     async def get_entities_by_ids(self, entity_ids: list[UUID]) -> list[Any] | None:
@@ -1744,7 +1744,7 @@ class AgentRuntime(IAgentRuntime):
         if self._adapter:
             await self._adapter.delete_component(component_id)
 
-    async def search_memories(self, params: MemorySearchOptions) -> list[Memory]:
+    async def search_memories(self, params: MemorySearchOptions | dict[str, Any]) -> list[Memory]:
         """Search memories by embedding."""
         if not self._adapter:
             raise RuntimeError("Database adapter not set")
@@ -1827,11 +1827,6 @@ class AgentRuntime(IAgentRuntime):
         if not self._adapter:
             return AgentRunSummaryResult(runs=[], total=0, has_more=False)
         return await self._adapter.get_agent_run_summaries(params)
-
-    async def search_memories(self, params: dict[str, Any]) -> list[Any]:
-        if not self._adapter:
-            return []
-        return await self._adapter.search_memories(params)
 
     async def create_memory(
         self,
@@ -2412,6 +2407,12 @@ end code: {final_code}
                         step_id = CURRENT_TRAJECTORY_STEP_ID.get()
                         traj_svc = self.get_service("trajectory_logger")
                         if step_id and traj_svc is not None and hasattr(traj_svc, "log_llm_call"):
+                            max_tokens_value = params.get("maxTokens", 0)
+                            max_tokens = (
+                                int(max_tokens_value)
+                                if isinstance(max_tokens_value, (int, float, str, bytes, bytearray))
+                                else 0
+                            )
                             traj_svc.log_llm_call(  # type: ignore[call-arg]
                                 step_id=step_id,
                                 model=stream_model_type,
@@ -2419,7 +2420,7 @@ end code: {final_code}
                                 user_prompt=str(params.get("prompt", ""))[:2000],
                                 response=response_str[:2000],
                                 temperature=0.0,
-                                max_tokens=int(params.get("maxTokens", 0)),
+                                max_tokens=max_tokens,
                                 purpose="action",
                                 action_type="dynamic_prompt_exec.stream",
                                 latency_ms=0,

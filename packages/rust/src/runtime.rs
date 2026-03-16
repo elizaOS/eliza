@@ -95,6 +95,11 @@ pub trait DatabaseAdapter: Send + Sync {
     /// Get a room by ID
     async fn get_room(&self, id: &UUID) -> Result<Option<Room>>;
 
+    /// Update a room
+    async fn update_room(&self, _room: &Room) -> Result<bool> {
+        Ok(false)
+    }
+
     /// Create an entity
     async fn create_entity(&self, entity: &Entity) -> Result<bool>;
 
@@ -228,6 +233,7 @@ fn setting_value_to_json_value(value: &SettingValue) -> serde_json::Value {
     }
 }
 
+#[cfg_attr(not(feature = "bootstrap-internal"), allow(dead_code))]
 fn setting_value_to_string(value: SettingValue) -> String {
     match normalize_setting_value(value) {
         SettingValue::String(s) => s,
@@ -1616,6 +1622,15 @@ impl AgentRuntime {
     /// Get a reference to the database adapter (if any)
     pub fn get_adapter(&self) -> Option<Arc<dyn DatabaseAdapter>> {
         self.adapter.clone()
+    }
+
+    /// Update an existing room through the configured adapter.
+    pub async fn update_room(&self, room: &Room) -> Result<bool> {
+        let adapter = self
+            .adapter
+            .as_ref()
+            .context("No database adapter configured")?;
+        adapter.update_room(room).await
     }
 
     /// Get the configured database adapter (if present).
