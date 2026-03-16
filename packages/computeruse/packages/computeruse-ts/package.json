@@ -77,5 +77,5 @@
     "test-hook": "powershell.exe -ExecutionPolicy Bypass -File \"../../.git/hooks/pre-push.ps1\""
   },
   "types": "wrapper.d.ts",
-  "version": "2.0.0-alpha.36"
+  "version": "2.0.0-alpha.37"
 }
