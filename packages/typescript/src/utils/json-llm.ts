@@ -11,8 +11,6 @@ import { logger } from "../logger.js";
 
 const jsonBlockPattern = /```(?:json|json5)\s*\r?\n([\s\S]*?)\r?\n```/i;
 
-
-
 /**
  * Extract and parse JSON from text using JSON5 for LLM output tolerance.
  * Throws on parse failure for invalid JSON.
@@ -42,10 +40,4 @@ export function extractAndParseJSONObjectFromText(
     );
     throw new Error("Failed to parse invalid JSON");
   }
-
-  if (jsonData && typeof jsonData === "object" && !Array.isArray(jsonData)) {
-    return jsonData;
-  }
-
-  return null;
 }
