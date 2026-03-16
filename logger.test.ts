@@ -15,6 +15,77 @@ vi.mock('chalk', () => ({
   },
 }));
 
+vi.mock('fs', () => ({
+  default: {
+    existsSync: vi.fn(),
+    mkdirSync: vi.fn(),
+    appendFileSync: vi.fn(),
+  },
+}));
+
+import fs from 'fs';
+import { Logger } from './logger';
+
+describe('FileLogger', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (fs.existsSync as jest.Mock).mockReturnValue(false);
+  });
+
+  it('should create log directory if it does not exist', () => {
+    const logger = new Logger();
+    logger.debug('test message');
+    
+    expect(fs.existsSync).toHaveBeenCalledWith('logs');
+    expect(fs.mkdirSync).toHaveBeenCalledWith('logs', { recursive: true });
+  });
+
+  it('should not create log directory if it already exists', () => {
+    (fs.existsSync as jest.Mock).mockReturnValue(true);
+    
+    const logger = new Logger();
+    logger.debug('test message');
+    
+    expect(fs.existsSync).toHaveBeenCalledWith('logs');
+    expect(fs.mkdirSync).not.toHaveBeenCalled();
+  });
+
+  it('should append messages to the output log file', () => {
+    const logger = new Logger();
+    logger.debug('test debug');
+    logger.info('test info');
+    
+    expect(fs.appendFileSync).toHaveBeenCalledWith(
+      'logs/output.log',
+      expect.stringContaining('test debug')
+    );
+    expect(fs.appendFileSync).toHaveBeenCalledWith(
+      'logs/output.log',
+      expect.stringContaining('test info')
+    );
+  });
+
+  it('should append chat messages to the chat log file', () => {
+    const logger = new Logger();
+    logger.chat('test chat message');
+    
+    expect(fs.appendFileSync).toHaveBeenCalledWith(
+      'logs/chat.log',
+      expect.stringContaining('test chat message')
+    );
+  });
+
+  it('should append prompt messages to the prompts log file', () => {
+    const logger = new Logger();
+    logger.prompt('test prompt');
+    
+    expect(fs.appendFileSync).toHaveBeenCalledWith(
+      'logs/prompts.log',
+      expect.stringContaining('test prompt')
+    );
+  });
+});
+
 describe('Logger', () => {
   describe('log levels', () => {
     it('should support debug level', () => {
