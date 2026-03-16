@@ -88,10 +88,8 @@ export const actionStateProvider: Provider = {
             } catch {
               return 0;
             }
-          })() +
-          80,
+          })(),
         ACTION_RESULTS_TARGET_CHARS,
-      // Note: includes result.data size for comprehensive budgeting but must ensure safe serialization
       );
 
       const formattedResults = selectedResults
