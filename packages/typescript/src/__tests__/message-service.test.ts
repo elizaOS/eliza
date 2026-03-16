@@ -1001,8 +1001,45 @@ describe("DefaultMessageService", () => {
     });
   });
 
-  describe("keepExistingResponses", () => {
+  describe("anxietyProvider", () => {
+  it("should handle anxiety provider state", async () => {
+    vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+      if (key === "ANXIETY_LEVEL") return "2"; 
+      return null;
+    });
+
+    const message: Memory = {
+      id: "123e4567-e89b-12d3-a456-426614174400" as UUID,
+      content: {
+        text: "This is a concerning message",
+        source: "test",
+        channelType: ChannelType.DM,
+      } as Content,
+      entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+      roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+      agentId: runtime.agentId,
+      createdAt: Date.now(),
+    };
+
+    await messageService.handleMessage(runtime, message, mockCallback);
+
+    // Verify anxiety was considered in response generation
+    const modelCalls = (runtime.useModel as ReturnType<typeof vi.fn>).mock.calls;
+    const anxietyCall = modelCalls.find(call => 
+      call[1]?.state?.anxiety !== undefined && 
+      call[1]?.state?.anxiety?.level === 2
+    );
+    expect(anxietyCall).toBeDefined();
+  });
+});
+
+describe("keepExistingResponses", () => {
     it("should preserve existing responses when keepExistingResponses is true", async () => {
+      // Simulate BOOTSTRAP_KEEP_RESP setting
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+        if (key === "BOOTSTRAP_KEEP_RESP") return "true";
+        return null;
+      });
       const existingResponse: Memory = {
         id: "123e4567-e89b-12d3-a456-426614174304" as UUID,
         content: {
