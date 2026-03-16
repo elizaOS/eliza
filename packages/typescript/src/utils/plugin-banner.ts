@@ -10,8 +10,10 @@
 import type { IAgentRuntime } from "../types/runtime";
 // Note: regex captures ANSI codes for consistent banner formatting across plugins.
 
-// Pattern for matching ANSI escape sequences (without /g to avoid state)
-const ANSI_PATTERN = /\u001b\[[0-9;]*m/;
+// Pattern for matching ANSI escape sequences
+function newAnsiPattern() {
+  return /\u001b\[[0-9;]*m/;
+}
 
 export type BannerColors = {
   border: string;
@@ -163,7 +165,7 @@ export function sliceByWidth(text: string, maxWidth: number): string {
 
   while (index < text.length && width < maxWidth) {
     const remaining = text.slice(index);
-    const ansiMatch = remaining.match(ANSI_PATTERN);
+    const ansiMatch = remaining.match(newAnsiPattern());
     if (ansiMatch && ansiMatch.index === 0) {
       result += ansiMatch[0];
       index += ansiMatch[0].length;
@@ -184,7 +186,7 @@ export function sliceByWidth(text: string, maxWidth: number): string {
   }
 
   let remaining = text.slice(index);
-  let trailingAnsi = remaining.match(ANSI_PATTERN);
+  let trailingAnsi = remaining.match(newAnsiPattern());
   while (trailingAnsi && trailingAnsi.index === 0) {
     result += trailingAnsi[0];
     index += trailingAnsi[0].length;
