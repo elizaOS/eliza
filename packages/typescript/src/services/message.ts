@@ -942,18 +942,23 @@ export class DefaultMessageService implements IMessageService {
         await callback(ignoreContent, "IGNORE");
       }
 
-      // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION).
+      // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS).
       if (!disableMemoryCreation) {
-        const ignoreMemory: Memory = {
-          id: asUUID(v4()),
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: ignoreContent,
-          roomId: message.roomId,
-          createdAt: Date.now(),
-        };
-        // Note: designed for simplicity; we prioritize ignoring over strict source validation here.
-        await runtime.createMemory(ignoreMemory, "messages");
+        const allowedSources = getAllowedMemorySources(runtime); 
+        const responseSourceId = "agent_response"; // Default source for agent-generated responses
+        // Only persist if source is allowed or it's an internal agent response
+        const canPersistIgnore = !allowedSources || allowedSources.includes(responseSourceId);
+        
+        if (canPersistIgnore) {
+          const ignoreMemory: Memory = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: ignoreContent,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
+          await runtime.createMemory(ignoreMemory, "messages");
         runtime.logger.debug(
           { src: "service:message", memoryId: ignoreMemory.id },
           "Saved ignore response to memory",
@@ -2009,9 +2014,8 @@ Output ONLY the continuation, starting immediately after the last character abov
 
       // Total timeout for all providers running in parallel (configurable via PROVIDERS_TOTAL_TIMEOUT_MS env var)
       // Since providers run in parallel, this is the max wall-clock time allowed
-      // Default set to 5000ms to accommodate providers making external API calls
       const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(
-        String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "5000"),
+        String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
         10,
       );
 
