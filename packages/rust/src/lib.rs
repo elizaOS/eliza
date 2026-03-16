@@ -37,6 +37,12 @@ pub mod advanced_memory;
 pub mod advanced_planning;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod autonomy;
+#[cfg(all(
+    feature = "bootstrap-internal",
+    feature = "native",
+    not(feature = "wasm")
+))]
+pub mod bootstrap;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod bootstrap_core;
 pub mod character;
