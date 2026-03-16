@@ -176,6 +176,45 @@ describe("logger", () => {
     });
   });
 
+  describe("sliceToFitBudget utility", () => {
+    test("returns full message when under budget", async () => {
+      process.env.LOG_LEVEL = "info";
+      const { sliceToFitBudget } = await import("../src/logger");
+
+      const shortMessage = "Hello world";
+      const result = sliceToFitBudget(shortMessage, 1000);
+      expect(result).toBe(shortMessage);
+    });
+
+    test("truncates message to fit budget", async () => {
+      process.env.LOG_LEVEL = "info";
+      const { sliceToFitBudget } = await import("../src/logger");
+
+      const longMessage = "a".repeat(2000);
+      const result = sliceToFitBudget(longMessage, 1000);
+      expect(result.length).toBe(1000);
+      expect(result).toBe("a".repeat(1000));
+    });
+
+    test("handles zero budget", async () => {
+      process.env.LOG_LEVEL = "info";
+      const { sliceToFitBudget } = await import("../src/logger");
+
+      const message = "test message";
+      const result = sliceToFitBudget(message, 0);
+      expect(result).toBe("");
+    });
+
+    test("handles negative budget", async () => {
+      process.env.LOG_LEVEL = "info";
+      const { sliceToFitBudget } = await import("../src/logger");
+
+      const message = "test message";
+      const result = sliceToFitBudget(message, -10);
+      expect(result).toBe("");
+    });
+  });
+
   describe("edge cases", () => {
     test("handles undefined metadata", async () => {
       process.env.LOG_LEVEL = "info";
