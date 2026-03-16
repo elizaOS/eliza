@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import React from "react";
 import { Heading, Text } from "../components/ui/typography";
 
 const meta: Meta<typeof Text> = { title: "Atoms/Typography", component: Text };

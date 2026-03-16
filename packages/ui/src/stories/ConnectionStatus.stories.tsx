@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import React from "react";
 import { ConnectionStatus } from "../components/ui/connection-status";
 
 const meta: Meta<typeof ConnectionStatus> = {

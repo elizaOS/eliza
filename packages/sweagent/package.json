@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/sweagent-root",
   "private": false,
-  "version": "2.0.0-alpha.33",
+  "version": "2.0.0-alpha.41",
   "description": "SWE-agent: AI software engineering agent with Python, TypeScript, and Rust implementations",
   "type": "module",
   "main": "typescript/dist/index.js",
@@ -50,7 +50,7 @@
     "test:ts": "cd typescript && bun run build && vitest run",
     "test:rust": "test -d rust && cd rust && cargo test || echo 'Rust tests skipped'",
     "test:python": "test -d python && cd python && timeout 120 pytest -p no:anchorpy --asyncio-mode=auto -x --forked 2>/dev/null || timeout 120 pytest -p no:anchorpy --asyncio-mode=auto -x || echo 'Python tests timed out or skipped (may require Docker)'",
-    "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
+    "typecheck": "cd typescript && (test -d node_modules || bun install) && bun run typecheck",
     "lint": "bunx @biomejs/biome check --write ./typescript",
     "lint:check": "bunx @biomejs/biome check ./typescript",
     "lint:rust": "test -d rust && cd rust && cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt || echo 'Rust lint skipped'",

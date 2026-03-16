@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import React, { useState } from "react";
+import { useState } from "react";
 import { ChatEmptyState, TypingIndicator } from "../components/ui/chat-atoms";
 
 const meta: Meta = { title: "Molecules/ChatAtoms" };

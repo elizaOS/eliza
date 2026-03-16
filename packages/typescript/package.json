@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/core",
-  "version": "2.0.0-alpha.33",
+  "version": "2.0.0-alpha.41",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -60,7 +60,7 @@
     "lint": "bunx @biomejs/biome check --write ./src",
     "lint:check": "bunx @biomejs/biome check ./src",
     "lint:fix": "bunx @biomejs/biome check --write ./src",
-    "typecheck": "tsc --noEmit -p ./tsconfig.json",
+    "typecheck": "test -f src/types/generated/eliza/v1/agent_pb.ts || (cd ../schemas && bun run generate) && test -f ../prompts/dist/typescript/index.ts || (cd ../prompts && bun run build:typescript) && tsc --noEmit -p ./tsconfig.json",
     "format": "bunx @biomejs/biome format --write ./src",
     "format:check": "bunx @biomejs/biome format ./src"
   },
@@ -72,8 +72,8 @@
     "@types/fast-redact": "^3.0.4",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.0.3",
-    "@types/uuid": "^11.0.0",
     "@vitest/coverage-v8": "^4.0.0",
+    "esbuild": "^0.27.3",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
   },
@@ -93,6 +93,8 @@
     "handlebars": "^4.7.8",
     "markdown-it": "^14.1.0",
     "pdfjs-dist": "^5.4.530",
+    "sharp": "^0.34.5",
+    "undici": "^7.19.1",
     "unique-names-generator": "^4.7.1",
     "uuid": "^13.0.0",
     "yaml": "^2.8.1",

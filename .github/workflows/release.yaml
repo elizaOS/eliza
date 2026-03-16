@@ -577,9 +577,11 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
+          AUTH_NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
 
-          # Configure npm for authentication
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          # setup-node points npm at a temp userconfig; write auth to the active one.
+          mkdir -p "$(dirname "$AUTH_NPMRC")"
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$AUTH_NPMRC"
 
           # Publish with appropriate dist-tag
           if ! bunx lerna publish from-package \
@@ -603,12 +605,27 @@ jobs:
           echo "✅ Successfully published to NPM with dist-tag: ${DIST_TAG}"
 
       - name: Sync next dist-tag for 2.0 prereleases
+        id: sync_next_dist_tags
         if: steps.release_type.outputs.type == 'alpha'
+        continue-on-error: true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          AUTH_NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          mkdir -p "$(dirname "$AUTH_NPMRC")"
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$AUTH_NPMRC"
           node scripts/sync-prerelease-dist-tags.js alpha next
+
+      - name: Warn when next dist-tag sync fails
+        if: steps.sync_next_dist_tags.outcome == 'failure'
+        run: |
+          echo "::warning::Published packages successfully, but syncing alpha dist-tags to next failed. Re-run the sync-next-dist-tags workflow after npm access is fixed."
+          {
+            echo "## Dist-tag Sync Warning"
+            echo ""
+            echo "Packages were published successfully, but syncing the \`alpha\` dist-tag to \`next\` failed."
+            echo "Re-run the \`sync-next-dist-tags\` workflow after npm access is fixed."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Kept for workflow compatibility; no-op because replacement is no-op.
       - name: Restore workspace references

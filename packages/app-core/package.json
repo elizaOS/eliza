@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.33",
+  "version": "2.0.0-alpha.41",
   "description": "Shared application core for elizaOS shells and white-label apps.",
   "type": "module",
   "license": "MIT",
@@ -20,8 +20,8 @@
   "scripts": {
     "clean": "rm -rf dist",
     "build": "bun run build:dist",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles src/i18n/locales && node ../../scripts/prepare-package-dist.mjs packages/app-core",
+    "typecheck": "test -f ../ui/dist/index.d.ts || (cd ../ui && bun run build) && tsc --noEmit -p tsconfig.json",
+    "build:dist": "test -f ../ui/dist/index.d.ts || (cd ../ui && bun run build) && rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles src/i18n/locales && node ../../scripts/prepare-package-dist.mjs packages/app-core",
     "lint:check": "bunx @biomejs/biome check ./src/App.tsx ./src/actions ./src/api ./src/autonomy ./src/bridge ./src/chat ./src/coding ./src/components ./src/config ./src/events ./src/hooks ./src/i18n ./src/index.ts ./src/navigation ./src/platform ./src/providers ./src/state ./src/types ./src/utils ./src/voice ./src/ambient.d.ts",
     "pack:dry-run": "cd dist && npm pack --dry-run"
   },
