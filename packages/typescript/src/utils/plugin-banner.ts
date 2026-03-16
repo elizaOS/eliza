@@ -270,8 +270,8 @@ export function renderBanner(options: BannerOptions): string {
     }
   } else {
     const title = `[ ${pluginName} ]`;
-    const titleWidth = displayWidth(title);
-    const leftPad = Math.max(0, Math.floor((width - titleWidth) / 2));
+    const titleWithBracketsWidth = displayWidth(`[ ${pluginName} ]`);
+    const leftPad = Math.max(0, Math.floor((width - titleWithBracketsWidth) / 2));
     const centered = `${" ".repeat(leftPad)}${title}`;
     lines.push(row(`${c.title}${centered}${c.reset}`));
     if (options.description) {
