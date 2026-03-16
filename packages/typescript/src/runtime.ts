@@ -2496,6 +2496,7 @@ export class AgentRuntime implements IAgentRuntime {
               PROVIDER_TIMEOUT,
             );
           });
+          const start = Date.now();
           try {
             const result = await Promise.race([
               provider.get(this as IAgentRuntime, message, cachedState),
@@ -2516,51 +2517,30 @@ export class AgentRuntime implements IAgentRuntime {
               );
             }
             return {
-              ...result,
+              ...result, 
               providerName: provider.name,
             };
-          } catch (error) {
-            clearTimeout(timerId); // Clear on error
-            throw error;
-          }
-          providerTimings.push({ name: provider.name, durationMs: duration });
-          if (duration > 100) {
-            this.logger.debug(
+          } catch (error: unknown) {
+            clearTimeout(timerId);
+            const duration = Date.now() - start;
+            this.logger.error(
               {
                 src: "agent",
                 agentId: this.agentId,
                 provider: provider.name,
                 duration,
+                error: error instanceof Error ? error.message : String(error),
               },
-              "Slow provider",
+              "Provider error or timeout",
             );
+            // Return empty result so composeState continues
+            return {
+              values: {},
+              text: "",
+              data: {},
+              providerName: provider.name,
+            };
           }
-          return {
-            ...result,
-            providerName: provider.name,
-          };
-        } catch (error: unknown) {
-          // Clear timer to prevent leak when provider throws its own error
-          clearTimeout(timerId);
-          const duration = Date.now() - start;
-          this.logger.error(
-            {
-              src: "agent",
-              agentId: this.agentId,
-              provider: provider.name,
-              duration,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            "Provider error or timeout",
-          );
-          // Return empty result so composeState continues; one bad provider shouldn't fail the whole turn.
-          return {
-            values: {},
-            text: "",
-            data: {},
-            providerName: provider.name,
-          };
-        }
       }),
     );
     const composeStateEnd = Date.now();
