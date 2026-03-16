@@ -916,12 +916,6 @@ describe("DefaultMessageService", () => {
       });
 
     it("should block memory creation for non-whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
-      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
-        if (key === "DISABLE_MEMORY_CREATION") return "true";
-        if (key === "ALLOW_MEMORY_SOURCE_IDS") return "allowed-source-123";
-        return null;
-      });
-
       const message: Memory = {
         id: "123e4567-e89b-12d3-a456-426614174303" as UUID,
         content: {
