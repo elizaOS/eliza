@@ -40,15 +40,17 @@ export function printBootstrapBanner(runtime: IAgentRuntime): void {
   const settings: PluginSetting[] = [
     {
       name: "ALWAYS_RESPOND_CHANNELS",
-      value: typeof (alwaysRespondChannels || bypassTypes) === "string" 
-        ? (alwaysRespondChannels || bypassTypes) 
-        : undefined,
+      value: ((): string | undefined => {
+        const val = alwaysRespondChannels || bypassTypes;
+        return typeof val === "string" ? val : undefined;
+      })(),
     },
     {
       name: "ALWAYS_RESPOND_SOURCES",
-      value: typeof (alwaysRespondSources || bypassSources) === "string"
-        ? (alwaysRespondSources || bypassSources)
-        : undefined,
+      value: ((): string | undefined => {
+        const val = alwaysRespondSources || bypassSources;
+        return typeof val === "string" ? val : undefined;
+      })(),
     },
     {
       name: "DISABLE_MEMORY_CREATION",
