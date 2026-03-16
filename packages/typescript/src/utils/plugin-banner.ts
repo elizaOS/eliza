@@ -170,8 +170,15 @@ export function sliceByWidth(text: string, maxWidth: number): string {
       continue;
     }
 
-    const segments = [...segmenter.segment(remaining)];
-    if (segments.length === 0) break;
+    for (const { segment } of segmenter.segment(remaining)) {
+      const graphemeCols = graphemeWidth(segment);
+      if (width + graphemeCols > maxWidth) break;
+
+      result += segment;
+      index += segment.length;
+      width += graphemeCols;
+      break; // Only process first grapheme
+    }
 
     const grapheme = segments[0].segment;
     const graphemeCols = graphemeWidth(grapheme);
@@ -267,7 +274,8 @@ export function renderBanner(options: BannerOptions): string {
     }
   } else {
     const title = `[ ${pluginName} ]`;
-    const leftPad = Math.max(0, Math.floor((width - displayWidth(title)) / 2));
+    const titleWidth = displayWidth(title);
+    const leftPad = Math.max(0, Math.floor((width - titleWidth) / 2));
     const centered = `${" ".repeat(leftPad)}${title}`;
     lines.push(row(`${c.title}${centered}${c.reset}`));
     if (options.description) {
