@@ -57,6 +57,7 @@ packages/docs/api/*
 
 **/.docusaurus/**
 **/docs/build/**
+**/storybook-static/**
 
 lerna-debug.log
 

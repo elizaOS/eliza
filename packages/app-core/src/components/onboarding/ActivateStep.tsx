@@ -1,0 +1,30 @@
+import { useApp } from "@elizaos/app-core/state";
+
+export function ActivateStep() {
+  const { onboardingName, handleOnboardingNext, t } = useApp();
+
+  return (
+    <>
+      <div className="onboarding-section-title">
+        {t("onboarding.readyTitle")}
+      </div>
+      <div className="onboarding-divider">
+        <div className="onboarding-divider-diamond" />
+      </div>
+      <div className="onboarding-question">
+        {t("onboarding.companionReady", { name: onboardingName || "Eliza" })}
+      </div>
+      <p className="onboarding-desc">{t("onboarding.allConfigured")}</p>
+      <div className="onboarding-panel-footer">
+        <span />
+        <button
+          className="onboarding-confirm-btn"
+          onClick={() => handleOnboardingNext()}
+          type="button"
+        >
+          {t("onboarding.enter")}
+        </button>
+      </div>
+    </>
+  );
+}
