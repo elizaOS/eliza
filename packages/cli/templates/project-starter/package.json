@@ -1,0 +1,60 @@
+{
+  "name": "@elizaos/project-starter",
+  "description": "Project starter for elizaOS",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "main": "dist/src/index.js",
+  "module": "dist/src/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "project",
+    "elizaos"
+  ],
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/src/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/cli": "1.0.6",
+    "@elizaos/core": "1.0.6",
+    "@elizaos/plugin-sql": "1.0.6",
+    "@elizaos/plugin-bootstrap": "1.0.6",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "tsup": "8.5.0",
+    "prettier": "3.5.3",
+    "vitest": "3.1.4",
+    "@vitest/coverage-v8": "3.1.4"
+  },
+  "scripts": {
+    "start": "elizaos start",
+    "dev": "elizaos dev",
+    "build": "tsup",
+    "lint": "prettier --write ./src",
+    "test:component": "vitest run",
+    "test:e2e": "elizaos test",
+    "test": "npm run test:component && npm run test:e2e",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
+}

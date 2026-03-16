@@ -43,7 +43,7 @@
     "test:rust": "test -d rust && cd rust && cargo test || echo 'Rust tests skipped'",
     "test:python": "test -d python && cd python && pip install -e ../../../packages/python -q && pip install -e '.[dev]' -q && pytest -p no:anchorpy --asyncio-mode=auto || echo 'Python tests skipped'",
     "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
-    "lint": "bunx @biomejs/biome check --write ./typescript",
+    "lint": "bunx @biomejs/biome check --apply ./typescript",
     "lint:check": "bunx @biomejs/biome check ./typescript",
     "lint:rust": "test -d rust && cd rust && cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt || echo 'Rust lint skipped'",
     "lint:python": "test -d python && cd python && ruff check --fix . && ruff format . || echo 'Python lint skipped'",

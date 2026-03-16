@@ -72,7 +72,7 @@
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint": "bunx @biomejs/biome check --apply --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "test": "vitest run --passWithNoTests __tests__/unit/",
     "test:unit": "vitest run --passWithNoTests __tests__/unit/",

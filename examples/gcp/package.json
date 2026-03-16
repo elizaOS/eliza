@@ -15,7 +15,7 @@
     "docker:build:ts": "cd typescript && docker build -t eliza-worker-ts .",
     "docker:build:py": "cd python && docker build -t eliza-worker-py .",
     "docker:build:rust": "cd rust && docker build -t eliza-worker-rust .",
-    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint": "bunx @biomejs/biome check --apply --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit"
   },

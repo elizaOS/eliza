@@ -51,7 +51,7 @@
     "test:rust": "if [ -d rust ]; then (cd rust && cargo test) || { echo 'Rust tests skipped (cargo build/test failed, e.g. missing system libs like libpipewire)'; exit 0; }; else echo 'Rust tests skipped (no rust directory)'; fi",
     "test:python": "if [ -d python ]; then (command -v pytest >/dev/null 2>&1 && cd python && pytest -p no:anchorpy --asyncio-mode=auto) || echo 'Python tests skipped (pytest not found)'; else echo 'Python tests skipped (no python directory)'; fi",
     "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
-    "lint": "bunx @biomejs/biome check --write ./typescript",
+    "lint": "bunx @biomejs/biome check --apply ./typescript",
     "lint:check": "bunx @biomejs/biome check ./typescript",
     "lint:rust": "test -d rust && cd rust && cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt || echo 'Rust lint skipped'",
     "lint:python": "test -d python && cd python && ruff check --fix . && ruff format . || echo 'Python lint skipped'",

@@ -49,7 +49,7 @@
   "scripts": {
     "dev": "bun --hot build.ts",
     "test": "vitest run --passWithNoTests || echo 'TypeScript tests skipped - no tests found'",
-    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint": "bunx @biomejs/biome check --apply --unsafe .",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo",
     "lint:check": "bunx @biomejs/biome check .",

@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "test:live": "LIVE_TEST=true vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint": "bunx @biomejs/biome check --apply --unsafe .",
     "lint:check": "bunx @biomejs/biome check ."
   },
   "dependencies": {

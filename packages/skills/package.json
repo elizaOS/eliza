@@ -19,7 +19,7 @@
 		"dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
 		"test": "node --test --import tsx test/*.test.ts",
 		"prepublishOnly": "npm run clean && npm run build",
-		"lint": "bunx @biomejs/biome check --write ./src",
+		"lint": "bunx @biomejs/biome check --apply ./src",
 		"lint:check": "bunx @biomejs/biome check ./src"
 	},
 	"files": [
