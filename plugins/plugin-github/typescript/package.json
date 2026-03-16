@@ -41,7 +41,7 @@
     "test": "vitest run --passWithNoTests __tests__/",
     "test:unit": "vitest run --passWithNoTests __tests__/",
     "test:integration": "echo 'Integration tests require elizaos CLI - skipping'",
-    "lint": "biome check --write .",
+    "lint": "biome check --apply .",
     "lint:check": "biome check .",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "biome format --write .",

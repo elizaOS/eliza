@@ -73,7 +73,7 @@
     "lint:python": "cd python && ruff check --fix . && ruff format .",
     "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
     "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_polymarket",
-    "lint": "bunx @biomejs/biome check --write ./typescript",
+    "lint": "bunx @biomejs/biome check --apply ./typescript",
     "lint:check": "bunx @biomejs/biome check ./typescript"
   },
   "peerDependencies": {
