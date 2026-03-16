@@ -105,14 +105,18 @@ export const replyAction = {
     // Never skip core providers needed for proper action context
     const requiredProviders = ["RECENT_MESSAGES", "ACTION_STATE"];
     
-    // Guard state.data.providers access before use
+    // Guard state.data.providers access and check required providers
     const stateProviders = state?.data?.providers;
-    const hasRequestedInState =
+    const hasRequestedInState = (
       stateProviders &&
       typeof stateProviders === "object" &&
-      [...allProviders, ...requiredProviders].every((p) =>
+      // Always require core providers
+      ["RECENT_MESSAGES", "ACTION_STATE"].every(p => Object.prototype.hasOwnProperty.call(stateProviders, p)) &&
+      // Check any additional requested providers
+      allProviders.every((p) =>
         Object.prototype.hasOwnProperty.call(stateProviders, p)
-      );
+      )
+    );
 
     state =
       hasRequestedInState && state != null
