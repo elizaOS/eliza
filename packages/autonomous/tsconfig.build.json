@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "declaration": true,
+    "declarationMap": true,
+    "esModuleInterop": true,
+    "noEmit": false,
+    "outDir": "./dist",
+    "paths": {
+      "@elizaos/app-hyperscape/routes": [
+        "./src/types/app-hyperscape-routes-shim.d.ts"
+      ]
+    },
+    "resolveJsonModule": true,
+    "rootDir": "../..",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  "include": ["src"]
+}
