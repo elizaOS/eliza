@@ -508,13 +508,10 @@ describe("DefaultMessageService", () => {
       const message: Memory = {
               id: "123e4567-e89b-12d3-a456-426614174303" as UUID,
               content: {
-                text: "Test message from blocked source",
+                text: "Test voice message",
                 source: "test",
-                channelType: ChannelType.DM,
+                channelType: ChannelType.VOICE_DM,
               } as Content,
-              metadata: {
-                sourceId: "blocked-source-456",
-              },
               entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
               roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
               agentId: runtime.agentId,
@@ -529,6 +526,7 @@ describe("DefaultMessageService", () => {
 
       // Should process voice messages just like regular messages
       expect(result).toBeDefined();
+      expect(result.didRespond).toBe(true); // Voice DMs should always get responses
       expect(runtime.createMemory).toHaveBeenCalled();
     });
 
