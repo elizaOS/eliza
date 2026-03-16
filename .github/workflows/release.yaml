@@ -577,9 +577,11 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
+          AUTH_NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
 
-          # Configure npm for authentication
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          # setup-node points npm at a temp userconfig; write auth to the active one.
+          mkdir -p "$(dirname "$AUTH_NPMRC")"
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$AUTH_NPMRC"
 
           # Publish with appropriate dist-tag
           if ! bunx lerna publish from-package \
@@ -607,7 +609,9 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          AUTH_NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          mkdir -p "$(dirname "$AUTH_NPMRC")"
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$AUTH_NPMRC"
           node scripts/sync-prerelease-dist-tags.js alpha next
 
       # Kept for workflow compatibility; no-op because replacement is no-op.
