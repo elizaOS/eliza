@@ -221,6 +221,12 @@ Evaluators analyze conversation data and other inputs to extract meaningful info
 - Reflect on past interactions to improve future responses.
 - Update the agent's knowledge base.
 
+### Database adapter
+
+The runtime talks to persistence through the `IDatabaseAdapter` interface. Adapters (e.g. plugin-sql, plugin-localdb, InMemory) implement this contract so the same runtime code works with different backends.
+
+**Why mutation methods return `Promise<boolean>`:** Methods such as `updateAgents`, `deleteAgents`, and `deleteParticipants` return a boolean so callers can tell success from failure. That supports error handling, retries, and UX (e.g. "Agent removed" vs "Failed to remove"). All adapters use this convention for consistency. See `packages/typescript/src/types/database.ts` for full JSDoc and design notes.
+
 ## Getting Started
 
 ### Initializing with `corePlugin`

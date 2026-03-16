@@ -53,6 +53,7 @@
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^20.11.5",
+    "@types/uuid": "^9.0.0",
     "typescript": "5.8.3",
     "@biomejs/biome": "^2.3.11"
   },

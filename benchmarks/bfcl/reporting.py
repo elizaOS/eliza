@@ -82,6 +82,34 @@ class BFCLReporter:
         # Ensure output directory exists
         os.makedirs('reports', exist_ok=True)
         
+        # Merge config from passed results
+        if hasattr(results.config, '__dict__'):
+            self.config.update(results.config.__dict__)
+        if results.model_name:
+            self.config['model_name'] = results.model_name
+        if results.baseline_comparison:
+            self.baseline_scores = results.baseline_comparison
+            
+        # Process the passed results if they haven't been added yet
+        if not self.results:
+            for result in results.results:
+                # Convert boolean flags to scores
+                overall_score = 1.0 if (result.ast_match and result.exec_success) else 0.0
+                ast_accuracy = 1.0 if result.ast_match else 0.0
+                exec_accuracy = 1.0 if result.exec_success else 0.0
+                
+                metrics = BFCLMetrics(
+                    overall_score=overall_score,
+                    ast_accuracy=ast_accuracy, 
+                    exec_accuracy=exec_accuracy
+                )
+                
+                self.add_result(
+                    metrics,
+                    error_data=result.details if hasattr(result, 'details') else None,
+                    latency_ms=result.latency_ms
+                )
+            
         # Sort results by scores for proper ranking
         sorted_results = sorted(
             self.results,
@@ -234,7 +262,13 @@ class BFCLReporter:
 
 async def print_results(results: BFCLBenchmarkResults):
     # Create reporter with proper configuration
-    reporter = BFCLReporter()
+    config = {
+        'model_name': results.model_name or 'default',
+        'baseline_scores': results.baseline_comparison or {},
+    }
+    if hasattr(results.config, '__dict__'):
+        config.update(results.config.__dict__)
+    reporter = BFCLReporter(config)
     
     # Process results maintaining proper rank order
     for result in results.results:
@@ -256,5 +290,5 @@ async def print_results(results: BFCLBenchmarkResults):
         )
     
     # Generate report (avoiding asyncio.run() since this may be called from async context)
-    return reporter.generate_report(results)
-# Note: The design requires manual ranking to accommodate dynamic leaderboard insertion.
+    return await reporter.generate_report(results)
+    # Note: The design requires manual ranking to accommodate dynamic leaderboard insertion.

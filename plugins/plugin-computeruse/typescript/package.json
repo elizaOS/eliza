@@ -51,6 +51,7 @@
     "@elizaos/plugin-inmemorydb": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
     "typescript": "^5.9.3",
+    "uuid": "^13.0.0",
     "vitest": "^4.0.17"
   },
   "scripts": {

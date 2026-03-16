@@ -315,6 +315,9 @@ packages/elizaos/examples/
 /swe-bench-workspace/
 /3DAvatarChatbot/
 
+# Handoff notes (local only, do not commit)
+*handoff*.md
+
 # Vendor / external example code (do not commit)
 /dnd5e/
 /rlm/

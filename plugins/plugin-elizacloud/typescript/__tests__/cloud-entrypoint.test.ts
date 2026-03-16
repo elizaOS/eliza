@@ -161,7 +161,7 @@ describe("bridge snapshot/restore", () => {
   it("POST /api/snapshot returns current state", async () => {
     const res = await fetch(`${bridgeUrl}/api/snapshot`, { method: "POST" });
     expect(res.status).toBe(200);
-    const body = await res.json() as AgentState;
+    const body = (await res.json()) as AgentState & { timestamp?: string };
     expect(Array.isArray(body.memories)).toBe(true);
     expect(typeof body.timestamp).toBe("string");
   });

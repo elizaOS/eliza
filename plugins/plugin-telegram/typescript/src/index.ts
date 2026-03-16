@@ -49,6 +49,7 @@ const telegramPlugin: Plugin = {
 };
 
 export {
+  telegramPlugin,
   // Service
   TelegramService,
   MessageManager,
