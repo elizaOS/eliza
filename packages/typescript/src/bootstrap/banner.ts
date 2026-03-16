@@ -42,7 +42,9 @@ export function printBootstrapBanner(runtime: IAgentRuntime): void {
       name: "ALWAYS_RESPOND_CHANNELS",
       value: ((): string | undefined => {
         const val = alwaysRespondChannels || bypassTypes;
-        return typeof val === "string" && val.trim() !== "" ? val : undefined;
+        if (typeof val !== "string") return undefined;
+        const trimmed = val.trim();
+        return trimmed !== "" ? trimmed : undefined;
       })(),
     },
     {
