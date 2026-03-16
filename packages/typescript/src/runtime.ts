@@ -1433,19 +1433,23 @@ export class AgentRuntime implements IAgentRuntime {
         // etc.) is preserved from the stateCache populated by earlier
         // composeState calls (e.g. runSingleShotCore). This avoids
         // re-running every registered provider for each action in a chain.
-        // Cache current state first
+        // Cache current accumulated state so composeState reads fresh action outputs
         if (message.id && accumulatedState) {
           this.stateCache.set(message.id, accumulatedState);
         }
-        // Compose from cached state but merge with current accumulated values
-        accumulatedState = {
-          ...accumulatedState,
-          ...(await this.composeState(
-            message,
-            ["RECENT_MESSAGES", "ACTION_STATE"],
-            true, // onlyInclude
-          ))
-        };
+        // Compose from cached state (now updated) but preserve current accumulated values/data
+        const freshProviderState = await this.composeState(
+          message,
+          ["RECENT_MESSAGES", "ACTION_STATE"],
+          true, // onlyInclude
+                  );
+                  // Merge fresh provider data with accumulated state, preserving action results and values
+                  accumulatedState = {
+                    ...accumulatedState,
+                    ...freshProviderState,
+                    values: { ...accumulatedState.values, ...freshProviderState.values },
+                    data: { ...accumulatedState.data, ...freshProviderState.data },
+                  };
 
         // Add action plan to state if it exists
         if (actionPlan && accumulatedState.data) {
