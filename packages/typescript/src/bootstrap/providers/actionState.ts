@@ -186,23 +186,23 @@ export const actionStateProvider: Provider = {
       }
 
       const selectedRuns = sliceToFitBudget(
-        Array.from(groupedByRun.entries()),
-        ([runId, memories]) => {
-          const textChars = memories.reduce((sum, memory) => {
-            const content = memory.content;
-            return (
-              sum +
-              String(content?.actionName || "").length +
-              String(content?.actionStatus || "").length +
-              String(content?.planStep || "").length +
-              String(content?.text || "").length
-            );
-          }, 0);
-          return textChars + runId.length + 80;
-        },
-        ACTION_HISTORY_TARGET_CHARS,
-        { fromEnd: false },
-      );
+          Array.from(groupedByRun.entries()),
+          ([runId, memories]) => {
+            const textChars = memories.reduce((sum, memory) => {
+              const content = memory.content;
+              return (
+                sum +
+                String(content?.actionName || "").length +
+                String(content?.actionStatus || "").length +
+                String(content?.planStep || "").length +
+                String(content?.text || "").length
+              );
+            }, 0);
+            return textChars + runId.length + 80;
+          },
+          ACTION_HISTORY_TARGET_CHARS,
+          { fromEnd: true },
+        );
 
       const formattedMemories = selectedRuns
         .map(([runId, memories]) => {
