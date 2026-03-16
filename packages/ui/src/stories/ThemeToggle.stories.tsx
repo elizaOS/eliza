@@ -1,4 +1,4 @@
-import { ThemeToggle } from "@milady/app-core/components";
+import { ThemeToggle } from "@elizaos/app-core/components";
 import type { Meta, StoryObj } from "@storybook/react";
 import { fn } from "@storybook/test";
 

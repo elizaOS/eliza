@@ -1,0 +1,85 @@
+{
+  "name": "@elizaos/app-core",
+  "version": "2.0.0-alpha.28",
+  "description": "Shared application core for elizaOS shells and white-label apps.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/app-core"
+  },
+  "keywords": [
+    "elizaos",
+    "app-core",
+    "react",
+    "shell"
+  ],
+  "main": "src/index.ts",
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "bun run build:dist",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles src/i18n/locales && node ../../scripts/prepare-package-dist.mjs packages/app-core",
+    "lint:check": "bunx @biomejs/biome check ./src/App.tsx ./src/actions ./src/api ./src/autonomy ./src/bridge ./src/chat ./src/coding ./src/components ./src/config ./src/events ./src/hooks ./src/i18n ./src/index.ts ./src/navigation ./src/platform ./src/providers ./src/state ./src/types ./src/utils ./src/voice ./src/ambient.d.ts",
+    "pack:dry-run": "cd dist && npm pack --dry-run"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./api": "./src/api/index.ts",
+    "./config": "./src/config/index.ts",
+    "./types": "./src/types/index.ts",
+    "./events": "./src/events/index.ts",
+    "./i18n": "./src/i18n/index.ts",
+    "./navigation": "./src/navigation/index.ts",
+    "./hooks": "./src/hooks/index.ts",
+    "./bridge": "./src/bridge/index.ts",
+    "./bridge/electrobun-rpc": "./src/bridge/electrobun-rpc.ts",
+    "./bridge/electrobun-runtime": "./src/bridge/electrobun-runtime.ts",
+    "./state": "./src/state/index.ts",
+    "./components": "./src/components/index.ts",
+    "./components/*": "./src/components/*",
+    "./utils": "./src/utils/index.ts",
+    "./voice": "./src/voice/index.ts",
+    "./autonomy": "./src/autonomy/index.ts",
+    "./chat": "./src/chat/index.ts",
+    "./platform": "./src/platform/index.ts",
+    "./coding": "./src/coding/index.ts",
+    "./providers": "./src/providers/index.ts",
+    "./actions": "./src/actions/index.ts",
+    "./styles/base.css": "./src/styles/base.css",
+    "./styles/xterm.css": "./src/styles/xterm.css",
+    "./styles/anime.css": "./src/styles/anime.css",
+    "./styles/onboarding-game.css": "./src/styles/onboarding-game.css",
+    "./styles/styles.css": "./src/styles/styles.css"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "@elizaos/autonomous": "workspace:*",
+    "@capacitor/core": "8.0.2",
+    "@capacitor/haptics": "8.0.0",
+    "@capacitor/keyboard": "8.0.0",
+    "@capacitor/preferences": "^8.0.1",
+    "@lifo-sh/core": "0.4.4",
+    "@lifo-sh/ui": "0.4.2",
+    "@pixiv/three-vrm": "^3.4.5",
+    "@sparkjsdev/spark": "^0.1.10",
+    "@elizaos/ui": "workspace:*",
+    "three": "^0.182.0",
+    "lucide-react": "^0.575.0",
+    "zod": "^4.3.6"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.182.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,4 +1,4 @@
-import { LanguageDropdown } from "@milady/app-core/components";
+import { LanguageDropdown } from "@elizaos/app-core/components";
 import type { Meta, StoryObj } from "@storybook/react";
 import React, { useState } from "react";
 
