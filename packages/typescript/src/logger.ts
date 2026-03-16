@@ -530,9 +530,9 @@ export function logPrompt(
   },
 ): string {
   if (!ensureFileLog()) return "";
-  _promptLogCounter++;
+  const counter = ++_promptLogCounter;
   const agentName = metadata?.agentName ?? "unknown";
-  const slug = promptSlug(_promptLogCounter, agentName, modelType);
+  const slug = promptSlug(counter, agentName, modelType);
   writeToPromptLog(slug, "PROMPT", modelType, prompt, metadata);
   return slug;
 }
