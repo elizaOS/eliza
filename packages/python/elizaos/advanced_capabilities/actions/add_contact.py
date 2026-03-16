@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
+from uuid import UUID as StdUUID
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.generated.spec_helpers import require_action_spec
@@ -29,7 +30,7 @@ _spec = require_action_spec("ADD_CONTACT")
 
 def _convert_spec_examples() -> list[list[ActionExample]]:
     """Convert spec examples to ActionExample format."""
-    spec_examples = _spec.get("examples", [])
+    spec_examples = cast(list[list[dict[str, Any]]], _spec.get("examples", []))
     if spec_examples:
         return [
             [
@@ -103,7 +104,7 @@ class AddContactAction:
         notes = str(parsed.get("notes", ""))
         reason = str(parsed.get("reason", ""))
 
-        entity_id = message.entity_id
+        entity_id = StdUUID(str(message.entity_id))
         preferences = ContactPreferences(notes=notes) if notes else None
 
         await rolodex_service.add_contact(

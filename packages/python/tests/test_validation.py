@@ -128,7 +128,7 @@ def test_validate_action_regex():
 
     # Unicode characters
     msg = create_mock_memory("Transfer 100 €")
-    assert not validate_action_regex(msg, [], r"transfer \d+ €") # case sensitive
+    assert not validate_action_regex(msg, [], r"transfer \d+ €")  # case sensitive
     assert validate_action_regex(msg, [], r"(?i)transfer \d+ €")
 
     # Special characters

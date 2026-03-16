@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -10,13 +10,13 @@ if TYPE_CHECKING:
     from elizaos.types.runtime import IAgentRuntime
 
 
-class LLMMode(str, Enum):
+class LLMMode(StrEnum):
     DEFAULT = "DEFAULT"
     SMALL = "SMALL"
     LARGE = "LARGE"
 
 
-class ModelType(str, Enum):
+class ModelType(StrEnum):
     # Text generation models
     TEXT_SMALL = "TEXT_SMALL"
     TEXT_LARGE = "TEXT_LARGE"

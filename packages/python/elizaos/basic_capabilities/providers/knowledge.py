@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 
 from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
-from elizaos.types.database import MemorySearchOptions
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
@@ -42,14 +41,14 @@ async def get_knowledge_context(
     # 3. Search using the most recent embedding if available
     if embeddings:
         primary_embedding = embeddings[0]
-        params = MemorySearchOptions(
-            table_name="knowledge",
-            room_id=message.room_id,
-            embedding=primary_embedding,
-            match_threshold=0.75,
-            match_count=5,
-            unique=True,
-        )
+        params = {
+            "tableName": "knowledge",
+            "roomId": str(message.room_id),
+            "embedding": primary_embedding,
+            "matchThreshold": 0.75,
+            "matchCount": 5,
+            "unique": True,
+        }
         relevant_knowledge = await runtime.search_memories(params)
     elif query_text:
         # Fallback to search_knowledge if no embeddings found?

@@ -14,7 +14,7 @@ import asyncio
 import contextlib
 import time
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 TICK_INTERVAL_MS = 1000
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Task status enum."""
 
     PENDING = "pending"
@@ -37,7 +37,7 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class TaskPriority(str, Enum):
+class TaskPriority(StrEnum):
     """Task priority enum."""
 
     LOW = "low"

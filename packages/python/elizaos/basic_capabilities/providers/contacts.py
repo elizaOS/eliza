@@ -30,7 +30,7 @@ async def get_contacts_context(
 
     contact_details: list[dict[str, str]] = []
     for contact in contacts:
-        entity = await runtime.get_entity(contact.entity_id)
+        entity = await runtime.get_entity(str(contact.entity_id))
         name = entity.name if entity and entity.name else "Unknown"
         contact_details.append(
             {

@@ -38,7 +38,7 @@ async def get_follow_ups_context(
 
     for task in upcoming:
         scheduled = datetime.fromisoformat(task.scheduled_at.replace("Z", "+00:00"))
-        entity = await runtime.get_entity(task.entity_id)
+        entity = await runtime.get_entity(str(task.entity_id))
         name = entity.name if entity and entity.name else "Unknown"
 
         item = {
