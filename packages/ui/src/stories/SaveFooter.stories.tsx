@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import React from "react";
 import { SaveFooter } from "../components/ui/save-footer";
 
 const meta: Meta<typeof SaveFooter> = {
