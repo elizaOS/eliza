@@ -1,10 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { Inbox } from "lucide-react";
 import type React from "react";
 import { Banner } from "../components/ui/banner";
 import { ConfirmDelete } from "../components/ui/confirm-delete";
 import { ConnectionStatus } from "../components/ui/connection-status";
-import { EmptyState } from "../components/ui/empty-state";
 import { SaveFooter } from "../components/ui/save-footer";
 import { SearchInput } from "../components/ui/search-input";
 
