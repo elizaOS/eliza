@@ -397,11 +397,9 @@ function ensureFileLog(): boolean {
       logFileEnv.trim().toLowerCase(),
     );
     const logFilePath = isBooleanFlag
-      ? pathMod.join(process.cwd(), "output.log")
+      ? pathMod.join(process.cwd(), "output.log") 
       : logFileEnv.trim();
-    const logDir = isBooleanFlag
-      ? process.cwd()
-      : pathMod.dirname(logFilePath);
+    const logDir = pathMod.dirname(logFilePath);
     
         // Ensure log directory exists
         fs.mkdirSync(logDir, { recursive: true });
@@ -530,10 +528,12 @@ export function logPrompt(
   },
 ): string {
   if (!ensureFileLog()) return "";
-  // Generate a new slug only for prompts
+  // Use next counter for prompts, store slug in metadata for response
   const counter = ++_promptLogCounter;
-  const agentName = metadata?.agentName ?? "unknown";
+  const agentName = metadata?.agentName ?? "unknown"; 
   const slug = promptSlug(counter, agentName, modelType);
+  // Store prompt slug for correlation with response
+  metadata = { ...metadata, promptSlug: slug };
   writeToPromptLog(slug, "PROMPT", modelType, prompt, metadata);
   return slug;
 }
