@@ -249,7 +249,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
             results = await runner.run()
 
         # Print results
-        print_results(results)
+        await print_results(results)
 
         # Return exit code based on results
         if results.metrics.overall_score >= 0.5:

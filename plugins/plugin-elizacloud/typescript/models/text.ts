@@ -35,10 +35,25 @@ function buildGenerateParams(
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
 
   const model = openai.languageModel(modelName) as LanguageModel;
+  // API requires every message to have content. Never send empty string for system.
+  const rawSystem = runtime.character.system;
+  const systemPrompt =
+    rawSystem != null && String(rawSystem).trim() !== ""
+      ? String(rawSystem).trim()
+      : undefined; // omit system message entirely when empty
+
+  const promptText = prompt != null && String(prompt).trim() !== "" ? prompt : "";
+  if (promptText === "") {
+    const msg =
+      "[ELIZAOS_CLOUD] generateText requires a non-empty prompt (would cause 'Each message must have content'). Check state/composeState and message handler template.";
+    logger.warn(msg);
+    throw new Error(msg);
+  }
+
   const generateParams = {
     model,
-    prompt: prompt,
-    system: runtime.character.system ?? undefined,
+    prompt: promptText,
+    ...(systemPrompt ? { system: systemPrompt } : {}),
     temperature: temperature,
     maxOutputTokens: maxTokens,
     frequencyPenalty: frequencyPenalty,
@@ -49,7 +64,10 @@ function buildGenerateParams(
     },
   };
 
-  return { generateParams, modelName, modelLabel, prompt };
+  logger.debug(
+    `[ELIZAOS_CLOUD] buildGenerateParams: model=${modelLabel}, promptLength=${promptText.length}, systemLength=${systemPrompt?.length ?? 0}`,
+  );
+  return { generateParams, modelName, modelLabel, prompt: promptText };
 }
 
 function handleStreamingGeneration(

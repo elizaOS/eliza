@@ -372,7 +372,20 @@ export interface IDatabaseAdapter<DB extends object = object> {
   // Single-item wrappers live on AgentRuntime.
   getAgentsByIds(agentIds: UUID[]): Promise<Agent[]>;
   createAgents(agents: Partial<Agent>[]): Promise<UUID[]>;
+  /**
+   * Update agents by ID (batch).
+   * WHY Promise<boolean>: Callers (e.g. runtime, admin APIs) need to know if the
+   * operation succeeded so they can surface errors or retry. SQL adapters return
+   * true when the write commits; false on constraint/connection failure. InMemory
+   * returns true when all updates are applied. Aligns with deleteAgents/deleteParticipants.
+   */
   updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean>;
+  /**
+   * Delete agents by ID (batch).
+   * WHY Promise<boolean>: Callers need success/failure for error handling and UX
+   * (e.g. "Agent removed" vs "Failed to remove"). All adapters (SQL, InMemory,
+   * LocalDB) implement this as a boolean for consistency with updateAgents.
+   */
   deleteAgents(agentIds: UUID[]): Promise<boolean>;
   
   /**
@@ -455,7 +468,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
     options?: { entityContext?: UUID },
   ): Promise<T>;
 
-  /** Delete participants from rooms */
+  /**
+   * Delete participants from rooms (batch).
+   * WHY Promise<boolean>: Callers need to know if removal succeeded (e.g. for
+   * unfollow/mute flows and admin APIs). Matches updateAgents/deleteAgents so
+   * all mutation methods have a consistent success signal across adapters.
+   */
   deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean>;
 
   /** Get entities for room */
@@ -1012,10 +1030,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
   // ── Participant CRUD (batch-only for mutations) ─────────────────────
   // WHY batch-only: createRoomParticipants accepts an array of entity IDs
-  // (adding multiple users to a channel is common). deleteParticipants
-  // accepts {entityId, roomId} pairs for flexibility -- you might remove
-  // different entities from different rooms in one call.
-  deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean>;
+  // (adding multiple users to a channel is common).
   
   /**
    * Update participants (batch)

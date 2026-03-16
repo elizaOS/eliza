@@ -511,12 +511,7 @@ export function parseMessagesFromAppleScript(
   }
 
   for (const line of result.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-
-    const fields = trimmed.split("\t");
+    const fields = line.trim().split("\t");
     if (fields.length < 6) {
       continue;
     }

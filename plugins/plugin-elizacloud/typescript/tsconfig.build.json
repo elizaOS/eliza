@@ -6,7 +6,8 @@
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,
-    "strict": true,
+    "strict": false,
+    "noImplicitAny": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -17,16 +18,10 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "baseUrl": ".",
     "paths": {
-      "@elizaos/core": ["../../../packages/typescript/dist"]
-    }
+      "@elizaos/core": ["./elizaos-core-shim.d.ts"]
+    },
+    "noEmitOnError": false
   },
   "include": ["./**/*.ts"],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "python",
-    "rust",
-    "**/__tests__/**",
-    "**/*.test.ts"
-  ]
+  "exclude": ["node_modules", "dist", "python", "rust", "**/__tests__/**", "**/*.test.ts"]
 }

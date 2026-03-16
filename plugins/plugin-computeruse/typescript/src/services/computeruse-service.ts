@@ -18,6 +18,14 @@ interface McpServiceLike extends Service {
   getServers(): ReadonlyArray<{ name: string; status: string }>;
 }
 
+// Minimal Desktop shape used when native @elizaos/computeruse is loaded (avoids depending on its .d.ts).
+interface LocalDesktopShape {
+  openApplication(appName: string): void;
+  locator(selector: string): { first(timeoutMs: number): Promise<{ click(): Promise<void>; typeText(text: string, opts: { clearBeforeTyping: boolean }): void } | null> };
+  getWindowTree(process: string, title?: string, maxDepth?: unknown): unknown;
+  applications(): ReadonlyArray<{ name(): string }>;
+}
+
 export class ComputerUseService extends Service {
   static serviceType = "computeruse";
   capabilityDescription =
@@ -28,7 +36,7 @@ export class ComputerUseService extends Service {
   private initialized = false;
 
   // Lazy-loaded to avoid importing native bindings unless actually used.
-  private localDesktop: import("@elizaos/computeruse").Desktop | null = null;
+  private localDesktop: LocalDesktopShape | null = null;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -111,7 +119,7 @@ export class ComputerUseService extends Service {
     // Import only when needed (native optional deps).
     try {
       const mod = await import("@elizaos/computeruse");
-      this.localDesktop = new mod.Desktop();
+      this.localDesktop = new mod.Desktop() as LocalDesktopShape;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const platform = process.platform;

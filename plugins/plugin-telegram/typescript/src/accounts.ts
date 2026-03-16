@@ -259,9 +259,9 @@ export function resolveTelegramToken(
     return { token: baseToken, source: "character" };
   }
 
-  // For default account, check environment token
+  // For default account, check environment token (fallback to process.env so .env is respected)
   const envToken = allowBase
-    ? normalizeTelegramToken(runtime.getSetting("TELEGRAM_BOT_TOKEN") as string)
+    ? normalizeTelegramToken((runtime.getSetting("TELEGRAM_BOT_TOKEN") ?? process.env.TELEGRAM_BOT_TOKEN) as string)
     : undefined;
   if (envToken) {
     return { token: envToken, source: "env" };

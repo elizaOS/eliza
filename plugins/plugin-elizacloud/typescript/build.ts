@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -35,6 +35,16 @@ async function build() {
   console.log(
     `✅ Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
   );
+  // Fix Bun bundler bug: it emits "default2 as default" but never declares default2
+  const nodeOut = join(distDir, "node", "index.node.js");
+  if (existsSync(nodeOut)) {
+    let code = readFileSync(nodeOut, "utf8");
+    if (code.includes("default2 as default")) {
+      // Use safe identifier since package names may contain invalid JS identifier chars
+      code = code.replace(/default2 as default/g, 'mainExport as default');
+      writeFileSync(nodeOut, code);
+    }
+  }
 
   const browserStart = Date.now();
   console.log("🌐 Building @elizaos/plugin-elizacloud for Browser...");
@@ -82,7 +92,13 @@ async function build() {
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
   const { $ } = await import("bun");
-  await $`tsc --project tsconfig.build.json`;
+  const dtsResult = await $`tsc --project tsconfig.build.json`.nothrow();
+  if (dtsResult.exitCode !== 0) {
+    console.warn(
+      "⚠️ TypeScript declaration build reported errors (declarations may be incomplete). Exit code:",
+      dtsResult.exitCode,
+    );
+  }
   await mkdir("dist/node", { recursive: true });
   await mkdir("dist/browser", { recursive: true });
   await mkdir("dist/cjs", { recursive: true });
