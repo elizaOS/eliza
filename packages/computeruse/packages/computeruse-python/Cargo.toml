@@ -6,6 +6,11 @@ edition.workspace = true
 [lib]
 name = "computeruse"
 crate-type = ["cdylib", "rlib"]
+# This package is exercised through Python/maturin flows; running a Rust lib
+# test harness for the extension module just adds a host libpython dylib
+# dependency and fails on machines where that path is not configured.
+test = false
+doctest = false
 
 [dependencies]
 # PyO3 for Python bindings
@@ -23,3 +28,4 @@ tokio = { workspace = true }
 [[bin]]
 name = "stub_gen"
 doc = false
+test = false
