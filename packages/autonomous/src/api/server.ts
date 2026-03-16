@@ -1,5 +1,5 @@
 /**
- * REST API server for the autonomous control UI.
+ * REST API server for the Milady Control UI.
  *
  * Exposes HTTP endpoints that the UI frontend expects, backed by the
  * elizaOS AgentRuntime. Default port: 2138. In dev mode, the Vite UI
@@ -30,23 +30,19 @@ import {
 import { ethers } from "ethers";
 import { type WebSocket, WebSocketServer } from "ws";
 import { getGlobalAwarenessRegistry } from "../awareness/registry";
-import { CharacterSchema } from "../config/character-schema";
 import {
   configFileExists,
   loadMiladyConfig,
   type MiladyConfig,
   saveMiladyConfig,
 } from "../config/config";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths";
 import {
   isConnectorConfigured,
   isStreamingDestinationConfigured,
 } from "../config/plugin-auto-enable";
-import type {
-  ConnectorConfig,
-  CustomActionDef,
-} from "../config/types.autonomous";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability";
+import type { ConnectorConfig, CustomActionDef } from "../config/types.milady";
 import { EMOTE_BY_ID, EMOTE_CATALOG } from "../emotes/catalog";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace";
 import {
@@ -64,24 +60,24 @@ import {
   getBundledRuntimePluginIds,
 } from "../runtime/release-plugin-policy";
 import {
+  isBlockedPrivateOrLinkLocalIp,
+  isLoopbackHost,
+  normalizeHostLike,
+} from "../security/network-policy";
+import {
   AUDIT_EVENT_TYPES,
   AUDIT_SEVERITIES,
   getAuditFeedSize,
   queryAuditFeed,
   subscribeAuditFeed,
 } from "../security/audit-log";
-import {
-  isBlockedPrivateOrLinkLocalIp,
-  isLoopbackHost,
-  normalizeHostLike,
-} from "../security/network-policy";
+import { AppManager } from "../services/app-manager";
 import {
   AgentExportError,
   estimateExportSize,
   exportAgent,
   importAgent,
 } from "../services/agent-export";
-import { AppManager } from "../services/app-manager";
 import { FallbackTrainingService } from "../services/fallback-training-service";
 import {
   getMcpServerDetails,
@@ -100,24 +96,12 @@ import {
 } from "../services/privy-wallets";
 import type { SandboxManager } from "../services/sandbox-manager";
 import {
-  SignalPairingSession,
-  sanitizeAccountId as sanitizeSignalAccountId,
-  signalAuthExists,
-  signalLogout,
-} from "../services/signal-pairing";
-import {
   installMarketplaceSkill,
   listInstalledMarketplaceSkills,
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
 } from "../services/skill-marketplace";
 import { streamManager } from "../services/stream-manager";
-import {
-  sanitizeAccountId as sanitizeWhatsAppAccountId,
-  WhatsAppPairingSession,
-  whatsappAuthExists,
-  whatsappLogout,
-} from "../services/whatsapp-pairing";
 import {
   executeTriggerTask,
   getTriggerHealthSnapshot,
@@ -142,8 +126,10 @@ import { handleAgentAdminRoutes } from "./agent-admin-routes";
 import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model";
 import { handleAgentTransferRoutes } from "./agent-transfer-routes";
+import { handleAppsHyperscapeRoutes } from "@elizaos/app-hyperscape/routes";
 import { handleAppsRoutes } from "./apps-routes";
 import { handleAuthRoutes } from "./auth-routes";
+
 import {
   buildBscApproveUnsignedTx,
   buildBscBuyUnsignedTx,
@@ -181,7 +167,6 @@ import {
   sendJson,
   sendJsonError,
 } from "./http-helpers";
-import { maybeHandleAppsHyperscapeRoutes } from "./hyperscape-routes-loader";
 import { handleKnowledgeRoutes } from "./knowledge-routes";
 import {
   evictOldestConversation,
@@ -207,7 +192,10 @@ import {
 import { handleRegistryRoutes } from "./registry-routes";
 import { RegistryService } from "./registry-service";
 import { handleSandboxRoute } from "./sandbox-routes";
-import { applySignalQrOverride, handleSignalRoute } from "./signal-routes";
+import {
+  applySignalQrOverride,
+  handleSignalRoute,
+} from "./signal-routes";
 import { resolveStreamingUpdate } from "./streaming-text";
 import { handleSubscriptionRoutes } from "./subscription-routes";
 import { resolveTerminalRunLimits } from "./terminal-run-limits";
@@ -234,6 +222,19 @@ import {
   applyWhatsAppQrOverride,
   handleWhatsAppRoute,
 } from "./whatsapp-routes";
+import { CharacterSchema } from "../config/character-schema";
+import {
+  SignalPairingSession,
+  sanitizeAccountId as sanitizeSignalAccountId,
+  signalAuthExists,
+  signalLogout,
+} from "../services/signal-pairing";
+import {
+  sanitizeAccountId as sanitizeWhatsAppAccountId,
+  WhatsAppPairingSession,
+  whatsappAuthExists,
+  whatsappLogout,
+} from "../services/whatsapp-pairing";
 
 /**
  * Local stubs for types removed from @elizaos/plugin-agent-orchestrator 2.x.
@@ -7731,8 +7732,7 @@ async function handleRequest(
       json,
       error,
       saveConfig: saveMiladyConfig,
-      loadSubscriptionAuth: async () =>
-        (await import("../auth/index")) as never,
+      loadSubscriptionAuth: async () => (await import("../auth/index")) as never,
     } as never)
   ) {
     return;
@@ -9385,10 +9385,8 @@ async function handleRequest(
     // Plugin internal names vary wildly (e.g. "local-ai" for plugin-local-embedding,
     // "eliza-coder" for plugin-code), so we check loaded names against multiple
     // derived forms of the npm package name.
-    const loadedNames: Set<string> = state.runtime
-      ? new Set<string>(
-          state.runtime.plugins.map((p: { name: string }) => p.name),
-        )
+    const loadedNames = state.runtime
+      ? new Set(state.runtime.plugins.map((p: { name: string }) => p.name))
       : new Set<string>();
 
     const isLoaded = (npmName: string): boolean => {
@@ -14667,7 +14665,7 @@ async function handleRequest(
 
   // ── Hyperscape control proxy routes ──────────────────────────────────
   if (
-    await maybeHandleAppsHyperscapeRoutes({
+    await handleAppsHyperscapeRoutes({
       req,
       res,
       method,
@@ -16235,7 +16233,10 @@ async function handleRequest(
 // the entire server dependency graph into lightweight consumers (e.g. the
 // headless `startEliza()` path).
 // ---------------------------------------------------------------------------
-import { type captureEarlyLogs, flushEarlyLogs } from "./early-logs";
+import {
+  type captureEarlyLogs,
+  flushEarlyLogs,
+} from "./early-logs";
 export type { captureEarlyLogs };
 
 // ---------------------------------------------------------------------------
@@ -16995,13 +16996,13 @@ export async function startApiServer(opts?: {
             const cfg = state.config as Record<string, unknown> | undefined;
             const msgs = cfg?.messages as Record<string, unknown> | undefined;
             return msgs
-              ? {
-                  messages: {
-                    tts: msgs.tts as
+                ? {
+                    messages: {
+                      tts: msgs.tts as
                       | import("../config/types.messages").TtsConfig
                       | undefined,
-                  },
-                }
+                    },
+                  }
               : undefined;
           },
         };

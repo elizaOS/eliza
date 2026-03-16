@@ -95,6 +95,12 @@ function createEmptyWalletBalances() {
 
 function createWalletConfig() {
   return {
+    selectedRpcProviders: {
+      evm: "alchemy",
+      bsc: "nodereal",
+      solana: "eliza-cloud",
+    },
+    legacyCustomChains: [],
     alchemyKeySet: true,
     infuraKeySet: false,
     ankrKeySet: true,
@@ -904,5 +910,31 @@ describe("InventoryView unified wallets", () => {
       "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     );
     expect(text(tree?.root)).toContain("bsctradepanel.Confirmations");
+  });
+
+  it("shows legacy raw RPC guidance when a focused chain is on legacy config", async () => {
+    const ctx = createContext({
+      inventoryChainFocus: "bsc",
+      walletConfig: {
+        ...createWalletConfig(),
+        selectedRpcProviders: {
+          evm: "alchemy",
+          bsc: "nodereal",
+          solana: "eliza-cloud",
+        },
+        legacyCustomChains: ["bsc"],
+        bscBalanceReady: true,
+      },
+    });
+    mockUseApp.mockImplementation(() => ctx);
+
+    let tree: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(React.createElement(InventoryView));
+    });
+
+    const content = text(tree?.root);
+    expect(content).toContain("BSC is using legacy raw RPC config.");
+    expect(content).toContain("Re-save a supported provider in Settings");
   });
 });

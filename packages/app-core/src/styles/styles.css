@@ -3,6 +3,9 @@
 @import "./anime.css";
 @import "./onboarding-game.css";
 
+@source "..";
+@source "../../../apps/app/src";
+
 /*
  * Map the existing theme CSS custom properties to Tailwind theme tokens.
  * Using @theme inline so Tailwind inlines var() references rather than
@@ -2081,5 +2084,4 @@ kbd {
   .companion-game__drawer-grid {
     grid-template-columns: 1fr;
   }
-
 }

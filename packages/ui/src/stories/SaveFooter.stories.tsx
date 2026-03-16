@@ -26,7 +26,7 @@ export const Saving: StoryObj = {
     onSave: () => {},
   },
 };
-export const Error: StoryObj = {
+export const ErrorState: StoryObj = {
   args: {
     dirty: true,
     saving: false,

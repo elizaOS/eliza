@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { OnboardingConnection } from "@elizaos/autonomous/contracts/onboarding";
 import { prepareDraftForSave } from "../actions/character";
 import {
   type AgentStartupDiagnostics,
@@ -62,6 +63,7 @@ import {
   type WalletAddresses,
   type WalletBalancesResponse,
   type WalletConfigStatus,
+  type WalletConfigUpdateRequest,
   type WalletExportResult,
   type WalletNftsResponse,
   type WalletTradingProfileResponse,
@@ -97,6 +99,7 @@ import {
   type UiLanguage,
 } from "../i18n";
 import { pathForTab, type Tab, tabFromPath } from "../navigation";
+import { buildOnboardingConnectionConfig } from "../onboarding-config";
 import { getMissingOnboardingPermissions } from "../platform";
 import {
   alertDesktopMessage,
@@ -115,9 +118,13 @@ import {
   applyUiTheme,
   asApiLikeError,
   type ChatTurnUsage,
+  clearPersistedOnboardingStep,
+  deriveOnboardingResumeConnection,
+  deriveOnboardingResumeFields,
   formatSearchBullet,
   formatStartupErrorDetail,
   type GamePostMessageAuthPayload,
+  inferOnboardingResumeStep,
   LIFECYCLE_MESSAGES,
   type LifecycleAction,
   type LoadConversationMessagesResult,
@@ -128,6 +135,7 @@ import {
   loadChatVoiceMuted,
   loadCompanionMessageCutoffTs,
   loadLastNativeTab,
+  loadPersistedOnboardingStep,
   loadUiLanguage,
   loadUiShellMode,
   loadUiTheme,
@@ -154,6 +162,7 @@ import {
   saveChatVoiceMuted,
   saveCompanionMessageCutoffTs,
   saveLastNativeTab,
+  saveOnboardingStep,
   saveUiLanguage,
   saveUiShellMode,
   saveUiTheme,
@@ -235,6 +244,7 @@ import {
   useConfirm,
   usePrompt,
 } from "../components/ConfirmModal";
+import { buildWalletRpcUpdateRequest } from "../wallet-rpc";
 
 const GREETING_EMOTE_DELAY_MS = 1400;
 const GREETING_WAVE_EMOTE: AppEmoteEventDetail = {
@@ -768,8 +778,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
   // --- Onboarding ---
-  const [onboardingStep, setOnboardingStep] =
-    useState<OnboardingStep>("wakeUp");
+  const [onboardingStep, setOnboardingStepRaw] = useState<OnboardingStep>(
+    () => loadPersistedOnboardingStep() ?? "wakeUp",
+  );
   const [onboardingOptions, setOnboardingOptions] =
     useState<OnboardingOptions | null>(null);
   const [onboardingName, setOnboardingName] = useState("Eliza");
@@ -833,6 +844,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   >({});
   const [onboardingAvatar, setOnboardingAvatar] = useState(1);
   const [onboardingRestarting, setOnboardingRestarting] = useState(false);
+
+  const setOnboardingStep = useCallback((step: OnboardingStep) => {
+    setOnboardingStepRaw(step);
+    saveOnboardingStep(step);
+  }, []);
 
   // --- Command palette ---
   const [commandPaletteOpen, _setCommandPaletteOpen] = useState(false);
@@ -929,6 +945,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const lifecycleActionRef = useRef<LifecycleAction | null>(null);
   /** Synchronous lock for onboarding finish to prevent duplicate same-tick submits. */
   const onboardingFinishBusyRef = useRef(false);
+  const onboardingResumeConnectionRef = useRef<OnboardingConnection | null>(
+    null,
+  );
   const pairingBusyRef = useRef(false);
   /** Guards against double-greeting when both init and state-transition paths fire. */
   const greetingFiredRef = useRef(false);
@@ -1613,6 +1632,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : (character.bio ?? ""),
         system: character.system ?? "",
         adjectives: character.adjectives ?? [],
+        topics: character.topics ?? [],
         style: {
           all: character.style?.all ?? [],
           chat: character.style?.chat ?? [],
@@ -2100,6 +2120,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await client.resetAgent();
       setAgentStatus(null);
       setOnboardingComplete(false);
+      onboardingResumeConnectionRef.current = null;
       setOnboardingStep("wakeUp");
       setConversationMessages([]);
       setActiveConversationId(null);
@@ -2136,6 +2157,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     beginLifecycleAction,
     finishLifecycleAction,
     setActionNotice,
+    setOnboardingStep,
   ]);
 
   const handleNewConversation = useCallback(
@@ -2495,8 +2517,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         clearChatInput?: boolean;
       },
     ) => {
+      const hasAttachedImages = Boolean(options?.images?.length);
       const rawText = rawInput.trim();
-      if (!rawText) return;
+      if (!rawText && !hasAttachedImages) return;
       if (chatSendBusyRef.current) return;
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;
@@ -2509,31 +2532,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
       let controller: AbortController | null = null;
 
       try {
-        let text = rawText;
-        let commandResult: { handled: boolean; rewrittenText?: string };
-        try {
-          commandResult = await tryHandlePrefixedChatCommand(rawText);
-        } catch (err) {
-          appendLocalCommandTurn(
-            rawText,
-            `Command failed: ${err instanceof Error ? err.message : "unknown error"}`,
-          );
-          if (options?.clearChatInput) {
-            setChatInput("");
+        let text = hasAttachedImages
+          ? rawText || "Please review the attached image."
+          : rawText;
+        if (rawText) {
+          let commandResult: { handled: boolean; rewrittenText?: string };
+          try {
+            commandResult = await tryHandlePrefixedChatCommand(rawText);
+          } catch (err) {
+            appendLocalCommandTurn(
+              rawText,
+              `Command failed: ${err instanceof Error ? err.message : "unknown error"}`,
+            );
+            if (options?.clearChatInput) {
+              setChatInput("");
+            }
+            return;
           }
-          return;
-        }
-        if (commandResult.handled) {
-          if (options?.clearChatInput) {
-            setChatInput("");
+          if (commandResult.handled) {
+            if (options?.clearChatInput) {
+              setChatInput("");
+            }
+            return;
           }
-          return;
-        }
-        if (
-          typeof commandResult.rewrittenText === "string" &&
-          commandResult.rewrittenText.trim()
-        ) {
-          text = commandResult.rewrittenText.trim();
+          if (
+            typeof commandResult.rewrittenText === "string" &&
+            commandResult.rewrittenText.trim()
+          ) {
+            text = commandResult.rewrittenText.trim();
+          }
         }
 
         let convId: string =
@@ -3598,8 +3625,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ── Inventory actions ──────────────────────────────────────────────
 
   const handleWalletApiKeySave = useCallback(
-    async (config: Record<string, string>) => {
-      if (Object.keys(config).length === 0) return;
+    async (config: WalletConfigUpdateRequest) => {
+      if (
+        Object.keys(config.credentials ?? {}).length === 0 &&
+        Object.keys(config.selections ?? {}).length === 0
+      ) {
+        return;
+      }
       if (walletApiKeySavingRef.current || walletApiKeySaving) return;
       walletApiKeySavingRef.current = true;
       setWalletApiKeySaving(true);
@@ -3609,7 +3641,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await loadWalletConfig();
         await loadBalances();
         setActionNotice(
-          "Wallet API keys saved. Restart required to apply.",
+          "Wallet RPC settings saved. Restart required to apply.",
           "success",
         );
       } catch (err) {
@@ -3872,59 +3904,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const systemPrompt = style?.system
       ? style.system.replace(/\{\{name\}\}/g, onboardingName)
       : `You are ${onboardingName}, an autonomous AI agent powered by elizaOS. ${onboardingOptions.sharedStyleRules}`;
-    const elizaCloudProvisioned =
-      onboardingRunMode === "cloud" &&
-      onboardingCloudProvider === "elizacloud" &&
-      !onboardingRemoteConnected;
-    const apiRunMode = elizaCloudProvisioned ? "cloud" : "local";
-
     onboardingFinishBusyRef.current = true;
     setOnboardingRestarting(true);
     onboardingFinishSavingRef.current = true;
 
     try {
-      // Build inventoryProviders from RPC selections/keys
-      const inventoryProviders: Array<{
-        chain: string;
-        rpcProvider: string;
-        rpcApiKey?: string;
-      }> = [];
+      const connection =
+        buildOnboardingConnectionConfig({
+          onboardingRunMode,
+          onboardingCloudProvider,
+          onboardingProvider,
+          onboardingApiKey,
+          onboardingPrimaryModel,
+          onboardingOpenRouterModel,
+          onboardingRemoteConnected,
+          onboardingRemoteApiBase,
+          onboardingRemoteToken,
+          onboardingSmallModel,
+          onboardingLargeModel,
+        }) ?? onboardingResumeConnectionRef.current;
+      if (!connection) {
+        throw new Error("Onboarding connection is incomplete");
+      }
       const rpcSel = onboardingRpcSelections as Record<string, string>;
       const rpcK = onboardingRpcKeys as Record<string, string>;
-
-      const defaultRpcProvider =
-        elizaCloudProvisioned || elizaCloudConnected
-          ? "eliza-cloud"
-          : undefined;
-      const evmProvider = rpcSel.evm || defaultRpcProvider;
-      const bscProvider = rpcSel.bsc || defaultRpcProvider;
-      const solanaProvider = rpcSel.solana || defaultRpcProvider;
-
-      if (evmProvider) {
-        inventoryProviders.push({
-          chain: "evm",
-          rpcProvider: evmProvider,
-          rpcApiKey: rpcK.ALCHEMY_API_KEY || undefined,
-        });
-      }
-      if (bscProvider) {
-        inventoryProviders.push({
-          chain: "bsc",
-          rpcProvider: bscProvider,
-          rpcApiKey: rpcK.ALCHEMY_API_KEY || undefined,
-        });
-      }
-      if (solanaProvider) {
-        inventoryProviders.push({
-          chain: "solana",
-          rpcProvider: solanaProvider,
-          rpcApiKey: rpcK.HELIUS_API_KEY || undefined,
-        });
-      }
+      const nextWalletConfig = buildWalletRpcUpdateRequest({
+        walletConfig,
+        rpcFieldValues: rpcK,
+        selectedProviders: {
+          evm: rpcSel.evm,
+          bsc: rpcSel.bsc,
+          solana: rpcSel.solana,
+        },
+      });
 
       await client.submitOnboarding({
         name: onboardingName,
-        runMode: apiRunMode,
         sandboxMode: "off" as const,
         bio: style?.bio ?? ["An autonomous AI agent."],
         systemPrompt,
@@ -3932,24 +3947,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         adjectives: style?.adjectives,
         postExamples: style?.postExamples,
         messageExamples: style?.messageExamples,
-        cloudProvider: elizaCloudProvisioned
-          ? onboardingCloudProvider
-          : undefined,
-        smallModel: elizaCloudProvisioned
-          ? onboardingSmallModel.trim() || undefined
-          : undefined,
-        largeModel: elizaCloudProvisioned
-          ? onboardingLargeModel.trim() || undefined
-          : undefined,
-        provider:
-          apiRunMode === "local" ? onboardingProvider || undefined : undefined,
-        providerApiKey: onboardingApiKey || undefined,
-        primaryModel:
-          apiRunMode === "local"
-            ? onboardingPrimaryModel.trim() || undefined
-            : undefined,
-        inventoryProviders:
-          inventoryProviders.length > 0 ? inventoryProviders : undefined,
+        connection,
+        walletConfig: nextWalletConfig,
       });
       try {
         setAgentStatus(await client.restartAgent());
@@ -3958,6 +3957,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       const greetConvId = await hydrateInitialConversationState();
       await requestGreetingWhenRunning(greetConvId, { showOverlay: true });
+      clearPersistedOnboardingStep();
+      onboardingResumeConnectionRef.current = null;
       setOnboardingComplete(true);
       setTab("chat");
     } catch (err) {
@@ -3984,13 +3985,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     onboardingLargeModel,
     onboardingProvider,
     onboardingApiKey,
+    onboardingRemoteApiBase,
     onboardingRemoteConnected,
+    onboardingRemoteToken,
+    onboardingOpenRouterModel,
     onboardingPrimaryModel,
     onboardingRpcSelections,
     onboardingRpcKeys,
+    walletConfig,
     hydrateInitialConversationState,
     setTab,
-    elizaCloudConnected,
     requestGreetingWhenRunning,
   ]);
 
@@ -4084,7 +4088,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (currentIndex > 0) {
       setOnboardingStep(STEP_ORDER[currentIndex - 1]);
     }
-  }, [onboardingStep]);
+  }, [onboardingStep, setOnboardingStep]);
 
   const handleOnboardingUseLocalBackend = useCallback(() => {
     client.setBaseUrl(null);
@@ -4434,6 +4438,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         [S in keyof AppState]: (v: AppState[S]) => void;
       }> = {
         tab: setTabRaw,
+        onboardingStep: setOnboardingStep,
         chatInput: setChatInput,
         chatAvatarVisible: setChatAvatarVisible,
         chatAgentVoiceMuted: setChatAgentVoiceMuted,
@@ -4562,7 +4567,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const setter = setterMap[key];
       if (setter) setter(value);
     },
-    [setSelectedVrmIndex],
+    [setOnboardingStep, setSelectedVrmIndex],
   );
 
   // ── Initialization ─────────────────────────────────────────────────
@@ -4705,6 +4710,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             break;
           }
           const { complete } = await client.getOnboardingStatus();
+          if (complete) {
+            clearPersistedOnboardingStep();
+            onboardingResumeConnectionRef.current = null;
+          }
           setOnboardingComplete(complete);
           onboardingNeedsOptions = !complete;
           break;
@@ -4752,8 +4761,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
             return;
           }
           try {
-            const options = await client.getOnboardingOptions();
+            const [options, config] = await Promise.all([
+              client.getOnboardingOptions(),
+              client.getConfig().catch(() => null),
+            ]);
+            const resumeConnection = deriveOnboardingResumeConnection(config);
+            const resumeFields = deriveOnboardingResumeFields(resumeConnection);
+            onboardingResumeConnectionRef.current = resumeConnection;
             setOnboardingOptions(options);
+            if (resumeFields.onboardingRunMode !== undefined) {
+              setOnboardingRunMode(resumeFields.onboardingRunMode);
+            }
+            if (resumeFields.onboardingCloudProvider !== undefined) {
+              setOnboardingCloudProvider(resumeFields.onboardingCloudProvider);
+            }
+            if (resumeFields.onboardingProvider !== undefined) {
+              setOnboardingProvider(resumeFields.onboardingProvider);
+            }
+            if (resumeFields.onboardingApiKey !== undefined) {
+              setOnboardingApiKey(resumeFields.onboardingApiKey);
+            }
+            if (resumeFields.onboardingPrimaryModel !== undefined) {
+              setOnboardingPrimaryModel(resumeFields.onboardingPrimaryModel);
+            }
+            if (resumeFields.onboardingOpenRouterModel !== undefined) {
+              setOnboardingOpenRouterModel(
+                resumeFields.onboardingOpenRouterModel,
+              );
+            }
+            if (resumeFields.onboardingRemoteConnected !== undefined) {
+              setOnboardingRemoteConnected(
+                resumeFields.onboardingRemoteConnected,
+              );
+            }
+            if (resumeFields.onboardingRemoteApiBase !== undefined) {
+              setOnboardingRemoteApiBase(resumeFields.onboardingRemoteApiBase);
+            }
+            if (resumeFields.onboardingRemoteToken !== undefined) {
+              setOnboardingRemoteToken(resumeFields.onboardingRemoteToken);
+            }
+            if (resumeFields.onboardingSmallModel !== undefined) {
+              setOnboardingSmallModel(resumeFields.onboardingSmallModel);
+            }
+            if (resumeFields.onboardingLargeModel !== undefined) {
+              setOnboardingLargeModel(resumeFields.onboardingLargeModel);
+            }
+            setOnboardingStep(
+              inferOnboardingResumeStep({
+                persistedStep: loadPersistedOnboardingStep(),
+                config,
+              }),
+            );
             setOnboardingLoading(false);
             return;
           } catch (err) {

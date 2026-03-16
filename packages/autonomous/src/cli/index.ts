@@ -2,11 +2,11 @@ import process from "node:process";
 import { bootElizaRuntime, startEliza } from "../runtime";
 
 function printHelp(): void {
-  console.log(`eliza-autonomous
+  console.log(`milady-autonomous
 
 Usage:
-  eliza-autonomous serve
-  eliza-autonomous runtime
+  milady-autonomous serve
+  milady-autonomous runtime
 
 Commands:
   serve    Start the autonomous backend in server-only mode
@@ -14,9 +14,7 @@ Commands:
 `);
 }
 
-export async function runAutonomousCli(
-  argv: string[] = process.argv,
-): Promise<void> {
+export async function runAutonomousCli(argv: string[] = process.argv): Promise<void> {
   const command = argv[2] ?? "serve";
 
   if (command === "--help" || command === "-h" || command === "help") {

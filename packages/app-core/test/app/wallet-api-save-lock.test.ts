@@ -2,6 +2,7 @@
 import React, { useEffect } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { WalletConfigUpdateRequest } from "@elizaos/autonomous/contracts/wallet";
 
 const { mockClient } = vi.hoisted(() => ({
   mockClient: {
@@ -90,7 +91,7 @@ function createDeferred<T>() {
 }
 
 type ProbeApi = {
-  handleWalletApiKeySave: (config: Record<string, string>) => Promise<void>;
+  handleWalletApiKeySave: (config: WalletConfigUpdateRequest) => Promise<void>;
 };
 
 function Probe(props: { onReady: (api: ProbeApi) => void }) {
@@ -217,7 +218,17 @@ describe("wallet api key save locking", () => {
 
     expect(api).not.toBeNull();
 
-    const config = { HELIUS_API_KEY: "k_123" };
+    const config: WalletConfigUpdateRequest = {
+      selections: {
+        evm: "eliza-cloud",
+        bsc: "eliza-cloud",
+        solana: "helius-birdeye",
+      },
+      credentials: {
+        HELIUS_API_KEY: "k_123",
+        BIRDEYE_API_KEY: "bird_123",
+      },
+    };
 
     await act(async () => {
       void api?.handleWalletApiKeySave(config);
@@ -259,7 +270,17 @@ describe("wallet api key save locking", () => {
 
     expect(api).not.toBeNull();
 
-    const config = { HELIUS_API_KEY: "k_123" };
+    const config: WalletConfigUpdateRequest = {
+      selections: {
+        evm: "eliza-cloud",
+        bsc: "eliza-cloud",
+        solana: "helius-birdeye",
+      },
+      credentials: {
+        HELIUS_API_KEY: "k_123",
+        BIRDEYE_API_KEY: "bird_123",
+      },
+    };
 
     await act(async () => {
       await api?.handleWalletApiKeySave(config);

@@ -7,6 +7,10 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  WALLET_RPC_PROVIDER_OPTIONS,
+  type WalletRpcSelections,
+} from "@elizaos/autonomous/contracts/wallet";
 import { client } from "../api";
 import {
   ConfigRenderer,
@@ -15,6 +19,10 @@ import {
 } from "../config";
 import { useApp } from "../state";
 import type { ConfigUiHint } from "../types";
+import {
+  buildWalletRpcUpdateRequest,
+  resolveInitialWalletRpcSelections,
+} from "../wallet-rpc";
 import { SecretsView } from "./SecretsView";
 
 type RpcProviderOption<T extends string> = {
@@ -32,23 +40,9 @@ type RpcFieldGroup = ReadonlyArray<RpcFieldDefinition>;
 
 type RpcSectionConfigMap = Record<string, RpcFieldGroup>;
 
-const EVM_RPC_OPTIONS = [
-  { id: "eliza-cloud", label: "Eliza Cloud" },
-  { id: "alchemy", label: "Alchemy" },
-  { id: "infura", label: "Infura" },
-  { id: "ankr", label: "Ankr" },
-] as const;
-
-const BSC_RPC_OPTIONS = [
-  { id: "eliza-cloud", label: "Eliza Cloud" },
-  { id: "nodereal", label: "NodeReal" },
-  { id: "quicknode", label: "QuickNode" },
-] as const;
-
-const SOLANA_RPC_OPTIONS = [
-  { id: "eliza-cloud", label: "Eliza Cloud" },
-  { id: "helius-birdeye", label: "Helius + Birdeye" },
-] as const;
+const EVM_RPC_OPTIONS = WALLET_RPC_PROVIDER_OPTIONS.evm;
+const BSC_RPC_OPTIONS = WALLET_RPC_PROVIDER_OPTIONS.bsc;
+const SOLANA_RPC_OPTIONS = WALLET_RPC_PROVIDER_OPTIONS.solana;
 
 type CloudRpcStatusProps = {
   connected: boolean;
@@ -473,24 +467,40 @@ export function ConfigPageView({ embedded = false }: { embedded?: boolean }) {
     setRpcFieldValues((prev) => ({ ...prev, [key]: String(value ?? "") }));
   }, []);
 
-  const handleWalletSaveAll = useCallback(() => {
-    const config: Record<string, string> = {};
-    for (const [key, value] of Object.entries(rpcFieldValues)) {
-      if (value) config[key] = value;
-    }
-    void handleWalletApiKeySave(config);
-  }, [handleWalletApiKeySave, rpcFieldValues]);
-
   /* ── RPC provider selection state ──────────────────────────────────── */
-  const [selectedEvmRpc, setSelectedEvmRpc] = useState<
-    "eliza-cloud" | "alchemy" | "infura" | "ankr"
-  >("eliza-cloud");
-  const [selectedBscRpc, setSelectedBscRpc] = useState<
-    "eliza-cloud" | "nodereal" | "quicknode"
-  >("eliza-cloud");
-  const [selectedSolanaRpc, setSelectedSolanaRpc] = useState<
-    "eliza-cloud" | "helius-birdeye"
-  >("eliza-cloud");
+  const [selectedEvmRpc, setSelectedEvmRpc] =
+    useState<WalletRpcSelections["evm"]>("eliza-cloud");
+  const [selectedBscRpc, setSelectedBscRpc] =
+    useState<WalletRpcSelections["bsc"]>("eliza-cloud");
+  const [selectedSolanaRpc, setSelectedSolanaRpc] =
+    useState<WalletRpcSelections["solana"]>("eliza-cloud");
+
+  useEffect(() => {
+    const initialSelections = resolveInitialWalletRpcSelections(walletConfig);
+    setSelectedEvmRpc(initialSelections.evm);
+    setSelectedBscRpc(initialSelections.bsc);
+    setSelectedSolanaRpc(initialSelections.solana);
+  }, [walletConfig]);
+
+  const handleWalletSaveAll = useCallback(() => {
+    const config = buildWalletRpcUpdateRequest({
+      walletConfig,
+      rpcFieldValues,
+      selectedProviders: {
+        evm: selectedEvmRpc,
+        bsc: selectedBscRpc,
+        solana: selectedSolanaRpc,
+      },
+    });
+    void handleWalletApiKeySave(config);
+  }, [
+    handleWalletApiKeySave,
+    rpcFieldValues,
+    selectedBscRpc,
+    selectedEvmRpc,
+    selectedSolanaRpc,
+    walletConfig,
+  ]);
 
   const evmRpcConfigs: RpcSectionConfigMap = {
     alchemy: [
@@ -517,6 +527,20 @@ export function ConfigPageView({ embedded = false }: { embedded?: boolean }) {
   };
 
   const bscRpcConfigs: RpcSectionConfigMap = {
+    alchemy: [
+      {
+        configKey: "ALCHEMY_API_KEY",
+        label: "Alchemy API Key",
+        isSet: walletConfig?.alchemyKeySet ?? false,
+      },
+    ],
+    ankr: [
+      {
+        configKey: "ANKR_API_KEY",
+        label: "Ankr API Key",
+        isSet: walletConfig?.ankrKeySet ?? false,
+      },
+    ],
     nodereal: [
       {
         configKey: "NODEREAL_BSC_RPC_URL",
@@ -557,6 +581,12 @@ export function ConfigPageView({ embedded = false }: { embedded?: boolean }) {
     loginBusy: elizaCloudLoginBusy,
     onLogin: () => void handleCloudLogin(),
   };
+
+  const legacyRpcChains = walletConfig?.legacyCustomChains ?? [];
+  const legacyRpcWarning =
+    legacyRpcChains.length > 0
+      ? `Legacy raw RPC is still active for ${legacyRpcChains.join(", ")}. Re-save a supported provider selection to migrate fully.`
+      : null;
 
   return (
     <div>
@@ -616,7 +646,7 @@ export function ConfigPageView({ embedded = false }: { embedded?: boolean }) {
             rpcFieldValues={rpcFieldValues}
             onRpcFieldChange={handleRpcFieldChange}
             cloud={cloudStatusProps}
-            containerClassName="grid grid-cols-3 gap-1.5"
+            containerClassName="grid grid-cols-2 md:grid-cols-5 gap-1.5"
           />
 
           {/* EVM */}
@@ -647,6 +677,12 @@ export function ConfigPageView({ embedded = false }: { embedded?: boolean }) {
             containerClassName="grid grid-cols-2 gap-1.5"
           />
         </div>
+
+        {legacyRpcWarning && (
+          <div className="mt-4 rounded-lg border border-[var(--warn)] bg-[var(--warn-subtle)] px-3 py-2 text-[11px] text-[var(--text)]">
+            {legacyRpcWarning}
+          </div>
+        )}
 
         <div className="flex justify-end mt-4">
           <button

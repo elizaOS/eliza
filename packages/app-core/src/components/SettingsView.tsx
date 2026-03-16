@@ -155,13 +155,13 @@ function SettingsSidebar({
                 }`}
               >
                 <span
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border p-2 ${
                     isActive
                       ? "border-accent/30 bg-accent/18 text-txt-strong"
                       : "border-border/50 bg-bg-accent/80 text-muted"
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="w-4 h-4 shrink-0" />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-semibold leading-snug text-current">
@@ -304,8 +304,8 @@ function AdvancedSection() {
             className="settings-card-button flex items-center gap-4 border border-border/50 bg-card/60 text-left backdrop-blur-md transition-all group hover:-translate-y-0.5 hover:border-accent hover:shadow-[0_4px_20px_rgba(var(--accent),0.1)]"
             aria-haspopup="dialog"
           >
-            <div className="w-12 h-12 rounded-xl bg-bg-accent border border-border/50 flex items-center justify-center group-hover:bg-accent group-hover:border-accent transition-all shadow-sm">
-              <Download className="w-5 h-5 text-txt group-hover:text-accent-fg transition-colors" />
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-bg-accent p-3 shadow-sm transition-all group-hover:border-accent group-hover:bg-accent">
+              <Download className="h-5 w-5 shrink-0 text-txt transition-colors group-hover:text-accent-fg" />
             </div>
             <div>
               <div className="font-medium text-sm">
@@ -323,8 +323,8 @@ function AdvancedSection() {
             className="settings-card-button flex items-center gap-4 border border-border/50 bg-card/60 text-left backdrop-blur-md transition-all group hover:-translate-y-0.5 hover:border-accent hover:shadow-[0_4px_20px_rgba(var(--accent),0.1)]"
             aria-haspopup="dialog"
           >
-            <div className="w-12 h-12 rounded-xl bg-bg-accent border border-border/50 flex items-center justify-center group-hover:bg-accent group-hover:border-accent transition-all shadow-sm">
-              <Upload className="w-5 h-5 text-txt group-hover:text-accent-fg transition-colors" />
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-bg-accent p-3 shadow-sm transition-all group-hover:border-accent group-hover:bg-accent">
+              <Upload className="h-5 w-5 shrink-0 text-txt transition-colors group-hover:text-accent-fg" />
             </div>
             <div>
               <div className="font-medium text-sm">
@@ -793,14 +793,14 @@ export function SettingsView({
         <div className="mx-auto max-w-5xl">
           <div className="sticky top-0 z-20 mb-5 rounded-[1.35rem] border border-border/50 bg-bg/80 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.2)] backdrop-blur-xl">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative min-w-0 flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+              <div className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-xl border border-border/60 bg-card/70 px-3 focus-within:ring-2 focus-within:ring-accent/40 focus-within:border-accent/50">
+                <Search className="h-4 w-4 shrink-0 text-muted" aria-hidden />
                 <Input
                   type="text"
                   placeholder={t("settings.searchPlaceholder")}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-11 w-full rounded-xl border-border/60 bg-card/70 pl-10 pr-3 text-sm shadow-sm"
+                  className="h-9 min-w-0 flex-1 border-0 bg-transparent py-0 pr-0 pl-0 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
                 />
               </div>
               <button

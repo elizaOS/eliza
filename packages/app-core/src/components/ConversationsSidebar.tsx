@@ -1,3 +1,4 @@
+import { useApp } from "../state";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -5,7 +6,6 @@ import {
   DropdownMenuTrigger,
 } from "@elizaos/ui";
 import { useEffect, useRef, useState } from "react";
-import { useApp } from "../state";
 import { ConversationListItem } from "./conversations/ConversationListItem";
 
 type ConversationsSidebarVariant = "default" | "game-modal";

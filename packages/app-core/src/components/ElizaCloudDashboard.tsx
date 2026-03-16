@@ -900,8 +900,8 @@ export function CloudDashboard() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center shadow-lg shadow-accent/20">
-              <LayoutDashboard className="w-5 h-5 text-accent-fg" />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent p-2.5 shadow-lg shadow-accent/20">
+              <LayoutDashboard className="h-5 w-5 shrink-0 text-accent-fg" />
             </div>
             <h1 className="text-3xl font-bold text-txt-strong tracking-tight">
               {t("elizaclouddashboard.CloudDashboard")}

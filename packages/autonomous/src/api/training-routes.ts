@@ -1,7 +1,7 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { parsePositiveInteger } from "../utils/number-parsing";
+import { detectAvailableBackends, type BackendAvailability } from "./training-backend-check";
 import type { RouteHelpers, RouteRequestContext } from "./route-helpers";
-import { detectAvailableBackends } from "./training-backend-check";
 
 export type TrainingRouteHelpers = RouteHelpers;
 

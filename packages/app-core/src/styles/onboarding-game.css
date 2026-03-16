@@ -4,6 +4,16 @@
   width: 100vw;
   height: 100vh;
   background: #0c0e14;
+  --text: rgba(240, 238, 250, 0.94);
+  --muted: rgba(240, 238, 250, 0.66);
+  --border: rgba(255, 255, 255, 0.14);
+  --card: rgba(10, 14, 20, 0.28);
+  --ok: rgba(240, 185, 11, 0.92);
+  --ok-muted: rgba(240, 185, 11, 0.34);
+  --ok-subtle: rgba(240, 185, 11, 0.12);
+  --accent: rgba(240, 185, 11, 0.94);
+  --accent-foreground: rgba(240, 238, 250, 0.94);
+  --danger: rgb(248, 113, 113);
   position: relative;
   overflow: hidden;
 }
@@ -21,7 +31,7 @@
 .onboarding-bg-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(8, 10, 16, 0.45);
+  background: rgba(8, 10, 16, 0.58);
   z-index: 1;
 }
 @keyframes onboarding-bg-drift {
@@ -198,26 +208,28 @@
 .onboarding-step-name {
   font-size: 15px;
   letter-spacing: 0.08em;
-  color: rgba(240, 238, 250, 0.25);
+  color: rgba(240, 238, 250, 0.58);
   font-weight: 500;
+  text-shadow: 0 2px 10px rgba(3, 5, 10, 0.65);
   transition: all 0.5s;
 }
 .onboarding-step-item--done .onboarding-step-name {
-  color: rgba(240, 238, 250, 0.4);
+  color: rgba(240, 238, 250, 0.72);
 }
 .onboarding-step-item--active .onboarding-step-name {
-  color: var(--text);
+  color: rgba(240, 238, 250, 0.92);
   font-weight: 600;
 }
 
 .onboarding-step-sub {
   font-size: 13px;
-  color: rgba(240, 238, 250, 0.15);
+  color: rgba(240, 238, 250, 0.38);
   letter-spacing: 0.05em;
+  text-shadow: 0 2px 10px rgba(3, 5, 10, 0.55);
   transition: all 0.5s;
 }
 .onboarding-step-item--active .onboarding-step-sub {
-  color: rgba(240, 185, 11, 0.45);
+  color: rgba(240, 185, 11, 0.8);
 }
 
 /* === RIGHT PANEL — Content === */
@@ -232,10 +244,10 @@
 
 /* Glassmorphism panel */
 .onboarding-panel {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(10, 14, 20, 0.16);
   backdrop-filter: blur(40px) saturate(1.4);
   -webkit-backdrop-filter: blur(40px) saturate(1.4);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 10px;
   padding: 36px 32px;
   display: flex;
@@ -339,9 +351,10 @@
   font-size: 12px;
   letter-spacing: 0.3em;
   text-transform: uppercase;
-  color: rgba(240, 238, 250, 0.45);
+  color: rgba(240, 238, 250, 0.62);
   font-weight: 600;
   text-align: center;
+  text-shadow: 0 2px 10px rgba(3, 5, 10, 0.55);
   margin-bottom: 0;
 }
 
@@ -350,8 +363,9 @@
   font-size: 20px;
   font-weight: 300;
   line-height: 1.4;
-  color: rgba(240, 238, 250, 0.85);
+  color: rgba(240, 238, 250, 0.95);
   text-align: center;
+  text-shadow: 0 2px 10px rgba(3, 5, 10, 0.55);
   margin-bottom: 18px;
 }
 
@@ -359,8 +373,8 @@
 .onboarding-input {
   width: 100%;
   padding: 16px 20px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 14, 20, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 6px;
   color: rgba(240, 238, 250, 0.92);
   font-size: 16px;
@@ -377,15 +391,16 @@
   box-shadow: 0 0 12px rgba(240, 185, 11, 0.08);
 }
 .onboarding-input::placeholder {
-  color: rgba(240, 238, 250, 0.15);
+  color: rgba(240, 238, 250, 0.4);
 }
 
 /* Description text */
 .onboarding-desc {
   font-size: 14px;
-  color: rgba(240, 238, 250, 0.35);
+  color: rgba(240, 238, 250, 0.62);
   text-align: center;
   line-height: 1.6;
+  text-shadow: 0 2px 10px rgba(3, 5, 10, 0.45);
   margin-top: 12px;
 }
 
@@ -465,20 +480,22 @@
   align-items: center;
   gap: 8px;
   padding: 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(10, 14, 20, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s;
   text-align: left;
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
 }
 .onboarding-provider-card:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(10, 14, 20, 0.34);
+  border-color: rgba(255, 255, 255, 0.16);
 }
 .onboarding-provider-card--selected {
-  background: rgba(240, 185, 11, 0.06);
-  border-color: rgba(240, 185, 11, 0.3);
+  background: rgba(240, 185, 11, 0.12);
+  border-color: rgba(240, 185, 11, 0.34);
 }
 .onboarding-provider-icon {
   width: 24px;
@@ -489,39 +506,42 @@
 }
 .onboarding-provider-name {
   font-size: 12px;
-  color: rgba(240, 238, 250, 0.75);
+  color: rgba(240, 238, 250, 0.88);
   line-height: 1.3;
+  text-shadow: 0 1px 8px rgba(3, 5, 10, 0.6);
 }
 .onboarding-provider-desc {
   font-size: 10px;
-  color: rgba(240, 238, 250, 0.3);
+  color: rgba(240, 238, 250, 0.58);
   line-height: 1.3;
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  text-shadow: 0 1px 8px rgba(3, 5, 10, 0.5);
 }
 .onboarding-provider-card--recommended {
   grid-column: 1 / -1;
-  border-color: rgba(240, 185, 11, 0.18);
-  background: rgba(240, 185, 11, 0.04);
+  border-color: rgba(240, 185, 11, 0.24);
+  background: rgba(240, 185, 11, 0.1);
 }
 .onboarding-provider-card--recommended:hover {
-  border-color: rgba(240, 185, 11, 0.35);
-  background: rgba(240, 185, 11, 0.08);
+  border-color: rgba(240, 185, 11, 0.4);
+  background: rgba(240, 185, 11, 0.14);
 }
 .onboarding-provider-badge {
   font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text);
-  background: rgba(240, 185, 11, 0.12);
+  color: rgba(240, 238, 250, 0.94);
+  background: rgba(240, 185, 11, 0.18);
   padding: 2px 8px;
   border-radius: 100px;
   font-weight: 600;
   margin-left: auto;
   flex-shrink: 0;
   white-space: nowrap;
+  text-shadow: 0 1px 6px rgba(3, 5, 10, 0.45);
 }
 
 /* Panel footer */
@@ -537,7 +557,7 @@
 /* Back link */
 .onboarding-back-link {
   font-size: 10px;
-  color: rgba(240, 238, 250, 0.2);
+  color: rgba(240, 238, 250, 0.62);
   letter-spacing: 0.15em;
   text-transform: uppercase;
   cursor: pointer;
@@ -547,9 +567,10 @@
   font-family: inherit;
   transition: color 0.3s;
   padding: 0;
+  text-shadow: 0 1px 8px rgba(3, 5, 10, 0.45);
 }
 .onboarding-back-link:hover {
-  color: rgba(240, 238, 250, 0.45);
+  color: rgba(240, 238, 250, 0.9);
 }
 
 /* Confirm/CTA button */
@@ -561,7 +582,8 @@
   background: rgba(240, 185, 11, 0.08);
   border: 1px solid rgba(240, 185, 11, 0.35);
   border-radius: 6px;
-  color: var(--text);
+  color: rgba(240, 238, 250, 0.94);
+  text-shadow: 0 1px 6px rgba(3, 5, 10, 0.55);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.18em;
@@ -614,14 +636,14 @@
 
 /* === Permissions section overrides === */
 .onboarding-panel {
-  --card: rgba(255, 255, 255, 0.04);
-  --border: rgba(255, 255, 255, 0.1);
-  --muted: rgba(240, 238, 250, 0.35);
-  --ok: rgba(240, 185, 11, 0.8);
-  --accent: rgba(240, 185, 11, 0.9);
-  --accent-foreground: #0c0e14;
+  --card: rgba(10, 14, 20, 0.28);
+  --border: rgba(255, 255, 255, 0.14);
+  --muted: rgba(240, 238, 250, 0.66);
+  --ok: rgba(240, 185, 11, 0.92);
+  --accent: rgba(240, 185, 11, 0.94);
+  --accent-foreground: rgba(240, 238, 250, 0.94);
   --danger: rgb(248, 113, 113);
-  color: rgba(240, 238, 250, 0.85);
+  color: rgba(240, 238, 250, 0.92);
 }
 .onboarding-panel .text-xl {
   font-size: 16px;
@@ -643,20 +665,20 @@
 /* Override Tailwind utilities on PermissionsSection using doubled selectors for specificity */
 /* Make permission card borders translucent */
 .onboarding-panel.onboarding-panel .flex.items-center.gap-4.p-4.border {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(10, 14, 20, 0.26);
+  border-color: rgba(255, 255, 255, 0.12);
   border-radius: 8px;
 }
 .onboarding-panel.onboarding-panel
   .flex.items-center.gap-4.p-4.border:has(.text-\[var\(--ok\)\]) {
-  background: rgba(240, 185, 11, 0.06);
-  border-color: rgba(240, 185, 11, 0.25);
+  background: rgba(240, 185, 11, 0.12);
+  border-color: rgba(240, 185, 11, 0.32);
 }
 /* Style buttons within permissions to match game theme */
 .onboarding-panel.onboarding-panel button[class*="bg-accent"] {
   background: rgba(240, 185, 11, 0.1);
   border: 1px solid rgba(240, 185, 11, 0.35);
-  color: var(--text);
+  color: rgba(240, 238, 250, 0.94);
   border-radius: 6px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -678,7 +700,7 @@
 .onboarding-panel.onboarding-panel .flex.gap-2 button {
   background: rgba(240, 185, 11, 0.08);
   border: 1px solid rgba(240, 185, 11, 0.3);
-  color: var(--text);
+  color: rgba(240, 238, 250, 0.94);
   border-radius: 6px;
   font-weight: 600;
   letter-spacing: 0.05em;

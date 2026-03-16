@@ -64,7 +64,6 @@ function createOnboardingContext(
       providers: [],
       models: { small: [], large: [] },
       openrouterModels: [],
-      inventoryProviders: [],
       piModels: [],
       piDefaultModel: "",
     },

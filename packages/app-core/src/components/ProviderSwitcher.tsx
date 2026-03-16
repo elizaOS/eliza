@@ -14,6 +14,15 @@ import {
   type JsonSchemaObject,
 } from "../config";
 import { useTimeout } from "../hooks";
+import {
+  getOnboardingProviderOption,
+  getStoredSubscriptionProvider,
+  getSubscriptionProviderFamily,
+  isSubscriptionProviderSelectionId,
+  normalizeSubscriptionProviderSelectionId,
+  SUBSCRIPTION_PROVIDER_SELECTIONS,
+  type SubscriptionProviderSelectionId,
+} from "../providers";
 import { useApp } from "../state";
 import type { ConfigUiHint } from "../types";
 import { ApiKeyConfig } from "./ApiKeyConfig";
@@ -27,6 +36,13 @@ interface PluginInfo {
   configured: boolean;
   parameters: PluginParamDef[];
   configUiHints?: Record<string, ConfigUiHint>;
+}
+
+function normalizeAiProviderPluginId(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/^@[^/]+\//, "")
+    .replace(/^plugin-/, "");
 }
 
 interface ProviderSwitcherProps {
@@ -68,6 +84,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     props.elizaCloudCreditsLow ?? Boolean(app.elizaCloudCreditsLow);
   const elizaCloudCreditsCritical =
     props.elizaCloudCreditsCritical ?? Boolean(app.elizaCloudCreditsCritical);
+  const _elizaCloudTopUpUrl =
+    props.elizaCloudTopUpUrl ??
+    (typeof app.elizaCloudTopUpUrl === "string" ? app.elizaCloudTopUpUrl : "");
   const elizaCloudUserId =
     props.elizaCloudUserId ??
     (typeof app.elizaCloudUserId === "string" ? app.elizaCloudUserId : null);
@@ -210,18 +229,30 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             ? cloud.inferenceMode
             : "cloud";
         const inferenceToggle = cloudServices?.inference !== false;
-        setCloudHandlesInference(
-          elizaCloudEnabledCfg && inferenceMode === "cloud" && inferenceToggle,
-        );
+        const cloudHandlesInferenceCfg =
+          elizaCloudEnabledCfg && inferenceMode === "cloud" && inferenceToggle;
+        setCloudHandlesInference(cloudHandlesInferenceCfg);
 
         const agents = cfg.agents as Record<string, unknown> | undefined;
         const defaults = agents?.defaults as
           | Record<string, unknown>
           | undefined;
         const model = defaults?.model as Record<string, unknown> | undefined;
+        const savedSubscriptionProvider =
+          normalizeSubscriptionProviderSelectionId(
+            defaults?.subscriptionProvider,
+          );
         setPiAiModelSpec(
           typeof model?.primary === "string" ? model.primary : "",
         );
+        if (
+          !hasManualSelection.current &&
+          savedSubscriptionProvider &&
+          !piAiOn &&
+          !cloudHandlesInferenceCfg
+        ) {
+          setSelectedProviderId(savedSubscriptionProvider);
+        }
       } catch (err) {
         console.warn("[milady] Failed to load config", err);
       }
@@ -241,20 +272,23 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   }, [subscriptionStatus]);
 
   /* ── Derived ──────────────────────────────────────────────────── */
-  const allAiProviders = plugins.filter((p) => p.category === "ai-provider");
+  const allAiProviders = [
+    ...plugins.filter((p) => p.category === "ai-provider"),
+  ].sort((left, right) => {
+    const leftCatalog = getOnboardingProviderOption(
+      normalizeAiProviderPluginId(left.id),
+    );
+    const rightCatalog = getOnboardingProviderOption(
+      normalizeAiProviderPluginId(right.id),
+    );
+    if (leftCatalog && rightCatalog) {
+      return leftCatalog.order - rightCatalog.order;
+    }
+    if (leftCatalog) return -1;
+    if (rightCatalog) return 1;
+    return left.name.localeCompare(right.name);
+  });
   const enabledAiProviders = allAiProviders.filter((p) => p.enabled);
-  const subscriptionProviders = [
-    {
-      id: "anthropic-subscription",
-      label: t("providerswitcher.claudeSubscription"),
-    },
-    {
-      id: "openai-subscription",
-      label: t("providerswitcher.chatgptSubscription"),
-    },
-  ];
-  const isSubscriptionId = (id: string | null) =>
-    id === "anthropic-subscription" || id === "openai-subscription";
 
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
     () => (elizaCloudEnabled ? "__cloud__" : null),
@@ -281,7 +315,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         ? "pi-ai"
         : selectedProviderId &&
             (allAiProviders.some((p) => p.id === selectedProviderId) ||
-              isSubscriptionId(selectedProviderId))
+              isSubscriptionProviderSelectionId(selectedProviderId))
           ? selectedProviderId
           : cloudHandlesInference
             ? "__cloud__"
@@ -297,7 +331,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     resolvedSelectedId &&
     resolvedSelectedId !== "__cloud__" &&
     resolvedSelectedId !== "pi-ai" &&
-    !isSubscriptionId(resolvedSelectedId)
+    !isSubscriptionProviderSelectionId(resolvedSelectedId)
       ? (allAiProviders.find((p) => p.id === resolvedSelectedId) ?? null)
       : null;
 
@@ -357,15 +391,20 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   );
 
   const handleSelectSubscription = useCallback(
-    async (providerId: string) => {
+    async (providerId: SubscriptionProviderSelectionId) => {
       hasManualSelection.current = true;
       setSelectedProviderId(providerId);
-      const pluginId =
-        providerId === "anthropic-subscription"
-          ? "@elizaos/plugin-anthropic"
-          : "@elizaos/plugin-openai";
-      const target = allAiProviders.find((p) => p.id === pluginId);
-      if (!target) return;
+      const providerFamily = getSubscriptionProviderFamily(providerId);
+      const target =
+        allAiProviders.find((plugin) => {
+          const normalizedId = normalizeAiProviderPluginId(plugin.id);
+          const normalizedName = plugin.name.toLowerCase();
+          return (
+            normalizedId === providerFamily ||
+            normalizedId.startsWith(`${providerFamily}-`) ||
+            normalizedName.includes(providerFamily)
+          );
+        }) ?? null;
 
       try {
         // Disable cloud inference but keep cloud connected for RPC/services
@@ -376,21 +415,17 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           },
           env: { vars: { MILADY_USE_PI_AI: "" } },
         });
-        const switchId =
-          providerId === "anthropic-subscription"
-            ? "anthropic-subscription"
-            : "openai-codex";
-        await client.switchProvider(switchId);
+        await client.switchProvider(getStoredSubscriptionProvider(providerId));
         setCloudHandlesInference(false);
         setPiAiEnabled(false);
       } catch (err) {
         console.warn("[milady] Provider switch failed", err);
       }
-      if (!target.enabled) {
+      if (target && !target.enabled) {
         await handlePluginToggle(target.id, true);
       }
       for (const p of enabledAiProviders) {
-        if (p.id !== target.id) {
+        if (!target || p.id !== target.id) {
           await handlePluginToggle(p.id, false);
         }
       }
@@ -472,12 +507,12 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         : "__custom__";
 
   /* ── Render ───────────────────────────────────────────────────── */
-  const totalCols = allAiProviders.length + 2 + subscriptionProviders.length;
+  const totalCols =
+    allAiProviders.length + 2 + SUBSCRIPTION_PROVIDER_SELECTIONS.length;
   const isCloudSelected = resolvedSelectedId === "__cloud__";
   const isPiAiSelected = resolvedSelectedId === "pi-ai";
   const isSubscriptionSelected =
-    resolvedSelectedId === "anthropic-subscription" ||
-    resolvedSelectedId === "openai-subscription";
+    isSubscriptionProviderSelectionId(resolvedSelectedId);
   const providerChoices = [
     {
       id: "__cloud__",
@@ -485,14 +520,16 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       disabled: false,
     },
     { id: "pi-ai", label: t("providerswitcher.piAi"), disabled: false },
-    ...subscriptionProviders.map((provider) => ({
+    ...SUBSCRIPTION_PROVIDER_SELECTIONS.map((provider) => ({
       id: provider.id,
-      label: provider.label,
+      label: t(provider.labelKey),
       disabled: false,
     })),
     ...allAiProviders.map((provider) => ({
       id: provider.id,
-      label: provider.name,
+      label:
+        getOnboardingProviderOption(normalizeAiProviderPluginId(provider.id))
+          ?.name ?? provider.name,
       disabled: false,
     })),
   ];
@@ -542,10 +579,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               void handleSelectPiAi();
               return;
             }
-            if (
-              nextId === "anthropic-subscription" ||
-              nextId === "openai-subscription"
-            ) {
+            if (isSubscriptionProviderSelectionId(nextId)) {
               void handleSelectSubscription(nextId);
               return;
             }

@@ -8,6 +8,10 @@ import { Button, Input } from "@elizaos/ui";
 import { useCallback, useRef, useState } from "react";
 import { client } from "../api";
 import { useTimeout } from "../hooks";
+import {
+  getStoredSubscriptionProvider,
+  type SubscriptionProviderSelectionId,
+} from "../providers";
 import { useApp } from "../state";
 import { openExternalUrl } from "../utils";
 
@@ -86,7 +90,9 @@ export interface SubscriptionStatusProps {
   setAnthropicConnected: (v: boolean) => void;
   openaiConnected: boolean;
   setOpenaiConnected: (v: boolean) => void;
-  handleSelectSubscription: (providerId: string) => Promise<void>;
+  handleSelectSubscription: (
+    providerId: SubscriptionProviderSelectionId,
+  ) => Promise<void>;
   loadSubscriptionStatus: () => Promise<void>;
 }
 
@@ -172,15 +178,15 @@ export function SubscriptionStatus({
   }, [handleSelectSubscription, loadSubscriptionStatus, setTimeout, t]);
 
   const handleDisconnectSubscription = useCallback(
-    async (providerId: string) => {
+    async (providerId: SubscriptionProviderSelectionId) => {
       if (disconnectingRef.current) return;
       setSubscriptionDisconnecting(providerId);
       setAnthropicError("");
       setOpenaiError("");
       try {
-        const apiProvider =
-          providerId === "openai-subscription" ? "openai-codex" : providerId;
-        await client.deleteSubscription(apiProvider);
+        await client.deleteSubscription(
+          getStoredSubscriptionProvider(providerId),
+        );
         await loadSubscriptionStatus();
         if (providerId === "anthropic-subscription") {
           setAnthropicConnected(false);

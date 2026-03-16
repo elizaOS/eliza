@@ -16,7 +16,14 @@ export {
   shouldApplyFinalStreamText,
 } from "./parsers";
 export {
+  deriveOnboardingResumeConnection,
+  deriveOnboardingResumeFields,
+  hasPartialOnboardingConnectionConfig,
+  inferOnboardingResumeStep,
+} from "./onboarding-resume";
+export {
   applyUiTheme,
+  clearPersistedOnboardingStep,
   loadActiveConversationId,
   loadAvatarIndex,
   loadChatAvatarVisible,
@@ -24,6 +31,7 @@ export {
   loadChatVoiceMuted,
   loadCompanionMessageCutoffTs,
   loadLastNativeTab,
+  loadPersistedOnboardingStep,
   loadUiLanguage,
   loadUiShellMode,
   loadUiTheme,
@@ -36,6 +44,7 @@ export {
   saveChatVoiceMuted,
   saveCompanionMessageCutoffTs,
   saveLastNativeTab,
+  saveOnboardingStep,
   saveUiLanguage,
   saveUiShellMode,
   saveUiTheme,

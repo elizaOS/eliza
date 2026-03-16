@@ -4,7 +4,7 @@
  */
 
 import { loadMiladyConfig, saveMiladyConfig } from "../config/config";
-import type { ReleaseChannel, UpdateConfig } from "../config/types.autonomous";
+import type { ReleaseChannel, UpdateConfig } from "../config/types.milady";
 import { VERSION } from "../runtime/version";
 import { compareSemver } from "./version-compat";
 

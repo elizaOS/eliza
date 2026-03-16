@@ -13,17 +13,10 @@ describe("navigation", () => {
     expect(titleForTab("security")).toBe("Security");
   });
 
-  it("maps lifo tab to path and title", () => {
-    expect(pathForTab("lifo")).toBe("/lifo");
-    expect(tabFromPath("/lifo")).toBe("lifo");
-    expect(titleForTab("lifo")).toBe("Lifo");
-  });
-
   it("includes security in the advanced tab group", () => {
     const advancedGroup = ALL_TAB_GROUPS.find(
       (group) => group.label === "Advanced",
     );
     expect(advancedGroup?.tabs).toContain("security");
-    expect(advancedGroup?.tabs).toContain("lifo");
   });
 });

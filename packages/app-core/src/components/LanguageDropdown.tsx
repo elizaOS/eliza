@@ -113,7 +113,7 @@ export function LanguageDropdown({
   const menuContent = open && (
     <ul
       id="lang-dropdown-portal"
-      className={`w-36 rounded-lg bg-bg-elevated border border-border shadow-xl overflow-hidden py-1 ${variant === "companion" ? "fixed" : inlineMenuPositionClass}`}
+      className={`w-36 rounded-lg border border-border/50 bg-bg/50 shadow-xl overflow-hidden py-1 backdrop-blur-md ${variant === "companion" ? "fixed" : inlineMenuPositionClass}`}
       style={
         variant === "companion" && menuPos
           ? {
@@ -124,6 +124,7 @@ export function LanguageDropdown({
               right: menuPos.right,
               zIndex: 10001,
               backdropFilter: "blur(24px)",
+              WebkitBackdropFilter: "blur(24px)",
               boxShadow: "var(--shadow-lg)",
             }
           : undefined

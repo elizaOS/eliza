@@ -14,7 +14,9 @@ export const Native: StoryObj = {
     return (
       <div className="flex items-center gap-4">
         <LanguageDropdown
+          // biome-ignore lint/suspicious/noExplicitAny: story mock
           uiLanguage={lang as any}
+          // biome-ignore lint/suspicious/noExplicitAny: story mock
           setUiLanguage={setLang as any}
         />
         <span className="text-xs text-muted">Selected: {lang}</span>
@@ -33,7 +35,9 @@ export const Companion: StoryObj = {
       >
         <div className="flex items-center gap-4">
           <LanguageDropdown
+            // biome-ignore lint/suspicious/noExplicitAny: story mock
             uiLanguage={lang as any}
+            // biome-ignore lint/suspicious/noExplicitAny: story mock
             setUiLanguage={setLang as any}
             variant="companion"
           />

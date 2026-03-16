@@ -304,12 +304,10 @@ export async function handleCharacterRoutes(
 
     const result = validateCharacter(body);
     if (!result.success) {
-      const issues = ("error" in result ? result.error.issues : []).map(
-        (issue) => ({
-          path: issue.path.join("."),
-          message: issue.message,
-        }),
-      );
+      const issues = (result as { error: { issues: { path: string[]; message: string }[] } }).error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+      }));
       json(res, { ok: false, validationErrors: issues }, 422);
       return true;
     }

@@ -148,7 +148,6 @@ function createResetTestServer(): Promise<{
         providers: [{ id: "ollama", name: "Ollama" }],
         cloudProviders: [],
         models: { small: [], large: [] },
-        inventoryProviders: [],
         sharedStyleRules: "",
       }),
   };
@@ -365,7 +364,6 @@ function createUIHarnessState(): AppHarnessState {
       providers: [],
       cloudProviders: [],
       models: { small: [], large: [] },
-      inventoryProviders: [],
       sharedStyleRules: "",
     },
     onboardingName: "TestAgent",

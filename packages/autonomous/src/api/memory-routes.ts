@@ -8,8 +8,8 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { getKnowledgeService, type KnowledgeServiceLike } from "./knowledge-service-loader";
 import { parsePositiveInteger } from "../utils/number-parsing";
-import { getKnowledgeService } from "./knowledge-service-loader";
 import type { RouteRequestContext } from "./route-helpers";
 
 const HASH_MEMORY_SOURCE = "hash_memory";

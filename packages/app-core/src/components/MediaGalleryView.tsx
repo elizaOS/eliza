@@ -300,6 +300,7 @@ export function MediaGalleryView() {
           {filtered.map((item, i) => (
             <button
               type="button"
+              // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
               key={`${item.url}-${i}`}
               className="bg-[var(--card)] border border-[var(--border)] p-0 cursor-pointer text-left hover:border-[var(--accent)] transition-colors group"
               onClick={() => setLightboxItem(item)}

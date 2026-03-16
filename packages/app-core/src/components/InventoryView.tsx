@@ -8,7 +8,11 @@
 import { useApp } from "@elizaos/app-core/state";
 import { useCallback, useState } from "react";
 import { TradePanel } from "./BscTradePanel";
-import { CHAIN_CONFIGS, type ChainKey, resolveChainKey } from "./chainConfig";
+import {
+  CHAIN_CONFIGS,
+  resolveChainKey,
+  type ChainKey,
+} from "./chainConfig";
 import {
   BSC_GAS_THRESHOLD,
   loadTrackedBscTokens,
@@ -106,7 +110,9 @@ export function InventoryView({ inModal }: { inModal?: boolean } = {}) {
   const evmChainErrors = new Map(
     (walletBalances?.evm?.chains ?? [])
       .map((chain) => [resolveChainKey(chain.chain), chain.error] as const)
-      .filter((entry): entry is [ChainKey, string | null] => entry[0] !== null),
+      .filter(
+        (entry): entry is [ChainKey, string | null] => entry[0] !== null,
+      ),
   );
   const ethereumReady = Boolean(
     evmAddr &&

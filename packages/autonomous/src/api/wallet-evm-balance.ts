@@ -206,9 +206,7 @@ export function resolveEvmProviderKeys(
 ): EvmProviderKeyset {
   if (typeof alchemyOrKeys === "string" || alchemyOrKeys == null) {
     return {
-      alchemyKey: normalizeApiKey(
-        typeof alchemyOrKeys === "string" ? alchemyOrKeys : null,
-      ),
+      alchemyKey: normalizeApiKey(alchemyOrKeys as string | null | undefined),
       ankrKey: normalizeApiKey(maybeAnkrKey),
       cloudManagedAccess: false,
       bscRpcUrls: resolveBscRpcUrls({ cloudManagedAccess: false }),

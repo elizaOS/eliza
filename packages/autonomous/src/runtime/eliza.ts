@@ -91,7 +91,7 @@ import {
   applyPluginAutoEnable,
 } from "../config/plugin-auto-enable";
 import type { AgentConfig } from "../config/types.agents";
-import type { PluginInstallRecord } from "../config/types.autonomous";
+import type { PluginInstallRecord } from "../config/types.milady";
 import {
   createHookEvent,
   type LoadHooksOptions,
@@ -105,9 +105,9 @@ import {
 import { SandboxAuditLog } from "../security/audit-log";
 import { SandboxManager, type SandboxMode } from "../services/sandbox-manager";
 import { diagnoseNoAIProvider } from "../services/version-compat";
-import { createAutonomousPlugin } from "./autonomous-plugin";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins";
 import { detectEmbeddingPreset } from "./embedding-presets";
+import { createMiladyPlugin } from "./milady-plugin";
 import {
   installDatabaseTrajectoryLogger,
   shouldEnableTrajectoryLoggingByDefault,
@@ -2873,10 +2873,9 @@ export function buildCharacterFromConfig(config: MiladyConfig): Character {
   // bootstrap or configs created before this change). For built-in default
   // characters, fall back to the bundled preset so legacy name-only configs
   // still retain their default posts/messages.
-  const bio = agentEntry?.bio ??
-    bundledPreset?.bio ?? [
-      "{{name}} is an AI assistant powered by Milady and elizaOS.",
-    ];
+  const bio = agentEntry?.bio ?? bundledPreset?.bio ?? [
+    "{{name}} is an AI assistant powered by Milady and elizaOS.",
+  ];
   const systemPrompt =
     agentEntry?.system ??
     bundledPreset?.system ??
@@ -3112,6 +3111,79 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
     (p) => p.catchphrase === styleChoice,
   );
 
+  // ── Step 3.5: Runtime selection (Cloud vs Local) ───────────────────────
+  // Present the user with a choice of where to run their agent. Cloud mode
+  // skips the local AI provider, wallet, and GitHub steps.
+  let cloudOnboardingResult: import("./cloud-onboarding").CloudOnboardingResult | null = null;
+  let isCloudMode = false;
+
+  const runtimeChoice = await clack.select({
+    message: `${name}: Where should I live?`,
+    options: [
+      {
+        value: "cloud",
+        label: "☁️  Eliza Cloud (recommended)",
+        hint: "zero setup — hosted, always online",
+      },
+      {
+        value: "local",
+        label: "💻  Run locally",
+        hint: "full control — runs on this machine",
+      },
+      {
+        value: "later",
+        label: "⏭️  Decide later",
+        hint: "start local, switch to cloud anytime",
+      },
+    ],
+  });
+
+  if (clack.isCancel(runtimeChoice)) cancelOnboarding();
+
+  if (runtimeChoice === "later") {
+    // User deferred the decision — continue with local setup (steps 4–7).
+    clack.log.info(
+      "No problem! Starting with local setup. You can switch to cloud anytime with `milady cloud connect`.",
+    );
+  } else if (runtimeChoice === "cloud") {
+    const { runCloudOnboarding } = await import("./cloud-onboarding");
+    cloudOnboardingResult = await runCloudOnboarding(
+      clack,
+      name,
+      chosenTemplate,
+    );
+
+    if (cloudOnboardingResult?.agentId) {
+      isCloudMode = true;
+      clack.log.success(
+        `${name} is now running in the cloud! ☁️`,
+      );
+    } else if (cloudOnboardingResult) {
+      // Auth succeeded but no agent provisioned — save auth for later
+      clack.log.info(
+        "Cloud auth saved. You can provision later with `milady cloud connect`.",
+      );
+    } else {
+      // Cloud flow cancelled / failed — fall back to local
+      clack.log.info("No worries! Setting up locally instead.");
+    }
+  }
+
+  // ── Steps 4–7: Local-only setup ─────────────────────────────────────────
+  // These steps are skipped when the user chose Eliza Cloud, since the cloud
+  // handles inference, wallets can be configured via the dashboard, and
+  // GitHub access is not needed for the initial cloud agent.
+  let providerEnvKey: string | undefined;
+  let providerApiKey: string | undefined;
+
+  // Snapshot whether wallet keys already exist BEFORE onboarding touches
+  // process.env, so the persistence block later can guard against
+  // overwriting pre-existing values.
+  const hasEvmKey = Boolean(process.env.EVM_PRIVATE_KEY?.trim());
+  const hasSolKey = Boolean(process.env.SOLANA_PRIVATE_KEY?.trim());
+
+  if (!isCloudMode) {
+
   // ── Step 4: Model provider ───────────────────────────────────────────────
   // Skip provider selection in cloud mode — Eliza Cloud handles inference.
   // Check whether an API key is already set in the environment (from .env or
@@ -3205,9 +3277,6 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
     p.detectKeys.some((key) => process.env[key]?.trim()),
   );
 
-  let providerEnvKey: string | undefined;
-  let providerApiKey: string | undefined;
-
   if (detectedProvider) {
     clack.log.success(
       `Found existing ${detectedProvider.label} key in environment (${detectedProvider.envKey})`,
@@ -3269,9 +3338,8 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
   // plugins at runtime.
   const { generateWalletKeys, importWallet } = await import("../api/wallet");
 
-  const hasEvmKey = Boolean(process.env.EVM_PRIVATE_KEY?.trim());
-  const hasSolKey = Boolean(process.env.SOLANA_PRIVATE_KEY?.trim());
-
+  // hasEvmKey and hasSolKey are hoisted above the if (!isCloudMode) block
+  // so they're also available in the persistence section.
   if (!hasEvmKey || !hasSolKey) {
     const walletAction = await clack.select({
       message: `${name}: Do you want me to set up crypto wallets? (for trading, NFTs, DeFi)`,
@@ -3393,6 +3461,8 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
     }
   }
 
+  } // end if (!isCloudMode)
+
   // ── Step 8: Persist agent + style + provider + embedding config ─────────
   // Save the agent name and chosen personality template into config so that
   // the same character data is used regardless of whether the user onboarded
@@ -3434,28 +3504,50 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
   if (!updated.env) updated.env = {};
   const envBucket = updated.env as Record<string, string>;
 
-  if (providerEnvKey && providerApiKey) {
-    envBucket[providerEnvKey] = providerApiKey;
-    // Also set immediately in process.env for the current run
-    process.env[providerEnvKey] = providerApiKey;
+  // Only persist local-mode env vars when not in cloud mode (those vars
+  // were never prompted for / set during cloud onboarding).
+  if (!isCloudMode) {
+    if (providerEnvKey && providerApiKey) {
+      envBucket[providerEnvKey] = providerApiKey;
+      // Also set immediately in process.env for the current run
+      process.env[providerEnvKey] = providerApiKey;
+    }
+    if (process.env.EVM_PRIVATE_KEY && !hasEvmKey) {
+      envBucket.EVM_PRIVATE_KEY = process.env.EVM_PRIVATE_KEY;
+    }
+    if (process.env.SOLANA_PRIVATE_KEY && !hasSolKey) {
+      envBucket.SOLANA_PRIVATE_KEY = process.env.SOLANA_PRIVATE_KEY;
+    }
+    if (process.env.SKILLS_REGISTRY) {
+      envBucket.SKILLS_REGISTRY = process.env.SKILLS_REGISTRY;
+    }
+    if (process.env.SKILLSMP_API_KEY) {
+      envBucket.SKILLSMP_API_KEY = process.env.SKILLSMP_API_KEY;
+    }
+    if (process.env.GITHUB_TOKEN) {
+      envBucket.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+    }
+    if (process.env.GITHUB_OAUTH_CLIENT_ID) {
+      envBucket.GITHUB_OAUTH_CLIENT_ID = process.env.GITHUB_OAUTH_CLIENT_ID;
+    }
   }
-  if (process.env.EVM_PRIVATE_KEY && !hasEvmKey) {
-    envBucket.EVM_PRIVATE_KEY = process.env.EVM_PRIVATE_KEY;
-  }
-  if (process.env.SOLANA_PRIVATE_KEY && !hasSolKey) {
-    envBucket.SOLANA_PRIVATE_KEY = process.env.SOLANA_PRIVATE_KEY;
-  }
-  if (process.env.SKILLS_REGISTRY && !hasSkillsRegistry) {
-    envBucket.SKILLS_REGISTRY = process.env.SKILLS_REGISTRY;
-  }
-  if (process.env.SKILLSMP_API_KEY && !hasSkillsmpKey) {
-    envBucket.SKILLSMP_API_KEY = process.env.SKILLSMP_API_KEY;
-  }
-  if (process.env.GITHUB_TOKEN && !hasGithubToken) {
-    envBucket.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-  }
-  if (process.env.GITHUB_OAUTH_CLIENT_ID && !hasGithubOAuth) {
-    envBucket.GITHUB_OAUTH_CLIENT_ID = process.env.GITHUB_OAUTH_CLIENT_ID;
+
+  // ── Cloud config persistence ───────────────────────────────────────────
+  // If the user completed cloud onboarding, persist the cloud credentials
+  // and agent ID so subsequent `milady start` connects directly.
+  if (cloudOnboardingResult) {
+    updated.cloud = {
+      ...updated.cloud,
+      enabled: isCloudMode,
+      provider: "elizacloud",
+      apiKey: cloudOnboardingResult.apiKey,
+      baseUrl: cloudOnboardingResult.baseUrl,
+      inferenceMode: isCloudMode ? "cloud" : updated.cloud?.inferenceMode,
+      runtime: isCloudMode ? "cloud" : "local",
+    };
+    if (cloudOnboardingResult.agentId) {
+      updated.cloud.agentId = cloudOnboardingResult.agentId;
+    }
   }
 
   try {
@@ -3465,7 +3557,7 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
     clack.log.warn(`Could not save config: ${formatError(err)}`);
   }
   clack.log.message(`${name}: ${styleChoice} Alright, that's me.`);
-  clack.outro("Let's get started!");
+  clack.outro(isCloudMode ? "Your agent is live in the cloud! ☁️" : "Let's get started!");
 
   return updated;
 }
@@ -3723,6 +3815,18 @@ export async function startEliza(
     logger.warn(`[milady] Failed to apply subscription credentials: ${err}`);
   }
 
+  // 2g. Cloud mode — if the user chose cloud during onboarding (or on a
+  //     subsequent start with cloud config), skip local runtime setup and
+  //     connect via the thin client instead.
+  if (
+    config.cloud?.enabled &&
+    config.cloud?.apiKey &&
+    config.cloud?.agentId &&
+    config.cloud?.runtime === "cloud"
+  ) {
+    return startInCloudMode(config, config.cloud.agentId, opts);
+  }
+
   // 3. Build elizaOS Character from Milady config
   const character = buildCharacterFromConfig(config);
 
@@ -3740,7 +3844,7 @@ export async function startEliza(
 
   // 5. Create the Milady bridge plugin (workspace context + session keys + compaction)
   const agentId = character.name?.toLowerCase().replace(/\s+/g, "-") ?? "main";
-  const miladyPlugin = createAutonomousPlugin({
+  const miladyPlugin = createMiladyPlugin({
     workspaceDir,
     bootstrapMaxChars: config.agents?.defaults?.bootstrapMaxChars,
 
@@ -4362,7 +4466,7 @@ export async function startEliza(
           const freshCharacter = buildCharacterFromConfig(freshConfig);
 
           // Recreate Milady plugin with fresh workspace
-          const freshMiladyPlugin = createAutonomousPlugin({
+          const freshMiladyPlugin = createMiladyPlugin({
             workspaceDir:
               freshConfig.agents?.defaults?.workspace ?? workspaceDir,
             bootstrapMaxChars: freshConfig.agents?.defaults?.bootstrapMaxChars,
@@ -4694,6 +4798,110 @@ export async function startEliza(
 // When run directly (not imported), start immediately.
 // Use path.resolve to normalise both sides before comparing so that
 // symlinks, trailing slashes, and relative paths don't cause false negatives.
+// ---------------------------------------------------------------------------
+// Cloud thin-client mode
+// ---------------------------------------------------------------------------
+
+/**
+ * Start in cloud mode — connect to a remote cloud agent via the thin client.
+ * Skips all local runtime construction (plugins, database, etc.).
+ */
+export async function startInCloudMode(
+  config: MiladyConfig,
+  agentId: string,
+  opts?: StartElizaOptions,
+): Promise<AgentRuntime | undefined> {
+  const { CloudManager } = await import("../cloud/cloud-manager");
+  const { normalizeCloudSiteUrl } = await import("../cloud/base-url");
+
+  const cloudConfig = config.cloud!;
+  logger.info(
+    `[milady] Starting in cloud mode (agentId=${agentId}, baseUrl=${cloudConfig.baseUrl ?? "(default)"})`,
+  );
+
+  const manager = new CloudManager(cloudConfig, {
+    onStatusChange: (status) => {
+      logger.info(`[milady] Cloud connection: ${status}`);
+    },
+  });
+
+  try {
+    await manager.init();
+    const proxy = await manager.connect(agentId);
+
+    if (opts?.headless || opts?.serverOnly) {
+      // In headless/server mode, start the API server with the cloud proxy.
+      // The proxy exposes the same interface the API server needs.
+      logger.info(
+        `[milady] Cloud agent connected (headless). Agent: ${proxy.agentName}`,
+      );
+      // Return undefined — the cloud proxy handles everything.
+      // TODO: Wire proxy into the API server for GUI mode.
+      return undefined;
+    }
+
+    // Interactive CLI mode — simple chat loop against the cloud agent
+    console.log(
+      `\n☁️  Connected to cloud agent "${proxy.agentName}" (${agentId})\n`,
+    );
+    console.log("Type a message to chat, or Ctrl+C to quit.\n");
+
+    const rl = (await import("node:readline")).createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    const prompt = () => {
+      rl.question("You: ", async (input) => {
+        const text = input.trim();
+        if (!text) {
+          prompt();
+          return;
+        }
+
+        try {
+          // Use streaming if available
+          let response = "";
+          process.stdout.write(`${proxy.agentName}: `);
+          for await (const chunk of proxy.handleChatMessageStream(text)) {
+            process.stdout.write(chunk);
+            response += chunk;
+          }
+          if (!response) {
+            // Fallback to non-streaming
+            response = await proxy.handleChatMessage(text);
+            process.stdout.write(response);
+          }
+          console.log("\n");
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`\n[error] ${msg}\n`);
+        }
+
+        prompt();
+      });
+    };
+
+    rl.on("close", async () => {
+      console.log("\nDisconnecting from cloud agent...");
+      await manager.disconnect();
+      process.exit(0);
+    });
+
+    prompt();
+
+    // Keep the process alive
+    return undefined;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error(`[milady] Failed to connect to cloud agent: ${msg}`);
+    throw new Error(
+      `Failed to connect to cloud agent: ${msg}\n` +
+      "You can retry with `milady start`, or switch to local mode with `milady config set cloud.runtime local`",
+    );
+  }
+}
+
 const isDirectRun = (() => {
   const scriptArg = process.argv[1];
   if (!scriptArg) return false;

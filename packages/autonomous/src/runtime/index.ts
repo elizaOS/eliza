@@ -1,6 +1,6 @@
-export * from "./autonomous-plugin";
 export * from "./eliza";
 export * from "./embedding-presets";
+export * from "./milady-plugin";
 export * from "./onboarding-names";
 export * from "./release-plugin-policy";
 export * from "./restart";

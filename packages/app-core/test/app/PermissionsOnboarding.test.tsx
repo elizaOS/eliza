@@ -19,6 +19,15 @@ const { mockUseApp, mockIsWeb, mockIsElectron, mockIsNative } = vi.hoisted(
     mockIsNative: { value: false },
   }),
 );
+const {
+  mockGetPermissions,
+  mockInvokeDesktopBridgeRequest,
+  mockSubscribeDesktopBridgeEvent,
+} = vi.hoisted(() => ({
+  mockGetPermissions: vi.fn(),
+  mockInvokeDesktopBridgeRequest: vi.fn(),
+  mockSubscribeDesktopBridgeEvent: vi.fn(),
+}));
 
 vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
@@ -38,13 +47,7 @@ vi.mock("@elizaos/app-core/platform", () => ({
 
 vi.mock("@elizaos/app-core/api", () => ({
   client: {
-    getPermissions: vi.fn().mockResolvedValue({
-      accessibility: { status: "granted", canRequest: false },
-      "screen-recording": { status: "granted", canRequest: false },
-      microphone: { status: "granted", canRequest: false },
-      camera: { status: "granted", canRequest: false },
-      shell: { status: "granted", canRequest: false },
-    }),
+    getPermissions: mockGetPermissions,
     isShellEnabled: vi.fn().mockResolvedValue(true),
     refreshPermissions: vi.fn(),
     requestPermission: vi.fn(),
@@ -54,7 +57,8 @@ vi.mock("@elizaos/app-core/api", () => ({
 }));
 
 vi.mock("@elizaos/app-core/bridge", () => ({
-  invokeDesktopBridgeRequest: vi.fn(),
+  invokeDesktopBridgeRequest: mockInvokeDesktopBridgeRequest,
+  subscribeDesktopBridgeEvent: mockSubscribeDesktopBridgeEvent,
 }));
 
 vi.mock("@elizaos/app-core/components/ui-badges", () => ({
@@ -120,14 +124,95 @@ function findButtons(
   return root.findAllByType("button");
 }
 
+function findButtonsByAriaLabel(
+  root: TestRenderer.ReactTestInstance,
+  label: string,
+): TestRenderer.ReactTestInstance[] {
+  return root.findAll(
+    (node) => node.type === "button" && node.props["aria-label"] === label,
+  );
+}
+
+function ensureNavigatorPermissionMocks(): void {
+  if (!navigator.permissions) {
+    Object.defineProperty(navigator, "permissions", {
+      value: { query: vi.fn() },
+      writable: true,
+      configurable: true,
+    });
+  }
+
+  if (!navigator.mediaDevices) {
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(),
+        enumerateDevices: vi.fn(),
+      },
+      writable: true,
+      configurable: true,
+    });
+  }
+
+  if (!navigator.mediaDevices.getUserMedia) {
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      value: vi.fn(),
+      writable: true,
+      configurable: true,
+    });
+  }
+
+  if (!navigator.mediaDevices.enumerateDevices) {
+    Object.defineProperty(navigator.mediaDevices, "enumerateDevices", {
+      value: vi.fn(),
+      writable: true,
+      configurable: true,
+    });
+  }
+}
+
 // ====================================================================
 
 describe("PermissionsOnboardingSection", () => {
   beforeEach(() => {
+    ensureNavigatorPermissionMocks();
     mockUseApp.mockReset();
     mockIsWeb.mockReturnValue(false);
     mockIsElectron.mockReturnValue(true);
     mockIsNative.value = false;
+    mockGetPermissions.mockReset();
+    mockInvokeDesktopBridgeRequest.mockReset();
+    mockSubscribeDesktopBridgeEvent.mockReset();
+    mockGetPermissions.mockResolvedValue({
+      accessibility: { status: "granted", canRequest: false },
+      "screen-recording": { status: "granted", canRequest: false },
+      microphone: { status: "granted", canRequest: false },
+      camera: { status: "granted", canRequest: false },
+      shell: { status: "granted", canRequest: false },
+    });
+    mockInvokeDesktopBridgeRequest.mockImplementation(
+      async (options: { rpcMethod: string }) => {
+        if (options.rpcMethod === "permissionsGetAll") {
+          return {
+            accessibility: { status: "granted", canRequest: false },
+            "screen-recording": { status: "granted", canRequest: false },
+            microphone: { status: "granted", canRequest: false },
+            camera: { status: "granted", canRequest: false },
+            shell: { status: "granted", canRequest: false },
+          };
+        }
+        if (options.rpcMethod === "permissionsIsShellEnabled") {
+          return true;
+        }
+        if (options.rpcMethod === "permissionsGetPlatform") {
+          return "darwin";
+        }
+        return null;
+      },
+    );
+    mockSubscribeDesktopBridgeEvent.mockImplementation(() => () => {});
+    vi.mocked(navigator.permissions.query).mockReset();
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockReset();
+    vi.mocked(navigator.mediaDevices.enumerateDevices).mockReset();
   });
 
   it("renders web auto-continue view when isWebPlatform() is true", async () => {
@@ -149,14 +234,14 @@ describe("PermissionsOnboardingSection", () => {
     });
     expect(webView).toBeDefined();
     const text = collectText(root);
-    expect(text).toContain("permissionssection.BrowserPermissions");
+    expect(text).toContain("Browser Permissions");
     expect(text).toContain("Camera");
     expect(text).toContain("Microphone");
 
     // Should have a skip button
     const buttons = findButtons(root);
     const skipBtn = buttons.find((b) =>
-      collectText(b).includes("permissionssection.SkipForNow"),
+      collectText(b).includes("Skip for Now"),
     );
     expect(skipBtn).toBeDefined();
     await act(async () => {
@@ -185,12 +270,12 @@ describe("PermissionsOnboardingSection", () => {
     });
     expect(mobileView).toBeDefined();
     const text = collectText(root);
-    expect(text).toContain("permissionssection.StreamingPermissions");
+    expect(text).toContain("Streaming Permissions");
     expect(text).toContain("Camera");
     expect(text).toContain("Microphone");
 
     // Should have a skip button
-    expect(text).toContain("permissionssection.SkipForNow");
+    expect(text).toContain("Skip for Now");
   });
 
   it("renders desktop permissions on Electron", async () => {
@@ -210,7 +295,62 @@ describe("PermissionsOnboardingSection", () => {
     const root = tree?.root;
     const text = collectText(root);
     // Should show system permissions title and grant UI
-    expect(text).toContain("permissionssection.SystemPermissions");
-    expect(text).toContain("permissionssection.Continue");
+    expect(text).toContain("System Permissions");
+    expect(text).toContain("Continue");
+    expect(mockInvokeDesktopBridgeRequest).toHaveBeenCalledWith({
+      rpcMethod: "permissionsGetAll",
+      ipcChannel: "permissions:getAll",
+      params: undefined,
+    });
+    expect(mockGetPermissions).not.toHaveBeenCalled();
+  });
+
+  it("hides the camera grant button when renderer access is already granted", async () => {
+    mockIsWeb.mockReturnValue(false);
+    mockIsElectron.mockReturnValue(true);
+    mockIsNative.value = false;
+    const onContinue = vi.fn();
+    mockUseApp.mockReturnValue(baseContext());
+    mockInvokeDesktopBridgeRequest.mockImplementation(
+      async (options: { rpcMethod: string }) => {
+        if (options.rpcMethod === "permissionsGetAll") {
+          return {
+            accessibility: { status: "granted", canRequest: false },
+            "screen-recording": { status: "granted", canRequest: false },
+            microphone: { status: "granted", canRequest: false },
+            camera: { status: "not-determined", canRequest: true },
+            shell: { status: "granted", canRequest: false },
+          };
+        }
+        if (options.rpcMethod === "permissionsIsShellEnabled") {
+          return true;
+        }
+        if (options.rpcMethod === "permissionsGetPlatform") {
+          return "darwin";
+        }
+        return null;
+      },
+    );
+    vi.mocked(navigator.permissions.query).mockImplementation(
+      async ({ name }: { name: PermissionName }) =>
+        ({
+          state: name === "camera" ? "granted" : "prompt",
+        }) as PermissionStatus,
+    );
+
+    let tree: TestRenderer.ReactTestRenderer | undefined;
+    await act(async () => {
+      tree = TestRenderer.create(
+        React.createElement(PermissionsOnboardingSection, { onContinue }),
+      );
+    });
+
+    const root = tree?.root;
+    expect(root).toBeDefined();
+    if (!root) {
+      throw new Error("PermissionsOnboardingSection root not rendered");
+    }
+
+    expect(findButtonsByAriaLabel(root, "Check Access Camera")).toHaveLength(0);
   });
 });

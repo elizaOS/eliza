@@ -379,6 +379,7 @@ export function GameView() {
         ) : (
           gameLogs.slice(0, 50).map((entry: LogEntry, idx) => (
             <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
               key={`${entry.timestamp}-${idx}`}
               className="py-1 border-b border-border/50 flex flex-col gap-0.5"
             >

@@ -1978,7 +1978,7 @@ function PluginListView({ label, mode = "all", inModal }: PluginListViewProps) {
             className="flex w-[22rem] shrink-0 border-r border-border/50 bg-bg/35 backdrop-blur-xl"
           >
             <div className="flex min-h-full flex-1 flex-col sticky top-0 max-h-screen">
-              <div className="border-b border-border/40 px-5 py-5">
+              <div className="border-b border-border/40 px-5 py-5 text-center">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted/80">
                   Connectors
                 </div>
@@ -2015,14 +2015,15 @@ function PluginListView({ label, mode = "all", inModal }: PluginListViewProps) {
                         aria-current={isSelected ? "page" : undefined}
                       >
                         <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border p-1.5 ${
                             isSelected
                               ? "border-accent/30 bg-accent/18 text-txt-strong"
                               : "border-border/50 bg-bg-accent/80 text-muted"
                           }`}
                         >
                           {renderResolvedIcon(plugin, {
-                            className: "w-4 h-4 rounded-sm object-contain",
+                            className:
+                              "h-4 w-4 shrink-0 rounded-sm object-contain",
                             emojiClassName: "text-sm",
                           })}
                         </span>
@@ -2119,7 +2120,10 @@ function PluginListView({ label, mode = "all", inModal }: PluginListViewProps) {
                 data-testid="connectors-settings-content"
                 className="space-y-4"
               >
-                {visiblePlugins.map((plugin) => {
+                {(desktopConnectorLayout
+                  ? visiblePlugins.filter((p) => p.id === connectorSelectedId)
+                  : visiblePlugins
+                ).map((plugin) => {
                   const hasParams =
                     (plugin.parameters?.length ?? 0) > 0 &&
                     plugin.id !== "__ui-showcase__";
@@ -2161,14 +2165,15 @@ function PluginListView({ label, mode = "all", inModal }: PluginListViewProps) {
                           }
                         >
                           <span
-                            className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border ${
+                            className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border p-2.5 ${
                               isSelected
                                 ? "border-accent/30 bg-accent/18 text-txt-strong"
                                 : "border-border/50 bg-bg-accent/80 text-muted"
                             }`}
                           >
                             {renderResolvedIcon(plugin, {
-                              className: "w-4 h-4 rounded-sm object-contain",
+                              className:
+                                "h-4 w-4 shrink-0 rounded-sm object-contain",
                               emojiClassName: "text-base",
                             })}
                           </span>

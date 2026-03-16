@@ -46,6 +46,7 @@ import type {
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
+  WalletConfigUpdateRequest,
   WalletExportResult,
   WalletNftsResponse,
   WalletTradingProfileResponse,
@@ -617,7 +618,7 @@ export interface AppActions {
     window?: WalletTradingProfileWindow,
     source?: WalletTradingProfileSourceFilter,
   ) => Promise<WalletTradingProfileResponse>;
-  handleWalletApiKeySave: (config: Record<string, string>) => Promise<void>;
+  handleWalletApiKeySave: (config: WalletConfigUpdateRequest) => Promise<void>;
   handleExportKeys: () => Promise<void>;
 
   // Registry / Drop

@@ -88,7 +88,7 @@ export type HookSource =
   | "milady-bundled"
   | "milady-managed"
   | "milady-workspace"
-  | "autonomous-plugin";
+  | "milady-plugin";
 
 /** A discovered hook. */
 export interface Hook {

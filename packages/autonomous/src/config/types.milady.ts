@@ -541,10 +541,14 @@ export type CloudConfig = {
   baseUrl?: string;
   /** Cached API key (stored encrypted via gateway auth). */
   apiKey?: string;
+  /** ID of the cloud agent created during onboarding. */
+  agentId?: string;
   /** Inference mode: cloud (proxied), byok (user keys), local (no cloud). */
   inferenceMode?: CloudInferenceMode;
   /** Granular service toggles — pick which cloud services to use. */
   services?: CloudServiceToggles;
+  /** Runtime mode chosen during onboarding: "cloud" or "local". */
+  runtime?: "cloud" | "local";
   /** Auto-deploy agents to cloud on creation. Default: false. */
   autoProvision?: boolean;
   /** Bridge settings for WebSocket communication with cloud agents. */

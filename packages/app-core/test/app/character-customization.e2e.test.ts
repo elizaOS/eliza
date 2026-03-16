@@ -330,6 +330,7 @@ type CharacterData = {
   bio: string | string[];
   system: string;
   adjectives: string[];
+  topics?: string[];
   style: { all: string[]; chat: string[]; post: string[] };
   messageExamples?: Array<{
     examples: Array<{ name: string; content: { text: string } }>;
@@ -478,7 +479,17 @@ function prepareCharacterDraftForSave(draft: CharacterData) {
     if (!style.all && !style.chat && !style.post) delete prepared.style;
   }
 
-  if (prepared.name) prepared.username = prepared.name;
+  if (
+    typeof prepared.username === "string" &&
+    prepared.username.trim().length > 0
+  ) {
+    prepared.username = prepared.username.trim();
+  } else if (
+    typeof prepared.name === "string" &&
+    prepared.name.trim().length > 0
+  ) {
+    prepared.username = prepared.name.trim();
+  }
   if (!prepared.name) delete prepared.name;
   if (!prepared.username) delete prepared.username;
   if (!prepared.system) delete prepared.system;
@@ -596,7 +607,7 @@ describe("CharacterView UI", () => {
 
     expect(
       tree?.root.findAll(
-        (node) => node.props["data-testid"] === "character-customize-grid",
+        (node) => node.props["data-testid"] === "character-notebook",
       ) ?? [],
     ).toHaveLength(0);
     expect(state.characterDraft?.name).toBe("Reimu");
@@ -616,7 +627,7 @@ describe("CharacterView UI", () => {
 
     expect(
       tree?.root.findAll(
-        (node) => node.props["data-testid"] === "character-customize-grid",
+        (node) => node.props["data-testid"] === "character-notebook",
       ) ?? [],
     ).toHaveLength(1);
     expect(
@@ -674,12 +685,32 @@ describe("CharacterView UI", () => {
       tree?.root.findAll(
         (node) => node.props["data-testid"] === "character-voice-picker",
       ) ?? [],
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     expect(
       tree?.root.findAll(
-        (node) => node.props["data-testid"] === "character-customize-grid",
+        (node) => node.props["data-testid"] === "character-notebook",
       ) ?? [],
     ).toHaveLength(1);
+  });
+
+  it("shows style sections when navigating to the styleRules sidebar tab", async () => {
+    state.tab = "character";
+
+    let tree: TestRenderer.ReactTestRenderer | null = null;
+
+    await act(async () => {
+      tree = TestRenderer.create(React.createElement(CharacterView));
+    });
+
+    // Click the Style Rules sidebar tab
+    const styleTab = tree?.root.find(
+      (node) => node.props["data-testid"] === "notebook-tab-styleRules",
+    );
+
+    await act(async () => {
+      styleTab?.props.onClick();
+    });
+
     expect(
       tree?.root.findAll(
         (node) =>
@@ -719,7 +750,7 @@ describe("CharacterView UI", () => {
     expect(state.selectedVrmIndex).toBe(1);
     expect(
       tree?.root.findAll(
-        (node) => node.props["data-testid"] === "character-customize-grid",
+        (node) => node.props["data-testid"] === "character-notebook",
       ) ?? [],
     ).toHaveLength(0);
     expect(
@@ -906,7 +937,7 @@ describe("CharacterView UI", () => {
 
     expect(
       tree?.root.findAll(
-        (node) => node.props["data-testid"] === "character-customize-grid",
+        (node) => node.props["data-testid"] === "character-notebook",
       ) ?? [],
     ).toHaveLength(0);
     expect(

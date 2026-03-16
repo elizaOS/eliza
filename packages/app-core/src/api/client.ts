@@ -21,11 +21,59 @@ import type {
   VisionConfig,
   VisionProvider,
 } from "@elizaos/autonomous/contracts/config";
+import type { DropStatus, MintResult } from "@elizaos/autonomous/contracts/drop";
+import type { VerificationResult } from "@elizaos/autonomous/contracts/verification";
 import type {
-  DropStatus,
-  MintResult,
-} from "@elizaos/autonomous/contracts/drop";
-import type { StylePreset } from "@elizaos/autonomous/contracts/onboarding";
+  CloudProviderOption,
+  ConnectorConfig,
+  InventoryProviderOption,
+  MessageExample,
+  MessageExampleContent,
+  ModelOption,
+  OnboardingConnection,
+  OnboardingData,
+  OnboardingOptions,
+  OpenRouterModelOption,
+  PiAiModelOption,
+  ProviderOption,
+  RpcProviderOption,
+  StylePreset,
+  SubscriptionProviderStatus,
+  SubscriptionStatusResponse,
+} from "@elizaos/autonomous/contracts/onboarding";
+import type {
+  BscTradeExecuteRequest,
+  BscTradeExecuteResponse,
+  BscTradePreflightResponse,
+  BscTradeQuoteRequest,
+  BscTradeQuoteResponse,
+  BscTradeTxStatusResponse,
+  BscTransferExecuteRequest,
+  BscTransferExecuteResponse,
+  EvmChainBalance,
+  EvmNft,
+  EvmTokenBalance,
+  SolanaNft,
+  SolanaTokenBalance,
+  WalletAddresses,
+  WalletBalancesResponse,
+  WalletConfigStatus,
+  WalletConfigUpdateRequest,
+  WalletNftsResponse,
+  WalletRpcChain,
+  WalletRpcCredentialKey,
+  WalletRpcSelections,
+  TradePermissionMode as WalletTradePermissionMode,
+  WalletTradingProfileResponse,
+  WalletTradingProfileSourceFilter,
+  WalletTradingProfileWindow,
+} from "@elizaos/autonomous/contracts/wallet";
+import {
+  DEFAULT_WALLET_RPC_SELECTIONS,
+  normalizeWalletRpcProviderId,
+  normalizeWalletRpcSelections,
+  WALLET_RPC_PROVIDER_OPTIONS,
+} from "@elizaos/autonomous/contracts/wallet";
 import type {
   AllPermissionsState,
   PermissionState,
@@ -33,81 +81,80 @@ import type {
   SystemPermissionDefinition,
   SystemPermissionId,
 } from "@elizaos/autonomous/contracts/permissions";
-import type { VerificationResult } from "@elizaos/autonomous/contracts/verification";
-import type {
-  BscTradeExecuteRequest,
-  BscTradeExecuteResponse,
-  BscTradePreflightResponse,
-  BscTradeQuoteRequest,
-  BscTradeQuoteResponse,
-  BscTradeTxStatusResponse,
-  BscTransferExecuteRequest,
-  BscTransferExecuteResponse,
-  EvmChainBalance,
-  EvmNft,
-  EvmTokenBalance,
-  SolanaNft,
-  SolanaTokenBalance,
-  WalletAddresses,
-  WalletBalancesResponse,
-  WalletConfigStatus,
-  WalletNftsResponse,
-  TradePermissionMode as WalletTradePermissionMode,
-  WalletTradingProfileResponse,
-  WalletTradingProfileSourceFilter,
-  WalletTradingProfileWindow,
-} from "@elizaos/autonomous/contracts/wallet";
 import type { ConfigUiHint } from "../types";
 import { stripAssistantStageDirections } from "../utils/assistant-text";
 import { mergeStreamingText } from "../utils/streaming-text";
 
 export type {
+  AllPermissionsState,
   AudioGenConfig,
   AudioGenProvider,
-  CustomActionDef,
-  CustomActionHandler,
-  DatabaseProviderType,
-  ImageConfig,
-  ImageProvider,
-  MediaConfig,
-  MediaMode,
-  ReleaseChannel,
-  VideoConfig,
-  VideoProvider,
-  VisionConfig,
-  VisionProvider,
-};
-export type { StylePreset };
-export type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
-  BscTransferExecuteRequest,
-  BscTransferExecuteResponse,
   BscTradePreflightResponse,
   BscTradeQuoteRequest,
   BscTradeQuoteResponse,
   BscTradeTxStatusResponse,
+  BscTransferExecuteRequest,
+  BscTransferExecuteResponse,
+  CloudProviderOption,
+  ConnectorConfig,
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  DropStatus,
   EvmChainBalance,
   EvmNft,
   EvmTokenBalance,
+  ImageConfig,
+  ImageProvider,
+  InventoryProviderOption,
+  MediaConfig,
+  MediaMode,
+  MessageExample,
+  MessageExampleContent,
+  MintResult,
+  ModelOption,
+  OnboardingConnection,
+  OnboardingData,
+  OnboardingOptions,
+  OpenRouterModelOption,
+  PermissionState,
+  PermissionStatus,
+  PiAiModelOption,
+  ProviderOption,
+  RpcProviderOption,
+  ReleaseChannel,
   SolanaNft,
   SolanaTokenBalance,
+  StylePreset,
+  SubscriptionProviderStatus,
+  SubscriptionStatusResponse,
+  SystemPermissionDefinition as PermissionDefinition,
+  SystemPermissionId,
+  VerificationResult,
+  VideoConfig,
+  VideoProvider,
+  VisionConfig,
+  VisionProvider,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
+  WalletConfigUpdateRequest,
   WalletNftsResponse,
+  WalletRpcChain,
+  WalletRpcCredentialKey,
+  WalletRpcSelections,
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
 };
-export type { DropStatus, MintResult };
-export type { VerificationResult };
-export type {
-  AllPermissionsState,
-  PermissionState,
-  PermissionStatus,
-  SystemPermissionId,
-  SystemPermissionDefinition as PermissionDefinition,
+
+export {
+  DEFAULT_WALLET_RPC_SELECTIONS,
+  normalizeWalletRpcProviderId,
+  normalizeWalletRpcSelections,
+  WALLET_RPC_PROVIDER_OPTIONS,
 };
 
 // ---------------------------------------------------------------------------
@@ -442,153 +489,6 @@ export interface UpdateTriggerRequest {
   cronExpression?: string;
   maxRuns?: number;
 }
-
-export interface MessageExample {
-  user: string;
-  content: { text: string };
-}
-
-export interface ProviderOption {
-  id: string;
-  name: string;
-  envKey: string | null;
-  pluginName: string;
-  keyPrefix: string | null;
-  description: string;
-}
-
-export interface CloudProviderOption {
-  id: string;
-  name: string;
-  description: string;
-}
-
-export interface ModelOption {
-  id: string;
-  name: string;
-  provider: string;
-  description: string;
-}
-
-export interface RpcProviderOption {
-  id: string;
-  name: string;
-  description: string;
-  envKey: string | null;
-  requiresKey: boolean;
-}
-
-export interface InventoryProviderOption {
-  id: string;
-  name: string;
-  description: string;
-  rpcProviders: RpcProviderOption[];
-}
-
-export interface OpenRouterModelOption {
-  id: string;
-  name: string;
-  description: string;
-}
-
-export interface PiAiModelOption {
-  id: string;
-  name: string;
-  provider: string;
-  isDefault: boolean;
-}
-
-export interface OnboardingOptions {
-  names: string[];
-  styles: StylePreset[];
-  providers: ProviderOption[];
-  cloudProviders: CloudProviderOption[];
-  models: {
-    small: ModelOption[];
-    large: ModelOption[];
-  };
-  openrouterModels?: OpenRouterModelOption[];
-  piAiModels?: PiAiModelOption[];
-  piAiDefaultModel?: string | null;
-  inventoryProviders: InventoryProviderOption[];
-  sharedStyleRules: string;
-  githubOAuthAvailable?: boolean;
-}
-
-/** Configuration for a single messaging connector. */
-export interface ConnectorConfig {
-  enabled?: boolean;
-  botToken?: string;
-  token?: string;
-  apiKey?: string;
-  [key: string]:
-    | string
-    | boolean
-    | number
-    | string[]
-    | Record<string, unknown>
-    | undefined;
-}
-
-export interface OnboardingData {
-  name: string;
-  runMode: "local" | "cloud";
-  /** Sandbox execution mode: "off" (rawdog), "light" (cloud), "standard" (local sandbox), "max". */
-  sandboxMode?: "off" | "light" | "standard" | "max";
-  bio: string[];
-  systemPrompt: string;
-  style?: {
-    all: string[];
-    chat: string[];
-    post: string[];
-  };
-  adjectives?: string[];
-  topics?: string[];
-  postExamples?: string[];
-  messageExamples?: MessageExample[][];
-  // Cloud-specific
-  cloudProvider?: string;
-  smallModel?: string;
-  largeModel?: string;
-  // Local-specific
-  provider?: string;
-  providerApiKey?: string;
-  /** Optional primary model override (provider/model), used by pi-ai mode. */
-  primaryModel?: string;
-  openrouterModel?: string;
-  subscriptionProvider?: string;
-  // Messaging channel setup
-  channels?: Record<string, unknown>;
-  // Inventory / wallet setup
-  inventoryProviders?: Array<{
-    chain: string;
-    rpcProvider: string;
-    rpcApiKey?: string;
-  }>;
-  // Connector setup (Telegram, Discord, etc.)
-  connectors?: Record<string, ConnectorConfig>;
-  telegramToken?: string;
-  discordToken?: string;
-  whatsappSessionPath?: string;
-  twilioAccountSid?: string;
-  twilioAuthToken?: string;
-  twilioPhoneNumber?: string;
-  blooioApiKey?: string;
-  blooioPhoneNumber?: string;
-  githubToken?: string;
-}
-
-export interface SubscriptionProviderStatus {
-  provider: string;
-  configured: boolean;
-  valid: boolean;
-  expiresAt: number | null;
-}
-
-export interface SubscriptionStatusResponse {
-  providers: SubscriptionProviderStatus[];
-}
-
 export interface SandboxPlatformStatus {
   platform: string;
   arch?: string;
@@ -1561,7 +1461,7 @@ export interface CharacterData {
     post?: string[];
   };
   messageExamples?: Array<{
-    examples: Array<{ name: string; content: { text: string } }>;
+    examples: Array<{ name: string; content: MessageExampleContent }>;
   }>;
   postExamples?: string[];
 }
@@ -3364,7 +3264,7 @@ export class MiladyClient {
     return this.fetch("/api/wallet/config");
   }
   async updateWalletConfig(
-    config: Record<string, string>,
+    config: WalletConfigUpdateRequest,
   ): Promise<{ ok: boolean }> {
     return this.fetch("/api/wallet/config", {
       method: "PUT",
