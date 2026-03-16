@@ -63,7 +63,7 @@
     "test": "vitest run --passWithNoTests tests/",
     "test:unit": "vitest run --passWithNoTests tests/",
     "test:watch": "vitest",
-    "lint": "bunx @biomejs/biome check --apply --unsafe .",
+    "lint": "bunx @biomejs/biome check --apply .",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

@@ -54,7 +54,7 @@
     "test": "bun run test:typescript",
     "test:typescript": "vitest run --passWithNoTests src/__tests__/",
     "test:watch": "vitest",
-    "lint": "bunx @biomejs/biome check --apply --unsafe .",
+    "lint": "bunx @biomejs/biome check --apply .",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

@@ -15,7 +15,7 @@
     "test:py": "cd python && python3 handler.py",
     "test:rust": "cd rust && cargo run --bin test_local",
     "clean": "rm -rf dist .vercel node_modules",
-    "lint": "bunx @biomejs/biome check --apply --unsafe .",
+    "lint": "bunx @biomejs/biome check --apply .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit"
   },

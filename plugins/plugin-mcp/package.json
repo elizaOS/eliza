@@ -59,7 +59,7 @@
     "check:write": "bunx @biomejs/biome check --apply ./typescript/src",
     "check": "bunx @biomejs/biome check ./typescript/src",
     "ci": "bunx @biomejs/biome ci ./typescript/src",
-    "lint": "bunx @biomejs/biome check --apply --unsafe ./typescript/src",
+    "lint": "bunx @biomejs/biome check --apply ./typescript/src",
     "lint:check": "bunx @biomejs/biome check ./typescript/src",
     "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
     "format": "bunx @biomejs/biome format --write ./typescript/src",

@@ -46,7 +46,7 @@
   "scripts": {
     "build:ts": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "lint": "bunx @biomejs/biome check --apply --unsafe .",
+    "lint": "bunx @biomejs/biome check --apply .",
     "lint:check": "bunx @biomejs/biome check .",
     "clean": "rm -rf dist   .turbo node_modules",
     "format": "bunx @biomejs/biome format --write .",
