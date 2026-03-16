@@ -949,6 +949,64 @@ describe("DefaultMessageService", () => {
     });
   });
 
+  describe("ALLOW_MEMORY_SOURCE_IDS", () => {
+    it("should allow memory creation when source ID is whitelisted and DISABLE_MEMORY_CREATION is false", async () => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+        if (key === "DISABLE_MEMORY_CREATION") return "false";
+        if (key === "ALLOW_MEMORY_SOURCE_IDS") return "allowed-source-123";
+        return null;
+      });
+
+      const message: Memory = {
+        id: "123e4567-e89b-12d3-a456-426614174302" as UUID,
+        content: {
+          text: "Test message from allowed source",
+          source: "test",
+          channelType: ChannelType.DM,
+        } as Content,
+        metadata: {
+          sourceId: "allowed-source-123",
+        },
+        entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+        roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+        agentId: runtime.agentId,
+        createdAt: Date.now(),
+      };
+
+      await messageService.handleMessage(runtime, message, mockCallback);
+
+      // Check memory was created since source is whitelisted and memory creation is enabled
+      expect(runtime.createMemory).toHaveBeenCalled();
+    });
+  });
+
+  describe("DISABLE_MEMORY_CREATION guards", () => {
+    it("should respect DISABLE_MEMORY_CREATION globally", async () => {
+      vi.spyOn(runtime, "getSetting").mockImplementation((key: string) => {
+        if (key === "DISABLE_MEMORY_CREATION") return "true"; 
+        return null;
+      });
+
+      const message: Memory = {
+        id: "123e4567-e89b-12d3-a456-426614174300" as UUID,
+        content: {
+          text: "Test message with memory disabled",
+          source: "test",
+          channelType: ChannelType.DM,
+        } as Content,
+        entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
+        roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
+        agentId: runtime.agentId,
+        createdAt: Date.now(),
+      };
+
+      await messageService.handleMessage(runtime, message, mockCallback);
+
+      // No memory should be created when disabled globally
+      expect(runtime.createMemory).not.toHaveBeenCalled();
+    });
+  });
+
   describe("keepExistingResponses", () => {
     it("should preserve existing responses when keepExistingResponses is true", async () => {
       const existingResponse: Memory = {
