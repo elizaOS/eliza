@@ -2657,3 +2657,415 @@ mod tests {
         assert_eq!(LogLevel::Fatal.to_tracing_level(), tracing::Level::ERROR);
     }
 }
+
+// ============================================================================
+// IAgentRuntime Implementation for AgentRuntime
+// ============================================================================
+
+#[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
+#[async_trait::async_trait]
+impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
+    fn agent_id(&self) -> uuid::Uuid {
+        uuid::Uuid::parse_str(self.agent_id.as_str()).unwrap_or_default()
+    }
+
+    async fn character(&self) -> crate::types::Character {
+        self.character.read().await.clone()
+    }
+
+    async fn get_setting(&self, key: &str) -> Option<String> {
+        self.get_setting(key).await.map(|v| match v {
+            crate::types::settings::SettingValue::String(s) => s,
+            crate::types::settings::SettingValue::Bool(b) => b.to_string(),
+            crate::types::settings::SettingValue::Number(n) => n.to_string(),
+            crate::types::settings::SettingValue::Null => "null".to_string(),
+        })
+    }
+
+    async fn get_all_settings(&self) -> std::collections::HashMap<String, String> {
+        fn setting_to_string(v: &crate::types::settings::SettingValue) -> String {
+            match v {
+                crate::types::settings::SettingValue::String(s) => s.clone(),
+                crate::types::settings::SettingValue::Bool(b) => b.to_string(),
+                crate::types::settings::SettingValue::Number(n) => n.to_string(),
+                crate::types::settings::SettingValue::Null => "null".to_string(),
+            }
+        }
+
+        let mut result = std::collections::HashMap::new();
+
+        // Collect from runtime settings (lowest priority)
+        {
+            let settings = self.settings.read().await;
+            for (k, v) in &settings.values {
+                result.insert(k.clone(), setting_to_string(v));
+            }
+        }
+
+        // Overlay character settings and secrets (higher priority, matching get_setting order)
+        let character = self.character.read().await.clone();
+        if let Some(settings) = &character.settings {
+            for (k, v) in &settings.values {
+                if let Some(sv) = json_value_to_setting_value(v) {
+                    result.insert(k.clone(), setting_to_string(&normalize_setting_value(sv)));
+                }
+            }
+        }
+        if let Some(secrets) = &character.secrets {
+            for (k, v) in &secrets.values {
+                if let Some(sv) = json_value_to_setting_value(v) {
+                    result.insert(k.clone(), setting_to_string(&normalize_setting_value(sv)));
+                }
+            }
+        }
+
+        result
+    }
+
+    async fn set_setting(&self, key: &str, value: &str) -> crate::error::PluginResult<()> {
+        self.set_setting(
+            key,
+            crate::types::settings::SettingValue::String(value.to_string()),
+            false,
+        )
+        .await;
+        Ok(())
+    }
+
+    async fn get_entity(
+        &self,
+        entity_id: uuid::Uuid,
+    ) -> crate::error::PluginResult<Option<crate::types::Entity>> {
+        let adapter = self
+            .get_adapter()
+            .ok_or_else(|| crate::error::PluginError::Internal("No adapter".to_string()))?;
+        adapter
+            .get_entity(&entity_id.into())
+            .await
+            .map_err(|e| crate::error::PluginError::DatabaseError(e.into()))
+    }
+
+    async fn update_entity(
+        &self,
+        _entity: &crate::types::Entity,
+    ) -> crate::error::PluginResult<()> {
+        Err(crate::error::PluginError::Internal(
+            "update_entity is not yet supported by DatabaseAdapter".to_string(),
+        ))
+    }
+
+    async fn get_room(
+        &self,
+        room_id: uuid::Uuid,
+    ) -> crate::error::PluginResult<Option<crate::types::Room>> {
+        let adapter = self
+            .get_adapter()
+            .ok_or_else(|| crate::error::PluginError::Internal("No adapter".to_string()))?;
+        adapter
+            .get_room(&room_id.into())
+            .await
+            .map_err(|e| crate::error::PluginError::DatabaseError(e.into()))
+    }
+
+    async fn get_world(
+        &self,
+        world_id: uuid::Uuid,
+    ) -> crate::error::PluginResult<Option<crate::types::World>> {
+        let adapter = self
+            .get_adapter()
+            .ok_or_else(|| crate::error::PluginError::Internal("No adapter".to_string()))?;
+        adapter
+            .get_world(&world_id.into())
+            .await
+            .map_err(|e| crate::error::PluginError::DatabaseError(e.into()))
+    }
+
+    async fn update_world(&self, _world: &crate::types::World) -> crate::error::PluginResult<()> {
+        Err(crate::error::PluginError::Internal(
+            "update_world is not yet supported by DatabaseAdapter".to_string(),
+        ))
+    }
+
+    async fn create_memory(
+        &self,
+        content: crate::types::Content,
+        room_id: Option<uuid::Uuid>,
+        entity_id: Option<uuid::Uuid>,
+        memory_type: crate::types::MemoryType,
+        metadata: std::collections::HashMap<String, serde_json::Value>,
+    ) -> crate::error::PluginResult<crate::types::Memory> {
+        let adapter = self
+            .get_adapter()
+            .ok_or_else(|| crate::error::PluginError::Internal("No adapter".to_string()))?;
+
+        let resolved_room = room_id
+            .map(|id| id.into())
+            .unwrap_or_else(UUID::default_uuid);
+        let resolved_entity = entity_id
+            .map(|id| id.into())
+            .unwrap_or_else(UUID::default_uuid);
+
+        let mut memory = crate::types::Memory::new(resolved_entity, resolved_room, content);
+        memory.agent_id = Some(self.agent_id.clone());
+        if !metadata.is_empty() {
+            memory.metadata = Some(crate::types::MemoryMetadata::Custom(
+                serde_json::Value::Object(metadata.into_iter().collect()),
+            ));
+        }
+
+        let table_name = match memory_type {
+            crate::types::MemoryType::Message => "messages",
+            crate::types::MemoryType::Action => "actions",
+            crate::types::MemoryType::Fact => "facts",
+            crate::types::MemoryType::Knowledge => "knowledge",
+        };
+
+        let id = adapter
+            .create_memory(&memory, table_name)
+            .await
+            .map_err(|e| crate::error::PluginError::DatabaseError(e.into()))?;
+        memory.id = Some(id);
+
+        Ok(memory)
+    }
+
+    async fn get_memories(
+        &self,
+        room_id: Option<uuid::Uuid>,
+        _entity_id: Option<uuid::Uuid>,
+        _memory_type: Option<crate::types::MemoryType>,
+        count: usize,
+    ) -> crate::error::PluginResult<Vec<crate::types::Memory>> {
+        if let Some(adapter) = &self.adapter {
+            let params = crate::types::database::GetMemoriesParams {
+                room_id: room_id.map(|id| id.into()),
+                count: Some(count.try_into().unwrap_or(10)),
+                ..Default::default()
+            };
+            adapter
+                .get_memories(params)
+                .await
+                .map_err(|e| crate::error::PluginError::DatabaseError(e))
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    async fn search_knowledge(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> crate::error::PluginResult<Vec<crate::types::Memory>> {
+        if let Some(adapter) = &self.adapter {
+            let params = crate::types::database::SearchMemoriesParams {
+                table_name: "knowledge".to_string(),
+                query: Some(query.to_string()),
+                count: Some(limit as i32),
+                room_id: None, // Knowledge search is not room-specific
+                ..Default::default()
+            };
+            adapter
+                .search_memories(params)
+                .await
+                .map_err(|e| crate::error::PluginError::DatabaseError(e))
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    async fn search_memories(
+        &self,
+        params: crate::types::database::SearchMemoriesParams,
+    ) -> crate::error::PluginResult<Vec<crate::types::Memory>> {
+        if let Some(adapter) = &self.adapter {
+            adapter
+                .search_memories(params)
+                .await
+                .map_err(|e| crate::error::PluginError::DatabaseError(e))
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    async fn compose_state(
+        &self,
+        message: &crate::types::Memory,
+        providers: &[&str],
+    ) -> crate::error::PluginResult<crate::types::State> {
+        let providers_vec: Vec<String> = providers.iter().map(|s| s.to_string()).collect();
+        self.compose_state_filtered(message, Some(&providers_vec), false)
+            .await
+            .map_err(|e| crate::error::PluginError::Internal(e.to_string()))
+    }
+
+    fn compose_prompt(&self, state: &crate::types::State, template: &str) -> String {
+        let data = serde_json::to_value(state.values_map()).unwrap_or(serde_json::Value::Null);
+        crate::template::render_template(template, &data).unwrap_or(template.to_string())
+    }
+
+    async fn use_model(
+        &self,
+        model_type: crate::types::ModelType,
+        params: crate::bootstrap::runtime::ModelParams,
+    ) -> crate::error::PluginResult<crate::bootstrap::runtime::ModelOutput> {
+        let model_key = match model_type {
+            crate::types::ModelType::TextLarge => "TEXT_LARGE",
+            crate::types::ModelType::TextSmall => "TEXT_SMALL",
+            crate::types::ModelType::TextEmbedding => "TEXT_EMBEDDING",
+            crate::types::ModelType::Image => "IMAGE",
+            crate::types::ModelType::AudioTranscription => "AUDIO_TRANSCRIPTION",
+            crate::types::ModelType::TextToSpeech => "TEXT_TO_SPEECH",
+        };
+
+        let params_val = serde_json::to_value(params)
+            .map_err(|e| crate::error::PluginError::Internal(e.to_string()))?;
+        let output_str = self
+            .use_model(model_key, params_val)
+            .await
+            .map_err(|e| crate::error::PluginError::ModelError(e.to_string()))?;
+
+        match model_type {
+            crate::types::ModelType::TextEmbedding => {
+                let val: Vec<f32> = serde_json::from_str(&output_str).unwrap_or_default();
+                Ok(crate::bootstrap::runtime::ModelOutput::Embedding(val))
+            }
+            crate::types::ModelType::TextSmall | crate::types::ModelType::TextLarge => {
+                Ok(crate::bootstrap::runtime::ModelOutput::Text(output_str))
+            }
+            _ => Ok(crate::bootstrap::runtime::ModelOutput::Structured(
+                serde_json::Value::String(output_str),
+            )),
+        }
+    }
+
+    fn has_model(&self, model_type: crate::types::ModelType) -> bool {
+        let model_key = match model_type {
+            crate::types::ModelType::TextLarge => "TEXT_LARGE",
+            crate::types::ModelType::TextSmall => "TEXT_SMALL",
+            crate::types::ModelType::TextEmbedding => "TEXT_EMBEDDING",
+            crate::types::ModelType::Image => "IMAGE",
+            crate::types::ModelType::AudioTranscription => "AUDIO_TRANSCRIPTION",
+            crate::types::ModelType::TextToSpeech => "TEXT_TO_SPEECH",
+        };
+        self.model_handlers
+            .try_read()
+            .ok()
+            .map(|h| h.contains_key(model_key))
+            .unwrap_or(false)
+    }
+
+    fn get_available_actions(&self) -> Vec<crate::bootstrap::runtime::ActionInfo> {
+        let actions = self.actions.try_read().ok();
+        match actions {
+            Some(guard) => guard
+                .iter()
+                .map(|a| {
+                    let def = a.definition();
+                    crate::bootstrap::runtime::ActionInfo {
+                        name: def.name,
+                        description: def.description,
+                    }
+                })
+                .collect(),
+            None => vec![],
+        }
+    }
+
+    fn get_current_timestamp(&self) -> i64 {
+        chrono::Utc::now().timestamp_millis()
+    }
+
+    fn log_info(&self, source: &str, message: &str) {
+        tracing::info!(source = source, "{}", message);
+    }
+
+    fn log_debug(&self, source: &str, message: &str) {
+        tracing::debug!(source = source, "{}", message);
+    }
+
+    fn log_warning(&self, source: &str, message: &str) {
+        tracing::warn!(source = source, "{}", message);
+    }
+
+    fn log_error(&self, source: &str, message: &str) {
+        tracing::error!(source = source, "{}", message);
+    }
+
+    fn register_task_worker(&self, worker: Box<dyn crate::bootstrap::runtime::TaskWorker>) {
+        let name = worker.name().to_string();
+        if let Ok(mut workers) = self.task_workers.try_write() {
+            workers.insert(name.clone(), std::sync::Arc::from(worker));
+            tracing::debug!(task = %name, "Task worker registered via IAgentRuntime");
+        } else {
+            tracing::warn!(task = %name, "Failed to acquire task_workers lock for registration");
+        }
+    }
+
+    fn get_task_worker(
+        &self,
+        name: &str,
+    ) -> Option<std::sync::Arc<dyn crate::bootstrap::runtime::TaskWorker>> {
+        self.task_workers
+            .try_read()
+            .ok()
+            .and_then(|workers| workers.get(name).cloned())
+    }
+
+    async fn create_task(
+        &self,
+        task: crate::types::task::Task,
+    ) -> crate::error::PluginResult<crate::types::task::Task> {
+        Ok(self.create_task(task).await)
+    }
+
+    async fn get_tasks(
+        &self,
+        tags: Option<Vec<String>>,
+    ) -> crate::error::PluginResult<Vec<crate::types::task::Task>> {
+        Ok(self.get_tasks(tags).await)
+    }
+
+    async fn delete_task(&self, task_id: uuid::Uuid) -> crate::error::PluginResult<bool> {
+        Ok(self.delete_task(&task_id.to_string()).await)
+    }
+
+    async fn get_service(
+        &self,
+        service_type: &str,
+    ) -> Option<std::sync::Arc<dyn crate::types::service::Service>> {
+        #[cfg(feature = "native")]
+        {
+            let services = self.services.read().await;
+            services
+                .get(service_type)
+                .cloned()
+                .map(|s| s as std::sync::Arc<dyn crate::types::service::Service>)
+        }
+        #[cfg(not(feature = "native"))]
+        {
+            None
+        }
+    }
+
+    async fn register_event(
+        &self,
+        event_type: crate::types::events::EventType,
+        handler: crate::runtime::EventHandler,
+    ) {
+        self.register_event(event_type, handler).await
+    }
+
+    async fn emit_event(
+        &self,
+        event_type: crate::types::events::EventType,
+        payload: crate::types::events::EventPayload,
+    ) -> crate::error::PluginResult<()> {
+        self.emit_event(event_type, payload)
+            .await
+            .map_err(|e| crate::error::PluginError::Internal(e.to_string()))
+    }
+
+    fn get_adapter(&self) -> Option<std::sync::Arc<dyn crate::runtime::DatabaseAdapter>> {
+        self.get_adapter()
+    }
+}
