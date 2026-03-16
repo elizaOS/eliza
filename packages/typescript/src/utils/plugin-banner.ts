@@ -191,7 +191,7 @@ export function sliceByWidth(text: string, maxWidth: number): string {
     result += trailingAnsi[0];
     index += trailingAnsi[0].length;
     remaining = text.slice(index);
-    trailingAnsi = remaining.match(ANSI_PATTERN);
+    trailingAnsi = remaining.match(newAnsiPattern());
   }
 
   return result;
