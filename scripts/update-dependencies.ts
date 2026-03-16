@@ -25,7 +25,6 @@ const STANDARD_VERSIONS: Record<string, string> = {
   typescript: "^5.9.3",
   "@types/node": "^25.0.3",
   "@types/bun": "^1.3.5",
-  "@types/uuid": "^11.0.0",
   "@types/react": "19.2.3",
 
   // Testing

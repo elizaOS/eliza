@@ -5,6 +5,7 @@
     "moduleResolution": "bundler",
     "strict": false,
     "skipLibCheck": true,
+    "types": ["node"],
     "declaration": false,
     "noEmit": true,
     "baseUrl": ".",
