@@ -75,7 +75,7 @@ describe("plugin-prose", () => {
 
     it("requireActionSpec should throw for unknown spec", () => {
       expect(() => requireActionSpec("UNKNOWN_ACTION")).toThrow(
-        "Action spec not found: UNKNOWN_ACTION"
+        "Action spec not found: UNKNOWN_ACTION",
       );
     });
   });

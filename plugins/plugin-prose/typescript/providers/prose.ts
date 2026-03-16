@@ -24,7 +24,7 @@ function getService(runtime: IAgentRuntime): ProseService {
  */
 export async function initProseService(
   runtime: IAgentRuntime,
-  skillsDir?: string
+  skillsDir?: string,
 ): Promise<ProseService> {
   const service = getService(runtime);
   await service.init(skillsDir);

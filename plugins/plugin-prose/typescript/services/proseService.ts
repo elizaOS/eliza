@@ -189,7 +189,7 @@ export class ProseService {
    */
   async createRunDirectory(
     workspaceDir: string,
-    programContent: string
+    programContent: string,
   ): Promise<{ runId: string; runDir: string }> {
     const runId = generateRunId();
     const runDir = path.join(workspaceDir, "runs", runId);
@@ -269,7 +269,7 @@ ${programContent}
       stateMode?: ProseStateMode;
       includeCompiler?: boolean;
       includeGuidance?: boolean;
-    } = {}
+    } = {},
   ): string {
     const { stateMode = "filesystem", includeCompiler = false, includeGuidance = false } = options;
 
@@ -326,7 +326,7 @@ ${programContent}
  */
 export function createProseService(
   runtime: IAgentRuntime,
-  config?: Partial<ProseConfig>
+  config?: Partial<ProseConfig>,
 ): ProseService {
   return new ProseService(runtime, config);
 }
