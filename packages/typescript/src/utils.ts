@@ -770,23 +770,22 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 export function parseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
-  try {
-    const result = extractAndParseJSONObjectFromText(text);
-    if (!result) {
-      return null;
-    }
-    // Normalize numeric values to strings for backward compatibility
-    for (const key in result) {
-      if (typeof result[key] === 'number') {
-        result[key] = String(result[key]);
-      }
-    }
-    return result;
-  } catch (error) {
-    // Maintain old behavior of throwing on parse failure
-    // Note: ensures consistent error handling by re-throwing caught exceptions for clarity.
-    throw new Error(`Failed to parse JSON object from text: ${error instanceof Error ? error.message : String(error)}`);
+  const result = extractAndParseJSONObjectFromText(text);
+  if (!result) {
+    // Throw for invalid input to maintain backward compatibility with tests expecting throws
+    throw new Error("Failed to parse JSON object from text");
   }
+  // Validate result is a plain object, not an array
+  if (Array.isArray(result)) {
+    return null;
+  }
+  // Normalize numeric values to strings for backward compatibility
+  for (const key in result) {
+    if (typeof result[key] === 'number') {
+      result[key] = String(result[key]);
+    }
+  }
+  return result;
 }
 
 /**
