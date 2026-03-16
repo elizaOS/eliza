@@ -3,6 +3,25 @@ import { anxietyProvider } from "../providers/anxiety";
 import { ChannelType } from "../../types/primitives";
 import type { IAgentRuntime, Memory, State } from "../../types";
 
+// Test utilities
+const createMockRuntime = () => ({
+  agentId: "test-agent-id",
+  getSetting: vi.fn((key) => null),
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}) as unknown as IAgentRuntime;
+
+const createMockMemory = (channelType: ChannelType): Memory => ({
+  content: { 
+    channelType,
+    text: "Test message"
+  }
+}) as Memory;
+
 describe("anxietyProvider", () => {
   const mockRuntime = {
     agentId: "test-agent-id",
