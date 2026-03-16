@@ -1433,14 +1433,19 @@ export class AgentRuntime implements IAgentRuntime {
         // etc.) is preserved from the stateCache populated by earlier
         // composeState calls (e.g. runSingleShotCore). This avoids
         // re-running every registered provider for each action in a chain.
+        // Cache current state first
         if (message.id && accumulatedState) {
           this.stateCache.set(message.id, accumulatedState);
         }
-        accumulatedState = await this.composeState(
-          message,
-          ["RECENT_MESSAGES", "ACTION_STATE"],
-          true, // onlyInclude
-        );
+        // Compose from cached state but merge with current accumulated values
+        accumulatedState = {
+          ...accumulatedState,
+          ...(await this.composeState(
+            message,
+            ["RECENT_MESSAGES", "ACTION_STATE"],
+            true, // onlyInclude
+          ))
+        };
 
         // Add action plan to state if it exists
         if (actionPlan && accumulatedState.data) {
@@ -3205,14 +3210,32 @@ export class AgentRuntime implements IAgentRuntime {
     // Get call stack to identify caller (only when debug logging is enabled to avoid overhead)
     let callerInfo = "unknown";
     if (this.logger.level === "debug" || this.logger.level === "trace") {
-      const stack = new Error().stack;
-      callerInfo =
-        stack
-          ?.split("\n")
-          .slice(2, 5) // Get first 3 frames after this function
-          .map((line) => line.trim().replace(/^at\s+/, ""))
-          .join(" <- ") || "unknown";
+      try {
+        const stackLimit = Error.stackTraceLimit;
+        Error.stackTraceLimit = 5; // Limit stack depth for efficiency
+        const stack = new Error().stack;
+        Error.stackTraceLimit = stackLimit;
+        callerInfo =
+          stack
+            ?.split("\n")
+            .slice(2, 5) // Get first 3 frames after this function
+            .map((line) => line.trim().replace(/^at\s+/, ""))
+            .join(" <- ") || "unknown";
+      } catch {
+        // Fallback if stack trace fails
+        callerInfo = "unknown (stack error)";
+      }
     }
+</change>
+
+### Issue 3: Message.ts memory allowlist
+
+<change path="packages/typescript/src/services/message.ts">
+
+<replace>
+    // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION and source allowlist).
+    if (!disableMemoryCreation && memorySourceAllowed) {
+      const ignoreMemory: Memory = {
 
     // Log model usage with caller information
     this.logger.debug(
