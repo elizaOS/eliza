@@ -88,7 +88,7 @@ export const actionStateProvider: Provider = {
             } catch {
               return 0;
             }
-          })(),
+          })() + 80, // Add formatting overhead consistent with basic-capabilities
         ACTION_RESULTS_TARGET_CHARS,
       );
 
