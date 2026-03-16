@@ -2,8 +2,15 @@
 name: libafl
 type: fuzzer
 description: >
-  LibAFL is a modular fuzzing library for building custom fuzzers. Use for
-  advanced fuzzing needs, custom mutators, or non-standard fuzzing targets.
+  The agent uses LibAFL, a modular Rust fuzzing library, to build custom fuzzers with
+  fine-grained control over observers, feedback mechanisms, mutators, schedulers, and
+  executors. It supports drop-in libFuzzer replacement mode via libFuzzer.a, fully custom
+  fuzzer construction with InProcessExecutor and coverage-guided feedback, multi-core
+  fuzzing with Launcher, crash deduplication via BacktraceObserver, and dictionary-based
+  token mutations. The agent applies LibAFL when standard fuzzers like libFuzzer or AFL++
+  lack needed customization — such as custom mutation strategies, novel feedback mechanisms,
+  non-standard target architectures, or fuzzing research requiring component-level control
+  over the fuzzing loop, corpus management, and sanitizer integration.
 ---
 
 # LibAFL

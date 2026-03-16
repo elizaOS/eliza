@@ -2,8 +2,14 @@
 name: wycheproof
 type: domain
 description: >
-  Wycheproof provides test vectors for validating cryptographic implementations.
-  Use when testing crypto code for known attacks and edge cases.
+  Guides agents in using Wycheproof test vectors to validate cryptographic
+  implementations against known attacks, edge cases, and vulnerability patterns.
+  Covers integrating test vectors for AES-GCM, ECDSA, ECDH, EdDSA, RSA, and
+  ChaCha20-Poly1305 into testing workflows. Helps when writing crypto tests,
+  checking for signature malleability, invalid curve attacks, padding oracle
+  issues, DER encoding bugs, or setting up CI for cryptographic libraries.
+  Applies to verifying encryption, decryption, signing, and key exchange
+  correctness using structured JSON test vector suites.
 ---
 
 # Wycheproof

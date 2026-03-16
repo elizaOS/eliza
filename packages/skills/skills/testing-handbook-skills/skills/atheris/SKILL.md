@@ -2,8 +2,15 @@
 name: atheris
 type: fuzzer
 description: >
-  Atheris is a coverage-guided Python fuzzer based on libFuzzer.
-  Use for fuzzing pure Python code and Python C extensions.
+  Atheris is a coverage-guided Python fuzzing framework built on libFuzzer
+  for finding bugs, crashes, and security vulnerabilities in pure Python code
+  and Python C extensions. It provides AddressSanitizer integration for
+  detecting memory corruption, buffer overflows, and use-after-free errors.
+  Assists with writing fuzz harnesses, configuring sanitizers, managing
+  corpora, running fuzzing campaigns, and setting up Docker-based fuzzing
+  environments. Covers instrumentation of Python imports, parallel fuzzing
+  with workers, corpus minimization, and troubleshooting common issues like
+  LD_PRELOAD configuration and compiler flag setup.
 ---
 
 # Atheris

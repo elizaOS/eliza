@@ -1,6 +1,6 @@
 ---
 name: blogwatcher
-description: Monitor blogs and RSS/Atom feeds for updates using the blogwatcher CLI.
+description: Monitor blogs and RSS/Atom feeds for updates using the blogwatcher CLI. Use when the user wants to subscribe to blogs, track news feeds, manage a feed reader, scan for new articles, add or remove RSS or Atom subscriptions, or mark posts as read.
 homepage: https://github.com/Hyaxia/blogwatcher
 metadata:
   {

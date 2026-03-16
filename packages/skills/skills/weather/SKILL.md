@@ -1,6 +1,6 @@
 ---
 name: weather
-description: Get current weather and forecasts (no API key required).
+description: Get current weather and forecasts (no API key required). Use when the user asks about the weather, temperature, forecast, wind, humidity, or climate conditions for a city or location. Fetches real-time weather data from free services using curl.
 homepage: https://wttr.in/:help
 metadata: { "otto": { "emoji": "🌤️", "requires": { "bins": ["curl"] } } }
 ---

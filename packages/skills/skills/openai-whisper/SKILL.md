@@ -1,6 +1,6 @@
 ---
 name: openai-whisper
-description: Local speech-to-text with the Whisper CLI (no API key).
+description: Local speech-to-text with the Whisper CLI (no API key). Use when the user needs to transcribe audio, convert speech to text, generate subtitles, translate spoken language, or produce SRT/VTT captions from mp3, m4a, or wav files using the local Whisper model.
 homepage: https://openai.com/research/whisper
 metadata:
   {

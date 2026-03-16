@@ -1,6 +1,6 @@
 ---
 name: voice-call
-description: Start voice calls via the Otto voice-call plugin.
+description: Initiates, manages, and inspects voice calls through the Otto voice-call plugin using Twilio, Telnyx, Plivo, or mock providers. Supports starting outbound calls, continuing conversations, speaking messages, ending calls, and checking call status. Use when the user wants to make a phone call, dial a number, place a voice call, check call status, send a voice message, or speak to someone over the phone.
 metadata:
   {
     "otto":

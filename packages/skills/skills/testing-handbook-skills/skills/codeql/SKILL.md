@@ -2,8 +2,11 @@
 name: codeql
 type: tool
 description: >
-  CodeQL is a static analysis framework that queries code as a database.
-  Use when you need interprocedural analysis or complex data flow tracking.
+  Guides the agent through CodeQL static analysis, including creating databases,
+  writing custom QL queries, running interprocedural data flow and control flow
+  analysis, detecting security vulnerabilities, setting up GitHub Actions code
+  scanning, and managing query packs. Covers C, C++, Go, Java, Kotlin, JavaScript,
+  TypeScript, Python, Ruby, Swift, and SARIF output processing.
 ---
 
 # CodeQL

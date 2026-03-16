@@ -2,8 +2,15 @@
 name: fuzzing-obstacles
 type: technique
 description: >
-  Techniques for patching code to overcome fuzzing obstacles.
-  Use when checksums, global state, or other barriers block fuzzer progress.
+  The agent patches the system under test (SUT) to overcome common fuzzing obstacles
+  using conditional compilation. It bypasses checksum and hash verification, replaces
+  non-deterministic PRNG seeding with fixed seeds, skips complex multi-stage validation,
+  and provides safe default values to prevent false positives. The agent uses
+  FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION in C/C++ and cfg!(fuzzing) in Rust to ensure
+  patches apply only during fuzzing builds. It applies this technique when coverage
+  reports reveal unreachable code behind checksums, cryptographic signatures, time-seeded
+  random state, or expensive validation logic that blocks fuzzer exploration of deeper
+  code paths in libFuzzer, AFL++, honggfuzz, cargo-fuzz, and LibAFL targets.
 ---
 
 # Overcoming Fuzzing Obstacles

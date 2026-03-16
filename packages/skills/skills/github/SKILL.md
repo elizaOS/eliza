@@ -1,6 +1,6 @@
 ---
 name: github
-description: "Interact with GitHub using the `gh` CLI. Use `gh issue`, `gh pr`, `gh run`, and `gh api` for issues, PRs, CI runs, and advanced queries."
+description: "Interact with GitHub using the `gh` CLI to manage repositories, issues, pull requests, CI/CD workflow runs, and API queries. Use when the user asks to create, list, view, merge, or close pull requests and issues; check CI status or workflow run logs; query the GitHub API for repository data; or perform any GitHub operation from the command line. Covers `gh issue`, `gh pr`, `gh run`, `gh repo`, and `gh api` subcommands."
 metadata:
   {
     "otto":

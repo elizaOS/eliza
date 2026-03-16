@@ -1,6 +1,6 @@
 ---
 name: bear-notes
-description: Create, search, and manage Bear notes via grizzly CLI.
+description: Create, search, read, tag, and append to Bear app notes on macOS via the grizzly CLI. Use when the user wants to create a new note in Bear, search Bear notes by tag, read or open a Bear note by ID, append text to an existing Bear note, list Bear tags, or automate note-taking in Bear. Requires the grizzly binary and Bear app running on macOS.
 homepage: https://bear.app
 metadata:
   {

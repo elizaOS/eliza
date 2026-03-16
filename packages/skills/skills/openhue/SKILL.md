@@ -1,6 +1,6 @@
 ---
 name: openhue
-description: Control Philips Hue lights/scenes via the OpenHue CLI.
+description: Controls Philips Hue smart lights, rooms, and scenes via the OpenHue CLI and a Hue Bridge. Use when the user asks to turn lights on or off, change brightness or color, activate a scene, list rooms, discover bridges, or manage smart lighting. Handles setup, querying light state, and adjusting individual or grouped lights by name or ID.
 homepage: https://www.openhue.io/cli
 metadata:
   {

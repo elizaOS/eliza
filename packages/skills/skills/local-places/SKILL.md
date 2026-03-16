@@ -1,6 +1,6 @@
 ---
 name: local-places
-description: Search for places (restaurants, cafes, etc.) via Google Places API proxy on localhost.
+description: Searches for local businesses and points of interest via a Google Places API proxy running on localhost. Resolves vague locations, applies filters for type, rating, and price, and returns structured place details. Use when the user asks to find restaurants, nearby places, coffee shops, business search, local recommendations, or anything involving place discovery by location.
 homepage: https://github.com/Hyaxia/local_places
 metadata:
   {

@@ -1,6 +1,6 @@
 ---
 name: oracle
-description: Best practices for using the oracle CLI (prompt + file bundling, engines, sessions, and file attachment patterns).
+description: Best practices for using the oracle CLI (prompt + file bundling, engines, sessions, and file attachment patterns). Use when the developer needs to send a one-shot prompt with file context to another model, bundle repository files for external LLM review, run oracle browser or API queries, manage oracle sessions, attach or exclude files with glob patterns, or preview token costs with dry-run mode.
 homepage: https://askoracle.dev
 metadata:
   {

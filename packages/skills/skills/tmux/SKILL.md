@@ -1,6 +1,6 @@
 ---
 name: tmux
-description: Remote-control tmux sessions for interactive CLIs by sending keystrokes and scraping pane output.
+description: Remote-control tmux sessions for interactive CLIs by sending keystrokes, capturing pane output, and managing terminal multiplexer windows. Enables parallel coding-agent orchestration, background process management, and REPL interaction via sockets. Use when the agent needs to launch, monitor, or coordinate long-running terminal processes, run multiple agents in parallel, interact with a Python REPL, or scrape live shell output from a persistent session.
 metadata:
   { "otto": { "emoji": "🧵", "os": ["darwin", "linux"], "requires": { "bins": ["tmux"] } } }
 ---

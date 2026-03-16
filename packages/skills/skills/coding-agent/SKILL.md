@@ -1,6 +1,6 @@
 ---
 name: coding-agent
-description: Run Codex CLI, Claude Code, OpenCode, or Pi Coding Agent via background process for programmatic control.
+description: Run Codex CLI, Claude Code, OpenCode, or Pi Coding Agent via background process for programmatic control. Use when the agent needs to spawn, monitor, or orchestrate coding agents in a terminal session, delegate programming tasks to a sub-agent, review pull requests with an external CLI tool, or run parallel background coding workflows across git worktrees.
 metadata:
   {
     "otto": { "emoji": "🧩", "requires": { "anyBins": ["claude", "codex", "opencode", "pi"] } },
