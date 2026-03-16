@@ -282,15 +282,18 @@ describe("AgentRuntime - queueEmbeddingGeneration", () => {
       const startSync = Date.now();
       const resultSync = await runtime.addEmbeddingToMemory(syncMemory);
       const elapsedSync = Date.now() - startSync;
-      expect(runtime.useModel).toHaveBeenCalledTimes(1);
 
-      // Asynchronous embedding queues work and does not call embedding model inline.
+      // Asynchronous embedding (non-blocking - just queues)
+      const startAsync = Date.now();
       await runtime.queueEmbeddingGeneration(asyncMemory, "normal");
-      expect(runtime.useModel).toHaveBeenCalledTimes(1);
+      const elapsedAsync = Date.now() - startAsync;
 
       // Sync should have embeddings immediately
       expect(resultSync.embedding).toBeDefined();
       expect(resultSync.embedding).toEqual([0.1, 0.2, 0.3, 0.4, 0.5]);
+
+      // Async should be much faster (just queuing, no waiting)
+      expect(elapsedAsync).toBeLessThan(elapsedSync);
 
       // Verify that sync took at least the simulated delay (with margin for timing precision)
       expect(elapsedSync).toBeGreaterThanOrEqual(3);

@@ -174,7 +174,7 @@ const settingsKnownKeys = new Set([
   "defaultFrequencyPenalty",
   "defaultPresencePenalty",
   "disableBasicCapabilities",
-  "advancedCapabilities",
+  "enableExtendedCapabilities",
   "extra",
 ]);
 
@@ -194,7 +194,7 @@ export const settingsSchema = z
     defaultFrequencyPenalty: z.number().optional(),
     defaultPresencePenalty: z.number().optional(),
     disableBasicCapabilities: z.boolean().optional(),
-    advancedCapabilities: z.boolean().optional(),
+    enableExtendedCapabilities: z.boolean().optional(),
     extra: z.record(z.string(), jsonValueSchema).optional(),
   })
   .passthrough()

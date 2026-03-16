@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import OrderedDict
 from typing import TYPE_CHECKING
 
 from elizaos.types import ModelType, Service, ServiceType
@@ -19,7 +18,7 @@ class EmbeddingService(Service):
 
     def __init__(self) -> None:
         self._runtime: IAgentRuntime | None = None
-        self._cache: OrderedDict[str, list[float]] = OrderedDict()
+        self._cache: dict[str, list[float]] = {}
         self._cache_enabled: bool = True
         self._max_cache_size: int = 1000
 
@@ -44,32 +43,16 @@ class EmbeddingService(Service):
         self._cache.clear()
         self._runtime = None
 
-    # Max characters for embedding input (~8K tokens at ~4 chars/token)
-    MAX_EMBEDDING_CHARS = 32_000
-
     async def embed(self, text: str) -> list[float]:
         if self._runtime is None:
             raise ValueError("Embedding service not started - no runtime available")
 
         if self._cache_enabled and text in self._cache:
-            embedding = self._cache.pop(text)
-            self._cache[text] = embedding
-            return embedding
-
-        # Truncate to stay within embedding model token limits
-        embed_text = text
-        if len(embed_text) > self.MAX_EMBEDDING_CHARS:
-            self._runtime.logger.warning(
-                "Truncating embedding input from %d to %d chars",
-                len(embed_text),
-                self.MAX_EMBEDDING_CHARS,
-                src="service:embedding",
-            )
-            embed_text = embed_text[: self.MAX_EMBEDDING_CHARS]
+            return self._cache[text]
 
         embedding = await self._runtime.use_model(
             ModelType.TEXT_EMBEDDING,
-            text=embed_text,
+            text=text,
         )
 
         if not isinstance(embedding, list):
@@ -90,10 +73,9 @@ class EmbeddingService(Service):
         return embeddings
 
     def _add_to_cache(self, text: str, embedding: list[float]) -> None:
-        if text in self._cache:
-            self._cache.pop(text)
-        elif len(self._cache) >= self._max_cache_size:
-            self._cache.popitem(last=False)
+        if len(self._cache) >= self._max_cache_size:
+            oldest_key = next(iter(self._cache))
+            del self._cache[oldest_key]
         self._cache[text] = embedding
 
     def clear_cache(self) -> None:
@@ -109,7 +91,8 @@ class EmbeddingService(Service):
             raise ValueError("Cache size must be positive")
         self._max_cache_size = size
         while len(self._cache) > self._max_cache_size:
-            self._cache.popitem(last=False)
+            oldest_key = next(iter(self._cache))
+            del self._cache[oldest_key]
 
     async def similarity(self, text1: str, text2: str) -> float:
         embedding1 = await self.embed(text1)

@@ -1,4 +1,3 @@
-import { getPromptReferenceDate } from "../../deterministic";
 import { requireProviderSpec } from "../../generated/spec-helpers.ts";
 import type {
   IAgentRuntime,
@@ -22,13 +21,8 @@ export const currentTimeProvider: Provider = {
   name: spec.name,
   description: spec.description,
   dynamic: spec.dynamic ?? true,
-  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    const now = getPromptReferenceDate({
-      runtime,
-      message,
-      state,
-      surface: "provider:current_time",
-    });
+  get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
+    const now = new Date();
 
     const isoTimestamp = now.toISOString();
     const unixTimestamp = Math.floor(now.getTime() / 1000);

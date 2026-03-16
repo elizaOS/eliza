@@ -1,0 +1,32 @@
+{
+  "name": "@elizaos/example-app-capacitor-backend",
+  "version": "2.0.0-alpha",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch run src/server.ts",
+    "start": "bun run src/server.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-eliza-classic": "workspace:*",
+    "@elizaos/plugin-google-genai": "workspace:*",
+    "@elizaos/plugin-groq": "workspace:*",
+    "@elizaos/plugin-localdb": "workspace:*",
+    "@elizaos/plugin-ollama": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-openrouter": "workspace:*",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.17"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,37 @@
+Your task is to extract parameters for subscribing to Polymarket WebSocket channels from the user query.
+Extract the following parameters if present:
+- markets: An array of market condition IDs (strings, usually 0x prefixed hex strings).
+- userId: The user's wallet address (a string, 0x prefixed hex string).
+
+User query: """{{message.content.text}}"""
+
+If you cannot find a required parameter, or if the query is ambiguous, set "error" to a brief explanation.
+If the user explicitly states they want to connect without specific market or user subscriptions (e.g., just to open the connection), output empty arrays/strings for optional fields if not specified.
+
+Example 1:
+User query: "Subscribe to market 0x123 and 0x456, and my user ID 0xabc."
+Output:
+{
+  "markets": ["0x123", "0x456"],
+  "userId": "0xabc"
+}
+
+Example 2:
+User query: "Listen to my trades."
+Output:
+{
+  "error": "User ID (wallet address) is required to listen to your trades. Please provide it."
+}
+
+Example 3:
+User query: "Connect to Polymarket websockets for market 0xdef."
+Output:
+{
+  "markets": ["0xdef"]
+}
+
+Output JSON:
+
+
+
+

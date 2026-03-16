@@ -9,11 +9,6 @@
  * correctly during builds when bundlers resolve against source files.
  */
 
-// Autonomy
-export * from "./autonomy/autonomousState"; // New export
-export * from "./autonomy/index";
 // Re-export everything from the Node.js entry point
 // This ensures that imports from "@elizaos/core" resolve correctly during builds
 export * from "./index.node";
-// Providers
-export * from "./providers/sessionKeys";

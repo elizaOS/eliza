@@ -29,14 +29,23 @@ export const providersProvider: Provider = {
   name: spec.name,
   description: spec.description,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
-    const dynamicProviders = runtime.providers.filter(
+    const allProviders = runtime.providers;
+
+    // Filter providers with dynamic: true
+    const dynamicProviders = allProviders.filter(
       (provider) => provider.dynamic === true,
     );
 
+    // Create formatted text for each provider
     const dynamicDescriptions = dynamicProviders.map((provider) => {
       return `- **${provider.name}**: ${provider.description || "No description available"}`;
     });
 
+    const allDescriptions = allProviders.map((provider) => {
+      return `- **${provider.name}**: ${provider.description || "No description available"}`;
+    });
+
+    // Create the header text
     const headerText =
       "# Providers\n\nThese providers are available for the agent to select and use:";
 
@@ -50,13 +59,18 @@ export const providersProvider: Provider = {
 
     const providersWithDescriptions = addHeader(
       "# Available Providers",
-      dynamicDescriptions.join("\n"),
+      allDescriptions.join("\n"),
     );
 
     const data = {
       dynamicProviders: dynamicProviders.map((provider) => ({
         name: provider.name,
         description: provider.description || "",
+      })),
+      allProviders: allProviders.map((provider) => ({
+        name: provider.name,
+        description: provider.description || "",
+        dynamic: provider.dynamic === true,
       })),
     };
 

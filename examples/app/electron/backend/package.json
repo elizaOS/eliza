@@ -1,0 +1,34 @@
+{
+  "name": "@elizaos/example-app-electron",
+  "version": "2.0.0-alpha",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "copy-renderer": "node -e \"import('node:fs/promises').then(async fs=>{const {cp,rm,mkdir}=fs;await rm('renderer',{recursive:true,force:true});await mkdir('renderer',{recursive:true});await cp('../frontend/dist','renderer',{recursive:true});})\"",
+    "start": "bun run build && bun run copy-renderer && electron .",
+    "dev": "bun run build && ELECTRON_RENDERER_URL=http://localhost:5177 electron .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-eliza-classic": "workspace:*",
+    "@elizaos/plugin-google-genai": "workspace:*",
+    "@elizaos/plugin-groq": "workspace:*",
+    "@elizaos/plugin-localdb": "workspace:*",
+    "@elizaos/plugin-ollama": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-openrouter": "workspace:*",
+    "electron": "^33.2.0",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.17"
+  }
+}
+

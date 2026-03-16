@@ -1,0 +1,14 @@
+{{- if .Values.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "gateway-discord.fullname" . }}
+  namespace: {{ include "gateway-discord.namespace" . }}
+  labels:
+    {{- include "gateway-discord.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: {{ .Values.pdb.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "gateway-discord.selectorLabels" . | nindent 6 }}
+{{- end }}

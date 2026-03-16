@@ -42,6 +42,7 @@ export type CharacterSettings = Omit<
 > & {
   ENABLE_AUTONOMY?: boolean | string;
   DISABLE_BASIC_CAPABILITIES?: boolean | string;
+  ENABLE_EXTENDED_CAPABILITIES?: boolean | string;
   ADVANCED_CAPABILITIES?: boolean | string;
   secrets?: Record<string, string | boolean | number>;
   [key: string]: JsonValue | undefined;
@@ -62,6 +63,10 @@ export type Character = Partial<
   secrets?: Record<string, string | number | boolean>;
   messageExamples?: MessageExampleGroup[];
   knowledge?: KnowledgeSourceItem[];
+  /** Enable advanced planning capabilities for this character */
+  advancedPlanning?: boolean;
+  /** Enable advanced memory capabilities for this character */
+  advancedMemory?: boolean;
 };
 
 export enum AgentStatus {

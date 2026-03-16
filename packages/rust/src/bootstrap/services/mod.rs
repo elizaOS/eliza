@@ -7,14 +7,13 @@ mod follow_up;
 mod rolodex;
 mod task;
 
-pub use crate::types::{Task, TaskStatus};
 pub use embedding::EmbeddingService;
 pub use follow_up::{FollowUpService, FollowUpSuggestion, FollowUpTask};
 pub use rolodex::{
     calculate_relationship_strength, ContactInfo, ContactPreferences, RelationshipAnalytics,
     RolodexService,
 };
-pub use task::TaskService;
+pub use task::{Task, TaskPriority, TaskService, TaskStatus};
 
 use crate::error::PluginResult;
 use crate::runtime::IAgentRuntime;

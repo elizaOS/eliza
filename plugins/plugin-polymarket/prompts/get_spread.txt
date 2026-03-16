@@ -1,0 +1,40 @@
+extract token identification parameters for retrieving spread data for a market.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, identify:
+- tokenId: The specific token ID for which to retrieve the spread (required)
+- query: Search terms or keywords that might contain a token ID
+
+Look for:
+- Numbers following words like "token", "for token", "token ID", "market", etc.
+- Standalone numbers that could be token IDs
+- Any numeric identifiers in the message
+- References to "spread", "bid-ask spread", "market spread"
+
+Examples:
+- "Get spread for token 123456" → tokenId: "123456"
+- "Show spread for market 789012" → tokenId: "789012"
+- "SPREAD 345678" → tokenId: "345678"
+- "What's the spread for token 999999" → tokenId: "999999"
+- "Show me the bid-ask spread for 777777" → tokenId: "777777"
+
+Respond with a JSON object containing only the extracted values.
+The JSON should have this structure:
+{
+    "tokenId"?: string,
+    "query"?: string
+}
+
+If you find a token ID, always include it in the tokenId field.
+If no valid token identifier is found, you MUST respond with the following JSON structure:
+{
+    "error": "Token identifier not found. Please specify a token ID for the spread."
+}
+
+
+
+

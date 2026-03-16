@@ -113,5 +113,4 @@ follow_ups_provider = Provider(
     description=_spec["description"],
     get=get_follow_ups_context,
     dynamic=_spec.get("dynamic", True),
-    position=_spec.get("position"),
 )

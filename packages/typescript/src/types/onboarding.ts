@@ -5,7 +5,7 @@
  * both CLI and conversational (DM) onboarding flows.
  */
 
-import type { Metadata, UUID } from "./primitives";
+import type { UUID, Metadata } from "./primitives";
 
 /**
  * Onboarding step identifiers.
@@ -26,8 +26,7 @@ export const OnboardingStep = {
   COMPLETE: "COMPLETE",
 } as const;
 
-export type OnboardingStep =
-  (typeof OnboardingStep)[keyof typeof OnboardingStep];
+export type OnboardingStep = (typeof OnboardingStep)[keyof typeof OnboardingStep];
 
 /**
  * Ordered list of onboarding steps for progression.
@@ -324,9 +323,9 @@ export const ONBOARDING_STEP_DESCRIPTIONS: Record<OnboardingStep, string> = {
   [OnboardingStep.WELCOME]: "Introduction to the onboarding process",
   [OnboardingStep.RISK_ACK]:
     "Review and acknowledge security risks and responsibilities",
-  [OnboardingStep.AUTH]: "Configure authentication with AI model providers",
-  [OnboardingStep.CHANNELS]:
-    "Set up messaging channels (Discord, Telegram, etc.)",
+  [OnboardingStep.AUTH]:
+    "Configure authentication with AI model providers",
+  [OnboardingStep.CHANNELS]: "Set up messaging channels (Discord, Telegram, etc.)",
   [OnboardingStep.SKILLS]: "Configure agent skills and capabilities",
   [OnboardingStep.COMPLETE]: "Onboarding complete - agent is ready to use",
 };
@@ -341,9 +340,7 @@ export function getStepIndex(step: OnboardingStep): number {
 /**
  * Get the next step in the sequence, or null if at the end.
  */
-export function getNextStep(
-  currentStep: OnboardingStep,
-): OnboardingStep | null {
+export function getNextStep(currentStep: OnboardingStep): OnboardingStep | null {
   const currentIndex = getStepIndex(currentStep);
   if (currentIndex === -1 || currentIndex >= ONBOARDING_STEP_ORDER.length - 1) {
     return null;
@@ -354,9 +351,7 @@ export function getNextStep(
 /**
  * Get the previous step in the sequence, or null if at the beginning.
  */
-export function getPreviousStep(
-  currentStep: OnboardingStep,
-): OnboardingStep | null {
+export function getPreviousStep(currentStep: OnboardingStep): OnboardingStep | null {
   const currentIndex = getStepIndex(currentStep);
   if (currentIndex <= 0) {
     return null;

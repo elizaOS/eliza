@@ -1,0 +1,24 @@
+extract optional pagination parameters for retrieving simplified Polymarket markets.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, identify any pagination cursor:
+- next_cursor: Pagination cursor for fetching next page (if mentioned)
+
+Respond with a JSON object containing only the extracted values.
+The JSON should have this structure:
+{
+    "next_cursor"?: string
+}
+
+If no pagination cursor is mentioned, you MUST respond with the following JSON structure:
+{
+    "error": "No pagination cursor requested. Fetching first page."
+}
+
+
+
+

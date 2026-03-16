@@ -1,14 +1,8 @@
 from __future__ import annotations
 
-import contextlib
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 from elizaos.action_docs import get_canonical_action_example_calls
-from elizaos.deterministic import (
-    build_conversation_seed,
-    build_deterministic_seed,
-    deterministic_int,
-)
 from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
 from elizaos.types.components import ActionExample
@@ -25,6 +19,10 @@ if TYPE_CHECKING:
 
 # Get text content from centralized specs
 _spec = require_provider_spec("ACTIONS")
+
+
+def format_action_names(actions: list[Action]) -> str:
+    return ", ".join(action.name for action in actions)
 
 
 def _format_parameter_type(schema: ActionParameterSchema) -> str:
@@ -55,8 +53,7 @@ def _format_action_parameters(parameters: list[ActionParameter]) -> str:
         enum_str = f" [values: {', '.join(enum_vals)}]" if enum_vals else ""
         examples_str = (
             f" [examples: {', '.join(repr(v) for v in param.examples)}]"
-            if getattr(param, "examples", None)
-            else ""
+            if getattr(param, "examples", None) else ""
         )
         lines.append(
             f"    - {param.name}{required_str}: {param.description} ({type_str}{enum_str}{default_str}{examples_str})"
@@ -64,23 +61,9 @@ def _format_action_parameters(parameters: list[ActionParameter]) -> str:
     return "\n".join(lines)
 
 
-T = TypeVar("T")
-
-
-def _deterministic_shuffle(items: list[T], seed: str, surface: str = "shuffle") -> list[T]:
-    shuffled = list(items)
-    for i in range(len(shuffled) - 1, 0, -1):
-        j = deterministic_int(seed, f"{surface}:{i}", i + 1)
-        shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
-    return shuffled
-
-
-def format_actions(actions: list[Action], seed: str | None = None) -> str:
-    deterministic_seed = seed or build_deterministic_seed(
-        ["actions-format", ",".join(action.name for action in actions)]
-    )
+def format_actions(actions: list[Action]) -> str:
     lines: list[str] = []
-    for action in _deterministic_shuffle(actions, deterministic_seed, "actions"):
+    for action in actions:
         line = f"- **{action.name}**: {action.description or 'No description'}"
         if action.parameters:
             params_text = _format_action_parameters(action.parameters)
@@ -97,24 +80,7 @@ def _replace_name_placeholders(text: str) -> str:
     return text
 
 
-def _replace_name_placeholders_seeded(text: str, seed: str, example_index: int) -> str:
-    names = ["Alex", "Jordan", "Sam", "Taylor", "Riley"]
-    output = text
-    for placeholder_index in range(1, 6):
-        name_index = deterministic_int(
-            seed,
-            f"example:{example_index}:name:{placeholder_index}",
-            len(names),
-        )
-        output = output.replace(f"{{{{name{placeholder_index}}}}}", names[name_index])
-    return output
-
-
-def format_action_examples(
-    actions: list[Action],
-    max_examples: int = 10,
-    seed: str | None = None,
-) -> str:
+def format_action_examples(actions: list[Action], max_examples: int = 10) -> str:
     """
     Format a deterministic subset of action examples for prompt context.
 
@@ -123,60 +89,27 @@ def format_action_examples(
     if max_examples <= 0:
         return ""
 
-    actions_with_examples = [
-        action
-        for action in actions
-        if action.examples and isinstance(action.examples, list) and len(action.examples) > 0
-    ]
-    if not actions_with_examples:
+    examples: list[list[ActionExample]] = []
+    for action in sorted(actions, key=lambda a: a.name):
+        if not action.examples:
+            continue
+        for ex in action.examples:
+            if isinstance(ex, list) and ex:
+                examples.append(ex)
+            if len(examples) >= max_examples:
+                break
+        if len(examples) >= max_examples:
+            break
+
+    if not examples:
         return ""
 
-    examples_copy: list[list[list[ActionExample]]] = [
-        [example for example in (action.examples or []) if isinstance(example, list) and example]
-        for action in actions_with_examples
-    ]
-    available_action_indices = [
-        idx for idx, action_examples in enumerate(examples_copy) if action_examples
-    ]
-
-    selection_seed = seed or build_deterministic_seed(
-        [
-            "action-examples",
-            ",".join(action.name for action in actions_with_examples),
-            max_examples,
-        ]
-    )
-
-    selected_examples: list[list[ActionExample]] = []
-    iteration = 0
-    while len(selected_examples) < max_examples and available_action_indices:
-        random_index = deterministic_int(
-            selection_seed,
-            f"action-index:{iteration}",
-            len(available_action_indices),
-        )
-        action_index = available_action_indices[random_index]
-        action_examples = examples_copy[action_index]
-
-        example_index = deterministic_int(
-            selection_seed,
-            f"example-index:{iteration}",
-            len(action_examples),
-        )
-        selected_examples.append(action_examples.pop(example_index))
-        iteration += 1
-
-        if not action_examples:
-            available_action_indices.pop(random_index)
-
     blocks: list[str] = []
-    for example_index, ex in enumerate(selected_examples):
+    for ex in examples:
         lines: list[str] = []
         for msg in ex:
             msg_text = msg.content.text if msg.content and msg.content.text else ""
-            lines.append(
-                f"{msg.name}: {_replace_name_placeholders_seeded(msg_text, selection_seed, example_index)}"
-            )
+            lines.append(f"{msg.name}: {_replace_name_placeholders(msg_text)}")
         blocks.append("\n".join(lines))
 
     return "\n\n".join(blocks)
@@ -246,17 +179,6 @@ def format_action_call_examples(actions: list[Action], max_examples: int = 5) ->
     return "\n\n".join(blocks)
 
 
-def format_action_names(actions: list[Action], seed: str | None = None) -> str:
-    if not actions:
-        return ""
-
-    deterministic_seed = seed or build_deterministic_seed(
-        ["action-names", ",".join(action.name for action in actions)]
-    )
-    shuffled = _deterministic_shuffle(actions, deterministic_seed, "actions")
-    return ", ".join(action.name for action in shuffled)
-
-
 async def get_actions(
     runtime: IAgentRuntime,
     message: Memory,
@@ -266,27 +188,13 @@ async def get_actions(
 
     for action in runtime.actions:
         validate_fn = getattr(action, "validate", None) or getattr(action, "validate_fn", None)
-        if not validate_fn:
-            is_valid = True
-        else:
-            try:
-                is_valid = await validate_fn(runtime, message, state)
-            except Exception:
-                if hasattr(runtime, "logger"):
-                    with contextlib.suppress(Exception):
-                        runtime.logger.warning(
-                            f"Action validation failed for {action.name}; excluding from prompt"
-                        )
-                is_valid = False
+        is_valid = await validate_fn(runtime, message, state) if validate_fn else True
         if is_valid:
             validated_actions.append(action)
 
-    action_seed = build_conversation_seed(runtime, message, state, "provider:actions")
-    action_names = format_action_names(validated_actions, seed=f"{action_seed}:names")
-    actions_text = format_actions(validated_actions, seed=f"{action_seed}:descriptions")
-    examples_text = format_action_examples(
-        validated_actions, max_examples=10, seed=f"{action_seed}:examples"
-    )
+    action_names = format_action_names(validated_actions)
+    actions_text = format_actions(validated_actions)
+    examples_text = format_action_examples(validated_actions, max_examples=10)
     call_examples_text = format_action_call_examples(validated_actions, max_examples=5)
 
     text_parts: list[str] = [f"Possible response actions: {action_names}"]
@@ -324,11 +232,7 @@ async def get_actions(
                             "description": p.description,
                             "required": bool(p.required),
                             "examples": getattr(p, "examples", None) or [],
-                            "schema": (
-                                p.schema_def.model_dump()
-                                if hasattr(p, "schema_def") and hasattr(p.schema_def, "model_dump")
-                                else getattr(p, "schema", None)
-                            ),
+                            "schema": (p.schema_def.model_dump() if hasattr(p, "schema_def") and hasattr(p.schema_def, "model_dump") else getattr(p, "schema", None)),
                         }
                         for p in (a.parameters or [])
                     ],

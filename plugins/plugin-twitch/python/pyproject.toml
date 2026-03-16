@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-plugin-twitch"
+version = "2.0.0a1"
+description = "Twitch chat integration plugin for elizaOS agents"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "elizaOS", email = "contact@elizaos.com" }
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications :: Chat",
+    "Topic :: Games/Entertainment",
+]
+keywords = ["elizaos", "plugin", "twitch", "chat", "streaming"]
+dependencies = [
+    "elizaos>=2.0.0",
+    "twitchio>=2.8.0",
+    "aiohttp>=3.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaos-plugins/plugin-twitch"
+Documentation = "https://docs.elizaos.com/plugins/twitch"
+Repository = "https://github.com/elizaos-plugins/plugin-twitch.git"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_plugin_twitch"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

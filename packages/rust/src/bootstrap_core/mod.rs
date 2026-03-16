@@ -27,8 +27,8 @@ use crate::types::state::State;
 pub struct CapabilityConfig {
     /// Disable basic capabilities (reply/ignore/none + core providers).
     pub disable_basic: bool,
-    /// Enable advanced capabilities (reserved for future parity).
-    pub advanced_capabilities: bool,
+    /// Enable extended capabilities (reserved for future parity).
+    pub enable_extended: bool,
     /// Skip the character provider (useful for anonymous agents).
     pub skip_character_provider: bool,
     /// Enable autonomy capabilities (reserved for future parity).
@@ -65,10 +65,10 @@ pub fn create_bootstrap_plugin(runtime: Weak<AgentRuntime>, config: CapabilityCo
             .with_provider(Arc::new(RecentMessagesProvider { runtime }));
     }
 
-    // NOTE: advanced_capabilities / enable_autonomy are wired but not yet expanded to full TS parity.
+    // NOTE: enable_extended / enable_autonomy are wired but not yet expanded to full TS parity.
     // This pass focuses on closing the biggest missing behavior: bootstrap auto-registration
     // with flag precedence + minimum viable actions/providers.
-    let _ = (config.advanced_capabilities, config.enable_autonomy);
+    let _ = (config.enable_extended, config.enable_autonomy);
 
     plugin
 }
@@ -384,21 +384,11 @@ impl ProviderHandler for RecentMessagesProvider {
             return Ok(ProviderResult::default());
         };
 
-        let last_compaction_at = adapter
-            .get_room(&message.room_id)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|room| room.metadata)
-            .and_then(|metadata| metadata.values.get("lastCompactionAt").cloned())
-            .and_then(|value| value.as_i64());
-
         let memories = adapter
             .get_memories(GetMemoriesParams {
                 table_name: "messages".to_string(),
                 room_id: Some(message.room_id.clone()),
                 count: Some(20),
-                start: last_compaction_at,
                 unique: Some(false),
                 ..Default::default()
             })

@@ -122,7 +122,7 @@ export const updateRoleAction: Action = {
     if (!state) {
       logger.error(
         {
-          src: "plugin:core:action:update_role",
+          src: "plugin:bootstrap:action:update_role",
           agentId: runtime.agentId,
         },
         "State is required for role assignment",
@@ -156,7 +156,7 @@ export const updateRoleAction: Action = {
     if (!world) {
       logger.error(
         {
-          src: "plugin:core:action:update_role",
+          src: "plugin:bootstrap:action:update_role",
           agentId: runtime.agentId,
         },
         "World not found",
@@ -286,7 +286,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
       if (!targetEntity) {
         logger.error(
           {
-            src: "plugin:core:action:update_role",
+            src: "plugin:bootstrap:action:update_role",
             agentId: runtime.agentId,
             entityId: assignment.entityId,
           },
@@ -341,7 +341,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
         await runtime.updateWorld(world);
         logger.info(
           {
-            src: "plugin:core:action:update_role",
+            src: "plugin:bootstrap:action:update_role",
             agentId: runtime.agentId,
             messageServerId: world.messageServerId,
           },
@@ -350,7 +350,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
       } catch (error) {
         logger.error(
           {
-            src: "plugin:core:action:update_role",
+            src: "plugin:bootstrap:action:update_role",
             agentId: runtime.agentId,
             error: error instanceof Error ? error.message : String(error),
           },

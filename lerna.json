@@ -1,9 +1,8 @@
 {
-  "version": "2.0.0-alpha.42",
+  "version": "2.0.0-alpha.2",
   "packages": [
     "packages/*",
-    "packages/computeruse/packages/computeruse-ts",
-    "plugins/plugin-*/typescript"
+    "plugins/*/typescript"
   ],
   "npmClient": "bun",
   "command": {

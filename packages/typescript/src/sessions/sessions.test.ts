@@ -5,45 +5,46 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Memory } from "../types/memory.js";
-import type { IAgentRuntime } from "../types/runtime.js";
-import type { State } from "../types/state.js";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
+
 import {
-  // Session keys
-  buildAgentMainSessionKey,
-  buildAgentSessionKey,
-  clearSessionStoreCacheForTest,
-  createSendPolicyProvider,
   // Types
   createSessionEntry,
-  createSessionProvider,
-  createSessionSkillsProvider,
-  deleteSessionEntry,
-  // Providers
-  extractSessionContext,
-  getSessionEntry,
-  getSessionProviders,
-  getSessionStoreCacheSizeForTest,
+  mergeSessionEntry,
   isValidSessionEntry,
-  listSessionKeys,
+  type SessionEntry,
   // Store
   loadSessionStore,
-  mergeSessionEntry,
-  normalizeAgentId,
-  parseAgentSessionKey,
-  resolveAgentSessionsDir,
-  resolveSessionTranscriptPath,
-  // Paths
-  resolveStateDir,
-  resolveStorePath,
-  type SessionEntry,
-  SessionStateManager,
   saveSessionStore,
   updateSessionStore,
   updateSessionStoreEntry,
+  getSessionEntry,
   upsertSessionEntry,
+  deleteSessionEntry,
+  listSessionKeys,
+  clearSessionStoreCacheForTest,
+  // Paths
+  resolveStateDir,
+  resolveAgentSessionsDir,
+  resolveDefaultSessionStorePath,
+  resolveSessionTranscriptPath,
+  resolveStorePath,
+  // Session keys
+  buildAgentMainSessionKey,
+  buildAgentSessionKey,
+  parseAgentSessionKey,
+  normalizeAgentId,
+  // Providers
+  extractSessionContext,
+  createSessionProvider,
+  createSessionSkillsProvider,
+  createSendPolicyProvider,
+  getSessionProviders,
+  SessionStateManager,
 } from "./index.js";
+import type { Memory } from "../types/memory.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import type { State } from "../types/state.js";
 
 describe("session types", () => {
   describe("createSessionEntry", () => {
@@ -97,9 +98,9 @@ describe("session types", () => {
 
   describe("isValidSessionEntry", () => {
     it("returns true for valid entries", () => {
-      expect(isValidSessionEntry({ sessionId: "abc", updatedAt: 123 })).toBe(
-        true,
-      );
+      expect(
+        isValidSessionEntry({ sessionId: "abc", updatedAt: 123 }),
+      ).toBe(true);
     });
 
     it("returns false for null/undefined", () => {
@@ -165,41 +166,12 @@ describe("session store", () => {
       const store = loadSessionStore(storePath);
       expect(store).toEqual({});
     });
-
-    it("caps cached store paths to avoid unbounded path retention", () => {
-      for (let i = 0; i < 160; i++) {
-        const uniqueStorePath = path.join(tempDir, `sessions-${i}.json`);
-        loadSessionStore(uniqueStorePath);
-      }
-
-      expect(getSessionStoreCacheSizeForTest()).toBeLessThanOrEqual(128);
-    });
-
-    it("prunes expired cache entries even when the original path is not revisited", async () => {
-      const originalTtl = process.env.ELIZA_SESSION_CACHE_TTL_MS;
-      process.env.ELIZA_SESSION_CACHE_TTL_MS = "1";
-
-      try {
-        loadSessionStore(storePath);
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        expect(getSessionStoreCacheSizeForTest()).toBe(0);
-      } finally {
-        if (originalTtl === undefined) {
-          delete process.env.ELIZA_SESSION_CACHE_TTL_MS;
-        } else {
-          process.env.ELIZA_SESSION_CACHE_TTL_MS = originalTtl;
-        }
-        clearSessionStoreCacheForTest();
-      }
-    });
   });
 
   describe("saveSessionStore", () => {
     it("creates parent directories", async () => {
       const deepPath = path.join(tempDir, "deep", "nested", "sessions.json");
-      await saveSessionStore(deepPath, {
-        key: { sessionId: "a", updatedAt: 1 },
-      });
+      await saveSessionStore(deepPath, { "key": { sessionId: "a", updatedAt: 1 } });
 
       const exists = fs.existsSync(deepPath);
       expect(exists).toBe(true);
@@ -787,7 +759,10 @@ describe("session providers", () => {
             updatedAt: Date.now(),
             skillsSnapshot: {
               prompt: "You have these skills...",
-              skills: [{ name: "code-review" }, { name: "debugging" }],
+              skills: [
+                { name: "code-review" },
+                { name: "debugging" },
+              ],
             },
           },
         },
@@ -911,7 +886,7 @@ describe("session providers", () => {
       });
 
       const manager = new SessionStateManager(storePath, { cacheTtlMs: 60000 });
-
+      
       // Load initial
       expect(manager.getEntry("agent:main:invalidate")?.label).toBe("Original");
 

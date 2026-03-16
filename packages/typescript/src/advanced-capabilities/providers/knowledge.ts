@@ -38,71 +38,18 @@ export const knowledgeProvider: Provider = {
       } as ProviderResult;
     }
 
-    // New Strategy: Use embeddings from recent messages to find relevant knowledge
-
-    // 1. Fetch recent messages
-    const recentMessages = await runtime.getMemories({
-      tableName: "messages",
-      roomId: message.roomId,
+    // Search for relevant knowledge using searchMemories with knowledge table
+    const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+      text: queryText,
+    });
+    const relevantKnowledge = await runtime.searchMemories({
+      tableName: "knowledge",
+      embedding,
+      query: queryText,
       count: 5,
-      unique: false,
     });
 
-    // 2. Extract valid embeddings
-    const embeddings = recentMessages
-      .map((m) => m.embedding)
-      .filter((e): e is number[] => !!e && e.length > 0);
-
-    const relevantKnowledge = new Map<string, any>();
-
-    if (embeddings.length > 0) {
-      // 3. Search using recent embeddings
-      const primaryEmbedding = embeddings[0];
-
-      const results = await runtime.searchMemories({
-        tableName: "knowledge",
-        embedding: primaryEmbedding,
-        query: queryText,
-        count: 5,
-        match_threshold: 0.75,
-      });
-
-      for (const entry of results) {
-        if (entry.id) relevantKnowledge.set(entry.id.toString(), entry);
-      }
-    }
-
-    const relevantKnowledgeArray = Array.from(relevantKnowledge.values());
-
-    if (relevantKnowledgeArray.length === 0) {
-      return {
-        text: "",
-        values: {
-          knowledgeCount: 0,
-          hasKnowledge: false as boolean,
-        },
-        data: {
-          entries: [],
-          query: queryText,
-        },
-      } as ProviderResult;
-    }
-
-    // Reuse existing loop variable name by re-assigning or just using the array
-    // The original code used `relevantKnowledge` as the array.
-    // We can just proceed to loop over `relevantKnowledgeArray`.
-
-    // ... we need to make sure the next block uses relevantKnowledgeArray
-    // But replace_file_content replaces a chunk.
-    // The original code continues with:
-    // if (relevantKnowledge.length === 0) { ... }
-    // for (const entry of relevantKnowledge) { ... }
-
-    // So I should include that part in the replacement or ensure variable names match.
-    // Let's redefine `relevantKnowledge` as the array to minimize changes below.
-    const finalRelevantKnowledge = relevantKnowledgeArray;
-
-    if (finalRelevantKnowledge.length === 0) {
+    if (relevantKnowledge.length === 0) {
       return {
         text: "",
         values: {
@@ -123,7 +70,7 @@ export const knowledgeProvider: Provider = {
       source: string;
     }> = [];
 
-    for (const entry of finalRelevantKnowledge) {
+    for (const entry of relevantKnowledge) {
       const text = entry.content?.text;
       if (!text) continue;
       let knowledgeText = text;

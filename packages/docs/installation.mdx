@@ -20,36 +20,28 @@ elizaOS is available in three languages with identical APIs. Choose your preferr
       **Windows Users:** Use [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) for the best experience, or install [Git Bash](https://git-scm.com/downloads) and use it as your terminal.
     </Note>
 
-    ### Install the Package
+    ### Install the CLI
 
     ```bash
-    bun add @elizaos/core
+    bun i -g @elizaos/cli
     ```
 
     ### Verify Installation
 
     ```bash
-    bun -e "import { AgentRuntime } from '@elizaos/core'; console.log('elizaOS installed!')"
+    elizaos --version
     ```
 
     ### Quick Start
 
-    ```typescript
-    import { AgentRuntime } from "@elizaos/core";
-
-    const runtime = new AgentRuntime({
-      character: {
-        name: "Eliza",
-        bio: "A helpful AI assistant.",
-      },
-      plugins: [/* your plugins here */],
-    });
-
-    await runtime.initialize();
+    ```bash
+    elizaos create        # Create a new project
+    cd my-project
+    elizaos start         # Start your agent
     ```
 
     <Tip>
-      Clone the monorepo for examples and development: `git clone https://github.com/elizaos/eliza.git`. Check the `examples/` directory for working agent implementations.
+      You don't need to clone the elizaOS repository to build agents. The CLI handles everything. Only clone the monorepo if you're [contributing to core](/guides/contribute-to-core).
     </Tip>
 
   </Tab>
@@ -235,6 +227,11 @@ echo "OPENAI_API_KEY=your-api-key-here" > .env
     ```bash
     curl -fsSL https://bun.sh/install | bash
     source ~/.bashrc  # or ~/.zshrc
+    ```
+
+    **CLI not found after install:**
+    ```bash
+    export PATH="$HOME/.bun/bin:$PATH"
     ```
 
   </Accordion>

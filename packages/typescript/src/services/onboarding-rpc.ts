@@ -11,22 +11,22 @@
  * - wizard.cancel: Abort onboarding
  */
 
-import { logger } from "../logger";
-import {
-  ONBOARDING_STEP_DESCRIPTIONS,
-  ONBOARDING_STEP_LABELS,
-  type OnboardingContext,
-  type OnboardingInput,
-  type OnboardingProgress,
-  type OnboardingResult,
-  OnboardingStep,
-  type SerializedOnboardingState,
-} from "../types/onboarding";
 import type { UUID } from "../types/primitives";
 import {
   OnboardingStateMachine,
   type OnboardingStateMachineConfig,
 } from "./onboarding-state";
+import {
+  OnboardingStep,
+  ONBOARDING_STEP_LABELS,
+  ONBOARDING_STEP_DESCRIPTIONS,
+  type OnboardingContext,
+  type OnboardingInput,
+  type OnboardingResult,
+  type OnboardingProgress,
+  type SerializedOnboardingState,
+} from "../types/onboarding";
+import { logger } from "../logger";
 
 /**
  * RPC method names.

@@ -318,7 +318,7 @@ mod integration {
     #[test]
     fn test_schema_creation_for_message_handler() {
         // This schema matches what message_service.rs uses
-        let schema = [
+        let schema = vec![
             SchemaRow::new(
                 "thought",
                 "Your internal reasoning about the message and what to do",
@@ -437,7 +437,7 @@ mod streaming_tests {
     #[test]
     fn test_validation_stream_extractor_level0() {
         // Level 0: Stream immediately without validation
-        let chunks = Rc::new(RefCell::new(Vec::<(String, Option<String>)>::new()));
+        let chunks: Rc<RefCell<Vec<(String, Option<String>)>>> = Rc::new(RefCell::new(vec![]));
         let chunks_clone = chunks.clone();
 
         let config = ValidationStreamExtractorConfig {

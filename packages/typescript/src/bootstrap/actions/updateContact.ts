@@ -1,4 +1,3 @@
-import { getPromptReferenceDate } from "../../deterministic";
 import { logger } from "../../logger.ts";
 import type { ContactInfo, RolodexService } from "../../services/rolodex.ts";
 import type {
@@ -90,12 +89,7 @@ export const updateContactAction: Action = {
           message: message.content.text,
           senderName: state?.values?.senderName || "User",
           senderId: message.entityId,
-          currentDateTime: getPromptReferenceDate({
-            runtime,
-            message,
-            state: { data: state?.data ?? {} },
-            surface: "action:update_contact",
-          }).toISOString(),
+          currentDateTime: new Date().toISOString(),
         },
         data: state?.data || {},
         text: state?.text || "",

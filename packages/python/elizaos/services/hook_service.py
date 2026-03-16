@@ -21,7 +21,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import StrEnum
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from elizaos.types.service import Service, ServiceType
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from elizaos.types.runtime import IAgentRuntime
 
 
-class HookSource(StrEnum):
+class HookSource(str, Enum):
     """Source of a hook registration."""
 
     BUNDLED = "bundled"
@@ -40,7 +40,7 @@ class HookSource(StrEnum):
     RUNTIME = "runtime"
 
 
-class HookEventType(StrEnum):
+class HookEventType(str, Enum):
     """Hook-specific event types."""
 
     HOOK_COMMAND_NEW = "HOOK_COMMAND_NEW"

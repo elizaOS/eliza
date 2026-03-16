@@ -10,14 +10,14 @@
  * @module character-utils
  */
 
+import type { Character } from "./types";
 import {
   MODEL_PROVIDER_SECRETS as _MODEL_PROVIDER_SECRETS,
   CANONICAL_SECRET_KEYS,
   CHANNEL_SECRETS,
-  resolveSecretKeyAlias,
   SECRET_KEY_ALIASES,
+  resolveSecretKeyAlias,
 } from "./constants/secrets";
-import type { Character } from "./types";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // RE-EXPORTS FROM CONSTANTS

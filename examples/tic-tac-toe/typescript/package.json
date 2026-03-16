@@ -1,0 +1,26 @@
+{
+  "name": "@elizaos/example-tic-tac-toe",
+  "version": "2.0.0-alpha",
+  "description": "Tic-tac-toe game with perfect AI using minimax algorithm - no LLM required",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run game.ts",
+    "dev": "bun --watch run game.ts",
+    "play": "bun run game.ts --human",
+    "watch": "bun run game.ts --watch",
+    "bench": "bun run game.ts --bench"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@clack/prompts": "^0.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "groq_llama-3.1-8b-instant": {
+    "provider": "groq",
+    "model": "llama-3.1-8b-instant",
+    "best": {
+      "provider": "groq",
+      "model": "llama-3.1-8b-instant",
+      "timestamp": "2026-01-12T00:45:16.487880",
+      "overall_accuracy": 1.0,
+      "level_1_accuracy": 1.0,
+      "level_2_accuracy": 1.0,
+      "level_3_accuracy": 1.0,
+      "total_questions": 5,
+      "correct_answers": 5,
+      "errors": 0,
+      "avg_latency_ms": 331.2159538269043,
+      "total_tokens": 1706
+    },
+    "latest": {
+      "provider": "groq",
+      "model": "llama-3.1-8b-instant",
+      "timestamp": "2026-01-12T11:29:51.444743",
+      "overall_accuracy": 0.0,
+      "level_1_accuracy": 0.0,
+      "level_2_accuracy": 0.0,
+      "level_3_accuracy": 0.0,
+      "total_questions": 5,
+      "correct_answers": 0,
+      "errors": 0,
+      "avg_latency_ms": 20048.450708389282,
+      "total_tokens": 238724
+    }
+  },
+  "openai_gpt-4o-mini": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "timestamp": "2026-01-12T00:35:40.591544",
+    "overall_accuracy": 1.0,
+    "level_1_accuracy": 1.0,
+    "level_2_accuracy": 1.0,
+    "level_3_accuracy": 1.0,
+    "total_questions": 5,
+    "correct_answers": 5,
+    "avg_latency_ms": 3110.256576538086,
+    "total_tokens": 1820
+  },
+  "anthropic_claude-3-5-haiku-20241022": {
+    "provider": "anthropic",
+    "model": "claude-3-5-haiku-20241022",
+    "timestamp": "2026-01-12T00:43:46.360335",
+    "overall_accuracy": 0.0,
+    "level_1_accuracy": 0.0,
+    "level_2_accuracy": 0.0,
+    "level_3_accuracy": 0.0,
+    "total_questions": 1,
+    "correct_answers": 0,
+    "errors": 1,
+    "avg_latency_ms": 262.9580497741699,
+    "total_tokens": 0
+  }
+}

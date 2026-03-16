@@ -2,6 +2,11 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    exclude: ["e2e/**", "dist/**", "node_modules/**"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      // Playwright e2e specs must be run with `npm run test:e2e` (playwright test), not vitest
+      "e2e/**",
+    ],
   },
 });

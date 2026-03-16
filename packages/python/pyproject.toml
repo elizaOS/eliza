@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "elizaos"
-version = "2.0.0a4"
+version = "2.0.0"
 description = "elizaOS Core - The Python runtime and types for elizaOS AI agents"
 readme = "README.md"
 license = "MIT"
@@ -25,7 +25,7 @@ classifiers = [
 dependencies = [
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
-    "protobuf>=7.34.0",
+    "protobuf>=5.29.0",
     "uuid6>=2024.1.12",
     "aiohttp>=3.13.3",
     "cryptography>=42.0.0",
@@ -80,8 +80,8 @@ disallow_incomplete_defs = false
 check_untyped_defs = true
 no_implicit_optional = true
 warn_redundant_casts = true
-# Ignore generated protobuf files and in-package tests during package typecheck.
-exclude = ["elizaos/types/generated/", ".*/test_.*\\.py$"]
+# Ignore generated protobuf files which have known type issues
+exclude = ["elizaos/types/generated/"]
 
 [[tool.mypy.overrides]]
 module = "elizaos.types.generated.*"
@@ -140,3 +140,4 @@ known-first-party = ["elizaos"]
 line-length = 100
 target-version = ["py311"]
 exclude = "elizaos/types/generated/"
+

@@ -1,0 +1,32 @@
+[package]
+name = "elizaos-plugin-matrix"
+version = "2.0.0-alpha.1"
+edition = "2021"
+authors = ["elizaOS <contact@elizaos.com>"]
+description = "Matrix messaging integration plugin for elizaOS agents"
+license = "MIT"
+repository = "https://github.com/elizaos-plugins/plugin-matrix"
+keywords = ["elizaos", "plugin", "matrix", "chat", "encrypted"]
+categories = ["network-programming", "asynchronous"]
+
+[lib]
+name = "elizaos_plugin_matrix"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { version = "1.35", features = ["full", "sync", "time"] }
+reqwest = { version = "0.11", features = ["json", "cookies"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+regex = "1.10"
+uuid = { version = "1.6", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+url = "2.5"
+urlencoding = "2.1"
+async-trait = "0.1"
+tracing = "0.1"
+lazy_static = "1.4"
+
+[dev-dependencies]
+tokio-test = "0.4"

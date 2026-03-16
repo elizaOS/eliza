@@ -12,10 +12,7 @@ import type {
   State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import {
-  composePromptFromState,
-  parseXmlBooleanResponse,
-} from "../../utils.ts";
+import { composePromptFromState } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("MUTE_ROOM");
@@ -43,7 +40,7 @@ export const muteRoomAction: Action = {
   ): Promise<ActionResult> => {
     if (!state) {
       logger.error(
-        { src: "plugin:core:action:mute_room", agentId: runtime.agentId },
+        { src: "plugin:bootstrap:action:mute_room", agentId: runtime.agentId },
         "State is required for muting a room",
       );
       return {
@@ -72,9 +69,15 @@ export const muteRoomAction: Action = {
         stopSequences: [],
       });
 
-      const parsedResponse = parseXmlBooleanResponse(response);
+      const cleanedResponse = response.trim().toLowerCase();
 
-      if (parsedResponse === true) {
+      if (
+        cleanedResponse === "true" ||
+        cleanedResponse === "yes" ||
+        cleanedResponse === "y" ||
+        cleanedResponse.includes("true") ||
+        cleanedResponse.includes("yes")
+      ) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -91,7 +94,13 @@ export const muteRoomAction: Action = {
         return true;
       }
 
-      if (parsedResponse === false) {
+      if (
+        cleanedResponse === "false" ||
+        cleanedResponse === "no" ||
+        cleanedResponse === "n" ||
+        cleanedResponse.includes("false") ||
+        cleanedResponse.includes("no")
+      ) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -109,11 +118,11 @@ export const muteRoomAction: Action = {
 
       logger.warn(
         {
-          src: "plugin:core:action:mute_room",
+          src: "plugin:bootstrap:action:mute_room",
           agentId: runtime.agentId,
           response,
         },
-        "Unclear XML decision response, defaulting to false",
+        "Unclear boolean response, defaulting to false",
       );
       return false;
     }
@@ -134,7 +143,7 @@ export const muteRoomAction: Action = {
 
     if (shouldMute) {
       try {
-        await runtime.setParticipantUserState(
+        await runtime.updateParticipantUserState(
           message.roomId,
           runtime.agentId,
           "MUTED",
@@ -173,7 +182,7 @@ export const muteRoomAction: Action = {
       } catch (error) {
         logger.error(
           {
-            src: "plugin:core:action:mute_room",
+            src: "plugin:bootstrap:action:mute_room",
             agentId: runtime.agentId,
             error: error instanceof Error ? error.message : String(error),
           },

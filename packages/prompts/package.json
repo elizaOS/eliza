@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/prompts",
   "private": false,
-  "version": "2.0.0-alpha.42",
+  "version": "2.0.0-alpha.2",
   "description": "Shared prompt templates for elizaOS across TypeScript, Python, and Rust",
   "type": "module",
   "main": "./dist/typescript/index.ts",
@@ -25,8 +25,7 @@
     "clean": "rm -rf dist",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "echo 'No TypeScript source files to check'",
-    "test": "node --test test/*.test.js"
+    "typecheck": "echo 'No TypeScript source files to check'"
   },
   "files": [
     "prompts/",

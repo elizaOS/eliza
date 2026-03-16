@@ -1,0 +1,32 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.3.14/schema.json",
+  "root": false,
+  "extends": ["../../biome.json"],
+  "files": {
+    "ignoreUnknown": true,
+    "includes": ["src/**"]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noArrayIndexKey": "off",
+        "noExplicitAny": "warn",
+        "noImplicitAnyLet": "warn",
+        "noAssignInExpressions": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "warn"
+      },
+      "correctness": {
+        "useHookAtTopLevel": "off"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  }
+}

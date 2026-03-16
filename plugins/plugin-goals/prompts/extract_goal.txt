@@ -1,0 +1,29 @@
+# Task: Extract Goal Information
+
+## User Message
+{{text}}
+
+## Message History
+{{messageHistory}}
+
+## Instructions
+Parse the user's message to extract information for creating a new goal.
+Determine if this goal is for the agent itself or for tracking a user's goal.
+
+Goals should be long-term achievable objectives, not short-term tasks.
+
+Return an XML object with these fields:
+<response>
+  <name>A clear, concise name for the goal</name>
+  <description>Optional detailed description</description>
+  <ownerType>Either "agent" (for agent's own goals) or "entity" (for user's goals)</ownerType>
+</response>
+
+If the message doesn't clearly indicate a goal to create, return empty response.
+
+## Example Output Format
+<response>
+  <name>Learn Spanish fluently</name>
+  <description>Achieve conversational fluency in Spanish within 6 months</description>
+  <ownerType>entity</ownerType>
+</response>

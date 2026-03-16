@@ -1,0 +1,55 @@
+{
+  "name": "@elizaos/rust-plugin-starter",
+  "private": true,
+  "description": "Starter template for elizaOS Rust plugins with cross-language support",
+  "version": "2.0.0-alpha",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "author": "elizaOS Team",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "rust",
+    "wasm"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza"
+  },
+  "homepage": "https://elizaos.ai",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build:rust": "bun run build.ts",
+    "build:ts": "tsc",
+    "build": "echo 'Skipping rust-plugin-starter build'",
+    "test": "elizaos test",
+    "test:component": "vitest run",
+    "test:e2e": "elizaos test --type e2e",
+    "start": "elizaos start",
+    "typecheck": "tsc --noEmit"
+  }
+}

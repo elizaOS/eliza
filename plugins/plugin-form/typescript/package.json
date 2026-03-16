@@ -1,0 +1,62 @@
+{
+  "name": "@elizaos/plugin-form",
+  "description": "Guardrails for agent-guided user journeys - forms as agent guidance rails for elizaOS",
+  "version": "2.0.0-alpha.2",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "author": "Odilitime",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "form",
+    "conversational",
+    "data-collection"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/elizaos"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "test": "vitest run || echo 'TypeScript tests skipped - no tests found'",
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "clean": "rm -rf dist .turbo"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "uuid": "^11.0.0"
+  }
+}

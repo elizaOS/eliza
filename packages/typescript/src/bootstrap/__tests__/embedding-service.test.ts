@@ -34,9 +34,6 @@ describe("EmbeddingGenerationService", () => {
     );
     vi.spyOn(runtime, "useModel").mockImplementation(
       async (modelType: string) => {
-        if (modelType === ModelType.TEXT_SMALL) {
-          return "Generated Intent";
-        }
         if (modelType === ModelType.TEXT_EMBEDDING) {
           // Simulate embedding generation with a small delay
           return new Promise((resolve) => {
@@ -290,7 +287,7 @@ describe("EmbeddingGenerationService", () => {
         entityId: "test-entity" as UUID,
         agentId: "test-agent" as UUID,
         roomId: "test-room" as UUID,
-        content: { text: "Short text" },
+        content: { text: "Generate embedding for this" },
         createdAt: Date.now(),
       };
 
@@ -307,7 +304,7 @@ describe("EmbeddingGenerationService", () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       expect(runtime.useModel).toHaveBeenCalledWith(ModelType.TEXT_EMBEDDING, {
-        text: "Short text",
+        text: "Generate embedding for this",
       });
       expect(runtime.updateMemory).toHaveBeenCalledWith({
         id: "test-memory",
@@ -322,60 +319,6 @@ describe("EmbeddingGenerationService", () => {
             embedding: [0.1, 0.2, 0.3, 0.4, 0.5],
           }),
           source: "embeddingService",
-        }),
-      );
-    });
-
-    it("should generate intent for longer messages", async () => {
-      service = (await EmbeddingGenerationService.start(
-        runtime,
-      )) as EmbeddingGenerationService;
-      const handler = registeredEventHandlers.get(
-        EventType.EMBEDDING_GENERATION_REQUESTED,
-      );
-
-      const longText =
-        "This is a longer message that should trigger intent generation because it is more than 20 characters long.";
-      const memory: Memory = {
-        id: "test-intent-memory" as UUID,
-        entityId: "test-entity" as UUID,
-        agentId: "test-agent" as UUID,
-        roomId: "test-room" as UUID,
-        content: { text: longText },
-        createdAt: Date.now(),
-      };
-
-      if (handler) {
-        await handler({
-          runtime: runtime,
-          memory,
-          priority: "high",
-          source: "test",
-        });
-      }
-
-      // Wait for processing to complete
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // Verify intent generation was called
-      expect(runtime.useModel).toHaveBeenCalledWith(
-        ModelType.TEXT_SMALL,
-        expect.any(Object),
-      );
-
-      // Verify embedding was generated for the intent
-      expect(runtime.useModel).toHaveBeenCalledWith(ModelType.TEXT_EMBEDDING, {
-        text: "Generated Intent",
-      });
-
-      // Verify memory was updated with intent in metadata
-      expect(runtime.updateMemory).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: "test-intent-memory",
-          embedding: [0.1, 0.2, 0.3, 0.4, 0.5],
-          metadata: expect.objectContaining({
-            intent: "Generated Intent",
-          }),
         }),
       );
     });

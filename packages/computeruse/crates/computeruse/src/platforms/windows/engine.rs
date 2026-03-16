@@ -1214,7 +1214,7 @@ impl AccessibilityEngine for WindowsEngine {
 
                 if let Some(name) = name {
                     // use contains_name, its undetermined right now
-                    // whether we should use `name` or `contains_name`
+                    // wheather we should use `name` or `contains_name`
                     matcher_builder = matcher_builder.contains_name(name);
                 }
 
@@ -2005,7 +2005,7 @@ impl AccessibilityEngine for WindowsEngine {
 
                 if let Some(name) = name {
                     // use contains_name, its undetermined right now
-                    // whether we should use `name` or `contains_name`
+                    // wheather we should use `name` or `contains_name`
                     matcher_builder = matcher_builder.filter(Box::new(NameFilter {
                         value: name.clone(),
                         casesensitive: false,

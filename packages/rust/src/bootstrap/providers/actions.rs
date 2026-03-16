@@ -6,7 +6,6 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use crate::deterministic::{build_deterministic_seed, deterministic_int};
 use crate::error::PluginResult;
 use crate::generated::action_docs::ALL_ACTION_DOCS_JSON;
 use crate::generated::spec_helpers::require_provider_spec;
@@ -135,103 +134,58 @@ fn format_action_parameters(params: &[ActionParameterDoc]) -> String {
     lines.join("\n")
 }
 
-fn deterministic_shuffle<T: Clone>(items: &[T], seed: &str, surface: &str) -> Vec<T> {
-    let mut shuffled = items.to_vec();
-    for i in (1..shuffled.len()).rev() {
-        let j = deterministic_int(seed, &format!("{}:{}", surface, i), i + 1);
-        shuffled.swap(i, j);
-    }
-    shuffled
-}
-
-fn format_action_examples(docs: &[ActionDoc], max_examples: usize, seed: &str) -> String {
+fn format_action_examples(docs: &[ActionDoc], max_examples: usize) -> String {
     if max_examples == 0 {
         return String::new();
     }
-
-    let mut per_action_examples: Vec<Vec<ActionExampleCallDoc>> =
-        docs.iter().map(|doc| doc.example_calls.clone()).collect();
-    let mut available_action_indices: Vec<usize> = per_action_examples
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, examples)| if examples.is_empty() { None } else { Some(idx) })
-        .collect();
-
-    let mut selected_examples: Vec<ActionExampleCallDoc> = Vec::new();
-    let mut pick_iteration = 0usize;
-    while selected_examples.len() < max_examples && !available_action_indices.is_empty() {
-        let random_index = deterministic_int(
-            seed,
-            &format!("action-index:{}", pick_iteration),
-            available_action_indices.len(),
-        );
-        let action_index = available_action_indices[random_index];
-        let action_examples = &mut per_action_examples[action_index];
-
-        let example_index = deterministic_int(
-            seed,
-            &format!("example-index:{}", pick_iteration),
-            action_examples.len(),
-        );
-        selected_examples.push(action_examples.remove(example_index));
-        pick_iteration += 1;
-
-        if action_examples.is_empty() {
-            available_action_indices.remove(random_index);
-        }
-    }
-
     let mut blocks: Vec<String> = Vec::new();
-    for ex in selected_examples {
-        let actions_xml = ex
-            .actions
-            .iter()
-            .map(|a| format!("  <action>{}</action>", a))
-            .collect::<Vec<String>>()
-            .join("\n");
-
-        let mut params_blocks: Vec<String> = Vec::new();
-        let mut sorted_action_names: Vec<&String> = ex.params.keys().collect();
-        sorted_action_names.sort();
-        for action_name in sorted_action_names {
-            let Some(params) = ex.params.get(action_name) else {
-                continue;
-            };
-            let mut inner: Vec<String> = Vec::new();
-            let mut sorted_param_keys: Vec<&String> = params.keys().collect();
-            sorted_param_keys.sort();
-            for key in sorted_param_keys {
-                let Some(v) = params.get(key) else {
-                    continue;
-                };
-                let raw = if v.is_string() {
-                    v.as_str().unwrap_or_default().to_string()
-                } else {
-                    v.to_string()
-                };
-                inner.push(format!("    <{}>{}</{}>", key, raw, key));
+    for action in docs.iter() {
+        for ex in action.example_calls.iter() {
+            if blocks.len() >= max_examples {
+                break;
             }
-            params_blocks.push(format!(
-                "  <{}>\n{}\n  </{}>",
-                action_name,
-                inner.join("\n"),
-                action_name
-            ));
+            let actions_xml = ex
+                .actions
+                .iter()
+                .map(|a| format!("  <action>{}</action>", a))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            let mut params_blocks: Vec<String> = Vec::new();
+            for (action_name, params) in ex.params.iter() {
+                let mut inner: Vec<String> = Vec::new();
+                for (k, v) in params.iter() {
+                    let raw = if v.is_string() {
+                        v.as_str().unwrap_or_default().to_string()
+                    } else {
+                        v.to_string()
+                    };
+                    inner.push(format!("    <{}>{}</{}>", k, raw, k));
+                }
+                params_blocks.push(format!(
+                    "  <{}>\n{}\n  </{}>",
+                    action_name,
+                    inner.join("\n"),
+                    action_name
+                ));
+            }
+
+            let params_xml = if params_blocks.is_empty() {
+                String::new()
+            } else {
+                format!("\n<params>\n{}\n</params>", params_blocks.join("\n"))
+            };
+
+            let b = format!(
+                "User: {}\nAssistant:\n<actions>\n{}\n</actions>{}",
+                ex.user, actions_xml, params_xml
+            );
+            blocks.push(b);
         }
-
-        let params_xml = if params_blocks.is_empty() {
-            String::new()
-        } else {
-            format!("\n<params>\n{}\n</params>", params_blocks.join("\n"))
-        };
-
-        let block = format!(
-            "User: {}\nAssistant:\n<actions>\n{}\n</actions>{}",
-            ex.user, actions_xml, params_xml
-        );
-        blocks.push(block);
+        if blocks.len() >= max_examples {
+            break;
+        }
     }
-
     blocks.join("\n\n")
 }
 
@@ -255,8 +209,8 @@ impl Provider for ActionsProvider {
     async fn get(
         &self,
         runtime: &dyn IAgentRuntime,
-        message: &Memory,
-        state: Option<&State>,
+        _message: &Memory,
+        _state: Option<&State>,
     ) -> PluginResult<ProviderResult> {
         let actions = runtime.get_available_actions();
         let docs_by_name = action_docs_by_name();
@@ -265,52 +219,13 @@ impl Provider for ActionsProvider {
             return Ok(ProviderResult::new("No actions available."));
         }
 
-        let state_room_id = state
-            .and_then(|s| s.data.as_ref())
-            .and_then(|d| d.room.as_ref())
-            .map(|room| room.id.trim().to_string())
-            .filter(|id| !id.is_empty());
-        let state_world_id = state
-            .and_then(|s| s.data.as_ref())
-            .and_then(|d| d.world.as_ref())
-            .map(|world| world.id.trim().to_string())
-            .filter(|id| !id.is_empty());
-        let room_id = state_room_id.unwrap_or_else(|| message.room_id.to_string());
-        let world_id = state_world_id
-            .or_else(|| message.world_id.as_ref().map(ToString::to_string))
-            .unwrap_or_else(|| "world:none".to_string());
-        let character_id = runtime
-            .character()
-            .id
-            .clone()
-            .map(|id| id.to_string())
-            .unwrap_or_else(|| runtime.agent_id().to_string());
-        let action_seed = build_deterministic_seed(&[
-            "eliza-prompt-cache-v1".to_string(),
-            world_id,
-            room_id,
-            character_id,
-            "0".to_string(),
-            "provider:actions".to_string(),
-        ]);
-
-        let shuffled_names =
-            deterministic_shuffle(&actions, &format!("{}:names", action_seed), "actions");
-        let names_text = shuffled_names
-            .iter()
-            .map(|a| a.name.as_str())
-            .collect::<Vec<&str>>()
-            .join(", ");
+        let action_names: Vec<&str> = actions.iter().map(|a| a.name.as_str()).collect();
+        let names_text = action_names.join(", ");
 
         let mut formatted_actions: Vec<String> = Vec::new();
         let mut actions_data: Vec<serde_json::Value> = Vec::new();
-        let shuffled_descriptions = deterministic_shuffle(
-            &actions,
-            &format!("{}:descriptions", action_seed),
-            "actions",
-        );
 
-        for a in shuffled_descriptions.iter() {
+        for a in actions.iter() {
             let doc = docs_by_name.get(&a.name);
             let mut line = if let Some(d) = doc {
                 format!("- **{}**: {}", a.name, d.description)
@@ -346,8 +261,7 @@ impl Provider for ActionsProvider {
             .iter()
             .filter_map(|a| docs_by_name.get(&a.name).cloned())
             .collect();
-        let examples_text =
-            format_action_examples(&docs_for_examples, 10, &format!("{}:examples", action_seed));
+        let examples_text = format_action_examples(&docs_for_examples, 10);
 
         let mut text = format!(
             "Possible response actions: {}\n\n# Available Actions\n{}",
@@ -366,55 +280,5 @@ impl Provider for ActionsProvider {
                 "actions",
                 serde_json::to_value(&actions_data).unwrap_or_default(),
             ))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn example_call(user: &str, action: &str) -> ActionExampleCallDoc {
-        ActionExampleCallDoc {
-            user: user.to_string(),
-            actions: vec![action.to_string()],
-            params: HashMap::new(),
-        }
-    }
-
-    #[test]
-    fn deterministic_shuffle_is_stable() {
-        let input = vec!["A".to_string(), "B".to_string(), "C".to_string()];
-        let first = deterministic_shuffle(&input, "seed", "surface");
-        let second = deterministic_shuffle(&input, "seed", "surface");
-        assert_eq!(first, second);
-        assert_eq!(first.len(), input.len());
-    }
-
-    #[test]
-    fn format_action_examples_is_seed_stable() {
-        let docs = vec![
-            ActionDoc {
-                name: "SEND_MESSAGE".to_string(),
-                description: "desc".to_string(),
-                similes: vec![],
-                parameters: vec![],
-                example_calls: vec![
-                    example_call("u1", "SEND_MESSAGE"),
-                    example_call("u2", "SEND_MESSAGE"),
-                ],
-            },
-            ActionDoc {
-                name: "REPLY".to_string(),
-                description: "desc".to_string(),
-                similes: vec![],
-                parameters: vec![],
-                example_calls: vec![example_call("u3", "REPLY")],
-            },
-        ];
-
-        let first = format_action_examples(&docs, 2, "seed-value");
-        let second = format_action_examples(&docs, 2, "seed-value");
-        assert_eq!(first, second);
-        assert!(!first.is_empty());
     }
 }

@@ -207,3 +207,5 @@ export const statusAction: Action = {
     ],
   ] as ActionExample[][],
 };
+
+export default statusAction;

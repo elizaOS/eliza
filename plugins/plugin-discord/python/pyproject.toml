@@ -1,0 +1,110 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-plugin-discord"
+version = "2.0.0"
+description = "Discord plugin for elizaOS - Python implementation"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "elizaOS Contributors" }
+]
+keywords = ["ai", "agent", "discord", "bot", "elizaos"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications :: Chat",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "discord.py>=2.3.0",
+    "pydantic>=2.0.0",
+    "aiohttp>=3.9.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "pytest-xprocess>=1.0.0",
+    "mypy>=1.8.0",
+    "ruff>=0.3.0",
+]
+voice = [
+    "PyNaCl>=1.5.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaos/eliza"
+Documentation = "https://elizaos.ai/docs"
+Repository = "https://github.com/elizaos/eliza"
+Issues = "https://github.com/elizaos/eliza/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_plugin_discord"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v -p no:anchorpy"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: marks tests as integration tests (require real Discord API credentials)",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_any_generics = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["discord.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["elizaos_plugin_discord.service"]
+disallow_untyped_decorators = false
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["elizaos_plugin_discord"]
+

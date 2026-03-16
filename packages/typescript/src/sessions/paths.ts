@@ -1,5 +1,5 @@
 /**
- * Session path utilities for ElizaOS.
+ * Session path utilities for elizaOS.
  *
  * Provides functions for resolving session-related file paths including
  * session stores, transcripts, and agent-specific directories.

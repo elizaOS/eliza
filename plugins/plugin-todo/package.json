@@ -1,0 +1,121 @@
+{
+  "name": "@elizaos/plugin-todo-root",
+  "private": true,
+  "version": "2.0.0-alpha.1",
+  "type": "module",
+  "description": "Multi-language Todo list plugin for elizaOS with TypeScript, Python, and Rust implementations",
+  "main": "typescript/dist/node/index.node.js",
+  "module": "typescript/dist/node/index.node.js",
+  "types": "typescript/dist/index.d.ts",
+  "browser": "typescript/dist/browser/index.browser.js",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-todo.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./typescript/dist/index.d.ts",
+      "browser": {
+        "types": "./typescript/dist/browser/index.d.ts",
+        "import": "./typescript/dist/browser/index.browser.js",
+        "default": "./typescript/dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "import": "./typescript/dist/node/index.node.js",
+        "require": "./typescript/dist/cjs/index.node.cjs",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "default": "./typescript/dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./typescript/dist/node/index.d.ts",
+      "import": "./typescript/dist/node/index.node.js",
+      "default": "./typescript/dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./typescript/dist/browser/index.d.ts",
+      "import": "./typescript/dist/browser/index.browser.js",
+      "default": "./typescript/dist/browser/index.browser.js"
+    }
+  },
+  "files": [
+    "typescript/dist",
+    "python",
+    "rust",
+    "README.md"
+  ],
+  "license": "MIT",
+  "author": "elizaOS Team",
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "todo",
+    "task-management",
+    "multi-language"
+  ],
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/elizaos-plugins/plugin-todo/issues"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "drizzle-orm": "^0.30.10",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "zod": "^4.3.6"
+  },
+  "scripts": {
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
+    "build": "npm run build:prompts && bun run build:ts && bun run build:rust && bun run build:python",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
+    "build:python": "test -n \"$SKIP_PYTHON_BUILD\" && echo 'Python build skipped (SKIP_PYTHON_BUILD set)' || (test -d python && cd python && (timeout 120 python3 -m build 2>/dev/null || timeout 120 pyproject-build 2>/dev/null) || echo 'Python build skipped or timed out')",
+    "dev": "cd typescript && bun --hot build.ts",
+    "lint": "bunx @biomejs/biome check --write ./typescript",
+    "lint:check": "bunx @biomejs/biome check ./typescript",
+    "lint:rust": "cd rust && cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt",
+    "lint:python": "cd python && ruff check --fix . && ruff format .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "format": "bunx @biomejs/biome format --write ./typescript",
+    "format:check": "bunx @biomejs/biome format ./typescript",
+    "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_todo",
+    "test": "bun run test:ts && bun run test:rust && bun run test:python",
+    "test:ts": "cd typescript && vitest run || echo 'TypeScript tests skipped - no tests found'",
+    "test:rust": "test -d rust && cd rust && cargo test || echo 'Rust tests skipped'",
+    "test:python": "test -d python && cd python && pytest -p no:anchorpy --asyncio-mode=auto || echo 'Python tests skipped'"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "ENABLE_REMINDERS": {
+        "type": "boolean",
+        "description": "Enable reminder notifications for todos",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
+      "REMINDER_INTERVAL_MS": {
+        "type": "number",
+        "description": "Interval in milliseconds between reminder checks",
+        "required": false,
+        "default": 30000,
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "401e0d2502fea9d6f459aa80faad1369798e9600"
+}

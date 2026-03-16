@@ -3,10 +3,10 @@
 //! This service registers an `AUTONOMY_THINK` task worker and creates a recurring
 //! task that triggers autonomous thinking at a configurable interval.
 
-use std::any::Any;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
+use std::any::Any;
 
 use anyhow::Result;
 use serde_json::{Number, Value};
@@ -21,7 +21,7 @@ use crate::services::IMessageService;
 use crate::types::database::GetMemoriesParams;
 use crate::types::environment::{Room, RoomMetadata, World, WorldMetadata};
 use crate::types::memory::Memory;
-use crate::types::primitives::{string_to_uuid, Content, UUID};
+use crate::types::primitives::{Content, UUID};
 use crate::types::settings::SettingValue;
 use crate::types::task::{Task, TaskWorker};
 
@@ -34,7 +34,8 @@ pub const AUTONOMY_SERVICE_TYPE: &str = "AUTONOMY";
 pub const AUTONOMY_TASK_NAME: &str = "AUTONOMY_THINK";
 
 /// Tags used for autonomy tasks (parity with TypeScript).
-pub const AUTONOMY_TASK_TAGS: &[&str] = &["queue", "repeat", "autonomy"];
+/// Note: TypeScript uses ["repeat", "autonomy", "internal"] without "queue".
+pub const AUTONOMY_TASK_TAGS: &[&str] = &["repeat", "autonomy", "internal"];
 
 /// Default interval for autonomy loop in milliseconds.
 const DEFAULT_INTERVAL_MS: i64 = 30_000;
@@ -42,11 +43,6 @@ const DEFAULT_INTERVAL_MS: i64 = 30_000;
 /// Autonomous world ID (stable).
 fn autonomy_world_id() -> UUID {
     UUID::new("00000000-0000-0000-0000-000000000001").expect("valid uuid")
-}
-
-/// Dedicated entity ID for autonomy prompts (prevents self-message skips).
-fn autonomy_entity_id() -> UUID {
-    UUID::new("00000000-0000-0000-0000-000000000002").expect("valid uuid")
 }
 
 /// AutonomyService - manages autonomous agent operation using the Task system.
@@ -57,7 +53,6 @@ pub struct AutonomyService {
     interval_ms: std::sync::atomic::AtomicI64,
     autonomous_room_id: UUID,
     autonomous_world_id: UUID,
-    autonomy_entity_id: UUID,
     task_registered: AtomicBool,
 }
 
@@ -70,10 +65,7 @@ enum AutonomyMode {
 impl AutonomyService {
     /// Create and start the autonomy service.
     pub async fn start(runtime: Weak<AgentRuntime>) -> Result<Arc<Self>> {
-        let autonomous_room_id = runtime
-            .upgrade()
-            .map(|rt| string_to_uuid(format!("autonomy-room-{}", rt.agent_id)))
-            .unwrap_or_else(UUID::new_v4);
+        let autonomous_room_id = UUID::new_v4();
         let svc = Arc::new(AutonomyService {
             runtime: runtime.clone(),
             is_running: AtomicBool::new(false),
@@ -81,7 +73,6 @@ impl AutonomyService {
             interval_ms: std::sync::atomic::AtomicI64::new(DEFAULT_INTERVAL_MS),
             autonomous_room_id,
             autonomous_world_id: autonomy_world_id(),
-            autonomy_entity_id: autonomy_entity_id(),
             task_registered: AtomicBool::new(false),
         });
 
@@ -378,117 +369,51 @@ impl AutonomyService {
             .map(|s| s.trim().to_string())
     }
 
-    fn format_autonomy_context_entries(
-        memories: Vec<Memory>,
-        agent_id: &UUID,
-        autonomy_entity_id: &UUID,
-    ) -> Vec<String> {
-        let mut entries: Vec<(i64, String)> = Vec::new();
-        for memory in memories {
-            let text = memory.content.text.as_deref().unwrap_or("").trim();
-            if text.is_empty() {
-                continue;
-            }
-            let event_type = memory
-                .content
-                .extra
-                .get("type")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-
-            if memory.entity_id == *agent_id && event_type == "autonomous-response" {
-                entries.push((memory.created_at.unwrap_or(0), format!("Thought: {}", text)));
-            } else if memory.entity_id == *autonomy_entity_id && event_type == "autonomous-trigger"
-            {
-                entries.push((memory.created_at.unwrap_or(0), format!("Trigger: {}", text)));
-            }
-        }
-
-        entries.sort_by_key(|(ts, _)| *ts);
-        entries.into_iter().map(|(_, line)| line).collect()
-    }
-
     async fn get_target_room_context_text(&self, rt: &AgentRuntime) -> String {
         let Some(adapter) = rt.get_adapter() else {
-            return "(no rooms configured)\n\nAutonomous context: (none)".to_string();
+            return "(no target room configured)".to_string();
         };
-        let mut room_sections: Vec<String> = Vec::new();
-        if let Some(target_room_id) = self.get_target_room_id(rt).await {
-            let room_name = adapter
-                .get_room(&target_room_id)
-                .await
-                .ok()
-                .flatten()
-                .and_then(|r| r.name)
-                .map(|name| name.trim().to_string())
-                .filter(|name| !name.is_empty())
-                .unwrap_or_else(|| target_room_id.to_string());
+        let Some(target_room_id) = self.get_target_room_id(rt).await else {
+            return "(no target room configured)".to_string();
+        };
 
-            let memories = adapter
-                .get_memories(GetMemoriesParams {
-                    room_id: Some(target_room_id.clone()),
-                    count: Some(10),
-                    table_name: "memories".to_string(),
-                    ..Default::default()
-                })
-                .await
-                .unwrap_or_default();
-            let messages = adapter
-                .get_memories(GetMemoriesParams {
-                    room_id: Some(target_room_id),
-                    count: Some(10),
-                    table_name: "messages".to_string(),
-                    ..Default::default()
-                })
-                .await
-                .unwrap_or_default();
-
-            let combined = Self::dedupe_and_sort_memories(memories, messages);
-            let mut lines: Vec<String> = Vec::new();
-            for memory in combined {
-                let text = memory.content.text.as_deref().unwrap_or("").trim();
-                if text.is_empty() {
-                    continue;
-                }
-                let author = if memory.entity_id == rt.agent_id {
-                    "Agent".to_string()
-                } else {
-                    memory.entity_id.to_string()
-                };
-                lines.push(format!("{}: {}", author, text));
-            }
-
-            if lines.is_empty() {
-                room_sections.push(format!("Room: {}\n(no recent messages)", room_name));
-            } else {
-                room_sections.push(format!("Room: {}\n{}", room_name, lines.join("\n")));
-            }
-        }
-
-        let autonomy_memories = adapter
+        let memories = adapter
             .get_memories(GetMemoriesParams {
-                room_id: Some(self.autonomous_room_id.clone()),
-                count: Some(10),
+                room_id: Some(target_room_id.clone()),
+                count: Some(15),
                 table_name: "memories".to_string(),
                 ..Default::default()
             })
             .await
             .unwrap_or_default();
-        let autonomy_entries = Self::format_autonomy_context_entries(
-            autonomy_memories,
-            &rt.agent_id,
-            &self.autonomy_entity_id,
-        );
-        let autonomy_section = if autonomy_entries.is_empty() {
-            "Autonomous context: (none)".to_string()
-        } else {
-            format!("Autonomous context:\n{}", autonomy_entries.join("\n"))
-        };
+        let messages = adapter
+            .get_memories(GetMemoriesParams {
+                room_id: Some(target_room_id.clone()),
+                count: Some(15),
+                table_name: "messages".to_string(),
+                ..Default::default()
+            })
+            .await
+            .unwrap_or_default();
 
-        if room_sections.is_empty() {
-            format!("(no rooms configured)\n\n{}", autonomy_section)
+        let combined = Self::dedupe_and_sort_memories(memories, messages);
+        let mut lines: Vec<String> = Vec::new();
+        for m in combined {
+            let role = if m.entity_id == rt.agent_id {
+                "Agent"
+            } else {
+                "User"
+            };
+            let text = m.content.text.as_deref().unwrap_or("");
+            if !text.trim().is_empty() {
+                lines.push(format!("{}: {}", role, text));
+            }
+        }
+
+        if lines.is_empty() {
+            "(no recent messages)".to_string()
         } else {
-            format!("{}\n\n{}", room_sections.join("\n\n"), autonomy_section)
+            lines.join("\n")
         }
     }
 
@@ -596,7 +521,7 @@ impl AutonomyService {
             .insert("timestamp".to_string(), Value::Number(Number::from(ts_ms)));
 
         let mut msg = crate::types::memory::Memory::new(
-            self.autonomy_entity_id.clone(),
+            rt.agent_id.clone(),
             self.autonomous_room_id.clone(),
             content,
         );
@@ -619,7 +544,7 @@ impl AutonomyService {
         let params = GetMemoriesParams {
             room_id: Some(self.autonomous_room_id.clone()),
             count: Some(3),
-            table_name: "memories".to_string(),
+            table_name: "messages".to_string(),
             ..Default::default()
         };
         let memories = adapter.get_memories(params).await.ok()?;
@@ -714,21 +639,13 @@ mod tests {
         room_id: UUID,
         text: &str,
         is_autonomous: bool,
-        event_type: Option<&str>,
     ) -> Memory {
-        let mut content = Content {
-            text: Some(text.to_string()),
-            ..Default::default()
-        };
+        let mut content = Content::default();
+        content.text = Some(text.to_string());
         if is_autonomous {
             content
                 .extra
                 .insert("isAutonomous".to_string(), Value::Bool(true));
-        }
-        if let Some(kind) = event_type {
-            content
-                .extra
-                .insert("type".to_string(), Value::String(kind.to_string()));
         }
         Memory {
             id: Some(id),
@@ -748,9 +665,9 @@ mod tests {
     #[test]
     fn test_task_constants() {
         assert_eq!(AUTONOMY_TASK_NAME, "AUTONOMY_THINK");
-        assert!(AUTONOMY_TASK_TAGS.contains(&"queue"));
         assert!(AUTONOMY_TASK_TAGS.contains(&"repeat"));
         assert!(AUTONOMY_TASK_TAGS.contains(&"autonomy"));
+        assert!(AUTONOMY_TASK_TAGS.contains(&"internal"));
     }
 
     #[test]
@@ -765,9 +682,8 @@ mod tests {
             room_id.clone(),
             "old",
             false,
-            None,
         );
-        let newer = build_memory(shared_id, 20, entity_id, room_id, "new", false, None);
+        let newer = build_memory(shared_id, 20, entity_id, room_id, "new", false);
 
         let combined = AutonomyService::dedupe_and_sort_memories(vec![newer], vec![older]);
         assert_eq!(combined.len(), 1);
@@ -787,7 +703,6 @@ mod tests {
             room_id.clone(),
             "first",
             true,
-            Some("autonomous-response"),
         );
         let second = build_memory(
             UUID::new_v4(),
@@ -796,69 +711,11 @@ mod tests {
             room_id.clone(),
             "second",
             true,
-            Some("autonomous-response"),
         );
-        let other = build_memory(
-            UUID::new_v4(),
-            20,
-            other_id,
-            room_id,
-            "other",
-            true,
-            Some("autonomous-response"),
-        );
+        let other = build_memory(UUID::new_v4(), 20, other_id, room_id, "other", true);
 
         let thought =
             AutonomyService::latest_autonomous_thought(vec![other, second, first], &agent_id);
         assert_eq!(thought.as_deref(), Some("second"));
-    }
-
-    #[test]
-    fn format_autonomy_context_entries_orders_and_labels_entries() {
-        let agent_id = UUID::new_v4();
-        let autonomy_entity_id = UUID::new_v4();
-        let room_id = UUID::new_v4();
-
-        let trigger = build_memory(
-            UUID::new_v4(),
-            5,
-            autonomy_entity_id.clone(),
-            room_id.clone(),
-            "wake up",
-            true,
-            Some("autonomous-trigger"),
-        );
-        let thought = build_memory(
-            UUID::new_v4(),
-            10,
-            agent_id.clone(),
-            room_id.clone(),
-            "check room updates",
-            true,
-            Some("autonomous-response"),
-        );
-        let unrelated = build_memory(
-            UUID::new_v4(),
-            15,
-            UUID::new_v4(),
-            room_id,
-            "hello",
-            true,
-            Some("autonomous-response"),
-        );
-
-        let entries = AutonomyService::format_autonomy_context_entries(
-            vec![thought, unrelated, trigger],
-            &agent_id,
-            &autonomy_entity_id,
-        );
-
-        assert_eq!(
-            entries,
-            vec![
-                "Trigger: wake up".to_string(),
-                "Thought: check room updates".to_string()
-            ]
-        );
     }
 }

@@ -573,7 +573,7 @@ async function evalInTab(tabId, code, awaitPromise, evalId) {
       get the selector of iframe from main document
     * after that we'll get the `frameId` of the iframe to execute
       raw js code inside the iframe's document to avoid CORS issue
-    * rewrite the raw js code so it removes the unnecessary `IFRAMESELCTOR` from eval code
+    * rewrite the raw js code so it removes the unneccesary `IFRAMESELCTOR` from eval code
     * run user code safely by creating a Function rather than eval (still executes arbitrary code)
   */
   if (code.includes("IFRAMESELCTOR")) {

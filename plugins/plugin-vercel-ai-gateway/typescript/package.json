@@ -1,0 +1,145 @@
+{
+  "name": "@elizaos/plugin-vercel-ai-gateway",
+  "version": "2.0.0-alpha.2",
+  "type": "module",
+  "main": "dist/cjs/index.node.cjs",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "browser": "dist/browser/index.browser.js",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-vercel-ai-gateway.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "require": "./dist/cjs/index.node.cjs",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    }
+  },
+  "files": [
+    "dist",
+    "rust"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "@types/node": "^25.0.3",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "build:ts": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "clean": "rm -rf dist   .turbo node_modules",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:ts": "vitest run",
+    "build": "bun run build.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "AI_GATEWAY_API_KEY": {
+        "type": "string",
+        "description": "API key for Vercel AI Gateway (OpenAI-compatible endpoints).",
+        "required": false,
+        "sensitive": true
+      },
+      "AIGATEWAY_API_KEY": {
+        "type": "string",
+        "description": "Alternate env var for AI Gateway API key.",
+        "required": false,
+        "sensitive": true
+      },
+      "VERCEL_OIDC_TOKEN": {
+        "type": "string",
+        "description": "OIDC token for Vercel (used as Bearer auth for Gateway).",
+        "required": false,
+        "sensitive": true
+      },
+      "AI_GATEWAY_BASE_URL": {
+        "type": "string",
+        "description": "Base URL for AI Gateway OpenAI-compatible API.",
+        "required": false,
+        "default": "https://ai-gateway.vercel.sh/v1",
+        "sensitive": false
+      },
+      "AI_GATEWAY_SMALL_MODEL": {
+        "type": "string",
+        "description": "Identifier of the small language model to be used.",
+        "required": false,
+        "default": "gpt-5-mini",
+        "sensitive": false
+      },
+      "AI_GATEWAY_LARGE_MODEL": {
+        "type": "string",
+        "description": "Identifier of the large language model to be used.",
+        "required": false,
+        "default": "gpt-5",
+        "sensitive": false
+      },
+      "AI_GATEWAY_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Identifier of the model to use for generating text embeddings.",
+        "required": false,
+        "default": "text-embedding-3-small",
+        "sensitive": false
+      },
+      "AI_GATEWAY_EMBEDDING_DIMENSIONS": {
+        "type": "number",
+        "description": "Number of dimensions for the returned embedding vectors.",
+        "required": false,
+        "default": 1536,
+        "sensitive": false
+      },
+      "AI_GATEWAY_IMAGE_MODEL": {
+        "type": "string",
+        "description": "Identifier of the model used for image generation.",
+        "required": false,
+        "default": "dall-e-3",
+        "sensitive": false
+      },
+      "AI_GATEWAY_TIMEOUT_MS": {
+        "type": "number",
+        "description": "Request timeout in milliseconds.",
+        "required": false,
+        "default": 60000,
+        "sensitive": false
+      }
+    }
+  },
+  "milaidy": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
+    }
+  }
+}

@@ -5,7 +5,7 @@
  * Tests input parsing for each step and full onboarding flow.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // ============================================================================
 // Types
@@ -48,13 +48,10 @@ interface CliPromptResult {
 interface CliPromptAdapter {
   prompt: (
     message: string,
-    options?: { type?: "text" | "password"; validate?: (v: string) => boolean },
+    options?: { type?: "text" | "password"; validate?: (v: string) => boolean }
   ) => Promise<string>;
   confirm: (message: string) => Promise<boolean>;
-  select: <T>(
-    message: string,
-    choices: Array<{ value: T; label: string }>,
-  ) => Promise<T>;
+  select: <T>(message: string, choices: Array<{ value: T; label: string }>) => Promise<T>;
 }
 
 /**
@@ -75,7 +72,7 @@ class CliOnboardingSession {
    */
   private getUnconfiguredRequired(): Array<[string, OnboardingSetting]> {
     return Object.entries(this.config.settings).filter(
-      ([_, s]) => s.required && s.value === null,
+      ([_, s]) => s.required && s.value === null
     );
   }
 
@@ -84,7 +81,7 @@ class CliOnboardingSession {
    */
   private getUnconfiguredOptional(): Array<[string, OnboardingSetting]> {
     return Object.entries(this.config.settings).filter(
-      ([_, s]) => !s.required && s.value === null,
+      ([_, s]) => !s.required && s.value === null
     );
   }
 
@@ -115,7 +112,7 @@ class CliOnboardingSession {
    */
   async promptForSetting(
     key: string,
-    setting: OnboardingSetting,
+    setting: OnboardingSetting
   ): Promise<CliPromptResult> {
     const message = `Enter ${setting.name}${setting.required ? " (required)" : " (optional)"}:`;
     const type = setting.secret ? "password" : "text";
@@ -139,10 +136,7 @@ class CliOnboardingSession {
   /**
    * Parse user input for a setting.
    */
-  parseInput(
-    key: string,
-    input: string,
-  ): { valid: boolean; value: string; error?: string } {
+  parseInput(key: string, input: string): { valid: boolean; value: string; error?: string } {
     const setting = this.config.settings[key];
     if (!setting) {
       return { valid: false, value: "", error: `Unknown setting: ${key}` };
@@ -207,7 +201,7 @@ class CliOnboardingSession {
 
     // Check for optional settings
     const shouldConfigureOptional = await this.adapter.confirm(
-      "Would you like to configure optional settings?",
+      "Would you like to configure optional settings?"
     );
 
     if (shouldConfigureOptional) {
@@ -240,7 +234,7 @@ class CliOnboardingSession {
 // ============================================================================
 
 function createTestConfig(
-  settings: Record<string, Partial<OnboardingSetting>>,
+  settings: Record<string, Partial<OnboardingSetting>>
 ): OnboardingConfig {
   const fullSettings: Record<string, OnboardingSetting> = {};
 
@@ -388,16 +382,9 @@ describe("Onboarding CLI Adapter", () => {
       const adapter = createMockAdapter({});
       const session = new CliOnboardingSession(config, adapter);
 
-      expect(
-        session.parseInput("OPENAI_API_KEY", "sk-valid12345678901234567890")
-          .valid,
-      ).toBe(true);
-      expect(session.parseInput("OPENAI_API_KEY", "invalid-key").valid).toBe(
-        false,
-      );
-      expect(session.parseInput("OPENAI_API_KEY", "sk-short").valid).toBe(
-        false,
-      );
+      expect(session.parseInput("OPENAI_API_KEY", "sk-valid12345678901234567890").valid).toBe(true);
+      expect(session.parseInput("OPENAI_API_KEY", "invalid-key").valid).toBe(false);
+      expect(session.parseInput("OPENAI_API_KEY", "sk-short").valid).toBe(false);
     });
 
     it("should validate Anthropic API key format", () => {
@@ -411,14 +398,9 @@ describe("Onboarding CLI Adapter", () => {
       const session = new CliOnboardingSession(config, adapter);
 
       expect(
-        session.parseInput(
-          "ANTHROPIC_API_KEY",
-          "sk-ant-api03-12345678901234567890",
-        ).valid,
+        session.parseInput("ANTHROPIC_API_KEY", "sk-ant-api03-12345678901234567890").valid
       ).toBe(true);
-      expect(session.parseInput("ANTHROPIC_API_KEY", "sk-12345").valid).toBe(
-        false,
-      );
+      expect(session.parseInput("ANTHROPIC_API_KEY", "sk-12345").valid).toBe(false);
     });
 
     it("should validate Discord bot token format", () => {
@@ -426,41 +408,30 @@ describe("Onboarding CLI Adapter", () => {
         DISCORD_BOT_TOKEN: {
           required: true,
           validation: (v) =>
-            /^[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}$/.test(
-              v,
-            ),
+            /^[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}$/.test(v),
         },
       });
       const adapter = createMockAdapter({});
       const session = new CliOnboardingSession(config, adapter);
 
-      const validToken =
-        "MTIzNDU2Nzg5MDEyMzQ1Njc4.GxxxxX.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
-      expect(session.parseInput("DISCORD_BOT_TOKEN", validToken).valid).toBe(
-        true,
-      );
-      expect(
-        session.parseInput("DISCORD_BOT_TOKEN", "invalid-token").valid,
-      ).toBe(false);
+      const validToken = "MTIzNDU2Nzg5MDEyMzQ1Njc4.GxxxxX.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+      expect(session.parseInput("DISCORD_BOT_TOKEN", validToken).valid).toBe(true);
+      expect(session.parseInput("DISCORD_BOT_TOKEN", "invalid-token").valid).toBe(false);
     });
 
     it("should validate Telegram bot token format", () => {
       const config = createTestConfig({
         TELEGRAM_BOT_TOKEN: {
           required: true,
-          validation: (v) => /^\d{8,10}:[A-Za-z0-9_-]{35,43}$/.test(v),
+          validation: (v) => /^\d{8,10}:[A-Za-z0-9_-]{35}$/.test(v),
         },
       });
       const adapter = createMockAdapter({});
       const session = new CliOnboardingSession(config, adapter);
 
-      const validToken = "123456789:ABCdefGHIjklMNOpqrSTUvwxYZ12345678901";
-      expect(session.parseInput("TELEGRAM_BOT_TOKEN", validToken).valid).toBe(
-        true,
-      );
-      expect(session.parseInput("TELEGRAM_BOT_TOKEN", "123:short").valid).toBe(
-        false,
-      );
+      const validToken = "123456789:ABCdefGHIjklMNOpqrSTUvwxYZ123456789";
+      expect(session.parseInput("TELEGRAM_BOT_TOKEN", validToken).valid).toBe(true);
+      expect(session.parseInput("TELEGRAM_BOT_TOKEN", "123:short").valid).toBe(false);
     });
   });
 
@@ -474,7 +445,7 @@ describe("Onboarding CLI Adapter", () => {
 
       const result = await session.promptForSetting(
         "USERNAME",
-        config.settings.USERNAME,
+        config.settings.USERNAME
       );
 
       expect(result.key).toBe("USERNAME");
@@ -482,7 +453,7 @@ describe("Onboarding CLI Adapter", () => {
       expect(result.skipped).toBe(false);
       expect(adapter.prompt).toHaveBeenCalledWith(
         expect.stringContaining("Username"),
-        expect.objectContaining({ type: "text" }),
+        expect.objectContaining({ type: "text" })
       );
     });
 
@@ -497,7 +468,7 @@ describe("Onboarding CLI Adapter", () => {
 
       expect(adapter.prompt).toHaveBeenCalledWith(
         expect.stringContaining("API Key"),
-        expect.objectContaining({ type: "password" }),
+        expect.objectContaining({ type: "password" })
       );
     });
 
@@ -510,7 +481,7 @@ describe("Onboarding CLI Adapter", () => {
 
       const result = await session.promptForSetting(
         "OPTIONAL",
-        config.settings.OPTIONAL,
+        config.settings.OPTIONAL
       );
 
       expect(result.skipped).toBe(true);
@@ -521,11 +492,7 @@ describe("Onboarding CLI Adapter", () => {
   describe("Full Onboarding Flow", () => {
     it("should complete flow with all required settings", async () => {
       const config = createTestConfig({
-        MODEL_PROVIDER: {
-          required: true,
-          name: "Model Provider",
-          secret: false,
-        },
+        MODEL_PROVIDER: { required: true, name: "Model Provider", secret: false },
         API_KEY: {
           required: true,
           name: "API Key",
@@ -616,12 +583,12 @@ describe("Onboarding CLI Adapter", () => {
       expect(adapter.prompt).toHaveBeenNthCalledWith(
         1,
         expect.stringContaining("TWITTER_USERNAME"),
-        expect.anything(),
+        expect.anything()
       );
       expect(adapter.prompt).toHaveBeenNthCalledWith(
         2,
         expect.stringContaining("TWITTER_PASSWORD"),
-        expect.anything(),
+        expect.anything()
       );
     });
   });

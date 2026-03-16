@@ -1,0 +1,20 @@
+# elizaOS Bluesky Agent Requirements
+
+# Core elizaOS
+elizaos>=0.1.0
+
+# Plugins
+elizaos-plugin-bluesky>=0.1.0
+elizaos-plugin-openai>=0.1.0
+elizaos-plugin-sql>=0.1.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# UUID generation
+uuid6>=2023.5.2
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-mock>=3.12.0

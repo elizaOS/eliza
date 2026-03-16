@@ -591,8 +591,8 @@ describe("EmbeddingGenerationService - Queue Management", () => {
       await Promise.all(promises);
       const elapsed = Date.now() - startTime;
 
-      // Should handle 1000 items quickly (< 500ms even under coverage)
-      expect(elapsed).toBeLessThan(500);
+      // Should handle 1000 items quickly (< 100ms)
+      expect(elapsed).toBeLessThan(100);
       expect(service.getQueueSize()).toBe(1000);
     });
   });

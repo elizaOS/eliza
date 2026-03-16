@@ -69,7 +69,7 @@ In `~/.otto/otto.json`:
   "canvasHost": {
     "enabled": true,
     "port": 18793,
-    "root": "/Users/you/agent/canvas",
+    "root": "/Users/you/clawd/canvas",
     "liveReload": true
   },
   "gateway": {
@@ -92,10 +92,10 @@ Great for development!
 
 ### 1. Create HTML content
 
-Place files in the canvas root directory (default `~/agent/canvas/`):
+Place files in the canvas root directory (default `~/clawd/canvas/`):
 
 ```bash
-cat > ~/agent/canvas/my-game.html << 'HTML'
+cat > ~/clawd/canvas/my-game.html << 'HTML'
 <!DOCTYPE html>
 <html>
 <head><title>My Game</title></head>
@@ -188,8 +188,8 @@ If live reload isn't working:
 The canvas host serves from `/__otto__/canvas/` prefix:
 
 ```
-http://<host>:18793/__otto__/canvas/index.html  → ~/agent/canvas/index.html
-http://<host>:18793/__otto__/canvas/games/snake.html → ~/agent/canvas/games/snake.html
+http://<host>:18793/__otto__/canvas/index.html  → ~/clawd/canvas/index.html
+http://<host>:18793/__otto__/canvas/games/snake.html → ~/clawd/canvas/games/snake.html
 ```
 
 The `/__otto__/canvas/` prefix is defined by `CANVAS_HOST_PATH` constant.

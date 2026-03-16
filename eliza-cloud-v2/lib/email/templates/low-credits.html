@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Low Credits Alert</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        line-height: 1.6;
+        color: #1f2937;
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        padding: 40px 20px;
+      }
+      .email-wrapper {
+        max-width: 600px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+      .header-banner {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        padding: 50px 40px;
+        text-align: center;
+        color: white;
+      }
+      .warning-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+        animation: pulse 2s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.1);
+        }
+      }
+      .header-banner h1 {
+        font-size: 32px;
+        font-weight: 700;
+        margin-bottom: 12px;
+        letter-spacing: -0.5px;
+      }
+      .header-banner p {
+        font-size: 17px;
+        opacity: 0.95;
+        margin: 0;
+      }
+      .content {
+        padding: 40px;
+      }
+      .alert-card {
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        border-left: 6px solid #f59e0b;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 30px;
+        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+      }
+      .alert-card strong {
+        display: block;
+        font-size: 18px;
+        color: #92400e;
+        margin-bottom: 8px;
+      }
+      .alert-card p {
+        color: #78350f;
+        font-size: 15px;
+        margin: 0;
+        line-height: 1.6;
+      }
+      .balance-card {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        border-radius: 16px;
+        padding: 36px;
+        text-align: center;
+        margin: 30px 0;
+        color: white;
+        box-shadow: 0 12px 32px rgba(245, 158, 11, 0.4);
+      }
+      .balance-label {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        opacity: 0.9;
+        margin-bottom: 12px;
+        font-weight: 600;
+      }
+      .balance-amount {
+        font-size: 52px;
+        font-weight: 700;
+        margin: 16px 0;
+        text-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
+        line-height: 1;
+      }
+      .balance-subtitle {
+        font-size: 15px;
+        opacity: 0.9;
+        margin-top: 12px;
+      }
+      .impact-section {
+        background: #fef2f2;
+        border-radius: 12px;
+        padding: 28px;
+        margin: 30px 0;
+        border: 2px solid #fee2e2;
+      }
+      .impact-section h3 {
+        color: #991b1b;
+        font-size: 19px;
+        margin-bottom: 18px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .impact-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .impact-list li {
+        padding: 12px 0 12px 36px;
+        color: #7f1d1d;
+        font-size: 15px;
+        position: relative;
+        border-bottom: 1px solid #fee2e2;
+      }
+      .impact-list li:last-child {
+        border-bottom: none;
+      }
+      .impact-list li:before {
+        content: "⚠️";
+        position: absolute;
+        left: 0;
+        top: 12px;
+        font-size: 18px;
+      }
+      .cta-section {
+        text-align: center;
+        margin: 40px 0;
+        padding: 20px 0;
+      }
+      .cta-button {
+        display: inline-block;
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        color: white;
+        padding: 18px 44px;
+        text-decoration: none;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 18px;
+        box-shadow: 0 10px 28px rgba(245, 158, 11, 0.5);
+        transition:
+          transform 0.2s,
+          box-shadow 0.2s;
+      }
+      .cta-button:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 14px 36px rgba(245, 158, 11, 0.6);
+      }
+      .tip-section {
+        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+        border-left: 6px solid #10b981;
+        border-radius: 12px;
+        padding: 24px;
+        margin: 30px 0;
+      }
+      .tip-section strong {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #065f46;
+        font-size: 16px;
+        margin-bottom: 10px;
+      }
+      .tip-section p {
+        color: #047857;
+        font-size: 14px;
+        margin: 0;
+        line-height: 1.7;
+      }
+      .footer {
+        background: #f9fafb;
+        padding: 30px 40px;
+        text-align: center;
+        border-top: 1px solid #e5e7eb;
+      }
+      .footer p {
+        color: #6b7280;
+        font-size: 13px;
+        margin: 8px 0;
+      }
+      .footer-logo {
+        font-size: 20px;
+        font-weight: 700;
+        color: #f59e0b;
+        margin-bottom: 12px;
+      }
+      @media only screen and (max-width: 600px) {
+        .header-banner {
+          padding: 40px 24px;
+        }
+        .header-banner h1 {
+          font-size: 26px;
+        }
+        .content {
+          padding: 30px 24px;
+        }
+        .balance-amount {
+          font-size: 42px;
+        }
+        .cta-button {
+          display: block;
+          padding: 16px 32px;
+          font-size: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-wrapper">
+      <div class="header-banner">
+        <div class="warning-icon">⚠️</div>
+        <h1>Low Balance Alert</h1>
+        <p>Action required for {{organizationName}}</p>
+      </div>
+
+      <div class="content">
+        <div class="alert-card">
+          <strong>🚨 Your account balance is running low</strong>
+          <p>
+            To ensure uninterrupted service for your AI agents and applications,
+            please add funds to your account as soon as possible.
+          </p>
+        </div>
+
+        <div class="balance-card">
+          <div class="balance-label">Current Balance</div>
+          <div class="balance-amount">${{currentBalance}}</div>
+          <div class="balance-subtitle">remaining</div>
+        </div>
+
+        <div class="impact-section">
+          <h3>
+            <span>🔴</span>
+            <span>What happens when balance runs out?</span>
+          </h3>
+          <ul class="impact-list">
+            <li>
+              <strong>AI agent requests will be rejected</strong><br />
+              <span style="font-size: 13px; color: #991b1b; opacity: 0.8"
+                >All chat and agent interactions will stop working</span
+              >
+            </li>
+            <li>
+              <strong>API calls will return errors</strong><br />
+              <span style="font-size: 13px; color: #991b1b; opacity: 0.8"
+                >Your applications will receive "insufficient funds"
+                responses</span
+              >
+            </li>
+            <li>
+              <strong>Limited container access</strong><br />
+              <span style="font-size: 13px; color: #991b1b; opacity: 0.8"
+                >Containers will continue running but in read-only mode</span
+              >
+            </li>
+          </ul>
+        </div>
+
+        <div class="cta-section">
+          <a href="{{billingUrl}}" class="cta-button"> 💳 Add Funds Now → </a>
+        </div>
+
+        <div class="tip-section">
+          <strong>
+            <span>💡</span>
+            <span>Pro Tip: Set Up Auto-Recharge</span>
+          </strong>
+          <p>
+            Never run out of funds again! Configure automatic top-ups in your
+            billing settings to maintain uninterrupted service. We'll
+            automatically add funds when your balance falls below your chosen
+            threshold.
+          </p>
+        </div>
+
+        <div
+          style="
+            background: #f3f4f6;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+            text-align: center;
+          "
+        >
+          <p style="color: #6b7280; font-size: 14px; margin: 0">
+            <strong>Need help?</strong> Our support team is here to assist you
+            with billing questions or account management.
+          </p>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="footer-logo">Eliza Cloud</div>
+        <p>© {{currentYear}} Eliza Cloud. All rights reserved.</p>
+        <p style="margin-top: 12px">
+          You received this alert because your account balance fell below
+          ${{threshold}}.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

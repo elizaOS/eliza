@@ -1,0 +1,36 @@
+# Environment files - CRITICAL: Never publish secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Database and runtime files
+**/.eliza/
+**/.elizadb/
+
+# Dependencies
+**/node_modules/
+
+# Source files (dist is published)
+**/src/
+**/tsconfig.json
+**/tsconfig.*.json
+**/*.tsbuildinfo
+
+# Tests
+**/__tests__/
+**/test/
+**/tests/
+**/*.test.ts
+**/*.spec.ts
+
+# Development
+**/.turbo/
+**/.cache/
+**/coverage/
+
+# IDE
+**/.vscode/
+**/.idea/
+
+# OS files
+**/.DS_Store

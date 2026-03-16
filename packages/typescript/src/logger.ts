@@ -3,7 +3,6 @@ export const __loggerTestHooks = {
   __noop: () => {},
 };
 
-import { AsyncLocalStorage } from "node:async_hooks";
 import adze, {
   type ConsoleStyle,
   type LevelConfiguration,
@@ -44,14 +43,6 @@ type LogFn = (
   ...args: unknown[]
 ) => void;
 
-export interface LoggerScope {
-  runtime: any;
-  roomId: string;
-  logLevel?: string;
-}
-
-export const loggerScope = new AsyncLocalStorage<LoggerScope>();
-
 /**
  * Logger interface - elizaOS standard logger API
  */
@@ -90,9 +81,7 @@ export interface LogEntry {
   msg: string;
   agentName?: string;
   agentId?: string;
-  roomId?: string;
-  runtime?: any;
-  [key: string]: string | number | boolean | null | undefined | any;
+  [key: string]: string | number | boolean | null | undefined;
 }
 
 /**
@@ -103,21 +92,12 @@ export type LogListener = (entry: LogEntry) => void;
 // Global log listeners for streaming
 const logListeners: Set<LogListener> = new Set();
 
-/** Safety cap: if callers fail to clean up, evict the oldest listener. */
-const MAX_LOG_LISTENERS = 50;
-
 /**
  * Add a listener for real-time log entries (used for WebSocket streaming)
  * @param listener - Callback function to receive log entries
  * @returns Function to remove the listener
  */
 export function addLogListener(listener: LogListener): () => void {
-  // Evict the oldest listener when the cap is hit — this prevents
-  // a slow leak from callers that forget to call the cleanup function.
-  if (logListeners.size >= MAX_LOG_LISTENERS) {
-    const oldest = logListeners.values().next().value;
-    if (oldest) logListeners.delete(oldest);
-  }
   logListeners.add(listener);
   return () => logListeners.delete(listener);
 }
@@ -180,11 +160,8 @@ const LEVEL_TO_NAME: Record<number, string> = {
  * Check if a message should be logged based on current level
  */
 function shouldLog(messageLevel: string, currentLevel: string): boolean {
-  const scope = loggerScope.getStore();
-  const effectiveLevel = scope?.logLevel || currentLevel;
   const messagePriority = LOG_LEVEL_PRIORITY[messageLevel.toLowerCase()] || 30;
-  const currentPriority =
-    LOG_LEVEL_PRIORITY[effectiveLevel.toLowerCase()] || 30;
+  const currentPriority = LOG_LEVEL_PRIORITY[currentLevel.toLowerCase()] || 30;
   return messagePriority >= currentPriority;
 }
 
@@ -347,6 +324,343 @@ try {
   (redact as { restore?: (obj: unknown) => unknown }).restore = (
     obj: unknown,
   ) => obj;
+}
+
+// ============================================================================
+// File Log Output
+// ============================================================================
+
+/**
+ * File logging — lazy-initialized on first write to avoid module-init timing issues.
+ * Enable with LOG_FILE=true/1 (writes output.log, prompts.log, and chat.log in cwd) or LOG_FILE=/path/to/file.log.
+ * Disabled by default.
+ */
+let _fileLogState: "pending" | "active" | "disabled" = "pending";
+let _fileLogFd: number | null = null;
+let _promptLogFd: number | null = null;
+let _chatLogFd: number | null = null;
+let _promptLogCounter = 0;
+
+let _fs: typeof import("node:fs") | null = null;
+function getFs(): typeof import("node:fs") | null {
+  if (_fs) return _fs;
+  try {
+    _fs = require("node:fs");
+    return _fs;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Strip ANSI escape codes from a string for plain-text logging.
+ */
+function stripAnsi(str: string): string {
+  return str.replace(
+    /\x1B(?:\[[\x20-\x3F]*[\x40-\x7E]|\].*?(?:\x07|\x1B\\)|\(B)/g,
+    "",
+  );
+}
+
+/**
+ * Lazily open the log files on the first write attempt.
+ * Returns true if the files are ready for writing.
+ */
+function ensureFileLog(): boolean {
+  if (_fileLogState === "active") return true;
+  if (_fileLogState === "disabled") return false;
+
+  _fileLogState = "disabled";
+  try {
+    if (
+      typeof process === "undefined" ||
+      !process.env ||
+      !process.versions
+    )
+      return false;
+    if (!process.versions.node && !process.versions.bun) return false;
+
+    const logFileEnv = process.env.LOG_FILE;
+    if (
+      !logFileEnv ||
+      logFileEnv.trim() === "" ||
+      logFileEnv.trim() === "0" ||
+      logFileEnv.trim().toLowerCase() === "false"
+    ) {
+      return false;
+    }
+
+    const fs = getFs();
+    if (!fs) return false;
+    const pathMod = require("node:path");
+    const isBooleanFlag = ["true", "1", "yes", "on"].includes(
+      logFileEnv.trim().toLowerCase(),
+    );
+    const logFilePath = isBooleanFlag
+      ? pathMod.join(process.cwd(), "output.log") 
+      : logFileEnv.trim();
+    const logDir = pathMod.dirname(logFilePath);
+    
+        // Ensure log directory exists
+        fs.mkdirSync(logDir, { recursive: true });
+    
+        const promptLogPath = pathMod.join(logDir, "prompts.log");
+        const chatLogPath = pathMod.join(logDir, "chat.log");
+
+        _fileLogFd = fs.openSync(logFilePath, "a");
+        _promptLogFd = fs.openSync(promptLogPath, "a");
+        _chatLogFd = fs.openSync(chatLogPath, "a");
+    _fileLogState = "active";
+
+    process.on("exit", () => {
+      const fs2 = getFs();
+      if (fs2 && _fileLogFd !== null) {
+        try {
+          fs2.closeSync(_fileLogFd);
+        } catch {
+          /* ignore */
+        }
+        _fileLogFd = null;
+      }
+      if (fs2 && _promptLogFd !== null) {
+        try {
+          fs2.closeSync(_promptLogFd);
+        } catch {
+          /* ignore */
+        }
+        _promptLogFd = null;
+      }
+      if (fs2 && _chatLogFd !== null) {
+        try {
+          fs2.closeSync(_chatLogFd);
+        } catch {
+          /* ignore */
+        }
+        _chatLogFd = null;
+      }
+    });
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Write a formatted log entry to the output file.
+ * No-op in browser environments, when LOG_FILE is unset, or if file open failed.
+ */
+function writeLogEntryToFile(entry: LogEntry): void {
+  if (!ensureFileLog()) return;
+  try {
+    const fs = getFs();
+    if (!fs) return;
+    const timestamp = new Date(entry.time).toISOString();
+    const levelStr = LEVEL_TO_NAME[entry.level ?? 30] || "info";
+    const line = `${timestamp} [${levelStr.toUpperCase().padEnd(8)}] ${stripAnsi(entry.msg)}\n`;
+    fs.writeSync(_fileLogFd!, line);
+  } catch {
+    // Silent fail
+  }
+}
+
+// ============================================================================
+// Prompts.log (companion file to output.log)
+// ============================================================================
+
+function promptSlug(
+  counter: number,
+  agentName: string,
+  modelType: string,
+): string {
+  return `#${String(counter).padStart(4, "0")}/${agentName}/${modelType}`;
+}
+
+const MAX_PROMPT_LOG_CHARS = 100_000;
+
+function writeToPromptLog(
+  slug: string,
+  kind: "PROMPT" | "RESPONSE",
+  modelType: string,
+  body: string,
+  metadata?: Record<string, unknown>,
+): void {
+  if (!ensureFileLog() || !_promptLogFd) return;
+  try {
+    const fs = getFs();
+    if (!fs) return;
+    const sep = "═".repeat(80);
+    let header = `${sep}\n ${slug}  ${kind}: ${modelType} (${body.length} chars)\n`;
+    header += ` ${new Date().toISOString()}\n`;
+    if (metadata) {
+      header += ` ${JSON.stringify(metadata, null, 2)}\n`;
+    }
+    header += `${sep}\n`;
+    fs.writeSync(_promptLogFd, header);
+    if (body.length > MAX_PROMPT_LOG_CHARS) {
+      fs.writeSync(_promptLogFd, body.substring(0, MAX_PROMPT_LOG_CHARS));
+      fs.writeSync(
+        _promptLogFd,
+        `\n... [TRUNCATED — ${body.length - MAX_PROMPT_LOG_CHARS} more chars]\n`,
+      );
+    } else {
+      fs.writeSync(_promptLogFd, body);
+    }
+    fs.writeSync(_promptLogFd, `\n${sep}\n\n`);
+  } catch {
+    // Silent fail
+  }
+}
+
+/**
+ * Log a prompt to prompts.log. Returns a slug for output.log.
+ */
+export function logPrompt(
+  modelType: string,
+  prompt: string,
+  metadata?: {
+    agentName?: string;
+    agentId?: string;
+    runId?: string;
+    provider?: string;
+    caller?: string;
+    [key: string]: unknown;
+  },
+): string {
+  if (!ensureFileLog()) return "";
+  // Use next counter for prompts, store slug in metadata for response
+  const counter = ++_promptLogCounter;
+  const agentName = metadata?.agentName ?? "unknown"; 
+  const slug = promptSlug(counter, agentName, modelType);
+  // Store prompt slug for correlation with response
+  metadata = { ...metadata, promptSlug: slug };
+  writeToPromptLog(slug, "PROMPT", modelType, prompt, metadata);
+  return slug;
+}
+
+/**
+ * Log a response to prompts.log. Returns a slug for output.log.
+ */
+export function logResponse(
+  modelType: string,
+  response: string,
+  metadata?: {
+    agentName?: string;
+    agentId?: string;
+    runId?: string;
+    provider?: string;
+    duration?: number;
+    promptSlug?: string;
+    [key: string]: unknown;
+  },
+): string {
+  if (!ensureFileLog()) return "";
+  // If promptSlug not provided in metadata, log entries can't be correlated
+  // Don't increment counter - use same slug as prompt
+  const agentName = metadata?.agentName ?? "unknown";
+  // Require promptSlug in metadata for correlation
+  const slug = metadata?.promptSlug;
+  if (!slug) {
+    logger.warn({ src: "core:logger" }, "logResponse missing promptSlug - responses can't be correlated");
+    return "";
+  }
+  writeToPromptLog(slug, "RESPONSE", modelType, response, metadata);
+  return slug;
+}
+
+// ============================================================================
+// Chat instrumentation (chat.log)
+// ============================================================================
+
+const CHAT_PREVIEW_IN_MAX = 200;
+const CHAT_PREVIEW_OUT_MAX = 120;
+
+function escapeChatPreview(text: string): string {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  return oneLine.replace(/"/g, '\\"');
+}
+
+function writeChatLine(line: string): void {
+  if (!ensureFileLog() || !_chatLogFd) return;
+  try {
+    const fs = getFs();
+    if (!fs) return;
+    const timestamp = new Date().toISOString();
+    fs.writeSync(_chatLogFd, `${timestamp} ${line}\n`);
+  } catch {
+    // Silent fail
+  }
+}
+
+/**
+ * Log an incoming message to chat.log. Call when a message is received.
+ */
+export function logChatIn(params: {
+  agentName: string;
+  agentId: string;
+  roomId: string;
+  messageId: string;
+  text: string;
+  source?: string;
+}): string {
+  const preview = escapeChatPreview(
+    params.text.length > CHAT_PREVIEW_IN_MAX
+      ? params.text.slice(0, CHAT_PREVIEW_IN_MAX) + "…"
+      : params.text,
+  );
+  const roomShort = params.roomId.slice(0, 8);
+  const msgShort = params.messageId.slice(0, 8);
+  const source = params.source ?? "unknown";
+  const line = `[CHAT:IN]  #${params.agentName} room=${roomShort} msg=${msgShort} source=${source} "${preview}"`;
+  writeChatLine(line);
+  return line;
+}
+
+/**
+ * Log an outgoing response to chat.log. Call when the agent sends a reply (once per logical send).
+ */
+export function logChatOut(params: {
+  agentName: string;
+  agentId: string;
+  roomId: string;
+  action: string;
+  text?: string;
+  emoji?: string;
+  providers?: string[];
+  reasoning?: string;
+  actions?: string[];
+}): string {
+  const roomShort = params.roomId.slice(0, 8);
+  let part = `[CHAT:OUT] #${params.agentName} room=${roomShort} action=${params.action}`;
+  if (params.actions && params.actions.length > 0) {
+    part += ` actions=${params.actions.join(",")}`;
+  }
+  if (params.emoji) {
+    part += ` emoji=${params.emoji}`;
+  }
+  if (params.text !== undefined && params.text !== "") {
+    const preview = escapeChatPreview(
+      params.text.length > CHAT_PREVIEW_OUT_MAX
+        ? params.text.slice(0, CHAT_PREVIEW_OUT_MAX) + "…"
+        : params.text,
+    );
+    part += ` len=${params.text.length} "${preview}"`;
+  } else if (params.emoji) {
+    part += ` len=0`;
+  }
+  if (params.providers && params.providers.length > 0) {
+    part += ` providers=${params.providers.join(",")}`;
+  }
+  if (params.reasoning !== undefined && params.reasoning !== "") {
+    const safe = escapeChatPreview(
+      params.reasoning.length > 80
+        ? params.reasoning.slice(0, 80) + "…"
+        : params.reasoning,
+    );
+    part += ` reasoning="${safe}"`;
+  }
+  writeChatLine(part);
+  return part;
 }
 
 // ============================================================================
@@ -801,11 +1115,10 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       level:
         LOG_LEVEL_PRIORITY[method.toLowerCase()] || LOG_LEVEL_PRIORITY.info,
       msg,
-      roomId: loggerScope.getStore()?.roomId,
-      runtime: loggerScope.getStore()?.runtime,
     };
 
     globalInMemoryDestination.write(entry);
+    writeLogEntryToFile(entry);
 
     // Map Eliza methods to correct Adze invocations
     let adzeMethod = method;

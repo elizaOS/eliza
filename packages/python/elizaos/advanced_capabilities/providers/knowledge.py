@@ -25,30 +25,10 @@ async def get_knowledge_context(
             text="", values={"knowledgeCount": 0, "hasKnowledge": False}, data={"entries": []}
         )
 
-    # 1. Fetch recent messages to get embeddings
-    recent_messages = await runtime.get_memories(
-        room_id=message.room_id, limit=5, table_name="messages"
+    relevant_knowledge = await runtime.search_knowledge(
+        query=query_text,
+        limit=5,
     )
-
-    # 2. Extract valid embeddings
-    embeddings = [m.embedding for m in recent_messages if m and m.embedding]
-
-    relevant_knowledge = []
-    # 3. Search using the most recent embedding if available
-    if embeddings:
-        primary_embedding = embeddings[0]
-        params = {
-            "tableName": "knowledge",
-            "roomId": str(message.room_id),
-            "embedding": primary_embedding,
-            "matchThreshold": 0.75,
-            "matchCount": 5,
-            "unique": True,
-        }
-        relevant_knowledge = await runtime.search_memories(params)
-    elif query_text:
-        # Fallback skipped for parity with TS/Bootstrap
-        pass
 
     for entry in relevant_knowledge:
         # Handle both dict and object entries

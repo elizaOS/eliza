@@ -173,7 +173,7 @@ describe("Actions", () => {
       expect(formatted).toBe("- **greet**: Greet someone");
     });
 
-    it("should include parameter definitions when present", () => {
+    it("should include parameter definitions and examples when present", () => {
       const formatted = formatActions([
         {
           name: "MOVE",
@@ -201,8 +201,8 @@ describe("Actions", () => {
       expect(formatted).toContain("- **MOVE**: Move the agent.");
       expect(formatted).toContain("Parameters:");
       expect(formatted).toContain("direction (required)");
-      expect(formatted).toContain("[values: north, south]");
-      expect(formatted).not.toContain("[examples:");
+      expect(formatted).toContain("[examples:");
+      expect(formatted).toContain('"north"');
     });
 
     it("should include commas and newlines between multiple actions", () => {

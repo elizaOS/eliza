@@ -1,0 +1,91 @@
+// environment.proto - Environment types (Entity, Room, World) for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "google/protobuf/struct.proto";
+
+// Entity component - extensible data attached to entities
+message Component {
+  string id = 1;
+  string entity_id = 2;
+  string agent_id = 3;
+  string room_id = 4;
+  string world_id = 5;
+  string source_entity_id = 6;
+  string type = 7;
+  int64 created_at = 8;
+  google.protobuf.Struct data = 9;
+}
+
+// Represents an entity (user, agent, or other actor)
+message Entity {
+  // Unique identifier, optional on creation
+  optional string id = 1;
+  // Names of the entity
+  repeated string names = 2;
+  // Additional metadata
+  google.protobuf.Struct metadata = 3;
+  // Agent ID this entity is related to
+  string agent_id = 4;
+  // Optional array of components
+  repeated Component components = 5;
+}
+
+// World ownership metadata
+message WorldOwnership {
+  string owner_id = 1;
+}
+
+// World metadata
+message WorldMetadata {
+  optional WorldOwnership ownership = 1;
+  // Role assignments keyed by entity ID
+  map<string, string> roles = 2;
+  // Additional dynamic metadata
+  google.protobuf.Struct extra = 3;
+}
+
+// Represents a world (server, guild, or top-level container)
+message World {
+  string id = 1;
+  optional string name = 2;
+  string agent_id = 3;
+  optional string message_server_id = 4;
+  optional WorldMetadata metadata = 5;
+}
+
+// Room metadata (dynamic key-value pairs)
+message RoomMetadata {
+  google.protobuf.Struct values = 1;
+}
+
+// Represents a room (channel, chat, or conversation container)
+message Room {
+  string id = 1;
+  optional string name = 2;
+  optional string agent_id = 3;
+  string source = 4;
+  string type = 5;
+  optional string channel_id = 6;
+  optional string message_server_id = 7;
+  optional string world_id = 8;
+  optional RoomMetadata metadata = 9;
+}
+
+// Room participant with entity details
+message Participant {
+  string id = 1;
+  Entity entity = 2;
+}
+
+// Represents a relationship between entities
+message Relationship {
+  string id = 1;
+  string source_entity_id = 2;
+  string target_entity_id = 3;
+  string agent_id = 4;
+  repeated string tags = 5;
+  google.protobuf.Struct metadata = 6;
+  optional string created_at = 7;
+}

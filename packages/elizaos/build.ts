@@ -10,10 +10,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 const ROOT_DIR = path.resolve(import.meta.dir, "../..");
+const EXAMPLES_DIR = path.join(ROOT_DIR, "examples");
 const PACKAGE_DIR = import.meta.dir;
 const DIST_DIR = path.join(PACKAGE_DIR, "dist");
-const ROOT_EXAMPLES_DIR = path.join(ROOT_DIR, "examples");
-const PACKAGE_EXAMPLES_DIR = path.join(PACKAGE_DIR, "examples");
 
 interface ExampleLanguage {
   language: string;
@@ -177,9 +176,9 @@ function copyExamplesDir(src: string, dest: string, examples: Example[]): void {
   }
 }
 
-function getExampleDescription(examplesDir: string, name: string): string {
+function getExampleDescription(name: string): string {
   // Try to read README for description
-  const readmePath = path.join(examplesDir, name, "README.md");
+  const readmePath = path.join(EXAMPLES_DIR, name, "README.md");
   if (fs.existsSync(readmePath)) {
     const content = fs.readFileSync(readmePath, "utf-8");
     const lines = content.split("\n");
@@ -254,48 +253,15 @@ function detectLanguage(langDir: string): ExampleLanguage | null {
   };
 }
 
-function resolveExamplesDir(): string | null {
-  if (
-    fs.existsSync(ROOT_EXAMPLES_DIR) &&
-    fs.statSync(ROOT_EXAMPLES_DIR).isDirectory()
-  ) {
-    return ROOT_EXAMPLES_DIR;
-  }
-
-  if (
-    fs.existsSync(PACKAGE_EXAMPLES_DIR) &&
-    fs.statSync(PACKAGE_EXAMPLES_DIR).isDirectory()
-  ) {
-    return PACKAGE_EXAMPLES_DIR;
-  }
-
-  return null;
-}
-
-function createEmptyManifest(): ExamplesManifest {
-  return {
-    version: "1.0.0",
-    generatedAt: new Date().toISOString(),
-    repoUrl: "https://github.com/elizaos/eliza",
-    examples: [],
-    categories: [],
-    languages: [],
-  };
-}
-
-function scanExamples(examplesDir: string | null): ExamplesManifest {
-  if (!examplesDir) {
-    return createEmptyManifest();
-  }
-
+function scanExamples(): ExamplesManifest {
   const examples: Example[] = [];
   const categoriesSet = new Set<string>();
   const languagesSet = new Set<string>();
 
-  const entries = fs.readdirSync(examplesDir);
+  const entries = fs.readdirSync(EXAMPLES_DIR);
 
   for (const entry of entries) {
-    const examplePath = path.join(examplesDir, entry);
+    const examplePath = path.join(EXAMPLES_DIR, entry);
     const stat = fs.statSync(examplePath);
 
     if (!stat.isDirectory()) continue;
@@ -378,7 +344,7 @@ function scanExamples(examplesDir: string | null): ExamplesManifest {
 
       examples.push({
         name: displayName,
-        description: getExampleDescription(examplesDir, entry),
+        description: getExampleDescription(entry),
         path: examplePath,
         languages,
         category: entry, // Keep original directory name for path resolution
@@ -405,13 +371,8 @@ function scanExamples(examplesDir: string | null): ExamplesManifest {
 }
 
 async function main() {
-  const examplesDir = resolveExamplesDir();
-  if (examplesDir) {
-    console.log(`🔍 Scanning examples directory: ${examplesDir}`);
-  } else {
-    console.log("🔍 No examples directory found; generating empty manifest");
-  }
-  const manifest = scanExamples(examplesDir);
+  console.log("🔍 Scanning examples directory...");
+  const manifest = scanExamples();
 
   console.log(
     `📦 Found ${manifest.examples.length} examples with ${manifest.languages.length} languages`,
@@ -432,18 +393,12 @@ async function main() {
 
   // Copy examples to package for bundling
   const pkgExamplesDir = path.join(PACKAGE_DIR, "examples");
-  if (!examplesDir) {
-    console.log("📦 No examples to bundle");
-  } else if (path.resolve(examplesDir) === path.resolve(pkgExamplesDir)) {
-    console.log("📦 Examples already in package directory; skipping copy");
-  } else {
-    if (fs.existsSync(pkgExamplesDir)) {
-      fs.rmSync(pkgExamplesDir, { recursive: true, force: true });
-    }
-
-    console.log("📦 Bundling examples...");
-    copyExamplesDir(examplesDir, pkgExamplesDir, manifest.examples);
+  if (fs.existsSync(pkgExamplesDir)) {
+    fs.rmSync(pkgExamplesDir, { recursive: true, force: true });
   }
+
+  console.log("📦 Bundling examples...");
+  copyExamplesDir(EXAMPLES_DIR, pkgExamplesDir, manifest.examples);
 
   // Compile TypeScript
   console.log("🔨 Compiling TypeScript...");

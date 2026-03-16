@@ -1,0 +1,30 @@
+{
+  "name": "@elizaos/plugin-msteams",
+  "version": "2.0.0-alpha.1",
+  "description": "Microsoft Teams integration for elizaOS",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -w -p tsconfig.json"
+  },
+  "dependencies": {
+    "botbuilder": "^4.23.0",
+    "botframework-connector": "^4.23.0",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js via main entry point"
+    }
+  }
+}

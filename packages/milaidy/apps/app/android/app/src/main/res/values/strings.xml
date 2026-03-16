@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Milaidy</string>
+    <string name="title_activity_main">Milaidy</string>
+    <string name="package_name">ai.milaidy.app</string>
+    <string name="custom_url_scheme">ai.milaidy.app</string>
+</resources>

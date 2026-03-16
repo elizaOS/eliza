@@ -195,20 +195,12 @@ impl HistoryProcessor for ChainedHistoryProcessor {
 pub enum HistoryProcessorConfig {
     #[default]
     Default,
-    LastNObservations {
-        n: usize,
-    },
-    TagToolCallObservations {
-        tag: String,
-    },
+    LastNObservations { n: usize },
+    TagToolCallObservations { tag: String },
     ClosedWindow,
     CacheControl,
-    RemoveRegex {
-        pattern: String,
-    },
-    ImageParsing {
-        disable_images: bool,
-    },
+    RemoveRegex { pattern: String },
+    ImageParsing { disable_images: bool },
 }
 
 /// Create a history processor from configuration

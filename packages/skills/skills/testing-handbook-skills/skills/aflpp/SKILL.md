@@ -56,7 +56,7 @@ AFL++ has many dependencies including LLVM, Python, and Rust. We recommend using
 
 ### Ubuntu/Debian
 
-Prior to installing afl++, check the clang version dependency of the package with `apt-cache show afl++`, and install the matching `lld` version (e.g., `lld-17`).
+Prior to installing afl++, check the clang version dependency of the packge with `apt-cache show afl++`, and install the matching `lld` version (e.g., `lld-17`).
 
 
 ```bash

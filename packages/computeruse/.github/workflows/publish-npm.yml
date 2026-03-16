@@ -17,7 +17,7 @@ jobs:
             platform: win32
             suffix: "-msvc"
             build: |
-              cd packages/computeruse-ts
+              cd packages/computeruse-nodejs
               npm run build
               cp computeruse.win32-x64-msvc.node npm/win32-x64-msvc/
           - host: windows-11-arm
@@ -26,7 +26,7 @@ jobs:
             platform: win32
             suffix: "-msvc"
             build: |
-              cd packages/computeruse-ts
+              cd packages/computeruse-nodejs
               npm run build
               cp computeruse.win32-arm64-msvc.node npm/win32-arm64-msvc/
           # macOS
@@ -36,7 +36,7 @@ jobs:
             platform: darwin
             suffix: ""
             build: |
-              cd packages/computeruse-ts
+              cd packages/computeruse-nodejs
               npm run build
               cp computeruse.darwin-arm64.node npm/darwin-arm64/
           - host: macos-13
@@ -45,7 +45,7 @@ jobs:
             platform: darwin
             suffix: ""
             build: |
-              cd packages/computeruse-ts
+              cd packages/computeruse-nodejs
               npm run build
               cp computeruse.darwin-x64.node npm/darwin-x64/
           # Linux
@@ -55,7 +55,7 @@ jobs:
             platform: linux
             suffix: "-gnu"
             build: |
-              cd packages/computeruse-ts
+              cd packages/computeruse-nodejs
               npm run build
               cp computeruse.linux-x64-gnu.node npm/linux-x64-gnu/
           - host: ubuntu-latest
@@ -65,7 +65,7 @@ jobs:
             suffix: "-gnu"
             use_cross: true
             build: |
-              cd packages/computeruse-ts
+              cd packages/computeruse-nodejs
               npm run build
               cp computeruse.linux-arm64-gnu.node npm/linux-arm64-gnu/
 
@@ -120,7 +120,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd packages/computeruse-ts
+          cd packages/computeruse-nodejs
           # Remove any existing tgz files that might cause issues
           rm -f *.tgz
           # Remove node_modules and package-lock to avoid local package issues
@@ -130,7 +130,7 @@ jobs:
 
       - name: Sync version
         run: |
-          cd packages/computeruse-ts
+          cd packages/computeruse-nodejs
           npm run sync-version
 
       - name: Build
@@ -139,7 +139,7 @@ jobs:
 
       - name: Verify build output
         run: |
-          cd packages/computeruse-ts
+          cd packages/computeruse-nodejs
           echo "Verifying .node file was created and copied:"
 
           # Platform package directory (with suffix for Windows/Linux)
@@ -161,8 +161,8 @@ jobs:
         with:
           name: bindings-${{ matrix.settings.target }}
           path: |
-            packages/computeruse-ts/npm/*/
-            !packages/computeruse-ts/npm/*/*.tgz
+            packages/computeruse-nodejs/npm/*/
+            !packages/computeruse-nodejs/npm/*/*.tgz
 
   publish:
     name: Publish NPM packages
@@ -204,22 +204,22 @@ jobs:
                 
                 # Copy the entire directory structure from artifact to preserve platform packages
                 # Target should be npm/ subdirectory where platform packages are located
-                rsync -av "$artifact_dir/" packages/computeruse-ts/npm/ --include="*/" --include="*.node" --exclude="*"
+                rsync -av "$artifact_dir/" packages/computeruse-nodejs/npm/ --include="*/" --include="*.node" --exclude="*"
               done
             fi
           done
           
           echo "=== Final verification of copied .node files ==="
-          find packages/computeruse-ts/npm -name "*.node" -type f || echo "No .node files found after copy!"
+          find packages/computeruse-nodejs/npm -name "*.node" -type f || echo "No .node files found after copy!"
 
       - name: Sync version for publish
         run: |
-          cd packages/computeruse-ts
+          cd packages/computeruse-nodejs
           npm run sync-version
 
       - name: Publish platform packages
         run: |
-          cd packages/computeruse-ts
+          cd packages/computeruse-nodejs
           
           # Extract version once
           MAIN_VERSION=$(node -p "require('./package.json').version")
@@ -270,7 +270,7 @@ jobs:
       - name: Verify platform packages are published
         continue-on-error: true
         run: |
-          cd packages/computeruse-ts
+          cd packages/computeruse-nodejs
           MAIN_VERSION=$(node -p "require('./package.json').version")
           echo "Verifying platform packages for version $MAIN_VERSION are available..."
           
@@ -357,7 +357,7 @@ jobs:
 
       - name: Publish main package
         run: |
-          cd packages/computeruse-ts
+          cd packages/computeruse-nodejs
           
           # Install dependencies including @napi-rs/cli
           npm install
@@ -398,7 +398,7 @@ jobs:
       - name: Final verification
         continue-on-error: true
         run: |
-          cd packages/computeruse-ts
+          cd packages/computeruse-nodejs
           PACKAGE_NAME=$(node -p "require('./package.json').name")
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           

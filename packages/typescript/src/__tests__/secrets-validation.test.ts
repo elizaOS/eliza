@@ -5,16 +5,16 @@
  * and checkRequiredSecrets function.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
+  SECRET_VALIDATION_PATTERNS,
+  validateSecretKey,
+  validateSecrets,
   checkRequiredSecrets,
   getValidationPattern,
   hasValidationPattern,
   inferValidationPatternKey,
-  SECRET_VALIDATION_PATTERNS,
   type SecretValidationResult,
-  validateSecretKey,
-  validateSecrets,
 } from "../validation/secrets";
 
 // ============================================================================
@@ -27,12 +27,8 @@ describe("Secret Validation Patterns", () => {
 
     it("should validate correct OpenAI API keys", () => {
       expect(pattern.pattern.test("sk-proj-abcdefghij1234567890")).toBe(true);
-      expect(
-        pattern.pattern.test("sk-1234567890123456789012345678901234567890"),
-      ).toBe(true);
-      expect(pattern.pattern.test("sk-test_key-with-dashes_underscores")).toBe(
-        true,
-      );
+      expect(pattern.pattern.test("sk-1234567890123456789012345678901234567890")).toBe(true);
+      expect(pattern.pattern.test("sk-test_key-with-dashes_underscores")).toBe(true);
     });
 
     it("should reject invalid OpenAI API keys", () => {
@@ -47,12 +43,8 @@ describe("Secret Validation Patterns", () => {
     const pattern = SECRET_VALIDATION_PATTERNS.ANTHROPIC_API_KEY;
 
     it("should validate correct Anthropic API keys", () => {
-      expect(pattern.pattern.test("sk-ant-api03-abcdefghij1234567890")).toBe(
-        true,
-      );
-      expect(pattern.pattern.test("sk-ant-test1234567890123456789012345")).toBe(
-        true,
-      );
+      expect(pattern.pattern.test("sk-ant-api03-abcdefghij1234567890")).toBe(true);
+      expect(pattern.pattern.test("sk-ant-test1234567890123456789012345")).toBe(true);
     });
 
     it("should reject invalid Anthropic API keys", () => {
@@ -66,12 +58,8 @@ describe("Secret Validation Patterns", () => {
     const pattern = SECRET_VALIDATION_PATTERNS.GOOGLE_API_KEY;
 
     it("should validate correct Google API keys", () => {
-      expect(
-        pattern.pattern.test("AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ123456"),
-      ).toBe(true);
-      expect(pattern.pattern.test("AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")).toBe(
-        true,
-      );
+      expect(pattern.pattern.test("AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ123456")).toBe(true);
+      expect(pattern.pattern.test("AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")).toBe(true);
     });
 
     it("should reject invalid Google API keys", () => {
@@ -86,9 +74,7 @@ describe("Secret Validation Patterns", () => {
 
     it("should validate correct Groq API keys", () => {
       expect(pattern.pattern.test("gsk_abcdefghij1234567890")).toBe(true);
-      expect(
-        pattern.pattern.test("gsk_1234567890123456789012345678901234567890"),
-      ).toBe(true);
+      expect(pattern.pattern.test("gsk_1234567890123456789012345678901234567890")).toBe(true);
     });
 
     it("should reject invalid Groq API keys", () => {
@@ -102,14 +88,10 @@ describe("Secret Validation Patterns", () => {
 
     it("should validate correct Discord bot tokens", () => {
       expect(
-        pattern.pattern.test(
-          "MTIzNDU2Nzg5MDEyMzQ1Njc4.GxxxxX.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        ),
+        pattern.pattern.test("MTIzNDU2Nzg5MDEyMzQ1Njc4.GxxxxX.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
       ).toBe(true);
       expect(
-        pattern.pattern.test(
-          "ODk0NzU2NDUyMDM0NjU0OTI2.YVo0Kw.abcdefghijklmnopqrstuvwxyz1",
-        ),
+        pattern.pattern.test("ODk0NzU2NDUyMDM0NjU0OTI2.YVo0Kw.abcdefghijklmnopqrstuvwxyz1")
       ).toBe(true);
     });
 
@@ -124,12 +106,9 @@ describe("Secret Validation Patterns", () => {
     const pattern = SECRET_VALIDATION_PATTERNS.TELEGRAM_BOT_TOKEN;
 
     it("should validate correct Telegram bot tokens", () => {
-      expect(
-        pattern.pattern.test("123456789:ABCdefGHIjklMNOpqrSTUvwxYZ12345678901"),
-      ).toBe(true);
-      expect(
-        pattern.pattern.test("1234567890:abcdefghijklmnopqrstuvwxyz123456789"),
-      ).toBe(true);
+      // Pattern requires exactly 35 chars after colon: \d{8,10}:[A-Za-z0-9_-]{35}
+      expect(pattern.pattern.test("123456789:ABCdefGHIjklMNOpqrSTUvwxYZ123456789")).toBe(true);
+      expect(pattern.pattern.test("1234567890:abcdefghijklmnopqrstuvwxyz123456789")).toBe(true);
     });
 
     it("should reject invalid Telegram bot tokens", () => {
@@ -179,15 +158,9 @@ describe("Secret Validation Patterns", () => {
     const pattern = SECRET_VALIDATION_PATTERNS.DATABASE_URL;
 
     it("should validate correct database URLs", () => {
-      expect(
-        pattern.pattern.test("postgres://user:pass@localhost:5432/db"),
-      ).toBe(true);
+      expect(pattern.pattern.test("postgres://user:pass@localhost:5432/db")).toBe(true);
       expect(pattern.pattern.test("postgresql://localhost/mydb")).toBe(true);
-      expect(
-        pattern.pattern.test(
-          "mysql://root:password@mysql.example.com:3306/app",
-        ),
-      ).toBe(true);
+      expect(pattern.pattern.test("mysql://root:password@mysql.example.com:3306/app")).toBe(true);
       expect(pattern.pattern.test("sqlite:///path/to/db.sqlite")).toBe(true);
       expect(pattern.pattern.test("mongodb://localhost:27017/mydb")).toBe(true);
     });
@@ -203,10 +176,7 @@ describe("Secret Validation Patterns", () => {
 describe("validateSecretKey()", () => {
   describe("With Known Patterns", () => {
     it("should validate correct OpenAI key", () => {
-      const result = validateSecretKey(
-        "OPENAI_API_KEY",
-        "sk-proj-abcdefghij1234567890",
-      );
+      const result = validateSecretKey("OPENAI_API_KEY", "sk-proj-abcdefghij1234567890");
       expect(result.isValid).toBe(true);
       expect(result.error).toBeUndefined();
     });
@@ -226,7 +196,7 @@ describe("validateSecretKey()", () => {
     it("should validate correct Anthropic key", () => {
       const result = validateSecretKey(
         "ANTHROPIC_API_KEY",
-        "sk-ant-api03-abcdefghij1234567890",
+        "sk-ant-api03-abcdefghij1234567890"
       );
       expect(result.isValid).toBe(true);
     });
@@ -234,7 +204,7 @@ describe("validateSecretKey()", () => {
     it("should validate Discord bot token", () => {
       const result = validateSecretKey(
         "DISCORD_BOT_TOKEN",
-        "MTIzNDU2Nzg5MDEyMzQ1Njc4.GxxxxX.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "MTIzNDU2Nzg5MDEyMzQ1Njc4.GxxxxX.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       );
       expect(result.isValid).toBe(true);
     });
@@ -258,25 +228,13 @@ describe("validateSecretKey()", () => {
     });
 
     it("should reject placeholder values", () => {
-      expect(
-        validateSecretKey("UNKNOWN_KEY", "your_api_key_here").isValid,
-      ).toBe(false);
-      expect(validateSecretKey("UNKNOWN_KEY", "your-api-key").isValid).toBe(
-        false,
-      );
+      expect(validateSecretKey("UNKNOWN_KEY", "your_api_key_here").isValid).toBe(false);
+      expect(validateSecretKey("UNKNOWN_KEY", "your-api-key").isValid).toBe(false);
       expect(validateSecretKey("UNKNOWN_KEY", "TODO").isValid).toBe(false);
-      expect(validateSecretKey("UNKNOWN_KEY", "REPLACE_ME").isValid).toBe(
-        false,
-      );
-      expect(validateSecretKey("UNKNOWN_KEY", "placeholder").isValid).toBe(
-        false,
-      );
-      expect(validateSecretKey("UNKNOWN_KEY", "<your_key>").isValid).toBe(
-        false,
-      );
-      expect(validateSecretKey("UNKNOWN_KEY", "[your_key]").isValid).toBe(
-        false,
-      );
+      expect(validateSecretKey("UNKNOWN_KEY", "REPLACE_ME").isValid).toBe(false);
+      expect(validateSecretKey("UNKNOWN_KEY", "placeholder").isValid).toBe(false);
+      expect(validateSecretKey("UNKNOWN_KEY", "<your_key>").isValid).toBe(false);
+      expect(validateSecretKey("UNKNOWN_KEY", "[your_key]").isValid).toBe(false);
     });
 
     it("should warn for suspiciously short values", () => {
@@ -290,10 +248,7 @@ describe("validateSecretKey()", () => {
   describe("Validation Timestamp", () => {
     it("should include validation timestamp", () => {
       const before = Date.now();
-      const result = validateSecretKey(
-        "OPENAI_API_KEY",
-        "sk-test12345678901234567890",
-      );
+      const result = validateSecretKey("OPENAI_API_KEY", "sk-test12345678901234567890");
       const after = Date.now();
 
       expect(result.validatedAt).toBeGreaterThanOrEqual(before);
@@ -340,8 +295,7 @@ describe("checkRequiredSecrets()", () => {
   it("should report all required secrets present and valid", () => {
     const secrets = {
       OPENAI_API_KEY: "sk-test12345678901234567890",
-      DISCORD_BOT_TOKEN:
-        "MTIzNDU2Nzg5MDEyMzQ1Njc4.GxxxxX.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      DISCORD_BOT_TOKEN: "MTIzNDU2Nzg5MDEyMzQ1Njc4.GxxxxX.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     };
 
     const required = ["OPENAI_API_KEY", "DISCORD_BOT_TOKEN"];
@@ -441,15 +395,9 @@ describe("inferValidationPatternKey()", () => {
   });
 
   it("should infer ANTHROPIC_API_KEY from variations", () => {
-    expect(inferValidationPatternKey("ANTHROPIC_API_KEY")).toBe(
-      "ANTHROPIC_API_KEY",
-    );
-    expect(inferValidationPatternKey("ANTHROPIC_KEY")).toBe(
-      "ANTHROPIC_API_KEY",
-    );
-    expect(inferValidationPatternKey("anthropic_key")).toBe(
-      "ANTHROPIC_API_KEY",
-    );
+    expect(inferValidationPatternKey("ANTHROPIC_API_KEY")).toBe("ANTHROPIC_API_KEY");
+    expect(inferValidationPatternKey("ANTHROPIC_KEY")).toBe("ANTHROPIC_API_KEY");
+    expect(inferValidationPatternKey("anthropic_key")).toBe("ANTHROPIC_API_KEY");
   });
 
   it("should infer GOOGLE_API_KEY from variations", () => {
@@ -459,25 +407,15 @@ describe("inferValidationPatternKey()", () => {
   });
 
   it("should infer DISCORD_BOT_TOKEN from variations", () => {
-    expect(inferValidationPatternKey("DISCORD_BOT_TOKEN")).toBe(
-      "DISCORD_BOT_TOKEN",
-    );
-    expect(inferValidationPatternKey("DISCORD_TOKEN")).toBe(
-      "DISCORD_BOT_TOKEN",
-    );
+    expect(inferValidationPatternKey("DISCORD_BOT_TOKEN")).toBe("DISCORD_BOT_TOKEN");
+    expect(inferValidationPatternKey("DISCORD_TOKEN")).toBe("DISCORD_BOT_TOKEN");
     expect(inferValidationPatternKey("discord_bot")).toBe("DISCORD_BOT_TOKEN");
   });
 
   it("should infer TELEGRAM_BOT_TOKEN from variations", () => {
-    expect(inferValidationPatternKey("TELEGRAM_BOT_TOKEN")).toBe(
-      "TELEGRAM_BOT_TOKEN",
-    );
-    expect(inferValidationPatternKey("TELEGRAM_TOKEN")).toBe(
-      "TELEGRAM_BOT_TOKEN",
-    );
-    expect(inferValidationPatternKey("telegram_bot")).toBe(
-      "TELEGRAM_BOT_TOKEN",
-    );
+    expect(inferValidationPatternKey("TELEGRAM_BOT_TOKEN")).toBe("TELEGRAM_BOT_TOKEN");
+    expect(inferValidationPatternKey("TELEGRAM_TOKEN")).toBe("TELEGRAM_BOT_TOKEN");
+    expect(inferValidationPatternKey("telegram_bot")).toBe("TELEGRAM_BOT_TOKEN");
   });
 
   it("should return original key for unrecognized patterns", () => {

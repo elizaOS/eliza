@@ -1,0 +1,67 @@
+[package]
+name = "elizaos-plugin-acp"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "elizaOS ACP Plugin - Agentic Commerce Protocol for checkout and commerce"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+keywords = ["ai", "agent", "acp", "commerce", "checkout", "elizaos"]
+categories = ["data-structures", "asynchronous"]
+readme = "README.md"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full", "reqwest"]
+wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "getrandom/js"]
+
+[dependencies]
+# Core runtime types (for native plugin integration)
+elizaos = { version = "2.0.0", path = "../../../packages/rust", default-features = false, features = ["native"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async runtime
+async-trait = "0.1"
+futures = "0.3"
+
+# Error handling
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+
+# UUID handling
+uuid = { version = "1.19", features = ["v4", "serde"] }
+
+# DateTime handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# HTTP client (native only)
+reqwest = { version = "0.12", features = ["json"], optional = true }
+
+# Native-only dependencies
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "sync", "time"], optional = true }
+
+# WASM-only dependencies
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", features = ["console"], optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+getrandom = { version = "0.2", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+pretty_assertions = "1.0"
+dotenvy = "0.15"
+mockito = "1.0"
+
+[profile.release]
+lto = true
+opt-level = "z"

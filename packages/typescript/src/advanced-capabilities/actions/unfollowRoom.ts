@@ -11,10 +11,7 @@ import type {
   State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import {
-  composePromptFromState,
-  parseXmlBooleanResponse,
-} from "../../utils.ts";
+import { composePromptFromState, parseBooleanFromText } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UNFOLLOW_ROOM");
@@ -50,12 +47,14 @@ export const unfollowRoomAction: Action = {
         prompt: shouldUnfollowPrompt,
       });
 
-      return parseXmlBooleanResponse(response) ?? false;
+      const parsedResponse = parseBooleanFromText(response.trim());
+
+      return parsedResponse as boolean;
     }
 
     if (state && (await _shouldUnfollow(state))) {
       try {
-        await runtime.setParticipantUserState(
+        await runtime.updateParticipantUserState(
           message.roomId,
           runtime.agentId,
           null,

@@ -63,9 +63,10 @@ export {
   isOllamaAvailable,
   listOllamaModels,
 } from "./ollama-provider";
-export { createTestCharacter } from "./test-helpers";
+
 // Test helper utilities (pure functions, no mocks)
 export {
+  createTestCharacter,
   createTestMemory,
   expectRejection,
   generateTestId,
@@ -73,4 +74,4 @@ export {
   retry,
   testDataGenerators,
   waitFor,
-} from "./test-utils";
+} from "./test-helpers";

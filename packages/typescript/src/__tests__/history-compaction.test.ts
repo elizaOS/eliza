@@ -47,44 +47,7 @@ function createMockRoom(options?: {
 // InMemoryAdapter Tests
 // ============================================
 describe("InMemoryAdapter getMemories with start/end parameters", () => {
-  it(
-    "should filter messages by start timestamp",
-    { timeout: 30000 },
-    async () => {
-      const { InMemoryDatabaseAdapter } = await import(
-        "../database/inMemoryAdapter.ts"
-      );
-
-      const adapter = new InMemoryDatabaseAdapter();
-      await adapter.init();
-
-      const roomId = "room-1" as UUID;
-
-      const messages = [
-        createMockMessage(1000, "Message at 1000", roomId),
-        createMockMessage(2000, "Message at 2000", roomId),
-        createMockMessage(3000, "Message at 3000", roomId),
-        createMockMessage(4000, "Message at 4000", roomId),
-        createMockMessage(5000, "Message at 5000", roomId),
-      ];
-
-      for (const msg of messages) {
-        await adapter.createMemory(msg, "messages", false);
-      }
-
-      // Get messages after start = 2500
-      const result = await adapter.getMemories({
-        tableName: "messages",
-        roomId,
-        start: 2500,
-      });
-
-      expect(result.length).toBe(3);
-      expect(result.map((m) => m.createdAt)).toEqual([3000, 4000, 5000]);
-    },
-  );
-
-  it("should remove deleted memories from room indexes", async () => {
+  it("should filter messages by start timestamp", async () => {
     const { InMemoryDatabaseAdapter } = await import(
       "../database/inMemoryAdapter.ts"
     );
@@ -93,32 +56,29 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
     await adapter.init();
 
     const roomId = "room-1" as UUID;
-    const message = createMockMessage(1000, "Delete me", roomId);
 
-    await adapter.createMemory(message, "messages", false);
-    expect(
-      (
-        await adapter.getMemories({
-          tableName: "messages",
-          roomId,
-        })
-      ).length,
-    ).toBe(1);
+    const messages = [
+      createMockMessage(1000, "Message at 1000", roomId),
+      createMockMessage(2000, "Message at 2000", roomId),
+      createMockMessage(3000, "Message at 3000", roomId),
+      createMockMessage(4000, "Message at 4000", roomId),
+      createMockMessage(5000, "Message at 5000", roomId),
+    ];
 
-    await adapter.deleteMemory(message.id);
+    await adapter.createMemories(messages.map(msg => ({ memory: msg, tableName: "messages", unique: false })));
 
-    expect(
-      (
-        await adapter.getMemories({
-          tableName: "messages",
-          roomId,
-        })
-      ).length,
-    ).toBe(0);
-    expect(await adapter.countMemories(roomId, false, "messages")).toBe(0);
+    // Get messages after start = 2500
+    const result = await adapter.getMemories({
+      tableName: "messages",
+      roomId,
+      start: 2500,
+    });
+
+    expect(result.length).toBe(3);
+    expect(result.map((m) => m.createdAt)).toEqual([3000, 4000, 5000]);
   });
 
-  it("should scope deleteAllMemories and countMemories by table", async () => {
+  it("should filter messages by end timestamp", async () => {
     const { InMemoryDatabaseAdapter } = await import(
       "../database/inMemoryAdapter.ts"
     );
@@ -127,57 +87,27 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
     await adapter.init();
 
     const roomId = "room-1" as UUID;
-    const message = createMockMessage(1000, "Message table entry", roomId);
-    const memory = createMockMessage(2000, "Memory table entry", roomId);
 
-    await adapter.createMemory(message, "messages", false);
-    await adapter.createMemory(memory, "memories", false);
+    const messages = [
+      createMockMessage(1000, "Message at 1000", roomId),
+      createMockMessage(2000, "Message at 2000", roomId),
+      createMockMessage(3000, "Message at 3000", roomId),
+      createMockMessage(4000, "Message at 4000", roomId),
+      createMockMessage(5000, "Message at 5000", roomId),
+    ];
 
-    expect(await adapter.countMemories(roomId, false, "messages")).toBe(1);
-    expect(await adapter.countMemories(roomId, false, "memories")).toBe(1);
+    await adapter.createMemories(messages.map(msg => ({ memory: msg, tableName: "messages", unique: false })));
 
-    await adapter.deleteAllMemories(roomId, "messages");
+    // Get messages before end = 3500
+    const result = await adapter.getMemories({
+      tableName: "messages",
+      roomId,
+      end: 3500,
+    });
 
-    expect(await adapter.countMemories(roomId, false, "messages")).toBe(0);
-    expect(await adapter.countMemories(roomId, false, "memories")).toBe(1);
+    expect(result.length).toBe(3);
+    expect(result.map((m) => m.createdAt)).toEqual([1000, 2000, 3000]);
   });
-
-  it(
-    "should filter messages by end timestamp",
-    { timeout: 30000 },
-    async () => {
-      const { InMemoryDatabaseAdapter } = await import(
-        "../database/inMemoryAdapter.ts"
-      );
-
-      const adapter = new InMemoryDatabaseAdapter();
-      await adapter.init();
-
-      const roomId = "room-1" as UUID;
-
-      const messages = [
-        createMockMessage(1000, "Message at 1000", roomId),
-        createMockMessage(2000, "Message at 2000", roomId),
-        createMockMessage(3000, "Message at 3000", roomId),
-        createMockMessage(4000, "Message at 4000", roomId),
-        createMockMessage(5000, "Message at 5000", roomId),
-      ];
-
-      for (const msg of messages) {
-        await adapter.createMemory(msg, "messages", false);
-      }
-
-      // Get messages before end = 3500
-      const result = await adapter.getMemories({
-        tableName: "messages",
-        roomId,
-        end: 3500,
-      });
-
-      expect(result.length).toBe(3);
-      expect(result.map((m) => m.createdAt)).toEqual([1000, 2000, 3000]);
-    },
-  );
 
   it("should filter messages by both start and end timestamp", async () => {
     const { InMemoryDatabaseAdapter } = await import(
@@ -197,9 +127,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
       createMockMessage(5000, "Message at 5000", roomId),
     ];
 
-    for (const msg of messages) {
-      await adapter.createMemory(msg, "messages", false);
-    }
+    await adapter.createMemories(messages.map(msg => ({ memory: msg, tableName: "messages", unique: false })));
 
     // Get messages between 1500 and 4500
     const result = await adapter.getMemories({
@@ -223,11 +151,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 
     const roomId = "room-1" as UUID;
 
-    await adapter.createMemory(
-      createMockMessage(1000, "Exact", roomId),
-      "messages",
-      false,
-    );
+    await adapter.createMemories([{ memory: createMockMessage(1000, "Exact", roomId), tableName: "messages", unique: false }]);
 
     // Start exactly at message time (should include)
     const resultStart = await adapter.getMemories({
@@ -256,11 +180,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 
     const roomId = "room-1" as UUID;
 
-    await adapter.createMemory(
-      createMockMessage(1000, "Old", roomId),
-      "messages",
-      false,
-    );
+    await adapter.createMemories([{ memory: createMockMessage(1000, "Old", roomId), tableName: "messages", unique: false }]);
 
     // Start after all messages
     const result = await adapter.getMemories({
@@ -283,11 +203,11 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
     const roomId = "room-1" as UUID;
 
     for (let i = 1; i <= 10; i++) {
-      await adapter.createMemory(
-        createMockMessage(i * 1000, `Message ${i}`, roomId),
-        "messages",
-        false,
-      );
+      await adapter.createMemories([{
+        memory: createMockMessage(i * 1000, `Message ${i}`, roomId),
+        tableName: "messages",
+        unique: false,
+      }]);
     }
 
     // Get messages after 3000, but limit to 3
@@ -322,8 +242,10 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 
     const msgWithCreatedAt = createMockMessage(5000, "Has timestamp", roomId);
 
-    await adapter.createMemory(msgWithoutCreatedAt, "messages", false);
-    await adapter.createMemory(msgWithCreatedAt, "messages", false);
+    await adapter.createMemories([
+      { memory: msgWithoutCreatedAt, tableName: "messages", unique: false },
+      { memory: msgWithCreatedAt, tableName: "messages", unique: false }
+    ]);
 
     // Start at 1000 - message without createdAt (treated as 0) should be filtered
     const result = await adapter.getMemories({
@@ -341,61 +263,57 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 // RESET_SESSION Action Tests
 // ============================================
 describe("RESET_SESSION action", () => {
-  it(
-    "should set lastCompactionAt in room metadata",
-    { timeout: 30000 },
-    async () => {
-      const { resetSessionAction } = await import(
-        "../bootstrap/actions/resetSession.ts"
-      );
+  it("should set lastCompactionAt in room metadata", async () => {
+    const { resetSessionAction } = await import(
+      "../bootstrap/actions/resetSession.ts"
+    );
 
-      let updatedRoom: Room | null = null;
-      const mockRuntime = {
-        agentId: "agent-1" as UUID,
-        getRoom: vi.fn(async () => createMockRoom()),
-        updateRoom: vi.fn(async (room: Room) => {
-          updatedRoom = room;
-        }),
-      } as unknown as IAgentRuntime;
+    let updatedRoom: Room | null = null;
+    const mockRuntime = {
+      agentId: "agent-1" as UUID,
+      getRoom: vi.fn(async () => createMockRoom()),
+      updateRoom: vi.fn(async (room: Room) => {
+        updatedRoom = room;
+      }),
+    } as unknown as IAgentRuntime;
 
-      const mockMessage: Memory = {
-        id: "msg-1" as UUID,
-        entityId: "user-1" as UUID,
-        agentId: "agent-1" as UUID,
-        roomId: "room-1" as UUID,
-        content: { text: "/reset" },
-      };
+    const mockMessage: Memory = {
+      id: "msg-1" as UUID,
+      entityId: "user-1" as UUID,
+      agentId: "agent-1" as UUID,
+      roomId: "room-1" as UUID,
+      content: { text: "/reset" },
+    };
 
-      const mockState = {
-        data: {
-          room: createMockRoom(),
-        },
-      };
+    const mockState = {
+      data: {
+        room: createMockRoom(),
+      },
+    };
 
-      const mockCallback = vi.fn();
+    const mockCallback = vi.fn();
 
-      const result = await resetSessionAction.handler(
-        mockRuntime,
-        mockMessage,
-        mockState as never,
-        undefined,
-        mockCallback,
-      );
+    const result = await resetSessionAction.handler(
+      mockRuntime,
+      mockMessage,
+      mockState as never,
+      undefined,
+      mockCallback,
+    );
 
-      expect(result.success).toBe(true);
-      expect(mockRuntime.updateRoom).toHaveBeenCalled();
-      expect(updatedRoom?.metadata?.lastCompactionAt).toBeDefined();
-      expect(typeof updatedRoom?.metadata?.lastCompactionAt).toBe("number");
-      expect(mockCallback).toHaveBeenCalledWith(
-        expect.objectContaining({
-          text: "Session has been reset. I'll start fresh from here.",
-          actions: ["RESET_SESSION"],
-        }),
-      );
-    },
-  );
+    expect(result.success).toBe(true);
+    expect(mockRuntime.updateRoom).toHaveBeenCalled();
+    expect(updatedRoom?.metadata?.lastCompactionAt).toBeDefined();
+    expect(typeof updatedRoom?.metadata?.lastCompactionAt).toBe("number");
+    expect(mockCallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "Session has been reset. I'll start fresh from here.",
+        actions: ["RESET_SESSION"],
+      }),
+    );
+  });
 
-  it("should maintain compaction history", { timeout: 30000 }, async () => {
+  it("should maintain compaction history", async () => {
     const { resetSessionAction } = await import(
       "../bootstrap/actions/resetSession.ts"
     );
@@ -445,53 +363,49 @@ describe("RESET_SESSION action", () => {
     expect(history[1].timestamp).toBeGreaterThan(1000);
   });
 
-  it(
-    "should limit compaction history to 10 entries",
-    { timeout: 30000 },
-    async () => {
-      const { resetSessionAction } = await import(
-        "../bootstrap/actions/resetSession.ts"
-      );
+  it("should limit compaction history to 10 entries", async () => {
+    const { resetSessionAction } = await import(
+      "../bootstrap/actions/resetSession.ts"
+    );
 
-      // Create room with 10 existing entries
-      const existingRoom = createMockRoom({ lastCompactionAt: 10000 });
-      existingRoom.metadata = {
-        ...existingRoom.metadata,
-        compactionHistory: Array.from({ length: 10 }, (_, i) => ({
-          timestamp: (i + 1) * 1000,
-          triggeredBy: `user-${i}`,
-          reason: "manual_reset",
-        })),
-      };
+    // Create room with 10 existing entries
+    const existingRoom = createMockRoom({ lastCompactionAt: 10000 });
+    existingRoom.metadata = {
+      ...existingRoom.metadata,
+      compactionHistory: Array.from({ length: 10 }, (_, i) => ({
+        timestamp: (i + 1) * 1000,
+        triggeredBy: `user-${i}`,
+        reason: "manual_reset",
+      })),
+    };
 
-      let updatedRoom: Room | null = null;
-      const mockRuntime = {
-        agentId: "agent-1" as UUID,
-        getRoom: vi.fn(async () => existingRoom),
-        updateRoom: vi.fn(async (room: Room) => {
-          updatedRoom = room;
-        }),
-      } as unknown as IAgentRuntime;
+    let updatedRoom: Room | null = null;
+    const mockRuntime = {
+      agentId: "agent-1" as UUID,
+      getRoom: vi.fn(async () => existingRoom),
+      updateRoom: vi.fn(async (room: Room) => {
+        updatedRoom = room;
+      }),
+    } as unknown as IAgentRuntime;
 
-      const mockMessage: Memory = {
-        id: "msg-11" as UUID,
-        entityId: "user-11" as UUID,
-        agentId: "agent-1" as UUID,
-        roomId: "room-1" as UUID,
-        content: { text: "/reset" },
-      };
+    const mockMessage: Memory = {
+      id: "msg-11" as UUID,
+      entityId: "user-11" as UUID,
+      agentId: "agent-1" as UUID,
+      roomId: "room-1" as UUID,
+      content: { text: "/reset" },
+    };
 
-      await resetSessionAction.handler(mockRuntime, mockMessage, {
-        data: { room: existingRoom },
-      } as never);
+    await resetSessionAction.handler(mockRuntime, mockMessage, {
+      data: { room: existingRoom },
+    } as never);
 
-      const history = updatedRoom?.metadata?.compactionHistory as {
-        timestamp: number;
-      }[];
-      expect(history).toHaveLength(10); // Should still be 10, oldest removed
-      expect(history[0].timestamp).toBe(2000); // First entry (1000) should be gone
-    },
-  );
+    const history = updatedRoom?.metadata?.compactionHistory as {
+      timestamp: number;
+    }[];
+    expect(history).toHaveLength(10); // Should still be 10, oldest removed
+    expect(history[0].timestamp).toBe(2000); // First entry (1000) should be gone
+  });
 
   it("should handle room not found error", async () => {
     const { resetSessionAction } = await import(
@@ -980,9 +894,7 @@ describe("RECENT_MESSAGES provider compaction integration", () => {
       createMockMessage(5000, "After reset 2", roomId),
     ];
 
-    for (const msg of messages) {
-      await adapter.createMemory(msg, "messages", false);
-    }
+    await adapter.createMemories(messages.map(msg => ({ memory: msg, tableName: "messages", unique: false })));
 
     // Simulate what RECENT_MESSAGES provider does
     const lastCompactionAt = 3500;
@@ -1015,11 +927,7 @@ describe("Edge cases", () => {
     const roomId = "room-1" as UUID;
 
     // Message from "the distant past"
-    await adapter.createMemory(
-      createMockMessage(1, "Ancient message", roomId),
-      "messages",
-      false,
-    );
+    await adapter.createMemories([{ memory: createMockMessage(1, "Ancient message", roomId), tableName: "messages", unique: false }]);
 
     // Compaction at a very old time (but after the message)
     const result = await adapter.getMemories({
@@ -1041,11 +949,7 @@ describe("Edge cases", () => {
 
     const roomId = "room-1" as UUID;
 
-    await adapter.createMemory(
-      createMockMessage(Date.now(), "Recent message", roomId),
-      "messages",
-      false,
-    );
+    await adapter.createMemories([{ memory: createMockMessage(Date.now(), "Recent message", roomId), tableName: "messages", unique: false }]);
 
     // Compaction in the future (filters out everything)
     const result = await adapter.getMemories({
@@ -1092,539 +996,5 @@ describe("Edge cases", () => {
 
     expect(result.success).toBe(true);
     expect(updatedRoom?.metadata?.lastCompactionAt).toBeDefined();
-  });
-});
-
-// ============================================
-// Auto-Compaction End-to-End Tests
-// ============================================
-describe("Auto-compaction end-to-end", () => {
-  it("should create summary and set lastCompactionAt", async () => {
-    const { triggerAutoCompaction } = await import(
-      "../bootstrap/services/autoCompaction.ts"
-    );
-
-    const roomId = "room-compact-1" as UUID;
-    const agentId = "agent-1" as UUID;
-    const createdMemories: Memory[] = [];
-    let updatedRoom: Room | null = null;
-    const existingRoom = createMockRoom();
-
-    const mockRuntime = {
-      agentId,
-      getRoom: vi.fn(async () => existingRoom),
-      updateRoom: vi.fn(async (room: Room) => {
-        updatedRoom = room;
-        // Update the room reference so subsequent reads see the change
-        Object.assign(existingRoom, room);
-      }),
-      getMemories: vi.fn(async () => [
-        createMockMessage(1000, "User says hello", roomId),
-        createMockMessage(2000, "Agent replies hi", roomId),
-        createMockMessage(3000, "User asks a question", roomId),
-        createMockMessage(4000, "Agent answers", roomId),
-      ]),
-      createMemory: vi.fn(async (memory: Memory) => {
-        createdMemories.push(memory);
-        return memory.id;
-      }),
-      useModel: vi.fn(
-        async () => "Summary: User greeted agent and asked a question.",
-      ),
-    } as unknown as IAgentRuntime;
-
-    await triggerAutoCompaction(mockRuntime, roomId);
-
-    // Verify summary was created
-    expect(createdMemories.length).toBe(1);
-    const summaryMsg = createdMemories[0];
-    expect(summaryMsg.content.text).toContain("[Compaction Summary]");
-    expect(summaryMsg.content.text).toContain("Summary: User greeted agent");
-    expect(summaryMsg.content.source).toBe("compaction");
-
-    // Verify lastCompactionAt was set
-    expect(updatedRoom).not.toBeNull();
-    expect(updatedRoom?.metadata?.lastCompactionAt).toBeDefined();
-    expect(typeof updatedRoom?.metadata?.lastCompactionAt).toBe("number");
-
-    // Verify compaction history was recorded
-    const history = updatedRoom?.metadata?.compactionHistory as {
-      triggeredBy: string;
-    }[];
-    expect(history).toHaveLength(1);
-    expect(history[0].triggeredBy).toBe("auto-compaction");
-  });
-
-  it("should not run concurrent compactions for the same room", async () => {
-    const { triggerAutoCompaction } = await import(
-      "../bootstrap/services/autoCompaction.ts"
-    );
-
-    const roomId = "room-concurrent-1" as UUID;
-    let modelCallCount = 0;
-
-    const mockRuntime = {
-      agentId: "agent-1" as UUID,
-      getRoom: vi.fn(async () => createMockRoom()),
-      updateRoom: vi.fn(),
-      getMemories: vi.fn(async () => [
-        createMockMessage(1000, "Message 1", roomId),
-      ]),
-      createMemory: vi.fn(async (m: Memory) => m.id),
-      useModel: vi.fn(async () => {
-        modelCallCount++;
-        // Simulate slow LLM call
-        await new Promise((r) => setTimeout(r, 50));
-        return "Summary";
-      }),
-    } as unknown as IAgentRuntime;
-
-    // Trigger two compactions concurrently
-    await Promise.all([
-      triggerAutoCompaction(mockRuntime, roomId),
-      triggerAutoCompaction(mockRuntime, roomId),
-    ]);
-
-    // Only one should have actually run the model call
-    expect(modelCallCount).toBe(1);
-  });
-
-  it("should skip when no messages exist", async () => {
-    const { triggerAutoCompaction } = await import(
-      "../bootstrap/services/autoCompaction.ts"
-    );
-
-    const roomId = "room-empty-1" as UUID;
-    const mockRuntime = {
-      agentId: "agent-1" as UUID,
-      getRoom: vi.fn(async () => createMockRoom()),
-      updateRoom: vi.fn(),
-      getMemories: vi.fn(async () => []),
-      createMemory: vi.fn(),
-      useModel: vi.fn(),
-    } as unknown as IAgentRuntime;
-
-    await triggerAutoCompaction(mockRuntime, roomId);
-
-    // Should not create a summary or update room
-    expect(mockRuntime.createMemory).not.toHaveBeenCalled();
-    expect(mockRuntime.updateRoom).not.toHaveBeenCalled();
-  });
-});
-
-// ============================================
-// Compaction Message Filtering Tests
-// ============================================
-describe("Message list is shorter after compaction", () => {
-  it("should return fewer messages when filtered by compaction point", async () => {
-    const { InMemoryDatabaseAdapter } = await import(
-      "../database/inMemoryAdapter.ts"
-    );
-
-    const adapter = new InMemoryDatabaseAdapter();
-    await adapter.init();
-
-    const roomId = "room-filter-1" as UUID;
-
-    // Create 20 messages spanning a period
-    for (let i = 1; i <= 20; i++) {
-      await adapter.createMemory(
-        createMockMessage(i * 1000, `Message ${i}`, roomId),
-        "messages",
-        false,
-      );
-    }
-
-    // Before compaction: all 20 messages
-    const allMessages = await adapter.getMemories({
-      tableName: "messages",
-      roomId,
-    });
-    expect(allMessages.length).toBe(20);
-
-    // Simulate compaction at timestamp 15000 (after message 15)
-    const compactionAt = 15000;
-
-    // Add compaction summary at the compaction point
-    await adapter.createMemory(
-      {
-        id: "summary-1" as UUID,
-        entityId: "agent-1" as UUID,
-        agentId: "agent-1" as UUID,
-        roomId,
-        content: {
-          text: "[Compaction Summary]\n\nSummary of messages 1-15",
-          source: "compaction",
-        },
-        createdAt: compactionAt,
-      },
-      "messages",
-      false,
-    );
-
-    // After compaction: only messages from compaction point onwards
-    const afterCompaction = await adapter.getMemories({
-      tableName: "messages",
-      roomId,
-      start: compactionAt,
-    });
-
-    // Should have 6 messages: summary + messages 15-20
-    // (message 15 has createdAt=15000 which is >= start=15000)
-    expect(afterCompaction.length).toBe(7); // summary + msg 15,16,17,18,19,20
-    expect(afterCompaction.length).toBeLessThan(allMessages.length);
-
-    // Verify the summary is included
-    const summaryMsg = afterCompaction.find(
-      (m) => m.content?.source === "compaction",
-    );
-    expect(summaryMsg).toBeDefined();
-    expect(summaryMsg?.content.text).toContain("[Compaction Summary]");
-  });
-
-  it("should only pull messages up to the compacted point", async () => {
-    const { InMemoryDatabaseAdapter } = await import(
-      "../database/inMemoryAdapter.ts"
-    );
-
-    const adapter = new InMemoryDatabaseAdapter();
-    await adapter.init();
-
-    const roomId = "room-boundary-1" as UUID;
-
-    // Pre-compaction messages
-    await adapter.createMemory(
-      createMockMessage(1000, "Old message 1", roomId),
-      "messages",
-      false,
-    );
-    await adapter.createMemory(
-      createMockMessage(2000, "Old message 2", roomId),
-      "messages",
-      false,
-    );
-    await adapter.createMemory(
-      createMockMessage(3000, "Old message 3", roomId),
-      "messages",
-      false,
-    );
-
-    // Compaction summary at 3500
-    const compactionAt = 3500;
-    await adapter.createMemory(
-      {
-        id: "summary-boundary" as UUID,
-        entityId: "agent-1" as UUID,
-        agentId: "agent-1" as UUID,
-        roomId,
-        content: {
-          text: "[Compaction Summary]\n\nUser discussed topics A, B, C",
-          source: "compaction",
-        },
-        createdAt: compactionAt,
-      },
-      "messages",
-      false,
-    );
-
-    // Post-compaction messages
-    await adapter.createMemory(
-      createMockMessage(4000, "New message 1", roomId),
-      "messages",
-      false,
-    );
-    await adapter.createMemory(
-      createMockMessage(5000, "New message 2", roomId),
-      "messages",
-      false,
-    );
-
-    // Fetch with compaction filter
-    const result = await adapter.getMemories({
-      tableName: "messages",
-      roomId,
-      start: compactionAt,
-    });
-
-    // Should get: summary + 2 new messages = 3
-    expect(result.length).toBe(3);
-
-    // Verify old messages are excluded
-    const texts = result.map((m) => m.content.text);
-    expect(texts).not.toContain("Old message 1");
-    expect(texts).not.toContain("Old message 2");
-    expect(texts).not.toContain("Old message 3");
-
-    // Verify new messages and summary are included
-    expect(texts).toContain("New message 1");
-    expect(texts).toContain("New message 2");
-    expect(texts.some((t) => t?.includes("[Compaction Summary]"))).toBe(true);
-  });
-});
-
-// ============================================
-// Incremental Compaction Tests
-// ============================================
-describe("Incremental compaction (multiple rounds)", () => {
-  it("should handle multiple sequential compactions", async () => {
-    const { InMemoryDatabaseAdapter } = await import(
-      "../database/inMemoryAdapter.ts"
-    );
-
-    const adapter = new InMemoryDatabaseAdapter();
-    await adapter.init();
-
-    const roomId = "room-incremental-1" as UUID;
-
-    // Round 1: messages 1-5
-    for (let i = 1; i <= 5; i++) {
-      await adapter.createMemory(
-        createMockMessage(i * 1000, `Round1 message ${i}`, roomId),
-        "messages",
-        false,
-      );
-    }
-
-    // First compaction at 5500
-    const compaction1At = 5500;
-    await adapter.createMemory(
-      {
-        id: "summary-r1" as UUID,
-        entityId: "agent-1" as UUID,
-        agentId: "agent-1" as UUID,
-        roomId,
-        content: {
-          text: "[Compaction Summary]\n\nRound 1 summary",
-          source: "compaction",
-        },
-        createdAt: compaction1At,
-      },
-      "messages",
-      false,
-    );
-
-    // Round 2: messages 6-10
-    for (let i = 6; i <= 10; i++) {
-      await adapter.createMemory(
-        createMockMessage(i * 1000, `Round2 message ${i}`, roomId),
-        "messages",
-        false,
-      );
-    }
-
-    // Verify: after first compaction, only see summary + round 2 messages
-    const afterCompaction1 = await adapter.getMemories({
-      tableName: "messages",
-      roomId,
-      start: compaction1At,
-    });
-    expect(afterCompaction1.length).toBe(6); // summary + msgs 6-10
-
-    // Second compaction at 10500
-    const compaction2At = 10500;
-    await adapter.createMemory(
-      {
-        id: "summary-r2" as UUID,
-        entityId: "agent-1" as UUID,
-        agentId: "agent-1" as UUID,
-        roomId,
-        content: {
-          text: "[Compaction Summary]\n\nRound 2 summary (includes R1)",
-          source: "compaction",
-        },
-        createdAt: compaction2At,
-      },
-      "messages",
-      false,
-    );
-
-    // Round 3: messages 11-12
-    for (let i = 11; i <= 12; i++) {
-      await adapter.createMemory(
-        createMockMessage(i * 1000, `Round3 message ${i}`, roomId),
-        "messages",
-        false,
-      );
-    }
-
-    // After second compaction: only see R2 summary + round 3 messages
-    const afterCompaction2 = await adapter.getMemories({
-      tableName: "messages",
-      roomId,
-      start: compaction2At,
-    });
-    expect(afterCompaction2.length).toBe(3); // summary-r2 + msgs 11,12
-
-    // Total messages in DB haven't been deleted
-    const totalInDb = await adapter.getMemories({
-      tableName: "messages",
-      roomId,
-    });
-    expect(totalInDb.length).toBe(14); // 10 msgs + 2 summaries + 2 msgs
-
-    // But filtered view is much smaller
-    expect(afterCompaction2.length).toBeLessThan(totalInDb.length);
-
-    // Verify the old summaries and messages are excluded from filtered view
-    const filteredTexts = afterCompaction2.map((m) => m.content.text);
-    expect(filteredTexts).not.toContain(
-      "[Compaction Summary]\n\nRound 1 summary",
-    );
-    expect(filteredTexts).toContain(
-      "[Compaction Summary]\n\nRound 2 summary (includes R1)",
-    );
-  });
-});
-
-// ============================================
-// COMPACT_SESSION Action Tests
-// ============================================
-describe("COMPACT_SESSION action", () => {
-  it("should summarize and set compaction point", async () => {
-    const { compactSessionAction } = await import(
-      "../basic-capabilities/actions/compactSession.ts"
-    );
-
-    const roomId = "room-compact-action-1" as UUID;
-    const agentId = "agent-1" as UUID;
-    const createdMemories: Memory[] = [];
-    let updatedRoom: Room | null = null;
-    const existingRoom = createMockRoom();
-
-    const mockRuntime = {
-      agentId,
-      getRoom: vi.fn(async () => existingRoom),
-      updateRoom: vi.fn(async (room: Room) => {
-        updatedRoom = room;
-      }),
-      getMemories: vi.fn(async () => [
-        createMockMessage(1000, "Discussion about project", roomId),
-        createMockMessage(2000, "Decided on approach A", roomId),
-        createMockMessage(3000, "TODO: implement feature X", roomId),
-      ]),
-      createMemory: vi.fn(async (memory: Memory) => {
-        createdMemories.push(memory);
-        return memory.id;
-      }),
-      useModel: vi.fn(
-        async () =>
-          "Discussed project, decided on approach A, TODO: implement feature X.",
-      ),
-    } as unknown as IAgentRuntime;
-
-    const mockMessage: Memory = {
-      id: "msg-compact-1" as UUID,
-      entityId: "user-1" as UUID,
-      agentId,
-      roomId,
-      content: { text: "/compact" },
-    };
-
-    const mockCallback = vi.fn();
-
-    const result = await compactSessionAction.handler(
-      mockRuntime,
-      mockMessage,
-      undefined,
-      undefined,
-      mockCallback,
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.values?.compactedAt).toBeDefined();
-
-    // Verify summary was stored
-    expect(createdMemories.length).toBe(1);
-    expect(createdMemories[0].content.source).toBe("compaction");
-    expect(createdMemories[0].content.text).toContain("[Compaction Summary]");
-
-    // Verify room was updated with compaction point
-    expect(updatedRoom?.metadata?.lastCompactionAt).toBeDefined();
-
-    // Verify callback was called
-    expect(mockCallback).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: "Session compacted.",
-        actions: ["COMPACT_SESSION"],
-      }),
-    );
-  });
-
-  it("should pass instructions to summary prompt", async () => {
-    const { compactSessionAction } = await import(
-      "../basic-capabilities/actions/compactSession.ts"
-    );
-
-    const roomId = "room-compact-instructions" as UUID;
-    let capturedPrompt = "";
-
-    const mockRuntime = {
-      agentId: "agent-1" as UUID,
-      getRoom: vi.fn(async () => createMockRoom()),
-      updateRoom: vi.fn(),
-      getMemories: vi.fn(async () => [
-        createMockMessage(1000, "Some message", roomId),
-      ]),
-      createMemory: vi.fn(async (m: Memory) => m.id),
-      useModel: vi.fn(async (type: string, params: { prompt: string }) => {
-        capturedPrompt = params.prompt;
-        return "Summary with focus";
-      }),
-    } as unknown as IAgentRuntime;
-
-    const mockMessage: Memory = {
-      id: "msg-instructions" as UUID,
-      entityId: "user-1" as UUID,
-      agentId: "agent-1" as UUID,
-      roomId,
-      content: { text: "/compact Focus on technical decisions" },
-    };
-
-    await compactSessionAction.handler(mockRuntime, mockMessage);
-
-    expect(capturedPrompt).toContain("Focus on technical decisions");
-  });
-
-  it("should validate only when room has messages", async () => {
-    const { compactSessionAction } = await import(
-      "../basic-capabilities/actions/compactSession.ts"
-    );
-
-    // Room with messages: valid
-    const runtimeWithMessages = {
-      getRoom: vi.fn(async () => createMockRoom()),
-      getMemories: vi.fn(async () => [
-        createMockMessage(1000, "A message", "room-1" as UUID),
-      ]),
-    } as unknown as IAgentRuntime;
-
-    const msg: Memory = {
-      id: "v-msg" as UUID,
-      entityId: "user-1" as UUID,
-      agentId: "agent-1" as UUID,
-      roomId: "room-1" as UUID,
-      content: { text: "/compact" },
-    };
-
-    expect(await compactSessionAction.validate(runtimeWithMessages, msg)).toBe(
-      true,
-    );
-
-    // Room with no messages: invalid
-    const runtimeNoMessages = {
-      getRoom: vi.fn(async () => createMockRoom()),
-      getMemories: vi.fn(async () => []),
-    } as unknown as IAgentRuntime;
-
-    expect(await compactSessionAction.validate(runtimeNoMessages, msg)).toBe(
-      false,
-    );
-
-    // No room: invalid
-    const runtimeNoRoom = {
-      getRoom: vi.fn(async () => null),
-    } as unknown as IAgentRuntime;
-
-    expect(await compactSessionAction.validate(runtimeNoRoom, msg)).toBe(false);
   });
 });

@@ -1,0 +1,38 @@
+Start automated trading with the specified strategy and parameters.
+
+Analyze the user's request to extract trading configuration:
+
+User Request: {{userRequest}}
+
+Available Strategies:
+- llm: AI-powered trading using market analysis and trending token evaluation
+- momentum: Momentum breakout strategy using technical indicators
+- mean-reversion: Mean reversion strategy for range-bound markets  
+- rules: Rule-based strategy with configurable indicator thresholds
+
+Extract the configuration in this JSON format:
+
+```json
+{
+  "strategy": "strategy name from available list",
+  "tokens": ["list of token addresses or symbols to trade, or 'auto' for trending tokens"],
+  "maxPositionSize": "maximum position size in USD",
+  "intervalMs": "trading loop interval in milliseconds",
+  "stopLossPercent": "stop loss percentage",
+  "takeProfitPercent": "take profit percentage",
+  "maxDailyLoss": "maximum daily loss in USD",
+  "tradingMode": "live or paper"
+}
+```
+
+If the user doesn't specify certain parameters, use these defaults:
+- strategy: "llm"
+- tokens: ["auto"]
+- maxPositionSize: 100
+- intervalMs: 60000
+- stopLossPercent: 5
+- takeProfitPercent: 15
+- maxDailyLoss: 500
+- tradingMode: "paper"
+
+Respond ONLY with the JSON object.

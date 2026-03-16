@@ -83,7 +83,6 @@ export const ModelType = {
   OBJECT_SMALL: "OBJECT_SMALL",
   OBJECT_LARGE: "OBJECT_LARGE",
   RESEARCH: "RESEARCH",
-  SAFEGUARD: "SAFEGUARD",
 } as const;
 
 /**
@@ -396,21 +395,6 @@ export interface VideoProcessingParams
   extends Omit<ProtoVideoProcessingParams, "$typeName" | "$unknown"> {}
 
 // ============================================================================
-// Safeguard Model Types
-// ============================================================================
-
-export interface SafeguardParams {
-  input: string;
-  modelType: typeof ModelType.SAFEGUARD;
-}
-
-export interface SafeguardResult {
-  violation: number;
-  category: string | null;
-  rationale: string | null;
-}
-
-// ============================================================================
 // Research Model Types (Deep Research)
 // ============================================================================
 
@@ -698,7 +682,6 @@ export interface ModelParamsMap {
   [ModelType.OBJECT_LARGE]: ObjectGenerationParams;
   [ModelType.TEXT_COMPLETION]: GenerateTextParams;
   [ModelType.RESEARCH]: ResearchParams;
-  [ModelType.SAFEGUARD]: SafeguardParams;
   // Custom model types should be registered via runtime.registerModel() in plugin init()
 }
 
@@ -738,7 +721,6 @@ export interface ModelResultMap {
   [ModelType.OBJECT_LARGE]: Record<string, JsonValue>;
   [ModelType.TEXT_COMPLETION]: string;
   [ModelType.RESEARCH]: ResearchResult;
-  [ModelType.SAFEGUARD]: SafeguardResult;
   // Custom model types should be registered via runtime.registerModel() in plugin init()
 }
 
@@ -801,10 +783,4 @@ export interface ModelHandler<
   priority?: number; // Optional priority for selection order
 
   registrationOrder?: number;
-
-  /**
-   * Optional maximum number of input tokens this model can handle.
-   * Useful for embeddings or other models where input length must be truncated.
-   */
-  maxInputTokens?: number;
 }

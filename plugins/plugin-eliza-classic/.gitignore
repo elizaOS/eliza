@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+bun.lock
+
+# Build outputs
+typescript/dist/
+python/dist/
+python/*.egg-info/
+rust/target/
+
+# IDE
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Rust
+Cargo.lock
+
+# Turbo
+.turbo/
+
+
+
+
+
+
+
+
+
+

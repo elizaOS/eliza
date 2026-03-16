@@ -7,7 +7,6 @@ import {
   contextSummaryProvider,
   longTermMemoryProvider,
 } from "./providers/index.ts";
-import * as schema from "./schemas/index.ts";
 import { MemoryService } from "./services/memory-service.ts";
 
 export {
@@ -18,10 +17,19 @@ export {
   contextSummaryProvider,
   longTermMemoryProvider,
 } from "./providers/index.ts";
+// Export the abstract, backend-agnostic schema definitions
 export * from "./schemas/index.ts";
 export { MemoryService } from "./services/memory-service.ts";
 export * from "./types.ts";
 
+/**
+ * Create the advanced-memory plugin.
+ *
+ * No database-specific arguments needed. MemoryService discovers a
+ * MemoryStorageProvider at runtime via runtime.getService("memoryStorage").
+ * If none is registered by a database plugin, storage-backed features
+ * gracefully disable.
+ */
 export function createAdvancedMemoryPlugin(): Plugin {
   return {
     name: "memory",
@@ -30,6 +38,5 @@ export function createAdvancedMemoryPlugin(): Plugin {
     services: [MemoryService],
     evaluators: [summarizationEvaluator, longTermExtractionEvaluator],
     providers: [longTermMemoryProvider, contextSummaryProvider],
-    schema,
   };
 }

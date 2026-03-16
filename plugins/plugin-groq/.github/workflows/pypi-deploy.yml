@@ -1,0 +1,127 @@
+name: Publish PyPI Package
+
+on:
+  push:
+    branches:
+      - 1.x
+    paths:
+      - "python/**"
+  workflow_dispatch:
+
+jobs:
+  verify_version:
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.check.outputs.should_publish }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if version changed
+        id: check
+        run: |
+          # Get current version from pyproject.toml
+          CURRENT_VERSION=$(grep -m1 'version = ' python/pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "Current version: $CURRENT_VERSION"
+
+          # Get previous commit hash
+          PREV_COMMIT=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+
+          # Check if pyproject.toml changed
+          if git diff --name-only HEAD~1 HEAD | grep "python/pyproject.toml"; then
+            echo "pyproject.toml was changed in this commit"
+            
+            # Get previous version if possible
+            if git show "$PREV_COMMIT:python/pyproject.toml" 2>/dev/null; then
+              PREV_VERSION=$(git show "$PREV_COMMIT:python/pyproject.toml" | grep -m1 'version = ' | sed 's/version = "\(.*\)"/\1/')
+              echo "Previous version: $PREV_VERSION"
+              
+              if [ "$CURRENT_VERSION" != "$PREV_VERSION" ]; then
+                echo "Version changed from $PREV_VERSION to $CURRENT_VERSION"
+                echo "should_publish=true" >> $GITHUB_OUTPUT
+              else
+                echo "Version unchanged"
+                echo "should_publish=false" >> $GITHUB_OUTPUT
+              fi
+            else
+              echo "First commit with pyproject.toml, will publish"
+              echo "should_publish=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "pyproject.toml not changed in this commit"
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd python
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run linting
+        run: |
+          cd python
+          ruff check .
+          ruff format --check .
+
+      - name: Run type checking
+        run: |
+          cd python
+          mypy elizaos_plugin_groq
+
+      - name: Run tests
+        run: |
+          cd python
+          pytest
+
+  publish:
+    needs: [verify_version, test]
+    if: needs.verify_version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/elizaos-plugin-groq/
+    permissions:
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build package
+        run: |
+          cd python
+          python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist/
+
+
+

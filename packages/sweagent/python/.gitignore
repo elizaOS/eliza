@@ -208,6 +208,3 @@ website/frontend/build
 agent_conf
 sb-cli-reports/
 trajectories_sft/
-
-# Local one-off debug helpers
-debug_config_path.py

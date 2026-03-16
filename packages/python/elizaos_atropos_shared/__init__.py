@@ -1,1 +1,1 @@
-"""Shared utilities for ElizaOS Atropos examples."""
+"""Shared utilities for elizaOS Atropos examples."""

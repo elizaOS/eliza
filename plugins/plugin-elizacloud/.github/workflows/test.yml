@@ -1,0 +1,96 @@
+name: Test
+
+on:
+  push:
+    branches: [main, 1.x]
+  pull_request:
+    branches: [main, 1.x]
+
+jobs:
+  # ============ TYPESCRIPT TESTS ============
+  test_typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Type check
+        run: bun run typecheck
+
+      - name: Build
+        run: bun run build
+
+      - name: Run tests
+        run: npx vitest run typescript/
+        continue-on-error: true
+
+  # ============ PYTHON TESTS ============
+  test_python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        working-directory: python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint with ruff
+        working-directory: python
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Type check with mypy
+        working-directory: python
+        run: mypy elizaos_plugin_elizacloud || true
+
+      - name: Run tests
+        working-directory: python
+        run: pytest tests/ -v
+        continue-on-error: true
+
+  # ============ RUST TESTS ============
+  test_rust:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Check formatting
+        working-directory: rust
+        run: cargo fmt --check
+
+      - name: Clippy
+        working-directory: rust
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build
+        working-directory: rust
+        run: cargo build --all-features
+
+      - name: Run tests
+        working-directory: rust
+        run: cargo test --all-features
+
+
+

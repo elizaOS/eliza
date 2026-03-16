@@ -9,31 +9,31 @@ function getPlatformInfo() {
     const arch = process.arch;
     if (platform === "win32" && arch === "x64")
         return {
-            pkg: "@elizaos/cli-win32-x64-msvc",
+            pkg: "@mediar-ai/cli-win32-x64-msvc",
             bin: "computeruse.exe",
             npmDir: "win32-x64-msvc",
         };
     if (platform === "win32" && arch === "arm64")
         return {
-            pkg: "@elizaos/cli-win32-arm64-msvc",
+            pkg: "@mediar-ai/cli-win32-arm64-msvc",
             bin: "computeruse.exe",
             npmDir: "win32-arm64-msvc",
         };
     if (platform === "linux" && arch === "x64")
         return {
-            pkg: "@elizaos/cli-linux-x64-gnu",
+            pkg: "@mediar-ai/cli-linux-x64-gnu",
             bin: "computeruse",
             npmDir: "linux-x64-gnu",
         };
     if (platform === "darwin" && arch === "x64")
         return {
-            pkg: "@elizaos/cli-darwin-x64",
+            pkg: "@mediar-ai/cli-darwin-x64",
             bin: "computeruse",
             npmDir: "darwin-x64",
         };
     if (platform === "darwin" && arch === "arm64")
         return {
-            pkg: "@elizaos/cli-darwin-arm64",
+            pkg: "@mediar-ai/cli-darwin-arm64",
             bin: "computeruse",
             npmDir: "darwin-arm64",
         };

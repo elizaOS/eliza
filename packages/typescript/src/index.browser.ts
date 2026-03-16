@@ -8,9 +8,6 @@
 
 // Export core modules (all browser-compatible after refactoring)
 export * from "./actions";
-// Autonomy
-export * from "./autonomy/autonomousState";
-export * from "./autonomy/index";
 export * from "./character";
 export * from "./database";
 export * from "./database/inMemoryAdapter";
@@ -18,19 +15,15 @@ export * from "./entities";
 export * from "./logger";
 export * from "./memory";
 export * from "./prompts";
-// Providers
-export * from "./providers/sessionKeys";
-export * from "./request-context";
 export * from "./roles";
 export * from "./runtime";
-// Export schemas
+// Export schemas (including buildBaseTables for plugin-sql browser/PGLite builds)
 export * from "./schemas/character";
+export { buildBaseTables, type BaseTables } from "./schemas/index";
 export * from "./search";
 export * from "./services";
 export * from "./services/message";
 export * from "./services/trajectoryLogger";
-export * from "./services/triggerScheduling";
-export * from "./services/triggerWorker";
 export * from "./settings";
 export * from "./streaming-context";
 export * from "./trajectory-context";

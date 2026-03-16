@@ -87,13 +87,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd packages/computeruse/packages/computeruse-ts
+          cd packages/computeruse/packages/computeruse-nodejs
           bun install --ignore-scripts || true
         shell: bash
 
       - name: Build Node.js bindings
         run: |
-          cd packages/computeruse/packages/computeruse-ts
+          cd packages/computeruse/packages/computeruse-nodejs
           bun run build
         shell: bash
 
@@ -117,7 +117,7 @@ jobs:
 
       # - name: Run Node.js tests
       #   run: |
-      #     cd packages/computeruse/packages/computeruse-ts
+      #     cd packages/computeruse/packages/computeruse-nodejs
       #     bun test
       #   shell: pwsh
 

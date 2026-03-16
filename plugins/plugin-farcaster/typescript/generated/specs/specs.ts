@@ -1,0 +1,119 @@
+/**
+ * Auto-generated canonical action/provider/evaluator docs for plugin-farcaster.
+ * DO NOT EDIT - Generated from prompts/specs/**.
+ */
+
+export type ActionDoc = {
+  name: string;
+  description: string;
+  similes?: readonly string[];
+  parameters?: readonly unknown[];
+  examples?: readonly (readonly unknown[])[];
+};
+
+export type ProviderDoc = {
+  name: string;
+  description: string;
+  position?: number;
+  dynamic?: boolean;
+};
+
+export type EvaluatorDoc = {
+  name: string;
+  description: string;
+  similes?: readonly string[];
+  alwaysRun?: boolean;
+  examples?: readonly unknown[];
+};
+
+export const coreActionsSpec = {
+  version: "1.0.0",
+  actions: [
+    {
+      name: "SEND_CAST",
+      description: "Posts a cast (message) on Farcaster",
+      similes: ["POST_CAST", "FARCASTER_POST", "CAST", "SHARE_ON_FARCASTER", "ANNOUNCE"],
+      parameters: [],
+    },
+    {
+      name: "REPLY_TO_CAST",
+      description: "Replies to a cast on Farcaster",
+      similes: ["REPLY_CAST", "RESPOND_CAST", "ANSWER_CAST", "COMMENT_CAST"],
+      parameters: [],
+    },
+  ],
+} as const;
+export const allActionsSpec = {
+  version: "1.0.0",
+  actions: [
+    {
+      name: "SEND_CAST",
+      description: "Posts a cast (message) on Farcaster",
+      similes: ["POST_CAST", "FARCASTER_POST", "CAST", "SHARE_ON_FARCASTER", "ANNOUNCE"],
+      parameters: [],
+    },
+    {
+      name: "REPLY_TO_CAST",
+      description: "Replies to a cast on Farcaster",
+      similes: ["REPLY_CAST", "RESPOND_CAST", "ANSWER_CAST", "COMMENT_CAST"],
+      parameters: [],
+    },
+  ],
+} as const;
+export const coreProvidersSpec = {
+  version: "1.0.0",
+  providers: [
+    {
+      name: "farcasterProfile",
+      description: "Provides information about the agent",
+      dynamic: true,
+    },
+    {
+      name: "farcasterThread",
+      description:
+        "Provides thread context for Farcaster casts so the agent can reference the full conversation.",
+      dynamic: true,
+    },
+    {
+      name: "farcasterTimeline",
+      description: "Provides recent casts from the agent",
+      dynamic: true,
+    },
+  ],
+} as const;
+export const allProvidersSpec = {
+  version: "1.0.0",
+  providers: [
+    {
+      name: "farcasterProfile",
+      description: "Provides information about the agent",
+      dynamic: true,
+    },
+    {
+      name: "farcasterThread",
+      description:
+        "Provides thread context for Farcaster casts so the agent can reference the full conversation.",
+      dynamic: true,
+    },
+    {
+      name: "farcasterTimeline",
+      description: "Provides recent casts from the agent",
+      dynamic: true,
+    },
+  ],
+} as const;
+export const coreEvaluatorsSpec = {
+  version: "1.0.0",
+  evaluators: [],
+} as const;
+export const allEvaluatorsSpec = {
+  version: "1.0.0",
+  evaluators: [],
+} as const;
+
+export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;
+export const allActionDocs: readonly ActionDoc[] = allActionsSpec.actions;
+export const coreProviderDocs: readonly ProviderDoc[] = coreProvidersSpec.providers;
+export const allProviderDocs: readonly ProviderDoc[] = allProvidersSpec.providers;
+export const coreEvaluatorDocs: readonly EvaluatorDoc[] = coreEvaluatorsSpec.evaluators;
+export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evaluators;

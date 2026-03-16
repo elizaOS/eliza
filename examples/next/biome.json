@@ -1,0 +1,31 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.3.14/schema.json",
+  "root": false,
+  "extends": ["../../biome.json"],
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "src/**/*.ts",
+      "src/**/*.tsx",
+      "app/**/*.ts",
+      "app/**/*.tsx",
+      "*.ts",
+      "*.tsx"
+    ]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "a11y": {
+        "noSvgWithoutTitle": "warn",
+        "useButtonType": "warn"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  }
+}

@@ -1,0 +1,28 @@
+[package]
+name = "eliza-plugin-edge-tts"
+version = "2.0.0"
+edition = "2021"
+description = "Free text-to-speech plugin for elizaOS using Microsoft Edge TTS - no API key required"
+license = "MIT"
+authors = ["elizaOS Contributors"]
+repository = "https://github.com/elizaos-plugins/plugin-edge-tts"
+keywords = ["elizaos", "plugin", "tts", "text-to-speech", "edge-tts", "microsoft", "free"]
+categories = ["multimedia::audio"]
+
+[lib]
+name = "eliza_plugin_edge_tts"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
+uuid = { version = "1", features = ["v4"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1.0"
+tracing = "0.1"
+bytes = "1"
+futures-util = "0.3"
+
+[dev-dependencies]
+tokio-test = "0.4"

@@ -1,0 +1,32 @@
+node_modules
+**/node_modules/
+.env
+dist
+coverage
+.pnpm-store
+.DS_Store
+**/.DS_Store
+
+# Build artifacts
+*.bun-build
+**/*.bun-build
+
+# Lock files (managed at repo root)
+pnpm-lock.yaml
+bun.lock
+bun.lockb
+
+# Docker overrides
+docker-compose.extra.yml
+
+# UI test artifacts
+apps/ui/src/ui/__screenshots__/
+apps/ui/playwright-report/
+apps/ui/test-results/
+
+# Local untracked files
+.local/
+.vscode/
+IDENTITY.md
+USER.md
+.tgz

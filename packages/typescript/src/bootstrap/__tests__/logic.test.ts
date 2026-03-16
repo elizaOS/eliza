@@ -141,8 +141,8 @@ describe("Reaction Events", () => {
   });
 
   it("should store reaction messages correctly", async () => {
-    // Spy on createMemory
-    vi.spyOn(runtime, "createMemory").mockResolvedValue(mockReaction.id);
+    // Spy on createMemories (batch API)
+    vi.spyOn(runtime, "createMemories").mockResolvedValue([mockReaction.id]);
 
     // Get the REACTION_RECEIVED handler
     const bootstrapPluginEvents = bootstrapPlugin.events;
@@ -159,11 +159,10 @@ describe("Reaction Events", () => {
         source: "test",
       } as MessagePayload);
 
-      // Verify reaction was stored
-      expect(runtime.createMemory).toHaveBeenCalledWith(
-        mockReaction,
-        "messages",
-      );
+      // Verify reaction was stored via batch API
+      expect(runtime.createMemories).toHaveBeenCalledWith([
+        { memory: mockReaction, tableName: "messages" },
+      ]);
     }
   });
 
@@ -176,7 +175,7 @@ describe("Reaction Events", () => {
     expect(reactionHandler).toBeDefined();
 
     // Simulate a duplicate key error
-    vi.spyOn(runtime, "createMemory").mockRejectedValue({ code: "23505" });
+    vi.spyOn(runtime, "createMemories").mockRejectedValue({ code: "23505" });
 
     if (reactionHandler) {
       // Current implementation propagates errors - test that error is thrown
@@ -202,23 +201,22 @@ describe("World and Entity Events", () => {
     vi.spyOn(runtime, "ensureConnection").mockResolvedValue(undefined);
     vi.spyOn(runtime, "ensureWorldExists").mockResolvedValue(undefined);
     vi.spyOn(runtime, "ensureRoomExists").mockResolvedValue(undefined);
-    vi.spyOn(runtime, "getEntityById").mockImplementation(async (entityId) => {
-      return {
+    vi.spyOn(runtime, "getEntitiesByIds").mockImplementation(async (entityIds) => {
+      return entityIds.map((entityId: string) => ({
         id: entityId,
         names: ["Test User"],
         agentId: runtime.agentId,
         metadata: {
           status: "ACTIVE",
-          // Add source-specific metadata to fix the test
           test: {
             username: "testuser",
             name: "Test User",
             userId: "original-id-123",
           },
         },
-      };
+      }));
     });
-    vi.spyOn(runtime, "updateEntity").mockResolvedValue(undefined);
+    vi.spyOn(runtime, "updateEntities").mockResolvedValue(undefined);
   });
 
   afterEach(async () => {
@@ -273,16 +271,16 @@ describe("World and Entity Events", () => {
         source: "test",
       } as EntityPayload);
 
-      // Verify entity was updated
-      expect(runtime.getEntityById).toHaveBeenCalledWith("test-entity-id");
-      expect(runtime.updateEntity).toHaveBeenCalledWith(
+      // Verify entity was updated via batch API
+      expect(runtime.getEntitiesByIds).toHaveBeenCalledWith(["test-entity-id"]);
+      expect(runtime.updateEntities).toHaveBeenCalledWith([
         expect.objectContaining({
           metadata: expect.objectContaining({
             status: "INACTIVE",
             leftAt: expect.any(Number),
           }),
         }),
-      );
+      ]);
     }
   });
 
@@ -294,8 +292,8 @@ describe("World and Entity Events", () => {
     const entityLeftHandler = bootstrapPluginEventsEntityLeft?.[0];
     expect(entityLeftHandler).toBeDefined();
 
-    // Simulate error in getEntityById
-    vi.spyOn(runtime, "getEntityById").mockRejectedValue(
+    // Simulate error in getEntitiesByIds
+    vi.spyOn(runtime, "getEntitiesByIds").mockRejectedValue(
       new Error("Entity not found"),
     );
 
@@ -310,8 +308,8 @@ describe("World and Entity Events", () => {
         } as EntityPayload),
       ).rejects.toThrow("Entity not found");
 
-      // Should not call updateEntity since error was thrown before that
-      expect(runtime.updateEntity).not.toHaveBeenCalled();
+      // Should not call updateEntities since error was thrown before that
+      expect(runtime.updateEntities).not.toHaveBeenCalled();
     }
   });
 });

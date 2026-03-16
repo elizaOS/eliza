@@ -16,7 +16,8 @@ import {
   autonomyContinuousFirstTemplate,
   autonomyTaskContinueTemplate,
   autonomyTaskFirstTemplate,
-} from "@elizaos/prompts";
+} from "../prompts";
+// Review: Templates were relocated, and dependency on @elizaos/prompts is now obsolete in this module.
 import { v4 as uuidv4 } from "uuid";
 import {
   ChannelType,
@@ -45,16 +46,7 @@ export const AUTONOMY_TASK_NAME = "AUTONOMY_THINK" as const;
 /**
  * Tags used for autonomy tasks
  */
-export const AUTONOMY_TASK_TAGS = ["queue", "repeat", "autonomy"] as const;
-
-/** Maximum autonomy entries to keep per table before pruning old ones. */
-const MAX_AUTONOMY_ENTRIES = 30;
-
-/** Run memory pruning every N successful think cycles to avoid per-tick overhead. */
-const PRUNE_EVERY_N_THINKS = 10;
-
-/** Maximum backoff duration for the circuit breaker (5 minutes). */
-const CIRCUIT_BREAKER_MAX_BACKOFF_MS = 300_000;
+export const AUTONOMY_TASK_TAGS = ["repeat", "autonomy", "internal"] as const;
 
 /**
  * AutonomyService - Manages autonomous agent operation
@@ -78,13 +70,6 @@ export class AutonomyService extends Service {
   private isThinking = false;
   protected autonomyEntityId: UUID; // Dedicated entity ID for autonomy prompts (not the agent's ID)
 
-  // Circuit breaker state — backs off exponentially on consecutive failures
-  private consecutiveFailures = 0;
-  private nextAllowedThinkAt = 0;
-
-  // Pruning counter — triggers cleanup every PRUNE_EVERY_N_THINKS successful cycles
-  private thinkCount = 0;
-
   private getAutonomyMode(): "continuous" | "task" {
     const raw = this.runtime.getSetting("AUTONOMY_MODE");
     if (raw === "task") return "task";
@@ -103,7 +88,7 @@ export class AutonomyService extends Service {
 
   private async getTargetRoomContextText(): Promise<string> {
     const targetRoomId = this.getTargetRoomId();
-    const participantRooms = await this.runtime.getRoomsForParticipant(
+    const participantRooms = await this.runtime.getRoomsForParticipants(
       this.runtime.agentId,
     );
     const orderedRoomIds: UUID[] = [];
@@ -158,8 +143,7 @@ export class AutonomyService extends Service {
     const entityNames = await this.buildEntityNameLookup(entityIds);
 
     const messagesByRoom = new Map<UUID, Memory[]>();
-    const dedupedMessages = this.dedupeMemoriesByIdKeepEarliest(messages);
-    const sortedMessages = [...dedupedMessages].sort(
+    const sortedMessages = [...messages].sort(
       (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
     );
     for (const memory of sortedMessages) {
@@ -194,72 +178,26 @@ export class AutonomyService extends Service {
       return `Room: ${roomName}\n${lines.join("\n")}`;
     });
 
-    const autonomyEntries = autonomyMemories
-      .map((memory) => {
-        const text =
-          typeof memory.content.text === "string" ? memory.content.text : "";
-        if (!text.trim()) return "";
-
-        const metadata =
-          typeof memory.content.metadata === "object" &&
-          memory.content.metadata !== null &&
-          !Array.isArray(memory.content.metadata)
-            ? (memory.content.metadata as Record<string, ContentValue>)
-            : {};
-        const type = metadata.type;
-
-        if (
-          memory.entityId === this.runtime.agentId &&
-          type === "autonomous-response"
-        ) {
-          return `Thought: ${text}`;
-        }
-        if (
-          memory.entityId === this.autonomyEntityId &&
-          type === "autonomous-trigger"
-        ) {
-          return `Trigger: ${text}`;
-        }
-        return "";
-      })
-      .filter((entry) => entry.trim().length > 0);
+    const autonomyThoughts = autonomyMemories
+      .filter((memory) => memory.entityId === this.runtime.agentId)
+      .map((memory) =>
+        typeof memory.content.text === "string" ? memory.content.text : "",
+      )
+      .filter((text) => text.trim().length > 0);
     const autonomySection =
-      autonomyEntries.length > 0
-        ? ["Autonomous context:", ...autonomyEntries].join("\n")
-        : "Autonomous context: (none)";
+      autonomyThoughts.length > 0
+        ? ["Autonomous thoughts:", ...autonomyThoughts].join("\n")
+        : "Autonomous thoughts: (none)";
 
     return [...roomSections, autonomySection].join("\n\n");
-  }
-
-  private dedupeMemoriesByIdKeepEarliest(memories: Memory[]): Memory[] {
-    const byId = new Map<UUID, Memory>();
-    const withoutId: Memory[] = [];
-    for (const memory of memories) {
-      const memoryId = memory.id;
-      if (!memoryId) {
-        withoutId.push(memory);
-        continue;
-      }
-
-      const existing = byId.get(memoryId);
-      if (!existing) {
-        byId.set(memoryId, memory);
-        continue;
-      }
-      if ((memory.createdAt ?? 0) < (existing.createdAt ?? 0)) {
-        byId.set(memoryId, memory);
-      }
-    }
-    return [...withoutId, ...byId.values()];
   }
 
   constructor() {
     super();
     // Default interval of 30 seconds
     this.intervalMs = 30000;
-    // Placeholder — overwritten in initialize() with a deterministic ID
-    // derived from agentId so memories persist across restarts.
-    this.autonomousRoomId = "00000000-0000-0000-0000-000000000000" as UUID;
+    // Generate unique room ID for autonomous thoughts
+    this.autonomousRoomId = stringToUuid(uuidv4());
     this.autonomousWorldId = stringToUuid(
       "00000000-0000-0000-0000-000000000001",
     );
@@ -284,12 +222,6 @@ export class AutonomyService extends Service {
    * Initialize the service
    */
   private async initialize(): Promise<void> {
-    // Derive a deterministic room ID from the agent's ID so autonomy
-    // memories survive restarts and orphaned rooms are avoided.
-    this.autonomousRoomId = stringToUuid(
-      `autonomy-room-${this.runtime.agentId}`,
-    );
-
     this.runtime.logger.info(
       { src: "autonomy", agentId: this.runtime.agentId },
       `Using autonomous room ID: ${this.autonomousRoomId}`,
@@ -334,22 +266,6 @@ export class AutonomyService extends Service {
       name: AUTONOMY_TASK_NAME,
       validate: async () => true,
       execute: async (runtime, _options, task) => {
-        // ── Circuit breaker: skip if still in backoff period ──────────
-        if (Date.now() < this.nextAllowedThinkAt) {
-          const remainingMs = this.nextAllowedThinkAt - Date.now();
-          this.runtime.logger.warn(
-            {
-              src: "autonomy",
-              agentId: runtime.agentId,
-              taskId: task.id,
-              remainingMs,
-              consecutiveFailures: this.consecutiveFailures,
-            },
-            "Circuit breaker active, skipping think cycle",
-          );
-          return;
-        }
-
         const startTime = Date.now();
         this.runtime.logger.debug(
           {
@@ -363,27 +279,6 @@ export class AutonomyService extends Service {
         try {
           await this.performAutonomousThink();
           const durationMs = Date.now() - startTime;
-
-          // Reset circuit breaker on success
-          if (this.consecutiveFailures > 0) {
-            this.runtime.logger.info(
-              {
-                src: "autonomy",
-                agentId: runtime.agentId,
-                previousFailures: this.consecutiveFailures,
-              },
-              "Circuit breaker reset after successful think",
-            );
-          }
-          this.consecutiveFailures = 0;
-          this.nextAllowedThinkAt = 0;
-
-          // Periodic memory pruning to bound growth
-          this.thinkCount++;
-          if (this.thinkCount % PRUNE_EVERY_N_THINKS === 0) {
-            await this.pruneAutonomyMemories();
-          }
-
           this.runtime.logger.debug(
             {
               src: "autonomy",
@@ -395,13 +290,6 @@ export class AutonomyService extends Service {
           );
         } catch (error) {
           const durationMs = Date.now() - startTime;
-          this.consecutiveFailures++;
-          const backoffMs = Math.min(
-            this.intervalMs * 2 ** this.consecutiveFailures,
-            CIRCUIT_BREAKER_MAX_BACKOFF_MS,
-          );
-          this.nextAllowedThinkAt = Date.now() + backoffMs;
-
           this.runtime.logger.error(
             {
               src: "autonomy",
@@ -409,13 +297,10 @@ export class AutonomyService extends Service {
               taskId: task.id,
               error: error instanceof Error ? error.message : String(error),
               durationMs,
-              consecutiveFailures: this.consecutiveFailures,
-              backoffMs,
             },
-            `Autonomy task failed, backing off ${Math.round(backoffMs / 1000)}s`,
+            "Autonomy task failed",
           );
-          // Don't rethrow — the circuit breaker handles retry scheduling.
-          // Rethrowing could cause the task system to de-register the task.
+          throw error;
         }
       },
     });
@@ -450,16 +335,14 @@ export class AutonomyService extends Service {
       }
     }
 
-    // Create the recurring task.
-    // updatedAt is set to 0 so the TaskService fires the first tick
-    // immediately instead of waiting a full interval.
+    // Create the recurring task
     await this.runtime.createTask({
       name: AUTONOMY_TASK_NAME,
       description: `Autonomous thinking for agent ${this.runtime.agentId}`,
       worldId: this.autonomousWorldId,
       roomId: this.autonomousRoomId,
       metadata: {
-        updatedAt: 0,
+        updatedAt: Date.now(),
         updateInterval: this.intervalMs,
         // Enable blocking to prevent overlapping think cycles
         // This is critical for long-running autonomous operations
@@ -540,61 +423,25 @@ export class AutonomyService extends Service {
       });
     }
 
-    // Ensure autonomy entity exists in the database before adding as participant.
-    // The participants table has a foreign key on entity_id, so the entity must exist first.
-    // IMPORTANT: getEntityById does NOT filter by agentId, but getEntitiesForRoom DOES.
-    // If the entity exists from a prior run with a stale agentId, we must update it so the
-    // JOIN in getEntitiesForRoom can match it. Without this, formatPosts/formatMessages
-    // will fail to resolve the entity and the autonomy prompt context becomes degraded.
-    if (this.runtime.getEntityById && this.runtime.createEntity) {
-      const existingEntity = await this.runtime.getEntityById(
-        this.autonomyEntityId,
+    // Add agent as participant
+    if (this.runtime.addParticipant) {
+      await this.runtime.addParticipant(
+        this.runtime.agentId,
+        this.autonomousRoomId,
       );
-      if (!existingEntity) {
-        const created = await this.runtime.createEntity({
-          id: this.autonomyEntityId,
-          names: ["Autonomy"],
-          agentId: this.runtime.agentId,
-          metadata: {
-            type: "autonomy",
-            description: "Dedicated entity for autonomy service prompts",
-          },
-        });
-        if (!created) {
-          this.runtime.logger.warn(
-            { src: "autonomy", agentId: this.runtime.agentId },
-            "Failed to create autonomy entity, participant linking may fail",
-          );
-        }
-      } else if (
-        existingEntity.agentId !== this.runtime.agentId &&
-        this.runtime.updateEntity
-      ) {
-        // Entity exists but is bound to a different agent — update it so
-        // getEntitiesForRoom (which filters by agentId) can find it.
-        await this.runtime.updateEntity({
-          ...existingEntity,
-          agentId: this.runtime.agentId,
-        });
-      }
+      // Also add the autonomy entity as a participant
+      await this.runtime.addParticipant(
+        this.autonomyEntityId,
+        this.autonomousRoomId,
+      );
     }
-
-    // Ensure both the agent and the autonomy entity are participants in the room.
     if (this.runtime.ensureParticipantInRoom) {
       await this.runtime.ensureParticipantInRoom(
         this.runtime.agentId,
         this.autonomousRoomId,
       );
+      // Also ensure the autonomy entity is in the room
       await this.runtime.ensureParticipantInRoom(
-        this.autonomyEntityId,
-        this.autonomousRoomId,
-      );
-    } else if (this.runtime.addParticipant) {
-      await this.runtime.addParticipant(
-        this.runtime.agentId,
-        this.autonomousRoomId,
-      );
-      await this.runtime.addParticipant(
         this.autonomyEntityId,
         this.autonomousRoomId,
       );
@@ -674,8 +521,8 @@ export class AutonomyService extends Service {
         memory.entityId === agentEntity.id &&
         memory.content?.text &&
         memory.content?.metadata &&
-        (memory.content.metadata as Record<string, ContentValue>)
-          ?.isAutonomous === true &&
+        (memory.content.metadata as Record<string, ContentValue>)?.isAutonomous ===
+          true &&
         (memory.content.metadata as Record<string, ContentValue>)?.type ===
           "autonomous-response"
       ) {
@@ -894,76 +741,6 @@ export class AutonomyService extends Service {
     return output;
   }
 
-  /**
-   * Prune old autonomy entries to prevent unbounded growth.
-   * Keeps the most recent MAX_AUTONOMY_ENTRIES in each table
-   * (memories + messages) and deletes the rest.
-   */
-  private async pruneAutonomyMemories(): Promise<void> {
-    for (const tableName of ["memories", "messages"] as const) {
-      try {
-        const entries = await this.runtime.getMemories({
-          roomId: this.autonomousRoomId,
-          count: MAX_AUTONOMY_ENTRIES + 50,
-          tableName,
-        });
-
-        if (entries.length <= MAX_AUTONOMY_ENTRIES) continue;
-
-        // Keep the newest entries, delete the rest
-        const sorted = [...entries].sort(
-          (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
-        );
-        const toDelete = sorted.slice(MAX_AUTONOMY_ENTRIES);
-        let deleted = 0;
-
-        for (const entry of toDelete) {
-          if (entry.id) {
-            try {
-              await this.runtime.deleteMemory(entry.id);
-              deleted++;
-            } catch (error) {
-              this.runtime.logger.warn(
-                {
-                  src: "autonomy",
-                  agentId: this.runtime.agentId,
-                  tableName,
-                  entryId: entry.id,
-                  error: error instanceof Error ? error.message : String(error),
-                },
-                "Failed to delete autonomy entry during prune",
-              );
-            }
-          }
-        }
-
-        if (deleted > 0) {
-          this.runtime.logger.info(
-            {
-              src: "autonomy",
-              agentId: this.runtime.agentId,
-              deleted,
-              tableName,
-              remaining: entries.length - deleted,
-            },
-            "Pruned old autonomy entries",
-          );
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.runtime.logger.warn(
-          {
-            src: "autonomy",
-            agentId: this.runtime.agentId,
-            error: msg,
-            tableName,
-          },
-          "Failed to prune autonomy entries",
-        );
-      }
-    }
-  }
-
   // Public API methods
 
   /**
@@ -1050,71 +827,6 @@ export class AutonomyService extends Service {
 
   async stopLoop(): Promise<void> {
     await this.disableAutonomy();
-  }
-
-  /**
-   * Inject an instruction into the autonomous room and optionally wake the loop immediately.
-   */
-  async injectAutonomousInstruction(params: {
-    instructions: string;
-    source?: string;
-    triggerId?: UUID;
-    triggerTaskId?: UUID;
-    wakeMode?: "inject_now" | "next_autonomy_cycle";
-  }): Promise<UUID> {
-    const instructions = params.instructions.trim();
-    if (!instructions) {
-      throw new Error("Instruction text is required");
-    }
-
-    await this.ensureAutonomousContext();
-
-    if (!this.isRunning) {
-      await this.enableAutonomy();
-    }
-
-    const wakeMode = params.wakeMode ?? "inject_now";
-    const timestamp = Date.now();
-    const metadata: Record<string, ContentValue> = {
-      type: "autonomous-trigger",
-      isAutonomous: true,
-      isInternalThought: true,
-      channelId: "autonomous",
-      timestamp,
-      wakeMode,
-      source: params.source ?? "autonomy-service",
-    };
-    if (params.triggerId) {
-      metadata.triggerId = params.triggerId;
-    }
-    if (params.triggerTaskId) {
-      metadata.triggerTaskId = params.triggerTaskId;
-    }
-
-    const memory: Memory = {
-      id: stringToUuid(uuidv4()),
-      entityId: this.autonomyEntityId,
-      agentId: this.runtime.agentId,
-      roomId: this.autonomousRoomId,
-      createdAt: timestamp,
-      content: {
-        text: instructions,
-        source: params.source ?? "autonomy-service",
-        metadata,
-      },
-    };
-
-    await this.runtime.createMemory(memory, "memories");
-
-    if (wakeMode === "inject_now") {
-      await this.triggerThinkNow();
-    }
-
-    const createdMemoryId = memory.id;
-    if (!createdMemoryId) {
-      throw new Error("Autonomy trigger memory ID was not generated");
-    }
-    return createdMemoryId;
   }
 
   /**

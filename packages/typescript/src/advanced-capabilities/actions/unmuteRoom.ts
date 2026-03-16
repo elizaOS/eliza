@@ -12,10 +12,7 @@ import type {
   State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import {
-  composePromptFromState,
-  parseXmlBooleanResponse,
-} from "../../utils.ts";
+import { composePromptFromState } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("UNMUTE_ROOM");
@@ -52,9 +49,16 @@ export const unmuteRoomAction: Action = {
         stopSequences: [],
       });
 
-      const parsedResponse = parseXmlBooleanResponse(response);
+      const cleanedResponse = response.trim().toLowerCase();
 
-      if (parsedResponse === true) {
+      // Handle various affirmative responses
+      if (
+        cleanedResponse === "true" ||
+        cleanedResponse === "yes" ||
+        cleanedResponse === "y" ||
+        cleanedResponse.includes("true") ||
+        cleanedResponse.includes("yes")
+      ) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -72,7 +76,14 @@ export const unmuteRoomAction: Action = {
         return true;
       }
 
-      if (parsedResponse === false) {
+      // Handle various negative responses
+      if (
+        cleanedResponse === "false" ||
+        cleanedResponse === "no" ||
+        cleanedResponse === "n" ||
+        cleanedResponse.includes("false") ||
+        cleanedResponse.includes("no")
+      ) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -89,13 +100,14 @@ export const unmuteRoomAction: Action = {
         return false;
       }
 
+      // Default to false if response is unclear
       logger.warn(
         {
-          src: "plugin:core:action:unmute_room",
+          src: "plugin:bootstrap:action:unmute_room",
           agentId: runtime.agentId,
           response,
         },
-        "Unclear XML decision response, defaulting to false",
+        "Unclear boolean response, defaulting to false",
       );
       return false;
     }
@@ -120,7 +132,7 @@ export const unmuteRoomAction: Action = {
 
     if (shouldUnmute) {
       try {
-        await runtime.setParticipantUserState(
+        await runtime.updateParticipantUserState(
           message.roomId,
           runtime.agentId,
           null,
@@ -131,7 +143,7 @@ export const unmuteRoomAction: Action = {
         if (!room) {
           logger.warn(
             {
-              src: "plugin:core:action:unmute_room",
+              src: "plugin:bootstrap:action:unmute_room",
               agentId: runtime.agentId,
               roomId: message.roomId,
             },
@@ -189,7 +201,7 @@ export const unmuteRoomAction: Action = {
       } catch (error) {
         logger.error(
           {
-            src: "plugin:core:action:unmute_room",
+            src: "plugin:bootstrap:action:unmute_room",
             agentId: runtime.agentId,
             error: error instanceof Error ? error.message : String(error),
           },

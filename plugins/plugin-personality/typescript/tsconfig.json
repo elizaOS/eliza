@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "@elizaos/config/typescript/tsconfig.plugin.json",
+  "compilerOptions": {
+    "baseUrl": "./src"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "__tests__/**/*.ts", "cypress.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

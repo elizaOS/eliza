@@ -5,7 +5,6 @@
  * what's configured, and what's missing.
  */
 
-import { logger } from "../logger";
 import type {
   IAgentRuntime,
   Memory,
@@ -13,16 +12,17 @@ import type {
   ProviderResult,
   State,
 } from "../types";
+import { ChannelType } from "../types/primitives";
+import { logger } from "../logger";
 import {
-  calculateProgress,
-  ONBOARDING_STEP_DESCRIPTIONS,
+  OnboardingStep,
   ONBOARDING_STEP_LABELS,
+  ONBOARDING_STEP_DESCRIPTIONS,
   type OnboardingContext,
   type OnboardingProgress,
-  OnboardingStep,
   type SerializedOnboardingState,
+  calculateProgress,
 } from "../types/onboarding";
-import { ChannelType } from "../types/primitives";
 
 /**
  * Format a step status for display.
@@ -140,7 +140,8 @@ ${context.completedSteps.map((step) => `- ${ONBOARDING_STEP_LABELS[step]}`).join
       break;
 
     case OnboardingStep.RISK_ACK:
-      output += "- Present the security and risk information to the user\n";
+      output +=
+        "- Present the security and risk information to the user\n";
       output += "- User MUST explicitly acknowledge to proceed\n";
       output += "- Do not proceed without explicit acceptance\n";
       break;
@@ -148,8 +149,7 @@ ${context.completedSteps.map((step) => `- ${ONBOARDING_STEP_LABELS[step]}`).join
     case OnboardingStep.AUTH:
       output +=
         "- Help the user configure authentication with an AI provider\n";
-      output +=
-        "- Supported providers: Anthropic, OpenAI, Google, Groq, etc.\n";
+      output += "- Supported providers: Anthropic, OpenAI, Google, Groq, etc.\n";
       output +=
         "- Ask for their API key or guide them through OAuth if available\n";
       output += "- This step can be skipped if using local models\n";

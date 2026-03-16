@@ -1,6 +1,5 @@
 import { v4 } from "uuid";
 import { withCanonicalActionDocs } from "../action-docs.ts";
-import * as autonomy from "../autonomy/index.ts";
 import { createUniqueUuid } from "../entities.ts";
 import { logger } from "../logger.ts";
 import {
@@ -8,10 +7,11 @@ import {
   messageHandlerTemplate,
   postCreationTemplate,
 } from "../prompts.ts";
-import { ActionFilterService } from "../services/action-filter.ts";
 import { AgentEventService } from "../services/agentEvent.ts";
 import { ApprovalService } from "../services/approval.ts";
 import { EmbeddingGenerationService } from "../services/embedding.ts";
+import { FollowUpService } from "../services/followUp.ts";
+import { RolodexService } from "../services/rolodex.ts";
 import { TaskService } from "../services/task.ts";
 import { ToolPolicyService } from "../services/tool-policy.ts";
 import { TrajectoryLoggerService } from "../services/trajectoryLogger.ts";
@@ -47,6 +47,9 @@ import { ChannelType, ContentType } from "../types/primitives.ts";
 import { getLocalServerUrl } from "../utils/node.ts";
 import { composePromptFromState, parseKeyValueXml } from "../utils.ts";
 import * as actions from "./actions/index.ts";
+import * as autonomy from "../autonomy/index.ts";
+import { printBootstrapBanner } from "./banner.ts";
+import * as evaluators from "./evaluators/index.ts";
 import * as providers from "./providers/index.ts";
 
 interface ImageDescriptionXml {
@@ -79,12 +82,11 @@ type MediaData = {
 
 export async function fetchMediaData(
   attachments: Media[],
-  fetchFn: typeof fetch = globalThis.fetch,
 ): Promise<MediaData[]> {
   return Promise.all(
     attachments.map(async (attachment: Media) => {
       if (/^(http|https):\/\//.test(attachment.url)) {
-        const response = await fetchFn(attachment.url);
+        const response = await fetch(attachment.url);
         if (!response.ok) {
           throw new Error(`Failed to fetch file: ${attachment.url}`);
         }
@@ -116,7 +118,7 @@ export async function processAttachments(
   }
   runtime.logger.debug(
     {
-      src: "plugin:core",
+      src: "plugin:bootstrap",
       agentId: runtime.agentId,
       count: attachments.length,
     },
@@ -134,17 +136,9 @@ export async function processAttachments(
       attachment.contentType === ContentType.IMAGE &&
       !attachment.description
     ) {
-      // Skip image analysis when vision / image-description is explicitly
-      // disabled (e.g. the user toggled the Vision capability off).
-      const disableImageDesc = runtime.getSetting("DISABLE_IMAGE_DESCRIPTION");
-      if (disableImageDesc === true || disableImageDesc === "true") {
-        processedAttachments.push(processedAttachment);
-        continue;
-      }
-
       runtime.logger.debug(
         {
-          src: "plugin:core",
+          src: "plugin:bootstrap",
           agentId: runtime.agentId,
           url: attachment.url,
         },
@@ -152,10 +146,9 @@ export async function processAttachments(
       );
 
       let imageUrl = url;
-      const runtimeFetch = runtime.fetch ?? globalThis.fetch;
 
       if (!isRemote) {
-        const res = await runtimeFetch(url);
+        const res = await fetch(url);
         if (!res.ok) {
           throw new Error(`Failed to fetch image: ${res.statusText}`);
         }
@@ -176,7 +169,7 @@ export async function processAttachments(
       } catch (err) {
         runtime.logger.error(
           {
-            src: "plugin:core",
+            src: "plugin:bootstrap",
             agentId: runtime.agentId,
             error: err instanceof Error ? err.message : String(err),
           },
@@ -199,7 +192,7 @@ export async function processAttachments(
 
           runtime.logger.debug(
             {
-              src: "plugin:core",
+              src: "plugin:bootstrap",
               agentId: runtime.agentId,
               descriptionPreview:
                 processedAttachment.description?.substring(0, 100) || undefined,
@@ -222,7 +215,7 @@ export async function processAttachments(
 
             runtime.logger.debug(
               {
-                src: "plugin:core",
+                src: "plugin:bootstrap",
                 agentId: runtime.agentId,
                 descriptionPreview:
                   processedAttachment.description?.substring(0, 100) ||
@@ -232,7 +225,7 @@ export async function processAttachments(
             );
           } else {
             runtime.logger.warn(
-              { src: "plugin:core", agentId: runtime.agentId },
+              { src: "plugin:bootstrap", agentId: runtime.agentId },
               "Failed to parse XML response for image description",
             );
           }
@@ -253,7 +246,7 @@ export async function processAttachments(
 
         runtime.logger.debug(
           {
-            src: "plugin:core",
+            src: "plugin:bootstrap",
             agentId: runtime.agentId,
             descriptionPreview:
               processedAttachment.description?.substring(0, 100) || undefined,
@@ -262,7 +255,7 @@ export async function processAttachments(
         );
       } else {
         runtime.logger.warn(
-          { src: "plugin:core", agentId: runtime.agentId },
+          { src: "plugin:bootstrap", agentId: runtime.agentId },
           "Unexpected response format for image description",
         );
       }
@@ -270,8 +263,7 @@ export async function processAttachments(
       attachment.contentType === ContentType.DOCUMENT &&
       !attachment.text
     ) {
-      const docFetch = runtime.fetch ?? globalThis.fetch;
-      const res = await docFetch(url);
+      const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`Failed to fetch document: ${res.statusText}`);
       }
@@ -282,7 +274,7 @@ export async function processAttachments(
       if (isPlainText) {
         runtime.logger.debug(
           {
-            src: "plugin:core",
+            src: "plugin:bootstrap",
             agentId: runtime.agentId,
             url: attachment.url,
           },
@@ -295,7 +287,7 @@ export async function processAttachments(
 
         runtime.logger.debug(
           {
-            src: "plugin:core",
+            src: "plugin:bootstrap",
             agentId: runtime.agentId,
             textPreview:
               processedAttachment.text?.substring(0, 100) || undefined,
@@ -304,7 +296,7 @@ export async function processAttachments(
         );
       } else {
         runtime.logger.warn(
-          { src: "plugin:core", agentId: runtime.agentId, contentType },
+          { src: "plugin:bootstrap", agentId: runtime.agentId, contentType },
           "Skipping non-plain-text document",
         );
       }
@@ -421,7 +413,7 @@ const reactionReceivedHandler = async ({
   runtime: IAgentRuntime;
   message: Memory;
 }) => {
-  await runtime.createMemory(message, "messages");
+  await runtime.createMemories([{ memory: message, tableName: "messages" }]);
 };
 
 const postGeneratedHandler = async ({
@@ -433,7 +425,7 @@ const postGeneratedHandler = async ({
   source,
 }: InvokePayload) => {
   runtime.logger.info(
-    { src: "plugin:core", agentId: runtime.agentId },
+    { src: "plugin:bootstrap", agentId: runtime.agentId },
     "Generating new post",
   );
   // Ensure world exists first
@@ -476,7 +468,7 @@ const postGeneratedHandler = async ({
     "ENTITIES",
   ]);
 
-  const entity = await runtime.getEntityById(runtime.agentId);
+  const entity = (await runtime.getEntitiesByIds([runtime.agentId]))[0] ?? null;
   interface XMetadata {
     x?: {
       userName?: string;
@@ -539,7 +531,7 @@ const postGeneratedHandler = async ({
     if (!responseContentThoughtAfter || !responseContentActionsAfter) {
       runtime.logger.warn(
         {
-          src: "plugin:core",
+          src: "plugin:bootstrap",
           agentId: runtime.agentId,
           response,
           parsedXml,
@@ -567,7 +559,7 @@ const postGeneratedHandler = async ({
 
   if (!parsedXmlResponse) {
     runtime.logger.error(
-      { src: "plugin:core", agentId: runtime.agentId, xmlResponseText },
+      { src: "plugin:bootstrap", agentId: runtime.agentId, xmlResponseText },
       "Failed to parse XML response for post creation",
     );
     throw new Error("Failed to parse XML response for post creation");
@@ -594,7 +586,7 @@ const postGeneratedHandler = async ({
     for (const m of RMDataRecentMessages) {
       if (cleanedText === m.content.text) {
         runtime.logger.info(
-          { src: "plugin:core", agentId: runtime.agentId, cleanedText },
+          { src: "plugin:bootstrap", agentId: runtime.agentId, cleanedText },
           "Already recently posted that, retrying",
         );
         postGeneratedHandler({
@@ -628,7 +620,7 @@ const postGeneratedHandler = async ({
     generalRefusalRegex.test(cleanedText)
   ) {
     runtime.logger.info(
-      { src: "plugin:core", agentId: runtime.agentId, cleanedText },
+      { src: "plugin:bootstrap", agentId: runtime.agentId, cleanedText },
       "Got prompt moderation refusal, retrying",
     );
     postGeneratedHandler({
@@ -689,10 +681,10 @@ const syncSingleUser = async (
   type: ChannelType,
   source: string,
 ) => {
-  const entity = await runtime.getEntityById(entityId);
+  const entity = (await runtime.getEntitiesByIds([entityId]))[0] ?? null;
   runtime.logger.info(
     {
-      src: "plugin:core",
+      src: "plugin:bootstrap",
       agentId: runtime.agentId,
       entityId,
       username: entity?.metadata?.username || undefined,
@@ -704,7 +696,7 @@ const syncSingleUser = async (
   if (!channelId) {
     runtime.logger.warn(
       {
-        src: "plugin:core",
+        src: "plugin:bootstrap",
         agentId: runtime.agentId,
         entityId: entity?.id || undefined,
       },
@@ -731,7 +723,7 @@ const syncSingleUser = async (
 
   runtime.logger.info(
     {
-      src: "plugin:core",
+      src: "plugin:bootstrap",
       agentId: runtime.agentId,
       type,
       isDM: type === ChannelType.DM,
@@ -754,10 +746,10 @@ const syncSingleUser = async (
     metadata: worldMetadata,
   });
 
-  const createdWorld = await runtime.getWorld(worldId);
+  const createdWorld = (await runtime.getWorldsByIds([worldId]))[0] ?? null;
   runtime.logger.info(
     {
-      src: "plugin:core",
+      src: "plugin:bootstrap",
       agentId: runtime.agentId,
       worldId,
       metadata: createdWorld?.metadata || undefined,
@@ -767,7 +759,7 @@ const syncSingleUser = async (
 
   runtime.logger.success(
     {
-      src: "plugin:core",
+      src: "plugin:bootstrap",
       agentId: runtime.agentId,
       agentName: runtime.character.name,
       entityId: entity?.id || undefined,
@@ -789,7 +781,7 @@ const handleServerSync = async ({
 }: WorldPayload) => {
   runtime.logger.debug(
     {
-      src: "plugin:core",
+      src: "plugin:bootstrap",
       agentId: runtime.agentId,
       serverName: world.name,
     },
@@ -798,7 +790,7 @@ const handleServerSync = async ({
   await runtime.ensureConnections(entities, rooms, source ?? "unknown", world);
   runtime.logger.debug(
     {
-      src: "plugin:core",
+      src: "plugin:bootstrap",
       agentId: runtime.agentId,
       worldName: world.name,
     },
@@ -815,7 +807,7 @@ const controlMessageHandler = async ({
 }: ControlMessagePayload) => {
   runtime.logger.debug(
     {
-      src: "plugin:core",
+      src: "plugin:bootstrap",
       agentId: runtime.agentId,
       action: message.payload.action,
       roomId: message.roomId,
@@ -850,7 +842,7 @@ const controlMessageHandler = async ({
 
       runtime.logger.debug(
         {
-          src: "plugin:core",
+          src: "plugin:bootstrap",
           agentId: runtime.agentId,
           action: message.payload.action,
         },
@@ -858,13 +850,13 @@ const controlMessageHandler = async ({
       );
     } else {
       runtime.logger.error(
-        { src: "plugin:core", agentId: runtime.agentId },
+        { src: "plugin:bootstrap", agentId: runtime.agentId },
         "WebSocket service does not have sendMessage method",
       );
     }
   } else {
     runtime.logger.error(
-      { src: "plugin:core", agentId: runtime.agentId },
+      { src: "plugin:bootstrap", agentId: runtime.agentId },
       "No WebSocket service found to send control message",
     );
   }
@@ -887,7 +879,7 @@ const events: PluginEvents = {
     async (payload: MessagePayload) => {
       payload.runtime.logger.debug(
         {
-          src: "plugin:core",
+          src: "plugin:bootstrap",
           agentId: payload.runtime.agentId,
           text: payload.message.content.text,
         },
@@ -912,7 +904,7 @@ const events: PluginEvents = {
     async (payload: EntityPayload) => {
       payload.runtime.logger.debug(
         {
-          src: "plugin:core",
+          src: "plugin:bootstrap",
           agentId: payload.runtime.agentId,
           entityId: payload.entityId,
         },
@@ -921,14 +913,14 @@ const events: PluginEvents = {
 
       if (!payload.worldId) {
         payload.runtime.logger.error(
-          { src: "plugin:core", agentId: payload.runtime.agentId },
+          { src: "plugin:bootstrap", agentId: payload.runtime.agentId },
           "No worldId provided for entity joined",
         );
         return;
       }
       if (!payload.roomId) {
         payload.runtime.logger.error(
-          { src: "plugin:core", agentId: payload.runtime.agentId },
+          { src: "plugin:bootstrap", agentId: payload.runtime.agentId },
           "No roomId provided for entity joined",
         );
         return;
@@ -936,7 +928,7 @@ const events: PluginEvents = {
       const payloadMetadata = payload.metadata;
       if (!payloadMetadata || !payloadMetadata.type) {
         payload.runtime.logger.error(
-          { src: "plugin:core", agentId: payload.runtime.agentId },
+          { src: "plugin:bootstrap", agentId: payload.runtime.agentId },
           "No type provided for entity joined",
         );
         return;
@@ -961,18 +953,18 @@ const events: PluginEvents = {
   [EventType.ENTITY_LEFT]: [
     async (payload: EntityPayload) => {
       // Update entity to inactive
-      const entity = await payload.runtime.getEntityById(payload.entityId);
+      const entity = (await payload.runtime.getEntitiesByIds([payload.entityId]))[0] ?? null;
       if (entity) {
         entity.metadata = {
           ...entity.metadata,
           status: "INACTIVE",
           leftAt: Date.now(),
         };
-        await payload.runtime.updateEntity(entity);
+        await payload.runtime.updateEntities([entity]);
       }
       payload.runtime.logger.info(
         {
-          src: "plugin:core",
+          src: "plugin:bootstrap",
           agentId: payload.runtime.agentId,
           entityId: payload.entityId,
           worldId: payload.worldId,
@@ -1004,7 +996,7 @@ const events: PluginEvents = {
       const contentActions = content?.actions;
       const actionName = contentActions?.[0] ?? "unknown";
 
-      await payload.runtime.log({
+      await payload.runtime.createLogs([{
         entityId: payload.runtime.agentId,
         roomId: payload.roomId,
         type: "action_event",
@@ -1018,10 +1010,10 @@ const events: PluginEvents = {
           planStep: (content?.planStep as string | undefined) ?? "",
           source: "actionHandler",
         } as ActionLogBody,
-      });
+      }]);
       logger.debug(
         {
-          src: "plugin:core",
+          src: "plugin:bootstrap",
           agentId: payload.runtime.agentId,
           actionName: actionName,
         },
@@ -1053,7 +1045,7 @@ const events: PluginEvents = {
     async (payload: EvaluatorEventPayload) => {
       logger.debug(
         {
-          src: "plugin:core:evaluator",
+          src: "plugin:bootstrap:evaluator",
           agentId: payload.runtime.agentId,
           evaluatorName: payload.evaluatorName,
           evaluatorId: payload.evaluatorId,
@@ -1068,7 +1060,7 @@ const events: PluginEvents = {
       const status = payload.error ? "failed" : "completed";
       logger.debug(
         {
-          src: "plugin:core:evaluator",
+          src: "plugin:bootstrap:evaluator",
           agentId: payload.runtime.agentId,
           status,
           evaluatorName: payload.evaluatorName,
@@ -1082,7 +1074,7 @@ const events: PluginEvents = {
 
   [EventType.RUN_STARTED]: [
     async (payload: RunEventPayload) => {
-      await payload.runtime.log({
+      await payload.runtime.createLogs([{
         entityId: payload.entityId,
         roomId: payload.roomId,
         type: "run_event",
@@ -1095,10 +1087,10 @@ const events: PluginEvents = {
           startTime: payload.startTime,
           source: payload.source || "unknown",
         } as BaseLogBody,
-      });
+      }]);
       logger.debug(
         {
-          src: "plugin:core",
+          src: "plugin:bootstrap",
           agentId: payload.runtime.agentId,
           runId: payload.runId,
         },
@@ -1109,7 +1101,7 @@ const events: PluginEvents = {
 
   [EventType.RUN_ENDED]: [
     async (payload: RunEventPayload) => {
-      await payload.runtime.log({
+      await payload.runtime.createLogs([{
         entityId: payload.entityId,
         roomId: payload.roomId,
         type: "run_event",
@@ -1125,10 +1117,10 @@ const events: PluginEvents = {
           error: payload.error,
           source: payload.source || "unknown",
         } as BaseLogBody,
-      });
+      }]);
       logger.debug(
         {
-          src: "plugin:core",
+          src: "plugin:bootstrap",
           agentId: payload.runtime.agentId,
           runId: payload.runId,
           status: payload.status,
@@ -1140,7 +1132,7 @@ const events: PluginEvents = {
 
   [EventType.RUN_TIMEOUT]: [
     async (payload: RunEventPayload) => {
-      await payload.runtime.log({
+      await payload.runtime.createLogs([{
         entityId: payload.entityId,
         roomId: payload.roomId,
         type: "run_event",
@@ -1156,10 +1148,10 @@ const events: PluginEvents = {
           error: payload.error,
           source: payload.source || "unknown",
         } as BaseLogBody,
-      });
+      }]);
       logger.debug(
         {
-          src: "plugin:core",
+          src: "plugin:bootstrap",
           agentId: payload.runtime.agentId,
           runId: payload.runId,
         },
@@ -1172,7 +1164,7 @@ const events: PluginEvents = {
     async (payload: ControlMessagePayload) => {
       if (!payload.message) {
         payload.runtime.logger.warn(
-          { src: "plugin:core" },
+          { src: "plugin:bootstrap" },
           "CONTROL_MESSAGE received without message property",
         );
         return;
@@ -1189,13 +1181,15 @@ const events: PluginEvents = {
 /**
  * Configuration for bootstrap capabilities.
  * - Basic: Core functionality (reply, ignore, none actions; core providers; task/embedding services)
- * - Advanced: Additional features (choice, mute/follow room, roles, settings, image generation)
+ * - Extended: Additional features (choice, mute/follow room, roles, settings, image generation)
  * - Autonomy: Autonomous operation (autonomy service, admin communication, status providers)
  */
 export interface CapabilityConfig {
   /** Disable basic capabilities (default: false) */
   disableBasic?: boolean;
-  /** Enable advanced capabilities (default: false) */
+  /** Enable extended/advanced capabilities (default: false) */
+  enableExtended?: boolean;
+  /** Alias for enableExtended - Enable advanced capabilities (default: false) */
   advancedCapabilities?: boolean;
   /** Skip the character provider (used for anonymous agents without a character file) */
   skipCharacterProvider?: boolean;
@@ -1208,11 +1202,14 @@ const basic = {
   providers: [
     providers.actionsProvider,
     providers.actionStateProvider,
+    providers.anxietyProvider,
     providers.attachmentsProvider,
+    providers.capabilitiesProvider,
     providers.characterProvider,
     providers.contextBenchProvider,
     providers.entitiesProvider,
     providers.evaluatorsProvider,
+    providers.providersProvider,
     providers.recentMessagesProvider,
     providers.timeProvider,
     providers.worldProvider,
@@ -1230,32 +1227,44 @@ const basic = {
     EmbeddingGenerationService,
     ToolPolicyService,
     TrajectoryLoggerService,
-    ActionFilterService,
   ] as ServiceClass[],
 };
 
-const advanced = {
+const extended = {
   providers: [
     providers.choiceProvider,
+    providers.contactsProvider,
+    providers.factsProvider,
+    providers.followUpsProvider,
     providers.knowledgeProvider,
+    providers.relationshipsProvider,
     providers.roleProvider,
     providers.settingsProvider,
   ],
   actions: [
+    withCanonicalActionDocs(actions.addContactAction),
     withCanonicalActionDocs(actions.choiceAction),
     withCanonicalActionDocs(actions.followRoomAction),
     withCanonicalActionDocs(actions.generateImageAction),
     withCanonicalActionDocs(actions.muteRoomAction),
+    withCanonicalActionDocs(actions.removeContactAction),
     withCanonicalActionDocs(actions.resetSessionAction),
+    withCanonicalActionDocs(actions.scheduleFollowUpAction),
+    withCanonicalActionDocs(actions.searchContactsAction),
+    withCanonicalActionDocs(actions.sendMessageAction),
     withCanonicalActionDocs(actions.statusAction),
     withCanonicalActionDocs(actions.unfollowRoomAction),
     withCanonicalActionDocs(actions.unmuteRoomAction),
+    withCanonicalActionDocs(actions.updateContactAction),
+    withCanonicalActionDocs(actions.updateEntityAction),
     withCanonicalActionDocs(actions.updateRoleAction),
     withCanonicalActionDocs(actions.updateSettingsAction),
   ],
-  // Relationship evaluators are owned by plugin-rolodex.
-  evaluators: [],
-  services: [] as ServiceClass[],
+  evaluators: [
+    evaluators.reflectionEvaluator,
+    evaluators.relationshipExtractionEvaluator,
+  ],
+  services: [RolodexService, FollowUpService] as ServiceClass[],
 };
 
 // Autonomy capabilities - opt-in
@@ -1266,7 +1275,6 @@ const autonomyCapabilities = {
   evaluators: [],
   services: [autonomy.AutonomyService] as ServiceClass[],
   routes: autonomy.autonomyRoutes,
-  events: {},
 };
 
 export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
@@ -1277,24 +1285,27 @@ export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
   return {
     name: "bootstrap",
     description: "Agent bootstrap with basic actions and evaluators",
+    init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+      printBootstrapBanner(runtime);
+    },
     actions: [
       ...(config.disableBasic ? [] : basic.actions),
-      ...(config.advancedCapabilities ? advanced.actions : []),
+      ...(config.enableExtended ? extended.actions : []),
       ...(config.enableAutonomy ? autonomyCapabilities.actions : []),
     ],
     providers: [
       ...(config.disableBasic ? [] : basicProviders),
-      ...(config.advancedCapabilities ? advanced.providers : []),
+      ...(config.enableExtended ? extended.providers : []),
       ...(config.enableAutonomy ? autonomyCapabilities.providers : []),
     ],
     evaluators: [
       ...(config.disableBasic ? [] : basic.evaluators),
-      ...(config.advancedCapabilities ? advanced.evaluators : []),
+      ...(config.enableExtended ? extended.evaluators : []),
       ...(config.enableAutonomy ? autonomyCapabilities.evaluators : []),
     ],
     services: [
       ...(config.disableBasic ? [] : basic.services),
-      ...(config.advancedCapabilities ? advanced.services : []),
+      ...(config.enableExtended ? extended.services : []),
       ...(config.enableAutonomy ? autonomyCapabilities.services : []),
     ],
     routes: [...(config.enableAutonomy ? autonomyCapabilities.routes : [])],
@@ -1308,9 +1319,9 @@ export function createBootstrapPlugin(config: CapabilityConfig = {}): Plugin {
 
 // Export capability arrays for direct access if needed
 export {
-  advanced as advancedCapabilities,
-  autonomyCapabilities,
   basic as basicCapabilities,
+  extended as extendedCapabilities,
+  autonomyCapabilities,
 };
 
 export * from "../autonomy/index.ts";

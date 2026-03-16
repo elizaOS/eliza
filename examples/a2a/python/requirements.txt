@@ -1,0 +1,9 @@
+fastapi>=0.104.0
+uvicorn>=0.24.0
+elizaos>=1.0.0
+elizaos-plugin-openai>=1.0.0
+elizaos-plugin-eliza-classic>=1.0.0
+elizaos-plugin-inmemorydb>=1.0.0
+uuid6>=2024.7.10
+python-dotenv>=1.0.0
+httpx>=0.25.0

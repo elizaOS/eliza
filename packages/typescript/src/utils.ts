@@ -1,14 +1,10 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import Handlebars from "handlebars";
-import { names } from "unique-names-generator";
+import { names, uniqueNamesGenerator } from "unique-names-generator";
 import { z } from "zod";
 
-import {
-  buildDeterministicSeed,
-  deterministicHex,
-  deterministicPickOne,
-} from "./deterministic";
 import logger from "./logger";
+import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 import type {
   Content,
   Entity,
@@ -19,95 +15,6 @@ import type {
 } from "./types";
 import { ContentType, ModelType, type UUID } from "./types";
 import { getEnv } from "./utils/environment";
-
-// ============================================
-// Token Estimation & Budgeting Utilities
-// ============================================
-
-/**
- * Default max tokens for conversation context in the recentMessages provider.
- *
- * This budget must leave room within the overall prompt token limit
- * (`DEFAULT_MAX_PROMPT_TOKENS`) for all other state providers (character,
- * facts, knowledge, actions, relationships, etc.) and template formatting.
- * Those typically consume 20-60 K tokens, so keeping conversation under
- * 50 K provides a safe margin.
- */
-export const DEFAULT_MAX_CONVERSATION_TOKENS = 50_000;
-
-/** Max tokens for embedding input text (default fallback) */
-export const DEFAULT_MAX_EMBEDDING_TOKENS = 8_000;
-
-/** Max character equivalent for embedding text (tokens * ~4 chars/token) */
-export const DEFAULT_MAX_EMBEDDING_CHARS = DEFAULT_MAX_EMBEDDING_TOKENS * 4;
-/** @deprecated Use DEFAULT_MAX_EMBEDDING_TOKENS instead */
-export const MAX_EMBEDDING_TOKENS = DEFAULT_MAX_EMBEDDING_TOKENS;
-
-/** @deprecated Use DEFAULT_MAX_EMBEDDING_CHARS instead */
-export const MAX_EMBEDDING_CHARS = DEFAULT_MAX_EMBEDDING_CHARS;
-/** Default max tokens for the assembled prompt sent to the model */
-export const DEFAULT_MAX_PROMPT_TOKENS = 128_000;
-
-/**
- * Fast synchronous token estimation.
- * Uses ~4 characters per token average for English text.
- * Avoids async model calls — suitable for hot-path budget checks.
- */
-export function estimateTokens(text: string): number {
-  if (!text) return 0;
-  return Math.ceil(text.length / 4);
-}
-
-/**
- * Trims an array of messages to fit within a token budget.
- * Messages should be ordered most-recent-first.
- * Always keeps at least the first (most recent) message.
- * Returns a new array (does not mutate the input).
- */
-export function trimMessagesByTokenBudget(
-  messages: Memory[],
-  maxTokens: number,
-): Memory[] {
-  let tokenCount = 0;
-  const result: Memory[] = [];
-
-  for (const msg of messages) {
-    const text = msg.content?.text || "";
-    const msgTokens = estimateTokens(text);
-    // Always include at least the first message even if it alone exceeds the budget
-    if (tokenCount + msgTokens > maxTokens && result.length > 0) {
-      break;
-    }
-    result.push(msg);
-    tokenCount += msgTokens;
-  }
-
-  return result;
-}
-
-/**
- * Strips names, timestamps, entity IDs, and formatting from conversation text.
- * Returns just the raw conversational content — useful for embedding generation
- * where semantic meaning matters more than structure.
- */
-export function stripMessageFormatting(text: string): string {
-  if (!text) return "";
-  // Remove timestamp patterns like "14:30 (5 minutes ago) [uuid]"
-  let stripped = text.replace(/\d{2}:\d{2}\s*\([^)]*\)\s*\[[0-9a-f-]+\]/gi, "");
-  // Remove "Username: " prefixes at start of lines (with optional leading whitespace)
-  stripped = stripped.replace(/^\s*[A-Za-z0-9_]+:\s*/gm, "");
-  // Remove "(Username's internal thought: ...)" patterns
-  stripped = stripped.replace(/\([^)]*'s internal thought:[^)]*\)/g, "");
-  // Remove "(Username's actions: ...)" patterns
-  stripped = stripped.replace(/\([^)]*'s actions:[^)]*\)/g, "");
-  // Remove attachment metadata
-  stripped = stripped.replace(/\(Attachments:.*?\)/gs, "");
-  // Remove markdown headers like "# Section Name\n"
-  stripped = stripped.replace(/^#+\s+.*$/gm, "");
-  // Collapse multiple whitespace / blank lines
-  stripped = stripped.replace(/\n{3,}/g, "\n\n").trim();
-  return stripped;
-}
 
 // Text Utils
 
@@ -282,14 +189,7 @@ export const composePrompt = ({
     rendered = templateFunction(state);
   }
 
-  const templateSeed = buildDeterministicSeed([
-    "composePrompt",
-    state.agentId ?? state.characterId ?? state.agentName ?? "agent:none",
-    state.worldId ?? "world:none",
-    state.roomId ?? "room:none",
-    rendered,
-  ]);
-  const output = composeRandomUser(rendered, 10, templateSeed);
+  const output = composeRandomUser(rendered, 10);
   return output;
 };
 
@@ -340,34 +240,8 @@ export const composePromptFromState = ({
     rendered = templateFunction(context);
   }
 
-  const stateRoomId =
-    state.data.room?.id ||
-    (typeof state.values.roomId === "string"
-      ? state.values.roomId
-      : "room:none");
-  const stateWorldId =
-    state.data.world?.id ||
-    state.data.room?.worldId ||
-    (typeof state.values.worldId === "string"
-      ? state.values.worldId
-      : "world:none");
-  const stateCharacterId =
-    (typeof state.values.characterId === "string"
-      ? state.values.characterId
-      : null) ||
-    (typeof state.values.agentId === "string" ? state.values.agentId : null) ||
-    state.values.agentName ||
-    "agent:none";
-  const templateSeed = buildDeterministicSeed([
-    "composePromptFromState",
-    stateCharacterId,
-    stateWorldId,
-    stateRoomId,
-    rendered,
-  ]);
-
   // and then we flat state.values again
-  const output = composeRandomUser(rendered, 10, templateSeed);
+  const output = composeRandomUser(rendered, 10);
   return output;
 };
 
@@ -414,22 +288,10 @@ export const addHeader = (header: string, body: string) => {
  * // "Hello, John! Meet Alice and Bob."
  * const result = composeRandomUser(template, length);
  */
-const composeRandomUser = (template: string, length: number, seed: string) => {
-  const exampleNames = Array.from({ length }, (_unused, index) => {
-    const selectedName = deterministicPickOne(
-      names as readonly string[],
-      seed,
-      `composeRandomUser:name:${index}`,
-    );
-    if (selectedName) {
-      return selectedName;
-    }
-    return deterministicHex(
-      seed,
-      `composeRandomUser:fallback-name:${index}`,
-      8,
-    );
-  });
+const composeRandomUser = (template: string, length: number) => {
+  const exampleNames = Array.from({ length }, () =>
+    uniqueNamesGenerator({ dictionaries: [names] }),
+  );
   let result = template;
   for (let i = 0; i < exampleNames.length; i++) {
     result = result.replaceAll(`{{name${i + 1}}}`, exampleNames[i]);
@@ -474,31 +336,57 @@ export const formatPosts = ({
     },
   );
 
-  // Track which entity IDs have already been warned about to avoid log spam
-  const warnedEntityIds = new Set<string>();
-
   const formattedPosts = sortedRooms.map(([roomId, roomMessages]) => {
     const messageStrings = roomMessages
       .filter((message: Memory) => message.entityId)
       .map((message: Memory) => {
         const entity = entityById.get(message.entityId);
-        if (!entity && !warnedEntityIds.has(message.entityId)) {
-          warnedEntityIds.add(message.entityId);
+        if (!entity) {
           logger.warn(
             { src: "core:utils", entityId: message.entityId },
             "No entity found for message",
           );
         }
-        const entityNames = entity?.names;
-        const userName = entityNames?.[0] || "Unknown User";
-        const displayName = entityNames?.[0] || "unknown";
+        // WHY: Multi-platform entities often have names only in metadata[source]; fallbacks avoid "Unknown User" everywhere.
+        let userName = entity?.names?.[0];
+        let displayName = entity?.names?.[0];
+        if (!userName && entity?.metadata && typeof entity.metadata === "object") {
+          const source = message.content.source as string | undefined;
+          const sourceMeta =
+            source &&
+            (entity.metadata as Record<string, unknown>)[source] as
+              | { name?: string; userName?: string; username?: string }
+              | undefined;
+          if (sourceMeta) {
+            userName =
+              sourceMeta.name ?? sourceMeta.userName ?? sourceMeta.username;
+            displayName =
+              sourceMeta.userName ?? sourceMeta.username ?? sourceMeta.name;
+          }
+          if (!userName) {
+            const meta = entity.metadata as Record<string, unknown>;
+            userName =
+              (meta.name as string) ??
+              (meta.userName as string) ??
+              (meta.username as string);
+            displayName =
+              (meta.userName as string) ??
+              (meta.username as string) ??
+              (meta.name as string);
+          }
+        }
+        userName = userName || "Unknown User";
+        displayName = displayName || "unknown";
 
+        // WHY: Delimiters give the model clear message boundaries and reduce bleed-between in long context.
         return `Name: ${userName} (@${displayName} EntityID:${message.entityId})
 MessageID: ${message.id}${message.content.inReplyTo ? `\nIn reply to: ${message.content.inReplyTo}` : ""}
 Source: ${message.content.source}
 Date: ${formatTimestamp(message.createdAt || 0)}
-Text:
-${message.content.text}`;
+
+--- Text Start ---
+${message.content.text ?? ""}
+--- Text End ---`;
       });
 
     const header = conversationHeader
@@ -618,8 +506,6 @@ export const formatTimestamp = (messageDate: number) => {
   }
   return `${days} day${days !== 1 ? "s" : ""} ago`;
 };
-
-const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
 
 /**
  * Parses key-value pairs from a simple XML structure within a given text.
@@ -873,35 +759,52 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 }
 
 /**
- * Parses a JSON object from a given text. The function looks for a JSON block wrapped in triple backticks
- * with `json` language identifier, and if not found, it searches for an object pattern within the text.
- * It then attempts to parse the JSON string into a JavaScript object. If parsing is successful and the result
- * is an object (but not an array), it returns the object; otherwise, it tries to parse an array if the result
- * is an array, or returns null if parsing is unsuccessful or the result is neither an object nor an array.
+ * Parses a JSON object from text (code block or raw). Uses JSON5 so LLM output with
+ * trailing commas, unquoted keys, or single quotes still parses (why: strict JSON often fails on model output).
+ * Returns null on parse failure so one bad block doesn't crash the flow.
  *
  * @param text - The input text from which to extract and parse the JSON object.
- * @returns An object parsed from the JSON string if successful; otherwise, null or the result of parsing an array.
+ * @returns An object parsed from the JSON string if successful; otherwise null.
+ * @throws Will throw an error if parsing fails and cannot extract a valid JSON object.
  */
 export function parseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
-  const jsonBlockMatch = text.match(jsonBlockPattern);
-
-  let jsonData: Record<string, unknown>;
-  if (jsonBlockMatch) {
-    // Parse the JSON from inside the code block
-    jsonData = JSON.parse(normalizeJsonString(jsonBlockMatch[1].trim()));
-  } else {
-    // Try to parse the text directly if it's not in a code block
-    jsonData = JSON.parse(normalizeJsonString(text.trim()));
+  let result: Record<string, unknown> | null;
+  try {
+    result = extractAndParseJSONObjectFromText(text);
+  } catch (error) {
+    // Re-throw parse errors as documented in @throws JSDoc
+    throw error;
   }
-
-  // Ensure we have a non-null object that's not an array
-  if (jsonData && typeof jsonData === "object" && !Array.isArray(jsonData)) {
-    return jsonData;
+  // Return null for arrays or failed parses (backward compatible behavior)
+  if (!result || Array.isArray(result)) {
+    return null;
   }
-
-  return null;
+  // Normalize numeric values to strings for backward compatibility (recursive)
+  const normalizeNumbers = (obj: Record<string, unknown>) => {
+    for (const key in obj) {
+      const val = obj[key];
+      if (typeof val === 'number') {
+        obj[key] = String(val);
+      } else if (val && typeof val === 'object') {
+        // Handle both objects and arrays recursively
+        if (Array.isArray(val)) {
+          val.forEach((item, i) => {
+            if (typeof item === 'number') {
+              val[i] = String(item);
+            } else if (item && typeof item === 'object') {
+              normalizeNumbers(item as Record<string, unknown>);
+            }
+          });
+        } else {
+          normalizeNumbers(val as Record<string, unknown>); 
+        }
+      }
+    }
+  };
+  normalizeNumbers(result);
+  return result;
 }
 
 /**
@@ -1058,52 +961,18 @@ export function parseBooleanFromText(
   const affirmative = ["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"];
   const negative = ["NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"];
 
-  const normalizedText = value.trim().toUpperCase();
-
-  if (affirmative.includes(normalizedText)) {
-    return true;
+  // WHY: Defensive against non-string values (e.g. from env); avoid throws and return false on error.
+  try {
+    const normalizedText = String(value).trim().toUpperCase();
+    if (affirmative.includes(normalizedText)) return true;
+    if (negative.includes(normalizedText)) return false;
+  } catch {
+    logger.warn(
+      { src: "core:utils", type: typeof value, value },
+      "parseBooleanFromText error",
+    );
   }
-  if (negative.includes(normalizedText)) {
-    return false;
-  }
-
-  // For environment variables, treat unrecognized values as false
   return false;
-}
-
-export function parseXmlBooleanResponse(
-  text: string,
-  key = "decision",
-): boolean | null {
-  const parsed = parseKeyValueXml<Record<string, unknown>>(text);
-  if (!parsed) {
-    return null;
-  }
-
-  const value = parsed[key];
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const normalized = value.trim().toUpperCase();
-  if (!normalized) {
-    return null;
-  }
-
-  const affirmative = new Set(["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"]);
-  const negative = new Set(["NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"]);
-
-  if (affirmative.has(normalized)) {
-    return true;
-  }
-  if (negative.has(normalized)) {
-    return false;
-  }
-
-  return null;
 }
 
 // UUID Utils
@@ -1412,5 +1281,3 @@ export function getLocalServerUrl(path: string): string {
   const port = getEnv("SERVER_PORT", "3000");
   return `http://localhost:${port}${path}`;
 }
-
-export * from "./utils/text-splitting";

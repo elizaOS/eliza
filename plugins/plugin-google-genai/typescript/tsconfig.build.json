@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "allowImportingTsExtensions": false,
+    "outDir": "../dist",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "resolvePackageJsonExports": true,
+    "resolvePackageJsonImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../../packages/typescript/dist"]
+    }
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "__tests__", "**/*.test.ts", "**/*.spec.ts"]
+}

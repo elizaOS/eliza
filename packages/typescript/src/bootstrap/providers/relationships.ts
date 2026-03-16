@@ -100,7 +100,6 @@ async function formatRelationships(
  */
 const relationshipsProvider: Provider = {
   name: "RELATIONSHIPS",
-  position: 40,
   description:
     "Relationships between {{agentName}} and other people, or between other people that {{agentName}} has observed interacting with",
   dynamic: true,

@@ -18,7 +18,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Options for message processing
 #[derive(Default, Clone)]
@@ -123,28 +123,6 @@ impl IMessageService for DefaultMessageService {
         // maintains the default behavior. When shouldRespond logic is added,
         // this check will bypass it when check_should_respond is false.
 
-        // ── Pre-evaluator middleware ──────────────────────────────────────
-        // Run phase:Pre evaluators BEFORE saving to memory.  These act as
-        // security gates — they can block the message entirely (e.g. prompt
-        // injection) or rewrite it (e.g. redact credentials).
-        let pre_result = runtime.evaluate_pre(message, None).await;
-        if pre_result.blocked {
-            warn!("Message blocked by pre-evaluator: {:?}", pre_result.reason);
-            return Ok(MessageProcessingResult {
-                did_respond: false,
-                response_content: None,
-                response_messages: vec![],
-                state: State::default(),
-            });
-        }
-        if let Some(ref rewritten) = pre_result.rewritten_text {
-            info!(
-                "Pre-evaluator rewrote message text: {:?}",
-                pre_result.reason
-            );
-            message.content.text = Some(rewritten.clone());
-        }
-
         // Save the incoming message to memory first
         if let Some(adapter) = runtime.get_adapter() {
             debug!("Saving incoming message to memory");
@@ -162,21 +140,6 @@ impl IMessageService for DefaultMessageService {
                 debug!("Saved incoming message with ID {:?}", message_id);
             } else {
                 debug!("Message already exists in memory, skipping save");
-            }
-
-            // Emit embedding generation request
-            if let Ok(memory_json) = serde_json::to_value(message.clone()) {
-                let mut extra = HashMap::new();
-                extra.insert("memory".to_string(), memory_json);
-                let _ = runtime
-                    .emit_event(
-                        EventType::EmbeddingGenerationRequested,
-                        EventPayload {
-                            source: "message_service".to_string(),
-                            extra,
-                        },
-                    )
-                    .await;
             }
         }
 
@@ -220,8 +183,6 @@ impl IMessageService for DefaultMessageService {
                     crate::runtime::DynamicPromptOptions {
                         model_size: Some(crate::runtime::ModelSize::Small),
                         force_format: Some("xml".to_string()),
-                        context_check_level: Some(0),
-                        max_retries: Some(0),
                         ..Default::default()
                     },
                 )
@@ -556,21 +517,6 @@ async fn persist_outbound_memories(runtime: &AgentRuntime, memories: &[Memory]) 
             }
         }
         adapter.create_memory(m, "messages").await?;
-
-        // Emit embedding generation request
-        if let Ok(memory_json) = serde_json::to_value(m.clone()) {
-            let mut extra = HashMap::new();
-            extra.insert("memory".to_string(), memory_json);
-            let _ = runtime
-                .emit_event(
-                    EventType::EmbeddingGenerationRequested,
-                    EventPayload {
-                        source: "message_service".to_string(),
-                        extra,
-                    },
-                )
-                .await;
-        }
     }
     Ok(())
 }
@@ -585,12 +531,10 @@ async fn persist_evaluator_results(
     };
 
     for r in results {
-        let mut content = Content {
-            content_type: Some("evaluator_result".to_string()),
-            source: Some("auto".to_string()),
-            thought: r.text.clone(),
-            ..Default::default()
-        };
+        let mut content = Content::default();
+        content.content_type = Some("evaluator_result".to_string());
+        content.source = Some("auto".to_string());
+        content.thought = r.text.clone();
         if let Some(err) = &r.error {
             content
                 .extra
@@ -735,9 +679,7 @@ async fn run_multi_step(
     let mut last_thought = String::new();
 
     for _ in 0..max_iters.max(1) {
-        let iter_state = runtime
-            .compose_state_filtered(message, Some(&["multi_step_iteration".to_string()]), false)
-            .await?;
+        let iter_state = runtime.compose_state(message).await?;
 
         // Add action results to state for template rendering
         let mut iter_state = iter_state;
@@ -847,7 +789,7 @@ async fn run_multi_step(
                 .process_selected_actions(
                     message,
                     &iter_state,
-                    std::slice::from_ref(&action_name),
+                    &[action_name.clone()],
                     &nested_params,
                 )
                 .await?;
@@ -931,7 +873,7 @@ fn chrono_timestamp() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{EvaluatorPhase, HandlerOptions};
+    use crate::types::HandlerOptions;
 
     #[test]
     fn test_message_processing_result_default() {
@@ -952,6 +894,12 @@ mod tests {
     async fn test_should_respond_ignore_short_circuits() {
         use crate::runtime::RuntimeOptions;
         use crate::types::agent::Character;
+        use crate::types::settings::{RuntimeSettings, SettingValue};
+
+        let mut settings = RuntimeSettings::default();
+        settings
+            .values
+            .insert("VALIDATION_LEVEL".to_string(), SettingValue::String("trusted".to_string()));
 
         let runtime = AgentRuntime::new(RuntimeOptions {
             character: Some(Character {
@@ -960,6 +908,7 @@ mod tests {
                 ..Default::default()
             }),
             check_should_respond: Some(true),
+            settings: Some(settings),
             ..Default::default()
         })
         .await
@@ -1025,7 +974,6 @@ mod tests {
                         messages: vec![],
                         outcome: "o".to_string(),
                     }],
-                    phase: EvaluatorPhase::default(),
                 }
             }
 

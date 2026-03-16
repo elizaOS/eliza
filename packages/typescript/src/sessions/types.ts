@@ -1,5 +1,5 @@
 /**
- * Session types for ElizaOS.
+ * Session types for elizaOS.
  *
  * Defines the core data structures for session management including
  * session entries, scopes, origins, and related metadata.
@@ -13,7 +13,10 @@
  */
 
 import * as crypto from "node:crypto";
-import type { SessionOrigin, SessionSkillsSnapshot } from "../types/memory.js";
+import type {
+  SessionOrigin,
+  SessionSkillsSnapshot,
+} from "../types/memory.js";
 
 // ============================================================================
 // Chat Types
@@ -49,7 +52,7 @@ export type SessionDeliveryContext = {
 /**
  * Core session entry representing a conversation session.
  *
- * This is the primary data structure for session state in ElizaOS.
+ * This is the primary data structure for session state in elizaOS.
  */
 export type SessionEntry = {
   // ---- Identity ----
@@ -295,7 +298,9 @@ export function createSessionEntry(
  * @param entry - Entry to validate
  * @returns True if entry has required fields
  */
-export function isValidSessionEntry(entry: unknown): entry is SessionEntry {
+export function isValidSessionEntry(
+  entry: unknown,
+): entry is SessionEntry {
   if (!entry || typeof entry !== "object") {
     return false;
   }

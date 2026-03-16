@@ -1,0 +1,34 @@
+[package]
+name = "elizaos-plugin-experience"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "Experience learning plugin for elizaOS - Rust implementation"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+keywords = ["ai", "agent", "experience", "learning", "memory"]
+categories = ["data-structures"]
+readme = "README.md"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+# Async (optional)
+async-trait = "0.1"
+futures = "0.3"
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "sync", "time"], optional = true }
+
+# UUID handling
+uuid = { version = "1.19", features = ["v4", "serde"] }
+
+[dev-dependencies]
+pretty_assertions = "1.0"

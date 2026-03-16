@@ -130,7 +130,7 @@ Contextual information:
   │   │   └── docs/                            # MCP documentation
   │   └── computeruse-workflow-recorder/        # Recorder source
   ├── packages/
-  │   ├── computeruse-ts/src/                    # TypeScript SDK (for run_command)
+  │   ├── computeruse-nodejs/src/               # Node.js/TypeScript SDK (for run_command)
   │   ├── computeruse-python/src/               # Python SDK
   │   ├── workflow/src/                        # Workflow SDK: next('stepId') jumps, success(result) completes early, retry() re-executes in onError
   │   └── kv/src/                              # KV store

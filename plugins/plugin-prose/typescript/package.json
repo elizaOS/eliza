@@ -1,0 +1,92 @@
+{
+  "name": "@elizaos/plugin-prose",
+  "version": "1.0.0",
+  "description": "OpenProse VM integration for elizaOS - a programming language for AI sessions",
+  "type": "module",
+  "main": "dist/cjs/index.cjs",
+  "module": "dist/esm/index.js",
+  "browser": "dist/browser/index.js",
+  "types": "dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "browser": {
+        "import": "./dist/browser/index.js",
+        "default": "./dist/browser/index.js"
+      },
+      "node": {
+        "import": "./dist/esm/index.js",
+        "require": "./dist/cjs/index.cjs",
+        "default": "./dist/esm/index.js"
+      },
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.cjs",
+      "types": "./dist/types/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "skills"
+  ],
+  "scripts": {
+    "build": "bun run build.ts",
+    "check": "tsc --noEmit",
+    "lint": "biome check --write --unsafe .",
+    "lint:fix": "biome check . --write",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/bun": "latest",
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.2",
+    "vitest": "^3.1.1"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:prose:1.0.0",
+    "pluginParameters": {
+      "PROSE_WORKSPACE_DIR": {
+        "type": "string",
+        "description": "Base directory for .prose workspace files"
+      },
+      "PROSE_STATE_MODE": {
+        "type": "string",
+        "description": "Default state management mode (filesystem|in-context|sqlite|postgres)"
+      },
+      "PROSE_SKILLS_DIR": {
+        "type": "string",
+        "description": "Directory containing prose skill files (prose.md, help.md, etc.)"
+      }
+    }
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "openprose",
+    "prose",
+    "ai",
+    "vm",
+    "workflow",
+    "orchestration",
+    "multi-agent"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "milaidy": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
+    }
+  }
+}

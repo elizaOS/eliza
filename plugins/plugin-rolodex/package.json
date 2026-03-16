@@ -1,0 +1,60 @@
+{
+  "name": "@elizaos/plugin-rolodex",
+  "description": "A plugin for elizaOS that allows you to manage entites, relationships and associations",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-rolodex"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "scripts",
+    "package.json",
+    "LICENSE",
+    "tsup.config.ts"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "prettier": "3.5.3",
+    "tailwindcss": "^4.1.10",
+    "tsup": "8.5.0",
+    "vite": "^6.3.5",
+    "vitest": "3.1.4",
+    "zod": "^3.22.4"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "test": "elizaos test",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+}

@@ -1,0 +1,23 @@
+# Task: Write a quote post in the voice, style, and perspective of {{agentName}} @{{xUserName}}.
+
+{{bio}}
+{{postDirections}}
+
+<response>
+  <thought>Your thought here, explaining why the quote post is meaningful or how it connects to what {{agentName}} cares about</thought>
+  <post>The quote post content here, under 280 characters, without emojis, no questions</post>
+</response>
+
+Your quote post should be:
+- A reaction, agreement, disagreement, or expansion of the original post
+- Personal and unique to {{agentName}}'s style and point of view
+- 1 to 3 sentences long, chosen at random
+- No questions, no emojis, concise
+- Use "\n\n" (double spaces) between multiple sentences
+- Max 280 characters including line breaks
+
+Your output must ONLY contain the XML block.
+
+
+
+

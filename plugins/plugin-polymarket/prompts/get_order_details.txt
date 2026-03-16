@@ -1,0 +1,36 @@
+extract the order ID for retrieving order details.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, identify:
+- orderId: The specific order ID (required)
+
+Look for:
+- Alphanumeric strings following "order ID", "order", "ID"
+- Phrases like "details for order XYZ", "get order ABC"
+
+Examples:
+- "Get details for order 123xyz"
+  { "orderId": "123xyz" }
+- "Show me order abc789"
+  { "orderId": "abc789" }
+- "What are the details for 0x123abc?"
+  { "orderId": "0x123abc" }
+
+Respond with a JSON object containing only the extracted values.
+The JSON should have this structure:
+{
+    "orderId"?: string
+}
+
+If no valid order ID is found, you MUST respond with the following JSON structure:
+{
+    "error": "Order ID not found. Please specify an order ID."
+}
+
+
+
+

@@ -38,20 +38,7 @@ export const roleProvider: Provider = {
   ): Promise<ProviderResult> => {
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
     if (!room) {
-      logger.debug(
-        {
-          src: "plugin:core:provider:roles",
-          agentId: runtime.agentId,
-        },
-        "No room found for roles provider, skipping",
-      );
-      return {
-        data: { roles: [] },
-        values: {
-          roles: "No room context available for role information.",
-        },
-        text: "No room context available for role information.",
-      };
+      throw new Error("No room found");
     }
 
     if (room.type !== ChannelType.GROUP) {
@@ -75,7 +62,7 @@ export const roleProvider: Provider = {
 
     logger.info(
       {
-        src: "plugin:core:provider:roles",
+        src: "plugin:bootstrap:provider:roles",
         agentId: runtime.agentId,
         worldId,
       },
@@ -88,7 +75,7 @@ export const roleProvider: Provider = {
     if (!world || !world.metadata?.ownership?.ownerId) {
       logger.info(
         {
-          src: "plugin:core:provider:roles",
+          src: "plugin:bootstrap:provider:roles",
           agentId: runtime.agentId,
           worldId,
         },
@@ -110,7 +97,7 @@ export const roleProvider: Provider = {
     if (Object.keys(roles).length === 0) {
       logger.info(
         {
-          src: "plugin:core:provider:roles",
+          src: "plugin:bootstrap:provider:roles",
           agentId: runtime.agentId,
           worldId,
         },
@@ -129,7 +116,7 @@ export const roleProvider: Provider = {
 
     logger.info(
       {
-        src: "plugin:core:provider:roles",
+        src: "plugin:bootstrap:provider:roles",
         agentId: runtime.agentId,
         roleCount: Object.keys(roles).length,
       },
@@ -167,7 +154,7 @@ export const roleProvider: Provider = {
       if (!name || !username || !names) {
         logger.warn(
           {
-            src: "plugin:core:provider:roles",
+            src: "plugin:bootstrap:provider:roles",
             agentId: runtime.agentId,
             entityId,
           },
@@ -244,3 +231,5 @@ export const roleProvider: Provider = {
     };
   },
 };
+
+export default roleProvider;

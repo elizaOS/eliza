@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "GITHUB_ISSUE_CONTEXT",
+      "description": "Provides detailed context about a specific GitHub issue or pull request when referenced",
+      "dynamic": true
+    },
+    {
+      "name": "GITHUB_REPOSITORY_STATE",
+      "description": "Provides context about the current GitHub repository including recent activity",
+      "dynamic": true
+    }
+  ]
+}

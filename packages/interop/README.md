@@ -431,6 +431,6 @@ Interop subprocess/WASM output is routed through the core logger (when used from
 ## See Also
 
 - [Examples README](./examples/README.md) - Complete working examples
-- [Protocol Buffers Schemas](../schemas/README.md) - Type definitions
+- [Protocol Buffers Schemas](../@schemas/README.md) - Type definitions
 - [plugin-eliza-classic](../../plugins/plugin-eliza-classic/) - Reference implementation
 - [plugin-inmemorydb](../../plugins/plugin-inmemorydb/) - Database adapter example

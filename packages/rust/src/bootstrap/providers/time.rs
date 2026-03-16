@@ -4,10 +4,6 @@ use async_trait::async_trait;
 use chrono::Utc;
 use once_cell::sync::Lazy;
 
-use crate::deterministic::{
-    build_conversation_seed, get_prompt_reference_timestamp_ms, parse_boolean_setting,
-    parse_positive_integer_setting, DEFAULT_TIME_BUCKET_MS,
-};
 use crate::error::PluginResult;
 use crate::generated::spec_helpers::require_provider_spec;
 use crate::runtime::IAgentRuntime;
@@ -38,35 +34,11 @@ impl Provider for TimeProvider {
 
     async fn get(
         &self,
-        runtime: &dyn IAgentRuntime,
-        message: &Memory,
-        state: Option<&State>,
+        _runtime: &dyn IAgentRuntime,
+        _message: &Memory,
+        _state: Option<&State>,
     ) -> PluginResult<ProviderResult> {
-        let now_ms = Utc::now().timestamp_millis();
-        let deterministic_enabled = parse_boolean_setting(
-            runtime
-                .get_setting("PROMPT_CACHE_DETERMINISTIC_TIME")
-                .as_deref(),
-        );
-        let bucket_ms = parse_positive_integer_setting(
-            runtime
-                .get_setting("PROMPT_CACHE_TIME_BUCKET_MS")
-                .as_deref(),
-            DEFAULT_TIME_BUCKET_MS,
-        );
-        let seed = build_conversation_seed(
-            &runtime.agent_id(),
-            runtime.character().id.as_ref(),
-            Some(message),
-            state,
-            "provider:time",
-            Some(bucket_ms),
-            now_ms,
-        );
-        let reference_ms =
-            get_prompt_reference_timestamp_ms(deterministic_enabled, bucket_ms, &seed, now_ms);
-        let now =
-            chrono::DateTime::<Utc>::from_timestamp_millis(reference_ms).unwrap_or_else(Utc::now);
+        let now = Utc::now();
         let iso_string = now.to_rfc3339();
         let timestamp_ms = now.timestamp_millis();
         let human_readable = now.format("%A, %B %d, %Y at %H:%M:%S UTC").to_string();

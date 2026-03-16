@@ -1,0 +1,40 @@
+{
+  "version": "1.0.0",
+  "actions": [
+    {
+      "name": "CREATE_GITHUB_BRANCH",
+      "description": "",
+      "parameters": []
+    },
+    {
+      "name": "CREATE_GITHUB_COMMENT",
+      "description": "",
+      "parameters": []
+    },
+    {
+      "name": "CREATE_GITHUB_ISSUE",
+      "description": "",
+      "parameters": []
+    },
+    {
+      "name": "CREATE_GITHUB_PULL_REQUEST",
+      "description": "",
+      "parameters": []
+    },
+    {
+      "name": "MERGE_GITHUB_PULL_REQUEST",
+      "description": "",
+      "parameters": []
+    },
+    {
+      "name": "PUSH_GITHUB_CODE",
+      "description": "",
+      "parameters": []
+    },
+    {
+      "name": "REVIEW_GITHUB_PULL_REQUEST",
+      "description": "",
+      "parameters": []
+    }
+  ]
+}

@@ -1,4 +1,3 @@
-import { getPromptReferenceDate } from "../../deterministic";
 import { requireProviderSpec } from "../../generated/spec-helpers.ts";
 import type {
   IAgentRuntime,
@@ -22,13 +21,8 @@ const spec = requireProviderSpec("TIME");
 export const timeProvider: Provider = {
   name: spec.name,
   description: spec.description,
-  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    const currentDate = getPromptReferenceDate({
-      runtime,
-      message,
-      state,
-      surface: "provider:time",
-    });
+  get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
+    const currentDate = new Date();
 
     // Get UTC time since bots will be communicating with users around the global
     const options = {

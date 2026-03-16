@@ -1,0 +1,105 @@
+/**
+ * Matrix messaging integration plugin for elizaOS.
+ *
+ * This plugin provides Matrix protocol integration using matrix-js-sdk.
+ */
+
+import type { Plugin, IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+
+// Service
+export { MatrixService } from "./service.js";
+
+// Types
+export * from "./types.js";
+
+// Actions
+import { sendMessage } from "./actions/sendMessage.js";
+import { sendReaction } from "./actions/sendReaction.js";
+import { listRooms } from "./actions/listRooms.js";
+import { joinRoom } from "./actions/joinRoom.js";
+
+export { sendMessage, sendReaction, listRooms, joinRoom };
+
+// Providers
+import { roomStateProvider } from "./providers/roomState.js";
+import { userContextProvider } from "./providers/userContext.js";
+
+export { roomStateProvider, userContextProvider };
+
+// Import service for plugin
+import { MatrixService } from "./service.js";
+
+/**
+ * Matrix plugin definition.
+ */
+const matrixPlugin: Plugin = {
+  name: "matrix",
+  description: "Matrix messaging integration plugin for elizaOS with E2EE support",
+
+  services: [MatrixService],
+
+  actions: [sendMessage, sendReaction, listRooms, joinRoom],
+
+  providers: [roomStateProvider, userContextProvider],
+
+  tests: [],
+
+  init: async (
+    _config: Record<string, string>,
+    runtime: IAgentRuntime
+  ): Promise<void> => {
+    const homeserver = runtime.getSetting("MATRIX_HOMESERVER");
+    const userId = runtime.getSetting("MATRIX_USER_ID");
+    const accessToken = runtime.getSetting("MATRIX_ACCESS_TOKEN");
+
+    logger.info("=".repeat(60));
+    logger.info("Matrix Plugin Configuration");
+    logger.info("=".repeat(60));
+    logger.info(`  Homeserver: ${homeserver ? `✓ ${homeserver}` : "✗ Missing (required)"}`);
+    logger.info(`  User ID: ${userId ? `✓ ${userId}` : "✗ Missing (required)"}`);
+    logger.info(`  Access Token: ${accessToken ? "✓ Set" : "✗ Missing (required)"}`);
+    logger.info("=".repeat(60));
+
+    // Validate required settings
+    const missing: string[] = [];
+    if (!homeserver) missing.push("MATRIX_HOMESERVER");
+    if (!userId) missing.push("MATRIX_USER_ID");
+    if (!accessToken) missing.push("MATRIX_ACCESS_TOKEN");
+
+    if (missing.length > 0) {
+      logger.warn(
+        `Matrix plugin: Missing required configuration: ${missing.join(", ")}`
+      );
+    }
+
+    // Additional optional settings
+    const deviceId = runtime.getSetting("MATRIX_DEVICE_ID");
+    const rooms = runtime.getSetting("MATRIX_ROOMS");
+    const autoJoin = runtime.getSetting("MATRIX_AUTO_JOIN");
+    const encryption = runtime.getSetting("MATRIX_ENCRYPTION");
+    const requireMention = runtime.getSetting("MATRIX_REQUIRE_MENTION");
+
+    if (deviceId) {
+      logger.info(`  Device ID: ${deviceId}`);
+    }
+
+    if (rooms) {
+      logger.info(`  Auto-join Rooms: ${rooms}`);
+    }
+
+    if (autoJoin === "true") {
+      logger.info("  Auto-join Invites: ✓ Enabled");
+    }
+
+    if (encryption === "true") {
+      logger.info("  End-to-End Encryption: ✓ Enabled");
+    }
+
+    if (requireMention === "true") {
+      logger.info("  Require Mention: ✓ Enabled (will only respond to mentions in rooms)");
+    }
+  },
+};
+
+export default matrixPlugin;

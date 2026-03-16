@@ -1,22 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from enum import StrEnum
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-if TYPE_CHECKING:
-    from elizaos.types.runtime import IAgentRuntime
 
-
-class LLMMode(StrEnum):
+class LLMMode(str, Enum):
     DEFAULT = "DEFAULT"
     SMALL = "SMALL"
     LARGE = "LARGE"
 
 
-class ModelType(StrEnum):
+class ModelType(str, Enum):
     # Text generation models
     TEXT_SMALL = "TEXT_SMALL"
     TEXT_LARGE = "TEXT_LARGE"
@@ -55,9 +52,6 @@ class ModelType(StrEnum):
 
     # Research models (deep research)
     RESEARCH = "RESEARCH"
-
-    # Safeguard models
-    SAFEGUARD = "SAFEGUARD"
 
 
 # Type for model type names - allows string for extensibility
@@ -285,30 +279,6 @@ class ObjectGenerationParams(BaseModel):
 
 
 # ============================================================================
-# Safeguard Model Types
-# ============================================================================
-
-
-class SafeguardParams(BaseModel):
-    """Parameters for safeguard (content moderation) models."""
-
-    input: str = Field(..., description="Input text to classify")
-    model_type: str = Field(..., alias="modelType", description="Model type (must be SAFEGUARD)")
-
-    model_config = {"populate_by_name": True}
-
-
-class SafeguardResult(BaseModel):
-    """Result from a safeguard model classification."""
-
-    violation: float = Field(..., description="Violation score (0-1)")
-    category: str | None = Field(default=None, description="Violation category if any")
-    rationale: str | None = Field(default=None, description="Rationale for the classification")
-
-    model_config = {"populate_by_name": True}
-
-
-# ============================================================================
 # Research Model Types (Deep Research)
 # ============================================================================
 
@@ -421,3 +391,5 @@ class ResearchResult(BaseModel):
     status: str | None = Field(default=None, description="Status for background requests")
 
     model_config = {"populate_by_name": True}
+
+

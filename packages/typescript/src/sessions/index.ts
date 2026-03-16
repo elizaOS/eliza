@@ -1,5 +1,5 @@
 /**
- * Session management utilities for ElizaOS.
+ * Session management utilities for elizaOS.
  *
  * Provides:
  * - Session key building and parsing
@@ -74,11 +74,10 @@ export {
   deleteSessionEntry,
   getSessionEntry,
   getSessionEntryById,
-  getSessionStoreCacheSizeForTest,
-  type LoadSessionStoreOptions,
   listSessionKeys,
   listSessions,
   loadSessionStore,
+  type LoadSessionStoreOptions,
   readSessionUpdatedAt,
   saveSessionStore,
   updateSessionStore,

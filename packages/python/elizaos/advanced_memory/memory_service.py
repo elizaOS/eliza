@@ -3,8 +3,7 @@ from __future__ import annotations
 import heapq
 import re
 import time
-from collections import OrderedDict
-from typing import TypeVar, cast
+from typing import cast
 from uuid import UUID, uuid4
 
 from elizaos.types.model import ModelType
@@ -28,7 +27,6 @@ from .types import (
 _TABLE_SESSION_SUMMARY = "session_summary"
 _TABLE_LONG_TERM_MEMORY = "long_term_memory"
 _GLOBAL_LONG_TERM_ROOM_ID = string_to_uuid("advanced-memory:long-term")
-_OrderedValueT = TypeVar("_OrderedValueT")
 
 
 def _parse_summary_xml(xml: str) -> SummaryResult:
@@ -81,28 +79,14 @@ def _top_k_by_confidence(items: list[LongTermMemory], limit: int) -> list[LongTe
 
 class MemoryService(Service):
     service_type = "memory"
-    _MAX_LOCAL_SESSION_SUMMARIES = 500
-    _MAX_LOCAL_EXTRACTION_CHECKPOINTS = 500
-    _MAX_LOCAL_LONG_TERM_ENTITIES = 500
-    _MAX_LOCAL_LONG_TERM_PER_ENTITY = 200
 
     def __init__(self, runtime=None) -> None:
         super().__init__(runtime=runtime)
         self._config: MemoryConfig = MemoryConfig()
         # Fallback storage for runtimes without a DB adapter (tests/benchmarks).
-        self._session_summaries: OrderedDict[str, SessionSummary] = OrderedDict()
-        self._long_term: OrderedDict[str, list[LongTermMemory]] = OrderedDict()
-        self._extraction_checkpoints: OrderedDict[str, int] = OrderedDict()
-
-    @staticmethod
-    def _touch_ordered(mapping: OrderedDict[str, _OrderedValueT], key: str) -> None:
-        if key in mapping:
-            mapping.move_to_end(key)
-
-    @staticmethod
-    def _prune_ordered(mapping: OrderedDict[str, _OrderedValueT], max_entries: int) -> None:
-        while len(mapping) > max_entries:
-            mapping.popitem(last=False)
+        self._session_summaries: dict[str, SessionSummary] = {}
+        self._long_term: dict[str, list[LongTermMemory]] = {}
+        self._extraction_checkpoints: dict[str, int] = {}
 
     @property
     def capability_description(self) -> str:
@@ -111,36 +95,38 @@ class MemoryService(Service):
     @classmethod
     async def start(cls, runtime):
         svc = cls(runtime=runtime)
-        if (v := runtime.get_setting("MEMORY_SUMMARIZATION_THRESHOLD")) is not None and isinstance(
+        # read settings
+        settings = runtime.character.settings or {}
+        if (v := settings.get("MEMORY_SUMMARIZATION_THRESHOLD")) is not None and isinstance(
             v, (int, float, str)
         ):
             svc._config.short_term_summarization_threshold = int(v)
-        if (v := runtime.get_setting("MEMORY_RETAIN_RECENT")) is not None and isinstance(
+        if (v := settings.get("MEMORY_RETAIN_RECENT")) is not None and isinstance(
             v, (int, float, str)
         ):
             svc._config.short_term_retain_recent = int(v)
-        if (v := runtime.get_setting("MEMORY_SUMMARIZATION_INTERVAL")) is not None and isinstance(
+        if (v := settings.get("MEMORY_SUMMARIZATION_INTERVAL")) is not None and isinstance(
             v, (int, float, str)
         ):
             svc._config.short_term_summarization_interval = int(v)
-        if (v := runtime.get_setting("MEMORY_MAX_NEW_MESSAGES")) is not None and isinstance(
+        if (v := settings.get("MEMORY_MAX_NEW_MESSAGES")) is not None and isinstance(
             v, (int, float, str)
         ):
             svc._config.summary_max_new_messages = int(v)
-        if (v := runtime.get_setting("MEMORY_LONG_TERM_ENABLED")) is not None:
+        if (v := settings.get("MEMORY_LONG_TERM_ENABLED")) is not None:
             if str(v).lower() == "false":
                 svc._config.long_term_extraction_enabled = False
             elif str(v).lower() == "true":
                 svc._config.long_term_extraction_enabled = True
-        if (v := runtime.get_setting("MEMORY_CONFIDENCE_THRESHOLD")) is not None and isinstance(
+        if (v := settings.get("MEMORY_CONFIDENCE_THRESHOLD")) is not None and isinstance(
             v, (int, float, str)
         ):
             svc._config.long_term_confidence_threshold = float(v)
-        if (v := runtime.get_setting("MEMORY_EXTRACTION_THRESHOLD")) is not None and isinstance(
+        if (v := settings.get("MEMORY_EXTRACTION_THRESHOLD")) is not None and isinstance(
             v, (int, float, str)
         ):
             svc._config.long_term_extraction_threshold = int(v)
-        if (v := runtime.get_setting("MEMORY_EXTRACTION_INTERVAL")) is not None and isinstance(
+        if (v := settings.get("MEMORY_EXTRACTION_INTERVAL")) is not None and isinstance(
             v, (int, float, str)
         ):
             svc._config.long_term_extraction_interval = int(v)
@@ -160,7 +146,7 @@ class MemoryService(Service):
         return f"memory:extraction:{entity_id}:{room_id}"
 
     async def get_last_extraction_checkpoint(self, entity_id: UUID, room_id: UUID) -> int:
-        runtime = self._runtime
+        runtime = self.runtime
         key = self._checkpoint_key(entity_id, room_id)
         if runtime is not None and getattr(runtime, "_adapter", None) is not None:
             cached = await runtime.get_cache(key)
@@ -172,23 +158,17 @@ class MemoryService(Service):
                 return 0
             except Exception:
                 return 0
-        checkpoint = self._extraction_checkpoints.get(key)
-        if checkpoint is None:
-            return 0
-        self._touch_ordered(self._extraction_checkpoints, key)
-        return int(checkpoint)
+        return int(self._extraction_checkpoints.get(key, 0))
 
     async def set_last_extraction_checkpoint(
         self, entity_id: UUID, room_id: UUID, message_count: int
     ) -> None:
-        runtime = self._runtime
+        runtime = self.runtime
         key = self._checkpoint_key(entity_id, room_id)
         if runtime is not None and getattr(runtime, "_adapter", None) is not None:
             _ = await runtime.set_cache(key, int(message_count))
             return
         self._extraction_checkpoints[key] = int(message_count)
-        self._touch_ordered(self._extraction_checkpoints, key)
-        self._prune_ordered(self._extraction_checkpoints, self._MAX_LOCAL_EXTRACTION_CHECKPOINTS)
 
     async def should_run_extraction(
         self, entity_id: UUID, room_id: UUID, current_message_count: int
@@ -202,7 +182,7 @@ class MemoryService(Service):
         return current_cp > last_cp
 
     async def get_current_session_summary(self, room_id: UUID) -> SessionSummary | None:
-        runtime = self._runtime
+        runtime = self.runtime
         if runtime is None:
             return None
 
@@ -241,11 +221,7 @@ class MemoryService(Service):
                     # Best-effort; ignore corrupt rows.
                     continue
 
-        summary = self._session_summaries.get(str(room_id))
-        if summary is None:
-            return None
-        self._touch_ordered(self._session_summaries, str(room_id))
-        return summary
+        return self._session_summaries.get(str(room_id))
 
     async def store_session_summary(
         self,
@@ -258,7 +234,7 @@ class MemoryService(Service):
         topics: list[str] | None = None,
         metadata: dict[str, object] | None = None,
     ) -> SessionSummary:
-        runtime = self._runtime
+        runtime = self.runtime
         s = SessionSummary(
             id=uuid4(),
             agent_id=agent_id,
@@ -297,16 +273,13 @@ class MemoryService(Service):
             )
             return s
 
-        room_key = str(room_id)
-        self._session_summaries[room_key] = s
-        self._touch_ordered(self._session_summaries, room_key)
-        self._prune_ordered(self._session_summaries, self._MAX_LOCAL_SESSION_SUMMARIES)
+        self._session_summaries[str(room_id)] = s
         return s
 
     async def update_session_summary(
         self, summary_id: UUID, room_id: UUID, **updates: object
     ) -> None:
-        runtime = self._runtime
+        runtime = self.runtime
         if runtime is not None and getattr(runtime, "_adapter", None) is not None:
             existing = await self.get_current_session_summary(room_id)
             if not existing or existing.id != summary_id:
@@ -351,11 +324,9 @@ class MemoryService(Service):
             )
             return
 
-        room_key = str(room_id)
-        existing = self._session_summaries.get(room_key)
+        existing = self._session_summaries.get(str(room_id))
         if not existing or existing.id != summary_id:
             return
-        self._touch_ordered(self._session_summaries, room_key)
         if "summary" in updates and isinstance(updates["summary"], str):
             existing.summary = updates["summary"]
         if "message_count" in updates and isinstance(updates["message_count"], (int, float, str)):
@@ -379,7 +350,7 @@ class MemoryService(Service):
         source: str | None = None,
         metadata: dict[str, object] | None = None,
     ) -> LongTermMemory:
-        runtime = self._runtime
+        runtime = self.runtime
         m = LongTermMemory(
             id=uuid4(),
             agent_id=agent_id,
@@ -412,17 +383,7 @@ class MemoryService(Service):
             )
             return m
 
-        entity_key = str(entity_id)
-        bucket = self._long_term.get(entity_key)
-        if bucket is None:
-            bucket = []
-            self._long_term[entity_key] = bucket
-        else:
-            self._touch_ordered(self._long_term, entity_key)
-        bucket.append(m)
-        if len(bucket) > self._MAX_LOCAL_LONG_TERM_PER_ENTITY:
-            del bucket[: len(bucket) - self._MAX_LOCAL_LONG_TERM_PER_ENTITY]
-        self._prune_ordered(self._long_term, self._MAX_LOCAL_LONG_TERM_ENTITIES)
+        self._long_term.setdefault(str(entity_id), []).append(m)
         return m
 
     async def get_long_term_memories(
@@ -433,7 +394,7 @@ class MemoryService(Service):
     ) -> list[LongTermMemory]:
         if limit <= 0:
             return []
-        runtime = self._runtime
+        runtime = self.runtime
         if runtime is not None and getattr(runtime, "_adapter", None) is not None:
             db_mems = await runtime.get_memories(
                 {
@@ -478,10 +439,7 @@ class MemoryService(Service):
                     continue
             return _top_k_by_confidence(out, limit)
 
-        entity_key = str(entity_id)
-        local_mems = self._long_term.get(entity_key, [])
-        if entity_key in self._long_term:
-            self._touch_ordered(self._long_term, entity_key)
+        local_mems = self._long_term.get(str(entity_id), [])
         if category is not None:
             local_mems = [m for m in local_mems if m.category == category]
         return _top_k_by_confidence(local_mems, limit)

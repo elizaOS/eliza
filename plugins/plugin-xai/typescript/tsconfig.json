@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "allowImportingTsExtensions": true,
+    "baseUrl": "../../..",
+    "paths": {
+      "@elizaos/core": ["packages/typescript/src/index.node.ts"],
+      "@elizaos/core/*": ["packages/typescript/src/*"]
+    }
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts"]
+}

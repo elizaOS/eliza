@@ -1,0 +1,49 @@
+extract search or filter parameters for finding Polymarket prediction markets.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, identify what the user wants to search or browse:
+
+- query: A specific search term or phrase (e.g., "miami heat", "bitcoin $100k", "trump trial", "epstein") - use this for specific topics, names, teams, or events
+- category: A general market category (e.g., "sports", "politics", "crypto", "entertainment") - use this ONLY for broad category browsing
+- active: Whether to only show active markets (true/false) - optional, defaults to true
+- limit: Maximum number of results to return - optional
+- simplified: Whether the user wants a simplified overview (true/false) - optional
+- sampling: Whether the user wants markets with liquidity rewards (true/false) - optional
+- sampling_mode: "random" or "rewards" if the user specifies a sampling type - optional
+
+IMPORTANT: 
+- If the user mentions a specific name, team, person, or topic (e.g., "miami heat", "bitcoin", "trump", "super bowl"), use "query" NOT "category"
+- Only use "category" for very general browsing like "show me sports markets" or "politics markets"
+- "miami heat" should be query="miami heat", NOT category="sports"
+- "bitcoin price" should be query="bitcoin price", NOT category="crypto"
+
+Examples:
+- "Search for miami heat markets" → { "query": "miami heat" }
+- "Find markets about bitcoin" → { "query": "bitcoin" }
+- "Show me sports markets" → { "category": "sports" }
+- "What markets are there for trump?" → { "query": "trump" }
+- "Browse crypto markets" → { "category": "crypto" }
+- "Find epstein markets" → { "query": "epstein" }
+- "Super bowl markets" → { "query": "super bowl" }
+- "Lakers vs Celtics" → { "query": "lakers celtics" }
+
+Respond with a JSON object containing only the extracted values.
+The JSON should have this structure:
+{
+    "query"?: string,
+    "category"?: string,
+    "active"?: boolean,
+    "limit"?: number,
+    "simplified"?: boolean,
+    "sampling"?: boolean,
+    "sampling_mode"?: "random" | "rewards"
+}
+
+If no specific search or filters are mentioned, respond with:
+{
+    "error": "No specific search requested. Fetching top markets."
+}

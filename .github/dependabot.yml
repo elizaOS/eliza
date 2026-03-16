@@ -5,6 +5,7 @@
 
 version: 2
 updates:
+  # Note: placeholder to remind users to specify a valid package ecosystem before use
   - package-ecosystem: "" # See documentation for possible values
     directory: "/" # Location of package manifests
     schedule:

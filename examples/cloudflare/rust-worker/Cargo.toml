@@ -1,0 +1,30 @@
+[package]
+name = "elizaos-cloudflare-worker-rust"
+version = "1.0.0"
+edition = "2021"
+description = "elizaOS AI agent running on Cloudflare Workers (Rust)"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+worker = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["v4", "js"] }
+console_error_panic_hook = "0.1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+
+
+
+
+
+
+
+
+
+

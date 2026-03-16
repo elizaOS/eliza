@@ -1,15 +1,15 @@
 /**
- * Session provider for ElizaOS runtime.
+ * Session provider for elizaOS runtime.
  *
  * Exposes session context to agents during message processing.
  *
  * @module sessions/provider
  */
 
-import type { Provider, ProviderResult } from "../types/components.js";
-import type { Memory } from "../types/memory.js";
 import type { IAgentRuntime } from "../types/runtime.js";
+import type { Memory } from "../types/memory.js";
 import type { State } from "../types/state.js";
+import type { Provider, ProviderResult } from "../types/components.js";
 import { getSessionEntry, loadSessionStore } from "./store.js";
 import type { SessionEntry, SessionStore } from "./types.js";
 

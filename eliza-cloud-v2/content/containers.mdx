@@ -1,0 +1,308 @@
+---
+title: Containers
+description: Deploy custom Docker containers on elizaOS Cloud with managed infrastructure and auto-scaling.
+---
+
+import { Callout, Steps, Tabs, Cards } from "nextra/components";
+
+# Containers
+
+Deploy custom Docker containers with managed infrastructure on elizaOS Cloud.
+
+<div className="status-badge status-beta">Beta</div>
+
+## Overview
+
+Container deployment provides:
+
+- **Custom Runtimes**: Run any Docker image
+- **Auto-scaling**: Scale based on load
+- **Managed Infrastructure**: No server management
+- **Health Monitoring**: Automatic health checks
+- **Logs & Metrics**: Built-in observability
+
+## Quick Start
+
+### Dashboard
+
+Navigate to [Dashboard → Containers](/dashboard/containers) for the visual interface.
+
+### API
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/containers" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-service",
+    "image": "myregistry/myimage:latest",
+    "port": 3000,
+    "env": {
+      "NODE_ENV": "production"
+    }
+  }'
+```
+
+## Deploying a Container
+
+<Steps>
+### Prepare Your Image
+Build and push your Docker image to a registry.
+
+### Configure Deployment
+
+Set container settings via dashboard or API.
+
+### Deploy
+
+Launch your container on elizaOS Cloud.
+
+### Monitor
+
+Track logs, metrics, and health status.
+
+</Steps>
+
+### Deployment Configuration
+
+```json
+{
+  "name": "my-service",
+  "image": "myregistry/myimage:latest",
+  "port": 3000,
+  "replicas": 2,
+  "resources": {
+    "cpu": "0.5",
+    "memory": "512Mi"
+  },
+  "env": {
+    "NODE_ENV": "production",
+    "API_KEY": "{{secrets.API_KEY}}"
+  },
+  "healthCheck": {
+    "path": "/health",
+    "interval": 30,
+    "timeout": 5
+  }
+}
+```
+
+## Container Settings
+
+### Basic Settings
+
+| Field      | Type    | Description              |
+| ---------- | ------- | ------------------------ |
+| `name`     | string  | Container name (unique)  |
+| `image`    | string  | Docker image URL         |
+| `port`     | integer | Container port to expose |
+| `replicas` | integer | Number of instances      |
+
+### Resources
+
+| Field    | Options                     | Description  |
+| -------- | --------------------------- | ------------ |
+| `cpu`    | 0.25, 0.5, 1, 2, 4          | CPU cores    |
+| `memory` | 256Mi, 512Mi, 1Gi, 2Gi, 4Gi | Memory limit |
+
+### Environment Variables
+
+```json
+{
+  "env": {
+    "DATABASE_URL": "postgres://...",
+    "REDIS_URL": "redis://...",
+    "SECRET_KEY": "{{secrets.SECRET_KEY}}"
+  }
+}
+```
+
+<Callout type="info">
+Use `{{secrets.NAME}}` to reference secrets stored in elizaOS Cloud.
+</Callout>
+
+## Registry Authentication
+
+### Add Credentials
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/containers/credentials" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "registry": "ghcr.io",
+    "username": "your-username",
+    "password": "your-token"
+  }'
+```
+
+### Supported Registries
+
+- Docker Hub
+- GitHub Container Registry (ghcr.io)
+- Google Container Registry (gcr.io)
+- AWS ECR
+- Custom registries
+
+## Health Checks
+
+Configure health monitoring:
+
+```json
+{
+  "healthCheck": {
+    "type": "http",
+    "path": "/health",
+    "port": 3000,
+    "interval": 30,
+    "timeout": 5,
+    "retries": 3,
+    "startPeriod": 60
+  }
+}
+```
+
+### Health Check Types
+
+| Type   | Description              |
+| ------ | ------------------------ |
+| `http` | HTTP GET request to path |
+| `tcp`  | TCP connection to port   |
+| `exec` | Run command in container |
+
+## Logs & Metrics
+
+### View Logs
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/containers/{id}/logs?lines=100" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Stream Logs
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/containers/{id}/logs/stream" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Accept: text/event-stream"
+```
+
+### Get Metrics
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/containers/{id}/metrics" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```json
+{
+  "cpu": {
+    "usage": 0.25,
+    "limit": 1.0
+  },
+  "memory": {
+    "usage": 256000000,
+    "limit": 536870912
+  },
+  "network": {
+    "rxBytes": 1024000,
+    "txBytes": 512000
+  },
+  "requests": {
+    "total": 15000,
+    "errors": 12
+  }
+}
+```
+
+## Deployments
+
+### List Deployments
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/containers/{id}/deployments" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Rollback
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/containers/{id}/deployments/{deploymentId}/rollback" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## Scaling
+
+### Manual Scaling
+
+```bash
+curl -X PATCH "https://elizacloud.ai/api/v1/containers/{id}" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"replicas": 5}'
+```
+
+### Auto-scaling
+
+```json
+{
+  "autoscaling": {
+    "enabled": true,
+    "minReplicas": 1,
+    "maxReplicas": 10,
+    "targetCPU": 70,
+    "targetMemory": 80
+  }
+}
+```
+
+## Quotas
+
+Check your container quota:
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/containers/quota" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```json
+{
+  "containers": {
+    "used": 3,
+    "limit": 10
+  },
+  "cpu": {
+    "used": 2.5,
+    "limit": 8.0
+  },
+  "memory": {
+    "used": "2.5Gi",
+    "limit": "8Gi"
+  }
+}
+```
+
+## Pricing
+
+See [Billing & Credits](/docs/billing) for current pricing on CPU, memory, network, and storage.
+
+## Best Practices
+
+- **Health Checks** — Always configure health checks for reliability
+- **Resource Limits** — Set appropriate CPU and memory limits to control costs
+- **Secrets** — Use `{{secrets.NAME}}` references for sensitive data
+- **Monitoring** — Set up alerts in [Dashboard → Analytics](/dashboard/analytics) for critical metrics
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="Apps" href="/docs/apps">
+    Create apps for your containers
+  </Cards.Card>
+  <Cards.Card title="MCP Integration" href="/docs/mcps">
+    Connect containers to MCP
+  </Cards.Card>
+  <Cards.Card title="Billing" href="/docs/billing">
+    Understand container costs
+  </Cards.Card>
+</Cards>

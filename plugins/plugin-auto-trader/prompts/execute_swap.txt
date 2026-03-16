@@ -1,0 +1,39 @@
+Execute a token swap on Solana using Jupiter aggregator.
+
+User Request: {{userRequest}}
+
+Current Wallet State:
+{{walletState}}
+
+Extract swap parameters from the request:
+
+```json
+{
+  "inputToken": {
+    "address": "token contract address or 'SOL' for native SOL",
+    "symbol": "token symbol",
+    "amount": "amount to swap (in token units)"
+  },
+  "outputToken": {
+    "address": "token contract address or 'SOL' for native SOL",
+    "symbol": "token symbol"
+  },
+  "slippageBps": "slippage tolerance in basis points (100 = 1%)",
+  "urgency": "LOW" | "MEDIUM" | "HIGH"
+}
+```
+
+Common token addresses:
+- SOL: So11111111111111111111111111111111111111112
+- USDC: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+- USDT: Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB
+
+If the user specifies a symbol without an address, try to resolve it from context.
+If amount is specified as percentage (e.g., "50%"), calculate the actual amount from wallet balance.
+
+Default slippage:
+- LOW urgency: 50 bps (0.5%)
+- MEDIUM urgency: 100 bps (1%)
+- HIGH urgency: 200 bps (2%)
+
+Respond ONLY with the JSON object.

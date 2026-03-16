@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "CODER_STATUS",
+      "description": "Provides current working directory, allowed directory, and recent shell/file operations",
+      "dynamic": true
+    }
+  ]
+}

@@ -200,7 +200,7 @@ jobs:
         run: |
           cd crates/computeruse-cli
           VERSION=$(node -p "require('./package.json').version")
-          npm dist-tag add @elizaos/cli@$VERSION latest
+          npm dist-tag add @mediar-ai/cli@$VERSION latest
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -254,7 +254,7 @@ jobs:
             ```
 
             ### NPM Package
-            The CLI is also available as an NPM package: `npm install -g @elizaos/cli`
+            The CLI is also available as an NPM package: `npm install -g @mediar-ai/cli`
 
             ### What's Changed
             See the [CHANGELOG](https://github.com/mediar-ai/computeruse/blob/${{ github.ref_name }}/CHANGELOG.md) for details

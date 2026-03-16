@@ -11,10 +11,8 @@ import contextlib
 import logging
 import time
 import uuid
-from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
-from elizaos.bootstrap.services.task import Task
 from elizaos.prompts import (
     AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE,
     AUTONOMY_CONTINUOUS_FIRST_TEMPLATE,
@@ -24,8 +22,9 @@ from elizaos.prompts import (
 from elizaos.types.environment import Room, World
 from elizaos.types.events import EventType
 from elizaos.types.memory import Memory
-from elizaos.types.primitives import UUID, Content, as_uuid, string_to_uuid
+from elizaos.types.primitives import UUID, Content, as_uuid
 from elizaos.types.service import Service
+from elizaos.bootstrap.services.task import Task, TaskMetadata
 
 from .types import AutonomyStatus
 
@@ -41,7 +40,8 @@ AUTONOMY_SERVICE_TYPE = "AUTONOMY"
 AUTONOMY_TASK_NAME = "AUTONOMY_THINK"
 
 # Tags used for autonomy tasks (parity with TypeScript).
-AUTONOMY_TASK_TAGS = ["queue", "repeat", "autonomy"]
+# Note: TypeScript uses ["repeat", "autonomy", "internal"] without "queue".
+AUTONOMY_TASK_TAGS = ["repeat", "autonomy", "internal"]
 
 # Default interval in milliseconds
 DEFAULT_INTERVAL_MS = 30_000
@@ -112,10 +112,8 @@ class AutonomyService(Service):
         self._interval_ms = DEFAULT_INTERVAL_MS
         self._task_registered = False
         self._settings_monitor_task: asyncio.Task[None] | None = None
-        # Placeholder; replaced with a deterministic ID during _initialize().
-        self._autonomous_room_id = as_uuid("00000000-0000-0000-0000-000000000000")
+        self._autonomous_room_id = as_uuid(str(uuid.uuid4()))
         self._autonomous_world_id = as_uuid("00000000-0000-0000-0000-000000000001")
-        self._autonomy_entity_id = as_uuid("00000000-0000-0000-0000-000000000002")
 
     def _log(self, level: str, msg: str) -> None:
         if self._runtime:
@@ -137,9 +135,6 @@ class AutonomyService(Service):
         if not self._runtime:
             return
 
-        self._autonomous_room_id = as_uuid(
-            string_to_uuid(f"autonomy-room-{self._runtime.agent_id}")
-        )
         self._log("info", f"Using autonomous room ID: {self._autonomous_room_id}")
 
         # Ensure autonomous context exists
@@ -221,21 +216,13 @@ class AutonomyService(Service):
             return
 
         try:
-            existing_tasks = await self._runtime.get_tasks(
-                {
-                    "tags": list(AUTONOMY_TASK_TAGS),
-                }
-            )
+            existing_tasks = await self._runtime.get_tasks({
+                "tags": list(AUTONOMY_TASK_TAGS),
+            })
 
             for task in existing_tasks:
-                task_name = (
-                    getattr(task, "name", None) or task.get("name")
-                    if isinstance(task, dict)
-                    else None
-                )
-                task_id = (
-                    getattr(task, "id", None) or task.get("id") if isinstance(task, dict) else None
-                )
+                task_name = getattr(task, "name", None) or task.get("name") if isinstance(task, dict) else None
+                task_id = getattr(task, "id", None) or task.get("id") if isinstance(task, dict) else None
 
                 if task_name == AUTONOMY_TASK_NAME and task_id:
                     await self._runtime.delete_task(task_id)
@@ -294,231 +281,35 @@ class AutonomyService(Service):
         except Exception:
             return None
 
-    @staticmethod
-    def _coerce_name(entity: object) -> str | None:
-        if isinstance(entity, dict):
-            names = entity.get("names")
-            if isinstance(names, list):
-                for name in names:
-                    if isinstance(name, str) and name.strip():
-                        return name.strip()
-            name = entity.get("name")
-            if isinstance(name, str) and name.strip():
-                return name.strip()
-            return None
-
-        names = getattr(entity, "names", None)
-        if isinstance(names, list):
-            for name in names:
-                if isinstance(name, str) and name.strip():
-                    return name.strip()
-
-        name = getattr(entity, "name", None)
-        if isinstance(name, str) and name.strip():
-            return name.strip()
-
-        return None
-
-    @staticmethod
-    def _memory_text(memory: Memory) -> str:
-        if memory.content and isinstance(memory.content.text, str):
-            return memory.content.text.strip()
-        return ""
-
-    async def _build_entity_name_lookup(self, entity_ids: Iterable[UUID]) -> dict[UUID, str]:
-        if not self._runtime:
-            return {}
-
-        ids = list({entity_id for entity_id in entity_ids if entity_id})
-        if not ids:
-            return {}
-
-        getter = getattr(self._runtime, "get_entities_by_ids", None)
-        if not callable(getter):
-            return {}
-
-        try:
-            entities = await getter(ids)
-        except Exception:
-            return {}
-
-        name_by_id: dict[UUID, str] = {}
-        for entity in entities or []:
-            entity_id = None
-            if isinstance(entity, dict):
-                raw_id = entity.get("id")
-                if isinstance(raw_id, str):
-                    with contextlib.suppress(Exception):
-                        entity_id = as_uuid(raw_id)
-            else:
-                raw_id = getattr(entity, "id", None)
-                if raw_id is not None:
-                    with contextlib.suppress(Exception):
-                        entity_id = as_uuid(str(raw_id))
-
-            if not entity_id:
-                continue
-
-            entity_name = self._coerce_name(entity)
-            if entity_name:
-                name_by_id[entity_id] = entity_name
-
-        return name_by_id
-
-    @staticmethod
-    def _dedupe_memories_by_id_keep_earliest(memories: list[Memory]) -> list[Memory]:
-        by_id: dict[str, Memory] = {}
-        without_id: list[Memory] = []
-
-        for memory in memories:
-            mem_id = str(memory.id) if memory.id else ""
-            if not mem_id:
-                without_id.append(memory)
-                continue
-
-            existing = by_id.get(mem_id)
-            if existing is None or (memory.created_at or 0) < (existing.created_at or 0):
-                by_id[mem_id] = memory
-
-        return [*without_id, *by_id.values()]
-
     async def _get_target_room_context_text(self) -> str:
         if not self._runtime:
-            return "(no rooms configured)"
-
+            return "(no target room configured)"
         target_room_id = self._get_target_room_id()
-
-        ordered_room_ids: list[UUID] = []
-        if target_room_id:
-            ordered_room_ids.append(target_room_id)
-
-        get_participant_rooms = getattr(self._runtime, "get_rooms_for_participant", None)
-        if callable(get_participant_rooms):
-            with contextlib.suppress(Exception):
-                participant_rooms = await get_participant_rooms(self._runtime.agent_id)
-                for room_id in participant_rooms or []:
-                    if room_id not in ordered_room_ids:
-                        ordered_room_ids.append(room_id)
-
-        if not ordered_room_ids:
-            return "(no rooms configured)"
-
-        room_name_by_id: dict[UUID, str] = {}
-        get_rooms_by_ids = getattr(self._runtime, "get_rooms_by_ids", None)
-        if callable(get_rooms_by_ids):
-            with contextlib.suppress(Exception):
-                rooms = await get_rooms_by_ids(ordered_room_ids)
-                for room in rooms or []:
-                    if room and room.id:
-                        room_name_by_id[room.id] = (
-                            room.name if isinstance(room.name, str) and room.name else str(room.id)
-                        )
-
-        message_room_ids = [rid for rid in ordered_room_ids if rid != self._autonomous_room_id]
-        per_room_limit = 10
-
-        fetched_messages: list[Memory] = []
-        if message_room_ids:
-            get_memories_by_room_ids = getattr(self._runtime, "get_memories_by_room_ids", None)
-            if callable(get_memories_by_room_ids):
-                with contextlib.suppress(Exception):
-                    fetched_messages = await get_memories_by_room_ids(
-                        {
-                            "roomIds": message_room_ids,
-                            "limit": per_room_limit * len(message_room_ids),
-                            "tableName": "messages",
-                        }
-                    )
-            if not fetched_messages:
-                for room_id in message_room_ids:
-                    with contextlib.suppress(Exception):
-                        fetched_messages.extend(
-                            await self._runtime.get_memories(
-                                {
-                                    "roomId": room_id,
-                                    "count": per_room_limit,
-                                    "tableName": "messages",
-                                }
-                            )
-                        )
-
-        autonomy_memories = await self._runtime.get_memories(
-            {"roomId": self._autonomous_room_id, "count": per_room_limit, "tableName": "memories"}
+        if not target_room_id:
+            return "(no target room configured)"
+        memories_table = await self._runtime.get_memories(
+            {"roomId": target_room_id, "count": 15, "tableName": "memories"}
         )
-
-        # ── Recent-context cutoff: ignore messages older than 1 hour ──
-        one_hour_ms = 3_600_000
-        now_ms = int(time.time() * 1000)
-        cutoff_ms = now_ms - one_hour_ms
-
-        fetched_messages = [m for m in fetched_messages if (m.created_at or 0) >= cutoff_ms]
-        autonomy_memories = [m for m in autonomy_memories if (m.created_at or 0) >= cutoff_ms]
-
-        external_messages = [
-            m
-            for m in fetched_messages
-            if m and m.entity_id and m.entity_id != self._runtime.agent_id
-        ]
-        entity_name_by_id = await self._build_entity_name_lookup(
-            memory.entity_id for memory in external_messages
+        messages_table = await self._runtime.get_memories(
+            {"roomId": target_room_id, "count": 15, "tableName": "messages"}
         )
-
-        messages_by_room: dict[UUID, list[Memory]] = {}
-        sorted_messages = sorted(
-            self._dedupe_memories_by_id_keep_earliest(external_messages),
-            key=lambda m: m.created_at or 0,
-            reverse=True,
-        )
-        for memory in sorted_messages:
-            bucket = messages_by_room.setdefault(memory.room_id, [])
-            if len(bucket) >= per_room_limit:
+        by_id: dict[str, Memory] = {}
+        for m in [*memories_table, *messages_table]:
+            mem_id = m.id or ""
+            if not mem_id:
                 continue
-            bucket.append(memory)
-
-        room_sections: list[str] = []
-        for room_id in message_room_ids:
-            room_name = room_name_by_id.get(room_id, str(room_id))
-            room_messages = list(reversed(messages_by_room.get(room_id, [])))
-            if not room_messages:
-                room_sections.append(f"Room: {room_name}\n(no recent messages)")
-                continue
-
-            lines: list[str] = []
-            for memory in room_messages:
-                text = self._memory_text(memory)
-                if not text:
-                    continue
-                author = entity_name_by_id.get(memory.entity_id, str(memory.entity_id))
-                lines.append(f"{author}: {text}")
-
-            if lines:
-                room_sections.append(f"Room: {room_name}\n" + "\n".join(lines))
-            else:
-                room_sections.append(f"Room: {room_name}\n(no recent messages)")
-
-        autonomy_entries: list[str] = []
-        for memory in autonomy_memories:
-            text = self._memory_text(memory)
-            if not text:
-                continue
-
-            metadata_obj = memory.content.data if memory.content else None
-            metadata: dict[str, object] = metadata_obj if isinstance(metadata_obj, dict) else {}
-            entry_type = metadata.get("type")
-
-            if memory.entity_id == self._runtime.agent_id and entry_type == "autonomous-response":
-                autonomy_entries.append(f"Thought: {text}")
-            elif (
-                memory.entity_id == self._autonomy_entity_id and entry_type == "autonomous-trigger"
-            ):
-                autonomy_entries.append(f"Trigger: {text}")
-
-        if autonomy_entries:
-            autonomy_section = "Autonomous context:\n" + "\n".join(autonomy_entries)
-        else:
-            autonomy_section = "Autonomous context: (none)"
-
-        return "\n\n".join([*room_sections, autonomy_section])
+            created_at = m.created_at or 0
+            existing = by_id.get(mem_id)
+            if existing is None or created_at < (existing.created_at or 0):
+                by_id[mem_id] = m
+        ordered = sorted(by_id.values(), key=lambda m: m.created_at or 0)
+        lines: list[str] = []
+        for m in ordered:
+            role = "Agent" if m.entity_id == self._runtime.agent_id else "User"
+            text = m.content.text if m.content and isinstance(m.content.text, str) else ""
+            if text.strip():
+                lines.append(f"{role}: {text}")
+        return "\n".join(lines) if lines else "(no recent messages)"
 
     async def _settings_monitoring(self) -> None:
         while not self._is_stopped:
@@ -531,14 +322,10 @@ class AutonomyService(Service):
                 should_be_running = self._is_autonomy_enabled()
 
                 if should_be_running and not self._is_running:
-                    self._log(
-                        "info", "Runtime indicates autonomy should be enabled, creating task..."
-                    )
+                    self._log("info", "Runtime indicates autonomy should be enabled, creating task...")
                     await self._create_autonomy_task()
                 elif not should_be_running and self._is_running:
-                    self._log(
-                        "info", "Runtime indicates autonomy should be disabled, removing task..."
-                    )
+                    self._log("info", "Runtime indicates autonomy should be disabled, removing task...")
                     await self._remove_autonomy_task()
                     self._is_running = False
             except Exception as e:
@@ -613,7 +400,7 @@ class AutonomyService(Service):
             else self._create_continuous_prompt(last_thought, is_first_thought, target_context)
         )
 
-        entity_id = self._autonomy_entity_id
+        entity_id = agent_entity.id if agent_entity.id else self._runtime.agent_id
         current_time_ms = int(time.time() * 1000)
         autonomous_message = Memory(
             id=as_uuid(str(uuid.uuid4())),
@@ -621,15 +408,6 @@ class AutonomyService(Service):
             content=Content(
                 text=autonomy_prompt,
                 source="autonomy-service",
-                data={
-                    "type": "autonomous-prompt",
-                    "isAutonomous": True,
-                    "isInternalThought": True,
-                    "autonomyMode": mode,
-                    "channelId": "autonomous",
-                    "timestamp": current_time_ms,
-                    "isContinuation": not is_first_thought,
-                },
             ),
             room_id=self._autonomous_room_id,
             agent_id=self._runtime.agent_id,
@@ -758,9 +536,7 @@ class AutonomyService(Service):
 
     @property
     def capability_description(self) -> str:
-        return (
-            "Autonomous operation using the Task system for continuous agent thinking and actions"
-        )
+        return "Autonomous operation using the Task system for continuous agent thinking and actions"
 
     def _is_autonomy_enabled(self) -> bool:
         if not self._runtime:

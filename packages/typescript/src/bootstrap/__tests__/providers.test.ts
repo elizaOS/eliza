@@ -15,11 +15,11 @@ import type {
 } from "../../types/index.ts";
 import { ChannelType, MemoryType } from "../../types/index.ts";
 import { attachmentsProvider } from "../providers/attachments";
-import { choiceProvider } from "../providers/choice";
+import choiceProvider from "../providers/choice";
 import { factsProvider } from "../providers/facts";
 import { providersProvider } from "../providers/providers";
 import { recentMessagesProvider } from "../providers/recentMessages";
-import { roleProvider } from "../providers/roles";
+import roleProvider from "../providers/roles";
 import { settingsProvider } from "../providers/settings";
 import {
   cleanupTestRuntime,

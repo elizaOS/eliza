@@ -23,22 +23,8 @@ import type {
 } from "../../types/index.ts";
 import { MemoryType, ModelType } from "../../types/index.ts";
 
-/**
- * Maximum characters to include in the summarisation prompt.
- * ~25 000 tokens at ~3 chars/token — well within TEXT_LARGE limits.
- */
-const MAX_SUMMARY_INPUT_CHARS = 75_000;
-
-function buildSummaryPrompt(
-  messages: string,
-  instructions?: string,
-  previousSummary?: string,
-): string {
-  let prompt = "";
-  if (previousSummary) {
-    prompt += `Previous context summary:\n${previousSummary}\n\n`;
-  }
-  prompt +=
+function buildSummaryPrompt(messages: string, instructions?: string): string {
+  let prompt =
     "Summarize this conversation for context preservation. Focus on decisions, " +
     "facts learned, open questions, action items, and key context needed to continue.\n\n" +
     "Conversation:\n" +
@@ -53,26 +39,15 @@ async function summarizeHistory(
   roomId: UUID,
   instructions?: string,
 ): Promise<string> {
-  // Check for existing compaction point so we only summarise messages since
-  // the last compaction, avoiding redundant re-processing.
-  const room = await runtime.getRoom(roomId);
-  const lastCompactionAt = room?.metadata?.lastCompactionAt as
-    | number
-    | undefined;
-
   const messages = await runtime.getMemories({
     tableName: "messages",
     roomId,
     count: 200,
-    start: lastCompactionAt,
   });
   if (!messages?.length) return "No conversation history to compact.";
 
-  const sorted = messages.sort(
-    (a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0),
-  );
-
-  let formatted = sorted
+  const formatted = messages
+    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
     .map((m) => {
       const role = m.entityId === runtime.agentId ? "Assistant" : "User";
       const text = (m.content as Record<string, string>)?.text ?? "";
@@ -80,26 +55,8 @@ async function summarizeHistory(
     })
     .join("\n");
 
-  // Truncate to stay within the model's context.
-  // Keep the most recent portion so the summary captures the latest state.
-  if (formatted.length > MAX_SUMMARY_INPUT_CHARS) {
-    formatted = formatted.slice(-MAX_SUMMARY_INPUT_CHARS);
-  }
-
-  // Carry forward previous summary for incremental compaction
-  let previousSummary = "";
-  if (lastCompactionAt) {
-    const compactionMsg = sorted.find(
-      (m) => m.content?.source === "compaction",
-    );
-    if (compactionMsg?.content?.text) {
-      previousSummary = compactionMsg.content.text;
-    }
-  }
-
   return runtime.useModel(ModelType.TEXT_LARGE, {
-    prompt: buildSummaryPrompt(formatted, instructions, previousSummary),
-    maxTokens: 2_000,
+    prompt: buildSummaryPrompt(formatted, instructions),
   });
 }
 
@@ -271,3 +228,5 @@ export const compactSessionAction: Action = {
     ],
   ] as ActionExample[][],
 };
+
+export default compactSessionAction;

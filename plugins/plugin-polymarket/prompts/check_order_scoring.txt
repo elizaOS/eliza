@@ -1,0 +1,37 @@
+extract one or more order IDs for checking their scoring status.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, identify:
+- orderIds: An array of specific order IDs (required)
+
+Look for:
+- Alphanumeric strings following "order ID", "orders", "IDs"
+- Phrases like "check scoring for orders XYZ, ABC", "are orders 123 and 456 scoring?"
+- Comma or space-separated lists of order IDs.
+
+Examples:
+- "Are orders 123xyz and abc789 scoring?"
+  { "orderIds": ["123xyz", "abc789"] }
+- "Check scoring status for order 0x123abc"
+  { "orderIds": ["0x123abc"] }
+- "Show me if myOrder1, myOrder2, myOrder3 are scoring"
+  { "orderIds": ["myOrder1", "myOrder2", "myOrder3"] }
+
+Respond with a JSON object containing only the extracted values.
+The JSON should have this structure:
+{
+    "orderIds"?: string[]
+}
+
+If no valid order IDs are found, you MUST respond with the following JSON structure:
+{
+    "error": "Order ID(s) not found. Please specify one or more order IDs."
+}
+
+
+
+

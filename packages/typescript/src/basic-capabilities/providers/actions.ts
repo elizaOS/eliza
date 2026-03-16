@@ -1,7 +1,10 @@
-import { formatActionNames, formatActions } from "../../actions.ts";
-import { buildConversationSeed } from "../../deterministic";
+import {
+  composeActionCallExamples,
+  composeActionExamples,
+  formatActionNames,
+  formatActions,
+} from "../../actions.ts";
 import { requireProviderSpec } from "../../generated/spec-helpers.ts";
-import { logger } from "../../logger.ts";
 import type {
   Action,
   IAgentRuntime,
@@ -53,54 +56,56 @@ export const actionsProvider: Provider = {
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     // Get actions that validate for this message
     const actionPromises = runtime.actions.map(async (action: Action) => {
-      try {
-        const result = await action.validate(runtime, message, state);
-        if (result) {
-          return action;
-        }
-        return null;
-      } catch (error) {
-        logger.warn(
-          {
-            src: "provider:actions",
-            agentId: runtime.agentId,
-            action: action.name,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Action validation threw — excluding action from prompt",
-        );
-        return null;
+      const result = await action.validate(runtime, message, state);
+      if (result) {
+        return action;
       }
+      return null;
     });
 
     const resolvedActions = await Promise.all(actionPromises);
 
     const actionsData = resolvedActions.filter(Boolean) as Action[];
-    const actionSeed = buildConversationSeed({
-      runtime,
-      message,
-      state,
-      surface: "provider:actions",
-    });
 
     // Format action-related texts
-    const actionNames = `\n ## Possible response actions: ${formatActionNames(actionsData, `${actionSeed}:names`)}`;
+    const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;
 
     const actionsWithDescriptions =
       actionsData.length > 0
+        ? addHeader("# Available Actions", formatActions(actionsData))
+        : "";
+
+    const actionExamples =
+      actionsData.length > 0
+        ? addHeader("# Action Examples", composeActionExamples(actionsData, 10))
+        : "";
+
+    const actionCallExamples =
+      actionsData.length > 0
         ? addHeader(
-            "# Available Actions",
-            formatActions(actionsData, `${actionSeed}:descriptions`),
+            "# Action Call Examples (with <params>)",
+            composeActionCallExamples(actionsData, 5),
           )
         : "";
 
+    const _data = {
+      actionsData,
+    };
+
     const values = {
       actionNames,
+      actionExamples,
+      actionCallExamples,
       actionsWithDescriptions,
     };
 
     // Combine all text sections - now including actionsWithDescriptions
-    const text = [actionNames, actionsWithDescriptions]
+    const text = [
+      actionNames,
+      actionsWithDescriptions,
+      actionExamples,
+      actionCallExamples,
+    ]
       .filter(Boolean)
       .join("\n\n");
 

@@ -1,0 +1,26 @@
+[package]
+name = "game-of-life"
+version = "0.1.0"
+edition = "2021"
+description = "elizaOS Rust Game-of-Life example (canonical message_service pipeline, no LLM)"
+publish = false
+
+[[bin]]
+name = "game-of-life"
+path = "src/main.rs"
+
+[dependencies]
+# elizaOS Core
+elizaos = { path = "../../../../packages/rust" }
+
+# Async runtime
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "time"] }
+
+# Error handling
+anyhow = "1.0"
+
+# JSON for model handler params
+serde_json = "1.0"
+
+# Derive async ActionHandler impls
+async-trait = "0.1"

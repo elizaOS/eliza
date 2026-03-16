@@ -63,5 +63,4 @@ capabilities_provider = Provider(
     description=_spec["description"],
     get=get_capabilities,
     dynamic=_spec.get("dynamic", False),
-    position=_spec.get("position"),
 )

@@ -21,11 +21,7 @@ export type TypingMode = "never" | "instant" | "thinking" | "message";
 export type SessionScope = "per-sender" | "global";
 
 /** DM session scoping strategy. */
-export type DmScope =
-  | "main"
-  | "per-peer"
-  | "per-channel-peer"
-  | "per-account-channel-peer";
+export type DmScope = "main" | "per-peer" | "per-channel-peer" | "per-account-channel-peer";
 
 /** Reply threading mode. */
 export type ReplyToMode = "off" | "first" | "all";
@@ -215,10 +211,7 @@ export type GroupToolPolicyConfig = {
   deny?: string[];
 };
 
-export type GroupToolPolicyBySenderConfig = Record<
-  string,
-  GroupToolPolicyConfig
->;
+export type GroupToolPolicyBySenderConfig = Record<string, GroupToolPolicyConfig>;
 
 // ============================================================
 // Message Configuration
@@ -247,6 +240,4 @@ export type ProviderCommandsConfig = {
 // ============================================================
 
 /** Allowlists keyed by provider id (and internal "webchat"). */
-export type AgentElevatedAllowFromConfig = Partial<
-  Record<string, Array<string | number>>
->;
+export type AgentElevatedAllowFromConfig = Partial<Record<string, Array<string | number>>>;

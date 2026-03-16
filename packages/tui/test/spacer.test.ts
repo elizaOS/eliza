@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test } from "bun:test";
 import { Spacer } from "../src/components/spacer.js";
 
 describe("Spacer component", () => {

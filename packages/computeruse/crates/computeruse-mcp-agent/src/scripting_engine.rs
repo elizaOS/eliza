@@ -762,7 +762,7 @@ async fn ensure_computeruse_js_installed(runtime: &str) -> Result<std::path::Pat
                     if !platform_package_name.is_empty() {
                         let main_pkg_json = script_dir
                             .join("node_modules")
-                            .join("@elizaos")
+                            .join("@mediar-ai")
                             .join("computeruse")
                             .join("package.json");
                         let platform_pkg_json = script_dir
@@ -2700,11 +2700,11 @@ pub async fn execute_javascript_with_local_bindings(
     info!("[Node.js Local] Using runtime: {}", runtime);
 
     // Resolve local bindings path robustly
-    // 1) Explicit override via env var COMPUTERUSE_JS_LOCAL_BINDINGS (points directly to packages/computeruse-ts)
-    // 2) Derive from compile-time crate dir (../packages/computeruse-ts)
-    // 3) Try CWD/packages/computeruse-ts
-    // 4) Try parent_of_CWD/packages/computeruse-ts
-    // 5) Walk up a few ancestors looking for packages/computeruse-ts
+    // 1) Explicit override via env var COMPUTERUSE_JS_LOCAL_BINDINGS (points directly to packages/computeruse-nodejs)
+    // 2) Derive from compile-time crate dir (../packages/computeruse-nodejs)
+    // 3) Try CWD/packages/computeruse-nodejs
+    // 4) Try parent_of_CWD/packages/computeruse-nodejs
+    // 5) Walk up a few ancestors looking for packages/computeruse-nodejs
     let local_bindings_path: PathBuf = {
         if let Ok(override_path) = std::env::var("COMPUTERUSE_JS_LOCAL_BINDINGS") {
             let p = PathBuf::from(override_path);
@@ -2717,24 +2717,24 @@ pub async fn execute_javascript_with_local_bindings(
             // Candidates to probe
             let mut candidates: Vec<PathBuf> = Vec::new();
 
-            // From compile-time crate dir: <workspace>/computeruse-mcp-agent => <workspace>/packages/computeruse-ts
+            // From compile-time crate dir: <workspace>/computeruse-mcp-agent => <workspace>/packages/computeruse-nodejs
             let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             if let Some(ws) = crate_dir.parent() {
-                candidates.push(ws.join("packages").join("computeruse-ts"));
+                candidates.push(ws.join("packages").join("computeruse-nodejs"));
             }
 
             // From current dir
             if let Ok(cwd) = std::env::current_dir() {
-                candidates.push(cwd.join("packages").join("computeruse-ts"));
+                candidates.push(cwd.join("packages").join("computeruse-nodejs"));
                 if let Some(parent) = cwd.parent() {
-                    candidates.push(parent.join("packages").join("computeruse-ts"));
+                    candidates.push(parent.join("packages").join("computeruse-nodejs"));
                 }
 
-                // Walk up to 5 ancestors looking for packages/computeruse-ts
+                // Walk up to 5 ancestors looking for packages/computeruse-nodejs
                 let mut anc = Some(cwd.as_path());
                 for _ in 0..5 {
                     if let Some(a) = anc {
-                        candidates.push(a.join("packages").join("computeruse-ts"));
+                        candidates.push(a.join("packages").join("computeruse-nodejs"));
                         anc = a.parent();
                     }
                 }
@@ -2750,7 +2750,7 @@ pub async fn execute_javascript_with_local_bindings(
                     return Err(McpError::internal_error(
                         "Local bindings directory not found",
                         Some(json!({
-                            "hint": "Set COMPUTERUSE_JS_LOCAL_BINDINGS to the path of packages/computeruse-ts or run from the repo",
+                            "hint": "Set COMPUTERUSE_JS_LOCAL_BINDINGS to the path of packages/computeruse-nodejs or run from the repo",
                             "cwd": std::env::current_dir().ok().map(|p| p.to_string_lossy().to_string()),
                             "crate_dir": crate_dir.to_string_lossy().to_string(),
                         })),
@@ -2807,7 +2807,7 @@ pub async fn execute_javascript_with_local_bindings(
     // Require the bindings index.js explicitly for maximum compatibility (Node/Bun)
     let bindings_entry_path = local_bindings_path.join("index.js");
     let bindings_abs_path = bindings_entry_path.to_string_lossy().replace('\\', "\\\\");
-    // Also resolve workflow package path (sibling to computeruse-ts)
+    // Also resolve workflow package path (sibling to computeruse-nodejs)
     let workflow_path = local_bindings_path
         .parent()
         .map(|p| p.join("workflow"))

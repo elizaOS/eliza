@@ -1,0 +1,53 @@
+extract parameters for retrieving a user's trade history.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, identify any of the following optional filters:
+- userAddress: The user's wallet address (e.g., 0x...).
+- marketId: The specific market condition ID.
+- tokenId: The specific asset ID (token ID).
+- fromDate: A start date or time period for the trades (e.g., "yesterday", "last week", "2023-01-15", "3 days ago").
+- toDate: An end date or time period for the trades (e.g., "today", "2023-01-20").
+- limit: Maximum number of trades to return (e.g., 25, 100).
+- nextCursor: Pagination cursor for fetching the next page of results.
+
+Look for:
+- Wallet addresses (0x...).
+- Identifiers for markets or tokens.
+- Phrases like "trades for user X", "my trade history", "trades on market Y".
+- Date/time references like "since last Monday", "between date A and date B", "in the last 24 hours".
+- Keywords like "limit", "cursor", "page".
+
+Examples:
+- "Show my trade history for market 0xMarket123 from last week, limit 50"
+  { "marketId": "0xMarket123", "fromDate": "last week", "limit": 50 }
+- "Get trades for user 0xUserAddress on token 0xTokenABC since 2023-05-01 until 2023-05-10"
+  { "userAddress": "0xUserAddress", "tokenId": "0xTokenABC", "fromDate": "2023-05-01", "toDate": "2023-05-10" }
+- "Fetch next page of my trades with cursor XYZ123"
+  { "nextCursor": "XYZ123" }
+- "What were my trades yesterday?"
+  { "fromDate": "yesterday", "toDate": "yesterday" } // Or just fromDate: "yesterday"
+
+Respond with a JSON object containing only the extracted values.
+All fields are optional. The JSON should have this structure:
+{
+    "userAddress"?: string,
+    "marketId"?: string,
+    "tokenId"?: string,
+    "fromDate"?: string, // Extracted as string, will be parsed by the action
+    "toDate"?: string,   // Extracted as string, will be parsed by the action
+    "limit"?: number,
+    "nextCursor"?: string
+}
+
+If no specific filters are mentioned that can be mapped to these parameters, you can respond with an empty JSON object {} or a JSON object indicating no filters, for example:
+{
+    "info": "No specific trade history filters identified. Will attempt to fetch recent trades for the current user if identifiable, or all trades if no user context."
+}
+
+
+
+

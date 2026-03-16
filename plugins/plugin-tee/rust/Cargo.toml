@@ -1,0 +1,73 @@
+[package]
+name = "elizaos-plugin-tee"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "elizaOS TEE Plugin - Trusted Execution Environment integration for secure key management and remote attestation"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+keywords = ["ai", "agent", "tee", "attestation", "security", "phala"]
+categories = ["cryptography", "api-bindings", "web-programming"]
+readme = "README.md"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full", "reqwest/default-tls"]
+wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "getrandom/js", "reqwest/rustls-tls"]
+
+[dependencies]
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async runtime
+async-trait = "0.1"
+futures = "0.3"
+
+# Error handling
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+
+# UUID handling
+uuid = { version = "1.19", features = ["v4", "serde"] }
+
+# Cryptography
+sha2 = "0.10"
+sha3 = "0.10"
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+k256 = { version = "0.13", features = ["ecdsa", "sha256"] }
+rand = "0.8"
+hex = "0.4"
+bs58 = "0.5"
+
+# Native-only dependencies
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"], optional = true }
+
+# WASM-only dependencies
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", features = ["console", "FormData", "Blob"], optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+getrandom = { version = "0.2", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+pretty_assertions = "1.0"
+dotenvy = "0.15"
+
+[profile.release]
+lto = true
+opt-level = "z"
+
+
+
+

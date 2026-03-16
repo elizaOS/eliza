@@ -1,0 +1,35 @@
+{
+  "name": "@elizaos/vercel-edge-examples",
+  "version": "2.0.0-alpha",
+  "private": true,
+  "type": "module",
+  "description": "elizaOS Vercel Edge Function examples in TypeScript, Python, and Rust",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "bun run build:ts && bun run build:rust",
+    "build:ts": "tsc --noEmit",
+    "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped'",
+    "deploy": "vercel deploy",
+    "deploy:prod": "vercel deploy --prod",
+    "test": "bun run test-client.ts || echo 'Vercel edge tests require running API endpoint - skipping'",
+    "test:py": "cd python && python3 handler.py",
+    "test:rust": "cd rust && cargo run --bin test_local",
+    "clean": "rm -rf dist .vercel node_modules",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "@vercel/node": "^5.1.8",
+    "typescript": "^5.9.3",
+    "vercel": "^41.7.3"
+  }
+}

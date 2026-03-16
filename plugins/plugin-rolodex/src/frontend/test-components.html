@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UI Components Test Page</title>
+    <link rel="stylesheet" href="./index.css" />
+    <script>
+      window.ELIZA_CONFIG = {
+        agentId: 'test-agent-123',
+        apiBase: 'http://localhost:3000',
+      };
+    </script>
+  </head>
+  <body class="bg-background text-foreground p-8">
+    <div id="root">
+      <div class="space-y-8">
+        <!-- Badge Components -->
+        <section>
+          <h2 class="text-2xl font-bold mb-4">Badge Components</h2>
+          <div class="flex gap-2 flex-wrap">
+            <div
+              data-testid="badge-default"
+              class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary text-primary-foreground"
+            >
+              Test Badge
+            </div>
+            <div
+              data-testid="badge-outline"
+              class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border border-input bg-background text-foreground"
+            >
+              Outline Badge
+            </div>
+            <div
+              data-testid="badge-secondary"
+              class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-secondary text-secondary-foreground"
+            >
+              Secondary Badge
+            </div>
+            <div
+              data-testid="badge-destructive"
+              class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-destructive text-destructive-foreground"
+            >
+              Destructive Badge
+            </div>
+            <div
+              data-testid="badge-custom"
+              class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary text-primary-foreground custom-class"
+            >
+              Custom Badge
+            </div>
+          </div>
+        </section>
+
+        <!-- Button Components -->
+        <section>
+          <h2 class="text-2xl font-bold mb-4">Button Components</h2>
+          <div class="flex gap-2 flex-wrap">
+            <button
+              data-testid="button-default"
+              type="button"
+              class="inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+            >
+              Default
+            </button>
+            <button
+              data-testid="button-outline"
+              type="button"
+              class="inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+            >
+              Outline
+            </button>
+            <button
+              data-testid="button-ghost"
+              type="button"
+              class="inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+            >
+              Ghost
+            </button>
+            <button
+              data-testid="button-destructive"
+              type="button"
+              class="inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none bg-destructive text-destructive-foreground hover:bg-destructive/90 h-10 px-4 py-2"
+            >
+              Destructive
+            </button>
+            <button
+              data-testid="button-disabled"
+              type="button"
+              disabled
+              class="inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+            >
+              Disabled
+            </button>
+            <button
+              data-testid="button-with-title"
+              type="button"
+              title="Test Title"
+              class="inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+            >
+              With Title
+            </button>
+          </div>
+          <div class="flex gap-2 flex-wrap mt-4">
+            <button
+              data-testid="button-size-default"
+              type="button"
+              class="inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+            >
+              Default Size
+            </button>
+            <button
+              data-testid="button-size-sm"
+              type="button"
+              class="inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none bg-primary text-primary-foreground hover:bg-primary/90 h-9 rounded-md px-3"
+            >
+              Small
+            </button>
+            <button
+              data-testid="button-size-lg"
+              type="button"
+              class="inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none bg-primary text-primary-foreground hover:bg-primary/90 h-11 rounded-md px-8"
+            >
+              Large
+            </button>
+            <button
+              data-testid="button-size-icon"
+              type="button"
+              class="inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none bg-primary text-primary-foreground hover:bg-primary/90 h-10 w-10"
+            >
+              🔍
+            </button>
+          </div>
+          <div class="mt-4">
+            <button
+              data-testid="button-clickable"
+              type="button"
+              onclick="document.getElementById('click-count').textContent = parseInt(document.getElementById('click-count').textContent) + 1"
+              class="inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+            >
+              Click Me
+            </button>
+            <span class="ml-4"
+              >Click count: <span data-testid="click-count" id="click-count">0</span></span
+            >
+          </div>
+        </section>
+
+        <!-- Card Components -->
+        <section>
+          <h2 class="text-2xl font-bold mb-4">Card Components</h2>
+          <div
+            data-testid="card"
+            class="rounded-lg border bg-card text-card-foreground shadow-sm max-w-md"
+          >
+            <div data-testid="card-header" class="flex flex-col space-y-1.5 p-6">
+              <h3
+                data-testid="card-title"
+                class="text-2xl font-semibold leading-none tracking-tight"
+              >
+                Test Card Title
+              </h3>
+              <p data-testid="card-description" class="text-sm text-muted-foreground">
+                Test Description
+              </p>
+            </div>
+            <div data-testid="card-content" class="p-6 pt-0">Test Content</div>
+            <div data-testid="card-footer" class="flex items-center p-6 pt-0">Test Footer</div>
+          </div>
+        </section>
+
+        <!-- Input Components -->
+        <section>
+          <h2 class="text-2xl font-bold mb-4">Input Components</h2>
+          <div class="space-y-4 max-w-md">
+            <input
+              data-testid="input-default"
+              type="text"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <input
+              data-testid="input-controlled"
+              type="text"
+              value=""
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <input
+              data-testid="input-placeholder"
+              type="text"
+              placeholder="Enter text..."
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <input
+              data-testid="input-disabled"
+              type="text"
+              disabled
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <input
+              data-testid="input-file"
+              type="file"
+              multiple
+              accept=".pdf,.txt"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <input
+              data-testid="input-custom"
+              type="text"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 custom-input-class"
+            />
+          </div>
+        </section>
+
+        <!-- Table Components -->
+        <section>
+          <h2 class="text-2xl font-bold mb-4">Table Components</h2>
+          <div class="relative w-full overflow-auto rounded-md border">
+            <table data-testid="table" class="w-full caption-bottom text-xs bg-card">
+              <caption data-testid="table-caption" class="mt-4 text-sm text-muted-foreground">
+                Test Caption
+              </caption>
+              <thead data-testid="table-header" class="[&_tr]:border-b">
+                <tr
+                  data-testid="table-row"
+                  class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                >
+                  <th
+                    data-testid="table-head"
+                    class="h-10 px-2 text-left align-middle font-medium text-muted-foreground"
+                  >
+                    Column 1
+                  </th>
+                  <th class="h-10 px-2 text-left align-middle font-medium text-muted-foreground">
+                    Column 2
+                  </th>
+                </tr>
+              </thead>
+              <tbody data-testid="table-body" class="[&_tr:last-child]:border-0">
+                <tr
+                  data-testid="table-row"
+                  class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted"
+                >
+                  <td data-testid="table-cell" class="p-2 align-middle">Cell 1</td>
+                  <td class="p-2 align-middle">Cell 2</td>
+                </tr>
+              </tbody>
+              <tfoot
+                data-testid="table-footer"
+                class="border-t bg-muted/50 font-medium [&>tr]:last:border-b-0"
+              >
+                <tr>
+                  <td class="p-2 align-middle">Footer 1</td>
+                  <td class="p-2 align-middle">Footer 2</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </section>
+
+        <!-- Tabs Components -->
+        <section>
+          <h2 class="text-2xl font-bold mb-4">Tabs Components</h2>
+          <div data-testid="tabs" class="w-full max-w-md">
+            <div
+              data-testid="tabs-list"
+              class="inline-flex overflow-x-auto max-w-full h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground"
+            >
+              <button
+                data-testid="tabs-trigger-1"
+                data-state="active"
+                class="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow"
+              >
+                Tab 1
+              </button>
+              <button
+                data-testid="tabs-trigger-2"
+                data-state="inactive"
+                class="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow"
+              >
+                Tab 2
+              </button>
+            </div>
+            <div
+              data-testid="tabs-content-1"
+              class="mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <p>Content for Tab 1</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- RolodexTab Component -->
+        <section>
+          <h2 class="text-2xl font-bold mb-4">RolodexTab Component</h2>
+          <div id="rolodex-tab" class="w-full">
+            <!-- This will be rendered by React -->
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Load React and render RolodexTab -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script type="module">
+      import { RolodexTab } from './ui/rolodex-tab.js';
+
+      const container = document.getElementById('rolodex-tab');
+      if (container) {
+        const root = ReactDOM.createRoot(container);
+        root.render(React.createElement(RolodexTab, { agentId: 'test-agent-123' }));
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.10.0
+elizaos>=1.0.0
+elizaos-plugin-eliza-classic>=1.0.0
+elizaos-plugin-localdb>=1.0.0
+
+
+
+
+
+
+
+
+
+

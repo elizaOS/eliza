@@ -1,5 +1,6 @@
 {
   "author": "Mediar AI",
+  "private": true,
   "dependencies": {
     "zod": "^4.3.6"
   },
@@ -30,7 +31,9 @@
   "peerDependencies": {
     "@elizaos/computeruse": "workspace:*"
   },
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "directory": "packages/workflow",
     "type": "git",

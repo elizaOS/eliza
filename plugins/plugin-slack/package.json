@@ -1,0 +1,124 @@
+{
+  "name": "@elizaos/plugin-slack-root",
+  "version": "2.0.0-alpha",
+  "description": "Slack integration plugin for elizaOS agents with Socket Mode support",
+  "type": "module",
+  "main": "typescript/dist/index.js",
+  "module": "typescript/dist/index.js",
+  "types": "typescript/dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-slack.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./typescript/dist/index.d.ts",
+        "default": "./typescript/dist/index.js"
+      }
+    },
+    "./rust": {
+      "node": {
+        "import": "./rust/pkg/node/elizaos_plugin_slack.js",
+        "default": "./rust/pkg/node/elizaos_plugin_slack.js"
+      },
+      "default": "./rust/pkg/node/elizaos_plugin_slack.js"
+    }
+  },
+  "files": [
+    "typescript/dist",
+    "rust/pkg"
+  ],
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "slack",
+    "chat",
+    "messaging"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "scripts": {
+    "build": "bun run build:ts && bun run build:rust && bun run build:python",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:python": "test -n \"$SKIP_PYTHON_BUILD\" && echo 'Python build skipped (SKIP_PYTHON_BUILD set)' || (test -d python && cd python && (timeout 120 python3 -m build 2>/dev/null || timeout 120 pyproject-build 2>/dev/null) || echo 'Python build skipped or timed out')",
+    "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
+    "dev": "cd typescript && bun run build.ts --watch",
+    "clean": "rm -rf typescript/dist .turbo typescript/node_modules .turbo-tsconfig.json typescript/tsconfig.tsbuildinfo",
+    "test": "bun run test:ts && bun run test:rust && bun run test:python",
+    "test:ts": "cd typescript && vitest run",
+    "test:rust": "test -d rust && cd rust && cargo test || echo 'Rust tests skipped'",
+    "test:python": "test -d python && cd python && pytest -p no:anchorpy --asyncio-mode=auto || echo 'Python tests skipped'",
+    "typecheck": "cd typescript && tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write typescript/",
+    "lint:check": "bunx @biomejs/biome check typescript/",
+    "format": "bunx @biomejs/biome format --write typescript/",
+    "format:check": "bunx @biomejs/biome format typescript/"
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.1.0",
+    "@slack/web-api": "^7.7.0",
+    "@elizaos/core": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "^2.3.11"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SLACK_BOT_TOKEN": {
+        "type": "string",
+        "description": "Slack Bot Token (xoxb-...) for API authentication",
+        "required": true,
+        "sensitive": true
+      },
+      "SLACK_APP_TOKEN": {
+        "type": "string",
+        "description": "Slack App Token (xapp-...) for Socket Mode connections",
+        "required": true,
+        "sensitive": true
+      },
+      "SLACK_SIGNING_SECRET": {
+        "type": "string",
+        "description": "Slack Signing Secret for verifying requests",
+        "required": false,
+        "sensitive": true
+      },
+      "SLACK_USER_TOKEN": {
+        "type": "string",
+        "description": "Optional User Token (xoxp-...) for enhanced permissions",
+        "required": false,
+        "sensitive": true
+      },
+      "SLACK_CHANNEL_IDS": {
+        "type": "string",
+        "description": "Comma-separated list of channel IDs to restrict the bot to",
+        "required": false,
+        "sensitive": false
+      },
+      "SLACK_SHOULD_IGNORE_BOT_MESSAGES": {
+        "type": "boolean",
+        "description": "If true, the bot will ignore messages from other bots",
+        "required": false,
+        "sensitive": false
+      },
+      "SLACK_SHOULD_RESPOND_ONLY_TO_MENTIONS": {
+        "type": "boolean",
+        "description": "If true, the bot will only respond when mentioned",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

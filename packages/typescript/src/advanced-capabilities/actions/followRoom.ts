@@ -12,10 +12,7 @@ import type {
   State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import {
-  composePromptFromState,
-  parseXmlBooleanResponse,
-} from "../../utils.ts";
+import { composePromptFromState } from "../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("FOLLOW_ROOM");
@@ -59,7 +56,7 @@ export const followRoomAction: Action = {
     if (!state) {
       logger.error(
         {
-          src: "plugin:core:action:follow_room",
+          src: "plugin:bootstrap:action:follow_room",
           agentId: runtime.agentId,
         },
         "State is required for followRoomAction",
@@ -90,9 +87,15 @@ export const followRoomAction: Action = {
         stopSequences: [],
       });
 
-      const parsedResponse = parseXmlBooleanResponse(response);
+      const cleanedResponse = response.trim().toLowerCase();
 
-      if (parsedResponse === true) {
+      if (
+        cleanedResponse === "true" ||
+        cleanedResponse === "yes" ||
+        cleanedResponse === "y" ||
+        cleanedResponse.includes("true") ||
+        cleanedResponse.includes("yes")
+      ) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -109,7 +112,14 @@ export const followRoomAction: Action = {
         return true;
       }
 
-      if (parsedResponse === false) {
+      // Handle various negative responses
+      if (
+        cleanedResponse === "false" ||
+        cleanedResponse === "no" ||
+        cleanedResponse === "n" ||
+        cleanedResponse.includes("false") ||
+        cleanedResponse.includes("no")
+      ) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -128,11 +138,11 @@ export const followRoomAction: Action = {
 
       logger.warn(
         {
-          src: "plugin:core:action:follow_room",
+          src: "plugin:bootstrap:action:follow_room",
           agentId: runtime.agentId,
           response,
         },
-        "Unclear XML decision response, defaulting to false",
+        "Unclear boolean response, defaulting to false",
       );
       return false;
     }
@@ -153,7 +163,7 @@ export const followRoomAction: Action = {
 
     if (shouldFollow) {
       try {
-        await runtime.setParticipantUserState(
+        await runtime.updateParticipantUserState(
           message.roomId,
           runtime.agentId,
           "FOLLOWED",
@@ -192,7 +202,7 @@ export const followRoomAction: Action = {
       } catch (error) {
         logger.error(
           {
-            src: "plugin:core:action:follow_room",
+            src: "plugin:bootstrap:action:follow_room",
             agentId: runtime.agentId,
             error: error instanceof Error ? error.message : String(error),
           },

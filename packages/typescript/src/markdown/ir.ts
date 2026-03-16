@@ -152,9 +152,7 @@ export type MarkdownParseOptions = {
 // Parser Setup
 // ============================================================================
 
-function createMarkdownIt(
-  options: MarkdownParseOptions,
-): InstanceType<typeof MarkdownIt> {
+function createMarkdownIt(options: MarkdownParseOptions): InstanceType<typeof MarkdownIt> {
   const md = new MarkdownIt({
     html: false,
     linkify: options.linkify ?? true,

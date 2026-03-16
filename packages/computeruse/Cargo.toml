@@ -5,7 +5,7 @@ members = [
     "crates/computeruse-cli",
     "crates/computeruse-computer-use",
     "packages/computeruse-python",
-    "packages/computeruse-ts",
+    "packages/computeruse-nodejs",
     "crates/computeruse-mcp-agent",
     "crates/computeruse-workflow-recorder",
 ]
@@ -13,16 +13,15 @@ members = [
 
 # Shared metadata for workspace members
 [workspace.package]
-version = "2.0.0"
-edition = "2021"
-license = "MIT"
+version = "0.24.20"
+edition = "2021"         # From your original Cargo.toml
 license-file = "LICENSE"
 
 # Centralized dependency definitions
 [workspace.dependencies]
 # ComputerUse Core library itself (for other members to depend on)
-computeruse = { version = "2.0.0", path = "./crates/computeruse", package = "computeruse-rs" }
-computeruse-computer-use = { version = "2.0.0", path = "./crates/computeruse-computer-use" }
+computeruse = { version = "0.24.20", path = "./crates/computeruse", package = "computeruse-rs" }
+computeruse-computer-use = { version = "0.24.20", path = "./crates/computeruse-computer-use" }
 
 # Common dependencies from your original Cargo.toml
 serde = { version = "1.0.219", features = ["derive"] }

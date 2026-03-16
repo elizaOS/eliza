@@ -55,5 +55,4 @@ evaluators_provider = Provider(
     description=_spec["description"],
     get=get_evaluators,
     dynamic=_spec.get("dynamic", False),
-    position=_spec.get("position"),
 )

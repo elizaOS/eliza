@@ -6,29 +6,29 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
-import { logger } from "../logger";
+import type { UUID } from "../types/primitives";
 import {
-  type AuthInput,
-  type ChannelsInput,
-  calculateProgress,
-  getNextStep,
-  getStepIndex,
-  ONBOARDING_STEP_DESCRIPTIONS,
-  ONBOARDING_STEP_LABELS,
+  OnboardingStep,
   ONBOARDING_STEP_ORDER,
+  ONBOARDING_STEP_LABELS,
+  ONBOARDING_STEP_DESCRIPTIONS,
   type OnboardingContext,
   type OnboardingInput,
-  type OnboardingProgress,
   type OnboardingResult,
-  type OnboardingSettings,
-  OnboardingStep,
+  type OnboardingProgress,
   type OnboardingStepError,
-  type RiskAckInput,
+  type OnboardingSettings,
   type SerializedOnboardingState,
-  type SkillsInput,
   type WelcomeInput,
+  type RiskAckInput,
+  type AuthInput,
+  type ChannelsInput,
+  type SkillsInput,
+  getStepIndex,
+  getNextStep,
+  calculateProgress,
 } from "../types/onboarding";
-import type { UUID } from "../types/primitives";
+import { logger } from "../logger";
 
 /** Current serialization version for state persistence */
 const SERIALIZATION_VERSION = 1;
@@ -432,7 +432,7 @@ export class OnboardingStateMachine {
           data: { skills: [], install: [], skip: true },
         };
         break;
-      default: {
+      default:
         const error: OnboardingStepError = {
           code: "INVALID_SKIP",
           message: `Cannot determine skip input for step ${currentStep}`,
@@ -446,7 +446,6 @@ export class OnboardingStateMachine {
           error,
           context: this.getContext(),
         };
-      }
     }
 
     return this.advanceStep(input);
@@ -543,10 +542,7 @@ export class OnboardingStateMachine {
   ): OnboardingStateMachine {
     if (serialized.version !== SERIALIZATION_VERSION) {
       logger.warn(
-        {
-          serializedVersion: serialized.version,
-          expectedVersion: SERIALIZATION_VERSION,
-        },
+        { serializedVersion: serialized.version, expectedVersion: SERIALIZATION_VERSION },
         "[OnboardingStateMachine] Version mismatch during restore",
       );
     }
@@ -644,8 +640,7 @@ export class OnboardingStateMachine {
       success: true,
       newStep: OnboardingStep.AUTH,
       isComplete: false,
-      message:
-        "Risk acknowledgement accepted. Now let's set up authentication.",
+      message: "Risk acknowledgement accepted. Now let's set up authentication.",
       context: this.getContext(),
     };
   }
@@ -742,7 +737,10 @@ export class OnboardingStateMachine {
         break;
 
       case "oauth":
-        if (!data.oauthCallback?.code || !data.oauthCallback?.state) {
+        if (
+          !data.oauthCallback?.code ||
+          !data.oauthCallback?.state
+        ) {
           return { valid: false, error: "OAuth callback data is incomplete" };
         }
         break;
@@ -767,8 +765,7 @@ export class OnboardingStateMachine {
         success: true,
         newStep: OnboardingStep.SKILLS,
         isComplete: false,
-        message:
-          "Channel configuration skipped. You can set up channels later.",
+        message: "Channel configuration skipped. You can set up channels later.",
         context: this.getContext(),
       };
     }

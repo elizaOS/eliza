@@ -1,22 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import re
 import uuid
 import xml.etree.ElementTree as ET
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, MutableMapping
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from google.protobuf.struct_pb2 import Value as StructValue
-
 from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
-from elizaos.deterministic import (
-    build_conversation_seed,
-    deterministic_hex,
-    deterministic_uuid,
-)
 from elizaos.logger import Logger, create_logger
 from elizaos.settings import decrypt_secret, get_salt
 from elizaos.types.agent import Character, TemplateType
@@ -26,10 +18,9 @@ from elizaos.types.components import (
     Evaluator,
     HandlerCallback,
     HandlerOptions,
-    PreEvaluatorResult,
     Provider,
 )
-from elizaos.types.database import AgentRunSummaryResult, IDatabaseAdapter, Log, MemorySearchOptions
+from elizaos.types.database import AgentRunSummaryResult, IDatabaseAdapter, Log
 from elizaos.types.environment import Entity, Room, World
 from elizaos.types.events import EventType
 from elizaos.types.memory import Memory
@@ -90,48 +81,6 @@ class StreamingModelHandlerWrapper:
 
 _anonymous_agent_counter = 0
 
-_MISSING = object()
-
-
-def _struct_value_to_python(value: StructValue) -> object | None:
-    kind = value.WhichOneof("kind")
-    if kind == "null_value":
-        return None
-    if kind == "number_value":
-        return value.number_value
-    if kind == "string_value":
-        return value.string_value
-    if kind == "bool_value":
-        return value.bool_value
-    if kind == "struct_value":
-        return {
-            key: _struct_value_to_python(item) for key, item in value.struct_value.fields.items()
-        }
-    if kind == "list_value":
-        return [_struct_value_to_python(item) for item in value.list_value.values]
-    return None
-
-
-def _is_struct_compatible(value: object) -> bool:
-    if value is None:
-        return True
-    if isinstance(value, (str, int, float, bool)):
-        return True
-    if isinstance(value, list):
-        return all(_is_struct_compatible(item) for item in value)
-    if isinstance(value, Mapping):
-        return all(
-            isinstance(map_key, str) and _is_struct_compatible(map_value)
-            for map_key, map_value in value.items()
-        )
-    return False
-
-
-def _to_runtime_setting_value(value: object | None) -> str | bool | int | float | None:
-    if value is None or isinstance(value, (str, bool, int, float)):
-        return value
-    return str(value)
-
 
 class AgentRuntime(IAgentRuntime):
     def __init__(
@@ -144,7 +93,7 @@ class AgentRuntime(IAgentRuntime):
         conversation_length: int = 32,
         log_level: str = "ERROR",
         disable_basic_capabilities: bool = False,
-        advanced_capabilities: bool = False,
+        enable_extended_capabilities: bool = False,
         action_planning: bool | None = None,
         llm_mode: LLMMode | None = None,
         check_should_respond: bool | None = None,
@@ -163,7 +112,7 @@ class AgentRuntime(IAgentRuntime):
             is_anonymous = True
 
         self._capability_disable_basic = disable_basic_capabilities
-        self._capability_advanced = advanced_capabilities
+        self._capability_enable_extended = enable_extended_capabilities
         self._capability_enable_autonomy = enable_autonomy
         self._is_anonymous_character = is_anonymous
         self._action_planning_option = action_planning
@@ -192,13 +141,9 @@ class AgentRuntime(IAgentRuntime):
         self._task_workers: dict[str, TaskWorker] = {}
         self._send_handlers: dict[str, SendHandlerFunction] = {}
         self._state_cache: dict[str, State] = {}
-        self._STATE_CACHE_MAX = 200
         self._current_run_id: UUID | None = None
         self._current_room_id: UUID | None = None
         self._action_results: dict[str, list[ActionResult]] = {}
-        self._ACTION_RESULTS_MAX = 200
-        # Cached action lookup dict (name -> Action). Invalidated on action registration.
-        self._action_by_name: dict[str, Action] | None = None
         self._logger = create_logger(namespace=resolved_character.name, level=log_level.upper())
         self._initial_plugins = plugins or []
         self._init_complete = False
@@ -332,7 +277,6 @@ class AgentRuntime(IAgentRuntime):
             char_settings: dict[str, object] = {}
             if hasattr(char_settings_obj, "DESCRIPTOR"):
                 from google.protobuf.json_format import MessageToDict
-
                 char_settings = MessageToDict(char_settings_obj, preserving_proto_field_name=True)
             elif isinstance(char_settings_obj, dict):
                 char_settings = char_settings_obj
@@ -340,8 +284,8 @@ class AgentRuntime(IAgentRuntime):
             disable_basic = self._capability_disable_basic or (
                 char_settings.get("DISABLE_BASIC_CAPABILITIES") in (True, "true")
             )
-            advanced_capabilities = self._capability_advanced or (
-                char_settings.get("ADVANCED_CAPABILITIES") in (True, "true")
+            enable_extended = self._capability_enable_extended or (
+                char_settings.get("ENABLE_EXTENDED_CAPABILITIES") in (True, "true")
             )
             skip_character_provider = self._is_anonymous_character
 
@@ -349,12 +293,12 @@ class AgentRuntime(IAgentRuntime):
                 char_settings.get("ENABLE_AUTONOMY") in (True, "true")
             )
 
-            if disable_basic or advanced_capabilities or skip_character_provider or enable_autonomy:
+            if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
                 from elizaos.bootstrap import CapabilityConfig, create_bootstrap_plugin
 
                 config = CapabilityConfig(
                     disable_basic=disable_basic,
-                    advanced_capabilities=advanced_capabilities,
+                    enable_extended=enable_extended,
                     skip_character_provider=skip_character_provider,
                     enable_autonomy=enable_autonomy,
                 )
@@ -405,58 +349,37 @@ class AgentRuntime(IAgentRuntime):
         if secret:
             if self._character.secrets is None:
                 self._character.secrets = {}
-            if isinstance(self._character.secrets, MutableMapping):
+            if isinstance(self._character.secrets, dict):
                 self._character.secrets[key] = value  # type: ignore[assignment]
             else:
                 # Fall back to internal settings dict for protobuf objects
-                self._settings[key] = _to_runtime_setting_value(value)
+                self._settings[key] = value
             return
 
         # Try to set on character.settings if it's a dict
-        if isinstance(self._character.settings, MutableMapping):
+        if isinstance(self._character.settings, dict):
             self._character.settings[key] = value  # type: ignore[assignment]
-            return
-
-        settings_extra = getattr(self._character.settings, "extra", None)
-        if (
-            settings_extra is not None
-            and hasattr(settings_extra, "update")
-            and _is_struct_compatible(value)
-        ):
-            settings_extra.update({key: value})
         else:
             # Fall back to internal settings dict for protobuf objects
-            self._settings[key] = _to_runtime_setting_value(value)
+            self._settings[key] = value
 
     def get_setting(self, key: str) -> object | None:
         settings = self._character.settings
         secrets = self._character.secrets
 
-        nested_secrets: Mapping[str, object] | None = None
-        extra_value: object = _MISSING
-        if isinstance(settings, Mapping):
+        nested_secrets: dict[str, object] | None = None
+        if isinstance(settings, dict):
             nested = settings.get("secrets")
-            if isinstance(nested, Mapping):
+            if isinstance(nested, dict):
                 nested_secrets = nested
-        else:
-            settings_extra = getattr(settings, "extra", None)
-            settings_fields = getattr(settings_extra, "fields", None)
-            if isinstance(settings_fields, Mapping) and key in settings_fields:
-                struct_candidate = settings_fields[key]
-                if isinstance(struct_candidate, StructValue):
-                    extra_value = _struct_value_to_python(struct_candidate)
-                else:
-                    extra_value = struct_candidate
 
         value: object | None
-        if isinstance(secrets, Mapping) and key in secrets:
+        if isinstance(secrets, dict) and key in secrets:
             value = secrets.get(key)
-        elif isinstance(settings, Mapping) and key in settings:
+        elif isinstance(settings, dict) and key in settings:
             value = settings.get(key)
-        elif isinstance(nested_secrets, Mapping) and key in nested_secrets:
+        elif isinstance(nested_secrets, dict) and key in nested_secrets:
             value = nested_secrets.get(key)
-        elif extra_value is not _MISSING:
-            value = extra_value
         else:
             value = self._settings.get(key)
 
@@ -481,17 +404,12 @@ class AgentRuntime(IAgentRuntime):
 
     def get_all_settings(self) -> dict[str, object | None]:
         keys: set[str] = set(self._settings.keys())
-        if isinstance(self._character.settings, Mapping):
+        if isinstance(self._character.settings, dict):
             keys.update(self._character.settings.keys())
             nested = self._character.settings.get("secrets")
-            if isinstance(nested, Mapping):
+            if isinstance(nested, dict):
                 keys.update(nested.keys())
-        else:
-            settings_extra = getattr(self._character.settings, "extra", None)
-            settings_fields = getattr(settings_extra, "fields", None)
-            if isinstance(settings_fields, Mapping):
-                keys.update(settings_fields.keys())
-        if isinstance(self._character.secrets, Mapping):
+        if isinstance(self._character.secrets, dict):
             keys.update(self._character.secrets.keys())
 
         return {k: self.get_setting(k) for k in keys}
@@ -567,7 +485,6 @@ class AgentRuntime(IAgentRuntime):
 
     def register_action(self, action: Action) -> None:
         self._actions.append(with_canonical_action_docs(action))
-        self._action_by_name = None  # Invalidate cached lookup
 
     def register_evaluator(self, evaluator: Evaluator) -> None:
         self._evaluators.append(with_canonical_evaluator_docs(evaluator))
@@ -685,14 +602,8 @@ class AgentRuntime(IAgentRuntime):
                     errors.append(
                         f"Required parameter '{param_def.name}' was not provided for action {action.name}"
                     )
-                else:
-                    default_value = getattr(param_def.schema, "default_value", None)
-                    if isinstance(default_value, StructValue):
-                        parsed_default = _struct_value_to_python(default_value)
-                        if parsed_default is not None:
-                            validated[param_def.name] = parsed_default
-                    elif default_value is not None:
-                        validated[param_def.name] = default_value
+                elif getattr(param_def.schema, "default_value", None):
+                    validated[param_def.name] = param_def.schema.default_value
                 continue
 
             schema_type = param_def.schema.type
@@ -710,10 +621,7 @@ class AgentRuntime(IAgentRuntime):
                         f"Parameter '{param_def.name}' expected string, got {type(extracted_value).__name__}"
                     )
                     continue
-                if (
-                    param_def.schema.enum_values
-                    and extracted_value not in param_def.schema.enum_values
-                ):
+                if param_def.schema.enum_values and extracted_value not in param_def.schema.enum_values:
                     errors.append(
                         f"Parameter '{param_def.name}' value '{extracted_value}' not in allowed values: {', '.join(param_def.schema.enum_values)}"
                     )
@@ -843,23 +751,6 @@ class AgentRuntime(IAgentRuntime):
 
                 if action.parameters:
                     params_raw = getattr(response.content, "params", None)
-                    # Fallback: params may be stored in content.data["params"]
-                    # when Content is a protobuf without a native params field.
-                    if params_raw is None and response.content.data:
-                        try:
-                            # Protobuf Struct uses [] access, not .get()
-                            if "params" in response.content.data:
-                                data_params = response.content.data["params"]
-                                if data_params is not None:
-                                    # Convert protobuf Struct to dict for _parse_action_params
-                                    from google.protobuf.json_format import MessageToDict
-
-                                    if hasattr(data_params, "DESCRIPTOR"):
-                                        params_raw = MessageToDict(data_params)
-                                    else:
-                                        params_raw = data_params
-                        except (AttributeError, TypeError, KeyError):
-                            pass
                     params_by_action = self._parse_action_params(params_raw)
                     action_key = response_action.upper()
                     extracted_list = params_by_action.get(action_key) or params_by_action.get(
@@ -886,8 +777,7 @@ class AgentRuntime(IAgentRuntime):
                         actionName=action.name,
                         errors=errors,
                     )
-                    with contextlib.suppress(AttributeError, ValueError):
-                        options_obj.parameter_errors = errors
+                    options_obj.parameter_errors = errors
 
                 if validated_params:
                     from google.protobuf import struct_pb2
@@ -908,29 +798,27 @@ class AgentRuntime(IAgentRuntime):
                             struct_values.fields[k].string_value = str(v)
                     options_obj.parameters.CopyFrom(ActionParameters(values=struct_values))
 
-                # Ensure options.parameters is always a plain dict for action handlers.
-                # Proto HandlerOptions.parameters is ActionParameters (not dict-like),
-                # but handlers universally call options.parameters.get("key").
-                _params_dict = validated_params or {}
-                if not _params_dict and hasattr(options_obj, "parameters"):
+                # Ensure options_obj.parameters is always a plain dict for action
+                # handlers.  Benchmark (and many plugin) handlers call
+                # ``options.parameters.get("key")`` which only works on dicts,
+                # not on protobuf ActionParameters messages.
+                if validated_params:
+                    options_obj = type("_Opts", (), {
+                        "parameters": validated_params,
+                        "parameter_errors": getattr(options_obj, "parameter_errors", []),
+                    })()  # type: ignore[assignment]
+                elif hasattr(options_obj, "parameters"):
                     try:
                         pv = options_obj.parameters
-                        if isinstance(pv, dict):
-                            _params_dict = pv
-                        elif hasattr(pv, "values") and hasattr(pv.values, "items"):
+                        if hasattr(pv, "values") and hasattr(pv.values, "items"):
+                            # Proto ActionParameters -> convert Struct values to dict
                             from google.protobuf.json_format import MessageToDict
-
-                            _params_dict = MessageToDict(pv.values)
+                            options_obj = type("_Opts", (), {
+                                "parameters": MessageToDict(pv.values),
+                                "parameter_errors": getattr(options_obj, "parameter_errors", []),
+                            })()  # type: ignore[assignment]
                     except Exception:
                         pass
-                options_obj = type(
-                    "_Opts",
-                    (),
-                    {
-                        "parameters": _params_dict,
-                        "parameter_errors": errors,
-                    },
-                )()
 
                 result = await action.handler(
                     self,
@@ -948,18 +836,12 @@ class AgentRuntime(IAgentRuntime):
                         self._action_results[message_id] = []
                     if result:
                         self._action_results[message_id].append(result)
-                    # LRU eviction for action results to prevent unbounded growth
-                    if len(self._action_results) > self._ACTION_RESULTS_MAX:
-                        excess = len(self._action_results) - self._ACTION_RESULTS_MAX
-                        keys_to_remove = list(self._action_results.keys())[:excess]
-                        for k in keys_to_remove:
-                            del self._action_results[k]
 
     def _get_action_by_name(self, name: str) -> Action | None:
-        """O(1) action lookup using cached name -> Action dict."""
-        if self._action_by_name is None:
-            self._action_by_name = {a.name: a for a in self._actions}
-        return self._action_by_name.get(name)
+        for action in self._actions:
+            if action.name == name:
+                return action
+        return None
 
     def get_action_results(self, message_id: UUID) -> list[ActionResult]:
         return self._action_results.get(str(message_id), [])
@@ -967,72 +849,6 @@ class AgentRuntime(IAgentRuntime):
     def get_available_actions(self) -> list[Action]:
         """Get all registered actions."""
         return self._actions
-
-    async def evaluate_pre(
-        self,
-        message: Memory,
-        state: State | None = None,
-    ) -> PreEvaluatorResult:
-        """Run phase='pre' evaluators as middleware before memory storage.
-
-        Pre-evaluators can inspect, rewrite, or block a message before it
-        reaches the agent.  If any pre-evaluator sets ``blocked=True``, the
-        message is dropped.  If any sets ``rewritten_text``, the last rewrite
-        wins.
-
-        Returns:
-            A merged PreEvaluatorResult.
-        """
-        pre_evaluators = [e for e in self._evaluators if getattr(e, "phase", "post") == "pre"]
-        if not pre_evaluators:
-            return PreEvaluatorResult(blocked=False)
-
-        blocked = False
-        rewritten_text: str | None = None
-        reason: str | None = None
-
-        for evaluator in pre_evaluators:
-            try:
-                is_valid = await evaluator.validate(self, message, state)
-                if not is_valid:
-                    continue
-
-                result = await evaluator.handler(
-                    self,
-                    message,
-                    state,
-                    HandlerOptions(),
-                    None,
-                    None,
-                )
-
-                # Handler may return a PreEvaluatorResult-like object or ActionResult
-                if result and hasattr(result, "success"):
-                    # ActionResult — interpret success=False as blocked
-                    if not result.success:
-                        blocked = True
-                        reason = result.error or result.text or reason
-                        self.logger.warning(
-                            f'Pre-evaluator "{evaluator.name}" blocked message: {reason}'
-                        )
-                elif isinstance(result, dict):
-                    if result.get("blocked"):
-                        blocked = True
-                        reason = result.get("reason", reason)
-                        self.logger.warning(
-                            f'Pre-evaluator "{evaluator.name}" blocked message: {reason}'
-                        )
-                    if "rewritten_text" in result and result["rewritten_text"] is not None:
-                        rewritten_text = result["rewritten_text"]
-
-            except Exception as e:
-                self.logger.error(f'Pre-evaluator "{evaluator.name}" failed: {e}')
-
-        return PreEvaluatorResult(
-            blocked=blocked,
-            rewritten_text=rewritten_text,
-            reason=reason,
-        )
 
     async def evaluate(
         self,
@@ -1042,14 +858,10 @@ class AgentRuntime(IAgentRuntime):
         callback: HandlerCallback | None = None,
         responses: list[Memory] | None = None,
     ) -> list[Evaluator] | None:
-        """Run phase='post' (default) evaluators on a message."""
+        """Run evaluators on a message."""
         ran_evaluators: list[Evaluator] = []
 
         for evaluator in self._evaluators:
-            # Skip pre-evaluators (they run via evaluate_pre)
-            if getattr(evaluator, "phase", "post") == "pre":
-                continue
-
             should_run = evaluator.always_run or did_respond
 
             if should_run:
@@ -1136,17 +948,12 @@ class AgentRuntime(IAgentRuntime):
         include_list: list[str] | None = None,
         only_include: bool = False,
         skip_cache: bool = False,
-        trajectory_phase: str | None = None,
     ) -> State:
         # If we're running inside a trajectory step, always bypass the state cache
         # so providers are executed and logged for training/benchmark traces.
         traj_step_id: str | None = None
         if message.metadata is not None:
             maybe_step = getattr(message.metadata, "trajectoryStepId", None)
-            if not maybe_step and hasattr(message.metadata, "message"):
-                # Check nested MessageMetadata for parsing parity
-                maybe_step = message.metadata.message.trajectory_step_id
-
             if isinstance(maybe_step, str) and maybe_step:
                 traj_step_id = maybe_step
                 skip_cache = True
@@ -1165,16 +972,10 @@ class AgentRuntime(IAgentRuntime):
 
         providers_to_run = self._providers
         if include_list and only_include:
-            # Exclusive mode: run ONLY providers in the include_list
             providers_to_run = [p for p in self._providers if p.name in include_list]
         elif include_list:
-            # Additive mode (TypeScript parity): run all non-private/non-dynamic providers
-            # PLUS any explicitly included providers (which may be private/dynamic)
-            include_set = set(include_list)
             providers_to_run = [
-                p
-                for p in self._providers
-                if (not p.private and not getattr(p, "dynamic", False)) or p.name in include_set
+                p for p in self._providers if p.name not in include_list or p.name in include_list
             ]
 
         # Sort by position
@@ -1217,9 +1018,6 @@ class AgentRuntime(IAgentRuntime):
                     out[k] = _as_json_scalar(v)
             return out
 
-        # Resolve the purpose label for trajectory provider accesses
-        traj_purpose = f"compose_state:{trajectory_phase}" if trajectory_phase else "compose_state"
-
         text_parts: list[str] = []
         for provider in providers_to_run:
             if provider.private:
@@ -1242,18 +1040,18 @@ class AgentRuntime(IAgentRuntime):
 
             # Log provider access to trajectory service (if available)
             if traj_step_id and traj_logger is not None:
-                # Trajectory logging must never break core message flow.
-                with contextlib.suppress(Exception):
+                try:
+                    user_text = message.content.text or ""
                     traj_logger.log_provider_access(
                         step_id=traj_step_id,
                         provider_name=provider.name,
-                        data={
-                            "textLength": len(result.text) if result.text else 0,
-                            "hasValues": bool(result.values),
-                            "hasData": bool(result.data),
-                        },
-                        purpose=traj_purpose,
+                        data=_as_json_dict(result.data or {}),
+                        purpose="compose_state",
+                        query={"message": _as_json_scalar(user_text)},
                     )
+                except Exception:
+                    # Trajectory logging must never break core message flow.
+                    pass
 
         state.text = "\n".join(text_parts)
         # Match TypeScript behavior: expose providers text under {{providers}}.
@@ -1261,12 +1059,6 @@ class AgentRuntime(IAgentRuntime):
 
         if not skip_cache:
             self._state_cache[cache_key] = state
-            # LRU eviction: remove oldest entries when cache exceeds limit
-            if len(self._state_cache) > self._STATE_CACHE_MAX:
-                excess = len(self._state_cache) - self._STATE_CACHE_MAX
-                keys_to_remove = list(self._state_cache.keys())[:excess]
-                for k in keys_to_remove:
-                    del self._state_cache[k]
 
         return state
 
@@ -1347,25 +1139,16 @@ class AgentRuntime(IAgentRuntime):
                 max_tokens_raw = params.get("maxTokens") if isinstance(params, dict) else None
                 max_tokens = int(max_tokens_raw) if isinstance(max_tokens_raw, int) else 0
 
-                # Truncate embedding vectors to avoid bloating trajectory files
-                result_str = str(result)
-                is_embedding = "EMBEDDING" in str(effective_model_type).upper()
-                if is_embedding and len(result_str) > 200:
-                    dim = result_str.count(",") + 1
-                    result_str = f"[embedding vector dim={dim}]"
-                elif len(result_str) > 2000:
-                    result_str = result_str[:2000]
-
                 traj_svc.log_llm_call(  # type: ignore[call-arg]
                     step_id=step_id,
                     model=str(effective_model_type),
                     system_prompt=system_prompt,
-                    user_prompt=prompt[:2000] if prompt else "",
-                    response=result_str,
+                    user_prompt=prompt,
+                    response=str(result),
                     temperature=temperature,
                     max_tokens=max_tokens,
                     purpose="action",
-                    action_type="runtime.useModel",
+                    action_type="runtime.use_model",
                     latency_ms=max(0, end_ms - start_ms),
                 )
         except Exception:
@@ -1680,11 +1463,11 @@ class AgentRuntime(IAgentRuntime):
         if self._adapter:
             await self._adapter.ensure_embedding_dimension(dimension)
 
-    async def get_entity(self, entity_id: UUID | str) -> Any | None:
+    async def get_entity(self, entity_id: UUID) -> Any | None:
         """Get a single entity by ID."""
         if not self._adapter:
             return None
-        entities = await self._adapter.get_entities_by_ids([str(entity_id)])
+        entities = await self._adapter.get_entities_by_ids([entity_id])
         return entities[0] if entities else None
 
     async def get_entities_by_ids(self, entity_ids: list[UUID]) -> list[Any] | None:
@@ -1743,12 +1526,6 @@ class AgentRuntime(IAgentRuntime):
     async def delete_component(self, component_id: UUID) -> None:
         if self._adapter:
             await self._adapter.delete_component(component_id)
-
-    async def search_memories(self, params: MemorySearchOptions | dict[str, Any]) -> list[Memory]:
-        """Search memories by embedding."""
-        if not self._adapter:
-            raise RuntimeError("Database adapter not set")
-        return await self._adapter.search_memories(params)
 
     async def get_memories(
         self,
@@ -1828,6 +1605,11 @@ class AgentRuntime(IAgentRuntime):
             return AgentRunSummaryResult(runs=[], total=0, has_more=False)
         return await self._adapter.get_agent_run_summaries(params)
 
+    async def search_memories(self, params: dict[str, Any]) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.search_memories(params)
+
     async def create_memory(
         self,
         memory: dict[str, object] | None = None,
@@ -1837,9 +1619,7 @@ class AgentRuntime(IAgentRuntime):
     ) -> UUID:
         if not self._adapter:
             raise RuntimeError("Database adapter not set")
-        return await self._adapter.create_memory(
-            memory, table_name, bool(unique) if unique is not None else False
-        )
+        return await self._adapter.create_memory(memory, table_name, unique)
 
     async def update_memory(self, memory: Memory | dict[str, Any]) -> bool:
         if not self._adapter:
@@ -2079,12 +1859,6 @@ class AgentRuntime(IAgentRuntime):
 
         schema_key = ",".join(s.field for s in schema)
         model_schema_key = f"{model_type_str}:{schema_key}"
-        deterministic_seed = build_conversation_seed(
-            self,
-            None,
-            state,
-            f"dynamic-prompt:{model_schema_key}",
-        )
 
         # Get validation level from settings or options (mirrors TypeScript behavior)
         default_context_level = 2
@@ -2126,11 +1900,7 @@ class AgentRuntime(IAgentRuntime):
                     row.validate_field if row.validate_field is not None else default_validate
                 )
                 if needs_validation:
-                    per_field_codes[row.field] = deterministic_hex(
-                        deterministic_seed,
-                        f"field-code:{row.field}",
-                        8,
-                    )
+                    per_field_codes[row.field] = str(uuid.uuid4())[:8]
 
         # Streaming extractor (created on first iteration if streaming enabled)
         extractor: ValidationStreamExtractor | None = None
@@ -2254,18 +2024,9 @@ class AgentRuntime(IAgentRuntime):
             example_lines.append(container_end)
             example = "\n".join(example_lines)
 
-            init_code = deterministic_uuid(
-                deterministic_seed,
-                f"init-code:{current_retry}",
-            )
-            mid_code = deterministic_uuid(
-                deterministic_seed,
-                f"mid-code:{current_retry}",
-            )
-            final_code = deterministic_uuid(
-                deterministic_seed,
-                f"final-code:{current_retry}",
-            )
+            init_code = str(uuid.uuid4())
+            mid_code = str(uuid.uuid4())
+            final_code = str(uuid.uuid4())
 
             section_start = "<output>" if is_xml else "# Strict Output instructions"
             section_end = "</output>" if is_xml else ""
@@ -2287,34 +2048,10 @@ end code: {final_code}
 
             self.logger.debug(f"dynamic_prompt_exec_from_state: using format {format_type}")
 
-            # ── Prompt trimming safety net ─────────────────────────────────
-            # If the prompt exceeds a character-based budget, trim it to
-            # prevent context-limit errors from the model provider.
-            MAX_PROMPT_CHARS = 256_000  # ~128K tokens at ~2 chars/token
-            if len(full_prompt) > MAX_PROMPT_CHARS:
-                est_tokens = len(full_prompt) // 2
-                self.logger.warning(
-                    f"dynamic_prompt_exec_from_state: prompt too large "
-                    f"(~{est_tokens:,} est tokens), trimming to ~{MAX_PROMPT_CHARS // 2:,}"
-                )
-                # Keep the end of the prompt (most recent content + output instructions)
-                full_prompt = full_prompt[-MAX_PROMPT_CHARS:]
-
-            # ── Cap maxTokens to fit within model context ──────────────────
-            MODEL_CONTEXT_LIMIT = 200_000
-            est_input = len(full_prompt) // 2  # pessimistic: ~2 chars/token
-            max_tokens = 4096
-            max_available_output = MODEL_CONTEXT_LIMIT - est_input - 1_000
-            if max_tokens > max_available_output > 0:
-                max_tokens = max(1_000, max_available_output)
-                self.logger.warning(
-                    f"dynamic_prompt_exec_from_state: capping maxTokens to {max_tokens}"
-                )
-
             # Call model
             params = {
                 "prompt": full_prompt,
-                "maxTokens": max_tokens,
+                "maxTokens": 4096,
             }
 
             # Check for cancellation before request
@@ -2339,40 +2076,25 @@ end code: {final_code}
                 if not stream_fields and any(row.field == "text" for row in schema):
                     stream_fields = ["text"]
 
-                stream_message_id = "stream-" + deterministic_hex(
-                    deterministic_seed,
-                    f"stream-message-id:{current_retry}",
-                    20,
-                )
+                stream_message_id = f"stream-{uuid.uuid4().hex[:12]}"
 
-                on_stream_chunk = options.on_stream_chunk
-                on_stream_event = options.on_stream_event
-
-                def _emit_chunk(
-                    chunk: str,
-                    _field: str | None,
-                    cb=on_stream_chunk,
-                    msg_id=stream_message_id,
-                ) -> None:
-                    if cb is not None:
-                        cb(chunk, msg_id)
-
-                def _emit_event(
-                    event: StreamEvent,
-                    cb=on_stream_event,
-                    msg_id=stream_message_id,
-                ) -> None:
-                    if cb is not None:
-                        cb(event, msg_id)
-
+                # Capture stream_message_id in default parameter to avoid late binding
                 extractor = ValidationStreamExtractor(
                     ValidationStreamExtractorConfig(
                         level=validation_level,
                         schema=schema,
                         stream_fields=stream_fields,
                         expected_codes=per_field_codes,
-                        on_chunk=_emit_chunk,
-                        on_event=_emit_event if on_stream_event is not None else None,
+                        on_chunk=lambda chunk,
+                        _field,
+                        msg_id=stream_message_id: options.on_stream_chunk(chunk, msg_id)
+                        if options.on_stream_chunk
+                        else None,
+                        on_event=lambda event, msg_id=stream_message_id: options.on_stream_event(
+                            event, msg_id
+                        )
+                        if options.on_stream_event
+                        else None,
                         abort_signal=options.abort_signal,
                         has_rich_consumer=has_rich_consumer,
                     )
@@ -2399,34 +2121,6 @@ end code: {final_code}
                     # Flush extractor and get final state
                     extractor.flush()
                     response_str = "".join(response_parts)
-
-                    # Log streaming response to trajectory (streaming bypasses use_model hook)
-                    try:
-                        from elizaos.trajectory_context import CURRENT_TRAJECTORY_STEP_ID
-
-                        step_id = CURRENT_TRAJECTORY_STEP_ID.get()
-                        traj_svc = self.get_service("trajectory_logger")
-                        if step_id and traj_svc is not None and hasattr(traj_svc, "log_llm_call"):
-                            max_tokens_value = params.get("maxTokens", 0)
-                            max_tokens = (
-                                int(max_tokens_value)
-                                if isinstance(max_tokens_value, (int, float, str, bytes, bytearray))
-                                else 0
-                            )
-                            traj_svc.log_llm_call(  # type: ignore[call-arg]
-                                step_id=step_id,
-                                model=stream_model_type,
-                                system_prompt="",
-                                user_prompt=str(params.get("prompt", ""))[:2000],
-                                response=response_str[:2000],
-                                temperature=0.0,
-                                max_tokens=max_tokens,
-                                purpose="action",
-                                action_type="dynamic_prompt_exec.stream",
-                                latency_ms=0,
-                            )
-                    except Exception:
-                        pass
                 else:
                     # Non-streaming mode: use use_model
                     response = await self.use_model(model_type_str, params)

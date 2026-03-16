@@ -1,0 +1,75 @@
+[package]
+name = "elizaos-plugin-groq"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "Groq LLM plugin for elizaOS - Rust implementation for fast inference"
+license = "MIT"
+repository = "https://github.com/elizaos-plugins/plugin-groq"
+keywords = ["ai", "agent", "groq", "llm", "inference"]
+categories = ["api-bindings", "web-programming"]
+readme = "README.md"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full"]
+wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "getrandom/js"]
+
+[dependencies]
+# Async runtime
+async-trait = "0.1"
+futures = "0.3"
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"], optional = true }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# UUID handling
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+# HTTP client for API calls
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
+
+# URL handling
+url = "2.5"
+
+# Logging
+tracing = "0.1"
+
+# Environment variables
+dotenvy = "0.15"
+
+# Regex for parsing
+regex = "1.10"
+
+# Bytes for audio handling
+bytes = "1.5"
+
+# Base64 encoding
+base64 = "0.22"
+
+# WASM-only dependencies
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", features = ["console"], optional = true }
+getrandom = { version = "0.2", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+tokio-test = "0.4"
+pretty_assertions = "1.0"
+wiremock = "0.6"
+
+[profile.release]
+lto = true
+opt-level = "z"
+

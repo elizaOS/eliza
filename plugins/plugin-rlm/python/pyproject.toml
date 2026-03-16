@@ -1,0 +1,82 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-plugin-rlm"
+version = "0.1.0"
+description = "RLM (Recursive Language Model) plugin for elizaOS - enables processing of arbitrarily long contexts"
+readme = "../../README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "elizaOS Contributors" }
+]
+keywords = ["elizaos", "plugin", "rlm", "recursive-language-model", "ai", "agent", "long-context"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    # Pin to known-working versions for production stability
+    # Update versions only after testing in staging environment
+    "elizaos>=1.0.0,<2.0.0",  # Required for plugin integration (Provider, Plugin types)
+    "pydantic>=2.0.0,<3.0.0",  # 2.x series only, tested with 2.12.5
+]
+
+[project.optional-dependencies]
+rlm = [
+    # Install from: https://github.com/alexzhang13/rlm
+    # pip install git+https://github.com/alexzhang13/rlm.git
+]
+dev = [
+    "pytest>=9.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.8.0",
+    "ruff>=0.2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaos/eliza"
+Repository = "https://github.com/elizaos/eliza"
+Documentation = "https://elizaos.ai/docs/plugins/rlm"
+
+[project.scripts]
+rlm-server = "elizaos_plugin_rlm.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_plugin_rlm"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests requiring external services",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "D", "UP", "ANN", "B", "C4", "SIM"]
+ignore = ["D100", "D104", "D107", "ANN101", "ANN102"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

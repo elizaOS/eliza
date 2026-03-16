@@ -1,6 +1,6 @@
 import type { Provider } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import { composePrompt, parseKeyValueXml } from "../../utils.ts";
+import { composePrompt } from "../../utils.ts";
 import { messageClassifierTemplate } from "../prompts.ts";
 import type { JsonValue } from "../types.ts";
 
@@ -41,36 +41,41 @@ export const messageClassifierProvider: Provider = {
       });
 
       const responseText = String(response);
-      const fields = parseKeyValueXml<Record<string, unknown>>(responseText);
+      const lines = responseText.split("\n");
+      const fields: Record<string, string> = {};
+      for (const line of lines) {
+        const separatorIndex = line.indexOf(":");
+        if (separatorIndex === -1) continue;
+        const key = line.slice(0, separatorIndex).trim();
+        const value = line.slice(separatorIndex + 1).trim();
+        if (key) {
+          fields[key] = value;
+        }
+      }
 
       const parseField = (key: string): string[] => {
-        const value = fields?.[key];
+        const value = fields[key];
         if (!value) {
           return [];
         }
-        return String(value)
+        return value
           .split(",")
           .map((s) => s.trim())
           .filter((s) => s.length > 0);
       };
 
-      const complexity =
-        typeof fields?.complexity === "string" ? fields.complexity : "simple";
-      const planningType =
-        typeof fields?.planning === "string"
-          ? fields.planning
-          : "direct_action";
-      const confidenceStr =
-        typeof fields?.confidence === "string" ? fields.confidence : "0.5";
+      const complexity = fields.COMPLEXITY || "simple";
+      const planningType = fields.PLANNING || "direct_action";
+      const confidenceStr = fields.CONFIDENCE || "0.5";
       const confidence = Math.min(
         1.0,
         Math.max(0.0, Number.parseFloat(confidenceStr) || 0.5),
       );
 
-      const capabilities = parseField("capabilities");
-      const stakeholders = parseField("stakeholders");
-      const constraints = parseField("constraints");
-      const dependencies = parseField("dependencies");
+      const capabilities = parseField("CAPABILITIES:");
+      const stakeholders = parseField("STAKEHOLDERS:");
+      const constraints = parseField("CONSTRAINTS:");
+      const dependencies = parseField("DEPENDENCIES:");
 
       const planningRequired =
         planningType !== "direct_action" && complexity !== "simple";

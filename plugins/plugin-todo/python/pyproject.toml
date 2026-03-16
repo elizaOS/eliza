@@ -1,0 +1,130 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-plugin-todo"
+version = "2.0.0"
+description = "elizaOS Todo Plugin - Task management with daily recurring and one-off tasks"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "elizaOS Contributors" }
+]
+keywords = ["ai", "agents", "todo", "task-management", "elizaos"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pydantic>=2.10.0",
+    "sqlalchemy>=2.0.0",
+    "asyncpg>=0.29.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "pytest-xprocess>=1.0.0",
+    "mypy>=1.19.0",
+    "ruff>=0.14.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaos/eliza"
+Documentation = "https://elizaos.ai/docs"
+Repository = "https://github.com/elizaos/eliza"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_plugin_todo"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/elizaos_plugin_todo",
+    "/tests",
+    "/README.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v -p no:anchorpy"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[[tool.mypy.overrides]]
+module = [
+    "elizaos_plugin_todo.actions.*",
+    "elizaos_plugin_todo.plugin",
+    "elizaos_plugin_todo.providers.*",
+    "elizaos_plugin_todo.service",
+    "elizaos_plugin_todo.data_service",
+]
+# Relaxed checking for runtime interaction code
+disable_error_code = ["arg-type", "attr-defined", "no-any-return", "type-arg", "assignment", "no-untyped-def", "call-overload"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ANN", # flake8-annotations
+    "S",   # flake8-bandit
+    "T20", # flake8-print
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "ANN101", # missing type for self
+    "ANN102", # missing type for cls
+    "S101",   # use of assert (needed for tests)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files don't need strict type annotations
+"tests/*" = ["ANN001", "ANN201", "ANN202", "ANN204"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["elizaos_plugin_todo"]
+
+
+
+
+
+
+

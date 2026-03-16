@@ -1,7 +1,7 @@
 import { v4 } from "uuid";
 import { parseActionParams } from "../actions";
 import { createUniqueUuid } from "../entities";
-import { logger } from "../logger";
+import { logChatIn, logChatOut, logger } from "../logger";
 import {
   imageDescriptionTemplate,
   messageHandlerTemplate,
@@ -33,9 +33,7 @@ import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 import {
   composePromptFromState,
-  extractFirstSentence,
   getLocalServerUrl,
-  hasFirstSentence,
   parseBooleanFromText,
   parseKeyValueXml,
   truncateToCompleteSentence,
@@ -45,7 +43,6 @@ import {
   MarkableExtractor,
   ResponseStreamExtractor,
 } from "../utils/streaming";
-import { VoiceCacheService } from "./voice-cache";
 
 /**
  * Escape Handlebars syntax in a string to prevent template injection.
@@ -85,7 +82,67 @@ type ResolvedMessageOptions = {
   maxMultiStepIterations: number;
   onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
   shouldRespondModel: ShouldRespondModelType;
+  /**
+   * Same as BOOTSTRAP_KEEP_RESP: when true, do not discard responses when a newer message
+   * is being processed. Resolved once at handleMessage start so both race-check sites stay in sync.
+   */
+  keepExistingResponses: boolean;
 };
+
+/**
+ * Whether memory creation is disabled via DISABLE_MEMORY_CREATION.
+ * WHY: Lets callers skip persisting messages/responses (e.g. to reduce storage or comply with policy).
+ */
+function isMemoryCreationDisabled(runtime: IAgentRuntime): boolean {
+  const setting = runtime.getSetting("DISABLE_MEMORY_CREATION");
+  if (typeof setting === "boolean") return setting;
+  if (typeof setting === "string") return parseBooleanFromText(setting);
+  if (setting != null) return parseBooleanFromText(String(setting));
+  return false;
+}
+
+/**
+ * Allowed memory source IDs from ALLOW_MEMORY_SOURCE_IDS (whitelist).
+ * When set, only messages whose metadata.sourceId is in this list are persisted.
+ * WHY: When DISABLE_MEMORY_CREATION is false but you want to restrict *which* sources
+ * get persisted (e.g. only one channel), set this list. If DISABLE_MEMORY_CREATION is
+ * true, all persistence is skipped regardless of this whitelist.
+ */
+function getAllowedMemorySources(runtime: IAgentRuntime): string[] | null {
+  const setting = runtime.getSetting("ALLOW_MEMORY_SOURCE_IDS");
+  if (Array.isArray(setting)) {
+    return setting.map((v) => String(v).trim()).filter(Boolean);
+  }
+  if (typeof setting === "string") {
+    const trimmed = setting.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.map((v) => String(v).trim()).filter(Boolean);
+        }
+        logger.warn(
+          { src: "service:message", parsed },
+          "ALLOW_MEMORY_SOURCE_IDS JSON did not parse to an array; ignoring",
+        );
+        return null;
+      } catch (err) {
+        logger.warn(
+          { src: "service:message", err, setting: trimmed },
+          "Failed to parse ALLOW_MEMORY_SOURCE_IDS JSON; ignoring",
+        );
+        return null;
+      }
+    }
+    return trimmed
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
+  if (setting != null) return [String(setting).trim()].filter(Boolean);
+  return null;
+}
 
 /**
  * Multi-step workflow action result with action name tracking
@@ -118,18 +175,13 @@ interface StrategyResult {
 /**
  * Tracks the latest response ID per agent+room to handle message superseding
  */
+/**
+ * Tracks the latest response ID per agent+room to handle message superseding.
+ * Keys are automatically pruned during processing to prevent memory leaks.
+ * Note: Using WeakMap would break functionality since keys must be agent IDs (strings).
+ */
 const latestResponseIds = new Map<string, Map<string, string>>();
-
-export function isSimpleReplyResponse(
-  responseContent: Pick<Content, "actions"> | null | undefined,
-): boolean {
-  return !!(
-    responseContent?.actions &&
-    responseContent.actions.length === 1 &&
-    typeof responseContent.actions[0] === "string" &&
-    responseContent.actions[0].toUpperCase() === "REPLY"
-  );
-}
+// Note: Pruning moved to handleMessage() to run during processing, not at module load
 
 /**
  * Default implementation of the MessageService interface.
@@ -154,6 +206,13 @@ export class DefaultMessageService implements IMessageService {
     callback?: HandlerCallback,
     options?: MessageProcessingOptions,
   ): Promise<MessageProcessingResult> {
+    // Prune old agent entries when map grows too large
+    if (latestResponseIds.size > 1000) {
+      const keysToDelete = Array.from(latestResponseIds.keys()).slice(0, 500);
+      for (const key of keysToDelete) {
+        latestResponseIds.delete(key);
+      }
+    }
     const trajectoryStepId =
       typeof message.metadata === "object" &&
       message.metadata !== null &&
@@ -190,6 +249,11 @@ export class DefaultMessageService implements IMessageService {
             ),
           onStreamChunk: options?.onStreamChunk,
           shouldRespondModel: resolvedShouldRespondModel,
+          keepExistingResponses:
+            options?.keepExistingResponses ??
+            parseBooleanFromText(
+              String(runtime.getSetting("BOOTSTRAP_KEEP_RESP") ?? ""),
+            ),
         };
 
         // Set up timeout monitoring
@@ -285,116 +349,14 @@ export class DefaultMessageService implements IMessageService {
                 messageId?: string;
               }
             | undefined;
-          // Voice handling state
-          let firstSentenceSent = false;
-          let firstSentenceText = "";
-          const voiceCache = new VoiceCacheService();
-          await voiceCache.initialize(runtime);
-
           if (opts.onStreamChunk) {
             const extractor = new ResponseStreamExtractor();
             const onStreamChunk = opts.onStreamChunk;
-
-            let streamText = "";
-
             streamingContext = {
               onStreamChunk: async (chunk: string, msgId?: string) => {
                 if (extractor.done) return;
                 const textToStream = extractor.push(chunk);
                 if (textToStream) {
-                  streamText += textToStream;
-
-                  // Check for first sentence to send to voice
-                  if (!firstSentenceSent && hasFirstSentence(streamText)) {
-                    const { first } = extractFirstSentence(streamText);
-                    firstSentenceText = first;
-                    if (first.length > 5) {
-                      // Minimal length check
-                      firstSentenceSent = true;
-
-                      // Process voice in background
-                      (async () => {
-                        try {
-                          const voiceSettings = runtime.character.settings
-                            ?.voice as
-                            | {
-                                model?: string;
-                                url?: string;
-                                voiceId?: string;
-                              }
-                            | undefined;
-
-                          const model =
-                            voiceSettings?.model || "en_US-male-medium";
-                          const voiceId =
-                            voiceSettings?.url ||
-                            voiceSettings?.voiceId ||
-                            "default";
-
-                          const key = voiceCache.generateKey(
-                            first,
-                            voiceId,
-                            model,
-                          );
-                          let audioBuffer = voiceCache.getCached(key);
-
-                          if (!audioBuffer) {
-                            const result = await runtime.useModel(
-                              ModelType.TEXT_TO_SPEECH,
-                              // properties might differ by provider, usually 'text' or 'prompt'
-                              {
-                                text: first,
-                                voice: voiceId,
-                                model: model,
-                              } as any,
-                            );
-
-                            if (
-                              result instanceof ArrayBuffer ||
-                              Object.prototype.toString.call(result) ===
-                                "[object ArrayBuffer]"
-                            ) {
-                              audioBuffer = Buffer.from(result as ArrayBuffer);
-                            } else if (Buffer.isBuffer(result)) {
-                              audioBuffer = result;
-                            } else if (result instanceof Uint8Array) {
-                              audioBuffer = Buffer.from(result);
-                            }
-
-                            if (audioBuffer) {
-                              voiceCache.setCached(key, audioBuffer);
-                            }
-                          }
-
-                          if (audioBuffer && callback) {
-                            const audioBase64 = audioBuffer.toString("base64");
-                            await callback({
-                              text: "",
-                              attachments: [
-                                {
-                                  id: v4(),
-                                  url: `data:audio/wav;base64,${audioBase64}`,
-                                  title: "Voice Response",
-                                  source: "voice-cache",
-                                  description:
-                                    "Voice response for first sentence",
-                                  text: first,
-                                  contentType: ContentType.AUDIO,
-                                },
-                              ],
-                              source: "voice",
-                            });
-                          }
-                        } catch (error) {
-                          runtime.logger.error(
-                            { error },
-                            "Error generating voice for first sentence",
-                          );
-                        }
-                      })();
-                    }
-                  }
-
                   await onStreamChunk(textToStream, msgId);
                 }
               },
@@ -424,89 +386,9 @@ export class DefaultMessageService implements IMessageService {
           // Clean up timeout
           clearTimeout(timeoutId);
 
-          // Voice: Handle the rest of the message
-          if (firstSentenceSent && result.responseContent?.text) {
-            const fullText = result.responseContent.text;
-            const rest = fullText.replace(firstSentenceText, "").trim();
-            if (rest.length > 0) {
-              // Generate voice for rest
-              // (Async immediately)
-              (async () => {
-                try {
-                  const voiceSettings = runtime.character.settings?.voice as
-                    | {
-                        model?: string;
-                        url?: string;
-                        voiceId?: string;
-                      }
-                    | undefined;
-                  const model = voiceSettings?.model || "en_US-male-medium";
-                  const voiceId =
-                    voiceSettings?.url || voiceSettings?.voiceId || "default";
-
-                  const key = voiceCache.generateKey(rest, voiceId, model);
-                  let audioBuffer = voiceCache.getCached(key);
-
-                  if (!audioBuffer) {
-                    const result = await runtime.useModel(
-                      ModelType.TEXT_TO_SPEECH,
-                      { text: rest, voice: voiceId, model: model } as any,
-                    );
-                    if (
-                      result instanceof ArrayBuffer ||
-                      Object.prototype.toString.call(result) ===
-                        "[object ArrayBuffer]"
-                    ) {
-                      audioBuffer = Buffer.from(result as ArrayBuffer);
-                    } else if (Buffer.isBuffer(result)) {
-                      audioBuffer = result;
-                    } else if (result instanceof Uint8Array) {
-                      audioBuffer = Buffer.from(result);
-                    }
-                    if (audioBuffer) voiceCache.setCached(key, audioBuffer);
-                  }
-
-                  if (audioBuffer && callback) {
-                    const audioBase64 = audioBuffer.toString("base64");
-                    await callback({
-                      text: "",
-                      attachments: [
-                        {
-                          id: v4(),
-                          url: `data:audio/wav;base64,${audioBase64}`,
-                          title: "Voice Response",
-                          source: "voice-cache",
-                          description: "Voice response for remaining text",
-                          text: rest,
-                          contentType: ContentType.AUDIO,
-                        },
-                      ],
-                      source: "voice",
-                    });
-                  }
-                } catch (error) {
-                  runtime.logger.error(
-                    { error },
-                    "Error generating voice for remaining text",
-                  );
-                }
-              })();
-            }
-          }
-
           return result;
         } finally {
           clearTimeout(timeoutId);
-
-          // Ensure latestResponseIds is cleaned up even if processMessage
-          // threw before reaching its own cleanup at the end of the method.
-          const agentMap = latestResponseIds.get(runtime.agentId);
-          if (agentMap) {
-            agentMap.delete(message.roomId);
-            if (agentMap.size === 0) {
-              latestResponseIds.delete(runtime.agentId);
-            }
-          }
         }
       },
     );
@@ -531,9 +413,8 @@ export class DefaultMessageService implements IMessageService {
     const isAutonomousMessage =
       message.content?.metadata &&
       typeof message.content.metadata === "object" &&
-      (message.content.metadata as Record<string, unknown>).isAutonomous ===
-        true;
-
+      (message.content.metadata as Record<string, unknown>).isAutonomous === true;
+    
     if (message.entityId === runtime.agentId && !isAutonomousMessage) {
       runtime.logger.debug(
         { src: "service:message", agentId: runtime.agentId },
@@ -560,68 +441,74 @@ export class DefaultMessageService implements IMessageService {
       "Processing message",
     );
 
-    // ── Pre-evaluator middleware ────────────────────────────────────────
-    // Run phase:"pre" evaluators BEFORE saving to memory.  These act as
-    // security gates — they can block the message entirely (e.g. prompt
-    // injection) or rewrite it (e.g. redact credentials).
-    const preResult = await runtime.evaluatePre(message);
+    // Chat instrumentation: log incoming message to chat.log when LOG_FILE is set
+    const chatInLine = logChatIn({
+      agentName: runtime.character?.name ?? "unknown",
+      agentId: runtime.agentId,
+      roomId: message.roomId,
+      messageId: message.id ?? "pending",
+      text: message.content.text ?? "",
+      source: (message.metadata as Record<string, unknown> | undefined)
+        ?.source as string | undefined,
+    });
+    runtime.logger.info(
+      { src: "chat", direction: "in", roomId: message.roomId, messageId: message.id },
+      chatInLine,
+    );
 
-    if (preResult.blocked) {
-      runtime.logger.warn(
+    // Memory creation can be disabled or restricted by source (DISABLE_MEMORY_CREATION / ALLOW_MEMORY_SOURCE_IDS).
+    const disableMemoryCreation = isMemoryCreationDisabled(runtime);
+    const allowedSources = getAllowedMemorySources(runtime);
+    const messageSourceId = (message.metadata as Record<string, unknown> | undefined)
+      ?.sourceId as string | undefined;
+    const memorySourceAllowed =
+      !allowedSources ||
+      (typeof messageSourceId === "string" && allowedSources.includes(messageSourceId));
+    // When memory creation is disabled, no persistence is allowed regardless of source
+    const canPersistMemory = memorySourceAllowed && !disableMemoryCreation;
+
+    let memoryToQueue: Memory | null = null;
+    if (canPersistMemory) {
+      runtime.logger.debug(
+        { src: "service:message", messageId: message.id, sourceId: messageSourceId ?? null },
+        "Saving message to memory",
+      );
+      if (message.id) {
+        const existingMemory = await runtime.getMemoryById(message.id);
+        if (existingMemory) {
+          runtime.logger.debug(
+            { src: "service:message" },
+            "Memory already exists, skipping creation",
+          );
+          memoryToQueue = existingMemory;
+        } else {
+          const createdMemoryId = await runtime.createMemory(message, "messages");
+          memoryToQueue = { ...message, id: createdMemoryId };
+        }
+        await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
+      } else {
+        const memoryId = await runtime.createMemory(message, "messages");
+        message.id = memoryId;
+        memoryToQueue = { ...message, id: memoryId };
+        await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
+      }
+    } else if (disableMemoryCreation) {
+      runtime.logger.debug(
+        { src: "service:message", messageId: message.id, sourceId: messageSourceId ?? null },
+        "DISABLE_MEMORY_CREATION enabled; skipping message persistence and embedding queue",
+      );
+      if (!message.id) message.id = asUUID(v4());
+    } else {
+      runtime.logger.info(
         {
           src: "service:message",
-          reason: preResult.reason,
-          messagePreview: truncateToCompleteSentence(
-            message.content.text || "",
-            50,
-          ),
+          messageId: message.id,
+          sourceId: messageSourceId ?? null,
+          allowedSources,
         },
-        "Message blocked by pre-evaluator — skipping memory, response, and actions",
+        "Message source not whitelisted; skipping memory persistence",
       );
-      await this.emitRunEnded(runtime, runId, message, startTime, "blocked");
-      return {
-        didRespond: false,
-        responseContent: null,
-        responseMessages: [],
-        state: { values: {}, data: {}, text: "" } as State,
-        mode: "blocked",
-      };
-    }
-
-    // Apply any text rewriting from pre-evaluators (redaction, sanitisation)
-    if (preResult.rewrittenText !== undefined) {
-      runtime.logger.info(
-        { src: "service:message", reason: preResult.reason },
-        "Pre-evaluator rewrote message text",
-      );
-      message.content.text = preResult.rewrittenText;
-    }
-
-    // ── Save the incoming message to memory ────────────────────────────
-    runtime.logger.debug(
-      { src: "service:message" },
-      "Saving message to memory",
-    );
-    let memoryToQueue: Memory;
-
-    if (message.id) {
-      const existingMemory = await runtime.getMemoryById(message.id);
-      if (existingMemory) {
-        runtime.logger.debug(
-          { src: "service:message" },
-          "Memory already exists, skipping creation",
-        );
-        memoryToQueue = existingMemory;
-      } else {
-        const createdMemoryId = await runtime.createMemory(message, "messages");
-        memoryToQueue = { ...message, id: createdMemoryId };
-      }
-      await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
-    } else {
-      const memoryId = await runtime.createMemory(message, "messages");
-      message.id = memoryId;
-      memoryToQueue = { ...message, id: memoryId };
-      await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
+      if (!message.id) message.id = asUUID(v4());
     }
 
     // Check if LLM is off by default
@@ -671,8 +558,6 @@ export class DefaultMessageService implements IMessageService {
       message,
       ["ANXIETY", "ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
       true,
-      false,
-      "generate",
     );
 
     // Get room and mention context
@@ -800,7 +685,6 @@ export class DefaultMessageService implements IMessageService {
             },
           ],
           options: {
-            contextCheckLevel: 0, // Set to 0 for now
             modelSize: opts.shouldRespondModel === "large" ? "large" : "small",
             preferredEncapsulation: "xml",
           },
@@ -849,7 +733,7 @@ export class DefaultMessageService implements IMessageService {
 
       // Race check before we send anything
       const currentResponseId = agentResponses.get(message.roomId);
-      if (currentResponseId !== responseId) {
+      if (currentResponseId !== responseId && !opts.keepExistingResponses) {
         runtime.logger.info(
           {
             src: "service:message",
@@ -872,17 +756,18 @@ export class DefaultMessageService implements IMessageService {
       }
 
       if (responseContent?.providers && responseContent.providers.length > 0) {
-        state = await runtime.composeState(
-          message,
-          responseContent.providers,
-          false,
-          false,
-          "multi_step_provider",
-        );
+        state = await runtime.composeState(message, responseContent.providers);
       }
 
-      // Save response memory to database
-      if (responseMessages.length > 0) {
+      // Save response memory to database (respect DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS).
+      const allowedSources = getAllowedMemorySources(runtime);
+      const responseSourceId = typeof responseContent?.metadata?.sourceId === "string" 
+        ? responseContent.metadata.sourceId 
+        : "agent_response"; // Use semantic default that can be added to allowlist
+      // Agent responses bypass source validation since they're internally generated
+      const isSourceAllowed = !allowedSources || allowedSources.includes(responseSourceId) || responseSourceId === "agent_response";
+      const canPersistMemory = !disableMemoryCreation && isSourceAllowed;
+      if (responseMessages.length > 0 && canPersistMemory) {
         for (const responseMemory of responseMessages) {
           // Update the content in case inReplyTo was added
           if (responseContent) {
@@ -893,13 +778,6 @@ export class DefaultMessageService implements IMessageService {
             "Saving response to memory",
           );
           await runtime.createMemory(responseMemory, "messages");
-
-          // Emit MESSAGE_SENT event after saving to memory
-          await runtime.emitEvent(EventType.MESSAGE_SENT, {
-            runtime,
-            message: responseMemory,
-            source: message.content.source ?? "messageHandler",
-          });
         }
       }
 
@@ -919,6 +797,30 @@ export class DefaultMessageService implements IMessageService {
             );
           }
           if (callback) {
+            const chatOutLine = logChatOut({
+              agentName: runtime.character?.name ?? "unknown",
+              agentId: runtime.agentId,
+              roomId: message.roomId,
+              action: responseContent.actions?.[0] ?? "REPLY",
+              text: responseContent.text,
+              providers: responseContent.providers,
+              reasoning:
+                typeof responseContent.thought === "string"
+                  ? responseContent.thought
+                  : undefined,
+              actions: Array.isArray(responseContent.actions)
+                ? responseContent.actions
+                : undefined,
+            });
+            runtime.logger.info(
+              {
+                src: "chat",
+                direction: "out",
+                roomId: message.roomId,
+                action: responseContent.actions?.[0],
+              },
+              chatOutLine,
+            );
             // Redact any secrets from response content before sending
             if (responseContent.text) {
               responseContent.text = runtime.redactSecrets(
@@ -933,16 +835,43 @@ export class DefaultMessageService implements IMessageService {
             message,
             responseMessages,
             state,
-            async (content) => {
+            async (content, actionName) => {
               runtime.logger.debug(
-                { src: "service:message", content },
+                { src: "service:message", content, actionName },
                 "Action callback",
               );
               if (responseContent) {
                 responseContent.actionCallbacks = content;
               }
               if (callback) {
-                return callback(content);
+                const actionList = Array.isArray(content?.actions)
+                  ? content.actions
+                  : content?.actions
+                    ? [content.actions]
+                    : undefined;
+                const chatOutLine = logChatOut({
+                  agentName: runtime.character?.name ?? "unknown",
+                  agentId: runtime.agentId,
+                  roomId: message.roomId,
+                  action:
+                    actionName ??
+                    (Array.isArray(content?.actions)
+                      ? content.actions[0]
+                      : content?.actions) ??
+                    "REPLY",
+                  text: typeof content?.text === "string" ? content.text : undefined,
+                  providers: content?.providers,
+                  reasoning:
+                    typeof content?.thought === "string"
+                      ? content.thought
+                      : undefined,
+                  actions: actionList,
+                });
+                runtime.logger.info(
+                  { src: "chat", direction: "out", roomId: message.roomId },
+                  chatOutLine,
+                );
+                return callback(content, actionName);
               }
               return [];
             },
@@ -959,11 +888,7 @@ export class DefaultMessageService implements IMessageService {
 
       // Check if we still have the latest response ID
       const currentResponseId = agentResponses.get(message.roomId);
-      const keepResp = parseBooleanFromText(
-        String(runtime.getSetting("BOOTSTRAP_KEEP_RESP") || ""),
-      );
-
-      if (currentResponseId !== responseId && !keepResp) {
+      if (currentResponseId !== responseId && !opts.keepExistingResponses) {
         runtime.logger.info(
           {
             src: "service:message",
@@ -1006,30 +931,44 @@ export class DefaultMessageService implements IMessageService {
       // Construct a minimal content object indicating ignore
       const ignoreContent: Content = {
         thought: "Agent decided not to respond to this message.",
+        // Note: IGNORES are explicitly permitted for minimal response handling, bypassing persist checks.
         actions: ["IGNORE"],
         simple: true,
         inReplyTo: createUniqueUuid(runtime, message.id),
       };
 
-      // Call the callback with the ignore content
+      // Call the callback with the ignore content and action name
       if (callback) {
-        await callback(ignoreContent);
+        await callback(ignoreContent, "IGNORE");
       }
 
-      // Save this ignore action/thought to memory
-      const ignoreMemory: Memory = {
-        id: asUUID(v4()),
-        entityId: runtime.agentId,
-        agentId: runtime.agentId,
-        content: ignoreContent,
-        roomId: message.roomId,
-        createdAt: Date.now(),
-      };
-      await runtime.createMemory(ignoreMemory, "messages");
-      runtime.logger.debug(
-        { src: "service:message", memoryId: ignoreMemory.id },
-        "Saved ignore response to memory",
-      );
+      // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS).
+      if (!disableMemoryCreation) {
+        const allowedSources = getAllowedMemorySources(runtime); 
+        const responseSourceId = "agent_response"; // Default source for agent-generated responses
+        // Only persist if source is allowed or it's an internal agent response
+        const canPersistIgnore = !allowedSources || allowedSources.includes(responseSourceId);
+        
+        if (canPersistIgnore) {
+          const ignoreMemory: Memory = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: ignoreContent,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
+          await runtime.createMemory(ignoreMemory, "messages");
+        runtime.logger.debug(
+          { src: "service:message", memoryId: ignoreMemory.id },
+          "Saved ignore response to memory",
+        );
+      } else {
+        runtime.logger.debug(
+          { src: "service:message", allowedSources },
+          "Source not in ALLOW_MEMORY_SOURCE_IDS allowlist; skipping ignore response persistence",
+        );
+      }
     }
 
     // Clean up the response ID
@@ -1043,20 +982,45 @@ export class DefaultMessageService implements IMessageService {
       message,
       state,
       shouldRespondToMessage,
-      async (content) => {
+      async (content, actionName) => {
         runtime.logger.debug(
-          { src: "service:message", content },
+          { src: "service:message", content, actionName },
           "Evaluate callback",
         );
         if (responseContent) {
           responseContent.evalCallbacks = content;
         }
         if (callback) {
+          const actionList = Array.isArray(content?.actions)
+            ? content.actions
+            : content?.actions
+              ? [content.actions]
+              : undefined;
+          const chatOutLine = logChatOut({
+            agentName: runtime.character?.name ?? "unknown",
+            agentId: runtime.agentId,
+            roomId: message.roomId,
+            action:
+              actionName ??
+              (Array.isArray(content?.actions)
+                ? content.actions[0]
+                : content?.actions) ??
+              "REPLY",
+            text: typeof content?.text === "string" ? content.text : undefined,
+            providers: content?.providers,
+            reasoning:
+              typeof content?.thought === "string" ? content.thought : undefined,
+            actions: actionList,
+          });
+          runtime.logger.info(
+            { src: "chat", direction: "out", roomId: message.roomId },
+            chatOutLine,
+          );
           // Redact any secrets from evaluate callback content
           if (content.text) {
             content.text = runtime.redactSecrets(content.text);
           }
-          return callback(content);
+          return callback(content, actionName);
         }
         return [];
       },
@@ -1277,26 +1241,16 @@ export class DefaultMessageService implements IMessageService {
           attachment.contentType === ContentType.IMAGE &&
           !attachment.description
         ) {
-          // Skip image analysis when vision / image-description is explicitly
-          // disabled (e.g. the user toggled the Vision capability off).
-          const disableImageDesc = runtime.getSetting(
-            "DISABLE_IMAGE_DESCRIPTION",
-          );
-          if (disableImageDesc === true || disableImageDesc === "true") {
-            return processedAttachment;
-          }
-
           runtime.logger.debug(
             { src: "service:message", imageUrl: attachment.url },
             "Generating image description",
           );
 
           let imageUrl = url;
-          const runtimeFetch = runtime.fetch ?? globalThis.fetch;
 
           if (!isRemote) {
             // Convert local/internal media to base64
-            const res = await runtimeFetch(url);
+            const res = await fetch(url);
             if (!res.ok)
               throw new Error(`Failed to fetch image: ${res.statusText}`);
 
@@ -1400,8 +1354,7 @@ export class DefaultMessageService implements IMessageService {
           attachment.contentType === ContentType.DOCUMENT &&
           !attachment.text
         ) {
-          const docFetch = runtime.fetch ?? globalThis.fetch;
-          const res = await docFetch(url);
+          const res = await fetch(url);
           if (!res.ok)
             throw new Error(`Failed to fetch document: ${res.statusText}`);
 
@@ -1443,13 +1396,14 @@ export class DefaultMessageService implements IMessageService {
 
           try {
             let transcriptionInput: string | Buffer = url;
-            const audioFetch = runtime.fetch ?? globalThis.fetch;
 
             // For local/internal URLs, fetch the audio as a buffer
             if (!isRemote) {
-              const res = await audioFetch(url);
+              const res = await fetch(url);
               if (!res.ok)
-                throw new Error(`Failed to fetch audio: ${res.statusText}`);
+                throw new Error(
+                  `Failed to fetch audio: ${res.statusText}`,
+                );
               const arrayBuffer = await res.arrayBuffer();
               transcriptionInput = Buffer.from(arrayBuffer);
             }
@@ -1461,16 +1415,15 @@ export class DefaultMessageService implements IMessageService {
 
             if (typeof transcript === "string" && transcript.trim()) {
               processedAttachment.text = transcript.trim();
-              processedAttachment.title = processedAttachment.title || "Audio";
+              processedAttachment.title =
+                processedAttachment.title || "Audio";
               processedAttachment.description = `Transcript: ${transcript.trim()}`;
 
               runtime.logger.debug(
                 {
                   src: "service:message",
-                  transcriptPreview: processedAttachment.text?.substring(
-                    0,
-                    100,
-                  ),
+                  transcriptPreview:
+                    processedAttachment.text?.substring(0, 100),
                 },
                 "Transcribed audio attachment",
               );
@@ -1492,13 +1445,14 @@ export class DefaultMessageService implements IMessageService {
 
           try {
             let transcriptionInput: string | Buffer = url;
-            const videoFetch = runtime.fetch ?? globalThis.fetch;
 
             // For local/internal URLs, fetch the video as a buffer
             if (!isRemote) {
-              const res = await videoFetch(url);
+              const res = await fetch(url);
               if (!res.ok)
-                throw new Error(`Failed to fetch video: ${res.statusText}`);
+                throw new Error(
+                  `Failed to fetch video: ${res.statusText}`,
+                );
               const arrayBuffer = await res.arrayBuffer();
               transcriptionInput = Buffer.from(arrayBuffer);
             }
@@ -1510,16 +1464,15 @@ export class DefaultMessageService implements IMessageService {
 
             if (typeof transcript === "string" && transcript.trim()) {
               processedAttachment.text = transcript.trim();
-              processedAttachment.title = processedAttachment.title || "Video";
+              processedAttachment.title =
+                processedAttachment.title || "Video";
               processedAttachment.description = `Transcript: ${transcript.trim()}`;
 
               runtime.logger.debug(
                 {
                   src: "service:message",
-                  transcriptPreview: processedAttachment.text?.substring(
-                    0,
-                    100,
-                  ),
+                  transcriptPreview:
+                    processedAttachment.text?.substring(0, 100),
                 },
                 "Transcribed video attachment",
               );
@@ -1550,13 +1503,7 @@ export class DefaultMessageService implements IMessageService {
     opts: ResolvedMessageOptions,
     responseId: UUID,
   ): Promise<StrategyResult> {
-    state = await runtime.composeState(
-      message,
-      ["ACTIONS"],
-      false,
-      false,
-      "evaluate",
-    );
+    state = await runtime.composeState(message, ["ACTIONS"]);
 
     if (!state.values || !state.values.actionNames) {
       runtime.logger.warn(
@@ -1580,17 +1527,13 @@ export class DefaultMessageService implements IMessageService {
           )
         : undefined;
 
-    // Resolve the template prompt once so it's available for both the primary
-    // call and any follow-up repair prompts (e.g. parameter repair).
-    const prompt =
-      runtime.character.templates?.messageHandlerTemplate ||
-      messageHandlerTemplate;
-
     // Use dynamicPromptExecFromState for structured output with validation
     const parsedXml = await runtime.dynamicPromptExecFromState({
       state,
       params: {
-        prompt,
+        prompt:
+          runtime.character.templates?.messageHandlerTemplate ||
+          messageHandlerTemplate,
       },
       schema: [
         // WHY validateField: false on non-streamed fields?
@@ -1602,6 +1545,13 @@ export class DefaultMessageService implements IMessageService {
           description:
             "Your internal reasoning about the message and what to do",
           required: true,
+          validateField: false,
+          streamField: false,
+        },
+        {
+          field: "providers",
+          description:
+            "List of providers to use for additional context (comma-separated)",
           validateField: false,
           streamField: false,
         },
@@ -1664,11 +1614,20 @@ export class DefaultMessageService implements IMessageService {
           ? [normalizedActions[0]]
           : normalizedActions;
 
+      const providers = Array.isArray(parsedXml.providers)
+        ? parsedXml.providers.filter((p): p is string => typeof p === "string")
+        : typeof parsedXml.providers === "string"
+          ? parsedXml.providers
+              .split(",")
+              .map((p) => String(p).trim())
+              .filter((p) => p.length > 0)
+          : [];
+
       responseContent = {
         ...parsedXml,
         thought: String(parsedXml.thought || ""),
         actions: finalActions.length > 0 ? finalActions : ["IGNORE"],
-        providers: [],
+        providers,
         text: String(parsedXml.text || ""),
         simple: parsedXml.simple === true || parsedXml.simple === "true",
       };
@@ -1708,7 +1667,10 @@ export class DefaultMessageService implements IMessageService {
         // Reset extractor for fresh streaming of continuation
         streamingCtx?.reset?.();
 
-        // Build continuation prompt with full context (reuses `prompt` from outer scope)
+        // Build continuation prompt with full context
+        const prompt =
+          runtime.character.templates?.messageHandlerTemplate ||
+          messageHandlerTemplate;
         const escapedStreamedText = escapeHandlebars(streamedText);
         const continuationPrompt = `${prompt}
 
@@ -1875,7 +1837,12 @@ Output ONLY the continuation, starting immediately after the last character abov
     }
 
     // Automatically determine if response is simple
-    const isSimple = isSimpleReplyResponse(responseContent);
+    const isSimple =
+      responseContent?.actions &&
+      responseContent.actions.length === 1 &&
+      typeof responseContent.actions[0] === "string" &&
+      responseContent.actions[0].toUpperCase() === "REPLY" &&
+      (!responseContent.providers || responseContent.providers.length === 0);
 
     responseContent.simple = isSimple;
     // Include message ID for streaming coordination (so broadcast uses same ID)
@@ -1926,13 +1893,10 @@ Output ONLY the continuation, starting immediately after the last character abov
         "Starting multi-step iteration",
       );
 
-      accumulatedState = (await runtime.composeState(
-        message,
-        ["RECENT_MESSAGES", "ACTION_STATE", "PROVIDERS"],
-        false,
-        false,
-        "multi_step_iteration",
-      )) as MultiStepState;
+      accumulatedState = (await runtime.composeState(message, [
+        "RECENT_MESSAGES",
+        "ACTION_STATE",
+      ])) as MultiStepState;
       accumulatedState.data.actionResults = traceActionResult;
 
       // Use dynamicPromptExecFromState for structured decision output
@@ -1970,9 +1934,9 @@ Output ONLY the continuation, starting immediately after the last character abov
           // WHY parameters: Actions need input data. Without this field in the schema,
           // the LLM won't be instructed to output parameters, breaking action execution.
           {
-            field: "params",
+            field: "parameters",
             description:
-              "Optional XML parameters for the selected action. Use nested XML tags only when the action needs input.",
+              "JSON object with parameter names and values for the action (use {} if no parameters needed)",
             validateField: false,
             streamField: false,
           },
@@ -2050,8 +2014,9 @@ Output ONLY the continuation, starting immediately after the last character abov
 
       // Total timeout for all providers running in parallel (configurable via PROVIDERS_TOTAL_TIMEOUT_MS env var)
       // Since providers run in parallel, this is the max wall-clock time allowed
+      // Note: Default of 5000ms allows providers making external API calls adequate time
       const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(
-        String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000"),
+        String(runtime.getSetting("PROVIDERS_TOTAL_TIMEOUT_MS") || "5000"),
         10,
       );
 
@@ -2222,8 +2187,8 @@ Output ONLY the continuation, starting immediately after the last character abov
           actions: [action],
           thought: thought || "",
         };
-        if (parsedStep && typeof parsedStep.params === "string") {
-          actionContent.params = parsedStep.params;
+        if (parsedStep && typeof parsedStep.parameters === "string") {
+          actionContent.params = parsedStep.parameters;
         }
 
         await runtime.processActions(
@@ -2286,13 +2251,10 @@ Output ONLY the continuation, starting immediately after the last character abov
       );
     }
 
-    accumulatedState = (await runtime.composeState(
-      message,
-      ["RECENT_MESSAGES", "ACTION_STATE"],
-      false,
-      false,
-      "multi_step_summary",
-    )) as MultiStepState;
+    accumulatedState = (await runtime.composeState(message, [
+      "RECENT_MESSAGES",
+      "ACTION_STATE",
+    ])) as MultiStepState;
 
     // Use dynamicPromptExecFromState for final summary generation
     // Stream the final summary for better UX

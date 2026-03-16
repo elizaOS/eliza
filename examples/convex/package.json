@@ -1,0 +1,33 @@
+{
+  "name": "@elizaos/example-convex",
+  "version": "2.0.0-alpha",
+  "description": "elizaOS agent running on Convex — messages processed via messageService.handleMessage with real-time persistence",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "npx convex dev",
+    "start": "npx convex dev",
+    "test": "bun run test-client.ts",
+    "deploy": "npx convex deploy"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-xai": "workspace:*",
+    "@elizaos/plugin-google-genai": "workspace:*",
+    "@elizaos/plugin-groq": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "convex": "^1.25.2",
+    "dotenv": "^16.4.5",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

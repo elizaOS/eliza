@@ -1,0 +1,94 @@
+// primitives.proto - Core primitive types for elizaOS
+// Single source of truth for TypeScript, Python, and Rust
+syntax = "proto3";
+
+package eliza.v1;
+
+import "google/protobuf/struct.proto";
+
+// UUID string type (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+// Note: Proto doesn't have a native UUID type, so we use string
+// Validation should be done at the application layer
+message UUID {
+  string value = 1;
+}
+
+// The default/nil UUID used when no room or world is specified
+// Value: 00000000-0000-0000-0000-000000000000
+// Using a constant message pattern for language interop
+message DefaultUUID {
+  string value = 1; // Always "00000000-0000-0000-0000-000000000000"
+}
+
+// Represents a media attachment
+message Media {
+  // Unique identifier
+  string id = 1;
+  // Media URL
+  string url = 2;
+  // Media title
+  optional string title = 3;
+  // Media source
+  optional string source = 4;
+  // Media description
+  optional string description = 5;
+  // Text content
+  optional string text = 6;
+  // Content type (e.g. "image", "video", "audio", "document", "link")
+  optional string content_type = 7;
+}
+
+// Platform-provided metadata about mentions
+// Contains ONLY technical facts from the platform API
+message MentionContext {
+  // Platform native mention (@Discord, @Telegram, etc.)
+  bool is_mention = 1;
+  // Reply to agent's message
+  bool is_reply = 2;
+  // In a thread with agent
+  bool is_thread = 3;
+  // Platform-specific mention type for debugging/logging
+  optional string mention_type = 4; // "platform_mention" | "reply" | "thread" | "none"
+}
+
+// Represents the content of a memory, message, or other information.
+// Primary data structure for messages exchanged between users, agents, and the system.
+message Content {
+  // The agent's internal thought process
+  optional string thought = 1;
+  // The main text content visible to users
+  optional string text = 2;
+  // Actions to be performed
+  repeated string actions = 3;
+  // Providers to use for context generation
+  repeated string providers = 4;
+  // Source/origin of the content (e.g., 'discord', 'telegram')
+  optional string source = 5;
+  // Target/destination for responses
+  optional string target = 6;
+  // URL of the original message/post
+  optional string url = 7;
+  // UUID of parent message if this is a reply/thread
+  optional string in_reply_to = 8;
+  // Array of media attachments
+  repeated Media attachments = 9;
+  // Channel type where this content was sent
+  optional string channel_type = 10;
+  // Platform-provided metadata about mentions
+  optional MentionContext mention_context = 11;
+  // Internal message ID used for streaming coordination
+  optional string response_message_id = 12;
+  // Response ID for message tracking
+  optional string response_id = 13;
+  // Whether this is a simple response (no actions required)
+  optional bool simple = 14;
+  // Type marker for internal use
+  optional string type = 15;
+  // Additional dynamic properties for plugin extensions
+  google.protobuf.Struct data = 16;
+}
+
+// Generic metadata type (JSON-serializable key-value pairs)
+message Metadata {
+  google.protobuf.Struct values = 1;
+}

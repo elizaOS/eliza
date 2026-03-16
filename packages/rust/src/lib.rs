@@ -29,9 +29,13 @@
 #![warn(missing_docs)]
 #![warn(rustdoc::missing_crate_level_docs)]
 
+#[cfg(all(
+    feature = "bootstrap-internal",
+    feature = "native",
+    not(feature = "wasm")
+))]
+pub mod advanced_capabilities;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
-#[allow(missing_docs)]
-/// Advanced memory capabilities (summaries, extraction, and long-term recall).
 pub mod advanced_memory;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod advanced_planning;
@@ -42,11 +46,16 @@ pub mod autonomy;
     feature = "native",
     not(feature = "wasm")
 ))]
+pub mod basic_capabilities;
+#[cfg(all(
+    feature = "bootstrap-internal",
+    feature = "native",
+    not(feature = "wasm")
+))]
 pub mod bootstrap;
 #[cfg(all(feature = "native", not(feature = "wasm")))]
 pub mod bootstrap_core;
 pub mod character;
-pub mod deterministic;
 #[cfg(all(
     feature = "bootstrap-internal",
     feature = "native",
@@ -63,8 +72,6 @@ pub mod services;
 pub mod settings;
 pub mod template;
 pub mod types;
-/// Validation helpers for keyword/regex checks and streaming extraction.
-pub mod validation;
 pub mod xml;
 
 /// Media utilities (MIME detection, hybrid search)
@@ -104,7 +111,9 @@ pub use types::environment::{Component, Entity, Relationship, Room, World, World
 pub use types::memory::{Memory, MemoryMetadata};
 
 // Re-export database types (logs, query params, etc.)
-pub use types::database::{GetMemoriesParams, Log, LogBody, SearchMemoriesParams};
+pub use types::database::{
+    CreateMemoryItem, GetMemoriesParams, Log, LogBody, SearchMemoriesParams, UpdateMemoryItem,
+};
 
 // Re-export task types
 pub use types::task::{Task, TaskStatus};

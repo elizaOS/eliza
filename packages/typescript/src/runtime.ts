@@ -17,31 +17,11 @@ import {
   createBootstrapPlugin,
 } from "./bootstrap/index";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
-import {
-  buildConversationSeed,
-  deterministicHex,
-  deterministicUuid,
-} from "./deterministic";
 import { createUniqueUuid } from "./entities";
-import {
-  createLogger,
-  type Logger,
-  type LoggerBindings,
-  loggerScope,
-} from "./logger";
-import {
-  createSandboxFetchProxy,
-  type SandboxFetchAuditEvent,
-} from "./network/sandbox-fetch-proxy.js";
+import { createLogger, logPrompt, logResponse } from "./logger";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
-import {
-  SANDBOX_TOKEN_PREFIX,
-  SandboxTokenManager,
-} from "./security/sandbox-token-manager.js";
-import type { ActionFilterService } from "./services/action-filter";
 import { DefaultMessageService } from "./services/message";
-import type { ToolPolicyService } from "./services/tool-policy";
 import { decryptSecret, getSalt } from "./settings";
 import {
   getStreamingContext,
@@ -71,8 +51,10 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   type IDatabaseAdapter,
+  type IMessagingAdapter,
   type JsonValue,
   type Log,
+  type LogBody,
   type Memory,
   type MemoryMetadata,
   type Metadata,
@@ -103,18 +85,20 @@ import {
   type Task,
   type TaskWorker,
   type TextStreamResult,
+  type PatchOp,
   type UUID,
   type World,
 } from "./types";
 import type { IMessageService } from "./types/message-service";
 import type { RetryBackoffConfig, SchemaRow, StreamEvent } from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
+import { ToolPolicyService } from "./services/tool-policy";
 import {
-  DEFAULT_MAX_PROMPT_TOKENS,
-  estimateTokens,
+  parseBooleanFromText,
+  parseJSONObjectFromText,
   parseKeyValueXml,
+  safeReplacer,
   stringToUuid,
-  trimTokens,
 } from "./utils";
 import { BufferUtils } from "./utils/buffer";
 import { getNumberEnv } from "./utils/environment";
@@ -172,7 +156,7 @@ function isTextStreamResult(
 }
 
 export class AgentRuntime implements IAgentRuntime {
-  #conversationLength = 64 as number;
+  #conversationLength = 100 as number;
   readonly agentId: UUID;
   readonly character: Character;
   public adapter!: IDatabaseAdapter;
@@ -182,13 +166,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
   events: RuntimeEventStorage = {};
-  /**
-   * LRU-bounded state cache. Keys are message IDs (or `${messageId}_action_results`).
-   * Evicts oldest entries when the cache exceeds `STATE_CACHE_MAX` to prevent
-   * unbounded memory growth in long-running processes.
-   */
   stateCache = new Map<string, State>();
-  private static readonly STATE_CACHE_MAX = 200;
   readonly fetch = fetch;
   services = new Map<ServiceTypeName, Service[]>();
   private serviceTypes = new Map<ServiceTypeName, ServiceClass[]>();
@@ -196,7 +174,6 @@ export class AgentRuntime implements IAgentRuntime {
   routes: Route[] = [];
   private taskWorkers = new Map<string, TaskWorker>();
   private sendHandlers = new Map<string, SendHandlerFunction>();
-  public logLevelOverrides = new Map<string, string>();
   private eventHandlers: Map<string, Array<(data: EventPayload) => void>> =
     new Map();
 
@@ -218,16 +195,6 @@ export class AgentRuntime implements IAgentRuntime {
   public logger;
   public enableAutonomy: boolean;
   private settings: RuntimeSettings;
-
-  // ── Sandbox mode ──────────────────────────────────────────────────────────
-  /** When true, the runtime is operating in sandbox mode. */
-  public readonly sandboxMode: boolean;
-  /** Token manager for sandbox secret obfuscation. */
-  public readonly sandboxTokenManager: SandboxTokenManager | null;
-  /** Optional audit callback for sandbox fetch proxy events. */
-  private readonly sandboxAuditHandler?: (
-    event: SandboxFetchAuditEvent,
-  ) => void;
   private servicePromiseHandlers = new Map<string, ServicePromiseHandler>(); // Combined handlers for resolve/reject
   private servicePromises = new Map<string, Promise<Service>>(); // read
   private serviceRegistrationStatus = new Map<
@@ -252,20 +219,7 @@ export class AgentRuntime implements IAgentRuntime {
   };
   private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
   public messageService: IMessageService | null = null; // Lazily initialized
-
-  /**
-   * Pre-computed action index for O(1) exact lookup and fast fuzzy/simile matching.
-   * Invalidated (set to null) whenever actions are registered or modified.
-   */
-  private _actionIndex: {
-    byName: Map<string, Action>;
-    bySimile: Map<string, Action>;
-    entries: Array<{
-      action: Action;
-      normalizedName: string;
-      normalizedSimiles: string[];
-    }>;
-  } | null = null;
+  private cachedEmbeddingDimension?: number; // Cache embedding dimension after first detection
 
   constructor(
     opts: {
@@ -285,7 +239,9 @@ export class AgentRuntime implements IAgentRuntime {
       logLevel?: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
       /** Disable basic bootstrap capabilities (reply, ignore, none, core providers) */
       disableBasicCapabilities?: boolean;
-      /** Enable advanced bootstrap capabilities (facts, roles, settings, room actions, etc.) */
+      /** Enable extended/advanced bootstrap capabilities (facts, roles, settings, room actions, etc.) */
+      enableExtendedCapabilities?: boolean;
+      /** Alias for enableExtendedCapabilities - Enable advanced bootstrap capabilities */
       advancedCapabilities?: boolean;
       /**
        * Enable action planning mode for multi-action execution.
@@ -317,22 +273,6 @@ export class AgentRuntime implements IAgentRuntime {
        * Can be enabled at construction time or lazily via settings.
        */
       enableAutonomy?: boolean;
-      /**
-       * Enable sandbox mode for secure secret isolation.
-       * When true, runtime.getSetting() returns opaque tokens instead of real secrets,
-       * and runtime.fetch intercepts/replaces tokens at the network boundary.
-       */
-      sandboxMode?: boolean;
-      /**
-       * Pre-built SandboxTokenManager instance.
-       * If not provided and sandboxMode is true, a new one is created automatically.
-       */
-      sandboxTokenManager?: SandboxTokenManager;
-      /**
-       * Audit callback for sandbox fetch proxy events.
-       * Called on every token replacement (outbound and inbound).
-       */
-      sandboxAuditHandler?: (event: SandboxFetchAuditEvent) => void;
     } = {},
   ) {
     // Create default anonymous character if none provided
@@ -362,6 +302,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Support both enableExtendedCapabilities and advancedCapabilities as aliases
     this.capabilityOptions = {
       disableBasic: opts.disableBasicCapabilities,
+      enableExtended: opts.enableExtendedCapabilities,
       advancedCapabilities: opts.advancedCapabilities,
       skipCharacterProvider: this.isAnonymousCharacter,
       enableAutonomy: opts.enableAutonomy,
@@ -389,40 +330,15 @@ export class AgentRuntime implements IAgentRuntime {
       this.#conversationLength =
         parseInt(String(opts.settings.CONVERSATION_LENGTH), 10) || 100;
     } else {
-      this.#conversationLength = getNumberEnv(
+      this.#conversationLength = (getNumberEnv(
         "CONVERSATION_LENGTH",
         100,
-      ) as number;
+      ) as number);
     }
     if (opts.adapter) {
       this.registerDatabaseAdapter(opts.adapter);
     }
-    // Sandbox mode — env var override for emergency disable
-    const envOverride =
-      typeof process !== "undefined"
-        ? process.env.MILADY_SANDBOX_MODE
-        : undefined;
-    this.sandboxMode =
-      envOverride === "off" ? false : (opts.sandboxMode ?? false);
-    this.sandboxAuditHandler = opts.sandboxAuditHandler;
-
-    if (this.sandboxMode) {
-      this.sandboxTokenManager =
-        opts.sandboxTokenManager ?? new SandboxTokenManager();
-
-      // Wrap the provided (or default) fetch with the sandbox proxy
-      const baseFetch = (opts.fetch as typeof fetch) ?? this.fetch;
-      this.fetch = createSandboxFetchProxy({
-        tokenManager: this.sandboxTokenManager,
-        baseFetch,
-        onAuditEvent: this.sandboxAuditHandler,
-        failureMode: "fail-closed",
-      });
-    } else {
-      this.sandboxTokenManager = null;
-      this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
-    }
-
+    this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
     this.settings = opts.settings ?? environmentSettings;
     const enableAutonomyFromSettings =
       this.character.settings?.ENABLE_AUTONOMY === true ||
@@ -530,9 +446,13 @@ export class AgentRuntime implements IAgentRuntime {
         this.capabilityOptions.disableBasic ??
         (settings?.DISABLE_BASIC_CAPABILITIES === true ||
           settings?.DISABLE_BASIC_CAPABILITIES === "true");
-      const advancedCapabilities =
+      // Support both enableExtended/enableExtendedCapabilities and advancedCapabilities as aliases
+      const enableExtended =
+        this.capabilityOptions.enableExtended ??
         this.capabilityOptions.advancedCapabilities ??
-        (settings?.ADVANCED_CAPABILITIES === true ||
+        (settings?.ENABLE_EXTENDED_CAPABILITIES === true ||
+          settings?.ENABLE_EXTENDED_CAPABILITIES === "true" ||
+          settings?.ADVANCED_CAPABILITIES === true ||
           settings?.ADVANCED_CAPABILITIES === "true");
       const skipCharacterProvider =
         this.capabilityOptions.skipCharacterProvider ?? false;
@@ -543,17 +463,16 @@ export class AgentRuntime implements IAgentRuntime {
 
       if (
         disableBasic ||
-        advancedCapabilities ||
+        enableExtended ||
         skipCharacterProvider ||
         enableAutonomy
       ) {
         const config: CapabilityConfig = {
           disableBasic,
-          advancedCapabilities,
+          enableExtended,
           skipCharacterProvider,
           enableAutonomy,
         };
-
         const configuredPlugin = createBootstrapPlugin(config);
         pluginToRegister = {
           ...configuredPlugin,
@@ -646,6 +565,18 @@ export class AgentRuntime implements IAgentRuntime {
     }
     if (pluginToRegister.services) {
       for (const service of pluginToRegister.services) {
+        // Skip null/undefined so a malformed services array doesn't crash when we read service.serviceType.
+        if (service == null) {
+          this.logger.warn(
+            {
+              src: "agent",
+              agentId: this.agentId,
+              plugin: pluginToRegister.name,
+            },
+            "Plugin has null/undefined entry in services array, skipping",
+          );
+          continue;
+        }
         const serviceType = service.serviceType as ServiceTypeName;
 
         this.logger.debug(
@@ -670,27 +601,22 @@ export class AgentRuntime implements IAgentRuntime {
         // Register service asynchronously; handle errors without rethrowing since
         // we are not awaiting this promise here (to avoid unhandled rejections)
         this.registerService(service).catch((error) => {
-          const errorMsg =
-            error instanceof Error ? error.message : String(error);
           this.logger.error(
             {
               src: "agent",
               agentId: this.agentId,
               plugin: pluginToRegister.name,
               serviceType,
-              error: errorMsg,
+              error: error instanceof Error ? error.message : String(error),
             },
-            `Service registration failed for ${serviceType} (plugin: ${pluginToRegister.name}). ` +
-              "The agent will continue without this service.",
+            "Service registration failed",
           );
 
-          // Reject the service promise so waiting consumers know about the failure.
-          // The promise already has a no-op .catch() from _createServiceResolver,
-          // so this rejection will NOT cause an unhandled-rejection crash.
+          // Reject the service promise so waiting consumers know about the failure
           const handler = this.servicePromiseHandlers.get(serviceType);
           if (handler) {
             const serviceError = new Error(
-              `Service ${serviceType} from plugin ${pluginToRegister.name} failed to register: ${errorMsg}`,
+              `Service ${serviceType} from plugin ${pluginToRegister.name} failed to register: ${error instanceof Error ? error.message : String(error)}`,
             );
             handler.reject(serviceError);
             // Clean up the promise handles
@@ -699,7 +625,7 @@ export class AgentRuntime implements IAgentRuntime {
           }
           // Update service status
           this.serviceRegistrationStatus.set(serviceType, "failed");
-          // Do not rethrow; error is logged and the agent continues without this service
+          // Do not rethrow; error is propagated via promise rejection and status update
         });
       }
     }
@@ -796,7 +722,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Make adapter init idempotent - check if already initialized
     if (!(await this.adapter.isReady())) {
-      await this.adapter.init();
+      await this.adapter.initialize();
     }
 
     // Initialize message service
@@ -884,7 +810,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // No need to transform agent's own ID
-    let agentEntity = await this.getEntityById(this.agentId);
+    let agentEntity = (await this.adapter.getEntitiesByIds([this.agentId]))[0] ?? null;
 
     if (!agentEntity) {
       if (!existingAgent.id) {
@@ -901,7 +827,7 @@ export class AgentRuntime implements IAgentRuntime {
         throw new Error(errorMsg);
       }
 
-      agentEntity = await this.getEntityById(this.agentId);
+      agentEntity = (await this.adapter.getEntitiesByIds([this.agentId]))[0] ?? null;
       if (!agentEntity)
         throw new Error(`Agent entity not found for ${this.agentId}`);
 
@@ -914,7 +840,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Room creation and participant setup
     const room = await this.getRoom(this.agentId);
     if (!room) {
-      await this.createRoom({
+      await this.adapter.createRooms([{
         id: this.agentId,
         name: this.character.name,
         source: "elizaos",
@@ -922,13 +848,13 @@ export class AgentRuntime implements IAgentRuntime {
         channelId: this.agentId,
         messageServerId: this.agentId,
         worldId: this.agentId,
-      });
+      }]);
     }
     const participants = await this.adapter.getParticipantsForRoom(
       this.agentId,
     );
     if (!participants.includes(this.agentId)) {
-      const added = await this.addParticipant(this.agentId, this.agentId);
+      const added = await this.adapter.createRoomParticipants([this.agentId], this.agentId);
       if (!added) {
         throw new Error(
           `Failed to add agent ${this.agentId} as participant to its own room`,
@@ -1049,62 +975,6 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
-  /**
-   * Set a value in the state cache with LRU eviction.
-   * When the cache exceeds STATE_CACHE_MAX, the oldest entries are evicted.
-   */
-  private stateCacheSet(key: string, value: State): void {
-    // Delete first to move key to end (Map insertion order = LRU order)
-    this.stateCache.delete(key);
-    this.stateCache.set(key, value);
-    // Evict oldest entries if over limit
-    if (this.stateCache.size > AgentRuntime.STATE_CACHE_MAX) {
-      const excess = this.stateCache.size - AgentRuntime.STATE_CACHE_MAX;
-      const iter = this.stateCache.keys();
-      for (let i = 0; i < excess; i++) {
-        const oldest = iter.next();
-        if (oldest.done) break;
-        this.stateCache.delete(oldest.value);
-      }
-    }
-  }
-
-  /**
-   * Returns the pre-computed action index, building it lazily on first access
-   * after any change to the actions array.
-   */
-  private getActionIndex(): NonNullable<typeof this._actionIndex> {
-    if (this._actionIndex) return this._actionIndex;
-
-    const normalizeAction = (s: string) => s.toLowerCase().replace(/_/g, "");
-    const byName = new Map<string, Action>();
-    const bySimile = new Map<string, Action>();
-    const entries: Array<{
-      action: Action;
-      normalizedName: string;
-      normalizedSimiles: string[];
-    }> = [];
-
-    for (const action of this.actions) {
-      const normalizedName = normalizeAction(action.name);
-      if (!byName.has(normalizedName)) {
-        byName.set(normalizedName, action);
-      }
-      const normalizedSimiles = action.similes
-        ? action.similes.map(normalizeAction)
-        : [];
-      for (const simile of normalizedSimiles) {
-        if (!bySimile.has(simile)) {
-          bySimile.set(simile, action);
-        }
-      }
-      entries.push({ action, normalizedName, normalizedSimiles });
-    }
-
-    this._actionIndex = { byName, bySimile, entries };
-    return this._actionIndex;
-  }
-
   getSetting(key: string): string | boolean | number | null {
     const settings = this.character.settings;
     const secrets = this.character.secrets;
@@ -1153,20 +1023,6 @@ export class AgentRuntime implements IAgentRuntime {
       const decrypted = decryptSecret(value, getSalt());
       if (decrypted === "true") return true;
       if (decrypted === "false") return false;
-
-      // ── Sandbox mode: return opaque token instead of real secret ─────
-      // Only tokenize if the value looks like a secret (from secrets stores,
-      // not plain settings like "true" or numeric strings).
-      if (
-        this.sandboxMode &&
-        this.sandboxTokenManager &&
-        typeof decrypted === "string" &&
-        decrypted.length >= 8 &&
-        (secrets?.[key] !== undefined || nestedSecrets?.[key] !== undefined)
-      ) {
-        return this.sandboxTokenManager.registerSecret(key, decrypted);
-      }
-
       return decrypted;
     }
 
@@ -1279,6 +1135,28 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
+  /**
+   * Get the messaging adapter if available
+   * 
+   * WHY: Messaging functionality is optional (only SQL adapters support it).
+   * Client plugins check this before using messaging features.
+   * 
+   * @returns IMessagingAdapter if the current adapter implements it, null otherwise
+   */
+  getMessagingAdapter(): IMessagingAdapter | null {
+    // Check if the adapter implements IMessagingAdapter interface
+    // by checking for presence of messaging-specific methods
+    if (
+      this.adapter &&
+      typeof (this.adapter as any).createMessageServer === "function" &&
+      typeof (this.adapter as any).createChannel === "function" &&
+      typeof (this.adapter as any).createMessage === "function"
+    ) {
+      return this.adapter as unknown as IMessagingAdapter;
+    }
+    return null;
+  }
+
   registerProvider(provider: Provider) {
     this.providers.push(provider);
     this.logger.debug(
@@ -1296,27 +1174,6 @@ export class AgentRuntime implements IAgentRuntime {
       );
     } else {
       this.actions.push(canonical);
-      this._actionIndex = null; // Invalidate cached index
-
-      // Notify the ActionFilterService so it can index the new action for
-      // BM25 + vector retrieval.  This is fire-and-forget — we don't
-      // block registration on embedding computation.
-      const filterService =
-        this.getService<ActionFilterService>("action_filter");
-      if (filterService) {
-        filterService.addAction(canonical, this).catch((err) => {
-          this.logger.warn(
-            {
-              src: "agent",
-              agentId: this.agentId,
-              action: canonical.name,
-              error: err instanceof Error ? err.message : String(err),
-            },
-            "Failed to add action to filter index",
-          );
-        });
-      }
-
       this.logger.debug(
         { src: "agent", agentId: this.agentId, action: canonical.name },
         "Action registered",
@@ -1383,123 +1240,9 @@ export class AgentRuntime implements IAgentRuntime {
     this.evaluators.push(withCanonicalEvaluatorDocs(evaluator));
   }
 
-  /**
-   * Run all phase:"pre" evaluators against an incoming message.
-   *
-   * Pre-evaluators act as middleware — they can inspect, rewrite, or block a
-   * message **before** it is saved to memory or processed by the agent.
-   *
-   * @returns A merged {@link PreEvaluatorResult}.  If *any* pre-evaluator
-   *          sets `blocked: true` the message is dropped.  If any provides
-   *          `rewrittenText` the *last* rewrite wins.
-   */
-  async evaluatePre(
-    message: Memory,
-    state?: State,
-  ): Promise<import("./types/components").PreEvaluatorResult> {
-    const preEvaluators = this.evaluators.filter((e) => e.phase === "pre");
-    if (preEvaluators.length === 0) {
-      return { blocked: false };
-    }
-
-    let blocked = false;
-    let rewrittenText: string | undefined;
-    let reason: string | undefined;
-
-    for (const evaluator of preEvaluators) {
-      if (!evaluator.handler) continue;
-      try {
-        const shouldRun = await evaluator.validate(
-          this as IAgentRuntime,
-          message,
-          state,
-        );
-        if (!shouldRun) continue;
-
-        const result = await evaluator.handler(
-          this as IAgentRuntime,
-          message,
-          state ?? ({ values: {}, data: {}, text: "" } as State),
-          {},
-          undefined,
-          undefined,
-        );
-
-        // Handler may return a PreEvaluatorResult-shaped object
-        if (result && typeof result === "object") {
-          const r = result as unknown as Record<string, unknown>;
-          if (r.blocked === true) {
-            blocked = true;
-            reason = (r.reason as string) ?? reason;
-            this.logger.warn(
-              {
-                src: "runtime:evaluatePre",
-                evaluator: evaluator.name,
-                reason: r.reason,
-              },
-              `Pre-evaluator "${evaluator.name}" blocked message`,
-            );
-          }
-          if (typeof r.rewrittenText === "string") {
-            rewrittenText = r.rewrittenText;
-          }
-        }
-
-        this.adapter.log({
-          entityId: message.entityId,
-          roomId: message.roomId,
-          type: "evaluator",
-          body: {
-            messageId: message.id,
-            runId: this.getCurrentRunId(),
-            metadata: {
-              evaluator: evaluator.name,
-              phase: "pre",
-              blocked,
-              message: message.content.text ?? "",
-            },
-          },
-        });
-      } catch (err) {
-        this.logger.error(
-          { src: "runtime:evaluatePre", evaluator: evaluator.name, error: err },
-          `Pre-evaluator "${evaluator.name}" threw — skipping`,
-        );
-      }
-    }
-
-    return { blocked, rewrittenText, reason };
-  }
-
   // Helper functions for immutable action plan updates
   private updateActionPlan<T>(plan: T, updates: Partial<T>): T {
     return { ...plan, ...updates };
-  }
-
-  /**
-   * If the ActionFilterService filtered this room's actions, check whether
-   * `actionName` was excluded.  If so, report a filter miss (the LLM
-   * selected an action that wasn't in the prompt).
-   */
-  private checkFilterMiss(
-    roomId: string | undefined,
-    actionName: string,
-  ): void {
-    if (!roomId) return;
-    const filterSvc = this.getService<ActionFilterService>("action_filter");
-    if (!filterSvc) return;
-    const inSet = filterSvc.wasActionInFilteredSet(actionName, roomId);
-    if (inSet === false) {
-      filterSvc.reportMiss(actionName);
-      this.logger.warn(
-        {
-          src: "agent",
-          agentId: this.agentId,
-          action: actionName,
-        },
-        "LLM selected an action that was filtered out — filter may be too aggressive",
-      );
-    }
   }
 
   private updateActionStep<T, S>(
@@ -1529,34 +1272,6 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async processActions(
-    message: Memory,
-    responses: Memory[],
-    state?: State,
-    callback?: HandlerCallback,
-    processOptions?: {
-      onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
-    },
-  ): Promise<void> {
-    const logLevel = this.logLevelOverrides.get(message.roomId);
-    return loggerScope.run(
-      {
-        runtime: this,
-        roomId: message.roomId,
-        logLevel: logLevel || undefined,
-      },
-      async () => {
-        await this._processActions(
-          message,
-          responses,
-          state,
-          callback,
-          processOptions,
-        );
-      },
-    );
-  }
-
-  private async _processActions(
     message: Memory,
     responses: Memory[],
     state?: State,
@@ -1678,18 +1393,28 @@ export class AgentRuntime implements IAgentRuntime {
       function normalizeAction(actionString: string) {
         return actionString.toLowerCase().replace(/_/g, "");
       }
-      // Use the cached action index for O(1) exact + simile lookups
-      const actionIdx = this.getActionIndex();
-      const {
-        byName: actionByName,
-        bySimile: actionBySimile,
-        entries: normalizedActions,
-      } = actionIdx;
+      const normalizedActions = this.actions.map((action) => {
+        const normalizedName = normalizeAction(action.name);
+        const normalizedSimiles = action.similes
+          ? action.similes.map((simile) => normalizeAction(simile))
+          : [];
+        return {
+          action,
+          normalizedName,
+          normalizedSimiles,
+        };
+      });
+      const actionByName = new Map<string, Action>();
+      for (const entry of normalizedActions) {
+        if (!actionByName.has(entry.normalizedName)) {
+          actionByName.set(entry.normalizedName, entry.action);
+        }
+      }
       this.logger.trace(
         {
           src: "agent",
           agentId: this.agentId,
-          actions: normalizedActions.map((a) => a.normalizedName),
+          actions: this.actions.map((a) => normalizeAction(a.name)),
         },
         "Available actions",
       );
@@ -1702,11 +1427,29 @@ export class AgentRuntime implements IAgentRuntime {
           });
         }
 
-        // Compose state with previous action results and plan
-        accumulatedState = await this.composeState(message, [
-          "RECENT_MESSAGES",
-          "ACTION_STATE", // This will include the action plan
-        ]);
+        // Compose state with only the providers needed between actions.
+        // Using onlyInclude=true so only RECENT_MESSAGES and ACTION_STATE
+        // are re-fetched. All other provider data (GitHub, roles, settings,
+        // etc.) is preserved from the stateCache populated by earlier
+        // composeState calls (e.g. runSingleShotCore). This avoids
+        // re-running every registered provider for each action in a chain.
+        // Cache current accumulated state so composeState reads fresh action outputs
+        if (message.id && accumulatedState) {
+          this.stateCache.set(message.id, accumulatedState);
+        }
+        // Compose from cached state (now updated) but preserve current accumulated values/data
+        const freshProviderState = await this.composeState(
+          message,
+          ["RECENT_MESSAGES", "ACTION_STATE"],
+          true, // onlyInclude
+                  );
+                  // Merge fresh provider data with accumulated state, preserving action results and values
+                  accumulatedState = {
+                    ...accumulatedState,
+                    ...freshProviderState,
+                    values: { ...accumulatedState.values, ...freshProviderState.values },
+                    data: { ...accumulatedState.data, ...freshProviderState.data },
+                  };
 
         // Add action plan to state if it exists
         if (actionPlan && accumulatedState.data) {
@@ -1737,24 +1480,26 @@ export class AgentRuntime implements IAgentRuntime {
         }
 
         if (!action) {
-          // O(1) exact simile lookup from cached map
-          action = actionBySimile.get(normalizedResponseAction);
-          if (action) {
-            this.logger.debug(
-              {
-                src: "agent",
-                agentId: this.agentId,
-                action: action.name,
-                match: "simile",
-              },
-              "Action resolved via simile",
-            );
-          }
-        }
-
-        if (!action) {
-          // Fuzzy simile matching (last resort - O(n*m) but rare)
+          // Try similes
           for (const entry of normalizedActions) {
+            const exactSimileMatch = entry.normalizedSimiles.find(
+              (simile) => simile === normalizedResponseAction,
+            );
+
+            if (exactSimileMatch) {
+              action = entry.action;
+              this.logger.debug(
+                {
+                  src: "agent",
+                  agentId: this.agentId,
+                  action: action.name,
+                  match: "simile",
+                },
+                "Action resolved via simile",
+              );
+              break;
+            }
+
             const fuzzySimileMatch = entry.normalizedSimiles.find(
               (simile) =>
                 simile.includes(normalizedResponseAction) ||
@@ -1777,27 +1522,11 @@ export class AgentRuntime implements IAgentRuntime {
           }
         }
         if (!action) {
-          if (normalizedResponseAction === "ignore") {
-            this.logger.debug(
-              {
-                src: "agent",
-                agentId: this.agentId,
-                action: responseAction,
-              },
-              "Skipping upstream IGNORE action without registered handler",
-            );
-            actionIndex++;
-            continue;
-          }
-
           const errorMsg = `Action not found: ${responseAction}`;
           this.logger.error(
             { src: "agent", agentId: this.agentId, action: responseAction },
             "Action not found",
           );
-
-          // Report a filter miss if the unresolved name was filtered out
-          this.checkFilterMiss(message.roomId, responseAction);
 
           if (actionPlan?.steps?.[actionIndex]) {
             actionPlan = this.updateActionStep(actionPlan, actionIndex, {
@@ -1824,9 +1553,6 @@ export class AgentRuntime implements IAgentRuntime {
           actionIndex++;
           continue;
         }
-        // Check if the LLM selected an action that the filter removed
-        this.checkFilterMiss(message.roomId, action.name);
-
         if (!action.handler) {
           this.logger.error(
             { src: "agent", agentId: this.agentId, action: action.name },
@@ -2072,16 +1798,23 @@ export class AgentRuntime implements IAgentRuntime {
             >;
             workingMemory[memoryKey] = memoryEntry;
 
-            // Clean up old entries if we now exceed the limit.
-            // Sort once O(n log n) then delete the oldest, avoiding O(n²) repeated scans.
-            const wmEntries = Object.entries(workingMemory);
-            if (wmEntries.length > this.maxWorkingMemoryEntries) {
-              wmEntries.sort(
-                (a, b) => (a[1]?.timestamp ?? 0) - (b[1]?.timestamp ?? 0),
-              );
-              const overflow = wmEntries.length - this.maxWorkingMemoryEntries;
-              for (let i = 0; i < overflow; i++) {
-                delete workingMemory[wmEntries[i][0]];
+            // Clean up old entries if we now exceed the limit
+            const entries = Object.entries(workingMemory);
+            if (entries.length > this.maxWorkingMemoryEntries) {
+              let overflow = entries.length - this.maxWorkingMemoryEntries;
+              while (overflow > 0) {
+                let oldestKey: string | null = null;
+                let oldestTimestamp = Number.POSITIVE_INFINITY;
+                for (const [key, entry] of Object.entries(workingMemory)) {
+                  const timestamp = entry?.timestamp ?? 0;
+                  if (timestamp < oldestTimestamp) {
+                    oldestTimestamp = timestamp;
+                    oldestKey = key;
+                  }
+                }
+                if (!oldestKey) break;
+                delete workingMemory[oldestKey];
+                overflow--;
               }
             }
           }
@@ -2097,17 +1830,6 @@ export class AgentRuntime implements IAgentRuntime {
 
         const isSuccess = actionResult?.success !== false;
         const statusText = isSuccess ? "completed" : "failed";
-
-        // ── Conversation momentum ─────────────────────────────────────
-        // Record successful action usage so the filter service can boost
-        // it in subsequent turns within the same room.
-        if (isSuccess && message.roomId) {
-          const filterSvc =
-            this.getService<ActionFilterService>("action_filter");
-          if (filterSvc) {
-            filterSvc.recordActionUse(action.name, message.roomId);
-          }
-        }
 
         await this.emitEvent(EventType.ACTION_COMPLETED, {
           messageId: actionId,
@@ -2132,7 +1854,8 @@ export class AgentRuntime implements IAgentRuntime {
             if (content.text) {
               content.text = this.redactSecrets(content.text);
             }
-            await callback(content);
+            // Pass action name so callers can attribute the response without parsing content.
+            await callback(content, action.name);
           }
         }
 
@@ -2162,7 +1885,7 @@ export class AgentRuntime implements IAgentRuntime {
               error: actionResult.error,
             }
           : undefined;
-        await this.adapter.log({
+        await this.adapter.createLogs([{
           entityId: message.entityId,
           roomId: message.roomId,
           type: "action",
@@ -2182,7 +1905,7 @@ export class AgentRuntime implements IAgentRuntime {
               planThought: actionPlan.thought,
             }),
           },
-        });
+        }]);
 
         // Clear action context
         this.currentActionContext = undefined;
@@ -2192,10 +1915,10 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Store accumulated results for evaluators and providers
       if (message.id) {
-        this.stateCacheSet(`${message.id}_action_results`, {
+        this.stateCache.set(`${message.id}_action_results`, {
           values: { actionResults },
           data: { actionResults, actionPlan },
-          text: JSON.stringify(actionResults),
+          text: JSON.stringify(actionResults, safeReplacer()),
         });
       }
     }
@@ -2217,30 +1940,32 @@ export class AgentRuntime implements IAgentRuntime {
     callback?: HandlerCallback,
     responses?: Memory[],
   ) {
-    const logLevel = this.logLevelOverrides.get(message.roomId);
-    return loggerScope.run(
-      {
-        runtime: this,
-        roomId: message.roomId,
-        logLevel: logLevel || undefined,
-      },
-      async () => {
-        return this._evaluate(message, state, didRespond, callback, responses);
-      },
-    );
-  }
+    // WHY: Evaluators typically create memories (fact extraction, reflection). When memory
+    // creation is disabled, running them is wasted work and may error on missing tables.
+    const disableMemorySetting = this.getSetting("DISABLE_MEMORY_CREATION");
+    const disableMemoryCreation =
+      disableMemorySetting === true ||
+      (typeof disableMemorySetting === "string"
+        ? parseBooleanFromText(disableMemorySetting)
+        : disableMemorySetting != null
+          ? parseBooleanFromText(String(disableMemorySetting))
+          : false);
 
-  private async _evaluate(
-    message: Memory,
-    state: State,
-    didRespond?: boolean,
-    callback?: HandlerCallback,
-    responses?: Memory[],
-  ) {
+    if (disableMemoryCreation) {
+      this.logger.debug(
+        { src: "agent", agentId: this.agentId },
+        "Skipping evaluators because DISABLE_MEMORY_CREATION is enabled",
+      );
+      return [];
+    }
+
     const evaluatorPromises = this.evaluators.map(
       async (evaluator: Evaluator) => {
         if (!evaluator.handler) {
           return null;
+        } finally {
+          // Always clear timer to prevent leaks
+          clearTimeout(timerId);
         }
         if (!didRespond && !evaluator.alwaysRun) {
           return null;
@@ -2274,7 +1999,7 @@ export class AgentRuntime implements IAgentRuntime {
             callback,
             responses,
           );
-          this.adapter.log({
+          this.adapter.createLogs([{
             entityId: message.entityId,
             roomId: message.roomId,
             type: "evaluator",
@@ -2284,7 +2009,7 @@ export class AgentRuntime implements IAgentRuntime {
               message: message.content.text,
               runId: this.getCurrentRunId(),
             },
-          });
+          }]);
         }
       }),
     );
@@ -2427,7 +2152,7 @@ export class AgentRuntime implements IAgentRuntime {
       // pglite handle this at over 10k records fine though
       const batches = chunkArray(missingIdsInRoom, 5000);
       for (const batch of batches) {
-        await this.addParticipantsRoom(batch, firstRoom.id);
+        await this.createRoomParticipants(batch, firstRoom.id);
       }
     }
 
@@ -2478,50 +2203,47 @@ export class AgentRuntime implements IAgentRuntime {
         userName: userName,
       },
     };
-    // First check if the entity exists
-    const entity = await this.getEntityById(entityId);
+    // WHY upsert instead of get-check-create: Eliminates race condition in
+    // ensureConnection where concurrent calls could both see entity doesn't
+    // exist and both try to create it. Upsert is atomic.
 
-    if (!entity) {
-      const success = await this.createEntity({
-        id: entityId,
-        names,
-        metadata: entityMetadata,
+    // Fetch existing entity to merge names (if it exists)
+    const entity = (await this.adapter.getEntitiesByIds([entityId]))[0] ?? null;
+
+    const entityToUpsert: Entity = {
+      id: entityId,
+      names: entity
+        ? [...new Set([...(entity.names || []), ...names])].filter(Boolean) as string[]
+        : names,
+      metadata: entity
+        ? {
+            ...entity.metadata,
+            [source]: {
+              ...(entity.metadata?.[source] &&
+              typeof entity.metadata[source] === "object"
+                ? (entity.metadata[source] as Record<string, JsonValue>)
+                : {}),
+              id: userId,
+              name: name,
+              userName: userName,
+            },
+          }
+        : entityMetadata,
+      agentId: this.agentId,
+    };
+
+    // Atomic upsert - handles both insert and update
+    await this.adapter.upsertEntities([entityToUpsert]);
+
+    this.logger.debug(
+      {
+        src: "agent",
         agentId: this.agentId,
-      });
-      if (success) {
-        this.logger.debug(
-          {
-            src: "agent",
-            agentId: this.agentId,
-            entityId,
-            userName: name || userName,
-          },
-          "Entity created",
-        );
-      } else {
-        throw new Error(`Failed to create entity ${entityId}`);
-      }
-    } else {
-      await this.adapter.updateEntity({
-        id: entityId,
-        names: [...new Set([...(entity.names || []), ...names])].filter(
-          Boolean,
-        ) as string[],
-        metadata: {
-          ...entity.metadata,
-          [source]: {
-            ...(entity.metadata?.[source] &&
-            typeof entity.metadata[source] === "object"
-              ? (entity.metadata[source] as Record<string, JsonValue>)
-              : {}),
-            id: userId,
-            name: name,
-            userName: userName,
-          },
-        },
-        agentId: this.agentId,
-      });
-    }
+        entityId,
+        userName: name || userName,
+      },
+      entity ? "Entity updated" : "Entity created",
+    );
     await this.ensureWorldExists({
       id: worldId,
       name:
@@ -2556,7 +2278,7 @@ export class AgentRuntime implements IAgentRuntime {
 
   async ensureParticipantInRoom(entityId: UUID, roomId: UUID) {
     // Make sure entity exists in database before adding as participant
-    const entity = await this.getEntityById(entityId);
+    const entity = (await this.adapter.getEntitiesByIds([entityId]))[0] ?? null;
 
     // If entity is not found but it's not the agent itself, we might still want to proceed
     // This can happen when an entity exists in the database but isn't associated with this agent
@@ -2577,7 +2299,7 @@ export class AgentRuntime implements IAgentRuntime {
     const participants = await this.adapter.getParticipantsForRoom(roomId);
     if (!participants.includes(entityId)) {
       // Add participant using the ID
-      const added = await this.addParticipant(entityId, roomId);
+      const added = await this.adapter.createRoomParticipants([entityId], roomId);
 
       if (!added) {
         throw new Error(
@@ -2598,9 +2320,6 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
-  async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    return await this.adapter.removeParticipant(entityId, roomId);
-  }
 
   async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
     return await this.adapter.getParticipantsForEntity(entityId);
@@ -2615,43 +2334,46 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    return await this.adapter.addParticipantsRoom([entityId], roomId);
+    const ids = await this.adapter.createRoomParticipants([entityId], roomId);
+    return ids.length > 0;
   }
 
-  async addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean> {
-    return await this.adapter.addParticipantsRoom(entityIds, roomId);
+  async createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]> {
+    return await this.adapter.createRoomParticipants(entityIds, roomId);
   }
 
   /**
    * Ensure the existence of a world.
+   * 
+   * WHY upsert: Eliminates race condition where concurrent agent bootstraps
+   * could both try to create the same world. Upsert is atomic.
    */
   async ensureWorldExists({ id, name, messageServerId, metadata }: World) {
-    const world = await this.getWorld(id);
-    if (!world) {
-      this.logger.debug(
-        {
-          src: "agent",
-          agentId: this.agentId,
-          worldId: id,
-          name,
-          messageServerId,
-        },
-        "Creating world",
-      );
-      await this.adapter.createWorld({
-        id,
-        name,
-        agentId: this.agentId,
-        messageServerId,
-        metadata,
-      });
-      this.logger.debug(
-        { src: "agent", agentId: this.agentId, worldId: id, messageServerId },
-        "World created",
-      );
-    }
+    // Check if world exists (for logging only)
+    const world = (await this.adapter.getWorldsByIds([id]))[0] ?? null;
+    
+    // Atomic upsert - handles both insert and update
+    await this.adapter.upsertWorlds([{
+      id,
+      name,
+      agentId: this.agentId,
+      messageServerId,
+      metadata,
+    }]);
+
+    this.logger.debug(
+      { src: "agent", agentId: this.agentId, worldId: id, messageServerId },
+      world ? "World updated" : "World created",
+    );
   }
 
+  /**
+   * Ensure the existence of a room.
+   * 
+   * WHY upsert: Eliminates race condition where concurrent connection attempts
+   * (e.g., Discord bot receiving messages in same channel simultaneously) could
+   * both try to create the same room. Upsert is atomic.
+   */
   async ensureRoomExists({
     id,
     name,
@@ -2662,28 +2384,28 @@ export class AgentRuntime implements IAgentRuntime {
     worldId,
     metadata,
   }: Room) {
-    // Default worldId to agentId for agent-internal rooms
-    if (!worldId) {
-      worldId = this.agentId;
-    }
+    if (!worldId) throw new Error("worldId is required");
+    
+    // Check if room exists (for logging only)
     const room = await this.getRoom(id);
-    if (!room) {
-      await this.createRoom({
-        id,
-        name,
-        agentId: this.agentId,
-        source,
-        type,
-        channelId,
-        messageServerId,
-        worldId,
-        metadata,
-      });
-      this.logger.debug(
-        { src: "agent", agentId: this.agentId, channelId: id },
-        "Room created",
-      );
-    }
+    
+    // Atomic upsert - handles both insert and update
+    await this.adapter.upsertRooms([{
+      id,
+      name,
+      agentId: this.agentId,
+      source,
+      type,
+      channelId,
+      messageServerId,
+      worldId,
+      metadata,
+    }]);
+
+    this.logger.debug(
+      { src: "agent", agentId: this.agentId, channelId: id },
+      room ? "Room updated" : "Room created",
+    );
   }
 
   async composeState(
@@ -2691,7 +2413,6 @@ export class AgentRuntime implements IAgentRuntime {
     includeList: string[] | null = null,
     onlyInclude = false,
     skipCache = false,
-    trajectoryPhase?: string,
   ): Promise<State> {
     const trajectoryStepIdFromMessage =
       typeof message.metadata === "object" &&
@@ -2736,94 +2457,6 @@ export class AgentRuntime implements IAgentRuntime {
         providerNames.add(name);
       }
     }
-
-    // ── Provider relevance filtering ──────────────────────────────────
-    // 1. Providers with alwaysRun=true are always included regardless
-    //    of any filter/include list logic.
-    // 2. Dynamic providers with relevanceKeywords are auto-activated
-    //    when any keyword matches the message text, even if not
-    //    explicitly included.
-    const messageTextLower =
-      typeof message.content?.text === "string"
-        ? message.content.text.toLowerCase()
-        : "";
-
-    for (const p of this.providers) {
-      // alwaysRun providers bypass all filtering
-      if (p.alwaysRun && !p.private) {
-        providerNames.add(p.name);
-      }
-
-      // Dynamic providers with relevanceKeywords get auto-activated
-      // when a keyword matches the message.  This only applies when
-      // we're NOT in a strict filter-only mode (onlyInclude=true with
-      // a specific list), because that mode means the caller wants
-      // exact control.
-      if (
-        !filterList &&
-        p.dynamic &&
-        !p.private &&
-        p.relevanceKeywords &&
-        p.relevanceKeywords.length > 0 &&
-        messageTextLower.length > 0
-      ) {
-        for (const kw of p.relevanceKeywords) {
-          if (messageTextLower.includes(kw.toLowerCase())) {
-            providerNames.add(p.name);
-            break;
-          }
-        }
-      }
-    }
-
-    // ── BM25-based dynamic provider filtering ─────────────────────
-    // If the ActionFilterService is available, use its provider BM25
-    // index to auto-include dynamic providers whose descriptions are
-    // relevant to the current message. This extends the keyword-based
-    // matching above with semantic term matching.
-    // Only applies when NOT in strict filter-only mode.
-    if (!filterList) {
-      const actionFilterSvc =
-        this.getService<ActionFilterService>("action_filter");
-      if (actionFilterSvc) {
-        try {
-          const dynamicProviders = this.providers.filter(
-            (p) => p.dynamic && !p.private && !providerNames.has(p.name),
-          );
-          if (dynamicProviders.length > 0) {
-            const relevantNames = actionFilterSvc.filterProviders(
-              dynamicProviders,
-              message,
-              cachedState,
-            );
-            for (const name of relevantNames) {
-              providerNames.add(name);
-            }
-            if (relevantNames.length > 0) {
-              this.logger.debug(
-                {
-                  src: "agent",
-                  agentId: this.agentId,
-                  bm25Providers: relevantNames,
-                },
-                "BM25 auto-included dynamic providers",
-              );
-            }
-          }
-        } catch (err) {
-          // BM25 provider filtering is best-effort; never break composeState
-          this.logger.warn(
-            {
-              src: "agent",
-              agentId: this.agentId,
-              error: err instanceof Error ? err.message : String(err),
-            },
-            "BM25 provider filtering failed — continuing without it",
-          );
-        }
-      }
-    }
-
     const providersToGet: Provider[] = [];
     for (const provider of this.providers) {
       if (providerNames.has(provider.name)) {
@@ -2843,34 +2476,90 @@ export class AgentRuntime implements IAgentRuntime {
       }) => void;
     };
     const trajLogger = this.getService<TrajectoryLogger>("trajectory_logger");
+    const composeStateStart = Date.now();
+    const providerTimings: { name: string; durationMs: number }[] = [];
+    // Per-provider timeout so one stuck provider (e.g. hung API) cannot block the whole agent.
+    const PROVIDER_TIMEOUT = 30_000; // 30 second timeout per provider
     const providerData = await Promise.all(
       providersToGet.map(async (provider) => {
-        const start = Date.now();
-        const result = await provider.get(
-          this as IAgentRuntime,
-          message,
-          cachedState,
-        );
-        const duration = Date.now() - start;
-
-        // only need to inform if it's taking a long time
-        if (duration > 100) {
-          this.logger.debug(
-            {
-              src: "agent",
-              agentId: this.agentId,
-              provider: provider.name,
-              duration,
-            },
-            "Slow provider",
-          );
-        }
-        return {
-          ...result,
-          providerName: provider.name,
-        };
+        const providerStart = Date.now();
+    let timerId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) => {
+            timerId = setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    `Provider ${provider.name} timed out after ${PROVIDER_TIMEOUT}ms`,
+                  ),
+                ),
+              const timeoutPromise = new Promise<never>((_, reject) => {
+                  // ...
+                });
+              timeoutPromise,
+            ]);
+            clearTimeout(timerId); // Clear on success
+            const duration = Date.now() - start;
+            providerTimings.push({ name: provider.name, durationMs: duration });
+            if (duration > 100) {
+              this.logger.debug(
+                {
+                  src: "agent", 
+                  agentId: this.agentId,
+                  provider: provider.name,
+                  duration,
+                },
+                "Slow provider"
+              );
+            }
+            return {
+              ...result, 
+              providerName: provider.name,
+            };
+          } catch (error: unknown) {
+            clearTimeout(timerId);
+            const duration = Date.now() - start;
+            this.logger.error(
+              {
+                src: "agent",
+                agentId: this.agentId,
+                provider: provider.name,
+                duration,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              "Provider error or timeout",
+            );
+            // Return empty result so composeState continues
+            return {
+              values: {},
+              text: "",
+              data: {},
+              providerName: provider.name,
+            };
+          }
       }),
     );
+    const composeStateEnd = Date.now();
+    const totalProviderTime = composeStateEnd - composeStateStart;
+    if (totalProviderTime > 500 || providerTimings.length > 5) {
+      const sortedTimings = [...providerTimings].sort(
+        (a, b) => b.durationMs - a.durationMs,
+      );
+      const topTimings = sortedTimings
+        .slice(0, 5)
+        .map((t) => `${t.name}=${t.durationMs.toLocaleString()}ms`)
+        .join(", ");
+      this.logger.info(
+        {
+          src: "agent:composeState:profile",
+          agentId: this.agentId,
+          totalMs: totalProviderTime,
+          providerCount: providersToGet.length,
+          timings: sortedTimings,
+        },
+        `[PROFILE:composeState] ${totalProviderTime.toLocaleString()}ms for ${providersToGet.length} providers. Top: ${topTimings}`,
+      );
+    }
 
     if (trajectoryStepId && trajLogger) {
       const userText =
@@ -2882,9 +2571,7 @@ export class AgentRuntime implements IAgentRuntime {
             stepId: trajectoryStepId,
             providerName: r.providerName,
             data: { textLength: textLen },
-            purpose: trajectoryPhase
-              ? `compose_state:${trajectoryPhase}`
-              : "compose_state",
+            purpose: "compose_state",
             query: { message: userText.slice(0, 2000) },
           });
         } catch {
@@ -2980,7 +2667,7 @@ export class AgentRuntime implements IAgentRuntime {
       text: providersText,
     } as State;
     if (message.id) {
-      this.stateCacheSet(message.id, newState);
+      this.stateCache.set(message.id, newState);
     }
     return newState;
   }
@@ -3209,18 +2896,13 @@ export class AgentRuntime implements IAgentRuntime {
   private _createServiceResolver(serviceType: ServiceTypeName | string) {
     let resolver: ServiceResolver | undefined;
     let rejecter: ServiceRejecter | undefined;
-    const promise = new Promise<Service>((resolve, reject) => {
-      resolver = resolve;
-      rejecter = reject;
-    });
-    // Attach a no-op catch so that if the service fails to register
-    // the rejection is always "handled" at the promise level.
-    // Without this, handler.reject() in registerPluginServices causes
-    // an unhandled-rejection crash when no consumer has awaited the
-    // promise yet.  Callers who `await getServiceLoadPromise()` inside
-    // try/catch will still receive the error normally.
-    promise.catch(() => {});
-    this.servicePromises.set(serviceType, promise);
+    this.servicePromises.set(
+      serviceType,
+      new Promise<Service>((resolve, reject) => {
+        resolver = resolve;
+        rejecter = reject;
+      }),
+    );
     if (!resolver) {
       throw new Error(`Failed to create resolver for service ${serviceType}`);
     }
@@ -3231,6 +2913,10 @@ export class AgentRuntime implements IAgentRuntime {
       resolve: resolver,
       reject: rejecter,
     });
+    const promise = this.servicePromises.get(serviceType);
+    if (!promise) {
+      throw new Error(`Service promise for ${serviceType} not found`);
+    }
     return promise;
   }
 
@@ -3309,20 +2995,6 @@ export class AgentRuntime implements IAgentRuntime {
       "Using model",
     );
     return models[0].handler;
-  }
-
-  getModelConfiguration(
-    modelType: ModelTypeName | string,
-  ): ModelHandler | undefined {
-    const modelKey =
-      typeof modelType === "string" ? modelType : ModelType[modelType];
-    const models = this.models.get(modelKey);
-    if (!models || !models.length) {
-      return undefined;
-    }
-
-    // Return highest priority handler (first in array after sorting)
-    return models[0];
   }
 
   /**
@@ -3431,6 +3103,74 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
+    // prompts.log: log prompt and response when LOG_FILE is set
+    // Note: Prompts may contain sensitive data; LOG_FILE should only be enabled in secure environments
+    const providerStr =
+      provider || this.models.get(modelKey)?.[0]?.provider || "unknown";
+    const meta = {
+      agentName: this.character?.name,
+      agentId: this.agentId,
+      runId: this.getCurrentRunId(),
+      provider: providerStr,
+      actionContext: this.currentActionContext?.actionName,
+    };
+    if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
+      // Always redact secrets before writing to disk or logging
+      const redactedPrompt = this.redactSecrets(promptContent);
+      const pSlug = logPrompt(modelKey, redactedPrompt, meta);
+      if (pSlug) {
+        this.logger.debug(
+          {
+            src: "agent",
+            agentId: this.agentId,
+            model: modelKey,
+            slug: pSlug,
+            chars: promptContent.length,
+          },
+          `PROMPT ${pSlug}`,
+        );
+      }
+
+      let responseText: string;
+      if (typeof response === "string") {
+        responseText = this.redactSecrets(response);
+      } else if (
+        Array.isArray(response) &&
+        response.every((x) => typeof x === "number")
+      ) {
+        responseText = "[embedding-array]";
+      } else {
+        try {
+          const raw = this.redactSecrets(JSON.stringify(response));
+          responseText =
+            raw.length > 100_000
+              ? raw.substring(0, 100_000) +
+                `... [truncated, ${raw.length} total chars]`
+              : raw;
+        } catch {
+          responseText = "[non-serializable response]";
+        }
+      }
+      const rSlug = logResponse(modelKey, responseText, {
+        ...meta,
+        promptSlug: pSlug,
+        duration: Number(elapsedTime.toFixed(2)),
+      });
+      if (rSlug) {
+        this.logger.debug(
+          {
+            src: "agent",
+            agentId: this.agentId,
+            model: modelKey,
+            slug: rSlug,
+            duration: Number(elapsedTime.toFixed(2)),
+            chars: responseText.length,
+          },
+          `RESPONSE ${rSlug}`,
+        );
+      }
+    }
+
     // Log to database
     const responseValue =
       Array.isArray(response) && response.every((x) => typeof x === "number")
@@ -3438,7 +3178,7 @@ export class AgentRuntime implements IAgentRuntime {
         : typeof response === "string"
           ? response
           : undefined;
-    this.adapter.log({
+    this.adapter.createLogs([{
       entityId: this.agentId,
       roomId: this.currentRoomId ?? this.agentId,
       body: {
@@ -3460,7 +3200,7 @@ export class AgentRuntime implements IAgentRuntime {
         response: responseValue,
       },
       type: `useModel:${modelKey}`,
-    });
+    }]);
   }
 
   async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
@@ -3470,6 +3210,40 @@ export class AgentRuntime implements IAgentRuntime {
   ): Promise<R> {
     let modelKey =
       typeof modelType === "string" ? modelType : ModelType[modelType];
+
+    // Get call stack to identify caller (only when debug logging is enabled to avoid overhead)
+    let callerInfo = "unknown";
+    if (this.logger.level === "debug" || this.logger.level === "trace") {
+      try {
+        const stackLimit = Error.stackTraceLimit;
+        Error.stackTraceLimit = 5; // Limit stack depth for efficiency
+        const stack = new Error().stack;
+        Error.stackTraceLimit = stackLimit;
+        callerInfo =
+          stack
+            ?.split("\n")
+            .slice(2, 5) // Get first 3 frames after this function
+            .map((line) => line.trim().replace(/^at\s+/, ""))
+            .join(" <- ") || "unknown";
+      } catch {
+        // Fallback if stack trace fails
+        callerInfo = "unknown (stack error)";
+      }
+    }
+
+    // Log model usage with caller information 
+    this.logger.debug(
+      {
+        src: "agent",
+        agentId: this.agentId,
+        model: modelKey,
+        caller: callerInfo,
+        provider: provider || "default",
+        actionContext: this.currentActionContext?.actionName,
+        runId: this.getCurrentRunId(),
+      },
+      "useModel called",
+    );
 
     // Apply LLM mode override for text generation models
     const llmMode = this.getLLMMode();
@@ -3694,15 +3468,19 @@ export class AgentRuntime implements IAgentRuntime {
         typeof performance.now === "function"
           ? performance.now()
           : Date.now()) - startTime;
-      this.logger.trace(
+      this.logger.debug(
         {
           src: "agent",
           agentId: this.agentId,
           model: modelKey,
           duration: Number(elapsedTime.toFixed(2)),
           streaming: true,
+          caller: callerInfo,
+          provider:
+            provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
+          actionContext: this.currentActionContext?.actionName,
         },
-        "Model output (stream with callback complete)",
+        "useModel completed (stream with callback complete)",
       );
 
       this.logModelCall(
@@ -3770,15 +3548,19 @@ export class AgentRuntime implements IAgentRuntime {
         ? performance.now()
         : Date.now()) - startTime;
 
-    // Log timing / response (keep debug log if useful)
-    this.logger.trace(
+    // Log timing / response with caller info for debugging
+    this.logger.debug(
       {
         src: "agent",
         agentId: this.agentId,
         model: modelKey,
         duration: Number(elapsedTime.toFixed(2)),
+        caller: callerInfo,
+        provider:
+          provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
+        actionContext: this.currentActionContext?.actionName,
       },
-      "Model output",
+      "useModel completed",
     );
 
     this.logModelCall(
@@ -3824,11 +3606,8 @@ export class AgentRuntime implements IAgentRuntime {
               ? this.character.system
               : "",
           userPrompt: promptContent ?? "",
-          response: String(modelKey).includes("EMBEDDING")
-            ? `[embedding vector]`
-            : typeof response === "string"
-              ? response
-              : JSON.stringify(response),
+          response:
+            typeof response === "string" ? response : JSON.stringify(response),
           temperature: typeof tempRaw === "number" ? tempRaw : 0,
           maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
           purpose: "action",
@@ -4022,8 +3801,8 @@ export class AgentRuntime implements IAgentRuntime {
       key?: string;
       modelSize?: "small" | "large";
       model?: string;
-      preferredEncapsulation?: "xml";
-      forceFormat?: "xml";
+      preferredEncapsulation?: "json" | "xml";
+      forceFormat?: "json" | "xml";
       requiredFields?: string[];
       contextCheckLevel?: 0 | 1 | 2 | 3;
       maxRetries?: number;
@@ -4069,11 +3848,6 @@ export class AgentRuntime implements IAgentRuntime {
       (options.modelSize === "small" ? "TEXT_SMALL" : "TEXT_LARGE");
     const schemaKey = schema.map((s) => s.field).join(",");
     const modelSchemaKey = `${modelIdentifier}:${schemaKey}`;
-    const deterministicValidationSeed = buildConversationSeed({
-      runtime: this,
-      state,
-      surface: `dynamic-prompt:${modelSchemaKey}`,
-    });
 
     // Get validation level from settings or options
     const validationLevelRaw = this.getSetting("VALIDATION_LEVEL");
@@ -4140,17 +3914,12 @@ export class AgentRuntime implements IAgentRuntime {
       const output = templateFunction({ ...filteredState, ...state.values });
 
       // Process format options
-      if (options.forceFormat === "xml") {
-        this.logger.debug(
-          "dynamicPromptExecFromState: explicit XML format requested",
-        );
+      let format = "XML";
+      if (options.forceFormat) {
+        format = options.forceFormat.toUpperCase();
+      } else if (options.preferredEncapsulation === "json") {
+        format = "JSON";
       }
-      if (options.preferredEncapsulation === "xml") {
-        this.logger.debug(
-          "dynamicPromptExecFromState: preferred encapsulation is XML",
-        );
-      }
-      const format = "XML";
 
       /**
        * Rough token count estimate for logging/debugging purposes only.
@@ -4189,14 +3958,7 @@ export class AgentRuntime implements IAgentRuntime {
             const defaultValidate = contextLevel === 1;
             const needsValidation = row.validateField ?? defaultValidate;
             if (needsValidation) {
-              perFieldCodes.set(
-                row.field,
-                deterministicHex(
-                  deterministicValidationSeed,
-                  `field-code:${row.field}`,
-                  8,
-                ),
-              );
+              perFieldCodes.set(row.field, uuidv4().slice(0, 8));
             }
           }
         }
@@ -4255,37 +4017,35 @@ export class AgentRuntime implements IAgentRuntime {
       }
 
       // Generate prompt with format example
-      const CONTAINER_START = "<response>";
-      const CONTAINER_END = "</response>";
+      const isXML = format === "XML";
+      const CONTAINER_START = isXML ? "<response>" : "{";
+      const CONTAINER_END = isXML ? "</response>" : "}";
 
       let EXAMPLE = `${CONTAINER_START}\n`;
       for (let i = 0; i < extSchema.length; i++) {
         const s = extSchema[i];
-        EXAMPLE += `  <${s.field}>${s.description}</${s.field}>\n`;
+        const isLast = i === extSchema.length - 1;
+        if (isXML) {
+          EXAMPLE += `  <${s.field}>${s.description}</${s.field}>\n`;
+        } else {
+          // No trailing comma on last field for valid JSON
+          EXAMPLE += `  "${s.field}": "${s.description}"${isLast ? "" : ","}\n`;
+        }
       }
       EXAMPLE += `${CONTAINER_END}\n`;
 
-      const initCode = deterministicUuid(
-        deterministicValidationSeed,
-        `init-code:${currentRetry}`,
-      );
-      const midCode = deterministicUuid(
-        deterministicValidationSeed,
-        `mid-code:${currentRetry}`,
-      );
-      const finalCode = deterministicUuid(
-        deterministicValidationSeed,
-        `final-code:${currentRetry}`,
-      );
+      const initCode = uuidv4();
+      const midCode = uuidv4();
+      const finalCode = uuidv4();
 
       // Check for smart retry context (set by previous retry iteration)
       const smartRetryContext =
         (state as Record<string, unknown>)._smartRetryContext || "";
 
-      const section_start = "<output>";
-      const section_end = "</output>";
+      const section_start = isXML ? "<output>" : "# Strict Output instructions";
+      const section_end = isXML ? "</output>" : "";
 
-      let prompt =
+      const prompt =
         "initial code: " +
         initCode +
         "\n" +
@@ -4318,72 +4078,10 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         `dynamicPromptExecFromState prompt ~${outputTokenEst.toLocaleString()} tokens`,
       );
 
-      // ── Prompt trimming safety net ──────────────────────────────────────
-      // If the estimated prompt tokens exceed the budget, trim the prompt
-      // to fit. trimTokens keeps the most recent content (end of prompt)
-      // which preserves the received message, focus header, and output
-      // instructions while shedding older conversation history.
-      //
-      // We apply a 15 % safety margin because the word-based estimator
-      // can undercount by 10-20 % for structured/template text compared
-      // to the model's actual tokenizer.
-      const maxPromptTokens =
-        Number(this.getSetting("MAX_PROMPT_TOKENS")) ||
-        DEFAULT_MAX_PROMPT_TOKENS;
-      const TRIM_SAFETY_FACTOR = 0.85;
-      const trimTarget = Math.floor(maxPromptTokens * TRIM_SAFETY_FACTOR);
-
-      if (outputTokenEst > trimTarget) {
-        this.logger.warn(
-          `dynamicPromptExecFromState: prompt exceeds budget ` +
-            `(~${outputTokenEst.toLocaleString()} est > ${maxPromptTokens.toLocaleString()} max), trimming to ~${trimTarget.toLocaleString()}`,
-        );
-        try {
-          prompt = await trimTokens(prompt, trimTarget, this);
-        } catch (trimError) {
-          // If trimTokens fails (e.g. no tokenizer model registered),
-          // fall back to character-based truncation using a conservative
-          // 2 chars/token ratio.  Structured text with formatting,
-          // punctuation, and short words can tokenize at ~2-3 chars/token;
-          // using 2 guarantees we stay under the token limit.
-          this.logger.warn(
-            `trimTokens failed, falling back to character truncation: ${String(trimError)}`,
-          );
-          const maxChars = trimTarget * 2;
-          if (prompt.length > maxChars) {
-            prompt = prompt.slice(-maxChars);
-          }
-        }
-      }
-
-      // ── Cap max_tokens to fit within model context window ─────────────
-      // Ensure input_tokens + max_tokens doesn't exceed the model's
-      // context limit. Prevents "input length and max_tokens exceed
-      // context limit" errors from the model provider.
-      //
-      // Because our token estimator can undercount by 10-20 %, we inflate
-      // the estimate by the inverse of the safety factor to get a
-      // pessimistic (closer-to-actual) input token count.
-      let effectiveMaxTokens = params.maxTokens;
-      if (effectiveMaxTokens) {
-        const modelContextLimit =
-          Number(this.getSetting("MODEL_CONTEXT_LIMIT")) || 200_000;
-        const inputTokenEst = estToken(prompt);
-        // Pad the estimate to account for token estimation inaccuracy
-        const pessimisticInput = Math.ceil(inputTokenEst / TRIM_SAFETY_FACTOR);
-        const maxAvailableOutput = modelContextLimit - pessimisticInput - 1_000;
-        if (effectiveMaxTokens > maxAvailableOutput) {
-          const capped = Math.max(1_000, maxAvailableOutput);
-          this.logger.warn(
-            `dynamicPromptExecFromState: capping maxTokens ${effectiveMaxTokens} → ${capped} ` +
-              `(~${pessimisticInput.toLocaleString()} est input + ${effectiveMaxTokens.toLocaleString()} output > ${modelContextLimit.toLocaleString()} context)`,
-          );
-          effectiveMaxTokens = capped;
-        }
-      }
-
-      // Create ValidationStreamExtractor on first iteration if streaming.
-      if (currentRetry === 0 && options.onStreamChunk && !extractor) {
+      // Create ValidationStreamExtractor on first iteration if streaming
+      // Only use ValidationStreamExtractor for XML format - it parses XML tags
+      // JSON streaming should bypass this extractor (or use a JSON-specific one later)
+      if (currentRetry === 0 && options.onStreamChunk && !extractor && isXML) {
         const hasRichConsumer = !!options.onStreamEvent;
 
         const streamFields = schema
@@ -4406,11 +4104,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
               ? ["text"]
               : [];
 
-        const streamMessageId = `stream-${deterministicHex(
-          deterministicValidationSeed,
-          `stream-message-id:${currentRetry}`,
-          20,
-        )}`;
+        const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
         extractor = new ValidationStreamExtractor({
           level: contextLevel,
@@ -4418,44 +4112,10 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
           streamFields: finalStreamFields,
           expectedCodes: perFieldCodes,
           onChunk: (chunk) => {
-            const streamResult = options.onStreamChunk?.(
-              chunk,
-              streamMessageId,
-            );
-            if (streamResult) {
-              void Promise.resolve(streamResult).catch((error) => {
-                this.logger.warn(
-                  {
-                    src: "runtime:dynamic-prompt",
-                    error:
-                      error instanceof Error ? error.message : String(error),
-                  },
-                  "onStreamChunk callback failed",
-                );
-              });
-            }
+            options.onStreamChunk?.(chunk, streamMessageId);
           },
           onEvent: options.onStreamEvent
-            ? (event) => {
-                const eventResult = options.onStreamEvent?.(
-                  event,
-                  streamMessageId,
-                );
-                if (eventResult) {
-                  void Promise.resolve(eventResult).catch((error) => {
-                    this.logger.warn(
-                      {
-                        src: "runtime:dynamic-prompt",
-                        error:
-                          error instanceof Error
-                            ? error.message
-                            : String(error),
-                      },
-                      "onStreamEvent callback failed",
-                    );
-                  });
-                }
-              }
+            ? (event) => options.onStreamEvent?.(event, streamMessageId)
             : undefined,
           abortSignal: options.abortSignal,
           hasRichConsumer,
@@ -4470,10 +4130,6 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       const modelParams = {
         ...params,
         prompt,
-        // Use the capped maxTokens to stay within the model context window
-        ...(effectiveMaxTokens !== undefined
-          ? { maxTokens: effectiveMaxTokens }
-          : {}),
         providerOptions: {
           agentName: this.character.name,
         },
@@ -4549,7 +4205,9 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
 
       let responseContent: Record<string, unknown> | null = null;
       try {
-        responseContent = parseKeyValueXml(cleanResponse);
+        responseContent = isXML
+          ? parseKeyValueXml(cleanResponse)
+          : parseJSONObjectFromText(cleanResponse);
         this.logger.debug(
           `dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`,
         );
@@ -4958,39 +4616,33 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     }
   }
 
-  async ensureEmbeddingDimension(): Promise<void> {
+  async ensureEmbeddingDimension() {
     if (!this.adapter) {
       throw new Error(
         "Database adapter not initialized before ensureEmbeddingDimension",
       );
     }
-    if (!this.getModel(ModelType.TEXT_EMBEDDING)) {
+    const model = this.getModel(ModelType.TEXT_EMBEDDING);
+    if (!model) {
       throw new Error("No TEXT_EMBEDDING model registered");
     }
 
-    // Check if dimension is provided via settings (skips expensive ~500ms API call)
-    const providedDimension = this.getSetting("EMBEDDING_DIMENSION");
-    const parsedDimension = Number(providedDimension);
-    const useProvidedDimension = parsedDimension > 0;
-
-    const dimension = useProvidedDimension
-      ? parsedDimension
-      : (
-          await this.useModel(ModelType.TEXT_EMBEDDING, {
-            text: "embedding-dimension-probe",
-          })
-        )?.length;
-
-    if (!dimension) {
-      throw new Error("Invalid embedding dimension");
+    // Use a non-empty test string to avoid warnings from embedding providers
+    // Some providers (like OpenAI) reject empty strings as invalid input
+    const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
+      text: "test",
+    });
+    if (!embedding || !embedding.length) {
+      throw new Error("Invalid embedding received");
     }
 
-    await this.adapter.ensureEmbeddingDimension(dimension);
+    // Cache the dimension for future use
+    this.cachedEmbeddingDimension = embedding.length;
+
+    await this.adapter.ensureEmbeddingDimension(embedding.length);
     this.logger.debug(
-      { src: "agent", agentId: this.agentId, dimension },
-      useProvidedDimension
-        ? "Embedding dimension set from config"
-        : "Embedding dimension set via API call",
+      { src: "agent", agentId: this.agentId, dimension: embedding.length },
+      "Embedding dimension set",
     );
   }
 
@@ -5012,7 +4664,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return this.adapter.db as object;
   }
   async init(): Promise<void> {
-    await this.adapter.init();
+    await this.adapter.initialize();
   }
   async close(): Promise<void> {
     if (this.adapter) {
@@ -5020,27 +4672,60 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     }
   }
   async getAgent(agentId: UUID): Promise<Agent | null> {
-    return await this.adapter.getAgent(agentId);
+    const agents = await this.adapter.getAgentsByIds([agentId]);
+    return agents[0] ?? null;
   }
   async getAgents(): Promise<Partial<Agent>[]> {
     return await this.adapter.getAgents();
   }
   async createAgent(agent: Partial<Agent>): Promise<boolean> {
-    return await this.adapter.createAgent(agent);
+    const ids = await this.adapter.createAgents([agent]);
+    return ids.length > 0;
   }
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
-    return await this.adapter.updateAgent(agentId, agent);
+    return await this.adapter.updateAgents([{ agentId, agent }]);
   }
   async deleteAgent(agentId: UUID): Promise<boolean> {
-    return await this.adapter.deleteAgent(agentId);
+    return await this.adapter.deleteAgents([agentId]);
   }
+  async countAgents(): Promise<number> {
+    return await this.adapter.countAgents();
+  }
+  async cleanupAgents(): Promise<void> {
+    return await this.adapter.cleanupAgents();
+  }
+
+  // Batch agent methods
+  async getAgentsByIds(agentIds: UUID[]): Promise<Agent[]> {
+    return await this.adapter.getAgentsByIds(agentIds);
+  }
+  async createAgents(agents: Partial<Agent>[]): Promise<UUID[]> {
+    return await this.adapter.createAgents(agents);
+  }
+  async upsertAgents(agents: Partial<Agent>[]): Promise<void> {
+    return await this.adapter.upsertAgents(agents);
+  }
+  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
+    return await this.adapter.updateAgents(updates);
+  }
+  async deleteAgents(agentIds: UUID[]): Promise<boolean> {
+    return await this.adapter.deleteAgents(agentIds);
+  }
+
   async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
     if (!agent.id) {
       throw new Error("Agent id is required");
     }
 
-    // Check if agent exists by ID
-    const existingAgent = await this.adapter.getAgent(agent.id);
+    // WHY upsert instead of get-check-create: Eliminates race condition where
+    // two concurrent calls could both see agent doesn't exist and both try to
+    // create it. Upsert is atomic (single SQL statement), so the database
+    // guarantees only one succeeds.
+
+    // Fetch existing agent to perform intelligent merge (if it exists)
+    const existingAgent = (await this.adapter.getAgentsByIds([agent.id]))[0] ?? null;
+
+    let agentToUpsert: Partial<Agent>;
 
     if (existingAgent) {
       // Merge DB-persisted settings with character configuration
@@ -5077,7 +4762,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         mergedSettings.secrets = mergedSecrets;
       }
 
-      const updatedAgent = {
+      agentToUpsert = {
         ...existingAgent, // Keep all DB-persisted data
         ...agent, // Override with character.json values
         settings: mergedSettings, // Use intelligently merged settings
@@ -5086,34 +4771,31 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
         secrets:
           Object.keys(mergedSecrets).length > 0 ? mergedSecrets : agent.secrets,
       };
-
-      await this.adapter.updateAgent(agent.id, updatedAgent);
-      const refreshedAgent = await this.adapter.getAgent(agent.id);
-
-      if (!refreshedAgent) {
-        throw new Error(`Failed to retrieve agent after update: ${agent.id}`);
-      }
-
-      this.logger.debug(
-        { src: "agent", agentId: agent.id },
-        "Agent updated on restart",
-      );
-      return refreshedAgent;
+    } else {
+      // No existing agent - upsert will insert it
+      agentToUpsert = {
+        ...agent,
+        id: agent.id,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as Agent;
     }
 
-    // Create new agent if it doesn't exist
-    const newAgent: Agent = {
-      ...agent,
-      id: agent.id,
-    } as Agent;
+    // Atomic upsert - handles both insert and update cases
+    await this.adapter.upsertAgents([agentToUpsert]);
 
-    const created = await this.adapter.createAgent(newAgent);
-    if (!created) {
-      throw new Error(`Failed to create agent: ${agent.id}`);
+    // Fetch and return the final state
+    const refreshedAgent = (await this.adapter.getAgentsByIds([agent.id]))[0] ?? null;
+
+    if (!refreshedAgent) {
+      throw new Error(`Failed to retrieve agent after upsert: ${agent.id}`);
     }
 
-    this.logger.debug({ src: "agent", agentId: agent.id }, "Agent created");
-    return newAgent;
+    this.logger.debug(
+      { src: "agent", agentId: agent.id },
+      existingAgent ? "Agent updated on restart" : "Agent created",
+    );
+    return refreshedAgent;
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {
     const entities = await this.adapter.getEntitiesByIds([entityId]);
@@ -5121,9 +4803,6 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return entities[0];
   }
 
-  async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null> {
-    return await this.adapter.getEntitiesByIds(entityIds);
-  }
   async getEntitiesForRoom(
     roomId: UUID,
     includeComponents?: boolean,
@@ -5134,47 +4813,29 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     if (!entity.agentId) {
       entity.agentId = this.agentId;
     }
-    return await this.createEntities([entity]);
+    const ids = await this.createEntities([entity]);
+    return ids.length > 0;
   }
 
-  async createEntities(entities: Entity[]): Promise<boolean> {
+  async createEntities(entities: Entity[]): Promise<UUID[]> {
     entities.forEach((e) => {
       e.agentId = this.agentId;
     });
     return await this.adapter.createEntities(entities);
   }
+  async upsertEntities(entities: Entity[]): Promise<void> {
+    entities.forEach((e) => {
+      e.agentId = this.agentId;
+    });
+    return await this.adapter.upsertEntities(entities);
+  }
 
-  async updateEntity(entity: Entity): Promise<void> {
-    await this.adapter.updateEntity(entity);
-  }
-  async getComponent(
-    entityId: UUID,
-    type: string,
-    worldId?: UUID,
-    sourceEntityId?: UUID,
-  ): Promise<Component | null> {
-    return await this.adapter.getComponent(
-      entityId,
-      type,
-      worldId,
-      sourceEntityId,
-    );
-  }
   async getComponents(
     entityId: UUID,
     worldId?: UUID,
     sourceEntityId?: UUID,
   ): Promise<Component[]> {
     return await this.adapter.getComponents(entityId, worldId, sourceEntityId);
-  }
-  async createComponent(component: Component): Promise<boolean> {
-    return await this.adapter.createComponent(component);
-  }
-  async updateComponent(component: Component): Promise<void> {
-    await this.adapter.updateComponent(component);
-  }
-  async deleteComponent(componentId: UUID): Promise<void> {
-    await this.adapter.deleteComponent(componentId);
   }
   async addEmbeddingToMemory(memory: Memory): Promise<Memory> {
     if (memory.embedding) {
@@ -5184,9 +4845,28 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     if (!memoryText) {
       throw new Error("Cannot generate embedding: Memory content is empty");
     }
-    memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
-      text: memoryText,
-    });
+    try {
+      memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
+        text: memoryText,
+      });
+    } catch (error: unknown) {
+      this.logger.error(
+        {
+          src: "agent",
+          agentId: this.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Embedding generation failed",
+      );
+      // Return zero vector as fallback instead of trying to embed empty string
+      // Use cached dimension if available, otherwise default to 1536 (OpenAI's dimension)
+      const dimension = this.cachedEmbeddingDimension || 1536;
+      memory.embedding = new Array(dimension).fill(0);
+      this.logger.warn(
+        { src: "agent", agentId: this.agentId, dimension },
+        "Using zero vector for failed embedding",
+      );
+    }
     return memory;
   }
 
@@ -5250,9 +4930,6 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
 
     return allMemories;
   }
-  async getMemoryById(id: UUID): Promise<Memory | null> {
-    return await this.adapter.getMemoryById(id);
-  }
   async getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]> {
     return await this.adapter.getMemoriesByIds(ids, tableName);
   }
@@ -5273,14 +4950,6 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     query_match_count: number;
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
     return await this.adapter.getCachedEmbeddings(params);
-  }
-  async log(params: {
-    body: { [key: string]: unknown };
-    entityId: UUID;
-    roomId: UUID;
-    type: string;
-  }): Promise<void> {
-    await this.adapter.log(params);
   }
   async searchMemories(params: {
     embedding: number[];
@@ -5317,28 +4986,17 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
    * Returns an empty object if no secrets are configured.
    */
   private getSecretsForRedaction(): Record<string, string> {
+    const secrets = this.character?.settings?.secrets;
+    if (!secrets || typeof secrets !== "object") {
+      return {};
+    }
+    // Filter to only include string values
     const result: Record<string, string> = {};
-
-    // Include character.secrets (top-level secrets)
-    const topSecrets = this.character?.secrets;
-    if (topSecrets && typeof topSecrets === "object") {
-      for (const [key, value] of Object.entries(topSecrets)) {
-        if (typeof value === "string" && value.length > 0) {
-          result[key] = value;
-        }
+    for (const [key, value] of Object.entries(secrets)) {
+      if (typeof value === "string" && value.length > 0) {
+        result[key] = value;
       }
     }
-
-    // Include character.settings.secrets (nested secrets)
-    const nestedSecrets = this.character?.settings?.secrets;
-    if (nestedSecrets && typeof nestedSecrets === "object") {
-      for (const [key, value] of Object.entries(nestedSecrets)) {
-        if (typeof value === "string" && value.length > 0 && !result[key]) {
-          result[key] = value;
-        }
-      }
-    }
-
     return result;
   }
 
@@ -5357,41 +5015,6 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return redactWithSecrets(text, { secrets, applyPatterns: true });
   }
 
-  async createMemory(
-    memory: Memory,
-    tableName: string,
-    unique?: boolean,
-  ): Promise<UUID> {
-    if (unique !== undefined) memory.unique = unique;
-
-    // Redact any secrets from memory content before storing
-    const secrets = this.getSecretsForRedaction();
-    if (Object.keys(secrets).length > 0 && memory.content?.text) {
-      memory = {
-        ...memory,
-        content: {
-          ...memory.content,
-          text: redactWithSecrets(memory.content.text, {
-            secrets,
-            applyPatterns: true,
-          }),
-        },
-      };
-    }
-
-    return await this.adapter.createMemory(memory, tableName, unique);
-  }
-  async updateMemory(
-    memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
-  ): Promise<boolean> {
-    return await this.adapter.updateMemory(memory);
-  }
-  async deleteMemory(memoryId: UUID): Promise<void> {
-    await this.adapter.deleteMemory(memoryId);
-  }
-  async deleteManyMemories(memoryIds: UUID[]): Promise<void> {
-    await this.adapter.deleteManyMemories(memoryIds);
-  }
   async clearAllAgentMemories(): Promise<void> {
     this.logger.info(
       { src: "agent", agentId: this.agentId },
@@ -5411,7 +5034,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
       return;
     }
 
-    await this.adapter.deleteManyMemories(memoryIds);
+    await this.adapter.deleteMemories(memoryIds);
     this.logger.info(
       { src: "agent", agentId: this.agentId, count: memoryIds.length },
       "Memories cleared",
@@ -5421,11 +5044,20 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     await this.adapter.deleteAllMemories(roomId, tableName);
   }
   async countMemories(
-    roomId: UUID,
+    roomIdOrParams:
+      | UUID
+      | {
+          roomId?: UUID;
+          unique?: boolean;
+          tableName?: string;
+          entityId?: UUID;
+          agentId?: UUID;
+          metadata?: Record<string, unknown>;
+        },
     unique?: boolean,
     tableName?: string,
   ): Promise<number> {
-    return await this.adapter.countMemories(roomId, unique, tableName);
+    return await this.adapter.countMemories(roomIdOrParams, unique, tableName);
   }
   async getLogs(params: {
     entityId?: UUID;
@@ -5436,31 +5068,68 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   }): Promise<Log[]> {
     return await this.adapter.getLogs(params);
   }
-  async deleteLog(logId: UUID): Promise<void> {
-    await this.adapter.deleteLog(logId);
+  // Batch log methods
+  async getLogsByIds(logIds: UUID[]): Promise<Log[]> {
+    return await this.adapter.getLogsByIds(logIds);
+  }
+
+  async createLogs(params: Array<{ body: LogBody; entityId: UUID; roomId: UUID; type: string }>): Promise<void> {
+    return await this.adapter.createLogs(params);
+  }
+
+  async updateLogs(logs: Array<{ id: UUID; updates: Partial<Log> }>): Promise<void> {
+    return await this.adapter.updateLogs(logs);
+  }
+
+  async deleteLogs(logIds: UUID[]): Promise<void> {
+    return await this.adapter.deleteLogs(logIds);
   }
   async createWorld(world: World): Promise<UUID> {
-    return await this.adapter.createWorld(world);
+    const ids = await this.adapter.createWorlds([world]);
+    return ids[0];
   }
   async getWorld(id: UUID): Promise<World | null> {
-    return await this.adapter.getWorld(id);
+    const worlds = await this.adapter.getWorldsByIds([id]);
+    return worlds[0] ?? null;
   }
+  async deleteWorld(worldId: UUID): Promise<void> {
+    await this.adapter.deleteWorlds([worldId]);
+  }
+  /** @deprecated Use deleteWorld instead */
   async removeWorld(worldId: UUID): Promise<void> {
-    await this.adapter.removeWorld(worldId);
+    await this.deleteWorld(worldId);
   }
   async getAllWorlds(): Promise<World[]> {
     return await this.adapter.getAllWorlds();
   }
   async updateWorld(world: World): Promise<void> {
-    await this.adapter.updateWorld(world);
+    await this.adapter.updateWorlds([world]);
   }
+
+  // Batch world methods
+  async getWorldsByIds(worldIds: UUID[]): Promise<World[]> {
+    return await this.adapter.getWorldsByIds(worldIds);
+  }
+  async createWorlds(worlds: World[]): Promise<UUID[]> {
+    return await this.adapter.createWorlds(worlds);
+  }
+  async upsertWorlds(worlds: World[]): Promise<void> {
+    return await this.adapter.upsertWorlds(worlds);
+  }
+  async deleteWorlds(worldIds: UUID[]): Promise<void> {
+    await this.adapter.deleteWorlds(worldIds);
+  }
+  async updateWorlds(worlds: World[]): Promise<void> {
+    await this.adapter.updateWorlds(worlds);
+  }
+
   async getRoom(roomId: UUID): Promise<Room | null> {
     const rooms = await this.adapter.getRoomsByIds([roomId]);
     if (!rooms || !rooms.length) return null;
     return rooms[0];
   }
 
-  async getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null> {
+  async getRoomsByIds(roomIds: UUID[]): Promise<Room[]> {
     return await this.adapter.getRoomsByIds(roomIds);
   }
   async createRoom({
@@ -5472,10 +5141,7 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     messageServerId,
     worldId,
   }: Room): Promise<UUID> {
-    // Default worldId to agentId for agent-internal rooms (e.g. heartbeat)
-    if (!worldId) {
-      worldId = this.agentId;
-    }
+    if (!worldId) throw new Error("worldId is required");
     const res = await this.adapter.createRooms([
       {
         id,
@@ -5494,21 +5160,15 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   async createRooms(rooms: Room[]): Promise<UUID[]> {
     return await this.adapter.createRooms(rooms);
   }
-
-  async deleteRoom(roomId: UUID): Promise<void> {
-    await this.adapter.deleteRoom(roomId);
+  async upsertRooms(rooms: Room[]): Promise<void> {
+    return await this.adapter.upsertRooms(rooms);
   }
+
   async deleteRoomsByWorldId(worldId: UUID): Promise<void> {
     await this.adapter.deleteRoomsByWorldId(worldId);
   }
-  async updateRoom(room: Room): Promise<void> {
-    await this.adapter.updateRoom(room);
-  }
-  async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
-    return await this.adapter.getRoomsForParticipant(entityId);
-  }
-  async getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]> {
-    return await this.adapter.getRoomsForParticipants(userIds);
+  async getRoomsForParticipants(entityId: UUID): Promise<UUID[]> {
+    return await this.adapter.getRoomsForParticipants(entityId);
   }
 
   // deprecate this one
@@ -5525,29 +5185,12 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   ): Promise<"FOLLOWED" | "MUTED" | null> {
     return await this.adapter.getParticipantUserState(roomId, entityId);
   }
-  async setParticipantUserState(
+  async updateParticipantUserState(
     roomId: UUID,
     entityId: UUID,
     state: "FOLLOWED" | "MUTED" | null,
   ): Promise<void> {
-    await this.adapter.setParticipantUserState(roomId, entityId, state);
-  }
-  async createRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-    tags?: string[];
-    metadata?: Metadata;
-  }): Promise<boolean> {
-    return await this.adapter.createRelationship(params);
-  }
-  async updateRelationship(relationship: Relationship): Promise<void> {
-    await this.adapter.updateRelationship(relationship);
-  }
-  async getRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-  }): Promise<Relationship | null> {
-    return await this.adapter.getRelationship(params);
+    await this.adapter.updateParticipantUserState(roomId, entityId, state);
   }
   async getRelationships(params: {
     entityId: UUID;
@@ -5555,22 +5198,19 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   }): Promise<Relationship[]> {
     return await this.adapter.getRelationships(params);
   }
-  async getCache<T>(key: string): Promise<T | undefined> {
-    return await this.adapter.getCache<T>(key);
+  // Batch cache methods
+  async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
+    return await this.adapter.getCaches<T>(keys);
   }
-  async setCache<T>(key: string, value: T): Promise<boolean> {
-    return await this.adapter.setCache<T>(key, value);
+
+  async setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean> {
+    return await this.adapter.setCaches<T>(entries);
   }
-  async deleteCache(key: string): Promise<boolean> {
-    return await this.adapter.deleteCache(key);
+
+  async deleteCaches(keys: string[]): Promise<boolean> {
+    return await this.adapter.deleteCaches(keys);
   }
-  async createTask(task: Task): Promise<UUID> {
-    // Default worldId to agentId for agent-internal tasks (e.g. cron, heartbeat)
-    if (!task.worldId) {
-      task = { ...task, worldId: this.agentId };
-    }
-    return await this.adapter.createTask(task);
-  }
+
   async getTasks(params: {
     roomId?: UUID;
     tags?: string[];
@@ -5578,18 +5218,394 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   }): Promise<Task[]> {
     return await this.adapter.getTasks(params);
   }
-  async getTask(id: UUID): Promise<Task | null> {
-    return await this.adapter.getTask(id);
-  }
   async getTasksByName(name: string): Promise<Task[]> {
     return await this.adapter.getTasksByName(name);
   }
+
+  // Single-item wrappers (deprecated - delegate to batch methods)
+  async createTask(task: Task): Promise<UUID> {
+    const ids = await this.adapter.createTasks([task]);
+    return ids[0];
+  }
+
+  async getTask(id: UUID): Promise<Task | null> {
+    const tasks = await this.adapter.getTasksByIds([id]);
+    return tasks[0] ?? null;
+  }
+
   async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
-    await this.adapter.updateTask(id, task);
+    return await this.adapter.updateTasks([{ id, task }]);
   }
+
   async deleteTask(id: UUID): Promise<void> {
-    await this.adapter.deleteTask(id);
+    return await this.adapter.deleteTasks([id]);
   }
+
+  async log(params: { body: LogBody; entityId: UUID; roomId: UUID; type: string }): Promise<void> {
+    return await this.adapter.createLogs([params]);
+  }
+
+  async deleteLog(logId: UUID): Promise<void> {
+    return await this.adapter.deleteLogs([logId]);
+  }
+
+  async getCache<T>(key: string): Promise<T | undefined> {
+    const caches = await this.adapter.getCaches<T>([key]);
+    return caches.get(key);
+  }
+
+  async setCache<T>(key: string, value: T): Promise<boolean> {
+    return await this.adapter.setCaches<T>([{ key, value }]);
+  }
+
+  async deleteCache(key: string): Promise<boolean> {
+    return await this.adapter.deleteCaches([key]);
+  }
+
+  // Batch task methods
+  async createTasks(tasks: Task[]): Promise<UUID[]> {
+    return await this.adapter.createTasks(tasks);
+  }
+
+  async getTasksByIds(taskIds: UUID[]): Promise<Task[]> {
+    return await this.adapter.getTasksByIds(taskIds);
+  }
+
+  async updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void> {
+    return await this.adapter.updateTasks(updates);
+  }
+
+  async deleteTasks(taskIds: UUID[]): Promise<void> {
+    return await this.adapter.deleteTasks(taskIds);
+  }
+
+  /**
+   * Run callback in a database transaction. Forwards options.entityContext to the adapter.
+   * WHY forward only: RLS (withEntityContext) is implemented in the adapter (e.g. plugin-sql Postgres);
+   * runtime does not touch Postgres or connection context.
+   */
+  async transaction<T>(
+    callback: (tx: IDatabaseAdapter<object>) => Promise<T>,
+    options?: { entityContext?: UUID },
+  ): Promise<T> {
+    return await this.adapter.transaction(callback, options);
+  }
+
+  async queryEntities(params: {
+    componentType?: string;
+    componentDataFilter?: Record<string, unknown>;
+    agentId?: UUID;
+    entityIds?: UUID[];
+    worldId?: UUID;
+    limit?: number;
+    offset?: number;
+    includeAllComponents?: boolean;
+    entityContext?: UUID;
+  }): Promise<Entity[]> {
+    return await this.adapter.queryEntities({
+      ...params,
+      agentId: params.agentId ?? this.agentId,
+    });
+  }
+
+  // Batch entity methods
+  async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[]> {
+    return await this.adapter.getEntitiesByIds(entityIds);
+  }
+
+  async updateEntities(entities: Entity[]): Promise<void> {
+    return await this.adapter.updateEntities(entities);
+  }
+
+  async deleteEntities(entityIds: UUID[]): Promise<void> {
+    return await this.adapter.deleteEntities(entityIds);
+  }
+  async searchEntitiesByName(params: {
+    query: string;
+    agentId?: UUID;
+    limit?: number;
+  }): Promise<Entity[]> {
+    return await this.adapter.searchEntitiesByName({
+      query: params.query,
+      agentId: params.agentId ?? this.agentId,
+      limit: params.limit,
+    });
+  }
+  async getEntitiesByNames(params: { names: string[]; agentId?: UUID }): Promise<Entity[]> {
+    return await this.adapter.getEntitiesByNames({
+      names: params.names,
+      agentId: params.agentId ?? this.agentId,
+    });
+  }
+
+  // Deprecated entity wrapper
+  async updateEntity(entity: Entity): Promise<void> {
+    return await this.adapter.updateEntities([entity]);
+  }
+
+  // Batch component methods
+  async createComponents(components: Component[]): Promise<UUID[]> {
+    return await this.adapter.createComponents(components);
+  }
+
+  async getComponentsByIds(componentIds: UUID[]): Promise<Component[]> {
+    return await this.adapter.getComponentsByIds(componentIds);
+  }
+
+  async updateComponents(components: Component[]): Promise<void> {
+    return await this.adapter.updateComponents(components);
+  }
+
+  async deleteComponents(componentIds: UUID[]): Promise<void> {
+    return await this.adapter.deleteComponents(componentIds);
+  }
+
+  // Deprecated component wrappers
+  async createComponent(component: Component): Promise<boolean> {
+    const ids = await this.adapter.createComponents([component]);
+    return ids.length > 0;
+  }
+
+  async getComponent(
+    entityId: UUID,
+    type: string,
+    worldId?: UUID,
+    sourceEntityId?: UUID,
+  ): Promise<Component | null> {
+    // This one doesn't have a batch equivalent for the entity+type query
+    // It uses the getComponents query method
+    return await this.adapter.getComponent(entityId, type, worldId, sourceEntityId);
+  }
+
+  async updateComponent(component: Component): Promise<void> {
+    return await this.adapter.updateComponents([component]);
+  }
+
+  async deleteComponent(componentId: UUID): Promise<void> {
+    return await this.adapter.deleteComponents([componentId]);
+  }
+
+  async upsertComponent(component: Component): Promise<void> {
+    return await this.adapter.upsertComponents([component]);
+  }
+
+  async upsertComponents(
+    components: Component[],
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return await this.adapter.upsertComponents(components, options);
+  }
+
+  async patchComponent(
+    componentId: UUID,
+    ops: PatchOp[],
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return await this.adapter.patchComponent(componentId, ops, options);
+  }
+
+  async patchComponentField(
+    componentId: UUID,
+    op: PatchOp,
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return await this.adapter.patchComponent(componentId, [op], options);
+  }
+
+  async getComponentsByType(
+    type: string,
+    agentId?: UUID,
+    options?: { entityContext?: UUID },
+  ): Promise<Component[]> {
+    // Wraps queryEntities and extracts components from entities
+    const entities = await this.adapter.queryEntities({
+      componentType: type,
+      agentId: agentId ?? this.agentId,
+      includeAllComponents: false, // Only return matched components
+      ...(options?.entityContext != null && { entityContext: options.entityContext }),
+    });
+
+    // Flatten components from all entities
+    const components: Component[] = [];
+    for (const entity of entities) {
+      if (entity.components) {
+        components.push(...entity.components);
+      }
+    }
+    return components;
+  }
+
+  async upsertMemory(
+    memory: Memory,
+    tableName: string,
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    // Apply secret redaction (same as createMemory) to prevent plaintext secrets
+    const secrets = this.getSecretsForRedaction();
+    if (Object.keys(secrets).length > 0 && memory.content?.text) {
+      memory = {
+        ...memory,
+        content: {
+          ...memory.content,
+          text: redactWithSecrets(memory.content.text, {
+            secrets,
+            applyPatterns: true,
+          }),
+        },
+      };
+    }
+    return await this.adapter.upsertMemories([{ memory, tableName }], options);
+  }
+
+  async upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return await this.adapter.upsertMemories(memories, options);
+  }
+
+  // Batch relationship methods
+  async createRelationships(relationships: Array<{
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+    tags?: string[];
+    metadata?: Metadata;
+  }>): Promise<UUID[]> {
+    return await this.adapter.createRelationships(relationships);
+  }
+
+  async getRelationshipsByIds(relationshipIds: UUID[]): Promise<Relationship[]> {
+    return await this.adapter.getRelationshipsByIds(relationshipIds);
+  }
+
+  async updateRelationships(relationships: Relationship[]): Promise<void> {
+    return await this.adapter.updateRelationships(relationships);
+  }
+
+  async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
+    return await this.adapter.deleteRelationships(relationshipIds);
+  }
+
+  // Deprecated relationship wrappers
+  async createRelationship(params: {
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+    tags?: string[];
+    metadata?: Metadata;
+  }): Promise<boolean> {
+    const ids = await this.adapter.createRelationships([params]);
+    return ids.length > 0;
+  }
+
+  async getRelationship(params: {
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+  }): Promise<Relationship | null> {
+    // This one doesn't have a batch equivalent for the source+target query
+    // It uses the getRelationship query method
+    return await this.adapter.getRelationship(params);
+  }
+
+  async updateRelationship(relationship: Relationship): Promise<void> {
+    return await this.adapter.updateRelationships([relationship]);
+  }
+
+  // ── Batch memory passthroughs ────────────────────────────────────────
+  // These go straight to the adapter with no transformation.
+  // WHY no redaction here: batch callers are responsible for their own
+  // content. The single-item createMemory() wrapper below handles
+  // redaction for the common case.
+  async createMemories(memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>): Promise<UUID[]> {
+    return await this.adapter.createMemories(memories);
+  }
+
+  async updateMemories(memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>): Promise<void> {
+    return await this.adapter.updateMemories(memories);
+  }
+
+  async deleteMemories(memoryIds: UUID[]): Promise<void> {
+    return await this.adapter.deleteMemories(memoryIds);
+  }
+
+  // ── Single-item memory wrappers ────────────────────────────────────
+  // These exist for caller convenience. getMemoryById and createMemory
+  // are the most frequently called methods in the entire codebase.
+  async getMemoryById(id: UUID): Promise<Memory | null> {
+    const memories = await this.adapter.getMemoriesByIds([id]);
+    return memories.length > 0 ? memories[0] : null;
+  }
+
+  // WHY createMemory is special: it performs secret redaction before
+  // delegating to the adapter. This is the ONLY place where API keys,
+  // tokens, and other secrets are scrubbed from memory content. Internal
+  // runtime code deliberately calls this wrapper (not adapter.createMemories
+  // directly) to ensure redaction always happens.
+  async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID> {
+    if (unique !== undefined) memory.unique = unique;
+
+    // Redact any secrets from memory content before storing
+    const secrets = this.getSecretsForRedaction();
+    if (Object.keys(secrets).length > 0 && memory.content?.text) {
+      memory = {
+        ...memory,
+        content: {
+          ...memory.content,
+          text: redactWithSecrets(memory.content.text, {
+            secrets,
+            applyPatterns: true,
+          }),
+        },
+      };
+    }
+
+    const ids = await this.adapter.createMemories([{ memory, tableName, unique }]);
+    return ids[0];
+  }
+
+  async updateMemory(memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }): Promise<boolean> {
+    await this.adapter.updateMemories([memory]);
+    return true; // Successfully updated if no error thrown
+  }
+
+  async deleteMemory(memoryId: UUID): Promise<void> {
+    return await this.adapter.deleteMemories([memoryId]);
+  }
+
+  // ── Participant passthroughs & wrappers ──────────────────────────────
+  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean> {
+    return await this.adapter.deleteParticipants(participants);
+  }
+
+  async updateParticipants(participants: Array<{
+    entityId: UUID;
+    roomId: UUID;
+    updates: Partial<Participant>;
+  }>): Promise<void> {
+    return await this.adapter.updateParticipants(participants);
+  }
+
+  async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
+    return await this.adapter.deleteParticipants([{ entityId, roomId }]);
+  }
+
+  // ── Room passthroughs & wrappers ────────────────────────────────────
+  async updateRooms(rooms: Room[]): Promise<void> {
+    return await this.adapter.updateRooms(rooms);
+  }
+
+  async deleteRooms(roomIds: UUID[]): Promise<void> {
+    return await this.adapter.deleteRooms(roomIds);
+  }
+
+  // Deprecated room wrappers
+  async updateRoom(room: Room): Promise<void> {
+    return await this.adapter.updateRooms([room]);
+  }
+
+  async deleteRoom(roomId: UUID): Promise<void> {
+    return await this.adapter.deleteRooms([roomId]);
+  }
+
   on(event: string, callback: (data: EventPayload) => void): void {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, []);
@@ -5706,18 +5722,6 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return await this.adapter.getPairingRequests(channel, agentId);
   }
 
-  async createPairingRequest(request: PairingRequest): Promise<UUID> {
-    return await this.adapter.createPairingRequest(request);
-  }
-
-  async updatePairingRequest(request: PairingRequest): Promise<void> {
-    return await this.adapter.updatePairingRequest(request);
-  }
-
-  async deletePairingRequest(id: UUID): Promise<void> {
-    return await this.adapter.deletePairingRequest(id);
-  }
-
   async getPairingAllowlist(
     channel: PairingChannel,
     agentId: UUID,
@@ -5725,13 +5729,51 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
     return await this.adapter.getPairingAllowlist(channel, agentId);
   }
 
-  async createPairingAllowlistEntry(
-    entry: PairingAllowlistEntry,
-  ): Promise<UUID> {
-    return await this.adapter.createPairingAllowlistEntry(entry);
+  // Batch pairing methods
+  async createPairingRequests(requests: PairingRequest[]): Promise<UUID[]> {
+    return await this.adapter.createPairingRequests(requests);
+  }
+
+  async updatePairingRequests(requests: PairingRequest[]): Promise<void> {
+    return await this.adapter.updatePairingRequests(requests);
+  }
+
+  async deletePairingRequests(ids: UUID[]): Promise<void> {
+    return await this.adapter.deletePairingRequests(ids);
+  }
+
+  async createPairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<UUID[]> {
+    return await this.adapter.createPairingAllowlistEntries(entries);
+  }
+
+  async updatePairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<void> {
+    return await this.adapter.updatePairingAllowlistEntries(entries);
+  }
+
+  async deletePairingAllowlistEntries(ids: UUID[]): Promise<void> {
+    return await this.adapter.deletePairingAllowlistEntries(ids);
+  }
+
+  // Deprecated pairing wrappers
+  async createPairingRequest(request: PairingRequest): Promise<UUID> {
+    const ids = await this.adapter.createPairingRequests([request]);
+    return ids[0];
+  }
+
+  async updatePairingRequest(request: PairingRequest): Promise<void> {
+    return await this.adapter.updatePairingRequests([request]);
+  }
+
+  async deletePairingRequest(id: UUID): Promise<void> {
+    return await this.adapter.deletePairingRequests([id]);
+  }
+
+  async createPairingAllowlistEntry(entry: PairingAllowlistEntry): Promise<UUID> {
+    const ids = await this.adapter.createPairingAllowlistEntries([entry]);
+    return ids[0];
   }
 
   async deletePairingAllowlistEntry(id: UUID): Promise<void> {
-    return await this.adapter.deletePairingAllowlistEntry(id);
+    return await this.adapter.deletePairingAllowlistEntries([id]);
   }
 }

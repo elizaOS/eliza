@@ -1,6 +1,8 @@
 /**
  * Advanced Evaluators
  *
- * Relationship evaluators are provided by @elizaos/plugin-rolodex.
+ * Evaluators for memory and relationship management.
  */
-export {};
+
+export { reflectionEvaluator } from "./reflection.ts";
+export { relationshipExtractionEvaluator } from "./relationshipExtraction.ts";

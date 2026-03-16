@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.prompts import UPDATE_SETTINGS_TEMPLATE
 from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
+from elizaos.utils.spec_examples import convert_spec_examples
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
@@ -17,22 +18,7 @@ _spec = require_action_spec("UPDATE_SETTINGS")
 
 def _convert_spec_examples() -> list[list[ActionExample]]:
     """Convert spec examples to ActionExample format."""
-    spec_examples = cast(list[list[dict[str, Any]]], _spec.get("examples", []))
-    if spec_examples:
-        return [
-            [
-                ActionExample(
-                    name=msg.get("name", ""),
-                    content=Content(
-                        text=msg.get("content", {}).get("text", ""),
-                        actions=msg.get("content", {}).get("actions"),
-                    ),
-                )
-                for msg in example
-            ]
-            for example in spec_examples
-        ]
-    return []
+    return convert_spec_examples(_spec)
 
 
 @dataclass

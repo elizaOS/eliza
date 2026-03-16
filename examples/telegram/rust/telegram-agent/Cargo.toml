@@ -1,0 +1,36 @@
+[package]
+name = "telegram-agent"
+version = "0.1.0"
+edition = "2021"
+description = "elizaOS Rust Telegram Agent Example"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "telegram-agent"
+path = "src/main.rs"
+
+[dependencies]
+# elizaOS Core
+elizaos = { path = "../../../../packages/rust" }
+
+# elizaOS Plugins
+elizaos-plugin-openai = { path = "../../../../plugins/plugin-openai/rust" }
+elizaos-plugin-sql = { path = "../../../../plugins/plugin-sql/rust" }
+elizaos-plugin-telegram = { path = "../../../../plugins/plugin-telegram/rust" }
+
+# Async runtime
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "signal", "sync"] }
+
+# Error handling
+anyhow = "1.0"
+
+# Environment
+dotenvy = "0.15"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Serialization (for event payloads)
+serde_json = "1.0"

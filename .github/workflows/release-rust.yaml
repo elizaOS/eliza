@@ -1,18 +1,15 @@
 name: Rust Release
 
 # Publish Rust crates to crates.io on release
-#
+# 
 # Publishing Order:
 #   1. elizaos (core library) - must publish first
 #   2. elizaos-sweagent - independent, can publish in parallel with plugins
 #   3. Plugins with elizaos dependency (after elizaos is indexed):
-#      - elizaos-plugin-sql (also has WASM builds)
-#      - elizaos-plugin-openai, elizaos-plugin-goals, elizaos-plugin-localdb,
-#        elizaos-plugin-todo, elizaos-plugin-xai, elizaos-plugin-discord,
-#        elizaos-plugin-bluebubbles, elizaos-plugin-copilot-proxy,
-#        elizaos-plugin-rlm, elizaos-plugin-whatsapp,
-#        elizaos-plugin-acp, elizaos-plugin-scratchpad
-#   4. All other plugins (80 total) - independent, publish in parallel
+#      - elizaos-plugin-sql, elizaos-plugin-openai, elizaos-plugin-goals,
+#        elizaos-plugin-localdb, elizaos-plugin-todo, elizaos-plugin-xai,
+#        elizaos-plugin-discord
+#   4. All other plugins (45 total) - independent, publish in parallel
 
 on:
   release:
@@ -35,92 +32,45 @@ on:
           - elizaos-plugin-todo
           - elizaos-plugin-xai
           - elizaos-plugin-discord
-          - elizaos-plugin-bluebubbles
-          - elizaos-plugin-copilot-proxy
-          - elizaos-plugin-rlm
-          - elizaos-plugin-whatsapp
-          - elizaos-plugin-acp
-          - elizaos-plugin-scratchpad
-          # Independent plugins (alphabetical)
+          # Independent plugins
           - elizaos-plugin-agent-orchestrator
-          - elizaos-plugin-agent-skills
           - elizaos-plugin-anthropic
-          - elizaos-plugin-auto-trader
-          - elizaos-plugin-blooio
           - elizaos-plugin-bluesky
           - elizaos-plugin-browser
-          - elizaos-plugin-cli
           - elizaos-plugin-code
-          - elizaos-plugin-commands
           - elizaos-plugin-computeruse
-          - elizaos-plugin-cron
-          - elizaos-plugin-directives
-          - elizaos-plugin-edge-tts
           - elizaos-plugin-elevenlabs
           - elizaos-plugin-eliza-classic
           - elizaos-plugin-elizacloud
           - elizaos-plugin-evm
           - elizaos-plugin-experience
           - elizaos-plugin-farcaster
-          - elizaos-plugin-feishu
-          - elizaos-plugin-form
           - elizaos-plugin-github
-          - elizaos-plugin-gmail-watch
-          - elizaos-plugin-google-chat
           - elizaos-plugin-google-genai
           - elizaos-plugin-groq
-          - elizaos-plugin-imessage
           - elizaos-plugin-inmemorydb
           - elizaos-plugin-instagram
           - elizaos-plugin-knowledge
-          - elizaos-plugin-line
           - elizaos-plugin-linear
           - elizaos-plugin-local-ai
-          - elizaos-plugin-local-embedding
-          - elizaos-plugin-lp-manager
-          - elizaos-plugin-matrix
-          - elizaos-plugin-mattermost
           - elizaos-plugin-mcp
-          - elizaos-plugin-memory
           - elizaos-plugin-minecraft
-          - elizaos-plugin-moltbook
-          - elizaos-plugin-msteams
           - elizaos-plugin-n8n
-          - elizaos-plugin-nextcloud-talk
-          - elizaos-plugin-nostr
           - elizaos-plugin-ollama
           - elizaos-plugin-openrouter
           - elizaos-plugin-pdf
-          - elizaos-plugin-personality
-          - elizaos-plugin-plugin-manager
           - elizaos-plugin-polymarket
-          - elizaos-plugin-prose
           - elizaos-plugin-roblox
-          - elizaos-plugin-robot-voice
-          - elizaos-plugin-rolodex
           - elizaos-plugin-rss
           - elizaos-plugin-s3-storage
-          - elizaos-plugin-scheduling
-          - elizaos-plugin-secrets-manager
           - elizaos-plugin-shell
-          - elizaos-plugin-signal
           - elizaos-plugin-simple-voice
-          - elizaos-plugin-slack
-          - elizaos-plugin-social-alpha
           - elizaos-plugin-solana
           - elizaos-plugin-tee
           - elizaos-plugin-telegram
-          - elizaos-plugin-tlon
           - elizaos-plugin-trajectory-logger
-          - elizaos-plugin-trust
-          - elizaos-plugin-tts
-          - elizaos-plugin-twilio
-          - elizaos-plugin-twitch
-          - elizaos-plugin-gateway
+          - elizaos-plugin-vercel-ai-gateway
           - elizaos-plugin-vision
-          - elizaos-plugin-webhooks
-          - elizaos-plugin-zalo
-          - elizaos-plugin-zalouser
       dry_run:
         description: "Dry run (do not publish)"
         required: false
@@ -411,14 +361,6 @@ jobs:
         if: steps.check.outputs.should_publish == 'true'
         uses: actions/checkout@v4
 
-      - name: Checkout plugin-sql
-        if: steps.check.outputs.should_publish == 'true'
-        run: |
-          mkdir -p plugins
-          git clone --depth 1 "https://github.com/elizaos-plugins/plugin-sql.git" "plugins/plugin-sql"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
         uses: dtolnay/rust-toolchain@stable
@@ -572,18 +514,6 @@ jobs:
             path: plugins/plugin-xai/rust
           - name: elizaos-plugin-discord
             path: plugins/plugin-discord/rust
-          - name: elizaos-plugin-bluebubbles
-            path: plugins/plugin-bluebubbles/rust
-          - name: elizaos-plugin-copilot-proxy
-            path: plugins/plugin-copilot-proxy/rust
-          - name: elizaos-plugin-rlm
-            path: plugins/plugin-rlm/rust
-          - name: elizaos-plugin-whatsapp
-            path: plugins/plugin-whatsapp/rust
-          - name: elizaos-plugin-acp
-            path: plugins/plugin-acp/rust
-          - name: elizaos-plugin-scratchpad
-            path: plugins/plugin-scratchpad/rust
 
     steps:
       - name: Check if plugin should be built
@@ -600,18 +530,6 @@ jobs:
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
         uses: actions/checkout@v4
-
-      - name: Checkout plugin repository
-        if: steps.check.outputs.should_publish == 'true'
-        run: |
-          PLUGIN_DIR=$(echo "${{ matrix.path }}" | cut -d'/' -f1-2)
-          PLUGIN_NAME=$(echo "$PLUGIN_DIR" | cut -d'/' -f2)
-          if [ ! -d "$PLUGIN_DIR" ]; then
-            mkdir -p plugins
-            git clone --depth 1 "https://github.com/elizaos-plugins/$PLUGIN_NAME.git" "$PLUGIN_DIR"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
@@ -709,32 +627,16 @@ jobs:
         include:
           - name: elizaos-plugin-agent-orchestrator
             path: plugins/plugin-agent-orchestrator/rust
-          - name: elizaos-plugin-agent-skills
-            path: plugins/plugin-agent-skills/rust
           - name: elizaos-plugin-anthropic
             path: plugins/plugin-anthropic/rust
-          - name: elizaos-plugin-auto-trader
-            path: plugins/plugin-auto-trader/rust
-          - name: elizaos-plugin-blooio
-            path: plugins/plugin-blooio/rust
           - name: elizaos-plugin-bluesky
             path: plugins/plugin-bluesky/rust
           - name: elizaos-plugin-browser
             path: plugins/plugin-browser/rust
-          - name: elizaos-plugin-cli
-            path: plugins/plugin-cli/rust
           - name: elizaos-plugin-code
             path: plugins/plugin-code/rust
-          - name: elizaos-plugin-commands
-            path: plugins/plugin-commands/rust
           - name: elizaos-plugin-computeruse
             path: plugins/plugin-computeruse/rust
-          - name: elizaos-plugin-cron
-            path: plugins/plugin-cron/rust
-          - name: elizaos-plugin-directives
-            path: plugins/plugin-directives/rust
-          - name: elizaos-plugin-edge-tts
-            path: plugins/plugin-edge-tts/rust
           - name: elizaos-plugin-elevenlabs
             path: plugins/plugin-elevenlabs/rust
           - name: elizaos-plugin-eliza-classic
@@ -747,124 +649,58 @@ jobs:
             path: plugins/plugin-experience/rust
           - name: elizaos-plugin-farcaster
             path: plugins/plugin-farcaster/rust
-          - name: elizaos-plugin-feishu
-            path: plugins/plugin-feishu/rust
-          - name: elizaos-plugin-form
-            path: plugins/plugin-form/rust
           - name: elizaos-plugin-github
             path: plugins/plugin-github/rust
-          - name: elizaos-plugin-gmail-watch
-            path: plugins/plugin-gmail-watch/rust
-          - name: elizaos-plugin-google-chat
-            path: plugins/plugin-google-chat/rust
           - name: elizaos-plugin-google-genai
             path: plugins/plugin-google-genai/rust
           - name: elizaos-plugin-groq
             path: plugins/plugin-groq/rust
-          - name: elizaos-plugin-imessage
-            path: plugins/plugin-imessage/rust
           - name: elizaos-plugin-inmemorydb
             path: plugins/plugin-inmemorydb/rust
           - name: elizaos-plugin-instagram
             path: plugins/plugin-instagram/rust
           - name: elizaos-plugin-knowledge
             path: plugins/plugin-knowledge/rust
-          - name: elizaos-plugin-line
-            path: plugins/plugin-line/rust
           - name: elizaos-plugin-linear
             path: plugins/plugin-linear/rust
           - name: elizaos-plugin-local-ai
             path: plugins/plugin-local-ai/rust
-          - name: elizaos-plugin-local-embedding
-            path: plugins/plugin-local-embedding/rust
-          - name: elizaos-plugin-lp-manager
-            path: plugins/plugin-lp-manager/rust
-          - name: elizaos-plugin-matrix
-            path: plugins/plugin-matrix/rust
-          - name: elizaos-plugin-mattermost
-            path: plugins/plugin-mattermost/rust
           - name: elizaos-plugin-mcp
             path: plugins/plugin-mcp/rust
-          - name: elizaos-plugin-memory
-            path: plugins/plugin-memory/rust
           - name: elizaos-plugin-minecraft
             path: plugins/plugin-minecraft/rust
-          - name: elizaos-plugin-moltbook
-            path: plugins/plugin-moltbook/rust
-          - name: elizaos-plugin-msteams
-            path: plugins/plugin-msteams/rust
           - name: elizaos-plugin-n8n
             path: plugins/plugin-n8n/rust
-          - name: elizaos-plugin-nextcloud-talk
-            path: plugins/plugin-nextcloud-talk/rust
-          - name: elizaos-plugin-nostr
-            path: plugins/plugin-nostr/rust
           - name: elizaos-plugin-ollama
             path: plugins/plugin-ollama/rust
           - name: elizaos-plugin-openrouter
             path: plugins/plugin-openrouter/rust
           - name: elizaos-plugin-pdf
             path: plugins/plugin-pdf/rust
-          - name: elizaos-plugin-personality
-            path: plugins/plugin-personality/rust
-          - name: elizaos-plugin-plugin-manager
-            path: plugins/plugin-plugin-manager/rust
           - name: elizaos-plugin-polymarket
             path: plugins/plugin-polymarket/rust
-          - name: elizaos-plugin-prose
-            path: plugins/plugin-prose/rust
           - name: elizaos-plugin-roblox
             path: plugins/plugin-roblox/rust
-          - name: elizaos-plugin-robot-voice
-            path: plugins/plugin-robot-voice/rust
-          - name: elizaos-plugin-rolodex
-            path: plugins/plugin-rolodex/rust
           - name: elizaos-plugin-rss
             path: plugins/plugin-rss/rust
           - name: elizaos-plugin-s3-storage
             path: plugins/plugin-s3-storage/rust
-          - name: elizaos-plugin-scheduling
-            path: plugins/plugin-scheduling/rust
-          - name: elizaos-plugin-secrets-manager
-            path: plugins/plugin-secrets-manager/rust
           - name: elizaos-plugin-shell
             path: plugins/plugin-shell/rust
-          - name: elizaos-plugin-signal
-            path: plugins/plugin-signal/rust
           - name: elizaos-plugin-simple-voice
             path: plugins/plugin-simple-voice/rust
-          - name: elizaos-plugin-slack
-            path: plugins/plugin-slack/rust
-          - name: elizaos-plugin-social-alpha
-            path: plugins/plugin-social-alpha/rust
           - name: elizaos-plugin-solana
             path: plugins/plugin-solana/rust
           - name: elizaos-plugin-tee
             path: plugins/plugin-tee/rust
           - name: elizaos-plugin-telegram
             path: plugins/plugin-telegram/rust
-          - name: elizaos-plugin-tlon
-            path: plugins/plugin-tlon/rust
           - name: elizaos-plugin-trajectory-logger
             path: plugins/plugin-trajectory-logger/rust
-          - name: elizaos-plugin-trust
-            path: plugins/plugin-trust/rust
-          - name: elizaos-plugin-tts
-            path: plugins/plugin-tts/rust
-          - name: elizaos-plugin-twilio
-            path: plugins/plugin-twilio/rust
-          - name: elizaos-plugin-twitch
-            path: plugins/plugin-twitch/rust
-          - name: elizaos-plugin-gateway
+          - name: elizaos-plugin-vercel-ai-gateway
             path: plugins/plugin-vercel-ai-gateway/rust
           - name: elizaos-plugin-vision
             path: plugins/plugin-vision/rust
-          - name: elizaos-plugin-webhooks
-            path: plugins/plugin-webhooks/rust
-          - name: elizaos-plugin-zalo
-            path: plugins/plugin-zalo/rust
-          - name: elizaos-plugin-zalouser
-            path: plugins/plugin-zalouser/rust
 
     steps:
       - name: Check if plugin should be built
@@ -881,18 +717,6 @@ jobs:
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
         uses: actions/checkout@v4
-
-      - name: Checkout plugin repository
-        if: steps.check.outputs.should_publish == 'true'
-        run: |
-          PLUGIN_DIR=$(echo "${{ matrix.path }}" | cut -d'/' -f1-2)
-          PLUGIN_NAME=$(echo "$PLUGIN_DIR" | cut -d'/' -f2)
-          if [ ! -d "$PLUGIN_DIR" ]; then
-            mkdir -p plugins
-            git clone --depth 1 "https://github.com/elizaos-plugins/$PLUGIN_NAME.git" "$PLUGIN_DIR"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
@@ -989,11 +813,11 @@ jobs:
           echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| elizaos-plugin-sql | ${{ needs.build-plugin-sql.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Dependent Plugins (12) | ${{ needs.build-dependent-plugins.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Independent Plugins (78) | ${{ needs.build-independent-plugins.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependent Plugins (6) | ${{ needs.build-dependent-plugins.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Independent Plugins (38) | ${{ needs.build-independent-plugins.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Total Crates Published" >> $GITHUB_STEP_SUMMARY
-          echo "- **Core packages**: 2 (elizaos, elizaos-sweagent)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Plugins with elizaos dep**: 13 (sql + 12 dependent)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Independent plugins**: 78" >> $GITHUB_STEP_SUMMARY
-          echo "- **Total**: 93" >> $GITHUB_STEP_SUMMARY
+          echo "- **Core packages**: 2" >> $GITHUB_STEP_SUMMARY
+          echo "- **Plugins with elizaos dep**: 7" >> $GITHUB_STEP_SUMMARY
+          echo "- **Independent plugins**: 38" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total**: 47" >> $GITHUB_STEP_SUMMARY

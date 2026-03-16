@@ -11,10 +11,9 @@ This module provides parity with the TypeScript TaskService, including:
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import time
-from dataclasses import dataclass
-from enum import StrEnum
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
@@ -27,7 +26,7 @@ if TYPE_CHECKING:
 TICK_INTERVAL_MS = 1000
 
 
-class TaskStatus(StrEnum):
+class TaskStatus(str, Enum):
     """Task status enum."""
 
     PENDING = "pending"
@@ -37,7 +36,7 @@ class TaskStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
-class TaskPriority(StrEnum):
+class TaskPriority(str, Enum):
     """Task priority enum."""
 
     LOW = "low"
@@ -237,8 +236,10 @@ class TaskService(Service):
 
         if self._loop_task:
             self._loop_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            try:
                 await self._loop_task
+            except asyncio.CancelledError:
+                pass
             self._loop_task = None
 
         if self._runtime:
@@ -308,11 +309,13 @@ class TaskService(Service):
 
     async def get_tasks_by_tags(self, tags: list[str]) -> list[Task]:
         """Get tasks with specific tags."""
-        return [t for t in self._tasks.values() if t.tags and all(tag in t.tags for tag in tags)]
+        return [
+            t
+            for t in self._tasks.values()
+            if t.tags and all(tag in t.tags for tag in tags)
+        ]
 
-    async def update_task(
-        self, task_id: str, metadata: TaskMetadata | None = None, tags: list[str] | None = None
-    ) -> Task | None:
+    async def update_task(self, task_id: str, metadata: TaskMetadata | None = None, tags: list[str] | None = None) -> Task | None:
         """Update a task."""
         task = self._tasks.get(task_id)
         if task is None:
@@ -439,7 +442,9 @@ class TaskService(Service):
         now = _current_timestamp()
 
         # Get all tasks with "queue" tag
-        queue_tasks = [t for t in self._tasks.values() if t.tags and "queue" in t.tags]
+        queue_tasks = [
+            t for t in self._tasks.values() if t.tags and "queue" in t.tags
+        ]
 
         # Validate the tasks (parity with TypeScript)
         tasks = await self._validate_tasks(queue_tasks)
@@ -461,9 +466,9 @@ class TaskService(Service):
                 continue
 
             # For repeating tasks, check if interval has elapsed
-            task_start_time = (
-                task.updated_at or (task.metadata.updated_at if task.metadata else None) or 0
-            )
+            task_start_time = task.updated_at or (
+                task.metadata.updated_at if task.metadata else None
+            ) or 0
 
             update_interval = task.get_update_interval() or 0
 
@@ -471,8 +476,10 @@ class TaskService(Service):
             metadata_updated_at = task.metadata.updated_at if task.metadata else None
             metadata_created_at = None
             if task.metadata and task.metadata.created_at:
-                with contextlib.suppress(ValueError):
+                try:
                     metadata_created_at = int(task.metadata.created_at)
+                except ValueError:
+                    pass
 
             if metadata_updated_at == metadata_created_at:
                 if task.tags and "immediate" in task.tags:

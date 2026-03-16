@@ -101,12 +101,7 @@ impl TaskService {
     pub async fn get_worker(&self, name: &str) -> Option<Arc<dyn TaskWorker>> {
         // Note: This returns a reference, but for async we need to handle ownership carefully
         // For simplicity, we check if worker exists
-        self.workers
-            .read()
-            .await
-            .contains_key(name)
-            .then_some(())
-            .and_then(|_| None)
+        self.workers.read().await.contains_key(name).then_some(()).and_then(|_| None)
     }
 
     /// Check if a worker exists for the given task name
@@ -143,7 +138,11 @@ impl TaskService {
 
             // If worker has validate function, run validation (pass empty message and state)
             let is_valid = worker
-                .validate(Arc::clone(&rt), Memory::default(), State::default())
+                .validate(
+                    Arc::clone(&rt),
+                    Memory::default(),
+                    State::default(),
+                )
                 .await;
 
             if !is_valid {
@@ -298,8 +297,13 @@ impl TaskService {
                 }
 
                 // Check and execute tasks
-                if let Err(e) =
-                    Self::check_tasks_inner(&workers, &tasks, &executing_tasks, &runtime).await
+                if let Err(e) = Self::check_tasks_inner(
+                    &workers,
+                    &tasks,
+                    &executing_tasks,
+                    &runtime,
+                )
+                .await
                 {
                     warn!(error = %e, "Error checking tasks");
                 }
@@ -358,7 +362,11 @@ impl TaskService {
 
             // If worker has validate function, run validation (parity with TypeScript)
             let is_valid = worker
-                .validate(Arc::clone(&rt), Memory::default(), State::default())
+                .validate(
+                    Arc::clone(&rt),
+                    Memory::default(),
+                    State::default(),
+                )
                 .await;
 
             if !is_valid {
@@ -379,8 +387,15 @@ impl TaskService {
 
             // For non-repeating tasks, execute immediately
             if !task.is_repeating() {
-                Self::execute_task_inner(&task, &task_id, worker, tasks, executing_tasks, runtime)
-                    .await?;
+                Self::execute_task_inner(
+                    &task,
+                    &task_id,
+                    worker,
+                    tasks,
+                    executing_tasks,
+                    runtime,
+                )
+                .await?;
                 continue;
             }
 
@@ -440,8 +455,15 @@ impl TaskService {
                     "Executing task - interval elapsed"
                 );
 
-                Self::execute_task_inner(&task, &task_id, worker, tasks, executing_tasks, runtime)
-                    .await?;
+                Self::execute_task_inner(
+                    &task,
+                    &task_id,
+                    worker,
+                    tasks,
+                    executing_tasks,
+                    runtime,
+                )
+                .await?;
             }
         }
 

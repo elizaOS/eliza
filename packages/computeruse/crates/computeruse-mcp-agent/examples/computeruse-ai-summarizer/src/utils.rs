@@ -11,7 +11,7 @@ pub struct Args {
     #[arg(
         short,
         long,
-        default_value = "you're are screen summarizer assistant and here is the data of ui element tree as context. the ui element tree data would be in json format. use the `name` and `text` attr of ui tree to summarize the screen context consicely"
+        default_value = "you're are screen summarizer assitant and here is the data of ui element tree as context. the ui element tree data would be in json format. use the `name` and `text` attr of ui tree to summarize the screen context consicely"
     )]
     pub system_prompt: String,
     #[arg(short, long, default_value = "gemma3:1b")]

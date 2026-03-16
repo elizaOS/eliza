@@ -5,8 +5,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::memory::MemoryMetadata;
-use super::primitives::UUID;
+use super::memory::{Memory, MemoryMetadata};
+use super::primitives::{Content, UUID};
 
 /// Base log body type with common properties
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -350,8 +350,58 @@ pub struct GetMemoriesParams {
     pub world_id: Option<UUID>,
 }
 
+/// Item for batch memory creation (aligned with TypeScript createMemories).
+#[derive(Clone, Debug)]
+pub struct CreateMemoryItem {
+    /// Memory to store
+    pub memory: Memory,
+    /// Table name (e.g. "messages", "plugin_memory")
+    pub table_name: String,
+    /// If true, skip insert when a matching duplicate exists (e.g. ON CONFLICT DO NOTHING)
+    #[allow(dead_code)]
+    pub unique: Option<bool>,
+}
+
+/// Item for batch memory update (aligned with TypeScript updateMemories).
+/// Only fields set to `Some` are applied; adapter merges with existing row.
+#[derive(Clone, Debug)]
+pub struct UpdateMemoryItem {
+    /// Required: memory ID to update
+    pub id: UUID,
+    /// If set, overwrite content
+    #[allow(dead_code)]
+    pub content: Option<Content>,
+    /// If set, overwrite metadata
+    pub metadata: Option<super::memory::MemoryMetadata>,
+    /// If set, overwrite created_at
+    #[allow(dead_code)]
+    pub created_at: Option<i64>,
+    /// If set, overwrite embedding
+    #[allow(dead_code)]
+    pub embedding: Option<Vec<f32>>,
+    /// If set, overwrite unique
+    #[allow(dead_code)]
+    pub unique: Option<bool>,
+}
+
+impl UpdateMemoryItem {
+    /// Build an update item from a full memory (all updatable fields set).
+    /// Returns `None` if `memory.id` is missing.
+    pub fn from_memory(memory: &Memory) -> Option<Self> {
+        let id = memory.id.clone()?;
+        Some(Self {
+            id: id.clone(),
+            content: Some(memory.content.clone()),
+            metadata: memory.metadata.clone(),
+            created_at: memory.created_at,
+            embedding: memory.embedding.clone(),
+            unique: memory.unique,
+        })
+    }
+}
+
 /// Parameters for searching memories
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchMemoriesParams {
     /// Embedding vector

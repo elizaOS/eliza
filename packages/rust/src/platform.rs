@@ -33,16 +33,21 @@ macro_rules! platform_async_trait {
 /// Defines a trait with platform-appropriate `Send + Sync` bounds.
 ///
 /// Usage:
-/// ```ignore
+/// ```
+/// use elizaos::define_platform_trait;
+///
 /// define_platform_trait! {
-///     pub trait MyService {
+///     pub trait MyService []
+///     {
 ///         async fn process(&self) -> Result<(), anyhow::Error>;
 ///     }
 /// }
 /// ```
 ///
 /// With bounds and generics:
-/// ```ignore
+/// ```
+/// use elizaos::define_platform_trait;
+///
 /// define_platform_trait! {
 ///     pub trait MyService<T> [Clone] {
 ///         fn name(&self) -> &str;

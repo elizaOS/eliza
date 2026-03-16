@@ -10,7 +10,10 @@ import {
   type TemplateConfig,
   type ToolConfig,
 } from "../src/agent/agents";
-import { type ModelOutput, PredeterminedTestModel } from "../src/agent/models";
+import {
+  type ModelOutput,
+  PredeterminedTestModel,
+} from "../src/agent/models";
 import {
   EmptyProblemStatement,
   TextProblemStatement,

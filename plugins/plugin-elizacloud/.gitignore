@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+target/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+.eggs/
+rust/pkg/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# TypeScript
+*.tsbuildinfo
+.turbo/
+.turbo-tsconfig.json
+
+# Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Rust
+Cargo.lock
+*.so
+*.dylib
+*.dll
+
+# Test outputs
+coverage/
+test-results/

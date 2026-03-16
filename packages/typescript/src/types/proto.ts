@@ -2,7 +2,7 @@
  * Proto-generated Types
  *
  * This module provides the proto-generated types for elizaOS.
- * Types are generated from /packages/schemas/eliza/v1/*.proto using @bufbuild/protoc-gen-es
+ * Types are generated from /packages/@schemas/eliza/v1/*.proto using @bufbuild/protoc-gen-es
  *
  * ## Type Structure
  *

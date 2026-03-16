@@ -1,0 +1,37 @@
+extract token identification parameters for retrieving order book data.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, identify:
+- tokenId: The specific token ID for which to retrieve the order book (required)
+- query: Search terms or keywords that might contain a token ID
+
+Look for:
+- Numbers following words like "token", "for token", "token ID", etc.
+- Standalone numbers that could be token IDs
+
+Examples:
+- "Show order book for token 123456" → tokenId: "123456"
+- "Get order book 789012" → tokenId: "789012"
+- "ORDER_BOOK 345678" → tokenId: "345678"
+- "token 999999" → tokenId: "999999"
+
+Respond with a JSON object containing only the extracted values.
+The JSON should have this structure:
+{
+    "tokenId"?: string,
+    "query"?: string
+}
+
+If you find a token ID, always include it in the tokenId field.
+If no valid token identifier is found, you MUST respond with the following JSON structure:
+{
+    "error": "Token identifier not found. Please specify a token ID for the order book."
+}
+
+
+
+

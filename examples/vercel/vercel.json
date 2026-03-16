@@ -1,0 +1,48 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "name": "elizaos-edge-functions",
+  "buildCommand": "bun run build",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "@vercel/edge"
+    },
+    "api/**/*.py": {
+      "runtime": "@vercel/python@4.3.1"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/api/health"
+    },
+    {
+      "source": "/health",
+      "destination": "/api/health"
+    },
+    {
+      "source": "/chat",
+      "destination": "/api/chat"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
+        }
+      ]
+    }
+  ],
+  "env": {
+    "OPENAI_API_KEY": "@openai_api_key"
+  }
+}

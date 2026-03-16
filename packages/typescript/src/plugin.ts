@@ -3,26 +3,7 @@ import { logger } from "./logger";
 import type { Plugin } from "./types";
 import { detectEnvironment } from "./utils/environment";
 
-type BunSpawnResult = { exited: Promise<number> };
-type BunSpawnOptions = {
-  cwd?: string;
-  env?: Record<string, string>;
-  stdout?: "pipe" | "inherit";
-  stderr?: "pipe" | "inherit";
-};
-type BunLike = {
-  spawn: (args: string[], options?: BunSpawnOptions) => BunSpawnResult;
-};
-
 const attemptedInstalls = new Set<string>();
-
-function getBunRuntime(): BunLike | null {
-  const bun = (globalThis as typeof globalThis & { Bun?: BunLike }).Bun;
-  if (!bun || typeof bun.spawn !== "function") {
-    return null;
-  }
-  return bun;
-}
 
 function isAutoInstallAllowed(): boolean {
   if (process.env.ELIZA_NO_AUTO_INSTALL === "true") return false;
@@ -52,8 +33,7 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
     }
     attemptedInstalls.add(pluginName);
 
-    const bunRuntime = getBunRuntime();
-    if (!bunRuntime) {
+    if (typeof Bun === "undefined" || typeof Bun.spawn !== "function") {
       logger.warn(
         { src: "core:plugin", pluginName },
         "Bun runtime not available, cannot auto-install",
@@ -62,7 +42,7 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
     }
 
     try {
-      const check = bunRuntime.spawn(["bun", "--version"], {
+      const check = Bun.spawn(["bun", "--version"], {
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -86,7 +66,7 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
       { src: "core:plugin", pluginName },
       "Auto-installing missing plugin",
     );
-    const install = bunRuntime.spawn(["bun", "add", pluginName], {
+    const install = Bun.spawn(["bun", "add", pluginName], {
       cwd: process.cwd(),
       env: process.env as Record<string, string>,
       stdout: "inherit",

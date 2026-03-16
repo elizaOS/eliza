@@ -1,0 +1,43 @@
+// service.proto - Service types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "google/protobuf/struct.proto";
+
+// Service type enumeration
+enum ServiceType {
+  SERVICE_TYPE_UNSPECIFIED = 0;
+  SERVICE_TYPE_TRANSCRIPTION = 1;
+  SERVICE_TYPE_VIDEO = 2;
+  SERVICE_TYPE_BROWSER = 3;
+  SERVICE_TYPE_PDF = 4;
+  SERVICE_TYPE_REMOTE_FILES = 5; // aws_s3
+  SERVICE_TYPE_WEB_SEARCH = 6;
+  SERVICE_TYPE_EMAIL = 7;
+  SERVICE_TYPE_TEE = 8;
+  SERVICE_TYPE_TASK = 9;
+  SERVICE_TYPE_WALLET = 10;
+  SERVICE_TYPE_LP_POOL = 11;
+  SERVICE_TYPE_TOKEN_DATA = 12;
+  SERVICE_TYPE_MESSAGE_SERVICE = 13;
+  SERVICE_TYPE_MESSAGE = 14;
+  SERVICE_TYPE_POST = 15;
+  SERVICE_TYPE_UNKNOWN = 16;
+}
+
+// Service manifest (metadata only, for cross-language interop)
+message ServiceManifest {
+  ServiceType type = 1;
+  optional string description = 2;
+  optional string capability_description = 3;
+  google.protobuf.Struct config = 4;
+}
+
+// Standardized service error type
+message ServiceError {
+  string code = 1;
+  string message = 2;
+  google.protobuf.Struct details = 3;
+  optional string cause = 4;
+}

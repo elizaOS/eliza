@@ -1,0 +1,77 @@
+[package]
+name = "elizaos-plugin-github"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "GitHub plugin for elizaOS - Rust implementation"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+keywords = ["ai", "agent", "github", "git", "api"]
+categories = ["api-bindings", "asynchronous", "web-programming"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full", "octocrab"]
+wasm = ["wasm-bindgen", "wasm-bindgen-futures"]
+
+[dependencies]
+# GitHub API client
+octocrab = { version = "0.41", optional = true }
+
+# Async runtime
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "sync", "time"], optional = true }
+async-trait = "0.1"
+futures = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# UUID handling
+uuid = { version = "1.19", features = ["v4", "v5", "serde"] }
+
+# HTTP client for REST API calls
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Regex for parsing
+regex = "1.10"
+
+# Environment variables
+dotenvy = "0.15"
+
+# Base64 encoding
+base64 = "0.22"
+
+# WASM support (optional)
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+pretty_assertions = "1.0"
+mockall = "0.12"
+tokio-test = "0.4"
+
+[profile.release]
+lto = true
+opt-level = "z"
+
+
+
+
+
+
+

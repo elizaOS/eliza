@@ -1,43 +1,29 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
-from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.types import Action, ActionExample, ActionResult, Content
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
 
-# Get text content from centralized specs
-_spec = require_action_spec("FOLLOW_ROOM")
-
-
-def _convert_spec_examples() -> list[list[ActionExample]]:
-    """Convert spec examples to ActionExample format."""
-    spec_examples = cast(list[list[dict[str, Any]]], _spec.get("examples", []))
-    if spec_examples:
-        return [
-            [
-                ActionExample(
-                    name=msg.get("name", ""),
-                    content=Content(
-                        text=msg.get("content", {}).get("text", ""),
-                        actions=msg.get("content", {}).get("actions"),
-                    ),
-                )
-                for msg in example
-            ]
-            for example in spec_examples
-        ]
-    return []
-
 
 @dataclass
 class FollowRoomAction:
-    name: str = _spec["name"]
-    similes: list[str] = field(default_factory=lambda: list(_spec.get("similes", [])))
-    description: str = _spec["description"]
+    name: str = "FOLLOW_ROOM"
+    similes: list[str] = field(
+        default_factory=lambda: [
+            "JOIN_ROOM",
+            "SUBSCRIBE_ROOM",
+            "WATCH_ROOM",
+            "ENTER_ROOM",
+        ]
+    )
+    description: str = (
+        "Follow a room to receive updates and monitor messages. "
+        "Use this when you want to actively engage with a room's content."
+    )
 
     async def validate(
         self, runtime: IAgentRuntime, message: Memory, _state: State | None = None
@@ -138,7 +124,21 @@ class FollowRoomAction:
 
     @property
     def examples(self) -> list[list[ActionExample]]:
-        return _convert_spec_examples()
+        return [
+            [
+                ActionExample(
+                    name="{{name1}}",
+                    content=Content(text="Can you keep an eye on this channel?"),
+                ),
+                ActionExample(
+                    name="{{name2}}",
+                    content=Content(
+                        text="I'll follow this room and monitor its activity.",
+                        actions=["FOLLOW_ROOM"],
+                    ),
+                ),
+            ],
+        ]
 
 
 follow_room_action = Action(

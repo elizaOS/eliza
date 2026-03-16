@@ -262,7 +262,7 @@ def _parse_params_from_xml(xml_response: str) -> dict[str, list[dict[str, str]]]
     if not params_content:
         return result
 
-    # First try strict XML parsing of the inner params content
+    # First try XML parsing of the inner params content
     try:
         root = ET.fromstring(f"<params>{params_content}</params>")
         for action_elem in list(root):
@@ -270,8 +270,7 @@ def _parse_params_from_xml(xml_response: str) -> dict[str, list[dict[str, str]]]
             action_params: dict[str, str] = {}
 
             for param_elem in list(action_elem):
-                # Use itertext() to capture ALL text including mixed content
-                value_text = "".join(param_elem.itertext()).strip()
+                value_text = (param_elem.text or "").strip()
                 action_params[param_elem.tag] = value_text
 
             # If the action block contains text but no nested tags, try JSON-in-action.
@@ -284,69 +283,35 @@ def _parse_params_from_xml(xml_response: str) -> dict[str, list[dict[str, str]]]
                             for k, v in loaded.items():
                                 action_params[str(k)] = str(v)
                     except json.JSONDecodeError:
-                        pass  # Fall through to regex fallback
+                        return result
 
             if action_params:
                 result.setdefault(action_name, []).append(action_params)
 
-        if result:
-            return result
+        return result
     except ET.ParseError:
-        pass  # Fall through to regex-based extraction
-
-    # Regex-based fallback for content that breaks XML parsing
-    # (e.g. C code with <stdio.h>, shell commands with < > &, etc.)
-    # Look for <ACTION_NAME>...<param>...</param>...</ACTION_NAME> patterns
-    action_block_pattern = re.compile(r"<([A-Z_]+)>(.*?)</\1>", re.DOTALL | re.IGNORECASE)
-    param_pattern = re.compile(r"<(\w+)>(.*?)</\1>", re.DOTALL)
-
-    for action_match in action_block_pattern.finditer(params_content):
-        action_name = action_match.group(1).upper()
-        action_body = action_match.group(2).strip()
-        action_params: dict[str, str] = {}
-
-        # Try JSON inside the action block first
-        if action_body.startswith("{"):
-            try:
-                loaded = json.loads(action_body)
-                if isinstance(loaded, dict):
-                    for k, v in loaded.items():
-                        action_params[str(k)] = str(v)
-            except json.JSONDecodeError:
-                pass
-
-        # Extract nested param tags via regex
-        if not action_params:
-            for param_match in param_pattern.finditer(action_body):
-                param_name = param_match.group(1)
-                param_value = param_match.group(2).strip()
-                # Skip if the param name looks like an action (all caps)
-                if param_name == param_name.upper() and len(param_name) > 2:
-                    continue
-                action_params[param_name] = param_value
-
-        if action_params:
-            result.setdefault(action_name, []).append(action_params)
-
-    if result:
         return result
 
     # Fall back to JSON inside <params>...</params>
-    if params_content.startswith("{") or params_content.startswith("["):
-        try:
-            loaded_any = json.loads(params_content)
-        except json.JSONDecodeError:
-            return result
+    if not params_content.startswith("{"):
+        return result
 
-        if isinstance(loaded_any, dict):
-            for action_name, action_params_raw in loaded_any.items():
-                if not isinstance(action_params_raw, dict):
-                    continue
-                params_out: dict[str, str] = {}
-                for k, v in action_params_raw.items():
-                    params_out[str(k)] = str(v)
-                if params_out:
-                    result.setdefault(str(action_name).upper(), []).append(params_out)
+    try:
+        loaded = json.loads(params_content)
+    except json.JSONDecodeError:
+        return result
+
+    if not isinstance(loaded, dict):
+        return result
+
+    for action_name, action_params_raw in loaded.items():
+        if not isinstance(action_params_raw, dict):
+            continue
+        params: dict[str, str] = {}
+        for k, v in action_params_raw.items():
+            params[str(k)] = str(v)
+        if params:
+            result.setdefault(str(action_name).upper(), []).append(params)
 
     return result
 
@@ -401,9 +366,6 @@ class DefaultMessageService(IMessageService):
         traj_step_id: str | None = None
         if message.metadata is not None:
             maybe_step = getattr(message.metadata, "trajectoryStepId", None)
-            if not maybe_step and hasattr(message.metadata, "message"):
-                nested_meta = message.metadata.message
-                maybe_step = getattr(nested_meta, "trajectory_step_id", None)
             if isinstance(maybe_step, str) and maybe_step:
                 traj_step_id = maybe_step
 
@@ -463,22 +425,6 @@ class DefaultMessageService(IMessageService):
                     "check_should_respond disabled, always responding (ChatGPT mode)"
                 )
 
-            # Step 0: Run pre-evaluator middleware BEFORE saving to memory
-            # Pre-evaluators can block the message (e.g. prompt injection)
-            # or rewrite it (e.g. redact credentials).
-            pre_result = await runtime.evaluate_pre(message)
-            if pre_result.blocked:
-                runtime.logger.warning(f"Message blocked by pre-evaluator: {pre_result.reason}")
-                return MessageProcessingResult(
-                    did_respond=False,
-                    response_content=None,
-                    response_messages=[],
-                    state=None,
-                )
-            if pre_result.rewritten_text is not None:
-                runtime.logger.info(f"Pre-evaluator rewrote message text: {pre_result.reason}")
-                message.content.text = pre_result.rewritten_text
-
             # Step 1: Save incoming message to memory (if adapter available)
             if message.id is None:
                 message.id = as_uuid(str(uuid.uuid4()))
@@ -486,13 +432,12 @@ class DefaultMessageService(IMessageService):
                 existing_memory = await runtime.get_memory_by_id(message.id)
                 if not existing_memory:
                     await runtime.create_memory(message, "messages")
-                    _spawn_embedding_generation(runtime, message)
             except RuntimeError:
                 # No database adapter - skip persistence (benchmark mode)
                 runtime.logger.debug("No database adapter, skipping message persistence")
 
             # Step 2: Compose state from providers
-            state = await runtime.compose_state(message, trajectory_phase="generate")
+            state = await runtime.compose_state(message)
 
             # Optional: multi-step strategy (TypeScript parity)
             use_multi_step = _parse_bool(runtime.get_setting("USE_MULTI_STEP"))
@@ -723,9 +668,6 @@ class DefaultMessageService(IMessageService):
                 },
             )
 
-            # Spawn async embedding generation for response
-            _spawn_embedding_generation(runtime, response_memory)
-
             responses = [response_memory]
 
             # Step 7: Process actions via runtime.process_actions()
@@ -738,20 +680,6 @@ class DefaultMessageService(IMessageService):
             elif callback:
                 # Simple chat-style response
                 await callback(response_content)
-
-            # Complete trajectory step with actual action data
-            if traj_step_id and traj_logger is not None:
-                try:
-                    if hasattr(traj_logger, "complete_step_by_step_id"):
-                        traj_logger.complete_step_by_step_id(
-                            step_id=traj_step_id,
-                            action_type=",".join(actions) if actions else "REPLY",
-                            action_name=",".join(actions) if actions else "REPLY",
-                            success=True,
-                            reward=0.1,
-                        )
-                except Exception as e:
-                    runtime.logger.debug(f"Trajectory step completion failed: {e}")
 
             # Step 8: Run evaluators via runtime.evaluate()
             runtime.logger.debug("Running evaluators")
@@ -774,26 +702,7 @@ class DefaultMessageService(IMessageService):
 
         except Exception as e:
             import traceback as _tb
-
-            runtime.logger.error(
-                f"Error processing message: {e}\n{''.join(_tb.format_exception(e))}"
-            )
-
-            # Mark trajectory step as failed on error
-            if traj_step_id and traj_logger is not None:
-                try:
-                    if hasattr(traj_logger, "complete_step_by_step_id"):
-                        traj_logger.complete_step_by_step_id(
-                            step_id=traj_step_id,
-                            action_type="ERROR",
-                            action_name="ERROR",
-                            success=False,
-                            reward=-0.1,
-                            error=str(e)[:500],
-                        )
-                except Exception:
-                    pass
-
+            runtime.logger.error(f"Error processing message: {e}\n{''.join(_tb.format_exception(e))}")
             raise
         finally:
             CURRENT_TRAJECTORY_STEP_ID.reset(token)
@@ -901,7 +810,6 @@ class DefaultMessageService(IMessageService):
                 include_list=["RECENT_MESSAGES", "ACTION_STATE", "ACTIONS", "PROVIDERS"],
                 only_include=True,
                 skip_cache=True,
-                trajectory_phase="multi_step_iteration",
             )
             state.data.action_results = list(trace_results)
             state.values["actionResults"] = _format_action_results(trace_results)
@@ -987,7 +895,6 @@ class DefaultMessageService(IMessageService):
                     include_list=providers,
                     only_include=True,
                     skip_cache=True,
-                    trajectory_phase="multi_step_provider",
                 )
 
             if action_name:
@@ -1023,7 +930,6 @@ class DefaultMessageService(IMessageService):
             include_list=["RECENT_MESSAGES", "ACTION_STATE", "ACTIONS", "PROVIDERS"],
             only_include=True,
             skip_cache=True,
-            trajectory_phase="multi_step_summary",
         )
         state.data.action_results = list(trace_results)
         state.values["actionResults"] = _format_action_results(trace_results)
@@ -1247,7 +1153,7 @@ class DefaultMessageService(IMessageService):
                 await runtime.create_memory(message, "messages")
 
             # Compose state from providers
-            state = await runtime.compose_state(message, trajectory_phase="generate")
+            state = await runtime.compose_state(message)
 
             # Build the prompt using canonical template
             from elizaos.prompts import MESSAGE_HANDLER_TEMPLATE
@@ -1317,78 +1223,3 @@ class DefaultMessageService(IMessageService):
             StreamingMessageResult: Final result with metadata (yielded last)
         """
         return self._handle_message_stream_impl(runtime, message)
-
-
-def _spawn_embedding_generation(runtime: IAgentRuntime, memory: Memory) -> None:
-    """Spawn a background task to generate intent and embedding for a memory."""
-    import asyncio
-
-    # Create a background task for embedding generation
-    # We don't await it here so it doesn't block the main flow
-    try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(_generate_embedding_task(runtime, memory))
-    except RuntimeError:
-        # If no loop is running, we might be in a thread or startup.
-        # Fallback to creating a new loop or skipping?
-        # Standard asyncio usage implies a loop exists.
-        pass
-
-
-async def _generate_embedding_task(runtime: IAgentRuntime, memory: Memory) -> None:
-    try:
-        text = memory.content.text or ""
-        if not text:
-            return
-
-        # 1. Generate Intent (Augmented Query)
-        intent_prompt = (
-            "Analyze the following message and extract the core intent or meaning to be used as a search query for retrieval. "
-            "Return ONLY the intent text, no explanation.\\n\\n"
-            f"Message: {text}"
-        )
-
-        intent = text
-        try:
-            # parsing logic handles string response
-            intent_resp = await runtime.use_model(
-                ModelType.TEXT_SMALL,
-                {"prompt": intent_prompt, "maxTokens": 128, "temperature": 0.0},
-            )
-            if isinstance(intent_resp, str):
-                intent = intent_resp.strip()
-        except Exception as e:
-            runtime.logger.debug(f"Failed to generate intent: {e}")
-
-        # Store intent in metadata
-        if memory.metadata is None:
-            from google.protobuf.struct_pb2 import Struct
-
-            memory.metadata = Struct()
-
-        # Handle both dict access (Python object) and struct access (Protobuf)
-        if hasattr(memory.metadata, "update") and callable(memory.metadata.update):
-            # For dict
-            memory.metadata.update({"intent": intent})
-        elif hasattr(memory.metadata, "__setitem__"):
-            memory.metadata["intent"] = intent
-
-        # 2. Generate Embedding for Intent
-        embedding_resp = await runtime.use_model(
-            ModelType.TEXT_EMBEDDING, {"input": intent, "text": intent}
-        )
-
-        embedding: list[float] | None = None
-        if isinstance(embedding_resp, list):
-            embedding = [float(x) for x in embedding_resp]
-
-        if embedding:
-            memory.embedding = embedding
-
-            # 3. Update Memory in DB
-            if runtime._adapter:
-                await runtime.update_memory(memory)
-                runtime.logger.debug(f"Generated intent and embedding for memory {memory.id}")
-
-    except Exception as e:
-        runtime.logger.debug(f"Async embedding task failed for memory {memory.id}: {e}")

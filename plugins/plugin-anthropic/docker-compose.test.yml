@@ -1,0 +1,81 @@
+version: "3.8"
+
+# Docker Compose configuration for running integration tests
+#
+# The Anthropic plugin tests don't require any infrastructure services,
+# but this file provides a consistent testing environment and can be
+# extended for future needs.
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml run --rm test-ts
+#   docker compose -f docker-compose.test.yml run --rm test-rust
+#   docker compose -f docker-compose.test.yml run --rm test-python
+
+services:
+  # TypeScript test runner
+  test-ts:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      target: typescript
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_SMALL_MODEL=${ANTHROPIC_SMALL_MODEL:-claude-3-5-haiku-20241022}
+      - ANTHROPIC_LARGE_MODEL=${ANTHROPIC_LARGE_MODEL:-claude-sonnet-4-20250514}
+    volumes:
+      - ./typescript:/app/typescript:ro
+      - ./package.json:/app/package.json:ro
+    command: ["bun", "test", "typescript/__tests__/"]
+    profiles:
+      - typescript
+      - all
+
+  # Rust test runner
+  test-rust:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      target: rust
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_SMALL_MODEL=${ANTHROPIC_SMALL_MODEL:-claude-3-5-haiku-20241022}
+      - ANTHROPIC_LARGE_MODEL=${ANTHROPIC_LARGE_MODEL:-claude-sonnet-4-20250514}
+    volumes:
+      - ./rust:/app/rust:ro
+    command: ["cargo", "test", "--features", "native", "--", "--ignored"]
+    working_dir: /app/rust
+    profiles:
+      - rust
+      - all
+
+  # Python test runner
+  test-python:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      target: python
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_SMALL_MODEL=${ANTHROPIC_SMALL_MODEL:-claude-3-5-haiku-20241022}
+      - ANTHROPIC_LARGE_MODEL=${ANTHROPIC_LARGE_MODEL:-claude-sonnet-4-20250514}
+    volumes:
+      - ./python:/app/python:ro
+    command: ["pytest", "-m", "integration", "-v"]
+    working_dir: /app/python
+    profiles:
+      - python
+      - all
+
+  # Run all tests
+  test-all:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      target: all
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - ./:/app:ro
+    command: ["./scripts/run-all-tests.sh"]
+    profiles:
+      - all

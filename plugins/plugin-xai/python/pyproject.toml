@@ -1,0 +1,99 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-plugin-xai"
+version = "2.0.0"
+description = "elizaOS xAI Plugin - Grok models and X (formerly Twitter) API integration"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "elizaOS Contributors" }
+]
+keywords = ["ai", "xai", "grok", "x", "x", "elizaos", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.28.0",
+    "pydantic>=2.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "pytest-xprocess>=1.0.0",
+    "mypy>=1.14.0",
+    "ruff>=0.9.0",
+    "respx>=0.22.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaos/eliza"
+Documentation = "https://elizaos.ai/docs"
+Repository = "https://github.com/elizaos/eliza"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_plugin_xai"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/elizaos_plugin_xai",
+    "/tests",
+    "/README.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v -p no:anchorpy"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[[tool.mypy.overrides]]
+module = "elizaos_plugin_xai.*"
+# Relaxed checking for API interaction code
+disable_error_code = ["arg-type", "attr-defined", "no-any-return", "type-arg", "operator", "return-value", "assignment"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "ANN", "S"]
+ignore = ["E501", "S101", "ANN101", "ANN102"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files don't need strict type annotations
+"tests/*" = ["ANN001", "ANN201", "ANN202", "ANN204", "S105", "S106"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["elizaos_plugin_xai"]

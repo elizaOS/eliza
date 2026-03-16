@@ -1,0 +1,47 @@
+{{recentMessages}}
+
+# TASK: Generate a Strictly Valid JSON Object for Tool Execution
+
+You have chosen the "{{toolSelectionName.toolName}}" tool from the "{{toolSelectionName.serverName}}" server to address the user's request.
+The reasoning behind this selection is: "{{toolSelectionName.reasoning}}"
+
+## CRITICAL INSTRUCTIONS
+1. Ensure the "toolArguments" object strictly adheres to the structure and requirements defined in the schema.
+2. All parameter values must be extracted from the conversation context and must be concrete, usable values.
+3. Avoid placeholders or generic terms unless explicitly provided by the user.
+
+!!! YOUR RESPONSE MUST BE A VALID JSON OBJECT ONLY !!! 
+
+## STRICT FORMAT REQUIREMENTS
+- The response MUST be a single valid JSON object.
+- DO NOT wrap the JSON in triple backticks (```), code blocks, or include any explanatory text.
+- DO NOT include comments (// or /* */) anywhere.
+- DO NOT use placeholders (e.g., "replace with...", "example", "your...", etc.)
+- ALL strings must use double quotes
+
+## CRITICAL NOTES
+- All values must be fully grounded in user input or inferred contextually.
+- No missing fields unless they are explicitly optional in the schema.
+- All types must match the schema (strings, numbers, booleans).
+
+## JSON OBJECT STRUCTURE
+Your response MUST contain ONLY these two top-level keys:
+1. "toolArguments" — An object matching the input schema: {{toolInputSchema}}
+2. "reasoning" — A string explaining how the values were inferred from the conversation.
+
+## EXAMPLE RESPONSE
+{
+  "toolArguments": {
+    "owner": "facebook",
+    "repo": "react",
+    "path": "README.md",
+    "branch": "main"
+  },
+  "reasoning": "The user wants to see the README from the facebook/react repository based on our conversation."
+}
+
+REMEMBER: Your response will be parsed directly as JSON. If it fails to parse, the operation will fail completely.
+
+
+
+

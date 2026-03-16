@@ -19,13 +19,18 @@ import type {
   PluginManifestRegistry,
 } from "../types/plugin-manifest.ts";
 import type { JsonValue } from "../types/primitives.ts";
-import { discoverPlugins, resolveUserPath } from "./discovery.ts";
+import {
+  discoverPlugins,
+  resolveUserPath,
+} from "./discovery.ts";
 
 /** Plugin manifest filename */
 export const PLUGIN_MANIFEST_FILENAME = "elizaos.plugin.json";
 
 /** Alternative manifest filenames for compatibility */
-export const PLUGIN_MANIFEST_FILENAMES = [PLUGIN_MANIFEST_FILENAME] as const;
+export const PLUGIN_MANIFEST_FILENAMES = [
+  PLUGIN_MANIFEST_FILENAME,
+] as const;
 
 /** Default manifest cache TTL in milliseconds */
 const DEFAULT_MANIFEST_CACHE_MS = 200;
@@ -47,10 +52,7 @@ export interface PluginsConfig {
   /** Additional plugin load paths */
   loadPaths?: string[];
   /** Plugin entries configuration */
-  entries?: Record<
-    string,
-    { enabled?: boolean; config?: Record<string, JsonValue> }
-  >;
+  entries?: Record<string, { enabled?: boolean; config?: Record<string, JsonValue> }>;
   /** Plugin slots configuration */
   slots?: { memory?: string };
 }
@@ -62,10 +64,7 @@ export interface NormalizedPluginsConfig {
   allow: string[];
   deny: string[];
   loadPaths: string[];
-  entries: Record<
-    string,
-    { enabled?: boolean; config?: Record<string, JsonValue> }
-  >;
+  entries: Record<string, { enabled?: boolean; config?: Record<string, JsonValue> }>;
   slots: { memory?: string };
 }
 
@@ -79,12 +78,8 @@ export function normalizePluginsConfig(
     allow: Array.isArray(config?.allow) ? config.allow : [],
     deny: Array.isArray(config?.deny) ? config.deny : [],
     loadPaths: Array.isArray(config?.loadPaths) ? config.loadPaths : [],
-    entries:
-      config?.entries && typeof config.entries === "object"
-        ? config.entries
-        : {},
-    slots:
-      config?.slots && typeof config.slots === "object" ? config.slots : {},
+    entries: config?.entries && typeof config.entries === "object" ? config.entries : {},
+    slots: config?.slots && typeof config.slots === "object" ? config.slots : {},
   };
 }
 
@@ -238,13 +233,10 @@ export function loadPluginManifest(rootDir: string): PluginManifestLoadResult {
   }
 
   // Optional fields
-  const kind =
-    typeof raw.kind === "string" ? (raw.kind as PluginKind) : undefined;
+  const kind = typeof raw.kind === "string" ? (raw.kind as PluginKind) : undefined;
   const name = typeof raw.name === "string" ? raw.name.trim() : undefined;
-  const description =
-    typeof raw.description === "string" ? raw.description.trim() : undefined;
-  const version =
-    typeof raw.version === "string" ? raw.version.trim() : undefined;
+  const description = typeof raw.description === "string" ? raw.description.trim() : undefined;
+  const version = typeof raw.version === "string" ? raw.version.trim() : undefined;
   const channels = normalizeStringList(raw.channels);
   const providers = normalizeStringList(raw.providers);
   const skills = normalizeStringList(raw.skills);
@@ -278,15 +270,11 @@ export function loadPluginManifest(rootDir: string): PluginManifestLoadResult {
     version,
     uiHints,
     author: typeof raw.author === "string" ? raw.author.trim() : undefined,
-    homepage:
-      typeof raw.homepage === "string" ? raw.homepage.trim() : undefined,
-    repository:
-      typeof raw.repository === "string" ? raw.repository.trim() : undefined,
+    homepage: typeof raw.homepage === "string" ? raw.homepage.trim() : undefined,
+    repository: typeof raw.repository === "string" ? raw.repository.trim() : undefined,
     license: typeof raw.license === "string" ? raw.license.trim() : undefined,
     minElizaVersion:
-      typeof raw.minElizaVersion === "string"
-        ? raw.minElizaVersion.trim()
-        : undefined,
+      typeof raw.minElizaVersion === "string" ? raw.minElizaVersion.trim() : undefined,
   };
 
   return {
@@ -309,8 +297,7 @@ function buildRecord(params: {
   return {
     id: params.manifest.id,
     name:
-      normalizeManifestLabel(params.manifest.name) ??
-      params.candidate.packageName,
+      normalizeManifestLabel(params.manifest.name) ?? params.candidate.packageName,
     description:
       normalizeManifestLabel(params.manifest.description) ??
       params.candidate.packageDescription,

@@ -1,0 +1,69 @@
+[package]
+name = "elizaos-plugin-local-ai"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "elizaOS Local AI Plugin - Local LLM inference for text, embeddings, vision, and audio"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+homepage = "https://elizaos.ai"
+documentation = "https://docs.rs/elizaos-plugin-local-ai"
+readme = "README.md"
+keywords = ["ai", "llama", "local-ai", "embeddings", "elizaos", "llm"]
+categories = ["api-bindings", "asynchronous", "machine-learning"]
+
+[lib]
+name = "elizaos_plugin_local_ai"
+crate-type = ["lib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full"]
+# LLM features require llama_cpp_rs which needs clang and system headers
+# NOTE: `llm` is declared as an empty feature for conditional compilation.
+# When vendored llama_cpp_rs is added, update to: llm = ["llama_cpp_rs"]
+llm = []
+# DISABLED: Vendored llama_cpp_rs not present - uncomment when vendor is added
+# cuda = ["llm", "llama_cpp_rs/cuda"]
+# metal = ["llm", "llama_cpp_rs/metal"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.42", features = ["rt", "macros", "fs"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# Regex for XML parsing
+regex = "1.10"
+
+# File handling
+directories = "5.0"
+
+# LLM inference (optional)
+# NOTE: We vendor a patched `llama_cpp_rs` to fix a macOS build issue where
+# the upstream 0.3.0 build script expects `OUT_DIR/llama.cpp/ggml.o` but `cc`
+# emits hashed object filenames (e.g. `abcd1234-ggml.o`).
+# DISABLED: Vendored llama_cpp_rs not present - uncomment when vendor is added
+# llama_cpp_rs = { path = "vendor/llama_cpp_rs", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }
+tokio-test = "0.4"
+pretty_assertions = "1.4"
+tempfile = "3.10"
+
+[profile.release]
+lto = true
+opt-level = "z"
+

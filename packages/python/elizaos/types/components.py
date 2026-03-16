@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
 
 from elizaos.types.generated.eliza.v1 import components_pb2
 from elizaos.types.primitives import Content
@@ -13,39 +12,6 @@ if TYPE_CHECKING:
     from elizaos.types.state import State
 
 JsonPrimitive: TypeAlias = str | int | float | bool | None
-
-
-# ---------------------------------------------------------------------------
-# Evaluator phase — when in the message pipeline the evaluator runs
-# ---------------------------------------------------------------------------
-
-EvaluatorPhase = Literal["pre", "post"]
-"""When in the message pipeline an evaluator runs.
-
-- ``"pre"`` — **Before** the incoming message is saved to memory and before
-  action processing.  Pre-evaluators act as middleware: they can inspect,
-  rewrite, or **block** a message so it never reaches the agent.
-
-- ``"post"`` — **After** the agent has responded and actions have executed.
-  This is the original (default) evaluator behaviour.
-"""
-
-
-@dataclass
-class PreEvaluatorResult:
-    """Result returned by a ``phase="pre"`` evaluator's handler.
-
-    If *blocked* is ``True`` the message pipeline will skip memory storage,
-    response generation, and action execution for this message.
-
-    If *rewritten_text* is provided the message text is replaced before
-    further processing (useful for sanitisation / redaction).
-    """
-
-    blocked: bool = False
-    rewritten_text: str | None = None
-    reason: str | None = None
-
 
 # Proto-backed data types
 ActionExample = components_pb2.ActionExample
@@ -114,15 +80,7 @@ class ActionDefinition:  # runtime interface
 
 
 class EvaluatorDefinition:  # runtime interface
-    """Definition for an evaluator that processes agent messages.
-
-    Evaluators can run at two points in the pipeline controlled by *phase*:
-
-    - ``"pre"`` — before memory storage (middleware / security gate).
-      Pre-evaluators may return a :class:`PreEvaluatorResult` from their
-      handler to block or rewrite the incoming message.
-    - ``"post"`` — after actions (default, backwards-compatible).
-    """
+    """Definition for an evaluator that processes agent responses."""
 
     always_run: bool | None
     description: str
@@ -131,7 +89,6 @@ class EvaluatorDefinition:  # runtime interface
     handler: Handler
     name: str
     validate: Validator
-    phase: EvaluatorPhase
 
     def __init__(
         self,
@@ -142,7 +99,6 @@ class EvaluatorDefinition:  # runtime interface
         examples: list[EvaluationExample] | None = None,
         similes: list[str] | None = None,
         always_run: bool | None = None,
-        phase: EvaluatorPhase = "post",
     ) -> None:
         self.name = name
         self.description = description
@@ -151,7 +107,6 @@ class EvaluatorDefinition:  # runtime interface
         self.examples = examples or []
         self.similes = similes
         self.always_run = always_run
-        self.phase = phase
 
 
 class ProviderDefinition:  # runtime interface
@@ -188,8 +143,6 @@ Provider = ProviderDefinition
 __all__ = [
     "Action",
     "Evaluator",
-    "EvaluatorPhase",
-    "PreEvaluatorResult",
     "Provider",
     "ActionExample",
     "ActionParameterSchema",

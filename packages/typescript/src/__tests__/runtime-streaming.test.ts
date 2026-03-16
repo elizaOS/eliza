@@ -476,12 +476,14 @@ describe("useModel Streaming", () => {
         onStreamChunk: () => {},
       });
 
-      // Verify adapter.log was called
-      const logCalls = (mockAdapter.log as ReturnType<typeof mock>).mock.calls;
-      expect(logCalls.length).toBeGreaterThan(0);
+      // Verify adapter.createLogs was called
+      const createLogsCalls = (mockAdapter.createLogs as ReturnType<typeof vi.fn>).mock.calls;
+      expect(createLogsCalls.length).toBeGreaterThan(0);
 
       // Verify the log contains correct model info
-      const logCall = logCalls[0][0];
+      const logsArray = createLogsCalls[0][0];
+      expect(Array.isArray(logsArray)).toBe(true);
+      const logCall = logsArray[0];
       expect(logCall.type).toBe("useModel:TEXT_LARGE");
       expect(logCall.body.modelKey).toBe("TEXT_LARGE");
       expect(logCall.body.response).toBe("Hello World");
@@ -506,12 +508,14 @@ describe("useModel Streaming", () => {
         prompt: "Test prompt",
       });
 
-      // Verify adapter.log was called
-      const logCalls = (mockAdapter.log as ReturnType<typeof mock>).mock.calls;
-      expect(logCalls.length).toBeGreaterThan(0);
+      // Verify adapter.createLogs was called
+      const createLogsCalls = (mockAdapter.createLogs as ReturnType<typeof vi.fn>).mock.calls;
+      expect(createLogsCalls.length).toBeGreaterThan(0);
 
       // Verify the log contains correct model info
-      const logCall = logCalls[0][0];
+      const logsArray = createLogsCalls[0][0];
+      expect(Array.isArray(logsArray)).toBe(true);
+      const logCall = logsArray[0];
       expect(logCall.type).toBe("useModel:TEXT_LARGE");
       expect(logCall.body.modelKey).toBe("TEXT_LARGE");
       expect(logCall.body.response).toBe("Non-streamed response");

@@ -75,17 +75,6 @@ interface BaseRoute {
     runtime: IAgentRuntime,
   ) => Promise<void>;
   isMultipart?: boolean; // Indicates if the route expects multipart/form-data (file uploads)
-  /** x402 payment configuration for this route. If present, the route requires payment. */
-  x402?: {
-    /** Price in USDC base units (6 decimals, e.g. "1000000" = $1.00) */
-    price: string;
-    /** Override network (defaults to agent's configured network) */
-    network?: string;
-    /** Override payTo address (defaults to agent's configured address) */
-    payTo?: string;
-    /** Description of what is being paid for */
-    description?: string;
-  };
 }
 
 interface PublicRoute extends BaseRoute {

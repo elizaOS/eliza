@@ -11,6 +11,7 @@ use crate::generated::spec_helpers::require_action_spec;
 use crate::runtime::IAgentRuntime;
 use crate::types::events::{EventPayload, EventType};
 use crate::types::{ActionResult, Content, Memory, MemoryType, State};
+use std::collections::HashMap;
 
 use super::Action;
 

@@ -1,0 +1,59 @@
+{
+  "name": "@milaidy/capacitor-screencapture",
+  "version": "1.0.0",
+  "description": "Milaidy Screen Capture Plugin for Capacitor - Screen recording and screenshots",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources/",
+    "ios/Plugin.xcodeproj/",
+    "electron/",
+    "*.podspec"
+  ],
+  "author": "Milaidy",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/milaidy/milaidy"
+  },
+  "scripts": {
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "rimraf": "^5.0.0",
+    "rollup": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "milaidy": {
+    "platforms": ["browser", "node"],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Full support via Screen Capture API (getDisplayMedia) for screenshots and screen recording with pause/resume",
+      "node": "Full support via Electron native screen capture APIs",
+      "ios": true,
+      "android": true
+    }
+  }
+}

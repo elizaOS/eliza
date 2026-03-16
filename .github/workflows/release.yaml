@@ -47,7 +47,6 @@ jobs:
 
     permissions:
       contents: write
-      issues: write
       packages: write
       id-token: write
 
@@ -57,104 +56,6 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Checkout plugins
-        run: |
-          echo "📦 Checking out all plugin repositories..."
-          mkdir -p plugins
-
-          # Alpha releases on develop should not be blocked by external plugin repos.
-          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
-            echo "ℹ️ Skipping external plugin checkout on develop branch."
-            exit 0
-          fi
-
-          # Clone all plugin repos from the elizaos-plugins org
-          REPOS=$(gh api /orgs/elizaos-plugins/repos --paginate -q '.[].name' | grep '^plugin-')
-          TOTAL=$(echo "$REPOS" | wc -l | tr -d ' ')
-          COUNT=0
-
-          echo "$REPOS" | while IFS= read -r repo; do
-            COUNT=$((COUNT + 1))
-            if [ ! -d "plugins/$repo" ]; then
-              echo "  [$COUNT/$TOTAL] Cloning $repo..."
-              git clone --depth 1 "https://github.com/elizaos-plugins/$repo.git" "plugins/$repo" 2>/dev/null &
-            fi
-
-            # Limit concurrent clones
-            if (( COUNT % 20 == 0 )); then
-              wait
-            fi
-          done
-          wait
-
-          echo "✅ Plugins directory populated with $(ls plugins/ | wc -l | tr -d ' ') plugins"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Validate plugin manifests
-        run: |
-          set -euo pipefail
-          echo "🔎 Validating plugin manifests..."
-          INVALID_COUNT=0
-          shopt -s nullglob
-          declare -A PACKAGE_OWNER
-          declare -A PACKAGE_SOURCE
-
-          for plugin_dir in plugins/plugin-*; do
-            [ -d "$plugin_dir" ] || continue
-            invalid_reason=""
-            package_names=()
-            package_sources=()
-
-            for manifest in "$plugin_dir/package.json" "$plugin_dir/typescript/package.json"; do
-              [ -f "$manifest" ] || continue
-
-              pkg_name="$(node -e 'const fs=require("fs"); const pkg=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if ("trustedDependencies" in pkg && (!Array.isArray(pkg.trustedDependencies) || pkg.trustedDependencies.some((dep) => typeof dep !== "string"))) { throw new Error("trustedDependencies must be an array of strings"); } process.stdout.write(typeof pkg.name === "string" ? pkg.name : "");' "$manifest" 2>/dev/null)" || {
-                invalid_reason="invalid manifest schema in $manifest"
-                break
-              }
-
-              if [ -n "$pkg_name" ]; then
-                for seen_name in "${package_names[@]}"; do
-                  if [ "$seen_name" = "$pkg_name" ]; then
-                    invalid_reason="duplicate workspace name '$pkg_name' within $plugin_dir"
-                    break
-                  fi
-                done
-                [ -z "$invalid_reason" ] || break
-
-                package_names+=("$pkg_name")
-                package_sources+=("$manifest")
-              fi
-            done
-
-            if [ -z "$invalid_reason" ]; then
-              for idx in "${!package_names[@]}"; do
-                pkg_name="${package_names[$idx]}"
-                owner="${PACKAGE_OWNER[$pkg_name]-}"
-                if [ -n "$owner" ] && [ "$owner" != "$plugin_dir" ]; then
-                  invalid_reason="duplicate workspace name '$pkg_name' already declared in ${PACKAGE_SOURCE[$pkg_name]}"
-                  break
-                fi
-              done
-            fi
-
-            if [ -n "$invalid_reason" ]; then
-              echo "  ⚠️ Excluding $plugin_dir due to $invalid_reason"
-              rm -rf "$plugin_dir"
-              INVALID_COUNT=$((INVALID_COUNT + 1))
-              continue
-            fi
-
-            for idx in "${!package_names[@]}"; do
-              pkg_name="${package_names[$idx]}"
-              PACKAGE_OWNER["$pkg_name"]="$plugin_dir"
-              PACKAGE_SOURCE["$pkg_name"]="${package_sources[$idx]}"
-            done
-          done
-
-          echo "✅ Plugin manifest validation complete (excluded ${INVALID_COUNT} plugin repos)."
 
       - name: Setup Git
         run: |
@@ -168,24 +69,10 @@ jobs:
             git checkout -b release/production-${{ github.sha }}
           fi
 
-      - name: Install Linux system libraries
+      - name: Install PostgreSQL client libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libpq-dev \
-            postgresql-client \
-            pkg-config \
-            libatspi2.0-dev \
-            libgtk-3-dev \
-            libx11-dev \
-            libxcb1-dev \
-            libxcb-randr0-dev \
-            libxkbcommon-dev \
-            libwayland-dev \
-            libpipewire-0.3-dev \
-            libgbm-dev \
-            libdrm-dev \
-            libegl1-mesa-dev
+          sudo apt-get install -y libpq-dev postgresql-client
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -552,23 +439,15 @@ jobs:
           echo "Building packages with version v${{ steps.version.outputs.version }}..."
           bun run build
 
-      # Lerna v9 resolves workspace links for publish candidates internally.
-      # Keep this as a no-op to avoid mutating tracked manifests pre-publish.
+      # Replace workspace:* references with actual versions before publishing
+      # This is required because Bun workspaces use workspace:* protocol
+      # which npm doesn't understand when the packages are published
       - name: Replace workspace references
         id: replace_workspace
         run: |
-          echo "ℹ️ Skipping in-place workspace reference replacement (handled by Lerna)."
-
-      - name: Ensure clean tree before publish
-        run: |
-          # Build step regenerates this tracked file with a timestamp.
-          git checkout -- packages/elizaos/examples-manifest.json || true
-
-          if [[ -n "$(git status --porcelain)" ]]; then
-            echo "❌ Working tree must be clean before publish."
-            git status --short
-            exit 1
-          fi
+          echo "🔄 Replacing workspace:* references with actual versions..."
+          node scripts/replace-workspace-versions.js
+          echo "✅ Workspace references replaced"
 
       # Publish to NPM (only after git operations succeed)
       - name: Publish to NPM
@@ -577,11 +456,9 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
-          AUTH_NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
 
-          # setup-node points npm at a temp userconfig; write auth to the active one.
-          mkdir -p "$(dirname "$AUTH_NPMRC")"
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$AUTH_NPMRC"
+          # Configure npm for authentication
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
 
           # Publish with appropriate dist-tag
           if ! bunx lerna publish from-package \
@@ -604,34 +481,14 @@ jobs:
 
           echo "✅ Successfully published to NPM with dist-tag: ${DIST_TAG}"
 
-      - name: Sync next dist-tag for 2.0 prereleases
-        id: sync_next_dist_tags
-        if: steps.release_type.outputs.type == 'alpha'
-        continue-on-error: true
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          AUTH_NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
-          mkdir -p "$(dirname "$AUTH_NPMRC")"
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$AUTH_NPMRC"
-          node scripts/sync-prerelease-dist-tags.js alpha next
-
-      - name: Warn when next dist-tag sync fails
-        if: steps.sync_next_dist_tags.outcome == 'failure'
-        run: |
-          echo "::warning::Published packages successfully, but syncing alpha dist-tags to next failed. Re-run the sync-next-dist-tags workflow after npm access is fixed."
-          {
-            echo "## Dist-tag Sync Warning"
-            echo ""
-            echo "Packages were published successfully, but syncing the \`alpha\` dist-tag to \`next\` failed."
-            echo "Re-run the \`sync-next-dist-tags\` workflow after npm access is fixed."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # Kept for workflow compatibility; no-op because replacement is no-op.
+      # Always restore workspace:* references after publish (success or failure)
+      # This keeps the repository clean for development
       - name: Restore workspace references
         if: always() && steps.replace_workspace.outcome == 'success'
         run: |
-          echo "ℹ️ No workspace reference restoration needed."
+          echo "🔄 Restoring workspace:* references..."
+          node scripts/restore-workspace-refs.js
+          echo "✅ Workspace references restored"
 
       # Create GitHub Release for alpha/beta (not for production, as it already exists)
       - name: Create GitHub release
@@ -650,7 +507,12 @@ jobs:
 
             ### Quick Start
 
-            Add the core package to your project:
+            Install the CLI globally to get started:
+            ```bash
+            bun i -g @elizaos/cli@${{ steps.release_type.outputs.dist_tag }}
+            ```
+
+            Or add packages to your project:
             ```bash
             bun add @elizaos/core@${{ steps.release_type.outputs.dist_tag }}
             ```
@@ -679,7 +541,12 @@ jobs:
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Quick Start" >> $GITHUB_STEP_SUMMARY
-          echo "Add to your project:" >> $GITHUB_STEP_SUMMARY
+          echo "Install the CLI globally:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "bun i -g @elizaos/cli@${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Or add to your project:" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "bun add @elizaos/core@${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY

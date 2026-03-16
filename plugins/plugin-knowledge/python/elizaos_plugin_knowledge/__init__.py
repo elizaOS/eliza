@@ -1,0 +1,97 @@
+from elizaos_plugin_knowledge.types import (
+    CONTEXT_TARGETS,
+    CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE,
+    ContextTargets,
+    DEFAULT_CHARS_PER_TOKEN,
+    DEFAULT_CHUNK_OVERLAP_TOKENS,
+    DEFAULT_CHUNK_TOKEN_SIZE,
+    ExtendedMemoryMetadata,
+    FragmentMetadata,
+    KnowledgeConfig,
+    KnowledgeDocumentMetadata,
+    KnowledgeItem,
+    KnowledgeFragment,
+    KnowledgeDocument,
+    KnowledgeServiceConfig,
+    EmbeddingResult,
+    LoadResult,
+    MemoryType,
+    PendingRAGEntry,
+    RAGMetadata,
+    RetrievedFragmentInfo,
+    SearchResult,
+    AddKnowledgeOptions,
+    TextGenerationOptions,
+    ProviderRateLimits,
+)
+from elizaos_plugin_knowledge.service import KnowledgeService
+from elizaos_plugin_knowledge.provider import (
+    AvailableDocumentsProvider,
+    DocumentsProvider,
+    KnowledgeProvider,
+    KnowledgeProviderTs,
+)
+from elizaos_plugin_knowledge.plugin import (
+    KnowledgePlugin,
+    create_knowledge_plugin,
+    get_knowledge_plugin,
+)
+from elizaos_plugin_knowledge.actions import (
+    ActionContext,
+    KnowledgeAction,
+    ProcessKnowledgeAction,
+    SearchKnowledgeAction,
+    get_actions,
+    process_knowledge_action,
+    search_knowledge_action,
+    knowledge_actions,
+)
+
+__version__ = "2.0.0"
+__all__ = [
+    # Types
+    "KnowledgeConfig",
+    "KnowledgeItem",
+    "KnowledgeFragment",
+    "KnowledgeDocument",
+    "EmbeddingResult",
+    "MemoryType",
+    "SearchResult",
+    "AddKnowledgeOptions",
+    "TextGenerationOptions",
+    "ProviderRateLimits",
+    "RAGMetadata",
+    "RetrievedFragmentInfo",
+    "PendingRAGEntry",
+    "FragmentMetadata",
+    "KnowledgeDocumentMetadata",
+    "KnowledgeServiceConfig",
+    "ExtendedMemoryMetadata",
+    "LoadResult",
+    "ContextTargets",
+    "CONTEXT_TARGETS",
+    "CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE",
+    "DEFAULT_CHUNK_TOKEN_SIZE",
+    "DEFAULT_CHUNK_OVERLAP_TOKENS",
+    "DEFAULT_CHARS_PER_TOKEN",
+    # Service
+    "KnowledgeService",
+    # Providers
+    "KnowledgeProvider",
+    "DocumentsProvider",
+    "KnowledgeProviderTs",
+    "AvailableDocumentsProvider",
+    # Plugin
+    "KnowledgePlugin",
+    "create_knowledge_plugin",
+    "get_knowledge_plugin",
+    # Actions
+    "ActionContext",
+    "KnowledgeAction",
+    "ProcessKnowledgeAction",
+    "SearchKnowledgeAction",
+    "get_actions",
+    "process_knowledge_action",
+    "search_knowledge_action",
+    "knowledge_actions",
+]

@@ -1,0 +1,29 @@
+[package]
+name = "elizaos-plugin-moltbook"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "Moltbook social platform plugin for elizaOS (Rust)"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+keywords = ["elizaos", "plugin", "moltbook", "social", "ai-agents"]
+categories = ["api-bindings", "web-programming"]
+readme = "README.md"
+
+[lib]
+name = "elizaos_plugin_moltbook"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait = "0.1"
+reqwest = { version = "0.11", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+
+[dev-dependencies]
+mockall = "0.11"
+tokio-test = "0.4"
+wiremock = "0.5"

@@ -1,0 +1,59 @@
+[package]
+name = "eliza-lambda"
+version = "1.0.0"
+edition = "2021"
+description = "elizaOS AWS Lambda worker (Rust)"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "bootstrap"
+path = "src/main.rs"
+
+[[bin]]
+name = "test_local"
+path = "src/test_local.rs"
+
+[dependencies]
+# AWS Lambda runtime
+lambda_http = "0.13"
+lambda_runtime = "0.13"
+
+# Async runtime
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "time"] }
+
+# HTTP client for OpenAI API
+reqwest = { version = "0.12", features = ["json"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# UUID generation
+uuid = { version = "1.0", features = ["v4"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Environment
+dotenvy = "0.15"
+
+# Lazy initialization
+once_cell = "1.19"
+
+# elizaOS packages (local)
+elizaos = { path = "../../../packages/rust" }
+elizaos-plugin-openai = { path = "../../../plugins/plugin-openai/rust" }
+
+[dev-dependencies]
+tokio-test = "0.4"

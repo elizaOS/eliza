@@ -1,0 +1,62 @@
+[package]
+name = "elizaos-plugin-pdf"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "elizaOS PDF Plugin - PDF reading and text extraction"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+homepage = "https://elizaos.ai"
+documentation = "https://docs.rs/elizaos-plugin-pdf"
+readme = "README.md"
+keywords = ["pdf", "text-extraction", "elizaos", "document-processing"]
+categories = ["text-processing", "asynchronous", "parsing"]
+
+[lib]
+name = "elizaos_plugin_pdf"
+crate-type = ["lib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full"]
+
+[dependencies]
+# PDF parsing
+pdf-extract = "0.7"
+lopdf = "0.34"
+
+# Async runtime
+tokio = { version = "1.42", features = ["rt", "macros", "fs"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# Bytes handling
+bytes = "1.9"
+
+# Regex for text cleanup
+regex = "1.12"
+
+# Date parsing
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }
+tokio-test = "0.4"
+pretty_assertions = "1.4"
+
+[profile.release]
+lto = true
+opt-level = "z"
+
+

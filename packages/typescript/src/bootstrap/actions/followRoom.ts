@@ -9,29 +9,21 @@ import type {
   State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import {
-  composePromptFromState,
-  parseXmlBooleanResponse,
-} from "../../utils.ts";
+import { composePromptFromState } from "../../utils.ts";
 
-const booleanFooter = `Respond using XML format like this:
-<response>
-  <decision>true | false</decision>
-</response>
+const booleanFooter = "Respond with only a YES or a NO.";
 
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
-
-const shouldFollowTemplate = `# Task: Decide if {{agentName}} should start following this room, i.e. eagerly participating without explicit mentions.
+export const shouldFollowTemplate = `# Task: Decide if {{agentName}} should start following this room, i.e. eagerly participating without explicit mentions.
 
 {{recentMessages}}
 
 Should {{agentName}} start following this room, eagerly participating without explicit mentions?
-Set <decision>true</decision> if:
+Respond with YES if:
 - The user has directly asked {{agentName}} to follow the conversation or participate more actively
 - The conversation topic is highly engaging and {{agentName}}'s input would add significant value
 - {{agentName}} has unique insights to contribute and the users seem receptive
 
-Otherwise, set <decision>false</decision>.
+Otherwise, respond with NO.
 ${booleanFooter}`;
 
 export const followRoomAction: Action = {
@@ -80,7 +72,7 @@ export const followRoomAction: Action = {
     if (!state) {
       logger.error(
         {
-          src: "plugin:core:action:follow_room",
+          src: "plugin:bootstrap:action:follow_room",
           agentId: runtime.agentId,
         },
         "State is required for followRoomAction",
@@ -111,9 +103,15 @@ export const followRoomAction: Action = {
         stopSequences: [],
       });
 
-      const parsedResponse = parseXmlBooleanResponse(response);
+      const cleanedResponse = response.trim().toLowerCase();
 
-      if (parsedResponse === true) {
+      if (
+        cleanedResponse === "true" ||
+        cleanedResponse === "yes" ||
+        cleanedResponse === "y" ||
+        cleanedResponse.includes("true") ||
+        cleanedResponse.includes("yes")
+      ) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -130,7 +128,14 @@ export const followRoomAction: Action = {
         return true;
       }
 
-      if (parsedResponse === false) {
+      // Handle various negative responses
+      if (
+        cleanedResponse === "false" ||
+        cleanedResponse === "no" ||
+        cleanedResponse === "n" ||
+        cleanedResponse.includes("false") ||
+        cleanedResponse.includes("no")
+      ) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -149,11 +154,11 @@ export const followRoomAction: Action = {
 
       logger.warn(
         {
-          src: "plugin:core:action:follow_room",
+          src: "plugin:bootstrap:action:follow_room",
           agentId: runtime.agentId,
           response,
         },
-        "Unclear XML decision response, defaulting to false",
+        "Unclear boolean response, defaulting to false",
       );
       return false;
     }
@@ -174,7 +179,7 @@ export const followRoomAction: Action = {
 
     if (shouldFollow) {
       try {
-        await runtime.setParticipantUserState(
+        await runtime.updateParticipantUserState(
           message.roomId,
           runtime.agentId,
           "FOLLOWED",
@@ -213,7 +218,7 @@ export const followRoomAction: Action = {
       } catch (error) {
         logger.error(
           {
-            src: "plugin:core:action:follow_room",
+            src: "plugin:bootstrap:action:follow_room",
             agentId: runtime.agentId,
             error: error instanceof Error ? error.message : String(error),
           },

@@ -1,0 +1,50 @@
+[project]
+name = "elizaos-plugin-nostr"
+version = "2.0.0a1"
+description = "Nostr decentralized messaging plugin for elizaOS agents"
+authors = [{ name = "elizaOS", email = "contact@elizaos.com" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+keywords = ["elizaos", "plugin", "nostr", "decentralized", "nip-04"]
+dependencies = [
+    "elizaos>=2.0.0",
+    "secp256k1>=0.14.0",
+    "websockets>=12.0",
+    "bech32>=1.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_plugin_nostr"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,5 +1,4 @@
 import { v4 as uuidv4 } from "uuid";
-import { parseActionParams } from "../../actions.ts";
 import { logger } from "../../logger.ts";
 import {
   type ActionContext,
@@ -73,159 +72,6 @@ interface PlanExecutionResult {
 type WorkingMemory = Record<string, JsonValue>;
 type RuntimeAction = IAgentRuntime["actions"][number];
 
-const MAX_ACTIVE_PLANS = 100;
-
-function escapeXmlText(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
-function serializeJsonValueToXml(value: JsonValue, tagName: string): string {
-  if (Array.isArray(value)) {
-    const items = value.map((item) => serializeJsonValueToXml(item, "item"));
-    return `<${tagName}>${items.join("")}</${tagName}>`;
-  }
-
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, JsonValue>).map(
-      ([key, entryValue]) =>
-        `<entry><key>${escapeXmlText(key)}</key>${serializeJsonValueToXml(entryValue, "value")}</entry>`,
-    );
-    return `<${tagName}>${entries.join("")}</${tagName}>`;
-  }
-
-  const scalar =
-    value === null || value === undefined ? "" : escapeXmlText(String(value));
-  return `<${tagName}>${scalar}</${tagName}>`;
-}
-
-function serializeActionParametersToXml(parameters: ActionParameters): string {
-  const entries = Object.entries(parameters);
-  if (entries.length === 0) {
-    return "<parameters></parameters>";
-  }
-
-  const inner = entries
-    .map(([key, value]) => serializeJsonValueToXml(value as JsonValue, key))
-    .join("");
-  return `<parameters>${inner}</parameters>`;
-}
-
-function serializeDependenciesToXml(dependencies: string[]): string {
-  if (dependencies.length === 0) {
-    return "<dependencies></dependencies>";
-  }
-
-  const inner = dependencies
-    .map(
-      (dependency) => `<dependency>${escapeXmlText(dependency)}</dependency>`,
-    )
-    .join("");
-  return `<dependencies>${inner}</dependencies>`;
-}
-
-function parseStepParametersXml(
-  parametersXml: string | undefined,
-): ActionParameters {
-  if (!parametersXml || parametersXml.trim() === "") {
-    return {};
-  }
-
-  return (
-    parseActionParams(`<ACTION>${parametersXml}</ACTION>`).get("ACTION") ?? {}
-  );
-}
-
-function parseDependencyStringsXml(
-  dependenciesXml: string | undefined,
-): string[] {
-  if (!dependenciesXml || dependenciesXml.trim() === "") {
-    return [];
-  }
-
-  const matches = dependenciesXml.matchAll(
-    /<dependency>([\s\S]*?)<\/dependency>/g,
-  );
-  const dependencies: string[] = [];
-  for (const match of matches) {
-    const value = match[1]?.trim();
-    if (value) {
-      dependencies.push(value);
-    }
-  }
-
-  if (dependencies.length > 0) {
-    return dependencies;
-  }
-
-  return dependenciesXml
-    .split(",")
-    .map((dependency) => dependency.trim())
-    .filter((dependency) => dependency.length > 0);
-}
-
-function serializePlanToXml(plan: ActionPlan): string {
-  const stepsXml = plan.steps
-    .map((step, index) => {
-      const dependencies = (step.dependencies ?? []).map((dependency) =>
-        String(dependency),
-      );
-      return [
-        "<step>",
-        `<id>${escapeXmlText(String(step.id ?? `step_${index + 1}`))}</id>`,
-        `<action>${escapeXmlText(step.actionName ?? "")}</action>`,
-        serializeActionParametersToXml(step.parameters ?? {}),
-        serializeDependenciesToXml(dependencies),
-        `<status>${escapeXmlText(step.status ?? "pending")}</status>`,
-        step.error ? `<error>${escapeXmlText(step.error)}</error>` : "",
-        "</step>",
-      ]
-        .filter(Boolean)
-        .join("");
-    })
-    .join("");
-
-  return [
-    "<plan>",
-    `<goal>${escapeXmlText(plan.goal ?? "")}</goal>`,
-    `<thought>${escapeXmlText(plan.thought)}</thought>`,
-    `<execution_model>${escapeXmlText(plan.executionModel ?? "sequential")}</execution_model>`,
-    `<current_step>${plan.currentStep}</current_step>`,
-    `<total_steps>${plan.totalSteps}</total_steps>`,
-    `<steps>${stepsXml}</steps>`,
-    "</plan>",
-  ].join("");
-}
-
-function serializeActionResultsToXml(results: ActionResult[]): string {
-  const items = results
-    .map((result) => {
-      const valuesXml =
-        result.values && typeof result.values === "object"
-          ? serializeJsonValueToXml(result.values as JsonValue, "values")
-          : "<values></values>";
-      return [
-        "<result>",
-        `<success>${result.success ? "true" : "false"}</success>`,
-        `<text>${escapeXmlText(result.text ?? "")}</text>`,
-        valuesXml,
-        result.error
-          ? `<error>${escapeXmlText(result.error instanceof Error ? result.error.message : String(result.error))}</error>`
-          : "",
-        "</result>",
-      ]
-        .filter(Boolean)
-        .join("");
-    })
-    .join("");
-
-  return `<completed_results>${items}</completed_results>`;
-}
-
 class PlanWorkingMemory {
   private memory = new Map<string, JsonValue>();
 
@@ -274,29 +120,6 @@ export class PlanningService extends Service {
       abortController?: AbortController;
     }
   >();
-
-  private rememberActivePlan(plan: ActionPlan): void {
-    if (!plan.id) {
-      return;
-    }
-
-    if (this.activePlans.has(plan.id)) {
-      this.activePlans.delete(plan.id);
-    }
-    this.activePlans.set(plan.id, plan);
-
-    while (this.activePlans.size > MAX_ACTIVE_PLANS) {
-      const oldestPlanId = this.activePlans.keys().next().value;
-      if (!oldestPlanId) {
-        break;
-      }
-      this.activePlans.delete(oldestPlanId);
-    }
-  }
-
-  private forgetActivePlan(planId: UUID): void {
-    this.activePlans.delete(planId);
-  }
 
   static async start(runtime: IAgentRuntime): Promise<PlanningService> {
     const service = new PlanningService(runtime);
@@ -375,7 +198,7 @@ export class PlanningService extends Service {
         },
       };
 
-      this.rememberActivePlan(plan);
+      this.activePlans.set(planId, plan);
       return plan;
     } catch (error) {
       const err = error instanceof Error ? error.message : String(error);
@@ -424,7 +247,7 @@ export class PlanningService extends Service {
       throw new Error("Enhanced plan missing id");
     }
 
-    this.rememberActivePlan(enhancedPlan);
+    this.activePlans.set(enhancedPlan.id, enhancedPlan);
     return enhancedPlan;
   }
 
@@ -530,7 +353,6 @@ export class PlanningService extends Service {
       };
     } finally {
       this.planExecutions.delete(plan.id);
-      this.forgetActivePlan(plan.id);
     }
   }
 
@@ -613,7 +435,9 @@ export class PlanningService extends Service {
       plan,
       currentStepIndex,
     );
-    this.rememberActivePlan(adaptedPlan);
+    if (plan.id) {
+      this.activePlans.set(plan.id, adaptedPlan);
+    }
     return adaptedPlan;
   }
 
@@ -650,49 +474,38 @@ export class PlanningService extends Service {
     message?: Memory,
     state?: State,
   ): string {
-    const availableActions = (context.availableActions || [])
-      .map((action) => `<action>${escapeXmlText(action)}</action>`)
-      .join("");
+    const availableActions = (context.availableActions || []).join(", ");
     const constraints = (context.constraints || [])
-      .map(
-        (constraint) =>
-          `<constraint><type>${escapeXmlText(constraint.type)}</type><description>${escapeXmlText(String(constraint.description || constraint.value || ""))}</description></constraint>`,
-      )
-      .join("");
-    const currentStateXml = state?.values
-      ? serializeJsonValueToXml(state.values as JsonValue, "current_state")
-      : "";
+      .map((c) => `${c.type}: ${c.description || c.value}`)
+      .join(", ");
 
-    return `You are an expert AI planning system. Create a comprehensive action plan to achieve the provided goal.
+    return `You are an expert AI planning system. Create a comprehensive action plan to achieve the following goal.
 
-<planning_request>
-  <goal>${escapeXmlText(context.goal)}</goal>
-  <available_actions>${availableActions}</available_actions>
-  <constraints>${constraints}</constraints>
-  <execution_model>${escapeXmlText(context.preferences?.executionModel || "sequential")}</execution_model>
-  <max_steps>${context.preferences?.maxSteps || 10}</max_steps>
-  ${message ? `<context_message>${escapeXmlText(message.content.text || "")}</context_message>` : ""}
-  ${currentStateXml}
-</planning_request>
+GOAL: ${context.goal}
 
-Create a detailed plan with this XML structure:
+AVAILABLE ACTIONS: ${availableActions}
+CONSTRAINTS: ${constraints}
+
+EXECUTION MODEL: ${context.preferences?.executionModel || "sequential"}
+MAX STEPS: ${context.preferences?.maxSteps || 10}
+
+${message ? `CONTEXT MESSAGE: ${message.content.text}` : ""}
+${state ? `CURRENT STATE: ${JSON.stringify(state.values)}` : ""}
+
+Create a detailed plan with the following structure:
 <plan>
-  <goal>${escapeXmlText(context.goal)}</goal>
-  <execution_model>${escapeXmlText(context.preferences?.executionModel || "sequential")}</execution_model>
-  <steps>
-    <step>
-      <id>step_1</id>
-      <action>ACTION_NAME</action>
-      <parameters>
-        <paramName>value</paramName>
-      </parameters>
-      <dependencies>
-        <dependency>step_0</dependency>
-      </dependencies>
-      <description>What this step accomplishes</description>
-    </step>
-  </steps>
-  <estimated_duration>Total estimated time in milliseconds</estimated_duration>
+<goal>${context.goal}</goal>
+<execution_model>${context.preferences?.executionModel || "sequential"}</execution_model>
+<steps>
+<step>
+<id>step_1</id>
+<action>ACTION_NAME</action>
+<parameters>{"key": "value"}</parameters>
+<dependencies>[]</dependencies>
+<description>What this step accomplishes</description>
+</step>
+</steps>
+<estimated_duration>Total estimated time in milliseconds</estimated_duration>
 </plan>
 
 Focus on:
@@ -734,32 +547,59 @@ Focus on:
       const stepIdMap = new Map<string, UUID>();
 
       for (const stepMatch of stepMatches) {
-        const parsedStep = parseKeyValueXml<Record<string, unknown>>(stepMatch);
-        if (
-          typeof parsedStep?.action !== "string" ||
-          typeof parsedStep?.id !== "string"
-        ) {
+        const idMatch = stepMatch.match(/<id>(.*?)<\/id>/);
+        const actionMatch = stepMatch.match(/<action>(.*?)<\/action>/);
+        const parametersMatch = stepMatch.match(
+          /<parameters>(.*?)<\/parameters>/,
+        );
+        const dependenciesMatch = stepMatch.match(
+          /<dependencies>(.*?)<\/dependencies>/,
+        );
+
+        if (!actionMatch || !idMatch) {
           continue;
         }
 
-        const originalId = parsedStep.id.trim();
+        const originalId = idMatch[1].trim();
         const actualId = asUUID(uuidv4());
         stepIdMap.set(originalId, actualId);
 
+        let dependencyStrings: string[] = [];
+        if (dependenciesMatch?.[1]) {
+          try {
+            const depArray = JSON.parse(dependenciesMatch[1]) as string[];
+            if (Array.isArray(depArray)) {
+              dependencyStrings = depArray
+                .map((dep) => String(dep).trim())
+                .filter((dep) => dep.length > 0);
+            }
+          } catch {
+            dependencyStrings = [];
+          }
+        }
+
+        let parameters: ActionParameters = {};
+        if (parametersMatch?.[1]) {
+          try {
+            const parsed = JSON.parse(parametersMatch[1]) as ActionParameters;
+            if (
+              parsed &&
+              typeof parsed === "object" &&
+              !Array.isArray(parsed)
+            ) {
+              parameters = parsed as ActionParameters;
+            }
+          } catch {
+            parameters = {};
+          }
+        }
+
         steps.push({
           id: actualId,
-          actionName: parsedStep.action.trim(),
-          parameters: parseStepParametersXml(
-            typeof parsedStep.parameters === "string"
-              ? parsedStep.parameters
-              : undefined,
-          ),
+          actionName: actionMatch[1].trim(),
+          parameters,
           dependencies: [],
-          _dependencyStrings: parseDependencyStringsXml(
-            typeof parsedStep.dependencies === "string"
-              ? parsedStep.dependencies
-              : undefined,
-          ),
+          _dependencyStrings: dependencyStrings,
         });
       }
 
@@ -1262,12 +1102,10 @@ Focus on:
   ): string {
     return `You are an expert AI adaptation system. A plan execution has encountered an issue and needs adaptation.
 
-<adaptation_request>
-  <original_plan>${serializePlanToXml(plan)}</original_plan>
-  <current_step_index>${currentStepIndex}</current_step_index>
-  ${serializeActionResultsToXml(results)}
-  ${error ? `<error>${escapeXmlText(error.message)}</error>` : ""}
-</adaptation_request>
+ORIGINAL PLAN: ${JSON.stringify(plan, null, 2)}
+CURRENT STEP INDEX: ${currentStepIndex}
+COMPLETED RESULTS: ${JSON.stringify(results, null, 2)}
+${error ? `ERROR: ${error.message}` : ""}
 
 Analyze the situation and provide an adapted plan that:
 1. Addresses the current issue
@@ -1288,21 +1126,34 @@ Return the adapted plan in the same XML format as the original planning response
       const stepMatches = response.match(/<step>(.*?)<\/step>/gs) || [];
 
       for (const stepMatch of stepMatches) {
-        const parsedStep = parseKeyValueXml<Record<string, unknown>>(stepMatch);
-        if (
-          typeof parsedStep?.action !== "string" ||
-          typeof parsedStep?.id !== "string"
-        )
-          continue;
+        const idMatch = stepMatch.match(/<id>(.*?)<\/id>/);
+        const actionMatch = stepMatch.match(/<action>(.*?)<\/action>/);
+        const parametersMatch = stepMatch.match(
+          /<parameters>(.*?)<\/parameters>/,
+        );
+
+        if (!actionMatch || !idMatch) continue;
+
+        let parameters: ActionParameters = {};
+        if (parametersMatch?.[1]) {
+          try {
+            const parsed = JSON.parse(parametersMatch[1]) as ActionParameters;
+            if (
+              parsed &&
+              typeof parsed === "object" &&
+              !Array.isArray(parsed)
+            ) {
+              parameters = parsed as ActionParameters;
+            }
+          } catch {
+            parameters = {};
+          }
+        }
 
         adaptedSteps.push({
           id: asUUID(uuidv4()),
-          actionName: parsedStep.action.trim(),
-          parameters: parseStepParametersXml(
-            typeof parsedStep.parameters === "string"
-              ? parsedStep.parameters
-              : undefined,
-          ),
+          actionName: actionMatch[1].trim(),
+          parameters,
           dependencies: [],
         });
       }

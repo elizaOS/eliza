@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.vercel/
+
+# Rust/WASM outputs
+rust/target/
+api/rust/pkg/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+
+
+
+
+
+
+
+
+

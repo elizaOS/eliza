@@ -1,0 +1,29 @@
+[package]
+name = "chat"
+version = "0.1.0"
+edition = "2021"
+description = "elizaOS Rust CLI Chat Example"
+publish = false
+
+[[bin]]
+name = "chat"
+path = "src/main.rs"
+
+[dependencies]
+# elizaOS Core
+elizaos = { path = "../../../../packages/rust" }
+
+# elizaOS OpenAI Plugin
+elizaos-plugin-openai = { path = "../../../../plugins/plugin-openai/rust" }
+
+# Async runtime
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }
+
+# Error handling
+anyhow = "1.0"
+
+# Environment
+dotenvy = "0.15"
+
+# UUID generation
+uuid = { version = "1.0", features = ["v4"] }

@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>You've been invited to join {{organizationName}}</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        line-height: 1.6;
+        color: #1f2937;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 40px 20px;
+      }
+      .email-wrapper {
+        max-width: 600px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+      .header-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 50px 40px;
+        text-align: center;
+        color: white;
+        position: relative;
+      }
+      .celebration-icon {
+        font-size: 56px;
+        margin-bottom: 20px;
+        animation: bounce 1s ease infinite;
+      }
+      @keyframes bounce {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-10px);
+        }
+      }
+      .header-banner h1 {
+        font-size: 32px;
+        font-weight: 700;
+        margin-bottom: 12px;
+        letter-spacing: -0.5px;
+      }
+      .header-banner p {
+        font-size: 17px;
+        opacity: 0.95;
+        margin: 0;
+      }
+      .content {
+        padding: 40px;
+      }
+      .greeting {
+        font-size: 16px;
+        color: #4b5563;
+        margin-bottom: 24px;
+        line-height: 1.8;
+      }
+      .organization-name {
+        color: #6366f1;
+        font-weight: 600;
+      }
+      .inviter-card {
+        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+        border-left: 6px solid #6366f1;
+        border-radius: 12px;
+        padding: 24px;
+        margin: 24px 0;
+      }
+      .inviter-card p {
+        font-size: 16px;
+        color: #1e3a8a;
+        margin: 0;
+      }
+      .inviter-card strong {
+        color: #1e40af;
+        font-size: 17px;
+      }
+      .role-card {
+        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        margin: 24px 0;
+      }
+      .role-label {
+        font-size: 13px;
+        color: #065f46;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 8px;
+      }
+      .role-badge {
+        display: inline-block;
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        padding: 10px 24px;
+        border-radius: 8px;
+        font-size: 18px;
+        font-weight: 700;
+        text-transform: capitalize;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+      }
+      .benefits-section {
+        margin: 30px 0;
+      }
+      .benefits-title {
+        font-size: 19px;
+        font-weight: 600;
+        color: #1f2937;
+        margin-bottom: 18px;
+      }
+      .benefits-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .benefit-item {
+        background: #f9fafb;
+        border-radius: 10px;
+        padding: 16px 16px 16px 36px;
+        margin-bottom: 12px;
+        position: relative;
+        transition:
+          transform 0.2s,
+          box-shadow 0.2s;
+        color: #4b5563;
+        font-size: 15px;
+      }
+      .benefit-item:hover {
+        transform: translateX(4px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      }
+      .benefit-item:before {
+        content: "✅";
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #6366f1;
+        font-weight: 400;
+        font-size: 16px;
+      }
+      .cta-section {
+        text-align: center;
+        margin: 40px 0;
+        padding: 30px 0;
+      }
+      .cta-button {
+        display: inline-block;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white !important;
+        padding: 18px 44px;
+        text-decoration: none;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 18px;
+        box-shadow: 0 10px 28px rgba(102, 126, 234, 0.5);
+        transition:
+          transform 0.2s,
+          box-shadow 0.2s;
+      }
+      .cta-button:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 14px 36px rgba(102, 126, 234, 0.6);
+      }
+      .expiry-notice {
+        background: #fef3c7;
+        border-left: 4px solid #f59e0b;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 24px 0;
+        text-align: center;
+      }
+      .expiry-notice p {
+        color: #92400e;
+        font-size: 14px;
+        font-weight: 600;
+        margin: 0;
+      }
+      .disclaimer {
+        background: #f3f4f6;
+        border-radius: 10px;
+        padding: 18px;
+        margin: 24px 0;
+        text-align: center;
+      }
+      .disclaimer p {
+        color: #6b7280;
+        font-size: 14px;
+        margin: 0;
+      }
+      .footer {
+        background: #f9fafb;
+        padding: 30px 40px;
+        text-align: center;
+        border-top: 1px solid #e5e7eb;
+      }
+      .footer p {
+        color: #6b7280;
+        font-size: 13px;
+        margin: 8px 0;
+      }
+      .footer-logo {
+        font-size: 20px;
+        font-weight: 700;
+        color: #6366f1;
+        margin-bottom: 8px;
+      }
+      .footer-tagline {
+        font-size: 14px;
+        color: #9ca3af;
+        font-style: italic;
+      }
+      @media only screen and (max-width: 600px) {
+        .header-banner {
+          padding: 40px 24px;
+        }
+        .header-banner h1 {
+          font-size: 26px;
+        }
+        .content {
+          padding: 30px 24px;
+        }
+        .cta-button {
+          display: block;
+          padding: 16px 32px;
+          font-size: 16px;
+        }
+        .benefit-item {
+          padding-left: 36px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-wrapper">
+      <div class="header-banner">
+        <div class="celebration-icon">🎉</div>
+        <h1>You're Invited!</h1>
+        <p>Join your team on Eliza Cloud</p>
+      </div>
+
+      <div class="content">
+        <p class="greeting">Hi there,</p>
+
+        <div class="inviter-card">
+          <p>
+            <strong>{{inviterName}}</strong> has invited you to join<br />
+            <strong style="font-size: 18px">{{organizationName}}</strong> on
+            Eliza Cloud
+          </p>
+        </div>
+
+        <div class="role-card">
+          <div class="role-label">Your Assigned Role</div>
+          <div class="role-badge">{{role}}</div>
+        </div>
+
+        <div class="benefits-section">
+          <h3 class="benefits-title">🚀 What You'll Get Access To:</h3>
+          <ul class="benefits-list">
+            <li class="benefit-item">
+              Collaborate seamlessly with your team members
+            </li>
+            <li class="benefit-item">
+              Access shared account balance and resources
+            </li>
+            <li class="benefit-item">Deploy and manage AI agents together</li>
+            <li class="benefit-item">
+              Share characters, conversations, and integrations
+            </li>
+            <li class="benefit-item">
+              Track team analytics and usage insights
+            </li>
+          </ul>
+        </div>
+
+        <div class="cta-section">
+          <a href="{{acceptUrl}}" class="cta-button"> ✓ Accept Invitation </a>
+        </div>
+
+        <div class="expiry-notice">
+          <p>⏰ This invitation expires in 7 days</p>
+        </div>
+
+        <div class="disclaimer">
+          <p>
+            <strong>Didn't expect this invitation?</strong><br />
+            You can safely ignore this email. No account will be created without
+            your acceptance.
+          </p>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="footer-logo">Eliza Cloud</div>
+        <div class="footer-tagline">Autonomous AI Agents Platform</div>
+        <p style="margin-top: 16px">
+          © {{currentYear}} Eliza Cloud. All rights reserved.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

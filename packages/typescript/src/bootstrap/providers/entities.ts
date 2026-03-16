@@ -13,7 +13,6 @@ import { addHeader } from "../../utils.ts";
  */
 export const entitiesProvider: Provider = {
   name: "ENTITIES",
-  position: 20,
   description: "People in the current conversation",
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory) => {

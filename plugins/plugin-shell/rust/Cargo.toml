@@ -1,0 +1,60 @@
+[package]
+name = "elizaos-plugin-shell"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "elizaOS Shell Plugin - Shell command execution with directory restrictions and history tracking"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+homepage = "https://elizaos.ai"
+documentation = "https://docs.rs/elizaos-plugin-shell"
+readme = "README.md"
+keywords = ["ai", "shell", "terminal", "command", "elizaos"]
+categories = ["command-line-utilities", "asynchronous"]
+
+[lib]
+name = "elizaos_plugin_shell"
+crate-type = ["lib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.42", features = ["rt", "macros", "process", "time"] }
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Regex for pattern matching
+regex = "1.12"
+
+# Logging
+tracing = "0.1"
+
+# Time
+chrono = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }
+tokio-test = "0.4"
+pretty_assertions = "1.4"
+tempfile = "3"
+
+[profile.release]
+lto = true
+opt-level = "z"
+
+
+
+
+
+
+

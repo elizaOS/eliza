@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "declaration": true,
+    "declarationMap": true,
+    "noEmit": true,
+    "types": ["node"],
+    "skipLibCheck": true,
+    "strict": false,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["__tests__/**", "**/*.test.ts", "dist/**", "build.ts"]
+}

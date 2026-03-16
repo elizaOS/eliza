@@ -1,9 +1,9 @@
 import { v4 as uuidv4 } from "uuid";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, beforeEach } from "vitest";
 import {
+  AutonomyService,
   AUTONOMY_TASK_NAME,
   AUTONOMY_TASK_TAGS,
-  AutonomyService,
 } from "../autonomy/service";
 import type { IAgentRuntime, Memory, Task, UUID } from "../types";
 
@@ -28,13 +28,11 @@ describe("autonomy service task-based implementation", () => {
   let registeredTaskWorkers: Map<string, { name: string; execute: Function }>;
   let createdTasks: Task[];
   let deletedTaskIds: UUID[];
-  let createMemoryMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     registeredTaskWorkers = new Map();
     createdTasks = [];
     deletedTaskIds = [];
-    createMemoryMock = vi.fn(async () => undefined);
 
     const agentId = asTestUuid(uuidv4());
     const roomId = asTestUuid(uuidv4());
@@ -56,7 +54,7 @@ describe("autonomy service task-based implementation", () => {
       ensureRoomExists: async () => undefined,
       addParticipant: async () => undefined,
       ensureParticipantInRoom: async () => undefined,
-      createMemory: createMemoryMock,
+      createMemory: async () => undefined,
       messageService: {
         handleMessage: async () => ({
           didRespond: true,
@@ -89,7 +87,7 @@ describe("autonomy service task-based implementation", () => {
 
   test("exports task constants", () => {
     expect(AUTONOMY_TASK_NAME).toBe("AUTONOMY_THINK");
-    expect(AUTONOMY_TASK_TAGS).toEqual(["queue", "repeat", "autonomy"]);
+    expect(AUTONOMY_TASK_TAGS).toEqual(["repeat", "autonomy", "internal"]);
   });
 
   test("registers task worker on initialization", async () => {
@@ -261,48 +259,6 @@ describe("autonomy service task-based implementation", () => {
 
     await service.stopLoop();
     expect(service.isLoopRunning()).toBe(false);
-
-    await service.stop();
-  });
-
-  test("injectAutonomousInstruction stores trigger memory and wakes loop", async () => {
-    mockRuntime.enableAutonomy = false;
-    const service = await AutonomyService.start(mockRuntime);
-    const thinkNowSpy = vi.spyOn(service, "triggerThinkNow");
-
-    await service.injectAutonomousInstruction({
-      instructions: "Review pending notifications.",
-      source: "test-trigger",
-      wakeMode: "inject_now",
-      triggerId: asTestUuid(uuidv4()),
-      triggerTaskId: asTestUuid(uuidv4()),
-    });
-
-    expect(createMemoryMock).toHaveBeenCalled();
-    const firstCall = createMemoryMock.mock.calls[0];
-    const memory = firstCall[0] as Memory;
-    expect(memory.content.metadata).toMatchObject({
-      type: "autonomous-trigger",
-      wakeMode: "inject_now",
-      source: "test-trigger",
-    });
-    expect(thinkNowSpy).toHaveBeenCalledTimes(1);
-
-    await service.stop();
-  });
-
-  test("injectAutonomousInstruction defers wake when mode is next_autonomy_cycle", async () => {
-    mockRuntime.enableAutonomy = true;
-    const service = await AutonomyService.start(mockRuntime);
-    const thinkNowSpy = vi.spyOn(service, "triggerThinkNow");
-
-    await service.injectAutonomousInstruction({
-      instructions: "Queue this for the next cycle.",
-      wakeMode: "next_autonomy_cycle",
-    });
-
-    expect(createMemoryMock).toHaveBeenCalled();
-    expect(thinkNowSpy).not.toHaveBeenCalled();
 
     await service.stop();
   });

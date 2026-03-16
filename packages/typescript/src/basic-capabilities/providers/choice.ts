@@ -96,8 +96,11 @@ export const choiceProvider: Provider = {
 
         options.forEach((option) => {
           if (typeof option === "string") {
-            // Handle string option — no description available for plain strings
-            output += `   - \`${option}\`\n`;
+            // Handle string option
+            const description =
+              task.metadata?.options?.find((o) => o.name === option)
+                ?.description || "";
+            output += `   - \`${option}\` ${description ? `- ${description}` : ""}\n`;
           } else {
             // Handle option object
             output += `   - \`${option.name}\` ${option.description ? `- ${option.description}` : ""}\n`;
@@ -121,3 +124,5 @@ export const choiceProvider: Provider = {
     };
   },
 };
+
+export default choiceProvider;

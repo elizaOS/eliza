@@ -7,8 +7,8 @@
  * @module services/plugin-hooks
  */
 
-import type { Character } from "../types/agent.ts";
 import type { Plugin } from "../types/plugin.ts";
+import type { Character } from "../types/agent.ts";
 
 /**
  * Context provided to plugin startup hooks.

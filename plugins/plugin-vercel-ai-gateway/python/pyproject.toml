@@ -1,0 +1,108 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-plugin-gateway"
+version = "2.0.0"
+description = "elizaOS Vercel AI Gateway Plugin - AI Gateway integration for text, embeddings, and images"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "elizaOS Contributors" }
+]
+keywords = ["ai", "agents", "vercel", "gateway", "openai", "anthropic", "embeddings", "elizaos", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "httpx>=0.28.0",
+    "pydantic>=2.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "pytest-xprocess>=1.0.0",
+    "mypy>=1.14.0",
+    "ruff>=0.9.0",
+    "respx>=0.22.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaos/eliza"
+Documentation = "https://elizaos.ai/docs"
+Repository = "https://github.com/elizaos/eliza"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_plugin_gateway"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/elizaos_plugin_gateway",
+    "/tests",
+    "/README.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v -p no:anchorpy -m 'not integration'"
+asyncio_mode = "auto"
+markers = [
+    "integration: marks tests as integration tests (require API key, deselected by default)",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ANN", # flake8-annotations
+    "S",   # flake8-bandit (security)
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "ANN101", # missing type annotation for self
+    "ANN102", # missing type annotation for cls
+    "S101",   # use of assert (needed for tests)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["elizaos_plugin_gateway"]
+
+
+
+
+
+
+

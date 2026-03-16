@@ -1,0 +1,70 @@
+[package]
+name = "elizaos-plugin-rss"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "elizaOS RSS Plugin - RSS and Atom feed integration for monitoring news feeds"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+homepage = "https://elizaos.ai"
+documentation = "https://docs.rs/elizaos-plugin-rss"
+readme = "README.md"
+keywords = ["rss", "atom", "feed", "news", "elizaos"]
+categories = ["web-programming", "parsing", "asynchronous"]
+
+[lib]
+name = "elizaos_plugin_rss"
+crate-type = ["lib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full"]
+
+[dependencies]
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# Async runtime
+tokio = { version = "1.42", features = ["rt", "macros"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# XML parsing
+quick-xml = "0.37"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Regex for URL extraction
+regex = "1.12"
+
+# URL handling
+url = "2.5"
+
+# Logging
+tracing = "0.1"
+
+# Time handling
+chrono = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }
+tokio-test = "0.4"
+pretty_assertions = "1.4"
+wiremock = "0.6"
+
+[profile.release]
+lto = true
+opt-level = "z"
+
+
+
+
+
+
+
