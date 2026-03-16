@@ -399,12 +399,9 @@ function ensureFileLog(): boolean {
     const logFilePath = isBooleanFlag
       ? pathMod.join(process.cwd(), "output.log")
       : logFileEnv.trim();
-    const logFilePath = isBooleanFlag
-          ? pathMod.join(process.cwd(), "output.log")
-          : logFileEnv.trim();
-        const logDir = isBooleanFlag
-          ? process.cwd()
-          : pathMod.dirname(logFilePath);
+    const logDir = isBooleanFlag
+      ? process.cwd()
+      : pathMod.dirname(logFilePath);
     
         // Ensure log directory exists
         fs.mkdirSync(logDir, { recursive: true });
