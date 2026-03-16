@@ -2496,7 +2496,6 @@ export class AgentRuntime implements IAgentRuntime {
               const timeoutPromise = new Promise<never>((_, reject) => {
                   // ...
                 });
-              provider.get(this as IAgentRuntime, message, cachedState),
               timeoutPromise,
             ]);
             clearTimeout(timerId); // Clear on success
