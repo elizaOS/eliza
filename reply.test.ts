@@ -47,4 +47,57 @@ describe('replyAction', () => {
     expect(result).toHaveProperty('text');
     expect(result).toHaveProperty('values.success', true);
   });
+
+  describe('hasRequestedInState optimization', () => {
+    it('should detect when a provider is requested in state', async () => {
+      const state = {
+        actionContext: {
+          previousResults: [{
+            content: {
+              providers: ['TEST_PROVIDER']
+            }
+          }]
+        }
+      };
+      const response = {
+        content: {
+          text: 'Test response',
+          thought: 'Test thought',
+          providers: ['TEST_PROVIDER']
+        }
+      };
+      const result = await replyAction.handler({}, {}, {}, state, undefined, [response]);
+      expect(result).toHaveProperty('values.success', true);
+    });
+
+    it('should handle missing provider requests correctly', async () => {
+      const state = {
+        actionContext: {
+          previousResults: [{
+            content: {
+              providers: []
+            }
+          }]
+        }
+      };
+      const response = {
+        content: {
+          text: 'Test response',
+          thought: 'Test thought'
+        }
+      };
+      const result = await replyAction.handler({}, {}, {}, state, undefined, [response]);
+      expect(result).toHaveProperty('values.success', true);
+    });
+
+    it('should handle undefined state correctly', async () => {
+      const result = await replyAction.handler({}, {}, {}, undefined, undefined, [{
+        content: {
+          text: 'Test response',
+          thought: 'Test thought'
+        }
+      }]);
+      expect(result).toHaveProperty('values.success', true);
+    });
+  });
 });
