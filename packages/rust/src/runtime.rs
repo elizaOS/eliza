@@ -27,6 +27,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info, warn};
 
+#[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
+use std::any::Any;
+
 // RwLock type - different for native (async) vs wasm/other (sync)
 #[cfg(feature = "native")]
 use tokio::sync::RwLock;
@@ -2868,6 +2871,57 @@ mod tests {
 // IAgentRuntime Implementation for AgentRuntime
 // ============================================================================
 
+#[cfg(all(
+    feature = "bootstrap-internal",
+    not(feature = "wasm"),
+    feature = "native"
+))]
+fn block_on_runtime<T>(future: impl std::future::Future<Output = T>) -> T {
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        tokio::task::block_in_place(|| handle.block_on(future))
+    } else {
+        futures::executor::block_on(future)
+    }
+}
+
+#[cfg(all(
+    feature = "bootstrap-internal",
+    not(feature = "wasm"),
+    not(feature = "native")
+))]
+fn block_on_runtime<T>(future: impl std::future::Future<Output = T>) -> T {
+    futures::executor::block_on(future)
+}
+
+#[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
+struct BootstrapTaskWorkerAdapter {
+    inner: Arc<dyn crate::bootstrap::runtime::TaskWorker>,
+}
+
+#[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
+#[async_trait::async_trait]
+impl crate::types::task::TaskWorker for BootstrapTaskWorkerAdapter {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    async fn execute(
+        &self,
+        runtime: Arc<dyn Any + Send + Sync>,
+        options: HashMap<String, serde_json::Value>,
+        task: Task,
+    ) -> anyhow::Result<()> {
+        let runtime = runtime
+            .downcast::<AgentRuntime>()
+            .map_err(|_| anyhow::anyhow!("expected AgentRuntime for bootstrap task worker"))?;
+        let runtime: Arc<dyn crate::bootstrap::runtime::IAgentRuntime> = runtime;
+        self.inner
+            .execute(runtime, options, task)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
+    }
+}
+
 #[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
 #[async_trait::async_trait]
 impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
@@ -3152,28 +3206,20 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
             crate::types::ModelType::TextToSpeech => "TEXT_TO_SPEECH",
         };
 
-        self.model_handlers
-            .try_read()
-            .map(|handlers| handlers.contains_key(model_key))
-            .unwrap_or(false)
+        block_on_runtime(self.model_handlers.read()).contains_key(model_key)
     }
 
     fn get_available_actions(&self) -> Vec<crate::bootstrap::runtime::ActionInfo> {
-        self.actions
-            .try_read()
-            .map(|actions| {
-                actions
-                    .iter()
-                    .map(|action| {
-                        let definition = action.definition();
-                        crate::bootstrap::runtime::ActionInfo {
-                            name: definition.name,
-                            description: definition.description,
-                        }
-                    })
-                    .collect()
+        block_on_runtime(self.actions.read())
+            .iter()
+            .map(|action| {
+                let definition = action.definition();
+                crate::bootstrap::runtime::ActionInfo {
+                    name: definition.name,
+                    description: definition.description,
+                }
             })
-            .unwrap_or_default()
+            .collect()
     }
 
     fn get_current_timestamp(&self) -> i64 {
@@ -3200,24 +3246,23 @@ impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
         let worker: Arc<dyn crate::bootstrap::runtime::TaskWorker> = Arc::from(worker);
         let name = worker.name().to_string();
 
-        match self.bootstrap_task_workers.try_write() {
-            Ok(mut workers) => {
-                workers.insert(name, worker);
-            }
-            Err(err) => {
-                warn!(target: "agent", error = ?err, "Failed to register bootstrap task worker");
-            }
-        }
+        block_on_runtime(self.bootstrap_task_workers.write())
+            .insert(name.clone(), Arc::clone(&worker));
+        block_on_runtime(self.task_workers.write()).insert(
+            name.clone(),
+            Arc::new(BootstrapTaskWorkerAdapter { inner: worker }),
+        );
+
+        tracing::debug!(task = %name, "Task worker registered via IAgentRuntime");
     }
 
     fn get_task_worker(
         &self,
         name: &str,
     ) -> Option<std::sync::Arc<dyn crate::bootstrap::runtime::TaskWorker>> {
-        self.bootstrap_task_workers
-            .try_read()
-            .ok()
-            .and_then(|workers| workers.get(name).cloned())
+        block_on_runtime(self.bootstrap_task_workers.read())
+            .get(name)
+            .cloned()
     }
 
     async fn create_task(
