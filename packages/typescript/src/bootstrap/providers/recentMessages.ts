@@ -154,7 +154,7 @@ export const recentMessagesProvider: Provider = {
           return textChars + runId.length + 80;
         },
         RECENT_ACTION_RUNS_TARGET_CHARS,
-        { fromEnd: false },
+        { fromEnd: true },
       );
 
       const formattedActionResults = recentRuns
