@@ -2482,10 +2482,10 @@ export class AgentRuntime implements IAgentRuntime {
     const PROVIDER_TIMEOUT = 30_000; // 30 second timeout per provider
     const providerData = await Promise.all(
       providersToGet.map(async (provider) => {
-        const start = Date.now();
-        let timerId: ReturnType<typeof setTimeout> | undefined;
-        try {
-          const timeoutPromise = new Promise<never>((_, reject) => {
+        const providerStart = Date.now();
+    let timerId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) => {
             timerId = setTimeout(
               () =>
                 reject(
@@ -2493,12 +2493,9 @@ export class AgentRuntime implements IAgentRuntime {
                     `Provider ${provider.name} timed out after ${PROVIDER_TIMEOUT}ms`,
                   ),
                 ),
-              PROVIDER_TIMEOUT,
-            );
-          });
-          const start = Date.now();
-          try {
-            const result = await Promise.race([
+              const timeoutPromise = new Promise<never>((_, reject) => {
+                  // ...
+                });
               provider.get(this as IAgentRuntime, message, cachedState),
               timeoutPromise,
             ]);
