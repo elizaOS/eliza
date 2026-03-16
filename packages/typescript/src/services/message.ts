@@ -464,7 +464,8 @@ export class DefaultMessageService implements IMessageService {
     const memorySourceAllowed =
       !allowedSources ||
       (typeof messageSourceId === "string" && allowedSources.includes(messageSourceId));
-    const canPersistMemory = !disableMemoryCreation && memorySourceAllowed;
+    // When memory creation is disabled, no persistence is allowed regardless of source
+    const canPersistMemory = memorySourceAllowed && !disableMemoryCreation;
 
     let memoryToQueue: Memory | null = null;
     if (canPersistMemory) {
@@ -939,7 +940,6 @@ export class DefaultMessageService implements IMessageService {
       // Call the callback with the ignore content and action name
       if (callback) {
         await callback(ignoreContent, "IGNORE");
-      // Note: deliberately bypasses allowlist to enable flexible memory creation for ignore actions.
       }
 
       // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION).
