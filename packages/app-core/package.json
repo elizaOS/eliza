@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.28",
+  "version": "2.0.0-alpha.33",
   "description": "Shared application core for elizaOS shells and white-label apps.",
   "type": "module",
   "license": "MIT",
@@ -59,18 +59,18 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {
-    "@elizaos/autonomous": "workspace:*",
     "@capacitor/core": "8.0.2",
     "@capacitor/haptics": "8.0.0",
     "@capacitor/keyboard": "8.0.0",
     "@capacitor/preferences": "^8.0.1",
+    "@elizaos/autonomous": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "@lifo-sh/core": "0.4.4",
     "@lifo-sh/ui": "0.4.2",
     "@pixiv/three-vrm": "^3.4.5",
     "@sparkjsdev/spark": "^0.1.10",
-    "@elizaos/ui": "workspace:*",
-    "three": "^0.182.0",
     "lucide-react": "^0.575.0",
+    "three": "^0.182.0",
     "zod": "^4.3.6"
   },
   "publishConfig": {
