@@ -965,8 +965,8 @@ export class DefaultMessageService implements IMessageService {
         );
       } else {
         runtime.logger.debug(
-          { src: "service:message" },
-          "Source not in ALLOW_MEMORY_SOURCE_IDS allowlist; skipping ignore response memory",
+          { src: "service:message", allowedSources },
+          "Source not in ALLOW_MEMORY_SOURCE_IDS allowlist; skipping ignore response persistence",
         );
       }
     }
