@@ -779,12 +779,18 @@ export function parseJSONObjectFromText(
   if (Array.isArray(result)) {
     return null;
   }
-  // Normalize numeric values to strings for backward compatibility
-  for (const key in result) {
-    if (typeof result[key] === 'number') {
-      result[key] = String(result[key]);
+  // Normalize numeric values to strings for backward compatibility (recursive)
+  const normalizeNumbers = (obj: Record<string, unknown>) => {
+    for (const key in obj) {
+      const val = obj[key];
+      if (typeof val === 'number') {
+        obj[key] = String(val);
+      } else if (val && typeof val === 'object' && !Array.isArray(val)) {
+        normalizeNumbers(val as Record<string, unknown>);
+      }
     }
-  }
+  };
+  normalizeNumbers(result);
   return result;
 }
 
