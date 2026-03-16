@@ -22,11 +22,13 @@ use crate::types::state::State;
 use crate::types::task::Task;
 use anyhow::{Context, Result};
 use serde_json::Value;
-use std::any::Any;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info, warn};
+
+#[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
+use std::any::Any;
 
 // RwLock type - different for native (async) vs wasm/other (sync)
 #[cfg(feature = "native")]
