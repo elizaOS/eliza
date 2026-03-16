@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import React from "react";
 import { SectionCard } from "../components/ui/section-card";
 
 const meta: Meta<typeof SectionCard> = {

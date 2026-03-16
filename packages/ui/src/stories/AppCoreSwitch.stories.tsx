@@ -1,6 +1,6 @@
 import { Switch } from "@elizaos/app-core/components";
 import type { Meta, StoryObj } from "@storybook/react";
-import React, { useState } from "react";
+import { useState } from "react";
 
 const meta: Meta<typeof Switch> = {
   title: "App Core/Switch",
