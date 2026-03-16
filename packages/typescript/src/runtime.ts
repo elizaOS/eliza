@@ -3227,16 +3227,20 @@ export class AgentRuntime implements IAgentRuntime {
         callerInfo = "unknown (stack error)";
       }
     }
-</change>
 
-### Issue 3: Message.ts memory allowlist
-
-<change path="packages/typescript/src/services/message.ts">
-
-<replace>
-    // Save this ignore action/thought to memory (respect DISABLE_MEMORY_CREATION and source allowlist).
-    if (!disableMemoryCreation && memorySourceAllowed) {
-      const ignoreMemory: Memory = {
+    // Log model usage with caller information 
+    this.logger.debug(
+      {
+        src: "agent",
+        agentId: this.agentId,
+        model: modelKey,
+        caller: callerInfo,
+        provider: provider || "default",
+        actionContext: this.currentActionContext?.actionName,
+        runId: this.getCurrentRunId(),
+      },
+      "useModel called"
+    );
 
     // Log model usage with caller information
     this.logger.debug(
