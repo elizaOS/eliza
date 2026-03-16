@@ -112,7 +112,7 @@ const relationshipsProvider: Provider = {
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory) => {
     const relationships = await runtime.getRelationships({
-      entityId: message.entityId,
+      entityIds: [message.entityId],
     });
 
     if (!relationships || relationships.length === 0) {

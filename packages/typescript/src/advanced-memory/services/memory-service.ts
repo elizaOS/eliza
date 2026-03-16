@@ -60,7 +60,7 @@ export class MemoryService extends Service {
 
     // Discover the storage provider registered by a database plugin.
     // If none exists, storage-backed features are disabled.
-    const provider = runtime.getService("memoryStorage") as MemoryStorageProvider | null;
+    const provider = runtime.getService("memoryStorage") as unknown as MemoryStorageProvider | null;
     if (!provider) {
       logger.warn(
         { src: "service:memory", agentId: runtime.agentId },
@@ -188,7 +188,11 @@ export class MemoryService extends Service {
   }
 
   async shouldSummarize(roomId: UUID): Promise<boolean> {
-    const count = await this.runtime.countMemories(roomId, false, "messages");
+    const count = await this.runtime.countMemories({
+      roomIds: [roomId],
+      unique: false,
+      tableName: "messages",
+    });
     return count >= this.memoryConfig.shortTermSummarizationThreshold;
   }
 

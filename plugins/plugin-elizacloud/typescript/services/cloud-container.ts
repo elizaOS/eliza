@@ -6,7 +6,7 @@
  * minutes), so `waitForDeployment` polls with exponential backoff.
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import type { CloudApiClient } from "../utils/cloud-api";
 import type {
   CloudContainer,
@@ -20,11 +20,13 @@ import type {
 import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";
 import type { CloudAuthService } from "./cloud-auth";
 
+const CLOUD_CONTAINER_HEALTH_TASK = "CLOUD_CONTAINER_HEALTH";
+const HEALTH_CHECK_INTERVAL_MS = 60_000;
+
 /** Active containers tracked locally for quick access. */
 interface TrackedContainer {
   container: CloudContainer;
   pollingTimer: ReturnType<typeof setTimeout> | null;
-  healthTimer: ReturnType<typeof setInterval> | null;
 }
 
 export class CloudContainerService extends Service {
@@ -34,6 +36,7 @@ export class CloudContainerService extends Service {
   private authService!: CloudAuthService;
   private readonly containerDefaults = DEFAULT_CLOUD_CONFIG.container;
   private tracked: Map<string, TrackedContainer> = new Map();
+  private healthTaskId: UUID | null = null;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -46,15 +49,17 @@ export class CloudContainerService extends Service {
   }
 
   async stop(): Promise<void> {
+    if (this.healthTaskId && typeof this.runtime.deleteTask === "function") {
+      await this.runtime.deleteTask(this.healthTaskId).catch(() => {});
+      this.healthTaskId = null;
+    }
     for (const [, tracked] of this.tracked) {
       if (tracked.pollingTimer) clearTimeout(tracked.pollingTimer);
-      if (tracked.healthTimer) clearInterval(tracked.healthTimer);
     }
     this.tracked.clear();
   }
 
   private async initialize(): Promise<void> {
-    // Get auth service reference
     const auth = this.runtime.getService("CLOUD_AUTH");
     if (!auth) {
       logger.warn("[CloudContainer] CloudAuthService not available, container operations will fail");
@@ -62,17 +67,38 @@ export class CloudContainerService extends Service {
     }
     this.authService = auth as CloudAuthService;
 
-    // Load existing containers
+    this.runtime.registerTaskWorker({
+      name: CLOUD_CONTAINER_HEALTH_TASK,
+      execute: async () => {
+        for (const [containerId, tracked] of this.tracked) {
+          if (tracked.container.status === "running") {
+            this.getContainerHealth(containerId)
+              .then((health) => {
+                if (!health.data.healthy) {
+                  logger.warn(
+                    `[CloudContainer] Container ${containerId} unhealthy: ${health.data.status}`,
+                  );
+                }
+              })
+              .catch((err: Error) => {
+                logger.error(
+                  `[CloudContainer] Health check failed for ${containerId}: ${err.message}`,
+                );
+              });
+          }
+        }
+      },
+    });
+    await this.ensureHealthTask();
+
     if (this.authService.isAuthenticated()) {
       const containers = await this.listContainers();
       for (const container of containers) {
         this.tracked.set(container.id, {
           container,
           pollingTimer: null,
-          healthTimer: null,
         });
 
-        // Resume polling for containers that are still deploying
         if (
           container.status === "pending" ||
           container.status === "building" ||
@@ -80,16 +106,32 @@ export class CloudContainerService extends Service {
         ) {
           this.startPolling(container.id);
         }
-
-        // Start health monitoring for running containers
-        if (container.status === "running") {
-          this.startHealthMonitoring(container.id);
-        }
       }
       logger.info(
         `[CloudContainer] Loaded ${containers.length} existing container(s)`,
       );
     }
+  }
+
+  private async ensureHealthTask(): Promise<void> {
+    const rt = this.runtime;
+    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    const agentId = rt.agentId;
+    const existing = await rt.getTasksByName(CLOUD_CONTAINER_HEALTH_TASK);
+    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    if (mine?.id) {
+      this.healthTaskId = mine.id;
+      return;
+    }
+    this.healthTaskId = await rt.createTask({
+      name: CLOUD_CONTAINER_HEALTH_TASK,
+      tags: ["queue", "repeat"],
+      metadata: {
+        updateInterval: HEALTH_CHECK_INTERVAL_MS,
+        baseInterval: HEALTH_CHECK_INTERVAL_MS,
+        updatedAt: Date.now(),
+      },
+    });
   }
 
   private getClient(): CloudApiClient {
@@ -124,7 +166,6 @@ export class CloudContainerService extends Service {
     this.tracked.set(response.data.id, {
       container: response.data,
       pollingTimer: null,
-      healthTimer: null,
     });
 
     // Start polling for deployment completion
@@ -164,7 +205,6 @@ export class CloudContainerService extends Service {
     const tracked = this.tracked.get(containerId);
     if (tracked) {
       if (tracked.pollingTimer) clearTimeout(tracked.pollingTimer);
-      if (tracked.healthTimer) clearInterval(tracked.healthTimer);
       this.tracked.delete(containerId);
     }
 
@@ -262,23 +302,10 @@ export class CloudContainerService extends Service {
     );
   }
 
-  // ─── Health Monitoring ─────────────────────────────────────────────────
+  // ─── Health Monitoring (driven by CLOUD_CONTAINER_HEALTH queue task) ─────
 
-  private startHealthMonitoring(containerId: string): void {
-    const tracked = this.tracked.get(containerId);
-    if (!tracked || tracked.healthTimer) return;
-
-    const interval = 60_000; // Check every 60 seconds
-
-    tracked.healthTimer = setInterval(() => {
-      this.getContainerHealth(containerId).then((health) => {
-        if (!health.data.healthy) {
-          logger.warn(`[CloudContainer] Container ${containerId} unhealthy: ${health.data.status}`);
-        }
-      }).catch((err: Error) => {
-        logger.error(`[CloudContainer] Health check failed for ${containerId}: ${err.message}`);
-      });
-    }, interval);
+  private startHealthMonitoring(_containerId: string): void {
+    // Health checks run in one CLOUD_CONTAINER_HEALTH task that loops all running containers.
   }
 
   async getContainerHealth(containerId: string): Promise<ContainerHealthResponse> {

@@ -29,21 +29,27 @@ export type EvaluatorDoc = {
 export const coreActionsSpec = {
   version: "1.0.0",
   actions: [
-    {
-      name: "assistant",
-      description: "",
-      parameters: [],
-    },
+    { name: "assistant", description: "", parameters: [] },
+    { name: "BRIDGE", description: "", parameters: [] },
+    { name: "SWAP_TOKENS", description: "", parameters: [] },
+    { name: "TRANSFER", description: "", parameters: [] },
+    { name: "QUEUE_PROPOSAL", description: "", parameters: [] },
+    { name: "GOV_PROPOSE", description: "", parameters: [] },
+    { name: "VOTE_PROPOSAL", description: "", parameters: [] },
+    { name: "GOV_EXECUTE", description: "", parameters: [] },
   ],
 } as const;
 export const allActionsSpec = {
   version: "1.0.0",
   actions: [
-    {
-      name: "assistant",
-      description: "",
-      parameters: [],
-    },
+    { name: "assistant", description: "", parameters: [] },
+    { name: "BRIDGE", description: "", parameters: [] },
+    { name: "SWAP_TOKENS", description: "", parameters: [] },
+    { name: "TRANSFER", description: "", parameters: [] },
+    { name: "QUEUE_PROPOSAL", description: "", parameters: [] },
+    { name: "GOV_PROPOSE", description: "", parameters: [] },
+    { name: "VOTE_PROPOSAL", description: "", parameters: [] },
+    { name: "GOV_EXECUTE", description: "", parameters: [] },
   ],
 } as const;
 export const coreProvidersSpec = {

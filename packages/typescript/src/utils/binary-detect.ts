@@ -43,6 +43,33 @@ export interface BinariesCheckResult {
   found: string[];
 }
 
+function nodeOnlyDetectionFailure(name: string): BinaryDetectResult {
+  return {
+    name,
+    found: false,
+    error: "Binary detection requires Node.js environment",
+  };
+}
+
+function toPackageManagerInfo(
+  name: string,
+  result: BinaryDetectResult,
+): PackageManagerInfo | null {
+  if (!result.found || !result.path) {
+    return null;
+  }
+
+  return {
+    name,
+    path: result.path,
+    version: result.version,
+  };
+}
+
+async function detectNamedBinary(name: string): Promise<BinaryDetectResult> {
+  return detectBinary(name);
+}
+
 // ============================================================
 // PLATFORM DETECTION
 // ============================================================
@@ -183,11 +210,7 @@ export async function detectBinary(name: string): Promise<BinaryDetectResult> {
   const env = getEnvironment();
 
   if (!env.isNode()) {
-    return {
-      name,
-      found: false,
-      error: "Binary detection requires Node.js environment",
-    };
+    return nodeOnlyDetectionFailure(name);
   }
 
   try {
@@ -259,11 +282,7 @@ export async function detectBinaryWithWhich(
   const env = getEnvironment();
 
   if (!env.isNode()) {
-    return {
-      name,
-      found: false,
-      error: "Binary detection requires Node.js environment",
-    };
+    return nodeOnlyDetectionFailure(name);
   }
 
   try {
@@ -448,12 +467,9 @@ export async function detectNodePackageManagers(): Promise<
 
   for (const manager of managers) {
     const result = await detectBinaryWithVersion(manager);
-    if (result.found && result.path) {
-      available.push({
-        name: manager,
-        path: result.path,
-        version: result.version,
-      });
+    const info = toPackageManagerInfo(manager, result);
+    if (info) {
+      available.push(info);
     }
   }
 
@@ -479,12 +495,9 @@ export async function getPreferredNodeManager(): Promise<PackageManagerInfo | nu
   const preferred = env.get("OTTO_NODE_MANAGER");
   if (preferred) {
     const result = await detectBinaryWithVersion(preferred);
-    if (result.found && result.path) {
-      return {
-        name: preferred,
-        path: result.path,
-        version: result.version,
-      };
+    const info = toPackageManagerInfo(preferred, result);
+    if (info) {
+      return info;
     }
   }
 
@@ -497,14 +510,14 @@ export async function getPreferredNodeManager(): Promise<PackageManagerInfo | nu
  * Detect if Homebrew is available (macOS).
  */
 export async function detectHomebrew(): Promise<BinaryDetectResult> {
-  return detectBinary("brew");
+  return detectNamedBinary("brew");
 }
 
 /**
  * Detect if apt is available (Debian/Ubuntu).
  */
 export async function detectApt(): Promise<BinaryDetectResult> {
-  return detectBinary("apt-get");
+  return detectNamedBinary("apt-get");
 }
 
 /**
@@ -512,15 +525,15 @@ export async function detectApt(): Promise<BinaryDetectResult> {
  */
 export async function detectPip(): Promise<BinaryDetectResult> {
   // Try pip3 first, then pip
-  const pip3 = await detectBinary("pip3");
+  const pip3 = await detectNamedBinary("pip3");
   if (pip3.found) return { ...pip3, name: "pip" };
 
-  return detectBinary("pip");
+  return detectNamedBinary("pip");
 }
 
 /**
  * Detect if cargo is available (Rust).
  */
 export async function detectCargo(): Promise<BinaryDetectResult> {
-  return detectBinary("cargo");
+  return detectNamedBinary("cargo");
 }

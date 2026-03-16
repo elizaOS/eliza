@@ -1,6 +1,5 @@
 import type { TestSuite, Character } from '@elizaos/core';
 import { asUUID } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Integration test for self-modification plugin with packages/agent
@@ -53,12 +52,12 @@ export class AgentIntegrationTestSuite implements TestSuite {
         const originalTopicsLength = originalCharacter.topics?.length || 0;
 
         // Simulate evolution trigger conversation
-        const roomId = asUUID(uuidv4());
-        const userId = asUUID(uuidv4());
+        const roomId = asUUID(crypto.randomUUID());
+        const userId = asUUID(crypto.randomUUID());
 
         const messages = [
           {
-            id: asUUID(uuidv4()),
+            id: asUUID(crypto.randomUUID()),
             entityId: userId,
             roomId,
             content: {
@@ -68,7 +67,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
             createdAt: Date.now(),
           },
           {
-            id: asUUID(uuidv4()),
+            id: asUUID(crypto.randomUUID()),
             entityId: runtime.agentId,
             roomId,
             content: {
@@ -86,7 +85,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
 
         // Test direct modification request
         const modificationMessage = {
-          id: asUUID(uuidv4()),
+          id: asUUID(crypto.randomUUID()),
           entityId: userId,
           roomId,
           content: {
@@ -163,10 +162,10 @@ export class AgentIntegrationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing evolution provider integration...');
 
-        const roomId = uuidv4();
+        const roomId = crypto.randomUUID();
         const message = {
-          id: asUUID(uuidv4()),
-          entityId: uuidv4(),
+          id: asUUID(crypto.randomUUID()),
+          entityId: crypto.randomUUID(),
           roomId,
           content: {
             text: 'Tell me about your evolution capabilities',
@@ -276,8 +275,8 @@ export class AgentIntegrationTestSuite implements TestSuite {
           return;
         }
 
-        const roomId = asUUID(uuidv4());
-        const userId = asUUID(uuidv4());
+        const roomId = asUUID(crypto.randomUUID());
+        const userId = asUUID(crypto.randomUUID());
 
         // Create a pattern of interactions that should trigger evolution
         const interactionPattern = [
@@ -290,7 +289,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
         // Simulate conversation over time
         for (let i = 0; i < interactionPattern.length; i++) {
           const message = {
-            id: asUUID(uuidv4()),
+            id: asUUID(crypto.randomUUID()),
             entityId: userId,
             roomId,
             content: {
@@ -304,7 +303,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
 
           // Simulate agent response
           const agentResponse = {
-            id: asUUID(uuidv4()),
+            id: asUUID(crypto.randomUUID()),
             entityId: runtime.agentId,
             roomId,
             content: {
@@ -342,7 +341,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
         }
 
         const lastMessage = {
-          id: asUUID(uuidv4()),
+          id: asUUID(crypto.randomUUID()),
           entityId: userId,
           roomId,
           content: {
@@ -383,3 +382,10 @@ export class AgentIntegrationTestSuite implements TestSuite {
 
 // Export default instance for test runner
 export default new AgentIntegrationTestSuite();
+
+import { describe, it, expect } from 'vitest';
+describe('AgentIntegrationTestSuite export', () => {
+  it('exports suite for plugin runner', () => {
+    expect(AgentIntegrationTestSuite).toBeDefined();
+  });
+});

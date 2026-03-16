@@ -163,7 +163,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
   // Run all queries in parallel
   const [existingRelationships, entities, knownFacts] = await Promise.all([
     runtime.getRelationships({
-      entityId: message.entityId,
+      entityIds: [message.entityId],
     }),
     getEntityDetails({ runtime, roomId }),
     runtime.getMemories({

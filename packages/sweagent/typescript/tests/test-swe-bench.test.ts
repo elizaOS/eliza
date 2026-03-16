@@ -10,7 +10,7 @@ import {
   expect,
   it,
   jest,
-} from "@jest/globals";
+} from "./jest-globals";
 import { vi } from "vitest";
 import { TextProblemStatement } from "../src/agent/problem-statement";
 // import { DockerDeploymentConfig } from '../src/environment/deployment';  // Not used

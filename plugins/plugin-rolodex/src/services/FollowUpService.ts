@@ -147,6 +147,7 @@ export class FollowUpService extends Service {
       const tasks = await this.runtime.getTasks({
         entityId: this.runtime.agentId,
         tags: ['follow-up'],
+        agentIds: [this.runtime.agentId],
       });
 
       const upcomingFollowUps: Array<{ task: Task; contact: ContactInfo }> = [];

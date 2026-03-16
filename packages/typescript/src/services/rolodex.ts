@@ -500,7 +500,7 @@ export class RolodexService extends Service {
 
     // Get relationship
     const relationships = await this.runtime.getRelationships({
-      entityId: sourceEntityId,
+      entityIds: [sourceEntityId],
     });
 
     const relationship = relationships.find(
@@ -629,7 +629,7 @@ export class RolodexService extends Service {
     needsAttention: Array<{ entity: Entity; daysSinceContact: number }>;
     recentInteractions: Array<{ entity: Entity; lastInteraction: string }>;
   }> {
-    const relationships = await this.runtime.getRelationships({ entityId });
+    const relationships = await this.runtime.getRelationships({ entityIds: [entityId] });
     const insights = {
       strongestRelationships: [] as Array<{
         entity: Entity;

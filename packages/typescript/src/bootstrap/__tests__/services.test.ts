@@ -134,6 +134,7 @@ describe("TaskService", () => {
 
     expect(runtime.getTasks).toHaveBeenCalledWith({
       tags: ["queue"],
+      agentIds: [runtime.agentId],
     });
   });
 
@@ -177,6 +178,26 @@ describe("TaskService", () => {
     expect(runtime.deleteTask).toHaveBeenCalledWith(pastTask.id);
   });
 
+  it("checkTasks: skips non-repeat queue task when dueAt is in the future", async () => {
+    const futureDueTask = {
+      id: "future-1",
+      name: "FUTURE_TASK",
+      description: "Due later",
+      status: "PENDING",
+      tags: ["queue"],
+      dueAt: Date.now() + 60_000,
+    };
+    vi.spyOn(runtime, "getTasks").mockResolvedValue([futureDueTask as never]);
+    const mockExecute = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(runtime, "getTaskWorker").mockReturnValue({
+      name: "FUTURE_TASK",
+      execute: mockExecute,
+    } as never);
+    (taskService as TaskService).markDirty();
+    await (taskService as TestableTaskService).checkTasks();
+    expect(mockExecute).not.toHaveBeenCalled();
+  });
+
   it("should handle errors during task processing", async () => {
     const testTask = {
       id: "error-task",
@@ -202,16 +223,198 @@ describe("TaskService", () => {
       },
     );
 
+    const deleteTaskSpy = vi.spyOn(runtime, "deleteTask").mockResolvedValue();
+
     const executeTaskMethod = (
       taskService as TestableTaskService
     ).executeTask.bind(taskService);
 
-    await expect(executeTaskMethod(testTask)).rejects.toThrow(
-      "Worker execution error",
-    );
+    await executeTaskMethod(testTask);
 
     expect(runtime.getTaskWorker).toHaveBeenCalledWith(testTask.name);
     expect(mockErrorExecute).toHaveBeenCalled();
+    // executeTask catches errors and does not rethrow; non-repeat task is deleted on failure to avoid infinite retry
+    expect(deleteTaskSpy).toHaveBeenCalledWith("error-task");
+  });
+
+  it("checkTasks: skips when tasksDirty is false", async () => {
+    const checkTasksMethod = (
+      taskService as TestableTaskService
+    ).checkTasks.bind(taskService);
+    await checkTasksMethod();
+    expect(runtime.getTasks).toHaveBeenCalledTimes(1);
+    await checkTasksMethod();
+    expect(runtime.getTasks).toHaveBeenCalledTimes(1);
+    (taskService as TaskService).markDirty();
+    await checkTasksMethod();
+    expect(runtime.getTasks).toHaveBeenCalledTimes(2);
+  });
+
+  it("checkTasks: skips paused repeat tasks", async () => {
+    const pausedTask = {
+      id: "paused-1",
+      name: "PAUSED_TASK",
+      description: "Paused",
+      status: "PENDING",
+      tags: ["queue", "repeat"],
+      metadata: {
+        updatedAt: Date.now() - 60_000,
+        updateInterval: 30_000,
+        paused: true,
+      },
+    };
+    vi.spyOn(runtime, "getTasks").mockResolvedValue([pausedTask as never]);
+    vi.spyOn(runtime, "getTaskWorker").mockReturnValue({
+      name: "PAUSED_TASK",
+      execute: vi.fn().mockResolvedValue(undefined),
+    } as never);
+    const updateSpy = vi.spyOn(runtime, "updateTask").mockResolvedValue();
+    (taskService as TaskService).markDirty();
+    await (taskService as TestableTaskService).checkTasks();
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("executeTask: success resets failureCount and writes updatedAt", async () => {
+    const repeatTask = {
+      id: "repeat-1",
+      name: "REPEAT_TASK",
+      description: "Repeat",
+      status: "PENDING",
+      tags: ["queue", "repeat"],
+      metadata: {
+        updatedAt: Date.now() - 1000,
+        updateInterval: 5000,
+        failureCount: 2,
+        lastError: "previous",
+      },
+    };
+    vi.spyOn(runtime, "getTaskWorker").mockReturnValue({
+      name: "REPEAT_TASK",
+      execute: vi.fn().mockResolvedValue(undefined),
+    } as never);
+    const updateSpy = vi.spyOn(runtime, "updateTask").mockResolvedValue();
+    await (taskService as TestableTaskService).executeTask(repeatTask as never);
+    expect(updateSpy).toHaveBeenCalledWith(
+      "repeat-1",
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          failureCount: 0,
+          lastError: undefined,
+          updatedAt: expect.any(Number),
+        }),
+      }),
+    );
+  });
+
+  it("executeTask: failure increments failureCount and backs off", async () => {
+    const repeatTask = {
+      id: "repeat-fail",
+      name: "REPEAT_FAIL",
+      description: "Fails",
+      status: "PENDING",
+      tags: ["queue", "repeat"],
+      metadata: {
+        updatedAt: Date.now() - 1000,
+        updateInterval: 1000,
+        failureCount: 0,
+        maxFailures: 3,
+      },
+    };
+    vi.spyOn(runtime, "getTaskWorker").mockReturnValue({
+      name: "REPEAT_FAIL",
+      execute: vi.fn().mockRejectedValue(new Error("fail")),
+    } as never);
+    const updateSpy = vi.spyOn(runtime, "updateTask").mockResolvedValue();
+    await (taskService as TestableTaskService).executeTask(repeatTask as never);
+    expect(updateSpy).toHaveBeenCalledWith(
+      "repeat-fail",
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          failureCount: 1,
+          lastError: "fail",
+          updatedAt: expect.any(Number),
+          updateInterval: 2000,
+        }),
+      }),
+    );
+  });
+
+  it("executeTaskById loads task and runs it", async () => {
+    const task = {
+      id: "by-id-1",
+      name: "BY_ID_TASK",
+      description: "One-shot",
+      status: "PENDING",
+      tags: ["queue"],
+    };
+    const getTaskSpy = vi.spyOn(runtime, "getTask").mockResolvedValue(task as never);
+    vi.spyOn(runtime, "getTaskWorker").mockReturnValue({
+      name: "BY_ID_TASK",
+      execute: vi.fn().mockResolvedValue(undefined),
+    } as never);
+    vi.spyOn(runtime, "deleteTask").mockResolvedValue();
+    await taskService.executeTaskById("by-id-1");
+    expect(getTaskSpy).toHaveBeenCalledWith("by-id-1");
+    expect(runtime.deleteTask).toHaveBeenCalledWith("by-id-1");
+  });
+
+  it("pauseTask and resumeTask preserve metadata", async () => {
+    const task = {
+      id: "pause-1",
+      name: "PAUSE_TASK",
+      description: "Pause me",
+      status: "PENDING",
+      tags: ["queue", "repeat"],
+      metadata: {
+        updatedAt: 12345,
+        updateInterval: 10_000,
+      },
+    };
+    vi.spyOn(runtime, "getTask").mockResolvedValue(task as never);
+    const updateSpy = vi.spyOn(runtime, "updateTask").mockResolvedValue();
+    await taskService.pauseTask("pause-1");
+    expect(updateSpy).toHaveBeenCalledWith(
+      "pause-1",
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          paused: true,
+          updatedAt: 12345,
+          updateInterval: 10_000,
+        }),
+      }),
+    );
+    vi.spyOn(runtime, "getTask").mockResolvedValue({
+      ...task,
+      metadata: { ...task.metadata, paused: true },
+    } as never);
+    await taskService.resumeTask("pause-1");
+    expect(updateSpy).toHaveBeenLastCalledWith(
+      "pause-1",
+      expect.objectContaining({
+        metadata: expect.objectContaining({ paused: false }),
+      }),
+    );
+  });
+
+  it("getTaskStatus returns task, paused, executing, nextRunAt", async () => {
+    const task = {
+      id: "status-1",
+      name: "STATUS_TASK",
+      description: "Status",
+      status: "PENDING",
+      tags: ["queue", "repeat"],
+      metadata: {
+        updatedAt: 1000,
+        updateInterval: 5000,
+        paused: false,
+      },
+    };
+    vi.spyOn(runtime, "getTask").mockResolvedValue(task as never);
+    const status = await taskService.getTaskStatus("status-1");
+    expect(status.task).toEqual(task);
+    expect(status.paused).toBe(false);
+    expect(status.executing).toBe(false);
+    expect(status.nextRunAt).toBe(1000 + 5000 - 0);
   });
 });
 

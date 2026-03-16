@@ -21,6 +21,8 @@ const DEFAULT_TRUTHY = ["true", "1", "yes", "on"] as const;
 const DEFAULT_FALSY = ["false", "0", "no", "off"] as const;
 const DEFAULT_TRUTHY_SET = new Set<string>(DEFAULT_TRUTHY);
 const DEFAULT_FALSY_SET = new Set<string>(DEFAULT_FALSY);
+const TEXT_TRUTHY = ["yes", "y", "true", "t", "1", "on", "enable"] as const;
+const TEXT_FALSY = ["no", "n", "false", "f", "0", "off", "disable"] as const;
 
 /**
  * Parse a value as a boolean.
@@ -71,4 +73,22 @@ export function parseBooleanValue(
     return false;
   }
   return undefined;
+}
+
+/**
+ * Parse user/config text as a boolean, defaulting invalid values to false.
+ *
+ * WHY: A few older call sites intentionally treat unknown text as "off" rather
+ * than propagating `undefined`. This preserves that behavior while still routing
+ * through the shared boolean parser.
+ */
+export function parseBooleanText(
+  value: string | boolean | undefined | null,
+): boolean {
+  return (
+    parseBooleanValue(value, {
+      truthy: [...TEXT_TRUTHY],
+      falsy: [...TEXT_FALSY],
+    }) ?? false
+  );
 }

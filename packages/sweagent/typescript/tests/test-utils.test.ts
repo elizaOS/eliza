@@ -3,7 +3,7 @@
  */
 
 import * as path from "node:path";
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "./jest-globals";
 import {
   calculateHash,
   debounce,

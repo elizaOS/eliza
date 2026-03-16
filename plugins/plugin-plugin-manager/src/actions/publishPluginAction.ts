@@ -1,4 +1,4 @@
-import { Action, HandlerCallback, IAgentRuntime, Memory, State, logger } from '@elizaos/core';
+import { Action, type ActionResult, HandlerCallback, IAgentRuntime, Memory, State, logger } from '@elizaos/core';
 
 export const publishPluginAction: Action = {
   name: 'PUBLISH_PLUGIN',
@@ -44,7 +44,7 @@ export const publishPluginAction: Action = {
     state?: State,
     options?: { [key: string]: unknown },
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     logger.info('[publishPluginAction] Starting plugin publication');
 
     // Temporarily disabled while migrating to new registry system
@@ -54,6 +54,6 @@ export const publishPluginAction: Action = {
         actions: ['PUBLISH_PLUGIN'],
       });
     }
-    return;
+    return { success: true };
   },
 };

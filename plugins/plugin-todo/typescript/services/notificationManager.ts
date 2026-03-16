@@ -38,6 +38,11 @@ export interface NotificationData {
 /**
  * Manager for handling notifications across different channels
  */
+export interface NotificationManagerOptions {
+  /** When true, queue processing is driven by TODO_PROCESS_NOTIFICATION_QUEUE task (no internal setInterval). */
+  useTaskScheduler?: boolean;
+}
+
 export class NotificationManager {
   private userPreferences: Map<UUID, NotificationPreferences> = new Map();
   private notificationQueue: NotificationData[] = [];
@@ -46,13 +51,15 @@ export class NotificationManager {
 
   private runtime: IAgentRuntime;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime: IAgentRuntime, options: NotificationManagerOptions = {}) {
     this.runtime = runtime;
-    this.initialize();
+    this.initialize(options);
   }
 
-  private async initialize() {
-    this.startQueueProcessor();
+  private async initialize(options: NotificationManagerOptions) {
+    if (!options.useTaskScheduler) {
+      this.startQueueProcessor();
+    }
     await this.loadUserPreferences();
 
     logger.info("NotificationManager initialized");
@@ -64,6 +71,11 @@ export class NotificationManager {
     }
 
     this.queueTimer = setInterval(() => this.processNotificationQueue(), 1000);
+  }
+
+  /** Called by TODO_PROCESS_NOTIFICATION_QUEUE queue task when useTaskScheduler is true. */
+  public async processQueue(): Promise<void> {
+    await this.processNotificationQueue();
   }
 
   private async processNotificationQueue() {

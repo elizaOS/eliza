@@ -130,15 +130,9 @@ const slackPlugin: Plugin = {
 
 export default slackPlugin;
 
-// Channel configuration types
+// Channel configuration types (SlackAccountConfig, SlackActionConfig, etc. from ./accounts)
 export type {
-  SlackAccountConfig,
-  SlackActionConfig,
-  SlackChannelConfig,
   SlackConfig,
-  SlackDmConfig,
-  SlackReactionNotificationMode,
-  SlackSlashCommandConfig,
   SlackThreadConfig,
 } from "./config";
 

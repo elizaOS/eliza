@@ -20,14 +20,14 @@ describe("userStateProvider", () => {
 
   describe("get", () => {
     it("should return user state for DM context", async () => {
-      const mockRuntime = {} as IAgentRuntime;
+      const mockRuntime = {} as unknown as IAgentRuntime;
       const mockMessage = {
         roomId: "room-uuid-123",
         content: {
           userId: 12345,
           threadId: "thread-1",
         },
-      } as Memory;
+      } as unknown as Memory;
       const mockState = {} as State;
 
       const result = await userStateProvider.get(
@@ -46,14 +46,14 @@ describe("userStateProvider", () => {
     });
 
     it("should return user state for comment context", async () => {
-      const mockRuntime = {} as IAgentRuntime;
+      const mockRuntime = {} as unknown as IAgentRuntime;
       const mockMessage = {
         roomId: "room-uuid-123",
         content: {
           userId: 12345,
           mediaId: 67890,
         },
-      } as Memory;
+      } as unknown as Memory;
       const mockState = {} as State;
 
       const result = await userStateProvider.get(
@@ -71,11 +71,11 @@ describe("userStateProvider", () => {
     });
 
     it("should handle missing context", async () => {
-      const mockRuntime = {} as IAgentRuntime;
+      const mockRuntime = {} as unknown as IAgentRuntime;
       const mockMessage = {
         roomId: "room-uuid-123",
         content: {},
-      } as Memory;
+      } as unknown as Memory;
       const mockState = {} as State;
 
       const result = await userStateProvider.get(

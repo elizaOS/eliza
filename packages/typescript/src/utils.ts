@@ -14,7 +14,9 @@ import type {
   TemplateType,
 } from "./types";
 import { ContentType, ModelType, type UUID } from "./types";
-import { getEnv } from "./utils/environment";
+import { parseBooleanText } from "./utils/boolean";
+import { formatTimestamp } from "./utils/time-format";
+import { getLocalServerUrl } from "./utils/node";
 
 // Text Utils
 
@@ -485,27 +487,7 @@ export const formatMessages = ({
   return messageStrings.join("\n");
 };
 
-export const formatTimestamp = (messageDate: number) => {
-  const now = new Date();
-  const diff = now.getTime() - messageDate;
-
-  const absDiff = Math.abs(diff);
-  const seconds = Math.floor(absDiff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  if (absDiff < 60000) {
-    return "just now";
-  }
-  if (minutes < 60) {
-    return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
-  }
-  if (hours < 24) {
-    return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
-  }
-  return `${days} day${days !== 1 ? "s" : ""} ago`;
-};
+const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
 
 /**
  * Parses key-value pairs from a simple XML structure within a given text.
@@ -955,24 +937,7 @@ export function safeReplacer() {
 export function parseBooleanFromText(
   value: string | boolean | undefined | null,
 ): boolean {
-  if (value === undefined || value === null) return false;
-  if (typeof value === "boolean") return value;
-
-  const affirmative = ["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"];
-  const negative = ["NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"];
-
-  // WHY: Defensive against non-string values (e.g. from env); avoid throws and return false on error.
-  try {
-    const normalizedText = String(value).trim().toUpperCase();
-    if (affirmative.includes(normalizedText)) return true;
-    if (negative.includes(normalizedText)) return false;
-  } catch {
-    logger.warn(
-      { src: "core:utils", type: typeof value, value },
-      "parseBooleanFromText error",
-    );
-  }
-  return false;
+  return parseBooleanText(value);
 }
 
 // UUID Utils
@@ -1277,7 +1242,4 @@ export const getContentTypeFromMimeType = (
   return undefined;
 };
 
-export function getLocalServerUrl(path: string): string {
-  const port = getEnv("SERVER_PORT", "3000");
-  return `http://localhost:${port}${path}`;
-}
+export { formatTimestamp, getLocalServerUrl };

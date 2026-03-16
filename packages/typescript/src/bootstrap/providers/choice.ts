@@ -42,6 +42,7 @@ export const choiceProvider: Provider = {
     const pendingTasks = await runtime.getTasks({
       roomId: message.roomId,
       tags: ["AWAITING_CHOICE"],
+      agentIds: [runtime.agentId],
     });
 
     if (!pendingTasks || pendingTasks.length === 0) {

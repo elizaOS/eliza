@@ -939,7 +939,7 @@ export async function deleteAllMemories(
  */
 export async function countMemories(
   db: DrizzleDatabase,
-  roomIdOrParams: UUID | { roomId?: UUID; unique?: boolean; tableName?: string; entityId?: UUID; agentId?: UUID; metadata?: Record<string, unknown> },
+  roomIdOrParams: UUID | { roomIds?: UUID[]; unique?: boolean; tableName?: string; entityId?: UUID; agentId?: UUID; metadata?: Record<string, unknown> },
   unique?: boolean,
   tableName?: string
 ): Promise<number> {
@@ -951,14 +951,14 @@ export async function countMemories(
 
   if (isObjectParams) {
     // New object params signature
-    const params = roomIdOrParams as { roomId?: UUID; unique?: boolean; tableName?: string; entityId?: UUID; agentId?: UUID; metadata?: Record<string, unknown> };
+    const params = roomIdOrParams as { roomIds?: UUID[]; unique?: boolean; tableName?: string; entityId?: UUID; agentId?: UUID; metadata?: Record<string, unknown> };
     
     if (!params.tableName) throw new Error("tableName is required");
     
     conditions.push(eq(memoryTable.type, params.tableName));
     
-    if (params.roomId) {
-      conditions.push(eq(memoryTable.roomId, params.roomId));
+    if (params.roomIds != null && params.roomIds.length > 0) {
+      conditions.push(inArray(memoryTable.roomId, params.roomIds));
     }
     if (params.entityId) {
       conditions.push(eq(memoryTable.entityId, params.entityId));

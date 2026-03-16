@@ -7,7 +7,6 @@
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { AgentRuntime } from "@elizaos/core";
-import { v4 as uuidv4 } from "uuid";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestDatabaseAdapter } from "../../../../../packages/typescript/src/bootstrap/__tests__/test-utils";
 
@@ -25,7 +24,7 @@ let generateText: typeof import("ai").generateText;
 
 // Create a real runtime for testing
 async function createTestRuntime(): Promise<IAgentRuntime> {
-  const agentId = uuidv4() as UUID;
+  const agentId = crypto.randomUUID() as UUID;
   const adapter = createTestDatabaseAdapter(agentId);
 
   const runtime = new AgentRuntime({

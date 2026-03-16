@@ -6,6 +6,7 @@ import {
   describe,
   expect,
   it,
+  test,
   vi,
 } from "vitest";
 
@@ -40,4 +41,13 @@ export const jest = {
   setSystemTime: vi.setSystemTime,
 } as const;
 
-export { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it };
+export {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  test,
+};

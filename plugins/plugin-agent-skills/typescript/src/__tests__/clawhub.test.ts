@@ -113,7 +113,7 @@ async function downloadSkill(
   const response = await fetch(url);
 
   if (!response.ok) {
-    if (response.status === 404) return null;
+    if (response.status === 404 || response.status === 429) return null;
     throw new Error(`Download failed: ${response.status}`);
   }
 

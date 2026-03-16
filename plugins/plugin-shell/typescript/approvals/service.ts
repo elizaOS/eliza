@@ -544,6 +544,7 @@ export class ExecApprovalService extends Service {
       const tasks = await this.runtime.getTasks({
         roomId,
         tags: ["AWAITING_CHOICE", "EXEC"],
+        agentIds: [this.runtime.agentId],
       });
 
       if (!tasks) return [];

@@ -187,7 +187,7 @@ export class VrmEngine {
     }
 
     const loader = new GLTFLoader();
-    loader.register((parser) => new VRMLoaderPlugin(parser));
+    loader.register((parser: unknown) => new VRMLoaderPlugin(parser));
 
     // three-vrm can emit noisy warnings for some VRMs (e.g. duplicate expression entries).
     // Filter those during load so the console stays usable.
