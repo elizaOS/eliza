@@ -32,6 +32,24 @@ describe('FileLogger', () => {
     (fs.existsSync as jest.Mock).mockReturnValue(false);
   });
 
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should lazily initialize logs on first write', () => {
+    const logger = new Logger();
+    
+    // No file operations should happen on construction
+    expect(fs.existsSync).not.toHaveBeenCalled();
+    expect(fs.mkdirSync).not.toHaveBeenCalled();
+    expect(fs.appendFileSync).not.toHaveBeenCalled();
+
+    // First write triggers initialization
+    logger.debug('first message');
+    expect(fs.existsSync).toHaveBeenCalledWith('logs');
+    expect(fs.mkdirSync).toHaveBeenCalledWith('logs', { recursive: true });
+  });
+
   it('should create log directory if it does not exist', () => {
     const logger = new Logger();
     logger.debug('test message');
@@ -63,6 +81,38 @@ describe('FileLogger', () => {
       'logs/output.log',
       expect.stringContaining('test info')
     );
+  });
+
+  it('should open files in append mode and preserve existing content', () => {
+    const logger = new Logger();
+    logger.debug('message 1');
+    logger.debug('message 2');
+    
+    // Each call should append independently
+    const appendCalls = (fs.appendFileSync as jest.Mock).mock.calls;
+    expect(appendCalls.length).toBe(2);
+    expect(appendCalls[0][0]).toBe('logs/output.log');
+    expect(appendCalls[1][0]).toBe('logs/output.log');
+  });
+
+  it('should handle recursive log directory creation', () => {
+    // Mock deeper path
+    const logger = new Logger();
+    logger.debug('test');
+
+    expect(fs.mkdirSync).toHaveBeenCalledWith('logs', { recursive: true });
+  });
+
+  it('should handle file write errors gracefully', () => {
+    const mockError = new Error('Failed to write');
+    (fs.appendFileSync as jest.Mock).mockImplementationOnce(() => {
+      throw mockError;
+    });
+
+    const logger = new Logger();
+    
+    // Should not throw when write fails
+    expect(() => logger.debug('test')).not.toThrow();
   });
 
   it('should append chat messages to the chat log file', () => {
