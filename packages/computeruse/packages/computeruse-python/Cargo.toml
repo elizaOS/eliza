@@ -16,7 +16,9 @@ doctest = false
 # PyO3 for Python bindings
 pyo3 = { version = "0.25", features = ["abi3-py310"] }
 pyo3-async-runtimes = { version = "0.25", features = ["attributes", "tokio-runtime"] }
-computeruse_core = { path = "../../crates/computeruse", package = "computeruse-rs" }
+# Keep a version on the local path dependency so cargo publish can strip the path
+# and emit a valid crates.io dependency.
+computeruse_core = { version = "2.0.0", path = "../../crates/computeruse", package = "computeruse-rs" }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 pyo3-stub-gen = "0.9"
