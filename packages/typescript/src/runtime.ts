@@ -2501,11 +2501,28 @@ export class AgentRuntime implements IAgentRuntime {
               provider.get(this as IAgentRuntime, message, cachedState),
               timeoutPromise,
             ]);
-            return result;
-          } finally {
-            clearTimeout(timerId); // Ensure timer is cleared regardless of success/failure
+            clearTimeout(timerId); // Clear on success
+            const duration = Date.now() - start;
+            providerTimings.push({ name: provider.name, durationMs: duration });
+            if (duration > 100) {
+              this.logger.debug(
+                {
+                  src: "agent", 
+                  agentId: this.agentId,
+                  provider: provider.name,
+                  duration,
+                },
+                "Slow provider"
+              );
+            }
+            return {
+              ...result,
+              providerName: provider.name,
+            };
+          } catch (error) {
+            clearTimeout(timerId); // Clear on error
+            throw error;
           }
-          const duration = Date.now() - start;
           providerTimings.push({ name: provider.name, durationMs: duration });
           if (duration > 100) {
             this.logger.debug(
