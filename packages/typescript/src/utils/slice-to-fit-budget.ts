@@ -22,10 +22,10 @@ export function sliceToFitBudget<T>(
   let count = 0;
 
   if (fromEnd) {
+    const sizes = items.map(estimateChars); // Calculate sizes once
     for (let index = items.length - 1; index >= 0; index--) {
-      const size = estimateChars(items[index]);
-      if (total + size > targetChars) break;
-      total += size;
+      if (total + sizes[index] > targetChars) break;
+      total += sizes[index];
       count++;
     }
     const take = count > 0 ? count : 1;
