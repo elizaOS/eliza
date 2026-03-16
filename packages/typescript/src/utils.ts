@@ -771,12 +771,8 @@ export function parseJSONObjectFromText(
   text: string,
 ): Record<string, unknown> | null {
   const result = extractAndParseJSONObjectFromText(text);
-  if (!result) {
-    // Throw for invalid input to maintain backward compatibility with tests expecting throws
-    throw new Error("Failed to parse JSON object from text");
-  }
-  // Validate result is a plain object, not an array
-  if (Array.isArray(result)) {
+  // Return null for arrays or failed parses (backward compatible behavior)
+  if (!result || Array.isArray(result)) {
     return null;
   }
   // Normalize numeric values to strings for backward compatibility (recursive)
