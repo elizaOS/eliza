@@ -20,7 +20,7 @@
     "dev": "tsup --watch",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "lint": "biome check --apply --unsafe .",
+    "lint": "biome check --apply .",
     "lint:fix": "biome check --apply .",
     "typecheck": "tsc --noEmit"
   },

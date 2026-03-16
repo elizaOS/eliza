@@ -41,7 +41,7 @@
     "dev": "cd typescript && tsc --watch",
     "test": "cd typescript && vitest run --passWithNoTests",
     "test:watch": "cd typescript && vitest",
-    "lint": "biome check --apply --unsafe typescript/src/",
+    "lint": "biome check --apply typescript/src/",
     "lint:fix": "biome check --apply typescript/src/",
     "typecheck": "cd typescript && tsc --noEmit",
     "clean": "rm -rf typescript/dist"

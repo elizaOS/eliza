@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "echo 'Skipping ai-town build - missing data files and React/Pixi type mismatches'",
-    "lint": "biome check --apply --unsafe .",
+    "lint": "biome check --apply .",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --verbose",
     "level-editor": "vite src/editor/",
     "le": "vite src/editor/"

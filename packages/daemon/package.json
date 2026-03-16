@@ -15,7 +15,7 @@
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "test": "vitest run",
-    "lint": "biome check --apply --unsafe typescript/src",
+    "lint": "biome check --apply typescript/src",
     "lint:fix": "biome check --apply typescript/src"
   },
   "keywords": [
