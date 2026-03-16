@@ -13,7 +13,6 @@ Example: python scripts/update-python-versions.py 2.0.0-alpha.1 --dry-run
 
 import argparse
 import re
-import sys
 from pathlib import Path
 
 # elizaOS Python packages that can be dependencies (auto-discovered)
