@@ -1,4 +1,4 @@
-import { StatCard, StatusBadge, StatusDot } from "@milady/app-core/components";
+import { StatCard, StatusBadge, StatusDot } from "@elizaos/app-core/components";
 import type { Meta, StoryObj } from "@storybook/react";
 import React from "react";
 

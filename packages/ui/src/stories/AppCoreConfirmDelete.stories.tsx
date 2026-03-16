@@ -1,4 +1,4 @@
-import { ConfirmDeleteControl } from "@milady/app-core/components";
+import { ConfirmDeleteControl } from "@elizaos/app-core/components";
 import type { Meta, StoryObj } from "@storybook/react";
 import React from "react";
 

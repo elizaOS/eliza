@@ -1,4 +1,4 @@
-import { ErrorBoundary } from "@milady/app-core/components";
+import { ErrorBoundary } from "@elizaos/app-core/components";
 import type { Meta, StoryObj } from "@storybook/react";
 import React from "react";
 
