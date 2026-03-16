@@ -530,6 +530,7 @@ export function logPrompt(
   },
 ): string {
   if (!ensureFileLog()) return "";
+  // Generate a new slug only for prompts
   const counter = ++_promptLogCounter;
   const agentName = metadata?.agentName ?? "unknown";
   const slug = promptSlug(counter, agentName, modelType);
