@@ -559,8 +559,8 @@ export function logResponse(
   if (!ensureFileLog()) return "";
   // Use the promptSlug from metadata if provided (for correlation), otherwise generate new
   const agentName = metadata?.agentName ?? "unknown";
-  // Share counter with prompt to correlate response
-  const slug = metadata?.promptSlug || promptSlug(_promptLogCounter++, agentName, modelType);
+  // Use promptSlug from metadata or current counter (without incrementing)
+  const slug = metadata?.promptSlug || promptSlug(_promptLogCounter, agentName, modelType);
   writeToPromptLog(slug, "RESPONSE", modelType, response, metadata);
   return slug;
 }
