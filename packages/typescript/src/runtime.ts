@@ -3112,6 +3112,7 @@ export class AgentRuntime implements IAgentRuntime {
       actionContext: this.currentActionContext?.actionName,
     };
     if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
+      // Always redact secrets before writing to disk or logging
       const redactedPrompt = this.redactSecrets(promptContent);
       const pSlug = logPrompt(modelKey, redactedPrompt, meta);
       if (pSlug) {
