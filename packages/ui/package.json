@@ -19,9 +19,9 @@
     "components"
   ],
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "rm -rf dist && find src -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' -o -name '*.js.map' \\) -delete",
     "build": "bun run build:dist",
-    "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/copy-package-assets.mjs packages/ui src/styles && node ../../scripts/prepare-package-dist.mjs packages/ui",
+    "build:dist": "find src -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' -o -name '*.js.map' \\) -delete && rm -rf dist && tsc -p tsconfig.build.json && find src -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' -o -name '*.js.map' \\) -delete && node ../../scripts/copy-package-assets.mjs packages/ui src/styles && node ../../scripts/prepare-package-dist.mjs packages/ui",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write ./src/index.ts ./src/lib ./src/components ./src/stories",
     "lint:check": "bunx @biomejs/biome check ./src/index.ts ./src/lib ./src/components ./src/stories",

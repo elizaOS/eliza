@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import React from "react";
 import { SaveFooter } from "../components/ui/save-footer";
 
 const meta: Meta<typeof SaveFooter> = {
@@ -26,7 +25,7 @@ export const Saving: StoryObj = {
     onSave: () => {},
   },
 };
-export const Error: StoryObj = {
+export const ErrorState: StoryObj = {
   args: {
     dirty: true,
     saving: false,

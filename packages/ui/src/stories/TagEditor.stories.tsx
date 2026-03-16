@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import React, { useState } from "react";
+import { useState } from "react";
 import { TagEditor } from "../components/ui/tag-editor";
 
 const meta: Meta<typeof TagEditor> = {

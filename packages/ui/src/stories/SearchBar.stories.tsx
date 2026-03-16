@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import React, { useState } from "react";
+import { useState } from "react";
 import { SearchBar } from "../components/ui/search-bar";
 
 const meta: Meta<typeof SearchBar> = {
@@ -10,17 +10,24 @@ export default meta;
 
 export const Default: StoryObj = {
   render: () => {
-    const [results, setResults] = useState<string[]>([]);
+    const [results, setResults] = useState<
+      Array<{ id: string; query: string }>
+    >([]);
     return (
       <div className="w-96">
         <SearchBar
-          onSearch={(q) => setResults((p) => [...p, q])}
+          onSearch={(query) =>
+            setResults((previous) => [
+              ...previous,
+              { id: crypto.randomUUID(), query },
+            ])
+          }
           placeholder="Search knowledge base…"
         />
         {results.length > 0 && (
           <div className="text-xs text-muted space-y-0.5 mt-2">
-            {results.map((r, i) => (
-              <div key={`${r}-${i}`}>Searched: &ldquo;{r}&rdquo;</div>
+            {results.map((result) => (
+              <div key={result.id}>Searched: &ldquo;{result.query}&rdquo;</div>
             ))}
           </div>
         )}
