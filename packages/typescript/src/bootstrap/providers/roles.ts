@@ -9,6 +9,19 @@ import type {
 } from "../../types/index.ts";
 import { ChannelType } from "../../types/index.ts";
 
+// Track entities we've already warned about, keyed by runtime to avoid cross-agent interference
+// Uses WeakMap so entries are garbage collected when runtime is no longer referenced
+const warnedUnnamedEntitiesByRuntime = new WeakMap<IAgentRuntime, Set<string>>();
+
+function getWarnedEntities(runtime: IAgentRuntime): Set<string> {
+  let set = warnedUnnamedEntitiesByRuntime.get(runtime);
+  if (!set) {
+    set = new Set<string>();
+    warnedUnnamedEntitiesByRuntime.set(runtime, set);
+  }
+  return set;
+}
+
 /**
  * Role provider that retrieves roles in the server based on the provided runtime, message, and state.
  * * @type { Provider }
@@ -26,7 +39,6 @@ import { ChannelType } from "../../types/index.ts";
  */
 export const roleProvider: Provider = {
   name: "ROLES",
-  position: 12,
   description:
     "Roles in the server, default are OWNER, ADMIN and MEMBER (as well as NONE)",
   get: async (
@@ -36,20 +48,7 @@ export const roleProvider: Provider = {
   ): Promise<ProviderResult> => {
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
     if (!room) {
-      logger.debug(
-        {
-          src: "plugin:core:provider:roles",
-          agentId: runtime.agentId,
-        },
-        "No room found for roles provider, skipping",
-      );
-      return {
-        data: { roles: [] },
-        values: {
-          roles: "No room context available for role information.",
-        },
-        text: "No room context available for role information.",
-      };
+      throw new Error("No room found");
     }
 
     if (room.type !== ChannelType.GROUP) {
@@ -73,7 +72,7 @@ export const roleProvider: Provider = {
 
     logger.info(
       {
-        src: "plugin:core:provider:roles",
+        src: "plugin:bootstrap:provider:roles",
         agentId: runtime.agentId,
         worldId,
       },
@@ -86,7 +85,7 @@ export const roleProvider: Provider = {
     if (!world || !world.metadata?.ownership?.ownerId) {
       logger.info(
         {
-          src: "plugin:core:provider:roles",
+          src: "plugin:bootstrap:provider:roles",
           agentId: runtime.agentId,
           worldId,
         },
@@ -108,7 +107,7 @@ export const roleProvider: Provider = {
     if (Object.keys(roles).length === 0) {
       logger.info(
         {
-          src: "plugin:core:provider:roles",
+          src: "plugin:bootstrap:provider:roles",
           agentId: runtime.agentId,
           worldId,
         },
@@ -127,7 +126,7 @@ export const roleProvider: Provider = {
 
     logger.info(
       {
-        src: "plugin:core:provider:roles",
+        src: "plugin:bootstrap:provider:roles",
         agentId: runtime.agentId,
         roleCount: Object.keys(roles).length,
       },
@@ -160,14 +159,19 @@ export const roleProvider: Provider = {
       }
 
       if (!name || !username || !names) {
-        logger.warn(
-          {
-            src: "plugin:core:provider:roles",
-            agentId: runtime.agentId,
-            entityId,
-          },
-          "User has no name or username, skipping",
-        );
+        // Only log once per entity per runtime session to reduce log spam
+        const warnedEntities = getWarnedEntities(runtime);
+        if (!warnedEntities.has(entityId)) {
+          logger.warn(
+            {
+              src: "plugin:bootstrap:provider:roles",
+              agentId: runtime.agentId,
+              entityId,
+            },
+            "User has no name or username, skipping",
+          );
+          warnedEntities.add(entityId);
+        }
         continue;
       }
 
@@ -234,3 +238,5 @@ export const roleProvider: Provider = {
     };
   },
 };
+
+export default roleProvider;

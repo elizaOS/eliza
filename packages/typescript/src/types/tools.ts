@@ -1,15 +1,14 @@
 /**
  * Tool Policy Types
  *
- * Types and definitions for tool/action filtering and permissions in ElizaOS.
+ * Types and definitions for tool/action filtering and permissions in elizaOS.
  *
  * @module tools
  */
 
 // Re-export from channel-config to avoid duplication
-export type { ToolPolicyConfig, ToolProfileId } from "./channel-config";
-
-import type { ToolPolicyConfig, ToolProfileId } from "./channel-config";
+export type { ToolProfileId, ToolPolicyConfig } from "./channel-config";
+import type { ToolProfileId, ToolPolicyConfig } from "./channel-config";
 
 /**
  * Canonical tool name aliases for backward compatibility.
@@ -85,13 +84,7 @@ export const TOOL_PROFILES: Record<ToolProfileId, ToolPolicyConfig> = {
     allow: ["session_status"],
   },
   coding: {
-    allow: [
-      "group:fs",
-      "group:runtime",
-      "group:sessions",
-      "group:memory",
-      "image",
-    ],
+    allow: ["group:fs", "group:runtime", "group:sessions", "group:memory", "image"],
   },
   messaging: {
     allow: [
@@ -472,11 +465,8 @@ export function isToolAllowedByPolicy(
     }
   }
 
-  // Check allow list — if an allow list exists (even empty), only listed tools pass
-  if (policy.allow) {
-    if (policy.allow.length === 0) {
-      return false; // Empty allow list = nothing allowed
-    }
+  // Check allow list
+  if (policy.allow && policy.allow.length > 0) {
     const expandedAllow = expandToolGroups(policy.allow);
     // Wildcard allows everything not denied
     if (expandedAllow.includes("*")) {

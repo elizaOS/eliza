@@ -1,0 +1,40 @@
+{
+  "name": "stagehand-server",
+  "version": "3.0.0-alpha",
+  "description": "Standalone Stagehand server for browser automation with full Playwright access",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "build:binary": "npm run build && npm run build:sea",
+    "build:sea": "node scripts/build-sea.js",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "postinstall": "npm run build || echo 'Build failed, will build at runtime'"
+  },
+  "dependencies": {
+    "@browserbasehq/stagehand": "^3.0.8",
+    "playwright": "^1.49.1",
+    "ws": "^8.18.0",
+    "dotenv": "^16.4.5",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3",
+    "tar": "^6.2.0",
+    "unzipper": "^0.10.14",
+    "postject": "^1.0.0-alpha.6",
+    "esbuild": "^0.20.0",
+    "vitest": "^3.1.0",
+    "@vitest/coverage-v8": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

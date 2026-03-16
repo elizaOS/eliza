@@ -1,0 +1,25 @@
+{
+  "name": "@elizaos/example-telegram",
+  "version": "2.0.0-alpha",
+  "description": "Complete Telegram bot agent using elizaOS with SQL persistence",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run telegram-agent.ts",
+    "dev": "bun --watch run telegram-agent.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-telegram": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

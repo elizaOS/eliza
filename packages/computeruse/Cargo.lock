@@ -1006,7 +1006,7 @@ dependencies = [
 
 [[package]]
 name = "computeruse-cli"
-version = "2.0.0"
+version = "0.24.20"
 dependencies = [
  "anthropic-sdk",
  "anyhow",
@@ -1031,7 +1031,7 @@ dependencies = [
 
 [[package]]
 name = "computeruse-computer-use"
-version = "2.0.0"
+version = "0.24.20"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1045,7 +1045,7 @@ dependencies = [
 
 [[package]]
 name = "computeruse-mcp-agent"
-version = "2.0.0"
+version = "0.24.20"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1095,7 +1095,7 @@ dependencies = [
 
 [[package]]
 name = "computeruse-node-bindings"
-version = "2.0.0"
+version = "0.24.20"
 dependencies = [
  "base64 0.22.1",
  "computeruse-rs",
@@ -1114,7 +1114,7 @@ dependencies = [
 
 [[package]]
 name = "computeruse-py-bindings"
-version = "2.0.0"
+version = "0.24.20"
 dependencies = [
  "base64 0.22.1",
  "computeruse-rs",
@@ -1130,7 +1130,7 @@ dependencies = [
 
 [[package]]
 name = "computeruse-rs"
-version = "2.0.0"
+version = "0.24.20"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -1177,7 +1177,7 @@ dependencies = [
 
 [[package]]
 name = "computeruse-workflow-recorder"
-version = "2.0.0"
+version = "0.24.20"
 dependencies = [
  "arboard",
  "async-stream",

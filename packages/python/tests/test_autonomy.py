@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -12,10 +11,9 @@ from elizaos.bootstrap.autonomy import (
     autonomy_status_provider,
     send_to_admin_action,
 )
-from elizaos.bootstrap.autonomy.service import AUTONOMY_TASK_TAGS
 from elizaos.bootstrap.autonomy.types import AutonomyStatus
 from elizaos.types.memory import Memory
-from elizaos.types.primitives import Content, as_uuid, string_to_uuid
+from elizaos.types.primitives import Content, as_uuid
 
 TEST_AGENT_ID = "00000000-0000-0000-0000-000000000001"
 TEST_ROOM_ID = "00000000-0000-0000-0000-000000000002"
@@ -49,13 +47,6 @@ def test_runtime():
     runtime.logger.debug = MagicMock()
     runtime.logger.error = MagicMock()
     runtime.logger.warn = MagicMock()
-    runtime.logger.warning = MagicMock()
-
-    # Task system mocks (used by _create_autonomy_task / _remove_autonomy_task)
-    runtime.create_task = AsyncMock()
-    runtime.get_tasks = AsyncMock(return_value=[])
-    runtime.delete_task = AsyncMock()
-    runtime.register_task_worker = MagicMock()
 
     return runtime
 
@@ -77,9 +68,6 @@ class TestAutonomyService:
         assert AutonomyService.service_type == AUTONOMY_SERVICE_TYPE
         assert AutonomyService.service_type == "AUTONOMY"
 
-    def test_task_tags_match_typescript(self):
-        assert AUTONOMY_TASK_TAGS == ["queue", "repeat", "autonomy"]
-
     @pytest.mark.asyncio
     async def test_start_creates_service(self, test_runtime):
         service = await AutonomyService.start(test_runtime)
@@ -91,12 +79,6 @@ class TestAutonomyService:
         assert service.get_autonomous_room_id() is not None
 
     @pytest.mark.asyncio
-    async def test_autonomous_room_id_is_deterministic(self, test_runtime):
-        service = await AutonomyService.start(test_runtime)
-        expected_room_id = as_uuid(string_to_uuid(f"autonomy-room-{test_runtime.agent_id}"))
-        assert service.get_autonomous_room_id() == expected_room_id
-
-    @pytest.mark.asyncio
     async def test_auto_start_when_enabled(self, test_runtime):
         test_runtime.enable_autonomy = True
 
@@ -104,7 +86,7 @@ class TestAutonomyService:
 
         assert service.is_loop_running() is True
 
-        await service.disable_autonomy()
+        await service.stop_loop()
 
     @pytest.mark.asyncio
     async def test_ensure_context_on_initialization(self, test_runtime):
@@ -127,11 +109,11 @@ class TestAutonomyService:
 
         assert service.is_loop_running() is False
 
-        await service.enable_autonomy()
+        await service.start_loop()
         assert service.is_loop_running() is True
         assert test_runtime.enable_autonomy is True
 
-        await service.disable_autonomy()
+        await service.stop_loop()
         assert service.is_loop_running() is False
         assert test_runtime.enable_autonomy is False
 
@@ -139,41 +121,41 @@ class TestAutonomyService:
     async def test_no_double_start(self, test_runtime):
         service = await AutonomyService.start(test_runtime)
 
-        await service.enable_autonomy()
+        await service.start_loop()
         call_count = test_runtime.set_setting.call_count
 
-        await service.enable_autonomy()
+        await service.start_loop()
         assert test_runtime.set_setting.call_count == call_count
 
-        await service.disable_autonomy()
+        await service.stop_loop()
 
     @pytest.mark.asyncio
     async def test_no_double_stop(self, test_runtime):
         service = await AutonomyService.start(test_runtime)
 
         call_count = test_runtime.set_setting.call_count
-        await service.disable_autonomy()
+        await service.stop_loop()
         assert test_runtime.set_setting.call_count == call_count
 
     @pytest.mark.asyncio
     async def test_interval_configuration(self, test_runtime):
         service = await AutonomyService.start(test_runtime)
 
-        await service.set_loop_interval(60000)
+        service.set_loop_interval(60000)
         assert service.get_loop_interval() == 60000
 
     @pytest.mark.asyncio
     async def test_interval_minimum_enforced(self, test_runtime):
         service = await AutonomyService.start(test_runtime)
 
-        await service.set_loop_interval(1000)
+        service.set_loop_interval(1000)
         assert service.get_loop_interval() == 5000
 
     @pytest.mark.asyncio
     async def test_interval_maximum_enforced(self, test_runtime):
         service = await AutonomyService.start(test_runtime)
 
-        await service.set_loop_interval(1000000)
+        service.set_loop_interval(1000000)
         assert service.get_loop_interval() == 600000
 
     @pytest.mark.asyncio
@@ -183,14 +165,13 @@ class TestAutonomyService:
         test_runtime.get_setting = MagicMock(return_value=str(target_room_id))
 
         dup_id = as_uuid(TEST_MESSAGE_ID)
-        now_ms = int(time.time() * 1000)
         older = Memory(
             id=dup_id,
             room_id=target_room_id,
             entity_id=as_uuid(TEST_ENTITY_ID),
             agent_id=as_uuid(TEST_AGENT_ID),
             content=Content(text="old"),
-            created_at=now_ms - 60_000,  # 1 minute ago (within 1-hour window)
+            created_at=10,
         )
         newer = Memory(
             id=dup_id,
@@ -198,7 +179,7 @@ class TestAutonomyService:
             entity_id=as_uuid(TEST_ENTITY_ID),
             agent_id=as_uuid(TEST_AGENT_ID),
             content=Content(text="new"),
-            created_at=now_ms - 30_000,  # 30 seconds ago (within 1-hour window)
+            created_at=20,
         )
 
         async def get_memories(params):
@@ -221,7 +202,7 @@ class TestAutonomyService:
         assert test_runtime.enable_autonomy is True
         assert service.is_loop_running() is True
 
-        await service.disable_autonomy()
+        await service.stop_loop()
 
     @pytest.mark.asyncio
     async def test_disable_autonomy(self, test_runtime):
@@ -272,7 +253,7 @@ class TestAutonomyService:
 
         test_runtime.get_memories = AsyncMock(return_value=[older, newer])
 
-        await service.perform_autonomous_think()
+        await service._perform_autonomous_think()
 
         assert test_runtime.emit_event.called is True
         payload = test_runtime.emit_event.call_args[0][1]
@@ -280,7 +261,7 @@ class TestAutonomyService:
         assert msg is not None
         assert "newer" in (msg.content.text or "")
 
-        await service.disable_autonomy()
+        await service.stop_loop()
 
     @pytest.mark.asyncio
     async def test_thinking_guard_initial_state(self, test_runtime):
@@ -447,20 +428,11 @@ class TestAutonomyIntegration:
             AutonomyService,
             admin_chat_provider,
             autonomy_status_provider,
-            disable_autonomy_action,
-            enable_autonomy_action,
-            post_action_evaluator,
             send_to_admin_action,
         )
 
         assert AutonomyService is not None
         assert AUTONOMY_SERVICE_TYPE == "AUTONOMY"
         assert send_to_admin_action is not None
-        assert enable_autonomy_action is not None
-        assert enable_autonomy_action.name == "ENABLE_AUTONOMY"
-        assert disable_autonomy_action is not None
-        assert disable_autonomy_action.name == "DISABLE_AUTONOMY"
-        assert post_action_evaluator is not None
-        assert post_action_evaluator.name == "POST_ACTION_EVALUATOR"
         assert admin_chat_provider is not None
         assert autonomy_status_provider is not None

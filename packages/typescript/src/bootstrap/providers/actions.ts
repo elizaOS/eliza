@@ -1,7 +1,9 @@
-import { formatActionNames, formatActions } from "../../actions.ts";
-import { buildConversationSeed } from "../../deterministic";
-import { logger } from "../../logger.ts";
-import type { ActionFilterService } from "../../services/action-filter.ts";
+import {
+  composeActionCallExamples,
+  composeActionExamples,
+  formatActionNames,
+  formatActions,
+} from "../../actions.ts";
 import type {
   Action,
   IAgentRuntime,
@@ -11,99 +13,95 @@ import type {
 } from "../../types/index.ts";
 import { addHeader } from "../../utils.ts";
 
-/** Validate actions in parallel; individual validator errors are caught and logged. */
-async function validateActions(
-  actions: Action[],
-  runtime: IAgentRuntime,
-  message: Memory,
-  state: State,
-): Promise<Action[]> {
-  const results = await Promise.all(
-    actions.map(async (action) => {
-      try {
-        const valid = await action.validate(runtime, message, state);
-        return valid ? action : null;
-      } catch (err) {
-        logger.warn(
-          {
-            src: "provider:actions",
-            agentId: runtime.agentId,
-            action: action.name,
-            error: err instanceof Error ? err.message : String(err),
-          },
-          "Action validation threw — excluding action from prompt",
-        );
-        return null;
-      }
-    }),
-  );
-  return results.filter((a): a is Action => a !== null);
-}
-
-/** ACTIONS provider — filters by relevance (if service available), then validates. */
+/**
+ * A provider object that fetches possible response actions based on the provided runtime, message, and state.
+ * @type {Provider}
+ * @property {string} name - The name of the provider ("ACTIONS").
+ * @property {string} description - The description of the provider ("Possible response actions").
+ * @property {number} position - The position of the provider (-1).
+ * @property {Function} get - Asynchronous function that retrieves actions that validate for the given message.
+ * @param {IAgentRuntime} runtime - The runtime object.
+ * @param {Memory} message - The message memory.
+ * @param {State} state - The state object.
+ * @returns {Object} An object containing the actions data, values, and combined text sections.
+ */
+/**
+ * Provider for ACTIONS
+ *
+ * @typedef {import('./Provider').Provider} Provider
+ * @typedef {import('./Runtime').IAgentRuntime} IAgentRuntime
+ * @typedef {import('./Memory').Memory} Memory
+ * @typedef {import('./State').State} State
+ * @typedef {import('./Action').Action} Action
+ *
+ * @type {Provider}
+ * @property {string} name - The name of the provider
+ * @property {string} description - Description of the provider
+ * @property {number} position - The position of the provider
+ * @property {Function} get - Asynchronous function to get actions that validate for a given message
+ *
+ * @param {IAgentRuntime} runtime - The agent runtime
+ * @param {Memory} message - The message memory
+ * @param {State} state - The state of the agent
+ * @returns {Object} Object containing data, values, and text related to actions
+ */
 export const actionsProvider: Provider = {
   name: "ACTIONS",
   description: "Possible response actions",
   position: -1,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    const filterService =
-      runtime.getService<ActionFilterService>("action_filter");
-
-    let candidateActions: Action[];
-
-    if (filterService) {
-      const rankedCandidates = await filterService.filter(
-        runtime,
-        message,
-        state,
-      );
-      const rankedNames = new Set(rankedCandidates.map((a) => a.name));
-      candidateActions = [
-        ...rankedCandidates,
-        ...runtime.actions.filter((a) => !rankedNames.has(a.name)),
-      ];
-    } else {
-      candidateActions = runtime.actions;
-    }
-
-    const actionsData = await validateActions(
-      candidateActions,
-      runtime,
-      message,
-      state,
-    );
-
-    // Track the exact action set shown in the prompt for miss detection.
-    if (filterService && message.roomId) {
-      filterService.setRoomActionSet(
-        message.roomId,
-        actionsData.map((action) => action.name),
-      );
-    }
-
-    const actionSeed = buildConversationSeed({
-      runtime,
-      message,
-      state,
-      surface: "provider:actions",
+    // Get actions that validate for this message
+    const actionPromises = runtime.actions.map(async (action: Action) => {
+      const result = await action.validate(runtime, message, state);
+      if (result) {
+        return action;
+      }
+      return null;
     });
 
-    const actionNames = `Possible response actions: ${formatActionNames(actionsData, `${actionSeed}:names`)}`;
+    const resolvedActions = await Promise.all(actionPromises);
+
+    const actionsData = resolvedActions.filter(Boolean) as Action[];
+
+    // Format action-related texts
+    const actionNames = `Possible response actions: ${formatActionNames(actionsData)}`;
 
     const actionsWithDescriptions =
       actionsData.length > 0
+        ? addHeader("# Available Actions", formatActions(actionsData))
+        : "";
+
+    const actionExamples =
+      actionsData.length > 0
+        ? addHeader("# Action Examples", composeActionExamples(actionsData, 10))
+        : "";
+
+    const actionCallExamples =
+      actionsData.length > 0
         ? addHeader(
-            "# Available Actions",
-            formatActions(actionsData, `${actionSeed}:descriptions`),
+            "# Action Call Examples (with <params>)",
+            composeActionCallExamples(actionsData, 5),
           )
         : "";
 
+    const _data = {
+      actionsData,
+    };
+
     const values = {
       actionNames,
+      actionExamples,
+      actionCallExamples,
       actionsWithDescriptions,
     };
 
-    const text = [actionNames, actionsWithDescriptions]
+    // Combine all text sections - now including actionsWithDescriptions
+    const text = [
+      actionNames,
+      actionsWithDescriptions,
+      actionExamples,
+      actionCallExamples,
+    ]
       .filter(Boolean)
       .join("\n\n");
 

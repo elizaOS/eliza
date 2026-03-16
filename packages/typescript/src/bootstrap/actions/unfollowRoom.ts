@@ -8,18 +8,10 @@ import type {
   State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import {
-  composePromptFromState,
-  parseXmlBooleanResponse,
-} from "../../utils.ts";
+import { composePromptFromState, parseBooleanFromText } from "../../utils.ts";
 
 // Inline to avoid circular import issues
-const booleanFooter = `Respond using XML format like this:
-<response>
-  <decision>true | false</decision>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
+const booleanFooter = "Respond with only a YES or a NO.";
 
 /**
  * Template for deciding if an agent should stop closely following a previously followed room
@@ -38,12 +30,12 @@ const shouldUnfollowTemplate = `# Task: Decide if {{agentName}} should stop clos
 {{recentMessages}}
 
 Should {{agentName}} stop closely following this previously followed room and only respond when mentioned?
-Set <decision>true</decision> if:
+Respond with YES if:
 - The user has suggested that {{agentName}} is over-participating or being disruptive
 - {{agentName}}'s eagerness to contribute is not well-received by the users
 - The conversation has shifted to a topic where {{agentName}} has less to add
 
-Otherwise, set <decision>false</decision>.
+Otherwise, respond with NO.
 ${booleanFooter}`;
 
 /**
@@ -92,12 +84,14 @@ export const unfollowRoomAction: Action = {
         prompt: shouldUnfollowPrompt,
       });
 
-      return parseXmlBooleanResponse(response) ?? false;
+      const parsedResponse = parseBooleanFromText(response.trim());
+
+      return parsedResponse as boolean;
     }
 
     if (state && (await _shouldUnfollow(state))) {
       try {
-        await runtime.setParticipantUserState(
+        await runtime.updateParticipantUserState(
           message.roomId,
           runtime.agentId,
           null,

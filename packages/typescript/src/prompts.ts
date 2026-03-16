@@ -39,7 +39,7 @@ export const messageHandlerTemplate = `<task>Generate dialog and actions for the
 </providers>
 
 <instructions>
-Write a thought and plan for {{agentName}} and decide what actions to take.
+Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
 
 IMPORTANT ACTION ORDERING RULES:
 - Actions are executed in the ORDER you list them - the order MATTERS!
@@ -60,6 +60,28 @@ IMPORTANT ACTION PARAMETERS:
 - Required parameters MUST be provided; optional parameters can be omitted if not mentioned
 - If you cannot determine a required parameter value, ask the user for clarification in your <text>
 
+EXAMPLE (action parameters):
+User message: "Send a message to @dev_guru on telegram saying Hello!"
+Actions: REPLY,SEND_MESSAGE
+Params:
+<params>
+    <SEND_MESSAGE>
+        <targetType>user</targetType>
+        <source>telegram</source>
+        <target>dev_guru</target>
+        <text>Hello!</text>
+    </SEND_MESSAGE>
+</params>
+
+IMPORTANT PROVIDER SELECTION RULES:
+- Only include providers if they are needed to respond accurately.
+- If the message mentions images, photos, pictures, attachments, or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
+- If the message asks about or references specific people, include "ENTITIES" in your providers list  
+- If the message asks about relationships or connections between people, include "RELATIONSHIPS" in your providers list
+- If the message asks about facts or specific information, include "FACTS" in your providers list
+- If the message asks about the environment or world context, include "WORLD" in your providers list
+- If no additional context is needed, you may leave the providers list empty.
+
 IMPORTANT CODE BLOCK FORMATTING RULES:
 - If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with \`\`\` fenced code blocks (specify the language if known, e.g., \`\`\`python).
 - ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
@@ -72,6 +94,7 @@ First, think about what you want to do next and plan your actions. Then, write t
 <keys>
 "thought" should be a short description of what the agent is thinking about and planning.
 "actions" should be a comma-separated list of the actions {{agentName}} plans to take based on the thought, IN THE ORDER THEY SHOULD BE EXECUTED (if none, use IGNORE, if simply responding with text, use REPLY)
+"providers" should be a comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting (NEVER use "IGNORE" as a provider - use specific provider names like ATTACHMENTS, ENTITIES, FACTS, KNOWLEDGE, etc.)
 "text" should be the text of the next message for {{agentName}} which they will send to the conversation.
 "params" (optional) should contain action parameters when actions require input. Format as nested XML with action name as wrapper.
 </keys>
@@ -84,6 +107,7 @@ Respond using XML format like this:
 <response>
     <thought>Your thought here</thought>
     <actions>ACTION1,ACTION2</actions>
+    <providers>PROVIDER1,PROVIDER2</providers>
     <text>Your response text here</text>
     <params>
         <ACTION1>
@@ -148,12 +172,7 @@ Go directly to the XML response format without any preamble or explanation.
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
-export const booleanFooter = `Respond using XML format like this:
-<response>
-  <decision>true | false</decision>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
+export const booleanFooter = "Respond with only a YES or a NO.";
 
 export const imageDescriptionTemplate = `<task>Analyze the provided image and generate a comprehensive description with multiple levels of detail.</task>
 
@@ -212,7 +231,6 @@ These are the actions or data provider calls that have already been used in this
 "thought" Clearly explain your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request.
 "action"  Name of the action to execute after providers return (can be empty if no action is needed).
 "providers" List of provider names to call in this step (can be empty if none are needed).
-"params" Optional XML parameters for the selected action. Use nested XML only when the action needs input.
 "isFinish" Set to true only if the task is fully complete.
 </keys>
 
@@ -223,11 +241,6 @@ These are the actions or data provider calls that have already been used in this
   <thought>Your thought here</thought>
   <action>ACTION</action>
   <providers>PROVIDER1,PROVIDER2</providers>
-  <params>
-    <ACTION>
-      <paramName>value</paramName>
-    </ACTION>
-  </params>
   <isFinish>true | false</isFinish>
 </response>
 </output>`;
@@ -434,6 +447,22 @@ Return in XML format:
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
+// UPPERCASE aliases for backwards compatibility
+export const SHOULD_RESPOND_TEMPLATE = shouldRespondTemplate;
+export const MESSAGE_HANDLER_TEMPLATE = messageHandlerTemplate;
+export const POST_CREATION_TEMPLATE = postCreationTemplate;
+export const BOOLEAN_FOOTER = booleanFooter;
+export const IMAGE_DESCRIPTION_TEMPLATE = imageDescriptionTemplate;
+export const MULTI_STEP_DECISION_TEMPLATE = multiStepDecisionTemplate;
+export const MULTI_STEP_SUMMARY_TEMPLATE = multiStepSummaryTemplate;
+export const REPLY_TEMPLATE = replyTemplate;
+export const CHOOSE_OPTION_TEMPLATE = chooseOptionTemplate;
+export const IMAGE_GENERATION_TEMPLATE = imageGenerationTemplate;
+export const REFLECTION_TEMPLATE = reflectionTemplate;
+export const UPDATE_SETTINGS_TEMPLATE = updateSettingsTemplate;
+export const UPDATE_ENTITY_TEMPLATE = updateEntityTemplate;
+export const OPTION_EXTRACTION_TEMPLATE = optionExtractionTemplate;
+
 // Contact action templates
 export const scheduleFollowUpTemplate = `# Schedule Follow-up
 
@@ -577,26 +606,26 @@ export const shouldFollowRoomTemplate = `# Task: Decide if {{agentName}} should 
 {{recentMessages}}
 
 Should {{agentName}} start following this room, eagerly participating without explicit mentions?
-Set <decision>true</decision> if:
+Respond with YES if:
 - The user has directly asked {{agentName}} to follow the conversation or participate more actively
 - The conversation topic is highly engaging and {{agentName}}'s input would add significant value
 - {{agentName}} has unique insights to contribute and the users seem receptive
 
-Otherwise, set <decision>false</decision>.
-${booleanFooter}`;
+Otherwise, respond with NO.
+Respond with only a YES or a NO.`;
 
 export const shouldUnfollowRoomTemplate = `# Task: Decide if {{agentName}} should stop closely following this previously followed room and only respond when mentioned.
 
 {{recentMessages}}
 
 Should {{agentName}} stop closely following this previously followed room and only respond when mentioned?
-Set <decision>true</decision> if:
+Respond with YES if:
 - The user has suggested that {{agentName}} is over-participating or being disruptive
 - {{agentName}}'s eagerness to contribute is not well-received by the users
 - The conversation has shifted to a topic where {{agentName}} has less to add
 
-Otherwise, set <decision>false</decision>.
-${booleanFooter}`;
+Otherwise, respond with NO.
+Respond with only a YES or a NO.`;
 
 export const shouldMuteRoomTemplate = `# Task: Decide if {{agentName}} should mute this room and stop responding unless explicitly mentioned.
 
@@ -604,26 +633,26 @@ export const shouldMuteRoomTemplate = `# Task: Decide if {{agentName}} should mu
 
 Should {{agentName}} mute this room and stop responding unless explicitly mentioned?
 
-Set <decision>true</decision> if:
+Respond with YES if:
 - The user is being aggressive, rude, or inappropriate
 - The user has directly asked {{agentName}} to stop responding or be quiet
 - {{agentName}}'s responses are not well-received or are annoying the user(s)
 
-Otherwise, set <decision>false</decision>.
-${booleanFooter}`;
+Otherwise, respond with NO.
+Respond with only a YES or a NO.`;
 
 export const shouldUnmuteRoomTemplate = `# Task: Decide if {{agentName}} should unmute this previously muted room and start considering it for responses again.
 
 {{recentMessages}}
 
 Should {{agentName}} unmute this previously muted room and start considering it for responses again?
-Set <decision>true</decision> if:
+Respond with YES if:
 - The user has explicitly asked {{agentName}} to start responding again
 - The user seems to want to re-engage with {{agentName}} in a respectful manner
 - The tone of the conversation has improved and {{agentName}}'s input would be welcome
 
-Otherwise, set <decision>false</decision>.
-${booleanFooter}`;
+Otherwise, respond with NO.
+Respond with only a YES or a NO.`;
 
 // Target extraction template
 export const targetExtractionTemplate = `# Task: Extract Target and Source Information
@@ -798,6 +827,28 @@ CONSTRAINTS: [comma-separated list]
 DEPENDENCIES: [comma-separated list]
 CONFIDENCE: [0.0-1.0]`;
 
+// UPPERCASE aliases for action templates
+export const SCHEDULE_FOLLOW_UP_TEMPLATE = scheduleFollowUpTemplate;
+export const ADD_CONTACT_TEMPLATE = addContactTemplate;
+export const SEARCH_CONTACTS_TEMPLATE = searchContactsTemplate;
+export const REMOVE_CONTACT_TEMPLATE = removeContactTemplate;
+export const UPDATE_CONTACT_TEMPLATE = updateContactTemplate;
+export const SHOULD_FOLLOW_ROOM_TEMPLATE = shouldFollowRoomTemplate;
+export const SHOULD_UNFOLLOW_ROOM_TEMPLATE = shouldUnfollowRoomTemplate;
+export const SHOULD_MUTE_ROOM_TEMPLATE = shouldMuteRoomTemplate;
+export const SHOULD_UNMUTE_ROOM_TEMPLATE = shouldUnmuteRoomTemplate;
+// Legacy aliases without _ROOM_ suffix for backwards compatibility
+export const shouldFollowTemplate = shouldFollowRoomTemplate;
+export const shouldUnfollowTemplate = shouldUnfollowRoomTemplate;
+export const shouldMuteTemplate = shouldMuteRoomTemplate;
+export const shouldUnmuteTemplate = shouldUnmuteRoomTemplate;
+export const TARGET_EXTRACTION_TEMPLATE = targetExtractionTemplate;
+export const UPDATE_ROLE_TEMPLATE = updateRoleTemplate;
+export const INITIAL_SUMMARIZATION_TEMPLATE = initialSummarizationTemplate;
+export const UPDATE_SUMMARIZATION_TEMPLATE = updateSummarizationTemplate;
+export const LONG_TERM_EXTRACTION_TEMPLATE = longTermExtractionTemplate;
+export const MESSAGE_CLASSIFIER_TEMPLATE = messageClassifierTemplate;
+
 export const reflectionEvaluatorTemplate = `# Task: Generate Agent Reflection, Extract Facts and Relationships
 
 {{providers}}
@@ -855,6 +906,8 @@ Generate a response in the following format:
 </response>
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+
+export const REFLECTION_EVALUATOR_TEMPLATE = reflectionEvaluatorTemplate;
 
 // Entity resolution template
 export const entityResolutionTemplate = `# Task: Resolve Entity Name
@@ -1013,6 +1066,14 @@ export const settingsCompletionTemplate = `# Task: Generate a response for setti
 Write a natural, conversational response that {{agentName}} would send about the successful completion of settings.
 Include the actions array ["ONBOARDING_COMPLETE"] in your response.`;
 
+// UPPERCASE aliases for new templates
+export const ENTITY_RESOLUTION_TEMPLATE = entityResolutionTemplate;
+export const COMPONENT_TEMPLATE = componentTemplate;
+export const SETTINGS_SUCCESS_TEMPLATE = settingsSuccessTemplate;
+export const SETTINGS_FAILURE_TEMPLATE = settingsFailureTemplate;
+export const SETTINGS_ERROR_TEMPLATE = settingsErrorTemplate;
+export const SETTINGS_COMPLETION_TEMPLATE = settingsCompletionTemplate;
+
 // Autonomy templates
 export const autonomyContinuousFirstTemplate = `You are running in AUTONOMOUS CONTINUOUS MODE.
 
@@ -1067,3 +1128,11 @@ USER CHAT CONTEXT (most recent last):
 Your last autonomous note: "{{lastThought}}"
 
 Continue the task. Decide the next step and take action now.`;
+
+// UPPERCASE aliases for autonomy templates
+export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE =
+  autonomyContinuousFirstTemplate;
+export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE =
+  autonomyContinuousContinueTemplate;
+export const AUTONOMY_TASK_FIRST_TEMPLATE = autonomyTaskFirstTemplate;
+export const AUTONOMY_TASK_CONTINUE_TEMPLATE = autonomyTaskContinueTemplate;

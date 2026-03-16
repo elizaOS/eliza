@@ -6,21 +6,21 @@
  */
 
 import {
-  type AuthInput,
-  type ChannelsInput,
-  ONBOARDING_STEP_DESCRIPTIONS,
-  ONBOARDING_STEP_LABELS,
-  type OnboardingContext,
-  type OnboardingInput,
-  type OnboardingProgress,
-  type OnboardingResult,
-  OnboardingStep,
-  type SkillsInput,
-} from "../types/onboarding";
-import {
   OnboardingStateMachine,
   type OnboardingStateMachineConfig,
 } from "./onboarding-state";
+import {
+  OnboardingStep,
+  ONBOARDING_STEP_LABELS,
+  ONBOARDING_STEP_DESCRIPTIONS,
+  type OnboardingContext,
+  type OnboardingInput,
+  type OnboardingResult,
+  type OnboardingProgress,
+  type AuthInput,
+  type ChannelsInput,
+  type SkillsInput,
+} from "../types/onboarding";
 
 /**
  * Prompt configuration for CLI display.
@@ -126,16 +126,8 @@ export const CHANNELS = [
  */
 export const AUTH_METHODS = [
   { value: "api_key", label: "API Key", hint: "Enter your API key directly" },
-  {
-    value: "oauth",
-    label: "OAuth",
-    hint: "Sign in with your provider account",
-  },
-  {
-    value: "setup_token",
-    label: "Setup Token",
-    hint: "Paste token from CLI command",
-  },
+  { value: "oauth", label: "OAuth", hint: "Sign in with your provider account" },
+  { value: "setup_token", label: "Setup Token", hint: "Paste token from CLI command" },
 ] as const;
 
 /**
@@ -146,9 +138,7 @@ export const AUTH_METHODS = [
 export class CLIOnboardingAdapter {
   private stateMachine: OnboardingStateMachine;
 
-  constructor(
-    config?: Partial<Omit<OnboardingStateMachineConfig, "platform" | "mode">>,
-  ) {
+  constructor(config?: Partial<Omit<OnboardingStateMachineConfig, "platform" | "mode">>) {
     this.stateMachine = new OnboardingStateMachine({
       platform: "cli",
       mode: "cli",
@@ -211,10 +201,7 @@ export class CLIOnboardingAdapter {
   /**
    * Parse CLI input for a specific step.
    */
-  parseCliInput(
-    input: Record<string, unknown>,
-    step?: OnboardingStep,
-  ): ParsedCliInput {
+  parseCliInput(input: Record<string, unknown>, step?: OnboardingStep): ParsedCliInput {
     const targetStep = step || this.stateMachine.getCurrentStep();
 
     switch (targetStep) {
@@ -229,10 +216,7 @@ export class CLIOnboardingAdapter {
       case OnboardingStep.SKILLS:
         return this.parseSkillsInput(input);
       case OnboardingStep.COMPLETE:
-        return {
-          success: true,
-          input: { step: OnboardingStep.COMPLETE, data: {} },
-        };
+        return { success: true, input: { step: OnboardingStep.COMPLETE, data: {} } };
       default:
         return { success: false, error: `Unknown step: ${targetStep}` };
     }
@@ -474,9 +458,7 @@ ${ONBOARDING_STEP_DESCRIPTIONS[OnboardingStep.WELCOME]}`,
       };
     }
 
-    const method = (input.method ??
-      input.authMethod ??
-      "api_key") as AuthInput["method"];
+    const method = (input.method ?? input.authMethod ?? "api_key") as AuthInput["method"];
     const provider = input.provider as string | undefined;
 
     const authData: AuthInput = {
@@ -548,21 +530,17 @@ ${ONBOARDING_STEP_DESCRIPTIONS[OnboardingStep.WELCOME]}`,
     }
 
     // Parse selected channels
-    const selectedChannels = (input.channels ??
-      input.selected ??
-      []) as string[];
+    const selectedChannels = (input.channels ?? input.selected ?? []) as string[];
     const channelConfigs = (input.channelConfigs ?? {}) as Record<
       string,
       Record<string, string>
     >;
 
-    const channels: ChannelsInput["channels"] = selectedChannels.map(
-      (type) => ({
-        type,
-        enabled: true,
-        credentials: channelConfigs[type],
-      }),
-    );
+    const channels: ChannelsInput["channels"] = selectedChannels.map((type) => ({
+      type,
+      enabled: true,
+      credentials: channelConfigs[type],
+    }));
 
     // Parse DM policy
     const dmPolicy = input.dmPolicy as ChannelsInput["dmPolicy"];

@@ -1,0 +1,167 @@
+{
+  "name": "@elizaos/plugin-auto-trader-root",
+  "private": true,
+  "version": "2.0.0-alpha.1",
+  "type": "module",
+  "main": "typescript/dist/index.js",
+  "module": "typescript/dist/index.js",
+  "types": "typescript/dist/index.d.ts",
+  "description": "Multi-language autonomous trading plugin for elizaOS with LLM-powered strategies",
+  "keywords": [
+    "trading",
+    "auto-trader",
+    "solana",
+    "jupiter",
+    "elizaos",
+    "plugin",
+    "defi",
+    "dex"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./typescript/dist/index.d.ts",
+      "import": "./typescript/dist/index.js",
+      "default": "./typescript/dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "typescript/dist",
+    "prompts"
+  ],
+  "scripts": {
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/src/generated/prompts --target all",
+    "build": "npm run build:prompts && npm run build:ts",
+    "build:ts": "cd typescript && bun run build",
+    "dev": "cd typescript && bun run dev",
+    "typecheck": "tsc --noEmit -p typescript/tsconfig.json || true",
+    "clean": "rm -rf typescript/dist .turbo node_modules",
+    "format": "bunx @biomejs/biome format --write ./typescript/src",
+    "format:check": "bunx @biomejs/biome format ./typescript/src",
+    "test": "npm run test:ts",
+    "test:ts": "cd typescript && bun run test",
+    "lint": "bunx @biomejs/biome check --write ./typescript/src",
+    "lint:check": "bunx @biomejs/biome check ./typescript/src"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "typescript": "^5.8.3"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SOLANA_PRIVATE_KEY": {
+        "type": "string",
+        "description": "Base58-encoded private key for the trading wallet on Solana",
+        "required": true,
+        "sensitive": true
+      },
+      "SOLANA_RPC_URL": {
+        "type": "string",
+        "description": "Solana RPC endpoint URL for blockchain interactions",
+        "required": false,
+        "default": "https://api.mainnet-beta.solana.com",
+        "sensitive": false
+      },
+      "BIRDEYE_API_KEY": {
+        "type": "string",
+        "description": "Birdeye API key for market data, trending tokens, and analytics",
+        "required": true,
+        "sensitive": true
+      },
+      "TRADING_MODE": {
+        "type": "string",
+        "description": "Trading mode: 'live' for real trades, 'paper' for simulation",
+        "required": false,
+        "default": "paper",
+        "sensitive": false
+      },
+      "DEFAULT_STRATEGY": {
+        "type": "string",
+        "description": "Default trading strategy: 'llm', 'momentum', 'mean-reversion', 'rules'",
+        "required": false,
+        "default": "llm",
+        "sensitive": false
+      },
+      "MAX_POSITION_SIZE_USD": {
+        "type": "number",
+        "description": "Maximum position size in USD for any single trade",
+        "required": false,
+        "default": 100,
+        "sensitive": false
+      },
+      "MAX_PORTFOLIO_ALLOCATION": {
+        "type": "number",
+        "description": "Maximum percentage of portfolio to allocate to any single position (0-1)",
+        "required": false,
+        "default": 0.15,
+        "sensitive": false
+      },
+      "STOP_LOSS_PERCENT": {
+        "type": "number",
+        "description": "Default stop loss percentage (e.g., 5 for 5%)",
+        "required": false,
+        "default": 5,
+        "sensitive": false
+      },
+      "TAKE_PROFIT_PERCENT": {
+        "type": "number",
+        "description": "Default take profit percentage (e.g., 15 for 15%)",
+        "required": false,
+        "default": 15,
+        "sensitive": false
+      },
+      "MAX_DAILY_LOSS_USD": {
+        "type": "number",
+        "description": "Maximum daily loss in USD before trading stops",
+        "required": false,
+        "default": 500,
+        "sensitive": false
+      },
+      "TRADING_INTERVAL_MS": {
+        "type": "number",
+        "description": "Interval between trading loop iterations in milliseconds",
+        "required": false,
+        "default": 60000,
+        "sensitive": false
+      },
+      "SLIPPAGE_BPS": {
+        "type": "number",
+        "description": "Default slippage tolerance in basis points (100 = 1%)",
+        "required": false,
+        "default": 100,
+        "sensitive": false
+      },
+      "MIN_LIQUIDITY_USD": {
+        "type": "number",
+        "description": "Minimum token liquidity in USD to consider for trading",
+        "required": false,
+        "default": 50000,
+        "sensitive": false
+      },
+      "MIN_VOLUME_24H_USD": {
+        "type": "number",
+        "description": "Minimum 24h volume in USD to consider for trading",
+        "required": false,
+        "default": 100000,
+        "sensitive": false
+      },
+      "RUGCHECK_ENABLED": {
+        "type": "boolean",
+        "description": "Enable RugCheck validation before trading tokens",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
+}

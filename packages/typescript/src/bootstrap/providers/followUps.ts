@@ -1,4 +1,3 @@
-import { getPromptReferenceDate } from "../../deterministic";
 import type { FollowUpService } from "../../services/followUp.ts";
 import type {
   IAgentRuntime,
@@ -10,12 +9,11 @@ import type {
 
 export const followUpsProvider: Provider = {
   name: "FOLLOW_UPS",
-  position: 75,
   description: "Provides information about upcoming follow-ups and reminders",
   get: async (
     runtime: IAgentRuntime,
-    message: Memory,
-    state: State,
+    _message: Memory,
+    _state: State,
   ): Promise<ProviderResult> => {
     const followUpService = runtime.getService("follow_up") as FollowUpService;
     if (!followUpService) {
@@ -37,14 +35,8 @@ export const followUpsProvider: Provider = {
       };
     }
 
-    // Use deterministic reference date for prompt caching compatibility
-    const referenceDate = getPromptReferenceDate({
-      runtime,
-      message,
-      state,
-      surface: "provider:follow-ups",
-    });
-    const now = referenceDate.getTime();
+    // Separate overdue and upcoming
+    const now = Date.now();
     const overdue = upcomingFollowUps.filter((f) => {
       const scheduledAt = f.task.metadata?.scheduledAt
         ? new Date(f.task.metadata.scheduledAt as string).getTime()

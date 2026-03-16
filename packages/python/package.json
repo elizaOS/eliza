@@ -1,10 +1,8 @@
 {
   "name": "@elizaos/python",
-  "version": "2.0.0-alpha.42",
+  "version": "2.0.0-alpha.2",
   "description": "elizaOS Core - Python runtime and types",
-  "publishConfig": {
-    "access": "public"
-  },
+  "private": true,
   "scripts": {
     "build": "python3 -c \"from pathlib import Path; import json; Path('elizaos.egg-info').mkdir(exist_ok=True); Path('elizaos.egg-info/PKG-INFO').write_text('Metadata-Version: 2.1\\nName: elizaos\\nVersion: 1.0.0\\n'); print('✅ Build completed - egg-info created')\"",
     "test": "pytest",
@@ -12,7 +10,7 @@
     "lint:fix": "ruff check --fix . && ruff format .",
     "format": "ruff format .",
     "format:check": "ruff format --check .",
-    "typecheck": "python3.13 -c \"import importlib.util, subprocess, sys; spec = importlib.util.find_spec('mypy'); sys.exit(0 if spec is None and print('mypy not installed, skipping typecheck') is None else subprocess.call([sys.executable, '-m', 'mypy', 'elizaos']))\""
+    "typecheck": "python3.13 -m mypy elizaos || echo 'mypy not installed, skipping typecheck'"
   },
   "author": "elizaOS",
   "license": "MIT"

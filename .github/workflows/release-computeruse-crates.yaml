@@ -8,8 +8,8 @@ name: ComputerUse Rust Crates Release
 #   3. computeruse-mcp-agent - depends on computeruse-rs
 #   4. computeruse-workflow-recorder - depends on computeruse-rs
 #   5. computeruse-cli - depends on computeruse-mcp-agent
-#   6. computeruse-python - binding crate (depends on computeruse-rs)
-#   7. computeruse-ts - binding crate (depends on computeruse-rs)
+#   6. computeruse-python - binding crate (independent)
+#   7. computeruse-nodejs - binding crate (independent)
 
 on:
   release:
@@ -28,7 +28,7 @@ on:
           - computeruse-workflow-recorder
           - computeruse-cli
           - computeruse-python
-          - computeruse-ts
+          - computeruse-nodejs
       dry_run:
         description: "Dry run (do not publish)"
         required: false
@@ -496,30 +496,28 @@ jobs:
         working-directory: .
 
   # ============================================
-  # Stage 5: Binding crates (depend on computeruse-rs)
+  # Stage 5: Binding crates (independent)
   # ============================================
   build-bindings:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [build-computer-use, build-computeruse-rs]
+    needs: build-computer-use
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          - release_name: computeruse-python
-            cargo_package: computeruse-py-bindings
+          - name: computeruse-python
             path: packages/computeruse-python
-          - release_name: computeruse-ts
-            cargo_package: computeruse-node-bindings
-            path: packages/computeruse-ts
+          - name: computeruse-nodejs
+            path: packages/computeruse-nodejs
 
     steps:
       - name: Check if crate should be built
         id: check
         run: |
           CRATE="${{ github.event.inputs.crate || 'all' }}"
-          MATRIX_NAME="${{ matrix.release_name }}"
+          MATRIX_NAME="${{ matrix.name }}"
           if [[ "$CRATE" == "all" ]] || [[ "$CRATE" == "$MATRIX_NAME" ]]; then
             echo "should_publish=true" >> $GITHUB_OUTPUT
           else
@@ -549,43 +547,33 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-computeruse-
 
-      - name: Wait for crates.io to index computeruse-rs
-        if: steps.check.outputs.should_publish == 'true' && needs.build-computeruse-rs.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
-        run: |
-          echo "Waiting 120 seconds for crates.io to index computeruse-rs..."
-          sleep 120
-        working-directory: .
-
       - name: Update workspace version
         if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release'
         run: |
           VERSION="${{ needs.build-computer-use.outputs.version }}"
           sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
-          sed -i -E "s|^computeruse = \\{ version = \"[^\"]*\", path = \"\\./crates/computeruse\", package = \"computeruse-rs\" \\}$|computeruse = { version = \"${VERSION}\", path = \"./crates/computeruse\", package = \"computeruse-rs\" }|" Cargo.toml
-          sed -i -E "s|^computeruse_core = \\{ version = \"[^\"]*\", path = \"\\.\\./\\.\\./crates/computeruse\", package = \"computeruse-rs\" \\}$|computeruse_core = { version = \"${VERSION}\", path = \"../../crates/computeruse\", package = \"computeruse-rs\" }|" packages/computeruse-python/Cargo.toml
           echo "Updated workspace version to ${VERSION}"
 
       - name: Build release
         if: steps.check.outputs.should_publish == 'true'
-        run: cargo build --release -p ${{ matrix.cargo_package }}
+        run: cargo build --release -p ${{ matrix.name }}
 
       - name: Verify publishable
         if: steps.check.outputs.should_publish == 'true'
-        run: cargo publish --dry-run --allow-dirty -p ${{ matrix.cargo_package }}
+        run: cargo publish --dry-run --allow-dirty -p ${{ matrix.name }}
 
       - name: Publish to crates.io
         if: steps.check.outputs.should_publish == 'true' && github.event.inputs.dry_run != 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-        run: cargo publish --allow-dirty -p ${{ matrix.cargo_package }}
+        run: cargo publish --allow-dirty -p ${{ matrix.name }}
 
       - name: Summary
         if: steps.check.outputs.should_publish == 'true'
         run: |
-          echo "# ${{ matrix.release_name }} Release" >> $GITHUB_STEP_SUMMARY
+          echo "# ${{ matrix.name }} Release" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Crate**: ${{ matrix.release_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Cargo Package**: ${{ matrix.cargo_package }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Crate**: ${{ matrix.name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Version**: ${{ needs.build-computer-use.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Published**: ${{ github.event.inputs.dry_run != 'true' }}" >> $GITHUB_STEP_SUMMARY
         working-directory: .

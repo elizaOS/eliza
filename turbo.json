@@ -7,7 +7,7 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/core#build": {
-      "dependsOn": ["@elizaos/schemas#build", "@elizaos/prompts#build"],
+      "dependsOn": [],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"],
       "inputs": ["src/**", "build.ts", "tsconfig.declarations.json"]
@@ -278,10 +278,6 @@
       "dependsOn": [],
       "outputs": []
     },
-    "@elizaos/prompts#build": {
-      "dependsOn": [],
-      "outputs": ["dist/**"]
-    },
     "@elizaos/plugin-auto-trader-root#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
@@ -307,46 +303,6 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
     },
-    "@elizaos/plugin-acp-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-cli-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-gmail-watch-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-memory-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-plugin-manager-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-slack-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/plugin-twitch-root#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["typescript/dist/**", "rust/pkg/**", "python/dist/**"]
-    },
-    "@elizaos/example-browser-extension#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["chrome/dist/**"]
-    },
     "eliza-next-example#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
@@ -357,6 +313,26 @@
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["rust/target/release/**"]
+    },
+    "ai-town#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-tlon-root#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-secrets-manager-root#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/computeruse#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-signal-root#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["typescript/dist/**"]
     },
     "lint": {
       "outputs": []

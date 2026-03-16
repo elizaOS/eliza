@@ -1,0 +1,25 @@
+# Production environment overrides for gateway-discord
+
+# Production resource limits
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "200m"
+  limits:
+    memory: "2Gi"
+    cpu: "1"
+
+# Production scaling configuration
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+
+# Enable Prometheus monitoring in production (requires Prometheus Operator)
+prometheus:
+  enabled: true
+  serviceMonitor:
+    interval: 30s
+    path: /metrics
+  alerts:
+    enabled: true

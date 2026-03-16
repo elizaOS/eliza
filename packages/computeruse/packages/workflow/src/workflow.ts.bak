@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Desktop } from '@elizaos/computeruse';
+import { Desktop } from '@mediar-ai/computeruse';
 import type {
   Workflow,
   WorkflowConfig,

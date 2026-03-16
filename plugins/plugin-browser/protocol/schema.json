@@ -1,0 +1,301 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Browser Plugin Protocol",
+  "version": "1.0.0",
+  "description": "Shared protocol definitions for browser automation across TypeScript, Python, and Rust",
+
+  "definitions": {
+    "SessionId": {
+      "type": "string",
+      "pattern": "^session-[0-9]+-[a-z0-9]+$",
+      "description": "Unique identifier for a browser session"
+    },
+
+    "BrowserSession": {
+      "type": "object",
+      "required": ["id", "createdAt"],
+      "properties": {
+        "id": { "$ref": "#/definitions/SessionId" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "url": { "type": "string" },
+        "title": { "type": "string" }
+      }
+    },
+
+    "NavigationResult": {
+      "type": "object",
+      "required": ["success", "url", "title"],
+      "properties": {
+        "success": { "type": "boolean" },
+        "url": { "type": "string" },
+        "title": { "type": "string" },
+        "error": { "type": "string" }
+      }
+    },
+
+    "ActionResult": {
+      "type": "object",
+      "required": ["success"],
+      "properties": {
+        "success": { "type": "boolean" },
+        "data": { "type": "object" },
+        "error": { "type": "string" }
+      }
+    },
+
+    "ExtractResult": {
+      "type": "object",
+      "required": ["success", "found"],
+      "properties": {
+        "success": { "type": "boolean" },
+        "found": { "type": "boolean" },
+        "data": { "type": "string" },
+        "error": { "type": "string" }
+      }
+    },
+
+    "ScreenshotResult": {
+      "type": "object",
+      "required": ["success"],
+      "properties": {
+        "success": { "type": "boolean" },
+        "data": { "type": "string", "description": "Base64 encoded image" },
+        "mimeType": { "type": "string", "enum": ["image/png", "image/jpeg"] },
+        "url": { "type": "string" },
+        "title": { "type": "string" },
+        "error": { "type": "string" }
+      }
+    },
+
+    "CaptchaType": {
+      "type": "string",
+      "enum": ["turnstile", "recaptcha-v2", "recaptcha-v3", "hcaptcha", "none"]
+    },
+
+    "CaptchaResult": {
+      "type": "object",
+      "required": ["detected", "type"],
+      "properties": {
+        "detected": { "type": "boolean" },
+        "type": { "$ref": "#/definitions/CaptchaType" },
+        "siteKey": { "type": "string" },
+        "solved": { "type": "boolean" },
+        "token": { "type": "string" },
+        "error": { "type": "string" }
+      }
+    },
+
+    "SecurityConfig": {
+      "type": "object",
+      "properties": {
+        "allowedDomains": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "blockedDomains": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "maxUrlLength": { "type": "integer", "default": 2048 },
+        "allowLocalhost": { "type": "boolean", "default": true },
+        "allowFileProtocol": { "type": "boolean", "default": false }
+      }
+    },
+
+    "RetryConfig": {
+      "type": "object",
+      "properties": {
+        "maxAttempts": { "type": "integer", "default": 3 },
+        "initialDelayMs": { "type": "integer", "default": 1000 },
+        "maxDelayMs": { "type": "integer", "default": 5000 },
+        "backoffMultiplier": { "type": "number", "default": 2.0 }
+      }
+    },
+
+    "BrowserConfig": {
+      "type": "object",
+      "properties": {
+        "headless": { "type": "boolean", "default": true },
+        "browserbaseApiKey": { "type": "string" },
+        "browserbaseProjectId": { "type": "string" },
+        "openaiApiKey": { "type": "string" },
+        "anthropicApiKey": { "type": "string" },
+        "ollamaBaseUrl": { "type": "string" },
+        "ollamaModel": { "type": "string" },
+        "capsolverApiKey": { "type": "string" },
+        "serverPort": { "type": "integer", "default": 3456 }
+      }
+    },
+
+    "WebSocketMessage": {
+      "type": "object",
+      "required": ["type", "requestId"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "health",
+            "createSession",
+            "destroySession",
+            "navigate",
+            "goBack",
+            "goForward",
+            "refresh",
+            "click",
+            "type",
+            "select",
+            "extract",
+            "screenshot",
+            "getState",
+            "solveCaptcha"
+          ]
+        },
+        "requestId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "data": { "type": "object" }
+      }
+    },
+
+    "WebSocketResponse": {
+      "type": "object",
+      "required": ["type", "requestId", "success"],
+      "properties": {
+        "type": { "type": "string" },
+        "requestId": { "type": "string" },
+        "success": { "type": "boolean" },
+        "data": { "type": "object" },
+        "error": { "type": "string" }
+      }
+    },
+
+    "BrowserError": {
+      "type": "object",
+      "required": ["code", "message", "userMessage", "recoverable"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "SERVICE_NOT_AVAILABLE",
+            "SESSION_ERROR",
+            "NAVIGATION_ERROR",
+            "ACTION_ERROR",
+            "SECURITY_ERROR",
+            "CAPTCHA_ERROR",
+            "TIMEOUT_ERROR"
+          ]
+        },
+        "message": { "type": "string" },
+        "userMessage": { "type": "string" },
+        "recoverable": { "type": "boolean" },
+        "details": { "type": "object" }
+      }
+    }
+  },
+
+  "actions": {
+    "BROWSER_NAVIGATE": {
+      "description": "Navigate the browser to a specified URL",
+      "similes": ["GO_TO_URL", "OPEN_WEBSITE", "VISIT_PAGE", "NAVIGATE_TO"],
+      "input": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": { "type": "string", "format": "uri" }
+        }
+      },
+      "output": { "$ref": "#/definitions/NavigationResult" }
+    },
+    "BROWSER_BACK": {
+      "description": "Go back to the previous page in browser history",
+      "similes": ["GO_BACK", "PREVIOUS_PAGE"],
+      "output": { "$ref": "#/definitions/NavigationResult" }
+    },
+    "BROWSER_FORWARD": {
+      "description": "Go forward in browser history",
+      "similes": ["GO_FORWARD", "NEXT_PAGE"],
+      "output": { "$ref": "#/definitions/NavigationResult" }
+    },
+    "BROWSER_REFRESH": {
+      "description": "Refresh the current page",
+      "similes": ["RELOAD", "REFRESH_PAGE"],
+      "output": { "$ref": "#/definitions/NavigationResult" }
+    },
+    "BROWSER_CLICK": {
+      "description": "Click on an element on the webpage",
+      "similes": ["CLICK_ELEMENT", "TAP", "PRESS_BUTTON"],
+      "input": {
+        "type": "object",
+        "required": ["description"],
+        "properties": {
+          "description": { "type": "string" }
+        }
+      },
+      "output": { "$ref": "#/definitions/ActionResult" }
+    },
+    "BROWSER_TYPE": {
+      "description": "Type text into an input field on the webpage",
+      "similes": ["TYPE_TEXT", "INPUT", "ENTER_TEXT"],
+      "input": {
+        "type": "object",
+        "required": ["text", "field"],
+        "properties": {
+          "text": { "type": "string" },
+          "field": { "type": "string" }
+        }
+      },
+      "output": { "$ref": "#/definitions/ActionResult" }
+    },
+    "BROWSER_SELECT": {
+      "description": "Select an option from a dropdown on the webpage",
+      "similes": ["SELECT_OPTION", "CHOOSE", "PICK"],
+      "input": {
+        "type": "object",
+        "required": ["option", "dropdown"],
+        "properties": {
+          "option": { "type": "string" },
+          "dropdown": { "type": "string" }
+        }
+      },
+      "output": { "$ref": "#/definitions/ActionResult" }
+    },
+    "BROWSER_EXTRACT": {
+      "description": "Extract data from the webpage",
+      "similes": ["EXTRACT_DATA", "GET_TEXT", "SCRAPE"],
+      "input": {
+        "type": "object",
+        "required": ["instruction"],
+        "properties": {
+          "instruction": { "type": "string" }
+        }
+      },
+      "output": { "$ref": "#/definitions/ExtractResult" }
+    },
+    "BROWSER_SCREENSHOT": {
+      "description": "Take a screenshot of the current page",
+      "similes": ["TAKE_SCREENSHOT", "CAPTURE_PAGE", "SCREENSHOT"],
+      "output": { "$ref": "#/definitions/ScreenshotResult" }
+    },
+    "BROWSER_SOLVE_CAPTCHA": {
+      "description": "Detect and solve CAPTCHA on the current page",
+      "similes": ["SOLVE_CAPTCHA", "HANDLE_CAPTCHA", "BYPASS_CAPTCHA"],
+      "output": { "$ref": "#/definitions/CaptchaResult" }
+    }
+  },
+
+  "providers": {
+    "BROWSER_STATE": {
+      "description": "Provides current browser state information including active session status, current page URL, and page title",
+      "output": {
+        "type": "object",
+        "properties": {
+          "hasSession": { "type": "boolean" },
+          "url": { "type": "string" },
+          "title": { "type": "string" },
+          "sessionId": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}
+

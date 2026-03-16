@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-plugin-slack"
+version = "2.0.0a1"
+description = "Slack integration plugin for elizaOS agents with Socket Mode support"
+readme = "../README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "elizaOS", email = "team@elizaos.dev" }
+]
+keywords = ["elizaos", "plugin", "slack", "chat", "messaging", "bot"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "slack-bolt>=1.20.0",
+    "slack-sdk>=3.30.0",
+    "elizaos>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaos-plugins/plugin-slack"
+Documentation = "https://elizaos.dev/plugins/slack"
+Repository = "https://github.com/elizaos-plugins/plugin-slack"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_plugin_slack"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]

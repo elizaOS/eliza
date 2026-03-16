@@ -1,0 +1,9 @@
+{
+  "extends": "./typescript/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "./typescript"
+  },
+  "include": ["typescript/**/*.ts"],
+  "exclude": ["node_modules", "dist", "rust", "python"]
+}

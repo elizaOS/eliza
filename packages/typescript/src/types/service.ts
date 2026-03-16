@@ -36,33 +36,8 @@ export interface ServiceTypeRegistry {
   HOOKS: "hooks";
   PAIRING: "pairing";
   AGENT_EVENT: "agent_event";
-  VOICE_CACHE: "voice_cache";
   UNKNOWN: "unknown";
 }
-export const ServiceType = {
-  TRANSCRIPTION: "transcription",
-  VIDEO: "video",
-  BROWSER: "browser",
-  PDF: "pdf",
-  REMOTE_FILES: "aws_s3",
-  WEB_SEARCH: "web_search",
-  EMAIL: "email",
-  TEE: "tee",
-  TASK: "task",
-  APPROVAL: "approval",
-  TOOL_POLICY: "tool_policy",
-  WALLET: "wallet",
-  LP_POOL: "lp_pool",
-  TOKEN_DATA: "token_data",
-  MESSAGE_SERVICE: "message_service",
-  MESSAGE: "message",
-  POST: "post",
-  HOOKS: "hooks",
-  PAIRING: "pairing",
-  AGENT_EVENT: "agent_event",
-  VOICE_CACHE: "voice_cache",
-  UNKNOWN: "unknown",
-} as const;
 
 /**
  * Type for service names that includes both core services and any plugin-registered services
@@ -119,6 +94,38 @@ export type ServiceRegistry<T extends ServiceTypeName = ServiceTypeName> = Map<
   T,
   Service
 >;
+
+/**
+ * Enumerates the recognized types of services that can be registered and used by the agent runtime.
+ * Services provide specialized functionalities like audio transcription, video processing,
+ * web browsing, PDF handling, file storage (e.g., AWS S3), web search, email integration,
+ * secure execution via TEE (Trusted Execution Environment), and task management.
+ * This constant is used in `AgentRuntime` for service registration and retrieval (e.g., `getService`).
+ * Each service typically implements the `Service` abstract class or a more specific interface like `IVideoService`.
+ */
+export const ServiceType = {
+  TRANSCRIPTION: "transcription",
+  VIDEO: "video",
+  BROWSER: "browser",
+  PDF: "pdf",
+  REMOTE_FILES: "aws_s3",
+  WEB_SEARCH: "web_search",
+  EMAIL: "email",
+  TEE: "tee",
+  TASK: "task",
+  APPROVAL: "approval",
+  TOOL_POLICY: "tool_policy",
+  WALLET: "wallet",
+  LP_POOL: "lp_pool",
+  TOKEN_DATA: "token_data",
+  MESSAGE_SERVICE: "message_service",
+  MESSAGE: "message",
+  POST: "post",
+  HOOKS: "hooks",
+  PAIRING: "pairing",
+  AGENT_EVENT: "agent_event",
+  UNKNOWN: "unknown",
+} as const;
 
 /**
  * Client instance

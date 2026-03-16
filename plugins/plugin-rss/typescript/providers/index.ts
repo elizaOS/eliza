@@ -1,0 +1,1 @@
+export { feedItemsProvider } from "./feedItems";

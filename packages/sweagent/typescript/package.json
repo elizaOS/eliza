@@ -53,7 +53,7 @@
     "swe-agent",
     "elizaos"
   ],
-  "author": "ElizaOS",
+  "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
     "@octokit/rest": "^22.0.0",
@@ -68,7 +68,7 @@
     "inquirer": "^9.3.7",
     "js-yaml": "^4.1.0",
     "jsonl": "^1.1.2",
-    "minimatch": "^10.2.2",
+    "minimatch": "^9.0.5",
     "ora": "^7.0.1",
     "pino": "^8.21.0",
     "pino-pretty": "^10.3.1",
@@ -90,6 +90,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.11",
     "@types/tar-stream": "^3.1.4",
+    "@types/uuid": "^9.0.0",
     "@types/ws": "^8.18.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",

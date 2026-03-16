@@ -10,10 +10,10 @@
   "files": [
     "index.js"
   ],
-  "name": "@elizaos/cli",
+  "name": "@mediar-ai/cli",
   "optionalDependencies": {
-    "@elizaos/cli-win32-arm64-msvc": "0.24.20",
-    "@elizaos/cli-win32-x64-msvc": "0.24.20"
+    "@mediar-ai/cli-win32-arm64-msvc": "0.24.20",
+    "@mediar-ai/cli-win32-x64-msvc": "0.24.20"
   },
   "repository": {
     "type": "git",

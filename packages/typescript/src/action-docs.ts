@@ -60,6 +60,12 @@ export function withCanonicalActionDocs(action: Action): Action {
   };
 }
 
+export function withCanonicalActionDocsAll(
+  actions: readonly Action[],
+): Action[] {
+  return actions.map(withCanonicalActionDocs);
+}
+
 type EvaluatorDocByName = Record<string, (typeof allEvaluatorDocs)[number]>;
 
 const coreEvaluatorDocByName: EvaluatorDocByName =
@@ -114,4 +120,10 @@ export function withCanonicalEvaluatorDocs(evaluator: Evaluator): Evaluator {
           : undefined,
     examples,
   };
+}
+
+export function withCanonicalEvaluatorDocsAll(
+  evaluators: readonly Evaluator[],
+): Evaluator[] {
+  return evaluators.map(withCanonicalEvaluatorDocs);
 }

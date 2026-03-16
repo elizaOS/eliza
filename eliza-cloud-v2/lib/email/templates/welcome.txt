@@ -1,0 +1,30 @@
+🎉 Welcome to Eliza Cloud!
+
+Hi {{userName}}, we're excited to have you here!
+
+Your organization "{{organizationName}}" has been successfully created, and you're ready to start building amazing AI agents.
+
+🎁 STARTING BALANCE: ${{creditBalance}}
+Perfect for building your first agents!
+
+GET STARTED IN 3 EASY STEPS:
+
+1. Explore Your Dashboard
+   View your balance, usage analytics, and account settings
+
+2. Create Your First Agent
+   Deploy intelligent AI agents with custom personalities and capabilities
+
+3. Integrate with Your App
+   Use our API to connect Eliza agents to your applications
+
+→ View Dashboard: {{dashboardUrl}}
+→ Read Documentation: {{docsUrl}}
+
+NEED HELP?
+Check out our documentation or reach out to our support team.
+
+---
+© {{currentYear}} Eliza Cloud. All rights reserved.
+
+You received this email because you created an account at Eliza Cloud.

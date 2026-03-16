@@ -103,9 +103,13 @@ export interface EvaluationExample
 }
 
 /**
- * Callback function type for handlers
+ * Callback function type for handlers. actionName is optional so callers can attribute
+ * the response to the action that produced it without parsing content (backward compatible).
  */
-export type HandlerCallback = (response: Content) => Promise<Memory[]>;
+export type HandlerCallback = (
+  response: Content,
+  actionName?: string,
+) => Promise<Memory[]>;
 
 /**
  * Handler function type for processing messages
@@ -186,43 +190,7 @@ export interface Action {
 }
 
 /**
- * When in the message pipeline an evaluator runs.
- *
- * - `"pre"` — **Before** the incoming message is saved to memory and before
- *   action processing.  Pre-evaluators act as middleware: they can inspect,
- *   rewrite, or **block** a message so it never reaches the agent.  Use this
- *   for trust / security checks, content filtering, rate-limiting, etc.
- *
- * - `"post"` — **After** the agent has responded and actions have executed.
- *   This is the original (default) evaluator behaviour — reflection, trust
- *   scoring, relationship extraction, etc.
- */
-export type EvaluatorPhase = "pre" | "post";
-
-/**
- * Result returned by a pre-phase evaluator's handler.
- *
- * If `blocked` is `true` the message pipeline will **skip** memory storage,
- * response generation, and action execution for this message.
- *
- * If `rewrittenText` is provided the message text will be replaced before
- * further processing (useful for sanitisation / redaction).
- */
-export interface PreEvaluatorResult {
-  /** If true, the message is blocked — no memory, no response, no actions. */
-  blocked: boolean;
-  /** Optional replacement text (sanitised / redacted version of the input). */
-  rewrittenText?: string;
-  /** Human-readable reason for blocking / rewriting (logged). */
-  reason?: string;
-}
-
-/**
- * Evaluator for assessing agent messages.
- *
- * Evaluators can run at two points in the pipeline controlled by `phase`:
- * - `"pre"` — before memory storage (middleware / security gate)
- * - `"post"` — after actions (default, backwards-compatible)
+ * Evaluator for assessing agent responses
  */
 export interface Evaluator {
   /** Whether to always run */
@@ -245,16 +213,6 @@ export interface Evaluator {
 
   /** Validation function */
   validate: Validator;
-
-  /**
-   * When this evaluator runs in the message pipeline.
-   *
-   * - `"pre"` — before memory storage (security / filtering middleware)
-   * - `"post"` — after actions (default)
-   *
-   * @default "post"
-   */
-  phase?: EvaluatorPhase;
 }
 
 /**
@@ -335,12 +293,6 @@ export interface Provider {
    * Private providers are not displayed in the regular provider list, they have to be called explicitly
    */
   private?: boolean;
-
-  /** When true the provider is always included regardless of filter/include lists */
-  alwaysRun?: boolean;
-
-  /** Keywords that auto-activate a dynamic provider when they appear in the message */
-  relevanceKeywords?: string[];
 
   /** Data retrieval function */
   get: (

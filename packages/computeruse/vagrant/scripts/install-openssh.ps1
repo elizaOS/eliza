@@ -37,7 +37,7 @@ if ($(Get-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0).State -eq "
 }
 $ErrorActionPreference = "Stop"
 
-#Stop and remove existing services (Perhaps an existing OpenSSH install)
+#Stop and remove existing services (Perhaps an exisitng OpenSSH install)
 if (Get-Service sshd -ErrorAction SilentlyContinue) {
     Stop-Service sshd -ErrorAction SilentlyContinue
     sc.exe delete sshd 1>$null

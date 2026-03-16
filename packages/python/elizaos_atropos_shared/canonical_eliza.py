@@ -1,5 +1,5 @@
 """
-Shared helpers for integrating Atropos environments with the canonical ElizaOS pipeline.
+Shared helpers for integrating Atropos environments with the canonical elizaOS pipeline.
 
 Key idea:
 - Store per-step environment context in a typed ContextStore
@@ -102,7 +102,7 @@ async def run_with_context(
     trajectory_step_id: str | None = None,
 ) -> tuple[MessageProcessingResult, TContext]:
     """
-    Run one canonical ElizaOS message loop with a context set.
+    Run one canonical elizaOS message loop with a context set.
 
     Returns:
       (MessageProcessingResult, context_after_actions)

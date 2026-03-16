@@ -1,0 +1,183 @@
+// model.proto - Model types for elizaOS
+syntax = "proto3";
+
+package eliza.v1;
+
+import "google/protobuf/struct.proto";
+
+// LLM Mode for overriding model selection
+enum LLMMode {
+  LLM_MODE_UNSPECIFIED = 0;
+  LLM_MODE_DEFAULT = 1; // Use the model type as specified
+  LLM_MODE_SMALL = 2; // Override to use TEXT_SMALL
+  LLM_MODE_LARGE = 3; // Override to use TEXT_LARGE
+}
+
+// Model type enumeration
+enum ModelType {
+  MODEL_TYPE_UNSPECIFIED = 0;
+  MODEL_TYPE_TEXT_SMALL = 1;
+  MODEL_TYPE_TEXT_LARGE = 2;
+  MODEL_TYPE_TEXT_EMBEDDING = 3;
+  MODEL_TYPE_TEXT_TOKENIZER_ENCODE = 4;
+  MODEL_TYPE_TEXT_TOKENIZER_DECODE = 5;
+  MODEL_TYPE_TEXT_REASONING_SMALL = 6;
+  MODEL_TYPE_TEXT_REASONING_LARGE = 7;
+  MODEL_TYPE_TEXT_COMPLETION = 8;
+  MODEL_TYPE_IMAGE = 9;
+  MODEL_TYPE_IMAGE_DESCRIPTION = 10;
+  MODEL_TYPE_TRANSCRIPTION = 11;
+  MODEL_TYPE_TEXT_TO_SPEECH = 12;
+  MODEL_TYPE_AUDIO = 13;
+  MODEL_TYPE_VIDEO = 14;
+  MODEL_TYPE_OBJECT_SMALL = 15;
+  MODEL_TYPE_OBJECT_LARGE = 16;
+}
+
+// Response format specification
+message ResponseFormat {
+  string type = 1; // "json_object" | "text"
+}
+
+// Parameters for generating text using a language model
+message GenerateTextParams {
+  string prompt = 1;
+  optional int32 max_tokens = 2;
+  optional int32 min_tokens = 3;
+  optional double temperature = 4;
+  optional double top_p = 5;
+  optional int32 top_k = 6;
+  optional double min_p = 7;
+  optional int32 seed = 8;
+  optional double repetition_penalty = 9;
+  optional double frequency_penalty = 10;
+  optional double presence_penalty = 11;
+  repeated string stop_sequences = 12;
+  optional string user = 13;
+  optional ResponseFormat response_format = 14;
+  optional bool stream = 15;
+}
+
+// Token usage information
+message TokenUsage {
+  int32 prompt_tokens = 1;
+  int32 completion_tokens = 2;
+  int32 total_tokens = 3;
+}
+
+// Text stream chunk
+message TextStreamChunk {
+  string text = 1;
+  bool done = 2;
+}
+
+// Options for the simplified generateText API
+message GenerateTextOptions {
+  optional bool include_character = 1;
+  ModelType model_type = 2;
+  optional int32 max_tokens = 3;
+  optional double temperature = 4;
+  optional double frequency_penalty = 5;
+  optional double presence_penalty = 6;
+  repeated string stop_sequences = 7;
+}
+
+// Structured response from text generation
+message GenerateTextResult {
+  string text = 1;
+  optional TokenUsage usage = 2;
+}
+
+// Parameters for text tokenization
+message TokenizeTextParams {
+  string prompt = 1;
+  ModelType model_type = 2;
+}
+
+// Parameters for detokenization
+message DetokenizeTextParams {
+  repeated int32 tokens = 1;
+  ModelType model_type = 2;
+}
+
+// Parameters for text embedding
+message TextEmbeddingParams {
+  string text = 1;
+}
+
+// Parameters for image generation
+message ImageGenerationParams {
+  string prompt = 1;
+  optional string size = 2;
+  optional int32 count = 3;
+}
+
+// Parameters for image description
+message ImageDescriptionParams {
+  string image_url = 1;
+  optional string prompt = 2;
+}
+
+// Image description result
+message ImageDescriptionResult {
+  string title = 1;
+  string description = 2;
+}
+
+// Parameters for transcription
+message TranscriptionParams {
+  string audio_url = 1;
+  optional string prompt = 2;
+}
+
+// Parameters for text-to-speech
+message TextToSpeechParams {
+  string text = 1;
+  optional string voice = 2;
+  optional double speed = 3;
+}
+
+// Parameters for audio processing
+message AudioProcessingParams {
+  string audio_url = 1;
+  string processing_type = 2;
+}
+
+// Parameters for video processing
+message VideoProcessingParams {
+  string video_url = 1;
+  string processing_type = 2;
+}
+
+// JSON Schema for object generation
+message JSONSchema {
+  string type = 1;
+  map<string, JSONSchema> properties = 2;
+  repeated string required = 3;
+  optional JSONSchema items = 4;
+  google.protobuf.Struct extra = 5;
+}
+
+// Parameters for object generation
+message ObjectGenerationParams {
+  string prompt = 1;
+  optional JSONSchema schema = 2;
+  optional string output = 3; // "object" | "array" | "enum"
+  repeated string enum_values = 4;
+  ModelType model_type = 5;
+  optional double temperature = 6;
+  optional int32 max_tokens = 7;
+  repeated string stop_sequences = 8;
+}
+
+// Image generation result
+message ImageGenerationResult {
+  string url = 1;
+}
+
+// Model handler registration info
+message ModelHandlerInfo {
+  string provider = 1;
+  optional int32 priority = 2;
+  optional int32 registration_order = 3;
+}

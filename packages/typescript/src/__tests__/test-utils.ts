@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 import { vi } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type {
+  Agent,
   Character,
   Content,
   Entity,
@@ -16,6 +17,8 @@ import type {
   IDatabaseAdapter,
   Memory,
   MemoryMetadata,
+  PairingAllowlistEntry,
+  PairingRequest,
   Plugin,
   Room,
   State,
@@ -43,9 +46,9 @@ export function createUUID(): UUID {
  * Default test character configuration
  */
 export const DEFAULT_TEST_CHARACTER: Character = {
-  name: "Test Agent",
-  bio: ["A test agent for unit testing"],
-  system: "You are a helpful assistant used for testing. Respond concisely.",
+  name: "TestAgent",
+  bio: ["Test agent"],
+  system: "You are a test agent.",
   templates: {},
   plugins: [],
   knowledge: [],
@@ -79,6 +82,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
   const resolvedAgentId = agentId || createUUID();
 
   // In-memory storage
+  const agents = new Map<string, Partial<Agent>>();
   const memories = new Map<UUID, Memory>();
   const rooms = new Map<UUID, Room>();
   const worlds = new Map<UUID, World>();
@@ -96,14 +100,31 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     getConnection: vi.fn().mockResolvedValue({}),
     isReady: vi.fn().mockResolvedValue(true),
 
-    getAgent: vi.fn().mockResolvedValue({
-      id: resolvedAgentId,
-      name: "TestAgent",
+    getAgentsByIds: vi.fn(async (agentIds: UUID[]) => {
+      return agentIds
+        .map((id) => agents.get(String(id)))
+        .filter((a): a is Partial<Agent> => a != null && a.id != null) as Agent[];
     }),
-    getAgents: vi.fn().mockResolvedValue([]),
-    createAgent: vi.fn().mockResolvedValue(true),
-    updateAgent: vi.fn().mockResolvedValue(true),
-    deleteAgent: vi.fn().mockResolvedValue(true),
+    getAgents: vi.fn(async () => Array.from(agents.values())),
+    createAgents: vi.fn(async (agentsToCreate: Partial<Agent>[]) => {
+      const ids: UUID[] = [];
+      for (const agent of agentsToCreate) {
+        if (agent.id) {
+          agents.set(String(agent.id), agent);
+          ids.push(agent.id);
+        }
+      }
+      return ids;
+    }),
+    upsertAgents: vi.fn(async (agentsToUpsert: Partial<Agent>[]) => {
+      for (const agent of agentsToUpsert) {
+        if (agent.id) {
+          agents.set(String(agent.id), agent);
+        }
+      }
+    }),
+    updateAgents: vi.fn().mockResolvedValue(true),
+    deleteAgents: vi.fn().mockResolvedValue(true),
     ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
 
     getMemories: vi.fn(async (params: { roomId?: UUID; count?: number }) => {
@@ -115,7 +136,6 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       }
       return result.slice(0, params.count || 100);
     }),
-    getMemoryById: vi.fn(async (id: UUID) => memories.get(id) || null),
     getMemoriesByIds: vi.fn(
       async (ids: UUID[]) =>
         ids.map((id) => memories.get(id)).filter(Boolean) as Memory[],
@@ -131,16 +151,26 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     }),
     getCachedEmbeddings: vi.fn().mockResolvedValue([]),
     searchMemories: vi.fn().mockResolvedValue([]),
-    createMemory: vi.fn(async (memory: Memory) => {
-      const id = memory.id || createUUID();
-      memories.set(id, { ...memory, id });
-      return id;
+    createMemories: vi.fn(async (memoryBatch: Array<{ memory: Memory; tableName: string; unique?: boolean }>) => {
+      const ids: UUID[] = [];
+      for (const { memory } of memoryBatch) {
+        const id = memory.id || createUUID();
+        memories.set(id, { ...memory, id });
+        ids.push(id);
+      }
+      return ids;
     }),
-    updateMemory: vi.fn().mockResolvedValue(true),
-    deleteMemory: vi.fn(async (id: UUID) => {
-      memories.delete(id);
+    updateMemories: vi.fn(async (memoryBatch: Array<Partial<Memory> & { id: UUID }>) => {
+      return memoryBatch.map((mem) => {
+        const existing = memories.get(mem.id);
+        if (existing) {
+          memories.set(mem.id, { ...existing, ...mem });
+          return true;
+        }
+        return false;
+      });
     }),
-    deleteManyMemories: vi.fn(async (ids: UUID[]) => {
+    deleteMemories: vi.fn(async (ids: UUID[]) => {
       for (const id of ids) {
         memories.delete(id);
       }
@@ -155,20 +185,33 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     ),
     getEntitiesForRoom: vi.fn().mockResolvedValue([]),
     createEntities: vi.fn(async (newEntities: Entity[]) => {
+      const ids: UUID[] = [];
       for (const entity of newEntities) {
-        if (entity.id) {
-          entities.set(entity.id, entity);
+        const id = entity.id || createUUID();
+        entities.set(id, { ...entity, id });
+        ids.push(id);
+      }
+      return ids;
+    }),
+    updateEntities: vi.fn(async (entitiesToUpdate: Entity[]) => {
+      for (const entity of entitiesToUpdate) {
+        if (entity.id && entities.has(entity.id)) {
+          entities.set(entity.id, { ...entities.get(entity.id), ...entity });
         }
       }
-      return true;
     }),
-    updateEntity: vi.fn().mockResolvedValue(undefined),
+    deleteEntities: vi.fn(async (ids: UUID[]) => {
+      for (const id of ids) {
+        entities.delete(id);
+      }
+    }),
 
     getComponent: vi.fn().mockResolvedValue(null),
     getComponents: vi.fn().mockResolvedValue([]),
-    createComponent: vi.fn().mockResolvedValue(true),
-    updateComponent: vi.fn().mockResolvedValue(undefined),
-    deleteComponent: vi.fn().mockResolvedValue(undefined),
+    createComponents: vi.fn().mockResolvedValue(true),
+    getComponentsByIds: vi.fn().mockResolvedValue([]),
+    updateComponents: vi.fn().mockResolvedValue(undefined),
+    deleteComponents: vi.fn().mockResolvedValue(undefined),
 
     getRoomsByIds: vi.fn(
       async (ids: UUID[]) =>
@@ -184,16 +227,20 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       }
       return ids;
     }),
-    deleteRoom: vi.fn(async (id: UUID) => {
-      rooms.delete(id);
-      participants.delete(id);
-    }),
-    deleteRoomsByWorldId: vi.fn().mockResolvedValue(undefined),
-    updateRoom: vi.fn(async (room: Room) => {
-      if (room.id) {
-        rooms.set(room.id, room);
+    updateRooms: vi.fn(async (roomsToUpdate: Room[]) => {
+      for (const room of roomsToUpdate) {
+        if (room.id) {
+          rooms.set(room.id, room);
+        }
       }
     }),
+    deleteRooms: vi.fn(async (ids: UUID[]) => {
+      for (const id of ids) {
+        rooms.delete(id);
+        participants.delete(id);
+      }
+    }),
+    deleteRoomsByWorldId: vi.fn().mockResolvedValue(undefined),
     getRoomsForParticipant: vi.fn().mockResolvedValue([]),
     getRoomsForParticipants: vi.fn().mockResolvedValue([]),
     getRoomsByWorld: vi.fn(async (worldId: UUID) => {
@@ -206,7 +253,7 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       return result;
     }),
 
-    addParticipantsRoom: vi.fn(async (entityIds: UUID[], roomId: UUID) => {
+    createRoomParticipants: vi.fn(async (entityIds: UUID[], roomId: UUID) => {
       let roomParticipants = participants.get(roomId);
       if (!roomParticipants) {
         roomParticipants = new Set();
@@ -215,9 +262,9 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
       for (const id of entityIds) {
         roomParticipants.add(id);
       }
-      return true;
+      return entityIds;
     }),
-    removeParticipant: vi.fn().mockResolvedValue(true),
+    deleteParticipants: vi.fn().mockResolvedValue(true),
     getParticipantsForEntity: vi.fn().mockResolvedValue([]),
     getParticipantsForRoom: vi.fn(async (roomId: UUID) => {
       const roomParticipants = participants.get(roomId);
@@ -227,59 +274,108 @@ export function createTestDatabaseAdapter(agentId?: UUID): IDatabaseAdapter {
     getParticipantUserState: vi.fn(async (roomId: UUID, entityId: UUID) => {
       return participantStates.get(`${roomId}-${entityId}`) || null;
     }),
-    setParticipantUserState: vi.fn(
+    updateParticipantUserState: vi.fn(
       async (roomId: UUID, entityId: UUID, state: string | null) => {
         participantStates.set(`${roomId}-${entityId}`, state);
       },
     ),
 
-    createWorld: vi.fn(async (world: World) => {
-      const id = world.id || createUUID();
-      worlds.set(id, { ...world, id });
-      return id;
+    createWorlds: vi.fn(async (worldsToCreate: World[]) => {
+      const ids: UUID[] = [];
+      for (const world of worldsToCreate) {
+        const id = world.id || createUUID();
+        worlds.set(id, { ...world, id });
+        ids.push(id);
+      }
+      return ids;
     }),
-    getWorld: vi.fn(async (id: UUID) => worlds.get(id) || null),
-    removeWorld: vi.fn(async (id: UUID) => {
-      worlds.delete(id);
+    getWorldsByIds: vi.fn(async (ids: UUID[]) =>
+      ids.map((id) => worlds.get(id)).filter(Boolean) as World[],
+    ),
+    deleteWorlds: vi.fn(async (ids: UUID[]) => {
+      for (const id of ids) {
+        worlds.delete(id);
+      }
     }),
     getAllWorlds: vi.fn(async () => Array.from(worlds.values())),
-    updateWorld: vi.fn(async (world: World) => {
-      if (world.id) {
-        worlds.set(world.id, world);
+    updateWorlds: vi.fn(async (worldsToUpdate: World[]) => {
+      for (const world of worldsToUpdate) {
+        if (world.id) {
+          worlds.set(world.id, world);
+        }
       }
     }),
 
-    createRelationship: vi.fn().mockResolvedValue(true),
-    updateRelationship: vi.fn().mockResolvedValue(undefined),
     getRelationship: vi.fn().mockResolvedValue(null),
     getRelationships: vi.fn().mockResolvedValue([]),
+    createRelationships: vi.fn().mockResolvedValue(true),
+    getRelationshipsByIds: vi.fn().mockResolvedValue([]),
+    updateRelationships: vi.fn().mockResolvedValue(undefined),
+    deleteRelationships: vi.fn().mockResolvedValue(undefined),
 
-    getCache: vi.fn(async <T>(key: string) => cache.get(key) as T | undefined),
-    setCache: vi.fn(async <T>(key: string, value: T) => {
-      cache.set(key, value);
+    getCaches: vi.fn(async <T>(keys: string[]) => {
+      const result = new Map<string, T>();
+      for (const key of keys) {
+        const value = cache.get(key) as T | undefined;
+        if (value !== undefined) {
+          result.set(key, value);
+        }
+      }
+      return result;
+    }),
+    setCaches: vi.fn(async <T>(entries: Array<{ key: string; value: T }>) => {
+      for (const { key, value } of entries) {
+        cache.set(key, value);
+      }
       return true;
     }),
-    deleteCache: vi.fn(async (key: string) => {
-      cache.delete(key);
+    deleteCaches: vi.fn(async (keys: string[]) => {
+      for (const key of keys) {
+        cache.delete(key);
+      }
       return true;
     }),
 
-    createTask: vi.fn(async (task: Task) => {
-      const id = task.id || createUUID();
-      tasks.set(id, { ...task, id });
-      return id;
-    }),
     getTasks: vi.fn().mockResolvedValue([]),
-    getTask: vi.fn(async (id: UUID) => tasks.get(id) || null),
     getTasksByName: vi.fn().mockResolvedValue([]),
-    updateTask: vi.fn().mockResolvedValue(undefined),
-    deleteTask: vi.fn(async (id: UUID) => {
-      tasks.delete(id);
+    createTasks: vi.fn(async (tasksToCreate: Task[]) => {
+      const ids: UUID[] = [];
+      for (const task of tasksToCreate) {
+        const id = task.id || createUUID();
+        tasks.set(id, { ...task, id });
+        ids.push(id);
+      }
+      return ids;
+    }),
+    getTasksByIds: vi.fn(async (ids: UUID[]) =>
+      ids.map((id) => tasks.get(id)).filter(Boolean) as Task[],
+    ),
+    updateTasks: vi.fn(async (updates: Array<{ id: UUID; task: Partial<Task> }>) => {
+      for (const { id, task } of updates) {
+        const existing = tasks.get(id);
+        if (existing) {
+          tasks.set(id, { ...existing, ...task });
+        }
+      }
+    }),
+    deleteTasks: vi.fn(async (ids: UUID[]) => {
+      for (const id of ids) {
+        tasks.delete(id);
+      }
     }),
 
-    log: vi.fn().mockResolvedValue(undefined),
     getLogs: vi.fn().mockResolvedValue([]),
-    deleteLog: vi.fn().mockResolvedValue(undefined),
+    createLogs: vi.fn().mockResolvedValue(undefined),
+    deleteLogs: vi.fn().mockResolvedValue(undefined),
+    getAgentRunSummaries: vi.fn().mockResolvedValue({ runs: [], totalCount: 0 }),
+
+    getPairingRequests: vi.fn().mockResolvedValue([]),
+    getPairingAllowlist: vi.fn().mockResolvedValue([]),
+    createPairingRequests: vi.fn(async (requests: PairingRequest[]) => requests.map(() => createUUID())),
+    updatePairingRequests: vi.fn().mockResolvedValue(undefined),
+    deletePairingRequests: vi.fn().mockResolvedValue(undefined),
+    createPairingAllowlistEntries: vi.fn(async (entries: PairingAllowlistEntry[]) => entries.map(() => createUUID())),
+    deletePairingAllowlistEntries: vi.fn().mockResolvedValue(undefined),
   } as IDatabaseAdapter;
 }
 
@@ -316,21 +412,27 @@ export async function createTestRuntime(
 /**
  * Creates a test Memory object
  */
-export function createTestMemory(overrides: Partial<Memory> = {}): Memory {
+export function createTestMemory(overrides: Partial<Memory> & { content?: Content | string } = {}): Memory {
   const id = createUUID();
+  const rawContent = overrides.content;
+  let content: Content;
+  if (typeof rawContent === "string") {
+    content = { text: rawContent };
+  } else if (rawContent !== undefined) {
+    content = rawContent as Content;
+  } else {
+    content = { text: "Test message", channelType: ChannelType.GROUP };
+  }
+  const { content: _content, ...rest } = overrides;
   return {
     id,
-    roomId: overrides.roomId || ("test-room-id" as UUID),
-    entityId: overrides.entityId || ("test-entity-id" as UUID),
-    agentId: overrides.agentId || ("test-agent-id" as UUID),
-    content: {
-      text: "Test message",
-      channelType: ChannelType.GROUP,
-      ...overrides.content,
-    } as Content,
+    roomId: rest.roomId || ("test-room-id" as UUID),
+    entityId: rest.entityId || ("test-entity-id" as UUID),
+    agentId: rest.agentId || ("test-agent-id" as UUID),
+    content,
     createdAt: Date.now(),
     metadata: { type: MemoryType.MESSAGE } as MemoryMetadata,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -437,8 +539,9 @@ export async function setupActionTest(options?: {
  * Cleans up a test runtime
  */
 export async function cleanupTestRuntime(
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime | undefined,
 ): Promise<void> {
+  if (!runtime) return;
   await runtime.stop();
 }
 
@@ -447,9 +550,11 @@ export async function cleanupTestRuntime(
  */
 export async function waitFor(
   condition: () => boolean | Promise<boolean>,
-  timeout = 5000,
-  interval = 100,
+  options?: { timeout?: number; interval?: number } | number,
+  intervalArg?: number,
 ): Promise<void> {
+  const timeout = typeof options === "number" ? options : options?.timeout ?? 5000;
+  const interval = typeof options === "number" ? (intervalArg ?? 100) : options?.interval ?? 100;
   const start = Date.now();
   while (Date.now() - start < timeout) {
     if (await condition()) {
@@ -457,5 +562,112 @@ export async function waitFor(
     }
     await new Promise((resolve) => setTimeout(resolve, interval));
   }
-  throw new Error(`Condition not met within ${timeout}ms`);
+  throw new Error(`Condition not met within ${timeout}ms timeout`);
 }
+
+/**
+ * Generate a unique test ID (UUID format)
+ */
+export function generateTestId(): UUID {
+  return createUUID();
+}
+
+/**
+ * Expect a promise to reject with an Error, optionally matching a message pattern
+ */
+export async function expectRejection(
+  promise: Promise<unknown>,
+  expectedMessage?: string | RegExp,
+): Promise<Error> {
+  try {
+    await promise;
+    throw new Error("Expected promise to reject but it resolved");
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "Expected promise to reject but it resolved") {
+      throw err;
+    }
+    if (!(err instanceof Error)) {
+      throw new Error(`Expected Error but got: ${typeof err}`);
+    }
+    if (expectedMessage !== undefined) {
+      if (typeof expectedMessage === "string") {
+        if (!err.message.includes(expectedMessage)) {
+          throw new Error(
+            `Expected error message to include "${expectedMessage}" but got: "${err.message}"`,
+          );
+        }
+      } else {
+        if (!expectedMessage.test(err.message)) {
+          throw new Error(
+            `Expected error message to match ${expectedMessage} but got: "${err.message}"`,
+          );
+        }
+      }
+    }
+    return err;
+  }
+}
+
+/**
+ * Retry an async function with exponential backoff
+ */
+export async function retry<T>(
+  fn: () => Promise<T>,
+  options?: { maxRetries?: number; baseDelay?: number },
+): Promise<T> {
+  const maxRetries = options?.maxRetries ?? 3;
+  const baseDelay = options?.baseDelay ?? 100;
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < maxRetries) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
+/**
+ * Measure the execution time of an async function
+ */
+export async function measureTime<T>(
+  fn: () => Promise<T>,
+): Promise<{ result: T; durationMs: number }> {
+  const start = Date.now();
+  const result = await fn();
+  return { result, durationMs: Date.now() - start };
+}
+
+const WORDS = [
+  "the", "quick", "brown", "fox", "jumps", "over", "lazy", "dog",
+  "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta",
+  "hello", "world", "test", "data", "random", "sentence", "generator",
+];
+
+/**
+ * Test data generator utilities
+ */
+export const testDataGenerators = {
+  uuid: (): string => createUUID(),
+  randomString: (length = 10): string => {
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let result = "";
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  },
+  randomSentence: (): string => {
+    const wordCount = 5 + Math.floor(Math.random() * 10); // 5-14 words
+    const words: string[] = [];
+    for (let i = 0; i < wordCount; i++) {
+      words.push(WORDS[Math.floor(Math.random() * WORDS.length)]);
+    }
+    return words.join(" ");
+  },
+};

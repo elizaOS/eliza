@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist/browser",
+    "declaration": true,
+    "declarationMap": true
+  },
+  "include": ["index.ts", "index.browser.ts", "types/**/*.ts", "utils/**/*.ts"],
+  "exclude": ["node_modules", "__tests__"]
+}

@@ -1,0 +1,7 @@
+node_modules
+.turbo
+dist
+elizaConfig.yaml
+custom_actions/
+cache/
+*.tsbuildinfo

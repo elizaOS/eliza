@@ -1,0 +1,41 @@
+Extract search criteria from the user's request for Linear issues.
+
+User request: "{{userMessage}}"
+
+The user might express searches in various ways:
+- "Show me what John is working on" → assignee filter
+- "Any blockers for the next release?" → priority/label filters
+- "Issues created this week" → date range filter
+- "My high priority bugs" → assignee (current user) + priority + label
+- "Unassigned tasks in the backend team" → no assignee + team filter
+- "What did Sarah close yesterday?" → assignee + state + date
+- "Bugs that are almost done" → label + state filter
+- "Show me the oldest open issues" → state + sort order
+
+Extract and return ONLY a JSON object:
+{
+  "query": "General search text for title/description",
+  "states": ["state names like In Progress, Done, Todo, Backlog"],
+  "assignees": ["assignee names or emails, or 'me' for current user"],
+  "priorities": ["urgent/high/normal/low or 1/2/3/4"],
+  "teams": ["team names or keys"],
+  "labels": ["label names"],
+  "hasAssignee": true/false (true = has assignee, false = unassigned),
+  "dateRange": {
+    "field": "created/updated/completed",
+    "period": "today/yesterday/this-week/last-week/this-month/last-month",
+    "from": "ISO date if specific date",
+    "to": "ISO date if specific date"
+  },
+  "sort": {
+    "field": "created/updated/priority",
+    "order": "asc/desc"
+  },
+  "limit": number (default 10)
+}
+
+Only include fields that are clearly mentioned or implied. For "my" issues, set assignees to ["me"].
+
+
+
+

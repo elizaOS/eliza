@@ -1,0 +1,32 @@
+Extract activity filter criteria from the user's request.
+
+User request: "{{userMessage}}"
+
+The user might ask for activity in various ways:
+- "Show me today's activity" → time range filter
+- "What issues were created?" → action type filter
+- "What did John do yesterday?" → user filter + time range
+- "Activity on ENG-123" → resource filter
+- "Recent comment activity" → action type + recency
+- "Failed operations this week" → success filter + time range
+
+Return ONLY a JSON object:
+{
+  "timeRange": {
+    "period": "today/yesterday/this-week/last-week/this-month",
+    "from": "ISO datetime if specific",
+    "to": "ISO datetime if specific"
+  },
+  "actionTypes": ["create_issue/update_issue/delete_issue/create_comment/search_issues/etc"],
+  "resourceTypes": ["issue/project/comment/team"],
+  "resourceId": "Specific resource ID if mentioned (e.g., ENG-123)",
+  "user": "User name or 'me' for current user",
+  "successFilter": "success/failed/all",
+  "limit": number (default 10)
+}
+
+Only include fields that are clearly mentioned.
+
+
+
+

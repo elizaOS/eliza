@@ -4,20 +4,20 @@ use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
-
-    // Proto files are in the schemas package, relative to this crate
-    let schemas_dir = PathBuf::from("../schemas");
+    
+    // Proto files are in the @schemas package, relative to this crate
+    let schemas_dir = PathBuf::from("../@schemas");
     let proto_dir = schemas_dir.join("eliza/v1");
-
+    
     // Check for bundled proto files (included in crates.io package)
     let bundled_proto_dir = PathBuf::from("proto/eliza/v1");
-
+    
     let (proto_files, include_dir): (Vec<PathBuf>, PathBuf) = if bundled_proto_dir.exists() {
         // Use bundled protos (crates.io build)
         let files: Vec<PathBuf> = fs::read_dir(&bundled_proto_dir)?
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|ext| ext == "proto"))
+            .filter(|path| path.extension().map_or(false, |ext| ext == "proto"))
             .collect();
         (files, PathBuf::from("proto"))
     } else if proto_dir.exists() {
@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let files: Vec<PathBuf> = fs::read_dir(&proto_dir)?
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|ext| ext == "proto"))
+            .filter(|path| path.extension().map_or(false, |ext| ext == "proto"))
             .collect();
         (files, schemas_dir.clone())
     } else {
@@ -47,30 +47,24 @@ pub struct DefaultUuid {}
         println!("cargo:warning=Proto files not found, using stub types");
         return Ok(());
     };
-
+    
     if proto_files.is_empty() {
         println!("cargo:warning=No proto files found");
         return Ok(());
     }
-
-    // Use vendored protoc in CI/containers that don't have protobuf-compiler installed.
-    if env::var_os("PROTOC").is_none() {
-        let protoc = protoc_bin_vendored::protoc_bin_path()?;
-        env::set_var("PROTOC", protoc);
-    }
-
+    
     // Configure prost-build
     let mut config = prost_build::Config::new();
     config.out_dir(&out_dir);
-
+    
     // Compile protos
     config.compile_protos(&proto_files, &[&include_dir])?;
-
+    
     // Tell Cargo to rerun if proto files change
     for proto in &proto_files {
         println!("cargo:rerun-if-changed={}", proto.display());
     }
     println!("cargo:rerun-if-changed=build.rs");
-
+    
     Ok(())
 }

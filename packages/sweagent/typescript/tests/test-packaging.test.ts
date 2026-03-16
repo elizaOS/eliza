@@ -68,22 +68,9 @@ describe("Packaging and Version", () => {
     });
 
     it("should export version from main module", async () => {
-      let mainModule: { __version__?: string };
-      try {
-        mainModule = (await import("../dist/index.js")) as {
-          __version__?: string;
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (
-          message.includes("Cannot find package 'dockerode'") ||
-          message.includes("ERR_MODULE_NOT_FOUND")
-        ) {
-          // In minimal test environments optional runtime deps may be absent.
-          return;
-        }
-        throw error;
-      }
+      const mainModule = (await import("../dist/index.js")) as {
+        __version__?: string;
+      };
       expect(mainModule.__version__).toBe(packageJson.version);
     });
   });

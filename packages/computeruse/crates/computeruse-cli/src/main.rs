@@ -561,20 +561,20 @@ fn sync_all_versions() {
 fn sync_nodejs_bindings(version: &str) {
     println!("📦 Syncing Node.js bindings to version {version}...");
 
-    let nodejs_dir = Path::new("packages/computeruse-ts");
+    let nodejs_dir = Path::new("packages/computeruse-nodejs");
     if !nodejs_dir.exists() {
         println!("⚠️  Node.js bindings directory not found, skipping");
         return;
     }
 
     // Update main package.json directly
-    if let Err(e) = update_package_json("packages/computeruse-ts/package.json", version) {
+    if let Err(e) = update_package_json("packages/computeruse-nodejs/package.json", version) {
         eprintln!("⚠️  Warning: Failed to update Node.js package.json directly: {e}");
     } else {
         println!("✅ Updated Node.js package.json to {version}");
     }
 
-    // ALSO update CPU/platform-specific packages under packages/computeruse-ts/npm
+    // ALSO update CPU/platform-specific packages under packages/computeruse-nodejs/npm
     let npm_dir = nodejs_dir.join("npm");
     if npm_dir.exists() {
         if let Ok(entries) = fs::read_dir(&npm_dir) {
@@ -825,7 +825,7 @@ fn update_package_json(path: &str, version: &str) -> Result<(), Box<dyn std::err
         for (key, value) in deps.iter_mut() {
             // Update @elizaos/computeruse-* platform packages
             if key.starts_with("@elizaos/computeruse-")
-                || key.starts_with("@elizaos/cli-")
+                || key.starts_with("@mediar-ai/cli-")
                 || key.starts_with("computeruse-mcp-")
                 || key.starts_with("computeruse.js-")
             {
@@ -874,7 +874,7 @@ fn show_status() {
     println!("📦 Workspace version: {workspace_version}");
 
     // Show package versions
-    let nodejs_version = get_package_version("packages/computeruse-ts/package.json");
+    let nodejs_version = get_package_version("packages/computeruse-nodejs/package.json");
     let mcp_version = get_package_version("crates/computeruse-mcp-agent/package.json");
     let browser_extension_version =
         get_package_version("crates/computeruse/browser-extension/manifest.json");

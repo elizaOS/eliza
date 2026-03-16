@@ -1,0 +1,31 @@
+{
+  "name": "@elizaos/aws-worker-typescript",
+  "version": "2.0.0-alpha",
+  "description": "elizaOS AWS Lambda worker (TypeScript)",
+  "type": "module",
+  "main": "dist/handler.js",
+  "scripts": {
+    "build": "bun build handler.ts --outdir=dist --target=node --format=esm --outfile=dist/handler.js",
+    "build:watch": "bun run build --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "bun run test-local.ts",
+    "start": "bun run server-local.ts",
+    "deploy": "bun run build && sam deploy",
+    "invoke:local": "sam local invoke ElizaWorkerFunction --event ../events/chat.json"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "uuid": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

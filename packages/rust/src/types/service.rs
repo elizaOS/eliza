@@ -67,12 +67,7 @@ pub trait Service: PlatformService {
     fn service_type(&self) -> &str;
 
     /// Get the capability description
-    fn capability_description(&self) -> &str {
-        ""
-    }
-
-    /// Support downcasting to concrete service types.
-    fn as_any(&self) -> &dyn std::any::Any;
+    fn capability_description(&self) -> &str;
 
     /// Get the service configuration
     fn config(&self) -> Option<&Metadata> {

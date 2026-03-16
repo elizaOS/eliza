@@ -1,0 +1,127 @@
+name: Publish Crates.io Package
+
+on:
+  push:
+    branches:
+      - 1.x
+    paths:
+      - "rust/**"
+  workflow_dispatch:
+
+jobs:
+  verify_version:
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.check.outputs.should_publish }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if version changed
+        id: check
+        run: |
+          # Get current version from Cargo.toml
+          CURRENT_VERSION=$(grep -m1 '^version = ' rust/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "Current version: $CURRENT_VERSION"
+
+          # Get previous commit hash
+          PREV_COMMIT=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+
+          # Check if Cargo.toml changed
+          if git diff --name-only HEAD~1 HEAD | grep "rust/Cargo.toml"; then
+            echo "Cargo.toml was changed in this commit"
+            
+            # Get previous version if possible
+            if git show "$PREV_COMMIT:rust/Cargo.toml" 2>/dev/null; then
+              PREV_VERSION=$(git show "$PREV_COMMIT:rust/Cargo.toml" | grep -m1 '^version = ' | sed 's/version = "\(.*\)"/\1/')
+              echo "Previous version: $PREV_VERSION"
+              
+              if [ "$CURRENT_VERSION" != "$PREV_VERSION" ]; then
+                echo "Version changed from $PREV_VERSION to $CURRENT_VERSION"
+                echo "should_publish=true" >> $GITHUB_OUTPUT
+              else
+                echo "Version unchanged"
+                echo "should_publish=false" >> $GITHUB_OUTPUT
+              fi
+            else
+              echo "First commit with Cargo.toml, will publish"
+              echo "should_publish=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "Cargo.toml not changed in this commit"
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Run clippy
+        run: |
+          cd rust
+          cargo clippy --all-targets -- -D warnings
+
+      - name: Run rustfmt check
+        run: |
+          cd rust
+          cargo fmt -- --check
+
+      - name: Run tests
+        run: |
+          cd rust
+          cargo test
+
+  publish:
+    needs: [verify_version, test]
+    if: needs.verify_version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Publish to crates.io
+        run: |
+          cd rust
+          cargo publish --token ${{ secrets.CRATES_TOKEN }}
+        env:
+          CRATES_TOKEN: ${{ secrets.CRATES_TOKEN }}
+
+
+

@@ -26,7 +26,7 @@ export const choiceAction: Action = {
   ): Promise<boolean> => {
     if (!state) {
       logger.error(
-        { src: "plugin:core:action:choice", agentId: runtime.agentId },
+        { src: "plugin:bootstrap:action:choice", agentId: runtime.agentId },
         "State is required for validating the action",
       );
       throw new Error("State is required for validating the action");
@@ -364,3 +364,5 @@ export const choiceAction: Action = {
     ],
   ] as ActionExample[][],
 };
+
+export default choiceAction;

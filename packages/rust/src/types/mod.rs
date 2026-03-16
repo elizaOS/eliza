@@ -42,8 +42,7 @@ pub use agent::{
 pub use components::{
     ActionContext, ActionDefinition, ActionExample, ActionHandler, ActionParameter,
     ActionParameterSchema, ActionResult, EvaluationExample, EvaluatorDefinition, EvaluatorHandler,
-    EvaluatorPhase, HandlerCallback, HandlerOptions, ProviderDefinition, ProviderHandler,
-    ProviderResult,
+    HandlerCallback, HandlerOptions, ProviderDefinition, ProviderHandler, ProviderResult,
 };
 
 // From memory
@@ -72,9 +71,10 @@ pub use state::{
 // From database
 pub use database::{
     vector_dims, ActionLogBody, ActionLogContent, ActionLogResult, AgentRunCounts, AgentRunSummary,
-    AgentRunSummaryResult, BaseLogBody, EmbeddingLogBody, EmbeddingSearchResult, EvaluatorLogBody,
-    GetMemoriesParams, Log, LogBody, MemoryRetrievalOptions, MemorySearchOptions,
+    AgentRunSummaryResult, BaseLogBody, CreateMemoryItem, EmbeddingLogBody, EmbeddingSearchResult,
+    EvaluatorLogBody, GetMemoriesParams, Log, LogBody, MemoryRetrievalOptions, MemorySearchOptions,
     ModelActionContext, ModelLogBody, PromptLogEntry, RunStatus, SearchMemoriesParams,
+    UpdateMemoryItem,
 };
 
 // From model

@@ -9,18 +9,10 @@ import type {
   State,
 } from "../../types/index.ts";
 import { ModelType } from "../../types/index.ts";
-import {
-  composePromptFromState,
-  parseXmlBooleanResponse,
-} from "../../utils.ts";
+import { composePromptFromState } from "../../utils.ts";
 
 // Inline to avoid circular import issues
-const booleanFooter = `Respond using XML format like this:
-<response>
-  <decision>true | false</decision>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above.`;
+const booleanFooter = "Respond with only a YES or a NO.";
 
 /**
  * Template for determining if an agent should unmute a previously muted room.
@@ -31,17 +23,17 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
  *
  * @type {string}
  */
-const shouldUnmuteTemplate = `# Task: Decide if {{agentName}} should unmute this previously muted room and start considering it for responses again.
+export const shouldUnmuteTemplate = `# Task: Decide if {{agentName}} should unmute this previously muted room and start considering it for responses again.
 
 {{recentMessages}}
 
 Should {{agentName}} unmute this previously muted room and start considering it for responses again?
-Set <decision>true</decision> if:
+Respond with YES if:
 - The user has explicitly asked {{agentName}} to start responding again
 - The user seems to want to re-engage with {{agentName}} in a respectful manner
 - The tone of the conversation has improved and {{agentName}}'s input would be welcome
 
-Otherwise, set <decision>false</decision>.
+Otherwise, respond with NO.
 ${booleanFooter}`;
 
 /**
@@ -92,9 +84,16 @@ export const unmuteRoomAction: Action = {
         stopSequences: [],
       });
 
-      const parsedResponse = parseXmlBooleanResponse(response);
+      const cleanedResponse = response.trim().toLowerCase();
 
-      if (parsedResponse === true) {
+      // Handle various affirmative responses
+      if (
+        cleanedResponse === "true" ||
+        cleanedResponse === "yes" ||
+        cleanedResponse === "y" ||
+        cleanedResponse.includes("true") ||
+        cleanedResponse.includes("yes")
+      ) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -112,7 +111,14 @@ export const unmuteRoomAction: Action = {
         return true;
       }
 
-      if (parsedResponse === false) {
+      // Handle various negative responses
+      if (
+        cleanedResponse === "false" ||
+        cleanedResponse === "no" ||
+        cleanedResponse === "n" ||
+        cleanedResponse.includes("false") ||
+        cleanedResponse.includes("no")
+      ) {
         await runtime.createMemory(
           {
             entityId: message.entityId,
@@ -129,13 +135,14 @@ export const unmuteRoomAction: Action = {
         return false;
       }
 
+      // Default to false if response is unclear
       logger.warn(
         {
-          src: "plugin:core:action:unmute_room",
+          src: "plugin:bootstrap:action:unmute_room",
           agentId: runtime.agentId,
           response,
         },
-        "Unclear XML decision response, defaulting to false",
+        "Unclear boolean response, defaulting to false",
       );
       return false;
     }
@@ -160,7 +167,7 @@ export const unmuteRoomAction: Action = {
 
     if (shouldUnmute) {
       try {
-        await runtime.setParticipantUserState(
+        await runtime.updateParticipantUserState(
           message.roomId,
           runtime.agentId,
           null,
@@ -171,7 +178,7 @@ export const unmuteRoomAction: Action = {
         if (!room) {
           logger.warn(
             {
-              src: "plugin:core:action:unmute_room",
+              src: "plugin:bootstrap:action:unmute_room",
               agentId: runtime.agentId,
               roomId: message.roomId,
             },
@@ -229,7 +236,7 @@ export const unmuteRoomAction: Action = {
       } catch (error) {
         logger.error(
           {
-            src: "plugin:core:action:unmute_room",
+            src: "plugin:bootstrap:action:unmute_room",
             agentId: runtime.agentId,
             error: error instanceof Error ? error.message : String(error),
           },

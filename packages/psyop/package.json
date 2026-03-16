@@ -1,0 +1,12 @@
+{
+  "name": "psyop",
+  "version": "1.0.1",
+  "description": "This is parked",
+  "bin": {
+    "psyop": "cli.js"
+  },
+  "files": [
+    "cli.js"
+  ],
+  "license": "MIT"
+}

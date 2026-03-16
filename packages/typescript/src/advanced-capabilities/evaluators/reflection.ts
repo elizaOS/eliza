@@ -147,7 +147,7 @@ async function handler(
   if (!agentId || !roomId) {
     runtime.logger.warn(
       {
-        src: "plugin:core:evaluator:reflection",
+        src: "plugin:bootstrap:evaluator:reflection",
         agentId: runtime.agentId,
         message,
       },
@@ -191,7 +191,7 @@ async function handler(
   if (!response) {
     runtime.logger.warn(
       {
-        src: "plugin:core:evaluator:reflection",
+        src: "plugin:bootstrap:evaluator:reflection",
         agentId: runtime.agentId,
       },
       "Getting reflection failed - empty response",
@@ -205,7 +205,7 @@ async function handler(
   if (!reflection) {
     runtime.logger.warn(
       {
-        src: "plugin:core:evaluator:reflection",
+        src: "plugin:bootstrap:evaluator:reflection",
         agentId: runtime.agentId,
       },
       "Getting reflection failed - failed to parse XML",
@@ -217,7 +217,7 @@ async function handler(
   if (!reflection.facts) {
     runtime.logger.warn(
       {
-        src: "plugin:core:evaluator:reflection",
+        src: "plugin:bootstrap:evaluator:reflection",
         agentId: runtime.agentId,
       },
       "Getting reflection failed - invalid facts structure",
@@ -228,7 +228,7 @@ async function handler(
   if (!reflection.relationships) {
     runtime.logger.warn(
       {
-        src: "plugin:core:evaluator:reflection",
+        src: "plugin:bootstrap:evaluator:reflection",
         agentId: runtime.agentId,
       },
       "Getting reflection failed - invalid relationships structure",

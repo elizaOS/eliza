@@ -1,0 +1,59 @@
+[package]
+name = "elizaos-plugin-localdb"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "Simple JSON-based local database plugin for elizaOS - no SQL required"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+keywords = ["ai", "agent", "database", "json", "local"]
+categories = ["database"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full", "elizaos/native"]
+wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "elizaos/wasm", "getrandom/js"]
+
+[dependencies]
+# Core dependency (path for local dev, version for publishing)
+# NOTE: disable default features so `--no-default-features --features wasm` can build for wasm32
+# without pulling in native Tokio/Mio.
+elizaos = { version = "2.0.0", path = "../../../packages/rust", default-features = false }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async runtime
+async-trait = "0.1"
+
+# UUID handling
+uuid = { version = "1.19", features = ["v4", "serde"] }
+
+# Error handling
+anyhow = "1.0"
+
+# Random number generation (for HNSW level selection)
+rand = "0.8"
+
+# Native-only dependencies
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"], optional = true }
+
+# WASM-only dependencies
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", features = ["console"], optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+getrandom = { version = "0.2", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+tempfile = "3.10"
+
+[profile.release]
+lto = true
+opt-level = "z"

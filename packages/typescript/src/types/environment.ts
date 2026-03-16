@@ -93,3 +93,6 @@ export interface Relationship
   extends Omit<ProtoRelationship, "$typeName" | "$unknown" | "metadata"> {
   metadata?: Metadata;
 }
+
+// Re-export Metadata for convenience
+export type { Metadata };

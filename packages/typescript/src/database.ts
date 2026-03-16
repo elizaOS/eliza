@@ -9,6 +9,7 @@ import type {
   Memory,
   MemoryMetadata,
   Metadata,
+  PatchOp,
   PairingAllowlistEntry,
   PairingChannel,
   PairingRequest,
@@ -21,11 +22,22 @@ import type {
 } from "./types";
 
 /**
- * Database adapter class to be extended by individual database adapters.
+ * Abstract base class for database adapters.
  *
- * @template DB - The type of the database instance.
+ * WHY this exists as an abstract class (not just the IDatabaseAdapter interface):
+ * - Provides a single place for JSDoc on every abstract method, so adapter
+ *   authors get documentation in their IDE without reading the interface.
+ * - Serves as the compile-time contract: if you extend this class and miss
+ *   a method, TypeScript tells you immediately.
+ * - Does NOT contain any implementation logic. All implementations live in
+ *   concrete adapters (plugin-sql's Drizzle adapters, InMemoryDatabaseAdapter,
+ *   etc.). This is intentional -- core must not depend on any ORM.
+ *
+ * All CRUD methods are batch-first (arrays in, arrays out). See
+ * IDatabaseAdapter in types/database.ts for the full design rationale.
+ *
+ * @template DB - The type of the database instance (e.g. PgDatabase, BetterSQLite3Database).
  * @abstract
- * implements IDatabaseAdapter
  */
 export abstract class DatabaseAdapter<DB extends object = object>
   implements IDatabaseAdapter<DB>
@@ -48,7 +60,6 @@ export abstract class DatabaseAdapter<DB extends object = object>
    * Initialize the database adapter.
    * @returns A Promise that resolves when initialization is complete.
    */
-  abstract init(): Promise<void>;
 
   /**
    * Run plugin schema migrations for all registered plugins
@@ -87,11 +98,14 @@ export abstract class DatabaseAdapter<DB extends object = object>
   abstract getConnection(): Promise<DB>;
 
   /**
-   * Retrieves an account by its ID.
-   * @param entityIds The UUIDs of the user account to retrieve.
-   * @returns A Promise that resolves to the Entity object or null if not found.
+   * Execute a callback within a database transaction.
+   * InMemory adapter runs the callback directly without atomicity guarantees.
+   * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), runs under RLS for this entity.
    */
-  abstract getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null>;
+  abstract transaction<T>(
+    callback: (tx: IDatabaseAdapter<DB>) => Promise<T>,
+    options?: { entityContext?: UUID },
+  ): Promise<T>;
 
   abstract getEntitiesForRoom(
     roomId: UUID,
@@ -103,21 +117,55 @@ export abstract class DatabaseAdapter<DB extends object = object>
    * @param entities The entity objects to create.
    * @returns A Promise that resolves when the account creation is complete.
    */
-  abstract createEntities(entities: Entity[]): Promise<boolean>;
-
+  abstract createEntities(entities: Entity[]): Promise<UUID[]>;
+  
   /**
-   * Updates an existing entity in the database.
-   * @param entity The entity object with updated properties.
-   * @returns A Promise that resolves when the account update is complete.
+   * Upsert entities (insert or update by ID).
+   * @param entities - An array of entities to upsert (ID required for each).
+   * @returns A Promise that resolves when the upsert is complete.
    */
-  abstract updateEntity(entity: Entity): Promise<void>;
+  abstract upsertEntities(entities: Entity[]): Promise<void>;
+  
+  /**
+   * Search entities by name substring match.
+   * @param params - Search parameters (query, agentId, limit).
+   * @returns A Promise that resolves to matching entities.
+   */
+  abstract searchEntitiesByName(params: {
+    query: string;
+    agentId: UUID;
+    limit?: number;
+  }): Promise<Entity[]>;
+  
+  /**
+   * Get entities by exact name match.
+   * @param params - Lookup parameters (names array, agentId).
+   * @returns A Promise that resolves to matching entities.
+   */
+  abstract getEntitiesByNames(params: { names: string[]; agentId: UUID }): Promise<Entity[]>;
 
   /**
-   * Retrieves a single component by entity ID and type.
-   * @param entityId The UUID of the entity the component belongs to
-   * @param type The type identifier for the component
-   * @param worldId Optional UUID of the world the component belongs to
-   * @param sourceEntityId Optional UUID of the source entity
+   * Query entities by component type and optional JSONB data filter.
+   * @param params.entityContext RLS only: when set (Postgres + ENABLE_DATA_ISOLATION), query runs under this entity context. WHY optional: adapters that don't support RLS accept and ignore it.
+   */
+  abstract queryEntities(params: {
+    componentType?: string;
+    componentDataFilter?: Record<string, unknown>;
+    agentId?: UUID;
+    entityIds?: UUID[];
+    worldId?: UUID;
+    limit?: number;
+    offset?: number;
+    includeAllComponents?: boolean;
+    entityContext?: UUID;
+  }): Promise<Entity[]>;
+
+  /**
+   * Retrieves a component by entity and type (query method).
+   * @param entityId The UUID of the entity
+   * @param type The component type
+   * @param worldId Optional world ID
+   * @param sourceEntityId Optional source entity ID
    * @returns Promise resolving to the Component if found, null otherwise
    */
   abstract getComponent(
@@ -140,26 +188,35 @@ export abstract class DatabaseAdapter<DB extends object = object>
     sourceEntityId?: UUID,
   ): Promise<Component[]>;
 
-  /**
-   * Creates a new component in the database.
-   * @param component The component object to create
-   * @returns Promise resolving to true if creation was successful
-   */
-  abstract createComponent(component: Component): Promise<boolean>;
+  // ── Entity CRUD (batch-only) ─────────────────────────────────────────
+  abstract getEntitiesByIds(entityIds: UUID[]): Promise<Entity[]>;
+  abstract updateEntities(entities: Entity[]): Promise<void>;
+  abstract deleteEntities(entityIds: UUID[]): Promise<void>;
+
+  // ── Component CRUD (batch-only) ────────────────────────────────────
+  abstract createComponents(components: Component[]): Promise<UUID[]>;
+  abstract getComponentsByIds(componentIds: UUID[]): Promise<Component[]>;
+  abstract updateComponents(components: Component[]): Promise<void>;
+  abstract deleteComponents(componentIds: UUID[]): Promise<void>;
 
   /**
-   * Updates an existing component in the database.
-   * @param component The component object with updated properties
-   * @returns Promise that resolves when the update is complete
+   * Upsert components (insert or update by natural key).
+   * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), runs under RLS for this entity.
    */
-  abstract updateComponent(component: Component): Promise<void>;
+  abstract upsertComponents(
+    components: Component[],
+    options?: { entityContext?: UUID },
+  ): Promise<void>;
 
   /**
-   * Deletes a component from the database.
-   * @param componentId The UUID of the component to delete
-   * @returns Promise that resolves when the deletion is complete
+   * Atomic partial update to component JSONB data using JSON Patch operations.
+   * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), runs under RLS for this entity.
    */
-  abstract deleteComponent(componentId: UUID): Promise<void>;
+  abstract patchComponent(
+    componentId: UUID,
+    ops: PatchOp[],
+    options?: { entityContext?: UUID },
+  ): Promise<void>;
 
   /**
    * Retrieves memories based on the specified parameters.
@@ -169,7 +226,9 @@ export abstract class DatabaseAdapter<DB extends object = object>
   abstract getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
+    /** @deprecated use limit */
     count?: number;
+    limit?: number;
     offset?: number;
     unique?: boolean;
     tableName: string;
@@ -177,6 +236,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
     end?: number;
     roomId?: UUID;
     worldId?: UUID;
+    metadata?: Record<string, unknown>;
   }): Promise<Memory[]>;
 
   abstract getMemoriesByRoomIds(params: {
@@ -184,8 +244,6 @@ export abstract class DatabaseAdapter<DB extends object = object>
     tableName: string;
     limit?: number;
   }): Promise<Memory[]>;
-
-  abstract getMemoryById(id: UUID): Promise<Memory | null>;
 
   /**
    * Retrieves multiple memories by their IDs
@@ -225,18 +283,6 @@ export abstract class DatabaseAdapter<DB extends object = object>
   >;
 
   /**
-   * Logs an event or action with the specified details.
-   * @param params An object containing parameters for the log entry.
-   * @returns A Promise that resolves when the log entry has been saved.
-   */
-  abstract log(params: {
-    body: LogBody;
-    entityId: UUID;
-    roomId: UUID;
-    type: string;
-  }): Promise<void>;
-
-  /**
    * Retrieves logs based on the specified parameters.
    * @param params An object containing parameters for the log retrieval.
    * @returns A Promise that resolves to an array of Log objects.
@@ -245,16 +291,17 @@ export abstract class DatabaseAdapter<DB extends object = object>
     entityId?: UUID;
     roomId?: UUID;
     type?: string;
+    /** @deprecated use limit */
     count?: number;
+    limit?: number;
     offset?: number;
   }): Promise<Log[]>;
 
-  /**
-   * Deletes a log from the database.
-   * @param logId The UUID of the log to delete.
-   * @returns A Promise that resolves when the log has been deleted.
-   */
-  abstract deleteLog(logId: UUID): Promise<void>;
+  // ── Log CRUD (batch-only) ────────────────────────────────────────────
+  abstract createLogs(params: Array<{ body: LogBody; entityId: UUID; roomId: UUID; type: string }>): Promise<void>;
+  abstract getLogsByIds(logIds: UUID[]): Promise<Log[]>;
+  abstract updateLogs(logs: Array<{ id: UUID; updates: Partial<Log> }>): Promise<void>;
+  abstract deleteLogs(logIds: UUID[]): Promise<void>;
 
   /**
    * Searches for memories based on embeddings and other specified parameters.
@@ -265,7 +312,9 @@ export abstract class DatabaseAdapter<DB extends object = object>
     tableName: string;
     embedding: number[];
     match_threshold?: number;
+    /** @deprecated use limit */
     count?: number;
+    limit?: number;
     unique?: boolean;
     query?: string;
     roomId?: UUID;
@@ -273,41 +322,18 @@ export abstract class DatabaseAdapter<DB extends object = object>
     entityId?: UUID;
   }): Promise<Memory[]>;
 
+  // ── Memory CRUD (batch-only) ─────────────────────────────────────────
+  abstract createMemories(memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>): Promise<UUID[]>;
+  abstract updateMemories(memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>): Promise<void>;
   /**
-   * Creates a new memory in the database.
-   * @param memory The memory object to create.
-   * @param tableName The table where the memory should be stored.
-   * @param unique Indicates if the memory should be unique.
-   * @returns A Promise that resolves when the memory has been created.
+   * Upsert memories (insert or update by ID).
+   * @param options.entityContext When set (Postgres + ENABLE_DATA_ISOLATION), runs under RLS for this entity.
    */
-  abstract createMemory(
-    memory: Memory,
-    tableName: string,
-    unique?: boolean,
-  ): Promise<UUID>;
-
-  /**
-   * Updates an existing memory in the database.
-   * @param memory The memory object with updated content and optional embedding
-   * @returns Promise resolving to boolean indicating success
-   */
-  abstract updateMemory(
-    memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
-  ): Promise<boolean>;
-
-  /**
-   * Removes a specific memory from the database.
-   * @param memoryId The UUID of the memory to remove.
-   * @returns A Promise that resolves when the memory has been removed.
-   */
-  abstract deleteMemory(memoryId: UUID): Promise<void>;
-
-  /**
-   * Removes multiple memories from the database in a single batch operation.
-   * @param memoryIds An array of UUIDs of the memories to remove.
-   * @returns A Promise that resolves when all memories have been removed.
-   */
-  abstract deleteManyMemories(memoryIds: UUID[]): Promise<void>;
+  abstract upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+    options?: { entityContext?: UUID },
+  ): Promise<void>;
+  abstract deleteMemories(memoryIds: UUID[]): Promise<void>;
 
   /**
    * Removes all memories associated with a specific room.
@@ -318,24 +344,24 @@ export abstract class DatabaseAdapter<DB extends object = object>
   abstract deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
 
   /**
-   * Counts the number of memories in a specific room.
-   * @param roomId The UUID of the room for which to count memories.
-   * @param unique Specifies whether to count only unique memories.
-   * @param tableName Optional table name to count memories from.
+   * Counts the number of memories matching criteria.
+   * Accepts either positional (roomId, unique?, tableName?) or a single params object.
    * @returns A Promise that resolves to the number of memories.
    */
   abstract countMemories(
-    roomId: UUID,
+    roomIdOrParams:
+      | UUID
+      | {
+          roomId?: UUID;
+          unique?: boolean;
+          tableName?: string;
+          entityId?: UUID;
+          agentId?: UUID;
+          metadata?: Record<string, unknown>;
+        },
     unique?: boolean,
     tableName?: string,
   ): Promise<number>;
-
-  /**
-   * Retrieves a world by its ID.
-   * @param id The UUID of the world to retrieve.
-   * @returns A Promise that resolves to the World object or null if not found.
-   */
-  abstract getWorld(id: UUID): Promise<World | null>;
 
   /**
    * Retrieves all worlds for an agent.
@@ -343,40 +369,32 @@ export abstract class DatabaseAdapter<DB extends object = object>
    */
   abstract getAllWorlds(): Promise<World[]>;
 
+  // ── World CRUD (batch-only) ──────────────────────────────────────────
+  abstract getWorldsByIds(worldIds: UUID[]): Promise<World[]>;
+  abstract createWorlds(worlds: World[]): Promise<UUID[]>;
+  abstract deleteWorlds(worldIds: UUID[]): Promise<void>;
+  abstract updateWorlds(worlds: World[]): Promise<void>;
+  
   /**
-   * Creates a new world in the database.
-   * @param world The world object to create.
-   * @returns A Promise that resolves to the UUID of the created world.
+   * Upsert worlds (insert or update by ID).
+   * @param worlds - An array of worlds to upsert (ID required for each).
+   * @returns A Promise that resolves when the upsert is complete.
    */
-  abstract createWorld(world: World): Promise<UUID>;
-
-  /**
-   * Updates an existing world in the database.
-   * @param world The world object with updated properties.
-   * @returns A Promise that resolves when the world has been updated.
-   */
-  abstract updateWorld(world: World): Promise<void>;
-
-  /**
-   * Removes a specific world from the database.
-   * @param id The UUID of the world to remove.
-   * @returns A Promise that resolves when the world has been removed.
-   */
-  abstract removeWorld(id: UUID): Promise<void>;
+  abstract upsertWorlds(worlds: World[]): Promise<void>;
 
   /**
    * Retrieves the room ID for a given room, if it exists.
    * @param roomIds The UUIDs of the rooms to retrieve.
    * @returns A Promise that resolves to the room ID or null if not found.
    */
-  abstract getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null>;
+  abstract getRoomsByIds(roomIds: UUID[]): Promise<Room[]>;
 
   /**
    * Retrieves all rooms for a given world.
    * @param worldId The UUID of the world to retrieve rooms for.
    * @returns A Promise that resolves to an array of Room objects.
    */
-  abstract getRoomsByWorld(worldId: UUID): Promise<Room[]>;
+  abstract getRoomsByWorld(worldId: UUID, limit?: number, offset?: number): Promise<Room[]>;
 
   /**
    * Creates new rooms in the database.
@@ -384,53 +402,48 @@ export abstract class DatabaseAdapter<DB extends object = object>
    * @returns A Promise that resolves to the UUIDs of the created rooms.
    */
   abstract createRooms(rooms: Room[]): Promise<UUID[]>;
-
+  
   /**
-   * Updates a specific room in the database.
-   * @param room The room object with updated properties.
-   * @returns A Promise that resolves when the room has been updated.
+   * Upsert rooms (insert or update by ID).
+   * @param rooms - An array of rooms to upsert (ID required for each).
+   * @returns A Promise that resolves when the upsert is complete.
    */
-  abstract updateRoom(room: Room): Promise<void>;
-
-  /**
-   * Removes a specific room from the database.
-   * @param roomId The UUID of the room to remove.
-   * @returns A Promise that resolves when the room has been removed.
-   */
-  abstract deleteRoom(roomId: UUID): Promise<void>;
+  abstract upsertRooms(rooms: Room[]): Promise<void>;
 
   /**
    * Retrieves room IDs for which a specific user is a participant.
    * @param entityId The UUID of the user.
    * @returns A Promise that resolves to an array of room IDs.
    */
-  abstract getRoomsForParticipant(entityId: UUID): Promise<UUID[]>;
+  /**
+   * Retrieves room IDs for which specific entities are participants.
+   * @param entityIds Single entity UUID or array of entity UUIDs to check.
+   * @returns A Promise that resolves to an array of room UUIDs.
+   */
+  abstract getRoomsForParticipants(entityIds: UUID | UUID[]): Promise<UUID[]>;
 
   /**
-   * Retrieves room IDs for which specific users are participants.
-   * @param userIds An array of UUIDs of the users.
-   * @returns A Promise that resolves to an array of room IDs.
+   * Creates room participants for the specified entities.
+   * @param entityIds The UUIDs of the entities to add as participants.
+   * @param roomId The UUID of the room to which the entities will be added.
+   * @returns A Promise that resolves to the UUIDs of the created participant records.
    */
-  abstract getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>;
-
-  /**
-   * Adds users as a participant to a specific room.
-   * @param entityIds The UUIDs of the users to add as a participant.
-   * @param roomId The UUID of the room to which the user will be added.
-   * @returns A Promise that resolves to a boolean indicating success or failure.
-   */
-  abstract addParticipantsRoom(
+  abstract createRoomParticipants(
     entityIds: UUID[],
     roomId: UUID,
-  ): Promise<boolean>;
+  ): Promise<UUID[]>;
 
-  /**
-   * Removes a user as a participant from a specific room.
-   * @param entityId The UUID of the user to remove as a participant.
-   * @param roomId The UUID of the room from which the user will be removed.
-   * @returns A Promise that resolves to a boolean indicating success or failure.
-   */
-  abstract removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+  // ── Participant mutations (batch-only) ───────────────────────────────
+  abstract deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean>;
+  abstract updateParticipants(participants: Array<{
+    entityId: UUID;
+    roomId: UUID;
+    updates: Partial<Participant>;
+  }>): Promise<void>;
+
+  // ── Room CRUD (batch-only) ─────────────────────────────────────────
+  abstract updateRooms(rooms: Room[]): Promise<void>;
+  abstract deleteRooms(roomIds: UUID[]): Promise<void>;
 
   /**
    * Retrieves participants associated with a specific account.
@@ -460,27 +473,15 @@ export abstract class DatabaseAdapter<DB extends object = object>
     entityId: UUID,
   ): Promise<"FOLLOWED" | "MUTED" | null>;
 
-  abstract setParticipantUserState(
+  abstract updateParticipantUserState(
     roomId: UUID,
     entityId: UUID,
     state: "FOLLOWED" | "MUTED" | null,
   ): Promise<void>;
 
   /**
-   * Creates a new relationship between two users.
-   * @param params Object containing the relationship details including entity IDs, agent ID, optional tags and metadata
-   * @returns A Promise that resolves to a boolean indicating success or failure of the creation.
-   */
-  abstract createRelationship(params: {
-    sourceEntityId: UUID;
-    targetEntityId: UUID;
-    tags?: string[];
-    metadata?: Metadata;
-  }): Promise<boolean>;
-
-  /**
-   * Retrieves a relationship between two users if it exists.
-   * @param params Object containing the entity IDs and agent ID
+   * Retrieves a relationship between two entities (query method).
+   * @param params Object containing the source and target entity IDs
    * @returns A Promise that resolves to the Relationship object or null if not found.
    */
   abstract getRelationship(params: {
@@ -496,21 +497,21 @@ export abstract class DatabaseAdapter<DB extends object = object>
   abstract getRelationships(params: {
     entityId: UUID;
     tags?: string[];
+    limit?: number;
+    offset?: number;
   }): Promise<Relationship[]>;
 
-  /**
-   * Updates an existing relationship between two users.
-   * @param relationship The relationship object with updated data
-   * @returns A Promise that resolves when the update is complete.
-   */
-  abstract updateRelationship(relationship: Relationship): Promise<void>;
+  // ── Relationship CRUD (batch-only) ──────────────────────────────────
+  abstract createRelationships(relationships: Array<{
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+    tags?: string[];
+    metadata?: Metadata;
+  }>): Promise<UUID[]>;
+  abstract getRelationshipsByIds(relationshipIds: UUID[]): Promise<Relationship[]>;
+  abstract updateRelationships(relationships: Relationship[]): Promise<void>;
+  abstract deleteRelationships(relationshipIds: UUID[]): Promise<void>;
 
-  /**
-   * Retrieves an agent by its ID.
-   * @param agentId The UUID of the agent to retrieve.
-   * @returns A Promise that resolves to the Agent object or null if not found.
-   */
-  abstract getAgent(agentId: UUID): Promise<Agent | null>;
 
   /**
    * Retrieves all agents from the database.
@@ -518,27 +519,17 @@ export abstract class DatabaseAdapter<DB extends object = object>
    */
   abstract getAgents(): Promise<Partial<Agent>[]>;
 
-  /**
-   * Creates a new agent in the database.
-   * @param agent The agent object to create.
-   * @returns A Promise that resolves to a boolean indicating success or failure of the creation.
-   */
-  abstract createAgent(agent: Partial<Agent>): Promise<boolean>;
 
-  /**
-   * Updates an existing agent in the database.
-   * @param agentId The UUID of the agent to update.
-   * @param agent The agent object with updated properties.
-   * @returns A Promise that resolves to a boolean indicating success or failure of the update.
-   */
-  abstract updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>;
 
-  /**
-   * Deletes an agent from the database.
-   * @param agentId The UUID of the agent to delete.
-   * @returns A Promise that resolves to a boolean indicating success or failure of the deletion.
-   */
-  abstract deleteAgent(agentId: UUID): Promise<boolean>;
+
+  // ── Agent CRUD (batch-only) ──────────────────────────────────────────
+  abstract getAgentsByIds(agentIds: UUID[]): Promise<Agent[]>;
+  abstract createAgents(agents: Partial<Agent>[]): Promise<UUID[]>;
+  abstract updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean>;
+  abstract upsertAgents(agents: Partial<Agent>[]): Promise<void>;
+  abstract deleteAgents(agentIds: UUID[]): Promise<boolean>;
+  abstract countAgents(): Promise<number>;
+  abstract cleanupAgents(): Promise<void>;
 
   /**
    * Ensures an embedding dimension exists in the database.
@@ -547,34 +538,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
    */
   abstract ensureEmbeddingDimension(dimension: number): Promise<void>;
 
-  /**
-   * Retrieves a cached value by key from the database.
-   * @param key The key to look up in the cache
-   * @returns Promise resolving to the cached string value
-   */
-  abstract getCache<T>(key: string): Promise<T | undefined>;
-
-  /**
-   * Sets a value in the cache with the given key.
-   * @param key The key to store the value under
-   * @param value The value to cache
-   * @returns Promise resolving to true if the cache was set successfully
-   */
-  abstract setCache<T>(key: string, value: T): Promise<boolean>;
-
-  /**
-   * Deletes a value from the cache by key.
-   * @param key The key to delete from the cache
-   * @returns Promise resolving to true if the value was successfully deleted
-   */
-  abstract deleteCache(key: string): Promise<boolean>;
-
-  /**
-   * Creates a new task instance in the database.
-   * @param task The task object to create
-   * @returns Promise resolving to the UUID of the created task
-   */
-  abstract createTask(task: Task): Promise<UUID>;
+  // ── Cache CRUD (batch-only) ──────────────────────────────────────────
+  abstract getCaches<T>(keys: string[]): Promise<Map<string, T>>;
+  abstract setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean>;
+  abstract deleteCaches(keys: string[]): Promise<boolean>;
 
   /**
    * Retrieves tasks based on specified parameters.
@@ -585,14 +552,9 @@ export abstract class DatabaseAdapter<DB extends object = object>
     roomId?: UUID;
     tags?: string[];
     entityId?: UUID;
+    limit?: number;
+    offset?: number;
   }): Promise<Task[]>;
-
-  /**
-   * Retrieves a specific task by its ID.
-   * @param id The UUID of the task to retrieve
-   * @returns Promise resolving to the Task object if found, null otherwise
-   */
-  abstract getTask(id: UUID): Promise<Task | null>;
 
   /**
    * Retrieves a specific task by its name.
@@ -601,31 +563,25 @@ export abstract class DatabaseAdapter<DB extends object = object>
    */
   abstract getTasksByName(name: string): Promise<Task[]>;
 
-  /**
-   * Updates an existing task in the database.
-   * @param id The UUID of the task to update
-   * @param task Partial Task object containing the fields to update
-   * @returns Promise resolving when the update is complete
-   */
-  abstract updateTask(id: UUID, task: Partial<Task>): Promise<void>;
-
-  /**
-   * Deletes a task from the database.
-   * @param id The UUID of the task to delete
-   * @returns Promise resolving when the deletion is complete
-   */
-  abstract deleteTask(id: UUID): Promise<void>;
+  // ── Task CRUD (batch-only) ───────────────────────────────────────────
+  abstract createTasks(tasks: Task[]): Promise<UUID[]>;
+  abstract getTasksByIds(taskIds: UUID[]): Promise<Task[]>;
+  abstract updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>;
+  abstract deleteTasks(taskIds: UUID[]): Promise<void>;
 
   abstract getMemoriesByWorldId(params: {
     worldId: UUID;
+    /** @deprecated use limit */
     count?: number;
+    limit?: number;
     tableName?: string;
   }): Promise<Memory[]>;
 
   abstract deleteRoomsByWorldId(worldId: UUID): Promise<void>;
 
-  // Pairing Methods
-  // ===============================
+  // ── Pairing CRUD (batch-only for mutations) ─────────────────────────
+  // getPairingRequests() and getPairingAllowlist() are query methods
+  // (filter by channel + agentId). Mutations are batch-only.
 
   /**
    * Get all pending pairing requests for a channel and agent.
@@ -639,25 +595,6 @@ export abstract class DatabaseAdapter<DB extends object = object>
   ): Promise<PairingRequest[]>;
 
   /**
-   * Create a new pairing request.
-   * @param request The pairing request to create
-   * @returns The created request ID
-   */
-  abstract createPairingRequest(request: PairingRequest): Promise<UUID>;
-
-  /**
-   * Update an existing pairing request.
-   * @param request The pairing request with updated data
-   */
-  abstract updatePairingRequest(request: PairingRequest): Promise<void>;
-
-  /**
-   * Delete a pairing request by ID.
-   * @param id The request ID to delete
-   */
-  abstract deletePairingRequest(id: UUID): Promise<void>;
-
-  /**
    * Get the allowlist for a channel and agent.
    * @param channel The messaging channel
    * @param agentId The agent ID
@@ -668,18 +605,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
     agentId: UUID,
   ): Promise<PairingAllowlistEntry[]>;
 
-  /**
-   * Create a new allowlist entry.
-   * @param entry The allowlist entry to create
-   * @returns The created entry ID
-   */
-  abstract createPairingAllowlistEntry(
-    entry: PairingAllowlistEntry,
-  ): Promise<UUID>;
-
-  /**
-   * Delete an allowlist entry by ID.
-   * @param id The entry ID to delete
-   */
-  abstract deletePairingAllowlistEntry(id: UUID): Promise<void>;
+  abstract createPairingRequests(requests: PairingRequest[]): Promise<UUID[]>;
+  abstract updatePairingRequests(requests: PairingRequest[]): Promise<void>;
+  abstract deletePairingRequests(ids: UUID[]): Promise<void>;
+  abstract createPairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<UUID[]>;
+  abstract updatePairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<void>;
+  abstract deletePairingAllowlistEntries(ids: UUID[]): Promise<void>;
 }

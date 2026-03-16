@@ -1,0 +1,40 @@
+{
+  "name": "elizaos-cloudflare-worker",
+  "version": "2.0.0-alpha",
+  "description": "elizaOS AI agent running on Cloudflare Workers using canonical runtime.messageService.handleMessage()",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "test": "bun run test-client.ts",
+    "test:stream": "bun run test-client.ts --stream",
+    "tail": "wrangler tail",
+    "secret": "wrangler secret put OPENAI_API_KEY",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "echo 'Cloudflare Workers use wrangler for type checking'"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "uuid": "^11.0.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241205.0",
+    "@types/uuid": "^10.0.0",
+    "wrangler": "^3.99.0"
+  },
+  "keywords": [
+    "elizaos",
+    "cloudflare",
+    "workers",
+    "ai",
+    "agent",
+    "messageService"
+  ],
+  "author": "",
+  "license": "MIT"
+}

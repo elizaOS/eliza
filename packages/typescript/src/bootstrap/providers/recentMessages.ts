@@ -1,5 +1,4 @@
 import { getEntityDetails } from "../../entities.ts";
-import { logger } from "../../logger.ts";
 import type {
   CustomMetadata,
   Entity,
@@ -10,14 +9,10 @@ import type {
   UUID,
 } from "../../types/index.ts";
 import { ChannelType } from "../../types/index.ts";
-import {
-  addHeader,
-  DEFAULT_MAX_CONVERSATION_TOKENS,
-  estimateTokens,
-  formatMessages,
-  formatPosts,
-} from "../../utils.ts";
-import { triggerAutoCompaction } from "../services/autoCompaction.ts";
+import { addHeader, formatMessages, formatPosts } from "../../utils.ts";
+import { sliceToFitBudget } from "../../utils/slice-to-fit-budget.js";
+
+const RECENT_ACTION_RUNS_TARGET_CHARS = 2200;
 
 // Move getRecentInteractions outside the provider
 /**
@@ -77,43 +72,16 @@ export const recentMessagesProvider: Provider = {
     const { roomId } = message;
     const conversationLength = runtime.getConversationLength();
 
-    // Autonomy messages don't need the full conversation history — cap at a
-    // small window to avoid loading hundreds of accumulated thought entries.
-    const AUTONOMY_CONVERSATION_CAP = 10;
-    const isAutonomousMessage =
-      message.content?.metadata &&
-      typeof message.content.metadata === "object" &&
-      !Array.isArray(message.content.metadata) &&
-      (message.content.metadata as Record<string, unknown>).isAutonomous ===
-        true;
-    const effectiveConversationLength = isAutonomousMessage
-      ? Math.min(conversationLength, AUTONOMY_CONVERSATION_CAP)
-      : conversationLength;
-
-    // First get room to check for compaction point
-    const room = await runtime.getRoom(roomId);
-
-    // Check for compaction point - only load messages after this timestamp
-    const lastCompactionAt = room?.metadata?.lastCompactionAt as
-      | number
-      | undefined;
-
-    // Token budget for conversation context (configurable via setting)
-    const maxConversationTokens =
-      Number(runtime.getSetting("MAX_CONVERSATION_TOKENS")) ||
-      DEFAULT_MAX_CONVERSATION_TOKENS;
-
     // Parallelize initial data fetching operations including recentInteractions
-    const [entitiesData, recentMessagesData, recentInteractionsData] =
+    const [entitiesData, room, recentMessagesData, recentInteractionsData] =
       await Promise.all([
         getEntityDetails({ runtime, roomId }),
+        runtime.getRoom(roomId),
         runtime.getMemories({
           tableName: "messages",
           roomId,
-          count: effectiveConversationLength,
+          count: conversationLength,
           unique: false,
-          // Use compaction point to filter history
-          start: lastCompactionAt,
         }),
         message.entityId !== runtime.agentId
           ? getRecentInteractions(
@@ -125,92 +93,12 @@ export const recentMessagesProvider: Provider = {
           : Promise.resolve([]),
       ]);
 
-    // ── Per-message size cap ────────────────────────────────────────────
-    // Prevent a single enormous message (e.g. pasted document, base64 data,
-    // tool output dump) from consuming the entire token budget.  Messages
-    // over the cap are truncated with a notice so the agent knows content
-    // was cut.
-    const MAX_SINGLE_MESSAGE_CHARS = 20_000; // ~5 000 tokens per message
-    const cappedMessagesData = recentMessagesData.map((msg) => {
-      const text = msg.content?.text || "";
-      if (text.length > MAX_SINGLE_MESSAGE_CHARS) {
-        return {
-          ...msg,
-          content: {
-            ...msg.content,
-            text:
-              text.slice(0, MAX_SINGLE_MESSAGE_CHARS) +
-              "\n\n[... message truncated — original was " +
-              `${text.length.toLocaleString()} chars]`,
-          },
-        };
-      }
-      return msg;
-    });
-
-    // ── Token-based budgeting ─────────────────────────────────────────
-    // Keep the most recent messages within the token limit.  Sort
-    // newest-first so the budget preserves the most recent conversation.
-    //
-    // The budget estimates tokens from raw message text, but the formatted
-    // output (with timestamps, usernames, headers) is ~30 % larger.  We
-    // apply this overhead factor so the formatted prompt stays within budget.
-    const FORMATTING_OVERHEAD = 1.3;
-    const effectiveBudget = Math.floor(
-      maxConversationTokens / FORMATTING_OVERHEAD,
-    );
-
-    const sortedByRecent = [...cappedMessagesData].sort(
-      (a, b) => (b.createdAt || 0) - (a.createdAt || 0),
-    );
-    let tokenCount = 0;
-    const budgetedMessages: Memory[] = [];
-    for (const msg of sortedByRecent) {
-      const msgTokens = estimateTokens(msg.content?.text || "");
-      // Always keep at least the first (most recent) message
-      if (
-        tokenCount + msgTokens > effectiveBudget &&
-        budgetedMessages.length > 0
-      ) {
-        break;
-      }
-      budgetedMessages.push(msg);
-      tokenCount += msgTokens;
-    }
-    // Restore chronological order for formatting
-    budgetedMessages.reverse();
-
-    // Trigger auto-compaction if messages were dropped and auto-compact is enabled
-    const messagesWereTrimmed =
-      budgetedMessages.length < cappedMessagesData.length;
-    const autoCompact = runtime.getSetting("AUTO_COMPACT") !== "false";
-    if (messagesWereTrimmed && autoCompact) {
-      logger.info(
-        {
-          src: "provider:recent-messages",
-          roomId,
-          totalMessages: recentMessagesData.length,
-          keptMessages: budgetedMessages.length,
-          estimatedTokens: tokenCount,
-        },
-        "Token budget exceeded, triggering auto-compaction",
-      );
-      // Fire-and-forget async compaction (does not block the current response)
-      triggerAutoCompaction(runtime, roomId).catch((err) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        logger.warn(
-          { src: "provider:recent-messages", roomId, error: msg },
-          "Auto-compaction failed",
-        );
-      });
-    }
-
     // Separate action results from regular messages
-    const actionResultMessages = budgetedMessages.filter(
+    const actionResultMessages = recentMessagesData.filter(
       (msg) => msg.content && msg.content.type === "action_result",
     );
 
-    const dialogueMessages = budgetedMessages.filter(
+    const dialogueMessages = recentMessagesData.filter(
       (msg) => !(msg.content && msg.content.type === "action_result"),
     );
 
@@ -249,8 +137,27 @@ export const recentMessagesProvider: Provider = {
         }
       }
 
-      const formattedActionResults = Array.from(groupedByRun.entries())
-        .slice(-3) // Show last 3 runs
+      const recentRuns = sliceToFitBudget(
+        Array.from(groupedByRun.entries()),
+        ([runId, memories]) => {
+          const textChars = memories.reduce((sum, memory) => {
+            const content = memory.content;
+            return (
+              sum +
+              String(content?.actionName || "").length +
+              String(content?.actionStatus || "").length +
+              String(content?.planStep || "").length +
+              String(content?.text || "").length +
+              String(content?.error || "").length
+            );
+          }, 0);
+          return textChars + runId.length + 80;
+        },
+        RECENT_ACTION_RUNS_TARGET_CHARS,
+        { fromEnd: true }, // Select newest runs, not oldest
+      );
+
+      const formattedActionResults = recentRuns
         .map(([runId, memories]) => {
           const sortedMemories = memories.sort(
             (a: Memory, b: Memory) => (a.createdAt || 0) - (b.createdAt || 0),

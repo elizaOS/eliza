@@ -12,12 +12,7 @@ export {
   type GuardedFetchOptions,
   type GuardedFetchResult,
 } from "./fetch-guard.js";
-// Sandbox fetch proxy
-export {
-  createSandboxFetchProxy,
-  type SandboxFetchAuditEvent,
-  type SandboxFetchProxyOptions,
-} from "./sandbox-fetch-proxy.js";
+
 export {
   assertPublicHostname,
   createPinnedLookup,

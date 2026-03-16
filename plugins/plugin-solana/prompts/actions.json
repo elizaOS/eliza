@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "actions": [
+    {
+      "name": "SWAP_SOLANA",
+      "description": "Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens.",
+      "similes": [
+        "SWAP_SOL",
+        "SWAP_TOKENS_SOLANA",
+        "TOKEN_SWAP_SOLANA",
+        "TRADE_TOKENS_SOLANA",
+        "EXCHANGE_TOKENS_SOLANA"
+      ],
+      "parameters": []
+    }
+  ]
+}

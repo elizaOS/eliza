@@ -1,5 +1,5 @@
 /**
- * Security utilities for ElizaOS.
+ * Security utilities for elizaOS.
  *
  * Provides:
  * - Sensitive text redaction (pattern-based and secrets-based)
@@ -33,10 +33,3 @@ export {
   // Secrets-based redaction
   type SecretsRedactOptions,
 } from "./redact.js";
-
-// Sandbox token management
-export {
-  SANDBOX_TOKEN_PREFIX,
-  SandboxTokenManager,
-  type SecretTokenMetadata,
-} from "./sandbox-token-manager.js";

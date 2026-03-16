@@ -1,0 +1,195 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1770081931615,
+      "tag": "0000_last_reavers",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1770081931616,
+      "tag": "0001_certain_stellaris",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1770081931617,
+      "tag": "0002_material_karen_page",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1770081931618,
+      "tag": "0003_easy_molten_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1770081931619,
+      "tag": "0004_sweet_the_enforcers",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1770081931620,
+      "tag": "0005_add_project_name_to_alb_priorities",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1770081931621,
+      "tag": "0006_add-unique-username-constraint",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1770081931622,
+      "tag": "0007_add_deployment_status_to_apps",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1770081931623,
+      "tag": "0008_add_twitter_automation_to_apps",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1770081931624,
+      "tag": "0009_add_linked_characters_to_apps",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1770081931625,
+      "tag": "0010_add_telegram_automation_to_apps",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1770081931626,
+      "tag": "0011_add_telegram_chats",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1770081931627,
+      "tag": "0012_add_discord_guilds",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1770081931628,
+      "tag": "0013_add_discord_channels",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1770081931629,
+      "tag": "0014_add_discord_automation_to_apps",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1770081931630,
+      "tag": "0015_add_container_billing_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1770081931631,
+      "tag": "0016_update_payout_threshold",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1770081931632,
+      "tag": "0017_fix_earnings_precision",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1770081931633,
+      "tag": "0018_add_earnings_metadata_gin_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1770081931634,
+      "tag": "0019_add_user_database_provisioning",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1770081931635,
+      "tag": "0020_add_sandbox_template_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1770081931636,
+      "tag": "0021_add_agent_phone_numbers",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1770081931637,
+      "tag": "0022_add_idempotency_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1770081931638,
+      "tag": "0023_add_discord_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1770081931639,
+      "tag": "0024_add_eliza_app_identity_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1770081931640,
+      "tag": "0025_add_oauth_platform_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1770305969232,
+      "tag": "0026_add_missing_columns_and_indexes",
+      "breakpoints": true
+    }
+  ]
+}

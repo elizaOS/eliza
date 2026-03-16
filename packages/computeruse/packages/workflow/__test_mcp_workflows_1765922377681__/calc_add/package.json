@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "@elizaos/computeruse": "^0.22.7",
+    "@mediar-ai/computeruse": "^0.22.7",
     "@mediar-ai/workflow": "^0.22.7",
     "zod": "^4.3.6"
   }

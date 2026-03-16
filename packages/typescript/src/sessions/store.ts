@@ -1,5 +1,5 @@
 /**
- * Session store for ElizaOS.
+ * Session store for elizaOS.
  *
  * Provides file-based session storage with caching, locking, and
  * atomic updates. Designed to be used as the primary session
@@ -30,7 +30,6 @@ type SessionStoreCacheEntry = {
 
 const SESSION_STORE_CACHE = new Map<string, SessionStoreCacheEntry>();
 const DEFAULT_SESSION_STORE_TTL_MS = 45_000; // 45 seconds
-const DEFAULT_SESSION_STORE_MAX_ENTRIES = 128;
 
 function getFileMtimeMs(filePath: string): number | undefined {
   try {
@@ -51,17 +50,6 @@ function getSessionStoreTtl(): number {
   return DEFAULT_SESSION_STORE_TTL_MS;
 }
 
-function getSessionStoreMaxEntries(): number {
-  const envValue = process.env.ELIZA_SESSION_CACHE_MAX_ENTRIES;
-  if (envValue) {
-    const parsed = Number.parseInt(envValue, 10);
-    if (!Number.isNaN(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-  return DEFAULT_SESSION_STORE_MAX_ENTRIES;
-}
-
 function isCacheEnabled(): boolean {
   return getSessionStoreTtl() > 0;
 }
@@ -76,29 +64,6 @@ function invalidateCache(storePath: string): void {
   SESSION_STORE_CACHE.delete(storePath);
 }
 
-function pruneSessionStoreCache(now = Date.now()): void {
-  if (!isCacheEnabled()) {
-    SESSION_STORE_CACHE.clear();
-    return;
-  }
-
-  const ttl = getSessionStoreTtl();
-  for (const [storePath, entry] of SESSION_STORE_CACHE) {
-    if (now - entry.loadedAt > ttl) {
-      SESSION_STORE_CACHE.delete(storePath);
-    }
-  }
-
-  const maxEntries = getSessionStoreMaxEntries();
-  while (SESSION_STORE_CACHE.size > maxEntries) {
-    const oldestStorePath = SESSION_STORE_CACHE.keys().next().value;
-    if (oldestStorePath === undefined) {
-      break;
-    }
-    SESSION_STORE_CACHE.delete(oldestStorePath);
-  }
-}
-
 /**
  * Clear all session store caches (for testing).
  */
@@ -106,16 +71,13 @@ export function clearSessionStoreCacheForTest(): void {
   SESSION_STORE_CACHE.clear();
 }
 
-export function getSessionStoreCacheSizeForTest(): number {
-  pruneSessionStoreCache();
-  return SESSION_STORE_CACHE.size;
-}
-
 // ============================================================================
 // Store Validation
 // ============================================================================
 
-function isSessionStoreRecord(value: unknown): value is SessionStore {
+function isSessionStoreRecord(
+  value: unknown,
+): value is SessionStore {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
@@ -159,8 +121,7 @@ function normalizeSessionEntryDelivery(entry: SessionEntry): SessionEntry {
   const sameDelivery =
     entry.deliveryContext?.channel === normalized.deliveryContext?.channel &&
     entry.deliveryContext?.to === normalized.deliveryContext?.to &&
-    entry.deliveryContext?.accountId ===
-      normalized.deliveryContext?.accountId &&
+    entry.deliveryContext?.accountId === normalized.deliveryContext?.accountId &&
     entry.deliveryContext?.threadId === normalized.deliveryContext?.threadId;
 
   const sameLast =
@@ -217,7 +178,6 @@ export function loadSessionStore(
 ): SessionStore {
   // Check cache first
   if (!opts.skipCache && isCacheEnabled()) {
-    pruneSessionStoreCache();
     const cached = SESSION_STORE_CACHE.get(storePath);
     if (cached && isCacheValid(cached)) {
       const currentMtimeMs = getFileMtimeMs(storePath);
@@ -270,7 +230,6 @@ export function loadSessionStore(
       storePath,
       mtimeMs,
     });
-    pruneSessionStoreCache();
   }
 
   return structuredClone(store);
@@ -612,7 +571,9 @@ export function listSessionKeys(storePath: string): string[] {
  * @param storePath - Path to the store file
  * @returns Array of [key, entry] tuples
  */
-export function listSessions(storePath: string): Array<[string, SessionEntry]> {
+export function listSessions(
+  storePath: string,
+): Array<[string, SessionEntry]> {
   const store = loadSessionStore(storePath);
   return Object.entries(store).filter(
     (entry): entry is [string, SessionEntry] => entry[1] != null,

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from elizaos.types import Plugin
 
-from .actions.reset_session import reset_session_action
 from .evaluators import long_term_extraction_evaluator, summarization_evaluator
 from .memory_service import MemoryService
 from .providers import context_summary_provider, long_term_memory_provider
@@ -22,7 +21,7 @@ def create_advanced_memory_plugin() -> Plugin:
         init=init_plugin,
         config={},
         services=[MemoryService],
-        actions=[reset_session_action],
+        actions=[],
         providers=[long_term_memory_provider, context_summary_provider],
         evaluators=[summarization_evaluator, long_term_extraction_evaluator],
     )

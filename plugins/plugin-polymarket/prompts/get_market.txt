@@ -1,0 +1,28 @@
+extract market identification parameters from the user's message.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, identify:
+- marketId: The specific market condition ID (if mentioned)
+- query: Search terms or keywords to find markets
+- tokenId: Specific token ID (if mentioned)
+
+Respond with a JSON object containing only the extracted values.
+The JSON should have this structure:
+{
+    "marketId"?: string,
+    "query"?: string,
+    "tokenId"?: string
+}
+
+If no valid market identifier is found, you MUST respond with the following JSON structure:
+{
+    "error": "Market identifier not found. Please specify a market ID, search terms, or token ID."
+}
+
+
+
+

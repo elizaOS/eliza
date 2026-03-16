@@ -1,0 +1,58 @@
+You are managing an active trading position. Analyze whether to exit, partially close, or hold based on current conditions.
+
+# Position Details
+{{positionDetails}}
+
+# Current Market Data
+{{currentMarketData}}
+
+# Original Entry Reasoning
+{{entryReasoning}}
+
+# Exit Parameters
+- Stop Loss: {{stopLossPrice}}
+- Take Profit: {{takeProfitPrice}}
+- Time in Position: {{timeInPosition}}
+- Unrealized P&L: {{unrealizedPnL}} ({{unrealizedPnLPercent}}%)
+
+# Market Conditions Since Entry
+{{marketChanges}}
+
+Evaluate the position and provide an exit decision:
+
+```json
+{
+  "decision": "HOLD" | "PARTIAL_EXIT" | "FULL_EXIT",
+  "exitPercentage": "percentage of position to exit (0-100)",
+  "urgency": "LOW" | "MEDIUM" | "HIGH" | "IMMEDIATE",
+  "reasoning": "detailed explanation",
+  "marketAnalysis": {
+    "trendDirection": "BULLISH" | "BEARISH" | "NEUTRAL",
+    "momentumStrength": "STRONG" | "MODERATE" | "WEAK",
+    "volumeSignal": "ACCUMULATION" | "DISTRIBUTION" | "NEUTRAL"
+  },
+  "riskUpdate": {
+    "currentRiskLevel": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+    "newConcerns": ["any new risk factors"],
+    "originalThesisIntact": true | false
+  },
+  "revisedTargets": {
+    "newStopLoss": "updated stop loss if any",
+    "newTakeProfit": "updated take profit if any",
+    "trailingStopSuggestion": "if applicable"
+  }
+}
+```
+
+Exit triggers to consider:
+1. Price hit stop loss or take profit
+2. Original thesis invalidated
+3. Significant negative news or events
+4. Better opportunity cost elsewhere
+5. Risk/reward ratio deteriorated
+6. Liquidity concerns emerged
+7. Time-based exit (position held too long)
+
+Be decisive - don't recommend holding losing positions hoping for recovery unless thesis is truly intact.
+
+Respond ONLY with the JSON object.

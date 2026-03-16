@@ -1,4 +1,5 @@
 node_modules
+bun.lock
 /out
 
 .next/
@@ -13,6 +14,8 @@ node_modules
 .idea
 .zed
 .DS_Store
+.art
+art_venv
 
 # Xcode (user data)
 xcuserdata/
@@ -30,6 +33,12 @@ dist/
 
 logs/
 tokencache/
+
+# Character configurations
+characters/**/secrets.json
+characters/**/*.env
+characters/**/*.key
+characters/**/private/
 
 cache/*
 models/*
@@ -57,7 +66,6 @@ packages/docs/api/*
 
 **/.docusaurus/**
 **/docs/build/**
-**/storybook-static/**
 
 lerna-debug.log
 
@@ -147,7 +155,6 @@ playwright-report/
 # Temporary files
 *.tmp
 *.temp
-*.bak
 temp/
 tmp/
 
@@ -181,6 +188,7 @@ tasks/
 **/.taskmaster/
 **/.windsurfrules/
 .roomodes
+bun.lock
 /.kiro
 # TypeScript incremental compilation cache
 *.tsbuildinfo
@@ -207,33 +215,33 @@ tsconfig.tsbuildinfo
 
 test-data/
 standalone.ts
+/.claude
 
 # Continuous Claude cache (local only)
 .claude/cache/
 
-# Local workspace artifacts
-.cursor/
-trained_models/
-
-# Generated local outputs
-packages/typescript/test_output.txt
-packages/rust/check_log*.txt
-packages/rust/src/**/*.bak
-
 # Proto-generated files (regenerated from schemas/)
-**/generated/**
-# But keep generated files needed for packages to work
-!packages/python/elizaos/types/generated/
-!packages/python/elizaos/types/generated/**
-!packages/rust/src/generated/
-!packages/rust/src/generated/**
+packages/typescript/src/types/generated/
+packages/python/elizaos/types/generated/
+packages/rust/src/types/generated/
 
 # Vitest config files (if not needed in repo)
 vitest.config.ts
 tsconfig.test.json
 
+# Migration status docs (temporary)
+MIGRATION_*.md
+TYPE_AND_LINT_STATUS.md
+
 # Test output files
 test-output.txt
+
+# Vitest type compatibility shims
+packages/typescript/src/types/vitest-*.d.ts
+
+# Migration scripts (temporary)
+scripts/migrate-tests-to-vitest.ts
+scripts/migrate-all-tests.sh
 
 # Plugin-specific ignores
 # Test environment files (anywhere in repo)
@@ -246,10 +254,76 @@ plugins/**/rust/Cargo.lock
 # Python poetry lock files (if not needed)
 **/poetry.lock
 
+# Build-generated examples copy (source is /examples/)
+packages/elizaos/examples/
+
 .next/
 :memory:
 :memory:*
 **:memory:**
+
+# Local benchmark run outputs (generated)
+# Note: benchmark baselines under benchmarks/** may still be tracked intentionally.
+/benchmark_results/**
+
+# Keep a small set of curated benchmark outputs
+!/benchmark_results/bfcl/bfcl_best_results.json
+!/benchmark_results/mint/MINT-BENCHMARK-REPORT.md
+!/benchmark_results/mint/mint-benchmark-results.json
+
+# Benchmarks/** local run outputs (generated)
+/benchmarks/**/benchmark_results*/
+/benchmarks/**/test_output/
+
+# Benchmarks/** trajectory exports (generated)
+/benchmarks/**/trajectories/
+/benchmarks/**/trajectories/**
+/benchmarks/**/trajectories.art.jsonl
+/benchmarks/**/trajectories.grpo.groups.json
+/benchmarks/**/*.art.jsonl
+/benchmarks/**/*.grpo.groups.json
+
+# AgentBench: generated local run folders (do not commit)
+/benchmarks/agentbench/benchmark_results/
+/benchmarks/agentbench/canonical_*/
+/benchmarks/agentbench/final_benchmark_results/
+/benchmarks/agentbench/full_eliza_*/
+/benchmarks/agentbench/eliza_run_db*/
+/benchmarks/agentbench/full_eliza_db*/
+/benchmarks/agentbench/smoke_*/
+/benchmarks/agentbench/traj_*/
+/benchmarks/agentbench/verified_*/
+/benchmarks/agentbench/ws_test*/
+/benchmarks/agentbench/lateral_test*/
+/benchmarks/agentbench/post_delete_smoke/
+
+# AgentBench: ad-hoc run outputs (generated, do not commit)
+/benchmarks/agentbench/post_b_*/
+/benchmarks/agentbench/post_b_*/**
+/benchmarks/agentbench/real_db/
+/benchmarks/agentbench/real_db/**
+
+# Context-bench: ad-hoc run outputs (generated, do not commit)
+/benchmarks/context-bench/post_b_*/
+/benchmarks/context-bench/post_b_*/**
+/benchmarks/context-bench/real_eliza_agent/
+/benchmarks/context-bench/real_eliza_agent/**
+/benchmarks/context-bench/traj_ctx_smoke/
+/benchmarks/context-bench/traj_ctx_smoke/**
+
+# Local workspaces / sandboxes
+/swe-bench-workspace/
+/3DAvatarChatbot/
+
+# Vendor / external example code (do not commit)
+/dnd5e/
+/rlm/
+/rlm-minimal/
+/the-org/
+/rs-sdk/
+/openclaw-classic/
+/examples/runescape2004/
+/plugins/plugin-social-alpha/
 
 # Database files
 *.db
@@ -267,3 +341,24 @@ skills/.cache/
 # Local vendored experiments (do not commit)
 /plugins/plugin-local-ai/rust/vendor/llama_cpp_rs/
 /vendor/llama_cpp_rs/
+
+# Ad-hoc benchmark output folders (generated during local runs)
+/benchmarks/tau-bench/benchmark_results/
+/benchmarks/vending-bench/benchmark_results/
+
+# Context-bench: ignore additional quick-run output folders
+/benchmarks/context-bench/python/benchmark_results_eliza_agent_quick*/
+
+# Terminal-bench: ignore newly generated timestamped runs under terminal-bench/
+/benchmarks/terminal-bench/python/benchmark_results/terminal-bench/sessions-*/
+/benchmarks/terminal-bench/python/benchmark_results/terminal-bench/terminal-bench-*.json
+/benchmarks/terminal-bench/python/benchmark_results/terminal-bench/terminal-bench-*.md
+
+# AgentBench: local smoke-run artifacts
+/benchmarks/agentbench/python/traj_smoke/
+
+# Terminal-bench: local test output artifacts
+/benchmarks/terminal-bench/python/test_output/terminal-bench-*.json
+/benchmarks/terminal-bench/python/test_output/terminal-bench-*.md
+# prr state file (auto-generated)
+.pr-resolver-state.json

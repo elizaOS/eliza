@@ -1,0 +1,133 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-plugin-polymarket"
+version = "2.0.0"
+description = "Polymarket prediction markets plugin for elizaOS - Python implementation"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "elizaOS Contributors" }
+]
+keywords = ["ai", "agents", "polymarket", "prediction-markets", "web3", "elizaos"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP",
+    "Typing :: Typed",
+]
+dependencies = [
+    "web3>=7.0.0",
+    "pydantic>=2.10.0",
+    "httpx>=0.28.0",
+    "eth-account>=0.14.0b1",
+    "eth-typing>=5.0.0",
+    "websockets>=12.0",
+    "py-clob-client>=0.17.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "pytest-xprocess>=1.0.0",
+    "mypy>=1.14.0",
+    "ruff>=0.8.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaos/eliza"
+Documentation = "https://elizaos.ai/docs"
+Repository = "https://github.com/elizaos/eliza"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_plugin_polymarket"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/elizaos_plugin_polymarket",
+    "/tests",
+    "/README.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v -p no:anchorpy -m \"not integration\""
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["integration: live network tests requiring external credentials"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[[tool.mypy.overrides]]
+module = [
+    "py_clob_client",
+    "py_clob_client.client",
+    "py_clob_client.clob_types",
+    "py_clob_client.constants",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "elizaos_plugin_polymarket.actions.*",
+    "elizaos_plugin_polymarket",
+    "elizaos_plugin_polymarket.types",
+]
+# Relaxed checking for API interaction code
+disable_error_code = ["arg-type", "attr-defined", "no-any-return", "type-arg", "operator", "untyped-decorator"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "S",   # flake8-bandit (security)
+]
+ignore = [
+    "E501",  # line too long
+    "S101",  # use of assert
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["elizaos_plugin_polymarket"]
+
+
+
+
+
+
+

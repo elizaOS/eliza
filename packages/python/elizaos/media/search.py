@@ -109,36 +109,36 @@ def merge_hybrid_results(
     by_id: dict[str, dict] = {}
 
     # Add vector search results
-    for vector_result in vector:
-        by_id[vector_result.id] = {
-            "id": vector_result.id,
-            "path": vector_result.path,
-            "start_line": vector_result.start_line,
-            "end_line": vector_result.end_line,
-            "source": vector_result.source,
-            "snippet": vector_result.snippet,
-            "vector_score": vector_result.vector_score,
+    for r in vector:
+        by_id[r.id] = {
+            "id": r.id,
+            "path": r.path,
+            "start_line": r.start_line,
+            "end_line": r.end_line,
+            "source": r.source,
+            "snippet": r.snippet,
+            "vector_score": r.vector_score,
             "text_score": 0.0,
         }
 
     # Merge keyword search results
-    for keyword_result in keyword:
-        if keyword_result.id in by_id:
-            existing = by_id[keyword_result.id]
-            existing["text_score"] = keyword_result.text_score
+    for r in keyword:
+        if r.id in by_id:
+            existing = by_id[r.id]
+            existing["text_score"] = r.text_score
             # Prefer keyword snippet if available (may have highlights)
-            if keyword_result.snippet:
-                existing["snippet"] = keyword_result.snippet
+            if r.snippet:
+                existing["snippet"] = r.snippet
         else:
-            by_id[keyword_result.id] = {
-                "id": keyword_result.id,
-                "path": keyword_result.path,
-                "start_line": keyword_result.start_line,
-                "end_line": keyword_result.end_line,
-                "source": keyword_result.source,
-                "snippet": keyword_result.snippet,
+            by_id[r.id] = {
+                "id": r.id,
+                "path": r.path,
+                "start_line": r.start_line,
+                "end_line": r.end_line,
+                "source": r.source,
+                "snippet": r.snippet,
                 "vector_score": 0.0,
-                "text_score": keyword_result.text_score,
+                "text_score": r.text_score,
             }
 
     # Calculate weighted scores and create results

@@ -5,20 +5,20 @@
  * and canonical key mappings.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
+  SECRET_KEY_ALIASES,
   CANONICAL_SECRET_KEYS,
-  CHANNEL_OPTIONAL_SECRETS,
+  MODEL_PROVIDER_SECRETS,
   CHANNEL_SECRETS,
+  CHANNEL_OPTIONAL_SECRETS,
+  resolveSecretKeyAlias,
+  isSecretKeyAlias,
   getAliasesForKey,
-  getAllSecretsForChannel,
+  isCanonicalSecretKey,
   getProviderForApiKey,
   getRequiredSecretsForChannel,
-  isCanonicalSecretKey,
-  isSecretKeyAlias,
-  MODEL_PROVIDER_SECRETS,
-  resolveSecretKeyAlias,
-  SECRET_KEY_ALIASES,
+  getAllSecretsForChannel,
 } from "../constants/secrets";
 
 // ============================================================================
@@ -29,18 +29,12 @@ describe("Secret Key Aliases", () => {
   describe("resolveSecretKeyAlias()", () => {
     it("should resolve Discord aliases to canonical key", () => {
       expect(resolveSecretKeyAlias("DISCORD_TOKEN")).toBe("DISCORD_BOT_TOKEN");
-      expect(resolveSecretKeyAlias("DISCORD_API_TOKEN")).toBe(
-        "DISCORD_BOT_TOKEN",
-      );
+      expect(resolveSecretKeyAlias("DISCORD_API_TOKEN")).toBe("DISCORD_BOT_TOKEN");
     });
 
     it("should resolve Telegram aliases to canonical key", () => {
-      expect(resolveSecretKeyAlias("TELEGRAM_TOKEN")).toBe(
-        "TELEGRAM_BOT_TOKEN",
-      );
-      expect(resolveSecretKeyAlias("TELEGRAM_API_TOKEN")).toBe(
-        "TELEGRAM_BOT_TOKEN",
-      );
+      expect(resolveSecretKeyAlias("TELEGRAM_TOKEN")).toBe("TELEGRAM_BOT_TOKEN");
+      expect(resolveSecretKeyAlias("TELEGRAM_API_TOKEN")).toBe("TELEGRAM_BOT_TOKEN");
       expect(resolveSecretKeyAlias("TG_BOT_TOKEN")).toBe("TELEGRAM_BOT_TOKEN");
     });
 
@@ -56,9 +50,7 @@ describe("Secret Key Aliases", () => {
 
     it("should resolve Anthropic aliases to canonical key", () => {
       expect(resolveSecretKeyAlias("ANTHROPIC_KEY")).toBe("ANTHROPIC_API_KEY");
-      expect(resolveSecretKeyAlias("ANTHROPIC_TOKEN")).toBe(
-        "ANTHROPIC_API_KEY",
-      );
+      expect(resolveSecretKeyAlias("ANTHROPIC_TOKEN")).toBe("ANTHROPIC_API_KEY");
       expect(resolveSecretKeyAlias("CLAUDE_API_KEY")).toBe("ANTHROPIC_API_KEY");
     });
 
@@ -66,9 +58,7 @@ describe("Secret Key Aliases", () => {
       expect(resolveSecretKeyAlias("GOOGLE_KEY")).toBe("GOOGLE_API_KEY");
       expect(resolveSecretKeyAlias("GOOGLE_AI_KEY")).toBe("GOOGLE_API_KEY");
       expect(resolveSecretKeyAlias("GEMINI_API_KEY")).toBe("GOOGLE_API_KEY");
-      expect(resolveSecretKeyAlias("GOOGLE_GENERATIVE_AI_API_KEY")).toBe(
-        "GOOGLE_API_KEY",
-      );
+      expect(resolveSecretKeyAlias("GOOGLE_GENERATIVE_AI_API_KEY")).toBe("GOOGLE_API_KEY");
     });
 
     it("should resolve Groq aliases to canonical key", () => {
@@ -82,12 +72,8 @@ describe("Secret Key Aliases", () => {
     });
 
     it("should resolve OpenRouter aliases to canonical key", () => {
-      expect(resolveSecretKeyAlias("OPENROUTER_KEY")).toBe(
-        "OPENROUTER_API_KEY",
-      );
-      expect(resolveSecretKeyAlias("OPENROUTER_TOKEN")).toBe(
-        "OPENROUTER_API_KEY",
-      );
+      expect(resolveSecretKeyAlias("OPENROUTER_KEY")).toBe("OPENROUTER_API_KEY");
+      expect(resolveSecretKeyAlias("OPENROUTER_TOKEN")).toBe("OPENROUTER_API_KEY");
     });
 
     it("should resolve Mistral aliases to canonical key", () => {
@@ -106,31 +92,19 @@ describe("Secret Key Aliases", () => {
     });
 
     it("should resolve ElevenLabs aliases to canonical key", () => {
-      expect(resolveSecretKeyAlias("ELEVENLABS_KEY")).toBe(
-        "ELEVENLABS_API_KEY",
-      );
-      expect(resolveSecretKeyAlias("ELEVEN_LABS_API_KEY")).toBe(
-        "ELEVENLABS_API_KEY",
-      );
+      expect(resolveSecretKeyAlias("ELEVENLABS_KEY")).toBe("ELEVENLABS_API_KEY");
+      expect(resolveSecretKeyAlias("ELEVEN_LABS_API_KEY")).toBe("ELEVENLABS_API_KEY");
     });
 
     it("should resolve WhatsApp aliases to canonical key", () => {
-      expect(resolveSecretKeyAlias("WHATSAPP_BOT_TOKEN")).toBe(
-        "WHATSAPP_TOKEN",
-      );
-      expect(resolveSecretKeyAlias("WHATSAPP_API_TOKEN")).toBe(
-        "WHATSAPP_TOKEN",
-      );
+      expect(resolveSecretKeyAlias("WHATSAPP_BOT_TOKEN")).toBe("WHATSAPP_TOKEN");
+      expect(resolveSecretKeyAlias("WHATSAPP_API_TOKEN")).toBe("WHATSAPP_TOKEN");
     });
 
     it("should return original key for canonical keys", () => {
       expect(resolveSecretKeyAlias("OPENAI_API_KEY")).toBe("OPENAI_API_KEY");
-      expect(resolveSecretKeyAlias("DISCORD_BOT_TOKEN")).toBe(
-        "DISCORD_BOT_TOKEN",
-      );
-      expect(resolveSecretKeyAlias("ANTHROPIC_API_KEY")).toBe(
-        "ANTHROPIC_API_KEY",
-      );
+      expect(resolveSecretKeyAlias("DISCORD_BOT_TOKEN")).toBe("DISCORD_BOT_TOKEN");
+      expect(resolveSecretKeyAlias("ANTHROPIC_API_KEY")).toBe("ANTHROPIC_API_KEY");
     });
 
     it("should return original key for unknown keys", () => {
@@ -251,9 +225,7 @@ describe("Secret Key Aliases", () => {
       // All canonical values should be valid canonical keys
       for (const canonical of canonicals) {
         expect(
-          CANONICAL_SECRET_KEYS.includes(
-            canonical as (typeof CANONICAL_SECRET_KEYS)[number],
-          ),
+          CANONICAL_SECRET_KEYS.includes(canonical as (typeof CANONICAL_SECRET_KEYS)[number])
         ).toBe(true);
       }
     });
@@ -308,9 +280,7 @@ describe("Secret Key Aliases", () => {
     });
 
     it("should define optional secrets for channels", () => {
-      expect(CHANNEL_OPTIONAL_SECRETS.discord).toContain(
-        "DISCORD_APPLICATION_ID",
-      );
+      expect(CHANNEL_OPTIONAL_SECRETS.discord).toContain("DISCORD_APPLICATION_ID");
       expect(CHANNEL_OPTIONAL_SECRETS.twitter).toContain("TWITTER_EMAIL");
       expect(CHANNEL_OPTIONAL_SECRETS.twitter).toContain("TWITTER_2FA_SECRET");
     });
@@ -318,15 +288,9 @@ describe("Secret Key Aliases", () => {
 
   describe("getRequiredSecretsForChannel()", () => {
     it("should return required secrets for known channels", () => {
-      expect(getRequiredSecretsForChannel("discord")).toContain(
-        "DISCORD_BOT_TOKEN",
-      );
-      expect(getRequiredSecretsForChannel("telegram")).toContain(
-        "TELEGRAM_BOT_TOKEN",
-      );
-      expect(getRequiredSecretsForChannel("slack")).toContain(
-        "SLACK_BOT_TOKEN",
-      );
+      expect(getRequiredSecretsForChannel("discord")).toContain("DISCORD_BOT_TOKEN");
+      expect(getRequiredSecretsForChannel("telegram")).toContain("TELEGRAM_BOT_TOKEN");
+      expect(getRequiredSecretsForChannel("slack")).toContain("SLACK_BOT_TOKEN");
     });
 
     it("should return empty array for unknown channels", () => {

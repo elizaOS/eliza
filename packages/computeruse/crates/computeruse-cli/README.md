@@ -17,16 +17,16 @@ The ComputerUse CLI is a powerful command-line tool for managing the ComputerUse
 **Windows (Recommended - npm wrapper):**
 ```bash
 # Run directly without installation
-npx @elizaos/cli --help
-bunx @elizaos/cli --help
+npx @mediar-ai/cli --help
+bunx @mediar-ai/cli --help
 
 # Or install globally
-npm install -g @elizaos/cli
+npm install -g @mediar-ai/cli
 ```
 
 **macOS / Linux (Compile from Source):**
 
-⚠️ The npm package `@elizaos/cli` only includes Windows binaries. Other platforms must compile from source.
+⚠️ The npm package `@mediar-ai/cli` only includes Windows binaries. Other platforms must compile from source.
 
 ```bash
 # From the workspace root

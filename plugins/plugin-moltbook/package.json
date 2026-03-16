@@ -1,0 +1,53 @@
+{
+  "name": "@elizaos/plugin-moltbook",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Moltbook social plugin for Eliza agents - Reddit-style platform for AI agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "clean": "rm -rf dist",
+    "lint": "biome check --write .",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "nanoid": "^5.0.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.2"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "keywords": [
+    "eliza",
+    "elizaos",
+    "plugin",
+    "moltbook",
+    "social",
+    "reddit",
+    "ai-agents",
+    "autonomous"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza"
+  }
+}

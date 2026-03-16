@@ -1,4 +1,3 @@
-import { getPromptReferenceDate } from "../../deterministic";
 import type {
   IAgentRuntime,
   Media,
@@ -26,19 +25,10 @@ import { addHeader } from "../../utils.ts";
  */
 export const attachmentsProvider: Provider = {
   name: "ATTACHMENTS",
-  position: 90,
   description:
     "List of attachments sent during the current conversation, including names, descriptions, and summaries",
   dynamic: true,
-  get: async (runtime: IAgentRuntime, message: Memory, state) => {
-    // Use deterministic reference date for prompt caching compatibility
-    const referenceNow = getPromptReferenceDate({
-      runtime,
-      message,
-      state,
-      surface: "provider:attachments",
-    }).getTime();
-
+  get: async (runtime: IAgentRuntime, message: Memory) => {
     // Start with any attachments in the current message
     const currentMessageAttachments = message.content.attachments || [];
     let allAttachments = [...currentMessageAttachments];
@@ -61,7 +51,7 @@ export const attachmentsProvider: Provider = {
 
       if (lastMessageWithAttachment) {
         const lastMessageTime =
-          lastMessageWithAttachment?.createdAt ?? referenceNow;
+          lastMessageWithAttachment?.createdAt ?? Date.now();
         const oneHourBeforeLastMessage = lastMessageTime - 60 * 60 * 1000; // 1 hour before last message
 
         // Create a map of current message attachments by ID for quick lookup
@@ -73,7 +63,7 @@ export const attachmentsProvider: Provider = {
         const recentAttachments = recentMessagesData
           .reverse()
           .flatMap((msg) => {
-            const msgTime = msg.createdAt ?? referenceNow;
+            const msgTime = msg.createdAt ?? Date.now();
             const isWithinTime = msgTime >= oneHourBeforeLastMessage;
             const attachments = msg.content.attachments || [];
 

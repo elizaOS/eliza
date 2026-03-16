@@ -1,0 +1,36 @@
+{
+  "version": "1.0.0",
+  "actions": [
+    {
+      "name": "CLEAR_SHELL_HISTORY",
+      "description": "Clears the recorded history of shell commands for the current conversation",
+      "similes": [
+        "RESET_SHELL",
+        "CLEAR_TERMINAL",
+        "CLEAR_HISTORY",
+        "RESET_HISTORY"
+      ],
+      "parameters": []
+    },
+    {
+      "name": "EXECUTE_COMMAND",
+      "description": "Execute shell commands including brew install, npm install, apt-get, system commands, file operations, directory navigation, and scripts.",
+      "similes": [
+        "RUN_COMMAND",
+        "SHELL_COMMAND",
+        "TERMINAL_COMMAND",
+        "EXEC",
+        "RUN",
+        "EXECUTE",
+        "CREATE_FILE",
+        "WRITE_FILE",
+        "MAKE_FILE",
+        "INSTALL",
+        "BREW_INSTALL",
+        "NPM_INSTALL",
+        "APT_INSTALL"
+      ],
+      "parameters": []
+    }
+  ]
+}

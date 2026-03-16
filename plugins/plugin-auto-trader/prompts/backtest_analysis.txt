@@ -1,0 +1,116 @@
+You are analyzing backtest results for a trading strategy.
+
+# Strategy Configuration
+{{strategyConfig}}
+
+# Backtest Parameters
+- Start Date: {{startDate}}
+- End Date: {{endDate}}
+- Initial Capital: {{initialCapital}}
+- Trading Pair(s): {{tradingPairs}}
+
+# Trade History
+{{tradeHistory}}
+
+# Performance Metrics
+{{performanceMetrics}}
+
+# Equity Curve Data
+{{equityCurve}}
+
+Provide a comprehensive backtest analysis:
+
+```json
+{
+  "overallAssessment": {
+    "grade": "A" | "B" | "C" | "D" | "F",
+    "viable": true | false,
+    "confidence": 0-100,
+    "summary": "brief overall assessment"
+  },
+  
+  "performanceAnalysis": {
+    "totalReturn": "percentage return",
+    "annualizedReturn": "annualized percentage",
+    "maxDrawdown": "maximum drawdown percentage",
+    "maxDrawdownDuration": "longest drawdown period",
+    "sharpeRatio": "risk-adjusted return",
+    "sortinoRatio": "downside risk-adjusted return",
+    "calmarRatio": "return / max drawdown",
+    "profitFactor": "gross profit / gross loss"
+  },
+  
+  "tradeAnalysis": {
+    "totalTrades": "number of trades",
+    "winRate": "percentage of winners",
+    "averageWin": "average winning trade",
+    "averageLoss": "average losing trade",
+    "largestWin": "biggest winner",
+    "largestLoss": "biggest loser",
+    "averageHoldTime": "average position duration",
+    "tradesPerDay": "average trades per day"
+  },
+  
+  "riskAnalysis": {
+    "volatility": "strategy volatility",
+    "downsideVolatility": "negative return volatility",
+    "valueAtRisk": "95% VaR estimate",
+    "expectedShortfall": "average loss beyond VaR",
+    "consecutiveLosses": "max consecutive losing trades",
+    "recoveryTime": "average time to recover from drawdowns"
+  },
+  
+  "marketConditionPerformance": {
+    "bullMarket": {
+      "return": "performance in uptrends",
+      "winRate": "win rate in uptrends"
+    },
+    "bearMarket": {
+      "return": "performance in downtrends",
+      "winRate": "win rate in downtrends"
+    },
+    "sideways": {
+      "return": "performance in ranging markets",
+      "winRate": "win rate in ranging markets"
+    }
+  },
+  
+  "strengthsAndWeaknesses": {
+    "strengths": ["what the strategy does well"],
+    "weaknesses": ["areas of concern"],
+    "biases": ["any biases detected in results"]
+  },
+  
+  "optimizationSuggestions": [
+    {
+      "parameter": "which parameter to adjust",
+      "currentValue": "current setting",
+      "suggestedValue": "recommended setting",
+      "expectedImprovement": "what improvement expected",
+      "tradeoff": "any tradeoffs to consider"
+    }
+  ],
+  
+  "forwardTestingRecommendations": {
+    "recommended": true | false,
+    "suggestedCapital": "recommended starting capital",
+    "suggestedDuration": "how long to paper trade",
+    "keyMetricsToMonitor": ["what to watch during forward test"],
+    "stopCriteria": "when to stop if underperforming"
+  },
+  
+  "caveats": [
+    "important limitations of this backtest",
+    "factors not accounted for",
+    "why live performance may differ"
+  ],
+  
+  "conclusion": "detailed conclusion with specific recommendations"
+}
+```
+
+Be skeptical of overfitted results - look for signs of curve fitting.
+Account for transaction costs, slippage, and realistic execution.
+Compare against buy-and-hold benchmark.
+
+Respond ONLY with the JSON object.

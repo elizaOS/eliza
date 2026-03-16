@@ -62,32 +62,28 @@ const factsProvider: Provider = {
     lastMessageLines.reverse();
     const last5Messages = lastMessageLines.join("\n");
 
-    const embeddings = recentMessages
-      .map((m) => m.embedding)
-      .filter((e): e is number[] => !!e && e.length > 0);
+    const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+      text: last5Messages,
+    });
 
-    const primaryEmbedding = embeddings.length > 0 ? embeddings[0] : null;
-
-    const [relevantFacts, recentFactsData] = primaryEmbedding
-      ? await Promise.all([
-          runtime.searchMemories({
-            tableName: "facts",
-            embedding: primaryEmbedding,
-            roomId: message.roomId,
-            worldId: message.worldId,
-            count: 6,
-            query: message.content.text,
-          }),
-          runtime.searchMemories({
-            embedding: primaryEmbedding,
-            query: message.content.text,
-            tableName: "facts",
-            roomId: message.roomId,
-            entityId: message.entityId,
-            count: 6,
-          }),
-        ])
-      : [[], []];
+    const [relevantFacts, recentFactsData] = await Promise.all([
+      runtime.searchMemories({
+        tableName: "facts",
+        embedding,
+        roomId: message.roomId,
+        worldId: message.worldId,
+        count: 6,
+        query: message.content.text,
+      }),
+      runtime.searchMemories({
+        embedding,
+        query: message.content.text,
+        tableName: "facts",
+        roomId: message.roomId,
+        entityId: message.entityId,
+        count: 6,
+      }),
+    ]);
 
     // join the two and deduplicate
     const seenIds = new Set<string>();

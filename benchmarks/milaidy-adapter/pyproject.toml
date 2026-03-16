@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=70.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "milaidy-adapter"
+version = "0.1.0"
+description = "Benchmark adapter for the TypeScript milaidy agent"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["milaidy_adapter*"]

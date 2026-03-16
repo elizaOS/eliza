@@ -9,7 +9,7 @@
  *   npx tsx run-strip-styles.ts https://reddit.com  # Navigate to URL first
  */
 
-import { Desktop } from "@elizaos/computeruse";
+import { Desktop } from "@mediar-ai/computeruse";
 import * as path from "path";
 import { fileURLToPath } from "url";
 

@@ -1,0 +1,41 @@
+extract parameters for retrieving active orders for a specific market.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, identify:
+- marketId: The market condition ID (required)
+- assetId: The specific asset ID (token ID) within that market (optional, but often implied or can be derived if not explicitly stated by user for a binary market - you can initially assume the first token if not clear or ask user to clarify if multiple tokens exist for the market and it's ambiguous)
+
+Look for:
+- "market ID", "market", "condition ID" followed by an identifier for marketId.
+- "token ID", "asset ID", "token" followed by an identifier for assetId.
+- Phrases like "active orders for market X and token Y", "open orders on market Z"
+
+Examples:
+- "Show active orders for market 0xMarket123 and token 0xTokenABC"
+  { "marketId": "0xMarket123", "assetId": "0xTokenABC" }
+- "Get open orders for market condition_def456 asset_xyz789"
+  { "marketId": "condition_def456", "assetId": "asset_xyz789" }
+- "What are the active orders on market someMarketID?"
+  { "marketId": "someMarketID" } // assetId might be omitted if it can be inferred or if the user should be prompted for it
+
+Respond with a JSON object containing only the extracted values.
+The JSON should have this structure:
+{
+    "marketId"?: string,
+    "assetId"?: string
+}
+
+If the marketId is not found, you MUST respond with the following JSON structure:
+{
+    "error": "Market ID not found. Please specify a market ID."
+}
+
+If marketId is found but assetId is ambiguous or missing and seems required, you can omit assetId or include an additional field like "clarification_needed": "assetId". For now, prioritize extracting what is available.
+
+
+
+

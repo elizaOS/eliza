@@ -172,7 +172,7 @@ export const sendMessageAction: Action = {
     if (!state) {
       logger.error(
         {
-          src: "plugin:core:action:send_message",
+          src: "plugin:bootstrap:action:send_message",
           agentId: runtime.agentId,
         },
         "State is required for sendMessage action",
@@ -194,7 +194,7 @@ export const sendMessageAction: Action = {
     if (!callback) {
       logger.error(
         {
-          src: "plugin:core:action:send_message",
+          src: "plugin:bootstrap:action:send_message",
           agentId: runtime.agentId,
         },
         "Callback is required for sendMessage action",
@@ -216,7 +216,7 @@ export const sendMessageAction: Action = {
     if (!responses) {
       logger.error(
         {
-          src: "plugin:core:action:send_message",
+          src: "plugin:bootstrap:action:send_message",
           agentId: runtime.agentId,
         },
         "Responses are required for sendMessage action",
@@ -643,3 +643,5 @@ export const sendMessageAction: Action = {
     ],
   ] as ActionExample[][],
 };
+
+export default sendMessageAction;

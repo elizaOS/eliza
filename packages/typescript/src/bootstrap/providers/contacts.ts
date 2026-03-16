@@ -9,7 +9,6 @@ import type {
 
 export const contactsProvider: Provider = {
   name: "CONTACTS",
-  position: 22,
   description: "Provides contact information from the rolodex",
   get: async (
     runtime: IAgentRuntime,

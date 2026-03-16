@@ -1,0 +1,9 @@
+# Source files (keep dist)
+typescript/__tests__/
+python/tests/
+rust/tests/
+
+# Development files
+.github/
+.turbo/
+*.log

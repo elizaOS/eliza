@@ -5,29 +5,29 @@
  * and manifest registry queries.
  */
 
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as os from "node:os";
 
 import {
-  deriveIdHint,
   discoverPlugins,
-  getPackageManifestMetadata,
+  resolveUserPath,
   isExtensionFile,
   readPackageManifest,
-  resolveUserPath,
+  getPackageManifestMetadata,
+  deriveIdHint,
 } from "../plugins/discovery";
 
 import {
-  clearManifestRegistryCache,
-  getPluginManifestById,
-  getPluginsByChannel,
-  getPluginsByKind,
-  getPluginsByProvider,
   loadPluginManifest,
   loadPluginManifestRegistry,
+  getPluginManifestById,
+  getPluginsByKind,
+  getPluginsByChannel,
+  getPluginsByProvider,
   normalizePluginsConfig,
+  clearManifestRegistryCache,
   PLUGIN_MANIFEST_FILENAME,
 } from "../plugins/manifest-registry";
 
@@ -63,7 +63,7 @@ function createPluginDir(
     hasIndexJs?: boolean;
     extensions?: string[];
     elizaosMetadata?: Record<string, unknown>;
-  } = {},
+  } = {}
 ): string {
   const pluginDir = path.join(parentDir, pluginName);
   fs.mkdirSync(pluginDir, { recursive: true });
@@ -81,14 +81,14 @@ function createPluginDir(
 
     if (options.extensions) {
       packageJson.elizaos = {
-        ...((packageJson.elizaos as Record<string, unknown>) || {}),
+        ...(packageJson.elizaos as Record<string, unknown> || {}),
         extensions: options.extensions,
       };
     }
 
     fs.writeFileSync(
       path.join(pluginDir, "package.json"),
-      JSON.stringify(packageJson, null, 2),
+      JSON.stringify(packageJson, null, 2)
     );
   }
 
@@ -99,19 +99,16 @@ function createPluginDir(
     };
     fs.writeFileSync(
       path.join(pluginDir, PLUGIN_MANIFEST_FILENAME),
-      JSON.stringify(manifest, null, 2),
+      JSON.stringify(manifest, null, 2)
     );
   }
 
   if (options.hasIndexTs) {
-    fs.writeFileSync(
-      path.join(pluginDir, "index.ts"),
-      "export const plugin = {};",
-    );
+    fs.writeFileSync(path.join(pluginDir, "index.ts"), 'export const plugin = {};');
   }
 
   if (options.hasIndexJs) {
-    fs.writeFileSync(path.join(pluginDir, "index.js"), "module.exports = {};");
+    fs.writeFileSync(path.join(pluginDir, "index.js"), 'module.exports = {};');
   }
 
   return pluginDir;
@@ -145,9 +142,7 @@ describe("Plugin Discovery", () => {
       const result = discoverPlugins({ workspaceDir });
 
       expect(result.candidates.length).toBeGreaterThan(0);
-      expect(result.candidates.some((c) => c.idHint === "test-plugin")).toBe(
-        true,
-      );
+      expect(result.candidates.some((c) => c.idHint === "test-plugin")).toBe(true);
     });
 
     it("should discover plugins in extensions directory", () => {
@@ -162,7 +157,7 @@ describe("Plugin Discovery", () => {
       const result = discoverPlugins({ workspaceDir });
 
       const found = result.candidates.some(
-        (c) => c.idHint === "my-extension" && c.origin === "workspace",
+        (c) => c.idHint === "my-extension" && c.origin === "workspace"
       );
       expect(found).toBe(true);
     });
@@ -180,14 +175,14 @@ describe("Plugin Discovery", () => {
       });
 
       const found = result.candidates.some(
-        (c) => c.idHint === "custom-plugin" && c.origin === "config",
+        (c) => c.idHint === "custom-plugin" && c.origin === "config"
       );
       expect(found).toBe(true);
     });
 
     it("should handle direct file paths in extraPaths", () => {
       const filePath = path.join(testDir, "direct-plugin.ts");
-      fs.writeFileSync(filePath, "export const plugin = {};");
+      fs.writeFileSync(filePath, 'export const plugin = {};');
 
       const result = discoverPlugins({
         extraPaths: [filePath],
@@ -220,9 +215,7 @@ describe("Plugin Discovery", () => {
         extraPaths: [path.join(pluginsDir, "dedup-test")],
       });
 
-      const matches = result.candidates.filter(
-        (c) => c.idHint === "dedup-test",
-      );
+      const matches = result.candidates.filter((c) => c.idHint === "dedup-test");
       expect(matches.length).toBe(1);
     });
   });
@@ -281,10 +274,7 @@ describe("Plugin Discovery", () => {
     it("should return null for invalid JSON", () => {
       const invalidDir = path.join(testDir, "invalid");
       fs.mkdirSync(invalidDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(invalidDir, "package.json"),
-        "{ invalid json }",
-      );
+      fs.writeFileSync(path.join(invalidDir, "package.json"), "{ invalid json }");
 
       const manifest = readPackageManifest(invalidDir);
 
@@ -327,7 +317,7 @@ describe("Plugin Discovery", () => {
           filePath: "index.ts",
           packageName: "@elizaos/plugin-discord",
           hasMultipleExtensions: false,
-        }),
+        })
       ).toBe("discord");
     });
 
@@ -337,7 +327,7 @@ describe("Plugin Discovery", () => {
           filePath: "index.ts",
           packageName: "plugin-telegram",
           hasMultipleExtensions: false,
-        }),
+        })
       ).toBe("telegram");
     });
 
@@ -347,7 +337,7 @@ describe("Plugin Discovery", () => {
           filePath: "index.ts",
           packageName: "discord-plugin",
           hasMultipleExtensions: false,
-        }),
+        })
       ).toBe("discord");
     });
 
@@ -357,7 +347,7 @@ describe("Plugin Discovery", () => {
           filePath: "src/commands.ts",
           packageName: "@elizaos/plugin-discord",
           hasMultipleExtensions: true,
-        }),
+        })
       ).toBe("discord/commands");
     });
 
@@ -366,7 +356,7 @@ describe("Plugin Discovery", () => {
         deriveIdHint({
           filePath: "/path/to/my-plugin.ts",
           hasMultipleExtensions: false,
-        }),
+        })
       ).toBe("my-plugin");
     });
   });
@@ -434,7 +424,7 @@ describe("Plugin Manifest Registry", () => {
       fs.mkdirSync(invalidDir, { recursive: true });
       fs.writeFileSync(
         path.join(invalidDir, PLUGIN_MANIFEST_FILENAME),
-        "{ invalid }",
+        "{ invalid }"
       );
 
       const result = loadPluginManifest(invalidDir);
@@ -448,7 +438,7 @@ describe("Plugin Manifest Registry", () => {
       fs.mkdirSync(noIdDir, { recursive: true });
       fs.writeFileSync(
         path.join(noIdDir, PLUGIN_MANIFEST_FILENAME),
-        JSON.stringify({ configSchema: {} }),
+        JSON.stringify({ configSchema: {} })
       );
 
       const result = loadPluginManifest(noIdDir);
@@ -462,7 +452,7 @@ describe("Plugin Manifest Registry", () => {
       fs.mkdirSync(noSchemaDir, { recursive: true });
       fs.writeFileSync(
         path.join(noSchemaDir, PLUGIN_MANIFEST_FILENAME),
-        JSON.stringify({ id: "test" }),
+        JSON.stringify({ id: "test" })
       );
 
       const result = loadPluginManifest(noSchemaDir);
@@ -487,7 +477,7 @@ describe("Plugin Manifest Registry", () => {
           providers: ["openai"],
           requiredSecrets: ["DISCORD_BOT_TOKEN"],
           optionalSecrets: ["DISCORD_APPLICATION_ID"],
-        }),
+        })
       );
 
       const result = loadPluginManifest(fullDir);
@@ -620,18 +610,9 @@ describe("Plugin Manifest Registry", () => {
     it("should get plugins by channel", () => {
       const registry = {
         plugins: [
-          {
-            id: "discord-plugin",
-            channels: ["discord"],
-          } as unknown as PluginManifest,
-          {
-            id: "telegram-plugin",
-            channels: ["telegram"],
-          } as unknown as PluginManifest,
-          {
-            id: "multi-plugin",
-            channels: ["discord", "slack"],
-          } as unknown as PluginManifest,
+          { id: "discord-plugin", channels: ["discord"] } as unknown as PluginManifest,
+          { id: "telegram-plugin", channels: ["telegram"] } as unknown as PluginManifest,
+          { id: "multi-plugin", channels: ["discord", "slack"] } as unknown as PluginManifest,
         ],
         diagnostics: [],
       };
@@ -646,18 +627,9 @@ describe("Plugin Manifest Registry", () => {
     it("should get plugins by provider", () => {
       const registry = {
         plugins: [
-          {
-            id: "openai-plugin",
-            providers: ["openai"],
-          } as unknown as PluginManifest,
-          {
-            id: "anthropic-plugin",
-            providers: ["anthropic"],
-          } as unknown as PluginManifest,
-          {
-            id: "multi-plugin",
-            providers: ["openai", "groq"],
-          } as unknown as PluginManifest,
+          { id: "openai-plugin", providers: ["openai"] } as unknown as PluginManifest,
+          { id: "anthropic-plugin", providers: ["anthropic"] } as unknown as PluginManifest,
+          { id: "multi-plugin", providers: ["openai", "groq"] } as unknown as PluginManifest,
         ],
         diagnostics: [],
       };

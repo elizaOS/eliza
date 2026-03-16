@@ -6,7 +6,7 @@
  * plugin-secrets-manager, but we test the core config utilities here.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 
 // ============================================================================
 // Types and Utilities (mirrored from plugin-secrets-manager for testing)
@@ -45,10 +45,10 @@ interface OnboardingConfig {
  * Get unconfigured required settings from an onboarding config.
  */
 function getUnconfiguredRequired(
-  config: OnboardingConfig,
+  config: OnboardingConfig
 ): Array<[string, OnboardingSetting]> {
   return Object.entries(config.settings).filter(
-    ([_, setting]) => setting.required && setting.value == null,
+    ([_, setting]) => setting.required && (setting.value == null)
   );
 }
 
@@ -56,10 +56,10 @@ function getUnconfiguredRequired(
  * Get unconfigured optional settings from an onboarding config.
  */
 function getUnconfiguredOptional(
-  config: OnboardingConfig,
+  config: OnboardingConfig
 ): Array<[string, OnboardingSetting]> {
   return Object.entries(config.settings).filter(
-    ([_, setting]) => !setting.required && setting.value == null,
+    ([_, setting]) => !setting.required && setting.value === null
   );
 }
 
@@ -74,7 +74,7 @@ function isOnboardingComplete(config: OnboardingConfig): boolean {
  * Get the next setting to configure (respects dependencies).
  */
 function getNextSetting(
-  config: OnboardingConfig,
+  config: OnboardingConfig
 ): [string, OnboardingSetting] | null {
   const unconfigured = getUnconfiguredRequired(config);
 
@@ -122,7 +122,7 @@ function serializeOnboardingState(config: OnboardingConfig): string {
           value: setting.value,
           type: setting.type,
         },
-      ]),
+      ])
     ),
     mode: config.mode,
   };
@@ -134,7 +134,7 @@ function serializeOnboardingState(config: OnboardingConfig): string {
  */
 function deserializeOnboardingState(
   json: string,
-  baseConfig: OnboardingConfig,
+  baseConfig: OnboardingConfig
 ): OnboardingConfig {
   const parsed = JSON.parse(json) as {
     settings: Record<string, { value?: string | null }>;
@@ -164,7 +164,7 @@ function deserializeOnboardingState(
 // ============================================================================
 
 function createTestConfig(
-  settings: Record<string, Partial<OnboardingSetting>>,
+  settings: Record<string, Partial<OnboardingSetting>>
 ): OnboardingConfig {
   const fullSettings: Record<string, OnboardingSetting> = {};
 
@@ -313,7 +313,8 @@ describe("Onboarding State Machine", () => {
           required: true,
           value: null,
           dependsOn: ["MODEL_PROVIDER"],
-          visibleIf: (settings) => settings.MODEL_PROVIDER?.value === "openai",
+          visibleIf: (settings) =>
+            settings.MODEL_PROVIDER?.value === "openai",
         },
         ANTHROPIC_KEY: {
           required: true,
@@ -447,7 +448,7 @@ describe("Onboarding State Machine", () => {
       expect(openaiPattern.test("invalid-key")).toBe(false);
 
       expect(
-        anthropicPattern.test("sk-ant-api03-abcdefghij1234567890123456"),
+        anthropicPattern.test("sk-ant-api03-abcdefghij1234567890123456")
       ).toBe(true);
       expect(anthropicPattern.test("sk-ant-short")).toBe(false);
 

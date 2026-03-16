@@ -33,13 +33,11 @@ Classify the request across these dimensions:
 6. DEPENDENCIES:
 - List dependencies between tasks or external factors
 
-Respond using XML in this exact format:
-<response>
-  <complexity>simple|medium|complex|enterprise</complexity>
-  <planning>direct_action|sequential_planning|strategic_planning</planning>
-  <capabilities>comma-separated list</capabilities>
-  <stakeholders>comma-separated list</stakeholders>
-  <constraints>comma-separated list</constraints>
-  <dependencies>comma-separated list</dependencies>
-  <confidence>0.0-1.0</confidence>
-</response>`;
+Respond in this exact format:
+COMPLEXITY: [simple|medium|complex|enterprise]
+PLANNING: [direct_action|sequential_planning|strategic_planning]  
+CAPABILITIES: [comma-separated list]
+STAKEHOLDERS: [comma-separated list]
+CONSTRAINTS: [comma-separated list]
+DEPENDENCIES: [comma-separated list]
+CONFIDENCE: [0.0-1.0]`;

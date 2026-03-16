@@ -17,7 +17,7 @@
       "@elizaos/plugin-sql": ["./plugins/plugin-sql/typescript/index.ts"]
     }
   },
-  "include": ["src/**/*.ts", "../schemas/**/*.ts"],
+  "include": ["src/**/*.ts", "../@schemas/**/*.ts"],
   "exclude": [
     "src/**/*.test.ts",
     "src/**/*.spec.ts",

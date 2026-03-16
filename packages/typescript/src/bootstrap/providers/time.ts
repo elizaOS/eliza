@@ -1,4 +1,3 @@
-import { getPromptReferenceDate } from "../../deterministic";
 import type {
   IAgentRuntime,
   Memory,
@@ -21,14 +20,8 @@ import type {
  */
 export const timeProvider: Provider = {
   name: "TIME",
-  position: 70,
-  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    const currentDate = getPromptReferenceDate({
-      runtime,
-      message,
-      state,
-      surface: "provider:time",
-    });
+  get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
+    const currentDate = new Date();
 
     // Get UTC time since bots will be communicating with users around the global
     const options = {

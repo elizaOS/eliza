@@ -1,0 +1,31 @@
+# Development files
+typescript/tsconfig.json
+typescript/tsconfig.build.json
+typescript/build.ts
+typescript/__tests__/
+
+# Rust source (only include dist)
+rust/src/
+rust/tests/
+rust/Cargo.toml
+rust/Cargo.lock
+rust/target/
+
+# Python source (only include dist)
+python/tests/
+python/elizaos_plugin_eliza_classic/
+
+# Other
+.turbo/
+.gitignore
+.npmignore
+
+
+
+
+
+
+
+
+
+

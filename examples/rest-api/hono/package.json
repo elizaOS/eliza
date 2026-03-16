@@ -1,0 +1,24 @@
+{
+  "name": "@elizaos/example-rest-api-hono",
+  "version": "2.0.0-alpha",
+  "private": true,
+  "type": "module",
+  "description": "elizaOS REST API example using Hono",
+  "scripts": {
+    "start": "bun run server.ts",
+    "dev": "bun --watch run server.ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-eliza-classic": "workspace:*",
+    "hono": "^4.6.0",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^5.9.3"
+  }
+}

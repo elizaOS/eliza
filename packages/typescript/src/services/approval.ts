@@ -156,17 +156,17 @@ export class ApprovalService extends Service {
    * Stop the ApprovalService
    */
   async stop(): Promise<void> {
-    // Resolve all pending approvals as cancelled, then clear
+    // Resolve all pending approvals with cancelled before clearing
     for (const pending of this.pendingApprovals.values()) {
       if (pending.timeoutHandle) {
         clearTimeout(pending.timeoutHandle);
       }
       pending.resolve({
-        taskId: pending.taskId,
-        selectedOption: "",
+        selectedOption: "cancel",
         success: false,
         timedOut: false,
         cancelled: true,
+        taskId: pending.taskId,
         resolvedAt: Date.now(),
       });
     }

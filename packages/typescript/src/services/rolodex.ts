@@ -18,14 +18,14 @@ interface ExtendedRelationship extends Relationship {
   nextFollowUpAt?: string;
 }
 
-interface ContactCategory {
+export interface ContactCategory {
   id: string;
   name: string;
   description?: string;
   color?: string;
 }
 
-interface ContactPreferences {
+export interface ContactPreferences {
   preferredCommunicationChannel?: string;
   timezone?: string;
   language?: string;
@@ -72,7 +72,7 @@ function metadataToContactInfo(data: Metadata): ContactInfo {
   };
 }
 
-interface RelationshipAnalytics {
+export interface RelationshipAnalytics {
   strength: number;
   interactionCount: number;
   lastInteractionAt?: string;
@@ -81,7 +81,7 @@ interface RelationshipAnalytics {
   topicsDiscussed: string[];
 }
 
-interface FollowUpSchedule {
+export interface FollowUpSchedule {
   entityId: UUID;
   scheduledAt: string;
   reason: string;
@@ -91,14 +91,14 @@ interface FollowUpSchedule {
 }
 
 // Entity lifecycle event types
-enum EntityLifecycleEvent {
+export enum EntityLifecycleEvent {
   CREATED = "entity:created",
   UPDATED = "entity:updated",
   MERGED = "entity:merged",
   RESOLVED = "entity:resolved",
 }
 
-interface EntityEventData {
+export interface EntityEventData {
   entity: Entity;
   previousEntity?: Entity;
   mergedEntities?: Entity[];
@@ -109,7 +109,7 @@ interface EntityEventData {
 /**
  * Calculate relationship strength based on interaction patterns
  */
-function calculateRelationshipStrength({
+export function calculateRelationshipStrength({
   interactionCount,
   lastInteractionAt,
   messageQuality = 5,

@@ -1,0 +1,64 @@
+extract order parameters from the user's message and conversation context.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+**CRITICAL - Confirmation Detection:**
+If the user's latest message is a confirmation like "confirm", "yes", "execute", "do it", "go ahead", "proceed", "yes execute", look back in the conversation for the order details that were previously proposed/discussed.
+
+Based on the conversation, identify:
+- tokenId: The token ID for the market position - can be explicit ID or extracted from market name
+- marketName: The market name to search for (e.g., "Miami Heat", "Bitcoin", "Trump")
+- outcome: Which outcome to bet on - "yes" or "no" (look for phrases like "bet on No", "put money on Yes")
+- side: "buy" or "sell" (default to "buy" for bets)
+- price: The price per share (0-1.0) - optional if using market price
+- dollarAmount: The dollar amount to spend (e.g., "$1", "$5", "$100") - extract the number
+- shares: If user explicitly says "X shares" instead of dollar amount
+- orderType: "limit", "market", "GTC", "FOK", or "FAK" (optional, defaults to "GTC")
+
+**Token ID Extraction Rules:**
+1. Look for explicit token IDs (long numeric strings)
+2. Look for market names like "Miami Heat Playoffs", "Bitcoin $100k", "Trump"
+3. If only market name is provided, set tokenId to "MARKET_NAME_LOOKUP" and include the market name
+4. Look for condition IDs starting with "0x"
+
+**Outcome Extraction Rules:**
+1. "bet on No", "put $X on No" → outcome: "no"
+2. "bet on Yes", "put $X on Yes" → outcome: "yes"
+3. Default to "yes" if not specified
+
+**Amount Extraction Rules:**
+1. "$1", "$5", "1 dollar", "5 bucks" → dollarAmount: 1, 5, etc.
+2. "10 shares", "50 shares" → shares: 10, 50
+3. If just a number like "put 5 on", assume dollar amount → dollarAmount: 5
+4. Default: Most users specify dollar amounts, not share quantities
+
+**Examples:**
+- "Put $1 on No for Miami Heat Playoffs" → tokenId: "MARKET_NAME_LOOKUP", marketName: "Miami Heat Playoffs", outcome: "no", side: "buy", dollarAmount: 1
+- "Bet $5 on Yes for Bitcoin" → tokenId: "MARKET_NAME_LOOKUP", marketName: "Bitcoin", outcome: "yes", side: "buy", dollarAmount: 5
+- "Buy 100 shares of token 0x123 at 0.50" → tokenId: "0x123", side: "buy", shares: 100, price: 0.5
+- "confirm" (after previous message proposed $1 on No) → Extract from context the dollarAmount and other details
+
+Respond with a JSON object containing the extracted values:
+{
+    "tokenId"?: string,
+    "marketName"?: string,
+    "outcome"?: "yes" | "no",
+    "side": "buy" | "sell",
+    "price"?: number,
+    "dollarAmount"?: number,
+    "shares"?: number,
+    "orderType"?: "limit" | "market" | "GTC" | "FOK" | "FAK"
+}
+
+If this is a confirmation but you cannot find order details in the conversation, respond with:
+{
+    "error": "Confirmation received but no order details found in conversation. Please specify what you want to trade."
+}
+
+If the user is NOT trying to place an order (just asking questions, browsing, etc.), respond with:
+{
+    "error": "No order intent detected. User appears to be asking a question or browsing."
+}

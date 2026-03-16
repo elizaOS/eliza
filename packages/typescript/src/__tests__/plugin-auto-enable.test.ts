@@ -5,10 +5,10 @@
  * Tests allow/deny filtering.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
-  CHANNEL_SECRETS,
   MODEL_PROVIDER_SECRETS,
+  CHANNEL_SECRETS,
   resolveSecretKeyAlias,
 } from "../constants/secrets";
 
@@ -49,7 +49,7 @@ interface PluginAutoEnableResult {
  */
 function shouldAutoEnableBySecrets(
   manifest: PluginManifest,
-  secrets: Record<string, string>,
+  secrets: Record<string, string>
 ): { shouldEnable: boolean; missing: string[] } {
   const required = manifest.requiredSecrets || [];
   const missing: string[] = [];
@@ -76,7 +76,7 @@ function shouldAutoEnableBySecrets(
 function isPluginAllowed(
   pluginId: string,
   allow?: string[],
-  deny?: string[],
+  deny?: string[]
 ): { allowed: boolean; reason: string } {
   // Deny list takes precedence
   if (deny && deny.length > 0) {
@@ -102,7 +102,7 @@ function isPluginAllowed(
  */
 function autoEnablePlugins(
   manifests: PluginManifest[],
-  config: PluginAutoEnableConfig,
+  config: PluginAutoEnableConfig
 ): PluginAutoEnableResult[] {
   const results: PluginAutoEnableResult[] = [];
 
@@ -147,7 +147,7 @@ function autoEnablePlugins(
  */
 function getProviderPlugins(
   provider: string,
-  secrets: Record<string, string>,
+  secrets: Record<string, string>
 ): string[] {
   const secretKey = MODEL_PROVIDER_SECRETS[provider];
   if (!secretKey) return [];
@@ -163,7 +163,7 @@ function getProviderPlugins(
  */
 function getChannelPlugins(
   channel: string,
-  secrets: Record<string, string>,
+  secrets: Record<string, string>
 ): string[] {
   const required = CHANNEL_SECRETS[channel];
   if (!required) return [];
@@ -280,12 +280,8 @@ describe("Plugin Auto-Enable", () => {
         allow: ["plugin-a"],
       });
 
-      expect(results.find((r) => r.pluginId === "plugin-a")?.enabled).toBe(
-        true,
-      );
-      expect(results.find((r) => r.pluginId === "plugin-b")?.enabled).toBe(
-        false,
-      );
+      expect(results.find((r) => r.pluginId === "plugin-a")?.enabled).toBe(true);
+      expect(results.find((r) => r.pluginId === "plugin-b")?.enabled).toBe(false);
     });
 
     it("should handle wildcard allow", () => {
@@ -326,11 +322,7 @@ describe("Plugin Auto-Enable", () => {
     });
 
     it("should deny plugins not in allow list", () => {
-      const result = isPluginAllowed(
-        "plugin-test",
-        ["plugin-other"],
-        undefined,
-      );
+      const result = isPluginAllowed("plugin-test", ["plugin-other"], undefined);
 
       expect(result.allowed).toBe(false);
       expect(result.reason).toBe("Not in allow list");
@@ -347,7 +339,7 @@ describe("Plugin Auto-Enable", () => {
       const result = isPluginAllowed(
         "plugin-test",
         ["plugin-test"],
-        ["plugin-test"],
+        ["plugin-test"]
       );
 
       expect(result.allowed).toBe(false);
@@ -383,15 +375,9 @@ describe("Plugin Auto-Enable", () => {
         },
       });
 
-      expect(results.find((r) => r.pluginId === "plugin-openai")?.enabled).toBe(
-        true,
-      );
-      expect(
-        results.find((r) => r.pluginId === "plugin-discord")?.enabled,
-      ).toBe(false);
-      expect(results.find((r) => r.pluginId === "plugin-core")?.enabled).toBe(
-        true,
-      );
+      expect(results.find((r) => r.pluginId === "plugin-openai")?.enabled).toBe(true);
+      expect(results.find((r) => r.pluginId === "plugin-discord")?.enabled).toBe(false);
+      expect(results.find((r) => r.pluginId === "plugin-core")?.enabled).toBe(true);
     });
 
     it("should respect deny list over secrets", () => {

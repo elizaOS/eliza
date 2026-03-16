@@ -1,0 +1,33 @@
+confirm if the user wants to check their Polymarket account access status, such as U.S. certification requirements.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, determine if the user is asking about:
+- Account status
+- Certification requirements (e.g., "Am I certified?", "Do I need U.S. certification?")
+- API key details or access levels
+
+If the intent is to get account access status, respond with an empty JSON object:
+{}
+
+If the intent is unclear or unrelated to account access status, respond with:
+{
+    "error": "The query does not seem to be about account access status. Please clarify if you want to check your Polymarket account certification or API key status."
+}
+
+Examples:
+- "Check my account access"
+  {}
+- "Am I certified to trade on Polymarket?"
+  {}
+- "What's my API key status?"
+  {}
+- "Show me the weather tomorrow"
+  { "error": "The query does not seem to be about account access status..." }
+
+
+
+

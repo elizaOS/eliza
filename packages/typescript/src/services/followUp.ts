@@ -10,7 +10,7 @@ import type { Task, TaskWorker } from "../types/task";
 import { stringToUuid } from "../utils";
 import type { ContactInfo, RolodexService } from "./rolodex.ts";
 
-interface FollowUpTask {
+export interface FollowUpTask {
   entityId: UUID;
   reason: string;
   message?: string;
@@ -18,7 +18,7 @@ interface FollowUpTask {
   metadata?: Record<string, JsonValue | object>;
 }
 
-interface FollowUpSuggestion {
+export interface FollowUpSuggestion {
   entityId: UUID;
   entityName: string;
   reason: string;

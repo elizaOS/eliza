@@ -1,0 +1,24 @@
+{
+  "name": "@elizaos/example-chat-rust-wasm",
+  "version": "2.0.0-alpha",
+  "description": "Interactive CLI chat using Rust WASM runtime",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run chat.ts",
+    "dev": "bun --watch run chat.ts",
+    "build:wasm": "cd ../../../packages/rust && ./build-wasm.sh"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -125,7 +125,7 @@ ComputerUse supports **Windows**, **macOS**, and **Linux**.
 | Python (`computeruse.py`)     |    🟡    |   🟡   |   🟡   | `pip install computeruse`                             |
 | TypeScript (`@elizaos/computeruse`) |    ✅    |   ✅   |   ✅   | `npm i @elizaos/computeruse`                        |
 | Workflow (`@mediar-ai/workflow`) |    ✅    |   🟡   |   🟡   | `npm i @mediar-ai/workflow`                          |
-| CLI (`@elizaos/cli`)       |    ✅    |   ✅   |   ✅   | `npm i @elizaos/cli`                               |
+| CLI (`@mediar-ai/cli`)       |    ✅    |   ✅   |   ✅   | `npm i @mediar-ai/cli`                               |
 | KV (`@mediar-ai/kv`)         |    ✅    |   ✅   |   ✅   | `npm i @mediar-ai/kv`                                |
 | MCP (`computeruse-mcp-agent`) |    ✅    |   ✅   |   ✅   | `npx -y computeruse-mcp-agent --add-to-app [app]`     |
 | Rust (`computeruse-rs`)       |    ✅    |   ✅   |   ✅   | `cargo add computeruse-rs`                            |

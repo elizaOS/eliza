@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-plugin-localdb"
+version = "2.0.0"
+description = "Simple JSON-based local database storage for elizaOS"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "elizaOS Contributors" }
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-xprocess>=0.23.0,<1.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_plugin_localdb"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:anchorpy"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,28 @@
+# Task: Check Goal Similarity
+
+## New Goal
+Name: {{newGoalName}}
+Description: {{newGoalDescription}}
+
+## Existing Goals
+{{existingGoals}}
+
+## Instructions
+Determine if the new goal is similar to any existing goals.
+Consider goals similar if they have the same objective, even if worded differently.
+
+Return an XML object:
+<response>
+  <hasSimilar>true or false</hasSimilar>
+  <similarGoalName>Name of the similar goal if found</similarGoalName>
+  <confidence>0-100 indicating confidence in similarity</confidence>
+</response>
+
+## Example
+New Goal: "Get better at public speaking"
+Existing Goal: "Improve presentation skills"
+These are similar (confidence: 85)
+
+
+
+

@@ -32,6 +32,11 @@ export interface MessageProcessingOptions
   onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
   /** Signal to abort message processing */
   abortSignal?: AbortSignal;
+  /**
+   * When true, do not discard responses when a newer message is being processed (same as BOOTSTRAP_KEEP_RESP).
+   * @default resolved from runtime.getSetting("BOOTSTRAP_KEEP_RESP") if not set
+   */
+  keepExistingResponses?: boolean;
 }
 
 /**
@@ -64,8 +69,7 @@ export type MessageProcessingMode =
   | ProtoMessageProcessingMode
   | "simple"
   | "actions"
-  | "none"
-  | "blocked";
+  | "none";
 
 /**
  * Core interface for message handling service.

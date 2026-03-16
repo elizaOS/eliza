@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test } from "bun:test";
 import { Box } from "../src/components/box.js";
 import { Text } from "../src/components/text.js";
 import { visibleWidth } from "../src/utils.js";

@@ -38,7 +38,7 @@ export const replyAction = {
     if (previousResults.length > 0) {
       logger.debug(
         {
-          src: "plugin:core:action:reply",
+          src: "plugin:bootstrap:action:reply",
           agentId: runtime.agentId,
           count: previousResults.length,
         },

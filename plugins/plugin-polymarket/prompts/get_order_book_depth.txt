@@ -1,0 +1,39 @@
+extract token identification parameters for retrieving order book depth data.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, identify:
+- tokenIds: Array of token IDs for which to retrieve order book depth (required)
+- query: Search terms or keywords that might contain token IDs
+
+Look for:
+- Numbers following words like "token", "tokens", "for token", "token ID", etc.
+- Standalone numbers that could be token IDs
+- Multiple token IDs separated by commas, spaces, or other delimiters
+- Any numeric identifiers in the message
+
+Examples:
+- "Show order book depth for token 123456" → tokenIds: ["123456"]
+- "Get depth for tokens 123456, 789012" → tokenIds: ["123456", "789012"]
+- "ORDER_BOOK_DEPTH 345678 999999" → tokenIds: ["345678", "999999"]
+- "tokens 111111 222222 333333" → tokenIds: ["111111", "222222", "333333"]
+
+Respond with a JSON object containing only the extracted values.
+The JSON should have this structure:
+{
+    "tokenIds"?: string[],
+    "query"?: string
+}
+
+If you find token IDs, always include them in the tokenIds array.
+If no valid token identifiers are found, you MUST respond with the following JSON structure:
+{
+    "error": "Token identifiers not found. Please specify one or more token IDs for order book depth."
+}
+
+
+
+

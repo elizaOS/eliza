@@ -3,7 +3,7 @@
     "computeruse-mcp-agent": "index.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@modelcontextprotocol/sdk": "^1.17.3",
     "node-fetch": "^2.7.0"
   },
   "description": "Windows Model Context Protocol (MCP) agent for ComputerUse",

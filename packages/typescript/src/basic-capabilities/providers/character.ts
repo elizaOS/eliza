@@ -1,9 +1,3 @@
-import {
-  buildDeterministicSeed,
-  deterministicHex,
-  deterministicPickOne,
-  deterministicSample,
-} from "../../deterministic";
 import { requireProviderSpec } from "../../generated/spec-helpers.ts";
 import type {
   IAgentRuntime,
@@ -17,18 +11,16 @@ import { addHeader } from "../../utils.ts";
 // Get text content from centralized specs
 const spec = requireProviderSpec("CHARACTER");
 
-/**
- * Replace `{{name}}` placeholders in a string with the character's name.
- * Supports character template files where the name is injected at render time
- * so changing the character's name doesn't require rewriting every field.
- */
-function resolveNamePlaceholder(text: string, name: string): string {
-  return text.replaceAll("{{name}}", name);
-}
-
-/** Resolve `{{name}}` in every element of a string array. */
-function resolveNameInArray(items: string[], name: string): string[] {
-  return items.map((s) => resolveNamePlaceholder(s, name));
+function randomSample<T>(items: T[], count: number): T[] {
+  const copy = items.slice();
+  const max = Math.min(count, copy.length);
+  for (let i = 0; i < max; i += 1) {
+    const j = i + Math.floor(Math.random() * (copy.length - i));
+    const tmp = copy[i];
+    copy[i] = copy[j];
+    copy[j] = tmp;
+  }
+  return copy.slice(0, max);
 }
 
 /**
@@ -52,43 +44,22 @@ export const characterProvider: Provider = {
     const character = runtime.character;
 
     // Character name
-    const agentName = character.name ?? "";
+    const agentName = character.name;
 
-    const room = state.data.room ?? (await runtime.getRoom(message.roomId));
-    const deterministicSeed = buildDeterministicSeed([
-      "provider:character",
-      runtime.agentId,
-      character.id ?? "character:none",
-      room?.worldId ?? "world:none",
-      room?.id ?? message.roomId ?? "room:none",
-    ]);
-
-    // Handle bio (random selection from array, resolve {{name}} placeholders)
-    const rawBioArray = character.bio ?? [];
-    const bioArray = resolveNameInArray(rawBioArray, agentName);
+    // Handle bio (random selection from array)
+    const bioArray = character.bio ?? [];
     const bioText =
-      bioArray.length > 0
-        ? deterministicSample(bioArray, 10, deterministicSeed, "bio").join(" ")
-        : "";
+      bioArray.length > 0 ? randomSample(bioArray, 10).join(" ") : "";
 
-    const bio = addHeader(`# About ${agentName}`, bioText);
+    const bio = addHeader(`# About ${character.name}`, bioText);
 
-    // System prompt (resolve {{name}} placeholders)
-    const system = resolveNamePlaceholder(character.system ?? "", agentName);
-
-    // Resolve {{name}} in topics
-    const resolvedTopics = character.topics
-      ? resolveNameInArray(character.topics, agentName)
-      : [];
+    // System prompt
+    const system = character.system ?? "";
 
     // Select random topic if available
     const topicString =
-      resolvedTopics.length > 0
-        ? deterministicPickOne(
-            resolvedTopics,
-            deterministicSeed,
-            "selected-topic",
-          ) || null
+      character.topics && character.topics.length > 0
+        ? character.topics[Math.floor(Math.random() * character.topics.length)]
         : null;
 
     // postCreationTemplate in core prompts.ts
@@ -98,52 +69,38 @@ export const characterProvider: Provider = {
 
     // Format topics list
     const topics =
-      resolvedTopics.length > 0
-        ? `${agentName} is also interested in ${deterministicSample(
-            resolvedTopics.filter((t: string) => t !== topicString),
+      character.topics && character.topics.length > 0
+        ? `${character.name} is also interested in ${randomSample(
+            character.topics.filter((topic: string) => topic !== topicString),
             5,
-            deterministicSeed,
-            "topic-list",
           )
-            .map((t, index, array) => {
+            .map((topic, index, array) => {
               if (index === array.length - 2) {
-                return `${t} and `;
+                return `${topic} and `;
               }
               if (index === array.length - 1) {
-                return t;
+                return topic;
               }
-              return `${t}, `;
+              return `${topic}, `;
             })
             .join("")}`
         : "";
 
-    // Resolve {{name}} in adjectives and select random one
-    const resolvedAdjectives = character.adjectives
-      ? resolveNameInArray(character.adjectives, agentName)
-      : [];
+    // Select random adjective if available
     const adjectiveString =
-      resolvedAdjectives.length > 0
-        ? deterministicPickOne(
-            resolvedAdjectives,
-            deterministicSeed,
-            "selected-adjective",
-          ) || ""
+      character.adjectives && character.adjectives.length > 0
+        ? character.adjectives[
+            Math.floor(Math.random() * character.adjectives.length)
+          ]
         : "";
 
     const adjective = adjectiveString || "";
 
-    // Format post examples (resolve {{name}} placeholders)
-    const postExamplesArray = character.postExamples
-      ? resolveNameInArray(character.postExamples, agentName)
-      : [];
+    // Format post examples
+    const postExamplesArray = character.postExamples ?? [];
     const formattedCharacterPostExamples =
       postExamplesArray.length > 0
-        ? deterministicSample(
-            postExamplesArray,
-            50,
-            deterministicSeed,
-            "post-examples",
-          )
+        ? randomSample(postExamplesArray, 50)
             .map((post) => `${post}`)
             .join("\n")
         : "";
@@ -152,48 +109,32 @@ export const characterProvider: Provider = {
       formattedCharacterPostExamples &&
       formattedCharacterPostExamples.replaceAll("\n", "").length > 0
         ? addHeader(
-            `# Example Posts for ${agentName}`,
+            `# Example Posts for ${character.name}`,
             formattedCharacterPostExamples,
           )
         : "";
 
-    // Format message examples (resolve {{name}} placeholders)
+    // Format message examples
     const messageExamplesArray = character.messageExamples ?? [];
     const formattedCharacterMessageExamples =
       messageExamplesArray.length > 0
-        ? deterministicSample(
-            messageExamplesArray,
-            5,
-            deterministicSeed,
-            "message-examples",
-          )
-            .map((group, groupIndex) => {
-              const exampleNames = Array.from(
-                { length: 5 },
-                (_unused, nameIndex) =>
-                  deterministicHex(
-                    deterministicSeed,
-                    `message-example:${groupIndex}:name:${nameIndex}`,
-                    8,
-                  ),
+        ? randomSample(messageExamplesArray, 5)
+            .map((group) => {
+              const exampleNames = Array.from({ length: 5 }, () =>
+                Math.random().toString(36).substring(2, 8),
               );
 
               return group.examples
                 .map((message) => {
                   const messageContent = message.content;
                   const actionsText = messageContent?.actions?.join(", ");
-                  const rawText = messageContent?.text ?? "";
-                  // Resolve {{name}} in example text content
-                  const text = resolveNamePlaceholder(rawText, agentName);
-                  let messageString = `${resolveNamePlaceholder(message.name ?? "", agentName)}: ${text}${
+                  const text = messageContent?.text ?? "";
+                  let messageString = `${message.name}: ${text}${
                     actionsText ? ` (actions: ${actionsText})` : ""
                   }`;
-                  exampleNames.forEach((exName, index) => {
+                  exampleNames.forEach((name, index) => {
                     const placeholder = `{{name${index + 1}}}`;
-                    messageString = messageString.replaceAll(
-                      placeholder,
-                      exName,
-                    );
+                    messageString = messageString.replaceAll(placeholder, name);
                   });
                   return messageString;
                 })
@@ -206,39 +147,45 @@ export const characterProvider: Provider = {
       formattedCharacterMessageExamples &&
       formattedCharacterMessageExamples.replaceAll("\n", "").length > 0
         ? addHeader(
-            `# Example Conversations for ${agentName}`,
+            `# Example Conversations for ${character.name}`,
             formattedCharacterMessageExamples,
           )
         : "";
+
+    const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
     const roomType = room?.type;
     const isPostFormat =
       roomType === ChannelType.FEED || roomType === ChannelType.THREAD;
 
-    // Style directions (resolve {{name}} placeholders)
+    // Style directions
     const characterStyle = character.style;
-    const characterStyleAll = characterStyle?.all
-      ? resolveNameInArray(characterStyle.all, agentName)
-      : [];
-    const characterStylePost = characterStyle?.post
-      ? resolveNameInArray(characterStyle.post, agentName)
-      : [];
+    const characterStyleAll = characterStyle?.all;
+    const characterStylePost = characterStyle?.post;
     const postDirections =
-      characterStyleAll.length > 0 || characterStylePost.length > 0
+      (characterStyleAll && characterStyleAll.length > 0) ||
+      (characterStylePost && characterStylePost.length > 0)
         ? addHeader(
-            `# Post Directions for ${agentName}`,
-            [...characterStyleAll, ...characterStylePost].join("\n"),
+            `# Post Directions for ${character.name}`,
+            (() => {
+              const all = characterStyleAll || [];
+              const post = characterStylePost || [];
+              return [...all, ...post].join("\n");
+            })(),
           )
         : "";
 
-    const characterStyleChat = characterStyle?.chat
-      ? resolveNameInArray(characterStyle.chat, agentName)
-      : [];
+    const characterStyleChat = characterStyle?.chat;
     const messageDirections =
-      characterStyleAll.length > 0 || characterStyleChat.length > 0
+      (characterStyleAll && characterStyleAll.length > 0) ||
+      (characterStyleChat && characterStyleChat.length > 0)
         ? addHeader(
-            `# Message Directions for ${agentName}`,
-            [...characterStyleAll, ...characterStyleChat].join("\n"),
+            `# Message Directions for ${character.name}`,
+            (() => {
+              const all = characterStyleAll || [];
+              const chat = characterStyleChat || [];
+              return [...all, ...chat].join("\n");
+            })(),
           )
         : "";
 
@@ -274,10 +221,10 @@ export const characterProvider: Provider = {
     };
 
     const topicSentence = topicString
-      ? `${agentName} is currently interested in ${topicString}`
+      ? `${character.name} is currently interested in ${topicString}`
       : "";
     const adjectiveSentence = adjectiveString
-      ? `${agentName} is ${adjectiveString}`
+      ? `${character.name} is ${adjectiveString}`
       : "";
     // Combine all text sections
     const text = [

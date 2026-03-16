@@ -1,0 +1,53 @@
+[package]
+name = "eliza-cloud-run"
+version = "1.0.0"
+edition = "2021"
+description = "elizaOS GCP Cloud Run worker (Rust)"
+publish = false
+
+[[bin]]
+name = "eliza-cloud-run"
+path = "src/main.rs"
+
+[dependencies]
+# elizaOS Core
+elizaos = { path = "../../../packages/rust" }
+
+# elizaOS OpenAI Plugin
+elizaos-plugin-openai = { path = "../../../plugins/plugin-openai/rust" }
+
+# Web framework
+axum = { version = "0.7", features = ["tokio"] }
+tower-http = { version = "0.6", features = ["cors"] }
+
+# Async runtime
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "signal", "sync"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# UUID generation
+uuid = { version = "1.0", features = ["v4", "v7"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Environment
+dotenvy = "0.15"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+
+

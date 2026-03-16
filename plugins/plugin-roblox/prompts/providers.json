@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "roblox-game-state",
+      "description": "Provides information about the connected Roblox game/experience",
+      "dynamic": true
+    }
+  ]
+}

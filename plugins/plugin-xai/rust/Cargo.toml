@@ -1,0 +1,67 @@
+[package]
+name = "elizaos-plugin-xai"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "elizaOS xAI Plugin - Grok models and X (formerly Twitter) API integration"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+homepage = "https://elizaos.ai"
+documentation = "https://docs.rs/elizaos-plugin-xai"
+readme = "README.md"
+keywords = ["ai", "xai", "grok", "x", "twitter", "elizaos", "llm"]
+categories = ["api-bindings", "asynchronous", "web-programming"]
+
+[lib]
+name = "elizaos_plugin_xai"
+crate-type = ["lib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full"]
+
+[dependencies]
+# elizaOS core (for creating an elizaOS Plugin definition)
+elizaos = { version = "2.0.0", path = "../../../packages/rust" }
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+
+# Async runtime
+tokio = { version = "1.42", features = ["rt", "macros"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# OAuth signature
+hmac = "0.12"
+sha1 = "0.10"
+base64 = "0.22"
+urlencoding = "2.1"
+rand = "0.8"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
+tracing = "0.1"
+
+# URL handling
+url = "2.5"
+
+[dev-dependencies]
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }
+tokio-test = "0.4"
+pretty_assertions = "1.4"
+dotenvy = "0.15"
+
+[profile.release]
+lto = true
+opt-level = "z"

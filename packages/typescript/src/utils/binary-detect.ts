@@ -337,9 +337,7 @@ export async function detectBinaries(
  * }
  * ```
  */
-export async function getMissingBinaries(
-  required: string[],
-): Promise<string[]> {
+export async function getMissingBinaries(required: string[]): Promise<string[]> {
   const result = await detectBinaries(required);
   return result.missing;
 }
@@ -400,7 +398,9 @@ export async function detectBinaryWithVersion(
         }).trim();
 
         // Try to extract version number from output
-        const versionMatch = output.match(/(\d+(?:\.\d+)+(?:-[a-zA-Z0-9.]+)?)/);
+        const versionMatch = output.match(
+          /(\d+(?:\.\d+)+(?:-[a-zA-Z0-9.]+)?)/,
+        );
 
         if (versionMatch) {
           return {

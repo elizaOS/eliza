@@ -3,4 +3,4 @@ automate the resolving of checkbox based and image based recaptcha. it uses gemi
 
 ## Prerequisite 
 - [bun](https://bun.sh/)
-- make sure you've computeruse bridge installed in chrome browser
+- make sure you've computeruse brige installed in chrome browser

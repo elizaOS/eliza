@@ -104,8 +104,6 @@ pub mod model_type {
     pub const OBJECT_LARGE: &str = "OBJECT_LARGE";
     /// Deep research model (o3-deep-research, o4-mini-deep-research)
     pub const RESEARCH: &str = "RESEARCH";
-    /// Safeguard model for content moderation
-    pub const SAFEGUARD: &str = "SAFEGUARD";
 }
 
 /// Model settings keys
@@ -392,32 +390,6 @@ pub enum ObjectOutputType {
     Array,
     /// Enum output
     Enum,
-}
-
-// ============================================================================
-// Safeguard Model Types
-// ============================================================================
-
-/// Safeguard parameters
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SafeguardParams {
-    /// Input text to classify
-    pub input: String,
-    /// Model type (must be SAFEGUARD)
-    pub model_type: String,
-}
-
-/// Safeguard result
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SafeguardResult {
-    /// Violation score (0-1)
-    pub violation: f32,
-    /// Violation category if any
-    pub category: Option<String>,
-    /// Rationale for the classification
-    pub rationale: Option<String>,
 }
 
 // ============================================================================

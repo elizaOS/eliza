@@ -217,14 +217,8 @@ impl WebhookAlertHandler {
         matches!(
             (self.min_severity, severity),
             (AlertSeverity::Critical, AlertSeverity::Critical)
-                | (
-                    AlertSeverity::Error,
-                    AlertSeverity::Critical | AlertSeverity::Error
-                )
-                | (
-                    AlertSeverity::Warning,
-                    AlertSeverity::Critical | AlertSeverity::Error | AlertSeverity::Warning
-                )
+                | (AlertSeverity::Error, AlertSeverity::Critical | AlertSeverity::Error)
+                | (AlertSeverity::Warning, AlertSeverity::Critical | AlertSeverity::Error | AlertSeverity::Warning)
                 | (AlertSeverity::Info, _)
         )
     }

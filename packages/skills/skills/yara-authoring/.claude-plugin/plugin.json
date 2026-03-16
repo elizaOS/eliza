@@ -1,0 +1,9 @@
+{
+  "name": "yara-authoring",
+  "version": "2.0.0",
+  "description": "YARA-X detection rule authoring with linting and quality analysis",
+  "author": {
+    "name": "Trail of Bits",
+    "email": "opensource@trailofbits.com"
+  }
+}

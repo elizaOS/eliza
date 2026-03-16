@@ -99,7 +99,6 @@ once_cell = "1.21.3"
 
 [build-dependencies]
 prost-build = "0.13"
-protoc-bin-vendored = "3"
 
 [dev-dependencies]
 pretty_assertions = "1.0"
@@ -113,3 +112,4 @@ wasm-bindgen-test = "0.3"
 [profile.release]
 lto = true
 opt-level = "z"
+

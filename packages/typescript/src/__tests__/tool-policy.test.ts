@@ -5,28 +5,25 @@
  * isToolAllowedByPolicy(), mergeToolPolicies(), and ToolPolicyService.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
-  type ToolPolicyContext,
-  ToolPolicyService,
-} from "../services/tool-policy.ts";
-import {
-  buildPluginToolGroups,
-  collectExplicitAllowlist,
-  expandPluginGroups,
-  expandToolGroups,
-  isToolAllowedByPolicy,
-  mergeToolPolicies,
-  normalizeToolList,
   normalizeToolName,
-  type PluginToolGroups,
+  normalizeToolList,
+  expandToolGroups,
   resolveToolProfilePolicy,
+  mergeToolPolicies,
+  isToolAllowedByPolicy,
   stripPluginOnlyAllowlist,
+  buildPluginToolGroups,
+  expandPluginGroups,
+  collectExplicitAllowlist,
   TOOL_GROUPS,
-  TOOL_NAME_ALIASES,
   TOOL_PROFILES,
+  TOOL_NAME_ALIASES,
   type ToolPolicyConfig,
+  type PluginToolGroups,
 } from "../types/tools.ts";
+import { ToolPolicyService, type ToolPolicyContext } from "../services/tool-policy.ts";
 
 // ============================================================================
 // normalizeToolName Tests
@@ -298,10 +295,7 @@ describe("mergeToolPolicies()", () => {
   it("should merge multiple policies in order", () => {
     const profile: ToolPolicyConfig = { allow: ["group:fs"] };
     const character: ToolPolicyConfig = { deny: ["exec"] };
-    const channel: ToolPolicyConfig = {
-      allow: ["read", "write"],
-      deny: ["process"],
-    };
+    const channel: ToolPolicyConfig = { allow: ["read", "write"], deny: ["process"] };
 
     const result = mergeToolPolicies(profile, character, channel);
     expect(result.allow).toEqual(["read", "write"]);
@@ -367,9 +361,8 @@ describe("isToolAllowedByPolicy()", () => {
 
     it("should allow with empty allow list (no restrictions)", () => {
       const policy: ToolPolicyConfig = { allow: [] };
-      // Empty allow list means nothing is explicitly allowed
-      // but since there are no tools in the list, none can match
-      expect(isToolAllowedByPolicy("read", policy)).toBe(false);
+      // Empty allow list is treated as "no allow restriction" => all tools allowed if not denied
+      expect(isToolAllowedByPolicy("read", policy)).toBe(true);
     });
   });
 
@@ -457,11 +450,7 @@ describe("stripPluginOnlyAllowlist()", () => {
 
   it("should not strip when policy has core tools", () => {
     const policy: ToolPolicyConfig = { allow: ["read", "plugin_tool_a"] };
-    const result = stripPluginOnlyAllowlist(
-      policy,
-      mockPluginGroups,
-      coreTools,
-    );
+    const result = stripPluginOnlyAllowlist(policy, mockPluginGroups, coreTools);
 
     expect(result.strippedAllowlist).toBe(false);
     expect(result.policy?.allow).toEqual(["read", "plugin_tool_a"]);
@@ -469,24 +458,14 @@ describe("stripPluginOnlyAllowlist()", () => {
 
   it("should not strip when policy has core group", () => {
     const policy: ToolPolicyConfig = { allow: ["group:fs", "plugin_tool_a"] };
-    const result = stripPluginOnlyAllowlist(
-      policy,
-      mockPluginGroups,
-      coreTools,
-    );
+    const result = stripPluginOnlyAllowlist(policy, mockPluginGroups, coreTools);
 
     expect(result.strippedAllowlist).toBe(false);
   });
 
   it("should strip when policy has only plugin tools", () => {
-    const policy: ToolPolicyConfig = {
-      allow: ["plugin_tool_a", "plugin_tool_b"],
-    };
-    const result = stripPluginOnlyAllowlist(
-      policy,
-      mockPluginGroups,
-      coreTools,
-    );
+    const policy: ToolPolicyConfig = { allow: ["plugin_tool_a", "plugin_tool_b"] };
+    const result = stripPluginOnlyAllowlist(policy, mockPluginGroups, coreTools);
 
     expect(result.strippedAllowlist).toBe(true);
     expect(result.policy?.allow).toBeUndefined();
@@ -494,55 +473,35 @@ describe("stripPluginOnlyAllowlist()", () => {
 
   it("should strip when policy has only plugin group references", () => {
     const policy: ToolPolicyConfig = { allow: ["plugin-a", "plugin-b"] };
-    const result = stripPluginOnlyAllowlist(
-      policy,
-      mockPluginGroups,
-      coreTools,
-    );
+    const result = stripPluginOnlyAllowlist(policy, mockPluginGroups, coreTools);
 
     expect(result.strippedAllowlist).toBe(true);
   });
 
   it("should strip when policy has only group:plugins", () => {
     const policy: ToolPolicyConfig = { allow: ["group:plugins"] };
-    const result = stripPluginOnlyAllowlist(
-      policy,
-      mockPluginGroups,
-      coreTools,
-    );
+    const result = stripPluginOnlyAllowlist(policy, mockPluginGroups, coreTools);
 
     expect(result.strippedAllowlist).toBe(true);
   });
 
   it("should not strip when policy has wildcard", () => {
     const policy: ToolPolicyConfig = { allow: ["*"] };
-    const result = stripPluginOnlyAllowlist(
-      policy,
-      mockPluginGroups,
-      coreTools,
-    );
+    const result = stripPluginOnlyAllowlist(policy, mockPluginGroups, coreTools);
 
     expect(result.strippedAllowlist).toBe(false);
   });
 
   it("should track unknown allowlist entries", () => {
     const policy: ToolPolicyConfig = { allow: ["unknown_tool", "read"] };
-    const result = stripPluginOnlyAllowlist(
-      policy,
-      mockPluginGroups,
-      coreTools,
-    );
+    const result = stripPluginOnlyAllowlist(policy, mockPluginGroups, coreTools);
 
     expect(result.unknownAllowlist).toContain("unknown_tool");
     expect(result.strippedAllowlist).toBe(false);
   });
 
   it("should handle undefined policy", () => {
-    const result = stripPluginOnlyAllowlist(
-      undefined,
-      mockPluginGroups,
-      coreTools,
-    );
+    const result = stripPluginOnlyAllowlist(undefined, mockPluginGroups, coreTools);
 
     expect(result.strippedAllowlist).toBe(false);
     expect(result.policy).toBeUndefined();
@@ -550,11 +509,7 @@ describe("stripPluginOnlyAllowlist()", () => {
 
   it("should handle empty allowlist", () => {
     const policy: ToolPolicyConfig = { allow: [] };
-    const result = stripPluginOnlyAllowlist(
-      policy,
-      mockPluginGroups,
-      coreTools,
-    );
+    const result = stripPluginOnlyAllowlist(policy, mockPluginGroups, coreTools);
 
     expect(result.strippedAllowlist).toBe(false);
   });
@@ -564,11 +519,7 @@ describe("stripPluginOnlyAllowlist()", () => {
       allow: ["plugin_tool_a"],
       deny: ["exec"],
     };
-    const result = stripPluginOnlyAllowlist(
-      policy,
-      mockPluginGroups,
-      coreTools,
-    );
+    const result = stripPluginOnlyAllowlist(policy, mockPluginGroups, coreTools);
 
     expect(result.strippedAllowlist).toBe(true);
     expect(result.policy?.deny).toEqual(["exec"]);
@@ -738,9 +689,7 @@ describe("collectExplicitAllowlist()", () => {
   });
 
   it("should trim entries", () => {
-    const result = collectExplicitAllowlist([
-      { allow: ["  read  ", "\twrite\n"] },
-    ]);
+    const result = collectExplicitAllowlist([{ allow: ["  read  ", "\twrite\n"] }]);
     expect(result).toContain("read");
     expect(result).toContain("write");
   });
@@ -804,9 +753,7 @@ describe("ToolPolicyService", () => {
     });
 
     it("should allow tools in profile", () => {
-      const result = service.isToolAllowed("session_status", {
-        profile: "minimal",
-      });
+      const result = service.isToolAllowed("session_status", { profile: "minimal" });
       expect(result.allowed).toBe(true);
     });
 
@@ -927,11 +874,7 @@ describe("ToolPolicyService", () => {
       const character = { settings: {} };
       const provider = { tools: { allow: ["read", "write"] } };
 
-      const result = service.getEffectivePolicyForCharacter(
-        character,
-        undefined,
-        provider,
-      );
+      const result = service.getEffectivePolicyForCharacter(character, undefined, provider);
       expect(result.allow).toEqual(["read", "write"]);
     });
   });
@@ -998,7 +941,7 @@ describe("ToolPolicyService", () => {
     it("should return denied tools with reasons", () => {
       const result = service.getDeniedTools(
         { characterPolicy: { deny: ["exec"] } },
-        tools,
+        tools
       );
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe("exec");

@@ -1,0 +1,77 @@
+{
+  "name": "@elizaos/plugin-personality",
+  "description": "elizaOS plugin for agent self-modification and character evolution",
+  "version": "2.0.0-alpha.1",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "author": "elizaOS",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "personality",
+    "character-evolution",
+    "self-modification"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/elizaos"
+  },
+  "homepage": "https://elizaos.ai",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "fs-extra": "^11.2.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^20.11.5",
+    "typescript": "5.8.3",
+    "@biomejs/biome": "^2.3.11"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx @biomejs/biome check --write .",
+    "clean": "rm -rf dist .turbo node_modules"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js only (platform: node)"
+    }
+  }
+}

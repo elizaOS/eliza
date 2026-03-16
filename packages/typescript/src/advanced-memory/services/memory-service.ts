@@ -1,5 +1,3 @@
-import { and, desc, eq, type SQL } from "drizzle-orm";
-import type { PgTable, TableConfig } from "drizzle-orm/pg-core";
 import { logger } from "../../logger.ts";
 import {
   type IAgentRuntime,
@@ -7,57 +5,13 @@ import {
   type ServiceTypeName,
   type UUID,
 } from "../../types/index.ts";
-import { longTermMemories, sessionSummaries } from "../schemas/index.ts";
+import type { MemoryStorageProvider } from "../../types/memory-storage.ts";
 import type {
-  JsonValue,
   LongTermMemory,
   LongTermMemoryCategory,
   MemoryConfig,
   SessionSummary,
 } from "../types.ts";
-
-type DbPrimitive = string | number | boolean | null | Date;
-type DbValue = DbPrimitive | DbValue[] | { [key: string]: DbValue };
-
-function requireSql(condition: SQL | undefined, context: string): SQL {
-  if (!condition) {
-    throw new Error(`Missing SQL condition: ${context}`);
-  }
-  return condition;
-}
-
-interface DrizzleDb {
-  insert<T extends PgTable<TableConfig>>(
-    table: T,
-  ): {
-    values(data: Record<string, DbValue>): Promise<void>;
-  };
-  select<T extends Record<string, DbValue>>(
-    columns?: T,
-  ): {
-    from<TTable extends PgTable<TableConfig>>(
-      table: TTable,
-    ): {
-      where(condition: SQL): {
-        orderBy(...args: SQL[]): {
-          limit(n: number): Promise<Array<Record<string, DbValue>>>;
-        };
-      };
-    };
-  };
-  update<T extends PgTable<TableConfig>>(
-    table: T,
-  ): {
-    set(data: Record<string, DbValue>): {
-      where(condition: SQL): Promise<void>;
-    };
-  };
-  delete<T extends PgTable<TableConfig>>(
-    table: T,
-  ): {
-    where(condition: SQL): Promise<void>;
-  };
-}
 
 export class MemoryService extends Service {
   static serviceType: ServiceTypeName = "memory" as ServiceTypeName;
@@ -65,6 +19,9 @@ export class MemoryService extends Service {
   private sessionMessageCounts: Map<UUID, number>;
   private memoryConfig: MemoryConfig;
   private lastExtractionCheckpoints: Map<string, number>;
+
+  /** Resolved at initialize(). null means no storage backend is available. */
+  private storage: MemoryStorageProvider | null = null;
 
   capabilityDescription =
     "Memory management with short-term summarization and long-term persistent facts";
@@ -95,14 +52,25 @@ export class MemoryService extends Service {
   }
 
   async stop(): Promise<void> {
-    this.sessionMessageCounts.clear();
-    this.lastExtractionCheckpoints.clear();
     logger.info({ src: "service:memory" }, "MemoryService stopped");
   }
 
   async initialize(runtime: IAgentRuntime): Promise<void> {
     this.runtime = runtime;
 
+    // Discover the storage provider registered by a database plugin.
+    // If none exists, storage-backed features are disabled.
+    const provider = runtime.getService("memoryStorage") as MemoryStorageProvider | null;
+    if (!provider) {
+      logger.warn(
+        { src: "service:memory", agentId: runtime.agentId },
+        "No MemoryStorageProvider found — long-term memory and session summaries disabled. " +
+          "Register a memoryStorage service from your database plugin to enable them.",
+      );
+    }
+    this.storage = provider;
+
+    // Read config overrides from environment / character settings.
     const threshold = runtime.getSetting("MEMORY_SUMMARIZATION_THRESHOLD");
     if (threshold) {
       this.memoryConfig.shortTermSummarizationThreshold = Number.parseInt(
@@ -182,18 +150,22 @@ export class MemoryService extends Service {
         extractionThreshold: this.memoryConfig.longTermExtractionThreshold,
         extractionInterval: this.memoryConfig.longTermExtractionInterval,
         confidenceThreshold: this.memoryConfig.longTermConfidenceThreshold,
+        storageAvailable: !!this.storage,
       },
       "MemoryService initialized",
       { src: "service:memory" },
     );
   }
 
-  private getDb(): DrizzleDb {
-    const db = (this.runtime as IAgentRuntime & { db?: DrizzleDb }).db;
-    if (!db) {
-      throw new Error("Database not available");
+  // ── Helpers ──────────────────────────────────────────────────────────
+
+  private requireStorage(): MemoryStorageProvider {
+    if (!this.storage) {
+      throw new Error(
+        "MemoryStorageProvider not available. Register a memoryStorage service from your database plugin.",
+      );
     }
-    return db;
+    return this.storage;
   }
 
   getConfig(): MemoryConfig {
@@ -204,19 +176,10 @@ export class MemoryService extends Service {
     this.memoryConfig = { ...this.memoryConfig, ...updates };
   }
 
-  /** Safety cap to prevent the per-room counters from growing unbounded. */
-  private static readonly MAX_SESSION_ENTRIES = 500;
-
   incrementMessageCount(roomId: UUID): number {
     const current = this.sessionMessageCounts.get(roomId) || 0;
     const newCount = current + 1;
     this.sessionMessageCounts.set(roomId, newCount);
-
-    // Evict the oldest entry when the map grows too large (many rooms).
-    if (this.sessionMessageCounts.size > MemoryService.MAX_SESSION_ENTRIES) {
-      const oldest = this.sessionMessageCounts.keys().next().value;
-      if (oldest && oldest !== roomId) this.sessionMessageCounts.delete(oldest);
-    }
     return newCount;
   }
 
@@ -248,14 +211,6 @@ export class MemoryService extends Service {
       const checkpoint = await this.runtime.getCache<number>(key);
       const messageCount = checkpoint ?? 0;
       this.lastExtractionCheckpoints.set(key, messageCount);
-      // Evict oldest entry when map grows too large
-      if (
-        this.lastExtractionCheckpoints.size > MemoryService.MAX_SESSION_ENTRIES
-      ) {
-        const oldest = this.lastExtractionCheckpoints.keys().next().value;
-        if (oldest && oldest !== key)
-          this.lastExtractionCheckpoints.delete(oldest);
-      }
       return messageCount;
     } catch (error) {
       const err = error instanceof Error ? error.message : String(error);
@@ -329,46 +284,20 @@ export class MemoryService extends Service {
     return shouldRun;
   }
 
+  // ── Storage operations (delegated to provider) ──────────────────────
+
   async storeLongTermMemory(
     memory: Omit<
       LongTermMemory,
       "id" | "createdAt" | "updatedAt" | "accessCount"
     >,
   ): Promise<LongTermMemory> {
-    const db = this.getDb();
-
-    const id = crypto.randomUUID() as UUID;
-    const now = new Date();
-
-    const newMemory: LongTermMemory = {
-      id,
-      createdAt: now,
-      updatedAt: now,
-      accessCount: 0,
-      ...memory,
-    };
-
-    await db.insert(longTermMemories).values({
-      id: newMemory.id,
-      agentId: newMemory.agentId,
-      entityId: newMemory.entityId,
-      category: newMemory.category,
-      content: newMemory.content,
-      metadata: (newMemory.metadata ?? {}) as Record<string, DbValue>,
-      embedding: newMemory.embedding ?? null,
-      confidence: newMemory.confidence ?? 1.0,
-      source: newMemory.source ?? null,
-      accessCount: newMemory.accessCount ?? 0,
-      createdAt: now,
-      updatedAt: now,
-      lastAccessedAt: newMemory.lastAccessedAt ?? null,
-    });
-
+    const stored = await this.requireStorage().storeLongTermMemory(memory);
     logger.info(
       { src: "service:memory" },
-      `Stored long-term memory: ${newMemory.category} for entity ${newMemory.entityId}`,
+      `Stored long-term memory: ${stored.category} for entity ${stored.entityId}`,
     );
-    return newMemory;
+    return stored;
   }
 
   async getLongTermMemories(
@@ -377,46 +306,11 @@ export class MemoryService extends Service {
     limit = 10,
   ): Promise<LongTermMemory[]> {
     if (limit <= 0) return [];
-    const db = this.getDb();
-
-    const conditions: SQL[] = [
-      eq(longTermMemories.agentId, this.runtime.agentId),
-      eq(longTermMemories.entityId, entityId),
-    ];
-
-    if (category) {
-      conditions.push(eq(longTermMemories.category, category));
-    }
-
-    const whereClause = requireSql(
-      and(...conditions),
-      "getLongTermMemories(where)",
+    return this.requireStorage().getLongTermMemories(
+      this.runtime.agentId,
+      entityId,
+      { category, limit },
     );
-    const results = await db
-      .select()
-      .from(longTermMemories)
-      .where(whereClause)
-      .orderBy(
-        desc(longTermMemories.confidence),
-        desc(longTermMemories.updatedAt),
-      )
-      .limit(limit);
-
-    return results.map((row) => ({
-      id: row.id as UUID,
-      agentId: row.agentId as UUID,
-      entityId: row.entityId as UUID,
-      category: row.category as LongTermMemoryCategory,
-      content: row.content as string,
-      metadata: (row.metadata as Record<string, JsonValue>) ?? {},
-      embedding: (row.embedding as number[]) ?? [],
-      confidence: (row.confidence as number) ?? 1.0,
-      source: (row.source as string) ?? "",
-      createdAt: row.createdAt as Date,
-      updatedAt: row.updatedAt as Date,
-      lastAccessedAt: (row.lastAccessedAt as Date) ?? (row.updatedAt as Date),
-      accessCount: (row.accessCount as number) ?? 0,
-    }));
   }
 
   async updateLongTermMemory(
@@ -426,37 +320,12 @@ export class MemoryService extends Service {
       Omit<LongTermMemory, "id" | "agentId" | "entityId" | "createdAt">
     >,
   ): Promise<void> {
-    const db = this.getDb();
-    const updateData: Record<string, DbValue> = {
-      updatedAt: new Date(),
-    };
-
-    if (updates.content !== undefined) updateData.content = updates.content;
-    if (updates.metadata !== undefined)
-      updateData.metadata = updates.metadata as Record<string, DbValue>;
-    if (updates.confidence !== undefined)
-      updateData.confidence = updates.confidence;
-    if (updates.embedding !== undefined)
-      updateData.embedding = updates.embedding;
-    if (updates.lastAccessedAt !== undefined)
-      updateData.lastAccessedAt = updates.lastAccessedAt;
-    if (updates.accessCount !== undefined)
-      updateData.accessCount = updates.accessCount;
-
-    await db
-      .update(longTermMemories)
-      .set(updateData)
-      .where(
-        requireSql(
-          and(
-            eq(longTermMemories.id, id),
-            eq(longTermMemories.agentId, this.runtime.agentId),
-            eq(longTermMemories.entityId, entityId),
-          ),
-          "updateLongTermMemory(where)",
-        ),
-      );
-
+    await this.requireStorage().updateLongTermMemory(
+      id,
+      this.runtime.agentId,
+      entityId,
+      updates,
+    );
     logger.info(
       { src: "service:memory" },
       `Updated long-term memory: ${id} for entity ${entityId}`,
@@ -464,19 +333,11 @@ export class MemoryService extends Service {
   }
 
   async deleteLongTermMemory(id: UUID, entityId: UUID): Promise<void> {
-    const db = this.getDb();
-    await db
-      .delete(longTermMemories)
-      .where(
-        requireSql(
-          and(
-            eq(longTermMemories.id, id),
-            eq(longTermMemories.agentId, this.runtime.agentId),
-            eq(longTermMemories.entityId, entityId),
-          ),
-          "deleteLongTermMemory(where)",
-        ),
-      );
+    await this.requireStorage().deleteLongTermMemory(
+      id,
+      this.runtime.agentId,
+      entityId,
+    );
     logger.info(
       { src: "service:memory" },
       `Deleted long-term memory: ${id} for entity ${entityId}`,
@@ -484,79 +345,21 @@ export class MemoryService extends Service {
   }
 
   async getCurrentSessionSummary(roomId: UUID): Promise<SessionSummary | null> {
-    const db = this.getDb();
-    const results = await db
-      .select()
-      .from(sessionSummaries)
-      .where(
-        requireSql(
-          and(
-            eq(sessionSummaries.agentId, this.runtime.agentId),
-            eq(sessionSummaries.roomId, roomId),
-          ),
-          "getCurrentSessionSummary(where)",
-        ),
-      )
-      .orderBy(desc(sessionSummaries.updatedAt))
-      .limit(1);
-
-    if (results.length === 0) return null;
-    const row = results[0];
-    return {
-      id: row.id as UUID,
-      agentId: row.agentId as UUID,
-      roomId: row.roomId as UUID,
-      entityId: (row.entityId as UUID) || undefined,
-      summary: row.summary as string,
-      messageCount: row.messageCount as number,
-      lastMessageOffset: row.lastMessageOffset as number,
-      startTime: row.startTime as Date,
-      endTime: row.endTime as Date,
-      topics: ((row.topics as string[]) || []) as string[],
-      metadata: (row.metadata as Record<string, JsonValue>) ?? {},
-      embedding: (row.embedding as number[]) ?? [],
-      createdAt: row.createdAt as Date,
-      updatedAt: row.updatedAt as Date,
-    };
+    return this.requireStorage().getCurrentSessionSummary(
+      this.runtime.agentId,
+      roomId,
+    );
   }
 
   async storeSessionSummary(
     summary: Omit<SessionSummary, "id" | "createdAt" | "updatedAt">,
   ): Promise<SessionSummary> {
-    const db = this.getDb();
-
-    const id = crypto.randomUUID() as UUID;
-    const now = new Date();
-
-    const newSummary: SessionSummary = {
-      id,
-      createdAt: now,
-      updatedAt: now,
-      ...summary,
-    };
-
-    await db.insert(sessionSummaries).values({
-      id: newSummary.id,
-      agentId: newSummary.agentId,
-      roomId: newSummary.roomId,
-      entityId: newSummary.entityId ?? null,
-      summary: newSummary.summary,
-      messageCount: newSummary.messageCount,
-      lastMessageOffset: newSummary.lastMessageOffset,
-      startTime: newSummary.startTime,
-      endTime: newSummary.endTime,
-      topics: newSummary.topics ?? [],
-      metadata: (newSummary.metadata ?? {}) as Record<string, DbValue>,
-      embedding: newSummary.embedding ?? null,
-      createdAt: now,
-      updatedAt: now,
-    });
-
+    const stored = await this.requireStorage().storeSessionSummary(summary);
     logger.info(
       { src: "service:memory" },
-      `Stored session summary for room ${newSummary.roomId}`,
+      `Stored session summary for room ${stored.roomId}`,
     );
-    return newSummary;
+    return stored;
   }
 
   async updateSessionSummary(
@@ -569,37 +372,12 @@ export class MemoryService extends Service {
       >
     >,
   ): Promise<void> {
-    const db = this.getDb();
-    const updateData: Record<string, DbValue> = {
-      updatedAt: new Date(),
-    };
-
-    if (updates.summary !== undefined) updateData.summary = updates.summary;
-    if (updates.messageCount !== undefined)
-      updateData.messageCount = updates.messageCount;
-    if (updates.lastMessageOffset !== undefined)
-      updateData.lastMessageOffset = updates.lastMessageOffset;
-    if (updates.endTime !== undefined) updateData.endTime = updates.endTime;
-    if (updates.topics !== undefined) updateData.topics = updates.topics;
-    if (updates.metadata !== undefined)
-      updateData.metadata = updates.metadata as Record<string, DbValue>;
-    if (updates.embedding !== undefined)
-      updateData.embedding = updates.embedding;
-
-    await db
-      .update(sessionSummaries)
-      .set(updateData)
-      .where(
-        requireSql(
-          and(
-            eq(sessionSummaries.id, id),
-            eq(sessionSummaries.agentId, this.runtime.agentId),
-            eq(sessionSummaries.roomId, roomId),
-          ),
-          "updateSessionSummary(where)",
-        ),
-      );
-
+    await this.requireStorage().updateSessionSummary(
+      id,
+      this.runtime.agentId,
+      roomId,
+      updates,
+    );
     logger.info(
       { src: "service:memory" },
       `Updated session summary: ${id} for room ${roomId}`,
@@ -610,39 +388,14 @@ export class MemoryService extends Service {
     roomId: UUID,
     limit = 5,
   ): Promise<SessionSummary[]> {
-    const db = this.getDb();
-    const results = await db
-      .select()
-      .from(sessionSummaries)
-      .where(
-        requireSql(
-          and(
-            eq(sessionSummaries.agentId, this.runtime.agentId),
-            eq(sessionSummaries.roomId, roomId),
-          ),
-          "getSessionSummaries(where)",
-        ),
-      )
-      .orderBy(desc(sessionSummaries.updatedAt))
-      .limit(limit);
-
-    return results.map((row) => ({
-      id: row.id as UUID,
-      agentId: row.agentId as UUID,
-      roomId: row.roomId as UUID,
-      entityId: (row.entityId as UUID) || undefined,
-      summary: row.summary as string,
-      messageCount: row.messageCount as number,
-      lastMessageOffset: row.lastMessageOffset as number,
-      startTime: row.startTime as Date,
-      endTime: row.endTime as Date,
-      topics: ((row.topics as string[]) || []) as string[],
-      metadata: (row.metadata as Record<string, JsonValue>) ?? {},
-      embedding: (row.embedding as number[]) ?? [],
-      createdAt: row.createdAt as Date,
-      updatedAt: row.updatedAt as Date,
-    }));
+    return this.requireStorage().getSessionSummaries(
+      this.runtime.agentId,
+      roomId,
+      limit,
+    );
   }
+
+  // ── Vector search (JS fallback; provider can override with native) ──
 
   async searchLongTermMemories(
     entityId: UUID,
@@ -701,6 +454,8 @@ export class MemoryService extends Service {
       return this.getLongTermMemories(entityId, undefined, limit);
     }
   }
+
+  // ── Formatting ──────────────────────────────────────────────────────
 
   async getFormattedLongTermMemories(entityId: UUID): Promise<string> {
     const memories = await this.getLongTermMemories(entityId, undefined, 20);

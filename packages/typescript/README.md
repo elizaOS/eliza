@@ -12,6 +12,7 @@ The `@elizaos/core` package provides a robust foundation for building AI agents 
 - **Evaluators:** Process conversation data to extract insights, build long-term memory, and maintain contextual awareness.
 - **Plugin System:** Extensible architecture allowing for modular addition of functionalities.
 - **Entity and Memory Management:** Core support for tracking entities and their associated information.
+- **Shared Config Helpers:** Common utilities for runtime-first setting resolution, typed coercion, and schema-based config validation.
 
 ## Installation
 
@@ -66,6 +67,10 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 - `SENTRY_ENVIRONMENT`: Sentry deployment environment (e.g., 'production', 'staging').
 - `SENTRY_TRACES_SAMPLE_RATE`: Sentry performance tracing sample rate (0.0 - 1.0).
 - `SENTRY_SEND_DEFAULT_PII`: Send Personally Identifiable Information to Sentry (`true`/`false`).
+- `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
+- `BOOTSTRAP_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
+- `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`). Defaults from runtime settings if not set in options.
+- `DISABLE_MEMORY_CREATION` / `ALLOW_MEMORY_SOURCE_IDS`: Bootstrap-related; see plugin docs. Shown in the bootstrap banner when set.
 
 **Example `.env`:**
 
@@ -85,6 +90,85 @@ SENTRY_SEND_DEFAULT_PII=true
 ```
 
 **Note:** Add your `.env` file to `.gitignore` to protect sensitive information.
+
+### Design and rationale (WHY)
+
+Key behaviors and APIs are documented with their **reasons** so future changes stay consistent with intent:
+
+- **[docs/DESIGN.md](docs/DESIGN.md)** — Design decisions: message races, provider timeout, keepExistingResponses, JSON5, formatPosts fallbacks, HandlerCallback actionName, anxiety provider, file logging, and what we don’t do.
+- **[CHANGELOG.md](CHANGELOG.md)** — Per-change notes with WHY for each addition or fix.
+- **[ROADMAP.md](ROADMAP.md)** — Planned work and rationale (observability, robustness, API consistency, performance).
+
+When adding or changing behavior, update these docs so the WHY stays accurate.
+
+### Shared config helpers (WHY)
+
+`@elizaos/core` now exports a small config-loading helper layer for the repeated setup work that many plugins need:
+
+- `resolveSettingRaw()`
+- `collectSettings()`
+- `getStringSetting()`
+- `getBooleanSetting()`
+- `getNumberSetting()`
+- `getEnumSetting()`
+- `getCsvSetting()`
+- `formatConfigErrors()`
+- `loadPluginConfig()`
+
+These helpers live in `src/utils/plugin-config.ts` and are re-exported from `@elizaos/core`.
+
+**Why this exists:** many plugins need the same boring plumbing:
+
+- read a setting from `runtime.getSetting(key)`
+- optionally fall back to `process.env`
+- coerce the raw value into a useful type
+- pass the collected object into a Zod schema
+- report validation failures in one consistent format
+
+Putting that plumbing in core reduces copy-paste drift without forcing all plugins into one config framework.
+
+**What it intentionally does not do yet:**
+
+- alias keys for one field
+- character-settings merges
+- plugin-specific derived values
+- writing normalized values back into env/runtime
+
+**Why those are excluded:** those behaviors vary too much by plugin, so lifting them into core too early would create a helper that is harder to reason about than the duplication it replaces.
+
+**Example:**
+
+```typescript
+import {
+  collectSettings,
+  loadPluginConfig,
+  type SettingSourceOptions,
+} from "@elizaos/core";
+import { z } from "zod";
+
+const schema = z.object({
+  EXAMPLE_ENABLED: z.boolean().default(false),
+  EXAMPLE_TIMEOUT_MS: z.coerce.number().min(0).default(1000),
+});
+
+const sourceOptions: SettingSourceOptions = {
+  runtime,
+  envFallback: true,
+};
+
+const raw = collectSettings(
+  ["EXAMPLE_ENABLED", "EXAMPLE_TIMEOUT_MS"],
+  sourceOptions,
+);
+
+const config = loadPluginConfig({
+  schema,
+  raw,
+  scope: "Example",
+});
+```
+
+**Why the API is split into `collectSettings()` and `loadPluginConfig()`:** callers can still override or derive a few fields locally before validation, while the shared precedence and error formatting stay centralized.
 
 ### Benchmark & Trajectory Tracing
 

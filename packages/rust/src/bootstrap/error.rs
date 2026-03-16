@@ -41,18 +41,6 @@ pub enum PluginError {
     #[error("Service not started: {0}")]
     ServiceNotStarted(String),
 
-    /// Start/Stop error
-    #[error("Service error: {0}")]
-    ServiceError(String),
-
-    /// Database error.
-    #[error("Database error: {0}")]
-    DatabaseError(anyhow::Error),
-
-    /// Boxed error.
-    #[error("Error: {0}")]
-    BoxedError(Box<dyn std::error::Error + Send + Sync>),
-
     /// Internal error.
     #[error("Internal error: {0}")]
     Internal(String),

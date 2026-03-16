@@ -1,4 +1,3 @@
-
 import pytest
 import yaml
 from swerex.exceptions import SwerexException
@@ -50,16 +49,9 @@ def function_calling_agent_config():
 
 @pytest.fixture
 def default_agent_config():
-    import os
-    print(f"DEBUG: CWD={os.getcwd()}")
-    print(f"DEBUG: CONFIG_DIR={CONFIG_DIR}")
-    target = CONFIG_DIR / "sweagent_0_7/07.yaml"
-    print(f"DEBUG: Target={target}")
-    print(f"DEBUG: Target exists={target.exists()}")
-    
-    config = yaml.safe_load(target.read_text())
+    config = yaml.safe_load((CONFIG_DIR / "sweagent_0_7/07.yaml").read_text())
     config["agent"]["model"] = {"name": "instant_empty_submit"}
-    # print(yaml.dump(config))
+    print(yaml.dump(config))
     return DefaultAgentConfig.model_validate(config["agent"])
 
 

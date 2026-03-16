@@ -16,7 +16,7 @@ code matches, we know that part wasn't truncated.
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum
 
 from elizaos.types.state import SchemaRow, StreamEvent
 
@@ -109,7 +109,7 @@ class MarkableExtractor(IStreamExtractor):
         self._done = True
 
 
-class ExtractorState(StrEnum):
+class ExtractorState(str, Enum):
     """Extractor state machine for validation-aware streaming."""
 
     STREAMING = "streaming"  # Normal operation - actively receiving chunks
@@ -119,7 +119,7 @@ class ExtractorState(StrEnum):
     FAILED = "failed"  # Unrecoverable error
 
 
-class FieldState(StrEnum):
+class FieldState(str, Enum):
     """Per-field state tracking for progressive validation."""
 
     PENDING = "pending"  # Haven't seen this field yet

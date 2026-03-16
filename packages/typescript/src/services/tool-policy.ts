@@ -1,7 +1,7 @@
 /**
  * ToolPolicyService
  *
- * Service for managing tool/action access policies in ElizaOS.
+ * Service for managing tool/action access policies in elizaOS.
  * Provides unified tool filtering based on profiles, character settings,
  * channel-specific overrides, and provider configurations.
  *
@@ -182,10 +182,7 @@ export class ToolPolicyService extends Service {
    * @param context - The policy context
    * @returns Result with allowed status and reason
    */
-  isToolAllowed(
-    toolName: string,
-    context?: ToolPolicyContext,
-  ): ToolPolicyResult {
+  isToolAllowed(toolName: string, context?: ToolPolicyContext): ToolPolicyResult {
     const normalizedName = normalizeToolName(toolName);
     const effectivePolicy = this.getEffectivePolicy(context);
 
@@ -365,9 +362,7 @@ export class ToolPolicyService extends Service {
    * @param policy - The policy to check
    * @returns Resolution result with diagnostic info
    */
-  stripPluginOnlyAllowlist(
-    policy: ToolPolicyConfig | undefined,
-  ): AllowlistResolution {
+  stripPluginOnlyAllowlist(policy: ToolPolicyConfig | undefined): AllowlistResolution {
     return stripPluginOnlyAllowlist(policy, this.pluginGroups, this.coreTools);
   }
 

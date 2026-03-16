@@ -1,0 +1,37 @@
+[package]
+name = "autonomous"
+version = "0.1.0"
+edition = "2021"
+description = "elizaOS Rust autonomous loop example (local-ai + shell + inmemorydb)"
+publish = false
+
+[[bin]]
+name = "autonomous"
+path = "src/main.rs"
+
+[dependencies]
+# Local inference (GGUF)
+# NOTE: The `llm` feature requires a vendored llama_cpp_rs crate. Without it,
+# inference calls return stub responses. Enable `llm` once vendor is added.
+elizaos-plugin-local-ai = { path = "../../../../plugins/plugin-local-ai/rust" }
+
+# Restricted shell execution
+elizaos-plugin-shell = { path = "../../../../plugins/plugin-shell/rust" }
+
+# Ephemeral in-memory DB
+elizaos-plugin-inmemorydb = { path = "../../../../plugins/plugin-inmemorydb/rust" }
+
+# Async runtime
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "time", "fs"] }
+
+# Error handling
+anyhow = "1.0"
+
+# JSON for storing step records
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Utilities
+dotenvy = "0.15"
+uuid = { version = "1.0", features = ["v4"] }
+

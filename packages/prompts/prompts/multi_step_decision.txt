@@ -30,7 +30,6 @@ These are the actions or data provider calls that have already been used in this
 "thought" Clearly explain your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request.
 "action"  Name of the action to execute after providers return (can be empty if no action is needed).
 "providers" List of provider names to call in this step (can be empty if none are needed).
-"params" Optional XML parameters for the selected action. Use nested XML only when the action needs input.
 "isFinish" Set to true only if the task is fully complete.
 </keys>
 
@@ -41,14 +40,10 @@ These are the actions or data provider calls that have already been used in this
   <thought>Your thought here</thought>
   <action>ACTION</action>
   <providers>PROVIDER1,PROVIDER2</providers>
-  <params>
-    <ACTION>
-      <paramName>value</paramName>
-    </ACTION>
-  </params>
   <isFinish>true | false</isFinish>
 </response>
 </output>
+
 
 
 

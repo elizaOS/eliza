@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "eliza-greeting",
+      "description": "",
+      "dynamic": true
+    }
+  ]
+}

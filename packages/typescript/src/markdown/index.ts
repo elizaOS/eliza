@@ -1,5 +1,5 @@
 /**
- * Markdown utilities for ElizaOS.
+ * Markdown utilities for elizaOS.
  *
  * Provides:
  * - Code fence parsing

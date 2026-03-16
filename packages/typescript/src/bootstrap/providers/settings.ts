@@ -148,7 +148,6 @@ function generateStatusMessage(
  */
 export const settingsProvider: Provider = {
   name: "SETTINGS",
-  position: 15,
   description: "Current settings for the server",
   get: async (
     runtime: IAgentRuntime,
@@ -163,28 +162,28 @@ export const settingsProvider: Provider = {
     ]);
 
     if (!room) {
-      logger.debug(
+      logger.error(
         {
-          src: "plugin:core:provider:settings",
+          src: "plugin:bootstrap:provider:settings",
           agentId: runtime.agentId,
         },
-        "No room found for settings provider, skipping",
+        "No room found for settings provider",
       );
       return {
         data: {
           settings: [],
         },
         values: {
-          settings: "No room context available for settings.",
+          settings: "Error: Room not found",
         },
-        text: "No room context available for settings.",
+        text: "Error: Room not found",
       };
     }
 
     if (!room.worldId) {
       logger.debug(
         {
-          src: "plugin:core:provider:settings",
+          src: "plugin:bootstrap:provider:settings",
           agentId: runtime.agentId,
         },
         "No world found for settings provider -- settings provider will be skipped",
@@ -226,7 +225,7 @@ export const settingsProvider: Provider = {
         await runtime.updateWorld(world);
         logger.info(
           {
-            src: "plugin:core:provider:settings",
+            src: "plugin:bootstrap:provider:settings",
             agentId: runtime.agentId,
             worldId: world.id,
           },
@@ -237,7 +236,7 @@ export const settingsProvider: Provider = {
       if (!world) {
         logger.error(
           {
-            src: "plugin:core:provider:settings",
+            src: "plugin:bootstrap:provider:settings",
             agentId: runtime.agentId,
           },
           "No world found for user during onboarding",
@@ -263,7 +262,7 @@ export const settingsProvider: Provider = {
       if (!world) {
         logger.error(
           {
-            src: "plugin:core:provider:settings",
+            src: "plugin:bootstrap:provider:settings",
             agentId: runtime.agentId,
             worldId: room.worldId,
           },
@@ -285,7 +284,7 @@ export const settingsProvider: Provider = {
       } else if (!serverId) {
         logger.debug(
           {
-            src: "plugin:core:provider:settings",
+            src: "plugin:bootstrap:provider:settings",
             agentId: runtime.agentId,
             worldId: room.worldId,
           },
@@ -298,7 +297,7 @@ export const settingsProvider: Provider = {
     if (!serverId) {
       logger.info(
         {
-          src: "plugin:core:provider:settings",
+          src: "plugin:bootstrap:provider:settings",
           agentId: runtime.agentId,
           entityId: message.entityId,
         },
@@ -329,7 +328,7 @@ export const settingsProvider: Provider = {
     if (!worldSettings) {
       logger.info(
         {
-          src: "plugin:core:provider:settings",
+          src: "plugin:bootstrap:provider:settings",
           agentId: runtime.agentId,
           messageServerId: serverId,
         },

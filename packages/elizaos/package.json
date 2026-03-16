@@ -1,6 +1,6 @@
 {
   "name": "elizaos",
-  "version": "2.0.0-alpha.42",
+  "version": "2.0.0-alpha.2",
   "description": "elizaOS CLI - Create and manage elizaOS examples",
   "type": "module",
   "bin": {
@@ -28,7 +28,6 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src/__tests__/",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
@@ -48,9 +47,6 @@
   ],
   "author": "elizaOS Team",
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos/eliza"

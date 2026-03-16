@@ -1,0 +1,34 @@
+{
+  "name": "@elizaos/gcp-worker-typescript",
+  "version": "2.0.0-alpha",
+  "description": "elizaOS GCP Cloud Run worker (TypeScript)",
+  "type": "module",
+  "main": "dist/handler.js",
+  "scripts": {
+    "build": "esbuild handler.ts --bundle --platform=node --target=node20 --outfile=dist/handler.js --format=esm --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "build:watch": "npm run build -- --watch",
+    "dev": "tsx handler.ts",
+    "start": "node dist/handler.js",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "docker:build": "docker build -t eliza-worker-ts .",
+    "docker:run": "docker run -p 8080:8080 -e OPENAI_API_KEY=$OPENAI_API_KEY eliza-worker-ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "esbuild": "^0.24.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

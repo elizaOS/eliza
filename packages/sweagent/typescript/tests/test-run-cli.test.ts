@@ -50,7 +50,7 @@ describe("Run CLI", () => {
     runBatchHelp = runOk(["run-batch", "--help"]);
     runReplayHelp = runOk(["run-replay", "--help"]);
     version = runOk(["--version"]);
-  }, 30000);
+  });
 
   describe("Main CLI behavior", () => {
     it("should show error when no arguments provided", () => {

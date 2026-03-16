@@ -1,0 +1,166 @@
+/* Milaidy — web1 aesthetic inspired by miladymaker.net */
+
+:root {
+  /* Background */
+  --bg: #fefefe;
+  --bg-accent: #f8f6f3;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f0eee9;
+  --bg-muted: #f5f3ef;
+
+  /* Card / Surface */
+  --card: #ffffff;
+  --card-foreground: #333333;
+
+  /* Text */
+  --text: #333333;
+  --text-strong: #111111;
+  --chat-text: #333333;
+  --muted: #888888;
+  --muted-strong: #666666;
+
+  /* Border — simple 1px lines */
+  --border: #cccccc;
+  --border-strong: #999999;
+  --border-hover: #888888;
+  --input: #cccccc;
+  --ring: #cc3366;
+
+  /* Accent — milady pink-red */
+  --accent: #cc3366;
+  --accent-hover: #aa2255;
+  --accent-muted: #cc3366;
+  --accent-subtle: rgba(204, 51, 102, 0.1);
+  --accent-foreground: #ffffff;
+  --primary: #cc3366;
+  --primary-foreground: #ffffff;
+
+  /* Semantic */
+  --ok: #338833;
+  --ok-muted: rgba(51, 136, 51, 0.7);
+  --ok-subtle: rgba(51, 136, 51, 0.1);
+  --destructive: #cc3333;
+  --destructive-foreground: #ffffff;
+  --warn: #cc8833;
+  --warn-muted: rgba(204, 136, 51, 0.7);
+  --warn-subtle: rgba(204, 136, 51, 0.1);
+  --danger: #cc3333;
+  --info: #336699;
+
+  /* Focus */
+  --focus: rgba(204, 51, 102, 0.2);
+  --focus-ring: 0 0 0 2px var(--accent);
+
+  /* Typography — serif for web1 */
+  --mono: "Courier New", Courier, monospace;
+  --font-body: Georgia, "Times New Roman", "Palatino Linotype", serif;
+  --font-display: Georgia, "Times New Roman", "Palatino Linotype", serif;
+
+  /* No shadows — web1 uses borders */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+
+  /* Radii — minimal for web1 */
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+  --radius-xl: 4px;
+  --radius-full: 9999px;
+  --radius: 2px;
+
+  /* Transitions — snappy, no springs */
+  --duration-fast: 100ms;
+  --duration-normal: 150ms;
+  --duration-slow: 250ms;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font: 400 14px/1.65 var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+milaidy-app {
+  display: block;
+  position: relative;
+  min-height: 100vh;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: var(--accent-subtle);
+  color: var(--text-strong);
+}
+
+/* Scrollbar — minimal */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* Focus visible */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Simple animations */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Utility: visually hidden */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

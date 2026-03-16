@@ -4,13 +4,14 @@
 
 use crate::advanced_memory;
 use crate::advanced_planning;
-use crate::deterministic::{build_conversation_seed, deterministic_hex, deterministic_uuid};
 use crate::types::agent::{Agent, Bio, Character, CharacterSecrets, CharacterSettings};
 use crate::types::components::{
     ActionDefinition, ActionHandler, ActionResult, EvaluatorDefinition, EvaluatorHandler,
-    EvaluatorPhase, HandlerOptions, PreEvaluatorResult, ProviderDefinition, ProviderHandler,
+    HandlerOptions, ProviderDefinition, ProviderHandler,
 };
-use crate::types::database::{GetMemoriesParams, SearchMemoriesParams};
+use crate::types::database::{
+    CreateMemoryItem, GetMemoriesParams, SearchMemoriesParams, UpdateMemoryItem,
+};
 use crate::types::environment::{Entity, Room, World};
 use crate::types::events::{EventPayload, EventType};
 use crate::types::memory::Memory;
@@ -22,13 +23,11 @@ use crate::types::state::State;
 use crate::types::task::Task;
 use anyhow::{Context, Result};
 use serde_json::Value;
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info, warn};
-
-#[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
-use std::any::Any;
 
 // RwLock type - different for native (async) vs wasm/other (sync)
 #[cfg(feature = "native")]
@@ -41,8 +40,6 @@ use std::sync::RwLock;
 // via `crate::runtime::IAgentRuntime`. Re-export it when the bootstrap module is present.
 #[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
 pub use crate::bootstrap::runtime::{IAgentRuntime, ModelOutput, ModelParams};
-
-pub use crate::types::service::Service;
 
 /// Database adapter trait for runtime storage operations
 #[async_trait::async_trait]
@@ -74,17 +71,67 @@ pub trait DatabaseAdapter: Send + Sync {
     /// Search memories by embedding
     async fn search_memories(&self, params: SearchMemoriesParams) -> Result<Vec<Memory>>;
 
-    /// Create a memory
-    async fn create_memory(&self, memory: &Memory, table_name: &str) -> Result<UUID>;
+    // ----- Memory CRUD: batch-only (aligned with TypeScript adapter API) -----
 
-    /// Update a memory
-    async fn update_memory(&self, memory: &Memory) -> Result<bool>;
+    /// Batch create memories. Returns IDs in same order as input. Adapters implement this.
+    async fn create_memories(&self, items: &[CreateMemoryItem]) -> Result<Vec<UUID>>;
 
-    /// Delete a memory
-    async fn delete_memory(&self, memory_id: &UUID) -> Result<()>;
+    /// Batch update memories (partial updates). Adapters implement this.
+    async fn update_memories(&self, items: &[UpdateMemoryItem]) -> Result<()>;
 
-    /// Get a memory by ID
+    /// Batch delete memories by ID. Adapters implement this.
+    async fn delete_memories(&self, memory_ids: &[UUID]) -> Result<()>;
+
+    /// Get a memory by ID (single read)
     async fn get_memory_by_id(&self, id: &UUID) -> Result<Option<Memory>>;
+
+    /// Get memories by IDs (batch; aligned with TypeScript getMemoriesByIds).
+    /// Default: calls [get_memory_by_id] for each id. Adapters may override for efficiency.
+    async fn get_memories_by_ids(&self, ids: &[UUID], _table_name: Option<&str>) -> Result<Vec<Memory>> {
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(m) = self.get_memory_by_id(id).await? {
+                out.push(m);
+            }
+        }
+        Ok(out)
+    }
+
+    // ----- Convenience single-item helpers (call batch with one element) -----
+
+    /// Create a single memory. Default: calls [create_memories] with one item.
+    async fn create_memory(&self, memory: &Memory, table_name: &str) -> Result<UUID> {
+        self.create_memory_with_unique(memory, table_name, None).await
+    }
+
+    /// Create a single memory with optional unique flag. Default: calls [create_memories].
+    async fn create_memory_with_unique(
+        &self,
+        memory: &Memory,
+        table_name: &str,
+        unique: Option<bool>,
+    ) -> Result<UUID> {
+        let items = [CreateMemoryItem {
+            memory: memory.clone(),
+            table_name: table_name.to_string(),
+            unique,
+        }];
+        let ids = self.create_memories(&items).await?;
+        ids.into_iter().next().context("create_memories returned empty")
+    }
+
+    /// Update a single memory. Default: calls [update_memories] with one item.
+    async fn update_memory(&self, memory: &Memory) -> Result<bool> {
+        let item = UpdateMemoryItem::from_memory(memory)
+            .context("update_memory requires memory.id")?;
+        self.update_memories(&[item]).await?;
+        Ok(true)
+    }
+
+    /// Delete a single memory. Default: calls [delete_memories] with one ID.
+    async fn delete_memory(&self, memory_id: &UUID) -> Result<()> {
+        self.delete_memories(&[memory_id.clone()]).await
+    }
 
     /// Create a world
     async fn create_world(&self, world: &World) -> Result<UUID>;
@@ -97,11 +144,6 @@ pub trait DatabaseAdapter: Send + Sync {
 
     /// Get a room by ID
     async fn get_room(&self, id: &UUID) -> Result<Option<Room>>;
-
-    /// Update a room
-    async fn update_room(&self, _room: &Room) -> Result<bool> {
-        Ok(false)
-    }
 
     /// Create an entity
     async fn create_entity(&self, entity: &Entity) -> Result<bool>;
@@ -233,16 +275,6 @@ fn setting_value_to_json_value(value: &SettingValue) -> serde_json::Value {
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),
         SettingValue::Null => serde_json::Value::Null,
-    }
-}
-
-#[cfg_attr(not(feature = "bootstrap-internal"), allow(dead_code))]
-fn setting_value_to_string(value: SettingValue) -> String {
-    match normalize_setting_value(value) {
-        SettingValue::String(s) => s,
-        SettingValue::Bool(b) => b.to_string(),
-        SettingValue::Number(n) => n.to_string(),
-        SettingValue::Null => "null".to_string(),
     }
 }
 
@@ -416,9 +448,6 @@ pub struct AgentRuntime {
     enable_autonomy: AtomicBool,
     /// Task workers (maps task name to worker)
     task_workers: RwLock<HashMap<String, Arc<dyn crate::types::task::TaskWorker>>>,
-    /// Bootstrap task workers registered through the IAgentRuntime adapter.
-    #[cfg(feature = "bootstrap-internal")]
-    bootstrap_task_workers: RwLock<HashMap<String, Arc<dyn crate::bootstrap::runtime::TaskWorker>>>,
     /// In-memory task storage (maps task ID to task)
     tasks: RwLock<HashMap<String, crate::types::task::Task>>,
 }
@@ -430,6 +459,19 @@ struct CapabilityOptions {
     enable_extended: Option<bool>,
     enable_autonomy: Option<bool>,
     skip_character_provider: bool,
+}
+
+/// Service trait for long-running services
+#[async_trait::async_trait]
+pub trait Service: Send + Sync {
+    /// Get the service type
+    fn service_type(&self) -> &str;
+
+    /// Support downcasting to concrete service types.
+    fn as_any(&self) -> &dyn Any;
+
+    /// Stop the service
+    async fn stop(&self) -> Result<()>;
 }
 
 impl AgentRuntime {
@@ -494,8 +536,6 @@ impl AgentRuntime {
             },
             enable_autonomy: AtomicBool::new(opts.enable_autonomy.unwrap_or(false)),
             task_workers: RwLock::new(HashMap::new()),
-            #[cfg(feature = "bootstrap-internal")]
-            bootstrap_task_workers: RwLock::new(HashMap::new()),
             tasks: RwLock::new(HashMap::new()),
         };
 
@@ -607,7 +647,7 @@ impl AgentRuntime {
             Arc::downgrade(self),
             crate::bootstrap_core::CapabilityConfig {
                 disable_basic,
-                advanced_capabilities: enable_extended,
+                enable_extended,
                 enable_autonomy,
                 skip_character_provider: self.capability_options.skip_character_provider,
             },
@@ -619,32 +659,12 @@ impl AgentRuntime {
             #[cfg(not(feature = "wasm"))]
             {
                 let character = self.character.read().await;
-                character.advanced_planning.unwrap_or_else(|| {
-                    character
-                        .style
-                        .as_ref()
-                        .and_then(|s| s.all.as_ref())
-                        .map(|all| {
-                            all.iter()
-                                .any(|item| item.eq_ignore_ascii_case("ADVANCED_PLANNING"))
-                        })
-                        .unwrap_or(false)
-                })
+                character.advanced_planning.unwrap_or(false)
             }
             #[cfg(feature = "wasm")]
             {
                 let character = self.character.read().unwrap();
-                character.advanced_planning.unwrap_or_else(|| {
-                    character
-                        .style
-                        .as_ref()
-                        .and_then(|s| s.all.as_ref())
-                        .map(|all| {
-                            all.iter()
-                                .any(|item| item.eq_ignore_ascii_case("ADVANCED_PLANNING"))
-                        })
-                        .unwrap_or(false)
-                })
+                character.advanced_planning.unwrap_or(false)
             }
         };
         if advanced_planning_enabled {
@@ -664,40 +684,17 @@ impl AgentRuntime {
             #[cfg(not(feature = "wasm"))]
             {
                 let character = self.character.read().await;
-                character.advanced_memory.unwrap_or_else(|| {
-                    character
-                        .style
-                        .as_ref()
-                        .and_then(|s| s.all.as_ref())
-                        .map(|all| {
-                            all.iter()
-                                .any(|item| item.eq_ignore_ascii_case("ADVANCED_MEMORY"))
-                        })
-                        .unwrap_or(false)
-                })
+                character.advanced_memory.unwrap_or(false)
             }
             #[cfg(feature = "wasm")]
             {
                 let character = self.character.read().unwrap();
-                character.advanced_memory.unwrap_or_else(|| {
-                    character
-                        .style
-                        .as_ref()
-                        .and_then(|s| s.all.as_ref())
-                        .map(|all| {
-                            all.iter()
-                                .any(|item| item.eq_ignore_ascii_case("ADVANCED_MEMORY"))
-                        })
-                        .unwrap_or(false)
-                })
+                character.advanced_memory.unwrap_or(false)
             }
         };
         if advanced_memory_enabled {
-            // Memory Service
-            let svc = Arc::new(advanced_memory::MemoryService::new(
-                Arc::downgrade(self),
-                crate::advanced_memory::types::MemoryConfig::default(),
-            ));
+            let svc = Arc::new(advanced_memory::MemoryService::default());
+            svc.configure_from_runtime(self).await;
             self.register_service("memory", svc).await;
             let plugin = advanced_memory::create_advanced_memory_plugin(Arc::downgrade(self));
             self.register_plugin(plugin).await?;
@@ -959,10 +956,7 @@ impl AgentRuntime {
     }
 
     /// Get a task worker by name.
-    pub async fn get_task_worker(
-        &self,
-        name: &str,
-    ) -> Option<Arc<dyn crate::types::task::TaskWorker>> {
+    pub async fn get_task_worker(&self, name: &str) -> Option<Arc<dyn crate::types::task::TaskWorker>> {
         #[cfg(not(feature = "wasm"))]
         {
             self.task_workers.read().await.get(name).cloned()
@@ -990,10 +984,7 @@ impl AgentRuntime {
     // =========================================================================
 
     /// Create a new task.
-    pub async fn create_task(
-        &self,
-        mut task: crate::types::task::Task,
-    ) -> crate::types::task::Task {
+    pub async fn create_task(&self, mut task: crate::types::task::Task) -> crate::types::task::Task {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -1021,15 +1012,9 @@ impl AgentRuntime {
         let task_id = task.id.clone().unwrap().to_string();
 
         #[cfg(not(feature = "wasm"))]
-        self.tasks
-            .write()
-            .await
-            .insert(task_id.clone(), task.clone());
+        self.tasks.write().await.insert(task_id.clone(), task.clone());
         #[cfg(feature = "wasm")]
-        self.tasks
-            .write()
-            .unwrap()
-            .insert(task_id.clone(), task.clone());
+        self.tasks.write().unwrap().insert(task_id.clone(), task.clone());
 
         debug!(
             target: "agent",
@@ -1156,22 +1141,8 @@ impl AgentRuntime {
         }
     }
 
-    /// Compose state for a message (TypeScript/Python parity).
-    ///
-    /// When `include_list` is `Some`, those provider names are added to the set of
-    /// providers that will run. When `only_include` is `true` the list is exclusive
-    /// (only the listed providers run); otherwise it is additive.
+    /// Compose state for a message
     pub async fn compose_state(&self, message: &Memory) -> Result<State> {
-        self.compose_state_filtered(message, None, false).await
-    }
-
-    /// Compose state with optional provider filtering (TypeScript/Python parity).
-    pub async fn compose_state_filtered(
-        &self,
-        message: &Memory,
-        include_list: Option<&[String]>,
-        only_include: bool,
-    ) -> Result<State> {
         let mut state = State::new();
 
         // Get providers - clone to avoid holding lock across await
@@ -1180,30 +1151,12 @@ impl AgentRuntime {
         #[cfg(feature = "wasm")]
         let providers: Vec<_> = self.providers.read().unwrap().iter().cloned().collect();
 
-        // Build the include set for efficient membership checks
-        let include_set: Option<std::collections::HashSet<&str>> =
-            include_list.map(|list| list.iter().map(|s| s.as_str()).collect());
-
         // Run each provider to gather context
         let traj_step_id = self.get_trajectory_step_id();
         for provider in providers.iter() {
             let def = provider.definition();
-            let is_private = def.private.unwrap_or(false);
-            let is_dynamic = def.dynamic.unwrap_or(false);
-
-            // Provider filtering (TypeScript/Python parity)
-            let should_run = match (&include_set, only_include) {
-                // Exclusive mode: only providers in the list
-                (Some(set), true) => set.contains(def.name.as_str()),
-                // Additive mode: non-private non-dynamic providers + listed providers
-                (Some(set), false) => {
-                    (!is_private && !is_dynamic) || set.contains(def.name.as_str())
-                }
-                // No filter: skip private providers
-                (None, _) => !is_private,
-            };
-            if !should_run {
-                continue;
+            if def.private.unwrap_or(false) {
+                continue; // Skip private providers unless explicitly called
             }
 
             match provider.get(message, &state).await {
@@ -1360,28 +1313,23 @@ impl AgentRuntime {
             s.to_lowercase().replace('_', "")
         }
 
-        // Pre-build lookup maps for O(1) exact name and simile matching
-        // instead of O(n) linear search per selected action.
-        let mut by_name: HashMap<String, usize> = HashMap::new();
-        let mut by_simile: HashMap<String, usize> = HashMap::new();
-        for (i, h) in handlers.iter().enumerate() {
-            let def = h.definition();
-            by_name.entry(normalize_action_name(&def.name)).or_insert(i);
-            if let Some(similes) = &def.similes {
-                for s in similes {
-                    by_simile.entry(normalize_action_name(s)).or_insert(i);
-                }
-            }
-        }
-
         let mut results: Vec<ActionResult> = Vec::new();
         for name in to_run {
             let normalized = normalize_action_name(&name);
 
-            let handler_idx = by_name
-                .get(&normalized)
-                .or_else(|| by_simile.get(&normalized));
-            let handler = handler_idx.map(|&i| &handlers[i]);
+            let handler = handlers.iter().find(|h| {
+                let def = h.definition();
+                let def_norm = normalize_action_name(&def.name);
+                if def_norm == normalized {
+                    return true;
+                }
+                if let Some(similes) = &def.similes {
+                    return similes
+                        .iter()
+                        .any(|s| normalize_action_name(s) == normalized);
+                }
+                false
+            });
 
             let Some(handler) = handler else {
                 results.push(ActionResult::failure(&format!(
@@ -1411,73 +1359,7 @@ impl AgentRuntime {
         Ok(results)
     }
 
-    /// Run phase:Pre evaluators as middleware before memory storage.
-    ///
-    /// Pre-evaluators can inspect, rewrite, or block a message before it
-    /// reaches the agent.  If any sets `blocked = true`, the message is dropped.
-    pub async fn evaluate_pre(
-        &self,
-        message: &Memory,
-        state: Option<&State>,
-    ) -> PreEvaluatorResult {
-        #[cfg(not(feature = "wasm"))]
-        let evaluators: Vec<_> = self.evaluators.read().await.iter().cloned().collect();
-        #[cfg(feature = "wasm")]
-        let evaluators: Vec<_> = self.evaluators.read().unwrap().iter().cloned().collect();
-
-        let pre_evaluators: Vec<_> = evaluators
-            .iter()
-            .filter(|e| e.definition().phase == EvaluatorPhase::Pre)
-            .collect();
-
-        if pre_evaluators.is_empty() {
-            return PreEvaluatorResult::default();
-        }
-
-        let mut result = PreEvaluatorResult::default();
-
-        for evaluator in pre_evaluators {
-            match evaluator.validate(message, state).await {
-                true => {}
-                false => continue,
-            }
-
-            match evaluator.handle(message, state, None).await {
-                Ok(Some(action_result)) => {
-                    if !action_result.success {
-                        result.blocked = true;
-                        result.reason =
-                            action_result.error.or(action_result.text).or(result.reason);
-                        warn!(
-                            "Pre-evaluator '{}' blocked message: {:?}",
-                            evaluator.definition().name,
-                            result.reason
-                        );
-                    }
-                    // Check for rewritten_text in data
-                    if let Some(ref data) = action_result.data {
-                        if let Some(text) = data.get("rewritten_text") {
-                            if let Some(s) = text.as_str() {
-                                result.rewritten_text = Some(s.to_string());
-                            }
-                        }
-                    }
-                }
-                Ok(None) => {}
-                Err(e) => {
-                    error!(
-                        "Pre-evaluator '{}' failed: {}",
-                        evaluator.definition().name,
-                        e
-                    );
-                }
-            }
-        }
-
-        result
-    }
-
-    /// Run phase:Post evaluators for a message (TypeScript/Python parity).
+    /// Run evaluators for a message (TypeScript/Python parity).
     pub async fn evaluate_message(
         &self,
         message: &Memory,
@@ -1489,14 +1371,8 @@ impl AgentRuntime {
         #[cfg(feature = "wasm")]
         let evaluators: Vec<_> = self.evaluators.read().unwrap().iter().cloned().collect();
 
-        // Only run post-phase evaluators (default)
-        let post_evaluators: Vec<_> = evaluators
-            .iter()
-            .filter(|e| e.definition().phase == EvaluatorPhase::Post)
-            .collect();
-
         let mut results: Vec<ActionResult> = Vec::new();
-        for evaluator in post_evaluators {
+        for evaluator in evaluators.iter() {
             if !evaluator.validate(message, Some(state)).await {
                 continue;
             }
@@ -1623,22 +1499,8 @@ impl AgentRuntime {
     }
 
     /// Get a reference to the database adapter (if any)
-    pub fn get_adapter(&self) -> Option<Arc<dyn DatabaseAdapter>> {
-        self.adapter.clone()
-    }
-
-    /// Update an existing room through the configured adapter.
-    pub async fn update_room(&self, room: &Room) -> Result<bool> {
-        let adapter = self
-            .adapter
-            .as_ref()
-            .context("No database adapter configured")?;
-        adapter.update_room(room).await
-    }
-
-    /// Get the configured database adapter (if present).
-    pub fn database(&self) -> Option<Arc<dyn DatabaseAdapter>> {
-        self.adapter.clone()
+    pub fn get_adapter(&self) -> Option<&Arc<dyn DatabaseAdapter>> {
+        self.adapter.as_ref()
     }
 
     /// Get a message service for handling incoming messages
@@ -1855,21 +1717,14 @@ impl AgentRuntime {
                     .get("maxTokens")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0);
-                let logged_response = if effective_model_type
-                    .to_ascii_uppercase()
-                    .contains("EMBEDDING")
-                {
-                    "[embedding vector]".to_string()
-                } else {
-                    response_text.chars().take(2000).collect::<String>()
-                };
+
                 let mut logs = self.trajectory_logs.lock().expect("lock poisoned");
                 logs.llm_calls.push(TrajectoryLlmCall {
                     step_id,
                     model: effective_model_type.to_string(),
                     system_prompt,
                     user_prompt: prompt,
-                    response: logged_response,
+                    response: response_text.chars().take(2000).collect::<String>(),
                     temperature,
                     max_tokens,
                     purpose: "action".to_string(),
@@ -1969,6 +1824,7 @@ impl AgentRuntime {
         options: DynamicPromptOptions,
     ) -> Result<Option<serde_json::Value>> {
         use crate::types::model::model_type;
+        use uuid::Uuid;
 
         // Determine model type - check options.model first, then model_size, then default
         let model_type_str = if let Some(ref model) = options.model {
@@ -2016,25 +1872,6 @@ impl AgentRuntime {
         let mut current_retry = 0;
         let mut last_error: Option<String> = None;
         let mut smart_retry_context: Option<String> = None;
-        let character_id = {
-            #[cfg(feature = "native")]
-            {
-                self.character.read().await.id.clone()
-            }
-            #[cfg(not(feature = "native"))]
-            {
-                self.character.read().unwrap().id.clone()
-            }
-        };
-        let deterministic_validation_seed = build_conversation_seed(
-            &self.agent_id,
-            character_id.as_ref(),
-            None,
-            Some(state),
-            &format!("dynamic-prompt:{}", model_schema_key),
-            None,
-            chrono_timestamp(),
-        );
 
         // Generate per-field validation codes for levels 0-1
         let mut per_field_codes: HashMap<String, String> = HashMap::new();
@@ -2045,11 +1882,7 @@ impl AgentRuntime {
                 if needs_validation {
                     per_field_codes.insert(
                         row.field.clone(),
-                        deterministic_hex(
-                            &deterministic_validation_seed,
-                            &format!("field-code:{}", row.field),
-                            8,
-                        ),
+                        Uuid::new_v4().to_string()[..8].to_string(),
                     );
                 }
             }
@@ -2064,11 +1897,8 @@ impl AgentRuntime {
             // - Helpers or partials
             // For complex templates, pre-render in TypeScript or use a Rust Handlebars crate.
             let state_map = state.values_map();
-            let mut sorted_state_entries: Vec<(&String, &serde_json::Value)> =
-                state_map.iter().collect();
-            sorted_state_entries.sort_by(|(left, _), (right, _)| left.cmp(right));
             let mut rendered = prompt.to_string();
-            for (key, value) in sorted_state_entries {
+            for (key, value) in &state_map {
                 let placeholder = format!("{{{{{}}}}}", key);
                 let value_str = match value {
                     serde_json::Value::String(s) => s.clone(),
@@ -2154,18 +1984,9 @@ impl AgentRuntime {
             }
             example.push_str(container_end);
 
-            let init_code = deterministic_uuid(
-                &deterministic_validation_seed,
-                &format!("init-code:{}", current_retry),
-            );
-            let mid_code = deterministic_uuid(
-                &deterministic_validation_seed,
-                &format!("mid-code:{}", current_retry),
-            );
-            let final_code = deterministic_uuid(
-                &deterministic_validation_seed,
-                &format!("final-code:{}", current_retry),
-            );
+            let init_code = Uuid::new_v4().to_string();
+            let mid_code = Uuid::new_v4().to_string();
+            let final_code = Uuid::new_v4().to_string();
 
             let section_start = if is_xml {
                 "<output>"
@@ -2202,42 +2023,10 @@ impl AgentRuntime {
 
             debug!("dynamic_prompt_exec_from_state: using format {}", format);
 
-            // ── Prompt trimming safety net ─────────────────────────────────
-            // If the prompt exceeds a character-based budget, trim it to
-            // prevent context-limit errors from the model provider.
-            const MAX_PROMPT_CHARS: usize = 256_000; // ~128K tokens at ~2 chars/token
-            let mut trimmed_prompt = full_prompt.clone();
-            if trimmed_prompt.len() > MAX_PROMPT_CHARS {
-                let est_tokens = trimmed_prompt.len() / 2;
-                warn!(
-                    "dynamic_prompt_exec_from_state: prompt too large (~{} est tokens), trimming to ~{}",
-                    est_tokens,
-                    MAX_PROMPT_CHARS / 2
-                );
-                // Keep the end (most recent content + output instructions)
-                let start = trimmed_prompt.len() - MAX_PROMPT_CHARS;
-                trimmed_prompt = trimmed_prompt[start..].to_string();
-            }
-
-            // ── Cap maxTokens to fit within model context ──────────────────
-            const MODEL_CONTEXT_LIMIT: usize = 200_000;
-            let est_input = trimmed_prompt.len() / 2; // pessimistic: ~2 chars/token
-            let mut max_tokens: usize = 4096;
-            let max_available = MODEL_CONTEXT_LIMIT
-                .saturating_sub(est_input)
-                .saturating_sub(1_000);
-            if max_tokens > max_available && max_available > 0 {
-                max_tokens = max_available.max(1_000);
-                warn!(
-                    "dynamic_prompt_exec_from_state: capping maxTokens to {}",
-                    max_tokens
-                );
-            }
-
             // Call model
             let params = serde_json::json!({
-                "prompt": trimmed_prompt,
-                "maxTokens": max_tokens,
+                "prompt": full_prompt,
+                "maxTokens": 4096,
             });
 
             let response = match self.use_model(model_type_str, params).await {
@@ -2668,8 +2457,10 @@ fn parse_xml_to_json(xml: &str) -> Option<serde_json::Value> {
             // If result is {"response": {...}}, unwrap the nested object
             // This handles cases where wrapper extraction didn't work (whitespace, etc.)
             if map.len() == 1 {
-                if let Some(Value::Object(inner_map)) = map.get("response") {
-                    return Some(Value::Object(inner_map.clone()));
+                if let Some(inner) = map.get("response") {
+                    if let Value::Object(inner_map) = inner {
+                        return Some(Value::Object(inner_map.clone()));
+                    }
                 }
             }
             Some(Value::Object(map))
@@ -2864,463 +2655,5 @@ mod tests {
         assert_eq!(LogLevel::Warn.to_tracing_level(), tracing::Level::WARN);
         assert_eq!(LogLevel::Error.to_tracing_level(), tracing::Level::ERROR);
         assert_eq!(LogLevel::Fatal.to_tracing_level(), tracing::Level::ERROR);
-    }
-}
-
-// ============================================================================
-// IAgentRuntime Implementation for AgentRuntime
-// ============================================================================
-
-#[cfg(all(
-    feature = "bootstrap-internal",
-    not(feature = "wasm"),
-    feature = "native"
-))]
-fn block_on_runtime<T>(future: impl std::future::Future<Output = T>) -> T {
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        tokio::task::block_in_place(|| handle.block_on(future))
-    } else {
-        futures::executor::block_on(future)
-    }
-}
-
-#[cfg(all(
-    feature = "bootstrap-internal",
-    not(feature = "wasm"),
-    not(feature = "native")
-))]
-fn block_on_runtime<T>(future: impl std::future::Future<Output = T>) -> T {
-    futures::executor::block_on(future)
-}
-
-#[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
-struct BootstrapTaskWorkerAdapter {
-    inner: Arc<dyn crate::bootstrap::runtime::TaskWorker>,
-}
-
-#[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
-#[async_trait::async_trait]
-impl crate::types::task::TaskWorker for BootstrapTaskWorkerAdapter {
-    fn name(&self) -> &str {
-        self.inner.name()
-    }
-
-    async fn execute(
-        &self,
-        runtime: Arc<dyn Any + Send + Sync>,
-        options: HashMap<String, serde_json::Value>,
-        task: Task,
-    ) -> anyhow::Result<()> {
-        let runtime = runtime
-            .downcast::<AgentRuntime>()
-            .map_err(|_| anyhow::anyhow!("expected AgentRuntime for bootstrap task worker"))?;
-        let runtime: Arc<dyn crate::bootstrap::runtime::IAgentRuntime> = runtime;
-        self.inner
-            .execute(runtime, options, task)
-            .await
-            .map_err(|e| anyhow::anyhow!(e.to_string()))
-    }
-}
-
-#[cfg(all(feature = "bootstrap-internal", not(feature = "wasm")))]
-#[async_trait::async_trait]
-impl crate::bootstrap::runtime::IAgentRuntime for AgentRuntime {
-    fn agent_id(&self) -> uuid::Uuid {
-        uuid::Uuid::parse_str(self.agent_id.as_str()).unwrap_or_default()
-    }
-
-    async fn character(&self) -> crate::types::Character {
-        self.character.read().await.clone()
-    }
-
-    async fn get_setting(&self, key: &str) -> Option<String> {
-        AgentRuntime::get_setting(self, key)
-            .await
-            .map(setting_value_to_string)
-    }
-
-    async fn get_all_settings(&self) -> std::collections::HashMap<String, String> {
-        let mut merged = std::collections::HashMap::new();
-
-        {
-            let settings = self.settings.read().await;
-            for (key, value) in &settings.values {
-                merged.insert(key.clone(), setting_value_to_string(value.clone()));
-            }
-        }
-
-        let character = self.character.read().await.clone();
-
-        if let Some(settings) = &character.settings {
-            for (key, value) in &settings.values {
-                if let Some(setting) = json_value_to_setting_value(value) {
-                    merged.insert(key.clone(), setting_value_to_string(setting));
-                }
-            }
-
-            if let Some(nested) = settings.values.get("secrets").and_then(|v| v.as_object()) {
-                for (key, value) in nested {
-                    if let Some(setting) = json_value_to_setting_value(value) {
-                        merged.insert(key.clone(), setting_value_to_string(setting));
-                    }
-                }
-            }
-        }
-
-        if let Some(secrets) = &character.secrets {
-            for (key, value) in &secrets.values {
-                if let Some(setting) = json_value_to_setting_value(value) {
-                    merged.insert(key.clone(), setting_value_to_string(setting));
-                }
-            }
-        }
-
-        merged
-    }
-
-    async fn set_setting(&self, key: &str, value: &str) -> crate::error::PluginResult<()> {
-        AgentRuntime::set_setting(self, key, SettingValue::String(value.to_string()), false).await;
-        Ok(())
-    }
-
-    async fn get_entity(
-        &self,
-        entity_id: uuid::Uuid,
-    ) -> crate::error::PluginResult<Option<crate::types::Entity>> {
-        let adapter = self
-            .get_adapter()
-            .ok_or_else(|| crate::error::PluginError::Internal("No adapter".to_string()))?;
-        adapter
-            .get_entity(&entity_id.into())
-            .await
-            .map_err(|e| crate::error::PluginError::DatabaseError(e.into()))
-    }
-
-    async fn update_entity(
-        &self,
-        _entity: &crate::types::Entity,
-    ) -> crate::error::PluginResult<()> {
-        Err(crate::error::PluginError::Internal(
-            "update_entity is not supported by the runtime adapter yet".to_string(),
-        ))
-    }
-
-    async fn get_room(
-        &self,
-        room_id: uuid::Uuid,
-    ) -> crate::error::PluginResult<Option<crate::types::Room>> {
-        let adapter = self
-            .get_adapter()
-            .ok_or_else(|| crate::error::PluginError::Internal("No adapter".to_string()))?;
-        adapter
-            .get_room(&room_id.into())
-            .await
-            .map_err(|e| crate::error::PluginError::DatabaseError(e.into()))
-    }
-
-    async fn get_world(
-        &self,
-        world_id: uuid::Uuid,
-    ) -> crate::error::PluginResult<Option<crate::types::World>> {
-        let adapter = self
-            .get_adapter()
-            .ok_or_else(|| crate::error::PluginError::Internal("No adapter".to_string()))?;
-        adapter
-            .get_world(&world_id.into())
-            .await
-            .map_err(|e| crate::error::PluginError::DatabaseError(e.into()))
-    }
-
-    async fn update_world(&self, _world: &crate::types::World) -> crate::error::PluginResult<()> {
-        Err(crate::error::PluginError::Internal(
-            "update_world is not supported by the runtime adapter yet".to_string(),
-        ))
-    }
-
-    async fn create_memory(
-        &self,
-        content: crate::types::Content,
-        room_id: Option<uuid::Uuid>,
-        entity_id: Option<uuid::Uuid>,
-        memory_type: crate::types::MemoryType,
-        metadata: std::collections::HashMap<String, serde_json::Value>,
-    ) -> crate::error::PluginResult<crate::types::Memory> {
-        let adapter = self
-            .get_adapter()
-            .ok_or_else(|| crate::error::PluginError::Internal("No adapter".to_string()))?;
-
-        let table_name = match memory_type {
-            crate::types::MemoryType::Message => "messages",
-            crate::types::MemoryType::Knowledge => "knowledge",
-            crate::types::MemoryType::Action | crate::types::MemoryType::Fact => "memories",
-        };
-
-        let metadata = if metadata.is_empty() {
-            None
-        } else {
-            Some(crate::types::memory::MemoryMetadata::Custom(
-                serde_json::Value::Object(serde_json::Map::from_iter(metadata.into_iter())),
-            ))
-        };
-
-        let mut memory = crate::types::Memory {
-            id: Some(UUID::new_v4()),
-            entity_id: entity_id
-                .map(Into::into)
-                .unwrap_or_else(|| self.agent_id.clone()),
-            agent_id: Some(self.agent_id.clone()),
-            created_at: Some(chrono::Utc::now().timestamp_millis()),
-            content,
-            embedding: None,
-            room_id: room_id.map(Into::into).unwrap_or_else(UUID::default_uuid),
-            world_id: None,
-            unique: Some(true),
-            similarity: None,
-            metadata,
-        };
-
-        let created_id = adapter
-            .create_memory(&memory, table_name)
-            .await
-            .map_err(crate::error::PluginError::DatabaseError)?;
-        memory.id = Some(created_id);
-        Ok(memory)
-    }
-
-    async fn get_memories(
-        &self,
-        room_id: Option<uuid::Uuid>,
-        _entity_id: Option<uuid::Uuid>,
-        _memory_type: Option<crate::types::MemoryType>,
-        count: usize,
-    ) -> crate::error::PluginResult<Vec<crate::types::Memory>> {
-        if let Some(adapter) = &self.adapter {
-            let params = crate::types::database::GetMemoriesParams {
-                room_id: room_id.map(|id| id.into()),
-                count: Some(count.try_into().unwrap_or(10)),
-                ..Default::default()
-            };
-            adapter
-                .get_memories(params)
-                .await
-                .map_err(|e| crate::error::PluginError::DatabaseError(e))
-        } else {
-            Ok(vec![])
-        }
-    }
-
-    async fn search_knowledge(
-        &self,
-        query: &str,
-        limit: usize,
-    ) -> crate::error::PluginResult<Vec<crate::types::Memory>> {
-        if let Some(adapter) = &self.adapter {
-            let params = crate::types::database::SearchMemoriesParams {
-                table_name: "knowledge".to_string(),
-                query: Some(query.to_string()),
-                count: Some(limit as i32),
-                room_id: None, // Knowledge search is not room-specific
-                ..Default::default()
-            };
-            adapter
-                .search_memories(params)
-                .await
-                .map_err(|e| crate::error::PluginError::DatabaseError(e))
-        } else {
-            Ok(vec![])
-        }
-    }
-
-    async fn search_memories(
-        &self,
-        params: crate::types::database::SearchMemoriesParams,
-    ) -> crate::error::PluginResult<Vec<crate::types::Memory>> {
-        if let Some(adapter) = &self.adapter {
-            adapter
-                .search_memories(params)
-                .await
-                .map_err(|e| crate::error::PluginError::DatabaseError(e))
-        } else {
-            Ok(vec![])
-        }
-    }
-
-    async fn compose_state(
-        &self,
-        message: &crate::types::Memory,
-        providers: &[&str],
-    ) -> crate::error::PluginResult<crate::types::State> {
-        let providers_vec: Vec<String> = providers.iter().map(|s| s.to_string()).collect();
-        self.compose_state_filtered(message, Some(&providers_vec), false)
-            .await
-            .map_err(|e| crate::error::PluginError::Internal(e.to_string()))
-    }
-
-    fn compose_prompt(&self, state: &crate::types::State, template: &str) -> String {
-        let data = serde_json::to_value(state.values_map()).unwrap_or(serde_json::Value::Null);
-        crate::template::render_template(template, &data).unwrap_or(template.to_string())
-    }
-
-    async fn use_model(
-        &self,
-        model_type: crate::types::ModelType,
-        params: crate::bootstrap::runtime::ModelParams,
-    ) -> crate::error::PluginResult<crate::bootstrap::runtime::ModelOutput> {
-        let model_key = match model_type {
-            crate::types::ModelType::TextLarge => "TEXT_LARGE",
-            crate::types::ModelType::TextSmall => "TEXT_SMALL",
-            crate::types::ModelType::TextEmbedding => "TEXT_EMBEDDING",
-            crate::types::ModelType::Image => "IMAGE",
-            crate::types::ModelType::AudioTranscription => "AUDIO_TRANSCRIPTION",
-            crate::types::ModelType::TextToSpeech => "TEXT_TO_SPEECH",
-        };
-
-        let params_val = serde_json::to_value(params)
-            .map_err(|e| crate::error::PluginError::Internal(e.to_string()))?;
-        let output_str = self
-            .use_model(model_key, params_val)
-            .await
-            .map_err(|e| crate::error::PluginError::ModelError(e.to_string()))?;
-
-        match model_type {
-            crate::types::ModelType::TextEmbedding => {
-                let val: Vec<f32> = serde_json::from_str(&output_str).unwrap_or_default();
-                Ok(crate::bootstrap::runtime::ModelOutput::Embedding(val))
-            }
-            crate::types::ModelType::TextSmall | crate::types::ModelType::TextLarge => {
-                Ok(crate::bootstrap::runtime::ModelOutput::Text(output_str))
-            }
-            _ => Ok(crate::bootstrap::runtime::ModelOutput::Structured(
-                serde_json::Value::String(output_str),
-            )),
-        }
-    }
-
-    fn has_model(&self, model_type: crate::types::ModelType) -> bool {
-        let model_key = match model_type {
-            crate::types::ModelType::TextLarge => "TEXT_LARGE",
-            crate::types::ModelType::TextSmall => "TEXT_SMALL",
-            crate::types::ModelType::TextEmbedding => "TEXT_EMBEDDING",
-            crate::types::ModelType::Image => "IMAGE",
-            crate::types::ModelType::AudioTranscription => "AUDIO_TRANSCRIPTION",
-            crate::types::ModelType::TextToSpeech => "TEXT_TO_SPEECH",
-        };
-
-        block_on_runtime(self.model_handlers.read()).contains_key(model_key)
-    }
-
-    fn get_available_actions(&self) -> Vec<crate::bootstrap::runtime::ActionInfo> {
-        block_on_runtime(self.actions.read())
-            .iter()
-            .map(|action| {
-                let definition = action.definition();
-                crate::bootstrap::runtime::ActionInfo {
-                    name: definition.name,
-                    description: definition.description,
-                }
-            })
-            .collect()
-    }
-
-    fn get_current_timestamp(&self) -> i64 {
-        chrono::Utc::now().timestamp_millis()
-    }
-
-    fn log_info(&self, source: &str, message: &str) {
-        tracing::info!(source = source, "{}", message);
-    }
-
-    fn log_debug(&self, source: &str, message: &str) {
-        tracing::debug!(source = source, "{}", message);
-    }
-
-    fn log_warning(&self, source: &str, message: &str) {
-        tracing::warn!(source = source, "{}", message);
-    }
-
-    fn log_error(&self, source: &str, message: &str) {
-        tracing::error!(source = source, "{}", message);
-    }
-
-    fn register_task_worker(&self, worker: Box<dyn crate::bootstrap::runtime::TaskWorker>) {
-        let worker: Arc<dyn crate::bootstrap::runtime::TaskWorker> = Arc::from(worker);
-        let name = worker.name().to_string();
-
-        block_on_runtime(self.bootstrap_task_workers.write())
-            .insert(name.clone(), Arc::clone(&worker));
-        block_on_runtime(self.task_workers.write()).insert(
-            name.clone(),
-            Arc::new(BootstrapTaskWorkerAdapter { inner: worker }),
-        );
-
-        tracing::debug!(task = %name, "Task worker registered via IAgentRuntime");
-    }
-
-    fn get_task_worker(
-        &self,
-        name: &str,
-    ) -> Option<std::sync::Arc<dyn crate::bootstrap::runtime::TaskWorker>> {
-        block_on_runtime(self.bootstrap_task_workers.read())
-            .get(name)
-            .cloned()
-    }
-
-    async fn create_task(
-        &self,
-        task: crate::types::task::Task,
-    ) -> crate::error::PluginResult<crate::types::task::Task> {
-        Ok(AgentRuntime::create_task(self, task).await)
-    }
-
-    async fn get_tasks(
-        &self,
-        tags: Option<Vec<String>>,
-    ) -> crate::error::PluginResult<Vec<crate::types::task::Task>> {
-        Ok(AgentRuntime::get_tasks(self, tags).await)
-    }
-
-    async fn delete_task(&self, task_id: uuid::Uuid) -> crate::error::PluginResult<bool> {
-        let task_id = task_id.to_string();
-        Ok(AgentRuntime::delete_task(self, &task_id).await)
-    }
-
-    async fn get_service(
-        &self,
-        service_type: &str,
-    ) -> Option<std::sync::Arc<dyn crate::types::service::Service>> {
-        #[cfg(feature = "native")]
-        {
-            let services = self.services.read().await;
-            services
-                .get(service_type)
-                .cloned()
-                .map(|s| s as std::sync::Arc<dyn crate::types::service::Service>)
-        }
-        #[cfg(not(feature = "native"))]
-        {
-            None
-        }
-    }
-
-    async fn register_event(
-        &self,
-        event_type: crate::types::events::EventType,
-        handler: crate::runtime::EventHandler,
-    ) {
-        self.register_event(event_type, handler).await
-    }
-
-    async fn emit_event(
-        &self,
-        event_type: crate::types::events::EventType,
-        payload: crate::types::events::EventPayload,
-    ) -> crate::error::PluginResult<()> {
-        self.emit_event(event_type, payload)
-            .await
-            .map_err(|e| crate::error::PluginError::Internal(e.to_string()))
-    }
-
-    fn get_adapter(&self) -> Option<std::sync::Arc<dyn crate::runtime::DatabaseAdapter>> {
-        self.get_adapter()
     }
 }

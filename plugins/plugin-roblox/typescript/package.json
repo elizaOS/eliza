@@ -1,0 +1,109 @@
+{
+  "name": "@elizaos/plugin-roblox",
+  "version": "2.0.0-alpha.2",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-roblox.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "typescript": "^5.9.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "@types/node": "^25.0.3"
+  },
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run __tests__/",
+    "test:unit": "vitest run __tests__/",
+    "test:integration": "echo 'Integration tests require elizaos CLI - skipping'",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "ROBLOX_API_KEY": {
+        "type": "string",
+        "description": "API key for authenticating with the Roblox Open Cloud API.",
+        "required": true,
+        "sensitive": true
+      },
+      "ROBLOX_UNIVERSE_ID": {
+        "type": "string",
+        "description": "The Universe ID of the Roblox experience to interact with.",
+        "required": true,
+        "sensitive": false
+      },
+      "ROBLOX_PLACE_ID": {
+        "type": "string",
+        "description": "The Place ID of the specific Roblox place within the universe.",
+        "required": false,
+        "sensitive": false
+      },
+      "ROBLOX_WEBHOOK_SECRET": {
+        "type": "string",
+        "description": "Secret key for validating incoming webhooks from Roblox.",
+        "required": false,
+        "sensitive": true
+      },
+      "ROBLOX_MESSAGING_TOPIC": {
+        "type": "string",
+        "description": "The messaging service topic for cross-server communication.",
+        "required": false,
+        "default": "eliza-agent",
+        "sensitive": false
+      },
+      "ROBLOX_POLL_INTERVAL": {
+        "type": "number",
+        "description": "Polling interval in seconds for Roblox data store operations.",
+        "required": false,
+        "default": 30,
+        "sensitive": false
+      },
+      "ROBLOX_DRY_RUN": {
+        "type": "boolean",
+        "description": "When true, operations are simulated but not executed.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      }
+    }
+  },
+  "milaidy": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "ESM build available via exports.import"
+    }
+  }
+}

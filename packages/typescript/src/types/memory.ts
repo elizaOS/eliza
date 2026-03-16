@@ -502,8 +502,6 @@ interface MemoryMetadataBase {
   source?: string;
   scope?: MemoryScope;
   timestamp?: number;
-  intent?: string;
-  intentProbability?: number;
 }
 
 export type MemoryMetadata = (

@@ -6,6 +6,7 @@ Fundamental providers included by default in the bootstrap plugin.
 from .action_state import action_state_provider
 from .actions import actions_provider
 from .attachments import attachments_provider
+from .capabilities import capabilities_provider
 from .character import character_provider
 from .choice import choice_provider
 from .context_bench import context_bench_provider
@@ -21,6 +22,7 @@ __all__ = [
     "action_state_provider",
     "actions_provider",
     "attachments_provider",
+    "capabilities_provider",
     "character_provider",
     "choice_provider",
     "context_bench_provider",
@@ -38,6 +40,7 @@ basic_providers = [
     actions_provider,
     action_state_provider,
     attachments_provider,
+    capabilities_provider,
     character_provider,
     choice_provider,
     context_bench_provider,

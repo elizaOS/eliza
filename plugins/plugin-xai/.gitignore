@@ -1,0 +1,10 @@
+node_modules
+dist
+.turbo
+.env.test
+coverage
+
+# Defense-in-depth: ignore potential local OAuth token persistence files
+oauth2.tokens.json
+*.oauth2.tokens.json
+.x-oauth*

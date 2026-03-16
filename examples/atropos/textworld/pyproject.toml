@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-atropos-textworld"
+version = "2.0.0"
+description = "TextWorld environment for elizaOS RL training with Atropos"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "elizaOS Contributors" }
+]
+keywords = ["elizaos", "atropos", "reinforcement-learning", "textworld", "interactive-fiction"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Games/Entertainment :: Puzzle Games",
+]
+dependencies = [
+    "elizaos>=1.0.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+textworld = [
+    "textworld>=1.5.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+]
+openai = [
+    "elizaos-plugin-openai>=1.0.0",
+]
+atropos = [
+    "atroposlib>=0.3.0",
+    # 4.37.0 fixes trust_remote_code handling for Llama/Mistral tokenizers
+    "transformers>=4.37.0",
+]
+
+[project.scripts]
+elizaos-textworld = "elizaos_atropos_textworld.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_atropos_textworld"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

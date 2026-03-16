@@ -4,11 +4,6 @@ import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
-import {
-  DEFAULT_MAX_EMBEDDING_TOKENS,
-  estimateTokens,
-  stripMessageFormatting,
-} from "../utils";
 
 interface EmbeddingQueueItem {
   memory: Memory;
@@ -39,7 +34,7 @@ export class EmbeddingGenerationService extends Service {
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     runtime.logger.info(
-      { src: "plugin:core:service:embedding", agentId: runtime.agentId },
+      { src: "plugin:bootstrap:service:embedding", agentId: runtime.agentId },
       "Starting embedding generation service",
     );
 
@@ -47,7 +42,7 @@ export class EmbeddingGenerationService extends Service {
     const embeddingModel = runtime.getModel(ModelType.TEXT_EMBEDDING);
     if (!embeddingModel) {
       runtime.logger.warn(
-        { src: "plugin:core:service:embedding", agentId: runtime.agentId },
+        { src: "plugin:bootstrap:service:embedding", agentId: runtime.agentId },
         "No TEXT_EMBEDDING model registered - service will not be initialized",
       );
       // Return a no-op service that does nothing
@@ -65,7 +60,7 @@ export class EmbeddingGenerationService extends Service {
     if (this.isDisabled) {
       this.runtime.logger.debug(
         {
-          src: "plugin:core:service:embedding",
+          src: "plugin:bootstrap:service:embedding",
           agentId: this.runtime.agentId,
         },
         "Service is disabled, skipping initialization",
@@ -75,7 +70,7 @@ export class EmbeddingGenerationService extends Service {
 
     this.runtime.logger.info(
       {
-        src: "plugin:core:service:embedding",
+        src: "plugin:bootstrap:service:embedding",
         agentId: this.runtime.agentId,
       },
       "Initializing embedding generation service",
@@ -98,7 +93,7 @@ export class EmbeddingGenerationService extends Service {
     if (this.isDisabled) {
       this.runtime.logger.debug(
         {
-          src: "plugin:core:service:embedding",
+          src: "plugin:bootstrap:service:embedding",
           agentId: this.runtime.agentId,
         },
         "Service is disabled, skipping embedding request",
@@ -118,7 +113,7 @@ export class EmbeddingGenerationService extends Service {
     if (memory.embedding) {
       this.runtime.logger.debug(
         {
-          src: "plugin:core:service:embedding",
+          src: "plugin:bootstrap:service:embedding",
           agentId: this.runtime.agentId,
           memoryId: memory.id,
         },
@@ -131,7 +126,7 @@ export class EmbeddingGenerationService extends Service {
     if (this.queue.length >= this.maxQueueSize) {
       this.runtime.logger.warn(
         {
-          src: "plugin:core:service:embedding",
+          src: "plugin:bootstrap:service:embedding",
           agentId: this.runtime.agentId,
           queueSize: this.queue.length,
           maxSize: this.maxQueueSize,
@@ -156,7 +151,7 @@ export class EmbeddingGenerationService extends Service {
 
     this.runtime.logger.debug(
       {
-        src: "plugin:core:service:embedding",
+        src: "plugin:bootstrap:service:embedding",
         agentId: this.runtime.agentId,
         queueSize: this.queue.length,
       },
@@ -211,7 +206,7 @@ export class EmbeddingGenerationService extends Service {
 
     this.runtime.logger.info(
       {
-        src: "plugin:core:service:embedding",
+        src: "plugin:bootstrap:service:embedding",
         agentId: this.runtime.agentId,
         removedCount,
         newSize: this.queue.length,
@@ -253,7 +248,7 @@ export class EmbeddingGenerationService extends Service {
     if (this.isDisabled) {
       this.runtime.logger.debug(
         {
-          src: "plugin:core:service:embedding",
+          src: "plugin:bootstrap:service:embedding",
           agentId: this.runtime.agentId,
         },
         "Service is disabled, not starting processing loop",
@@ -273,7 +268,7 @@ export class EmbeddingGenerationService extends Service {
 
     this.runtime.logger.info(
       {
-        src: "plugin:core:service:embedding",
+        src: "plugin:bootstrap:service:embedding",
         agentId: this.runtime.agentId,
       },
       "Started processing loop",
@@ -296,7 +291,7 @@ export class EmbeddingGenerationService extends Service {
 
       this.runtime.logger.debug(
         {
-          src: "plugin:core:service:embedding",
+          src: "plugin:bootstrap:service:embedding",
           agentId: this.runtime.agentId,
           batchSize: batch.length,
           remaining: this.queue.length,
@@ -311,7 +306,7 @@ export class EmbeddingGenerationService extends Service {
         } catch (error) {
           this.runtime.logger.error(
             {
-              src: "plugin:core:service:embedding",
+              src: "plugin:bootstrap:service:embedding",
               agentId: this.runtime.agentId,
               memoryId: item.memory.id,
               error: error instanceof Error ? error.message : String(error),
@@ -326,7 +321,7 @@ export class EmbeddingGenerationService extends Service {
             this.insertItemByPriority(item);
             this.runtime.logger.debug(
               {
-                src: "plugin:core:service:embedding",
+                src: "plugin:bootstrap:service:embedding",
                 agentId: this.runtime.agentId,
                 retryCount: item.retryCount,
                 maxRetries: item.maxRetries,
@@ -368,67 +363,6 @@ export class EmbeddingGenerationService extends Service {
     }
   }
 
-  /**
-   * Prepare text for embedding generation.
-   *
-   * 1. Strip formatting (names, timestamps, entity IDs, markdown headers) so
-   *    the embedding captures semantic meaning rather than structure.
-   * 2. If the memory belongs to a conversation room, fetch the last few
-   *    messages to provide contextual meaning for short/ambiguous messages.
-   * 3. Truncate the result to the model's max input tokens to stay within limits.
-   */
-  private async prepareEmbeddingText(memory: Memory): Promise<string> {
-    const rawText = memory.content?.text ?? "";
-    const estimatedTokens = estimateTokens(rawText);
-
-    // Get the embedding model to check for specific token limits
-    const model = this.runtime.getModelConfiguration?.(
-      ModelType.TEXT_EMBEDDING,
-    );
-    const maxTokens = model?.maxInputTokens || DEFAULT_MAX_EMBEDDING_TOKENS;
-
-    // For short messages (< 100 tokens), enrich with recent conversation context
-    // so that "yes", "ok", "do it" get meaningful embeddings.
-    let contextText: string;
-
-    if (estimatedTokens < 100 && memory.roomId) {
-      try {
-        const recentMessages = await this.runtime.getMemories({
-          tableName: "messages",
-          roomId: memory.roomId,
-          count: 5,
-        });
-        // Build context from recent messages (oldest first)
-        const sorted = recentMessages
-          .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-          .slice(-5);
-        contextText = sorted
-          .map((m) => m.content?.text ?? "")
-          .filter(Boolean)
-          .join("\n");
-      } catch {
-        // If we can't get context, just use the raw text
-        contextText = rawText;
-      }
-    } else {
-      contextText = rawText;
-    }
-
-    // Strip formatting for cleaner semantic content
-    let cleaned = stripMessageFormatting(contextText);
-
-    // Truncate to embedding model token limit using character estimation
-    // ~4 chars per token is a safe upper bound estimate for most tokenizers
-    const maxChars = maxTokens * 4;
-    if (cleaned.length > maxChars) {
-      // Keep the end (most recent content) when truncating
-      cleaned = cleaned.slice(-maxChars);
-    }
-
-    // Final safety: ensure we have non-empty text
-    return cleaned.trim() || rawText.trim().slice(0, maxChars);
-  }
-
   private async generateEmbedding(item: EmbeddingQueueItem): Promise<void> {
     const { memory } = item;
 
@@ -436,7 +370,7 @@ export class EmbeddingGenerationService extends Service {
     if (!memoryContent || !memoryContent.text) {
       this.runtime.logger.warn(
         {
-          src: "plugin:core:service:embedding",
+          src: "plugin:bootstrap:service:embedding",
           agentId: this.runtime.agentId,
           memoryId: memory.id,
         },
@@ -448,75 +382,27 @@ export class EmbeddingGenerationService extends Service {
     try {
       const startTime = Date.now();
 
-      // generated augmented query/intent
-      let embeddingSourceText = memoryContent.text;
-      try {
-        // Only generate intent for messages that are long enough to warrant it
-        // and haven't already had it generated
-        if (memoryContent.text.length > 20 && !memory.metadata?.intent) {
-          const intentPrompt = `Analyze the following message and extract the core user intent or a summary of what they are asking/saying. Return ONLY the intent text.
-Message:
-"${memoryContent.text}"
-
-Intent:`;
-
-          const intentResult = await this.runtime.useModel(
-            ModelType.TEXT_SMALL,
-            {
-              prompt: intentPrompt,
-            },
-          );
-
-          if (typeof intentResult === "string" && intentResult.length > 0) {
-            embeddingSourceText = intentResult.trim();
-            if (!memory.metadata) {
-              memory.metadata = {};
-            }
-            memory.metadata.intent = embeddingSourceText;
-          }
-        }
-      } catch (error) {
-        this.runtime.logger.warn(
-          {
-            src: "plugin:core:service:embedding",
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Failed to generate intent for embedding, falling back to original text",
-        );
-      }
-
-      // Prepare text: strip formatting, enrich short messages, truncate to limit
-      // We use the intent (if generated) as the source for the embedding
-      const tempMemory = {
-        ...memory,
-        content: { ...memory.content, text: embeddingSourceText },
-      };
-      const embeddingText = await this.prepareEmbeddingText(tempMemory);
-
       // Generate embedding
       const embedding = await this.runtime.useModel(ModelType.TEXT_EMBEDDING, {
-        text: embeddingText,
+        text: memory.content.text ?? "",
       });
 
       const duration = Date.now() - startTime;
       this.runtime.logger.debug(
         {
-          src: "plugin:core:service:embedding",
+          src: "plugin:bootstrap:service:embedding",
           agentId: this.runtime.agentId,
           memoryId: memory.id,
           durationMs: duration,
-          hasIntent: embeddingSourceText !== memoryContent.text,
         },
         "Generated embedding",
       );
 
-      // Update memory with embedding and metadata (intent)
+      // Update memory with embedding
       if (memory.id) {
-        // Ensure we save the metadata update if we generated an intent
         await this.runtime.updateMemory({
           id: memory.id,
           embedding,
-          metadata: memory.metadata,
         });
 
         // Log embedding completion
@@ -530,7 +416,6 @@ Intent:`;
             status: "completed",
             duration,
             source: "embeddingService",
-            hasIntent: embeddingSourceText !== memoryContent.text,
           },
         });
 
@@ -544,7 +429,7 @@ Intent:`;
     } catch (error) {
       this.runtime.logger.error(
         {
-          src: "plugin:core:service:embedding",
+          src: "plugin:bootstrap:service:embedding",
           agentId: this.runtime.agentId,
           memoryId: memory.id,
           error: error instanceof Error ? error.message : String(error),
@@ -558,7 +443,7 @@ Intent:`;
   async stop(): Promise<void> {
     this.runtime.logger.info(
       {
-        src: "plugin:core:service:embedding",
+        src: "plugin:bootstrap:service:embedding",
         agentId: this.runtime.agentId,
       },
       "Stopping embedding generation service",
@@ -567,7 +452,7 @@ Intent:`;
     if (this.isDisabled) {
       this.runtime.logger.debug(
         {
-          src: "plugin:core:service:embedding",
+          src: "plugin:bootstrap:service:embedding",
           agentId: this.runtime.agentId,
         },
         "Service is disabled, nothing to stop",
@@ -587,7 +472,7 @@ Intent:`;
     if (highPriorityItems.length > 0) {
       this.runtime.logger.info(
         {
-          src: "plugin:core:service:embedding",
+          src: "plugin:bootstrap:service:embedding",
           agentId: this.runtime.agentId,
           count: highPriorityItems.length,
         },
@@ -599,7 +484,7 @@ Intent:`;
         } catch (error) {
           this.runtime.logger.error(
             {
-              src: "plugin:core:service:embedding",
+              src: "plugin:bootstrap:service:embedding",
               agentId: this.runtime.agentId,
               error: error instanceof Error ? error.message : String(error),
             },
@@ -611,7 +496,7 @@ Intent:`;
 
     this.runtime.logger.info(
       {
-        src: "plugin:core:service:embedding",
+        src: "plugin:bootstrap:service:embedding",
         agentId: this.runtime.agentId,
         remainingItems: this.queue.length,
       },
@@ -649,7 +534,7 @@ Intent:`;
     this.queue = [];
     this.runtime.logger.info(
       {
-        src: "plugin:core:service:embedding",
+        src: "plugin:bootstrap:service:embedding",
         agentId: this.runtime.agentId,
         clearedCount: size,
       },
@@ -657,3 +542,5 @@ Intent:`;
     );
   }
 }
+
+export default EmbeddingGenerationService;

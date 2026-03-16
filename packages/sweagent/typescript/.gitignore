@@ -93,8 +93,3 @@ state.json
 !tests/*.py
 
 test_output
-
-# Generated declarations/maps can leak into src/ from local tooling; keep only hand-written ambient types.
-src/**/*.d.ts
-src/**/*.d.ts.map
-!src/types/*.d.ts

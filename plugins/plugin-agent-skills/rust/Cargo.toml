@@ -1,0 +1,50 @@
+[package]
+name = "elizaos-plugin-agent-skills"
+version = "1.0.0"
+edition = "2021"
+description = "Agent Skills plugin for elizaOS - implement the Agent Skills specification with progressive disclosure"
+license = "MIT"
+keywords = ["elizaos", "plugin", "agent-skills", "clawhub", "otto"]
+
+[lib]
+name = "elizaos_plugin_agent_skills"
+path = "src/lib.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# URL parsing
+url = "2"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# Regex
+regex = "1"
+
+# Zip handling
+zip = "2"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# elizaOS types (optional, for integration)
+# elizaos = { path = "../../../packages/rust", optional = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3"
+
+[features]
+default = []

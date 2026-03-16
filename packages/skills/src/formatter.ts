@@ -7,8 +7,7 @@ import type { Skill, SkillCommandSpec, SkillEntry } from "./types.js";
  * @returns XML-escaped string
  */
 function escapeXml(str: string): string {
-  const s = typeof str === "string" ? str : String(str ?? "");
-  return s
+  return str
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

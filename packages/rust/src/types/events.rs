@@ -324,15 +324,6 @@ pub struct TokenUsage {
     pub completion: i32,
     /// Total tokens
     pub total: i32,
-    /// Prompt tokens read from cache
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cached: Option<i32>,
-    /// Anthropic cache read input tokens
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cache_read: Option<i32>,
-    /// Anthropic cache creation/write input tokens
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cache_write: Option<i32>,
 }
 
 /// Payload for embedding generation events

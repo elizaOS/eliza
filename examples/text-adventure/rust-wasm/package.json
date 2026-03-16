@@ -1,0 +1,25 @@
+{
+  "name": "@elizaos/example-adventure-rust-wasm",
+  "version": "2.0.0-alpha",
+  "description": "Text adventure game using Rust WASM runtime",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run game.ts",
+    "dev": "bun --watch run game.ts",
+    "build:wasm": "cd ../../../packages/rust && ./build-wasm.sh"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@clack/prompts": "^0.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

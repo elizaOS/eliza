@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+python/__pycache__/
+python/*.egg-info/
+python/dist/
+python/.mypy_cache/
+python/.pytest_cache/
+python/.ruff_cache/
+
+# Build outputs
+typescript/dist/
+rust/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+
+# Turbo
+.turbo/
+
+# Lock files are kept for reproducibility
+# bun.lock

@@ -9,7 +9,7 @@
     "computeruse.exe"
   ],
   "main": "computeruse.exe",
-  "name": "@elizaos/cli-win32-x64-msvc",
+  "name": "@mediar-ai/cli-win32-x64-msvc",
   "os": [
     "win32"
   ],

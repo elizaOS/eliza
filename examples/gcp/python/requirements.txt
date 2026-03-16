@@ -1,0 +1,30 @@
+# elizaOS packages
+elizaos>=1.0.0
+elizaos-plugin-openai>=1.0.0
+
+# UUID generation
+uuid6>=2024.1.12
+
+# ASGI server (production)
+starlette>=0.41.0
+uvicorn[standard]>=0.32.0
+
+# HTTP client
+httpx>=0.28.0
+
+# Flask (alternative WSGI)
+flask>=3.1.0
+flask-cors>=5.0.0
+
+# Optional: Gunicorn for production
+gunicorn>=23.0.0
+
+
+
+
+
+
+
+
+
+

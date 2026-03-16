@@ -1,57 +1,54 @@
 {
-  "name": "@elizaos/skills",
-  "version": "2.0.0-alpha.42",
-  "description": "Bundled skills and skill loading utilities for elizaOS agents",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./skills": "./skills/",
-    "./package.json": "./package.json"
-  },
-  "scripts": {
-    "clean": "rm -rf dist",
-    "build": "tsc -p tsconfig.build.json",
-    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
-    "test": "node --test --import tsx test/*.test.ts",
-    "prepublishOnly": "npm run clean && npm run build",
-    "lint": "bunx @biomejs/biome check --write ./src",
-    "lint:check": "bunx @biomejs/biome check ./src"
-  },
-  "files": [
-    "dist/**/*",
-    "skills/**/*",
-    "README.md"
-  ],
-  "keywords": [
-    "elizaos",
-    "skills",
-    "agent",
-    "ai",
-    "llm",
-    "automation"
-  ],
-  "author": "elizaOS",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/elizaos/eliza.git",
-    "directory": "packages/skills"
-  },
-  "engines": {
-    "node": ">=22.0.0"
-  },
-  "dependencies": {
-    "yaml": "^2.8.2"
-  },
-  "devDependencies": {
-    "tsx": "^4.19.0"
-  },
-  "publishConfig": {
-    "access": "public"
-  }
+	"name": "@elizaos/skills",
+	"version": "2.0.0-alpha.1",
+	"description": "Bundled skills and skill loading utilities for elizaOS agents",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./skills": "./skills/",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"clean": "rm -rf dist",
+		"build": "tsc -p tsconfig.build.json",
+		"dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
+		"test": "node --test --import tsx test/*.test.ts",
+		"prepublishOnly": "npm run clean && npm run build",
+		"lint": "bunx @biomejs/biome check --write ./src",
+		"lint:check": "bunx @biomejs/biome check ./src"
+	},
+	"files": [
+		"dist/**/*",
+		"skills/**/*",
+		"README.md"
+	],
+	"keywords": [
+		"elizaos",
+		"skills",
+		"agent",
+		"ai",
+		"llm",
+		"automation"
+	],
+	"author": "elizaOS",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/elizaos/eliza.git",
+		"directory": "packages/skills"
+	},
+	"engines": {
+		"node": ">=22.0.0"
+	},
+	"dependencies": {
+		"yaml": "^2.8.2"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
 }

@@ -273,7 +273,6 @@ __all__ = [
     "Metadata",
     # Memory
     "Memory",
-    "MemoryType",
     "MessageMemory",
     "MemoryMetadata",
     "BaseMetadata",

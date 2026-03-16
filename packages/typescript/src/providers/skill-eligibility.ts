@@ -9,13 +9,13 @@
  */
 
 import type {
+  Provider,
   IAgentRuntime,
   Memory,
-  Provider,
-  ProviderResult,
   State,
+  ProviderResult,
 } from "../types/index.js";
-import type { Service } from "../types/service.js";
+import { Service } from "../types/service.js";
 
 // ============================================================
 // TYPES (matching plugin-agent-skills types)
@@ -55,12 +55,10 @@ interface AgentSkillsServiceLike extends Service {
   checkSkillEligibility(slug: string): Promise<SkillEligibility>;
   getAllSkillEligibility(): Promise<Map<string, SkillEligibility>>;
   getEligibleSkills(): Promise<SkillWithSource[]>;
-  getIneligibleSkills(): Promise<
-    Array<{
-      skill: SkillWithSource;
-      eligibility: SkillEligibility;
-    }>
-  >;
+  getIneligibleSkills(): Promise<Array<{
+    skill: SkillWithSource;
+    eligibility: SkillEligibility;
+  }>>;
 }
 
 // ============================================================
@@ -77,8 +75,7 @@ interface AgentSkillsServiceLike extends Service {
  */
 export const skillEligibilityProvider: Provider = {
   name: "skill_eligibility",
-  description:
-    "Shows which skills are eligible and which have missing dependencies",
+  description: "Shows which skills are eligible and which have missing dependencies",
   position: -5, // After skill metadata, before instructions
   dynamic: true,
 
@@ -144,14 +141,10 @@ export const skillEligibilityProvider: Provider = {
         // Group reasons by type
         const binReasons = eligibility.reasons.filter((r) => r.type === "bin");
         const envReasons = eligibility.reasons.filter((r) => r.type === "env");
-        const configReasons = eligibility.reasons.filter(
-          (r) => r.type === "config",
-        );
+        const configReasons = eligibility.reasons.filter((r) => r.type === "config");
 
         if (binReasons.length > 0) {
-          lines.push(
-            `- Missing binaries: ${binReasons.map((r) => r.missing).join(", ")}`,
-          );
+          lines.push(`- Missing binaries: ${binReasons.map((r) => r.missing).join(", ")}`);
           // Show installation suggestions
           for (const reason of binReasons) {
             if (reason.suggestion) {
@@ -161,15 +154,11 @@ export const skillEligibilityProvider: Provider = {
         }
 
         if (envReasons.length > 0) {
-          lines.push(
-            `- Missing env vars: ${envReasons.map((r) => r.missing).join(", ")}`,
-          );
+          lines.push(`- Missing env vars: ${envReasons.map((r) => r.missing).join(", ")}`);
         }
 
         if (configReasons.length > 0) {
-          lines.push(
-            `- Missing config: ${configReasons.map((r) => r.missing).join(", ")}`,
-          );
+          lines.push(`- Missing config: ${configReasons.map((r) => r.missing).join(", ")}`);
         }
 
         lines.push("");
@@ -177,28 +166,16 @@ export const skillEligibilityProvider: Provider = {
 
       // Add summary of fixes
       const allReasons = ineligible.flatMap((i) => i.eligibility.reasons);
-      const missingBins = [
-        ...new Set(
-          allReasons.filter((r) => r.type === "bin").map((r) => r.missing),
-        ),
-      ];
-      const missingEnv = [
-        ...new Set(
-          allReasons.filter((r) => r.type === "env").map((r) => r.missing),
-        ),
-      ];
+      const missingBins = [...new Set(allReasons.filter((r) => r.type === "bin").map((r) => r.missing))];
+      const missingEnv = [...new Set(allReasons.filter((r) => r.type === "env").map((r) => r.missing))];
 
       if (missingBins.length > 0 || missingEnv.length > 0) {
         lines.push("### To enable more skills:");
         if (missingBins.length > 0) {
-          lines.push(
-            `- Install: ${missingBins.slice(0, 5).join(", ")}${missingBins.length > 5 ? ` (+${missingBins.length - 5} more)` : ""}`,
-          );
+          lines.push(`- Install: ${missingBins.slice(0, 5).join(", ")}${missingBins.length > 5 ? ` (+${missingBins.length - 5} more)` : ""}`);
         }
         if (missingEnv.length > 0) {
-          lines.push(
-            `- Set env: ${missingEnv.slice(0, 5).join(", ")}${missingEnv.length > 5 ? ` (+${missingEnv.length - 5} more)` : ""}`,
-          );
+          lines.push(`- Set env: ${missingEnv.slice(0, 5).join(", ")}${missingEnv.length > 5 ? ` (+${missingEnv.length - 5} more)` : ""}`);
         }
       }
 

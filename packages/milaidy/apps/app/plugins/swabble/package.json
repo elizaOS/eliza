@@ -1,0 +1,59 @@
+{
+  "name": "@milaidy/capacitor-swabble",
+  "version": "1.0.0",
+  "description": "Milaidy Swabble Plugin for Capacitor - Voice wake word detection and speech-to-text",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources/",
+    "ios/Plugin.xcodeproj/",
+    "electron/",
+    "*.podspec"
+  ],
+  "author": "Milaidy",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/milaidy/milaidy"
+  },
+  "scripts": {
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "rimraf": "^5.0.0",
+    "rollup": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "milaidy": {
+    "platforms": ["browser", "node"],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Support via Web Speech API (limited timing data, no Whisper). Wake word detection and basic STT.",
+      "node": "Full support via Electron with Whisper.cpp for high-quality STT and precise timing data",
+      "ios": true,
+      "android": true
+    }
+  }
+}

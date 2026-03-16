@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../dist/node",
+    "declaration": true,
+    "declarationMap": false,
+    "emitDeclarationOnly": true
+  },
+  "include": [
+    "index.node.ts",
+    "index.ts",
+    "pglite/**/*.ts",
+    "pg/**/*.ts",
+    "schema/**/*.ts",
+    "base.ts",
+    "rls.ts",
+    "types.ts",
+    "utils.ts",
+    "utils.node.ts",
+    "migration-service.ts",
+    "migrations.ts",
+    "runtime-migrator/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
+}

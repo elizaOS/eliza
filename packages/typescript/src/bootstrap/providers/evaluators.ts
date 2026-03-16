@@ -20,7 +20,7 @@ import { addHeader } from "../../utils.ts";
  * @param {Evaluator[]} evaluators - Array of evaluators.
  * @returns {string} - Formatted string of evaluator names.
  */
-function formatEvaluatorNames(evaluators: Evaluator[]) {
+export function formatEvaluatorNames(evaluators: Evaluator[]) {
   return evaluators
     .map((evaluator: Evaluator) => `'${evaluator.name}'`)
     .join(",\n");
@@ -31,7 +31,7 @@ function formatEvaluatorNames(evaluators: Evaluator[]) {
  * @param evaluators - An array of evaluator objects, each containing examples to format.
  * @returns A string that presents each evaluator example in a structured format, including context, messages, and outcomes, with placeholders replaced by generated names.
  */
-function formatEvaluatorExamples(evaluators: Evaluator[]) {
+export function formatEvaluatorExamples(evaluators: Evaluator[]) {
   return evaluators
     .map((evaluator) => {
       return evaluator.examples
@@ -76,7 +76,7 @@ function formatEvaluatorExamples(evaluators: Evaluator[]) {
  * @param evaluators - An array of evaluator objects.
  * @returns A string that concatenates the name and description of each evaluator, separated by a colon and a newline character.
  */
-function formatEvaluators(evaluators: Evaluator[]) {
+export function formatEvaluators(evaluators: Evaluator[]) {
   return evaluators
     .map(
       (evaluator: Evaluator) => `'${evaluator.name}: ${evaluator.description}'`,

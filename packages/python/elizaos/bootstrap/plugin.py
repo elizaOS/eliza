@@ -21,9 +21,6 @@ from .autonomy import (
     AutonomyService,
     admin_chat_provider,
     autonomy_status_provider,
-    disable_autonomy_action,
-    enable_autonomy_action,
-    post_action_evaluator,
     send_to_admin_action,
 )
 from .types import CapabilityConfig
@@ -66,8 +63,6 @@ def _get_actions(config: CapabilityConfig) -> list:
         result.extend(EXTENDED_ACTIONS)
     if config.enable_autonomy:
         result.append(send_to_admin_action)
-        result.append(enable_autonomy_action)
-        result.append(disable_autonomy_action)
     return result
 
 
@@ -78,8 +73,6 @@ def _get_evaluators(config: CapabilityConfig) -> list:
         result.extend(BASIC_EVALUATORS)
     if config.enable_extended:
         result.extend(EXTENDED_EVALUATORS)
-    if config.enable_autonomy:
-        result.append(post_action_evaluator)
     return result
 
 

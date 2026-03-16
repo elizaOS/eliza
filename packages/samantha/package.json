@@ -1,0 +1,12 @@
+{
+  "name": "samantha",
+  "version": "1.0.0",
+  "description": "This is parked",
+  "bin": {
+    "samantha": "cli.js"
+  },
+  "files": [
+    "cli.js"
+  ],
+  "license": "MIT"
+}

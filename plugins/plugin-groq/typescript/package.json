@@ -1,0 +1,112 @@
+{
+  "name": "@elizaos/plugin-groq",
+  "version": "2.0.0-alpha.2",
+  "type": "module",
+  "main": "dist/cjs/index.node.cjs",
+  "module": "dist/node/index.node.js",
+  "types": "dist/node/index.d.ts",
+  "browser": "dist/browser/index.browser.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-groq.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/node/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "require": "./dist/cjs/index.node.cjs",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@ai-sdk/groq": "^3.0.4",
+    "@elizaos/core": "workspace:*",
+    "ai": "^6.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "@types/node": "^25.0.3",
+    "bun-types": "^1.2.0",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf dist node_modules",
+    "format": "bunx @biomejs/biome format --write .",
+    "test": "vitest run",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "GROQ_API_KEY": {
+        "type": "string",
+        "description": "Groq API key",
+        "required": true,
+        "sensitive": true
+      },
+      "GROQ_BASE_URL": {
+        "type": "string",
+        "description": "Custom API base URL",
+        "required": false,
+        "default": "https://api.groq.com/openai/v1"
+      },
+      "GROQ_SMALL_MODEL": {
+        "type": "string",
+        "description": "Small model name",
+        "required": false,
+        "default": "llama-3.1-8b-instant"
+      },
+      "GROQ_LARGE_MODEL": {
+        "type": "string",
+        "description": "Large model name",
+        "required": false,
+        "default": "llama-3.3-70b-versatile"
+      },
+      "GROQ_TTS_MODEL": {
+        "type": "string",
+        "description": "TTS model name",
+        "required": false,
+        "default": "playai-tts"
+      },
+      "GROQ_TTS_VOICE": {
+        "type": "string",
+        "description": "TTS voice name",
+        "required": false,
+        "default": "Chip-PlayAI"
+      }
+    }
+  },
+  "milaidy": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
+    }
+  }
+}

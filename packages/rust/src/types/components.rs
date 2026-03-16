@@ -216,44 +216,6 @@ pub struct ProviderDefinition {
     pub private: Option<bool>,
 }
 
-/// When in the message pipeline an evaluator runs.
-///
-/// - `Pre` — **Before** the incoming message is saved to memory and before
-///   action processing.  Pre-evaluators act as middleware: they can inspect,
-///   rewrite, or **block** a message so it never reaches the agent.
-///
-/// - `Post` — **After** the agent has responded and actions have executed.
-///   This is the original (default) evaluator behaviour.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum EvaluatorPhase {
-    /// Runs before memory storage — security gate / middleware.
-    Pre,
-    /// Runs after actions — default, backwards-compatible.
-    #[default]
-    Post,
-}
-
-/// Result returned by a `Pre`-phase evaluator's handler.
-///
-/// If `blocked` is `true` the message pipeline will skip memory storage,
-/// response generation, and action execution for this message.
-///
-/// If `rewritten_text` is provided the message text is replaced before
-/// further processing (useful for sanitisation / redaction).
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreEvaluatorResult {
-    /// If true, the message is blocked — no memory, no response, no actions.
-    pub blocked: bool,
-    /// Optional replacement text (sanitised / redacted version of the input).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rewritten_text: Option<String>,
-    /// Human-readable reason for blocking / rewriting (logged).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
-}
-
 /// Definition metadata for an evaluator.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", bound(serialize = "", deserialize = ""))]
@@ -271,12 +233,6 @@ pub struct EvaluatorDefinition {
     /// Examples are skipped during serialization as they contain proto types
     #[serde(skip, default)]
     pub examples: Vec<EvaluationExample>,
-    /// When in the message pipeline this evaluator runs.
-    ///
-    /// - `Pre` — before memory storage (security / filtering middleware)
-    /// - `Post` — after actions (default)
-    #[serde(default)]
-    pub phase: EvaluatorPhase,
 }
 
 /// Callback type for handling content and producing memories.

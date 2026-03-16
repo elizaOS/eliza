@@ -68,11 +68,11 @@ Confirm voice + speaker before long output.
 
 ## Chat voice responses
 
-When the user asks for a "voice" reply (e.g., "crazy scientist voice", "explain in voice"), generate audio and send it:
+When Peter asks for a "voice" reply (e.g., "crazy scientist voice", "explain in voice"), generate audio and send it:
 
 ```bash
 # Generate audio file
-sag -v Agent -o /tmp/voice-reply.mp3 "Your message here"
+sag -v Clawd -o /tmp/voice-reply.mp3 "Your message here"
 
 # Then include in reply:
 # MEDIA:/tmp/voice-reply.mp3
@@ -84,4 +84,4 @@ Voice character tips:
 - Calm: Use `[whispers]` or slower pacing
 - Dramatic: Use `[sings]` or `[shouts]` sparingly
 
-Default voice: `lj2rcrvANS3gaWWnczSX` (or just `-v Agent`)
+Default voice for Clawd: `lj2rcrvANS3gaWWnczSX` (or just `-v Clawd`)

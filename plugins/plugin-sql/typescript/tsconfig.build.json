@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../dist/browser",
+    "declaration": true,
+    "declarationMap": false,
+    "emitDeclarationOnly": true
+  },
+  "include": [
+    "index.browser.ts",
+    "pglite/**/*.ts",
+    "schema/**/*.ts",
+    "base.ts",
+    "types.ts",
+    "utils.browser.ts",
+    "migration-service.ts",
+    "migrations.ts",
+    "rls.ts",
+    "runtime-migrator/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
+}

@@ -1,0 +1,17 @@
+{{- if .Values.prometheus.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "gateway-discord.fullname" . }}
+  namespace: {{ include "gateway-discord.namespace" . }}
+  labels:
+    {{- include "gateway-discord.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "gateway-discord.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: {{ .Values.prometheus.serviceMonitor.path }}
+      interval: {{ .Values.prometheus.serviceMonitor.interval }}
+{{- end }}

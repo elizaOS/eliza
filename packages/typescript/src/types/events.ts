@@ -213,9 +213,6 @@ export interface ModelEventPayload extends EventPayload {
     prompt: number;
     completion: number;
     total: number;
-    cached?: number;
-    cacheRead?: number;
-    cacheWrite?: number;
   };
 }
 

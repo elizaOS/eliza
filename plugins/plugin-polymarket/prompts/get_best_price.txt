@@ -1,0 +1,38 @@
+extract token ID and side parameters for retrieving the best price for a market.
+
+Review the recent messages:
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Based on the conversation, identify:
+- tokenId: The token identifier (required)
+- side: Either "buy" or "sell" (required)
+
+Look for:
+- Numbers following words like "token", "for token", "token ID", etc.
+- Standalone numbers that could be token IDs
+- Side indicators like "buy", "sell", "bid", "ask" ("bid" → "sell", "ask" → "buy")
+
+Examples:
+- "Get best price for token 123456 on buy side" → tokenId: "123456", side: "buy"
+- "What's the sell price for token 789012" → tokenId: "789012", side: "sell"
+- "Show best bid for token 456789" → tokenId: "456789", side: "sell"
+- "Get ask price for 999999" → tokenId: "999999", side: "buy"
+
+Respond with a JSON object containing only the extracted values.
+The JSON should have this structure:
+{
+    "tokenId"?: string,
+    "side"?: "buy" | "sell"
+}
+
+If you find both tokenId and side, include them in the response.
+If no valid parameters are found, you MUST respond with the following JSON structure:
+{
+    "error": "Token ID or side not found. Please specify a token ID and side (buy/sell)."
+}
+
+
+
+

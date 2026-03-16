@@ -1,0 +1,56 @@
+[package]
+name = "elizaos-plugin-mcp"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "MCP (Model Context Protocol) client plugin for elizaOS - Rust implementation"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+keywords = ["ai", "agent", "mcp", "model-context-protocol", "llm"]
+categories = ["api-bindings", "asynchronous"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full", "reqwest", "tokio-stream"]
+wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "getrandom/js"]
+
+[dependencies]
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async runtime
+async-trait = "0.1"
+futures = "0.3"
+
+# Error handling
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+
+# Native-only dependencies
+tokio = { version = "1.0", features = ["process", "io-util", "sync", "time", "rt"], optional = true }
+reqwest = { version = "0.12", features = ["json", "stream"], optional = true }
+tokio-stream = { version = "0.1", optional = true }
+
+# WASM-only dependencies
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", features = ["console"], optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+getrandom = { version = "0.2", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+pretty_assertions = "1.0"
+
+[profile.release]
+lto = true
+opt-level = "z"
+
+

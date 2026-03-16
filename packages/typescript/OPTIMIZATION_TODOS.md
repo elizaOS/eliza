@@ -3,29 +3,29 @@
 Checklist for file-by-file performance parity and cleanup (excluding tests).
 
 ## Root files
-- [x] `action-docs.ts` — review perf parity and cleanup
-- [x] `actions.ts` — review perf parity and cleanup
-- [x] `character.ts` — review perf parity and cleanup
-- [x] `database.ts` — review perf parity and cleanup
-- [x] `entities.ts` — review perf parity and cleanup
-- [x] `index.browser.ts` — review perf parity and cleanup
-- [x] `index.node.ts` — review perf parity and cleanup
-- [x] `index.ts` — review perf parity and cleanup
-- [x] `logger.ts` — review perf parity and cleanup
-- [x] `memory.ts` — review perf parity and cleanup
-- [x] `plugin.ts` — review perf parity and cleanup
-- [x] `prompts.ts` — review perf parity and cleanup
-- [x] `roles.ts` — review perf parity and cleanup
-- [x] `runtime.ts` — review perf parity and cleanup
-- [x] `search.ts` — review perf parity and cleanup
-- [x] `secrets.ts` — review perf parity and cleanup
-- [x] `services.ts` — review perf parity and cleanup
-- [x] `settings.ts` — review perf parity and cleanup
-- [x] `streaming-context.browser.ts` — review perf parity and cleanup
-- [x] `streaming-context.node.ts` — review perf parity and cleanup
-- [x] `streaming-context.ts` — review perf parity and cleanup
-- [x] `trajectory-context.ts` — review perf parity and cleanup
-- [x] `utils.ts` — review perf parity and cleanup
+- [ ] `action-docs.ts` — review perf parity and cleanup
+- [ ] `actions.ts` — review perf parity and cleanup
+- [ ] `character.ts` — review perf parity and cleanup
+- [ ] `database.ts` — review perf parity and cleanup
+- [ ] `entities.ts` — review perf parity and cleanup
+- [ ] `index.browser.ts` — review perf parity and cleanup
+- [ ] `index.node.ts` — review perf parity and cleanup
+- [ ] `index.ts` — review perf parity and cleanup
+- [ ] `logger.ts` — review perf parity and cleanup
+- [ ] `memory.ts` — review perf parity and cleanup
+- [ ] `plugin.ts` — review perf parity and cleanup
+- [ ] `prompts.ts` — review perf parity and cleanup
+- [ ] `roles.ts` — review perf parity and cleanup
+- [ ] `runtime.ts` — review perf parity and cleanup
+- [ ] `search.ts` — review perf parity and cleanup
+- [ ] `secrets.ts` — review perf parity and cleanup
+- [ ] `services.ts` — review perf parity and cleanup
+- [ ] `settings.ts` — review perf parity and cleanup
+- [ ] `streaming-context.browser.ts` — review perf parity and cleanup
+- [ ] `streaming-context.node.ts` — review perf parity and cleanup
+- [ ] `streaming-context.ts` — review perf parity and cleanup
+- [ ] `trajectory-context.ts` — review perf parity and cleanup
+- [ ] `utils.ts` — review perf parity and cleanup
 
 ## advanced-capabilities
 - [x] `advanced-capabilities/index.ts` — review perf parity and cleanup
@@ -89,86 +89,86 @@ Checklist for file-by-file performance parity and cleanup (excluding tests).
 - [x] `autonomy/types.ts` — review perf parity and cleanup
 
 ## basic-capabilities
-- [x] `basic-capabilities/index.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/index.ts` — review perf parity and cleanup
 - [x] `basic-capabilities/actions/index.ts` — review perf parity and cleanup
 - [x] `basic-capabilities/actions/choice.ts` — review perf parity and cleanup
 - [x] `basic-capabilities/actions/ignore.ts` — review perf parity and cleanup
 - [x] `basic-capabilities/actions/none.ts` — review perf parity and cleanup
 - [x] `basic-capabilities/actions/reply.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/index.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/actions.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/actionState.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/attachments.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/capabilities.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/character.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/choice.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/contextBench.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/currentTime.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/entities.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/evaluators.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/providers.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/recentMessages.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/time.ts` — review perf parity and cleanup
-- [x] `basic-capabilities/providers/world.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/index.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/actions.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/actionState.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/attachments.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/capabilities.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/character.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/choice.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/contextBench.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/currentTime.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/entities.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/evaluators.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/providers.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/recentMessages.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/time.ts` — review perf parity and cleanup
+- [ ] `basic-capabilities/providers/world.ts` — review perf parity and cleanup
 
 ## database
-- [x] `database/inMemoryAdapter.ts` — review perf parity and cleanup
+- [ ] `database/inMemoryAdapter.ts` — review perf parity and cleanup
 
 ## generated
-- [x] `generated/action-docs.ts` — review perf parity and cleanup
-- [x] `generated/spec-helpers.ts` — review perf parity and cleanup
+- [ ] `generated/action-docs.ts` — review perf parity and cleanup
+- [ ] `generated/spec-helpers.ts` — review perf parity and cleanup
 
 ## schemas
-- [x] `schemas/character.ts` — review perf parity and cleanup
+- [ ] `schemas/character.ts` — review perf parity and cleanup
 
 ## services
-- [x] `services/embedding.ts` — review perf parity and cleanup
-- [x] `services/followUp.ts` — review perf parity and cleanup
-- [x] `services/message.ts` — review perf parity and cleanup
-- [x] `services/rolodex.ts` — review perf parity and cleanup
-- [x] `services/task.ts` — review perf parity and cleanup
-- [x] `services/trajectoryLogger.ts` — review perf parity and cleanup
+- [ ] `services/embedding.ts` — review perf parity and cleanup
+- [ ] `services/followUp.ts` — review perf parity and cleanup
+- [ ] `services/message.ts` — review perf parity and cleanup
+- [ ] `services/rolodex.ts` — review perf parity and cleanup
+- [ ] `services/task.ts` — review perf parity and cleanup
+- [ ] `services/trajectoryLogger.ts` — review perf parity and cleanup
 
 ## testing (non-test harness)
-- [x] `testing/index.ts` — review perf parity and cleanup
-- [x] `testing/inference-provider.ts` — review perf parity and cleanup
-- [x] `testing/integration-runtime.ts` — review perf parity and cleanup
-- [x] `testing/ollama-provider.ts` — review perf parity and cleanup
-- [x] `testing/test-utils.ts` — review perf parity and cleanup
+- [ ] `testing/index.ts` — review perf parity and cleanup
+- [ ] `testing/inference-provider.ts` — review perf parity and cleanup
+- [ ] `testing/integration-runtime.ts` — review perf parity and cleanup
+- [ ] `testing/ollama-provider.ts` — review perf parity and cleanup
+- [ ] `testing/test-utils.ts` — review perf parity and cleanup
 
 ## types
-- [x] `types/agent.ts` — review perf parity and cleanup
-- [x] `types/components.ts` — review perf parity and cleanup
-- [x] `types/database.ts` — review perf parity and cleanup
-- [x] `types/environment.ts` — review perf parity and cleanup
-- [x] `types/events.ts` — review perf parity and cleanup
-- [x] `types/index.ts` — review perf parity and cleanup
-- [x] `types/knowledge.ts` — review perf parity and cleanup
-- [x] `types/memory.ts` — review perf parity and cleanup
-- [x] `types/message-service.ts` — review perf parity and cleanup
-- [x] `types/messaging.ts` — review perf parity and cleanup
-- [x] `types/model.ts` — review perf parity and cleanup
-- [x] `types/plugin.ts` — review perf parity and cleanup
-- [x] `types/primitives.ts` — review perf parity and cleanup
-- [x] `types/prompts.ts` — review perf parity and cleanup
-- [x] `types/proto.ts` — review perf parity and cleanup
-- [x] `types/runtime.ts` — review perf parity and cleanup
-- [x] `types/service-interfaces.ts` — review perf parity and cleanup
-- [x] `types/service.ts` — review perf parity and cleanup
-- [x] `types/settings.ts` — review perf parity and cleanup
-- [x] `types/state.ts` — review perf parity and cleanup
-- [x] `types/streaming.ts` — review perf parity and cleanup
-- [x] `types/task.ts` — review perf parity and cleanup
-- [x] `types/tee.ts` — review perf parity and cleanup
-- [x] `types/testing.ts` — review perf parity and cleanup
+- [ ] `types/agent.ts` — review perf parity and cleanup
+- [ ] `types/components.ts` — review perf parity and cleanup
+- [ ] `types/database.ts` — review perf parity and cleanup
+- [ ] `types/environment.ts` — review perf parity and cleanup
+- [ ] `types/events.ts` — review perf parity and cleanup
+- [ ] `types/index.ts` — review perf parity and cleanup
+- [ ] `types/knowledge.ts` — review perf parity and cleanup
+- [ ] `types/memory.ts` — review perf parity and cleanup
+- [ ] `types/message-service.ts` — review perf parity and cleanup
+- [ ] `types/messaging.ts` — review perf parity and cleanup
+- [ ] `types/model.ts` — review perf parity and cleanup
+- [ ] `types/plugin.ts` — review perf parity and cleanup
+- [ ] `types/primitives.ts` — review perf parity and cleanup
+- [ ] `types/prompts.ts` — review perf parity and cleanup
+- [ ] `types/proto.ts` — review perf parity and cleanup
+- [ ] `types/runtime.ts` — review perf parity and cleanup
+- [ ] `types/service-interfaces.ts` — review perf parity and cleanup
+- [ ] `types/service.ts` — review perf parity and cleanup
+- [ ] `types/settings.ts` — review perf parity and cleanup
+- [ ] `types/state.ts` — review perf parity and cleanup
+- [ ] `types/streaming.ts` — review perf parity and cleanup
+- [ ] `types/task.ts` — review perf parity and cleanup
+- [ ] `types/tee.ts` — review perf parity and cleanup
+- [ ] `types/testing.ts` — review perf parity and cleanup
 
 ## utils
-- [x] `utils/buffer.ts` — review perf parity and cleanup
-- [x] `utils/crypto-compat.ts` — review perf parity and cleanup
-- [x] `utils/environment.ts` — review perf parity and cleanup
-- [x] `utils/index.ts` — review perf parity and cleanup
-- [x] `utils/node.ts` — review perf parity and cleanup
-- [x] `utils/paths.ts` — review perf parity and cleanup
-- [x] `utils/server-health.ts` — review perf parity and cleanup
-- [x] `utils/streaming.ts` — review perf parity and cleanup
-- [x] `utils/type-guards.ts` — review perf parity and cleanup
+- [ ] `utils/buffer.ts` — review perf parity and cleanup
+- [ ] `utils/crypto-compat.ts` — review perf parity and cleanup
+- [ ] `utils/environment.ts` — review perf parity and cleanup
+- [ ] `utils/index.ts` — review perf parity and cleanup
+- [ ] `utils/node.ts` — review perf parity and cleanup
+- [ ] `utils/paths.ts` — review perf parity and cleanup
+- [ ] `utils/server-health.ts` — review perf parity and cleanup
+- [ ] `utils/streaming.ts` — review perf parity and cleanup
+- [ ] `utils/type-guards.ts` — review perf parity and cleanup

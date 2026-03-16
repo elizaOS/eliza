@@ -1,0 +1,11 @@
+dist/
+node_modules/
+.env
+**/target/**
+__pycache__
+.mypy_cache
+.pytest_cache
+.ruff_cache
+dist
+.turbo
+.eliza

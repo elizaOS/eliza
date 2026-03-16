@@ -1,0 +1,13 @@
+# elizaOS Python runtime
+elizaos>=0.1.0
+elizaos-plugin-openai>=0.1.0
+
+
+
+
+
+
+
+
+
+

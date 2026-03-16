@@ -60,7 +60,7 @@ export class TaskService extends Service {
       validate: async (_runtime, _message, _state) => {
         this.runtime.logger.debug(
           {
-            src: "plugin:core:service:task",
+            src: "plugin:bootstrap:service:task",
             agentId: this.runtime.agentId,
           },
           "Validating repeating test task",
@@ -70,7 +70,7 @@ export class TaskService extends Service {
       execute: async (_runtime, _options) => {
         this.runtime.logger.debug(
           {
-            src: "plugin:core:service:task",
+            src: "plugin:bootstrap:service:task",
             agentId: this.runtime.agentId,
           },
           "Executing repeating test task",
@@ -84,7 +84,7 @@ export class TaskService extends Service {
       validate: async (_runtime, _message, _state) => {
         this.runtime.logger.debug(
           {
-            src: "plugin:core:service:task",
+            src: "plugin:bootstrap:service:task",
             agentId: this.runtime.agentId,
           },
           "Validating one-time test task",
@@ -94,7 +94,7 @@ export class TaskService extends Service {
       execute: async (_runtime, _options) => {
         this.runtime.logger.debug(
           {
-            src: "plugin:core:service:task",
+            src: "plugin:bootstrap:service:task",
             agentId: this.runtime.agentId,
           },
           "Executing one-time test task",
@@ -245,7 +245,7 @@ export class TaskService extends Service {
         if (task.tags?.includes("immediate")) {
           this.runtime.logger.debug(
             {
-              src: "plugin:core:service:task",
+              src: "plugin:bootstrap:service:task",
               agentId: this.runtime.agentId,
               taskName: task.name,
             },
@@ -264,7 +264,7 @@ export class TaskService extends Service {
         if (isBlocking && task.id && this.executingTasks.has(task.id)) {
           this.runtime.logger.debug(
             {
-              src: "plugin:core:service:task",
+              src: "plugin:bootstrap:service:task",
               agentId: this.runtime.agentId,
               taskName: task.name,
               taskId: task.id,
@@ -276,7 +276,7 @@ export class TaskService extends Service {
 
         this.runtime.logger.debug(
           {
-            src: "plugin:core:service:task",
+            src: "plugin:bootstrap:service:task",
             agentId: this.runtime.agentId,
             taskName: task.name,
             intervalMs: updateIntervalMs,
@@ -298,7 +298,7 @@ export class TaskService extends Service {
     if (!task || !task.id) {
       this.runtime.logger.debug(
         {
-          src: "plugin:core:service:task",
+          src: "plugin:bootstrap:service:task",
           agentId: this.runtime.agentId,
         },
         "Task not found",
@@ -310,7 +310,7 @@ export class TaskService extends Service {
     if (!worker) {
       this.runtime.logger.debug(
         {
-          src: "plugin:core:service:task",
+          src: "plugin:bootstrap:service:task",
           agentId: this.runtime.agentId,
           taskName: task.name,
         },
@@ -335,7 +335,7 @@ export class TaskService extends Service {
         });
         this.runtime.logger.debug(
           {
-            src: "plugin:core:service:task",
+            src: "plugin:bootstrap:service:task",
             agentId: this.runtime.agentId,
             taskName: task.name,
             taskId: task.id,
@@ -346,7 +346,7 @@ export class TaskService extends Service {
 
       this.runtime.logger.debug(
         {
-          src: "plugin:core:service:task",
+          src: "plugin:bootstrap:service:task",
           agentId: this.runtime.agentId,
           taskName: task.name,
           taskId: task.id,
@@ -365,7 +365,7 @@ export class TaskService extends Service {
         await this.runtime.deleteTask(task.id);
         this.runtime.logger.debug(
           {
-            src: "plugin:core:service:task",
+            src: "plugin:bootstrap:service:task",
             agentId: this.runtime.agentId,
             taskName: task.name,
             taskId: task.id,
@@ -379,7 +379,7 @@ export class TaskService extends Service {
       const durationMs = Date.now() - startTime;
       this.runtime.logger.debug(
         {
-          src: "plugin:core:service:task",
+          src: "plugin:bootstrap:service:task",
           agentId: this.runtime.agentId,
           taskName: task.name,
           taskId: task.id,

@@ -1,0 +1,65 @@
+[package]
+name = "elizaos-plugin-gateway"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "elizaOS Vercel AI Gateway Plugin - AI Gateway integration for text, embeddings, and images"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+homepage = "https://elizaos.ai"
+documentation = "https://docs.rs/elizaos-plugin-gateway"
+readme = "README.md"
+keywords = ["ai", "vercel", "gateway", "openai", "anthropic", "elizaos", "llm"]
+categories = ["api-bindings", "asynchronous", "web-programming"]
+
+[lib]
+name = "elizaos_plugin_gateway"
+crate-type = ["lib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full"]
+# Future: wasm feature for browser support
+
+[dependencies]
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+
+# Async runtime
+tokio = { version = "1.42", features = ["rt", "macros"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Regex for parsing
+regex = "1.12"
+
+# Logging
+tracing = "0.1"
+
+# URL handling
+url = "2.5"
+
+[dev-dependencies]
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }
+tokio-test = "0.4"
+pretty_assertions = "1.4"
+dotenvy = "0.15"
+
+[profile.release]
+lto = true
+opt-level = "z"
+
+
+
+
+
+
+

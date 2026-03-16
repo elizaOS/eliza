@@ -235,7 +235,7 @@ ${messageCompletionFooter}`;
  * @param {UUID} worldId - The UUID of the world.
  * @returns {Promise<WorldSettings | null>} The settings of the world (decrypted), or null if not found.
  */
-async function getWorldSettings(
+export async function getWorldSettings(
   runtime: IAgentRuntime,
   worldId: UUID,
 ): Promise<WorldSettings | null> {
@@ -253,7 +253,7 @@ async function getWorldSettings(
 /**
  * Updates settings state in world metadata
  */
-async function updateWorldSettings(
+export async function updateWorldSettings(
   runtime: IAgentRuntime,
   worldId: UUID,
   worldSettings: WorldSettings,
@@ -263,7 +263,7 @@ async function updateWorldSettings(
   if (!world) {
     logger.error(
       {
-        src: "plugin:core:action:settings",
+        src: "plugin:bootstrap:action:settings",
         agentId: runtime.agentId,
         worldId,
       },
@@ -742,7 +742,7 @@ export const updateSettingsAction: Action = {
     if (message.content.channelType !== ChannelType.DM) {
       logger.debug(
         {
-          src: "plugin:core:action:settings",
+          src: "plugin:bootstrap:action:settings",
           agentId: runtime.agentId,
           channelType: message.content.channelType,
         },
@@ -754,7 +754,7 @@ export const updateSettingsAction: Action = {
     // Find the server where this user is the owner
     logger.debug(
       {
-        src: "plugin:core:action:settings",
+        src: "plugin:bootstrap:action:settings",
         agentId: runtime.agentId,
         entityId: message.entityId,
       },
@@ -774,7 +774,7 @@ export const updateSettingsAction: Action = {
     if (!worldSettings) {
       logger.error(
         {
-          src: "plugin:core:action:settings",
+          src: "plugin:bootstrap:action:settings",
           agentId: runtime.agentId,
           messageServerId: world?.messageServerId,
         },
@@ -785,7 +785,7 @@ export const updateSettingsAction: Action = {
 
     logger.debug(
       {
-        src: "plugin:core:action:settings",
+        src: "plugin:bootstrap:action:settings",
         agentId: runtime.agentId,
         messageServerId: world?.messageServerId,
       },
@@ -803,7 +803,7 @@ export const updateSettingsAction: Action = {
   ): Promise<ActionResult> => {
     if (!state) {
       logger.error(
-        { src: "plugin:core:action:settings", agentId: runtime.agentId },
+        { src: "plugin:bootstrap:action:settings", agentId: runtime.agentId },
         "State is required for settings handler",
       );
       return {
@@ -823,7 +823,7 @@ export const updateSettingsAction: Action = {
 
     if (!message) {
       logger.error(
-        { src: "plugin:core:action:settings", agentId: runtime.agentId },
+        { src: "plugin:bootstrap:action:settings", agentId: runtime.agentId },
         "Message is required for settings handler",
       );
       if (callback) {
@@ -846,7 +846,7 @@ export const updateSettingsAction: Action = {
 
     if (!callback) {
       logger.error(
-        { src: "plugin:core:action:settings", agentId: runtime.agentId },
+        { src: "plugin:bootstrap:action:settings", agentId: runtime.agentId },
         "Callback is required for settings handler",
       );
       return {
@@ -867,7 +867,7 @@ export const updateSettingsAction: Action = {
     // Find the server where this user is the owner
     logger.info(
       {
-        src: "plugin:core:action:settings",
+        src: "plugin:bootstrap:action:settings",
         agentId: runtime.agentId,
         entityId: message.entityId,
       },
@@ -878,7 +878,7 @@ export const updateSettingsAction: Action = {
     if (!serverOwnership) {
       logger.error(
         {
-          src: "plugin:core:action:settings",
+          src: "plugin:bootstrap:action:settings",
           agentId: runtime.agentId,
           entityId: message.entityId,
         },
@@ -903,7 +903,7 @@ export const updateSettingsAction: Action = {
     const worldId = serverOwnership.id;
     logger.info(
       {
-        src: "plugin:core:action:settings",
+        src: "plugin:bootstrap:action:settings",
         agentId: runtime.agentId,
         worldId,
       },
@@ -923,7 +923,7 @@ export const updateSettingsAction: Action = {
     if (!worldSettings) {
       logger.error(
         {
-          src: "plugin:core:action:settings",
+          src: "plugin:bootstrap:action:settings",
           agentId: runtime.agentId,
           worldId,
         },
@@ -948,7 +948,7 @@ export const updateSettingsAction: Action = {
     // Extract setting values from message
     logger.info(
       {
-        src: "plugin:core:action:settings",
+        src: "plugin:bootstrap:action:settings",
         agentId: runtime.agentId,
         text: message.content.text,
       },
@@ -962,7 +962,7 @@ export const updateSettingsAction: Action = {
     );
     logger.info(
       {
-        src: "plugin:core:action:settings",
+        src: "plugin:bootstrap:action:settings",
         agentId: runtime.agentId,
         count: extractedSettings.length,
       },
@@ -981,7 +981,7 @@ export const updateSettingsAction: Action = {
     if (updateResults.updatedAny) {
       logger.info(
         {
-          src: "plugin:core:action:settings",
+          src: "plugin:bootstrap:action:settings",
           agentId: runtime.agentId,
           messages: updateResults.messages,
         },
@@ -993,7 +993,7 @@ export const updateSettingsAction: Action = {
       if (!updatedWorldSettings) {
         logger.error(
           {
-            src: "plugin:core:action:settings",
+            src: "plugin:bootstrap:action:settings",
             agentId: runtime.agentId,
           },
           "Failed to retrieve updated settings state",
@@ -1049,7 +1049,7 @@ export const updateSettingsAction: Action = {
       };
     } else {
       logger.info(
-        { src: "plugin:core:action:settings", agentId: runtime.agentId },
+        { src: "plugin:bootstrap:action:settings", agentId: runtime.agentId },
         "No settings were updated",
       );
       await generateFailureResponse(runtime, worldSettings, state, callback);

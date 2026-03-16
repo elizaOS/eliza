@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+target/
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# TypeScript
+*.tsbuildinfo
+.turbo/
+.turbo-tsconfig.json
+
+# Python
+*.egg
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Rust
+Cargo.lock
+*.rs.bk
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Lock files (keep for reproducibility, uncomment if needed)
+# bun.lock
+# package-lock.json
+# yarn.lock

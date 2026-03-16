@@ -7,9 +7,12 @@ import type {
   State,
 } from "../../types/index.ts";
 import { addHeader } from "../../utils.ts";
+import { sliceToFitBudget } from "../../utils/slice-to-fit-budget.js";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ACTION_STATE");
+const ACTION_RESULTS_TARGET_CHARS = 2600;
+const ACTION_HISTORY_TARGET_CHARS = 2400;
 
 type WorkingMemoryEntry = {
   actionName: string;
@@ -82,7 +85,23 @@ export const actionStateProvider: Provider = {
     // Format previous action results
     let resultsText = "";
     if (actionResults.length > 0) {
-      const formattedResults = actionResults
+      const selectedResults = sliceToFitBudget(
+        actionResults,
+        (result) =>
+          String(result.text || "").length +
+          String(result.error || "").length +
+          (() => {
+            try {
+              return JSON.stringify(result.values || {}).length;
+            } catch {
+              return 0;
+            }
+          })() +
+          80,
+        ACTION_RESULTS_TARGET_CHARS,
+      );
+
+      const formattedResults = selectedResults
         .map((result, index) => {
           const actionNameValue = result.data?.actionName;
           const actionName =
@@ -186,7 +205,26 @@ export const actionStateProvider: Provider = {
         }
       }
 
-      const formattedMemories = Array.from(groupedByRun.entries())
+      const selectedRuns = sliceToFitBudget(
+          Array.from(groupedByRun.entries()),
+          ([runId, memories]) => {
+            const textChars = memories.reduce((sum, memory) => {
+              const content = memory.content;
+              return (
+                sum +
+                String(content?.actionName || "").length +
+                String(content?.actionStatus || "").length +
+                String(content?.planStep || "").length +
+                String(content?.text || "").length
+              );
+            }, 0);
+            return textChars + runId.length + 80;
+          },
+          ACTION_HISTORY_TARGET_CHARS,
+          { fromEnd: false }, // Keep newest runs since entries are already newest-first
+        );
+
+      const formattedMemories = selectedRuns
         .map(([runId, memories]) => {
           const sortedMemories = memories.sort(
             (a: Memory, b: Memory) => (a.createdAt || 0) - (b.createdAt || 0),

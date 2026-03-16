@@ -1,5 +1,6 @@
 {
   "author": "Mediar AI",
+  "private": true,
   "dependencies": {
     "ioredis": "^5.3.2"
   },
@@ -19,7 +20,9 @@
   "license": "MIT",
   "main": "dist/index.js",
   "name": "@mediar-ai/kv",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "directory": "packages/kv",
     "type": "git",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import StrEnum
+from enum import Enum
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime
 
 
-class ContactCategory(StrEnum):
+class ContactCategory(str, Enum):
     FRIEND = "friend"
     FAMILY = "family"
     COLLEAGUE = "colleague"

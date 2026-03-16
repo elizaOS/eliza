@@ -15,8 +15,9 @@ use elizaos::{
     runtime::{AgentRuntime, DatabaseAdapter, RuntimeOptions},
     types::{
         ActionDefinition, ActionHandler, ActionResult, Bio, Character, Content, Entity,
-        EvaluationExample, EvaluatorDefinition, EvaluatorHandler, EvaluatorPhase, EventPayload,
-        EventType, GetMemoriesParams, HandlerOptions, Memory, Plugin, PluginDefinition,
+        EvaluationExample, EvaluatorDefinition, EvaluatorHandler, EventPayload, EventType,
+        CreateMemoryItem, GetMemoriesParams, HandlerOptions, Memory, Plugin, PluginDefinition,
+        UpdateMemoryItem,
         ProviderDefinition, ProviderHandler, ProviderResult, Room, RuntimeSettings,
         SearchMemoriesParams, SettingValue, State, Task, World, UUID,
     },
@@ -117,6 +118,48 @@ impl DatabaseAdapter for MockDatabaseAdapter {
         }
 
         Ok(result)
+    }
+
+    async fn create_memories(&self, items: &[CreateMemoryItem]) -> Result<Vec<UUID>> {
+        let mut out = Vec::with_capacity(items.len());
+        for item in items {
+            let id = self.create_memory(&item.memory, &item.table_name).await?;
+            out.push(id);
+        }
+        Ok(out)
+    }
+
+    async fn update_memories(&self, items: &[UpdateMemoryItem]) -> Result<()> {
+        for item in items {
+            let mut existing = match self.get_memory_by_id(&item.id).await? {
+                Some(m) => m,
+                None => continue,
+            };
+            if let Some(ref c) = item.content {
+                existing.content = c.clone();
+            }
+            if let Some(ref meta) = item.metadata {
+                existing.metadata = Some(meta.clone());
+            }
+            if item.created_at.is_some() {
+                existing.created_at = item.created_at;
+            }
+            if item.embedding.is_some() {
+                existing.embedding = item.embedding.clone();
+            }
+            if item.unique.is_some() {
+                existing.unique = item.unique;
+            }
+            self.update_memory(&existing).await?;
+        }
+        Ok(())
+    }
+
+    async fn delete_memories(&self, memory_ids: &[UUID]) -> Result<()> {
+        for id in memory_ids {
+            self.delete_memory(id).await?;
+        }
+        Ok(())
     }
 
     async fn create_memory(&self, memory: &Memory, _table_name: &str) -> Result<UUID> {
@@ -443,7 +486,6 @@ impl EvaluatorHandler for ResponseQualityEvaluator {
                 messages: vec![],
                 outcome: "Response is helpful and relevant".to_string(),
             }],
-            phase: EvaluatorPhase::default(),
         }
     }
 

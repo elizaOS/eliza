@@ -4,15 +4,12 @@
  */
 
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import * as dotenv from "dotenv";
 import { afterAll, expect, vi } from "vitest";
 import { jest as jestCompat } from "./jest-globals";
 
-const testDir = path.dirname(fileURLToPath(import.meta.url));
-
 // Load test environment variables
-dotenv.config({ path: path.join(testDir, "..", ".env.test") });
+dotenv.config({ path: path.join(__dirname, "..", ".env.test") });
 
 // Set test environment
 process.env.NODE_ENV = "test";

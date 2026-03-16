@@ -7,15 +7,15 @@
  */
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import os from "node:os";
 import type {
-  ElizaOSPackageManifest,
-  PackageManifest,
   PluginCandidate,
   PluginDiagnostic,
   PluginDiscoveryResult,
   PluginOrigin,
+  elizaOSPackageManifest,
+  PackageManifest,
 } from "../types/plugin-manifest.ts";
 
 /** Supported extension file extensions */
@@ -82,11 +82,11 @@ function readPackageManifest(dir: string): PackageManifest | null {
 }
 
 /**
- * Get ElizaOS package manifest metadata from package.json.
+ * Get elizaOS package manifest metadata from package.json.
  */
 function getPackageManifestMetadata(
   manifest: PackageManifest | undefined,
-): ElizaOSPackageManifest | undefined {
+): elizaOSPackageManifest | undefined {
   if (!manifest) {
     return undefined;
   }
@@ -124,7 +124,7 @@ function deriveIdHint(params: {
   // Prefer the unscoped name so config keys stay stable even when the npm
   // package is scoped (example: @elizaos/plugin-discord -> discord)
   const unscoped = rawPackageName.includes("/")
-    ? (rawPackageName.split("/").pop() ?? rawPackageName)
+    ? rawPackageName.split("/").pop() ?? rawPackageName
     : rawPackageName;
 
   // Strip common prefixes
@@ -382,7 +382,7 @@ function discoverFromPath(params: {
 
 /**
  * Resolve the bundled plugins directory.
- * This looks for plugins bundled with the ElizaOS installation.
+ * This looks for plugins bundled with the elizaOS installation.
  */
 function resolveBundledPluginsDir(): string | null {
   try {
@@ -408,7 +408,7 @@ function resolveBundledPluginsDir(): string | null {
 }
 
 /**
- * Discover all ElizaOS plugins.
+ * Discover all elizaOS plugins.
  *
  * Search order (first match wins for duplicate IDs):
  * 1. Extra paths from config
@@ -496,9 +496,7 @@ export function discoverPlugins(params: {
  * @param nodeModulesDir - Path to node_modules directory
  * @returns Discovery result with candidates and diagnostics
  */
-export function discoverNpmPlugins(
-  nodeModulesDir: string,
-): PluginDiscoveryResult {
+export function discoverNpmPlugins(nodeModulesDir: string): PluginDiscoveryResult {
   const candidates: PluginCandidate[] = [];
   const diagnostics: PluginDiagnostic[] = [];
   const seen = new Set<string>();
@@ -551,7 +549,7 @@ export function discoverNpmPlugins(
 }
 
 /**
- * Check if an npm package is an ElizaOS plugin.
+ * Check if an npm package is an elizaOS plugin.
  */
 function checkNpmPackage(
   packageDir: string,
@@ -596,13 +594,7 @@ function checkNpmPackage(
     }
   } else {
     // Look for index files
-    const indexCandidates = [
-      "index.ts",
-      "index.js",
-      "index.mjs",
-      "index.cjs",
-      "dist/index.js",
-    ];
+    const indexCandidates = ["index.ts", "index.js", "index.mjs", "index.cjs", "dist/index.js"];
     const indexFile = indexCandidates
       .map((candidate) => path.join(packageDir, candidate))
       .find((candidate) => fs.existsSync(candidate));

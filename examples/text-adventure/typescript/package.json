@@ -1,0 +1,26 @@
+{
+  "name": "@elizaos/example-text-adventure",
+  "version": "2.0.0-alpha",
+  "description": "Text adventure game with AI-powered decision making using elizaOS",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run game.ts",
+    "dev": "bun --watch run game.ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@clack/prompts": "^0.11.0",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

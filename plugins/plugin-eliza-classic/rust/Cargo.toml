@@ -1,0 +1,53 @@
+[package]
+name = "elizaos-plugin-eliza-classic"
+version = "2.0.0"
+edition = "2021"
+authors = ["elizaOS Contributors"]
+description = "Classic ELIZA pattern matching plugin for elizaOS - no LLM required"
+license = "MIT"
+repository = "https://github.com/elizaos-plugins/plugin-eliza-classic"
+keywords = ["eliza", "chatbot", "pattern-matching", "elizaos", "agent"]
+categories = ["text-processing", "simulation"]
+
+[lib]
+name = "elizaos_plugin_eliza_classic"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "eliza-classic-ipc"
+path = "src/bin/ipc_server.rs"
+required-features = ["ipc"]
+
+[dependencies]
+regex = "1.10"
+rand = "0.8"
+lazy_static = "1.4"
+thiserror = "1.0"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# WASM support (for TypeScript interop)
+wasm-bindgen = { version = "0.2", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+
+# IPC server support
+tokio = { version = "1.0", features = ["io-std", "rt-multi-thread", "macros"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["full", "test-util"] }
+
+[features]
+default = []
+# Enable WASM bindings for TypeScript runtime loading
+wasm = ["wasm-bindgen", "console_error_panic_hook"]
+# Enable FFI exports for Python/C loading  
+ffi = []
+# Enable IPC server mode for subprocess interop
+ipc = ["tokio"]
+
+
+
+
+

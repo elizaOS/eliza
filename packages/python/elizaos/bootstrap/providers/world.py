@@ -94,5 +94,4 @@ world_provider = Provider(
     description=_spec["description"],
     get=get_world_context,
     dynamic=_spec.get("dynamic", True),
-    position=_spec.get("position"),
 )

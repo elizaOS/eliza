@@ -1,0 +1,30 @@
+# Source files (include dist only)
+typescript/*.ts
+!typescript/dist/
+
+# Test files
+**/__tests__/
+**/tests/
+**/*.test.ts
+**/*.test.py
+**/*.test.rs
+
+# Development config
+.vscode/
+.idea/
+.turbo/
+
+# Python development
+python/.pytest_cache/
+python/__pycache__/
+python/*.egg-info/
+python/.mypy_cache/
+python/.coverage
+
+# Rust development
+rust/target/debug/
+rust/target/release/
+!rust/target/release/*.rlib
+
+# Environment
+.env*

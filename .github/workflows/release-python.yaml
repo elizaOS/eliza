@@ -35,23 +35,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Checkout plugins
-        run: |
-          echo "📦 Checking out plugin repositories with Python packages..."
-          mkdir -p plugins
-
-          REPOS=$(gh api /orgs/elizaos-plugins/repos --paginate -q '.[].name' | grep '^plugin-')
-          echo "$REPOS" | while IFS= read -r repo; do
-            git clone --depth 1 "https://github.com/elizaos-plugins/$repo.git" "plugins/$repo" 2>/dev/null &
-            # Limit concurrent clones
-            RUNNING=$(jobs -r | wc -l)
-            if [ "$RUNNING" -ge 20 ]; then wait -n; fi
-          done
-          wait
-          echo "✅ Plugins directory populated"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Discover Python packages
         id: discover
         run: |
@@ -109,18 +92,6 @@ jobs:
       - name: Checkout code
         if: steps.check.outputs.should_build == 'true'
         uses: actions/checkout@v4
-
-      - name: Checkout plugin if needed
-        if: steps.check.outputs.should_build == 'true' && startsWith(matrix.path, 'plugins/')
-        run: |
-          PLUGIN_DIR=$(echo "${{ matrix.path }}" | cut -d'/' -f1-2)
-          PLUGIN_NAME=$(echo "$PLUGIN_DIR" | cut -d'/' -f2)
-          if [ ! -d "$PLUGIN_DIR" ]; then
-            mkdir -p plugins
-            git clone --depth 1 "https://github.com/elizaos-plugins/$PLUGIN_NAME.git" "$PLUGIN_DIR"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         if: steps.check.outputs.should_build == 'true'

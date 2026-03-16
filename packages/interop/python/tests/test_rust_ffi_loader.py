@@ -51,7 +51,7 @@ async def test_load_rust_plugin_produces_awaitable_handlers(monkeypatch: pytest.
     provider = plugin.providers[0]
     evaluator = plugin.evaluators[0]
 
-    valid = await action.validate(None, {"content": {}}, None)  # type: ignore[arg-type]
+    valid = await action.validate_fn(None, {"content": {}}, None)  # type: ignore[arg-type]
     assert valid is True
 
     result = await action.handler(None, {"content": {}}, None, None, None, None)  # type: ignore[arg-type]
@@ -62,7 +62,7 @@ async def test_load_rust_plugin_produces_awaitable_handlers(monkeypatch: pytest.
     prov_result = await provider.get(None, {"content": {}}, {"values": {}, "data": {}, "text": ""})  # type: ignore[arg-type]
     assert prov_result.text == "prov:PROV"
 
-    eval_valid = await evaluator.validate(None, {"content": {}}, None)  # type: ignore[arg-type]
+    eval_valid = await evaluator.validate_fn(None, {"content": {}}, None)  # type: ignore[arg-type]
     assert eval_valid is True
 
     eval_result = await evaluator.handler(None, {"content": {}}, None, None, None, None)  # type: ignore[arg-type]

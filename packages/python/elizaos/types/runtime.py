@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field
 
 from elizaos.logger import Logger
-from elizaos.types.database import IDatabaseAdapter, MemorySearchOptions
+from elizaos.types.database import IDatabaseAdapter
 from elizaos.types.primitives import UUID, Content
 
 if TYPE_CHECKING:
@@ -17,7 +17,6 @@ if TYPE_CHECKING:
         ActionResult,
         Evaluator,
         HandlerCallback,
-        PreEvaluatorResult,
         Provider,
     )
     from elizaos.types.environment import Entity, Room, World
@@ -226,13 +225,6 @@ class IAgentRuntime(ABC):
         responses: list[Memory] | None = None,
     ) -> list[Evaluator] | None: ...
 
-    @abstractmethod
-    async def evaluate_pre(
-        self,
-        message: Memory,
-        state: State | None = None,
-    ) -> PreEvaluatorResult: ...
-
     # Component registration
     @abstractmethod
     def register_provider(self, provider: Provider) -> None: ...
@@ -287,7 +279,6 @@ class IAgentRuntime(ABC):
         include_list: list[str] | None = None,
         only_include: bool = False,
         skip_cache: bool = False,
-        trajectory_phase: str | None = None,
     ) -> State: ...
 
     # Model usage
@@ -419,15 +410,10 @@ class IAgentRuntime(ABC):
 
     # Convenience wrappers
     @abstractmethod
-    async def get_entity_by_id(self, entity_id: UUID | str) -> Entity | None: ...
+    async def get_entity_by_id(self, entity_id: UUID) -> Entity | None: ...
 
     @abstractmethod
     async def get_entity(self, entity_id: UUID | str) -> Entity | None: ...
-
-    @abstractmethod
-    async def get_entities_for_room(
-        self, room_id: UUID, include_components: bool = False
-    ) -> list[Entity]: ...
 
     @abstractmethod
     async def update_entity(self, entity: Entity) -> None: ...
@@ -440,9 +426,6 @@ class IAgentRuntime(ABC):
 
     @abstractmethod
     async def create_room(self, room: Room) -> UUID: ...
-
-    @abstractmethod
-    async def update_room(self, room: Room) -> None: ...
 
     @abstractmethod
     async def add_participant(self, entity_id: UUID, room_id: UUID) -> bool: ...
@@ -464,11 +447,6 @@ class IAgentRuntime(ABC):
 
     @abstractmethod
     async def get_relationships(self, params: dict[str, object]) -> list[object]: ...
-
-    @abstractmethod
-    async def search_memories(
-        self, params: MemorySearchOptions | dict[str, Any]
-    ) -> list[Memory]: ...
 
     @abstractmethod
     async def search_knowledge(self, query: str, limit: int = 5) -> list[object]: ...

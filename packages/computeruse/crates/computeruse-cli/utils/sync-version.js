@@ -25,7 +25,7 @@ const packageContent = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 packageContent.version = version;
 if (packageContent.optionalDependencies) {
     for (const dep in packageContent.optionalDependencies) {
-        if (dep.startsWith("@elizaos/cli-")) {
+        if (dep.startsWith("@mediar-ai/cli-")) {
             packageContent.optionalDependencies[dep] = version;
         }
     }

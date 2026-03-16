@@ -1,0 +1,13 @@
+{
+  "name": "@elizaos/example-app-electron-workspace",
+  "private": true,
+  "type": "module",
+  "version": "2.0.0-alpha",
+  "scripts": {
+    "dev:renderer": "bun --cwd frontend dev",
+    "dev:electron": "bun --cwd backend dev",
+    "build:renderer": "bun --cwd frontend build",
+    "start": "bun --cwd backend start"
+  }
+}
+

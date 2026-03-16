@@ -23,7 +23,6 @@ describe("autonomy service", () => {
   test("dedupes target room context by earliest message id", async () => {
     const roomId = asTestUuid(uuidv4());
     const agentId = asTestUuid(uuidv4());
-    const participantId = asTestUuid(uuidv4());
     const dupId = asTestUuid(uuidv4());
 
     const runtime = {
@@ -32,15 +31,15 @@ describe("autonomy service", () => {
         key === "AUTONOMY_TARGET_ROOM_ID" ? roomId : undefined,
       getMemories: async ({ tableName }: { tableName: string }) => {
         if (tableName === "memories") {
-          return [makeMemory(dupId, participantId, roomId, "old", 10)];
+          return [makeMemory(dupId, agentId, roomId, "old", 10)];
         }
-        return [makeMemory(dupId, participantId, roomId, "new", 20)];
+        return [makeMemory(dupId, agentId, roomId, "new", 20)];
       },
       getRoomsForParticipant: async () => [roomId],
+      getRoomsForParticipants: async () => [roomId],
       getRoomsByIds: async () => [{ id: roomId, name: "Test Room" }],
       getMemoriesByRoomIds: async () => [
-        makeMemory(dupId, participantId, roomId, "new", 20),
-        makeMemory(dupId, participantId, roomId, "old", 10),
+        makeMemory(dupId, agentId, roomId, "old", 10),
       ],
       getEntityById: async () => null,
       logger: { info: () => undefined, debug: () => undefined },

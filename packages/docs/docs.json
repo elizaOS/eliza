@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "ElizaOS Documentation",
+  "name": "elizaOS Documentation",
   "homepage": "index",
   "colors": {
     "primary": "#0B35F1",
@@ -638,7 +638,7 @@
   "seo": {
     "indexHiddenPages": false,
     "metadata": {
-      "og:site_name": "ElizaOS Documentation",
+      "og:site_name": "elizaOS Documentation",
       "og:type": "website",
       "og:image": "/images/eliza-og.png",
       "x:card": "summary_large_image",

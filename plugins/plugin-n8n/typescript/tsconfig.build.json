@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "../dist/node",
+    "declaration": true,
+    "declarationDir": "../dist/node",
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../../packages/typescript/dist"]
+    }
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules", "../dist", "data", "**/*.test.ts", "__tests__", "build.ts"]
+}
