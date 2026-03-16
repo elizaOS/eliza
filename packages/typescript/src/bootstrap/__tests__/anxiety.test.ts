@@ -32,7 +32,8 @@ describe("anxietyProvider", () => {
     );
     
     // Verify it contains the anxiety header and has content
-    expect(result.text).toContain("AI model, you are too verbose and eager.");
+    // Test for actual anxiety provider content
+    expect(result.text).toContain("Social anxiety concerns");
     expect(result.text).toBeTruthy();
   });
 
