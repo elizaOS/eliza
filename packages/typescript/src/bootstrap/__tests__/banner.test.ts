@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { showBootstrapBanner } from "../banner";
+import { printBootstrapBanner } from "../banner";
 import type { IAgentRuntime } from "../../types";
 
 describe("Banner functionality", () => {
@@ -38,7 +38,7 @@ describe("Banner functionality", () => {
   it("should display a banner with character name", async () => {
     const mockRuntime = createMockRuntime("Test Character");
     
-    await showBootstrapBanner(mockRuntime);
+    await printBootstrapBanner(mockRuntime);
     
     // Check if banner was displayed
     const bannerText = consoleLogOutput.join('\n');
@@ -54,7 +54,7 @@ describe("Banner functionality", () => {
     
     const mockRuntime = createMockRuntime("Test Character", mockSettings);
     
-    await showBootstrapBanner(mockRuntime);
+    await printBootstrapBanner(mockRuntime);
     
     // Check if environment variables are displayed in the banner
     const bannerText = consoleLogOutput.join('\n');
@@ -67,7 +67,7 @@ describe("Banner functionality", () => {
   it("should handle missing character name gracefully", async () => {
     const mockRuntime = createMockRuntime(undefined);
     
-    await showBootstrapBanner(mockRuntime);
+    await printBootstrapBanner(mockRuntime);
     
     // Check if banner was displayed with unknown character
     const bannerText = consoleLogOutput.join('\n');
@@ -82,7 +82,7 @@ describe("Banner functionality", () => {
     
     const mockRuntime = createMockRuntime("Test Character", mockSettings);
     
-    await showBootstrapBanner(mockRuntime);
+    await printBootstrapBanner(mockRuntime);
     
     // Check for status indicators
     const bannerText = consoleLogOutput.join('\n');
@@ -97,7 +97,7 @@ describe("Banner functionality", () => {
     
     const mockRuntime = createMockRuntime("Test Character", mockSettings);
     
-    await showBootstrapBanner(mockRuntime);
+    await printBootstrapBanner(mockRuntime);
     
     // Banner should not be displayed
     expect(consoleLogOutput.length).toBe(0);
