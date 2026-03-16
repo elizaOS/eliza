@@ -7,28 +7,29 @@ import type { DrizzleDatabase } from "../types";
 /**
  * Asynchronously retrieves tasks based on specified parameters.
  * @param {DrizzleDatabase} db - The database instance.
- * @param {UUID} agentId - The ID of the agent whose tasks to retrieve.
- * @param params Object containing optional roomId, tags, and entityId to filter tasks
+ * @param params Object containing agentIds (required), optional roomId, tags, entityId, limit, offset
  * @returns Promise resolving to an array of Task objects
  */
 export async function getTasks(
   db: DrizzleDatabase,
-  agentId: UUID,
   params: {
     roomId?: UUID;
     tags?: string[];
     entityId?: UUID;
+    agentIds: UUID[];
     limit?: number;
     offset?: number;
   }
 ): Promise<Task[]> {
+  if (params.agentIds.length === 0) return [];
+
   // BUG FIX: entityId was accepted but never applied as a WHERE filter.
   let query = db
     .select()
     .from(taskTable)
     .where(
       and(
-        eq(taskTable.agentId, agentId),
+        inArray(taskTable.agentId, params.agentIds),
         ...(params.roomId ? [eq(taskTable.roomId, params.roomId)] : []),
         ...(params.entityId ? [eq(taskTable.entityId, params.entityId)] : []),
         ...(params.tags && params.tags.length > 0

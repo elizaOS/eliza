@@ -1,4 +1,4 @@
-import type { Action, Content, IAgentRuntime, Provider } from "@elizaos/core";
+import type { Action, Content, IAgentRuntime, Provider, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { VisionService } from "../../service";
 import { VisionMode, VisionServiceType } from "../../types";
@@ -153,7 +153,8 @@ export class VisionRuntimeTestSuite {
           return [];
         };
 
-        await action.handler(runtime, message, {}, {}, callback);
+        const state: State = { values: {}, data: {}, text: "" };
+        await action.handler(runtime, message, state, {}, callback);
 
         if (!responseReceived) {
           throw new Error("DESCRIBE_SCENE action did not produce a response");
@@ -300,12 +301,13 @@ export class VisionRuntimeTestSuite {
 
         // Check entity structure if any exist
         for (const entity of entities) {
-          if (!entity.id || !entity.type || !entity.lastSeen) {
+          if (!entity.id || !entity.entityType || !entity.lastSeen) {
             throw new Error("Entity missing required fields");
           }
 
+          const trackingDurationMs = entity.lastSeen - entity.firstSeen;
           logger.info(
-            `[Test] Entity ${entity.id}: type=${entity.type}, tracked=${entity.trackingDuration}ms`
+            `[Test] Entity ${entity.id}: type=${entity.entityType}, tracked=${trackingDurationMs}ms`
           );
         }
 

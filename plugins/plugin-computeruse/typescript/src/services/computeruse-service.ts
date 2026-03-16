@@ -18,8 +18,8 @@ interface McpServiceLike extends Service {
   getServers(): ReadonlyArray<{ name: string; status: string }>;
 }
 
-// Minimal Desktop shape used when native @elizaos/computeruse is loaded (avoids depending on its .d.ts).
-interface LocalDesktopShape {
+// Minimal shape for @elizaos/computeruse Desktop instance (native bindings; types may be incomplete).
+interface DesktopInstance {
   openApplication(appName: string): void;
   locator(selector: string): { first(timeoutMs: number): Promise<{ click(): Promise<void>; typeText(text: string, opts: { clearBeforeTyping: boolean }): void } | null> };
   getWindowTree(process: string, title?: string, maxDepth?: unknown): unknown;
@@ -36,7 +36,7 @@ export class ComputerUseService extends Service {
   private initialized = false;
 
   // Lazy-loaded to avoid importing native bindings unless actually used.
-  private localDesktop: LocalDesktopShape | null = null;
+  private localDesktop: unknown = null;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -119,7 +119,7 @@ export class ComputerUseService extends Service {
     // Import only when needed (native optional deps).
     try {
       const mod = await import("@elizaos/computeruse");
-      this.localDesktop = new mod.Desktop() as LocalDesktopShape;
+      this.localDesktop = new (mod as unknown as { Desktop: new () => unknown }).Desktop();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const platform = process.platform;
@@ -202,7 +202,7 @@ export class ComputerUseService extends Service {
 
     if (this.backendName === "local") {
       await this.ensureLocalBackend();
-      this.localDesktop?.openApplication(appName);
+      (this.localDesktop as DesktopInstance | null)?.openApplication(appName);
       return;
     }
 
@@ -226,7 +226,8 @@ export class ComputerUseService extends Service {
 
     if (this.backendName === "local") {
       await this.ensureLocalBackend();
-      const el = await this.localDesktop?.locator(selector).first(timeoutMs);
+      const desktop = this.localDesktop as DesktopInstance | null;
+      const el = await desktop?.locator(selector).first(timeoutMs);
       if (!el) throw new Error(`Element not found: ${selector}`);
       await el.click();
       return;
@@ -262,7 +263,8 @@ export class ComputerUseService extends Service {
 
     if (this.backendName === "local") {
       await this.ensureLocalBackend();
-      const el = await this.localDesktop?.locator(selector).first(timeoutMs);
+      const desktop = this.localDesktop as DesktopInstance | null;
+      const el = await desktop?.locator(selector).first(timeoutMs);
       if (!el) throw new Error(`Element not found: ${selector}`);
       el.typeText(text, { clearBeforeTyping });
       return;
@@ -292,7 +294,8 @@ export class ComputerUseService extends Service {
 
     if (this.backendName === "local") {
       await this.ensureLocalBackend();
-      const tree = this.localDesktop?.getWindowTree(process, title, undefined);
+      const desktop = this.localDesktop as DesktopInstance | null;
+      const tree = desktop?.getWindowTree(process, title, undefined);
       return JSON.stringify(tree ?? null, null, 2);
     }
 
@@ -325,7 +328,8 @@ export class ComputerUseService extends Service {
 
     if (this.backendName === "local") {
       await this.ensureLocalBackend();
-      const apps = this.localDesktop?.applications() ?? [];
+      const desktop = this.localDesktop as DesktopInstance | null;
+      const apps = desktop?.applications() ?? [];
       // Normalize into human-readable names.
       const names: string[] = [];
       for (const app of apps) {

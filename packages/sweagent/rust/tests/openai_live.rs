@@ -22,6 +22,7 @@ struct ResponseMessage {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct Choice {
     index: usize,
     message: ResponseMessage,
@@ -36,6 +37,7 @@ struct Usage {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct OpenAIResponse {
     id: String,
     object: String,

@@ -2,7 +2,7 @@
  * Tools tests converted from test_tools_command_parsing.py
  */
 
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it } from "./jest-globals";
 import { Argument, Command } from "../src/tools/commands";
 
 describe("Command Parsing", () => {

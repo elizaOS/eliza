@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { describe, expect, it } from "vitest";
 import type { IAgentRuntime, TestSuite } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 
@@ -373,3 +374,9 @@ export const ScratchpadServiceTestSuite: TestSuite = {
     },
   ],
 };
+
+describe(ScratchpadServiceTestSuite.name, () => {
+  it("exports a non-empty test suite for service unit runner", () => {
+    expect(ScratchpadServiceTestSuite.tests.length).toBeGreaterThan(0);
+  });
+});

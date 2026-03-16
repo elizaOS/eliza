@@ -682,14 +682,14 @@ export class KnowledgeService extends Service {
 
   async countMemories(params: {
     tableName: string;
-    roomId?: UUID;
+    roomIds?: UUID[];
     unique?: boolean;
   }): Promise<number> {
-    const roomId = params.roomId || this.runtime.agentId;
+    const roomIds = params.roomIds ?? [this.runtime.agentId];
     const unique = params.unique ?? false;
     const tableName = params.tableName;
 
-    return this.runtime.countMemories(roomId, unique, tableName);
+    return this.runtime.countMemories({ roomIds, unique, tableName });
   }
 
   async deleteMemory(memoryId: UUID): Promise<void> {

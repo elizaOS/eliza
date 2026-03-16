@@ -28,6 +28,8 @@
     "dist",
     "**/__tests__/**",
     "**/*.test.ts",
+    "src/tests.ts",
+    "**/tests.ts",
     "build.ts",
     "./generated/**"
   ]

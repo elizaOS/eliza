@@ -10,7 +10,7 @@ import {
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import { createGoalDataService } from "../services/goalDataService.js";
 
-const spec = requireProviderSpec("goals");
+const spec = requireProviderSpec("GOALS");
 
 export const goalsProvider: Provider = {
   name: spec.name,

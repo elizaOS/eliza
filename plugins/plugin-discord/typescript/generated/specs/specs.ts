@@ -26,25 +26,32 @@ export type EvaluatorDoc = {
   examples?: readonly unknown[];
 };
 
+const pluginActionStubs: readonly ActionDoc[] = [
+  { name: "SEND_DM", description: "Send a direct message to a user.", parameters: [] },
+  { name: "SEARCH_MESSAGES", description: "Search messages in a channel.", parameters: [] },
+  { name: "DOWNLOAD_MEDIA", description: "Download media from a message.", parameters: [] },
+  { name: "SUMMARIZE_CONVERSATION", description: "Summarize a conversation.", parameters: [] },
+  { name: "READ_CHANNEL", description: "Read messages from a channel.", parameters: [] },
+  { name: "CREATE_POLL", description: "Create a poll in a channel.", parameters: [] },
+  { name: "TRANSCRIBE_MEDIA", description: "Transcribe media.", parameters: [] },
+  { name: "JOIN_CHANNEL", description: "Join a voice or text channel.", parameters: [] },
+  { name: "CHAT_WITH_ATTACHMENTS", description: "Chat with attachments.", parameters: [] },
+  { name: "LEAVE_CHANNEL", description: "Leave a channel.", parameters: [] },
+  { name: "PIN_MESSAGE", description: "Pin a message.", parameters: [] },
+  { name: "UNPIN_MESSAGE", description: "Unpin a message.", parameters: [] },
+  { name: "GET_USER_INFO", description: "Get user information.", parameters: [] },
+  { name: "REACT_TO_MESSAGE", description: "React to a message.", parameters: [] },
+  { name: "LIST_CHANNELS", description: "List channels.", parameters: [] },
+  { name: "SERVER_INFO", description: "Get server information.", parameters: [] },
+];
+
 export const coreActionsSpec = {
   version: "1.0.0",
-  actions: [
-    {
-      name: "name",
-      description: "",
-      parameters: [],
-    },
-  ],
+  actions: pluginActionStubs,
 } as const;
 export const allActionsSpec = {
   version: "1.0.0",
-  actions: [
-    {
-      name: "name",
-      description: "",
-      parameters: [],
-    },
-  ],
+  actions: pluginActionStubs,
 } as const;
 export const coreProvidersSpec = {
   version: "1.0.0",

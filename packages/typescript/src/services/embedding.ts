@@ -2,6 +2,7 @@ import type { EmbeddingGenerationPayload } from "../types/events";
 import { EventType } from "../types/events";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
+import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 
@@ -26,11 +27,13 @@ export class EmbeddingGenerationService extends Service {
 
   private queue: EmbeddingQueueItem[] = [];
   private isProcessing = false;
-  private processingInterval: NodeJS.Timeout | null = null;
+  private drainTaskId: UUID | null = null;
   private maxQueueSize = 1000;
   private batchSize = 10; // Process up to 10 embeddings at a time
-  private processingIntervalMs = 100; // Check queue every 100ms
+  private processingIntervalMs = 100; // Interval for drain task (effective rate is scheduler tick, typically 1/s)
   private isDisabled = false; // Flag to indicate if service is disabled due to missing embedding model
+
+  private static readonly EMBEDDING_DRAIN_TASK = "EMBEDDING_DRAIN";
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     runtime.logger.info(
@@ -82,8 +85,56 @@ export class EmbeddingGenerationService extends Service {
       this.handleEmbeddingRequest.bind(this),
     );
 
-    // Start the processing loop
-    this.startProcessing();
+    this.registerDrainWorker();
+    await this.ensureDrainTask();
+  }
+
+  private registerDrainWorker(): void {
+    this.runtime.registerTaskWorker({
+      name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
+      execute: async () => {
+        if (!this.isProcessing && this.queue.length > 0) {
+          await this.processQueue();
+        }
+      },
+    });
+  }
+
+  private async ensureDrainTask(): Promise<void> {
+    const rt = this.runtime;
+    if (
+      typeof rt.getTasksByName !== "function" ||
+      typeof rt.createTask !== "function"
+    ) {
+      return;
+    }
+    const agentId = rt.agentId;
+    const existing = await rt.getTasksByName(
+      EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
+    );
+    const mine = existing.find(
+      (t) => t.agentId != null && String(t.agentId) === String(agentId),
+    );
+    if (mine?.id) {
+      this.drainTaskId = mine.id;
+      return;
+    }
+    this.drainTaskId = await rt.createTask({
+      name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
+      tags: ["queue", "repeat"],
+      metadata: {
+        updateInterval: this.processingIntervalMs,
+        baseInterval: this.processingIntervalMs,
+        updatedAt: Date.now(),
+      },
+    });
+    this.runtime.logger.info(
+      {
+        src: "plugin:bootstrap:service:embedding",
+        agentId: this.runtime.agentId,
+      },
+      "Started embedding drain task",
+    );
   }
 
   private async handleEmbeddingRequest(
@@ -242,37 +293,6 @@ export class EmbeddingGenerationService extends Service {
     }
 
     this.queue.splice(insertIndex, 0, queueItem);
-  }
-
-  private startProcessing(): void {
-    if (this.isDisabled) {
-      this.runtime.logger.debug(
-        {
-          src: "plugin:bootstrap:service:embedding",
-          agentId: this.runtime.agentId,
-        },
-        "Service is disabled, not starting processing loop",
-      );
-      return;
-    }
-
-    if (this.processingInterval) {
-      return;
-    }
-
-    this.processingInterval = setInterval(async () => {
-      if (!this.isProcessing && this.queue.length > 0) {
-        await this.processQueue();
-      }
-    }, this.processingIntervalMs);
-
-    this.runtime.logger.info(
-      {
-        src: "plugin:bootstrap:service:embedding",
-        agentId: this.runtime.agentId,
-      },
-      "Started processing loop",
-    );
   }
 
   private async processQueue(): Promise<void> {
@@ -460,9 +480,9 @@ export class EmbeddingGenerationService extends Service {
       return;
     }
 
-    if (this.processingInterval) {
-      clearInterval(this.processingInterval);
-      this.processingInterval = null;
+    if (this.drainTaskId && typeof this.runtime.deleteTask === "function") {
+      await this.runtime.deleteTask(this.drainTaskId).catch(() => {});
+      this.drainTaskId = null;
     }
 
     // Process remaining high priority items before shutdown

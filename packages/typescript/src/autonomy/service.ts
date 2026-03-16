@@ -1,14 +1,10 @@
 /**
  * Autonomy Service for elizaOS
  *
- * Provides autonomous operation for agents using the Task system,
- * enabling them to think and act independently without external prompts.
- *
- * This service uses the unified Task system for scheduling instead of
- * timer-based loops, which provides:
- * - Database persistence (survives restarts)
- * - Blocking mode (prevents overlapping executions)
- * - Unified task management across all periodic operations
+ * Provides autonomous operation for agents using the prompt batcher (Option A).
+ * One register only: the batcher. When enableAutonomy is true, a recurring
+ * section is registered; the batcher's background tick and minCycleMs drive
+ * when the autonomy section drains. No Task DB or worker.
  */
 
 import {
@@ -31,6 +27,7 @@ import {
 } from "../types";
 import { Service } from "../types/service";
 import { stringToUuid } from "../utils";
+import { runAutonomyPostResponse } from "./execution-facade";
 import type { AutonomyStatus } from "./types";
 
 /**
@@ -49,14 +46,11 @@ export const AUTONOMY_TASK_NAME = "AUTONOMY_THINK" as const;
 export const AUTONOMY_TASK_TAGS = ["repeat", "autonomy", "internal"] as const;
 
 /**
- * AutonomyService - Manages autonomous agent operation
+ * AutonomyService - Manages autonomous agent operation.
  *
- * This service uses the Task system to trigger agent thinking
- * in a dedicated room context, separate from user conversations.
- * The task-based approach ensures:
- * - Persistence across restarts
- * - No overlapping executions (blocking mode)
- * - Unified management with other periodic tasks
+ * Uses the prompt batcher only (Option A): one register, no Task.
+ * When enableAutonomy is true, a recurring section is registered;
+ * the batcher's background tick and minCycleMs drive when it drains.
  */
 export class AutonomyService extends Service {
   static serviceType = AUTONOMY_SERVICE_TYPE;
@@ -66,7 +60,6 @@ export class AutonomyService extends Service {
   protected intervalMs: number;
   protected autonomousRoomId: UUID;
   protected autonomousWorldId: UUID;
-  private taskRegistered = false;
   private isThinking = false;
   protected autonomyEntityId: UUID; // Dedicated entity ID for autonomy prompts (not the agent's ID)
 
@@ -88,7 +81,7 @@ export class AutonomyService extends Service {
 
   private async getTargetRoomContextText(): Promise<string> {
     const targetRoomId = this.getTargetRoomId();
-    const participantRooms = await this.runtime.getRoomsForParticipants(
+    const participantRooms = await this.runtime.getRoomsForParticipant(
       this.runtime.agentId,
     );
     const orderedRoomIds: UUID[] = [];
@@ -219,7 +212,8 @@ export class AutonomyService extends Service {
   }
 
   /**
-   * Initialize the service
+   * Initialize the service. Option A: autonomy is driven only by the prompt batcher; no Task.
+   * WHY: We only register the batcher section when enableAutonomy is true; no task worker or createTask.
    */
   private async initialize(): Promise<void> {
     this.runtime.logger.info(
@@ -227,10 +221,6 @@ export class AutonomyService extends Service {
       `Using autonomous room ID: ${this.autonomousRoomId}`,
     );
 
-    // Register the task worker for autonomous thinking
-    this.registerAutonomyTaskWorker();
-
-    // Check runtime flag for auto-start
     const autonomyEnabled = this.runtime.enableAutonomy;
 
     this.runtime.logger.debug(
@@ -238,156 +228,43 @@ export class AutonomyService extends Service {
       `Runtime enableAutonomy value: ${autonomyEnabled}`,
     );
 
-    // Ensure autonomous world and room exist
     await this.ensureAutonomousContext();
 
-    // Check if autonomy should auto-start based on runtime configuration
+    // WHY: After migration to batcher-only, old DB rows for AUTONOMY_THINK are never run (no worker); remove them to avoid clutter and confusion.
+    try {
+      const existingTasks = await this.runtime.getTasks({
+        tags: [...AUTONOMY_TASK_TAGS],
+        agentIds: [this.runtime.agentId],
+      });
+      for (const task of existingTasks) {
+        if (task.id && task.name === AUTONOMY_TASK_NAME) {
+          await this.runtime.deleteTask(task.id);
+          this.runtime.logger.debug(
+            { src: "autonomy", agentId: this.runtime.agentId, taskId: task.id },
+            "Removed orphaned autonomy task",
+          );
+        }
+      }
+    } catch (err) {
+      this.runtime.logger.warn(
+        { src: "autonomy", agentId: this.runtime.agentId, error: err },
+        "Could not clean orphaned autonomy tasks",
+      );
+    }
+
     if (autonomyEnabled) {
       this.runtime.logger.info(
         { src: "autonomy", agentId: this.runtime.agentId },
-        "Autonomy enabled (enableAutonomy: true), creating autonomy task...",
+        "Autonomy enabled (enableAutonomy: true), registering with prompt batcher.",
       );
-      await this.createAutonomyTask();
+      this.registerAutonomyBatcherSection();
+      this.isRunning = true;
     } else {
       this.runtime.logger.info(
         { src: "autonomy", agentId: this.runtime.agentId },
-        "Autonomy not enabled (enableAutonomy: false or not set). Set enableAutonomy: true in runtime options to auto-start, or call enableAutonomy() to start manually.",
+        "Autonomy not enabled. Set enableAutonomy: true in runtime options or call enableAutonomy() to start.",
       );
     }
-  }
-
-  /**
-   * Register the task worker for autonomous thinking
-   */
-  private registerAutonomyTaskWorker(): void {
-    if (this.taskRegistered) return;
-
-    this.runtime.registerTaskWorker({
-      name: AUTONOMY_TASK_NAME,
-      validate: async () => true,
-      execute: async (runtime, _options, task) => {
-        const startTime = Date.now();
-        this.runtime.logger.debug(
-          {
-            src: "autonomy",
-            agentId: runtime.agentId,
-            taskId: task.id,
-          },
-          "Executing autonomy task",
-        );
-
-        try {
-          await this.performAutonomousThink();
-          const durationMs = Date.now() - startTime;
-          this.runtime.logger.debug(
-            {
-              src: "autonomy",
-              agentId: runtime.agentId,
-              taskId: task.id,
-              durationMs,
-            },
-            "Autonomy task completed successfully",
-          );
-        } catch (error) {
-          const durationMs = Date.now() - startTime;
-          this.runtime.logger.error(
-            {
-              src: "autonomy",
-              agentId: runtime.agentId,
-              taskId: task.id,
-              error: error instanceof Error ? error.message : String(error),
-              durationMs,
-            },
-            "Autonomy task failed",
-          );
-          throw error;
-        }
-      },
-    });
-
-    this.taskRegistered = true;
-    this.runtime.logger.debug(
-      { src: "autonomy", agentId: this.runtime.agentId },
-      "Registered autonomy task worker",
-    );
-  }
-
-  /**
-   * Create the recurring autonomy task
-   */
-  private async createAutonomyTask(): Promise<void> {
-    // Clean up any existing autonomy tasks
-    const existingTasks = await this.runtime.getTasks({
-      tags: [...AUTONOMY_TASK_TAGS],
-    });
-
-    for (const task of existingTasks) {
-      if (task.id && task.name === AUTONOMY_TASK_NAME) {
-        await this.runtime.deleteTask(task.id);
-        this.runtime.logger.debug(
-          {
-            src: "autonomy",
-            agentId: this.runtime.agentId,
-            taskId: task.id,
-          },
-          "Removed existing autonomy task",
-        );
-      }
-    }
-
-    // Create the recurring task
-    await this.runtime.createTask({
-      name: AUTONOMY_TASK_NAME,
-      description: `Autonomous thinking for agent ${this.runtime.agentId}`,
-      worldId: this.autonomousWorldId,
-      roomId: this.autonomousRoomId,
-      metadata: {
-        updatedAt: Date.now(),
-        updateInterval: this.intervalMs,
-        // Enable blocking to prevent overlapping think cycles
-        // This is critical for long-running autonomous operations
-        blocking: true,
-      },
-      tags: [...AUTONOMY_TASK_TAGS],
-    });
-
-    this.isRunning = true;
-    this.runtime.enableAutonomy = true;
-
-    this.runtime.logger.info(
-      {
-        src: "autonomy",
-        agentId: this.runtime.agentId,
-        intervalMs: this.intervalMs,
-      },
-      `Created autonomy task (interval: ${this.intervalMs}ms)`,
-    );
-  }
-
-  /**
-   * Delete the autonomy task to stop autonomous operation
-   */
-  private async deleteAutonomyTask(): Promise<void> {
-    const existingTasks = await this.runtime.getTasks({
-      tags: [...AUTONOMY_TASK_TAGS],
-    });
-
-    for (const task of existingTasks) {
-      if (task.id && task.name === AUTONOMY_TASK_NAME) {
-        await this.runtime.deleteTask(task.id);
-        this.runtime.logger.info(
-          {
-            src: "autonomy",
-            agentId: this.runtime.agentId,
-            taskId: task.id,
-          },
-          "Deleted autonomy task",
-        );
-      }
-    }
-
-    this.isRunning = false;
-    this.runtime.enableAutonomy = false;
   }
 
   /**
@@ -741,6 +618,227 @@ export class AutonomyService extends Service {
     return output;
   }
 
+  /**
+   * Build the autonomy context string for the prompt batcher (Reason phase).
+   * Used by the batcher section's contextBuilder; does not assume messages exist.
+   * WHY: Recurring autonomy drains with an empty message buffer; context must come
+   * from runtime (room context, last thought from memories) and the same templates
+   * as the old performAutonomousThink path so model behavior stays consistent.
+   */
+  async buildAutonomyContextForBatcher(): Promise<string> {
+    const targetRoomContext = await this.getTargetRoomContextText();
+    let lastThought: string | undefined;
+    let isFirstThought = false;
+
+    const agentEntity = this.runtime.getEntityById
+      ? await this.runtime.getEntityById(this.runtime.agentId)
+      : { id: this.runtime.agentId };
+    if (!agentEntity) {
+      return targetRoomContext;
+    }
+
+    const recentMemories = await this.runtime.getMemories({
+      roomId: this.autonomousRoomId,
+      count: 3,
+      tableName: "memories",
+    });
+
+    let lastAgentThought: Memory | null = null;
+    for (const memory of recentMemories) {
+      if (
+        memory.entityId === agentEntity.id &&
+        memory.content?.text &&
+        memory.content?.metadata &&
+        (memory.content.metadata as Record<string, ContentValue>)?.isAutonomous === true &&
+        (memory.content.metadata as Record<string, ContentValue>)?.type === "autonomous-response"
+      ) {
+        if (
+          !lastAgentThought ||
+          (memory.createdAt || 0) > (lastAgentThought.createdAt || 0)
+        ) {
+          lastAgentThought = memory;
+        }
+      }
+    }
+
+    if (lastAgentThought?.content?.text) {
+      lastThought = lastAgentThought.content.text;
+    } else {
+      isFirstThought = true;
+    }
+
+    const mode = this.getAutonomyMode();
+    const autonomyPrompt =
+      mode === "task"
+        ? this.createTaskPrompt({
+            lastThought,
+            isFirstThought,
+            targetRoomContext,
+          })
+        : this.createContinuousPrompt({
+            lastThought,
+            isFirstThought,
+            targetRoomContext,
+          });
+    return autonomyPrompt;
+  }
+
+  /**
+   * Register the autonomy section with the prompt batcher (recurring, contextBuilder-driven).
+   * Idempotent by section id "autonomy". Called when autonomy is enabled.
+   * WHY: One register only (Option A). Batcher owns "when" via minCycleMs and background
+   * tick; we supply "what" (contextBuilder, preamble, schema). Same schema as message
+   * pipeline so the execution facade consumes batcher output without a separate contract.
+   */
+  private registerAutonomyBatcherSection(): void {
+    if (!this.runtime.promptBatcher) {
+      return;
+    }
+    const self = this;
+    this.runtime.promptBatcher.think("autonomy", {
+      contextBuilder: async (_runtime, _messages) => {
+        return await self.buildAutonomyContextForBatcher();
+      },
+      preamble: [
+        "You are in autonomous mode. Output your thought, chosen actions, and text response.",
+        "Use the context below for your reasoning. Respond with the structured fields only.",
+      ].join("\n"),
+      schema: [
+        {
+          field: "thought",
+          description: "Your internal reasoning about what to do next",
+          required: true,
+        },
+        {
+          field: "providers",
+          description: "List of providers to use for additional context (comma-separated)",
+          required: false,
+        },
+        {
+          field: "actions",
+          description: "List of actions to take (comma-separated)",
+          required: true,
+        },
+        {
+          field: "text",
+          description: "The text response or note to persist",
+          required: false,
+        },
+        {
+          field: "simple",
+          description: "Whether this is a simple response (true/false)",
+          required: false,
+        },
+      ],
+      // WHY: Act immediately — as soon as the batcher delivers we run the execution facade so one think → one response → actions + evaluate, same as the message pipeline.
+      onResult: async (fields, _meta) => {
+        const mode = self.getAutonomyMode();
+        // WHY: entityId is autonomyEntityId so the agent is "responding to" the autonomy prompt, not to self; evaluators and attribution stay correct.
+        const autonomousMessage: Memory = {
+          id: stringToUuid(uuidv4()),
+          entityId: self.autonomyEntityId,
+          content: {
+            text: "",
+            source: "autonomy-service",
+            metadata: {
+              type: "autonomous-prompt",
+              isAutonomous: true,
+              isInternalThought: true,
+              autonomyMode: mode,
+              channelId: "autonomous",
+              timestamp: Date.now(),
+            },
+          },
+          roomId: self.autonomousRoomId,
+          agentId: self.runtime.agentId,
+          createdAt: Date.now(),
+        };
+        try {
+          const baseMetadata =
+            typeof autonomousMessage.content.metadata === "object" &&
+            autonomousMessage.content.metadata !== null &&
+            !Array.isArray(autonomousMessage.content.metadata)
+              ? (autonomousMessage.content.metadata as Record<string, ContentValue>)
+              : {};
+          const autonomyLogMemory: Memory = {
+            ...autonomousMessage,
+            id: stringToUuid(uuidv4()),
+            content: {
+              ...autonomousMessage.content,
+              metadata: {
+                ...baseMetadata,
+                originalMessageId: autonomousMessage.id,
+              },
+            },
+          };
+          await self.runtime.createMemory(autonomyLogMemory, "memories");
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          self.runtime.logger.warn(
+            { src: "autonomy", agentId: self.runtime.agentId, error: msg },
+            "Failed to persist autonomous prompt memory",
+          );
+        }
+        const callback = async (content: Content): Promise<Memory[]> => {
+          self.runtime.logger.debug(
+            { src: "autonomy", agentId: self.runtime.agentId },
+            `Autonomy response: ${content.text?.substring(0, 100)}...`,
+          );
+          if (typeof content.text === "string" && content.text.trim().length > 0) {
+            const responseMemory: Memory = {
+              id: stringToUuid(uuidv4()),
+              entityId: self.runtime.agentId,
+              agentId: self.runtime.agentId,
+              roomId: self.autonomousRoomId,
+              createdAt: Date.now(),
+              content: {
+                text: content.text,
+                source: "autonomy-service",
+                metadata: {
+                  type: "autonomous-response",
+                  isAutonomous: true,
+                  isInternalThought: true,
+                  autonomyMode: mode,
+                  channelId: "autonomous",
+                  timestamp: Date.now(),
+                },
+              },
+            };
+            try {
+              await self.runtime.createMemory(responseMemory, "memories");
+            } catch (e) {
+              const m = e instanceof Error ? e.message : String(e);
+              self.runtime.logger.warn(
+                { src: "autonomy", agentId: self.runtime.agentId, error: m },
+                "Failed to persist autonomous response memory",
+              );
+            }
+          }
+          return [];
+        };
+        await runAutonomyPostResponse(
+          self.runtime,
+          autonomousMessage,
+          fields,
+          callback,
+        );
+      },
+      minCycleMs: this.intervalMs,
+      // WHY: Fallback ensures the section always delivers something; IGNORE is the safe no-op so we don't run actions on invalid/empty model output.
+      fallback: {
+        thought: "Autonomy fallback: no response.",
+        actions: ["IGNORE"],
+        text: "",
+        simple: true,
+        providers: [],
+      },
+    });
+    this.runtime.logger.debug(
+      { src: "autonomy", agentId: this.runtime.agentId },
+      "Registered autonomy section with prompt batcher",
+    );
+  }
+
   // Public API methods
 
   /**
@@ -785,9 +883,10 @@ export class AutonomyService extends Service {
       `Loop interval set to ${ms}ms`,
     );
 
-    // Recreate the task if running
+    // WHY: Section is immutable once added; to change minCycleMs we remove and re-register with the new interval.
     if (this.isRunning) {
-      await this.createAutonomyTask();
+      this.runtime.promptBatcher?.removeSection("autonomy");
+      this.registerAutonomyBatcherSection();
     }
   }
 
@@ -799,22 +898,26 @@ export class AutonomyService extends Service {
   }
 
   /**
-   * Enable autonomy - creates the recurring task
+   * Enable autonomy — registers the section with the prompt batcher (Option A; no Task).
+   * WHY: No Task creation; one register only. Batcher background tick + minCycleMs drive when the section drains.
    */
   async enableAutonomy(): Promise<void> {
     this.runtime.enableAutonomy = true;
     if (!this.isRunning) {
-      await this.createAutonomyTask();
+      this.registerAutonomyBatcherSection();
+      this.isRunning = true;
     }
   }
 
   /**
-   * Disable autonomy - deletes the recurring task
+   * Disable autonomy — removes the section from the prompt batcher.
+   * WHY: removeSection("autonomy") stops future drains; no Task to delete.
    */
   async disableAutonomy(): Promise<void> {
     this.runtime.enableAutonomy = false;
     if (this.isRunning) {
-      await this.deleteAutonomyTask();
+      this.runtime.promptBatcher?.removeSection("autonomy");
+      this.isRunning = false;
     }
   }
 
@@ -871,7 +974,7 @@ export class AutonomyService extends Service {
     return {
       enabled,
       running: this.isRunning,
-      thinking: false, // Task system handles blocking
+      thinking: false,
       interval: this.intervalMs,
       autonomousRoomId: this.autonomousRoomId,
     };
@@ -881,9 +984,8 @@ export class AutonomyService extends Service {
    * Stop the service
    */
   async stop(): Promise<void> {
-    // Delete the autonomy task
-    await this.deleteAutonomyTask();
-
+    this.runtime.promptBatcher?.removeSection("autonomy");
+    this.isRunning = false;
     this.runtime.logger.info(
       { src: "autonomy", agentId: this.runtime.agentId },
       "Autonomy service stopped completely",
@@ -891,6 +993,6 @@ export class AutonomyService extends Service {
   }
 
   get capabilityDescription(): string {
-    return "Autonomous operation using Task system for continuous agent thinking and actions";
+    return "Autonomous operation using the prompt batcher for continuous agent thinking and actions";
   }
 }

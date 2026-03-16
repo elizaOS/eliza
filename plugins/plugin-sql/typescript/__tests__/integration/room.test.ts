@@ -79,7 +79,7 @@ describe("Room Integration Tests", () => {
         name: "Room 2",
       };
       await adapter.createRooms([room1, room2]);
-      const rooms = await adapter.getRoomsByWorld(testWorldId);
+      const rooms = await adapter.getRoomsByWorlds([testWorldId]);
       expect(rooms).toHaveLength(2);
     });
 

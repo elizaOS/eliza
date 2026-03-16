@@ -301,4 +301,8 @@ describe("real otto skills validation", () => {
       });
     }
   }
+
+  it("has at least one otto skill dir or skips gracefully", () => {
+    expect(skillDirs.length).toBeGreaterThan(0);
+  });
 });

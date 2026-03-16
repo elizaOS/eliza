@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -38,7 +39,7 @@ const makeCallAction: Action = {
     state?: State,
     options?: any,
     callback?: HandlerCallback
-  ) => {
+  ): Promise<ActionResult> => {
     try {
       const twilioService = runtime.getService(TWILIO_SERVICE_NAME) as unknown as TwilioService;
       if (!twilioService) {
@@ -83,19 +84,21 @@ const makeCallAction: Action = {
       logger.info(`Call initiated to ${phoneNumber}, Call SID: ${call.sid}`);
 
       if (callback) {
-        callback({
+        await callback({
           text: `Call initiated successfully to ${phoneNumber}. Call ID: ${call.sid}`,
           success: true,
         });
       }
+      return { success: true };
     } catch (error) {
       logger.error({ error: String(error) }, "Error making call");
       if (callback) {
-        callback({
+        await callback({
           text: `Failed to make call: ${error instanceof Error ? error.message : "Unknown error"}`,
           success: false,
         });
       }
+      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
     }
   },
   examples: [

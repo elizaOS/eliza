@@ -142,22 +142,69 @@ export interface State
  * to output specific fields. Each SchemaRow defines one field the LLM must produce.
  * The schema also controls validation behavior for streaming scenarios.
  *
+ * Schema rows are intentionally backwards-compatible with the original flat shape,
+ * but now also support nested objects and arrays so callers can describe structured
+ * payloads without embedding pseudo-schemas in prose strings.
+ *
  * @example
  * ```ts
  * const schema: SchemaRow[] = [
  *   { field: 'thought', description: 'Your internal reasoning' },
  *   { field: 'text', description: 'Response to user', required: true },
- *   { field: 'actions', description: 'Actions to execute' },
+ *   {
+ *     field: 'facts',
+ *     description: 'Facts extracted from the conversation',
+ *     type: 'array',
+ *     items: {
+ *       description: 'One fact entry',
+ *       type: 'object',
+ *       properties: [
+ *         { field: 'claim', description: 'Fact claim', required: true },
+ *         { field: 'type', description: 'fact|opinion|preference', required: true },
+ *       ],
+ *     },
+ *   },
  * ];
  * ```
  */
-export type SchemaRow = {
+export type SchemaValueType =
+  | "string"
+  | "number"
+  | "boolean"
+  | "object"
+  | "array";
+
+export type SchemaValueSpec = {
+  /** Description shown to LLM - explains what to put in this value */
+  description: string;
+  /**
+   * Expected value type.
+   *
+   * WHY: Flat string descriptions work for simple fields, but nested arrays/objects
+   * need explicit structure so prompt examples and validation can stay machine-readable.
+   */
+  type?: SchemaValueType;
+  /** If true, validation fails when value is empty/missing */
+  required?: boolean;
+  /**
+   * Object properties for `type: "object"`.
+   *
+   * WHY: Lets callers describe nested output directly instead of teaching the model
+   * an ad-hoc JSON shape through freeform prose.
+   */
+  properties?: SchemaRow[];
+  /**
+   * Item shape for `type: "array"`.
+   *
+   * WHY: Arrays often contain structured entries. This keeps the shape attached to
+   * the schema so examples, parsing, and validation can agree.
+   */
+  items?: SchemaValueSpec;
+};
+
+export type SchemaRow = SchemaValueSpec & {
   /** Field name - will become an XML tag or JSON property */
   field: string;
-  /** Description shown to LLM - explains what to put in this field */
-  description: string;
-  /** If true, validation fails when field is empty/missing */
-  required?: boolean;
   /**
    * Control per-field validation codes for streaming (levels 0-1 only).
    *
@@ -169,6 +216,9 @@ export type SchemaRow = {
    * - Level 0 (Trusted): default false. Set to true to opt-in to per-field codes.
    * - Level 1 (Progressive): default true. Set to false to opt-out of codes.
    * - Levels 2-3: ignored (uses checkpoint codes at start/end of response instead).
+   *
+   * Note: Only top-level schema rows use this today. Nested `properties` are still
+   * validated structurally, but they do not get their own streaming/validation wires.
    */
   validateField?: boolean;
   /**
@@ -180,6 +230,9 @@ export type SchemaRow = {
    * - 'text': The actual response - should definitely stream
    *
    * Default: true for 'text' field, false for others.
+   *
+   * Note: Only top-level schema rows are considered for streaming. Nested object/array
+   * members still flow through parsing/validation, but are not streamed independently.
    */
   streamField?: boolean;
 };

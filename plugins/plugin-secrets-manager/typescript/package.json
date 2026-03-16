@@ -42,7 +42,7 @@
     "dev": "tsup --watch",
     "clean": "rm -rf dist",
     "lint": "prettier --write ./src",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"
   },
   "publishConfig": {

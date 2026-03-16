@@ -7,7 +7,7 @@
  * backoff and heartbeat keepalive.
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import { WebSocket } from "undici";
 import type {
   BridgeConnection,
@@ -18,13 +18,14 @@ import type {
 import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";
 import type { CloudAuthService } from "./cloud-auth";
 
+const CLOUD_BRIDGE_HEARTBEAT_TASK = "CLOUD_BRIDGE_HEARTBEAT";
+
 interface ActiveConnection {
   ws: WebSocket;
   state: BridgeConnectionState;
   connectedAt: number | null;
   lastHeartbeat: number | null;
   reconnectAttempts: number;
-  heartbeatTimer: ReturnType<typeof setInterval> | null;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   handlers: Set<BridgeMessageHandler>;
   pendingRequests: Map<string | number, {
@@ -42,6 +43,7 @@ export class CloudBridgeService extends Service {
   private authService!: CloudAuthService;
   private readonly bridgeConfig = DEFAULT_CLOUD_CONFIG.bridge;
   private connections: Map<string, ActiveConnection> = new Map();
+  private heartbeatTaskId: UUID | null = null;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -54,6 +56,10 @@ export class CloudBridgeService extends Service {
   }
 
   async stop(): Promise<void> {
+    if (this.heartbeatTaskId && typeof this.runtime.deleteTask === "function") {
+      await this.runtime.deleteTask(this.heartbeatTaskId).catch(() => {});
+      this.heartbeatTaskId = null;
+    }
     for (const [containerId] of this.connections) {
       await this.disconnect(containerId);
     }
@@ -67,7 +73,39 @@ export class CloudBridgeService extends Service {
       return;
     }
     this.authService = auth as CloudAuthService;
+    this.runtime.registerTaskWorker({
+      name: CLOUD_BRIDGE_HEARTBEAT_TASK,
+      execute: async () => {
+        for (const [containerId, conn] of this.connections) {
+          if (conn.state === "connected") {
+            this.sendHeartbeat(containerId);
+          }
+        }
+      },
+    });
+    await this.ensureHeartbeatTask();
     logger.info("[CloudBridge] Service initialized");
+  }
+
+  private async ensureHeartbeatTask(): Promise<void> {
+    const rt = this.runtime;
+    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
+    const agentId = rt.agentId;
+    const existing = await rt.getTasksByName(CLOUD_BRIDGE_HEARTBEAT_TASK);
+    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
+    if (mine?.id) {
+      this.heartbeatTaskId = mine.id;
+      return;
+    }
+    this.heartbeatTaskId = await rt.createTask({
+      name: CLOUD_BRIDGE_HEARTBEAT_TASK,
+      tags: ["queue", "repeat"],
+      metadata: {
+        updateInterval: this.bridgeConfig.heartbeatIntervalMs,
+        baseInterval: this.bridgeConfig.heartbeatIntervalMs,
+        updatedAt: Date.now(),
+      },
+    });
   }
 
   // ─── Connection Management ─────────────────────────────────────────────
@@ -88,7 +126,6 @@ export class CloudBridgeService extends Service {
     const conn = this.connections.get(containerId);
     if (!conn) return;
 
-    if (conn.heartbeatTimer) clearInterval(conn.heartbeatTimer);
     if (conn.reconnectTimer) clearTimeout(conn.reconnectTimer);
 
     // Reject all pending requests
@@ -123,7 +160,6 @@ export class CloudBridgeService extends Service {
       connectedAt: null,
       lastHeartbeat: null,
       reconnectAttempts,
-      heartbeatTimer: null,
       reconnectTimer: null,
       handlers: this.connections.get(containerId)?.handlers ?? new Set(),
       pendingRequests: new Map(),
@@ -137,11 +173,7 @@ export class CloudBridgeService extends Service {
       conn.connectedAt = Date.now();
       conn.reconnectAttempts = 0;
       logger.info(`[CloudBridge] Connected to agent ${containerId}`);
-
-      // Start heartbeat
-      conn.heartbeatTimer = setInterval(() => {
-        this.sendHeartbeat(containerId);
-      }, this.bridgeConfig.heartbeatIntervalMs);
+      // Heartbeat driven by CLOUD_BRIDGE_HEARTBEAT queue task
     });
 
     conn.ws.addEventListener("message", (event: { data: string | Buffer | ArrayBuffer | Blob }) => {
@@ -178,7 +210,6 @@ export class CloudBridgeService extends Service {
 
     conn.ws.addEventListener("close", (event: CloseEvent) => {
       conn.state = "disconnected";
-      if (conn.heartbeatTimer) clearInterval(conn.heartbeatTimer);
 
       // Don't reconnect on clean close
       if (event.code === 1000) {
@@ -341,7 +372,6 @@ export class CloudBridgeService extends Service {
         connectedAt: null,
         lastHeartbeat: null,
         reconnectAttempts: 0,
-        heartbeatTimer: null,
         reconnectTimer: null,
         handlers: new Set(),
         pendingRequests: new Map(),

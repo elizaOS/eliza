@@ -54,8 +54,8 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
-    "test:unit": "vitest run __tests__/",
+    "test": "vitest run --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests __tests__/",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

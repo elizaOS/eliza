@@ -20,7 +20,6 @@ import {
   type Hex,
   parseAbi,
   parseUnits,
-  type ReadContractParameters,
   type SendTransactionParameters,
 } from "viem";
 import type { Account } from "viem/accounts";
@@ -266,13 +265,15 @@ export class SwapAction {
       fromTokenDecimals = chainConfig.nativeCurrency.decimals;
     } else {
       const publicClient = this.walletProvider.getPublicClient(params.chain);
-      const readDecimalsParams: ReadContractParameters<typeof decimalsAbi, "decimals"> =
-        {
-          address: params.fromToken as Address,
-          abi: decimalsAbi,
-          functionName: "decimals",
-        };
-      const decimals = await publicClient.readContract(readDecimalsParams);
+      const readDecimalsParams = {
+        address: params.fromToken as Address,
+        abi: decimalsAbi,
+        functionName: "decimals" as const,
+        authorizationList: [] as const,
+      };
+      const decimals = await publicClient.readContract(
+        readDecimalsParams as Parameters<typeof publicClient.readContract>[0]
+      );
       fromTokenDecimals = Number(decimals);
     }
 
@@ -567,16 +568,16 @@ export class SwapAction {
 
     const allowanceAbi = parseAbi(["function allowance(address,address) view returns (uint256)"]);
 
-    const readAllowanceParams: ReadContractParameters<
-      typeof allowanceAbi,
-      "allowance"
-    > = {
+    const readAllowanceParams = {
       address: tokenAddress,
       abi: allowanceAbi,
-      functionName: "allowance",
+      functionName: "allowance" as const,
       args: [account.address, spenderAddress],
+      authorizationList: [] as const,
     };
-    const allowance = await publicClient.readContract(readAllowanceParams);
+    const allowance = (await publicClient.readContract(
+      readAllowanceParams as Parameters<typeof publicClient.readContract>[0]
+    )) as bigint;
 
     if (allowance >= requiredAmount) {
       return;

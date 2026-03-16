@@ -406,7 +406,7 @@ describe("Base Adapter Comprehensive Tests", () => {
       await adapter.addParticipantsRoom([userId], roomId);
 
       // Get rooms for participant
-      const participantRooms = await adapter.getRoomsForParticipant(userId);
+      const participantRooms = await adapter.getRoomsForParticipants([userId]);
       expect(participantRooms).toBeDefined();
 
       // Delete room

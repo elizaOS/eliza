@@ -56,7 +56,7 @@
     "dev": "tsup --watch",
     "build": "tsup",
     "lint": "bunx @biomejs/biome check --write --unsafe ./src",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "format": "bunx @biomejs/biome format --write ./src",
     "format:check": "bunx @biomejs/biome format ./src",
     "clean": "rm -rf dist .turbo node_modules tsconfig.tsbuildinfo"

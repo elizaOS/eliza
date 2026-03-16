@@ -5,7 +5,28 @@ import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
 import type { State } from "../types/state";
-import type { Task } from "../types/task";
+import type { UUID } from "../types/primitives";
+import type { Task, TaskMetadata, TaskRunStatus } from "../types/task";
+import {
+  getTaskSchedulerAdapter,
+  markTaskSchedulerDirty,
+  registerTaskSchedulerRuntime,
+  unregisterTaskSchedulerRuntime,
+} from "./task-scheduler";
+
+/** Resolve task due time (ms) from dueAt or metadata.scheduledAt. Returns null if not set (run immediately). */
+function resolveDueTime(task: Task): number | null {
+  if (task.dueAt != null) {
+    if (typeof task.dueAt === "number") return task.dueAt;
+    if (typeof task.dueAt === "bigint") return Number(task.dueAt);
+    return new Date(String(task.dueAt)).getTime();
+  }
+  const scheduledAt = (task.metadata as TaskMetadata | undefined)?.scheduledAt;
+  if (scheduledAt == null) return null;
+  if (typeof scheduledAt === "number") return scheduledAt;
+  const t = new Date(scheduledAt).getTime();
+  return Number.isNaN(t) ? null : t;
+}
 
 /**
  * TaskService class representing a service that schedules and executes tasks.
@@ -32,8 +53,12 @@ import type { Task } from "../types/task";
 export class TaskService extends Service {
   private timer: NodeJS.Timeout | null = null;
   private readonly TICK_INTERVAL = 1000; // Check every second
-  /** Tracks task IDs currently being executed to prevent overlapping runs */
+  /** Tracks task IDs currently being executed to prevent overlapping runs. WHY: blocking tasks must not run again until current run finishes. */
   private executingTasks: Set<string> = new Set();
+  /** When false, checkTasks skips the DB query. Set true by markDirty(); start true so first tick always queries. WHY: avoid redundant getTasks every second when nothing changed. */
+  private tasksDirty = true;
+  /** Set true in stop(). runTick is a no-op when true (daemon may call runTick after unregister). */
+  private stopped = false;
   static serviceType = ServiceType.TASK;
   capabilityDescription = "The agent is able to schedule and execute tasks";
 
@@ -44,6 +69,15 @@ export class TaskService extends Service {
    */
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new TaskService(runtime);
+    // WHY: batcher owns HOW (sections, packing, cache); task system owns WHEN. One scheduler for all periodic drains.
+    runtime.registerTaskWorker({
+      name: "BATCHER_DRAIN",
+      execute: async (rt, options) => {
+        const affinityKey = options.affinityKey as string;
+        if (!rt.promptBatcher || !affinityKey) return;
+        await rt.promptBatcher.drainAffinityGroup(affinityKey);
+      },
+    });
     await service.startTimer();
     // await service.createTestTasks();
     return service;
@@ -131,8 +165,17 @@ export class TaskService extends Service {
 
   /**
    * Starts a timer that runs a function to check tasks at a specified interval.
+   * Priority: (1) serverless -> no timer, host calls runDueTasks(); (2) daemon present -> register, no local timer; (3) else local setInterval.
+   * WHY serverless first: no long-lived process; WHY daemon second: one shared getTasks(agentIds) per tick for all agents.
    */
   private startTimer() {
+    if (this.runtime.serverless === true) {
+      return;
+    }
+    if (getTaskSchedulerAdapter() != null) {
+      registerTaskSchedulerRuntime(this.runtime, this);
+      return;
+    }
     if (this.timer) {
       clearInterval(this.timer);
     }
@@ -145,8 +188,7 @@ export class TaskService extends Service {
   /**
    * Validates an array of Task objects.
    * Skips tasks without IDs or if no worker is found for the task.
-   * If a worker has a `validate` function, it will run the validation using the `runtime`, `Memory`, and `State` parameters.
-   * If the validation fails, the task will be skipped and the error will be logged.
+   * Uses worker.shouldRun(runtime, task) when present, else falls back to worker.validate(runtime, {}, {}).
    * @param {Task[]} tasks - An array of Task objects to validate.
    * @returns {Promise<Task[]>} - A Promise that resolves with an array of validated Task objects.
    */
@@ -154,21 +196,21 @@ export class TaskService extends Service {
     const validatedTasks: Task[] = [];
 
     for (const task of tasks) {
-      // Skip tasks without IDs
       if (!task.id) {
         continue;
       }
 
       const worker = this.runtime.getTaskWorker(task.name);
-
-      // Skip if no worker found for task
       if (!worker) {
         continue;
       }
 
-      // If worker has validate function, run validation
-      if (worker.validate) {
-        // Pass empty message and state since validation is time-based
+      if (worker.shouldRun) {
+        const shouldRun = await worker.shouldRun(this.runtime, task);
+        if (!shouldRun) {
+          continue;
+        }
+      } else if (worker.validate) {
         const isValid = await worker.validate(
           this.runtime,
           {} as Memory,
@@ -186,111 +228,135 @@ export class TaskService extends Service {
   }
 
   /**
-   * Asynchronous method that checks tasks with "queue" tag, validates and sorts them, then executes them based on interval and tags.
+   * Asynchronous method that checks tasks with "queue" tag, validates them, then executes via runTick.
+   * Skips the DB query when tasksDirty is false. WHY: avoid redundant getTasks every second when nothing changed.
+   * If a task's execute() creates/updates tasks and calls markDirty(), the next tick will re-query; tasks created mid-loop run next tick.
    *
    * @returns {Promise<void>} Promise that resolves once all tasks are checked and executed
    */
   private async checkTasks() {
-    // Get all tasks with "queue" tag
+    if (!this.tasksDirty) {
+      return;
+    }
+    this.tasksDirty = false;
+
+    // WHY queue only: approval/follow-up etc. are stored but run on user trigger or external cron; one place for "scheduled by tick".
     const allTasks = await this.runtime.getTasks({
       tags: ["queue"],
+      agentIds: [this.runtime.agentId],
     });
 
     if (!allTasks) {
       return;
     }
 
-    // validate the tasks and sort them
-    const tasks = await this.validateTasks(allTasks);
+    await this.runTick(allTasks);
+  }
 
+  /**
+   * Validate and execute due tasks. Used by checkTasks (local timer) and by the task-scheduler daemon (batch tick).
+   * Does NOT call getTasks — caller must pass the task list. WHY: daemon does one getTasks(agentIds) then dispatches to N runTicks.
+   * No-op when service is already stopped (daemon may call after unregister).
+   */
+  async runTick(tasks: Task[]): Promise<void> {
+    if (this.stopped) return;
+    const validated = await this.validateTasks(tasks);
     const now = Date.now();
 
-    for (const task of tasks) {
-      // First check task.updatedAt (for newer task format)
-      // Then fall back to task.metadata.updatedAt (for older tasks)
-      // Finally default to 0 if neither exists
-      let taskStartTime: number;
-
-      if (typeof task.updatedAt === "number") {
-        taskStartTime = task.updatedAt;
-      } else if (
-        task.metadata?.updatedAt &&
-        typeof task.metadata.updatedAt === "number"
-      ) {
-        taskStartTime = task.metadata.updatedAt;
-      } else if (typeof task.updatedAt === "bigint") {
-        taskStartTime = Number(task.updatedAt);
-      } else if (task.updatedAt) {
-        taskStartTime = new Date(task.updatedAt).getTime();
-      } else {
-        taskStartTime = 0; // Default to immediate execution if no timestamp found
-      }
-
-      // if tags does not contain "repeat", execute immediately
+    for (const task of validated) {
+      // Non-repeat tasks: run when due (or immediately if no dueAt/scheduledAt). WHY: one-shot "run at time X" (e.g. follow-up) uses dueAt or metadata.scheduledAt.
       if (!task.tags?.includes("repeat")) {
+        const dueMs = resolveDueTime(task);
+        if (dueMs != null && now < dueMs) continue;
         await this.executeTask(task);
         continue;
       }
 
-      // Get updateInterval from metadata
-      const taskMetadata = task.metadata;
-      const updateIntervalMs = taskMetadata?.updateInterval ?? 0; // update immediately
-
-      const taskMetadataUpdatedAt = taskMetadata?.updatedAt;
-      const taskMetadataCreatedAt = taskMetadata?.createdAt;
-      if (
-        String(taskMetadataUpdatedAt ?? "") ===
-        String(taskMetadataCreatedAt ?? "")
-      ) {
-        if (task.tags?.includes("immediate")) {
-          this.runtime.logger.debug(
-            {
-              src: "plugin:bootstrap:service:task",
-              agentId: this.runtime.agentId,
-              taskName: task.name,
-            },
-            "Immediately running task",
-          );
-          await this.executeTask(task);
-          continue;
-        }
+      // Repeat tasks: skip if paused
+      if (task.metadata?.paused === true) {
+        continue;
       }
 
-      // Check if enough time has passed since last update
-      if (now - taskStartTime >= updateIntervalMs) {
-        // Check if blocking is enabled (default: true)
-        // Skip if this task is already executing and blocking is enabled
-        const isBlocking = task.metadata?.blocking !== false;
-        if (isBlocking && task.id && this.executingTasks.has(task.id)) {
-          this.runtime.logger.debug(
-            {
-              src: "plugin:bootstrap:service:task",
-              agentId: this.runtime.agentId,
-              taskName: task.name,
-              taskId: task.id,
-            },
-            "Skipping task - already executing (blocking enabled)",
-          );
-          continue;
-        }
+      // Resolve lastRan (updatedAt) with backward-compat fallback
+      let lastRan: number;
+      if (
+        task.metadata?.updatedAt != null &&
+        typeof task.metadata.updatedAt === "number"
+      ) {
+        lastRan = task.metadata.updatedAt;
+      } else if (typeof task.updatedAt === "number") {
+        lastRan = task.updatedAt;
+      } else if (typeof task.updatedAt === "bigint") {
+        lastRan = Number(task.updatedAt);
+      } else if (task.updatedAt) {
+        lastRan = new Date(task.updatedAt as unknown as string).getTime();
+      } else {
+        lastRan = 0;
+      }
 
+      const taskMetadata = task.metadata as TaskMetadata | undefined;
+      const updateIntervalMs = taskMetadata?.updateInterval ?? 0;
+      const notBeforeMs = taskMetadata?.notBefore ?? 0;
+      const notAfterMs = taskMetadata?.notAfter;
+
+      const idealNextRun = lastRan + updateIntervalMs;
+      const earliest = idealNextRun - notBeforeMs;
+
+      if (now < earliest) {
+        continue;
+      }
+
+      if (
+        notAfterMs != null &&
+        typeof notAfterMs === "number" &&
+        now > idealNextRun + notAfterMs
+      ) {
+        this.runtime.logger.warn(
+          {
+            src: "plugin:bootstrap:service:task",
+            agentId: this.runtime.agentId,
+            taskName: task.name,
+            taskId: task.id,
+            overdueMs: now - (idealNextRun + notAfterMs),
+          },
+          "Task overdue",
+        );
+      }
+
+      const isBlocking = task.metadata?.blocking !== false;
+      if (isBlocking && task.id && this.executingTasks.has(task.id)) {
         this.runtime.logger.debug(
           {
             src: "plugin:bootstrap:service:task",
             agentId: this.runtime.agentId,
             taskName: task.name,
-            intervalMs: updateIntervalMs,
+            taskId: task.id,
           },
-          "Executing task - interval elapsed",
+          "Skipping task - already executing (blocking enabled)",
         );
-        await this.executeTask(task);
+        continue;
       }
+
+      this.runtime.logger.debug(
+        {
+          src: "plugin:bootstrap:service:task",
+          agentId: this.runtime.agentId,
+          taskName: task.name,
+          intervalMs: updateIntervalMs,
+        },
+        "Executing task - interval elapsed",
+      );
+      await this.executeTask(task);
     }
   }
 
   /**
    * Executes a given task asynchronously.
    * Tracks execution state to prevent overlapping runs of the same task.
+   * On success: resets failureCount, applies nextInterval if returned, writes updatedAt. Non-repeat tasks are deleted.
+   * On failure: repeat tasks get backoff (using baseInterval so we don't compound), auto-pause after maxFailures; non-repeat tasks are deleted so they don't retry forever.
+   * WHY delete non-repeat on failure: otherwise they stay in DB and run every tick with no backoff (infinite retry loop).
+   * WHY backoff uses baseInterval: after N failures updateInterval is already large; using it again would be exponential-of-exponential.
    *
    * @param {Task} task - The task to be executed.
    */
@@ -319,49 +385,36 @@ export class TaskService extends Service {
       return;
     }
 
-    // Mark task as executing to prevent overlapping runs
     this.executingTasks.add(task.id);
     const startTime = Date.now();
 
     try {
-      // Handle repeating vs non-repeating tasks
-      if (task.tags?.includes("repeat")) {
-        // For repeating tasks, update the updatedAt timestamp
-        await this.runtime.updateTask(task.id, {
-          metadata: {
-            ...task.metadata,
-            updatedAt: Date.now(),
-          },
-        });
-        this.runtime.logger.debug(
-          {
-            src: "plugin:bootstrap:service:task",
-            agentId: this.runtime.agentId,
-            taskName: task.name,
-            taskId: task.id,
-          },
-          "Updated repeating task with new timestamp",
-        );
-      }
-
-      this.runtime.logger.debug(
-        {
-          src: "plugin:bootstrap:service:task",
-          agentId: this.runtime.agentId,
-          taskName: task.name,
-          taskId: task.id,
-        },
-        "Executing task",
-      );
       const taskOptions = (task.metadata ?? {}) as Record<
         string,
         JsonValue | object
       >;
-      await worker.execute(this.runtime, taskOptions, task);
+      const result = await worker.execute(this.runtime, taskOptions, task);
 
-      // Handle repeating vs non-repeating tasks
-      if (!task.tags?.includes("repeat")) {
-        // For non-repeating tasks, delete the task after execution
+      if (task.tags?.includes("repeat")) {
+        const meta = task.metadata as TaskMetadata | undefined;
+        const baseInterval = meta?.baseInterval ?? meta?.updateInterval;
+        const newMeta: TaskMetadata = {
+          ...meta,
+          updatedAt: Date.now(),
+          failureCount: 0,
+          lastError: undefined,
+        };
+        const nextInterval =
+          result != null && typeof result === "object" && "nextInterval" in result
+            ? (result as { nextInterval?: number }).nextInterval
+            : undefined;
+        if (nextInterval != null) {
+          newMeta.updateInterval = nextInterval;
+        } else if (baseInterval != null && typeof baseInterval === "number") {
+          newMeta.updateInterval = baseInterval;
+        }
+        await this.runtime.updateTask(task.id, { metadata: newMeta });
+      } else {
         await this.runtime.deleteTask(task.id);
         this.runtime.logger.debug(
           {
@@ -373,8 +426,57 @@ export class TaskService extends Service {
           "Deleted non-repeating task after execution",
         );
       }
+    } catch (error) {
+      if (task.tags?.includes("repeat")) {
+        const failureCount = ((task.metadata as TaskMetadata)?.failureCount ?? 0) + 1;
+        const rawMax = (task.metadata as TaskMetadata)?.maxFailures;
+        const neverPause = rawMax === Infinity || rawMax === -1;
+        const maxFailures = neverPause ? Infinity : (rawMax ?? 5);
+        const newMeta: TaskMetadata & Record<string, unknown> = {
+          ...(task.metadata as TaskMetadata),
+          updatedAt: Date.now(),
+          failureCount,
+          lastError:
+            error instanceof Error ? error.message : String(error),
+        };
+        if (!neverPause && failureCount >= maxFailures) {
+          newMeta.paused = true;
+          this.runtime.logger.warn(
+            {
+              taskName: task.name,
+              taskId: task.id,
+              failureCount,
+            },
+            "Task auto-paused after max failures",
+          );
+        } else {
+          const baseInterval =
+            (task.metadata as TaskMetadata)?.baseInterval ??
+            (task.metadata as TaskMetadata)?.updateInterval ??
+            1000;
+          newMeta.updateInterval = Math.min(
+            baseInterval * Math.pow(2, failureCount),
+            300_000,
+          );
+        }
+        await this.runtime.updateTask(task.id, { metadata: newMeta });
+      } else if (task.id) {
+        await this.runtime.deleteTask(task.id);
+        this.runtime.logger.debug(
+          {
+            src: "plugin:bootstrap:service:task",
+            agentId: this.runtime.agentId,
+            taskName: task.name,
+            taskId: task.id,
+          },
+          "Deleted non-repeating task after execution failure",
+        );
+      }
+      this.runtime.logger.error(
+        { taskName: task.name, taskId: task.id, error },
+        "Task execution failed",
+      );
     } finally {
-      // Always remove from executing set, even if task failed
       this.executingTasks.delete(task.id);
       const durationMs = Date.now() - startTime;
       this.runtime.logger.debug(
@@ -388,6 +490,112 @@ export class TaskService extends Service {
         "Task execution completed",
       );
     }
+  }
+
+  /** Marks the task list as dirty so the next checkTasks tick will re-query the DB. When the daemon is running, notifies it instead of setting local flag. */
+  markDirty(): void {
+    if (getTaskSchedulerAdapter() != null) {
+      markTaskSchedulerDirty(this.runtime.agentId);
+      return;
+    }
+    this.tasksDirty = true;
+  }
+
+  /**
+   * Run due queue tasks once. For serverless: call from cron or on each request.
+   * Does getTasks for this agent's queue tasks then runTick (validate + execute due).
+   * WHY separate from timer: serverless has no long-lived process; host drives execution explicitly.
+   */
+  async runDueTasks(): Promise<void> {
+    const allTasks = await this.runtime.getTasks({
+      tags: ["queue"],
+      agentIds: [this.runtime.agentId],
+    });
+    if (allTasks?.length) {
+      await this.runTick(allTasks);
+    }
+  }
+
+  /**
+   * Executes a task by ID. Loads the task, then runs it via executeTask.
+   * @param taskId - UUID of the task.
+   */
+  async executeTaskById(taskId: UUID): Promise<void> {
+    const task = await this.runtime.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task ${taskId} not found`);
+    }
+    await this.executeTask(task);
+  }
+
+  /**
+   * Pauses a task. The scheduler will skip it until resumed.
+   * Preserves existing metadata (updatedAt, updateInterval, etc.).
+   */
+  async pauseTask(taskId: UUID): Promise<void> {
+    const task = await this.runtime.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task ${taskId} not found`);
+    }
+    await this.runtime.updateTask(taskId, {
+      metadata: { ...task.metadata, paused: true } as TaskMetadata,
+    });
+  }
+
+  /**
+   * Resumes a task. If runImmediately is true, runs the task once after unpausing.
+   * Unpauses before executing so a failed run does not leave the task paused.
+   */
+  async resumeTask(taskId: UUID, runImmediately?: boolean): Promise<void> {
+    const task = await this.runtime.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task ${taskId} not found`);
+    }
+    await this.runtime.updateTask(taskId, {
+      metadata: { ...task.metadata, paused: false } as TaskMetadata,
+    });
+    if (runImmediately) {
+      const updated = await this.runtime.getTask(taskId);
+      if (updated) {
+        await this.executeTask(updated);
+      }
+    }
+  }
+
+  /**
+   * Returns run status for a task: task, paused, executing, nextRunAt (repeat only), lastError.
+   */
+  async getTaskStatus(taskId: UUID): Promise<TaskRunStatus> {
+    const task = await this.runtime.getTask(taskId);
+    if (!task) {
+      return { task: null, paused: false, executing: false };
+    }
+    const paused = (task.metadata as TaskMetadata)?.paused === true;
+    const executing = task.id ? this.executingTasks.has(task.id) : false;
+    let nextRunAt: number | undefined;
+    if (task.tags?.includes("repeat")) {
+      let lastRan: number;
+      const meta = task.metadata as TaskMetadata | undefined;
+      if (meta?.updatedAt != null && typeof meta.updatedAt === "number") {
+        lastRan = meta.updatedAt;
+      } else if (typeof task.updatedAt === "number") {
+        lastRan = task.updatedAt;
+      } else if (typeof task.updatedAt === "bigint") {
+        lastRan = Number(task.updatedAt);
+      } else {
+        lastRan = 0;
+      }
+      const interval = meta?.updateInterval ?? 0;
+      const notBefore = meta?.notBefore ?? 0;
+      nextRunAt = lastRan + interval - notBefore;
+    }
+    return {
+      task,
+      paused,
+      executing,
+      nextRunAt,
+      lastError: (task.metadata as TaskMetadata)?.lastError,
+    };
   }
 
   /**
@@ -408,6 +616,8 @@ export class TaskService extends Service {
    */
 
   async stop() {
+    this.stopped = true;
+    unregisterTaskSchedulerRuntime(this.runtime.agentId);
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;

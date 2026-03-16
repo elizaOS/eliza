@@ -85,7 +85,7 @@ export const getFeedAction: Action = {
       ) {
         const itemId = item.guid ? primaryId : fallbackId;
 
-        const itemMemory: Memory = {
+        const itemMemory = {
           id: itemId,
           entityId: runtime.agentId,
           agentId: runtime.agentId,
@@ -108,7 +108,7 @@ export const getFeedAction: Action = {
             comments: item.comments,
             guid: item.guid,
           },
-        };
+        } as unknown as Memory;
 
         await runtime.createMemory(itemMemory, "feeditems");
         newItemCount++;
