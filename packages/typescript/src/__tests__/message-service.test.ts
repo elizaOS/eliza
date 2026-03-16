@@ -914,12 +914,13 @@ describe("DefaultMessageService", () => {
         // When DISABLE_MEMORY_CREATION is true, memory is never created regardless of allowlist
         expect(runtime.createMemory).not.toHaveBeenCalled();
       });
+    });
 
     it("should block memory creation for non-whitelisted source IDs when DISABLE_MEMORY_CREATION is true", async () => {
       const message: Memory = {
         id: "123e4567-e89b-12d3-a456-426614174303" as UUID,
         content: {
-          text: "Test message from blocked source",
+          text: "Test message from blocked source", 
           source: "test",
           channelType: ChannelType.DM,
         } as Content,
@@ -941,7 +942,6 @@ describe("DefaultMessageService", () => {
       );
       expect(incomingMemoryCall).toBeUndefined();
     });
-  });
 
   describe("ALLOW_MEMORY_SOURCE_IDS", () => {
     it("should allow memory creation when source ID is whitelisted and DISABLE_MEMORY_CREATION is false", async () => {
