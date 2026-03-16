@@ -554,10 +554,15 @@ export function logResponse(
   },
 ): string {
   if (!ensureFileLog()) return "";
-  // Use the promptSlug from metadata if provided (for correlation), otherwise generate new
+  // If promptSlug not provided in metadata, log entries can't be correlated
+  // Don't increment counter - use same slug as prompt
   const agentName = metadata?.agentName ?? "unknown";
-  // Use promptSlug from metadata or current counter (without incrementing)
-  const slug = metadata?.promptSlug || promptSlug(_promptLogCounter, agentName, modelType);
+  // Require promptSlug in metadata for correlation
+  const slug = metadata?.promptSlug;
+  if (!slug) {
+    logger.warn({ src: "core:logger" }, "logResponse missing promptSlug - responses can't be correlated");
+    return "";
+  }
   writeToPromptLog(slug, "RESPONSE", modelType, response, metadata);
   return slug;
 }
