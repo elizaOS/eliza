@@ -7,24 +7,23 @@ import {
 } from "@elizaos/app-core/state";
 import { resolveAppAssetUrl } from "@elizaos/app-core/utils";
 import {
-  createContext,
   memo,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
 } from "react";
 import type { VrmEngine } from "./avatar/VrmEngine";
+import { SharedCompanionSceneContext } from "./shared-companion-scene-context";
 import { VrmStage } from "./VrmStage";
 
 const COMPANION_ZOOM_WHEEL_SENSITIVITY = 1 / 720;
 const COMPANION_ZOOM_PINCH_SENSITIVITY = 2.35;
 const COMPANION_ZOOM_STORAGE_KEY = "milady.companion.zoom.v1";
-const DEFAULT_COMPANION_ZOOM = 1;
+const DEFAULT_COMPANION_ZOOM = 0.95;
 const CAMERA_DRAG_IGNORE_SELECTOR =
   'button, input, textarea, select, option, [contenteditable="true"], [data-no-camera-drag="true"]';
 const NON_TEXT_INPUT_TYPES = new Set([
@@ -40,7 +39,8 @@ const NON_TEXT_INPUT_TYPES = new Set([
   "submit",
 ]);
 
-const SharedCompanionSceneContext = createContext(false);
+// SharedCompanionSceneContext is imported from ./shared-companion-scene-context
+// to keep the hook importable without pulling in the 3D stack.
 
 type TouchPoint = {
   x: number;
@@ -475,9 +475,8 @@ function CompanionSceneSurface({
 
 export const CompanionSceneHost = memo(CompanionSceneSurface);
 
-export function useSharedCompanionScene(): boolean {
-  return useContext(SharedCompanionSceneContext);
-}
+// Re-export the hook so existing imports from this module keep working.
+export { useSharedCompanionScene } from "./shared-companion-scene-context";
 
 export function SharedCompanionScene({
   active,

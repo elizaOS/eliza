@@ -21,7 +21,7 @@ import { loadMiladyConfig } from "../config/config";
 import type {
   CustomActionDef,
   CustomActionHandler,
-} from "../config/types.autonomous";
+} from "../config/types.milady";
 import {
   isBlockedPrivateOrLinkLocalIp,
   normalizeHostLike,

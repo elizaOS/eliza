@@ -7,9 +7,8 @@ import { resolveConfigPath, resolveUserPath } from "./paths";
 import type { MiladyConfig } from "./types";
 
 export * from "./types";
-export type { AutonomousConfig, MiladyConfig } from "./types.autonomous";
 
-export function loadAutonomousConfig(): MiladyConfig {
+export function loadMiladyConfig(): MiladyConfig {
   const configPath = resolveConfigPath();
 
   let raw: string;
@@ -110,7 +109,7 @@ function stripIncludeDirectives(value: unknown): unknown {
   return result;
 }
 
-export function saveAutonomousConfig(config: MiladyConfig): void {
+export function saveMiladyConfig(config: MiladyConfig): void {
   const configPath = resolveConfigPath();
   const dir = path.dirname(configPath);
 
@@ -144,9 +143,6 @@ export function saveAutonomousConfig(config: MiladyConfig): void {
     );
   }
 }
-
-export const loadMiladyConfig = loadAutonomousConfig;
-export const saveMiladyConfig = saveAutonomousConfig;
 
 export function configFileExists(): boolean {
   return fs.existsSync(resolveConfigPath());

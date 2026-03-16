@@ -35,6 +35,7 @@ export async function loadCharacter(
         : (character.bio ?? ""),
       system: character.system ?? "",
       adjectives: character.adjectives ?? [],
+      topics: character.topics ?? [],
       style: {
         all: character.style?.all ?? [],
         chat: character.style?.chat ?? [],
@@ -53,34 +54,72 @@ export async function loadCharacter(
 export function prepareDraftForSave(
   draft: CharacterData,
 ): Record<string, unknown> {
-  const result = { ...draft };
-  if (typeof result.bio === "string") {
-    const lines = result.bio
+  // Only pick fields the API schema accepts (.strict() rejects unknown keys)
+  const result: Record<string, unknown> = {};
+
+  if (draft.name?.trim()) {
+    result.name = draft.name.trim();
+  }
+
+  if (draft.username?.trim()) {
+    result.username = draft.username.trim();
+  } else if (typeof result.name === "string") {
+    result.username = result.name;
+  }
+  if (draft.system) result.system = draft.system;
+
+  if (typeof draft.bio === "string") {
+    const lines = draft.bio
       .split("\n")
       .map((l: string) => l.trim())
       .filter((l: string) => l.length > 0);
-    result.bio = lines.length > 0 ? lines : undefined;
+    if (lines.length > 0) result.bio = lines;
+  } else if (Array.isArray(draft.bio) && draft.bio.length > 0) {
+    result.bio = draft.bio;
   }
-  if (Array.isArray(result.adjectives) && result.adjectives.length === 0)
-    delete result.adjectives;
-  if (Array.isArray(result.postExamples) && result.postExamples.length === 0)
-    delete result.postExamples;
+
+  const adjectives = (draft.adjectives ?? []).filter(
+    (s) => s.trim().length > 0,
+  );
+  if (adjectives.length > 0) result.adjectives = adjectives;
+
+  const topics = (draft.topics ?? []).filter((s) => s.trim().length > 0);
+  if (topics.length > 0) result.topics = topics;
+
+  const postExamples = (draft.postExamples ?? []).filter(
+    (s) => s.trim().length > 0,
+  );
+  if (postExamples.length > 0) result.postExamples = postExamples;
+
   if (
-    Array.isArray(result.messageExamples) &&
-    result.messageExamples.length === 0
-  )
-    delete result.messageExamples;
-  if (result.style) {
-    const s = result.style as Record<string, string[] | undefined>;
-    if (s.all && s.all.length === 0) delete s.all;
-    if (s.chat && s.chat.length === 0) delete s.chat;
-    if (s.post && s.post.length === 0) delete s.post;
-    if (!s.all && !s.chat && !s.post) delete result.style;
+    Array.isArray(draft.messageExamples) &&
+    draft.messageExamples.length > 0
+  ) {
+    // Strip extra fields from content (schema is .strict() — only text + actions allowed)
+    const cleaned = draft.messageExamples
+      .map((group) => ({
+        examples: (group.examples ?? [])
+          .filter((msg) => msg.name?.trim() && msg.content?.text?.trim())
+          .map((msg) => ({
+            name: msg.name,
+            content: {
+              text: msg.content.text,
+              ...(msg.content.actions ? { actions: msg.content.actions } : {}),
+            },
+          })),
+      }))
+      .filter((group) => group.examples.length > 0);
+    if (cleaned.length > 0) result.messageExamples = cleaned;
   }
-  if (result.name) result.username = result.name;
-  if (!result.name) delete result.name;
-  if (!result.username) delete result.username;
-  if (!result.system) delete result.system;
+
+  if (draft.style) {
+    const style: Record<string, string[]> = {};
+    if (draft.style.all?.length) style.all = draft.style.all;
+    if (draft.style.chat?.length) style.chat = draft.style.chat;
+    if (draft.style.post?.length) style.post = draft.style.post;
+    if (Object.keys(style).length > 0) result.style = style;
+  }
+
   return result;
 }
 

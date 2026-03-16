@@ -20,6 +20,7 @@ export const Default: StoryObj = {
         {results.length > 0 && (
           <div className="text-xs text-muted space-y-0.5 mt-2">
             {results.map((r, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
               <div key={`${r}-${i}`}>Searched: &ldquo;{r}&rdquo;</div>
             ))}
           </div>

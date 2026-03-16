@@ -23,7 +23,7 @@ import type {
   DatabaseConfig,
   DatabaseProviderType,
   PostgresCredentials,
-} from "../config/types.autonomous";
+} from "../config/types.milady";
 import {
   isLoopbackHost,
   normalizeHostLike,

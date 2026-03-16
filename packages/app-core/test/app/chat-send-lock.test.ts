@@ -125,6 +125,9 @@ function createDeferred<T>() {
 
 type ProbeApi = {
   setChatInput: (text: string) => void;
+  setChatPendingImages: (
+    images: Array<{ data: string; mimeType: string; name: string }>,
+  ) => void;
   handleSelectConversation: (id: string) => Promise<void>;
   handleChatSend: () => Promise<void>;
   handleChatEdit: (messageId: string, text: string) => Promise<boolean>;
@@ -150,6 +153,7 @@ function Probe(props: { onReady: (api: ProbeApi) => void }) {
   useEffect(() => {
     onReady({
       setChatInput: (text: string) => app.setState("chatInput", text),
+      setChatPendingImages: (images) => app.setChatPendingImages(images),
       handleSelectConversation: app.handleSelectConversation,
       handleChatSend: () => app.handleChatSend("simple"),
       handleChatEdit: app.handleChatEdit,
@@ -338,6 +342,63 @@ describe("chat send locking", () => {
       deferred.resolve({ text: "ok", agentName: "Milady" });
       await deferred.promise;
     });
+
+    await act(async () => {
+      tree?.unmount();
+    });
+  });
+
+  it("sends image-only chat messages with a fallback prompt", async () => {
+    let api: ProbeApi | null = null;
+    let tree: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      tree = TestRenderer.create(
+        React.createElement(
+          AppProvider,
+          null,
+          React.createElement(Probe, {
+            onReady: (nextApi) => {
+              api = nextApi;
+            },
+          }),
+        ),
+      );
+    });
+
+    expect(api).not.toBeNull();
+
+    await act(async () => {
+      await api?.handleSelectConversation("conv-1");
+      api?.setChatInput("");
+      api?.setChatPendingImages([
+        {
+          data: "aGVsbG8=",
+          mimeType: "image/png",
+          name: "proof.png",
+        },
+      ]);
+    });
+
+    await act(async () => {
+      await api?.handleChatSend();
+    });
+
+    expect(mockClient.sendConversationMessageStream).toHaveBeenCalledWith(
+      "conv-1",
+      "Please review the attached image.",
+      expect.any(Function),
+      "simple",
+      expect.any(AbortSignal),
+      [
+        {
+          data: "aGVsbG8=",
+          mimeType: "image/png",
+          name: "proof.png",
+        },
+      ],
+      "simple",
+    );
 
     await act(async () => {
       tree?.unmount();

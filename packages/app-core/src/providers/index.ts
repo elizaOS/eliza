@@ -4,6 +4,23 @@
  * Migrated from apps/app/src/provider-logos.ts.
  */
 
+export {
+  getOnboardingProviderFamily,
+  getOnboardingProviderOption,
+  getStoredOnboardingProviderId,
+  getStoredSubscriptionProvider,
+  getSubscriptionProviderFamily,
+  isSubscriptionProviderSelectionId,
+  normalizeOnboardingProviderId,
+  normalizeSubscriptionProviderSelectionId,
+  ONBOARDING_PROVIDER_CATALOG,
+  type OnboardingProviderId,
+  type ProviderOption as OnboardingProviderOption,
+  SUBSCRIPTION_PROVIDER_SELECTIONS,
+  type SubscriptionProviderSelectionId,
+  sortOnboardingProviders,
+} from "@elizaos/autonomous/contracts/onboarding";
+
 import { resolveAppAssetUrl } from "../utils/asset-url";
 
 const PROVIDER_LOGO_MAP_DARK: Record<string, string> = {

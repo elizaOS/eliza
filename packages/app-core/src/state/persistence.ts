@@ -5,6 +5,7 @@ import {
   type UiLanguage,
 } from "../i18n";
 import type { Tab } from "../navigation";
+import type { OnboardingStep } from "./types";
 import type { UiShellMode, UiTheme } from "./ui-preferences";
 import { normalizeAvatarIndex } from "./vrm";
 
@@ -17,6 +18,7 @@ const UI_THEME_STORAGE_KEY = "milady:ui-theme";
 function normalizeUiTheme(value: unknown): UiTheme {
   return value === "light" ? "light" : "dark";
 }
+
 export { normalizeUiTheme };
 
 export function loadUiTheme(): UiTheme {
@@ -62,6 +64,46 @@ export function applyUiTheme(theme: UiTheme): void {
 const UI_LANGUAGE_STORAGE_KEY = "milady:ui-language";
 const UI_SHELL_MODE_STORAGE_KEY = "milady:ui-shell-mode";
 const LAST_NATIVE_TAB_STORAGE_KEY = "milady:last-native-tab";
+const ONBOARDING_STEP_STORAGE_KEY = "milady:onboarding:step";
+
+function normalizeOnboardingStep(value: unknown): OnboardingStep | null {
+  switch (value) {
+    case "wakeUp":
+    case "connection":
+    case "rpc":
+    case "senses":
+    case "activate":
+      return value;
+    default:
+      return null;
+  }
+}
+
+export function loadPersistedOnboardingStep(): OnboardingStep | null {
+  try {
+    return normalizeOnboardingStep(
+      localStorage.getItem(ONBOARDING_STEP_STORAGE_KEY),
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function saveOnboardingStep(step: OnboardingStep): void {
+  try {
+    localStorage.setItem(ONBOARDING_STEP_STORAGE_KEY, step);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearPersistedOnboardingStep(): void {
+  try {
+    localStorage.removeItem(ONBOARDING_STEP_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 export function loadUiLanguage(): UiLanguage {
   try {
@@ -83,6 +125,7 @@ export function saveUiLanguage(language: UiLanguage): void {
 function normalizeUiShellMode(mode: unknown): UiShellMode {
   return mode === "native" ? "native" : "companion";
 }
+
 export { normalizeUiShellMode };
 
 export function loadUiShellMode(): UiShellMode {
@@ -120,7 +163,6 @@ function normalizeLastNativeTab(tab: unknown): Tab {
     case "voice":
     case "runtime":
     case "database":
-    case "lifo":
     case "settings":
     case "logs":
     case "security":
@@ -246,7 +288,7 @@ export function loadActiveConversationId(): string | null {
 
 export function saveActiveConversationId(value: string | null): void {
   try {
-    if (value?.trim()) {
+    if (value && value.trim()) {
       localStorage.setItem(ACTIVE_CONVERSATION_ID_KEY, value);
       return;
     }

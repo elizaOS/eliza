@@ -127,7 +127,6 @@ export const NAV_COMMANDS: readonly { id: string; label: string; tab: Tab }[] =
     { id: "nav-database", label: "Open Database", tab: "database" },
     { id: "nav-logs", label: "Open Logs", tab: "logs" },
     { id: "nav-security", label: "Open Security", tab: "security" },
-    { id: "nav-lifo", label: "Open Lifo", tab: "lifo" },
   ] as const;
 
 export interface BuildCommandsArgs {

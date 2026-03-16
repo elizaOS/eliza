@@ -41,6 +41,15 @@ const MEDIA_PERMISSIONS: MediaPermissionDef[] = [
   },
 ];
 
+function translateWithFallback(
+  t: (key: string) => string,
+  key: string,
+  fallback: string,
+): string {
+  const value = t(key);
+  return !value || value === key ? fallback : value;
+}
+
 function getCameraPermissionPlugin(): CameraPermissionPlugin | null {
   const cap = (globalThis as Record<string, unknown>).Capacitor as
     | { Plugins?: Record<string, unknown> }
@@ -214,7 +223,11 @@ export function StreamingPermissionsSettingsView({
   if (checking) {
     return (
       <div className="text-center py-6 text-[var(--muted)] text-xs">
-        {t("permissionssection.LoadingPermissions")}
+        {translateWithFallback(
+          t,
+          "permissionssection.LoadingPermissions",
+          "Loading permissions...",
+        )}
       </div>
     );
   }
@@ -237,6 +250,7 @@ export function StreamingPermissionsSettingsView({
             return (
               <div
                 key={def.id}
+                data-permission-id={def.id}
                 className="flex items-center gap-3 py-2.5 px-3 border-b border-[var(--border)] last:border-b-0"
               >
                 <PermissionIcon icon={def.icon} />
@@ -262,8 +276,13 @@ export function StreamingPermissionsSettingsView({
                     size="sm"
                     className="h-auto text-[11px] py-1 px-2.5"
                     onClick={() => void requestPermission(def.id)}
+                    aria-label={`${translateWithFallback(t, "permissionssection.Grant", "Grant")} ${def.name}`}
                   >
-                    {t("permissionssection.Grant") || "Grant"}
+                    {translateWithFallback(
+                      t,
+                      "permissionssection.Grant",
+                      "Grant",
+                    )}
                   </Button>
                 ) : (
                   <Check className="w-4 h-4 text-[var(--ok)]" />
@@ -301,7 +320,11 @@ export function StreamingPermissionsOnboardingView({
     return (
       <div className="text-center py-8">
         <div className="text-[var(--muted)] text-sm">
-          {t("permissionssection.CheckingPermissions")}
+          {translateWithFallback(
+            t,
+            "permissionssection.CheckingPermissions",
+            "Checking permissions...",
+          )}
         </div>
       </div>
     );
@@ -321,6 +344,7 @@ export function StreamingPermissionsOnboardingView({
           return (
             <div
               key={def.id}
+              data-permission-id={def.id}
               className={`flex items-center gap-4 p-4 border ${
                 isGranted
                   ? "border-[var(--ok)] bg-[var(--ok)]/10"
@@ -342,8 +366,13 @@ export function StreamingPermissionsOnboardingView({
                   size="sm"
                   className="h-auto text-xs py-1.5 px-3"
                   onClick={() => void requestPermission(def.id)}
+                  aria-label={`${translateWithFallback(t, "permissionssection.Grant", "Grant")} ${def.name}`}
                 >
-                  {t("permissionssection.Grant") || "Grant"}
+                  {translateWithFallback(
+                    t,
+                    "permissionssection.Grant",
+                    "Grant",
+                  )}
                 </Button>
               )}
             </div>
@@ -351,23 +380,31 @@ export function StreamingPermissionsOnboardingView({
         })}
       </div>
 
-      <div className="flex justify-center gap-3">
+      <div className="flex flex-wrap justify-center gap-3">
         <Button
           variant="outline"
           size="sm"
-          className="h-auto text-xs py-2 px-6 opacity-70"
+          className="h-auto min-w-[8.5rem] px-4 py-2 text-[11px] leading-tight opacity-70"
           onClick={() => onContinue({ allowPermissionBypass: true })}
         >
-          {t("permissionssection.SkipForNow")}
+          {translateWithFallback(
+            t,
+            "permissionssection.SkipForNow",
+            "Skip for Now",
+          )}
         </Button>
         {allGranted ? (
           <Button
             variant="default"
             size="sm"
-            className="h-auto text-xs py-2 px-6 bg-accent border-accent text-accent-foreground"
+            className="h-auto min-w-[8.5rem] bg-accent border-accent px-4 py-2 text-[11px] leading-tight text-accent-foreground"
             onClick={() => onContinue()}
           >
-            {t("permissionssection.Continue")}
+            {translateWithFallback(
+              t,
+              "permissionssection.Continue",
+              "Continue",
+            )}
           </Button>
         ) : null}
       </div>

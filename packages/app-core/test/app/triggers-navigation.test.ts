@@ -25,10 +25,6 @@ describe("navigation", () => {
     expect(tabFromPath("/runtime")).toBe("runtime");
     expect(titleForTab("runtime")).toBe("Runtime");
 
-    expect(pathForTab("lifo")).toBe("/lifo");
-    expect(tabFromPath("/lifo")).toBe("lifo");
-    expect(titleForTab("lifo")).toBe("Lifo");
-
     expect(pathForTab("fine-tuning")).toBe("/fine-tuning");
     expect(tabFromPath("/fine-tuning")).toBe("fine-tuning");
     expect(titleForTab("fine-tuning")).toBe("Fine-Tuning");
@@ -60,7 +56,6 @@ describe("navigation", () => {
     expect(advanced?.tabs.includes("trajectories")).toBe(true);
     expect(advanced?.tabs.includes("runtime")).toBe(true);
     expect(advanced?.tabs.includes("database")).toBe(true);
-    expect(advanced?.tabs.includes("lifo")).toBe(true);
     expect(advanced?.tabs.includes("logs")).toBe(true);
   });
 

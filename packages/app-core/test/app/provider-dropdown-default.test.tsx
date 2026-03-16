@@ -5,7 +5,7 @@ import {
   type ReactTestInstance,
   type ReactTestRenderer,
 } from "react-test-renderer";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -14,6 +14,8 @@ import { describe, expect, it, vi } from "vitest";
 const mockGetConfig = vi.fn();
 const mockGetOnboardingOptions = vi.fn();
 const mockGetSubscriptionStatus = vi.fn();
+const mockUpdateConfig = vi.fn();
+const mockSwitchProvider = vi.fn();
 
 vi.mock("@elizaos/app-core/api", () => ({
   client: {
@@ -22,6 +24,8 @@ vi.mock("@elizaos/app-core/api", () => ({
       mockGetOnboardingOptions(...args),
     getSubscriptionStatus: (...args: unknown[]) =>
       mockGetSubscriptionStatus(...args),
+    updateConfig: (...args: unknown[]) => mockUpdateConfig(...args),
+    switchProvider: (...args: unknown[]) => mockSwitchProvider(...args),
   },
 }));
 
@@ -90,11 +94,30 @@ function getSelectValue(tree: ReactTestRenderer): string | undefined {
   return selects.length > 0 ? selects[0].props.value : undefined;
 }
 
+function getSelect(tree: ReactTestRenderer): ReactTestInstance {
+  // biome-ignore lint/suspicious/noExplicitAny: test introspection
+  const root = (tree as any).root;
+  return root.find(
+    (node: ReactTestInstance) =>
+      node.type === "select" && node.props.value !== undefined,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe("ProviderSwitcher provider dropdown default", () => {
+  beforeEach(() => {
+    mockGetConfig.mockReset();
+    mockGetOnboardingOptions.mockReset();
+    mockGetSubscriptionStatus.mockReset();
+    mockUpdateConfig.mockReset();
+    mockSwitchProvider.mockReset();
+    mockUpdateConfig.mockResolvedValue({ ok: true });
+    mockSwitchProvider.mockResolvedValue({ ok: true });
+  });
+
   it("does not auto-select __cloud__ when config returns non-cloud inference", async () => {
     // Config returns cloud.enabled=false — not a cloud user
     mockGetConfig.mockResolvedValue({
@@ -160,5 +183,120 @@ describe("ProviderSwitcher provider dropdown default", () => {
 
     const selectValue = getSelectValue(tree);
     expect(selectValue).toBe("__cloud__");
+  });
+
+  it("switches to subscription providers even when plugin ids use short slugs", async () => {
+    mockGetConfig.mockResolvedValue({
+      models: {},
+      cloud: {
+        enabled: true,
+        inferenceMode: "cloud",
+        services: { inference: true },
+      },
+      agents: {},
+      env: { vars: {} },
+    });
+    mockGetOnboardingOptions.mockResolvedValue({
+      models: [],
+      piAiModels: [],
+      piAiDefaultModel: "",
+    });
+    mockGetSubscriptionStatus.mockResolvedValue({
+      providers: [
+        {
+          provider: "anthropic-subscription",
+          configured: true,
+          valid: true,
+          expiresAt: null,
+        },
+      ],
+    });
+
+    const handlePluginToggle = vi.fn(async () => {});
+
+    let tree!: ReactTestRenderer;
+    await act(async () => {
+      tree = create(
+        React.createElement(ProviderSwitcher, {
+          ...defaultProps(),
+          elizaCloudEnabled: true,
+          plugins: [
+            {
+              id: "plugin-openai",
+              name: "OpenAI",
+              category: "ai-provider",
+              enabled: true,
+              configured: true,
+              parameters: [],
+            },
+            {
+              id: "plugin-anthropic",
+              name: "Anthropic",
+              category: "ai-provider",
+              enabled: false,
+              configured: true,
+              parameters: [],
+            },
+          ],
+          handlePluginToggle,
+        }),
+      );
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    await act(async () => {
+      getSelect(tree).props.onChange({
+        target: { value: "anthropic-subscription" },
+      });
+      await Promise.resolve();
+    });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({
+      cloud: {
+        services: { inference: false },
+        inferenceMode: "byok",
+      },
+      env: { vars: { MILADY_USE_PI_AI: "" } },
+    });
+    expect(mockSwitchProvider).toHaveBeenCalledWith("anthropic-subscription");
+    expect(handlePluginToggle).toHaveBeenCalledWith("plugin-anthropic", true);
+    expect(handlePluginToggle).toHaveBeenCalledWith("plugin-openai", false);
+  });
+
+  it("restores Claude Subscription from saved config instead of collapsing to anthropic", async () => {
+    mockGetConfig.mockResolvedValue({
+      models: {},
+      cloud: {
+        enabled: false,
+        inferenceMode: "byok",
+        services: { inference: false },
+      },
+      agents: {
+        defaults: {
+          subscriptionProvider: "anthropic-subscription",
+        },
+      },
+      env: { vars: {} },
+    });
+    mockGetOnboardingOptions.mockResolvedValue({
+      models: [],
+      piAiModels: [],
+      piAiDefaultModel: "",
+    });
+    mockGetSubscriptionStatus.mockResolvedValue({ providers: [] });
+
+    let tree!: ReactTestRenderer;
+    await act(async () => {
+      tree = create(React.createElement(ProviderSwitcher, defaultProps()));
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(getSelectValue(tree)).toBe("anthropic-subscription");
   });
 });

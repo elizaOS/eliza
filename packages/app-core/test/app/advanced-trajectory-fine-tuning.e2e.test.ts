@@ -73,10 +73,6 @@ vi.mock("../../src/components/CustomActionsView", () => {
   const R = require("react");
   return { CustomActionsView: () => R.createElement("div", null, "stub") };
 });
-vi.mock("../../src/components/LifoSandboxView", () => {
-  const R = require("react");
-  return { LifoSandboxView: () => R.createElement("div", null, "stub") };
-});
 vi.mock("../../src/components/TriggersView", () => {
   const R = require("react");
   return { TriggersView: () => R.createElement("div", null, "stub") };

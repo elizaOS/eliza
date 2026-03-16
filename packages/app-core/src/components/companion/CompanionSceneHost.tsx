@@ -1,5 +1,1 @@
-export {
-  CompanionSceneHost,
-  SharedCompanionScene,
-  useSharedCompanionScene,
-} from "../CompanionSceneHost";
+export { CompanionSceneHost, SharedCompanionScene, useSharedCompanionScene } from "../CompanionSceneHost";

@@ -11,7 +11,6 @@
 import { Capacitor } from "@capacitor/core";
 import { isElectrobunRuntime } from "./electrobun-runtime";
 import {
-  type GenericNativePlugin,
   getCameraPlugin,
   getCanvasPlugin,
   getDesktopPlugin,
@@ -20,6 +19,7 @@ import {
   getScreenCapturePlugin,
   getSwabblePlugin,
   getTalkModePlugin,
+  type GenericNativePlugin,
   type SwabblePluginLike,
   type TalkModePluginLike,
 } from "./native-plugins";
@@ -342,11 +342,11 @@ export function isFeatureAvailable(
 
 // Export platform info
 export {
-  platform,
-  isNative,
-  isIOS,
   isAndroid,
   isElectronPlatform as isElectron,
-  isWebPlatform as isWeb,
+  isIOS,
   isMacOSPlatform as isMacOS,
+  isNative,
+  isWebPlatform as isWeb,
+  platform,
 };

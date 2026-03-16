@@ -77,7 +77,121 @@ export interface WalletNftsResponse {
   solana: { nfts: SolanaNft[] } | null;
 }
 
+export const WALLET_RPC_PROVIDER_OPTIONS = {
+  evm: [
+    { id: "eliza-cloud", label: "Eliza Cloud" },
+    { id: "alchemy", label: "Alchemy" },
+    { id: "infura", label: "Infura" },
+    { id: "ankr", label: "Ankr" },
+  ],
+  bsc: [
+    { id: "eliza-cloud", label: "Eliza Cloud" },
+    { id: "alchemy", label: "Alchemy" },
+    { id: "ankr", label: "Ankr" },
+    { id: "nodereal", label: "NodeReal" },
+    { id: "quicknode", label: "QuickNode" },
+  ],
+  solana: [
+    { id: "eliza-cloud", label: "Eliza Cloud" },
+    { id: "helius-birdeye", label: "Helius + Birdeye" },
+  ],
+} as const;
+
+export type WalletRpcChain = keyof typeof WALLET_RPC_PROVIDER_OPTIONS;
+export type EvmWalletRpcProvider =
+  (typeof WALLET_RPC_PROVIDER_OPTIONS.evm)[number]["id"];
+export type BscWalletRpcProvider =
+  (typeof WALLET_RPC_PROVIDER_OPTIONS.bsc)[number]["id"];
+export type SolanaWalletRpcProvider =
+  (typeof WALLET_RPC_PROVIDER_OPTIONS.solana)[number]["id"];
+
+export interface WalletRpcSelections {
+  evm: EvmWalletRpcProvider;
+  bsc: BscWalletRpcProvider;
+  solana: SolanaWalletRpcProvider;
+}
+
+export const DEFAULT_WALLET_RPC_SELECTIONS: WalletRpcSelections = {
+  evm: "eliza-cloud",
+  bsc: "eliza-cloud",
+  solana: "eliza-cloud",
+};
+
+const WALLET_RPC_PROVIDER_ALIASES = {
+  elizacloud: "eliza-cloud",
+  helius: "helius-birdeye",
+} as const;
+
+const WALLET_RPC_PROVIDER_IDS = {
+  evm: new Set(WALLET_RPC_PROVIDER_OPTIONS.evm.map((option) => option.id)),
+  bsc: new Set(WALLET_RPC_PROVIDER_OPTIONS.bsc.map((option) => option.id)),
+  solana: new Set(
+    WALLET_RPC_PROVIDER_OPTIONS.solana.map((option) => option.id),
+  ),
+} as const;
+
+export function normalizeWalletRpcProviderId<TChain extends WalletRpcChain>(
+  chain: TChain,
+  value: string | null | undefined,
+): WalletRpcSelections[TChain] | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return null;
+  const normalized = WALLET_RPC_PROVIDER_ALIASES[
+    trimmed as keyof typeof WALLET_RPC_PROVIDER_ALIASES
+  ]
+    ? WALLET_RPC_PROVIDER_ALIASES[
+        trimmed as keyof typeof WALLET_RPC_PROVIDER_ALIASES
+      ]
+    : trimmed;
+  if ((WALLET_RPC_PROVIDER_IDS[chain] as ReadonlySet<string>).has(normalized)) {
+    return normalized as WalletRpcSelections[TChain];
+  }
+  return null;
+}
+
+export function normalizeWalletRpcSelections(
+  input:
+    | Partial<Record<WalletRpcChain, string | null | undefined>>
+    | WalletRpcSelections
+    | null
+    | undefined,
+): WalletRpcSelections {
+  return {
+    evm:
+      normalizeWalletRpcProviderId("evm", input?.evm) ??
+      DEFAULT_WALLET_RPC_SELECTIONS.evm,
+    bsc:
+      normalizeWalletRpcProviderId("bsc", input?.bsc) ??
+      DEFAULT_WALLET_RPC_SELECTIONS.bsc,
+    solana:
+      normalizeWalletRpcProviderId("solana", input?.solana) ??
+      DEFAULT_WALLET_RPC_SELECTIONS.solana,
+  };
+}
+
+export type WalletRpcCredentialKey =
+  | "ALCHEMY_API_KEY"
+  | "INFURA_API_KEY"
+  | "ANKR_API_KEY"
+  | "NODEREAL_BSC_RPC_URL"
+  | "QUICKNODE_BSC_RPC_URL"
+  | "HELIUS_API_KEY"
+  | "BIRDEYE_API_KEY"
+  | "ETHEREUM_RPC_URL"
+  | "BASE_RPC_URL"
+  | "AVALANCHE_RPC_URL"
+  | "BSC_RPC_URL"
+  | "SOLANA_RPC_URL";
+
+export interface WalletConfigUpdateRequest {
+  selections: WalletRpcSelections;
+  credentials?: Partial<Record<WalletRpcCredentialKey, string>>;
+}
+
 export interface WalletConfigStatus {
+  selectedRpcProviders: WalletRpcSelections;
+  legacyCustomChains: WalletRpcChain[];
   alchemyKeySet: boolean;
   infuraKeySet: boolean;
   ankrKeySet: boolean;

@@ -5,11 +5,11 @@
  */
 
 interface ImportMetaEnv {
-  readonly DEV: boolean;
-  readonly VITE_ENABLE_COMPANION_MODE?: string;
-  readonly VITE_ENABLE_MEMORY_MONITOR?: string;
+    readonly DEV: boolean;
+    readonly VITE_ENABLE_COMPANION_MODE?: string;
+    readonly VITE_ENABLE_MEMORY_MONITOR?: string;
 }
 
 interface ImportMeta {
-  readonly env: ImportMetaEnv;
+    readonly env: ImportMetaEnv;
 }

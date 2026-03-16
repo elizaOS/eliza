@@ -1,5 +1,8 @@
+import {
+  APP_EMOTE_EVENT,
+  type AppEmoteEventDetail,
+} from "../events";
 import { useEffect, useRef, useState } from "react";
-import { APP_EMOTE_EVENT, type AppEmoteEventDetail } from "../events";
 
 const OVERLAY_LIFETIME_MS = 2400;
 

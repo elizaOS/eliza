@@ -67,11 +67,8 @@ export class WhatsAppPairingSession {
 
     const baileys = await import("@whiskeysockets/baileys");
     const makeWASocket = baileys.default;
-    const {
-      useMultiFileAuthState,
-      fetchLatestBaileysVersion,
-      DisconnectReason,
-    } = baileys;
+    const { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } =
+      baileys;
     const QRCode = (await import("qrcode")).default;
     const { Boom } = await import("@hapi/boom");
 

@@ -1,5 +1,5 @@
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types";
-import type { MiladyConfig } from "../config/types.autonomous";
+import type { MiladyConfig } from "../config/types.milady";
 
 /**
  * Apply subscription provider configuration to the config object.

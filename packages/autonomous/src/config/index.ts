@@ -1,5 +1,5 @@
-export * from "./character-schema";
 export * from "./config";
+export * from "./character-schema";
 export * from "./env-vars";
 export * from "./includes";
 export * from "./object-utils";
@@ -8,8 +8,8 @@ export * from "./plugin-auto-enable";
 export * from "./types";
 export * from "./types.agent-defaults";
 export * from "./types.agents";
-export * from "./types.autonomous";
 export * from "./types.gateway";
 export * from "./types.hooks";
 export * from "./types.messages";
+export * from "./types.milady";
 export * from "./types.tools";

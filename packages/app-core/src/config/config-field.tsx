@@ -1078,6 +1078,7 @@ function ArrayFieldInner({ fp: props }: { fp: FieldRenderProps }) {
     >
       {items.map((item, index) => (
         <ArrayItem
+          // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
           key={`${index}-${items.length}`}
           index={index}
           value={item}

@@ -35,7 +35,6 @@ describe("tabFlags", () => {
     "database",
     "logs",
     "security",
-    "lifo",
   ];
 
   for (const tab of advancedOverlayTabs) {
@@ -62,13 +61,11 @@ describe("tabFlags", () => {
   it("reports individual flags consistently", () => {
     expect(tabFlags("skills").isSkills).toBe(true);
     expect(tabFlags("stream").isStream).toBe(true);
-    expect(tabFlags("lifo").isLifo).toBe(true);
     expect(tabFlags("wallets").isWallets).toBe(true);
     expect(tabFlags("character").isCharacter).toBe(true);
     expect(tabFlags("character-select").isCharacter).toBe(true);
     expect(tabFlags("actions").isSkills).toBe(false);
     expect(tabFlags("actions").isStream).toBe(false);
-    expect(tabFlags("actions").isLifo).toBe(false);
     expect(tabFlags("actions").isCharacter).toBe(false);
     expect(tabFlags("actions").isWallets).toBe(false);
   });
@@ -127,7 +124,6 @@ describe("App.tsx advanced-tab parity", () => {
     "database",
     "logs",
     "security",
-    "lifo",
   ];
 
   for (const tab of advancedParityTabs) {

@@ -173,10 +173,9 @@ function normalizeSlashCommandName(name: string): string {
 function splitCommandArgs(text: string): string[] {
   const parts = [];
   const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/g;
-  let match: RegExpExecArray | null = regex.exec(text);
-  while (match !== null) {
+  let match;
+  while ((match = regex.exec(text)) !== null) {
     parts.push(match[1] || match[2] || match[0]);
-    match = regex.exec(text);
   }
   return parts;
 }

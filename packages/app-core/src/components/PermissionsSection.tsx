@@ -14,21 +14,19 @@
 
 import { Button } from "@elizaos/ui";
 import { Check } from "lucide-react";
-import {
-  type Dispatch,
-  type SetStateAction,
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   type AllPermissionsState,
   client,
+  type PermissionState,
   type PermissionStatus,
   type PluginInfo,
   type SystemPermissionId,
 } from "../api";
-import { invokeDesktopBridgeRequest } from "../bridge";
+import {
+  invokeDesktopBridgeRequest,
+  subscribeDesktopBridgeEvent,
+} from "../bridge";
 import {
   hasRequiredOnboardingPermissions,
   isElectronPlatform,
@@ -145,6 +143,218 @@ const PERMISSION_BADGE_LABELS: Record<
   "not-applicable": { tone: "muted", label: "N/A" },
 };
 
+function translateWithFallback(
+  t: (key: string) => string,
+  key: string,
+  fallback: string,
+): string {
+  const value = t(key);
+  return !value || value === key ? fallback : value;
+}
+
+function getPermissionAction(
+  t: (key: string) => string,
+  id: SystemPermissionId,
+  status: PermissionStatus,
+  canRequest: boolean,
+): {
+  ariaLabelPrefix: string;
+  label: string;
+  type: "request" | "settings";
+} | null {
+  if (status === "granted" || status === "not-applicable") {
+    return null;
+  }
+
+  if (status === "not-determined" && canRequest) {
+    const label =
+      id === "camera"
+        ? translateWithFallback(
+            t,
+            "permissionssection.CheckAccess",
+            "Check Access",
+          )
+        : translateWithFallback(t, "permissionssection.Grant", "Grant");
+    return {
+      ariaLabelPrefix: label,
+      label,
+      type: "request",
+    };
+  }
+
+  const label = translateWithFallback(
+    t,
+    "permissionssection.OpenSettings",
+    "Open Settings",
+  );
+  return {
+    ariaLabelPrefix: label,
+    label,
+    type: "settings",
+  };
+}
+
+type DesktopMediaPermissionId = Extract<
+  SystemPermissionId,
+  "camera" | "microphone"
+>;
+
+function isDesktopMediaPermission(
+  id: SystemPermissionId,
+): id is DesktopMediaPermissionId {
+  return id === "camera" || id === "microphone";
+}
+
+function mapRendererMediaPermissionState(
+  state: "granted" | "denied" | "prompt" | undefined,
+): PermissionStatus | null {
+  if (state === "granted") {
+    return "granted";
+  }
+  if (state === "denied") {
+    return "denied";
+  }
+  if (state === "prompt") {
+    return "not-determined";
+  }
+  return null;
+}
+
+function getRendererMediaConstraints(
+  id: DesktopMediaPermissionId,
+): MediaStreamConstraints {
+  return id === "camera" ? { video: true } : { audio: true };
+}
+
+async function queryRendererMediaPermission(
+  id: DesktopMediaPermissionId,
+): Promise<PermissionStatus | null> {
+  if (typeof navigator === "undefined" || !navigator.permissions?.query) {
+    return null;
+  }
+
+  try {
+    const result = await navigator.permissions.query({
+      name: id as PermissionName,
+    });
+    return mapRendererMediaPermissionState(result?.state);
+  } catch {
+    return null;
+  }
+}
+
+async function inferRendererMediaPermissionFromDevices(
+  id: DesktopMediaPermissionId,
+): Promise<PermissionStatus | null> {
+  if (
+    typeof navigator === "undefined" ||
+    !navigator.mediaDevices?.enumerateDevices
+  ) {
+    return null;
+  }
+
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    if (!Array.isArray(devices)) {
+      return null;
+    }
+
+    const kind = id === "camera" ? "videoinput" : "audioinput";
+    return devices.some(
+      (device) => device.kind === kind && Boolean(device.label?.trim()),
+    )
+      ? "granted"
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function probeRendererMediaPermission(
+  id: DesktopMediaPermissionId,
+): Promise<PermissionStatus | null> {
+  const queriedStatus = await queryRendererMediaPermission(id);
+  if (queriedStatus === "granted" || queriedStatus === "denied") {
+    return queriedStatus;
+  }
+
+  const inferredStatus = await inferRendererMediaPermissionFromDevices(id);
+  if (inferredStatus) {
+    return inferredStatus;
+  }
+
+  return queriedStatus;
+}
+
+async function requestRendererMediaPermission(
+  id: DesktopMediaPermissionId,
+): Promise<PermissionStatus | null> {
+  if (
+    typeof navigator === "undefined" ||
+    !navigator.mediaDevices?.getUserMedia
+  ) {
+    return null;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(
+      getRendererMediaConstraints(id),
+    );
+    stream.getTracks().forEach((track) => {
+      track.stop();
+    });
+    return "granted";
+  } catch {
+    return probeRendererMediaPermission(id);
+  }
+}
+
+async function reconcileRendererMediaPermissions(
+  snapshot: DesktopPermissionsSnapshot,
+): Promise<DesktopPermissionsSnapshot> {
+  let nextPermissions = snapshot.permissions;
+  let changed = false;
+
+  for (const id of ["camera", "microphone"] as const) {
+    const current = snapshot.permissions[id];
+    if (!current || current.status === "restricted") {
+      continue;
+    }
+
+    const rendererStatus = await probeRendererMediaPermission(id);
+    if (!rendererStatus) {
+      continue;
+    }
+
+    const nextCanRequest = rendererStatus === "not-determined";
+    if (
+      current.status === rendererStatus &&
+      current.canRequest === nextCanRequest
+    ) {
+      continue;
+    }
+
+    if (!changed) {
+      nextPermissions = { ...snapshot.permissions };
+      changed = true;
+    }
+
+    nextPermissions[id] = {
+      ...current,
+      status: rendererStatus,
+      canRequest: nextCanRequest,
+      lastChecked: Date.now(),
+    };
+  }
+
+  return changed
+    ? {
+        ...snapshot,
+        permissions: nextPermissions,
+      }
+    : snapshot;
+}
+
 /** Individual permission row. */
 function PermissionRow({
   def,
@@ -166,7 +376,7 @@ function PermissionRow({
   onToggleShell?: (enabled: boolean) => void;
 }) {
   const { t } = useApp();
-  const showAction = status !== "granted" && status !== "not-applicable";
+  const action = getPermissionAction(t, def.id, status, canRequest);
 
   return (
     <div className="flex items-center gap-3 py-2.5 px-3 border-b border-[var(--border)] last:border-b-0">
@@ -197,27 +407,16 @@ function PermissionRow({
             trackOffClass="bg-[var(--border)]"
           />
         )}
-        {showAction && !isShell && (
-          <>
-            {canRequest && (
-              <Button
-                variant="default"
-                size="sm"
-                className="h-auto text-[11px] py-1 px-2.5"
-                onClick={onRequest}
-              >
-                {t("permissionssection.Request")}
-              </Button>
-            )}
-            <Button
-              variant="default"
-              size="sm"
-              className="h-auto text-[11px] py-1 px-2.5 ml-2"
-              onClick={onOpenSettings}
-            >
-              {t("nav.settings")}
-            </Button>
-          </>
+        {!isShell && action && (
+          <Button
+            variant="default"
+            size="sm"
+            className="h-auto text-[11px] py-1 px-2.5"
+            onClick={action.type === "request" ? onRequest : onOpenSettings}
+            aria-label={`${action.ariaLabelPrefix} ${def.name}`}
+          >
+            {action.label}
+          </Button>
         )}
       </div>
     </div>
@@ -281,39 +480,221 @@ function CapabilityToggle({
   );
 }
 
-function usePermissionActions(
-  setPermissions: Dispatch<SetStateAction<AllPermissionsState | null>>,
-) {
+interface DesktopPermissionsSnapshot {
+  permissions: AllPermissionsState;
+  platform: string;
+  shellEnabled: boolean;
+}
+
+function useDesktopPermissionsState() {
+  const [permissions, setPermissions] = useState<AllPermissionsState | null>(
+    null,
+  );
+  const [platform, setPlatform] = useState<string>("unknown");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [shellEnabled, setShellEnabled] = useState(true);
+
+  const applySnapshot = useCallback((snapshot: DesktopPermissionsSnapshot) => {
+    setPermissions(snapshot.permissions);
+    setPlatform(snapshot.platform);
+    setShellEnabled(snapshot.shellEnabled);
+  }, []);
+
+  const loadPermissionsSnapshot = useCallback(
+    async (forceRefresh = false): Promise<DesktopPermissionsSnapshot> => {
+      const [bridgedPermissions, bridgedShellEnabled, bridgedPlatform] =
+        await Promise.all([
+          invokeDesktopBridgeRequest<AllPermissionsState>({
+            rpcMethod: "permissionsGetAll",
+            ipcChannel: "permissions:getAll",
+            params: forceRefresh ? { forceRefresh: true } : undefined,
+          }),
+          invokeDesktopBridgeRequest<boolean>({
+            rpcMethod: "permissionsIsShellEnabled",
+            ipcChannel: "permissions:isShellEnabled",
+          }),
+          invokeDesktopBridgeRequest<string>({
+            rpcMethod: "permissionsGetPlatform",
+            ipcChannel: "permissions:getPlatform",
+          }),
+        ]);
+
+      if (forceRefresh && bridgedPermissions === null) {
+        await client.refreshPermissions();
+      }
+
+      const permissions = bridgedPermissions ?? (await client.getPermissions());
+      const shellEnabled =
+        bridgedShellEnabled === null
+          ? await client.isShellEnabled()
+          : bridgedShellEnabled;
+
+      const snapshot = {
+        permissions,
+        platform: bridgedPlatform ?? "unknown",
+        shellEnabled,
+      };
+      return reconcileRendererMediaPermissions(snapshot);
+    },
+    [],
+  );
+
+  const replaceSnapshot = useCallback(
+    async (forceRefresh = false): Promise<DesktopPermissionsSnapshot> => {
+      const snapshot = await loadPermissionsSnapshot(forceRefresh);
+      applySnapshot(snapshot);
+      return snapshot;
+    },
+    [applySnapshot, loadPermissionsSnapshot],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      setLoading(true);
+      try {
+        const snapshot = await loadPermissionsSnapshot();
+        if (!cancelled) {
+          applySnapshot(snapshot);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load permissions:", err);
+          setPermissions(null);
+          setPlatform("unknown");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applySnapshot, loadPermissionsSnapshot]);
+
+  useEffect(() => {
+    return subscribeDesktopBridgeEvent({
+      rpcMessage: "permissionsChanged",
+      ipcChannel: "permissions:changed",
+      listener: () => {
+        void replaceSnapshot(true);
+      },
+    });
+  }, [replaceSnapshot]);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || typeof window === "undefined") {
+      return;
+    }
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+      void replaceSnapshot(true);
+    };
+
+    window.addEventListener("focus", handleVisibilityOrFocus);
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+    return () => {
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+    };
+  }, [replaceSnapshot]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await replaceSnapshot(true);
+    } catch (err) {
+      console.error("Failed to refresh permissions:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [replaceSnapshot]);
+
   const handleRequest = useCallback(
     async (id: SystemPermissionId) => {
       try {
-        const state = await client.requestPermission(id);
-        setPermissions((prev) => (prev ? { ...prev, [id]: state } : prev));
+        if (isDesktopMediaPermission(id)) {
+          const rendererStatus = await requestRendererMediaPermission(id);
+          if (rendererStatus === "granted") {
+            await replaceSnapshot(true);
+            return;
+          }
+        }
+
+        const bridged = await invokeDesktopBridgeRequest<PermissionState>({
+          rpcMethod: "permissionsRequest",
+          ipcChannel: "permissions:request",
+          params: { id },
+        });
+        if (bridged === null) {
+          await client.requestPermission(id);
+        }
+        await replaceSnapshot(true);
       } catch (err) {
         console.error("Failed to request permission:", err);
       }
     },
-    [setPermissions],
+    [replaceSnapshot],
   );
 
-  const handleOpenSettings = useCallback(async (id: SystemPermissionId) => {
-    try {
-      // The REST endpoint only returns an action code; desktop runtimes need the
-      // native bridge to actually open system settings.
-      const opened = await invokeDesktopBridgeRequest({
-        rpcMethod: "permissionsOpenSettings",
-        ipcChannel: "permissions:openSettings",
-        params: { id },
-      });
-      if (opened === null) {
-        await client.openPermissionSettings(id);
+  const handleOpenSettings = useCallback(
+    async (id: SystemPermissionId) => {
+      try {
+        const opened = await invokeDesktopBridgeRequest({
+          rpcMethod: "permissionsOpenSettings",
+          ipcChannel: "permissions:openSettings",
+          params: { id },
+        });
+        if (opened === null) {
+          await client.openPermissionSettings(id);
+        }
+        await replaceSnapshot(true);
+      } catch (err) {
+        console.error("Failed to open settings:", err);
       }
-    } catch (err) {
-      console.error("Failed to open settings:", err);
-    }
-  }, []);
+    },
+    [replaceSnapshot],
+  );
 
-  return { handleRequest, handleOpenSettings };
+  const handleToggleShell = useCallback(
+    async (enabled: boolean) => {
+      try {
+        const bridgeToggle = invokeDesktopBridgeRequest<PermissionState>({
+          rpcMethod: "permissionsSetShellEnabled",
+          ipcChannel: "permissions:setShellEnabled",
+          params: { enabled },
+        });
+        await Promise.allSettled([
+          bridgeToggle,
+          client.setShellEnabled(enabled),
+        ]);
+        await replaceSnapshot(true);
+      } catch (err) {
+        console.error("Failed to toggle shell:", err);
+      }
+    },
+    [replaceSnapshot],
+  );
+
+  return {
+    handleOpenSettings,
+    handleRefresh,
+    handleRequest,
+    handleToggleShell,
+    loading,
+    permissions,
+    platform,
+    refreshing,
+    shellEnabled,
+  };
 }
 
 /** Mobile (Capacitor) permission UI for streaming to cloud sandbox. */
@@ -323,13 +704,16 @@ function MobilePermissionsView() {
     <StreamingPermissionsSettingsView
       mode="mobile"
       testId="mobile-permissions"
-      title={
-        t("permissionssection.StreamingPermissions") || "Streaming Permissions"
-      }
-      description={
-        t("permissionssection.MobileStreamingDesc") ||
-        "Your device streams camera, microphone, and screen to your Eliza Cloud agent for processing."
-      }
+      title={translateWithFallback(
+        t,
+        "permissionssection.StreamingPermissions",
+        "Streaming Permissions",
+      )}
+      description={translateWithFallback(
+        t,
+        "permissionssection.MobileStreamingDesc",
+        "Your device streams camera, microphone, and screen to your Eliza Cloud agent for processing.",
+      )}
     />
   );
 }
@@ -341,96 +725,36 @@ function WebPermissionsView() {
     <StreamingPermissionsSettingsView
       mode="web"
       testId="web-permissions-info"
-      title={
-        t("permissionssection.BrowserPermissions") || "Browser Permissions"
-      }
-      description={
-        t("permissionssection.WebStreamingDesc") ||
-        "Grant browser access to your camera, microphone, and screen to stream to your agent."
-      }
+      title={translateWithFallback(
+        t,
+        "permissionssection.BrowserPermissions",
+        "Browser Permissions",
+      )}
+      description={translateWithFallback(
+        t,
+        "permissionssection.WebStreamingDesc",
+        "Grant browser access to your camera, microphone, and screen to stream to your agent.",
+      )}
     />
   );
 }
 
-export function PermissionsSection() {
+function DesktopPermissionsView() {
   const { t } = useApp();
   const { plugins, handlePluginToggle } = useApp();
-  const [permissions, setPermissions] = useState<AllPermissionsState | null>(
-    null,
-  );
-  const [platform, setPlatform] = useState<string>("unknown");
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [shellEnabled, setShellEnabled] = useState(true);
-  const { handleRequest, handleOpenSettings } =
-    usePermissionActions(setPermissions);
-
-  // On web, show informational view immediately
-  if (isWebPlatform()) {
-    return <WebPermissionsView />;
-  }
-
-  // On mobile (Capacitor), show streaming permissions
-  if (isNative && !isElectronPlatform()) {
-    return <MobilePermissionsView />;
-  }
-
-  // Electron / desktop: existing permission flow
-
-  /** Load permissions on mount. */
-  // biome-ignore lint/correctness/useHookAtTopLevel: conditional early returns above are platform-gated and stable
-  useEffect(() => {
-    void (async () => {
-      setLoading(true);
-      try {
-        const [perms, isShell] = await Promise.all([
-          client.getPermissions(),
-          client.isShellEnabled(),
-        ]);
-        setPermissions(perms);
-        setShellEnabled(isShell);
-        // Detect platform from permissions (accessibility only on darwin)
-        if (perms.accessibility?.status !== "not-applicable") {
-          setPlatform("darwin");
-        } else if (perms.microphone?.status !== "not-applicable") {
-          setPlatform("win32"); // or linux, but we can't easily distinguish
-        }
-      } catch (err) {
-        console.error("Failed to load permissions:", err);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  /** Refresh permissions from OS. */
-  // biome-ignore lint/correctness/useHookAtTopLevel: see above
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const perms = await client.refreshPermissions();
-      setPermissions(perms);
-    } catch (err) {
-      console.error("Failed to refresh permissions:", err);
-    } finally {
-      setRefreshing(false);
-    }
-  }, []);
-
-  /** Toggle shell access. */
-  // biome-ignore lint/correctness/useHookAtTopLevel: see above
-  const handleToggleShell = useCallback(async (enabled: boolean) => {
-    try {
-      const state = await client.setShellEnabled(enabled);
-      setShellEnabled(enabled);
-      setPermissions((prev) => (prev ? { ...prev, shell: state } : prev));
-    } catch (err) {
-      console.error("Failed to toggle shell:", err);
-    }
-  }, []);
+  const {
+    handleOpenSettings,
+    handleRefresh,
+    handleRequest,
+    handleToggleShell,
+    loading,
+    permissions,
+    platform,
+    refreshing,
+    shellEnabled,
+  } = useDesktopPermissionsState();
 
   /** Check if all required permissions for a capability are granted. */
-  // biome-ignore lint/correctness/useHookAtTopLevel: see above
   const arePermissionsGranted = useCallback(
     (requiredPerms: SystemPermissionId[]): boolean => {
       if (!permissions) return false;
@@ -454,7 +778,11 @@ export function PermissionsSection() {
   if (loading) {
     return (
       <div className="text-center py-6 text-[var(--muted)] text-xs">
-        {t("permissionssection.LoadingPermissions")}
+        {translateWithFallback(
+          t,
+          "permissionssection.LoadingPermissions",
+          "Loading permissions...",
+        )}
       </div>
     );
   }
@@ -462,7 +790,11 @@ export function PermissionsSection() {
   if (!permissions) {
     return (
       <div className="text-center py-6 text-[var(--muted)] text-xs">
-        {t("permissionssection.UnableToLoadPermi")}
+        {translateWithFallback(
+          t,
+          "permissionssection.UnableToLoadPermi",
+          "Unable to load permissions.",
+        )}
       </div>
     );
   }
@@ -473,7 +805,11 @@ export function PermissionsSection() {
       <div>
         <div className="flex justify-between items-center mb-3">
           <div className="font-bold text-sm">
-            {t("permissionssection.SystemPermissions")}
+            {translateWithFallback(
+              t,
+              "permissionssection.SystemPermissions",
+              "System Permissions",
+            )}
           </div>
           <div className="flex gap-2">
             <Button
@@ -493,7 +829,11 @@ export function PermissionsSection() {
                 }
               }}
             >
-              {t("permissionssection.AllowAll")}
+              {translateWithFallback(
+                t,
+                "permissionssection.AllowAll",
+                "Allow All",
+              )}
             </Button>
             <Button
               variant="default"
@@ -530,7 +870,7 @@ export function PermissionsSection() {
           {platform === "darwin" ? (
             <>
               macOS requires Accessibility permission for computer control. Open
-              System Preferences → Security & Privacy → Privacy to grant access.
+              System Settings → Privacy &amp; Security to grant access.
             </>
           ) : (
             <>
@@ -566,11 +906,27 @@ export function PermissionsSection() {
           })}
         </div>
         <div className="text-[11px] text-[var(--muted)] mt-2">
-          {t("permissionssection.CapabilitiesRequire")}
+          {translateWithFallback(
+            t,
+            "permissionssection.CapabilitiesRequire",
+            "Capabilities require the system permissions listed above.",
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+export function PermissionsSection() {
+  if (isWebPlatform()) {
+    return <WebPermissionsView />;
+  }
+
+  if (isNative && !isElectronPlatform()) {
+    return <MobilePermissionsView />;
+  }
+
+  return <DesktopPermissionsView />;
 }
 
 /**
@@ -590,13 +946,16 @@ function MobileOnboardingPermissions({
       mode="mobile"
       onContinue={onContinue}
       testId="mobile-onboarding-permissions"
-      title={
-        t("permissionssection.StreamingPermissions") || "Streaming Permissions"
-      }
-      description={
-        t("permissionssection.MobileOnboardingDesc") ||
-        "Allow access so your device can stream to your cloud agent."
-      }
+      title={translateWithFallback(
+        t,
+        "permissionssection.StreamingPermissions",
+        "Streaming Permissions",
+      )}
+      description={translateWithFallback(
+        t,
+        "permissionssection.MobileOnboardingDesc",
+        "Allow access so your device can stream to your cloud agent.",
+      )}
     />
   );
 }
@@ -613,13 +972,16 @@ function WebOnboardingPermissions({
       mode="web"
       onContinue={onContinue}
       testId="web-onboarding-permissions"
-      title={
-        t("permissionssection.BrowserPermissions") || "Browser Permissions"
-      }
-      description={
-        t("permissionssection.WebOnboardingDesc") ||
-        "Allow browser access so your camera, mic, and screen can stream to your agent."
-      }
+      title={translateWithFallback(
+        t,
+        "permissionssection.BrowserPermissions",
+        "Browser Permissions",
+      )}
+      description={translateWithFallback(
+        t,
+        "permissionssection.WebOnboardingDesc",
+        "Allow browser access so your camera, mic, and screen can stream to your agent.",
+      )}
     />
   );
 }
@@ -643,33 +1005,14 @@ export function PermissionsOnboardingSection({
   return <DesktopOnboardingPermissions onContinue={onContinue} />;
 }
 
-/** Desktop (Electron) onboarding permissions — original implementation. */
 function DesktopOnboardingPermissions({
   onContinue,
 }: {
   onContinue: (options?: { allowPermissionBypass?: boolean }) => void;
 }) {
   const { t } = useApp();
-  const [permissions, setPermissions] = useState<AllPermissionsState | null>(
-    null,
-  );
-  const [loading, setLoading] = useState(true);
-  const { handleRequest, handleOpenSettings } =
-    usePermissionActions(setPermissions);
-
-  useEffect(() => {
-    void (async () => {
-      setLoading(true);
-      try {
-        const perms = await client.getPermissions();
-        setPermissions(perms);
-      } catch (err) {
-        console.error("Failed to load permissions:", err);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const { handleOpenSettings, handleRequest, loading, permissions } =
+    useDesktopPermissionsState();
 
   /** Check if all critical permissions are granted (or not applicable). */
   const allGranted = hasRequiredOnboardingPermissions(permissions);
@@ -678,7 +1021,11 @@ function DesktopOnboardingPermissions({
     return (
       <div className="text-center py-8">
         <div className="text-[var(--muted)] text-sm">
-          {t("permissionssection.CheckingPermissions")}
+          {translateWithFallback(
+            t,
+            "permissionssection.CheckingPermissions",
+            "Checking permissions...",
+          )}
         </div>
       </div>
     );
@@ -688,13 +1035,17 @@ function DesktopOnboardingPermissions({
     return (
       <div className="text-center py-8">
         <div className="text-[var(--muted)] text-sm mb-4">
-          {t("permissionssection.UnableToCheckPerm")}
+          {translateWithFallback(
+            t,
+            "permissionssection.UnableToCheckPerm",
+            "Unable to check permissions.",
+          )}
         </div>
         <Button
           variant="default"
           onClick={() => onContinue({ allowPermissionBypass: true })}
         >
-          {t("permissionssection.Continue")}
+          {translateWithFallback(t, "permissionssection.Continue", "Continue")}
         </Button>
       </div>
     );
@@ -702,7 +1053,6 @@ function DesktopOnboardingPermissions({
 
   const essentialPermissions = SYSTEM_PERMISSIONS.filter((def) => {
     const state = permissions[def.id];
-    // Show non-applicable permissions and shell toggle
     return state?.status !== "not-applicable" && def.id !== "shell";
   });
 
@@ -710,10 +1060,18 @@ function DesktopOnboardingPermissions({
     <div>
       <div className="text-center mb-6">
         <div className="text-xl font-bold mb-2">
-          {t("permissionssection.SystemPermissions")}
+          {translateWithFallback(
+            t,
+            "permissionssection.SystemPermissions",
+            "System Permissions",
+          )}
         </div>
         <div className="text-[var(--muted)] text-sm">
-          {t("permissionssection.GrantPermissionsTo")}
+          {translateWithFallback(
+            t,
+            "permissionssection.GrantPermissionsTo",
+            "Grant permissions to unlock desktop features.",
+          )}
         </div>
       </div>
 
@@ -721,12 +1079,18 @@ function DesktopOnboardingPermissions({
         {essentialPermissions.map((def) => {
           const state = permissions[def.id];
           const status = state?.status ?? "not-determined";
-          const canRequest = state?.canRequest ?? false;
           const isGranted = status === "granted";
+          const action = getPermissionAction(
+            t,
+            def.id,
+            status,
+            state?.canRequest ?? false,
+          );
 
           return (
             <div
               key={def.id}
+              data-permission-id={def.id}
               className={`flex items-center gap-4 p-4 border ${
                 isGranted
                   ? "border-[var(--ok)] bg-[var(--ok)]/10"
@@ -742,34 +1106,26 @@ function DesktopOnboardingPermissions({
               </div>
               {isGranted ? (
                 <Check className="w-4 h-4 text-[var(--ok)]" />
-              ) : (
-                <div className="flex gap-2">
-                  {canRequest && (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="h-auto text-xs py-1.5 px-3"
-                      onClick={() => handleRequest(def.id)}
-                    >
-                      {t("permissionssection.Grant")}
-                    </Button>
-                  )}
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="h-auto text-xs py-1.5 px-3"
-                    onClick={() => handleOpenSettings(def.id)}
-                  >
-                    {t("permissionssection.OpenSettings")}
-                  </Button>
-                </div>
-              )}
+              ) : action ? (
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="h-auto text-xs py-1.5 px-3"
+                  onClick={() =>
+                    action.type === "request"
+                      ? handleRequest(def.id)
+                      : handleOpenSettings(def.id)
+                  }
+                  aria-label={`${action.ariaLabelPrefix} ${def.name}`}
+                >
+                  {action.label}
+                </Button>
+              ) : null}
             </div>
           );
         })}
       </div>
 
-      {/* Allow All shortcut */}
       {!allGranted && (
         <div className="flex justify-center mb-4">
           <Button
@@ -780,36 +1136,48 @@ function DesktopOnboardingPermissions({
               for (const def of essentialPermissions) {
                 const state = permissions[def.id];
                 if (state?.status === "granted") continue;
-                if (state?.canRequest) {
+                if (state?.status === "not-determined" && state.canRequest) {
                   await handleRequest(def.id);
-                } else {
-                  await handleOpenSettings(def.id);
+                  continue;
                 }
+                await handleOpenSettings(def.id);
               }
             }}
           >
-            {t("permissionssection.AllowAllPermission")}
+            {translateWithFallback(
+              t,
+              "permissionssection.AllowAllPermission",
+              "Allow All Permissions",
+            )}
           </Button>
         </div>
       )}
 
-      <div className="flex justify-center gap-3">
+      <div className="flex flex-wrap justify-center gap-3">
         <Button
           variant="outline"
           size="sm"
-          className="h-auto text-xs py-2 px-6 opacity-70"
+          className="h-auto min-w-[8.5rem] px-4 py-2 text-[11px] leading-tight opacity-70"
           onClick={() => onContinue({ allowPermissionBypass: true })}
         >
-          {t("permissionssection.SkipForNow")}
+          {translateWithFallback(
+            t,
+            "permissionssection.SkipForNow",
+            "Skip for Now",
+          )}
         </Button>
         {allGranted && (
           <Button
             variant="default"
             size="sm"
-            className="h-auto text-xs py-2 px-6 bg-accent border-accent text-accent-foreground"
+            className="h-auto min-w-[8.5rem] bg-accent border-accent px-4 py-2 text-[11px] leading-tight text-accent-foreground"
             onClick={() => onContinue()}
           >
-            {t("permissionssection.Continue")}
+            {translateWithFallback(
+              t,
+              "permissionssection.Continue",
+              "Continue",
+            )}
           </Button>
         )}
       </div>

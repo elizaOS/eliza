@@ -299,7 +299,6 @@ export function startMemoryLeakDetector(options?: {
   const maxSamples = 30;
 
   const intervalId = setInterval(() => {
-    console.log(`[setInterval] fires at ${Date.now()}`);
     const memInfo = getMemoryInfo();
     if (!memInfo) return;
 

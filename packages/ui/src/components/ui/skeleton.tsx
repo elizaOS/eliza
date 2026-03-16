@@ -106,10 +106,10 @@ function SkeletonChat() {
 
 export {
   Skeleton,
-  SkeletonLine,
-  SkeletonText,
-  SkeletonMessage,
   SkeletonCard,
-  SkeletonSidebar,
   SkeletonChat,
+  SkeletonLine,
+  SkeletonMessage,
+  SkeletonSidebar,
+  SkeletonText,
 };

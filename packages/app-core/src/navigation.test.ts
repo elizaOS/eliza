@@ -34,7 +34,6 @@ describe("tabFromPath", () => {
     expect(tabFromPath("/trajectories")).toBe("trajectories");
     expect(tabFromPath("/runtime")).toBe("runtime");
     expect(tabFromPath("/database")).toBe("database");
-    expect(tabFromPath("/lifo")).toBe("lifo");
     expect(tabFromPath("/logs")).toBe("logs");
     expect(tabFromPath("/security")).toBe("security");
   });
@@ -78,7 +77,6 @@ describe("pathForTab", () => {
     "trajectories",
     "runtime",
     "database",
-    "lifo",
     "settings",
     "logs",
     "security",
@@ -129,7 +127,6 @@ describe("tab groups", () => {
       "trajectories",
       "runtime",
       "database",
-      "lifo",
       "logs",
       "security",
     ]);
@@ -153,7 +150,6 @@ describe("tab groups", () => {
       "trajectories",
       "runtime",
       "database",
-      "lifo",
       "logs",
       "security",
       "settings",

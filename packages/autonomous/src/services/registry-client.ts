@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import { loadMiladyConfig, saveMiladyConfig } from "../config/config.js";
-import type { RegistryEndpoint } from "../config/types.autonomous.js";
+import type { RegistryEndpoint } from "../config/types.milady.js";
 import {
   LOCAL_APP_DEFAULT_SANDBOX,
   resolveAppOverride,
