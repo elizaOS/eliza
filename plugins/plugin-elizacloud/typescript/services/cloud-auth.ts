@@ -7,32 +7,44 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { CloudApiClient } from "../utils/cloud-api";
 import type {
   CloudCredentials,
   DeviceAuthResponse,
   DevicePlatform,
 } from "../types/cloud";
 import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";
+import { CloudApiClient } from "../utils/cloud-api";
 
 /** SHA-256 hash of hostname + platform + arch + cpu + memory. */
 async function deriveDeviceId(): Promise<string> {
   const os = await import("node:os");
   const crypto = await import("node:crypto");
   const cpus = os.cpus();
-  const raw = [os.hostname(), os.platform(), os.arch(), cpus[0]?.model ?? "?", cpus.length, os.totalmem()].join(":");
+  const raw = [
+    os.hostname(),
+    os.platform(),
+    os.arch(),
+    cpus[0]?.model ?? "?",
+    cpus.length,
+    os.totalmem(),
+  ].join(":");
   return crypto.createHash("sha256").update(raw).digest("hex");
 }
 
 function detectPlatform(): DevicePlatform {
   if (typeof process === "undefined") return "web";
-  const map: Record<string, DevicePlatform> = { darwin: "macos", win32: "windows", linux: "linux" };
+  const map: Record<string, DevicePlatform> = {
+    darwin: "macos",
+    win32: "windows",
+    linux: "linux",
+  };
   return map[process.platform] ?? "linux";
 }
 
 export class CloudAuthService extends Service {
   static serviceType = "CLOUD_AUTH";
-  capabilityDescription = "ElizaCloud device authentication and session management";
+  capabilityDescription =
+    "ElizaCloud device authentication and session management";
 
   private client: CloudApiClient;
   private credentials: CloudCredentials | null = null;
@@ -53,7 +65,10 @@ export class CloudAuthService extends Service {
   }
 
   private async initialize(): Promise<void> {
-    const baseUrl = String(this.runtime.getSetting("ELIZAOS_CLOUD_BASE_URL") ?? DEFAULT_CLOUD_CONFIG.baseUrl);
+    const baseUrl = String(
+      this.runtime.getSetting("ELIZAOS_CLOUD_BASE_URL") ??
+        DEFAULT_CLOUD_CONFIG.baseUrl,
+    );
     this.client.setBaseUrl(baseUrl);
 
     // Try existing API key first
@@ -65,14 +80,20 @@ export class CloudAuthService extends Service {
       if (valid) {
         this.credentials = {
           apiKey: key,
-          userId: String(this.runtime.getSetting("ELIZAOS_CLOUD_USER_ID") ?? ""),
-          organizationId: String(this.runtime.getSetting("ELIZAOS_CLOUD_ORG_ID") ?? ""),
+          userId: String(
+            this.runtime.getSetting("ELIZAOS_CLOUD_USER_ID") ?? "",
+          ),
+          organizationId: String(
+            this.runtime.getSetting("ELIZAOS_CLOUD_ORG_ID") ?? "",
+          ),
           authenticatedAt: Date.now(),
         };
         logger.info("[CloudAuth] Authenticated with existing API key");
         return;
       }
-      logger.warn("[CloudAuth] Existing API key invalid, attempting device auth");
+      logger.warn(
+        "[CloudAuth] Existing API key invalid, attempting device auth",
+      );
     }
 
     // Device-based auto-signup when explicitly enabled
@@ -80,7 +101,9 @@ export class CloudAuthService extends Service {
     if (enabled === "true" || enabled === "1") {
       await this.authenticateWithDevice();
     } else {
-      logger.info("[CloudAuth] Cloud not enabled (set ELIZAOS_CLOUD_ENABLED=true)");
+      logger.info(
+        "[CloudAuth] Cloud not enabled (set ELIZAOS_CLOUD_ENABLED=true)",
+      );
     }
   }
 
@@ -99,12 +122,15 @@ export class CloudAuthService extends Service {
 
     logger.info(`[CloudAuth] Authenticating device (platform=${platform})`);
 
-    const response = await this.client.postUnauthenticated<DeviceAuthResponse>("/device-auth", {
-      deviceId,
-      platform,
-      appVersion,
-      deviceName: os.hostname(),
-    });
+    const response = await this.client.postUnauthenticated<DeviceAuthResponse>(
+      "/device-auth",
+      {
+        deviceId,
+        platform,
+        appVersion,
+        deviceName: os.hostname(),
+      },
+    );
 
     this.credentials = {
       apiKey: response.data.apiKey,
@@ -114,16 +140,32 @@ export class CloudAuthService extends Service {
     };
     this.client.setApiKey(response.data.apiKey);
 
-    const action = response.data.isNew ? "New account created" : "Authenticated";
-    logger.info(`[CloudAuth] ${action} (credits: $${response.data.credits.toFixed(2)})`);
+    const action = response.data.isNew
+      ? "New account created"
+      : "Authenticated";
+    logger.info(
+      `[CloudAuth] ${action} (credits: $${response.data.credits.toFixed(2)})`,
+    );
 
     return this.credentials;
   }
 
-  isAuthenticated(): boolean { return this.credentials !== null; }
-  getCredentials(): CloudCredentials | null { return this.credentials; }
-  getApiKey(): string | undefined { return this.credentials?.apiKey ?? this.client.getApiKey(); }
-  getClient(): CloudApiClient { return this.client; }
-  getUserId(): string | undefined { return this.credentials?.userId; }
-  getOrganizationId(): string | undefined { return this.credentials?.organizationId; }
+  isAuthenticated(): boolean {
+    return this.credentials !== null;
+  }
+  getCredentials(): CloudCredentials | null {
+    return this.credentials;
+  }
+  getApiKey(): string | undefined {
+    return this.credentials?.apiKey ?? this.client.getApiKey();
+  }
+  getClient(): CloudApiClient {
+    return this.client;
+  }
+  getUserId(): string | undefined {
+    return this.credentials?.userId;
+  }
+  getOrganizationId(): string | undefined {
+    return this.credentials?.organizationId;
+  }
 }

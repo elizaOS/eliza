@@ -36,20 +36,17 @@ interface DeleteParams {
 
 export const deleteMessageAction: Action = {
   name: DELETE_MESSAGE_ACTION,
-  similes: [
-    "TELEGRAM_DELETE",
-    "DELETE_TELEGRAM_MESSAGE",
-    "REMOVE_MESSAGE",
-    "UNSEND_MESSAGE",
-  ],
+  similes: ["TELEGRAM_DELETE", "DELETE_TELEGRAM_MESSAGE", "REMOVE_MESSAGE", "UNSEND_MESSAGE"],
   description: "Delete a Telegram message",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     const source = message.content?.source;
     if (source !== "telegram") return false;
-    
+
     // Check if telegram service is available and initialized
-    const telegramService = runtime.getService(TELEGRAM_SERVICE_NAME) as TelegramService | undefined;
+    const telegramService = runtime.getService(TELEGRAM_SERVICE_NAME) as
+      | TelegramService
+      | undefined;
     return telegramService?.isInitialized() ?? false;
   },
 

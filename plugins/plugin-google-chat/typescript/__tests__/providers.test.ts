@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { spaceStateProvider, userContextProvider } from "../src/providers/index.js";
+import {
+  spaceStateProvider,
+  userContextProvider,
+} from "../src/providers/index.js";
 
 describe("GoogleChatProviders", () => {
   describe("spaceStateProvider", () => {

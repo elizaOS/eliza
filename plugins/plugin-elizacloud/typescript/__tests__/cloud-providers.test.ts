@@ -3,24 +3,30 @@
  * with controlled service state. No mocking of the providers themselves.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import * as http from "node:http";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { cloudStatusProvider } from "../cloud-providers/cloud-status";
-import { creditBalanceProvider } from "../cloud-providers/credit-balance";
 import { containerHealthProvider } from "../cloud-providers/container-health";
+import { creditBalanceProvider } from "../cloud-providers/credit-balance";
 
 // ─── Minimal service stubs (real objects, not mocks of tested code) ──────
 
 function createContainerStub(overrides: Record<string, unknown> = {}) {
   return {
-    id: "c1", name: "test-agent", status: "running", billing_status: "active",
-    load_balancer_url: "http://lb.example.com", project_name: "proj",
+    id: "c1",
+    name: "test-agent",
+    status: "running",
+    billing_status: "active",
+    load_balancer_url: "http://lb.example.com",
+    project_name: "proj",
     ...overrides,
   };
 }
 
-function createMockRuntime(services: Record<string, Record<string, unknown>>): IAgentRuntime {
+function createMockRuntime(
+  services: Record<string, Record<string, unknown>>,
+): IAgentRuntime {
   return {
     getService: (type: string) => services[type] ?? null,
     getSetting: () => null,
@@ -35,7 +41,11 @@ const fakeState = {} as State;
 describe("cloudStatusProvider", () => {
   it("returns 'Not authenticated' when auth service is absent", async () => {
     const runtime = createMockRuntime({});
-    const result = await cloudStatusProvider.get(runtime, fakeMessage, fakeState);
+    const result = await cloudStatusProvider.get(
+      runtime,
+      fakeMessage,
+      fakeState,
+    );
     expect(result.text).toContain("Not authenticated");
     expect(result.values?.cloudAuthenticated).toBe(false);
   });
@@ -44,7 +54,11 @@ describe("cloudStatusProvider", () => {
     const runtime = createMockRuntime({
       CLOUD_AUTH: { isAuthenticated: () => false },
     });
-    const result = await cloudStatusProvider.get(runtime, fakeMessage, fakeState);
+    const result = await cloudStatusProvider.get(
+      runtime,
+      fakeMessage,
+      fakeState,
+    );
     expect(result.text).toContain("Not authenticated");
   });
 
@@ -54,13 +68,21 @@ describe("cloudStatusProvider", () => {
       CLOUD_CONTAINER: {
         getTrackedContainers: () => [
           createContainerStub({ status: "running" }),
-          createContainerStub({ id: "c2", name: "agent-2", status: "deploying" }),
+          createContainerStub({
+            id: "c2",
+            name: "agent-2",
+            status: "deploying",
+          }),
         ],
       },
       CLOUD_BRIDGE: { getConnectedContainerIds: () => ["c1"] },
     });
 
-    const result = await cloudStatusProvider.get(runtime, fakeMessage, fakeState);
+    const result = await cloudStatusProvider.get(
+      runtime,
+      fakeMessage,
+      fakeState,
+    );
     expect(result.text).toContain("2 container(s)");
     expect(result.text).toContain("1 running");
     expect(result.text).toContain("1 bridged");
@@ -75,7 +97,11 @@ describe("cloudStatusProvider", () => {
       CLOUD_BRIDGE: { getConnectedContainerIds: () => [] },
     });
 
-    const result = await cloudStatusProvider.get(runtime, fakeMessage, fakeState);
+    const result = await cloudStatusProvider.get(
+      runtime,
+      fakeMessage,
+      fakeState,
+    );
     expect(result.values?.totalContainers).toBe(0);
   });
 });
@@ -90,7 +116,12 @@ describe("creditBalanceProvider", () => {
   beforeAll(async () => {
     server = http.createServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ success: true, data: { balance: balanceToReturn, currency: "USD" } }));
+      res.end(
+        JSON.stringify({
+          success: true,
+          data: { balance: balanceToReturn, currency: "USD" },
+        }),
+      );
     });
     await new Promise<void>((resolve) => {
       server.listen(0, "127.0.0.1", () => {
@@ -100,16 +131,22 @@ describe("creditBalanceProvider", () => {
     });
   });
 
-  afterAll(() => { server.close(); });
+  afterAll(() => {
+    server.close();
+  });
 
   it("returns empty text when not authenticated", async () => {
     const runtime = createMockRuntime({});
-    const result = await creditBalanceProvider.get(runtime, fakeMessage, fakeState);
+    const result = await creditBalanceProvider.get(
+      runtime,
+      fakeMessage,
+      fakeState,
+    );
     expect(result.text).toBe("");
   });
 
   it("fetches and returns balance from API", async () => {
-    balanceToReturn = 25.50;
+    balanceToReturn = 25.5;
     // Reset the module-level cache by importing fresh — we use a high balance
     // to ensure the "LOW" flag is not set
     const { CloudApiClient } = await import("../utils/cloud-api");
@@ -119,14 +156,18 @@ describe("creditBalanceProvider", () => {
       CLOUD_AUTH: { isAuthenticated: () => true, getClient: () => client },
     });
 
-    const result = await creditBalanceProvider.get(runtime, fakeMessage, fakeState);
+    const result = await creditBalanceProvider.get(
+      runtime,
+      fakeMessage,
+      fakeState,
+    );
     expect(result.text).toContain("$25.50");
     expect(result.values?.cloudCredits).toBeCloseTo(25.5);
     expect(result.values?.cloudCreditsLow).toBe(false);
   });
 
   it("marks LOW when balance < $2", async () => {
-    balanceToReturn = 1.50;
+    balanceToReturn = 1.5;
     const { CloudApiClient } = await import("../utils/cloud-api");
     const client = new CloudApiClient(serverUrl, "eliza_test");
 
@@ -140,7 +181,11 @@ describe("creditBalanceProvider", () => {
     // Since the provider has a module-level cache, and our previous test
     // may have populated it, we need to test with awareness of caching.
     // For this test we verify the format function logic directly.
-    const result = await creditBalanceProvider.get(runtime, fakeMessage, fakeState);
+    const result = await creditBalanceProvider.get(
+      runtime,
+      fakeMessage,
+      fakeState,
+    );
     // The cached value from previous test may still be active (60s TTL).
     // This is expected behavior — the provider intentionally caches.
     expect(result.text).toContain("$");
@@ -152,7 +197,11 @@ describe("creditBalanceProvider", () => {
 describe("containerHealthProvider", () => {
   it("returns empty when not authenticated", async () => {
     const runtime = createMockRuntime({});
-    const result = await containerHealthProvider.get(runtime, fakeMessage, fakeState);
+    const result = await containerHealthProvider.get(
+      runtime,
+      fakeMessage,
+      fakeState,
+    );
     expect(result.text).toBe("");
   });
 
@@ -165,7 +214,11 @@ describe("containerHealthProvider", () => {
         ],
       },
     });
-    const result = await containerHealthProvider.get(runtime, fakeMessage, fakeState);
+    const result = await containerHealthProvider.get(
+      runtime,
+      fakeMessage,
+      fakeState,
+    );
     expect(result.text).toContain("No running containers");
     expect(result.values?.healthyContainers).toBe(0);
   });
@@ -176,11 +229,20 @@ describe("containerHealthProvider", () => {
       CLOUD_CONTAINER: {
         getTrackedContainers: () => [
           createContainerStub({ status: "running", billing_status: "active" }),
-          createContainerStub({ id: "c2", name: "agent-2", status: "running", billing_status: "active" }),
+          createContainerStub({
+            id: "c2",
+            name: "agent-2",
+            status: "running",
+            billing_status: "active",
+          }),
         ],
       },
     });
-    const result = await containerHealthProvider.get(runtime, fakeMessage, fakeState);
+    const result = await containerHealthProvider.get(
+      runtime,
+      fakeMessage,
+      fakeState,
+    );
     expect(result.values?.healthyContainers).toBe(2);
     expect(result.values?.unhealthyContainers).toBe(0);
     expect(result.text).toContain("2/2 healthy");
@@ -191,11 +253,18 @@ describe("containerHealthProvider", () => {
       CLOUD_AUTH: { isAuthenticated: () => true },
       CLOUD_CONTAINER: {
         getTrackedContainers: () => [
-          createContainerStub({ status: "running", billing_status: "shutdown_pending" }),
+          createContainerStub({
+            status: "running",
+            billing_status: "shutdown_pending",
+          }),
         ],
       },
     });
-    const result = await containerHealthProvider.get(runtime, fakeMessage, fakeState);
+    const result = await containerHealthProvider.get(
+      runtime,
+      fakeMessage,
+      fakeState,
+    );
     expect(result.values?.healthyContainers).toBe(0);
     expect(result.values?.unhealthyContainers).toBe(1);
     expect(result.text).toContain("UNHEALTHY");

@@ -5,8 +5,8 @@
  * and exercises all endpoints with real HTTP requests.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as http from "node:http";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // We recreate the entrypoint logic inline because the actual entrypoint
 // file uses top-level execution. We test the same request handlers here.
@@ -44,12 +44,20 @@ beforeAll(async () => {
   healthServer = http.createServer((req, res) => {
     if (req.method === "GET" && req.url === "/health") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "healthy", uptime: process.uptime(), startedAt: state.startedAt }));
+      res.end(
+        JSON.stringify({
+          status: "healthy",
+          uptime: process.uptime(),
+          startedAt: state.startedAt,
+        }),
+      );
       return;
     }
     if (req.method === "GET" && req.url === "/") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ service: "elizaos-cloud-agent", status: "running" }));
+      res.end(
+        JSON.stringify({ service: "elizaos-cloud-agent", status: "running" }),
+      );
       return;
     }
     res.writeHead(404);
@@ -62,12 +70,14 @@ beforeAll(async () => {
 
     if (req.method === "POST" && req.url === "/api/snapshot") {
       res.writeHead(200);
-      res.end(JSON.stringify({
-        memories: state.memories,
-        config: state.config,
-        workspaceFiles: state.workspaceFiles,
-        timestamp: new Date().toISOString(),
-      }));
+      res.end(
+        JSON.stringify({
+          memories: state.memories,
+          config: state.config,
+          workspaceFiles: state.workspaceFiles,
+          timestamp: new Date().toISOString(),
+        }),
+      );
       return;
     }
 
@@ -83,30 +93,58 @@ beforeAll(async () => {
 
     if (req.method === "POST" && req.url === "/bridge") {
       const body = await readBody(req);
-      const rpc = JSON.parse(body) as { id?: number; method?: string; params?: Record<string, unknown> };
+      const rpc = JSON.parse(body) as {
+        id?: number;
+        method?: string;
+        params?: Record<string, unknown>;
+      };
 
       if (rpc.method === "message.send") {
         const text = (rpc.params?.text as string) ?? "";
         state.memories.push({ role: "user", text, timestamp: Date.now() });
         res.writeHead(200);
-        res.end(JSON.stringify({ jsonrpc: "2.0", id: rpc.id, result: { text: `Echo: ${text}` } }));
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: rpc.id,
+            result: { text: `Echo: ${text}` },
+          }),
+        );
         return;
       }
 
       if (rpc.method === "status.get") {
         res.writeHead(200);
-        res.end(JSON.stringify({ jsonrpc: "2.0", id: rpc.id, result: { status: "running", memoriesCount: state.memories.length } }));
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: rpc.id,
+            result: { status: "running", memoriesCount: state.memories.length },
+          }),
+        );
         return;
       }
 
       if (rpc.method === "heartbeat") {
         res.writeHead(200);
-        res.end(JSON.stringify({ jsonrpc: "2.0", method: "heartbeat.ack", params: { timestamp: Date.now() } }));
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            method: "heartbeat.ack",
+            params: { timestamp: Date.now() },
+          }),
+        );
         return;
       }
 
       res.writeHead(200);
-      res.end(JSON.stringify({ jsonrpc: "2.0", id: rpc.id, error: { code: -32601, message: `Unknown: ${rpc.method}` } }));
+      res.end(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: rpc.id,
+          error: { code: -32601, message: `Unknown: ${rpc.method}` },
+        }),
+      );
       return;
     }
 
@@ -115,14 +153,18 @@ beforeAll(async () => {
   });
 
   await Promise.all([
-    new Promise<void>((r) => healthServer.listen(0, "127.0.0.1", () => {
-      healthUrl = `http://127.0.0.1:${(healthServer.address() as { port: number }).port}`;
-      r();
-    })),
-    new Promise<void>((r) => bridgeServer.listen(0, "127.0.0.1", () => {
-      bridgeUrl = `http://127.0.0.1:${(bridgeServer.address() as { port: number }).port}`;
-      r();
-    })),
+    new Promise<void>((r) =>
+      healthServer.listen(0, "127.0.0.1", () => {
+        healthUrl = `http://127.0.0.1:${(healthServer.address() as { port: number }).port}`;
+        r();
+      }),
+    ),
+    new Promise<void>((r) =>
+      bridgeServer.listen(0, "127.0.0.1", () => {
+        bridgeUrl = `http://127.0.0.1:${(bridgeServer.address() as { port: number }).port}`;
+        r();
+      }),
+    ),
   ]);
 });
 
@@ -137,7 +179,7 @@ describe("health endpoint", () => {
   it("GET /health returns 200 with status", async () => {
     const res = await fetch(`${healthUrl}/health`);
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.status).toBe("healthy");
     expect(typeof body.uptime).toBe("number");
     expect(typeof body.startedAt).toBe("string");
@@ -145,7 +187,7 @@ describe("health endpoint", () => {
 
   it("GET / returns service info", async () => {
     const res = await fetch(healthUrl);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.service).toBe("elizaos-cloud-agent");
     expect(body.status).toBe("running");
   });
@@ -181,9 +223,11 @@ describe("bridge snapshot/restore", () => {
 
     // Verify state was updated
     const snap = await fetch(`${bridgeUrl}/api/snapshot`, { method: "POST" });
-    const body = await snap.json() as AgentState;
+    const body = (await snap.json()) as AgentState;
     expect(body.memories).toHaveLength(1);
-    expect((body.memories[0] as Record<string, unknown>).text).toBe("restored message");
+    expect((body.memories[0] as Record<string, unknown>).text).toBe(
+      "restored message",
+    );
     expect(body.config).toEqual({ model: "test-model" });
   });
 });
@@ -198,9 +242,14 @@ describe("bridge JSON-RPC", () => {
     const res = await fetch(`${bridgeUrl}/bridge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "message.send", params: { text: "hello world" } }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "message.send",
+        params: { text: "hello world" },
+      }),
     });
-    const body = await res.json() as { id: number; result: { text: string } };
+    const body = (await res.json()) as { id: number; result: { text: string } };
     expect(body.id).toBe(1);
     expect(body.result.text).toContain("hello world");
     expect(state.memories).toHaveLength(1);
@@ -212,9 +261,16 @@ describe("bridge JSON-RPC", () => {
     const res = await fetch(`${bridgeUrl}/bridge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "status.get", params: {} }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "status.get",
+        params: {},
+      }),
     });
-    const body = await res.json() as { result: { status: string; memoriesCount: number } };
+    const body = (await res.json()) as {
+      result: { status: string; memoriesCount: number };
+    };
     expect(body.result.status).toBe("running");
     expect(body.result.memoriesCount).toBe(2);
   });
@@ -223,9 +279,16 @@ describe("bridge JSON-RPC", () => {
     const res = await fetch(`${bridgeUrl}/bridge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", method: "heartbeat", params: { timestamp: Date.now() } }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "heartbeat",
+        params: { timestamp: Date.now() },
+      }),
     });
-    const body = await res.json() as { method: string; params: { timestamp: number } };
+    const body = (await res.json()) as {
+      method: string;
+      params: { timestamp: number };
+    };
     expect(body.method).toBe("heartbeat.ack");
     expect(typeof body.params.timestamp).toBe("number");
   });
@@ -234,9 +297,17 @@ describe("bridge JSON-RPC", () => {
     const res = await fetch(`${bridgeUrl}/bridge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "nonexistent.method", params: {} }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "nonexistent.method",
+        params: {},
+      }),
     });
-    const body = await res.json() as { id: number; error: { code: number; message: string } };
+    const body = (await res.json()) as {
+      id: number;
+      error: { code: number; message: string };
+    };
     expect(body.id).toBe(3);
     expect(body.error.code).toBe(-32601);
     expect(body.error.message).toContain("nonexistent.method");
@@ -250,9 +321,14 @@ describe("edge cases", () => {
     const res = await fetch(`${bridgeUrl}/bridge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 10, method: "message.send", params: {} }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 10,
+        method: "message.send",
+        params: {},
+      }),
     });
-    const body = await res.json() as { result: { text: string } };
+    const body = (await res.json()) as { result: { text: string } };
     expect(body.result.text).toContain("Echo:");
   });
 
@@ -267,12 +343,17 @@ describe("edge cases", () => {
       await fetch(`${bridgeUrl}/bridge`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 100 + i, method: "message.send", params: { text: `msg-${i}` } }),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 100 + i,
+          method: "message.send",
+          params: { text: `msg-${i}` },
+        }),
       });
     }
 
     const snap = await fetch(`${bridgeUrl}/api/snapshot`, { method: "POST" });
-    const body = await snap.json() as AgentState;
+    const body = (await snap.json()) as AgentState;
     expect(body.memories).toHaveLength(5);
     for (let i = 0; i < 5; i++) {
       expect(body.memories[i].text).toBe(`msg-${i}`);

@@ -197,9 +197,7 @@ export interface BridgeError {
   data?: unknown;
 }
 
-export interface BridgeMessageHandler {
-  (message: BridgeMessage): void;
-}
+export type BridgeMessageHandler = (message: BridgeMessage) => void;
 
 export interface BridgeConnection {
   containerId: string;

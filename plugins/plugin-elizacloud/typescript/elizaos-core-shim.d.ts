@@ -37,7 +37,11 @@ export interface ProviderResult {
 
 export interface Provider {
   name?: string;
-  get?(runtime: IAgentRuntime, memory: Memory, state: State): Promise<ProviderResult>;
+  get?(
+    runtime: IAgentRuntime,
+    memory: Memory,
+    state: State,
+  ): Promise<ProviderResult>;
   [key: string]: unknown;
 }
 
@@ -94,7 +98,16 @@ export interface GenerateTextParams {
 export interface TextStreamResult {
   textStream?: unknown;
   text: string | Promise<string>;
-  usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | Promise<{ promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined>;
+  usage?:
+    | { promptTokens?: number; completionTokens?: number; totalTokens?: number }
+    | Promise<
+        | {
+            promptTokens?: number;
+            completionTokens?: number;
+            totalTokens?: number;
+          }
+        | undefined
+      >;
   finishReason?: Promise<string | undefined>;
 }
 

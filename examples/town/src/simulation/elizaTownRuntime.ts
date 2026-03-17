@@ -946,7 +946,8 @@ type RuntimeLogParams = {
 
 function disableLogging(runtime: AgentRuntime): void {
   if (runtime.adapter) {
-    (runtime.adapter as { log?: (params: RuntimeLogParams) => Promise<void> }).log = (_params: RuntimeLogParams): Promise<void> =>
-      Promise.resolve();
+    (
+      runtime.adapter as { log?: (params: RuntimeLogParams) => Promise<void> }
+    ).log = (_params: RuntimeLogParams): Promise<void> => Promise.resolve();
   }
 }

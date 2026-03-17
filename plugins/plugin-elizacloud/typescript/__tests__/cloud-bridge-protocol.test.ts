@@ -6,10 +6,14 @@
  * We test the BridgeMessage type and protocol logic directly.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { BridgeMessage } from "../types/cloud";
 
-function createRequest(id: number, method: string, params: Record<string, unknown>): BridgeMessage {
+function createRequest(
+  id: number,
+  method: string,
+  params: Record<string, unknown>,
+): BridgeMessage {
   return { jsonrpc: "2.0", id, method, params };
 }
 
@@ -17,11 +21,18 @@ function createResponse(id: number, result: unknown): BridgeMessage {
   return { jsonrpc: "2.0", id, result };
 }
 
-function createErrorResponse(id: number, code: number, message: string): BridgeMessage {
+function createErrorResponse(
+  id: number,
+  code: number,
+  message: string,
+): BridgeMessage {
   return { jsonrpc: "2.0", id, error: { code, message } };
 }
 
-function createNotification(method: string, params: Record<string, unknown>): BridgeMessage {
+function createNotification(
+  method: string,
+  params: Record<string, unknown>,
+): BridgeMessage {
   return { jsonrpc: "2.0", method, params };
 }
 
@@ -74,7 +85,11 @@ describe("request-response matching logic", () => {
     const pending = new Map<number, { resolve: (v: unknown) => void }>();
     let resolved: unknown = null;
 
-    pending.set(7, { resolve: (v) => { resolved = v; } });
+    pending.set(7, {
+      resolve: (v) => {
+        resolved = v;
+      },
+    });
 
     // Simulate incoming response
     const msg = createResponse(7, { data: "found" });
@@ -102,7 +117,11 @@ describe("request-response matching logic", () => {
     const pending = new Map<number, { reject: (e: Error) => void }>();
     let rejected: Error | null = null;
 
-    pending.set(3, { reject: (e) => { rejected = e; } });
+    pending.set(3, {
+      reject: (e) => {
+        rejected = e;
+      },
+    });
 
     const msg = createErrorResponse(3, -32600, "Invalid request");
     const handler = pending.get(msg.id as number);
@@ -133,15 +152,19 @@ describe("heartbeat protocol", () => {
   });
 
   it("distinguishes notifications from responses", () => {
-    const notification = createNotification("event.new_message", { text: "hi" });
+    const notification = createNotification("event.new_message", {
+      text: "hi",
+    });
     const response = createResponse(5, "ok");
 
     // Notification: has method, no id
-    const isNotification = notification.method !== undefined && notification.id === undefined;
+    const isNotification =
+      notification.method !== undefined && notification.id === undefined;
     expect(isNotification).toBe(true);
 
     // Response: has id, no method
-    const isResponse = response.id !== undefined && response.method === undefined;
+    const isResponse =
+      response.id !== undefined && response.method === undefined;
     expect(isResponse).toBe(true);
   });
 });
@@ -163,7 +186,12 @@ describe("edge cases", () => {
   });
 
   it("handles string id", () => {
-    const msg: BridgeMessage = { jsonrpc: "2.0", id: "uuid-123", method: "test", params: {} };
+    const msg: BridgeMessage = {
+      jsonrpc: "2.0",
+      id: "uuid-123",
+      method: "test",
+      params: {},
+    };
     expect(msg.id).toBe("uuid-123");
   });
 

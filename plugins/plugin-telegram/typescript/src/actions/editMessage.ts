@@ -39,20 +39,17 @@ interface EditParams {
 
 export const editMessageAction: Action = {
   name: EDIT_MESSAGE_ACTION,
-  similes: [
-    "TELEGRAM_EDIT",
-    "EDIT_TELEGRAM_MESSAGE",
-    "UPDATE_MESSAGE",
-    "MODIFY_MESSAGE",
-  ],
+  similes: ["TELEGRAM_EDIT", "EDIT_TELEGRAM_MESSAGE", "UPDATE_MESSAGE", "MODIFY_MESSAGE"],
   description: "Edit an existing Telegram message",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     const source = message.content?.source;
     if (source !== "telegram") return false;
-    
+
     // Check if telegram service is available and initialized
-    const telegramService = runtime.getService(TELEGRAM_SERVICE_NAME) as TelegramService | undefined;
+    const telegramService = runtime.getService(TELEGRAM_SERVICE_NAME) as
+      | TelegramService
+      | undefined;
     return telegramService?.isInitialized() ?? false;
   },
 
@@ -109,7 +106,7 @@ export const editMessageAction: Action = {
         return { success: false, error: "Missing edit parameters" };
       }
       params = parsed;
-    } catch (error) {
+    } catch (_error) {
       if (callback) {
         await callback({
           text: "Failed to parse edit parameters",

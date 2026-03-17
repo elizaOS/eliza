@@ -8,8 +8,8 @@
 import { logger } from "@elizaos/core";
 import {
   CloudApiError,
-  InsufficientCreditsError,
   type CloudApiErrorBody,
+  InsufficientCreditsError,
 } from "../types/cloud";
 
 export class CloudApiClient {
@@ -21,10 +21,18 @@ export class CloudApiClient {
     this.apiKey = apiKey;
   }
 
-  setApiKey(key: string): void { this.apiKey = key; }
-  setBaseUrl(url: string): void { this.baseUrl = url.replace(/\/+$/, ""); }
-  getBaseUrl(): string { return this.baseUrl; }
-  getApiKey(): string | undefined { return this.apiKey; }
+  setApiKey(key: string): void {
+    this.apiKey = key;
+  }
+  setBaseUrl(url: string): void {
+    this.baseUrl = url.replace(/\/+$/, "");
+  }
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+  getApiKey(): string | undefined {
+    return this.apiKey;
+  }
 
   /** Build a WebSocket URL from the base URL, replacing http(s) with ws(s). */
   buildWsUrl(path: string): string {
@@ -47,7 +55,10 @@ export class CloudApiClient {
    * POST without auth header — used for device-auth which doesn't
    * require a pre-existing API key.
    */
-  async postUnauthenticated<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  async postUnauthenticated<T>(
+    path: string,
+    body: Record<string, unknown>,
+  ): Promise<T> {
     return this.request<T>("POST", path, body, true);
   }
 

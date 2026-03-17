@@ -16,7 +16,7 @@ describe("GoogleChatPlugin", () => {
 
     it("should have a non-empty description", () => {
       expect(googleChatPlugin.description).toBeTruthy();
-      expect(googleChatPlugin.description!.length).toBeGreaterThan(0);
+      expect(googleChatPlugin.description?.length).toBeGreaterThan(0);
     });
 
     it("should include the GoogleChatService in services", () => {
@@ -29,14 +29,14 @@ describe("GoogleChatPlugin", () => {
       expect(googleChatPlugin.actions).toContain(sendMessage);
       expect(googleChatPlugin.actions).toContain(sendReaction);
       expect(googleChatPlugin.actions).toContain(listSpaces);
-      expect(googleChatPlugin.actions!.length).toBe(3);
+      expect(googleChatPlugin.actions?.length).toBe(3);
     });
 
     it("should include both providers", () => {
       expect(googleChatPlugin.providers).toBeDefined();
       expect(googleChatPlugin.providers).toContain(spaceStateProvider);
       expect(googleChatPlugin.providers).toContain(userContextProvider);
-      expect(googleChatPlugin.providers!.length).toBe(2);
+      expect(googleChatPlugin.providers?.length).toBe(2);
     });
 
     it("should have an empty tests array", () => {
