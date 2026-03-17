@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/autonomous",
-  "version": "2.0.0-alpha.24",
+  "version": "2.0.0-alpha.25",
   "description": "Standalone autonomous agent runtime and backend server package for elizaOS.",
   "type": "module",
   "license": "MIT",
@@ -249,8 +249,8 @@
     "@elizaos/plugin-todo": "alpha",
     "@elizaos/plugin-trajectory-logger": "alpha",
     "@elizaos/plugin-trust": "alpha",
-    "@elizaos/prompts": "2.0.0-alpha.24",
-    "@elizaos/skills": "2.0.0-alpha.24",
+    "@elizaos/prompts": "2.0.0-alpha.25",
+    "@elizaos/skills": "2.0.0-alpha.25",
     "@hapi/boom": "^10.0.1",
     "@mariozechner/pi-ai": "0.52.12",
     "@noble/curves": "^2.0.1",
