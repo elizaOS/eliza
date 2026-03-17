@@ -1,6 +1,6 @@
 {
   "name": "mldy",
-  "version": "1.0.2",
+  "version": "2.0.0-alpha.3",
   "description": "Alias for milaidy CLI — cute agents for the acceleration",
   "type": "module",
   "bin": {
