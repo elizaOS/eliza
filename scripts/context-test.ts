@@ -249,9 +249,16 @@ async function main() {
   }
   console.log(`Using ${llmResult.providerName}\n`);
 
+  // Pass API keys through character secrets so runtime.getSetting() finds them
+  const secrets: Record<string, string> = {};
+  for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "XAI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"]) {
+    if (process.env[key]) secrets[key] = process.env[key]!;
+  }
+
   const character = createCharacter({
     name: "Eliza",
     bio: "A helpful AI assistant.",
+    secrets,
   });
 
   const runtime = new AgentRuntime({

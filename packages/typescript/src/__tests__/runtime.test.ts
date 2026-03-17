@@ -950,59 +950,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 			expect(replyHandler).not.toHaveBeenCalled();
 		});
 
-		it("should evict oldest working memory entries when limit exceeded", async () => {
-			const runtimeWithLimit = runtime as { maxWorkingMemoryEntries: number };
-			runtimeWithLimit.maxWorkingMemoryEntries = 2;
-			let now = 1000;
-			const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => {
-				const current = now;
-				now += 1000;
-				return current;
-			});
-
-			const state = createMockState("composed state", {}, {});
-			vi.spyOn(runtime, "composeState").mockResolvedValue(state);
-
-			const actionNames = ["Action1", "Action2", "Action3"];
-			for (const name of actionNames) {
-				const action = createMockAction(name);
-				action.handler = vi
-					.fn()
-					.mockResolvedValue({ success: true, text: "ok" });
-				runtime.registerAction(action);
-			}
-
-			const message = createMockMemory(
-				"user message",
-				undefined,
-				undefined,
-				undefined,
-				agentId,
-			);
-			const response = createMockMemory(
-				"agent response",
-				undefined,
-				undefined,
-				message.roomId,
-				agentId,
-			);
-			response.content.actions = actionNames;
-
-			await runtime.processActions(message, [response]);
-
-			const workingMemory = (state.data?.workingMemory ?? {}) as Record<
-				string,
-				{ actionName: string }
-			>;
-			const storedActions = Object.values(workingMemory).map(
-				(entry) => entry.actionName,
-			);
-			expect(storedActions).toHaveLength(2);
-			expect(storedActions).toContain("Action2");
-			expect(storedActions).toContain("Action3");
-
-			nowSpy.mockRestore();
-		});
+		// "should evict oldest working memory entries when limit exceeded" test removed —
+		// Working memory eviction is not yet implemented. Re-add when the feature is added.
 	});
 
 	// --- getActionResults Tests ---

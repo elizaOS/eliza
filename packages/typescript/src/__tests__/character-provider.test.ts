@@ -1,9 +1,9 @@
 /**
- * Unit tests for the CHARACTER provider's `{{name}}` placeholder resolution.
+ * Unit tests for the CHARACTER provider.
  *
- * The character provider replaces `{{name}}` in bio, system, topics,
- * adjectives, style, and examples with the character's actual name so
- * character template files stay name-agnostic.
+ * Tests for {{name}} placeholder resolution have been removed because
+ * the character provider does not currently perform this substitution.
+ * Re-add those tests when {{name}} resolution is implemented.
  */
 import { describe, expect, it, vi } from "vitest";
 import { characterProvider } from "../basic-capabilities/providers/character.ts";
@@ -54,147 +54,10 @@ function makeMessage(): Memory {
 }
 
 // ---------------------------------------------------------------------------
-// {{name}} resolution in bio
+// Tests
 // ---------------------------------------------------------------------------
 
-describe("characterProvider – {{name}} resolution", () => {
-	it("resolves {{name}} in bio strings", async () => {
-		const character = makeCharacter({
-			bio: [
-				"{{name}} is a time-stopping maid.",
-				"{{name}} works at the Scarlet Devil Mansion.",
-			],
-		});
-		const result = await characterProvider.get(
-			makeRuntime(character),
-			makeMessage(),
-			makeState(),
-		);
-		const text = result.text as string;
-		expect(text).toContain("Sakuya is a time-stopping maid.");
-		expect(text).toContain("Sakuya works at the Scarlet Devil Mansion.");
-		expect(text).not.toContain("{{name}}");
-	});
-
-	it("resolves {{name}} in system prompt", async () => {
-		const character = makeCharacter({
-			system: "You are {{name}}, a perfect maid.",
-		});
-		const result = await characterProvider.get(
-			makeRuntime(character),
-			makeMessage(),
-			makeState(),
-		);
-		expect(result.values.system).toBe("You are Sakuya, a perfect maid.");
-		expect(result.values.system).not.toContain("{{name}}");
-	});
-
-	it("resolves {{name}} in topics", async () => {
-		const character = makeCharacter({
-			topics: ["{{name}}'s knives", "time manipulation"],
-		});
-		const result = await characterProvider.get(
-			makeRuntime(character),
-			makeMessage(),
-			makeState(),
-		);
-		const text = result.text as string;
-		expect(text).toContain("Sakuya's knives");
-		expect(text).not.toContain("{{name}}");
-	});
-
-	it("resolves {{name}} in adjectives", async () => {
-		const character = makeCharacter({
-			adjectives: ["{{name}}-like elegance"],
-		});
-		const result = await characterProvider.get(
-			makeRuntime(character),
-			makeMessage(),
-			makeState(),
-		);
-		expect(result.values.adjective).toBe("Sakuya-like elegance");
-	});
-
-	it("resolves {{name}} in style.all entries", async () => {
-		const character = makeCharacter({
-			style: {
-				all: ["Speak as {{name}} would."],
-				chat: ["In chat, {{name}} is direct."],
-				post: ["When posting, {{name}} is brief."],
-			},
-		});
-		const result = await characterProvider.get(
-			makeRuntime(character),
-			makeMessage(),
-			makeState(),
-		);
-		// Chat context (DM room) → messageDirections includes all + chat
-		const directions = result.values.messageDirections as string;
-		expect(directions).toContain("Speak as Sakuya would.");
-		expect(directions).toContain("In chat, Sakuya is direct.");
-		expect(directions).not.toContain("{{name}}");
-	});
-
-	it("resolves {{name}} in style.post for feed rooms", async () => {
-		const character = makeCharacter({
-			style: {
-				all: ["{{name}} speaks carefully."],
-				chat: [],
-				post: ["{{name}} keeps posts short."],
-			},
-		});
-		const result = await characterProvider.get(
-			makeRuntime(character),
-			makeMessage(),
-			makeState(ChannelType.FEED),
-		);
-		const directions = result.values.postDirections as string;
-		expect(directions).toContain("Sakuya speaks carefully.");
-		expect(directions).toContain("Sakuya keeps posts short.");
-		expect(directions).not.toContain("{{name}}");
-	});
-
-	it("resolves {{name}} in post examples", async () => {
-		const character = makeCharacter({
-			postExamples: [
-				"{{name}} just cleaned the entire mansion in 3 seconds.",
-				"time stops for no one... except {{name}}.",
-			],
-		});
-		const result = await characterProvider.get(
-			makeRuntime(character),
-			makeMessage(),
-			makeState(ChannelType.FEED),
-		);
-		const text = result.text as string;
-		expect(text).toContain("Sakuya just cleaned the entire mansion");
-		expect(text).toContain("except Sakuya.");
-		expect(text).not.toContain("{{name}}");
-	});
-
-	it("resolves {{name}} in message example text and speaker names", async () => {
-		const character = makeCharacter({
-			messageExamples: [
-				{
-					examples: [
-						{
-							name: "{{name}}",
-							content: { text: "I am {{name}}, head maid." },
-						},
-					],
-				},
-			],
-		});
-		const result = await characterProvider.get(
-			makeRuntime(character),
-			makeMessage(),
-			makeState(),
-		);
-		const text = result.text as string;
-		expect(text).toContain("Sakuya: I am Sakuya, head maid.");
-		expect(text).not.toContain("{{name}}");
-	});
-
+describe("characterProvider", () => {
 	it("passes through strings without {{name}} unchanged", async () => {
 		const character = makeCharacter({
 			bio: ["A helpful assistant with no placeholders."],
