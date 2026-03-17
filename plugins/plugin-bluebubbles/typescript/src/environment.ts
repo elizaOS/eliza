@@ -1,8 +1,9 @@
 /**
  * Environment and configuration validation for BlueBubbles plugin
  */
-import { z } from "zod";
+
 import type { IAgentRuntime } from "@elizaos/core";
+import { z } from "zod";
 import type { BlueBubblesConfig, DmPolicy, GroupPolicy } from "./types";
 
 const DmPolicySchema = z.enum(["open", "pairing", "allowlist", "disabled"]);
@@ -20,19 +21,25 @@ export const BlueBubblesConfigSchema = z.object({
   enabled: z.boolean().optional().default(true),
 });
 
-export type ValidatedBlueBubblesConfig = z.infer<typeof BlueBubblesConfigSchema>;
+export type ValidatedBlueBubblesConfig = z.infer<
+  typeof BlueBubblesConfigSchema
+>;
 
 /**
  * Validates BlueBubbles configuration
  */
-export function validateConfig(config: Partial<BlueBubblesConfig>): ValidatedBlueBubblesConfig {
+export function validateConfig(
+  config: Partial<BlueBubblesConfig>,
+): ValidatedBlueBubblesConfig {
   return BlueBubblesConfigSchema.parse(config);
 }
 
 /**
  * Gets BlueBubbles configuration from runtime settings
  */
-export function getConfigFromRuntime(runtime: IAgentRuntime): BlueBubblesConfig | null {
+export function getConfigFromRuntime(
+  runtime: IAgentRuntime,
+): BlueBubblesConfig | null {
   // Helper to safely get string settings
   const getStringSetting = (key: string): string | undefined => {
     const value = runtime.getSetting(key);
@@ -51,18 +58,26 @@ export function getConfigFromRuntime(runtime: IAgentRuntime): BlueBubblesConfig 
 
   const parseAllowList = (raw: string | undefined): string[] => {
     if (!raw) return [];
-    return raw.split(",").map((s: string) => s.trim()).filter(Boolean);
+    return raw
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean);
   };
 
   return {
     serverUrl,
     password,
-    webhookPath: getStringSetting("BLUEBUBBLES_WEBHOOK_PATH") ?? "/webhooks/bluebubbles",
-    dmPolicy: (getStringSetting("BLUEBUBBLES_DM_POLICY") as DmPolicy) ?? "pairing",
-    groupPolicy: (getStringSetting("BLUEBUBBLES_GROUP_POLICY") as GroupPolicy) ?? "allowlist",
+    webhookPath:
+      getStringSetting("BLUEBUBBLES_WEBHOOK_PATH") ?? "/webhooks/bluebubbles",
+    dmPolicy:
+      (getStringSetting("BLUEBUBBLES_DM_POLICY") as DmPolicy) ?? "pairing",
+    groupPolicy:
+      (getStringSetting("BLUEBUBBLES_GROUP_POLICY") as GroupPolicy) ??
+      "allowlist",
     allowFrom: parseAllowList(allowFromRaw),
     groupAllowFrom: parseAllowList(groupAllowFromRaw),
-    sendReadReceipts: getStringSetting("BLUEBUBBLES_SEND_READ_RECEIPTS") !== "false",
+    sendReadReceipts:
+      getStringSetting("BLUEBUBBLES_SEND_READ_RECEIPTS") !== "false",
     enabled: getStringSetting("BLUEBUBBLES_ENABLED") !== "false",
   };
 }
@@ -96,7 +111,7 @@ export function normalizeHandle(handle: string): string {
 export function isHandleAllowed(
   handle: string,
   allowList: string[],
-  policy: DmPolicy | GroupPolicy
+  policy: DmPolicy | GroupPolicy,
 ): boolean {
   if (policy === "open") {
     return true;
@@ -113,7 +128,9 @@ export function isHandleAllowed(
     }
 
     const normalizedHandle = normalizeHandle(handle);
-    return allowList.some((allowed) => normalizeHandle(allowed) === normalizedHandle);
+    return allowList.some(
+      (allowed) => normalizeHandle(allowed) === normalizedHandle,
+    );
   }
 
   return false;

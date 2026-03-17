@@ -1,5 +1,6 @@
 /**
  * BlueBubbles providers export
  */
-export { chatStateProvider } from "./chatState";
+
 export { chatContextProvider } from "./chatContext";
+export { chatStateProvider } from "./chatState";

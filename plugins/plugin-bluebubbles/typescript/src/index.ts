@@ -5,16 +5,16 @@
  * supporting text messages, reactions, effects, and more.
  */
 
-import type { Plugin, IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { BlueBubblesService } from "./service.js";
 import { sendMessageAction, sendReactionAction } from "./actions/index.js";
-import { chatContextProvider } from "./providers/index.js";
 import { BLUEBUBBLES_SERVICE_NAME } from "./constants.js";
+import { chatContextProvider } from "./providers/index.js";
+import { BlueBubblesService } from "./service.js";
 
+export * from "./constants.js";
 // Re-export types and service
 export * from "./types.js";
-export * from "./constants.js";
 export { BlueBubblesService };
 export { sendMessageAction, sendReactionAction };
 export { chatContextProvider };
@@ -31,34 +31,39 @@ const blueBubblesPlugin: Plugin = {
   providers: [chatContextProvider],
   tests: [],
 
-  init: async (config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
+  init: async (
+    config: Record<string, string>,
+    runtime: IAgentRuntime,
+  ): Promise<void> => {
     logger.info("Initializing BlueBubbles plugin...");
 
     const hasServerUrl = Boolean(
-      config.BLUEBUBBLES_SERVER_URL || process.env.BLUEBUBBLES_SERVER_URL
+      config.BLUEBUBBLES_SERVER_URL || process.env.BLUEBUBBLES_SERVER_URL,
     );
     const hasPassword = Boolean(
-      config.BLUEBUBBLES_PASSWORD || process.env.BLUEBUBBLES_PASSWORD
+      config.BLUEBUBBLES_PASSWORD || process.env.BLUEBUBBLES_PASSWORD,
     );
 
     logger.info("BlueBubbles plugin configuration:");
     logger.info(`  - Server URL configured: ${hasServerUrl ? "Yes" : "No"}`);
     logger.info(`  - Password configured: ${hasPassword ? "Yes" : "No"}`);
     logger.info(
-      `  - DM policy: ${config.BLUEBUBBLES_DM_POLICY || process.env.BLUEBUBBLES_DM_POLICY || "pairing"}`
+      `  - DM policy: ${config.BLUEBUBBLES_DM_POLICY || process.env.BLUEBUBBLES_DM_POLICY || "pairing"}`,
     );
     logger.info(
-      `  - Group policy: ${config.BLUEBUBBLES_GROUP_POLICY || process.env.BLUEBUBBLES_GROUP_POLICY || "allowlist"}`
+      `  - Group policy: ${config.BLUEBUBBLES_GROUP_POLICY || process.env.BLUEBUBBLES_GROUP_POLICY || "allowlist"}`,
     );
 
     if (!hasServerUrl) {
       logger.warn(
-        "BlueBubbles server URL not configured. Set BLUEBUBBLES_SERVER_URL."
+        "BlueBubbles server URL not configured. Set BLUEBUBBLES_SERVER_URL.",
       );
     }
 
     if (!hasPassword) {
-      logger.warn("BlueBubbles password not configured. Set BLUEBUBBLES_PASSWORD.");
+      logger.warn(
+        "BlueBubbles password not configured. Set BLUEBUBBLES_PASSWORD.",
+      );
     }
 
     logger.info("BlueBubbles plugin initialized");

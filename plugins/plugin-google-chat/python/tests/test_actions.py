@@ -5,9 +5,9 @@ from elizaos_plugin_google_chat.actions import (
     send_message_action,
     send_reaction_action,
 )
+from elizaos_plugin_google_chat.actions.list_spaces import validate as validate_list_spaces
 from elizaos_plugin_google_chat.actions.send_message import validate as validate_send_message
 from elizaos_plugin_google_chat.actions.send_reaction import validate as validate_send_reaction
-from elizaos_plugin_google_chat.actions.list_spaces import validate as validate_list_spaces
 
 
 class _MockContent:

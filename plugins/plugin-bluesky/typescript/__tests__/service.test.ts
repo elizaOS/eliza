@@ -47,11 +47,11 @@ vi.mock("../utils/config", () => ({
 
 // ── Imports (resolved after mocks) ──────────────────────────────
 
-import { BlueSkyPostService } from "../services/post";
-import { BlueSkyMessageService } from "../services/message";
 import { BlueSkyService } from "../services/bluesky";
+import { BlueSkyMessageService } from "../services/message";
+import { BlueSkyPostService } from "../services/post";
+import type { BlueSkyMessage, BlueSkyPost } from "../types";
 import { BLUESKY_MAX_POST_LENGTH } from "../types";
-import type { BlueSkyPost, BlueSkyMessage } from "../types";
 import { hasBlueSkyEnabled } from "../utils/config";
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ describe("BlueSkyPostService", () => {
 
     expect(runtime.useModel).toHaveBeenCalled();
     expect(client.sendPost).toHaveBeenCalledWith(
-      expect.objectContaining({ content: { text: "Short truncated text" } }),
+      expect.objectContaining({ content: { text: "Short truncated text" } })
     );
   });
 
@@ -187,7 +187,7 @@ describe("BlueSkyPostService", () => {
 
     expect(runtime.useModel).toHaveBeenCalled();
     expect(client.sendPost).toHaveBeenCalledWith(
-      expect.objectContaining({ content: { text: "Auto-generated post" } }),
+      expect.objectContaining({ content: { text: "Auto-generated post" } })
     );
   });
 

@@ -10,19 +10,22 @@ import {
   type State,
 } from "@elizaos/core";
 import { BLUEBUBBLES_SERVICE_NAME } from "../constants";
-import { BlueBubblesService } from "../service";
+import type { BlueBubblesService } from "../service";
 import type { BlueBubblesChatState } from "../types";
 
 export const chatStateProvider: Provider = {
   name: "BLUEBUBBLES_CHAT_STATE",
-  description: "Provides information about the current BlueBubbles/iMessage chat context",
+  description:
+    "Provides information about the current BlueBubbles/iMessage chat context",
 
   get: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state: State
+    _state: State,
   ): Promise<ProviderResult> => {
-    const service = runtime.getService<BlueBubblesService>(BLUEBUBBLES_SERVICE_NAME);
+    const service = runtime.getService<BlueBubblesService>(
+      BLUEBUBBLES_SERVICE_NAME,
+    );
 
     if (!service || !service.getIsRunning()) {
       return { text: "" };
@@ -47,7 +50,7 @@ export const chatStateProvider: Provider = {
       return { text: formatChatState(chatState) };
     } catch (error) {
       logger.debug(
-        `Failed to get BlueBubbles chat state: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to get BlueBubbles chat state: ${error instanceof Error ? error.message : String(error)}`,
       );
       return { text: "" };
     }
@@ -84,7 +87,9 @@ function formatChatState(state: BlueBubblesChatState): string {
   }
 
   lines.push("");
-  lines.push("Note: This conversation is happening through iMessage. Be conversational and friendly.");
+  lines.push(
+    "Note: This conversation is happening through iMessage. Be conversational and friendly.",
+  );
 
   return lines.join("\n");
 }
