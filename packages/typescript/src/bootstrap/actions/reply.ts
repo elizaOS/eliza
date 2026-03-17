@@ -102,13 +102,18 @@ export const replyAction = {
     const allProviders =
       responses?.flatMap((res) => res.content?.providers || []) || [];
 
-    // Never skip core providers needed for proper action context
-    const requiredProviders = ["RECENT_MESSAGES", "ACTION_STATE"];
+    // Required providers that must always be freshly retrieved for proper action context
+    const requiredProviders = ["RECENT_MESSAGES", "ACTION_STATE"]; 
+
+    // Safely check if state has all required providers
+    const hasAllRequiredProviders = state?.data?.providers != null &&
+      Array.isArray(state.data.providers) &&
+      requiredProviders.every(provider => 
+        state.data.providers.includes(provider)
+      );
     
-    // Check for stale core providers - always refresh RECENT_MESSAGES and ACTION_STATE
-    // since they contain chain execution context
-    const staleProviders = ["RECENT_MESSAGES", "ACTION_STATE"];
-    const hasRequestedInState = false; // Never reuse stale providers that contain chain state
+    // Never reuse state if it lacks required chain context providers
+    const hasRequestedInState = hasAllRequiredProviders;
 
     state =
       hasRequestedInState && state != null
