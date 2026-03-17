@@ -265,6 +265,7 @@
     "pty-manager": "1.9.8",
     "puppeteer-core": "^24.37.5",
     "qrcode": "^1.5.4",
+    "unique-names-generator": "^4.7.1",
     "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
