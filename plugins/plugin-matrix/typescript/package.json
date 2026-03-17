@@ -9,7 +9,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "matrix-js-sdk": "^31.0.0",
+    "matrix-js-sdk": "^41.1.0",
     "zod": "^4.3.6"
   },
   "peerDependencies": {
