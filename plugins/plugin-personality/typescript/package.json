@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-personality",
   "description": "elizaOS plugin for agent self-modification and character evolution",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-alpha.5",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
