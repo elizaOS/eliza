@@ -8,7 +8,7 @@
     "start": "bun run agent.ts",
     "dev": "bun --watch run agent.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "bunx @biomejs/biome check --apply .",
+    "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check ."
   },
   "dependencies": {

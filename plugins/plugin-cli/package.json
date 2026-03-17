@@ -21,7 +21,7 @@
     "build": "cd typescript && tsc",
     "build:watch": "cd typescript && tsc --watch",
     "test": "vitest run --passWithNoTests",
-    "lint": "biome check --apply typescript/src/"
+    "lint": "biome check --write typescript/src/"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

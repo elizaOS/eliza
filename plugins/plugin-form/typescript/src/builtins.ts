@@ -524,7 +524,7 @@ export const BUILTIN_TYPES: ControlType[] = [
  * - Clear has/get semantics
  */
 export const BUILTIN_TYPE_MAP: Map<string, ControlType> = new Map(
-  BUILTIN_TYPES.map((t) => [t.id, t]),
+  BUILTIN_TYPES.map((t) => [t.id, t])
 );
 
 /**
@@ -541,10 +541,7 @@ export const BUILTIN_TYPE_MAP: Map<string, ControlType> = new Map(
  * @param registerFn - The FormService.registerControlType method
  */
 export function registerBuiltinTypes(
-  registerFn: (
-    type: ControlType,
-    options?: { allowOverride?: boolean },
-  ) => void,
+  registerFn: (type: ControlType, options?: { allowOverride?: boolean }) => void
 ): void {
   for (const type of BUILTIN_TYPES) {
     registerFn(type);

@@ -7,7 +7,7 @@ interface ToolSelectionResult {
 
 export async function handleNoToolAvailable(
   callback: HandlerCallback | undefined,
-  toolSelection: ToolSelectionResult | null | undefined
+  toolSelection: ToolSelectionResult | null | undefined,
 ): Promise<ActionResult> {
   const responseText =
     "I don't have a specific tool that can help with that request. Let me try to assist you directly instead.";

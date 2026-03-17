@@ -11,7 +11,10 @@ import { MCP_SERVICE_NAME, type McpServer } from "../types";
 import { handleMcpError } from "../utils/error";
 import { handleNoToolAvailable } from "../utils/handler";
 import { handleToolResponse, processToolResult } from "../utils/processing";
-import { createToolSelectionArgument, createToolSelectionName } from "../utils/selection";
+import {
+  createToolSelectionArgument,
+  createToolSelectionName,
+} from "../utils/selection";
 
 export const callToolAction: Action = {
   name: "CALL_MCP_TOOL",
@@ -29,7 +32,11 @@ export const callToolAction: Action = {
   ],
   description: "Calls a tool from an MCP server to perform a specific task",
 
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ): Promise<boolean> => {
     const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME);
     if (!mcpService) return false;
 
@@ -38,7 +45,9 @@ export const callToolAction: Action = {
       servers.length > 0 &&
       servers.some(
         (server: McpServer) =>
-          server.status === "connected" && server.tools && server.tools.length > 0
+          server.status === "connected" &&
+          server.tools &&
+          server.tools.length > 0,
       )
     );
   },
@@ -48,9 +57,12 @@ export const callToolAction: Action = {
     message: Memory,
     _state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const composedState = await runtime.composeState(message, ["RECENT_MESSAGES", "MCP"]);
+    const composedState = await runtime.composeState(message, [
+      "RECENT_MESSAGES",
+      "MCP",
+    ]);
     const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME);
     if (!mcpService) {
       throw new Error("MCP service not available");
@@ -85,7 +97,7 @@ export const callToolAction: Action = {
       const result = await mcpService.callTool(
         serverName,
         toolName,
-        toolSelectionArgument.toolArguments
+        toolSelectionArgument.toolArguments,
       );
 
       const { toolOutput, hasAttachments, attachments } = processToolResult(
@@ -93,7 +105,7 @@ export const callToolAction: Action = {
         serverName,
         toolName,
         runtime,
-        message.entityId
+        message.entityId,
       );
 
       const replyMemory = await handleToolResponse(
@@ -107,7 +119,7 @@ export const callToolAction: Action = {
         attachments,
         composedState,
         mcpProvider,
-        callback
+        callback,
       );
 
       return {
@@ -124,7 +136,9 @@ export const callToolAction: Action = {
           actionName: "CALL_MCP_TOOL",
           serverName,
           toolName,
-          toolArgumentsJson: JSON.stringify(toolSelectionArgument.toolArguments),
+          toolArgumentsJson: JSON.stringify(
+            toolSelectionArgument.toolArguments,
+          ),
           reasoning: toolSelectionName.reasoning,
           output: toolOutput,
           attachmentCount: attachments?.length ?? 0,
@@ -139,7 +153,7 @@ export const callToolAction: Action = {
         runtime,
         message,
         "tool",
-        callback
+        callback,
       );
     }
   },

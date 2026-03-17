@@ -21,7 +21,14 @@ interface McpServiceLike extends Service {
 // Minimal shape for @elizaos/computeruse Desktop instance (native bindings; types may be incomplete).
 interface DesktopInstance {
   openApplication(appName: string): void;
-  locator(selector: string): { first(timeoutMs: number): Promise<{ click(): Promise<void>; typeText(text: string, opts: { clearBeforeTyping: boolean }): void } | null> };
+  locator(selector: string): {
+    first(
+      timeoutMs: number
+    ): Promise<{
+      click(): Promise<void>;
+      typeText(text: string, opts: { clearBeforeTyping: boolean }): void;
+    } | null>;
+  };
   getWindowTree(process: string, title?: string, maxDepth?: unknown): unknown;
   applications(): ReadonlyArray<{ name(): string }>;
 }

@@ -1,16 +1,16 @@
 import {
   ChannelType,
   type Content,
-  createUniqueUuid,
   type EventPayload,
   EventType,
   type IAgentRuntime,
-  logger,
   type Room,
   Service,
   type TargetInfo,
   type UUID,
   type World,
+  createUniqueUuid,
+  logger,
 } from "@elizaos/core";
 import * as lark from "@larksuiteoapi/node-sdk";
 import { FEISHU_SERVICE_NAME } from "./constants";
@@ -105,7 +105,9 @@ export class FeishuService extends Service {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         logger.error(
-          `[Feishu] Initialization attempt ${retryCount + 1} failed: ${lastError.message}`,
+          `[Feishu] Initialization attempt ${retryCount + 1} failed: ${
+            lastError.message
+          }`,
         );
         retryCount++;
 
@@ -147,7 +149,9 @@ export class FeishuService extends Service {
         }
       } catch (error) {
         logger.error(
-          `[Feishu] Error stopping WebSocket client: ${error instanceof Error ? error.message : String(error)}`,
+          `[Feishu] Error stopping WebSocket client: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
         );
       }
       this.wsClient = null;
@@ -194,7 +198,9 @@ export class FeishuService extends Service {
         }
 
         logger.info(
-          `[Feishu] Bot initialized: ${botInfo.data?.bot?.app_name || "Unknown"}`,
+          `[Feishu] Bot initialized: ${
+            botInfo.data?.bot?.app_name || "Unknown"
+          }`,
         );
       } else {
         logger.warn(
@@ -203,7 +209,9 @@ export class FeishuService extends Service {
       }
     } catch (error) {
       logger.error(
-        `[Feishu] Failed to get bot info: ${error instanceof Error ? error.message : String(error)}`,
+        `[Feishu] Failed to get bot info: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
       throw error;
     }
@@ -341,7 +349,9 @@ export class FeishuService extends Service {
       logger.info(`[Feishu] Bot added to chat: ${chat.name || chatId}`);
     } catch (error) {
       logger.error(
-        `[Feishu] Error handling bot added event: ${error instanceof Error ? error.message : String(error)}`,
+        `[Feishu] Error handling bot added event: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
   }
@@ -373,7 +383,9 @@ export class FeishuService extends Service {
       logger.info(`[Feishu] Bot removed from chat: ${chatId}`);
     } catch (error) {
       logger.error(
-        `[Feishu] Error handling bot removed event: ${error instanceof Error ? error.message : String(error)}`,
+        `[Feishu] Error handling bot removed event: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
   }
@@ -411,7 +423,9 @@ export class FeishuService extends Service {
       }
     } catch (error) {
       logger.error(
-        `[Feishu] Error handling user added event: ${error instanceof Error ? error.message : String(error)}`,
+        `[Feishu] Error handling user added event: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
   }
@@ -449,7 +463,9 @@ export class FeishuService extends Service {
       }
     } catch (error) {
       logger.error(
-        `[Feishu] Error handling user removed event: ${error instanceof Error ? error.message : String(error)}`,
+        `[Feishu] Error handling user removed event: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
   }
@@ -505,7 +521,9 @@ export class FeishuService extends Service {
 
     if (!chatId) {
       throw new Error(
-        `Could not determine target Feishu chat ID for target: ${JSON.stringify(target)}`,
+        `Could not determine target Feishu chat ID for target: ${JSON.stringify(
+          target,
+        )}`,
       );
     }
 

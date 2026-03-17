@@ -37,7 +37,7 @@ export function buildTemplateValues(session: FormSession): TemplateValues {
 
 export function renderTemplate(
   template: string | undefined,
-  values: TemplateValues,
+  values: TemplateValues
 ): string | undefined {
   if (!template) {
     return template;
@@ -49,19 +49,14 @@ export function renderTemplate(
   });
 }
 
-export function resolveControlTemplates(
-  control: FormControl,
-  values: TemplateValues,
-): FormControl {
+export function resolveControlTemplates(control: FormControl, values: TemplateValues): FormControl {
   const resolvedOptions = control.options?.map((option) => ({
     ...option,
     label: renderTemplate(option.label, values) ?? option.label,
     description: renderTemplate(option.description, values),
   }));
 
-  const resolvedFields = control.fields?.map((field) =>
-    resolveControlTemplates(field, values),
-  );
+  const resolvedFields = control.fields?.map((field) => resolveControlTemplates(field, values));
 
   return {
     ...control,
@@ -69,9 +64,7 @@ export function resolveControlTemplates(
     description: renderTemplate(control.description, values),
     askPrompt: renderTemplate(control.askPrompt, values),
     example: renderTemplate(control.example, values),
-    extractHints: control.extractHints?.map(
-      (hint) => renderTemplate(hint, values) ?? hint,
-    ),
+    extractHints: control.extractHints?.map((hint) => renderTemplate(hint, values) ?? hint),
     options: resolvedOptions,
     fields: resolvedFields ?? control.fields,
   };

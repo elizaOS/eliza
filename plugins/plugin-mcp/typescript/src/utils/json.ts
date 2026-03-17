@@ -29,7 +29,9 @@ interface AjvError {
 function formatAjvErrors(errors: readonly AjvError[]): string {
   return errors
     .map((err) => {
-      const path = err.instancePath ? `${err.instancePath.replace(/^\//, "")}` : "value";
+      const path = err.instancePath
+        ? `${err.instancePath.replace(/^\//, "")}`
+        : "value";
       return `${path}: ${err.message ?? "validation failed"}`;
     })
     .join(", ");
@@ -37,7 +39,7 @@ function formatAjvErrors(errors: readonly AjvError[]): string {
 
 export function validateJsonSchema<T>(
   data: unknown,
-  schema: Readonly<Record<string, unknown>>
+  schema: Readonly<Record<string, unknown>>,
 ): { success: true; data: T } | { success: false; error: string } {
   const validate = ajv.compile(schema);
   const valid = validate(data);
@@ -55,7 +57,10 @@ export function stringifyJSON(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function assertJsonObject(value: unknown, context: string): Record<string, unknown> {
+export function assertJsonObject(
+  value: unknown,
+  context: string,
+): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`${context}: Expected a JSON object, got ${typeof value}`);
   }

@@ -26,9 +26,12 @@ export interface ToolSelection {
 
 export function validateToolSelectionName(
   parsed: unknown,
-  state: State
+  state: State,
 ): ValidationResult<ToolSelectionName> {
-  const basicResult = validateJsonSchema<ToolSelectionName>(parsed, toolSelectionNameSchema);
+  const basicResult = validateJsonSchema<ToolSelectionName>(
+    parsed,
+    toolSelectionNameSchema,
+  );
   if (basicResult.success === false) {
     return { success: false, error: basicResult.error };
   }
@@ -57,18 +60,21 @@ export function validateToolSelectionName(
 
 export function validateToolSelectionArgument(
   parsed: unknown,
-  toolInputSchema: Readonly<Record<string, unknown>>
+  toolInputSchema: Readonly<Record<string, unknown>>,
 ): ValidationResult<ToolSelectionArgument> {
   const basicResult = validateJsonSchema<ToolSelectionArgument>(
     parsed,
-    toolSelectionArgumentSchema
+    toolSelectionArgumentSchema,
   );
   if (basicResult.success === false) {
     return { success: false, error: basicResult.error };
   }
 
   const data = basicResult.data;
-  const validationResult = validateJsonSchema(data.toolArguments, toolInputSchema);
+  const validationResult = validateJsonSchema(
+    data.toolArguments,
+    toolInputSchema,
+  );
 
   if (validationResult.success === false) {
     return {
@@ -80,8 +86,13 @@ export function validateToolSelectionArgument(
   return { success: true, data };
 }
 
-export function validateResourceSelection(selection: unknown): ValidationResult<ResourceSelection> {
-  return validateJsonSchema<ResourceSelection>(selection, ResourceSelectionSchema);
+export function validateResourceSelection(
+  selection: unknown,
+): ValidationResult<ResourceSelection> {
+  return validateJsonSchema<ResourceSelection>(
+    selection,
+    ResourceSelectionSchema,
+  );
 }
 
 interface ToolDescription {
@@ -92,10 +103,12 @@ export function createToolSelectionFeedbackPrompt(
   originalResponse: string,
   errorMessage: string,
   composedState: State,
-  userMessage: string
+  userMessage: string,
 ): string {
   let toolsDescription = "";
-  const mcpData = composedState.values.mcp as Record<string, McpProviderData[string]> | undefined;
+  const mcpData = composedState.values.mcp as
+    | Record<string, McpProviderData[string]>
+    | undefined;
 
   if (mcpData) {
     for (const [serverName, server] of Object.entries(mcpData)) {
@@ -105,7 +118,9 @@ export function createToolSelectionFeedbackPrompt(
       if (tools) {
         for (const [toolName, tool] of Object.entries(tools)) {
           toolsDescription += `Tool: ${toolName} (Server: ${serverName})\n`;
-          toolsDescription += `Description: ${tool.description ?? "No description available"}\n\n`;
+          toolsDescription += `Description: ${
+            tool.description ?? "No description available"
+          }\n\n`;
         }
       }
     }
@@ -116,7 +131,7 @@ export function createToolSelectionFeedbackPrompt(
     errorMessage,
     "tool",
     toolsDescription,
-    userMessage
+    userMessage,
   );
 }
 
@@ -129,20 +144,26 @@ export function createResourceSelectionFeedbackPrompt(
   originalResponse: string,
   errorMessage: string,
   composedState: State,
-  userMessage: string
+  userMessage: string,
 ): string {
   let resourcesDescription = "";
-  const mcpData = composedState.values.mcp as Record<string, McpProviderData[string]> | undefined;
+  const mcpData = composedState.values.mcp as
+    | Record<string, McpProviderData[string]>
+    | undefined;
 
   if (mcpData) {
     for (const [serverName, server] of Object.entries(mcpData)) {
       if (server.status !== "connected") continue;
 
-      const resources = server.resources as Record<string, ResourceDescription> | undefined;
+      const resources = server.resources as
+        | Record<string, ResourceDescription>
+        | undefined;
       if (resources) {
         for (const [uri, resource] of Object.entries(resources)) {
           resourcesDescription += `Resource: ${uri} (Server: ${serverName})\n`;
-          resourcesDescription += `Name: ${resource.name ?? "No name available"}\n`;
+          resourcesDescription += `Name: ${
+            resource.name ?? "No name available"
+          }\n`;
           resourcesDescription += `Description: ${
             resource.description ?? "No description available"
           }\n\n`;
@@ -156,7 +177,7 @@ export function createResourceSelectionFeedbackPrompt(
     errorMessage,
     "resource",
     resourcesDescription,
-    userMessage
+    userMessage,
   );
 }
 
@@ -165,7 +186,7 @@ function createFeedbackPrompt(
   errorMessage: string,
   itemType: string,
   itemsDescription: string,
-  userMessage: string
+  userMessage: string,
 ): string {
   return `Error parsing JSON: ${errorMessage}
 

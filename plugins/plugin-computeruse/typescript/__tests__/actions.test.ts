@@ -1,11 +1,11 @@
-import { describe, expect, test, vi, beforeEach } from "vitest";
-import { computeruseClickAction } from "../src/actions/click";
-import { computeruseTypeAction } from "../src/actions/type";
-import { computeruseOpenApplicationAction } from "../src/actions/open-application";
-import { computeruseGetApplicationsAction } from "../src/actions/get-applications";
-import { computeruseGetWindowTreeAction } from "../src/actions/get-window-tree";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { ChannelType, stringToUuid } from "@elizaos/core";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { computeruseClickAction } from "../src/actions/click";
+import { computeruseGetApplicationsAction } from "../src/actions/get-applications";
+import { computeruseGetWindowTreeAction } from "../src/actions/get-window-tree";
+import { computeruseOpenApplicationAction } from "../src/actions/open-application";
+import { computeruseTypeAction } from "../src/actions/type";
 
 // ---------------------------------------------------------------------------
 // Mock helpers
@@ -101,7 +101,9 @@ describe("ComputerUse action handlers (unit)", () => {
       const noServiceRuntime = createMockRuntime(null);
       const msg = createMessage("click save");
       const result = await computeruseClickAction.handler(
-        noServiceRuntime, msg, undefined,
+        noServiceRuntime,
+        msg,
+        undefined,
         { parameters: { selector: "role:Button|name:Save" } },
         undefined
       );
@@ -112,7 +114,9 @@ describe("ComputerUse action handlers (unit)", () => {
     test("returns failure when selector is missing", async () => {
       const msg = createMessage("click something");
       const result = await computeruseClickAction.handler(
-        runtime, msg, undefined,
+        runtime,
+        msg,
+        undefined,
         { parameters: {} },
         undefined
       );
@@ -124,20 +128,29 @@ describe("ComputerUse action handlers (unit)", () => {
       const msg = createMessage("click save");
       const callback = vi.fn();
       const result = await computeruseClickAction.handler(
-        runtime, msg, undefined,
+        runtime,
+        msg,
+        undefined,
         { parameters: { process: "notepad", selector: "role:Button|name:Save", timeoutMs: 3000 } },
         callback
       );
       expect(result?.success).toBe(true);
       expect(service.click).toHaveBeenCalledWith("role:Button|name:Save", 3000, "notepad");
       expect(callback).toHaveBeenCalled();
-      expect(result?.data).toMatchObject({ process: "notepad", selector: "role:Button|name:Save", timeoutMs: 3000, backend: "mcp" });
+      expect(result?.data).toMatchObject({
+        process: "notepad",
+        selector: "role:Button|name:Save",
+        timeoutMs: 3000,
+        backend: "mcp",
+      });
     });
 
     test("uses default timeout of 5000ms", async () => {
       const msg = createMessage("click something");
       await computeruseClickAction.handler(
-        runtime, msg, undefined,
+        runtime,
+        msg,
+        undefined,
         { parameters: { selector: "role:Button", process: "chrome" } },
         undefined
       );
@@ -148,7 +161,9 @@ describe("ComputerUse action handlers (unit)", () => {
       service.click.mockRejectedValueOnce(new Error("Element not found"));
       const msg = createMessage("click missing");
       const result = await computeruseClickAction.handler(
-        runtime, msg, undefined,
+        runtime,
+        msg,
+        undefined,
         { parameters: { selector: "role:Missing", process: "app" } },
         undefined
       );
@@ -163,7 +178,9 @@ describe("ComputerUse action handlers (unit)", () => {
     test("returns failure when text is missing", async () => {
       const msg = createMessage("type into search");
       const result = await computeruseTypeAction.handler(
-        runtime, msg, undefined,
+        runtime,
+        msg,
+        undefined,
         { parameters: { selector: "role:Edit" } },
         undefined
       );
@@ -174,7 +191,9 @@ describe("ComputerUse action handlers (unit)", () => {
     test("extracts all parameters and calls service.typeText", async () => {
       const msg = createMessage("type hello");
       const result = await computeruseTypeAction.handler(
-        runtime, msg, undefined,
+        runtime,
+        msg,
+        undefined,
         {
           parameters: {
             process: "notepad",
@@ -188,20 +207,24 @@ describe("ComputerUse action handlers (unit)", () => {
       );
       expect(result?.success).toBe(true);
       expect(service.typeText).toHaveBeenCalledWith(
-        "role:Edit|name:Search", "hello world", 2000, false, "notepad"
+        "role:Edit|name:Search",
+        "hello world",
+        2000,
+        false,
+        "notepad"
       );
     });
 
     test("defaults clearBeforeTyping to true", async () => {
       const msg = createMessage("type something");
       await computeruseTypeAction.handler(
-        runtime, msg, undefined,
+        runtime,
+        msg,
+        undefined,
         { parameters: { selector: "role:Edit", text: "test", process: "chrome" } },
         undefined
       );
-      expect(service.typeText).toHaveBeenCalledWith(
-        "role:Edit", "test", 5000, true, "chrome"
-      );
+      expect(service.typeText).toHaveBeenCalledWith("role:Edit", "test", 5000, true, "chrome");
     });
   });
 
@@ -211,7 +234,9 @@ describe("ComputerUse action handlers (unit)", () => {
     test("returns failure when name is missing", async () => {
       const msg = createMessage("open something");
       const result = await computeruseOpenApplicationAction.handler(
-        runtime, msg, undefined,
+        runtime,
+        msg,
+        undefined,
         { parameters: {} },
         undefined
       );
@@ -222,7 +247,9 @@ describe("ComputerUse action handlers (unit)", () => {
     test("calls service.openApplication with correct name", async () => {
       const msg = createMessage("open calc");
       const result = await computeruseOpenApplicationAction.handler(
-        runtime, msg, undefined,
+        runtime,
+        msg,
+        undefined,
         { parameters: { name: "calculator" } },
         undefined
       );
@@ -238,7 +265,11 @@ describe("ComputerUse action handlers (unit)", () => {
     test("returns application list on success", async () => {
       const msg = createMessage("list apps");
       const result = await computeruseGetApplicationsAction.handler(
-        runtime, msg, undefined, undefined, undefined
+        runtime,
+        msg,
+        undefined,
+        undefined,
+        undefined
       );
       expect(result?.success).toBe(true);
       expect(result?.text).toContain("chrome");
@@ -249,7 +280,11 @@ describe("ComputerUse action handlers (unit)", () => {
       service.getApplications.mockRejectedValueOnce(new Error("MCP timeout"));
       const msg = createMessage("list apps");
       const result = await computeruseGetApplicationsAction.handler(
-        runtime, msg, undefined, undefined, undefined
+        runtime,
+        msg,
+        undefined,
+        undefined,
+        undefined
       );
       expect(result?.success).toBe(false);
       expect(result?.text).toContain("MCP timeout");
@@ -262,7 +297,9 @@ describe("ComputerUse action handlers (unit)", () => {
     test("returns failure when process is missing", async () => {
       const msg = createMessage("dump tree");
       const result = await computeruseGetWindowTreeAction.handler(
-        runtime, msg, undefined,
+        runtime,
+        msg,
+        undefined,
         { parameters: {} },
         undefined
       );
@@ -273,7 +310,9 @@ describe("ComputerUse action handlers (unit)", () => {
     test("passes optional title and maxDepth to service", async () => {
       const msg = createMessage("get ui tree");
       const result = await computeruseGetWindowTreeAction.handler(
-        runtime, msg, undefined,
+        runtime,
+        msg,
+        undefined,
         { parameters: { process: "notepad", title: "Untitled", maxDepth: 4 } },
         undefined
       );
@@ -286,7 +325,9 @@ describe("ComputerUse action handlers (unit)", () => {
       service.getWindowTree.mockRejectedValueOnce(new Error("Process not found"));
       const msg = createMessage("get window tree");
       const result = await computeruseGetWindowTreeAction.handler(
-        runtime, msg, undefined,
+        runtime,
+        msg,
+        undefined,
         { parameters: { process: "unknown" } },
         undefined
       );

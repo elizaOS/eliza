@@ -1,11 +1,11 @@
 import {
   ChannelType,
-  createUniqueUuid,
   EventType,
   type IAgentRuntime,
-  logger,
   type Memory,
   type UUID,
+  createUniqueUuid,
+  logger,
 } from "@elizaos/core";
 import type * as lark from "@larksuiteoapi/node-sdk";
 import { MAX_MESSAGE_LENGTH } from "./constants";
@@ -155,7 +155,9 @@ export class MessageManager {
       this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, payload);
     } catch (error) {
       logger.error(
-        `[Feishu] Error handling message: ${error instanceof Error ? error.message : String(error)}`,
+        `[Feishu] Error handling message: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
   }
@@ -224,7 +226,9 @@ export class MessageManager {
       return messageIds;
     } catch (error) {
       logger.error(
-        `[Feishu] Error sending message: ${error instanceof Error ? error.message : String(error)}`,
+        `[Feishu] Error sending message: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
       throw error;
     }
@@ -259,7 +263,9 @@ export class MessageManager {
       return messageIds;
     } catch (error) {
       logger.error(
-        `[Feishu] Error replying to message: ${error instanceof Error ? error.message : String(error)}`,
+        `[Feishu] Error replying to message: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
       throw error;
     }

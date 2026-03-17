@@ -27,23 +27,14 @@ export class N8nCredentialStore extends Service implements N8nCredentialStoreApi
   }
 
   static async start(runtime: IAgentRuntime): Promise<N8nCredentialStore> {
-    logger.info(
-      { src: "plugin:n8n:service:credential-store" },
-      "Starting N8n Credential Store..."
-    );
+    logger.info({ src: "plugin:n8n:service:credential-store" }, "Starting N8n Credential Store...");
     const service = new N8nCredentialStore(runtime);
-    logger.info(
-      { src: "plugin:n8n:service:credential-store" },
-      "N8n Credential Store started"
-    );
+    logger.info({ src: "plugin:n8n:service:credential-store" }, "N8n Credential Store started");
     return service;
   }
 
   override async stop(): Promise<void> {
-    logger.info(
-      { src: "plugin:n8n:service:credential-store" },
-      "N8n Credential Store stopped"
-    );
+    logger.info({ src: "plugin:n8n:service:credential-store" }, "N8n Credential Store stopped");
   }
 
   async get(userId: string, credType: string): Promise<string | null> {

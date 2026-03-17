@@ -72,17 +72,13 @@ import { FORM_DEFINITION_DEFAULTS } from "./types";
  * @param form - Form definition with TTL configuration
  * @returns Expiration timestamp (milliseconds since epoch)
  */
-export function calculateTTL(
-  session: FormSession,
-  form?: FormDefinition,
-): number {
+export function calculateTTL(session: FormSession, form?: FormDefinition): number {
   const config = form?.ttl || {};
 
   // Get configuration with defaults
   const minDays = config.minDays ?? FORM_DEFINITION_DEFAULTS.ttl.minDays;
   const maxDays = config.maxDays ?? FORM_DEFINITION_DEFAULTS.ttl.maxDays;
-  const multiplier =
-    config.effortMultiplier ?? FORM_DEFINITION_DEFAULTS.ttl.effortMultiplier;
+  const multiplier = config.effortMultiplier ?? FORM_DEFINITION_DEFAULTS.ttl.effortMultiplier;
 
   // Calculate effort in minutes
   const minutesSpent = session.effort.timeSpentMs / 60000;
@@ -115,10 +111,7 @@ export function calculateTTL(
  * @param form - Form definition with nudge configuration
  * @returns true if a nudge should be sent
  */
-export function shouldNudge(
-  session: FormSession,
-  form?: FormDefinition,
-): boolean {
+export function shouldNudge(session: FormSession, form?: FormDefinition): boolean {
   const nudgeConfig = form?.nudge;
 
   // Nudging disabled
@@ -128,8 +121,7 @@ export function shouldNudge(
 
   // Already at max nudges
   // WHY limit: Don't annoy users with endless reminders
-  const maxNudges =
-    nudgeConfig?.maxNudges ?? FORM_DEFINITION_DEFAULTS.nudge.maxNudges;
+  const maxNudges = nudgeConfig?.maxNudges ?? FORM_DEFINITION_DEFAULTS.nudge.maxNudges;
   if ((session.nudgeCount || 0) >= maxNudges) {
     return false;
   }
@@ -137,8 +129,7 @@ export function shouldNudge(
   // Check if enough time has passed since last interaction
   // WHY time check: Don't nudge active users
   const afterInactiveHours =
-    nudgeConfig?.afterInactiveHours ??
-    FORM_DEFINITION_DEFAULTS.nudge.afterInactiveHours;
+    nudgeConfig?.afterInactiveHours ?? FORM_DEFINITION_DEFAULTS.nudge.afterInactiveHours;
   const inactiveMs = afterInactiveHours * 60 * 60 * 1000;
 
   const timeSinceInteraction = Date.now() - session.effort.lastInteractionAt;
@@ -167,10 +158,7 @@ export function shouldNudge(
  * @param withinMs - Time window in milliseconds
  * @returns true if session expires within the window
  */
-export function isExpiringSoon(
-  session: FormSession,
-  withinMs: number,
-): boolean {
+export function isExpiringSoon(session: FormSession, withinMs: number): boolean {
   return session.expiresAt - Date.now() < withinMs;
 }
 

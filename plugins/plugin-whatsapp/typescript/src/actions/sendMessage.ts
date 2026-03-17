@@ -37,12 +37,7 @@ interface SendMessageParams {
 
 export const sendMessageAction: Action = {
   name: WHATSAPP_SEND_MESSAGE_ACTION,
-  similes: [
-    "SEND_WHATSAPP",
-    "WHATSAPP_MESSAGE",
-    "TEXT_WHATSAPP",
-    "SEND_WHATSAPP_MESSAGE",
-  ],
+  similes: ["SEND_WHATSAPP", "WHATSAPP_MESSAGE", "TEXT_WHATSAPP", "SEND_WHATSAPP_MESSAGE"],
   description: "Send a text message via WhatsApp",
 
   validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
@@ -90,7 +85,7 @@ export const sendMessageAction: Action = {
         // Try to use context from message
         const to = message.content?.from as string;
         const text = currentState.values?.response?.toString() || "";
-        
+
         if (!to) {
           if (callback) {
             await callback({
@@ -99,7 +94,7 @@ export const sendMessageAction: Action = {
           }
           return { success: false, error: "Missing recipient" };
         }
-        
+
         // Validate text is not empty
         if (!text || text.trim() === "") {
           if (callback) {
@@ -109,7 +104,7 @@ export const sendMessageAction: Action = {
           }
           return { success: false, error: "Empty message text" };
         }
-        
+
         params = { to, text };
       } else {
         // Also validate that parsed text is not empty
@@ -135,11 +130,11 @@ export const sendMessageAction: Action = {
     // Send the message via WhatsApp Cloud API
     try {
       const url = `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`;
-      
+
       const response = await fetch(url, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -159,7 +154,7 @@ export const sendMessageAction: Action = {
         throw new Error(errorData.error?.message || `HTTP ${response.status}`);
       }
 
-      const data = await response.json() as { messages: Array<{ id: string }> };
+      const data = (await response.json()) as { messages: Array<{ id: string }> };
       const messageId = data.messages?.[0]?.id;
 
       if (callback) {

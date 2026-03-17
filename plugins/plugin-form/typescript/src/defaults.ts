@@ -69,9 +69,7 @@ import { FORM_CONTROL_DEFAULTS, FORM_DEFINITION_DEFAULTS } from "./types";
  * @param control - Partial control to complete
  * @returns Complete FormControl with all defaults applied
  */
-export function applyControlDefaults(
-  control: Partial<FormControl>,
-): FormControl {
+export function applyControlDefaults(control: Partial<FormControl>): FormControl {
   return {
     // Required field (must be present)
     key: control.key!,
@@ -85,8 +83,7 @@ export function applyControlDefaults(
     required: control.required ?? FORM_CONTROL_DEFAULTS.required,
     // Default confidence threshold for auto-acceptance
     // WHY 0.8: High enough to be confident, low enough to be useful
-    confirmThreshold:
-      control.confirmThreshold ?? FORM_CONTROL_DEFAULTS.confirmThreshold,
+    confirmThreshold: control.confirmThreshold ?? FORM_CONTROL_DEFAULTS.confirmThreshold,
     // Spread remaining properties (override defaults)
     ...control,
   };
@@ -101,9 +98,7 @@ export function applyControlDefaults(
  * @param form - Partial form to complete
  * @returns Complete FormDefinition with all defaults applied
  */
-export function applyFormDefaults(
-  form: Partial<FormDefinition>,
-): FormDefinition {
+export function applyFormDefaults(form: Partial<FormDefinition>): FormDefinition {
   return {
     // Required fields
     id: form.id!,
@@ -121,15 +116,10 @@ export function applyFormDefaults(
     ux: {
       allowUndo: form.ux?.allowUndo ?? FORM_DEFINITION_DEFAULTS.ux.allowUndo,
       allowSkip: form.ux?.allowSkip ?? FORM_DEFINITION_DEFAULTS.ux.allowSkip,
-      maxUndoSteps:
-        form.ux?.maxUndoSteps ?? FORM_DEFINITION_DEFAULTS.ux.maxUndoSteps,
-      showExamples:
-        form.ux?.showExamples ?? FORM_DEFINITION_DEFAULTS.ux.showExamples,
-      showExplanations:
-        form.ux?.showExplanations ??
-        FORM_DEFINITION_DEFAULTS.ux.showExplanations,
-      allowAutofill:
-        form.ux?.allowAutofill ?? FORM_DEFINITION_DEFAULTS.ux.allowAutofill,
+      maxUndoSteps: form.ux?.maxUndoSteps ?? FORM_DEFINITION_DEFAULTS.ux.maxUndoSteps,
+      showExamples: form.ux?.showExamples ?? FORM_DEFINITION_DEFAULTS.ux.showExamples,
+      showExplanations: form.ux?.showExplanations ?? FORM_DEFINITION_DEFAULTS.ux.showExplanations,
+      allowAutofill: form.ux?.allowAutofill ?? FORM_DEFINITION_DEFAULTS.ux.allowAutofill,
     },
 
     // TTL defaults - generous retention
@@ -137,19 +127,15 @@ export function applyFormDefaults(
     ttl: {
       minDays: form.ttl?.minDays ?? FORM_DEFINITION_DEFAULTS.ttl.minDays,
       maxDays: form.ttl?.maxDays ?? FORM_DEFINITION_DEFAULTS.ttl.maxDays,
-      effortMultiplier:
-        form.ttl?.effortMultiplier ??
-        FORM_DEFINITION_DEFAULTS.ttl.effortMultiplier,
+      effortMultiplier: form.ttl?.effortMultiplier ?? FORM_DEFINITION_DEFAULTS.ttl.effortMultiplier,
     },
 
     // Nudge defaults - helpful but not annoying
     nudge: {
       enabled: form.nudge?.enabled ?? FORM_DEFINITION_DEFAULTS.nudge.enabled,
       afterInactiveHours:
-        form.nudge?.afterInactiveHours ??
-        FORM_DEFINITION_DEFAULTS.nudge.afterInactiveHours,
-      maxNudges:
-        form.nudge?.maxNudges ?? FORM_DEFINITION_DEFAULTS.nudge.maxNudges,
+        form.nudge?.afterInactiveHours ?? FORM_DEFINITION_DEFAULTS.nudge.afterInactiveHours,
+      maxNudges: form.nudge?.maxNudges ?? FORM_DEFINITION_DEFAULTS.nudge.maxNudges,
       message: form.nudge?.message,
     },
 

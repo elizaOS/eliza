@@ -61,7 +61,7 @@
     "test:ts": "vitest run --passWithNoTests typescript/__tests__/",
     "test:unit": "vitest run --passWithNoTests typescript/__tests__/",
     "test:integration": "elizaos test || echo 'Integration tests skipped - elizaos CLI not available'",
-    "lint": "bunx @biomejs/biome check --apply typescript/",
+    "lint": "bunx @biomejs/biome check --write typescript/",
     "lint:check": "bunx @biomejs/biome check typescript/",
     "clean": "rm -rf typescript/dist .turbo typescript/node_modules .turbo-tsconfig.json typescript/tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write typescript/",

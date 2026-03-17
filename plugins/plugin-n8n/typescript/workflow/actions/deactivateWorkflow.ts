@@ -36,7 +36,10 @@ export const deactivateWorkflowAction: Action = {
       { name: "{{user1}}", content: { text: "Pause my Stripe workflow" } },
       {
         name: "{{agent}}",
-        content: { text: "I'll deactivate that workflow for you.", actions: ["DEACTIVATE_N8N_WORKFLOW"] },
+        content: {
+          text: "I'll deactivate that workflow for you.",
+          actions: ["DEACTIVATE_N8N_WORKFLOW"],
+        },
       },
     ],
     [

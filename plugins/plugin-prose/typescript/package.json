@@ -30,7 +30,7 @@
   "scripts": {
     "build": "bun run build.ts",
     "check": "tsc --noEmit",
-    "lint": "biome check --apply .",
+    "lint": "biome check --write .",
     "lint:fix": "biome check . --write",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"

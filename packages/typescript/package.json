@@ -56,9 +56,9 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "npx playwright test",
     "test:watch": "vitest",
-    "lint": "bunx @biomejs/biome check --apply ./src",
+    "lint": "bunx @biomejs/biome check --write ./src",
     "lint:check": "bunx @biomejs/biome check ./src",
-    "lint:fix": "bunx @biomejs/biome check --apply ./src",
+    "lint:fix": "bunx @biomejs/biome check --write ./src",
     "typecheck": "tsc --noEmit -p ./tsconfig.json",
     "format": "bunx @biomejs/biome format --write ./src",
     "format:check": "bunx @biomejs/biome format ./src"

@@ -5,16 +5,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../generated/specs/spec-helpers", () => ({
   requireActionSpec: vi.fn((name: string) => ({
     name: `${name}_SOLANA`,
-    description:
-      "Transfer SOL or SPL tokens to another Solana wallet address.",
+    description: "Transfer SOL or SPL tokens to another Solana wallet address.",
     similes: ["SEND_SOL", "PAY_SOLANA", "TRANSFER_TOKENS_SOLANA"],
     examples: [],
   })),
 }));
 
 vi.mock("../../generated/prompts/typescript/prompts.js", () => ({
-  transferTemplate:
-    "mock transfer template {{recentMessages}}",
+  transferTemplate: "mock transfer template {{recentMessages}}",
 }));
 
 vi.mock("@elizaos/core", () => ({
@@ -43,16 +41,14 @@ vi.mock("@solana/spl-token", () => ({
 
 // ── Imports (use mocked modules) ────────────────────────────────────────────
 
-import { parseJSONObjectFromText } from "@elizaos/core";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import { getWalletKey } from "../../keypairUtils";
+import { parseJSONObjectFromText } from "@elizaos/core";
 import transferAction from "../../actions/transfer";
+import { getWalletKey } from "../../keypairUtils";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function createMockRuntime(opts: {
-  settings?: Record<string, string>;
-} = {}): IAgentRuntime {
+function createMockRuntime(opts: { settings?: Record<string, string> } = {}): IAgentRuntime {
   const { settings = {} } = opts;
 
   return {

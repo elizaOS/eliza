@@ -1,12 +1,12 @@
 import {
   type Action,
   type ActionResult,
-  composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   ModelType,
   type State,
+  composePromptFromState,
 } from "@elizaos/core";
 import type { McpService } from "../service";
 import { resourceSelectionTemplate } from "../templates/resourceSelectionTemplate";
@@ -24,8 +24,14 @@ import {
 } from "../utils/validation";
 import { withModelRetry } from "../utils/wrapper";
 
-function createResourceSelectionPrompt(composedState: State, userMessage: string): string {
-  const mcpData = (composedState.values.mcp ?? {}) as Record<string, McpServerInfo>;
+function createResourceSelectionPrompt(
+  composedState: State,
+  userMessage: string,
+): string {
+  const mcpData = (composedState.values.mcp ?? {}) as Record<
+    string,
+    McpServerInfo
+  >;
   const serverNames = Object.keys(mcpData);
 
   let resourcesDescription = "";
@@ -41,7 +47,9 @@ function createResourceSelectionPrompt(composedState: State, userMessage: string
       resourcesDescription += `Description: ${
         resource.description ?? "No description available"
       }\n`;
-      resourcesDescription += `MIME Type: ${resource.mimeType ?? "Not specified"}\n\n`;
+      resourcesDescription += `MIME Type: ${
+        resource.mimeType ?? "Not specified"
+      }\n\n`;
     }
   }
 
@@ -74,7 +82,11 @@ export const readResourceAction: Action = {
   ],
   description: "Reads a resource from an MCP server",
 
-  validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    _message: Memory,
+    _state?: State,
+  ): Promise<boolean> => {
     const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME);
     if (!mcpService) return false;
 
@@ -83,7 +95,9 @@ export const readResourceAction: Action = {
       servers.length > 0 &&
       servers.some(
         (server: McpServer) =>
-          server.status === "connected" && server.resources && server.resources.length > 0
+          server.status === "connected" &&
+          server.resources &&
+          server.resources.length > 0,
       )
     );
   },
@@ -93,9 +107,12 @@ export const readResourceAction: Action = {
     message: Memory,
     _state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const composedState = await runtime.composeState(message, ["RECENT_MESSAGES", "MCP"]);
+    const composedState = await runtime.composeState(message, [
+      "RECENT_MESSAGES",
+      "MCP",
+    ]);
 
     const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME);
     if (!mcpService) {
@@ -109,7 +126,7 @@ export const readResourceAction: Action = {
 
       const resourceSelectionPrompt = createResourceSelectionPrompt(
         composedState,
-        message.content.text ?? ""
+        message.content.text ?? "",
       );
 
       const resourceSelection = (await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -123,14 +140,19 @@ export const readResourceAction: Action = {
         callback,
         input: resourceSelection,
         validationFn: (data) => validateResourceSelection(data),
-        createFeedbackPromptFn: (originalResponse, errorMessage, state, userMessage) =>
+        createFeedbackPromptFn: (
+          originalResponse,
+          errorMessage,
+          state,
+          userMessage,
+        ) =>
           createResourceSelectionFeedbackPrompt(
             typeof originalResponse === "string"
               ? originalResponse
               : JSON.stringify(originalResponse),
             errorMessage,
             state,
-            userMessage
+            userMessage,
           ),
         failureMsg: `I'm having trouble finding the resource you're looking for. Could you provide more details about what you need?`,
         retryCount: 0,
@@ -156,7 +178,8 @@ export const readResourceAction: Action = {
           data: {
             actionName: "READ_MCP_RESOURCE",
             noResourceAvailable: true,
-            reason: parsedSelection?.reasoning ?? "No appropriate resource available",
+            reason:
+              parsedSelection?.reasoning ?? "No appropriate resource available",
           },
           success: true,
         };
@@ -166,7 +189,10 @@ export const readResourceAction: Action = {
 
       const result = await mcpService.readResource(serverName, uri);
 
-      const { resourceContent, resourceMeta } = processResourceResult(result, uri);
+      const { resourceContent, resourceMeta } = processResourceResult(
+        result,
+        uri,
+      );
 
       await handleResourceAnalysis(
         runtime,
@@ -175,7 +201,7 @@ export const readResourceAction: Action = {
         serverName,
         resourceContent,
         resourceMeta,
-        callback
+        callback,
       );
 
       return {
@@ -204,7 +230,7 @@ export const readResourceAction: Action = {
         runtime,
         message,
         "resource",
-        callback
+        callback,
       );
     }
   },

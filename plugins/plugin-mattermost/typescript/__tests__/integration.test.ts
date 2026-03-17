@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import mattermostPlugin, {
   CHAT_STATE_PROVIDER,
+  chatStateProvider,
   MATTERMOST_SERVICE_NAME,
   MattermostService,
   SEND_MESSAGE_ACTION,
-  chatStateProvider,
   sendMessageAction,
 } from "../src/index";
 

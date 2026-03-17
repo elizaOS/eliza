@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
 import type { IAgentRuntime, TestSuite } from "@elizaos/core";
 import { createMessageMemory, logger, type UUID } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 
 export const ScratchpadPluginE2ETestSuite: TestSuite = {
   name: "Scratchpad Plugin E2E Tests",

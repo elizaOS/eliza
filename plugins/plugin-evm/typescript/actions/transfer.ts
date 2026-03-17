@@ -39,15 +39,13 @@ export class TransferAction {
     }
 
     const chainConfig = this.walletProvider.getChainConfigs(params.fromChain);
-    const hash = await walletClient.sendTransaction(
-      {
-        account,
-        to: params.toAddress,
-        value: parseEther(params.amount),
-        data,
-        chain: chainConfig,
-      } as unknown as Parameters<typeof walletClient.sendTransaction>[0]
-    );
+    const hash = await walletClient.sendTransaction({
+      account,
+      to: params.toAddress,
+      value: parseEther(params.amount),
+      data,
+      chain: chainConfig,
+    } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
 
     return {
       hash,

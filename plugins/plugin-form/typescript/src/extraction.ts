@@ -46,17 +46,16 @@
 
 import type { IAgentRuntime, JsonValue } from "@elizaos/core";
 import { ModelType, parseKeyValueXml } from "@elizaos/core";
-import type {
-  FormControl,
-  FormDefinition,
-  ExtractionResult,
-  IntentResult,
-  FormIntent,
-} from "./types";
-import { validateField, parseValue } from "./validation";
-import { getTypeHandler } from "./validation";
 import type { TemplateValues } from "./template";
 import { resolveControlTemplates } from "./template";
+import type {
+  ExtractionResult,
+  FormControl,
+  FormDefinition,
+  FormIntent,
+  IntentResult,
+} from "./types";
+import { getTypeHandler, parseValue, validateField } from "./validation";
 
 type ExtractionXmlField = {
   key?: string;
@@ -68,9 +67,7 @@ type ExtractionXmlField = {
 
 type ExtractionXmlResponse = {
   intent?: string;
-  extractions?:
-    | { field?: ExtractionXmlField | ExtractionXmlField[] }
-    | ExtractionXmlField[];
+  extractions?: { field?: ExtractionXmlField | ExtractionXmlField[] } | ExtractionXmlField[];
 };
 
 type SingleFieldXmlResponse = {
@@ -89,9 +86,7 @@ type CorrectionXmlField = {
 
 type CorrectionXmlResponse = {
   has_correction?: string | boolean;
-  corrections?:
-    | { correction?: CorrectionXmlField | CorrectionXmlField[] }
-    | CorrectionXmlField[];
+  corrections?: { correction?: CorrectionXmlField | CorrectionXmlField[] } | CorrectionXmlField[];
 };
 
 // ============================================================================
@@ -120,12 +115,10 @@ export async function llmIntentAndExtract(
   text: string,
   form: FormDefinition,
   controls: FormControl[],
-  templateValues?: TemplateValues,
+  templateValues?: TemplateValues
 ): Promise<IntentResult> {
   const resolvedControls = templateValues
-    ? controls.map((control) =>
-        resolveControlTemplates(control, templateValues),
-      )
+    ? controls.map((control) => resolveControlTemplates(control, templateValues))
     : controls;
 
   // Build the extraction prompt
@@ -225,18 +218,12 @@ Respond in this exact XML format:
 
     // Log if debug mode
     if (form.debug) {
-      runtime.logger.debug(
-        "[FormExtraction] LLM extraction result:",
-        JSON.stringify(parsed),
-      );
+      runtime.logger.debug("[FormExtraction] LLM extraction result:", JSON.stringify(parsed));
     }
 
     return parsed;
   } catch (error) {
-    runtime.logger.error(
-      "[FormExtraction] LLM extraction failed:",
-      String(error),
-    );
+    runtime.logger.error("[FormExtraction] LLM extraction failed:", String(error));
     return { intent: "other", extractions: [] };
   }
 }
@@ -285,8 +272,7 @@ function parseExtractionResponse(response: string): IntentResult {
               value: field.value ?? null,
               confidence: parseFloat(String(field.confidence ?? "")) || 0.5,
               reasoning: field.reasoning ? String(field.reasoning) : undefined,
-              isCorrection:
-                field.is_correction === "true" || field.is_correction === true,
+              isCorrection: field.is_correction === "true" || field.is_correction === true,
             };
             result.extractions.push(extraction);
           }
@@ -304,7 +290,7 @@ function parseExtractionResponse(response: string): IntentResult {
 
     // Extract fields with regex as fallback
     const fieldMatches = response.matchAll(
-      /<field>\s*<key>([^<]+)<\/key>\s*<value>([^<]*)<\/value>\s*<confidence>([^<]+)<\/confidence>/g,
+      /<field>\s*<key>([^<]+)<\/key>\s*<value>([^<]*)<\/value>\s*<confidence>([^<]+)<\/confidence>/g
     );
     for (const match of fieldMatches) {
       result.extractions.push({
@@ -370,7 +356,7 @@ export async function extractSingleField(
   text: string,
   control: FormControl,
   debug?: boolean,
-  templateValues?: TemplateValues,
+  templateValues?: TemplateValues
 ): Promise<ExtractionResult | null> {
   const resolvedControl = templateValues
     ? resolveControlTemplates(control, templateValues)
@@ -425,10 +411,7 @@ Respond in XML:
       };
 
       if (debug) {
-        runtime.logger.debug(
-          "[FormExtraction] Single field extraction:",
-          JSON.stringify(result),
-        );
+        runtime.logger.debug("[FormExtraction] Single field extraction:", JSON.stringify(result));
       }
 
       return result;
@@ -436,10 +419,7 @@ Respond in XML:
 
     return null;
   } catch (error) {
-    runtime.logger.error(
-      "[FormExtraction] Single field extraction failed:",
-      String(error),
-    );
+    runtime.logger.error("[FormExtraction] Single field extraction failed:", String(error));
     return null;
   }
 }
@@ -472,12 +452,10 @@ export async function detectCorrection(
   text: string,
   currentValues: Record<string, JsonValue>,
   controls: FormControl[],
-  templateValues?: TemplateValues,
+  templateValues?: TemplateValues
 ): Promise<ExtractionResult[]> {
   const resolvedControls = templateValues
-    ? controls.map((control) =>
-        resolveControlTemplates(control, templateValues),
-      )
+    ? controls.map((control) => resolveControlTemplates(control, templateValues))
     : controls;
 
   // Build context of current values
@@ -521,8 +499,7 @@ Respond in XML:
     });
 
     const parsed = parseKeyValueXml<CorrectionXmlResponse>(response);
-    const hasCorrection =
-      parsed?.has_correction === true || parsed?.has_correction === "true";
+    const hasCorrection = parsed?.has_correction === true || parsed?.has_correction === "true";
 
     if (parsed && hasCorrection && parsed.corrections) {
       const corrections: ExtractionResult[] = [];
@@ -543,7 +520,7 @@ Respond in XML:
         const control = resolvedControls.find(
           (c) =>
             c.label.toLowerCase() === fieldName.toLowerCase() ||
-            c.key.toLowerCase() === fieldName.toLowerCase(),
+            c.key.toLowerCase() === fieldName.toLowerCase()
         );
 
         if (control) {
@@ -571,10 +548,7 @@ Respond in XML:
 
     return [];
   } catch (error) {
-    runtime.logger.error(
-      "[FormExtraction] Correction detection failed:",
-      String(error),
-    );
+    runtime.logger.error("[FormExtraction] Correction detection failed:", String(error));
     return [];
   }
 }

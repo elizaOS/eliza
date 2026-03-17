@@ -48,7 +48,7 @@
     "format:check": "bunx @biomejs/biome format ./typescript/src",
     "test": "npm run test:ts",
     "test:ts": "cd typescript && bun run test",
-    "lint": "bunx @biomejs/biome check --apply ./typescript/src",
+    "lint": "bunx @biomejs/biome check --write ./typescript/src",
     "lint:check": "bunx @biomejs/biome check ./typescript/src"
   },
   "devDependencies": {

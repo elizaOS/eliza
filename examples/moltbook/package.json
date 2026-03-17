@@ -9,7 +9,7 @@
     "dev": "bun --watch run autonomous.ts",
     "bags": "bun run bags-claimer.ts",
     "bags:claim": "bun run bags-claimer.ts",
-    "lint": "bunx @biomejs/biome check --apply .",
+    "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check . || true",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format . || true",

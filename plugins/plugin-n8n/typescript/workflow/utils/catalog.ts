@@ -1,5 +1,5 @@
-import type { IntegrationFilterResult, NodeDefinition, NodeSearchResult } from '../types/index';
-import defaultNodesData from '../data/defaultNodes.json' with { type: 'json' };
+import defaultNodesData from "../data/defaultNodes.json" with { type: "json" };
+import type { IntegrationFilterResult, NodeDefinition, NodeSearchResult } from "../types/index";
 
 /**
  * n8n node catalog with keyword-based search
@@ -22,9 +22,9 @@ export function getNodeDefinition(typeName: string): NodeDefinition | undefined 
   }
 
   // Try without prefix (e.g., "gmail" matches "n8n-nodes-base.gmail")
-  const bare = typeName.replace(/^n8n-nodes-base\./, '');
+  const bare = typeName.replace(/^n8n-nodes-base\./, "");
   return NODE_CATALOG.find((n) => {
-    const catalogBare = n.name.replace(/^n8n-nodes-base\./, '');
+    const catalogBare = n.name.replace(/^n8n-nodes-base\./, "");
     return catalogBare === bare || n.name === bare;
   });
 }
@@ -47,7 +47,7 @@ export function searchNodes(keywords: string[], limit = 15): NodeSearchResult[] 
 
     const nodeName = node.name.toLowerCase();
     const nodeDisplayName = node.displayName.toLowerCase();
-    const nodeDescription = node.description?.toLowerCase() || '';
+    const nodeDescription = node.description?.toLowerCase() || "";
 
     for (const keyword of normalizedKeywords) {
       if (nodeName === keyword || nodeDisplayName === keyword) {
@@ -80,7 +80,7 @@ export function searchNodes(keywords: string[], limit = 15): NodeSearchResult[] 
     return {
       node,
       score,
-      matchReason: matchReasons.join(', ') || 'no strong match',
+      matchReason: matchReasons.join(", ") || "no strong match",
     };
   });
 

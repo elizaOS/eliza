@@ -59,7 +59,7 @@
     "dev": "bun --hot build.ts",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit",
-    "lint": "bunx @biomejs/biome check --apply .",
+    "lint": "bunx @biomejs/biome check --write .",
     "clean": "rm -rf dist .turbo node_modules"
   },
   "publishConfig": {

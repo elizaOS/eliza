@@ -20,8 +20,8 @@
     "dev": "tsup --watch",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "lint": "biome check --apply .",
-    "lint:fix": "biome check --apply .",
+    "lint": "biome check --write .",
+    "lint:fix": "biome check --write .",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [

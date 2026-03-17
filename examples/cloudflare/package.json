@@ -13,7 +13,7 @@
     "test:stream": "bun run test-client.ts --stream",
     "tail": "wrangler tail",
     "secret": "wrangler secret put OPENAI_API_KEY",
-    "lint": "bunx @biomejs/biome check --apply .",
+    "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "echo 'Cloudflare Workers use wrangler for type checking'"
   },

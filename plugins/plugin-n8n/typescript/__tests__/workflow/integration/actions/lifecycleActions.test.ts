@@ -10,8 +10,8 @@ import {
   createMockMessage,
   createMockRuntime,
   createMockState,
-  getLastCallbackResult,
   getCallbackResultAt,
+  getLastCallbackResult,
 } from "../../helpers/mockRuntime";
 import { createMockService } from "../../helpers/mockService";
 

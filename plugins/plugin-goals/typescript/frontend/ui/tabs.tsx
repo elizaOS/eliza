@@ -1,10 +1,14 @@
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import * as React from "react";
+
 <<<<<<<< HEAD:packages/ui/src/components/ui/tabs.tsx
 
 import { cn } from "../../lib/utils";
+
 ========
+
 import { cn } from "../utils";
+
 >>>>>>>> origin/odi-dev:plugins/plugin-goals/typescript/frontend/ui/tabs.tsx
 
 const Tabs = TabsPrimitive.Root;

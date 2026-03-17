@@ -16,7 +16,8 @@ export class OpenAIMcpCompatibility extends McpToolCompatibility {
   shouldApply(): boolean {
     return (
       this.modelInfo.provider === "openai" &&
-      (!this.modelInfo.supportsStructuredOutputs || this.modelInfo.isReasoningModel === true)
+      (!this.modelInfo.supportsStructuredOutputs ||
+        this.modelInfo.isReasoningModel === true)
     );
   }
 
@@ -27,7 +28,10 @@ export class OpenAIMcpCompatibility extends McpToolCompatibility {
       return [...baseUnsupported, "pattern"];
     }
 
-    if (this.modelInfo.modelId.includes("gpt-3.5") || this.modelInfo.modelId.includes("davinci")) {
+    if (
+      this.modelInfo.modelId.includes("gpt-3.5") ||
+      this.modelInfo.modelId.includes("davinci")
+    ) {
       return [...baseUnsupported, "pattern"];
     }
 
@@ -55,7 +59,10 @@ export class OpenAIMcpCompatibility extends McpToolCompatibility {
 
 export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
   shouldApply(): boolean {
-    return this.modelInfo.provider === "openai" && this.modelInfo.isReasoningModel === true;
+    return (
+      this.modelInfo.provider === "openai" &&
+      this.modelInfo.isReasoningModel === true
+    );
   }
 
   protected getUnsupportedStringProperties(): readonly string[] {
@@ -76,10 +83,10 @@ export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
 
   protected mergeDescription(
     originalDescription: string | undefined,
-    constraints: SchemaConstraints
+    constraints: SchemaConstraints,
   ): string {
     const constraintText = this.formatConstraintsForReasoningModel(
-      constraints as OpenAIConstraints
+      constraints as OpenAIConstraints,
     );
     if (originalDescription) {
       return `${originalDescription}\n\nIMPORTANT: ${constraintText}`;
@@ -87,7 +94,9 @@ export class OpenAIReasoningMcpCompatibility extends McpToolCompatibility {
     return `IMPORTANT: ${constraintText}`;
   }
 
-  private formatConstraintsForReasoningModel(constraints: OpenAIConstraints): string {
+  private formatConstraintsForReasoningModel(
+    constraints: OpenAIConstraints,
+  ): string {
     const rules: string[] = [];
 
     if (constraints.minLength) {

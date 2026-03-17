@@ -87,10 +87,7 @@ export const activateWorkflowAction: Action = {
     const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
 
     if (!service) {
-      logger.error(
-        { src: "plugin:n8n:action:activate" },
-        "N8n Workflow service not available"
-      );
+      logger.error({ src: "plugin:n8n:action:activate" }, "N8n Workflow service not available");
       if (callback) {
         await callback({
           text: "N8n Workflow service is not available.",

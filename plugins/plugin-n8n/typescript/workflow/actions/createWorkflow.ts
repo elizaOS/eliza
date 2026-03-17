@@ -253,10 +253,7 @@ export const createWorkflowAction: Action = {
     const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
 
     if (!service) {
-      logger.error(
-        { src: "plugin:n8n:action:create" },
-        "N8n Workflow service not available"
-      );
+      logger.error({ src: "plugin:n8n:action:create" }, "N8n Workflow service not available");
       if (callback) {
         const text = await formatActionResponse(runtime, "ERROR", {
           error: "N8n Workflow service is not available. Check N8N_API_KEY and N8N_HOST.",

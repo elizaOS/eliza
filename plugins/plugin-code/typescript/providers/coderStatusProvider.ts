@@ -45,17 +45,29 @@ export const coderStatusProvider: Provider = {
     if (history.length > 0) {
       historyText = history
         .map((entry: CommandHistoryEntry) => {
-          let entryStr = `[${new Date(entry.timestamp).toISOString()}] ${entry.workingDirectory}> ${entry.command}`;
+          let entryStr = `[${new Date(entry.timestamp).toISOString()}] ${
+            entry.workingDirectory
+          }> ${entry.command}`;
           if (entry.stdout) {
             if (entry.stdout.length > MAX_OUTPUT_LENGTH) {
-              entryStr += `\n  Output: ${entry.stdout.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${entry.stdout.substring(entry.stdout.length - TRUNCATE_SEGMENT_LENGTH)}`;
+              entryStr += `\n  Output: ${entry.stdout.substring(
+                0,
+                TRUNCATE_SEGMENT_LENGTH,
+              )}\n  ... [TRUNCATED] ...\n  ${entry.stdout.substring(
+                entry.stdout.length - TRUNCATE_SEGMENT_LENGTH,
+              )}`;
             } else {
               entryStr += `\n  Output: ${entry.stdout}`;
             }
           }
           if (entry.stderr) {
             if (entry.stderr.length > MAX_OUTPUT_LENGTH) {
-              entryStr += `\n  Error: ${entry.stderr.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${entry.stderr.substring(entry.stderr.length - TRUNCATE_SEGMENT_LENGTH)}`;
+              entryStr += `\n  Error: ${entry.stderr.substring(
+                0,
+                TRUNCATE_SEGMENT_LENGTH,
+              )}\n  ... [TRUNCATED] ...\n  ${entry.stderr.substring(
+                entry.stderr.length - TRUNCATE_SEGMENT_LENGTH,
+              )}`;
             } else {
               entryStr += `\n  Error: ${entry.stderr}`;
             }

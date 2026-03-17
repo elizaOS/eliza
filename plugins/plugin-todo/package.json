@@ -80,7 +80,7 @@
     "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
     "build:python": "test -n \"$SKIP_PYTHON_BUILD\" && echo 'Python build skipped (SKIP_PYTHON_BUILD set)' || (test -d python && cd python && (timeout 120 python3 -m build 2>/dev/null || timeout 120 pyproject-build 2>/dev/null) || echo 'Python build skipped or timed out')",
     "dev": "cd typescript && bun --hot build.ts",
-    "lint": "bunx @biomejs/biome check --apply ./typescript",
+    "lint": "bunx @biomejs/biome check --write ./typescript",
     "lint:check": "bunx @biomejs/biome check ./typescript",
     "lint:rust": "cd rust && cargo clippy --all-targets --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt",
     "lint:python": "cd python && ruff check --fix . && ruff format .",

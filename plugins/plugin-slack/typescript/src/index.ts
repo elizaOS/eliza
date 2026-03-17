@@ -130,12 +130,6 @@ const slackPlugin: Plugin = {
 
 export default slackPlugin;
 
-// Channel configuration types (SlackAccountConfig, SlackActionConfig, etc. from ./accounts)
-export type {
-  SlackConfig,
-  SlackThreadConfig,
-} from "./config";
-
 // Account management exports
 export {
   DEFAULT_ACCOUNT_ID,
@@ -171,6 +165,11 @@ export { readChannel } from "./actions/readChannel";
 // Export actions
 export { sendMessage } from "./actions/sendMessage";
 export { unpinMessage } from "./actions/unpinMessage";
+// Channel configuration types (SlackAccountConfig, SlackActionConfig, etc. from ./accounts)
+export type {
+  SlackConfig,
+  SlackThreadConfig,
+} from "./config";
 // Formatting exports
 export {
   buildSlackMessagePermalink,

@@ -14,7 +14,7 @@ export async function createMcpMemory(
   type: "tool" | "resource",
   serverName: string,
   content: string,
-  metadata: Readonly<Record<string, unknown>>
+  metadata: Readonly<Record<string, unknown>>,
 ): Promise<void> {
   const memory = await runtime.addEmbeddingToMemory({
     entityId: message.entityId,
@@ -30,10 +30,16 @@ export async function createMcpMemory(
     },
   });
 
-  await runtime.createMemory(memory, type === "resource" ? "resources" : "tools", true);
+  await runtime.createMemory(
+    memory,
+    type === "resource" ? "resources" : "tools",
+    true,
+  );
 }
 
-export function buildMcpProviderData(servers: readonly McpServer[]): McpProvider {
+export function buildMcpProviderData(
+  servers: readonly McpServer[],
+): McpProvider {
   const mcpData: Record<string, McpProviderData[string]> = {};
   let textContent = "";
 
@@ -66,7 +72,9 @@ export function buildMcpProviderData(servers: readonly McpServer[]): McpProvider
           inputSchema: tool.inputSchema as McpToolInputSchema | undefined,
         };
 
-        textContent += `- **${tool.name}**: ${tool.description ?? "No description available"}\n`;
+        textContent += `- **${tool.name}**: ${
+          tool.description ?? "No description available"
+        }\n`;
       }
       textContent += "\n";
     }

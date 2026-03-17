@@ -1,12 +1,12 @@
 import type { State } from "@elizaos/core";
 import {
   type ActionResult,
-  composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
-  logger,
   type Memory,
   ModelType,
+  composePromptFromState,
+  logger,
 } from "@elizaos/core";
 import { errorAnalysisPrompt } from "../templates/errorAnalysisPrompt";
 import type { McpProvider } from "../types";
@@ -18,11 +18,14 @@ export async function handleMcpError(
   runtime: IAgentRuntime,
   message: Memory,
   type: "tool" | "resource",
-  callback?: HandlerCallback
+  callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const errorMessage = error instanceof Error ? error.message : String(error);
 
-  logger.error({ error, mcpType: type }, `Error executing MCP ${type}: ${errorMessage}`);
+  logger.error(
+    { error, mcpType: type },
+    `Error executing MCP ${type}: ${errorMessage}`,
+  );
 
   let responseText = `I'm sorry, I wasn't able to get the information you requested. There seems to be an issue with the ${type} right now. Is there something else I can help you with?`;
 
@@ -74,7 +77,7 @@ export async function handleMcpError(
 export class McpError extends Error {
   readonly code: string;
 
-  constructor(message: string, code: string = "UNKNOWN") {
+  constructor(message: string, code = "UNKNOWN") {
     super(message);
     this.name = "McpError";
     this.code = code;
@@ -82,19 +85,24 @@ export class McpError extends Error {
 
   static connectionError(serverName: string, details?: string): McpError {
     return new McpError(
-      `Failed to connect to server '${serverName}'${details ? `: ${details}` : ""}`,
-      "CONNECTION_ERROR"
+      `Failed to connect to server '${serverName}'${
+        details ? `: ${details}` : ""
+      }`,
+      "CONNECTION_ERROR",
     );
   }
 
   static toolNotFound(toolName: string, serverName: string): McpError {
-    return new McpError(`Tool '${toolName}' not found on server '${serverName}'`, "TOOL_NOT_FOUND");
+    return new McpError(
+      `Tool '${toolName}' not found on server '${serverName}'`,
+      "TOOL_NOT_FOUND",
+    );
   }
 
   static resourceNotFound(uri: string, serverName: string): McpError {
     return new McpError(
       `Resource '${uri}' not found on server '${serverName}'`,
-      "RESOURCE_NOT_FOUND"
+      "RESOURCE_NOT_FOUND",
     );
   }
 
@@ -105,7 +113,7 @@ export class McpError extends Error {
   static serverError(serverName: string, details?: string): McpError {
     return new McpError(
       `Server error from '${serverName}'${details ? `: ${details}` : ""}`,
-      "SERVER_ERROR"
+      "SERVER_ERROR",
     );
   }
 }

@@ -50,21 +50,19 @@
 
 import type { Component, IAgentRuntime, JsonValue, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
-import type { FormSession, FormSubmission, FormAutofillData } from "./types";
+import type { FormAutofillData, FormSession, FormSubmission } from "./types";
 import {
+  FORM_AUTOFILL_COMPONENT,
   FORM_SESSION_COMPONENT,
   FORM_SUBMISSION_COMPONENT,
-  FORM_AUTOFILL_COMPONENT,
 } from "./types";
 
-const isRecord = (
-  value: JsonValue | object,
-): value is Record<string, JsonValue> =>
+const isRecord = (value: JsonValue | object): value is Record<string, JsonValue> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const resolveComponentContext = async (
   runtime: IAgentRuntime,
-  roomId?: UUID,
+  roomId?: UUID
 ): Promise<{ roomId: UUID; worldId: UUID }> => {
   if (roomId) {
     const room = await runtime.getRoom(roomId);
@@ -93,9 +91,7 @@ const isFormSubmission = (data: JsonValue | object): data is FormSubmission => {
   );
 };
 
-const isFormAutofillData = (
-  data: JsonValue | object,
-): data is FormAutofillData => {
+const isFormAutofillData = (data: JsonValue | object): data is FormAutofillData => {
   if (!isRecord(data)) return false;
   return (
     typeof data.formId === "string" &&
@@ -128,13 +124,10 @@ const isFormAutofillData = (
 export async function getActiveSession(
   runtime: IAgentRuntime,
   entityId: UUID,
-  roomId: UUID,
+  roomId: UUID
 ): Promise<FormSession | null> {
   // Component type includes roomId for room-level scoping
-  const component = await runtime.getComponent(
-    entityId,
-    `${FORM_SESSION_COMPONENT}:${roomId}`,
-  );
+  const component = await runtime.getComponent(entityId, `${FORM_SESSION_COMPONENT}:${roomId}`);
 
   if (!component?.data || !isFormSession(component.data)) return null;
 
@@ -163,7 +156,7 @@ export async function getActiveSession(
  */
 export async function getAllActiveSessions(
   runtime: IAgentRuntime,
-  entityId: UUID,
+  entityId: UUID
 ): Promise<FormSession[]> {
   const components = await runtime.getComponents(entityId);
 
@@ -197,7 +190,7 @@ export async function getAllActiveSessions(
  */
 export async function getStashedSessions(
   runtime: IAgentRuntime,
-  entityId: UUID,
+  entityId: UUID
 ): Promise<FormSession[]> {
   const components = await runtime.getComponents(entityId);
 
@@ -232,7 +225,7 @@ export async function getStashedSessions(
 export async function getSessionById(
   runtime: IAgentRuntime,
   entityId: UUID,
-  sessionId: string,
+  sessionId: string
 ): Promise<FormSession | null> {
   const components = await runtime.getComponents(entityId);
 
@@ -263,10 +256,7 @@ export async function getSessionById(
  * @param runtime - Agent runtime for database access
  * @param session - Session to save
  */
-export async function saveSession(
-  runtime: IAgentRuntime,
-  session: FormSession,
-): Promise<void> {
+export async function saveSession(runtime: IAgentRuntime, session: FormSession): Promise<void> {
   const componentType = `${FORM_SESSION_COMPONENT}:${session.roomId}`;
   const existing = await runtime.getComponent(session.entityId, componentType);
   const context = await resolveComponentContext(runtime, session.roomId);
@@ -304,10 +294,7 @@ export async function saveSession(
  * @param runtime - Agent runtime for database access
  * @param session - Session to delete
  */
-export async function deleteSession(
-  runtime: IAgentRuntime,
-  session: FormSession,
-): Promise<void> {
+export async function deleteSession(runtime: IAgentRuntime, session: FormSession): Promise<void> {
   const componentType = `${FORM_SESSION_COMPONENT}:${session.roomId}`;
   const existing = await runtime.getComponent(session.entityId, componentType);
 
@@ -335,7 +322,7 @@ export async function deleteSession(
  */
 export async function saveSubmission(
   runtime: IAgentRuntime,
-  submission: FormSubmission,
+  submission: FormSubmission
 ): Promise<void> {
   // Use a unique component type per submission
   // WHY: Allows multiple submissions per form
@@ -372,7 +359,7 @@ export async function saveSubmission(
 export async function getSubmissions(
   runtime: IAgentRuntime,
   entityId: UUID,
-  formId?: string,
+  formId?: string
 ): Promise<FormSubmission[]> {
   const components = await runtime.getComponents(entityId);
 
@@ -407,7 +394,7 @@ export async function getSubmissions(
 export async function getSubmissionById(
   runtime: IAgentRuntime,
   entityId: UUID,
-  submissionId: string,
+  submissionId: string
 ): Promise<FormSubmission | null> {
   const components = await runtime.getComponents(entityId);
 
@@ -444,7 +431,7 @@ export async function getSubmissionById(
 export async function getAutofillData(
   runtime: IAgentRuntime,
   entityId: UUID,
-  formId: string,
+  formId: string
 ): Promise<FormAutofillData | null> {
   const componentType = `${FORM_AUTOFILL_COMPONENT}:${formId}`;
   const component = await runtime.getComponent(entityId, componentType);
@@ -473,7 +460,7 @@ export async function saveAutofillData(
   runtime: IAgentRuntime,
   entityId: UUID,
   formId: string,
-  values: Record<string, JsonValue>,
+  values: Record<string, JsonValue>
 ): Promise<void> {
   const componentType = `${FORM_AUTOFILL_COMPONENT}:${formId}`;
   const existing = await runtime.getComponent(entityId, componentType);
@@ -527,7 +514,7 @@ export async function saveAutofillData(
  */
 export async function getStaleSessions(
   runtime: IAgentRuntime,
-  afterInactiveMs: number,
+  afterInactiveMs: number
 ): Promise<FormSession[]> {
   // TODO: Implement proper querying across all entities
   // This would require either:
@@ -535,9 +522,7 @@ export async function getStaleSessions(
   // 2. A separate tracking table
   // 3. Periodic full scan (expensive)
 
-  runtime.logger.warn(
-    "getStaleSessions requires entity iteration - not implemented",
-  );
+  runtime.logger.warn("getStaleSessions requires entity iteration - not implemented");
   return [];
 }
 
@@ -552,10 +537,8 @@ export async function getStaleSessions(
  */
 export async function getExpiringSessions(
   runtime: IAgentRuntime,
-  withinMs: number,
+  withinMs: number
 ): Promise<FormSession[]> {
-  runtime.logger.warn(
-    "getExpiringSessions requires entity iteration - not implemented",
-  );
+  runtime.logger.warn("getExpiringSessions requires entity iteration - not implemented");
   return [];
 }

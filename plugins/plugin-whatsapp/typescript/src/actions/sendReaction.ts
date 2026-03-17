@@ -37,11 +37,7 @@ interface ReactionParams {
 
 export const sendReactionAction: Action = {
   name: WHATSAPP_SEND_REACTION_ACTION,
-  similes: [
-    "WHATSAPP_REACT",
-    "REACT_WHATSAPP",
-    "WHATSAPP_EMOJI",
-  ],
+  similes: ["WHATSAPP_REACT", "REACT_WHATSAPP", "WHATSAPP_EMOJI"],
   description: "Send a reaction emoji to a WhatsApp message",
 
   validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
@@ -123,11 +119,11 @@ export const sendReactionAction: Action = {
     // Send the reaction via WhatsApp Cloud API
     try {
       const url = `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`;
-      
+
       const response = await fetch(url, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({

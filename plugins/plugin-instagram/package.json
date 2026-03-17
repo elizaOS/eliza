@@ -41,7 +41,7 @@
     "test:ts": "test -d typescript && cd typescript && vitest run --passWithNoTests || echo 'TypeScript tests skipped - no tests found'",
     "test:python": "test -d python && cd python && pytest -p no:anchorpy --asyncio-mode=auto || echo 'Python tests skipped'",
     "typecheck": "test -d typescript && tsc --noEmit -p typescript/tsconfig.json || echo 'Typecheck skipped - no typescript directory'",
-    "lint": "test -d typescript && bunx @biomejs/biome check --apply ./typescript || echo 'Lint skipped - no typescript directory'",
+    "lint": "test -d typescript && bunx @biomejs/biome check --write ./typescript || echo 'Lint skipped - no typescript directory'",
     "lint:check": "test -d typescript && bunx @biomejs/biome check ./typescript || echo 'Lint check skipped - no typescript directory'",
     "lint:python": "test -d python && cd python && ruff check --fix . && ruff format . || echo 'Python lint skipped'",
     "lint:python:fix": "test -d python && cd python && ruff check --fix . && ruff format . || echo 'Python lint fix skipped'",
