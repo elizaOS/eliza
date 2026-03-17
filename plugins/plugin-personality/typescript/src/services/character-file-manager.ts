@@ -430,9 +430,7 @@ export class CharacterFileManager extends Service {
     }
   }
 
-  async getModificationHistory(
-    limit = 10,
-  ): Promise<
+  async getModificationHistory(limit = 10): Promise<
     Array<{
       timestamp: number | undefined;
       modification: unknown;

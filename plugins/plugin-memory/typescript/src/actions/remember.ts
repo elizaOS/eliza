@@ -11,10 +11,10 @@ import {
 } from "@elizaos/core";
 import {
   encodeMemoryText,
-  MemoryImportance,
   MEMORY_SOURCE,
-  type RememberParameters,
+  MemoryImportance,
   PLUGIN_MEMORY_TABLE,
+  type RememberParameters,
 } from "../types.js";
 
 export const rememberAction: Action = {
@@ -121,7 +121,9 @@ User message: "${content}"`;
       const memoryEntry: Memory = {
         agentId: runtime.agentId,
         roomId: message.roomId,
-        entityId: (message as Memory & { entityId?: string; userId?: string }).entityId ?? (message as { userId?: string }).userId,
+        entityId:
+          (message as Memory & { entityId?: string; userId?: string }).entityId ??
+          (message as { userId?: string }).userId,
         content: {
           text: encodedText,
           source: MEMORY_SOURCE,

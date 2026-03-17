@@ -1,5 +1,11 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { decodeMemoryText, IMPORTANCE_LABELS, MemoryImportance, MEMORY_SOURCE, PLUGIN_MEMORY_TABLE } from "../types.js";
+import {
+  decodeMemoryText,
+  IMPORTANCE_LABELS,
+  MEMORY_SOURCE,
+  MemoryImportance,
+  PLUGIN_MEMORY_TABLE,
+} from "../types.js";
 
 export const memoryContextProvider: Provider = {
   name: "MEMORY_CONTEXT",

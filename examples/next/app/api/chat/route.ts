@@ -195,7 +195,9 @@ export async function POST(request: Request) {
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
         controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ error: errorMessage })}\n\n`),
+          encoder.encode(
+            `data: ${JSON.stringify({ error: errorMessage })}\n\n`,
+          ),
         );
         controller.close();
       }

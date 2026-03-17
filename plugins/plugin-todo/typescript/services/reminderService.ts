@@ -104,10 +104,7 @@ export class TodoReminderService extends Service {
   private async ensureRecurringTasks(): Promise<void> {
     const rt = this.runtime;
     const agentId = rt.agentId;
-    if (
-      typeof rt.getTasksByName !== "function" ||
-      typeof rt.createTask !== "function"
-    ) {
+    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") {
       return;
     }
 

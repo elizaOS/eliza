@@ -10,11 +10,11 @@ import {
 } from "@elizaos/core";
 import {
   decodeMemoryText,
-  MemoryImportance,
   MEMORY_SOURCE,
+  MemoryImportance,
   type MemorySearchResult,
-  type RecallParameters,
   PLUGIN_MEMORY_TABLE,
+  type RecallParameters,
 } from "../types.js";
 
 export const recallAction: Action = {
