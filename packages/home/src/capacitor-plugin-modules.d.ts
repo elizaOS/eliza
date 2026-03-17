@@ -6,7 +6,11 @@
 
 declare module "@elizaos/capacitor-agent" {
   export { Agent } from "../plugins/agent/src/index";
-  export type { AgentPlugin, AgentStatus, ChatResult } from "../plugins/agent/src/definitions";
+  export type {
+    AgentPlugin,
+    AgentStatus,
+    ChatResult,
+  } from "../plugins/agent/src/definitions";
 }
 
 declare module "@elizaos/capacitor-desktop" {
