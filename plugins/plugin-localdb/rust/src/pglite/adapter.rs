@@ -950,22 +950,30 @@ impl DatabaseAdapter for PgLiteAdapter {
             return Ok(vec![]);
         }
         let limit_clause = limit.map(|c| format!(" LIMIT {}", c)).unwrap_or_default();
-        let world_list = world_ids
+
+        // Build parameterized placeholders for world_ids to prevent SQL injection
+        let placeholders: Vec<String> = (1..=world_ids.len())
+            .map(|i| format!("${}", i))
+            .collect();
+        let world_placeholder_list = placeholders.join(",");
+
+        let mut js_params: Vec<JsValue> = world_ids
             .iter()
-            .map(|id| format!("'{}'", id.as_str()))
-            .collect::<Vec<_>>()
-            .join(",");
+            .map(|id| JsValue::from_str(id.as_str()))
+            .collect();
 
         let sql = if let Some(table) = table_name {
+            let table_param_idx = world_ids.len() + 1;
+            js_params.push(JsValue::from_str(table));
             format!(
                 r#"
                 SELECT id, type, created_at, content, entity_id, agent_id,
                        room_id, world_id, "unique", metadata
-                FROM memories WHERE world_id IN ({}) AND type = '{}'
+                FROM memories WHERE world_id IN ({}) AND type = ${}
                 ORDER BY created_at DESC
                 {}
                 "#,
-                world_list, table, limit_clause
+                world_placeholder_list, table_param_idx, limit_clause
             )
         } else {
             format!(
@@ -976,11 +984,11 @@ impl DatabaseAdapter for PgLiteAdapter {
                 ORDER BY created_at DESC
                 {}
                 "#,
-                world_list, limit_clause
+                world_placeholder_list, limit_clause
             )
         };
 
-        let result = self.manager.query(&sql, &[]).await?;
+        let result = self.manager.query(&sql, &js_params).await?;
         let rows = self.parse_rows(&result)?;
 
         Ok(rows
