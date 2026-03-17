@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-simple-voice",
-  "version": "2.0.0-alpha.4",
+  "version": "2.0.0-alpha.5",
   "description": "Retro 1980s SAM Text-to-Speech plugin for elizaOS agents",
   "type": "module",
   "main": "dist/index.js",
