@@ -168,7 +168,10 @@ export function InventoryView({ inModal }: { inModal?: boolean } = {}) {
       : null;
 
   const headerWarning =
-    chainFocus !== "all" && cfg?.legacyCustomChains?.includes(chainFocus as unknown as "evm" | "bsc" | "solana")
+    chainFocus !== "all" &&
+    cfg?.legacyCustomChains?.includes(
+      chainFocus as unknown as "evm" | "bsc" | "solana",
+    )
       ? {
           title: `${
             focusedChainLabel ??

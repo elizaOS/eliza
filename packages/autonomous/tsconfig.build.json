@@ -7,11 +7,6 @@
     "esModuleInterop": true,
     "noEmit": false,
     "outDir": "./dist",
-    "paths": {
-      "@elizaos/app-hyperscape/routes": [
-        "./src/types/app-hyperscape-routes-shim.d.ts"
-      ]
-    },
     "resolveJsonModule": true,
     "rootDir": "../..",
     "tsBuildInfoFile": "./dist/.tsbuildinfo"

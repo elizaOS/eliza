@@ -122,11 +122,11 @@ class EvaluatorResult(BaseModel):
     model_config = {"populate_by_name": True}
 
     @classmethod
-    def pass_result(cls, score: int, reason: str) -> "EvaluatorResult":
+    def pass_result(cls, score: int, reason: str) -> EvaluatorResult:
         return cls(score=score, passed=True, reason=reason)
 
     @classmethod
-    def fail_result(cls, score: int, reason: str) -> "EvaluatorResult":
+    def fail_result(cls, score: int, reason: str) -> EvaluatorResult:
         return cls(score=score, passed=False, reason=reason)
 
 

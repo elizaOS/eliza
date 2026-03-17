@@ -45,7 +45,9 @@ export function LoadingScreen({
     (async () => {
       try {
         const response = await fetch(vrmUrl, { signal: controller.signal });
-        const contentLength = Number(response.headers.get("content-length") || 0);
+        const contentLength = Number(
+          response.headers.get("content-length") || 0,
+        );
 
         if (!contentLength || !response.body) {
           setVrmCached(true);

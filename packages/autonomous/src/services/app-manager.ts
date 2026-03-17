@@ -39,8 +39,6 @@ export type {
 } from "../contracts/apps";
 
 const DEFAULT_VIEWER_SANDBOX = "allow-scripts allow-same-origin allow-popups";
-const HYPERSCAPE_APP_NAME = "@elizaos/app-hyperscape";
-const HYPERSCAPE_AUTH_MESSAGE_TYPE = "HYPERSCAPE_AUTH";
 const RS_2004SCAPE_APP_NAME = "@elizaos/app-2004scape";
 const RS_2004SCAPE_AUTH_MESSAGE_TYPE = "RS_2004SCAPE_AUTH";
 const SAFE_APP_URL_PROTOCOLS = new Set(["http:", "https:"]);
@@ -48,9 +46,6 @@ const ALLOWED_APP_URL_TEMPLATE_KEYS = new Set([
   // Public display identity only.
   "BOT_NAME",
   "RS_SDK_BOT_NAME",
-  // Non-secret endpoint routing values.
-  "HYPERSCAPE_CLIENT_URL",
-  "HYPERSCAPE_SERVER_URL",
 ]);
 
 type AppViewerConfig = NonNullable<AppLaunchResult["viewer"]>;
@@ -138,14 +133,6 @@ function getTemplateFallbackValue(key: string): string | undefined {
     }
     return "testbot";
   }
-  // Hyperscape client URL defaults to localhost:3333
-  if (key === "HYPERSCAPE_CLIENT_URL") {
-    return "http://localhost:3333";
-  }
-  // Hyperscape server URL defaults to localhost:5555
-  if (key === "HYPERSCAPE_SERVER_URL") {
-    return "ws://localhost:5555/ws";
-  }
   return undefined;
 }
 
@@ -208,26 +195,6 @@ function buildViewerAuthMessage(
 ): AppViewerAuthMessage | undefined {
   if (!postMessageAuth) return undefined;
 
-  // Hyperscape auth
-  if (appName === HYPERSCAPE_APP_NAME) {
-    const authToken = process.env.HYPERSCAPE_AUTH_TOKEN?.trim();
-    const characterId = process.env.HYPERSCAPE_CHARACTER_ID?.trim();
-
-    // Need at least authToken OR characterId for spectator mode
-    if (!authToken && !characterId) return undefined;
-
-    const sessionToken = process.env.HYPERSCAPE_SESSION_TOKEN?.trim();
-    const agentId = process.env.HYPERSCAPE_EMBED_AGENT_ID?.trim();
-    return {
-      type: HYPERSCAPE_AUTH_MESSAGE_TYPE,
-      authToken: authToken || undefined,
-      characterId: characterId || undefined,
-      sessionToken:
-        sessionToken && sessionToken.length > 0 ? sessionToken : undefined,
-      agentId: agentId && agentId.length > 0 ? agentId : undefined,
-    };
-  }
-
   // 2004scape auth - uses bot name and password from environment
   if (appName === RS_2004SCAPE_APP_NAME) {
     // Get username from RS_SDK_BOT_NAME or BOT_NAME, fallback to testbot
@@ -264,15 +231,9 @@ function buildViewerConfig(
     );
     const postMessageAuth = requestedPostMessageAuth && Boolean(authMessage);
     if (requestedPostMessageAuth && !authMessage) {
-      if (appInfo.name === HYPERSCAPE_APP_NAME) {
-        logger.info(
-          `[app-manager] ${appInfo.name} auth token not configured; launching embedded viewer without postMessage auth.`,
-        );
-      } else {
-        logger.warn(
-          `[app-manager] ${appInfo.name} requires postMessage auth but no auth payload was generated.`,
-        );
-      }
+      logger.warn(
+        `[app-manager] ${appInfo.name} requires postMessage auth but no auth payload was generated.`,
+      );
     }
     const viewerUrl = normalizeSafeAppUrl(
       buildViewerUrl(viewerInfo.url, viewerInfo.embedParams),
@@ -348,122 +309,6 @@ function getWalletAddressesFromRuntime(
   }
 
   return { evmAddress, solanaAddress };
-}
-
-/**
- * Auto-provision a hyperscape agent using wallet-based authentication.
- * The agent's wallet address becomes its identity - no manual registration needed.
- * Uses agent.character.settings.secrets for wallet credentials.
- */
-async function autoProvisionHyperscapeAgent(
-  runtime: IAgentRuntime | null | undefined,
-): Promise<{
-  characterId: string;
-  authToken?: string;
-} | null> {
-  // Check if already configured (from runtime settings or env)
-  const existingCharId =
-    (
-      runtime?.getSetting?.("HYPERSCAPE_CHARACTER_ID") as string | undefined
-    )?.trim() || process.env.HYPERSCAPE_CHARACTER_ID?.trim();
-  const existingToken =
-    (
-      runtime?.getSetting?.("HYPERSCAPE_AUTH_TOKEN") as string | undefined
-    )?.trim() || process.env.HYPERSCAPE_AUTH_TOKEN?.trim();
-
-  if (existingCharId && existingToken) {
-    logger.info(
-      `[app-manager] Hyperscape already configured with character: ${existingCharId}`,
-    );
-    return { characterId: existingCharId, authToken: existingToken };
-  }
-
-  // Derive wallet addresses from runtime settings (character secrets)
-  const walletAddresses = getWalletAddressesFromRuntime(runtime);
-  const walletAddress =
-    walletAddresses.evmAddress || walletAddresses.solanaAddress;
-
-  if (!walletAddress) {
-    logger.warn(
-      "[app-manager] No wallet address found for hyperscape auto-auth (need EVM_PRIVATE_KEY or SOLANA_PRIVATE_KEY in character secrets)",
-    );
-    return null;
-  }
-
-  const walletType = walletAddresses.evmAddress ? "evm" : "solana";
-
-  // Get server URL for API calls (from runtime settings or env)
-  const serverUrl =
-    (
-      runtime?.getSetting?.("HYPERSCAPE_SERVER_URL") as string | undefined
-    )?.trim() ||
-    process.env.HYPERSCAPE_SERVER_URL?.trim() ||
-    "ws://localhost:5555/ws";
-  const apiBaseUrl = serverUrl
-    .replace(/^ws:/, "http:")
-    .replace(/^wss:/, "https:")
-    .replace(/\/ws$/, "");
-
-  // Get agent name from runtime or env
-  const agentName =
-    runtime?.character?.name ||
-    (runtime?.getSetting?.("BOT_NAME") as string | undefined)?.trim() ||
-    process.env.BOT_NAME ||
-    "Agent";
-
-  try {
-    logger.info(
-      `[app-manager] Auto-provisioning hyperscape agent with wallet: ${walletAddress.slice(0, 10)}...`,
-    );
-
-    // Authenticate using wallet address
-    const response = await fetch(`${apiBaseUrl}/api/agents/wallet-auth`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        walletAddress,
-        walletType,
-        agentName,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "Unknown error");
-      logger.warn(
-        `[app-manager] Hyperscape wallet auth failed: ${response.status} ${errorText}`,
-      );
-      return null;
-    }
-
-    const result = (await response.json()) as {
-      success: boolean;
-      authToken?: string;
-      characterId?: string;
-    };
-
-    if (!result.success || !result.authToken || !result.characterId) {
-      logger.warn("[app-manager] Hyperscape wallet auth returned failure");
-      return null;
-    }
-
-    // Set environment variables for the plugin and viewer
-    // (These are still needed for other parts of the system that read from env)
-    process.env.HYPERSCAPE_CHARACTER_ID = result.characterId;
-    process.env.HYPERSCAPE_AUTH_TOKEN = result.authToken;
-
-    logger.info(
-      `[app-manager] Auto-provisioned hyperscape agent: ${result.characterId}`,
-    );
-
-    return { characterId: result.characterId, authToken: result.authToken };
-  } catch (error) {
-    logger.warn(
-      `[app-manager] Failed to auto-provision hyperscape agent: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return null;
-  }
 }
 
 export class AppManager {
@@ -615,28 +460,6 @@ export class AppManager {
       }
     } else {
       logger.info(`[app-manager] Plugin already installed: ${pluginName}`);
-    }
-
-    // Auto-provision hyperscape agent if needed
-    if (name === HYPERSCAPE_APP_NAME) {
-      const provisionResult = await autoProvisionHyperscapeAgent(runtime);
-      // If auto-provisioning failed and no credentials exist, don't launch viewer
-      if (
-        !provisionResult &&
-        !process.env.HYPERSCAPE_CHARACTER_ID?.trim() &&
-        !process.env.HYPERSCAPE_AUTH_TOKEN?.trim()
-      ) {
-        logger.warn(
-          "[app-manager] Hyperscape requires authentication but auto-provisioning failed. " +
-            "Set HYPERSCAPE_CHARACTER_ID and HYPERSCAPE_AUTH_TOKEN, or ensure the hyperscape server is running.",
-        );
-        throw new Error(
-          "Hyperscape authentication required. Set HYPERSCAPE_CHARACTER_ID and HYPERSCAPE_AUTH_TOKEN, " +
-            "or ensure the hyperscape server is running at " +
-            (process.env.HYPERSCAPE_SERVER_URL || "localhost:5555") +
-            " for auto-provisioning.",
-        );
-      }
     }
 
     // Build viewer config from registry app metadata

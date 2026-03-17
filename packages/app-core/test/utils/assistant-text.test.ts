@@ -15,12 +15,16 @@ describe("stripAssistantStageDirections", () => {
   });
 
   it("preserves asterisk content that is NOT a stage direction", () => {
-    const result = stripAssistantStageDirections("Use *bold text* for emphasis");
+    const result = stripAssistantStageDirections(
+      "Use *bold text* for emphasis",
+    );
     expect(result).toContain("bold text");
   });
 
   it("preserves underscore content that is NOT a stage direction", () => {
-    const result = stripAssistantStageDirections("Use _italic text_ for emphasis");
+    const result = stripAssistantStageDirections(
+      "Use _italic text_ for emphasis",
+    );
     expect(result).toContain("italic text");
   });
 

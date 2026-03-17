@@ -3,10 +3,9 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from elizaos.types import EvaluatorResult
 from elizaos.generated.spec_helpers import require_evaluator_spec
 from elizaos.prompts import REFLECTION_TEMPLATE
-from elizaos.types import ActionResult, Evaluator, HandlerOptions, ModelType
+from elizaos.types import ActionResult, Evaluator, EvaluatorResult, HandlerOptions, ModelType
 from elizaos.utils.xml import parse_key_value_xml
 
 if TYPE_CHECKING:

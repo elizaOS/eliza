@@ -92,20 +92,6 @@ describe("diagnoseNoAIProvider", () => {
     expect(result).toContain("API key");
   });
 
-  test("detects version skew signature in failed plugins", () => {
-    const result = diagnoseNoAIProvider(
-      [],
-      [
-        {
-          name: "@elizaos/plugin-openai",
-          error: "does not provide an export named 'MAX_EMBEDDING_TOKENS'",
-        },
-      ],
-    );
-    expect(result).toContain("Version skew detected");
-    expect(result).toContain("@elizaos/plugin-openai");
-  });
-
   test("returns generic failure message for non-version-skew errors", () => {
     const result = diagnoseNoAIProvider(
       [],

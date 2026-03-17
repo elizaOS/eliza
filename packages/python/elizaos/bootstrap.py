@@ -18,8 +18,10 @@ from elizaos.advanced_capabilities import (
     advanced_services,
 )
 from elizaos.basic_capabilities import basic_actions, basic_providers, basic_services
-from elizaos.types import EvaluatorResult  # noqa: F401 - re-exported for backwards compat
-from elizaos.types import Plugin
+from elizaos.types import (
+    EvaluatorResult,  # noqa: F401 - re-exported for backwards compat
+    Plugin,
+)
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime

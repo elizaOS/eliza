@@ -40,10 +40,7 @@ import {
   handleStreamVoiceRoute as handleAutonomousStreamVoiceRoute,
   onAgentMessage as onAutonomousAgentMessage,
 } from "./stream-voice-routes";
-import type {
-  OverlayLayoutData,
-  StreamingDestination,
-} from "./streaming-types";
+import type { StreamingDestination } from "./streaming-types";
 
 export type { StreamRouteState } from "./stream-route-state";
 

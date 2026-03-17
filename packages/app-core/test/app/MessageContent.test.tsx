@@ -345,9 +345,7 @@ describe("XML tag stripping during streaming", () => {
   });
 
   it("extracts text from <response><text> wrapper", () => {
-    const output = renderText(
-      "<response><text>Hello world</text></response>",
-    );
+    const output = renderText("<response><text>Hello world</text></response>");
     expect(output).toContain("Hello world");
     expect(output).not.toContain("<response>");
     expect(output).not.toContain("<text>");
