@@ -470,11 +470,16 @@ jobs:
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
 
           # Publish with appropriate dist-tag
+          # Commit workspace reference changes so lerna doesn't complain about uncommitted files
+          git add -A
+          git diff --staged --quiet || git commit -m "chore: replace workspace references for publishing [skip ci]"
+
           if ! bunx lerna publish from-package \
             --dist-tag ${DIST_TAG} \
             --force-publish \
             --yes \
-            --no-verify-access; then
+            --no-verify-access \
+            --no-git-reset; then
             
             echo "❌ Error: Failed to publish to NPM"
             echo ""
