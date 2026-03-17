@@ -54,7 +54,7 @@ function createOnboardingContext(
 ): Record<string, unknown> {
   return {
     t: (k: string) => k,
-    onboardingStep: "wakeUp",
+    onboardingStep: "identity",
     selectedVrmIndex: 1,
     customBackgroundUrl: "",
     onboardingOptions: {
@@ -136,7 +136,7 @@ describe("Onboarding language mode", () => {
       );
     }
 
-    expect(collectText(tree.root)).toContain("onboarding.welcomeTitle");
+    expect(collectText(tree.root)).toContain("Continue");
   });
 
   it("shows chinese copy when uiLanguage is zh-CN", async () => {
@@ -154,7 +154,7 @@ describe("Onboarding language mode", () => {
     }
 
     const text = collectText(tree.root);
-    expect(text).toContain("onboarding.welcomeTitle");
-    expect(text).toContain("onboarding.createNewAgent");
+    expect(text).toContain("Continue");
+    expect(text).toContain("onboarding.restoreFromBackup");
   });
 });

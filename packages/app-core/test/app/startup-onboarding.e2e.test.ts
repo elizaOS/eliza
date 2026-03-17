@@ -3,7 +3,7 @@ import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-type OnboardingStep = "wakeUp" | "connection" | "rpc" | "senses" | "activate";
+type OnboardingStep = "identity" | "connection" | "rpc" | "senses" | "activate";
 
 type AppHarnessState = {
   onboardingLoading: boolean;
@@ -165,14 +165,14 @@ vi.mock("@elizaos/app-core/components", async () => {
     LifoSandboxView: () => React.createElement("div", null, "LifoSandboxView"),
     OnboardingWizard: () => {
       const state = mockUseApp();
-      if (state.onboardingStep === "wakeUp") {
+      if (state.onboardingStep === "identity") {
         return React.createElement(
           "button",
           {
             onClick: () => state.handleOnboardingNext(),
             type: "button",
           },
-          "onboarding.createNewAgent",
+          "onboarding.chooseAgent",
         );
       }
       if (state.onboardingStep === "connection") {
@@ -435,7 +435,7 @@ function createHarnessState(): AppHarnessState {
     onboardingComplete: false,
     tab: "chat",
     actionNotice: null,
-    onboardingStep: "wakeUp",
+    onboardingStep: "identity",
     onboardingOptions: onboardingOptions(),
     onboardingName: "Milady",
     onboardingStyle: "",
@@ -518,7 +518,7 @@ describe("app startup onboarding flow (e2e)", () => {
     state = createHarnessState();
 
     const STEP_ORDER: OnboardingStep[] = [
-      "wakeUp",
+      "identity",
       "connection",
       "rpc",
       "senses",
@@ -592,8 +592,8 @@ describe("app startup onboarding flow (e2e)", () => {
 
       if (state.onboardingStep === "senses") {
         clickButton(renderedTree, "permissions-continue");
-      } else if (state.onboardingStep === "wakeUp") {
-        clickButton(renderedTree, "onboarding.createNewAgent");
+      } else if (state.onboardingStep === "identity") {
+        clickButton(renderedTree, "onboarding.chooseAgent");
       } else if (state.onboardingStep === "connection") {
         if (!state.onboardingRunMode) {
           clickButton(renderedTree, "onboarding.hostingLocal");
@@ -612,7 +612,7 @@ describe("app startup onboarding flow (e2e)", () => {
 
     const renderedText = textOf(renderedTree.root);
 
-    expect(renderedText).toContain("ChatView");
+    expect(renderedText).toContain("CharacterView");
     expect(renderedText).not.toContain("OnboardingWizard");
   });
 });

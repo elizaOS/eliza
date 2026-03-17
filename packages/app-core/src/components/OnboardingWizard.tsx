@@ -75,7 +75,7 @@ export function OnboardingWizard() {
     <div className="onboarding-screen">
       {/* Full-screen VRM background — same as CompanionView */}
       <div className="onboarding-bg" />
-      <div className="onboarding-bg-overlay" />
+      {!isCharacterSelect && <div className="onboarding-bg-overlay" />}
 
       {/* VRM character — fills viewport, zoomed in like companion view */}
       <VrmStage
@@ -178,16 +178,16 @@ export function OnboardingWizard() {
       </div>
 
       {isCharacterSelect ? (
-        /* ── Full-screen centered character select ── */
+        /* ── Full-screen character select — anchored to bottom ── */
         <div
           style={{
             position: "absolute",
             inset: 0,
             zIndex: 40,
             display: "flex",
-            alignItems: "center",
+            alignItems: "flex-end",
             justifyContent: "center",
-            padding: "2rem",
+            paddingBottom: "3rem",
           }}
         >
           <IdentityStep />

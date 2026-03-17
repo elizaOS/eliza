@@ -174,14 +174,6 @@ export function IdentityStep() {
   /* ── Video-game style character roster (matches CharacterView exactly) ── */
   return (
     <div className="flex flex-col items-center gap-4 w-full max-w-[640px]">
-      <div className="onboarding-section-title">Choose Your Agent</div>
-      <div className="onboarding-divider">
-        <div className="onboarding-divider-diamond" />
-      </div>
-      <p className="onboarding-desc mb-1 text-center">
-        Pick a personality for your agent. You can customize everything later.
-      </p>
-
       {/* ── Character roster grid — identical to CharacterView roster ── */}
       <div
         className="flex flex-wrap items-start justify-center gap-y-1"

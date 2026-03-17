@@ -16,6 +16,7 @@ const { mockUseApp, mockIsNativeFn } = vi.hoisted(() => ({
 
 vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => mockUseApp(),
+  getVrmPreviewUrl: (index: number) => `/vrms/previews/milady-${index}.png`,
 }));
 
 vi.mock("@elizaos/app-core/api", () => ({
@@ -51,7 +52,7 @@ vi.mock("@elizaos/app-core/platform", () => ({
 
 import { ActivateStep } from "../../src/components/onboarding/ActivateStep";
 import { ConnectionStep } from "../../src/components/onboarding/ConnectionStep";
-import { WakeUpStep } from "../../src/components/onboarding/WakeUpStep";
+import { IdentityStep } from "../../src/components/onboarding/IdentityStep";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -123,49 +124,48 @@ function findButtons(
 }
 
 // ===================================================================
-//  WakeUpStep
+//  IdentityStep (character select — replaces old WakeUpStep)
 // ===================================================================
 
-describe("WakeUpStep", () => {
+describe("IdentityStep", () => {
   beforeEach(() => mockUseApp.mockReset());
 
-  it("renders initialization screen with Activate button", async () => {
-    mockUseApp.mockReturnValue(baseContext());
+  it("renders character selection with Continue button", async () => {
+    mockUseApp.mockReturnValue(
+      baseContext({
+        onboardingStep: "identity",
+        onboardingOptions: {
+          ...baseContext().onboardingOptions,
+          styles: [
+            {
+              catchphrase: "Noted.",
+              hint: "calm & collected",
+              bio: ["bio"],
+              system: "You are {{name}}",
+              style: { all: [], chat: [], post: [] },
+              adjectives: [],
+              postExamples: [],
+              messageExamples: [],
+            },
+          ],
+        },
+      }),
+    );
     let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
-      tree = TestRenderer.create(React.createElement(WakeUpStep));
+      tree = TestRenderer.create(React.createElement(IdentityStep));
     });
 
     const text = collectText(tree?.root as TestRenderer.ReactTestInstance);
-    expect(text).toContain("onboarding.welcomeTitle");
-    expect(text).toContain("onboarding.welcomeSubtitle");
-    expect(text).toContain("onboarding.createNewAgent");
-  });
-
-  it("calls handleOnboardingNext when Activate is clicked", async () => {
-    const next = vi.fn(async () => {});
-    mockUseApp.mockReturnValue(baseContext({ handleOnboardingNext: next }));
-    let tree: TestRenderer.ReactTestRenderer | undefined;
-    await act(async () => {
-      tree = TestRenderer.create(React.createElement(WakeUpStep));
-    });
-
-    const buttons = findButtons(tree?.root as TestRenderer.ReactTestInstance);
-    const activateBtn = buttons.find(
-      (b) => collectText(b) === "onboarding.createNewAgent",
-    );
-    expect(activateBtn).toBeDefined();
-    await act(async () => {
-      activateBtn?.props.onClick();
-    });
-    expect(next).toHaveBeenCalled();
+    expect(text).toContain("Continue");
+    expect(text).toContain("Rin");
   });
 
   it("shows Restore from Backup option", async () => {
-    mockUseApp.mockReturnValue(baseContext());
+    mockUseApp.mockReturnValue(baseContext({ onboardingStep: "identity" }));
     let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
-      tree = TestRenderer.create(React.createElement(WakeUpStep));
+      tree = TestRenderer.create(React.createElement(IdentityStep));
     });
 
     const text = collectText(tree?.root as TestRenderer.ReactTestInstance);
@@ -173,10 +173,10 @@ describe("WakeUpStep", () => {
   });
 
   it("switches to import view when Restore from Backup is clicked", async () => {
-    mockUseApp.mockReturnValue(baseContext());
+    mockUseApp.mockReturnValue(baseContext({ onboardingStep: "identity" }));
     let tree: TestRenderer.ReactTestRenderer | undefined;
     await act(async () => {
-      tree = TestRenderer.create(React.createElement(WakeUpStep));
+      tree = TestRenderer.create(React.createElement(IdentityStep));
     });
 
     const buttons = findButtons(tree?.root as TestRenderer.ReactTestInstance);
