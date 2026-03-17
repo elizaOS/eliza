@@ -9,7 +9,7 @@
     "build": "vite build",
     "build:ios": "vite build && capacitor sync ios",
     "build:android": "vite build && capacitor sync android",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit",
     "lint:check": "bunx @biomejs/biome check ./src",
     "cap:sync": "capacitor sync"

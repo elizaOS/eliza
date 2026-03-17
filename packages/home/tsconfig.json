@@ -18,7 +18,7 @@
     "forceConsistentCasingInFileNames": true,
     "experimentalDecorators": true,
     "useUnknownInCatchVariables": true,
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "paths": {
       "@elizaos/capacitor-agent": ["./plugins/agent/src/index.ts"],
       "@elizaos/capacitor-desktop": ["./plugins/desktop/src/index.ts"]
