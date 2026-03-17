@@ -464,6 +464,7 @@ export class DefaultMessageService implements IMessageService {
     // When allowedSources is set, messages must have a matching sourceId
     // When allowedSources is null, all messages are allowed (no filtering)
     // When allowedSources is set, messages must have a matching sourceId in the whitelist
+    // Note: allows all messages when no sources are defined, enabling flexible persistence options
     // When allowedSources is null, all sources are allowed (no whitelist filtering)
     const memorySourceAllowed = allowedSources === null || 
       (typeof messageSourceId === "string" && allowedSources.includes(messageSourceId));
