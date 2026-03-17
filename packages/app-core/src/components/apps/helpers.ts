@@ -30,7 +30,6 @@ export function getAppEmoji(app: RegistryAppInfo): string {
   const name = (app.name ?? "").toLowerCase();
   if (name.includes("2004") || name.includes("runescape")) return "⚔️";
   if (name.includes("town")) return "🏘️";
-  if (name.includes("hyperscape")) return "🌐";
   if (name.includes("babylon")) return "🏛️";
   if (name.includes("clawbal")) return "🎯";
   if (name.includes("minecraft")) return "⛏️";
