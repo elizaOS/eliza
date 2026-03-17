@@ -392,7 +392,7 @@ describe("DefaultMessageService", () => {
 
       const result = await messageService.handleMessage(
         runtime,
-        message,
+        voiceMessage,  
         mockCallback,
       );
 
@@ -505,11 +505,11 @@ describe("DefaultMessageService", () => {
 
   describe("integration scenarios", () => {
     it("should handle voice message flow", async () => {
-      const message: Memory = {
+      const voiceMessage: Memory = {
               id: "123e4567-e89b-12d3-a456-426614174303" as UUID,
               content: {
                 text: "Test voice message",
-                source: "test",
+                source: "test", 
                 channelType: ChannelType.VOICE_DM,
               } as Content,
               entityId: "123e4567-e89b-12d3-a456-426614174005" as UUID,
@@ -971,6 +971,12 @@ describe("DefaultMessageService", () => {
 
       // Check memory was created since source is whitelisted and memory creation is enabled
       expect(runtime.createMemory).toHaveBeenCalled();
+
+      // Verify parsed numeric values are preserved from properly formatted JSON 
+      const createMemoryCall = (runtime.createMemory as ReturnType<typeof vi.fn>).mock.calls[0];
+      const content = createMemoryCall[0]?.content;
+      // Numeric values in correctly formatted JSON should remain as numbers
+      expect(typeof content?.temperature).toBe('number');
     });
   });
 
