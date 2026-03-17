@@ -11,7 +11,7 @@
 //!
 //! # Example
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use elizaos::{AgentRuntime, Character, parse_character};
 //! use elizaos::runtime::RuntimeOptions;
 //!

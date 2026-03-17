@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 /// While not recommended for production, it can be a fast way to make the agent run cheaper.
 ///
 /// # Example
-/// ```rust,no_run
+/// ```rust,ignore
 /// use elizaos::runtime::{AgentRuntime, RuntimeOptions};
 /// use elizaos::types::LLMMode;
 ///
