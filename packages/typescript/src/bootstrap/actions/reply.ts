@@ -103,7 +103,13 @@ export const replyAction = {
     const requiredProviders = ["RECENT_MESSAGES", "ACTION_STATE"];
     const allProviders = [...new Set([...requiredProviders, ...additionalProviders])];
     
-    state = await runtime.composeState(message, allProviders);
+    // Check if all required providers are already in state to avoid redundant recomposition
+    const hasRequestedInState = state?.data?.providers &&
+      allProviders.every(provider => state!.data.providers!.includes(provider));
+    
+    if (!hasRequestedInState) {
+      state = await runtime.composeState(message, allProviders);
+    }
 
     const prompt = composePromptFromState({
       state,
