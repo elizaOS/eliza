@@ -34,7 +34,7 @@ export interface SkillFrontmatter {
 
 /**
  * Loaded skill with parsed metadata.
- * 
+ *
  * Core fields (filePath, baseDir, source, disableModelInvocation) are for file-based skills.
  * Optional runtime fields (instructions, actions, providers, tools, etc.) support inline definitions.
  */

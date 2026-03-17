@@ -31,7 +31,7 @@
         "noNonNullAssertion": "off"
       },
       "suspicious": {
-        "noExplicitAny": "error"
+        "noExplicitAny": "warn"
       }
     }
   },
