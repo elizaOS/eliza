@@ -24,6 +24,7 @@ import {
   createMessageMemory,
   logger,
   type Media,
+  type Memory,
   ModelType,
   stringToUuid,
   type Task,
@@ -3282,7 +3283,7 @@ async function generateChatResponse(
             entityId: runtime.agentId,
             content: responseMessage.content ?? { text: "" },
             metadata: message.metadata,
-          } as unknown as ReturnType<typeof createMessageMemory>;
+          } as Memory;
           await runtime.emitEvent("MESSAGE_SENT", {
             message: memoryLike,
             source: messageSource,
@@ -3308,11 +3309,10 @@ async function generateChatResponse(
   // Log the response mode and actions for debugging action execution
   if (result) {
     const rc = result.responseContent as Record<string, unknown> | null;
-    const resultRecord = result as unknown as Record<string, unknown>;
     runtime.logger?.info(
       {
         src: "milady-api",
-        mode: resultRecord.mode,
+        mode: result.mode,
         actions: rc?.actions,
         simple: rc?.simple,
         hasText: Boolean(rc?.text),
@@ -6070,7 +6070,7 @@ function toWorkbenchTask(task: Task): WorkbenchTaskView | null {
   const metadata = readTaskMetadata(task);
   const updatedAt =
     normalizeTimestamp(
-      (task as unknown as Record<string, unknown>).updatedAt,
+      task.updatedAt,
     ) ?? normalizeTimestamp(metadata.updatedAt);
   return {
     id,
@@ -6815,7 +6815,7 @@ function wireCoordinatorEventRouting(st: ServerState): boolean {
           // Temporarily force TEXT_SMALL — coordinator events are time-sensitive
           // and TEXT_LARGE can timeout while CLI agents stall waiting for input.
           // llmModeOption is private with no public setter; cast is intentional.
-          const rt = runtime as unknown as Record<string, unknown>;
+          const rt = runtime as unknown as { llmModeOption: string };
           const prevLlmMode = rt.llmModeOption;
           rt.llmModeOption = "SMALL";
           let result: { text: string; agentName?: string };
@@ -7260,7 +7260,7 @@ function getPtyConsoleBridge(st: ServerState) {
   if (!st.runtime) return null;
   const ptyService = st.runtime.getService(
     "PTY_SERVICE",
-  ) as unknown as PTYService | null;
+  ) as PTYService | null;
   return ptyService?.consoleBridge ?? null;
 }
 
@@ -7970,7 +7970,7 @@ async function handleRequest(
     }
 
     try {
-      const servicesMap = runtime.services as unknown as Map<string, unknown[]>;
+      const servicesMap = runtime.services as Map<string, unknown[]>;
       const serviceCount = Array.from(servicesMap.values()).reduce(
         (sum, entries) => sum + (Array.isArray(entries) ? entries.length : 0),
         0,
@@ -9118,13 +9118,10 @@ async function handleRequest(
       }
 
       // Check if plugin exposes a test/health method
-      const testFn =
-        (plugin as unknown as Record<string, unknown>).testConnection ??
-        (plugin as unknown as Record<string, unknown>).healthCheck;
-      if (typeof testFn === "function") {
-        const result = await (
-          testFn as () => Promise<{ ok: boolean; message?: string }>
-        )();
+      const pluginExt = plugin as typeof plugin & { testConnection?: () => Promise<{ ok: boolean; message?: string }>; healthCheck?: () => Promise<{ ok: boolean; message?: string }> };
+      const testFn = pluginExt.testConnection ?? pluginExt.healthCheck;
+      if (testFn) {
+        const result = await testFn();
         json(res, {
           success: result.ok !== false,
           pluginId,
@@ -16184,7 +16181,7 @@ async function handleRequest(
         error(res, "handler.type must be http, shell, or code", 400);
         return;
       }
-      newHandler = h as unknown as CustomActionDef["handler"];
+      newHandler = h as CustomActionDef["handler"];
     }
 
     // Security gate: if the new/updated handler is shell or code, require
@@ -16603,7 +16600,7 @@ export async function startApiServer(opts?: {
     defaultSource: string,
     defaultTags: string[],
   ): boolean => {
-    if ((target as unknown as Record<string, unknown>)[PATCHED_MARKER]) {
+    if ((target as typeof target & Record<string, unknown>)[PATCHED_MARKER]) {
       return false;
     }
 
@@ -16642,7 +16639,7 @@ export async function startApiServer(opts?: {
       target[lvl] = patched;
     }
 
-    (target as unknown as Record<string, unknown>)[PATCHED_MARKER] = true;
+    (target as typeof target & Record<string, unknown>)[PATCHED_MARKER] = true;
     return true;
   };
 
@@ -17450,8 +17447,7 @@ export async function startApiServer(opts?: {
         state.conversations.set(convId, {
           id: convId,
           title:
-            ((room as unknown as Record<string, unknown>).name as string) ||
-            "Chat",
+            room.name || "Chat",
           roomId: room.id as UUID,
           createdAt: updatedAt,
           updatedAt,
