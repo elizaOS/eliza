@@ -341,4 +341,41 @@ describe("startup conversation restore", () => {
       tree.unmount();
     });
   });
+
+  it("does not create an empty conversation when there is nothing to restore", async () => {
+    let latest: StartupSnapshot | null = null;
+    let tree!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      tree = TestRenderer.create(
+        React.createElement(
+          AppProvider,
+          null,
+          React.createElement(Probe, {
+            onChange: (snapshot) => {
+              latest = snapshot;
+            },
+          }),
+        ),
+      );
+    });
+
+    await waitFor(() => {
+      expect(latest?.startupPhase).toBe("ready");
+      expect(latest?.onboardingLoading).toBe(false);
+    });
+
+    expect(latest?.activeConversationId).toBeNull();
+    expect(latest?.conversationIds).toEqual([]);
+    expect(mockClient.createConversation).not.toHaveBeenCalled();
+    expect(mockClient.requestGreeting).not.toHaveBeenCalled();
+    expect(mockClient.sendWsMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "active-conversation" }),
+    );
+    expect(mockClient.connectWs).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      tree.unmount();
+    });
+  });
 });

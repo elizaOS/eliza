@@ -363,6 +363,10 @@ function tFn(k: string): string {
   return labels[k] ?? k;
 }
 
+function shellModeForTab(tab: Tab): "native" | "companion" {
+  return tab === "companion" ? "companion" : "native";
+}
+
 function makeState(overrides?: Partial<HarnessState>): HarnessState {
   const state: HarnessState = {
     t: tFn,
@@ -377,6 +381,7 @@ function makeState(overrides?: Partial<HarnessState>): HarnessState {
     uiShellMode: "native",
     setUiShellMode: vi.fn((mode: "native" | "companion") => {
       state.uiShellMode = mode;
+      state.tab = mode === "companion" ? "companion" : "chat";
     }),
     uiLanguage: "en",
     agentStatus: { state: "running", agentName: "Milady" },
@@ -390,6 +395,7 @@ function makeState(overrides?: Partial<HarnessState>): HarnessState {
     setActionNotice: vi.fn(),
     setTab: (tab: Tab) => {
       state.tab = tab;
+      state.uiShellMode = shellModeForTab(tab);
     },
     ...overrides,
   };
@@ -430,6 +436,64 @@ function filterRealErrors(spy: ReturnType<typeof vi.spyOn>): Array<unknown[]> {
       !msg.startsWith("ERROR:")
     );
   });
+}
+
+function requireTree(
+  tree: TestRenderer.ReactTestRenderer | null,
+): TestRenderer.ReactTestRenderer {
+  if (!tree) throw new Error("failed to render App");
+  return tree;
+}
+
+function expectShellForTab(text: string, tab: Tab): void {
+  const expectedToken = (() => {
+    switch (tab) {
+      case "chat":
+        return "ChatView Ready";
+      case "companion":
+        return "CompanionShell Ready: companion";
+      case "character":
+      case "character-select":
+        return "CharacterView Ready";
+      case "wallets":
+        return "InventoryView Ready";
+      case "knowledge":
+        return "KnowledgeView Ready";
+      case "connectors":
+        return "ConnectorsPageView Ready";
+      case "triggers":
+        return "HeartbeatsView Ready";
+      case "apps":
+        return "AppsPageView Ready";
+      case "settings":
+      case "voice":
+        return "SettingsView Ready";
+      case "stream":
+        return "StreamView Ready";
+      case "advanced":
+      case "plugins":
+      case "skills":
+      case "actions":
+      case "fine-tuning":
+      case "trajectories":
+      case "runtime":
+      case "database":
+      case "lifo":
+      case "logs":
+      case "security":
+        return "AdvancedPageView Ready";
+      default:
+        return "ChatView Ready";
+    }
+  })();
+
+  expect(text).toContain(expectedToken);
+  if (tab === "companion") {
+    expect(text).not.toContain("Header");
+  } else {
+    expect(text).toContain("Header");
+  }
+  expectValidContent(text);
 }
 
 /* ── Tests ────────────────────────────────────────────────────────── */

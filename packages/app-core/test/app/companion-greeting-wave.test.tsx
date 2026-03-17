@@ -129,7 +129,10 @@ vi.mock("@elizaos/app-core/api", () => ({
 
 import { AppProvider, useApp } from "@elizaos/app-core/state";
 
-type Snapshot = { tab: Tab; uiShellMode: "native" | "companion" };
+type Snapshot = {
+  tab: Tab;
+  uiShellMode: "native" | "companion";
+};
 
 type ProbeApi = {
   handleNewConversation: () => Promise<void>;
@@ -142,14 +145,17 @@ function Probe(props: {
   const app = useApp();
 
   useEffect(() => {
-    props.onChange({ tab: app.tab, uiShellMode: app.uiShellMode });
-  }, [app.tab, app.uiShellMode, props]);
-
-  useEffect(() => {
     props.onReady({
       handleNewConversation: () => app.handleNewConversation(),
     });
   }, [app.handleNewConversation, props]);
+
+  useEffect(() => {
+    props.onChange({
+      tab: app.tab,
+      uiShellMode: app.uiShellMode,
+    });
+  }, [app.tab, app.uiShellMode, props]);
 
   return null;
 }
@@ -348,12 +354,7 @@ describe("companion greeting wave", () => {
     await waitFor(() => {
       expect(api).not.toBeNull();
       if (options?.bootstrapConversation) {
-        expect(mockClient.createConversation).toHaveBeenCalledWith(
-          "New Chat",
-          expect.objectContaining({
-            bootstrapGreeting: true,
-          }),
-        );
+        expect(mockClient.createConversation).not.toHaveBeenCalled();
         expect(snapshot).toMatchObject({
           tab: "character-select",
           uiShellMode: "native",
@@ -380,10 +381,15 @@ describe("companion greeting wave", () => {
       originalUnmount();
     };
 
-    return { api: resolvedApi, tree, events, snapshot: () => snapshot };
+    return {
+      api: resolvedApi,
+      tree,
+      events,
+      snapshot: () => snapshot,
+    };
   }
 
-  it("does not wave for a bootstrap greeting while launch resumes on character select", async () => {
+  it("does not wave when launch resumes on character select without conversations", async () => {
     mockClient.listConversations.mockResolvedValue({
       conversations: [],
     });

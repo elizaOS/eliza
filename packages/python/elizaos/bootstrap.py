@@ -8,9 +8,7 @@ existing code that imports from ``elizaos.bootstrap`` continues to work.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
-
-from pydantic import BaseModel, Field
+from typing import TYPE_CHECKING
 
 from elizaos.action_docs import with_canonical_action_docs, with_canonical_evaluator_docs
 from elizaos.advanced_capabilities import (
@@ -20,6 +18,7 @@ from elizaos.advanced_capabilities import (
     advanced_services,
 )
 from elizaos.basic_capabilities import basic_actions, basic_providers, basic_services
+from elizaos.types import EvaluatorResult  # noqa: F401 - re-exported for backwards compat
 from elizaos.types import Plugin
 
 if TYPE_CHECKING:
@@ -44,25 +43,6 @@ class CapabilityConfig:
     def __post_init__(self) -> None:
         if self.advanced_capabilities and not self.enable_extended:
             self.enable_extended = True
-
-
-class EvaluatorResult(BaseModel):
-    """Result from an evaluator."""
-
-    score: int = Field(..., description="Numeric score 0-100")
-    passed: bool = Field(..., description="Whether evaluation passed")
-    reason: str = Field(..., description="Reason for the result")
-    details: dict[str, Any] = Field(default_factory=dict, description="Additional details")
-
-    model_config = {"populate_by_name": True}
-
-    @classmethod
-    def pass_result(cls, score: int, reason: str) -> EvaluatorResult:
-        return cls(score=score, passed=True, reason=reason)
-
-    @classmethod
-    def fail_result(cls, score: int, reason: str) -> EvaluatorResult:
-        return cls(score=score, passed=False, reason=reason)
 
 
 # ---------------------------------------------------------------------------

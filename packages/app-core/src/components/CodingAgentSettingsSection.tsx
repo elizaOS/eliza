@@ -312,7 +312,9 @@ export function CodingAgentSettingsSection() {
               <div key={agent}>
                 <span className="font-semibold">{AGENT_LABELS[agent]}:</span>{" "}
                 {preflight?.installCommand
-                  ? `${t("codingagentsettingssection.InstallWith")} ${preflight.installCommand}`
+                  ? `${t("codingagentsettingssection.InstallWith", {
+                      defaultValue: "Install with",
+                    })} ${preflight.installCommand}`
                   : ""}
                 {preflight?.docsUrl ? ` (${preflight.docsUrl})` : ""}
               </div>

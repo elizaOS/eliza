@@ -63,6 +63,7 @@ function createContext(overrides: Record<string, unknown> = {}) {
     chatAgentVoiceMuted: false,
     setState: vi.fn(),
     handleNewConversation: vi.fn(async () => {}),
+    handleStartDraftConversation: vi.fn(async () => {}),
     selectedVrmIndex: 1,
     customVrmUrl: "",
     customBackgroundUrl: "",
@@ -257,10 +258,12 @@ describe("CompanionView", () => {
   it("renders centered companion header chat controls", async () => {
     const setState = vi.fn();
     const handleNewConversation = vi.fn(async () => {});
+    const handleStartDraftConversation = vi.fn(async () => {});
     mockUseApp.mockReturnValue(
       createContext({
         setState,
         handleNewConversation,
+        handleStartDraftConversation,
       }),
     );
 
@@ -296,7 +299,8 @@ describe("CompanionView", () => {
     await act(async () => {
       newChatButton?.props.onClick();
     });
-    expect(handleNewConversation).toHaveBeenCalledTimes(1);
+    expect(handleStartDraftConversation).toHaveBeenCalledTimes(1);
+    expect(handleNewConversation).not.toHaveBeenCalled();
   });
 
   it("keeps the shared companion scene wrapper height-bounded", async () => {
@@ -362,7 +366,7 @@ describe("CompanionView", () => {
       });
     });
 
-    expect(setCompanionZoomNormalized).toHaveBeenCalledWith(1);
+    expect(setCompanionZoomNormalized).toHaveBeenCalledWith(0.95);
     setDragOrbitTarget.mockClear();
     resetDragOrbit.mockClear();
 
@@ -511,7 +515,7 @@ describe("CompanionView", () => {
 
     const lastZoom =
       setCompanionZoomNormalized.mock.calls.at(-1)?.[0] ?? Number.NaN;
-    expect(lastZoom).toBeCloseTo(5 / 6, 5);
+    expect(lastZoom).toBeCloseTo(0.95 - 120 / 720, 5);
     expect(localStorage.setItem).toHaveBeenLastCalledWith(
       COMPANION_ZOOM_STORAGE_KEY,
       String(lastZoom),

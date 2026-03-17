@@ -475,7 +475,7 @@ describe("onboarding finish locking", () => {
     });
   });
 
-  it("hydrates the first conversation and intro message after onboarding completes", async () => {
+  it("does not create an empty conversation after onboarding completes", async () => {
     let api: ProbeApi | null = null;
     let tree: TestRenderer.ReactTestRenderer;
     await act(async () => {
@@ -512,28 +512,20 @@ describe("onboarding finish locking", () => {
     expect(snapshot.onboardingComplete).toBe(true);
     expect(snapshot.tab).toBe("character-select");
     expect(snapshot.uiShellMode).toBe("native");
-    expect(snapshot.activeConversationId).toBe("conv-created");
-    expect(snapshot.conversationMessages).toEqual([
-      {
-        role: "assistant",
-        text: "Welcome to the conversation.",
-        source: "agent_greeting",
-      },
-    ]);
+    expect(snapshot.activeConversationId).toBeNull();
+    expect(snapshot.conversationMessages).toEqual([]);
     expect(mockClient.restartAgent).toHaveBeenCalledTimes(1);
-    expect(mockClient.createConversation).toHaveBeenCalled();
-    expect(mockClient.createConversation.mock.calls.at(-1)?.[1]).toMatchObject({
-      bootstrapGreeting: true,
-      lang: "en",
-    });
+    expect(mockClient.createConversation).not.toHaveBeenCalled();
     expect(mockClient.requestGreeting).not.toHaveBeenCalled();
+    expect(mockClient.listConversations).toHaveBeenCalled();
+    expect(mockClient.getConversationMessages).not.toHaveBeenCalled();
 
     await act(async () => {
       tree?.unmount();
     });
   });
 
-  it("waits for the restarted agent before bootstrapping the starter greeting", async () => {
+  it("waits for the restarted agent before restoring an empty conversation greeting", async () => {
     let runtimeReady = false;
     mockClient.restartAgent.mockResolvedValue({
       state: "restarting",
@@ -552,21 +544,22 @@ describe("onboarding finish locking", () => {
         uptime: undefined,
       };
     });
-    mockClient.createConversation.mockImplementation(async () => ({
-      conversation: {
-        id: "conv-created",
-        title: "New Chat",
-        roomId: "room-created",
-        createdAt: "2026-02-01T00:00:00.000Z",
-        updatedAt: "2026-02-01T00:00:00.000Z",
-      },
-      greeting: runtimeReady
-        ? {
-            text: "Welcome to the conversation.",
-            agentName: "Milady",
-            generated: true,
-          }
-        : undefined,
+    mockClient.listConversations.mockResolvedValue({
+      conversations: [
+        {
+          id: "conv-restored",
+          title: "Starter Chat",
+          roomId: "room-restored",
+          createdAt: "2026-02-01T00:00:00.000Z",
+          updatedAt: "2026-02-01T00:00:00.000Z",
+        },
+      ],
+    });
+    mockClient.getConversationMessages.mockResolvedValue({ messages: [] });
+    mockClient.requestGreeting.mockImplementation(async () => ({
+      text: runtimeReady ? "Welcome to the conversation." : "",
+      agentName: "Milady",
+      generated: true,
     }));
 
     let api: ProbeApi | null = null;
@@ -601,10 +594,20 @@ describe("onboarding finish locking", () => {
 
     await waitForOnboardingCompletion(requireApi);
 
+    for (let i = 0; i < 20; i += 1) {
+      if (requireApi().snapshot().conversationMessages.length > 0) {
+        break;
+      }
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
+
     const snapshot = requireApi().snapshot();
     expect(snapshot.onboardingComplete).toBe(true);
     expect(snapshot.tab).toBe("character-select");
     expect(snapshot.uiShellMode).toBe("native");
+    expect(snapshot.activeConversationId).toBe("conv-restored");
     expect(snapshot.conversationMessages).toEqual([
       {
         role: "assistant",
@@ -614,9 +617,16 @@ describe("onboarding finish locking", () => {
     ]);
     expect(mockClient.getStatus).toHaveBeenCalled();
     expect(mockClient.getStatus.mock.invocationCallOrder[0]).toBeLessThan(
-      mockClient.createConversation.mock.invocationCallOrder[0],
+      mockClient.requestGreeting.mock.invocationCallOrder[0],
     );
-    expect(mockClient.requestGreeting).not.toHaveBeenCalled();
+    expect(
+      mockClient.listConversations.mock.invocationCallOrder.at(-1),
+    ).toBeGreaterThan(mockClient.getStatus.mock.invocationCallOrder[0]);
+    expect(mockClient.createConversation).not.toHaveBeenCalled();
+    expect(mockClient.sendWsMessage).toHaveBeenCalledWith({
+      type: "active-conversation",
+      conversationId: "conv-restored",
+    });
 
     await act(async () => {
       tree?.unmount();

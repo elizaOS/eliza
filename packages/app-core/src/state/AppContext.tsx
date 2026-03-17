@@ -2193,23 +2193,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setOnboardingStep,
   ]);
 
+  const resetConversationDraftState = useCallback(() => {
+    conversationHydrationEpochRef.current += 1;
+    greetingFiredRef.current = false;
+    greetingInFlightConversationRef.current = null;
+    setChatInput("");
+    setChatPendingImages([]);
+    setChatSending(false);
+    setChatFirstTokenReceived(false);
+    conversationMessagesRef.current = [];
+    setConversationMessages([]);
+    setActiveConversationId(null);
+    activeConversationIdRef.current = null;
+    setCompanionMessageCutoffTs(Date.now());
+  }, []);
+
+  const handleStartDraftConversation = useCallback(async () => {
+    resetConversationDraftState();
+  }, [resetConversationDraftState]);
+
   const handleNewConversation = useCallback(
     async (title?: string) => {
-      conversationHydrationEpochRef.current += 1;
       const previousConversationId = activeConversationIdRef.current;
       const previousMessages = conversationMessagesRef.current;
       const previousCutoffTs = companionMessageCutoffTs;
 
-      greetingFiredRef.current = false;
-      greetingInFlightConversationRef.current = null;
-      setChatInput("");
-      setChatPendingImages([]);
-      setChatSending(false);
-      setChatFirstTokenReceived(false);
-      setConversationMessages([]);
-      setActiveConversationId(null);
-      activeConversationIdRef.current = null;
-      setCompanionMessageCutoffTs(Date.now());
+      resetConversationDraftState();
 
       try {
         const { conversation, greeting } = await client.createConversation(
@@ -2264,6 +2273,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [
       companionMessageCutoffTs,
+      resetConversationDraftState,
       requestGreetingWhenRunning,
       scheduleGreetingWaveForCompanion,
       uiLanguage,
@@ -5787,6 +5797,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     handleChatRetry,
     handleChatEdit,
     handleChatClear,
+    handleStartDraftConversation,
     handleNewConversation,
     setChatPendingImages,
     handleSelectConversation,

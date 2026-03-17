@@ -281,6 +281,43 @@ describe("PluginsView game modal", () => {
     expect(text(tree?.root)).toContain("Telegram");
   });
 
+  it("allows collapsing the selected desktop connector section", async () => {
+    mockUseApp.mockReturnValue(
+      baseContext([
+        createPlugin("discord", "Discord", "connector"),
+        createPlugin("telegram", "Telegram", "connector", {
+          enabled: false,
+        }),
+      ]),
+    );
+
+    let tree: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(
+        React.createElement(PluginsView, { inModal: true, mode: "social" }),
+      );
+    });
+
+    const collapseButton = tree.root.findByProps({
+      "aria-label": "Collapse Discord",
+    });
+    expect(text(tree.root)).toContain("Save Settings");
+
+    await act(async () => {
+      collapseButton.props.onClick();
+    });
+
+    expect(text(tree.root)).toContain("Expand");
+    expect(text(tree.root)).not.toContain("Save Settings");
+    expect(
+      tree.root
+        .findByProps({
+          "data-testid": "connector-section-discord",
+        })
+        .findAllByProps({ "data-config-key": "API_KEY" }),
+    ).toHaveLength(0);
+  });
+
   it("uses list/detail mobile panes on narrow viewport", async () => {
     narrowViewport = true;
     let tree: TestRenderer.ReactTestRenderer;

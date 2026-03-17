@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias
+
+from pydantic import BaseModel, Field
 
 from elizaos.types.generated.eliza.v1 import components_pb2
 from elizaos.types.primitives import Content
@@ -109,6 +111,25 @@ class EvaluatorDefinition:  # runtime interface
         self.always_run = always_run
 
 
+class EvaluatorResult(BaseModel):
+    """Result from an evaluator."""
+
+    score: int = Field(..., description="Numeric score 0-100")
+    passed: bool = Field(..., description="Whether evaluation passed")
+    reason: str = Field(..., description="Reason for the result")
+    details: dict[str, Any] = Field(default_factory=dict, description="Additional details")
+
+    model_config = {"populate_by_name": True}
+
+    @classmethod
+    def pass_result(cls, score: int, reason: str) -> "EvaluatorResult":
+        return cls(score=score, passed=True, reason=reason)
+
+    @classmethod
+    def fail_result(cls, score: int, reason: str) -> "EvaluatorResult":
+        return cls(score=score, passed=False, reason=reason)
+
+
 class ProviderDefinition:  # runtime interface
     """Definition for a context provider that supplies information to the agent."""
 
@@ -153,6 +174,7 @@ __all__ = [
     "HandlerOptions",
     "ProviderResult",
     "EvaluationExample",
+    "EvaluatorResult",
     "Handler",
     "Validator",
     "HandlerCallback",

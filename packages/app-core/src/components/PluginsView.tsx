@@ -1947,10 +1947,12 @@ function PluginListView({ label, mode = "all", inModal }: PluginListViewProps) {
   const handleConnectorSectionToggle = useCallback(
     (pluginId: string) => {
       setConnectorSelectedId(pluginId);
+      let shouldScroll = false;
       setConnectorExpandedIds((prev) => {
         if (desktopConnectorLayout) {
           // Accordion: toggle off if already open, otherwise open this one only
           if (prev.has(pluginId)) return new Set();
+          shouldScroll = true;
           return new Set([pluginId]);
         }
         const next = new Set(prev);
@@ -1958,7 +1960,7 @@ function PluginListView({ label, mode = "all", inModal }: PluginListViewProps) {
         else next.add(pluginId);
         return next;
       });
-      if (desktopConnectorLayout) {
+      if (desktopConnectorLayout && shouldScroll) {
         scrollConnectorIntoView(pluginId);
       }
     },

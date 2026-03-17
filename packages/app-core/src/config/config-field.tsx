@@ -391,7 +391,11 @@ export function RenderSelectField(props: FieldRenderProps) {
       onBlur={() => fireAction(props, "blur")}
       onClick={() => fireAction(props, "click")}
     >
-      {!props.required && <option value="">{t("config-field.None")}</option>}
+      {!props.required && (
+        <option value="">
+          {t("config-field.None", { defaultValue: "None" })}
+        </option>
+      )}
       {allOptions.map((opt) => (
         <option key={opt.value} value={opt.value}>
           {opt.label}
@@ -514,12 +518,14 @@ function SearchableSelectInner({
                   fireAction(props, "change");
                 }}
               >
-                {t("config-field.None")}
+                {t("config-field.None", { defaultValue: "None" })}
               </button>
             )}
             {filtered.length === 0 && (
               <div className="px-3 py-3 text-[12px] text-[var(--muted)] text-center">
-                {t("config-field.NoMatches")}
+                {t("config-field.NoMatches", {
+                  defaultValue: "No matches",
+                })}
               </div>
             )}
             {filtered.map((opt) => (
@@ -543,7 +549,8 @@ function SearchableSelectInner({
             ))}
           </div>
           <div className="px-3 py-1 border-t border-[var(--border)] text-[10px] text-[var(--muted)]">
-            {filtered.length} of {options.length} {t("config-field.models")}
+            {filtered.length} of {options.length}{" "}
+            {t("config-field.models", { defaultValue: "models" })}
           </div>
         </div>
       )}
@@ -903,7 +910,9 @@ function JsonFieldInner({ fp: props }: { fp: FieldRenderProps }) {
             : "border-[var(--border)]"
         } bg-[var(--card)] text-[13px] font-mono transition-all focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] box-border min-h-[100px] resize-y rounded-sm`}
         defaultValue={initial}
-        placeholder={t("config-field.KeyValue")}
+        placeholder={t("config-field.KeyValue", {
+          defaultValue: "Key-value JSON",
+        })}
         rows={6}
         data-config-key={props.key}
         data-field-type="json"
@@ -995,7 +1004,9 @@ function ArrayItem({
             className="px-1 py-0 text-[10px] leading-tight text-[var(--muted)] cursor-pointer hover:text-[var(--text)] disabled:opacity-30 disabled:cursor-not-allowed"
             onClick={onMoveUp}
             disabled={index === 0}
-            title={t("config-field.MoveUp")}
+            title={t("config-field.MoveUp", {
+              defaultValue: "Move up",
+            })}
           >
             ▲
           </button>
@@ -1004,7 +1015,9 @@ function ArrayItem({
             className="px-1 py-0 text-[10px] leading-tight text-[var(--muted)] cursor-pointer hover:text-[var(--text)] disabled:opacity-30 disabled:cursor-not-allowed"
             onClick={onMoveDown}
             disabled={index === total - 1}
-            title={t("config-field.MoveDown")}
+            title={t("config-field.MoveDown", {
+              defaultValue: "Move down",
+            })}
           >
             <ChevronDown className="w-3 h-3" />
           </button>
@@ -1103,7 +1116,7 @@ function ArrayFieldInner({ fp: props }: { fp: FieldRenderProps }) {
             fireAction(props, "click");
           }}
         >
-          {t("config-field.AddItem")}
+          {t("config-field.AddItem", { defaultValue: "Add item" })}
         </button>
       )}
     </div>
@@ -1170,7 +1183,7 @@ function KeyValueFieldInner({ fp: props }: { fp: FieldRenderProps }) {
             className={`${inputCls(!!props.errors?.length)} flex-1`}
             type="text"
             value={pair.key}
-            placeholder={t("config-field.Key")}
+            placeholder={t("config-field.Key", { defaultValue: "Key" })}
             disabled={props.readonly}
             onChange={(e) => updateRow(index, "key", e.target.value)}
             onBlur={() => fireAction(props, "blur")}
@@ -1179,7 +1192,7 @@ function KeyValueFieldInner({ fp: props }: { fp: FieldRenderProps }) {
             className={`${inputCls(!!props.errors?.length)} flex-1`}
             type="text"
             value={pair.value}
-            placeholder={t("config-field.Value")}
+            placeholder={t("config-field.Value", { defaultValue: "Value" })}
             disabled={props.readonly}
             onChange={(e) => updateRow(index, "value", e.target.value)}
             onBlur={() => fireAction(props, "blur")}
@@ -1207,7 +1220,7 @@ function KeyValueFieldInner({ fp: props }: { fp: FieldRenderProps }) {
             fireAction(props, "click");
           }}
         >
-          {t("config-field.AddRow")}
+          {t("config-field.AddRow", { defaultValue: "Add row" })}
         </button>
       )}
     </div>
@@ -1267,7 +1280,9 @@ export function RenderFileField(props: FieldRenderProps) {
         onClick={() => fireAction(props, "click")}
       />
       <div className="text-[11px] text-[var(--muted)] mt-0.5">
-        {t("config-field.EnterAFilePathOr")}
+        {t("config-field.EnterAFilePathOr", {
+          defaultValue: "Enter a file path or paste one here.",
+        })}
       </div>
     </div>
   );
@@ -1288,7 +1303,10 @@ export function RenderCustomField(props: FieldRenderProps) {
       data-config-key={props.key}
       data-field-type="custom"
     >
-      {t("config-field.CustomComponent")} {componentName ?? props.fieldType}
+      {t("config-field.CustomComponent", {
+        defaultValue: "Custom component:",
+      })}{" "}
+      {componentName ?? props.fieldType}
     </div>
   );
 }
@@ -1474,7 +1492,7 @@ function MarkdownFieldInner(props: FieldRenderProps) {
           }`}
           onClick={() => setPreview(false)}
         >
-          {t("config-field.Edit")}
+          {t("config-field.Edit", { defaultValue: "Edit" })}
         </button>
         <button
           type="button"
@@ -1485,7 +1503,7 @@ function MarkdownFieldInner(props: FieldRenderProps) {
           }`}
           onClick={() => setPreview(true)}
         >
-          {t("config-field.Preview")}
+          {t("config-field.Preview", { defaultValue: "Preview" })}
         </button>
       </div>
       {preview ? (
@@ -1498,7 +1516,9 @@ function MarkdownFieldInner(props: FieldRenderProps) {
             renderMarkdown(value)
           ) : (
             <span className="text-[var(--muted)] italic">
-              {t("config-field.NothingToPreview")}
+              {t("config-field.NothingToPreview", {
+                defaultValue: "Nothing to preview",
+              })}
             </span>
           )}
         </div>
@@ -1591,7 +1611,9 @@ function CheckboxGroupInner(props: FieldRenderProps) {
       ))}
       {options.length === 0 && (
         <span className="text-[11px] text-[var(--muted)] italic">
-          {t("config-field.NoOptionsDefined")}
+          {t("config-field.NoOptionsDefined", {
+            defaultValue: "No options defined",
+          })}
         </span>
       )}
     </div>
@@ -1719,7 +1741,9 @@ function TableFieldInner(props: FieldRenderProps) {
                       type="button"
                       className="text-[var(--muted)] hover:text-[var(--destructive)] text-[14px] px-1"
                       onClick={() => removeRow(ri)}
-                      title={t("config-field.RemoveRow")}
+                      title={t("config-field.RemoveRow", {
+                        defaultValue: "Remove row",
+                      })}
                     >
                       {t("config-field.Times")}
                     </button>
@@ -1736,7 +1760,7 @@ function TableFieldInner(props: FieldRenderProps) {
           className="self-start text-[11px] text-[var(--accent)] hover:underline"
           onClick={addRow}
         >
-          {t("config-field.AddRow")}
+          {t("config-field.AddRow", { defaultValue: "Add row" })}
         </button>
       )}
     </div>
@@ -1888,8 +1912,8 @@ export function ConfigField({
             {renderProps.schema.default != null && (
               <span className="opacity-70">
                 {" "}
-                {t("config-field.Default")} {String(renderProps.schema.default)}
-                )
+                {t("config-field.Default", { defaultValue: "Default" })}{" "}
+                {String(renderProps.schema.default)})
               </span>
             )}
           </div>

@@ -553,6 +553,7 @@ export interface AppActions {
   handleChatRetry: (assistantMsgId: string) => void;
   handleChatEdit: (messageId: string, text: string) => Promise<boolean>;
   handleChatClear: () => Promise<void>;
+  handleStartDraftConversation: () => Promise<void>;
   handleNewConversation: (title?: string) => Promise<void>;
   setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
   handleSelectConversation: (id: string) => Promise<void>;
