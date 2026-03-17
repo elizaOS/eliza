@@ -96,6 +96,7 @@ export class EmbeddingGenerationService extends Service {
 				if (!this.isProcessing && this.queue.length > 0) {
 					await this.processQueue();
 				}
+				return undefined;
 			},
 		});
 	}

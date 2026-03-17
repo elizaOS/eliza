@@ -540,12 +540,12 @@ export class ApprovalService extends Service {
 				runtime: IAgentRuntime,
 				options: Record<string, unknown>,
 				task: Task,
-			): Promise<void> => {
+			) => {
 				const selectedOption = options.option as string;
 
 				if (!task.id) {
 					logger.error({ src: "service:approval" }, "Task has no ID");
-					return;
+					return undefined;
 				}
 
 				await this.handleSelection(
@@ -556,6 +556,7 @@ export class ApprovalService extends Service {
 
 				// Delete the task after handling
 				await runtime.deleteTask(task.id);
+				return undefined;
 			},
 		};
 

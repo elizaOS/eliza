@@ -216,6 +216,7 @@ export class AgentRuntime implements IAgentRuntime {
   private capabilityOptions: CapabilityConfig = {};
   // Action planning option (undefined means use settings, true/false is explicit)
   private actionPlanningOption?: boolean;
+  private cachedEmbeddingDimension?: number;
   // LLM mode option for overriding model selection (undefined means use settings)
   private llmModeOption?: import("./types").LLMModeType;
   // Check should respond option (undefined means use settings, defaults to true)
@@ -1538,8 +1539,8 @@ export class AgentRuntime implements IAgentRuntime {
                   accumulatedState = {
                     ...accumulatedState,
                     ...freshProviderState,
-                    values: { ...accumulatedState.values, ...freshProviderState.values },
-                    data: { ...accumulatedState.data, ...freshProviderState.data },
+                    values: { ...accumulatedState?.values, ...freshProviderState.values },
+                    data: { ...accumulatedState?.data, ...freshProviderState.data },
                   };
 
         // Add action plan to state if it exists
