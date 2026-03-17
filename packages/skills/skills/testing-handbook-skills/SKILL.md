@@ -1,6 +1,6 @@
 ---
 name: testing-handbook-skills
-description: "Application security testing toolkit from the Trail of Bits Testing Handbook. Covers fuzzing (libFuzzer, AFL++, cargo-fuzz, Atheris, Ruzzy), coverage analysis, harness writing, sanitizers, static analysis (Semgrep, CodeQL), and cryptographic testing (Wycheproof, constant-time)."
+description: "Application security testing toolkit from the Trail of Bits Testing Handbook. Helps the agent set up fuzzing campaigns, write fuzz harnesses, run coverage-guided fuzzers (libFuzzer, AFL++, cargo-fuzz, Atheris, Ruzzy), and triage crashes. Covers memory-safety sanitizers (AddressSanitizer, UBSan, MSan), static analysis with Semgrep and CodeQL, cryptographic validation using Wycheproof test vectors, and constant-time verification. Use when testing C, C++, Rust, Python, or Ruby code for vulnerabilities, improving code coverage, building seed corpora, creating fuzzing dictionaries, overcoming fuzzing obstacles, or integrating security checks into CI/CD with OSS-Fuzz."
 ---
 
 # Testing Handbook Skills

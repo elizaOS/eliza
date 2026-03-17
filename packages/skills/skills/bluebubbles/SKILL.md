@@ -1,6 +1,6 @@
 ---
 name: bluebubbles
-description: Use when you need to send or manage iMessages via BlueBubbles (recommended iMessage integration). Calls go through the generic message tool with channel="bluebubbles".
+description: Handles sending and managing iMessages through BlueBubbles, the recommended iMessage integration. Triggers when the user wants to send a text message, send an iMessage, send a text, text someone, message a contact, react with a tapback, reply to a message thread, send an attachment via iMessage, edit or unsend a sent message, or manage group chat participants. All calls go through the generic message tool with channel="bluebubbles".
 metadata: { "otto": { "emoji": "🫧", "requires": { "config": ["channels.bluebubbles"] } } }
 ---
 

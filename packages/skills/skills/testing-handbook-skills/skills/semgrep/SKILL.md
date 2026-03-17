@@ -2,8 +2,12 @@
 name: semgrep
 type: tool
 description: >
-  Semgrep is a fast static analysis tool for finding bugs and enforcing code standards.
-  Use when scanning code for security issues or integrating into CI/CD pipelines.
+  Semgrep is a fast, lightweight static analysis tool for finding bugs, security
+  vulnerabilities, and enforcing code standards across a codebase. The agent should
+  use this skill when asked to run static analysis, scan code for security issues,
+  detect code patterns or anti-patterns, write or test custom Semgrep rules, set up
+  SAST in CI/CD pipelines, triage scan findings, suppress false positives, or
+  perform a rapid security audit without building the project.
 ---
 
 # Semgrep

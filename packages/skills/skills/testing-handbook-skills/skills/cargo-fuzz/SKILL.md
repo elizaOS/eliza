@@ -2,8 +2,14 @@
 name: cargo-fuzz
 type: fuzzer
 description: >
-  cargo-fuzz is the de facto fuzzing tool for Rust projects using Cargo.
-  Use for fuzzing Rust code with libFuzzer backend.
+  cargo-fuzz is the primary fuzzing tool for Rust projects built with Cargo.
+  It enables developers to set up fuzz testing, write fuzz harnesses, and run
+  fuzzing campaigns using the libFuzzer backend. Covers installation, harness
+  writing, structure-aware fuzzing with the arbitrary crate, sanitizer
+  integration including AddressSanitizer, coverage analysis, seed corpus
+  management, and troubleshooting common issues. Useful when a developer needs
+  to fuzz Rust code, find memory bugs, test parsers, or improve test coverage
+  in a Cargo-based project.
 ---
 
 # cargo-fuzz

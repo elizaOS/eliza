@@ -2,8 +2,15 @@
 name: harness-writing
 type: technique
 description: >
-  Techniques for writing effective fuzzing harnesses across languages.
-  Use when creating new fuzz targets or improving existing harness code.
+  The agent writes and improves fuzzing harnesses — the entrypoint functions that receive
+  random data from fuzzers and route it to the system under test (SUT). It implements
+  LLVMFuzzerTestOneInput for C/C++ with libFuzzer and AFL++ persistent mode, fuzz_target!
+  macros for Rust with cargo-fuzz and the arbitrary crate, and go-fuzz Fuzz functions for
+  Go. The agent structures inputs using FuzzedDataProvider, applies interleaved fuzzing
+  patterns for multi-operation targets, handles input size validation, resets global state
+  for determinism, and mocks blocking I/O. It applies this technique when creating new
+  fuzz targets, improving code coverage of existing harnesses, fixing non-reproducible
+  crashes, or building structure-aware harnesses with Protocol Buffers.
 ---
 
 # Writing Fuzzing Harnesses

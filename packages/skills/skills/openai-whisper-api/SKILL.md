@@ -1,6 +1,6 @@
 ---
 name: openai-whisper-api
-description: Transcribe audio via OpenAI Audio Transcriptions API (Whisper).
+description: Transcribe audio via OpenAI Audio Transcriptions API (Whisper). Use when the user wants to transcribe, convert speech to text, extract words from audio or voice recordings, generate a transcript from an audio file, or perform speech recognition on m4a, ogg, or wav files using the Whisper model.
 homepage: https://platform.openai.com/docs/guides/speech-to-text
 metadata:
   {

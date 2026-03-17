@@ -1,6 +1,6 @@
 ---
 name: session-logs
-description: Search and analyze your own session logs (older/parent conversations) using jq.
+description: Search and analyze session logs (older/parent conversations) stored as JSONL files using jq and rg. Use when the user asks about prior chats, previous conversations, conversation history, what was said before, session costs, token usage, or tool usage breakdown across past sessions.
 metadata: { "otto": { "emoji": "📜", "requires": { "bins": ["jq", "rg"] } } }
 ---
 
