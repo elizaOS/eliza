@@ -12,9 +12,7 @@ mod inner {
     pub async fn run() -> anyhow::Result<()> {
         let character = Character {
             name: "ExampleAgent".to_string(),
-            bio: Bio::Single(
-                "A helpful example agent for demonstrating the runtime.".to_string(),
-            ),
+            bio: Bio::Single("A helpful example agent for demonstrating the runtime.".to_string()),
             system: Some("You are a concise, helpful assistant.".to_string()),
             ..Default::default()
         };
