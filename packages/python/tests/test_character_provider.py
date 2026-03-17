@@ -41,6 +41,10 @@ def _import_character_provider():
         sys.modules[mod_name] = stub
 
     try:
+        # Remove any partially-loaded module left by the failed first import
+        # so importlib picks up the stubs instead of the broken cache entry.
+        sys.modules.pop("elizaos.basic_capabilities.providers.character", None)
+
         # Force a fresh import of just the character provider module
         mod = importlib.import_module("elizaos.basic_capabilities.providers.character")
         return mod
