@@ -377,7 +377,7 @@ describe("EmbeddingGenerationService - text preparation", () => {
 describe("Auto-compaction", () => {
 	it("should trigger compaction and set lastCompactionAt", async () => {
 		const { triggerAutoCompaction } = await import(
-			"../bootstrap/services/autoCompaction.ts"
+			"../advanced-memory/services/autoCompaction.ts"
 		);
 
 		let updatedRoom: Room | null = null;
@@ -428,7 +428,7 @@ describe("Auto-compaction", () => {
 
 	it("should prevent concurrent compactions for the same room", async () => {
 		const { triggerAutoCompaction } = await import(
-			"../bootstrap/services/autoCompaction.ts"
+			"../advanced-memory/services/autoCompaction.ts"
 		);
 
 		let modelCallCount = 0;
@@ -460,7 +460,7 @@ describe("Auto-compaction", () => {
 
 	it("should handle empty room gracefully", async () => {
 		const { triggerAutoCompaction } = await import(
-			"../bootstrap/services/autoCompaction.ts"
+			"../advanced-memory/services/autoCompaction.ts"
 		);
 
 		const mockRuntime = {
@@ -484,7 +484,7 @@ describe("Auto-compaction", () => {
 
 	it("should preserve compaction history from existing room metadata", async () => {
 		const { triggerAutoCompaction } = await import(
-			"../bootstrap/services/autoCompaction.ts"
+			"../advanced-memory/services/autoCompaction.ts"
 		);
 
 		let updatedRoom: Room | null = null;
@@ -525,7 +525,7 @@ describe("Auto-compaction", () => {
 describe("recentMessages provider - token budgeting", () => {
 	it("should limit messages by token budget, not just count", async () => {
 		const { recentMessagesProvider } = await import(
-			"../bootstrap/providers/recentMessages.ts"
+			"../basic-capabilities/providers/recentMessages.ts"
 		);
 
 		// Create messages where total tokens exceed budget but count is small
@@ -564,7 +564,7 @@ describe("recentMessages provider - token budgeting", () => {
 
 	it("should use compaction point when loading messages", async () => {
 		const { recentMessagesProvider } = await import(
-			"../bootstrap/providers/recentMessages.ts"
+			"../basic-capabilities/providers/recentMessages.ts"
 		);
 
 		const roomWithCompaction = createMockRoom({ lastCompactionAt: 1500 });
@@ -857,7 +857,7 @@ describe("Edge cases", () => {
 	it("DEFAULT_MAX_CONVERSATION_TOKENS should be configurable via getSetting", async () => {
 		// This verifies the provider reads the setting
 		const { recentMessagesProvider } = await import(
-			"../bootstrap/providers/recentMessages.ts"
+			"../basic-capabilities/providers/recentMessages.ts"
 		);
 
 		let capturedSetting: string | null = null;

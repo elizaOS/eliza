@@ -297,7 +297,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 describe("RESET_SESSION action", () => {
 	it("should set lastCompactionAt in room metadata", async () => {
 		const { resetSessionAction } = await import(
-			"../bootstrap/actions/resetSession.ts"
+			"../basic-capabilities/actions/resetSession.ts"
 		);
 
 		let updatedRoom: Room | null = null;
@@ -347,7 +347,7 @@ describe("RESET_SESSION action", () => {
 
 	it("should maintain compaction history", async () => {
 		const { resetSessionAction } = await import(
-			"../bootstrap/actions/resetSession.ts"
+			"../basic-capabilities/actions/resetSession.ts"
 		);
 
 		const existingRoom = createMockRoom({ lastCompactionAt: 1000 });
@@ -397,7 +397,7 @@ describe("RESET_SESSION action", () => {
 
 	it("should limit compaction history to 10 entries", async () => {
 		const { resetSessionAction } = await import(
-			"../bootstrap/actions/resetSession.ts"
+			"../basic-capabilities/actions/resetSession.ts"
 		);
 
 		// Create room with 10 existing entries
@@ -441,7 +441,7 @@ describe("RESET_SESSION action", () => {
 
 	it("should handle room not found error", async () => {
 		const { resetSessionAction } = await import(
-			"../bootstrap/actions/resetSession.ts"
+			"../basic-capabilities/actions/resetSession.ts"
 		);
 
 		const mockRuntime = {
@@ -478,7 +478,7 @@ describe("RESET_SESSION action", () => {
 
 	it("should track triggeredBy entity", async () => {
 		const { resetSessionAction } = await import(
-			"../bootstrap/actions/resetSession.ts"
+			"../basic-capabilities/actions/resetSession.ts"
 		);
 
 		let updatedRoom: Room | null = null;
@@ -511,7 +511,7 @@ describe("RESET_SESSION action", () => {
 
 	it("should include previous compaction timestamp in result", async () => {
 		const { resetSessionAction } = await import(
-			"../bootstrap/actions/resetSession.ts"
+			"../basic-capabilities/actions/resetSession.ts"
 		);
 
 		const previousCompaction = 5000;
@@ -542,7 +542,7 @@ describe("RESET_SESSION action", () => {
 
 	it("should always validate to true (any role can reset)", async () => {
 		const { resetSessionAction } = await import(
-			"../bootstrap/actions/resetSession.ts"
+			"../basic-capabilities/actions/resetSession.ts"
 		);
 
 		const mockRuntime = {
@@ -574,7 +574,7 @@ describe("RESET_SESSION action", () => {
 // ============================================
 describe("STATUS action", () => {
 	it("should show agent name and ID", async () => {
-		const { statusAction } = await import("../bootstrap/actions/status.ts");
+		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
 
 		const mockRuntime = {
 			agentId: "agent-12345678" as UUID,
@@ -608,7 +608,7 @@ describe("STATUS action", () => {
 	});
 
 	it("should show compaction timestamp when available", async () => {
-		const { statusAction } = await import("../bootstrap/actions/status.ts");
+		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
 
 		const compactionTime = Date.now() - 3600000; // 1 hour ago
 		const mockRoom = createMockRoom({ lastCompactionAt: compactionTime });
@@ -644,7 +644,7 @@ describe("STATUS action", () => {
 	});
 
 	it("should not show Last Reset when no compaction", async () => {
-		const { statusAction } = await import("../bootstrap/actions/status.ts");
+		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
 
 		const mockRoom = createMockRoom(); // No lastCompactionAt
 
@@ -679,7 +679,7 @@ describe("STATUS action", () => {
 	});
 
 	it("should list pending AWAITING_CHOICE tasks with options", async () => {
-		const { statusAction } = await import("../bootstrap/actions/status.ts");
+		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
 
 		const mockRuntime = {
 			agentId: "agent-1" as UUID,
@@ -734,7 +734,7 @@ describe("STATUS action", () => {
 	});
 
 	it("should show 'No pending tasks' when empty", async () => {
-		const { statusAction } = await import("../bootstrap/actions/status.ts");
+		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
 
 		const mockRuntime = {
 			agentId: "agent-1" as UUID,
@@ -767,7 +767,7 @@ describe("STATUS action", () => {
 	});
 
 	it("should show queued tasks separately", async () => {
-		const { statusAction } = await import("../bootstrap/actions/status.ts");
+		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
 
 		const mockRuntime = {
 			agentId: "agent-1" as UUID,
@@ -813,7 +813,7 @@ describe("STATUS action", () => {
 	});
 
 	it("should show room information", async () => {
-		const { statusAction } = await import("../bootstrap/actions/status.ts");
+		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
 
 		const mockRoom = createMockRoom({ name: "My Cool Room" });
 
@@ -849,7 +849,7 @@ describe("STATUS action", () => {
 	});
 
 	it("should always validate to true", async () => {
-		const { statusAction } = await import("../bootstrap/actions/status.ts");
+		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
 
 		const mockRuntime = {} as unknown as IAgentRuntime;
 
@@ -858,7 +858,7 @@ describe("STATUS action", () => {
 	});
 
 	it("should return status data in result values", async () => {
-		const { statusAction } = await import("../bootstrap/actions/status.ts");
+		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
 
 		const mockRuntime = {
 			agentId: "agent-1" as UUID,
@@ -1021,7 +1021,7 @@ describe("Edge cases", () => {
 
 	it("should handle empty room metadata gracefully", async () => {
 		const { resetSessionAction } = await import(
-			"../bootstrap/actions/resetSession.ts"
+			"../basic-capabilities/actions/resetSession.ts"
 		);
 
 		const roomWithNoMetadata = {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { actionsProvider } from "../bootstrap/providers/actions";
+import { actionsProvider } from "../basic-capabilities/providers/actions.ts";
 import {
 	ActionFilterService,
 	buildQueryText,

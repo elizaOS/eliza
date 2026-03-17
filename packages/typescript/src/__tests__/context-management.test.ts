@@ -100,7 +100,7 @@ describe("Layer 1 — Per-message truncation", () => {
 
 	it("should truncate a single 1 MB message", async () => {
 		const { recentMessagesProvider } = await import(
-			"../bootstrap/providers/recentMessages.ts"
+			"../basic-capabilities/providers/recentMessages.ts"
 		);
 
 		const hugeText = "A".repeat(1_000_000); // 1 MB
@@ -121,7 +121,7 @@ describe("Layer 1 — Per-message truncation", () => {
 
 	it("should truncate a 50 MB message (simulating base64 blob)", async () => {
 		const { recentMessagesProvider } = await import(
-			"../bootstrap/providers/recentMessages.ts"
+			"../basic-capabilities/providers/recentMessages.ts"
 		);
 
 		const hugeText = "B".repeat(50_000_000); // 50 MB
@@ -144,7 +144,7 @@ describe("Layer 1 — Per-message truncation", () => {
 
 	it("should preserve messages under the cap unchanged", async () => {
 		const { recentMessagesProvider } = await import(
-			"../bootstrap/providers/recentMessages.ts"
+			"../basic-capabilities/providers/recentMessages.ts"
 		);
 
 		const normalText = "Hello, how are you doing today?";
@@ -165,7 +165,7 @@ describe("Layer 1 — Per-message truncation", () => {
 
 	it("should truncate multiple huge messages independently", async () => {
 		const { recentMessagesProvider } = await import(
-			"../bootstrap/providers/recentMessages.ts"
+			"../basic-capabilities/providers/recentMessages.ts"
 		);
 
 		const hugeMessages = [
@@ -192,7 +192,7 @@ describe("Layer 1 — Per-message truncation", () => {
 
 	it("should include truncation notice with original size", async () => {
 		const { recentMessagesProvider } = await import(
-			"../bootstrap/providers/recentMessages.ts"
+			"../basic-capabilities/providers/recentMessages.ts"
 		);
 
 		const hugeText = "X".repeat(100_000);
@@ -267,7 +267,7 @@ describe("Layer 2 — Conversation token budgeting", () => {
 
 	it("should apply formatting overhead factor", async () => {
 		const { recentMessagesProvider } = await import(
-			"../bootstrap/providers/recentMessages.ts"
+			"../basic-capabilities/providers/recentMessages.ts"
 		);
 
 		// Create messages that total ~45K estimated tokens of raw text
@@ -845,7 +845,7 @@ describe("Token estimation accuracy and edge cases", () => {
 describe("End-to-end: extreme data scenarios", () => {
 	it("should survive 1000 messages of 10K chars each (10 MB total)", async () => {
 		const { recentMessagesProvider } = await import(
-			"../bootstrap/providers/recentMessages.ts"
+			"../basic-capabilities/providers/recentMessages.ts"
 		);
 
 		const messages = Array.from({ length: 1000 }, (_, i) =>
@@ -877,7 +877,7 @@ describe("End-to-end: extreme data scenarios", () => {
 
 	it("should survive a single 100 MB message", async () => {
 		const { recentMessagesProvider } = await import(
-			"../bootstrap/providers/recentMessages.ts"
+			"../basic-capabilities/providers/recentMessages.ts"
 		);
 
 		// 100 MB message — represents worst-case pasted binary/base64
