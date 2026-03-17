@@ -313,8 +313,8 @@ jobs:
       # Update lockfile after version changes
       - name: Update lockfile
         run: |
-          bun install --no-frozen-lockfile || {
-            echo "::warning::bun install had errors (likely a broken postinstall script)"
+          bun install --no-frozen-lockfile --ignore-scripts || {
+            echo "::warning::bun install had errors (likely missing optional/native packages)"
             test -f bun.lock && echo "Lockfile exists, continuing" || exit 1
           }
 
