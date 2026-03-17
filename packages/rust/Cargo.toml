@@ -3,6 +3,7 @@ name = "elizaos"
 version = "2.0.0"
 edition = "2021"
 authors = ["elizaOS Contributors"]
+# Multi-language support for elizaOS
 description = "Core runtime and types for elizaOS - Rust implementation"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
