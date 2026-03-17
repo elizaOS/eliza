@@ -98,14 +98,10 @@ export const replyAction = {
 
     // For subsequent REPLY actions (end of chain), regenerate using LLM
     // to produce a response that incorporates previous action results.
-
-    const allProviders =
-      responses?.flatMap((res) => res.content?.providers || []) || [];
-
+    
     // Always compose fresh state for REPLY actions after the first one
     // to ensure we have latest context from previous action results
     state = await runtime.composeState(message, [
-      ...(allProviders ?? []),
       "RECENT_MESSAGES",
       "ACTION_STATE",
     ]);
@@ -148,7 +144,7 @@ export const replyAction = {
       data: {
         actionName: "REPLY",
         responseThought: thought,
-        responseText: text,
+        responseText: text, 
         thought,
         messageGenerated: true,
       },
