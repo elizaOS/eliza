@@ -3,11 +3,14 @@ interface AvatarLoaderProps {
   label?: string;
   /** When true, renders as a full-screen loader instead of an overlay */
   fullScreen?: boolean;
+  /** When true, fades the loader out (use before unmounting) */
+  fadingOut?: boolean;
 }
 
 export function AvatarLoader({
   label = "Initializing entity",
   fullScreen = false,
+  fadingOut = false,
 }: AvatarLoaderProps) {
   return (
     <div
@@ -19,6 +22,9 @@ export function AvatarLoader({
         justifyContent: "center",
         background: fullScreen ? "#0c0e14" : "transparent",
         zIndex: 10,
+        opacity: fadingOut ? 0 : 1,
+        transition: "opacity 0.8s ease-out",
+        pointerEvents: fadingOut ? "none" : "auto",
       }}
     >
       <div

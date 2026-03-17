@@ -396,7 +396,9 @@ describe("pages navigation smoke (e2e)", () => {
       conversations: [],
       elizaCloudCredits: null,
       uiShellMode: "companion",
-      setUiShellMode: vi.fn(),
+      setUiShellMode: vi.fn((mode: "native" | "companion") => {
+        state.uiShellMode = mode;
+      }),
       uiLanguage: "en",
       agentStatus: { state: "running", agentName: "Milady" },
       loadDropStatus: vi.fn(),
@@ -587,7 +589,9 @@ describe("pages navigation smoke (e2e)", () => {
         conversations: [],
         elizaCloudCredits: null,
         uiShellMode: "companion",
-        setUiShellMode: vi.fn(),
+        setUiShellMode: vi.fn((mode: "native" | "companion") => {
+          state.uiShellMode = mode;
+        }),
         uiLanguage: "en",
         agentStatus: { state: "running", agentName: "Milady" },
         loadDropStatus: vi.fn(),
@@ -600,6 +604,7 @@ describe("pages navigation smoke (e2e)", () => {
         setActionNotice: vi.fn(),
         setTab: (tab: Tab) => {
           state.tab = tab;
+          state.uiShellMode = shellModeForTab(tab);
         },
       };
       Object.assign(state, entry.patch);

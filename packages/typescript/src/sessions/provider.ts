@@ -7,7 +7,7 @@
  */
 
 import type { Provider, ProviderResult } from "../types/components.js";
-import type { Memory } from "../types/memory.js";
+import type { Memory, MemoryMetadata } from "../types/memory.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { State } from "../types/state.js";
 import { getSessionEntry, loadSessionStore } from "./store.js";
@@ -33,13 +33,13 @@ export function extractSessionContext(memory: Memory): {
 	sessionKey?: string;
 	entry?: SessionEntry;
 } | null {
-	// Direct properties on memory (for backwards compat)
-	const memoryRecord = memory as unknown as Record<string, unknown>;
+	// Direct properties on memory (for backwards compat — runtime may attach extra fields)
+	const memoryRecord = memory as Memory & Record<string, unknown>;
 	const directSessionId = memoryRecord.sessionId as string | undefined;
 	const directSessionKey = memoryRecord.sessionKey as string | undefined;
 
 	// Metadata-based session info
-	const metadata = memory.metadata as Record<string, unknown> | undefined;
+	const metadata = memory.metadata as (MemoryMetadata & Record<string, unknown>) | undefined;
 	const metaSessionId = metadata?.sessionId as string | undefined;
 	const metaSessionKey = metadata?.sessionKey as string | undefined;
 	const metaSession = metadata?.session as SessionEntry | undefined;

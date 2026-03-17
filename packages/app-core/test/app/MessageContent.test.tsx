@@ -324,3 +324,45 @@ describe("MessageContent — XML action stripping", () => {
     expect(rendered).toBe("**Saturday**: Sunny and warm.");
   });
 });
+
+describe("XML tag stripping during streaming", () => {
+  it("strips <actions> blocks completely", () => {
+    const output = renderText(
+      'Hello world<actions><action name="test">do thing</action></actions>',
+    );
+    expect(output).toContain("Hello world");
+    expect(output).not.toContain("do thing");
+    expect(output).not.toContain("<actions>");
+  });
+
+  it("strips <think> blocks completely", () => {
+    const output = renderText(
+      "<think>internal reasoning about the query</think>Hello there!",
+    );
+    expect(output).toContain("Hello there!");
+    expect(output).not.toContain("internal reasoning");
+    expect(output).not.toContain("<think>");
+  });
+
+  it("extracts text from <response><text> wrapper", () => {
+    const output = renderText(
+      "<response><text>Hello world</text></response>",
+    );
+    expect(output).toContain("Hello world");
+    expect(output).not.toContain("<response>");
+    expect(output).not.toContain("<text>");
+  });
+
+  it("handles partial <response><text> during streaming (no closing tag yet)", () => {
+    const output = renderText("<response><text>Hello wor");
+    expect(output).toContain("Hello wor");
+  });
+
+  it("does not leak <actions> tag name as visible text", () => {
+    const output = renderText(
+      'Answer here<actions><action name="save">data</action></actions> done',
+    );
+    expect(output).not.toContain("actions");
+    expect(output).not.toContain("save");
+  });
+});

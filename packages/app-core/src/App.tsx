@@ -4,7 +4,7 @@
 
 import { Keyboard } from "@capacitor/keyboard";
 import { isIOS, isLifoPopoutValue, isNative } from "@elizaos/app-core/platform";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   AdvancedPageView,
   AppsPageView,
@@ -358,15 +358,29 @@ export function App() {
     return <StartupFailureView error={startupError} onRetry={retryStartup} />;
   }
 
-  if (onboardingLoading || agentStarting) {
-    const loadingLabel = agentStarting
-      ? "Initializing agent"
-      : "Starting systems";
-    return <AvatarLoader label={loadingLabel} fullScreen />;
-  }
+  const shouldLoad = onboardingLoading || agentStarting;
+  const [loaderFadingOut, setLoaderFadingOut] = useState(false);
+  const showLoaderRef = useRef(true);
+  const [showLoader, setShowLoader] = useState(true);
 
-  if (authRequired) return <PairingView />;
-  if (!onboardingComplete) return <OnboardingWizard />;
+  useEffect(() => {
+    if (shouldLoad) {
+      showLoaderRef.current = true;
+      setShowLoader(true);
+      setLoaderFadingOut(false);
+    } else if (showLoaderRef.current) {
+      showLoaderRef.current = false;
+      setLoaderFadingOut(true);
+      const timer = setTimeout(() => {
+        setShowLoader(false);
+        setLoaderFadingOut(false);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [shouldLoad]);
+
+  if (authRequired && !shouldLoad) return <PairingView />;
+  if (!onboardingComplete && !shouldLoad) return <OnboardingWizard />;
 
   const shellContent = companionShellVisible ? (
     <CompanionShell tab={effectiveTab} actionNotice={actionNotice} />
@@ -467,6 +481,13 @@ export function App() {
       />
       <ConnectionFailedBanner />
       <SystemWarningBanner />
+      {showLoader && (
+        <AvatarLoader
+          label={agentStarting ? "Initializing agent" : "Starting systems"}
+          fullScreen
+          fadingOut={loaderFadingOut}
+        />
+      )}
     </BugReportProvider>
   );
 }

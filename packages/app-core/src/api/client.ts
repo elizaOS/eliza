@@ -2319,21 +2319,31 @@ export class MiladyClient {
     pairingEnabled: boolean;
     expiresAt: number | null;
   }> {
-    try {
-      return await this.fetch("/api/auth/status");
-    } catch (err: unknown) {
-      const status = (err as Error & { status?: number })?.status;
-      if (status === 401) {
-        // Server requires auth
-        return { required: true, pairingEnabled: false, expiresAt: null };
+    // Retry with exponential backoff — the server may not be ready during boot.
+    const maxRetries = 3;
+    const baseBackoffMs = 1000;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.fetch("/api/auth/status");
+      } catch (err: unknown) {
+        const status = (err as Error & { status?: number })?.status;
+        if (status === 401) {
+          return { required: true, pairingEnabled: false, expiresAt: null };
+        }
+        if (status === 404) {
+          return { required: false, pairingEnabled: false, expiresAt: null };
+        }
+        lastErr = err;
+        const kind = (err as Error & { kind?: string })?.kind;
+        if (kind === "timeout" && attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, baseBackoffMs * 2 ** attempt));
+          continue;
+        }
+        if (attempt >= maxRetries) break;
       }
-      if (status === 404) {
-        // npm-installed server without auth routes — no auth required
-        return { required: false, pairingEnabled: false, expiresAt: null };
-      }
-      // Other errors (500, network) — re-throw so caller can handle
-      throw err;
     }
+    throw lastErr;
   }
 
   async pair(code: string): Promise<{ token: string }> {

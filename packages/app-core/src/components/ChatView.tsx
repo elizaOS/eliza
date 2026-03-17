@@ -860,7 +860,7 @@ export function ChatView({ variant = "default" }: ChatViewProps) {
         >
           {chatPendingImages.map((img, imgIdx) => (
             <div
-              key={`${img.name}-${img.mimeType}`}
+              key={`${img.name}-${img.data}`}
               className="relative group w-16 h-16 shrink-0"
             >
               <img

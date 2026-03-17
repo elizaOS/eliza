@@ -137,6 +137,8 @@
   ],
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.983.0",
+    "@elizaos/plugin-anthropic": "2.0.0-alpha.7",
+    "@elizaos/plugin-groq": "2.0.0-alpha.8",
     "@elysiajs/cors": "^1.4.1",
     "@polymarket/clob-client": "^5.2.0",
     "@sinclair/typebox": "^0.34.47",

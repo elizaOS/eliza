@@ -767,6 +767,25 @@ async function ensureTrajectoriesTable(
       // ignore when column already exists
     }
 
+    // Best-effort forward migration: add scenario_id column + index
+    // (referenced by upstream elizaOS core or external plugins).
+    try {
+      await executeRawSql(
+        runtime,
+        `ALTER TABLE trajectories ADD COLUMN scenario_id TEXT`,
+      );
+    } catch {
+      // ignore when column already exists
+    }
+    try {
+      await executeRawSql(
+        runtime,
+        `CREATE INDEX IF NOT EXISTS idx_trajectories_scenario_id ON trajectories(scenario_id)`,
+      );
+    } catch {
+      // ignore if index creation fails
+    }
+
     if (needsRecreate) {
       console.warn(
         "[trajectory-persistence] Recreated trajectories table with updated schema",

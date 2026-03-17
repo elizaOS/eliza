@@ -1949,6 +1949,8 @@ function PluginListView({ label, mode = "all", inModal }: PluginListViewProps) {
       setConnectorSelectedId(pluginId);
       setConnectorExpandedIds((prev) => {
         if (desktopConnectorLayout) {
+          // Accordion: toggle off if already open, otherwise open this one only
+          if (prev.has(pluginId)) return new Set();
           return new Set([pluginId]);
         }
         const next = new Set(prev);
@@ -2725,6 +2727,10 @@ function PluginListView({ label, mode = "all", inModal }: PluginListViewProps) {
             <div className="relative flex-1 min-w-[220px]">
               <Input
                 type="text"
+                name="plugin-search"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
                 className="w-full bg-card/60 backdrop-blur-md shadow-inner pr-8 h-9 rounded-xl focus-visible:ring-accent border-border/40"
                 placeholder={searchPlaceholder}
                 value={pluginSearch}

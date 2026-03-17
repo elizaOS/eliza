@@ -468,18 +468,19 @@ export function ConfigPageView({ embedded = false }: { embedded?: boolean }) {
   }, []);
 
   /* ── RPC provider selection state ──────────────────────────────────── */
+  const initialRpc = resolveInitialWalletRpcSelections(walletConfig);
   const [selectedEvmRpc, setSelectedEvmRpc] =
-    useState<WalletRpcSelections["evm"]>("eliza-cloud");
+    useState<WalletRpcSelections["evm"]>(initialRpc.evm);
   const [selectedBscRpc, setSelectedBscRpc] =
-    useState<WalletRpcSelections["bsc"]>("eliza-cloud");
+    useState<WalletRpcSelections["bsc"]>(initialRpc.bsc);
   const [selectedSolanaRpc, setSelectedSolanaRpc] =
-    useState<WalletRpcSelections["solana"]>("eliza-cloud");
+    useState<WalletRpcSelections["solana"]>(initialRpc.solana);
 
   useEffect(() => {
-    const initialSelections = resolveInitialWalletRpcSelections(walletConfig);
-    setSelectedEvmRpc(initialSelections.evm);
-    setSelectedBscRpc(initialSelections.bsc);
-    setSelectedSolanaRpc(initialSelections.solana);
+    const selections = resolveInitialWalletRpcSelections(walletConfig);
+    setSelectedEvmRpc(selections.evm);
+    setSelectedBscRpc(selections.bsc);
+    setSelectedSolanaRpc(selections.solana);
   }, [walletConfig]);
 
   const handleWalletSaveAll = useCallback(() => {
