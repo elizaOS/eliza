@@ -81,9 +81,11 @@
     "access": "public"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.1.18",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.182.0",
+    "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3"
   }
 }
