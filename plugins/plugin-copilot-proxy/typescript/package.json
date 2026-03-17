@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-copilot-proxy",
-  "version": "2.0.0-alpha.8",
+  "version": "2.0.0-alpha.9",
   "description": "elizaOS Copilot Proxy Model Provider - TypeScript implementation",
   "type": "module",
   "main": "dist/index.js",
