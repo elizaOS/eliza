@@ -57,6 +57,7 @@ function createContext(overrides: Record<string, unknown> = {}) {
     ],
     activeConversationId: "conv-1",
     unreadConversations: new Set<string>(),
+    handleStartDraftConversation: vi.fn(async () => {}),
     handleNewConversation: vi.fn(),
     handleSelectConversation: vi.fn(async () => {}),
     handleDeleteConversation: vi.fn(async () => {}),
@@ -156,5 +157,29 @@ describe("ConversationsSidebar", () => {
 
     expect(handleDeleteConversation).toHaveBeenCalledTimes(1);
     expect(handleDeleteConversation).toHaveBeenCalledWith("conv-1");
+  });
+
+  it("starts a draft chat instead of creating a persisted conversation immediately", async () => {
+    const handleStartDraftConversation = vi.fn(async () => {});
+    const handleNewConversation = vi.fn(async () => {});
+    mockUseApp.mockReturnValue(
+      createContext({
+        handleStartDraftConversation,
+        handleNewConversation,
+      }),
+    );
+
+    let tree!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(React.createElement(ConversationsSidebar));
+    });
+
+    const newChatButton = findButtonByText(tree, "conversations.newChat");
+    await act(async () => {
+      newChatButton.props.onClick();
+    });
+
+    expect(handleStartDraftConversation).toHaveBeenCalledTimes(1);
+    expect(handleNewConversation).not.toHaveBeenCalled();
   });
 });

@@ -18,6 +18,7 @@ from elizaos.types.components import (
     ActionResult,
     EvaluationExample,
     Evaluator,
+    EvaluatorResult,
     Handler,
     HandlerCallback,
     HandlerOptions,
@@ -314,6 +315,7 @@ __all__ = [
     "StreamChunkCallback",
     "Evaluator",
     "EvaluationExample",
+    "EvaluatorResult",
     "Provider",
     "ProviderResult",
     # Plugin

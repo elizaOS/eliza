@@ -194,6 +194,7 @@ jobs:
   # ============================================
   python-sql-tests:
     name: Python SQL Plugin Tests
+    if: ${{ hashFiles('plugins/plugin-sql/python/pyproject.toml') != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

@@ -15,6 +15,7 @@ type SidebarContextStub = {
   conversations: ConversationStub[];
   activeConversationId: string | null;
   unreadConversations: Set<string>;
+  handleStartDraftConversation: () => Promise<void>;
   handleNewConversation: () => Promise<void>;
   handleSelectConversation: (id: string) => Promise<void>;
   handleDeleteConversation: (id: string) => Promise<void>;
@@ -91,6 +92,7 @@ function createContext(
     ],
     activeConversationId: "conv-2",
     unreadConversations: new Set(["conv-1"]),
+    handleStartDraftConversation: vi.fn(async () => {}),
     handleNewConversation: vi.fn(async () => {}),
     handleSelectConversation: vi.fn(async () => {}),
     handleDeleteConversation: vi.fn(async () => {}),
@@ -113,12 +115,14 @@ describe("ConversationsSidebar game-modal variant", () => {
   });
 
   it("renders game-modal list and keeps new/select/delete actions working", async () => {
+    const handleStartDraftConversation = vi.fn(async () => {});
     const handleNewConversation = vi.fn(async () => {});
     const handleSelectConversation = vi.fn(async () => {});
     const handleDeleteConversation = vi.fn(async () => {});
 
     mockUseApp.mockReturnValue(
       createContext({
+        handleStartDraftConversation,
         handleNewConversation,
         handleSelectConversation,
         handleDeleteConversation,
@@ -148,7 +152,8 @@ describe("ConversationsSidebar game-modal variant", () => {
     await act(async () => {
       newChatButtons[0].props.onClick();
     });
-    expect(handleNewConversation).toHaveBeenCalledTimes(1);
+    expect(handleStartDraftConversation).toHaveBeenCalledTimes(1);
+    expect(handleNewConversation).not.toHaveBeenCalled();
 
     const convItems = tree?.root.findAll(
       (node) =>

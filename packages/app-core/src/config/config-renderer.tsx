@@ -214,7 +214,7 @@ function ValidationSummary({
     >
       <div className="text-[13px] font-semibold text-[var(--destructive)] mb-2">
         {totalErrors} {totalErrors === 1 ? "field needs" : "fields need"}{" "}
-        {t("config-renderer.attention")}
+        {t("config-renderer.attention", { defaultValue: "attention" })}
       </div>
       <ul className="list-none m-0 p-0 flex flex-col gap-1">
         {errorEntries.map(([key]) => (
@@ -224,7 +224,9 @@ function ValidationSummary({
               className="text-[12px] text-[var(--destructive)] cursor-pointer bg-transparent border-none p-0 hover:underline transition-all text-left flex items-center gap-1.5"
               onClick={() => handleFieldClick(key)}
             >
-              <span className="opacity-60">{t("config-renderer.Rarr")}</span>
+              <span className="opacity-60">
+                {t("config-renderer.Rarr", { defaultValue: "→" })}
+              </span>
               <span>{fieldLabels.get(key) ?? key}</span>
             </button>
           </li>
@@ -649,11 +651,13 @@ function ConfigProgressText({
     <div className="flex items-center justify-between mb-1.5">
       <span className="text-[12px] font-semibold text-[var(--warning,#f39c12)]">
         {configProgress.requiredSet}/{configProgress.requiredTotal}{" "}
-        {t("config-renderer.requiredFieldsConf")}
+        {t("config-renderer.requiredFieldsConf", {
+          defaultValue: "required fields configured",
+        })}
       </span>
       <span className="text-[11px] text-[var(--muted)]">
         {configProgress.configured}/{configProgress.total}{" "}
-        {t("config-renderer.total")}
+        {t("config-renderer.total", { defaultValue: "total" })}
       </span>
     </div>
   );
@@ -682,7 +686,7 @@ function AdvancedSectionToggle({
         &#9654;
       </span>
       <span className="text-[12px] font-bold uppercase tracking-wider text-[var(--muted)] group-hover:text-[var(--text)] transition-colors">
-        {t("config-renderer.Advanced")}
+        {t("config-renderer.Advanced", { defaultValue: "Advanced" })}
       </span>
       <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold bg-[var(--accent-subtle,rgba(255,255,255,0.05))] text-[var(--accent)] border border-[var(--border)] rounded-sm">
         {advanced.length}
