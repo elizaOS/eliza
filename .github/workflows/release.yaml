@@ -89,9 +89,10 @@ jobs:
         run: |
           bun install --ignore-scripts
           # --ignore-scripts prevents postinstall scripts from running, but build
-          # tools like esbuild need their postinstall to install platform binaries.
-          # Run them explicitly so turbo can spawn build processes.
+          # tools like esbuild and bun need their postinstall to install platform binaries.
+          # Run them explicitly so turbo and lerna prepublishOnly can spawn build processes.
           node node_modules/esbuild/install.js 2>/dev/null || true
+          node node_modules/bun/install.js 2>/dev/null || true
 
       # Determine release type and version
       - name: Determine release type
