@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/training",
-  "version": "2.0.0-alpha.21",
+  "version": "2.0.0-alpha.22",
   "description": "ElizaOS RL training pipeline with benchmarking and model publishing support",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -52,5 +52,6 @@
     "@types/node": "^24.10.0",
     "bun-types": "^1.3.2",
     "typescript": "^5.9.3"
-  }
+  },
+  "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
 }

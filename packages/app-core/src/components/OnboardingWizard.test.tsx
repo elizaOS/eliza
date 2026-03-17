@@ -17,9 +17,9 @@ vi.mock("@elizaos/app-core/state", () => ({
   getVrmUrl: () => "/vrms/milady-1.vrm.gz",
   ONBOARDING_STEPS: [
     {
-      id: "wakeUp",
-      name: "onboarding.wakeUp.title",
-      subtitle: "onboarding.wakeUp.subtitle",
+      id: "identity",
+      name: "onboarding.identity.title",
+      subtitle: "onboarding.identity.subtitle",
     },
   ],
   useApp: () => mockUseApp(),
@@ -63,10 +63,6 @@ vi.mock("./onboarding/RpcStep", () => ({
   RpcStep: () => React.createElement("div", null, "RpcStep"),
 }));
 
-vi.mock("./onboarding/WakeUpStep", () => ({
-  WakeUpStep: () => React.createElement("div", null, "WakeUpStep"),
-}));
-
 import { OnboardingWizard } from "./OnboardingWizard";
 
 describe("OnboardingWizard", () => {
@@ -78,7 +74,7 @@ describe("OnboardingWizard", () => {
 
   it("forces light chrome while keeping the onboarding world on the day scene", async () => {
     mockUseApp.mockReturnValue({
-      onboardingStep: "wakeUp",
+      onboardingStep: "identity",
       selectedVrmIndex: 1,
       customVrmUrl: "",
       uiLanguage: "en",

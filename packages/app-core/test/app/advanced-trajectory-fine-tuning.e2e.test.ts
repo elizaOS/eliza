@@ -23,6 +23,7 @@ import type {
 } from "@elizaos/app-core/api";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
+import type { ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockUseApp, mockClientFns } = vi.hoisted(() => ({
@@ -253,7 +254,7 @@ async function flush(): Promise<void> {
   });
 }
 
-function nodeText(node: TestRenderer.ReactTestInstance): string {
+function nodeText(node: ReactTestInstance): string {
   return node.children
     .map((child) => {
       if (typeof child === "string") return child;
@@ -262,10 +263,7 @@ function nodeText(node: TestRenderer.ReactTestInstance): string {
     .join("");
 }
 
-function containsText(
-  node: TestRenderer.ReactTestInstance,
-  text: string,
-): boolean {
+function containsText(node: ReactTestInstance, text: string): boolean {
   return nodeText(node).includes(text);
 }
 
@@ -323,7 +321,7 @@ describe("Advanced trajectories/fine-tuning integration", () => {
   });
 
   it("applies the advanced subtab button class in both layouts", async () => {
-    let tree!: TestRenderer.ReactTestRenderer;
+    let tree!: ReactTestRenderer;
 
     await act(async () => {
       tree = TestRenderer.create(React.createElement(AdvancedPageView));
@@ -337,7 +335,12 @@ describe("Advanced trajectories/fine-tuning integration", () => {
     expect(standardSubtabButtons.length).toBeGreaterThan(0);
 
     await act(async () => {
-      tree.update(React.createElement(AdvancedPageView, { inModal: true }));
+      tree.update(
+        React.createElement<{ inModal?: boolean }>(
+          AdvancedPageView,
+          { inModal: true },
+        ),
+      );
     });
 
     const modalSubtabButtons = tree.root.findAll(
@@ -349,7 +352,7 @@ describe("Advanced trajectories/fine-tuning integration", () => {
   });
 
   it("shows the same trajectory in Trajectories detail and Fine-Tuning list", async () => {
-    let tree!: TestRenderer.ReactTestRenderer;
+    let tree!: ReactTestRenderer;
 
     await act(async () => {
       tree = TestRenderer.create(React.createElement(AdvancedPageView));
@@ -364,7 +367,8 @@ describe("Advanced trajectories/fine-tuning integration", () => {
 
     // Click the row to trigger trajectory selection
     await act(async () => {
-      clickableRows[0]?.props.onClick();
+      const row = clickableRows[0] as ReactTestInstance | undefined;
+      (row?.props.onClick as () => void)?.();
     });
     await flush();
 
@@ -381,12 +385,12 @@ describe("Advanced trajectories/fine-tuning integration", () => {
       (node) =>
         node.type === "button" &&
         containsText(node, "trajectorydetailview.Back"),
-    )[0] as TestRenderer.ReactTestInstance;
+    )[0] as ReactTestInstance;
     expect(backButton).toBeDefined();
 
     // Click back
     await act(async () => {
-      backButton.props.onClick();
+      (backButton.props.onClick as () => void)();
     });
     await flush();
   });

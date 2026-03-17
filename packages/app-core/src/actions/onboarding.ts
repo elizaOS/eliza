@@ -3,16 +3,12 @@
  */
 
 export type OnboardingStep =
-  | "wakeUp"
-  | "language"
   | "identity"
   | "connection"
   | "senses"
   | "activate";
 
 export const ONBOARDING_STEP_ORDER: OnboardingStep[] = [
-  "wakeUp",
-  "language",
   "identity",
   "connection",
   "senses",

@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/tui",
-	"version": "2.0.0-alpha.21",
+	"version": "2.0.0-alpha.22",
 	"description": "Terminal User Interface library with differential rendering for efficient text-based applications",
 	"type": "module",
 	"main": "dist/index.js",
@@ -45,5 +45,6 @@
 	"devDependencies": {
 		"@xterm/headless": "^5.5.0",
 		"@xterm/xterm": "^5.5.0"
-	}
+	},
+	"gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
 }

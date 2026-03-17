@@ -60,12 +60,12 @@ describe("inferOnboardingResumeStep", () => {
     ).toBe("senses");
   });
 
-  it("falls back to wakeUp when nothing is persisted yet", () => {
+  it("falls back to identity when nothing is persisted yet", () => {
     expect(
       inferOnboardingResumeStep({
         config: {},
       }),
-    ).toBe("wakeUp");
+    ).toBe("identity");
   });
 });
 
