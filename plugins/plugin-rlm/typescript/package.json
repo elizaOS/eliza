@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-rlm",
-  "version": "2.0.0-alpha.3",
+  "version": "2.0.0-alpha.4",
   "description": "RLM (Recursive Language Model) plugin for elizaOS - enables processing of arbitrarily long contexts",
   "type": "module",
   "main": "dist/index.js",
