@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { character } from "../character";
 
 // Helper to get bio as string
@@ -199,13 +199,15 @@ describe("Character Settings", () => {
 describe("Character Consistency", () => {
   test("name appears in message examples", () => {
     const examples = character.messageExamples ?? [];
-    const hasCharacterInExamples = examples.some(
-      (group) =>
-        Array.isArray((group as { examples?: { name: string }[] }).examples) &&
-        (group as { examples: { name: string }[] }).examples.some(
-          (msg) => msg.name === character.name,
-        ),
-    );
+    const hasCharacterInExamples = examples.some((group) => {
+      // messageExamples can be array of message arrays or objects with examples property
+      const messages = Array.isArray(group)
+        ? group
+        : Array.isArray((group as { examples?: { name: string }[] }).examples)
+          ? (group as { examples: { name: string }[] }).examples
+          : [];
+      return messages.some((msg) => msg.name === character.name);
+    });
     expect(hasCharacterInExamples).toBe(true);
   });
 
