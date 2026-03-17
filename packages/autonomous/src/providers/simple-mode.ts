@@ -40,7 +40,6 @@ export function createChannelProfileProvider(): Provider {
     name: "miladyChannelProfile",
     description:
       "Injects channel-derived execution profile guidance (voice/group/default).",
-    alwaysRun: true,
     position: -50,
     async get(
       _runtime: IAgentRuntime,

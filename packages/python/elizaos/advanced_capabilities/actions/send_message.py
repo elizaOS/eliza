@@ -143,7 +143,7 @@ class SendMessageAction:
             actions=["SEND_MESSAGE"],
         )
 
-        message_memory = MemoryType(
+        MemoryType(
             id=as_uuid(str(uuid_module.uuid4())),
             entity_id=runtime.agent_id,
             room_id=target_room_id,

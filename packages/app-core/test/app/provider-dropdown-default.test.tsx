@@ -85,8 +85,7 @@ function defaultProps() {
 }
 
 function getSelectValue(tree: ReactTestRenderer): string | undefined {
-  // biome-ignore lint/suspicious/noExplicitAny: test introspection
-  const root = (tree as any).root;
+  const root = tree.root;
   const selects = root.findAll(
     (node: ReactTestInstance) =>
       node.type === "select" && node.props.value !== undefined,
@@ -95,8 +94,7 @@ function getSelectValue(tree: ReactTestRenderer): string | undefined {
 }
 
 function getSelect(tree: ReactTestRenderer): ReactTestInstance {
-  // biome-ignore lint/suspicious/noExplicitAny: test introspection
-  const root = (tree as any).root;
+  const root = tree.root;
   return root.find(
     (node: ReactTestInstance) =>
       node.type === "select" && node.props.value !== undefined,

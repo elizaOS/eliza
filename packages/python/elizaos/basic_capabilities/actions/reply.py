@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.utils.xml import parse_key_value_xml
 from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.prompts import REPLY_TEMPLATE
 from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType

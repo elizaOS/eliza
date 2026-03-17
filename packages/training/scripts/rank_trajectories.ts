@@ -67,7 +67,6 @@ async function main() {
     // Initialize Judge Runtime
     const character = {
         name: 'JudgeAgent',
-        modelProvider: "openai" as any,
         bio: ['I am an impartial AI judge.'],
         settings: {
             secrets: {

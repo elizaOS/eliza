@@ -590,216 +590,210 @@ describe("Layer 6 — Workspace provider total cap", () => {
 // 7. Compaction + Budgeting Integration
 // ============================================================================
 describe("Layer 7 — Compaction integration", () => {
-	it(
-		"compaction point should reduce messages loaded",
-		{ timeout: 15_000 },
-		async () => {
-			const { InMemoryDatabaseAdapter } = await import(
-				"../database/inMemoryAdapter.ts"
-			);
+	it("compaction point should reduce messages loaded", {
+		timeout: 15_000,
+	}, async () => {
+		const { InMemoryDatabaseAdapter } = await import(
+			"../database/inMemoryAdapter.ts"
+		);
 
-			const adapter = new InMemoryDatabaseAdapter();
-			await adapter.init();
-			const roomId = "room-compact" as UUID;
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.init();
+		const roomId = "room-compact" as UUID;
 
-			// 50 messages, timestamps 1000-50000
-			for (let i = 1; i <= 50; i++) {
-				await adapter.createMemory(
-					msg(`Message ${i}`, i * 1000, roomId),
-					"messages",
-					false,
-				);
-			}
-
-			// All messages
-			const all = await adapter.getMemories({ tableName: "messages", roomId });
-			expect(all.length).toBe(50);
-
-			// After compaction at 40000 — only messages 40-50
-			const afterCompact = await adapter.getMemories({
-				tableName: "messages",
-				roomId,
-				start: 40000,
-			});
-			expect(afterCompact.length).toBe(11); // 40,41,...,50
-			expect(afterCompact.length).toBeLessThan(all.length);
-		},
-	);
-
-	it(
-		"compaction summary should be included in post-compaction context",
-		{ timeout: 15_000 },
-		async () => {
-			const { InMemoryDatabaseAdapter } = await import(
-				"../database/inMemoryAdapter.ts"
-			);
-
-			const adapter = new InMemoryDatabaseAdapter();
-			await adapter.init();
-			const roomId = "room-summary" as UUID;
-
-			// Pre-compaction messages
-			for (let i = 1; i <= 20; i++) {
-				await adapter.createMemory(
-					msg(`Old message ${i}`, i * 1000, roomId),
-					"messages",
-					false,
-				);
-			}
-
-			// Compaction at 20500
-			const compactionAt = 20500;
+		// 50 messages, timestamps 1000-50000
+		for (let i = 1; i <= 50; i++) {
 			await adapter.createMemory(
-				{
-					id: uuid(),
-					entityId: "agent-1" as UUID,
-					agentId: "agent-1" as UUID,
-					roomId,
-					content: {
-						text: "[Compaction Summary]\n\nKey decisions: A, B, C",
-						source: "compaction",
-					},
-					createdAt: compactionAt,
-				},
+				msg(`Message ${i}`, i * 1000, roomId),
 				"messages",
 				false,
 			);
+		}
 
-			// Post-compaction messages
-			for (let i = 21; i <= 25; i++) {
-				await adapter.createMemory(
-					msg(`New message ${i}`, i * 1000, roomId),
-					"messages",
-					false,
-				);
-			}
+		// All messages
+		const all = await adapter.getMemories({ tableName: "messages", roomId });
+		expect(all.length).toBe(50);
 
-			const filtered = await adapter.getMemories({
-				tableName: "messages",
-				roomId,
-				start: compactionAt,
-			});
+		// After compaction at 40000 — only messages 40-50
+		const afterCompact = await adapter.getMemories({
+			tableName: "messages",
+			roomId,
+			start: 40000,
+		});
+		expect(afterCompact.length).toBe(11); // 40,41,...,50
+		expect(afterCompact.length).toBeLessThan(all.length);
+	});
 
-			// Should have: summary + messages 21-25 = 6
-			expect(filtered.length).toBe(6);
+	it("compaction summary should be included in post-compaction context", {
+		timeout: 15_000,
+	}, async () => {
+		const { InMemoryDatabaseAdapter } = await import(
+			"../database/inMemoryAdapter.ts"
+		);
 
-			// Summary should be present
-			const summary = filtered.find((m) => m.content?.source === "compaction");
-			expect(summary).toBeDefined();
-			expect(summary?.content?.text).toContain("Key decisions");
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.init();
+		const roomId = "room-summary" as UUID;
 
-			// Old messages should be excluded
-			const texts = filtered.map((m) => m.content?.text ?? "");
-			expect(texts.some((t) => t.includes("Old message"))).toBe(false);
-			expect(texts.some((t) => t.includes("New message"))).toBe(true);
-		},
-	);
-
-	it(
-		"multiple compaction rounds should chain correctly",
-		{ timeout: 15_000 },
-		async () => {
-			const { InMemoryDatabaseAdapter } = await import(
-				"../database/inMemoryAdapter.ts"
-			);
-
-			const adapter = new InMemoryDatabaseAdapter();
-			await adapter.init();
-			const roomId = "room-chain" as UUID;
-
-			// Round 1: 10 messages
-			for (let i = 1; i <= 10; i++) {
-				await adapter.createMemory(
-					msg(`R1-${i}`, i * 1000, roomId),
-					"messages",
-					false,
-				);
-			}
-
-			// Compact round 1 at 10500
+		// Pre-compaction messages
+		for (let i = 1; i <= 20; i++) {
 			await adapter.createMemory(
-				{
-					id: uuid(),
-					entityId: "agent-1" as UUID,
-					agentId: "agent-1" as UUID,
-					roomId,
-					content: {
-						text: "[Compaction Summary]\n\nR1 summary",
-						source: "compaction",
-					},
-					createdAt: 10500,
-				},
+				msg(`Old message ${i}`, i * 1000, roomId),
 				"messages",
 				false,
 			);
+		}
 
-			// Round 2: 10 messages
-			for (let i = 11; i <= 20; i++) {
-				await adapter.createMemory(
-					msg(`R2-${i}`, i * 1000, roomId),
-					"messages",
-					false,
-				);
-			}
-
-			// Compact round 2 at 20500
-			await adapter.createMemory(
-				{
-					id: uuid(),
-					entityId: "agent-1" as UUID,
-					agentId: "agent-1" as UUID,
-					roomId,
-					content: {
-						text: "[Compaction Summary]\n\nR2 summary (includes R1)",
-						source: "compaction",
-					},
-					createdAt: 20500,
+		// Compaction at 20500
+		const compactionAt = 20500;
+		await adapter.createMemory(
+			{
+				id: uuid(),
+				entityId: "agent-1" as UUID,
+				agentId: "agent-1" as UUID,
+				roomId,
+				content: {
+					text: "[Compaction Summary]\n\nKey decisions: A, B, C",
+					source: "compaction",
 				},
+				createdAt: compactionAt,
+			},
+			"messages",
+			false,
+		);
+
+		// Post-compaction messages
+		for (let i = 21; i <= 25; i++) {
+			await adapter.createMemory(
+				msg(`New message ${i}`, i * 1000, roomId),
 				"messages",
 				false,
 			);
+		}
 
-			// Round 3: 5 messages
-			for (let i = 21; i <= 25; i++) {
-				await adapter.createMemory(
-					msg(`R3-${i}`, i * 1000, roomId),
-					"messages",
-					false,
-				);
-			}
+		const filtered = await adapter.getMemories({
+			tableName: "messages",
+			roomId,
+			start: compactionAt,
+		});
 
-			// Total in DB = 10 + 1 + 10 + 1 + 5 = 27
-			const total = await adapter.getMemories({
-				tableName: "messages",
+		// Should have: summary + messages 21-25 = 6
+		expect(filtered.length).toBe(6);
+
+		// Summary should be present
+		const summary = filtered.find((m) => m.content?.source === "compaction");
+		expect(summary).toBeDefined();
+		expect(summary?.content?.text).toContain("Key decisions");
+
+		// Old messages should be excluded
+		const texts = filtered.map((m) => m.content?.text ?? "");
+		expect(texts.some((t) => t.includes("Old message"))).toBe(false);
+		expect(texts.some((t) => t.includes("New message"))).toBe(true);
+	});
+
+	it("multiple compaction rounds should chain correctly", {
+		timeout: 15_000,
+	}, async () => {
+		const { InMemoryDatabaseAdapter } = await import(
+			"../database/inMemoryAdapter.ts"
+		);
+
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.init();
+		const roomId = "room-chain" as UUID;
+
+		// Round 1: 10 messages
+		for (let i = 1; i <= 10; i++) {
+			await adapter.createMemory(
+				msg(`R1-${i}`, i * 1000, roomId),
+				"messages",
+				false,
+			);
+		}
+
+		// Compact round 1 at 10500
+		await adapter.createMemory(
+			{
+				id: uuid(),
+				entityId: "agent-1" as UUID,
+				agentId: "agent-1" as UUID,
 				roomId,
-			});
-			expect(total.length).toBe(27);
+				content: {
+					text: "[Compaction Summary]\n\nR1 summary",
+					source: "compaction",
+				},
+				createdAt: 10500,
+			},
+			"messages",
+			false,
+		);
 
-			// View from latest compaction point
-			const view = await adapter.getMemories({
-				tableName: "messages",
+		// Round 2: 10 messages
+		for (let i = 11; i <= 20; i++) {
+			await adapter.createMemory(
+				msg(`R2-${i}`, i * 1000, roomId),
+				"messages",
+				false,
+			);
+		}
+
+		// Compact round 2 at 20500
+		await adapter.createMemory(
+			{
+				id: uuid(),
+				entityId: "agent-1" as UUID,
+				agentId: "agent-1" as UUID,
 				roomId,
-				start: 20500,
-			});
+				content: {
+					text: "[Compaction Summary]\n\nR2 summary (includes R1)",
+					source: "compaction",
+				},
+				createdAt: 20500,
+			},
+			"messages",
+			false,
+		);
 
-			// Should see: R2 summary + R3 messages (5) = 6
-			expect(view.length).toBe(6);
+		// Round 3: 5 messages
+		for (let i = 21; i <= 25; i++) {
+			await adapter.createMemory(
+				msg(`R3-${i}`, i * 1000, roomId),
+				"messages",
+				false,
+			);
+		}
 
-			// R1 summary and R1 messages must NOT be visible
-			const viewTexts = view.map((m) => m.content?.text ?? "");
-			expect(viewTexts.some((t) => t.includes("R1-"))).toBe(false);
-			expect(
-				viewTexts.some(
-					(t) => t.includes("R1 summary") && !t.includes("includes R1"),
-				),
-			).toBe(false);
+		// Total in DB = 10 + 1 + 10 + 1 + 5 = 27
+		const total = await adapter.getMemories({
+			tableName: "messages",
+			roomId,
+		});
+		expect(total.length).toBe(27);
 
-			// R2 summary IS visible
-			expect(viewTexts.some((t) => t.includes("R2 summary"))).toBe(true);
-			// R3 messages ARE visible
-			expect(viewTexts.some((t) => t.includes("R3-"))).toBe(true);
-		},
-	);
+		// View from latest compaction point
+		const view = await adapter.getMemories({
+			tableName: "messages",
+			roomId,
+			start: 20500,
+		});
+
+		// Should see: R2 summary + R3 messages (5) = 6
+		expect(view.length).toBe(6);
+
+		// R1 summary and R1 messages must NOT be visible
+		const viewTexts = view.map((m) => m.content?.text ?? "");
+		expect(viewTexts.some((t) => t.includes("R1-"))).toBe(false);
+		expect(
+			viewTexts.some(
+				(t) => t.includes("R1 summary") && !t.includes("includes R1"),
+			),
+		).toBe(false);
+
+		// R2 summary IS visible
+		expect(viewTexts.some((t) => t.includes("R2 summary"))).toBe(true);
+		// R3 messages ARE visible
+		expect(viewTexts.some((t) => t.includes("R3-"))).toBe(true);
+	});
 });
 
 // ============================================================================

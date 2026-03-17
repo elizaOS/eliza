@@ -5,15 +5,15 @@
  * Creates dataset cards with visualizations, metrics, and usage examples.
  */
 
-import { promises as fs } from 'fs';
-import * as path from 'path';
-import type { SimulationMetrics } from '../benchmark/SimulationEngine';
-import { calculateArrayStats, logger } from '../utils';
+import { promises as fs } from "node:fs";
+import * as path from "node:path";
+import type { SimulationMetrics } from "../benchmark/SimulationEngine";
+import { calculateArrayStats, logger } from "../utils";
 import {
   getHuggingFaceToken,
   HuggingFaceUploadUtil,
   requireHuggingFaceToken,
-} from './shared/HuggingFaceUploadUtil';
+} from "./shared/HuggingFaceUploadUtil";
 
 export interface BenchmarkRecord {
   benchmarkId: string;
@@ -71,7 +71,7 @@ export class HuggingFaceDatasetUploader {
    */
   async uploadDataset(options: UploadOptions): Promise<UploadResult> {
     try {
-      logger.info('Starting HuggingFace dataset upload', {
+      logger.info("Starting HuggingFace dataset upload", {
         datasetName: options.datasetName,
       });
 
@@ -82,57 +82,57 @@ export class HuggingFaceDatasetUploader {
       // Set defaults
       const version = options.version || this.generateVersion();
       const benchmarkDir =
-        options.benchmarkDir || path.join(process.cwd(), 'benchmarks');
+        options.benchmarkDir || path.join(process.cwd(), "benchmarks");
       const outputDir =
         options.outputDir ||
-        path.join(process.cwd(), 'exports', 'huggingface', version);
+        path.join(process.cwd(), "exports", "huggingface", version);
 
       // Step 1: Collect benchmark data
-      logger.info('Collecting benchmark data', { benchmarkDir });
+      logger.info("Collecting benchmark data", { benchmarkDir });
       const benchmarks = await this.collectBenchmarkData(benchmarkDir);
       logger.info(`Collected ${benchmarks.length} benchmark records`);
 
       if (benchmarks.length === 0) {
-        throw new Error('No benchmark data found to upload');
+        throw new Error("No benchmark data found to upload");
       }
 
       // Step 2: Prepare dataset files
-      logger.info('Preparing dataset files', { outputDir });
+      logger.info("Preparing dataset files", { outputDir });
       await fs.mkdir(outputDir, { recursive: true });
 
       const metadata = await this.prepareDatasetFiles(benchmarks, outputDir, {
         datasetName: options.datasetName,
         version,
         description:
-          options.description || 'Autonomous agent benchmark results',
+          options.description || "Autonomous agent benchmark results",
       });
 
       // Step 3: Generate dataset card
-      logger.info('Generating dataset card');
+      logger.info("Generating dataset card");
       await this.generateDatasetCard(metadata, benchmarks, outputDir);
 
       // Step 4: Create repository if it doesn't exist
-      logger.info('Ensuring repository exists', {
+      logger.info("Ensuring repository exists", {
         datasetName: options.datasetName,
       });
       await this.ensureRepository(
         options.datasetName,
-        options.private ?? false
+        options.private ?? false,
       );
 
       // Step 5: Upload to HuggingFace
-      logger.info('Uploading to HuggingFace', {
+      logger.info("Uploading to HuggingFace", {
         datasetName: options.datasetName,
       });
       const filesUploaded = await this.uploadToHub(
         options.datasetName,
         outputDir,
-        options.private ?? false
+        options.private ?? false,
       );
 
       const datasetUrl = `https://huggingface.co/datasets/${options.datasetName}`;
 
-      logger.info('Dataset uploaded successfully', {
+      logger.info("Dataset uploaded successfully", {
         datasetUrl,
         filesUploaded,
       });
@@ -144,12 +144,12 @@ export class HuggingFaceDatasetUploader {
         filesUploaded,
       };
     } catch (error) {
-      logger.error('Failed to upload dataset', { error });
+      logger.error("Failed to upload dataset", { error });
       return {
         success: false,
-        version: options.version || 'unknown',
+        version: options.version || "unknown",
         filesUploaded: 0,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       };
     }
   }
@@ -158,22 +158,22 @@ export class HuggingFaceDatasetUploader {
    * Collect benchmark data from files
    */
   private async collectBenchmarkData(
-    benchmarkDir: string
+    benchmarkDir: string,
   ): Promise<BenchmarkRecord[]> {
     const records: BenchmarkRecord[] = [];
 
     // Collect from model-comparison directory
-    const comparisonDir = path.join(benchmarkDir, 'model-comparison');
+    const comparisonDir = path.join(benchmarkDir, "model-comparison");
     if (await this.fileExists(comparisonDir)) {
-      const comparisonFile = path.join(comparisonDir, 'comparison.json');
+      const comparisonFile = path.join(comparisonDir, "comparison.json");
       if (await this.fileExists(comparisonFile)) {
-        const data = JSON.parse(await fs.readFile(comparisonFile, 'utf-8'));
+        const data = JSON.parse(await fs.readFile(comparisonFile, "utf-8"));
         for (const result of data.results || []) {
           if (result.metrics) {
             records.push({
-              benchmarkId: data.benchmark || 'comparison',
+              benchmarkId: data.benchmark || "comparison",
               modelId: result.model.modelId,
-              modelVersion: 'baseline',
+              modelVersion: "baseline",
               modelName: result.model.displayName,
               runAt: data.runAt,
               metrics: result.metrics,
@@ -182,7 +182,7 @@ export class HuggingFaceDatasetUploader {
                 tickInterval: 60,
                 markets: 10,
                 ticks: Math.floor(
-                  (result.metrics.timing?.totalDuration || 0) / 60
+                  (result.metrics.timing?.totalDuration || 0) / 60,
                 ),
               },
             });
@@ -192,13 +192,13 @@ export class HuggingFaceDatasetUploader {
     }
 
     // Collect from baselines directory
-    const baselinesDir = path.join(benchmarkDir, 'baselines');
+    const baselinesDir = path.join(benchmarkDir, "baselines");
     if (await this.fileExists(baselinesDir)) {
       const files = await fs.readdir(baselinesDir);
       for (const file of files) {
-        if (file.endsWith('.json') && file.startsWith('baseline-')) {
+        if (file.endsWith(".json") && file.startsWith("baseline-")) {
           const filePath = path.join(baselinesDir, file);
-          const data = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+          const data = JSON.parse(await fs.readFile(filePath, "utf-8"));
 
           // Skip if no metrics
           if (!data.metrics) continue;
@@ -207,13 +207,13 @@ export class HuggingFaceDatasetUploader {
             benchmarkId:
               data.benchmark?.id ||
               data.benchmark?.path ||
-              file.replace('.json', ''),
-            modelId: data.model?.modelId || 'unknown',
-            modelVersion: data.model?.version || 'baseline',
+              file.replace(".json", ""),
+            modelId: data.model?.modelId || "unknown",
+            modelVersion: data.model?.version || "baseline",
             modelName:
               data.model?.displayName ||
               data.model?.name ||
-              file.replace('.json', ''),
+              file.replace(".json", ""),
             runAt: data.runAt || new Date().toISOString(),
             metrics: data.metrics,
             benchmarkSnapshot: {
@@ -226,7 +226,7 @@ export class HuggingFaceDatasetUploader {
               ticks: Math.floor(
                 (data.timing?.totalDuration ||
                   data.metrics.timing?.totalDuration ||
-                  0) / 60
+                  0) / 60,
               ),
             },
           });
@@ -235,21 +235,21 @@ export class HuggingFaceDatasetUploader {
     }
 
     // Collect from test-baselines directory
-    const testBaselinesDir = path.join(benchmarkDir, 'test-baselines');
+    const testBaselinesDir = path.join(benchmarkDir, "test-baselines");
     if (await this.fileExists(testBaselinesDir)) {
       const subdirs = await fs.readdir(testBaselinesDir);
       for (const subdir of subdirs) {
-        const metricsFile = path.join(testBaselinesDir, subdir, 'metrics.json');
+        const metricsFile = path.join(testBaselinesDir, subdir, "metrics.json");
         if (await this.fileExists(metricsFile)) {
-          const data = JSON.parse(await fs.readFile(metricsFile, 'utf-8'));
+          const data = JSON.parse(await fs.readFile(metricsFile, "utf-8"));
 
           // Skip if no required fields
           if (!data.totalPnl && !data.predictionMetrics) continue;
 
           records.push({
-            benchmarkId: data.benchmarkId || 'test-benchmark',
+            benchmarkId: data.benchmarkId || "test-benchmark",
             modelId: subdir,
-            modelVersion: 'test-baseline',
+            modelVersion: "test-baseline",
             modelName: subdir,
             runAt: data.runAt || new Date().toISOString(),
             metrics: data,
@@ -273,11 +273,11 @@ export class HuggingFaceDatasetUploader {
   private async prepareDatasetFiles(
     benchmarks: BenchmarkRecord[],
     outputDir: string,
-    options: { datasetName: string; version: string; description: string }
+    options: { datasetName: string; version: string; description: string },
   ): Promise<DatasetMetadata> {
     // Create data.jsonl with all benchmark records
-    const jsonlPath = path.join(outputDir, 'data.jsonl');
-    const jsonlLines = benchmarks.map((b) => JSON.stringify(b)).join('\n');
+    const jsonlPath = path.join(outputDir, "data.jsonl");
+    const jsonlLines = benchmarks.map((b) => JSON.stringify(b)).join("\n");
     await fs.writeFile(jsonlPath, jsonlLines);
 
     // Create metadata.json
@@ -289,15 +289,15 @@ export class HuggingFaceDatasetUploader {
       totalBenchmarks: benchmarks.length,
       models: Array.from(new Set(benchmarks.map((b) => b.modelName))),
       benchmarkTypes: Array.from(new Set(benchmarks.map((b) => b.benchmarkId))),
-      license: 'MIT',
+      license: "MIT",
     };
 
-    const metadataPath = path.join(outputDir, 'metadata.json');
+    const metadataPath = path.join(outputDir, "metadata.json");
     await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
 
     // Create summary statistics
     const summary = this.calculateSummaryStatistics(benchmarks);
-    const summaryPath = path.join(outputDir, 'summary.json');
+    const summaryPath = path.join(outputDir, "summary.json");
     await fs.writeFile(summaryPath, JSON.stringify(summary, null, 2));
 
     return metadata;
@@ -309,14 +309,14 @@ export class HuggingFaceDatasetUploader {
   private async generateDatasetCard(
     metadata: DatasetMetadata,
     benchmarks: BenchmarkRecord[],
-    outputDir: string
+    outputDir: string,
   ): Promise<void> {
     const summary = this.calculateSummaryStatistics(benchmarks);
-    const brandName = process.env.TRAINING_BRAND_NAME || 'ElizaOS';
-    const brandOrg = process.env.TRAINING_BRAND_ORG || 'ElizaOS Contributors';
+    const brandName = process.env.TRAINING_BRAND_NAME || "ElizaOS";
+    const brandOrg = process.env.TRAINING_BRAND_ORG || "ElizaOS Contributors";
     const platformName =
-      process.env.TRAINING_PLATFORM_NAME || 'ElizaOS-compatible runtimes';
-    const brandTag = brandName.toLowerCase().replace(/\s+/g, '-');
+      process.env.TRAINING_PLATFORM_NAME || "ElizaOS-compatible runtimes";
+    const brandTag = brandName.toLowerCase().replace(/\s+/g, "-");
 
     const card = `---
 license: ${metadata.license}
@@ -435,7 +435,7 @@ print(model_performance.sort_values('metrics.totalPnl', ascending=False))
 If you use this dataset in your research, please cite:
 
 \`\`\`bibtex
-@dataset{${brandTag}_benchmarks_${metadata.version.replace(/\./g, '_')},
+@dataset{${brandTag}_benchmarks_${metadata.version.replace(/\./g, "_")},
   title = {${brandName} Agent Benchmarks},
   author = {${brandOrg}},
   year = {${new Date().getFullYear()}},
@@ -453,7 +453,7 @@ ${metadata.license}
 For questions or issues, please open an issue on the repository.
 `;
 
-    const cardPath = path.join(outputDir, 'README.md');
+    const cardPath = path.join(outputDir, "README.md");
     await fs.writeFile(cardPath, card);
   }
 
@@ -494,8 +494,8 @@ For questions or issues, please open an issue on the repository.
       }))
       .sort((a, b) => b.avgPnl - a.avgPnl);
 
-    let table = '| Rank | Model | Avg P&L | Accuracy | Optimality | Runs |\n';
-    table += '|------|-------|---------|----------|------------|------|\n';
+    let table = "| Rank | Model | Avg P&L | Accuracy | Optimality | Runs |\n";
+    table += "|------|-------|---------|----------|------------|------|\n";
 
     leaderboard.forEach((entry, index) => {
       table += `| ${index + 1} | ${entry.model} | ${entry.avgPnl.toFixed(2)} | ${(entry.avgAccuracy * 100).toFixed(1)}% | ${entry.avgOptimality.toFixed(1)} | ${entry.runs} |\n`;
@@ -553,17 +553,17 @@ For questions or issues, please open an issue on the repository.
    */
   private async ensureRepository(
     datasetName: string,
-    isPrivate: boolean
+    isPrivate: boolean,
   ): Promise<void> {
     if (!this.huggingFaceToken) {
-      throw new Error('HuggingFace token not configured');
+      throw new Error("HuggingFace token not configured");
     }
 
     await HuggingFaceUploadUtil.ensureRepository(
       datasetName,
-      'dataset',
+      "dataset",
       this.huggingFaceToken,
-      isPrivate
+      isPrivate,
     );
   }
 
@@ -574,38 +574,38 @@ For questions or issues, please open an issue on the repository.
   private async uploadToHub(
     datasetName: string,
     localDir: string,
-    _isPrivate: boolean
+    _isPrivate: boolean,
   ): Promise<number> {
     if (!this.huggingFaceToken) {
-      throw new Error('HuggingFace token not configured');
+      throw new Error("HuggingFace token not configured");
     }
 
     try {
       // Use shared upload utility
       const { HuggingFaceUploadUtil } = await import(
-        './shared/HuggingFaceUploadUtil'
+        "./shared/HuggingFaceUploadUtil"
       );
 
       return await HuggingFaceUploadUtil.uploadDirectory(
         datasetName,
-        'dataset',
+        "dataset",
         localDir,
-        this.huggingFaceToken
+        this.huggingFaceToken,
       );
     } catch (error) {
-      logger.error('Failed to upload to HuggingFace Hub', { error });
+      logger.error("Failed to upload to HuggingFace Hub", { error });
 
       // Provide helpful manual upload instructions
       const { HuggingFaceUploadUtil } = await import(
-        './shared/HuggingFaceUploadUtil'
+        "./shared/HuggingFaceUploadUtil"
       );
       const instructions = HuggingFaceUploadUtil.getManualUploadInstructions(
         datasetName,
-        'dataset',
-        localDir
+        "dataset",
+        localDir,
       );
 
-      logger.info('To upload manually:', { instructions });
+      logger.info("To upload manually:", { instructions });
 
       throw error;
     }
@@ -617,8 +617,8 @@ For questions or issues, please open an issue on the repository.
   private generateVersion(): string {
     const now = new Date();
     const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
     return `${year}.${month}.${day}`;
   }
 

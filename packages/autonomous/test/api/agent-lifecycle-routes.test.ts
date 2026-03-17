@@ -115,7 +115,9 @@ describe("agent-lifecycle-routes", () => {
 
     test("returns enabled true when runtime has autonomy", async () => {
       const state = buildState({
-        runtime: { enableAutonomy: true } as any,
+        runtime: {
+          enableAutonomy: true,
+        } as Pick<import("@elizaos/core").AgentRuntime, "enableAutonomy">,
       });
       const ctx = buildCtx("GET", "/api/agent/autonomy", state);
       await handleAgentLifecycleRoutes(ctx);
@@ -126,7 +128,9 @@ describe("agent-lifecycle-routes", () => {
 
   describe("POST /api/agent/autonomy", () => {
     test("sets autonomy on runtime", async () => {
-      const runtime = { enableAutonomy: false } as any;
+      const runtime = {
+        enableAutonomy: false,
+      } as Pick<import("@elizaos/core").AgentRuntime, "enableAutonomy">;
       const state = buildState({ runtime });
       const ctx = buildCtx("POST", "/api/agent/autonomy", state, {
         readJsonBody: vi.fn(async () => ({ enabled: true })),
@@ -136,7 +140,12 @@ describe("agent-lifecycle-routes", () => {
     });
 
     test("rejects non-boolean enabled", async () => {
-      const state = buildState({ runtime: {} as any });
+      const state = buildState({
+        runtime: {} as Pick<
+          import("@elizaos/core").AgentRuntime,
+          "enableAutonomy"
+        >,
+      });
       const ctx = buildCtx("POST", "/api/agent/autonomy", state, {
         readJsonBody: vi.fn(async () => ({ enabled: "yes" })),
       });

@@ -17,7 +17,7 @@ async def get_contacts_context(
     message: Memory,
     state: State | None = None,
 ) -> ProviderResult:
-    from elizaos.bootstrap.services.rolodex import RolodexService
+    from elizaos.advanced_capabilities.services.rolodex import RolodexService
 
     rolodex_service = runtime.get_service("rolodex")
     if not rolodex_service or not isinstance(rolodex_service, RolodexService):

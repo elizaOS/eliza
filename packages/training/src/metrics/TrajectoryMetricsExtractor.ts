@@ -14,8 +14,8 @@
  * @packageDocumentation
  */
 
-import type { TrajectoryStep } from '../training/types';
-import { logger } from '../utils/logger';
+import type { TrajectoryStep } from "../training/types";
+import { logger } from "../utils/logger";
 import type {
   BehavioralMetrics,
   BehaviorMetrics,
@@ -23,43 +23,43 @@ import type {
   InformationMetrics,
   SocialMetrics,
   TradingMetrics,
-} from './types';
+} from "./types";
 
 /**
  * Action types that count as social interactions
  */
 const SOCIAL_ACTION_TYPES = new Set([
-  'join_group_chat',
-  'create_group_chat',
-  'leave_group_chat',
-  'post_group_message',
-  'send_dm',
-  'reply_dm',
-  'create_post',
-  'comment',
-  'like',
-  'follow',
-  'unfollow',
-  'mention',
-  'invite',
-  'react',
-  'share',
+  "join_group_chat",
+  "create_group_chat",
+  "leave_group_chat",
+  "post_group_message",
+  "send_dm",
+  "reply_dm",
+  "create_post",
+  "comment",
+  "like",
+  "follow",
+  "unfollow",
+  "mention",
+  "invite",
+  "react",
+  "share",
 ]);
 
 /**
  * Action types that count as trading actions
  */
 const TRADING_ACTION_TYPES = new Set([
-  'trade',
-  'buy',
-  'sell',
-  'place_order',
-  'cancel_order',
-  'close_position',
-  'open_position',
-  'predict',
-  'bet',
-  'swap',
+  "trade",
+  "buy",
+  "sell",
+  "place_order",
+  "cancel_order",
+  "close_position",
+  "open_position",
+  "predict",
+  "bet",
+  "swap",
 ]);
 
 export class TrajectoryMetricsExtractor {
@@ -107,7 +107,7 @@ export class TrajectoryMetricsExtractor {
    */
   private extractSocialMetrics(
     steps: TrajectoryStep[],
-    agentId: string
+    agentId: string,
   ): SocialMetrics {
     const metrics: SocialMetrics = {
       groupChatsJoined: 0,
@@ -135,13 +135,13 @@ export class TrajectoryMetricsExtractor {
       const params = action.parameters || {};
 
       // Group chat actions
-      if (actionType === 'join_group_chat') {
+      if (actionType === "join_group_chat") {
         metrics.groupChatsJoined++;
-      } else if (actionType === 'create_group_chat') {
+      } else if (actionType === "create_group_chat") {
         metrics.groupChatsCreated++;
       } else if (
-        actionType === 'post_group_message' ||
-        actionType === 'group_message'
+        actionType === "post_group_message" ||
+        actionType === "group_message"
       ) {
         metrics.groupMessagesSent++;
         if (params.groupId) {
@@ -150,7 +150,7 @@ export class TrajectoryMetricsExtractor {
       }
 
       // DM actions
-      else if (actionType === 'send_dm' || actionType === 'dm') {
+      else if (actionType === "send_dm" || actionType === "dm") {
         const isInitiator =
           params.initiator === agentId || params.fromAgent === agentId;
         if (isInitiator) {
@@ -159,14 +159,14 @@ export class TrajectoryMetricsExtractor {
         if (params.toUserId || params.recipientId) {
           usersInteracted.add(String(params.toUserId || params.recipientId));
         }
-      } else if (actionType === 'reply_dm') {
+      } else if (actionType === "reply_dm") {
         dmsReplied++;
       }
 
       // Post/comment actions
-      else if (actionType === 'create_post' || actionType === 'post') {
+      else if (actionType === "create_post" || actionType === "post") {
         metrics.postsCreated++;
-      } else if (actionType === 'comment' || actionType === 'reply') {
+      } else if (actionType === "comment" || actionType === "reply") {
         metrics.commentsMade++;
         if (params.authorId) {
           usersInteracted.add(String(params.authorId));
@@ -174,12 +174,12 @@ export class TrajectoryMetricsExtractor {
       }
 
       // Mention/invite actions
-      else if (actionType === 'mention') {
+      else if (actionType === "mention") {
         metrics.mentionsGiven++;
         if (params.mentionedUserId) {
           usersInteracted.add(String(params.mentionedUserId));
         }
-      } else if (actionType === 'invite') {
+      } else if (actionType === "invite") {
         metrics.invitationsSent++;
         if (params.invitedUserId) {
           usersInteracted.add(String(params.invitedUserId));
@@ -211,7 +211,7 @@ export class TrajectoryMetricsExtractor {
   private extractTradingMetrics(
     steps: TrajectoryStep[],
     startBalance?: number,
-    endBalance?: number
+    endBalance?: number,
   ): TradingMetrics {
     const metrics: TradingMetrics = {
       tradesExecuted: 0,
@@ -249,15 +249,15 @@ export class TrajectoryMetricsExtractor {
 
         // Track buy/sell
         if (
-          actionType === 'buy' ||
-          params.side === 'buy' ||
-          params.direction === 'long'
+          actionType === "buy" ||
+          params.side === "buy" ||
+          params.direction === "long"
         ) {
           metrics.buyTrades++;
         } else if (
-          actionType === 'sell' ||
-          params.side === 'sell' ||
-          params.direction === 'short'
+          actionType === "sell" ||
+          params.side === "sell" ||
+          params.direction === "short"
         ) {
           metrics.sellTrades++;
         }
@@ -270,7 +270,7 @@ export class TrajectoryMetricsExtractor {
 
         // Track position size
         const size = Number(
-          params.amount || params.size || params.quantity || 0
+          params.amount || params.size || params.quantity || 0,
         );
         if (size > 0) {
           positionSizes.push(size);
@@ -278,7 +278,7 @@ export class TrajectoryMetricsExtractor {
 
         // Track P&L from result
         const tradePnL = Number(
-          result.pnl || result.profit || result.return || 0
+          result.pnl || result.profit || result.return || 0,
         );
         if (tradePnL !== 0) {
           tradePnLs.push(tradePnL);
@@ -333,7 +333,7 @@ export class TrajectoryMetricsExtractor {
       const mean =
         tradePnLs.reduce((sum, pnl) => sum + pnl, 0) / tradePnLs.length;
       const variance =
-        tradePnLs.reduce((sum, pnl) => sum + Math.pow(pnl - mean, 2), 0) /
+        tradePnLs.reduce((sum, pnl) => sum + (pnl - mean) ** 2, 0) /
         tradePnLs.length;
       const stdDev = Math.sqrt(variance);
       if (stdDev > 0) {
@@ -370,7 +370,7 @@ export class TrajectoryMetricsExtractor {
 
       // Track reputation changes
       const reputation = Number(
-        envState.reputation || envState.agentReputation || 0
+        envState.reputation || envState.agentReputation || 0,
       );
       if (reputation !== 0) {
         if (startReputation === null) {
@@ -390,7 +390,7 @@ export class TrajectoryMetricsExtractor {
 
       // Track follower changes
       const followers = Number(
-        envState.followers || envState.followerCount || 0
+        envState.followers || envState.followerCount || 0,
       );
       if (followers !== 0) {
         if (startFollowers === null) {
@@ -405,17 +405,17 @@ export class TrajectoryMetricsExtractor {
         const result = action.result;
         if (result.likes || result.upvotes) {
           metrics.positiveReactions += Number(
-            result.likes || result.upvotes || 0
+            result.likes || result.upvotes || 0,
           );
         }
         if (result.dislikes || result.downvotes) {
           metrics.negativeReactions += Number(
-            result.dislikes || result.downvotes || 0
+            result.dislikes || result.downvotes || 0,
           );
         }
         if (result.shares || result.reshares) {
           metrics.informationSpread += Number(
-            result.shares || result.reshares || 0
+            result.shares || result.reshares || 0,
           );
         }
       }
@@ -456,7 +456,7 @@ export class TrajectoryMetricsExtractor {
       actionSuccessRate: 0,
       episodeLength: steps.length,
       actionTypesUsed: [],
-      dominantActionType: '',
+      dominantActionType: "",
     };
 
     const actionTypeCounts = new Map<string, number>();
@@ -477,7 +477,7 @@ export class TrajectoryMetricsExtractor {
       // Count action types
       actionTypeCounts.set(
         actionType,
-        (actionTypeCounts.get(actionType) || 0) + 1
+        (actionTypeCounts.get(actionType) || 0) + 1,
       );
 
       // Categorize actions
@@ -524,8 +524,7 @@ export class TrajectoryMetricsExtractor {
       const counts = Array.from(actionTypeCounts.values());
       const mean = counts.reduce((sum, c) => sum + c, 0) / counts.length;
       const variance =
-        counts.reduce((sum, c) => sum + Math.pow(c - mean, 2), 0) /
-        counts.length;
+        counts.reduce((sum, c) => sum + (c - mean) ** 2, 0) / counts.length;
       // Normalize to 0-1 range (higher = more consistent)
       metrics.consistencyScore = 1 / (1 + Math.sqrt(variance) / mean);
     } else {
@@ -539,7 +538,7 @@ export class TrajectoryMetricsExtractor {
    * Extract information gathering metrics
    */
   private extractInformationMetrics(
-    steps: TrajectoryStep[]
+    steps: TrajectoryStep[],
   ): InformationMetrics {
     const metrics: InformationMetrics = {
       researchActions: 0,
@@ -558,21 +557,21 @@ export class TrajectoryMetricsExtractor {
 
       const actionType = action.actionType.toLowerCase();
 
-      if (actionType === 'research' || actionType === 'analyze') {
+      if (actionType === "research" || actionType === "analyze") {
         metrics.researchActions++;
-      } else if (actionType === 'read_news' || actionType === 'consume_news') {
+      } else if (actionType === "read_news" || actionType === "consume_news") {
         metrics.newsConsumed++;
       } else if (
-        actionType === 'query_market' ||
-        actionType === 'check_price' ||
-        actionType === 'get_quote'
+        actionType === "query_market" ||
+        actionType === "check_price" ||
+        actionType === "get_quote"
       ) {
         metrics.marketDataQueries++;
-      } else if (actionType === 'request_info' || actionType === 'ask') {
+      } else if (actionType === "request_info" || actionType === "ask") {
         metrics.infoRequestsSent++;
-      } else if (actionType === 'share_info' || actionType === 'share') {
+      } else if (actionType === "share_info" || actionType === "share") {
         metrics.infoShared++;
-      } else if (actionType === 'predict' || actionType === 'bet') {
+      } else if (actionType === "predict" || actionType === "bet") {
         metrics.predictionsMade++;
 
         // Check if prediction was correct
@@ -606,9 +605,9 @@ export class TrajectoryMetricsExtractor {
 
       if (!Array.isArray(steps) || steps.length === 0) {
         logger.warn(
-          'Invalid or empty steps array',
+          "Invalid or empty steps array",
           { trajectoryId: params.trajectoryId },
-          'MetricsExtractor'
+          "MetricsExtractor",
         );
         return null;
       }
@@ -635,12 +634,12 @@ export class TrajectoryMetricsExtractor {
       });
     } catch (error) {
       logger.error(
-        'Failed to extract metrics',
+        "Failed to extract metrics",
         {
           trajectoryId: params.trajectoryId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'MetricsExtractor'
+        "MetricsExtractor",
       );
       return null;
     }

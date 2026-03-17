@@ -72,10 +72,10 @@ If they only check prices without reading news or doing analysis, score lower.
 `;
 
 export const RESEARCHER_PRIORITY_METRICS = [
-  'information.researchActions',
-  'information.predictionAccuracy',
-  'information.marketDataQueries',
-  'information.newsConsumed',
-  'trading.winRate',
-  'trading.totalPnL',
+  "information.researchActions",
+  "information.predictionAccuracy",
+  "information.marketDataQueries",
+  "information.newsConsumed",
+  "trading.winRate",
+  "trading.totalPnL",
 ];

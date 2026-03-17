@@ -50,7 +50,6 @@ class BenchmarkRuntimeManager implements IAgentRuntimeManager {
         // Create a new runtime
         const character = {
             name: 'BenchmarkAgent',
-            modelProvider: "openai" as any,
             bio: 'A helpful assistant for benchmarking.',
             settings: {
                 secrets: {
@@ -60,13 +59,7 @@ class BenchmarkRuntimeManager implements IAgentRuntimeManager {
         };
 
         const runtime = new AgentRuntime({
-            token: process.env.OPENAI_API_KEY || '',
-            modelProvider: "openai" as any,
             character,
-            plugins: [],
-            providers: [],
-            actions: [],
-            evaluators: [],
         });
 
         // We must initialize with allowNoDatabase to avoid DB error
@@ -227,11 +220,11 @@ async function main() {
         agentService: new BenchmarkAgentService(),
         agentRuntimeManager: new BenchmarkRuntimeManager(),
         autonomousCoordinator: {
-            executeAutonomousTick: async () => ({ success: true })
-        } as any,
+            executeAutonomousTick: async () => ({ success: true }),
+        },
         llmCaller: {
-            callGroqDirect: async () => "mock response"
-        } as any,
+            callGroqDirect: async () => "mock response",
+        },
     });
 
     // Import task interactor config

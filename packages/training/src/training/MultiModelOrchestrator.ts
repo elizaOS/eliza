@@ -11,7 +11,7 @@
  * - Real vLLM/OpenAI-compatible API integration
  */
 
-import { logger } from '../utils/logger';
+import { logger } from "../utils/logger";
 import {
   getModelForArchetype as getArchetypeModel,
   getMultiModelConfig,
@@ -20,7 +20,7 @@ import {
   type ModelTier,
   type MultiModelConfig,
   type QuantizationMode,
-} from './RLModelConfig';
+} from "./RLModelConfig";
 
 /**
  * Loaded model state
@@ -107,9 +107,9 @@ export class MultiModelOrchestrator {
 
   constructor(config: OrchestratorConfig) {
     this.config = {
-      vllmBaseUrl: process.env.VLLM_BASE_URL || 'http://localhost:9001',
+      vllmBaseUrl: process.env.VLLM_BASE_URL || "http://localhost:9001",
       fallbackApiUrl:
-        process.env.GROQ_API_URL || 'https://api.groq.com/openai/v1',
+        process.env.GROQ_API_URL || "https://api.groq.com/openai/v1",
       fallbackApiKey: process.env.GROQ_API_KEY,
       inferenceTimeoutMs: 30000,
       ...config,
@@ -117,7 +117,7 @@ export class MultiModelOrchestrator {
     this.multiModelConfig = getMultiModelConfig(config.availableVramGb);
 
     logger.info(
-      'MultiModelOrchestrator initialized',
+      "MultiModelOrchestrator initialized",
       {
         availableVram: `${config.availableVramGb}GB`,
         maxConcurrentModels: this.multiModelConfig.maxConcurrentModels,
@@ -126,7 +126,7 @@ export class MultiModelOrchestrator {
         vllmUrl: this.config.vllmBaseUrl,
         hasFallback: !!this.config.fallbackApiKey,
       },
-      'MultiModelOrchestrator'
+      "MultiModelOrchestrator",
     );
   }
 
@@ -150,9 +150,9 @@ export class MultiModelOrchestrator {
 
       if (this.vllmAvailable) {
         logger.info(
-          'vLLM server is available',
+          "vLLM server is available",
           { url: this.config.vllmBaseUrl },
-          'MultiModelOrchestrator'
+          "MultiModelOrchestrator",
         );
       }
 
@@ -161,9 +161,9 @@ export class MultiModelOrchestrator {
       clearTimeout(timeout);
       this.vllmAvailable = false;
       logger.warn(
-        'vLLM server not available, will use fallback',
+        "vLLM server not available, will use fallback",
         { url: this.config.vllmBaseUrl },
-        'MultiModelOrchestrator'
+        "MultiModelOrchestrator",
       );
       return false;
     }
@@ -187,7 +187,7 @@ export class MultiModelOrchestrator {
         quantization: this.config.defaultQuantization,
         vramGb: getVramRequirement(
           this.config.defaultTier,
-          this.config.defaultQuantization
+          this.config.defaultQuantization,
         ),
       };
     }
@@ -237,7 +237,7 @@ export class MultiModelOrchestrator {
             freedVram: `${model.vramUsageGb}GB`,
             currentUsage: `${this.currentVramUsageGb}GB`,
           },
-          'MultiModelOrchestrator'
+          "MultiModelOrchestrator",
         );
       }
     }
@@ -263,7 +263,7 @@ export class MultiModelOrchestrator {
     if (!this.canLoadModel(modelInfo.vramGb)) {
       throw new Error(
         `Cannot load model for ${archetype}: insufficient VRAM. ` +
-          `Required: ${modelInfo.vramGb}GB, Available: ${this.config.availableVramGb - this.currentVramUsageGb}GB`
+          `Required: ${modelInfo.vramGb}GB, Available: ${this.config.availableVramGb - this.currentVramUsageGb}GB`,
       );
     }
 
@@ -288,7 +288,7 @@ export class MultiModelOrchestrator {
         totalVramUsed: `${this.currentVramUsageGb}GB`,
         modelsLoaded: this.loadedModels.size,
       },
-      'MultiModelOrchestrator'
+      "MultiModelOrchestrator",
     );
 
     return loadedModel;
@@ -302,32 +302,32 @@ export class MultiModelOrchestrator {
     prompt: string,
     systemPrompt: string,
     maxTokens: number,
-    temperature: number
+    temperature: number,
   ): Promise<CompletionResponse> {
     const controller = new AbortController();
     const timeout = setTimeout(
       () => controller.abort(),
-      this.config.inferenceTimeoutMs
+      this.config.inferenceTimeoutMs,
     );
 
     const response = await fetch(
       `${this.config.vllmBaseUrl}/v1/chat/completions`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           model: modelId,
           messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt },
+            { role: "system", content: systemPrompt },
+            { role: "user", content: prompt },
           ],
           max_tokens: maxTokens,
           temperature,
         }),
         signal: controller.signal,
-      }
+      },
     );
 
     clearTimeout(timeout);
@@ -347,42 +347,42 @@ export class MultiModelOrchestrator {
     prompt: string,
     systemPrompt: string,
     maxTokens: number,
-    temperature: number
+    temperature: number,
   ): Promise<CompletionResponse> {
     if (!this.config.fallbackApiKey) {
       throw new Error(
-        'No fallback API key configured. Set GROQ_API_KEY environment variable.'
+        "No fallback API key configured. Set GROQ_API_KEY environment variable.",
       );
     }
 
     const controller = new AbortController();
     const timeout = setTimeout(
       () => controller.abort(),
-      this.config.inferenceTimeoutMs
+      this.config.inferenceTimeoutMs,
     );
 
     // Use a fast model for fallback
-    const fallbackModel = 'llama-3.1-8b-instant';
+    const fallbackModel = "llama-3.1-8b-instant";
 
     const response = await fetch(
       `${this.config.fallbackApiUrl}/chat/completions`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${this.config.fallbackApiKey}`,
         },
         body: JSON.stringify({
           model: fallbackModel,
           messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt },
+            { role: "system", content: systemPrompt },
+            { role: "user", content: prompt },
           ],
           max_tokens: maxTokens,
           temperature,
         }),
         signal: controller.signal,
-      }
+      },
     );
 
     clearTimeout(timeout);
@@ -390,7 +390,7 @@ export class MultiModelOrchestrator {
     if (!response.ok) {
       const error = await response.text();
       throw new Error(
-        `Fallback API request failed: ${response.status} - ${error}`
+        `Fallback API request failed: ${response.status} - ${error}`,
       );
     }
 
@@ -401,7 +401,7 @@ export class MultiModelOrchestrator {
    * Run inference for an archetype
    */
   async inference(
-    request: ModelInferenceRequest
+    request: ModelInferenceRequest,
   ): Promise<ModelInferenceResult> {
     const startTime = Date.now();
 
@@ -427,7 +427,7 @@ export class MultiModelOrchestrator {
           request.prompt,
           systemPrompt,
           maxTokens,
-          temperature
+          temperature,
         );
       } else {
         // Fall back to Groq/OpenAI
@@ -435,12 +435,12 @@ export class MultiModelOrchestrator {
           request.prompt,
           systemPrompt,
           maxTokens,
-          temperature
+          temperature,
         );
       }
 
       const latencyMs = Date.now() - startTime;
-      const response = completion.choices[0]?.message.content || '';
+      const response = completion.choices[0]?.message.content || "";
       const tokensGenerated = completion.usage?.completion_tokens || 0;
 
       logger.debug(
@@ -451,7 +451,7 @@ export class MultiModelOrchestrator {
           tokensGenerated,
           usedVllm: vllmAvailable,
         },
-        'MultiModelOrchestrator'
+        "MultiModelOrchestrator",
       );
 
       return {
@@ -469,12 +469,12 @@ export class MultiModelOrchestrator {
       logger.error(
         `Inference failed for ${request.archetype}`,
         { error: errorMessage, latencyMs },
-        'MultiModelOrchestrator'
+        "MultiModelOrchestrator",
       );
 
       return {
         archetype: request.archetype,
-        response: '',
+        response: "",
         modelId: model.modelId,
         latencyMs,
         tokensGenerated: 0,
@@ -487,7 +487,7 @@ export class MultiModelOrchestrator {
    * Batch inference for multiple archetypes
    */
   async batchInference(
-    requests: ModelInferenceRequest[]
+    requests: ModelInferenceRequest[],
   ): Promise<ModelInferenceResult[]> {
     // Group requests by archetype for efficient batching
     const byArchetype = new Map<string, ModelInferenceRequest[]>();
@@ -509,7 +509,7 @@ export class MultiModelOrchestrator {
       for (let i = 0; i < archetypeRequests.length; i += batchSize) {
         const batch = archetypeRequests.slice(i, i + batchSize);
         const batchResults = await Promise.all(
-          batch.map((req) => this.inference(req))
+          batch.map((req) => this.inference(req)),
         );
         results.push(...batchResults);
       }
@@ -555,7 +555,7 @@ export class MultiModelOrchestrator {
   unloadAll(): void {
     this.loadedModels.clear();
     this.currentVramUsageGb = 0;
-    logger.info('Unloaded all models', {}, 'MultiModelOrchestrator');
+    logger.info("Unloaded all models", {}, "MultiModelOrchestrator");
   }
 
   /**
@@ -570,11 +570,11 @@ export class MultiModelOrchestrator {
  * Create a multi-model orchestrator with sensible defaults for RTX 5090 (16GB)
  */
 export function createMultiModelOrchestrator(
-  vramGb = 16
+  vramGb = 16,
 ): MultiModelOrchestrator {
   return new MultiModelOrchestrator({
     availableVramGb: vramGb,
-    defaultTier: 'small',
-    defaultQuantization: '4bit',
+    defaultTier: "small",
+    defaultQuantization: "4bit",
   });
 }

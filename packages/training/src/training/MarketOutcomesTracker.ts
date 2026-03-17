@@ -5,9 +5,9 @@
  * This gives RULER the ground truth to evaluate agent decisions.
  */
 
-import { getMarketDataAdapter } from '../adapter';
-import { generateSnowflakeId, logger } from '../utils';
-import { getPreviousWindowId } from './window-utils';
+import { getMarketDataAdapter } from "../adapter";
+import { generateSnowflakeId, logger } from "../utils";
+import { getPreviousWindowId } from "./window-utils";
 
 export interface WindowOutcomes {
   windowId: string;
@@ -36,7 +36,9 @@ export class MarketOutcomesTracker {
 
     const marketAdapter = getMarketDataAdapter();
     if (!marketAdapter) {
-      logger.warn('Market data adapter not available, skipping outcome tracking');
+      logger.warn(
+        "Market data adapter not available, skipping outcome tracking",
+      );
       return;
     }
 
@@ -44,7 +46,10 @@ export class MarketOutcomesTracker {
     const windowEnd = new Date(windowStart.getTime() + 60 * 60 * 1000);
 
     // Get stock price movements from perpetual positions
-    const perpTrades = await marketAdapter.getPerpPositionsForWindow(windowStart, windowEnd);
+    const perpTrades = await marketAdapter.getPerpPositionsForWindow(
+      windowStart,
+      windowEnd,
+    );
 
     // Group by ticker and calculate movements
     const stockMovements = new Map<
@@ -56,7 +61,9 @@ export class MarketOutcomesTracker {
       if (!trade.ticker) continue;
 
       const existing = stockMovements.get(trade.ticker);
-      const endPrice = Number(trade.currentPrice ?? trade.exitPrice ?? trade.entryPrice);
+      const endPrice = Number(
+        trade.currentPrice ?? trade.exitPrice ?? trade.entryPrice,
+      );
       if (!existing) {
         stockMovements.set(trade.ticker, {
           start: Number(trade.entryPrice),
@@ -81,12 +88,15 @@ export class MarketOutcomesTracker {
         startPrice: String(data.start),
         endPrice: String(data.end),
         changePercent: String(changePercent),
-        sentiment: changePercent > 0 ? 'BULLISH' : 'BEARISH',
+        sentiment: changePercent > 0 ? "BULLISH" : "BEARISH",
       });
     }
 
     // Get prediction market resolutions
-    const resolvedMarkets = await marketAdapter.getResolvedMarketsForWindow(windowStart, windowEnd);
+    const resolvedMarkets = await marketAdapter.getResolvedMarketsForWindow(
+      windowStart,
+      windowEnd,
+    );
 
     // Save prediction outcomes
     for (const market of resolvedMarkets) {
@@ -95,7 +105,7 @@ export class MarketOutcomesTracker {
         windowId,
         predictionMarketId: market.id,
         question: market.question,
-        outcome: market.outcome ? 'YES' : 'NO',
+        outcome: market.outcome ? "YES" : "NO",
         finalProbability: String(market.finalProbability ?? 0.5),
       });
     }
@@ -114,7 +124,7 @@ export class MarketOutcomesTracker {
 
     const marketAdapter = getMarketDataAdapter();
     if (!marketAdapter) {
-      logger.warn('Market data adapter not available');
+      logger.warn("Market data adapter not available");
       return 0;
     }
 
@@ -172,8 +182,8 @@ export class MarketOutcomesTracker {
         const r = o as Record<string, unknown>;
         return {
           marketId: r.predictionMarketId as string,
-          question: (r.question as string) || '',
-          outcome: (r.outcome as string) || 'UNRESOLVED',
+          question: (r.question as string) || "",
+          outcome: (r.outcome as string) || "UNRESOLVED",
           finalProbability: Number(r.finalProbability || 0),
         };
       });

@@ -122,23 +122,23 @@ def merge_hybrid_results(
         }
 
     # Merge keyword search results
-    for r in keyword:
-        if r.id in by_id:
-            existing = by_id[r.id]
-            existing["text_score"] = r.text_score
+    for kw_r in keyword:
+        if kw_r.id in by_id:
+            existing = by_id[kw_r.id]
+            existing["text_score"] = kw_r.text_score
             # Prefer keyword snippet if available (may have highlights)
-            if r.snippet:
-                existing["snippet"] = r.snippet
+            if kw_r.snippet:
+                existing["snippet"] = kw_r.snippet
         else:
-            by_id[r.id] = {
-                "id": r.id,
-                "path": r.path,
-                "start_line": r.start_line,
-                "end_line": r.end_line,
-                "source": r.source,
-                "snippet": r.snippet,
+            by_id[kw_r.id] = {
+                "id": kw_r.id,
+                "path": kw_r.path,
+                "start_line": kw_r.start_line,
+                "end_line": kw_r.end_line,
+                "source": kw_r.source,
+                "snippet": kw_r.snippet,
                 "vector_score": 0.0,
-                "text_score": r.text_score,
+                "text_score": kw_r.text_score,
             }
 
     # Calculate weighted scores and create results

@@ -59,14 +59,7 @@
   "workspaces": [
     "packages/*",
     "packages/computeruse/packages/*",
-    "apps/*",
-    "examples/*",
-    "examples/*/*",
-    "examples/app/*",
-    "examples/app/*/*",
-    "examples/app/*/*/*",
-    "examples/polyagent/apps/*",
-    "examples/polyagent/packages/*"
+    "apps/*"
   ],
   "devDependencies": {
     "@bufbuild/buf": "^1.47.2",

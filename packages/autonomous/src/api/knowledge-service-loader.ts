@@ -1,4 +1,10 @@
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  AgentRuntime,
+  Memory,
+  Service,
+  ServiceTypeName,
+  UUID,
+} from "@elizaos/core";
 
 export interface KnowledgeServiceLike {
   addKnowledge(options: {
@@ -70,7 +76,7 @@ export async function getKnowledgeService(
     return { service: null, reason: "runtime_unavailable" };
   }
 
-  let service = runtime.getService("knowledge") as KnowledgeServiceLike | null;
+  let service = runtime.getService<Service & KnowledgeServiceLike>("knowledge");
   if (service) return { service };
 
   try {
@@ -83,7 +89,7 @@ export async function getKnowledgeService(
       );
     });
     await Promise.race([servicePromise, timeout]);
-    service = runtime.getService("knowledge") as KnowledgeServiceLike | null;
+    service = runtime.getService<Service & KnowledgeServiceLike>("knowledge");
     if (service) return { service };
     return { service: null, reason: "not_registered" };
   } catch {

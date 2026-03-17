@@ -13,5 +13,5 @@ export async function generateSnowflakeId(): Promise<string> {
   if (counter > 999) counter = 0;
 
   // Format: timestamp (13 digits) + counter (3 digits)
-  return `${timestamp}${currentCounter.toString().padStart(3, '0')}`;
+  return `${timestamp}${currentCounter.toString().padStart(3, "0")}`;
 }

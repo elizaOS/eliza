@@ -12,18 +12,18 @@
 import {
   type ArchetypeConfig,
   ArchetypeConfigService,
-} from '../archetypes/ArchetypeConfigService';
+} from "../archetypes/ArchetypeConfigService";
 import {
   createMultiModelOrchestrator,
   type MultiModelOrchestrator,
-} from '../training/MultiModelOrchestrator';
-import { logger } from '../utils/logger';
+} from "../training/MultiModelOrchestrator";
+import { logger } from "../utils/logger";
 import {
   type BenchmarkConfig,
   BenchmarkDataGenerator,
   type BenchmarkGameSnapshot,
   type Tick,
-} from './BenchmarkDataGenerator';
+} from "./BenchmarkDataGenerator";
 
 /**
  * Individual agent in the matchup simulation
@@ -95,7 +95,7 @@ export interface MatchupBenchmarkResult {
   headToHead: ArchetypeVsResult[];
 
   /** Market condition during benchmark */
-  marketCondition: 'bull' | 'bear' | 'volatile' | 'stable';
+  marketCondition: "bull" | "bear" | "volatile" | "stable";
 
   /** Insights derived from the matchup */
   insights: string[];
@@ -106,7 +106,7 @@ export interface MatchupBenchmarkResult {
  */
 export interface MatchupBenchmarkConfig {
   /** Archetypes to include in matchup (or 'all' for all archetypes) */
-  archetypes: string[] | 'all';
+  archetypes: string[] | "all";
 
   /** Number of agents per archetype */
   agentsPerArchetype: number;
@@ -118,7 +118,7 @@ export interface MatchupBenchmarkConfig {
   ticksPerRound: number;
 
   /** Market conditions to test */
-  marketConditions: Array<'bull' | 'bear' | 'volatile' | 'stable'>;
+  marketConditions: Array<"bull" | "bear" | "volatile" | "stable">;
 
   /** Available VRAM for model loading */
   availableVramGb: number;
@@ -140,7 +140,7 @@ export class ArchetypeMatchupBenchmark {
    * Get all archetypes to benchmark
    */
   private getArchetypes(): string[] {
-    if (this.config.archetypes === 'all') {
+    if (this.config.archetypes === "all") {
       return ArchetypeConfigService.getAvailableArchetypes();
     }
     return this.config.archetypes;
@@ -173,7 +173,7 @@ export class ArchetypeMatchupBenchmark {
    * Market condition affects seed to create different scenarios
    */
   private async generateBenchmarkData(
-    condition: 'bull' | 'bear' | 'volatile' | 'stable'
+    condition: "bull" | "bear" | "volatile" | "stable",
   ): Promise<BenchmarkGameSnapshot> {
     // Convert ticks to duration minutes (assuming 1 tick per second)
     const durationMinutes = Math.ceil(this.config.ticksPerRound / 60);
@@ -190,8 +190,8 @@ export class ArchetypeMatchupBenchmark {
     const benchmarkConfig: BenchmarkConfig = {
       durationMinutes,
       tickInterval: 1,
-      numPredictionMarkets: condition === 'volatile' ? 8 : 5,
-      numPerpetualMarkets: condition === 'volatile' ? 5 : 3,
+      numPredictionMarkets: condition === "volatile" ? 8 : 5,
+      numPerpetualMarkets: condition === "volatile" ? 5 : 3,
       numAgents: 10,
       seed: baseSeed + (Date.now() % 1000), // Semi-reproducible
     };
@@ -206,18 +206,18 @@ export class ArchetypeMatchupBenchmark {
   private async simulateRound(
     agents: MatchupAgent[],
     snapshot: BenchmarkGameSnapshot,
-    roundNumber: number
+    roundNumber: number,
   ): Promise<MatchupAgentResult[]> {
     const results: MatchupAgentResult[] = [];
 
     logger.info(
       `Simulating round ${roundNumber} with ${agents.length} agents`,
       { archetypes: [...new Set(agents.map((a) => a.archetype))] },
-      'ArchetypeMatchupBenchmark'
+      "ArchetypeMatchupBenchmark",
     );
 
     // Check if we should use real inference or simulation
-    const useRealInference = process.env.USE_REAL_INFERENCE === 'true';
+    const useRealInference = process.env.USE_REAL_INFERENCE === "true";
 
     if (useRealInference) {
       // Use real model inference via the orchestrator
@@ -247,7 +247,7 @@ export class ArchetypeMatchupBenchmark {
    */
   private async runAgentWithRealModel(
     agent: MatchupAgent,
-    snapshot: BenchmarkGameSnapshot
+    snapshot: BenchmarkGameSnapshot,
   ): Promise<MatchupAgentResult> {
     let totalPnl = 0;
     let totalTrades = 0;
@@ -275,20 +275,20 @@ export class ArchetypeMatchupBenchmark {
       // Parse the decision and simulate outcome
       const decision = this.parseAgentDecision(response.response);
 
-      if (decision.action === 'trade') {
+      if (decision.action === "trade") {
         totalTrades++;
         // Simulate trade outcome based on market conditions
         const marketTrend = this.getMarketTrend(tick);
         const isCorrectDirection =
-          (decision.direction === 'long' && marketTrend > 0) ||
-          (decision.direction === 'short' && marketTrend < 0);
+          (decision.direction === "long" && marketTrend > 0) ||
+          (decision.direction === "short" && marketTrend < 0);
         if (isCorrectDirection) {
           wins++;
           totalPnl += Math.abs(marketTrend) * 100 * (decision.confidence || 1);
         } else {
           totalPnl -= Math.abs(marketTrend) * 50 * (decision.confidence || 1);
         }
-      } else if (decision.action === 'post') {
+      } else if (decision.action === "post") {
         postsCreated++;
       }
     }
@@ -326,7 +326,7 @@ export class ArchetypeMatchupBenchmark {
 
     // Extract market prices from perpetual markets
     const marketPrices = Object.fromEntries(
-      state.perpetualMarkets.map((m) => [m.ticker, m.price])
+      state.perpetualMarkets.map((m) => [m.ticker, m.price]),
     );
 
     // Recent posts can serve as "news"
@@ -352,8 +352,8 @@ Respond with a JSON object containing:
    * Parse agent decision from model response
    */
   private parseAgentDecision(response: string): {
-    action: 'trade' | 'post' | 'observe';
-    direction?: 'long' | 'short';
+    action: "trade" | "post" | "observe";
+    direction?: "long" | "short";
     confidence?: number;
   } {
     try {
@@ -362,7 +362,7 @@ Respond with a JSON object containing:
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         return {
-          action: parsed.action || 'observe',
+          action: parsed.action || "observe",
           direction: parsed.direction,
           confidence: parsed.confidence || 0.5,
         };
@@ -373,25 +373,25 @@ Respond with a JSON object containing:
 
     // Default behavior based on response content
     if (
-      response.toLowerCase().includes('trade') ||
-      response.toLowerCase().includes('buy') ||
-      response.toLowerCase().includes('sell')
+      response.toLowerCase().includes("trade") ||
+      response.toLowerCase().includes("buy") ||
+      response.toLowerCase().includes("sell")
     ) {
       return {
-        action: 'trade',
-        direction: response.toLowerCase().includes('short') ? 'short' : 'long',
+        action: "trade",
+        direction: response.toLowerCase().includes("short") ? "short" : "long",
         confidence: 0.5,
       };
     }
 
     if (
-      response.toLowerCase().includes('post') ||
-      response.toLowerCase().includes('share')
+      response.toLowerCase().includes("post") ||
+      response.toLowerCase().includes("share")
     ) {
-      return { action: 'post' };
+      return { action: "post" };
     }
 
-    return { action: 'observe' };
+    return { action: "observe" };
   }
 
   /**
@@ -403,7 +403,7 @@ Respond with a JSON object containing:
     if (state.perpetualMarkets.length === 0) return 0;
 
     const prices = Object.fromEntries(
-      state.perpetualMarkets.map((m) => [m.ticker, m.price])
+      state.perpetualMarkets.map((m) => [m.ticker, m.price]),
     );
 
     // Calculate average price change
@@ -422,7 +422,7 @@ Respond with a JSON object containing:
    */
   private simulateAgentPerformance(
     agent: MatchupAgent,
-    snapshot: BenchmarkGameSnapshot
+    snapshot: BenchmarkGameSnapshot,
   ): MatchupAgentResult {
     const config = agent.config;
     const tickCount = snapshot.ticks.length;
@@ -465,7 +465,7 @@ Respond with a JSON object containing:
    * Calculate head-to-head results between archetypes
    */
   private calculateHeadToHead(
-    allResults: MatchupAgentResult[][]
+    allResults: MatchupAgentResult[][],
   ): ArchetypeVsResult[] {
     const archetypes = this.getArchetypes();
     const headToHead: ArchetypeVsResult[] = [];
@@ -484,10 +484,10 @@ Respond with a JSON object containing:
         // Compare performance in each round
         for (const roundResults of allResults) {
           const arch1Results = roundResults.filter(
-            (r) => r.archetype === arch1
+            (r) => r.archetype === arch1,
           );
           const arch2Results = roundResults.filter(
-            (r) => r.archetype === arch2
+            (r) => r.archetype === arch2,
           );
 
           if (arch1Results.length === 0 || arch2Results.length === 0) continue;
@@ -532,8 +532,8 @@ Respond with a JSON object containing:
    * Calculate overall archetype rankings
    */
   private calculateRankings(
-    allResults: MatchupAgentResult[][]
-  ): MatchupBenchmarkResult['archetypeRankings'] {
+    allResults: MatchupAgentResult[][],
+  ): MatchupBenchmarkResult["archetypeRankings"] {
     const archetypes = this.getArchetypes();
     const rankings: Map<
       string,
@@ -593,9 +593,9 @@ Respond with a JSON object containing:
    * Generate insights from the matchup results
    */
   private generateInsights(
-    rankings: MatchupBenchmarkResult['archetypeRankings'],
+    rankings: MatchupBenchmarkResult["archetypeRankings"],
     headToHead: ArchetypeVsResult[],
-    marketCondition: string
+    marketCondition: string,
   ): string[] {
     const insights: string[] = [];
 
@@ -603,7 +603,7 @@ Respond with a JSON object containing:
     const topRanking = rankings[0];
     if (topRanking) {
       insights.push(
-        `${topRanking.archetype} performed best in ${marketCondition} conditions with avg rank ${topRanking.avgRank.toFixed(2)}`
+        `${topRanking.archetype} performed best in ${marketCondition} conditions with avg rank ${topRanking.avgRank.toFixed(2)}`,
       );
     }
 
@@ -611,11 +611,11 @@ Respond with a JSON object containing:
     for (const h2h of headToHead) {
       if (h2h.winRate1 >= 0.7) {
         insights.push(
-          `${h2h.archetype1} dominates ${h2h.archetype2} (${(h2h.winRate1 * 100).toFixed(0)}% win rate)`
+          `${h2h.archetype1} dominates ${h2h.archetype2} (${(h2h.winRate1 * 100).toFixed(0)}% win rate)`,
         );
       } else if (h2h.winRate2 >= 0.7) {
         insights.push(
-          `${h2h.archetype2} dominates ${h2h.archetype1} (${(h2h.winRate2 * 100).toFixed(0)}% win rate)`
+          `${h2h.archetype2} dominates ${h2h.archetype1} (${(h2h.winRate2 * 100).toFixed(0)}% win rate)`,
         );
       }
     }
@@ -657,9 +657,9 @@ Respond with a JSON object containing:
         if (bWins) {
           for (const c of bWins) {
             const cWins = wins.get(c);
-            if (cWins && cWins.has(a)) {
+            if (cWins?.has(a)) {
               insights.push(
-                `Counter triangle found: ${a} → ${b} → ${c} → ${a}`
+                `Counter triangle found: ${a} → ${b} → ${c} → ${a}`,
               );
             }
           }
@@ -678,14 +678,14 @@ Respond with a JSON object containing:
     const results: MatchupBenchmarkResult[] = [];
 
     logger.info(
-      'Starting Archetype Matchup Benchmark',
+      "Starting Archetype Matchup Benchmark",
       {
         archetypes: this.getArchetypes(),
         agentsPerArchetype: this.config.agentsPerArchetype,
         rounds: this.config.rounds,
         conditions: this.config.marketConditions,
       },
-      'ArchetypeMatchupBenchmark'
+      "ArchetypeMatchupBenchmark",
     );
 
     const agents = this.createAgents();
@@ -694,7 +694,7 @@ Respond with a JSON object containing:
       logger.info(
         `Testing in ${condition} market conditions`,
         {},
-        'ArchetypeMatchupBenchmark'
+        "ArchetypeMatchupBenchmark",
       );
 
       const allRoundResults: MatchupAgentResult[][] = [];
@@ -704,7 +704,7 @@ Respond with a JSON object containing:
         const roundResults = await this.simulateRound(
           agents,
           snapshot,
-          round + 1
+          round + 1,
         );
         allRoundResults.push(roundResults);
       }
@@ -734,7 +734,7 @@ Respond with a JSON object containing:
           topArchetype: rankings[0]?.archetype,
           avgPnl: rankings[0]?.avgPnl.toFixed(2),
         },
-        'ArchetypeMatchupBenchmark'
+        "ArchetypeMatchupBenchmark",
       );
     }
 
@@ -743,13 +743,13 @@ Respond with a JSON object containing:
 
     const totalDuration = Date.now() - startTime;
     logger.info(
-      'Archetype Matchup Benchmark complete',
+      "Archetype Matchup Benchmark complete",
       {
         totalDurationMs: totalDuration,
         conditionsTested: this.config.marketConditions.length,
         totalRounds: this.config.rounds * this.config.marketConditions.length,
       },
-      'ArchetypeMatchupBenchmark'
+      "ArchetypeMatchupBenchmark",
     );
 
     return results;
@@ -760,49 +760,49 @@ Respond with a JSON object containing:
    */
   static generateReport(results: MatchupBenchmarkResult[]): string {
     const lines: string[] = [];
-    lines.push('# Archetype Matchup Benchmark Report\n');
+    lines.push("# Archetype Matchup Benchmark Report\n");
 
     for (const result of results) {
       lines.push(
-        `## ${result.marketCondition.toUpperCase()} Market Conditions\n`
+        `## ${result.marketCondition.toUpperCase()} Market Conditions\n`,
       );
 
       // Rankings table
-      lines.push('### Overall Rankings\n');
-      lines.push('| Rank | Archetype | Avg PnL | Win Rate |');
-      lines.push('|------|-----------|---------|----------|');
+      lines.push("### Overall Rankings\n");
+      lines.push("| Rank | Archetype | Avg PnL | Win Rate |");
+      lines.push("|------|-----------|---------|----------|");
       for (const ranking of result.archetypeRankings) {
         lines.push(
-          `| ${ranking.avgRank.toFixed(1)} | ${ranking.archetype} | ${ranking.avgPnl.toFixed(2)} | ${(ranking.winRate * 100).toFixed(1)}% |`
+          `| ${ranking.avgRank.toFixed(1)} | ${ranking.archetype} | ${ranking.avgPnl.toFixed(2)} | ${(ranking.winRate * 100).toFixed(1)}% |`,
         );
       }
-      lines.push('');
+      lines.push("");
 
       // Head-to-head table
-      lines.push('### Head-to-Head Results\n');
-      lines.push('| Matchup | Winner | Win Rate |');
-      lines.push('|---------|--------|----------|');
+      lines.push("### Head-to-Head Results\n");
+      lines.push("| Matchup | Winner | Win Rate |");
+      lines.push("|---------|--------|----------|");
       for (const h2h of result.headToHead) {
         const winner =
           h2h.winRate1 > h2h.winRate2 ? h2h.archetype1 : h2h.archetype2;
         const winRate = Math.max(h2h.winRate1, h2h.winRate2);
         lines.push(
-          `| ${h2h.archetype1} vs ${h2h.archetype2} | ${winner} | ${(winRate * 100).toFixed(1)}% |`
+          `| ${h2h.archetype1} vs ${h2h.archetype2} | ${winner} | ${(winRate * 100).toFixed(1)}% |`,
         );
       }
-      lines.push('');
+      lines.push("");
 
       // Insights
       if (result.insights.length > 0) {
-        lines.push('### Key Insights\n');
+        lines.push("### Key Insights\n");
         for (const insight of result.insights) {
           lines.push(`- ${insight}`);
         }
-        lines.push('');
+        lines.push("");
       }
     }
 
-    return lines.join('\n');
+    return lines.join("\n");
   }
 }
 
@@ -813,11 +813,11 @@ export async function runQuickMatchupBenchmark(): Promise<
   MatchupBenchmarkResult[]
 > {
   const benchmark = new ArchetypeMatchupBenchmark({
-    archetypes: 'all',
+    archetypes: "all",
     agentsPerArchetype: 2,
     rounds: 5,
     ticksPerRound: 100,
-    marketConditions: ['bull', 'bear', 'volatile', 'stable'],
+    marketConditions: ["bull", "bear", "volatile", "stable"],
     availableVramGb: 16,
   });
 

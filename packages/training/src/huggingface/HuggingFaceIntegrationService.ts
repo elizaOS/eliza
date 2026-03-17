@@ -5,13 +5,13 @@
  * Main entry point for all HuggingFace operations.
  */
 
-import { getTrainingDataAdapter } from '../adapter';
-import { ModelBenchmarkService } from '../benchmark/ModelBenchmarkService';
-import { getExportToHuggingFace } from '../dependencies';
-import { logger } from '../utils';
-import { HuggingFaceDatasetUploader } from './HuggingFaceDatasetUploader';
-import { HuggingFaceModelUploader } from './HuggingFaceModelUploader';
-import { getHuggingFaceToken } from './shared/HuggingFaceUploadUtil';
+import { getTrainingDataAdapter } from "../adapter";
+import { ModelBenchmarkService } from "../benchmark/ModelBenchmarkService";
+import { getExportToHuggingFace } from "../dependencies";
+import { logger } from "../utils";
+import { HuggingFaceDatasetUploader } from "./HuggingFaceDatasetUploader";
+import { HuggingFaceModelUploader } from "./HuggingFaceModelUploader";
+import { getHuggingFaceToken } from "./shared/HuggingFaceUploadUtil";
 
 export interface WeeklyUploadResult {
   success: boolean;
@@ -49,13 +49,13 @@ export class HuggingFaceIntegrationService {
    * Execute complete weekly upload pipeline
    */
   async executeWeeklyUpload(
-    options: DatasetUploadOptions = {}
+    options: DatasetUploadOptions = {},
   ): Promise<WeeklyUploadResult> {
     const startTime = Date.now();
     logger.info(
-      'Starting weekly upload pipeline',
+      "Starting weekly upload pipeline",
       options,
-      'HuggingFaceIntegration'
+      "HuggingFaceIntegration",
     );
 
     const result: WeeklyUploadResult = {
@@ -77,17 +77,16 @@ export class HuggingFaceIntegrationService {
       // Step 1: Upload benchmark dataset
       if (!options.dryRun) {
         logger.info(
-          'Step 1: Uploading benchmark dataset',
+          "Step 1: Uploading benchmark dataset",
           undefined,
-          'HuggingFaceIntegration'
+          "HuggingFaceIntegration",
         );
         const benchmarkResult = await this.datasetUploader.uploadDataset({
           datasetName:
             options.datasetName ||
             process.env.HF_DATASET_NAME ||
-            'elizaos/agent-benchmarks',
-          description:
-            'Weekly benchmark results for autonomous ElizaOS agents',
+            "elizaos/agent-benchmarks",
+          description: "Weekly benchmark results for autonomous ElizaOS agents",
         });
 
         result.datasets.benchmarks = {
@@ -98,14 +97,14 @@ export class HuggingFaceIntegrationService {
 
         if (!benchmarkResult.success) {
           result.errors.push(
-            `Benchmark dataset upload: ${benchmarkResult.error}`
+            `Benchmark dataset upload: ${benchmarkResult.error}`,
           );
         }
       } else {
         logger.info(
-          'DRY RUN: Skipping benchmark dataset upload',
+          "DRY RUN: Skipping benchmark dataset upload",
           undefined,
-          'HuggingFaceIntegration'
+          "HuggingFaceIntegration",
         );
         result.datasets.benchmarks.success = true;
       }
@@ -113,17 +112,17 @@ export class HuggingFaceIntegrationService {
       // Step 2: Upload trajectory dataset
       if (!options.dryRun) {
         logger.info(
-          'Step 2: Uploading trajectory dataset',
+          "Step 2: Uploading trajectory dataset",
           undefined,
-          'HuggingFaceIntegration'
+          "HuggingFaceIntegration",
         );
         const exportToHuggingFace = getExportToHuggingFace();
         const trajectoryResult = await exportToHuggingFace({
           datasetName:
             options.trajectoryDatasetName ||
             process.env.HF_TRAJECTORY_DATASET_NAME ||
-            'elizaos/agent-trajectories',
-          format: 'jsonl',
+            "elizaos/agent-trajectories",
+          format: "jsonl",
         });
 
         result.datasets.trajectories = {
@@ -134,14 +133,14 @@ export class HuggingFaceIntegrationService {
 
         if (!trajectoryResult.success) {
           result.errors.push(
-            `Trajectory dataset upload: ${trajectoryResult.error}`
+            `Trajectory dataset upload: ${trajectoryResult.error}`,
           );
         }
       } else {
         logger.info(
-          'DRY RUN: Skipping trajectory dataset upload',
+          "DRY RUN: Skipping trajectory dataset upload",
           undefined,
-          'HuggingFaceIntegration'
+          "HuggingFaceIntegration",
         );
         result.datasets.trajectories.success = true;
       }
@@ -154,7 +153,7 @@ export class HuggingFaceIntegrationService {
       logger.info(
         `Step 3: Found ${unbenchmarkedModels.length} unbenchmarked models`,
         undefined,
-        'HuggingFaceIntegration'
+        "HuggingFaceIntegration",
       );
 
       if (unbenchmarkedModels.length > 0) {
@@ -162,8 +161,8 @@ export class HuggingFaceIntegrationService {
           await ModelBenchmarkService.getStandardBenchmarkPaths();
 
         if (standardBenchmarks.length === 0) {
-          const error = 'No standard benchmarks available for model evaluation';
-          logger.error(error, undefined, 'HuggingFaceIntegration');
+          const error = "No standard benchmarks available for model evaluation";
+          logger.error(error, undefined, "HuggingFaceIntegration");
           result.errors.push(error);
         } else {
           for (const modelId of unbenchmarkedModels) {
@@ -172,7 +171,7 @@ export class HuggingFaceIntegrationService {
               logger.info(
                 `Benchmarking model: ${modelId}`,
                 undefined,
-                'HuggingFaceIntegration'
+                "HuggingFaceIntegration",
               );
               await ModelBenchmarkService.benchmarkModel({
                 modelId,
@@ -186,14 +185,15 @@ export class HuggingFaceIntegrationService {
                 await ModelBenchmarkService.compareToBaseline(modelId);
 
               // Upload if improved
-              if (comparison.recommendation === 'deploy' && !options.dryRun) {
+              if (comparison.recommendation === "deploy" && !options.dryRun) {
                 logger.info(
                   `Model ${modelId} improved, uploading`,
                   undefined,
-                  'HuggingFaceIntegration'
+                  "HuggingFaceIntegration",
                 );
 
-                const model = await getTrainingDataAdapter().getModelById(modelId);
+                const model =
+                  await getTrainingDataAdapter().getModelById(modelId);
 
                 if (model) {
                   const modelName = options.modelNamePrefix
@@ -205,7 +205,7 @@ export class HuggingFaceIntegrationService {
                   const modelDescription =
                     options.modelDescriptionPrefix ||
                     process.env.HF_MODEL_DESCRIPTION_PREFIX ||
-                    'Autonomous ElizaOS agent';
+                    "Autonomous ElizaOS agent";
 
                   const uploadResult = await this.modelUploader.uploadModel({
                     modelId,
@@ -218,10 +218,13 @@ export class HuggingFaceIntegrationService {
                     result.models.uploaded++;
 
                     // Update model with HuggingFace repo
-                    await getTrainingDataAdapter().updateModelHuggingFaceRepo(modelId, modelName);
+                    await getTrainingDataAdapter().updateModelHuggingFaceRepo(
+                      modelId,
+                      modelName,
+                    );
                   } else {
                     result.errors.push(
-                      `Model upload ${modelId}: ${uploadResult.error}`
+                      `Model upload ${modelId}: ${uploadResult.error}`,
                     );
                   }
                 }
@@ -229,7 +232,7 @@ export class HuggingFaceIntegrationService {
                 logger.info(
                   `Model ${modelId} not ready for deployment: ${comparison.recommendation}`,
                   undefined,
-                  'HuggingFaceIntegration'
+                  "HuggingFaceIntegration",
                 );
               }
             } catch (error) {
@@ -238,7 +241,7 @@ export class HuggingFaceIntegrationService {
               logger.error(
                 `Failed to process model ${modelId}`,
                 { error },
-                'HuggingFaceIntegration'
+                "HuggingFaceIntegration",
               );
               result.errors.push(`Model ${modelId}: ${errorMsg}`);
             }
@@ -250,7 +253,7 @@ export class HuggingFaceIntegrationService {
       result.duration = Date.now() - startTime;
 
       logger.info(
-        'Weekly upload pipeline complete',
+        "Weekly upload pipeline complete",
         {
           success: result.success,
           benchmarkDataset: result.datasets.benchmarks.success,
@@ -261,19 +264,19 @@ export class HuggingFaceIntegrationService {
           errors: result.errors.length,
           duration: result.duration,
         },
-        'HuggingFaceIntegration'
+        "HuggingFaceIntegration",
       );
 
       return result;
     } catch (error) {
       result.duration = Date.now() - startTime;
       result.errors.push(
-        error instanceof Error ? error.message : String(error)
+        error instanceof Error ? error.message : String(error),
       );
       logger.error(
-        'Weekly upload pipeline failed',
+        "Weekly upload pipeline failed",
         { error },
-        'HuggingFaceIntegration'
+        "HuggingFaceIntegration",
       );
       return result;
     }
@@ -295,13 +298,16 @@ export class HuggingFaceIntegrationService {
     const adapter = getTrainingDataAdapter();
 
     // Get last upload time from database
-    const lastUploadTime = (await adapter.getLastDeployedModelDate()) || new Date(0);
+    const lastUploadTime =
+      (await adapter.getLastDeployedModelDate()) || new Date(0);
 
     // Check for new benchmarks since last upload
-    const newBenchmarksCount = await adapter.countBenchmarksSince(lastUploadTime);
+    const newBenchmarksCount =
+      await adapter.countBenchmarksSince(lastUploadTime);
 
     // Check for new trajectories since last upload
-    const newTrajectoriesCount = await adapter.countTrajectoriesSince(lastUploadTime);
+    const newTrajectoriesCount =
+      await adapter.countTrajectoriesSince(lastUploadTime);
 
     // Check for unbenchmarked models
     const unbenchmarkedModels =
@@ -333,7 +339,7 @@ export class HuggingFaceIntegrationService {
     // Check HuggingFace token
     if (!getHuggingFaceToken()) {
       issues.push(
-        'HUGGING_FACE_TOKEN or HF_TOKEN environment variable not set'
+        "HUGGING_FACE_TOKEN or HF_TOKEN environment variable not set",
       );
     }
 
@@ -343,10 +349,10 @@ export class HuggingFaceIntegrationService {
     try {
       const healthy = await adapter.healthCheck();
       if (!healthy) {
-        issues.push('Cannot connect to database');
+        issues.push("Cannot connect to database");
       }
     } catch {
-      issues.push('Cannot connect to database');
+      issues.push("Cannot connect to database");
     }
 
     // Check for standard benchmarks
@@ -354,7 +360,7 @@ export class HuggingFaceIntegrationService {
       await ModelBenchmarkService.getStandardBenchmarkPaths();
     if (standardBenchmarks.length === 0) {
       warnings.push(
-        'No standard benchmarks found. Generate benchmark fixtures before upload.'
+        "No standard benchmarks found. Generate benchmark fixtures before upload.",
       );
     }
 
@@ -364,21 +370,21 @@ export class HuggingFaceIntegrationService {
 
       if (stats.benchmarkCount === 0) {
         warnings.push(
-          'No benchmark results in database. Run some benchmarks first.'
+          "No benchmark results in database. Run some benchmarks first.",
         );
       }
 
       if (stats.trajectoryTraining === 0) {
         warnings.push(
-          'No training trajectories in database. Generate with agents or test data.'
+          "No training trajectories in database. Generate with agents or test data.",
         );
       }
 
       if (stats.modelTotal === 0) {
-        warnings.push('No trained models in database.');
+        warnings.push("No trained models in database.");
       }
     } catch {
-      issues.push('Could not retrieve training statistics');
+      issues.push("Could not retrieve training statistics");
     }
 
     return {

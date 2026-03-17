@@ -13,13 +13,13 @@
 /**
  * Quantization modes for model loading
  */
-export type QuantizationMode = 'none' | '4bit' | '8bit';
+export type QuantizationMode = "none" | "4bit" | "8bit";
 
 /**
  * Model tiers for scaling based on available resources
  * Supports automatic selection based on GPU memory
  */
-export type ModelTier = 'small' | 'medium' | 'large' | 'xlarge';
+export type ModelTier = "small" | "medium" | "large" | "xlarge";
 
 export interface ModelTierConfig {
   name: string;
@@ -40,44 +40,44 @@ export interface ModelTierConfig {
  */
 export const MODEL_TIERS: Record<ModelTier, ModelTierConfig> = {
   small: {
-    name: 'Small (4B)',
-    model: 'unsloth/Qwen3-4B-128K',
-    quantizedModel4bit: 'unsloth/Qwen3-4B-128K-bnb-4bit',
-    quantizedModel8bit: 'unsloth/Qwen3-4B-128K-GGUF',
-    params: '4B',
+    name: "Small (4B)",
+    model: "unsloth/Qwen3-4B-128K",
+    quantizedModel4bit: "unsloth/Qwen3-4B-128K-bnb-4bit",
+    quantizedModel8bit: "unsloth/Qwen3-4B-128K-GGUF",
+    params: "4B",
     context: 131072, // 128K context
     minVramGb: 8,
     minVramGb4bit: 3,
     minVramGb8bit: 5,
   },
   medium: {
-    name: 'Medium (8B)',
-    model: 'unsloth/Qwen3-8B-128K',
-    quantizedModel4bit: 'unsloth/Qwen3-8B-128K-bnb-4bit',
-    quantizedModel8bit: 'unsloth/Qwen3-8B-128K-GGUF',
-    params: '8B',
+    name: "Medium (8B)",
+    model: "unsloth/Qwen3-8B-128K",
+    quantizedModel4bit: "unsloth/Qwen3-8B-128K-bnb-4bit",
+    quantizedModel8bit: "unsloth/Qwen3-8B-128K-GGUF",
+    params: "8B",
     context: 131072, // 128K context
     minVramGb: 16,
     minVramGb4bit: 5,
     minVramGb8bit: 9,
   },
   large: {
-    name: 'Large (14B)',
-    model: 'unsloth/Qwen3-14B-128K',
-    quantizedModel4bit: 'unsloth/Qwen3-14B-128K-bnb-4bit',
-    quantizedModel8bit: 'unsloth/Qwen3-14B-128K-GGUF',
-    params: '14B',
+    name: "Large (14B)",
+    model: "unsloth/Qwen3-14B-128K",
+    quantizedModel4bit: "unsloth/Qwen3-14B-128K-bnb-4bit",
+    quantizedModel8bit: "unsloth/Qwen3-14B-128K-GGUF",
+    params: "14B",
     context: 131072, // 128K context
     minVramGb: 24,
     minVramGb4bit: 8,
     minVramGb8bit: 14,
   },
   xlarge: {
-    name: 'XLarge (32B)',
-    model: 'unsloth/Qwen3-32B-128K',
-    quantizedModel4bit: 'unsloth/Qwen3-32B-128K-bnb-4bit',
-    quantizedModel8bit: 'unsloth/Qwen3-32B-128K-GGUF',
-    params: '32B',
+    name: "XLarge (32B)",
+    model: "unsloth/Qwen3-32B-128K",
+    quantizedModel4bit: "unsloth/Qwen3-32B-128K-bnb-4bit",
+    quantizedModel8bit: "unsloth/Qwen3-32B-128K-GGUF",
+    params: "32B",
     context: 131072, // 128K context
     minVramGb: 48,
     minVramGb4bit: 16,
@@ -111,32 +111,32 @@ export function getMultiModelConfig(vramGb: number): MultiModelConfig {
     return {
       totalVramGb: vramGb,
       maxConcurrentModels: 4,
-      quantization: '4bit',
-      modelTier: 'small',
+      quantization: "4bit",
+      modelTier: "small",
     };
   } else if (vramGb >= 12) {
     // 12GB: Can run 3x 4B models (4-bit)
     return {
       totalVramGb: vramGb,
       maxConcurrentModels: 3,
-      quantization: '4bit',
-      modelTier: 'small',
+      quantization: "4bit",
+      modelTier: "small",
     };
   } else if (vramGb >= 8) {
     // 8GB: Can run 2x 4B models (4-bit)
     return {
       totalVramGb: vramGb,
       maxConcurrentModels: 2,
-      quantization: '4bit',
-      modelTier: 'small',
+      quantization: "4bit",
+      modelTier: "small",
     };
   }
   // Less than 8GB: Single model only
   return {
     totalVramGb: vramGb,
     maxConcurrentModels: 1,
-    quantization: '4bit',
-    modelTier: 'small',
+    quantization: "4bit",
+    modelTier: "small",
   };
 }
 
@@ -145,14 +145,14 @@ export function getMultiModelConfig(vramGb: number): MultiModelConfig {
  */
 export function getQuantizedModelName(
   tier: ModelTier,
-  quantization: QuantizationMode
+  quantization: QuantizationMode,
 ): string {
   const tierConfig = MODEL_TIERS[tier];
 
   switch (quantization) {
-    case '4bit':
+    case "4bit":
       return tierConfig.quantizedModel4bit || tierConfig.model;
-    case '8bit':
+    case "8bit":
       return tierConfig.quantizedModel8bit || tierConfig.model;
     default:
       return tierConfig.model;
@@ -164,14 +164,14 @@ export function getQuantizedModelName(
  */
 export function getVramRequirement(
   tier: ModelTier,
-  quantization: QuantizationMode
+  quantization: QuantizationMode,
 ): number {
   const tierConfig = MODEL_TIERS[tier];
 
   switch (quantization) {
-    case '4bit':
+    case "4bit":
       return tierConfig.minVramGb4bit;
-    case '8bit':
+    case "8bit":
       return tierConfig.minVramGb8bit;
     default:
       return tierConfig.minVramGb;
@@ -229,7 +229,7 @@ export function registerArchetypeModel(config: ArchetypeModelConfig): void {
   ) {
     archetypeModelRegistry.set(config.archetype, config);
     console.log(
-      `📦 Registered model for archetype '${config.archetype}': ${config.modelId}`
+      `📦 Registered model for archetype '${config.archetype}': ${config.modelId}`,
     );
   }
 }
@@ -239,9 +239,9 @@ export function registerArchetypeModel(config: ArchetypeModelConfig): void {
  * Falls back to base model if no archetype-specific model exists
  */
 export function getModelForArchetype(
-  archetype: string
+  archetype: string,
 ): ArchetypeModelConfig | null {
-  const normalized = archetype.toLowerCase().trim().replace(/_/g, '-');
+  const normalized = archetype.toLowerCase().trim().replace(/_/g, "-");
   return archetypeModelRegistry.get(normalized) || null;
 }
 
@@ -256,7 +256,7 @@ export function getAllArchetypeModels(): ArchetypeModelConfig[] {
  * Check if an archetype has a trained model
  */
 export function hasArchetypeModel(archetype: string): boolean {
-  const normalized = archetype.toLowerCase().trim().replace(/_/g, '-');
+  const normalized = archetype.toLowerCase().trim().replace(/_/g, "-");
   return archetypeModelRegistry.has(normalized);
 }
 
@@ -271,10 +271,10 @@ export function clearArchetypeModels(): void {
  * Get the appropriate model tier based on available VRAM
  */
 export function getModelTierForVram(vramGb: number): ModelTier {
-  if (vramGb >= MODEL_TIERS.xlarge.minVramGb) return 'xlarge';
-  if (vramGb >= MODEL_TIERS.large.minVramGb) return 'large';
-  if (vramGb >= MODEL_TIERS.medium.minVramGb) return 'medium';
-  return 'small';
+  if (vramGb >= MODEL_TIERS.xlarge.minVramGb) return "xlarge";
+  if (vramGb >= MODEL_TIERS.large.minVramGb) return "large";
+  if (vramGb >= MODEL_TIERS.medium.minVramGb) return "medium";
+  return "small";
 }
 
 /**
@@ -288,8 +288,8 @@ export function getModelForTier(tier: ModelTier): string {
  * Get RL model configuration from environment
  */
 export function getRLModelConfig(): RLModelConfig {
-  const isProduction = process.env.NODE_ENV === 'production';
-  const isLocal = process.env.NODE_ENV === 'development' || !isProduction;
+  const isProduction = process.env.NODE_ENV === "production";
+  const isLocal = process.env.NODE_ENV === "development" || !isProduction;
 
   // Explicit enable/disable flag
   const explicitFlag = process.env.USE_RL_MODEL;
@@ -297,7 +297,7 @@ export function getRLModelConfig(): RLModelConfig {
   // Determine if enabled:
   // - If USE_RL_MODEL is explicitly set, use that value
   // - Otherwise, enabled in local, disabled in production
-  const enabled = explicitFlag ? explicitFlag === 'true' : isLocal;
+  const enabled = explicitFlag ? explicitFlag === "true" : isLocal;
 
   // Check for explicit tier or VRAM override
   const explicitTier = process.env.MODEL_TIER as ModelTier | undefined;
@@ -309,13 +309,13 @@ export function getRLModelConfig(): RLModelConfig {
   const explicitQuant = process.env.MODEL_QUANTIZATION as
     | QuantizationMode
     | undefined;
-  const quantization: QuantizationMode = explicitQuant || '4bit'; // Default to 4-bit for efficiency
+  const quantization: QuantizationMode = explicitQuant || "4bit"; // Default to 4-bit for efficiency
 
   // Get multi-model config based on available VRAM
   const multiModelConfig = getMultiModelConfig(explicitVram);
 
   // Determine tier: explicit tier > tier from multi-model config > default small
-  let modelTier: ModelTier = 'small';
+  let modelTier: ModelTier = "small";
   if (explicitTier && MODEL_TIERS[explicitTier]) {
     modelTier = explicitTier;
   } else {
@@ -328,10 +328,10 @@ export function getRLModelConfig(): RLModelConfig {
 
   return {
     enabled,
-    atroposApiUrl: process.env.ATROPOS_API_URL || 'http://localhost:8000',
-    vllmPort: parseInt(process.env.VLLM_PORT || '9001', 10),
+    atroposApiUrl: process.env.ATROPOS_API_URL || "http://localhost:8000",
+    vllmPort: parseInt(process.env.VLLM_PORT || "9001", 10),
     modelVersion: process.env.RL_MODEL_VERSION, // Optional: pin to specific version
-    fallbackToBase: process.env.RL_FALLBACK_TO_BASE !== 'false', // Default: true
+    fallbackToBase: process.env.RL_FALLBACK_TO_BASE !== "false", // Default: true
     baseModel,
     modelTier,
     availableVramGb: explicitVram,
@@ -353,7 +353,7 @@ export function isRLModelAvailable(): boolean {
   // Need Atropos API URL to fetch RL models
   if (!config.atroposApiUrl) {
     console.warn(
-      'RL models enabled but Atropos API URL missing. Set ATROPOS_API_URL.'
+      "RL models enabled but Atropos API URL missing. Set ATROPOS_API_URL.",
     );
     return false;
   }
@@ -370,22 +370,22 @@ export function logRLModelConfig(): void {
   const tierConfig = MODEL_TIERS[config.modelTier];
   const vramPerModel = getVramRequirement(
     config.modelTier,
-    config.quantization
+    config.quantization,
   );
 
-  console.log('🤖 RL Model Configuration:', {
+  console.log("🤖 RL Model Configuration:", {
     enabled: config.enabled,
     available,
     atroposConfigured: !!config.atroposApiUrl,
     vllmPort: config.vllmPort,
-    pinnedVersion: config.modelVersion || 'latest',
+    pinnedVersion: config.modelVersion || "latest",
     fallbackEnabled: config.fallbackToBase,
     baseModel: config.baseModel,
     modelTier: config.modelTier,
     tierName: tierConfig.name,
     tierParams: tierConfig.params,
     contextWindow: tierConfig.context,
-    availableVramGb: config.availableVramGb || 'auto',
+    availableVramGb: config.availableVramGb || "auto",
     quantization: config.quantization,
     vramPerModel: `${vramPerModel}GB`,
     maxConcurrentModels: config.multiModelConfig.maxConcurrentModels,

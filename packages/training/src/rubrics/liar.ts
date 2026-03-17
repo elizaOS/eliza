@@ -95,10 +95,10 @@ If these dominate, score low regardless of other metrics.
 `;
 
 export const LIAR_PRIORITY_METRICS = [
-  'influence.informationSpread',
-  'social.uniqueUsersInteracted',
-  'influence.reputationDelta',
-  'social.postsCreated',
-  'social.groupMessagesSent',
-  'social.dmsInitiated',
+  "influence.informationSpread",
+  "social.uniqueUsersInteracted",
+  "influence.reputationDelta",
+  "social.postsCreated",
+  "social.groupMessagesSent",
+  "social.dmsInitiated",
 ];

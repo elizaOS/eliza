@@ -7,21 +7,18 @@
  * "@elizaos/training" without side-effects.
  */
 
+import type { AutomationPipeline } from "./AutomationPipeline";
+import type { DeploymentOptions, DeploymentResult } from "./ModelDeployer";
 import type {
   AutomationStatus,
   TrainingMonitoringStatus,
   TrainingReadinessResult,
   TrainingTriggerOptions,
   TrainingTriggerResult,
-} from './types';
-import type {
-  DeploymentOptions,
-  DeploymentResult,
-} from './ModelDeployer';
-import type { AutomationPipeline } from './AutomationPipeline';
+} from "./types";
 
 export type NextTrainingModelSelection = Awaited<
-  ReturnType<AutomationPipeline['getModelSelectionInfo']>
+  ReturnType<AutomationPipeline["getModelSelectionInfo"]>
 >;
 
 // ---------------------------------------------------------------------------
@@ -33,14 +30,14 @@ let _pipeline: AutomationPipeline | null = null;
 
 async function getPipeline(): Promise<AutomationPipeline> {
   if (!_pipeline) {
-    const mod = await import('./AutomationPipeline');
+    const mod = await import("./AutomationPipeline");
     _pipeline = mod.automationPipeline;
   }
   return _pipeline;
 }
 
 async function getDeployer() {
-  const mod = await import('./ModelDeployer');
+  const mod = await import("./ModelDeployer");
   return mod.modelDeployer;
 }
 
@@ -56,7 +53,7 @@ export async function checkTrainingReadiness(): Promise<TrainingReadinessResult>
  * Trigger a new training job.
  */
 export async function triggerTraining(
-  options: TrainingTriggerOptions = {}
+  options: TrainingTriggerOptions = {},
 ): Promise<TrainingTriggerResult> {
   const pipeline = await getPipeline();
   return pipeline.triggerTraining(options);
@@ -66,7 +63,7 @@ export async function triggerTraining(
  * Monitor a training batch by its batch id.
  */
 export async function monitorTrainingJob(
-  batchId: string
+  batchId: string,
 ): Promise<TrainingMonitoringStatus> {
   const pipeline = await getPipeline();
   return pipeline.monitorTraining(batchId);
@@ -85,8 +82,8 @@ export async function getAutomationPipelineStatus(): Promise<AutomationStatus> {
  */
 export async function getNextTrainingModelSelection(): Promise<{
   success: boolean;
-  selection: NextTrainingModelSelection['selection'];
-  summary: NextTrainingModelSelection['summary'];
+  selection: NextTrainingModelSelection["selection"];
+  summary: NextTrainingModelSelection["summary"];
 }> {
   const pipeline = await getPipeline();
   return pipeline.getModelSelectionInfo();
@@ -97,7 +94,7 @@ export async function getNextTrainingModelSelection(): Promise<{
  */
 export async function benchmarkAndMaybeDeployModel(
   batchId: string,
-  autoDeploy = true
+  autoDeploy = true,
 ): Promise<{
   benchmarked: boolean;
   deployed: boolean;
@@ -111,7 +108,7 @@ export async function benchmarkAndMaybeDeployModel(
  * Deploy a specific model version using the deployment strategy options.
  */
 export async function deployModelVersion(
-  options: DeploymentOptions
+  options: DeploymentOptions,
 ): Promise<DeploymentResult> {
   const deployer = await getDeployer();
   return deployer.deploy(options);
@@ -122,7 +119,7 @@ export async function deployModelVersion(
  */
 export async function rollbackModelVersion(
   currentVersion: string,
-  targetVersion: string
+  targetVersion: string,
 ): Promise<DeploymentResult> {
   const deployer = await getDeployer();
   return deployer.rollback(currentVersion, targetVersion);

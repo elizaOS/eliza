@@ -37,13 +37,13 @@ function buildCtx(
     getLoadedPluginNames: () => [],
     getBundledPluginIds: () => new Set<string>(),
     classifyRegistryPluginRelease: () => "compatible",
+    getStatus,
+    getJson,
     ...overrides,
   } as RegistryRouteContext & {
     getStatus: () => number;
     getJson: () => unknown;
   };
-  (ctx as any).getStatus = getStatus;
-  (ctx as any).getJson = getJson;
   return ctx;
 }
 

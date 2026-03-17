@@ -123,10 +123,7 @@ export function createMiladyPlugin(config?: MiladyPluginConfig): Plugin {
       const lines = customActions.map((a) => {
         const params =
           a.parameters
-            ?.map(
-              (p) =>
-                `${p.name}${(p as { required?: boolean }).required ? " (required)" : ""}`,
-            )
+            ?.map((p) => `${p.name}${p.required ? " (required)" : ""}`)
             .join(", ") || "none";
         return `- **${a.name}**: ${a.description} [params: ${params}]`;
       });

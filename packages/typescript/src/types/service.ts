@@ -124,6 +124,7 @@ export const ServiceType = {
 	HOOKS: "hooks",
 	PAIRING: "pairing",
 	AGENT_EVENT: "agent_event",
+	VOICE_CACHE: "voice_cache",
 	UNKNOWN: "unknown",
 } as const;
 

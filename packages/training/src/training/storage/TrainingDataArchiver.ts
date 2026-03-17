@@ -5,11 +5,11 @@
  * for long-term storage and reproducibility.
  */
 
-import type { JsonValue } from '../../adapter';
-import { del, list, put } from '@vercel/blob';
-import fs from 'fs/promises';
-import path from 'path';
-import { logger } from '../../utils/logger';
+import fs from "node:fs/promises";
+import path from "node:path";
+import { del, list, put } from "@vercel/blob";
+import type { JsonValue } from "../../adapter";
+import { logger } from "../../utils/logger";
 
 export interface ArchivedWindow {
   windowId: string;
@@ -25,7 +25,7 @@ export interface ArchivedWindow {
 }
 
 export class TrainingDataArchiver {
-  private readonly blobPrefix = 'training-data/';
+  private readonly blobPrefix = "training-data/";
 
   /**
    * Archive training data for a window
@@ -37,7 +37,7 @@ export class TrainingDataArchiver {
     rulerScoresPath?: string;
     metadata?: Record<string, unknown>;
   }): Promise<ArchivedWindow> {
-    logger.info('Archiving training data', { windowId: options.windowId });
+    logger.info("Archiving training data", { windowId: options.windowId });
 
     const prefix = `${this.blobPrefix}${options.windowId}/`;
     interface BlobUrls {
@@ -47,15 +47,15 @@ export class TrainingDataArchiver {
       metadata: string;
     }
     const urls: BlobUrls = {
-      trajectories: '',
-      metadata: '',
+      trajectories: "",
+      metadata: "",
     };
     let totalSize = 0;
 
     // Upload trajectories
     const trajData = await fs.readFile(options.trajectoriesPath);
     const trajBlob = await put(`${prefix}trajectories.jsonl`, trajData, {
-      access: 'public',
+      access: "public",
       addRandomSuffix: false,
     });
     urls.trajectories = trajBlob.url;
@@ -65,7 +65,7 @@ export class TrainingDataArchiver {
     if (options.groupsPath) {
       const groupsData = await fs.readFile(options.groupsPath);
       const groupsBlob = await put(`${prefix}groups.jsonl`, groupsData, {
-        access: 'public',
+        access: "public",
         addRandomSuffix: false,
       });
       urls.groups = groupsBlob.url;
@@ -76,7 +76,7 @@ export class TrainingDataArchiver {
     if (options.rulerScoresPath) {
       const scoresData = await fs.readFile(options.rulerScoresPath);
       const scoresBlob = await put(`${prefix}ruler_scores.json`, scoresData, {
-        access: 'public',
+        access: "public",
         addRandomSuffix: false,
       });
       urls.rulerScores = scoresBlob.url;
@@ -86,13 +86,13 @@ export class TrainingDataArchiver {
     // Upload metadata
     const metadataJson = JSON.stringify(options.metadata || {}, null, 2);
     const metadataBlob = await put(`${prefix}metadata.json`, metadataJson, {
-      access: 'public',
+      access: "public",
       addRandomSuffix: false,
     });
     urls.metadata = metadataBlob.url;
-    totalSize += Buffer.byteLength(metadataJson, 'utf8');
+    totalSize += Buffer.byteLength(metadataJson, "utf8");
 
-    logger.info('Training data archived', {
+    logger.info("Training data archived", {
       windowId: options.windowId,
       size: totalSize,
     });
@@ -134,16 +134,16 @@ export class TrainingDataArchiver {
       const response = await fetch(blob.url);
       const filename = path.basename(blob.pathname);
 
-      if (filename === 'trajectories.jsonl') {
+      if (filename === "trajectories.jsonl") {
         result.trajectories = await response.text();
-      } else if (filename === 'groups.jsonl') {
+      } else if (filename === "groups.jsonl") {
         result.groups = await response.text();
-      } else if (filename === 'ruler_scores.json') {
+      } else if (filename === "ruler_scores.json") {
         result.rulerScores = (await response.json()) as Record<
           string,
           JsonValue
         >;
-      } else if (filename === 'metadata.json') {
+      } else if (filename === "metadata.json") {
         result.metadata = (await response.json()) as Record<string, JsonValue>;
       }
     }
@@ -169,7 +169,7 @@ export class TrainingDataArchiver {
 
     const windows = new Set<string>();
     for (const blob of blobs) {
-      const parts = blob.pathname.split('/');
+      const parts = blob.pathname.split("/");
       if (parts[1]) {
         windows.add(parts[1]);
       }
@@ -189,7 +189,7 @@ export class TrainingDataArchiver {
       await del(blob.url);
     }
 
-    logger.info('Deleted archived window', { windowId });
+    logger.info("Deleted archived window", { windowId });
   }
 }
 

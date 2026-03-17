@@ -26,13 +26,13 @@ function buildCtx(
       r.writeHead(status);
       r.end(JSON.stringify({ error: msg }));
     }),
+    getStatus,
+    getJson,
     ...overrides,
   } as NfaRouteContext & {
     getStatus: () => number;
     getJson: () => unknown;
   };
-  (ctx as any).getStatus = getStatus;
-  (ctx as any).getJson = getJson;
   return ctx;
 }
 

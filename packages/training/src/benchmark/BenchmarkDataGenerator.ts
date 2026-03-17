@@ -9,8 +9,8 @@
  * 2. Causal Simulation Mode: Hidden facts → Events → Price movements (learnable signal)
  */
 
-import type { JsonValue } from '../adapter';
-import { logger } from '../utils/logger';
+import type { JsonValue } from "../adapter";
+import { logger } from "../utils/logger";
 
 /**
  * Volatility bucket for price movements
@@ -18,18 +18,18 @@ import { logger } from '../utils/logger';
  * - medium: Moderate price movements (-5% to -10% or +5% to +10%)
  * - high: Large price movements (-15%+ or +15%+)
  */
-export type VolatilityBucket = 'low' | 'medium' | 'high';
+export type VolatilityBucket = "low" | "medium" | "high";
 
 /**
  * Event types that can be generated from hidden facts
  */
 export type CausalEventType =
-  | 'leak'
-  | 'rumor'
-  | 'scandal'
-  | 'development'
-  | 'deal'
-  | 'announcement';
+  | "leak"
+  | "rumor"
+  | "scandal"
+  | "development"
+  | "deal"
+  | "announcement";
 
 /**
  * Scheduled event in the causal event schedule
@@ -66,7 +66,7 @@ export interface HiddenNarrativeFact {
   /** Sequence of events scheduled to occur based on this fact */
   eventSchedule: ScheduledCausalEvent[];
   /** Overall sentiment of the narrative: negative facts lead to price drops */
-  sentiment: 'positive' | 'negative';
+  sentiment: "positive" | "negative";
 }
 
 export interface BenchmarkConfig {
@@ -251,7 +251,7 @@ export interface GroundTruth {
   hiddenFacts: Array<{
     tick: number;
     fact: string;
-    category: 'market' | 'social' | 'event' | 'insider';
+    category: "market" | "social" | "event" | "insider";
     value: JsonValue;
   }>;
 
@@ -286,7 +286,7 @@ export interface BenchmarkGameSnapshot {
  */
 const NARRATIVE_FACT_TEMPLATES: Array<{
   factTemplate: string;
-  sentiment: 'positive' | 'negative';
+  sentiment: "positive" | "negative";
   /** Event sequence with relative timing and volatility */
   eventSequence: Array<{
     relativeDay: number; // Days from start (e.g., 5, 10, 15)
@@ -298,166 +298,166 @@ const NARRATIVE_FACT_TEMPLATES: Array<{
   // Negative narratives (price drops)
   {
     factTemplate:
-      '{ticker} has a secret product flaw that will require a recall',
-    sentiment: 'negative',
+      "{ticker} has a secret product flaw that will require a recall",
+    sentiment: "negative",
     eventSequence: [
       {
         relativeDay: 5,
-        eventType: 'leak',
-        volatilityBucket: 'medium',
+        eventType: "leak",
+        volatilityBucket: "medium",
         descriptionTemplate:
-          'Internal documents leaked: {ticker} product flaw discovered by engineers',
+          "Internal documents leaked: {ticker} product flaw discovered by engineers",
       },
       {
         relativeDay: 10,
-        eventType: 'rumor',
-        volatilityBucket: 'medium',
+        eventType: "rumor",
+        volatilityBucket: "medium",
         descriptionTemplate:
-          'Industry sources report potential {ticker} recall due to safety issues',
+          "Industry sources report potential {ticker} recall due to safety issues",
       },
       {
         relativeDay: 18,
-        eventType: 'scandal',
-        volatilityBucket: 'high',
+        eventType: "scandal",
+        volatilityBucket: "high",
         descriptionTemplate:
-          '{ticker} board meeting: CEO denies cover-up allegations as evidence mounts',
+          "{ticker} board meeting: CEO denies cover-up allegations as evidence mounts",
       },
     ],
   },
   {
-    factTemplate: '{ticker} is secretly insolvent and hiding massive losses',
-    sentiment: 'negative',
+    factTemplate: "{ticker} is secretly insolvent and hiding massive losses",
+    sentiment: "negative",
     eventSequence: [
       {
         relativeDay: 4,
-        eventType: 'rumor',
-        volatilityBucket: 'low',
+        eventType: "rumor",
+        volatilityBucket: "low",
         descriptionTemplate:
-          'Anonymous source claims {ticker} accounting irregularities',
+          "Anonymous source claims {ticker} accounting irregularities",
       },
       {
         relativeDay: 12,
-        eventType: 'leak',
-        volatilityBucket: 'medium',
+        eventType: "leak",
+        volatilityBucket: "medium",
         descriptionTemplate:
           'Leaked memo reveals {ticker} executives discussing "liquidity concerns"',
       },
       {
         relativeDay: 20,
-        eventType: 'scandal',
-        volatilityBucket: 'high',
+        eventType: "scandal",
+        volatilityBucket: "high",
         descriptionTemplate:
-          'Whistleblower exposes {ticker} hidden debt: stock halted pending investigation',
+          "Whistleblower exposes {ticker} hidden debt: stock halted pending investigation",
       },
     ],
   },
   {
-    factTemplate: '{ticker} CEO is about to be indicted for fraud',
-    sentiment: 'negative',
+    factTemplate: "{ticker} CEO is about to be indicted for fraud",
+    sentiment: "negative",
     eventSequence: [
       {
         relativeDay: 6,
-        eventType: 'rumor',
-        volatilityBucket: 'low',
+        eventType: "rumor",
+        volatilityBucket: "low",
         descriptionTemplate:
-          'Rumors swirl about {ticker} CEO facing regulatory scrutiny',
+          "Rumors swirl about {ticker} CEO facing regulatory scrutiny",
       },
       {
         relativeDay: 14,
-        eventType: 'leak',
-        volatilityBucket: 'medium',
+        eventType: "leak",
+        volatilityBucket: "medium",
         descriptionTemplate:
-          'Sources close to investigation: {ticker} CEO under federal probe',
+          "Sources close to investigation: {ticker} CEO under federal probe",
       },
       {
         relativeDay: 22,
-        eventType: 'announcement',
-        volatilityBucket: 'high',
+        eventType: "announcement",
+        volatilityBucket: "high",
         descriptionTemplate:
-          '{ticker} confirms CEO departure amid ongoing investigation',
+          "{ticker} confirms CEO departure amid ongoing investigation",
       },
     ],
   },
   // Positive narratives (price increases)
   {
     factTemplate:
-      '{ticker} is about to announce a breakthrough product that will dominate the market',
-    sentiment: 'positive',
+      "{ticker} is about to announce a breakthrough product that will dominate the market",
+    sentiment: "positive",
     eventSequence: [
       {
         relativeDay: 5,
-        eventType: 'rumor',
-        volatilityBucket: 'low',
+        eventType: "rumor",
+        volatilityBucket: "low",
         descriptionTemplate:
-          'Insider whispers: {ticker} working on game-changing technology',
+          "Insider whispers: {ticker} working on game-changing technology",
       },
       {
         relativeDay: 12,
-        eventType: 'leak',
-        volatilityBucket: 'medium',
+        eventType: "leak",
+        volatilityBucket: "medium",
         descriptionTemplate:
-          'Leaked patent filings suggest {ticker} breakthrough imminent',
+          "Leaked patent filings suggest {ticker} breakthrough imminent",
       },
       {
         relativeDay: 20,
-        eventType: 'announcement',
-        volatilityBucket: 'high',
+        eventType: "announcement",
+        volatilityBucket: "high",
         descriptionTemplate:
-          '{ticker} announces revolutionary product: analysts upgrade to strong buy',
+          "{ticker} announces revolutionary product: analysts upgrade to strong buy",
       },
     ],
   },
   {
-    factTemplate: '{ticker} is the secret acquisition target of a tech giant',
-    sentiment: 'positive',
+    factTemplate: "{ticker} is the secret acquisition target of a tech giant",
+    sentiment: "positive",
     eventSequence: [
       {
         relativeDay: 4,
-        eventType: 'rumor',
-        volatilityBucket: 'low',
+        eventType: "rumor",
+        volatilityBucket: "low",
         descriptionTemplate:
-          'M&A rumors surface: {ticker} reportedly in acquisition talks',
+          "M&A rumors surface: {ticker} reportedly in acquisition talks",
       },
       {
         relativeDay: 10,
-        eventType: 'leak',
-        volatilityBucket: 'medium',
+        eventType: "leak",
+        volatilityBucket: "medium",
         descriptionTemplate:
-          'Anonymous source: {ticker} board reviewing buyout offer at premium',
+          "Anonymous source: {ticker} board reviewing buyout offer at premium",
       },
       {
         relativeDay: 16,
-        eventType: 'deal',
-        volatilityBucket: 'high',
+        eventType: "deal",
+        volatilityBucket: "high",
         descriptionTemplate:
-          '{ticker} confirms acquisition discussions: shares surge on takeover premium',
+          "{ticker} confirms acquisition discussions: shares surge on takeover premium",
       },
     ],
   },
   {
-    factTemplate: '{ticker} has secretly achieved major regulatory approval',
-    sentiment: 'positive',
+    factTemplate: "{ticker} has secretly achieved major regulatory approval",
+    sentiment: "positive",
     eventSequence: [
       {
         relativeDay: 6,
-        eventType: 'rumor',
-        volatilityBucket: 'low',
+        eventType: "rumor",
+        volatilityBucket: "low",
         descriptionTemplate:
-          'Industry insiders: {ticker} regulatory submission shows promise',
+          "Industry insiders: {ticker} regulatory submission shows promise",
       },
       {
         relativeDay: 13,
-        eventType: 'leak',
-        volatilityBucket: 'medium',
+        eventType: "leak",
+        volatilityBucket: "medium",
         descriptionTemplate:
-          'Sources say {ticker} cleared key regulatory hurdle ahead of schedule',
+          "Sources say {ticker} cleared key regulatory hurdle ahead of schedule",
       },
       {
         relativeDay: 21,
-        eventType: 'announcement',
-        volatilityBucket: 'high',
+        eventType: "announcement",
+        volatilityBucket: "high",
         descriptionTemplate:
-          '{ticker} receives full regulatory approval: new market opportunity unlocked',
+          "{ticker} receives full regulatory approval: new market opportunity unlocked",
       },
     ],
   },
@@ -492,7 +492,7 @@ export class BenchmarkDataGenerator {
     if (config.useCausalSimulation && config.tickInterval !== 3600) {
       throw new Error(
         `Causal simulation requires tickInterval=3600 (1 hour). Got: ${config.tickInterval}. ` +
-          `The day/hour event scheduling assumes 1 tick per hour.`
+          `The day/hour event scheduling assumes 1 tick per hour.`,
       );
     }
 
@@ -521,10 +521,10 @@ export class BenchmarkDataGenerator {
     const id = Date.now().toString();
     const createdAt = Date.now();
     const numTicks = Math.floor(
-      (this.config.durationMinutes * 60) / this.config.tickInterval
+      (this.config.durationMinutes * 60) / this.config.tickInterval,
     );
 
-    logger.info('Generating benchmark', {
+    logger.info("Generating benchmark", {
       id,
       duration: this.config.durationMinutes,
       ticks: numTicks,
@@ -541,10 +541,10 @@ export class BenchmarkDataGenerator {
       initialState,
       groundTruth,
       numTicks,
-      createdAt
+      createdAt,
     );
 
-    logger.info('Benchmark generated', {
+    logger.info("Benchmark generated", {
       id,
       ticks: ticks.length,
       markets: initialState.predictionMarkets.length,
@@ -553,7 +553,7 @@ export class BenchmarkDataGenerator {
 
     return {
       id,
-      version: '1.0.0',
+      version: "1.0.0",
       createdAt,
       duration: this.config.durationMinutes * 60,
       tickInterval: this.config.tickInterval,
@@ -569,16 +569,16 @@ export class BenchmarkDataGenerator {
   private generateInitialState(timestamp: number): GameState {
     const predictionMarkets: PredictionMarket[] = [];
     const questions = [
-      'Will BitcAIn reach $150k by end of month?',
-      'Will The FUD announce emergency rate cut?',
-      'Will Trump Terminal tweet cause market crash?',
-      'Will EtherAIum gas fees drop below $1?',
-      'Will TeslAI stock hit $500 this quarter?',
-      'Will OpenAGI release Cognition-9000 this year?',
-      'Will SolanAI flip EtherAIum in TVL?',
-      'Will AIlon Musk announce Mars colony launch?',
-      'Will Mark Zuckerborg rebrand MetAI again?',
-      'Will Sam AIltman declare AGI achieved?',
+      "Will BitcAIn reach $150k by end of month?",
+      "Will The FUD announce emergency rate cut?",
+      "Will Trump Terminal tweet cause market crash?",
+      "Will EtherAIum gas fees drop below $1?",
+      "Will TeslAI stock hit $500 this quarter?",
+      "Will OpenAGI release Cognition-9000 this year?",
+      "Will SolanAI flip EtherAIum in TVL?",
+      "Will AIlon Musk announce Mars colony launch?",
+      "Will Mark Zuckerborg rebrand MetAI again?",
+      "Will Sam AIltman declare AGI achieved?",
     ];
 
     for (let i = 0; i < this.config.numPredictionMarkets; i++) {
@@ -617,7 +617,7 @@ export class BenchmarkDataGenerator {
     }
 
     const perpetualMarkets: PerpetualMarket[] = [];
-    const tickers = ['BTCAI', 'ETHAI', 'SOLAI', 'TSLAI', 'METAI'];
+    const tickers = ["BTCAI", "ETHAI", "SOLAI", "TSLAI", "METAI"];
     const basePrices = [120000, 4000, 200, 450, 520];
 
     for (let i = 0; i < this.config.numPerpetualMarkets; i++) {
@@ -665,19 +665,19 @@ export class BenchmarkDataGenerator {
    * Selects ONE dominant narrative that affects a specific ticker
    */
   private generateHiddenNarrativeFact(
-    initialState: GameState
+    initialState: GameState,
   ): HiddenNarrativeFact {
     // Select a random narrative template
     const templateIndex = Math.floor(
-      this.rng.next() * NARRATIVE_FACT_TEMPLATES.length
+      this.rng.next() * NARRATIVE_FACT_TEMPLATES.length,
     );
     const template = NARRATIVE_FACT_TEMPLATES[templateIndex]!;
 
     // Select a random ticker to be affected
     const tickerIndex = Math.floor(
-      this.rng.next() * initialState.perpetualMarkets.length
+      this.rng.next() * initialState.perpetualMarkets.length,
     );
-    const affectedTicker = initialState.perpetualMarkets[tickerIndex]!.ticker;
+    const affectedTicker = initialState.perpetualMarkets[tickerIndex]?.ticker;
 
     // Generate the fact description by replacing {ticker} placeholder
     const fact = template.factTemplate.replace(/{ticker}/g, affectedTicker);
@@ -688,7 +688,7 @@ export class BenchmarkDataGenerator {
         // Calculate jitter: ±EVENT_JITTER_HOURS hours
         // Use rng to get a value between -EVENT_JITTER_HOURS and +EVENT_JITTER_HOURS
         const jitterHours = Math.round(
-          (this.rng.next() * 2 - 1) * EVENT_JITTER_HOURS
+          (this.rng.next() * 2 - 1) * EVENT_JITTER_HOURS,
         );
 
         // Base hour is random within the day (but during "market hours" 8am-8pm for realism)
@@ -700,13 +700,13 @@ export class BenchmarkDataGenerator {
           jitterHours,
           eventType: event.eventType,
           volatilityBucket: event.volatilityBucket,
-          isPositive: template.sentiment === 'positive',
+          isPositive: template.sentiment === "positive",
           descriptionTemplate: event.descriptionTemplate.replace(
             /{ticker}/g,
-            affectedTicker
+            affectedTicker,
           ),
         };
-      }
+      },
     );
 
     return {
@@ -724,7 +724,7 @@ export class BenchmarkDataGenerator {
    */
   private calculateEventTick(
     event: ScheduledCausalEvent,
-    ticksPerHour: number
+    ticksPerHour: number,
   ): { tick: number; day: number; hour: number } {
     // Calculate total hours from start: (day - 1) * 24 + hour + jitter
     // Day 1 starts at hour 0, so day 5 hour 12 = (5-1) * 24 + 12 = 108 hours
@@ -750,7 +750,7 @@ export class BenchmarkDataGenerator {
    */
   private selectPercentageFromBucket(
     bucket: VolatilityBucket,
-    isPositive: boolean
+    isPositive: boolean,
   ): number {
     const range = VOLATILITY_BUCKET_RANGES[bucket];
     const magnitude = range.min + this.rng.next() * (range.max - range.min);
@@ -762,7 +762,7 @@ export class BenchmarkDataGenerator {
    */
   private generateGroundTruth(
     initialState: GameState,
-    numTicks: number
+    numTicks: number,
   ): GroundTruth {
     // Randomly determine market outcomes
     const marketOutcomes: Record<string, boolean> = {};
@@ -775,7 +775,7 @@ export class BenchmarkDataGenerator {
 
     // Generate causal simulation data if enabled
     let hiddenNarrativeFacts: HiddenNarrativeFact[] | undefined;
-    let causalEvents: GroundTruth['causalEvents'] | undefined;
+    let causalEvents: GroundTruth["causalEvents"] | undefined;
 
     if (this.config.useCausalSimulation) {
       // Generate ONE dominant narrative fact
@@ -791,7 +791,7 @@ export class BenchmarkDataGenerator {
         for (const ticker of narrativeFact.affectsTickers) {
           priceChanges[ticker] = this.selectPercentageFromBucket(
             scheduledEvent.volatilityBucket,
-            scheduledEvent.isPositive
+            scheduledEvent.isPositive,
           );
         }
 
@@ -812,7 +812,7 @@ export class BenchmarkDataGenerator {
       // Sort events by tick
       causalEvents.sort((a, b) => a.tick - b.tick);
 
-      logger.info('Generated causal simulation data', {
+      logger.info("Generated causal simulation data", {
         narrativeFact: narrativeFact.fact,
         affectedTickers: narrativeFact.affectsTickers,
         numEvents: causalEvents.length,
@@ -875,7 +875,7 @@ export class BenchmarkDataGenerator {
             if (event.priceChanges[perp.ticker] !== undefined) {
               priceChangesByTick.set(
                 event.tick,
-                event.priceChanges[perp.ticker]!
+                event.priceChanges[perp.ticker]!,
               );
             }
           }
@@ -912,44 +912,44 @@ export class BenchmarkDataGenerator {
 
     // SYNTHETIC: Simple heuristic - buying the correct outcome at tick 1
     // This is NOT a sophisticated optimal action calculation
-    const optimalActions: GroundTruth['optimalActions'] = [];
+    const optimalActions: GroundTruth["optimalActions"] = [];
     for (const [marketId, outcome] of Object.entries(marketOutcomes)) {
       optimalActions.push({
         tick: 1,
-        type: 'buy_prediction',
+        type: "buy_prediction",
         target: marketId,
         expectedValue: 100, // Placeholder value
-        reason: `[SYNTHETIC] Market ${marketId} will resolve ${outcome ? 'YES' : 'NO'}`,
+        reason: `[SYNTHETIC] Market ${marketId} will resolve ${outcome ? "YES" : "NO"}`,
       });
     }
 
     // SYNTHETIC: Placeholder social opportunities at regular intervals
-    const socialOpportunities: GroundTruth['socialOpportunities'] = [];
+    const socialOpportunities: GroundTruth["socialOpportunities"] = [];
     const socialInterval = Math.max(1, Math.floor(numTicks / 5));
     for (let i = 0; i < numTicks; i += socialInterval) {
       socialOpportunities.push({
         tick: i,
-        type: 'synthetic_opportunity',
+        type: "synthetic_opportunity",
         value: 100, // Fixed placeholder value
         description: `[SYNTHETIC] Placeholder opportunity at tick ${i}`,
       });
     }
 
     // SYNTHETIC: Empty arrays - these were never meaningfully implemented
-    const hiddenFacts: GroundTruth['hiddenFacts'] = [];
-    const hiddenEvents: GroundTruth['hiddenEvents'] = [];
+    const hiddenFacts: GroundTruth["hiddenFacts"] = [];
+    const hiddenEvents: GroundTruth["hiddenEvents"] = [];
 
     // TRUE FACTS: Actual computed values from initial state
-    const trueFacts: GroundTruth['trueFacts'] = {
+    const trueFacts: GroundTruth["trueFacts"] = {
       totalLiquidity: initialState.predictionMarkets.reduce(
         (sum, m) => sum + m.liquidity,
-        0
+        0,
       ),
       averageMarketPrice:
         initialState.predictionMarkets.length > 0
           ? initialState.predictionMarkets.reduce(
               (sum, m) => sum + m.yesPrice,
-              0
+              0,
             ) / initialState.predictionMarkets.length
           : 0,
       numPerpetualMarkets: initialState.perpetualMarkets.length,
@@ -976,7 +976,7 @@ export class BenchmarkDataGenerator {
     initialState: GameState,
     groundTruth: GroundTruth,
     numTicks: number,
-    startTimestamp: number
+    startTimestamp: number,
   ): Tick[] {
     const ticks: Tick[] = [];
     // Create a mutable copy of initial state
@@ -1004,7 +1004,7 @@ export class BenchmarkDataGenerator {
         const priceAtTick = tickerHistory?.[i];
         const newPrice = priceAtTick?.price ?? perp.price;
         events.push({
-          type: 'price:updated',
+          type: "price:updated",
           timestamp: tickTimestamp,
           data: {
             ticker: perp.ticker,
@@ -1019,10 +1019,10 @@ export class BenchmarkDataGenerator {
       if (this.rng.next() > 0.5) {
         const agentId = `agent-${Math.floor(this.rng.next() * this.config.numAgents)}`;
         const marketId = `market-${Math.floor(this.rng.next() * this.config.numPredictionMarkets)}`;
-        const outcome = this.rng.next() > 0.5 ? 'YES' : 'NO';
+        const outcome = this.rng.next() > 0.5 ? "YES" : "NO";
 
         events.push({
-          type: 'market:trade',
+          type: "market:trade",
           timestamp: tickTimestamp,
           data: {
             marketId,
@@ -1037,19 +1037,19 @@ export class BenchmarkDataGenerator {
       if (this.rng.next() > 0.7) {
         const agentId = `agent-${Math.floor(this.rng.next() * this.config.numAgents)}`;
         const agent = currentState.agents.find(
-          (a: { id: string }) => a.id === agentId
+          (a: { id: string }) => a.id === agentId,
         );
         const marketId = `market-${Math.floor(this.rng.next() * this.config.numPredictionMarkets)}`;
         const market = currentState.predictionMarkets.find(
-          (m: { id: string; question: string }) => m.id === marketId
+          (m: { id: string; question: string }) => m.id === marketId,
         );
 
         const postId = `post-${i}-${Math.floor(this.rng.next() * 1000000)}`;
         const post: Post = {
           id: postId,
           authorId: agentId,
-          authorName: agent?.name || `Agent ${agentId.split('-')[1]}`,
-          content: `Market sentiment seems ${this.rng.next() > 0.5 ? 'bullish' : 'bearish'} on ${market?.question || 'markets'}`,
+          authorName: agent?.name || `Agent ${agentId.split("-")[1]}`,
+          content: `Market sentiment seems ${this.rng.next() > 0.5 ? "bullish" : "bearish"} on ${market?.question || "markets"}`,
           createdAt: tickTimestamp,
           likes: Math.floor(this.rng.next() * 20),
           comments: Math.floor(this.rng.next() * 5),
@@ -1068,7 +1068,7 @@ export class BenchmarkDataGenerator {
         }
 
         events.push({
-          type: 'post:created',
+          type: "post:created",
           timestamp: tickTimestamp,
           data: {
             postId: post.id,
@@ -1086,12 +1086,12 @@ export class BenchmarkDataGenerator {
         const groupChatId = `group-${nextGroupChatId++}`;
         const adminAgentId = `agent-${Math.floor(this.rng.next() * this.config.numAgents)}`;
         const adminAgent = currentState.agents.find(
-          (a: { id: string }) => a.id === adminAgentId
+          (a: { id: string }) => a.id === adminAgentId,
         );
 
         const groupChat: GroupChat = {
           id: groupChatId,
-          name: `${adminAgent?.name || 'Agent'}'s Trading Group`,
+          name: `${adminAgent?.name || "Agent"}'s Trading Group`,
           memberIds: [adminAgentId],
           messageCount: 0,
           lastActivity: tickTimestamp,
@@ -1107,7 +1107,7 @@ export class BenchmarkDataGenerator {
         currentState.groupChats.push(groupChat);
 
         events.push({
-          type: 'group:created',
+          type: "group:created",
           timestamp: tickTimestamp,
           data: {
             groupId: groupChatId,
@@ -1126,7 +1126,7 @@ export class BenchmarkDataGenerator {
               Math.floor(this.rng.next() * groupChat.memberIds.length)
             ]!;
           const sender = currentState.agents.find(
-            (a: { id: string }) => a.id === senderId
+            (a: { id: string }) => a.id === senderId,
           );
 
           // Generate insider-style content tied to market/question outcomes
@@ -1155,7 +1155,7 @@ export class BenchmarkDataGenerator {
           const message = {
             id: messageId,
             authorId: senderId,
-            authorName: sender?.name || `Agent ${senderId.split('-')[1]}`,
+            authorName: sender?.name || `Agent ${senderId.split("-")[1]}`,
             content: randomInsiderMsg,
             timestamp: tickTimestamp,
           };
@@ -1173,7 +1173,7 @@ export class BenchmarkDataGenerator {
           }
 
           events.push({
-            type: 'group:message',
+            type: "group:message",
             timestamp: tickTimestamp,
             data: {
               groupId,
@@ -1198,12 +1198,12 @@ export class BenchmarkDataGenerator {
         if (groupChat && groupChat.memberIds.length < 10) {
           groupChat.invitedAgent = true;
           events.push({
-            type: 'group:invite',
+            type: "group:invite",
             timestamp: tickTimestamp,
             data: {
               groupId: groupChat.id,
               groupName: groupChat.name,
-              inviterId: groupChat.memberIds[0] ?? 'unknown',
+              inviterId: groupChat.memberIds[0] ?? "unknown",
             },
           });
         }

@@ -1,7 +1,5 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.3.14/schema.json",
-  "root": false,
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {
     "enabled": true,
     "rules": {

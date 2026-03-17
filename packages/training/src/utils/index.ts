@@ -2,9 +2,9 @@
  * Training Package Utilities
  */
 
-export { logger } from './logger';
-export { generateSnowflakeId } from './snowflake';
-export { assertHasLLMCalls, validateLLMCalls } from './synthetic-detector';
+export { logger } from "./logger";
+export { generateSnowflakeId } from "./snowflake";
+export { assertHasLLMCalls, validateLLMCalls } from "./synthetic-detector";
 
 /**
  * Split an array into batches of a specified size
@@ -77,9 +77,9 @@ export function formatPercent(value: number, decimals = 1): string {
 export function formatCurrency(
   value: number,
   decimals = 2,
-  prefix = '$'
+  prefix = "$",
 ): string {
-  const sign = value >= 0 ? '' : '-';
+  const sign = value >= 0 ? "" : "-";
   return `${sign}${prefix}${Math.abs(value).toFixed(decimals)}`;
 }
 
@@ -94,8 +94,8 @@ export function formatCurrency(
 export function formatCurrencyWithSign(
   value: number,
   decimals = 2,
-  prefix = '$'
+  prefix = "$",
 ): string {
-  const sign = value >= 0 ? '+' : '-';
+  const sign = value >= 0 ? "+" : "-";
   return `${sign}${prefix}${Math.abs(value).toFixed(decimals)}`;
 }

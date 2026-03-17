@@ -1,4 +1,5 @@
-import { type AgentRuntime, logger } from "@elizaos/core";
+import type { AgentRuntime, Service } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url";
 import { validateCloudBaseUrl } from "../cloud/validate-url";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers";
@@ -92,7 +93,7 @@ export async function handleCloudStatusRoutes(
     const hasApiKey = Boolean(config.cloud?.apiKey?.trim());
     const effectivelyEnabled = cloudEnabled;
     const cloudAuth = runtime
-      ? (runtime.getService("CLOUD_AUTH") as CloudAuthIdentityService | null)
+      ? runtime.getService<Service & CloudAuthIdentityService>("CLOUD_AUTH")
       : null;
     const authConnected = Boolean(cloudAuth?.isAuthenticated());
 
@@ -136,7 +137,7 @@ export async function handleCloudStatusRoutes(
 
   if (method === "GET" && pathname === "/api/cloud/credits") {
     const cloudAuth = runtime
-      ? (runtime.getService("CLOUD_AUTH") as CloudAuthCreditsService | null)
+      ? runtime.getService<Service & CloudAuthCreditsService>("CLOUD_AUTH")
       : null;
     const configApiKey = config.cloud?.apiKey?.trim();
 

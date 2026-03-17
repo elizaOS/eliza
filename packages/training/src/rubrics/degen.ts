@@ -71,10 +71,10 @@ The question isn't "did they make money?" but "did they TRADE like a degen?"
 `;
 
 export const DEGEN_PRIORITY_METRICS = [
-  'trading.tradesExecuted',
-  'trading.avgPositionSize',
-  'trading.largestWin',
-  'trading.largestLoss',
-  'trading.marketsTraded',
-  'behavior.actionsPerTick',
+  "trading.tradesExecuted",
+  "trading.avgPositionSize",
+  "trading.largestWin",
+  "trading.largestLoss",
+  "trading.marketsTraded",
+  "behavior.actionsPerTick",
 ];

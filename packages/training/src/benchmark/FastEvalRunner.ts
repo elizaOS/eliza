@@ -8,16 +8,16 @@
  * - Progress tracking
  */
 
-import { logger } from '../utils/logger';
-import { type BenchmarkRunConfig, BenchmarkRunner } from './BenchmarkRunner';
-import type { SimulationResult } from './SimulationEngine';
+import { logger } from "../utils/logger";
+import { type BenchmarkRunConfig, BenchmarkRunner } from "./BenchmarkRunner";
+import type { SimulationResult } from "./SimulationEngine";
 
 export interface FastEvalConfig {
   /** Benchmark file path */
   benchmarkPath: string;
 
   /** Agent runtime to test */
-  agentRuntime: BenchmarkRunConfig['agentRuntime'];
+  agentRuntime: BenchmarkRunConfig["agentRuntime"];
 
   /** Agent user ID */
   agentUserId: string;
@@ -63,6 +63,7 @@ export interface FastEvalResult {
   worstRun: SimulationResult;
 }
 
+// biome-ignore lint/complexity/noStaticOnlyClass: Runner namespace - run/runWithProgress are logically grouped
 export class FastEvalRunner {
   /**
    * Run fast evaluation
@@ -98,7 +99,7 @@ export class FastEvalRunner {
     const iterations = config.iterations || 1;
     const parallelRuns = config.parallelRuns || 1;
 
-    logger.info('Starting fast evaluation', {
+    logger.info("Starting fast evaluation", {
       benchmarkPath: config.benchmarkPath,
       agentUserId: config.agentUserId,
       iterations,
@@ -118,7 +119,7 @@ export class FastEvalRunner {
       const batchSize = batchEnd - batchStart;
 
       logger.info(
-        `Running batch ${batchStart + 1}-${batchEnd} of ${iterations}`
+        `Running batch ${batchStart + 1}-${batchEnd} of ${iterations}`,
       );
 
       // Run batch in parallel
@@ -157,18 +158,18 @@ export class FastEvalRunner {
     const avgAccuracy =
       results.reduce(
         (sum, r) => sum + r.metrics.predictionMetrics.accuracy,
-        0
+        0,
       ) / results.length;
     const avgOptimality =
       results.reduce((sum, r) => sum + r.metrics.optimalityScore, 0) /
       results.length;
 
     const bestRun = results.reduce((best, current) =>
-      current.metrics.totalPnl > best.metrics.totalPnl ? current : best
+      current.metrics.totalPnl > best.metrics.totalPnl ? current : best,
     );
 
     const worstRun = results.reduce((worst, current) =>
-      current.metrics.totalPnl < worst.metrics.totalPnl ? current : worst
+      current.metrics.totalPnl < worst.metrics.totalPnl ? current : worst,
     );
 
     const summary = {
@@ -179,7 +180,7 @@ export class FastEvalRunner {
       runsCompleted: results.length,
     };
 
-    logger.info('Fast evaluation completed', summary);
+    logger.info("Fast evaluation completed", summary);
 
     return {
       results,
@@ -193,22 +194,22 @@ export class FastEvalRunner {
    * Run evaluation with progress bar
    */
   static async runWithProgress(
-    config: FastEvalConfig
+    config: FastEvalConfig,
   ): Promise<FastEvalResult> {
     let lastProgress = 0;
 
-    return this.run({
+    return FastEvalRunner.run({
       ...config,
       onProgress: (progress) => {
         const percent = Math.round((progress.completed / progress.total) * 100);
         if (percent !== lastProgress) {
           const barLength = 40;
           const filled = Math.round(
-            (progress.completed / progress.total) * barLength
+            (progress.completed / progress.total) * barLength,
           );
-          const bar = '█'.repeat(filled) + '░'.repeat(barLength - filled);
+          const bar = "█".repeat(filled) + "░".repeat(barLength - filled);
           process.stdout.write(
-            `\r[${bar}] ${percent}% (${progress.completed}/${progress.total})`
+            `\r[${bar}] ${percent}% (${progress.completed}/${progress.total})`,
           );
           lastProgress = percent;
         }
@@ -218,7 +219,7 @@ export class FastEvalRunner {
         }
       },
     }).then((result) => {
-      process.stdout.write('\n');
+      process.stdout.write("\n");
       return result;
     });
   }

@@ -11,7 +11,7 @@ if "eliza.v1" not in sys.modules:
     _v1.__package__ = "eliza.v1"
     sys.modules["eliza"] = _eliza
     sys.modules["eliza.v1"] = _v1
-    _eliza.v1 = _v1
+    _eliza.v1 = _v1  # type: ignore[attr-defined]
 
 from elizaos.character import parse_character, validate_character_config
 from elizaos.generated.action_docs import (
@@ -123,7 +123,6 @@ from elizaos.types import (
     string_to_uuid,
 )
 from elizaos.types.database import IDatabaseAdapter  # noqa: E402
-from elizaos.types.environment import ChannelType  # noqa: E402
 from elizaos.types.primitives import (  # noqa: E402
     ChannelType,
     Content,

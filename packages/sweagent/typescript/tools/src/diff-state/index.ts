@@ -128,4 +128,4 @@ if (require.main === module) {
   }
 }
 
-export { updateDiffState, clearDiff, getDiff };
+export { clearDiff, getDiff, updateDiffState };

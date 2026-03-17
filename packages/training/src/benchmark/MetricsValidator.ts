@@ -4,10 +4,10 @@
  * Validates that benchmark metrics are calculated correctly against ground truth.
  */
 
-import type { ValidationResult } from '../training/ConfigValidator';
-import { logger } from '../utils/logger';
-import type { GroundTruth } from './BenchmarkDataGenerator';
-import type { AgentAction, SimulationMetrics } from './simulation-types';
+import type { ValidationResult } from "../training/ConfigValidator";
+import { logger } from "../utils/logger";
+import type { GroundTruth } from "./BenchmarkDataGenerator";
+import type { AgentAction, SimulationMetrics } from "./simulation-types";
 
 export class MetricsValidator {
   /**
@@ -16,16 +16,16 @@ export class MetricsValidator {
   static validate(
     metrics: SimulationMetrics,
     actions: AgentAction[],
-    groundTruth: GroundTruth
+    groundTruth: GroundTruth,
   ): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
     // 1. Validate prediction accuracy calculation
-    const predictionValidation = this.validatePredictionMetrics(
+    const predictionValidation = MetricsValidator.validatePredictionMetrics(
       metrics.predictionMetrics,
       actions,
-      groundTruth
+      groundTruth,
     );
     errors.push(...predictionValidation.errors);
     warnings.push(...predictionValidation.warnings);
@@ -38,23 +38,23 @@ export class MetricsValidator {
     // 3. Validate timing metrics are reasonable
     if (metrics.timing.avgResponseTime < 0) {
       errors.push(
-        `Invalid average response time: ${metrics.timing.avgResponseTime}`
+        `Invalid average response time: ${metrics.timing.avgResponseTime}`,
       );
     }
 
     if (metrics.timing.maxResponseTime < metrics.timing.avgResponseTime) {
       errors.push(
-        `Max response time less than average: ${metrics.timing.maxResponseTime} < ${metrics.timing.avgResponseTime}`
+        `Max response time less than average: ${metrics.timing.maxResponseTime} < ${metrics.timing.avgResponseTime}`,
       );
     }
 
     // 4. Validate action counts match
     const predictionActions = actions.filter(
-      (a) => a.type === 'buy_prediction'
+      (a) => a.type === "buy_prediction",
     );
     if (predictionActions.length !== metrics.predictionMetrics.totalPositions) {
       warnings.push(
-        `Prediction action count mismatch: ${predictionActions.length} actions vs ${metrics.predictionMetrics.totalPositions} positions`
+        `Prediction action count mismatch: ${predictionActions.length} actions vs ${metrics.predictionMetrics.totalPositions} positions`,
       );
     }
 
@@ -64,20 +64,20 @@ export class MetricsValidator {
     const calculatedAccuracy =
       totalPositions > 0 ? correctPredictions / totalPositions : 0;
     const accuracyDiff = Math.abs(
-      calculatedAccuracy - metrics.predictionMetrics.accuracy
+      calculatedAccuracy - metrics.predictionMetrics.accuracy,
     );
 
     if (accuracyDiff > 0.01) {
       // Allow 1% tolerance for floating point
       errors.push(
-        `Accuracy calculation mismatch: reported ${metrics.predictionMetrics.accuracy}, calculated ${calculatedAccuracy}`
+        `Accuracy calculation mismatch: reported ${metrics.predictionMetrics.accuracy}, calculated ${calculatedAccuracy}`,
       );
     }
 
     // 6. Validate correct + incorrect = total
     if (correctPredictions + incorrectPredictions !== totalPositions) {
       errors.push(
-        `Prediction count mismatch: ${correctPredictions} + ${incorrectPredictions} != ${totalPositions}`
+        `Prediction count mismatch: ${correctPredictions} + ${incorrectPredictions} != ${totalPositions}`,
       );
     }
 
@@ -86,17 +86,17 @@ export class MetricsValidator {
       const calculatedWinRate =
         metrics.perpMetrics.profitableTrades / metrics.perpMetrics.totalTrades;
       const winRateDiff = Math.abs(
-        calculatedWinRate - metrics.perpMetrics.winRate
+        calculatedWinRate - metrics.perpMetrics.winRate,
       );
 
       if (winRateDiff > 0.01) {
         errors.push(
-          `Win rate calculation mismatch: reported ${metrics.perpMetrics.winRate}, calculated ${calculatedWinRate}`
+          `Win rate calculation mismatch: reported ${metrics.perpMetrics.winRate}, calculated ${calculatedWinRate}`,
         );
       }
     }
 
-    logger.info('Metrics validation complete', {
+    logger.info("Metrics validation complete", {
       valid: errors.length === 0,
       errors: errors.length,
       warnings: warnings.length,
@@ -113,16 +113,16 @@ export class MetricsValidator {
    * Validate prediction metrics against ground truth
    */
   private static validatePredictionMetrics(
-    _predictionMetrics: SimulationMetrics['predictionMetrics'],
+    _predictionMetrics: SimulationMetrics["predictionMetrics"],
     actions: AgentAction[],
-    groundTruth: GroundTruth
+    groundTruth: GroundTruth,
   ): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
     // Get all prediction actions
     const predictionActions = actions.filter(
-      (a) => a.type === 'buy_prediction'
+      (a) => a.type === "buy_prediction",
     );
 
     // Validate each action against ground truth
@@ -133,7 +133,6 @@ export class MetricsValidator {
       // Check if we have ground truth for this market
       if (!(marketId in groundTruth.marketOutcomes)) {
         warnings.push(`No ground truth for market ${marketId}`);
-        continue;
       }
 
       // Verify the outcome exists in ground truth

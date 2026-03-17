@@ -25,7 +25,7 @@ function buildCtx(
 ): AuthRouteContext & { getStatus: () => number; getJson: () => unknown } {
   const { res, getStatus, getJson } = createMockHttpResponse();
   const req = createMockIncomingMessage({ method, url: pathname });
-  (req as any).socket = { remoteAddress: "127.0.0.1" };
+  Object.assign(req, { socket: { remoteAddress: "127.0.0.1" } });
   const ctx = {
     req,
     res,
@@ -46,10 +46,10 @@ function buildCtx(
     rateLimitPairing: () => true,
     getPairingExpiresAt: () => Date.now() + 60_000,
     clearPairing: vi.fn(),
+    getStatus,
+    getJson,
     ...overrides,
   } as AuthRouteContext & { getStatus: () => number; getJson: () => unknown };
-  (ctx as any).getStatus = getStatus;
-  (ctx as any).getJson = getJson;
   return ctx;
 }
 

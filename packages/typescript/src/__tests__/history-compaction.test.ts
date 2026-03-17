@@ -574,7 +574,9 @@ describe("RESET_SESSION action", () => {
 // ============================================
 describe("STATUS action", () => {
 	it("should show agent name and ID", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
+		const { statusAction } = await import(
+			"../basic-capabilities/actions/status.ts"
+		);
 
 		const mockRuntime = {
 			agentId: "agent-12345678" as UUID,
@@ -608,7 +610,9 @@ describe("STATUS action", () => {
 	});
 
 	it("should show compaction timestamp when available", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
+		const { statusAction } = await import(
+			"../basic-capabilities/actions/status.ts"
+		);
 
 		const compactionTime = Date.now() - 3600000; // 1 hour ago
 		const mockRoom = createMockRoom({ lastCompactionAt: compactionTime });
@@ -644,7 +648,9 @@ describe("STATUS action", () => {
 	});
 
 	it("should not show Last Reset when no compaction", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
+		const { statusAction } = await import(
+			"../basic-capabilities/actions/status.ts"
+		);
 
 		const mockRoom = createMockRoom(); // No lastCompactionAt
 
@@ -679,7 +685,9 @@ describe("STATUS action", () => {
 	});
 
 	it("should list pending AWAITING_CHOICE tasks with options", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
+		const { statusAction } = await import(
+			"../basic-capabilities/actions/status.ts"
+		);
 
 		const mockRuntime = {
 			agentId: "agent-1" as UUID,
@@ -734,7 +742,9 @@ describe("STATUS action", () => {
 	});
 
 	it("should show 'No pending tasks' when empty", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
+		const { statusAction } = await import(
+			"../basic-capabilities/actions/status.ts"
+		);
 
 		const mockRuntime = {
 			agentId: "agent-1" as UUID,
@@ -767,7 +777,9 @@ describe("STATUS action", () => {
 	});
 
 	it("should show queued tasks separately", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
+		const { statusAction } = await import(
+			"../basic-capabilities/actions/status.ts"
+		);
 
 		const mockRuntime = {
 			agentId: "agent-1" as UUID,
@@ -813,7 +825,9 @@ describe("STATUS action", () => {
 	});
 
 	it("should show room information", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
+		const { statusAction } = await import(
+			"../basic-capabilities/actions/status.ts"
+		);
 
 		const mockRoom = createMockRoom({ name: "My Cool Room" });
 
@@ -849,7 +863,9 @@ describe("STATUS action", () => {
 	});
 
 	it("should always validate to true", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
+		const { statusAction } = await import(
+			"../basic-capabilities/actions/status.ts"
+		);
 
 		const mockRuntime = {} as unknown as IAgentRuntime;
 
@@ -858,7 +874,9 @@ describe("STATUS action", () => {
 	});
 
 	it("should return status data in result values", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
+		const { statusAction } = await import(
+			"../basic-capabilities/actions/status.ts"
+		);
 
 		const mockRuntime = {
 			agentId: "agent-1" as UUID,

@@ -54,13 +54,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import * as pluginAgentOrchestrator from "@elizaos/plugin-agent-orchestrator";
-import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
-import * as pluginAnthropic from "@elizaos/plugin-anthropic";
-import * as pluginCron from "@elizaos/plugin-cron";
-import * as pluginElizacloud from "@elizaos/plugin-elizacloud";
-import * as pluginExperience from "@elizaos/plugin-experience";
-import * as pluginForm from "@elizaos/plugin-form";
-import * as pluginKnowledge from "@elizaos/plugin-knowledge";
 import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginOllama from "@elizaos/plugin-ollama";
 import * as pluginOpenai from "@elizaos/plugin-openai";
@@ -125,24 +118,17 @@ const STATIC_ELIZA_PLUGINS: Record<string, unknown> = {
   "@elizaos/plugin-sql": pluginSql,
   "@elizaos/plugin-local-embedding": pluginLocalEmbedding,
   "@elizaos/plugin-secrets-manager": pluginSecretsManager,
-  "@elizaos/plugin-form": pluginForm,
-  "@elizaos/plugin-knowledge": pluginKnowledge,
   "@elizaos/plugin-rolodex": pluginRolodex,
   "@elizaos/plugin-trajectory-logger": pluginTrajectoryLogger,
   "@elizaos/plugin-agent-orchestrator": pluginAgentOrchestrator,
-  "@elizaos/plugin-cron": pluginCron,
   "@elizaos/plugin-shell": pluginShell,
   "@elizaos/plugin-plugin-manager": pluginPluginManager,
-  "@elizaos/plugin-agent-skills": pluginAgentSkills,
   "@elizaos/plugin-pdf": pluginPdf,
   "@elizaos/plugin-openai": pluginOpenai,
-  "@elizaos/plugin-anthropic": pluginAnthropic,
   "@elizaos/plugin-ollama": pluginOllama,
-  "@elizaos/plugin-elizacloud": pluginElizacloud,
   "@elizaos/plugin-trust": pluginTrust,
   "@elizaos/plugin-todo": pluginTodo,
   "@elizaos/plugin-personality": pluginPersonality,
-  "@elizaos/plugin-experience": pluginExperience,
 };
 
 // NODE_PATH so dynamic plugin imports (e.g. @elizaos/plugin-agent-orchestrator) resolve.
@@ -2340,10 +2326,14 @@ async function initializeDatabaseAdapter(
   runtime: AgentRuntime,
   config: MiladyConfig,
 ): Promise<void> {
-  if (!runtime.adapter || (await runtime.adapter.isReady())) return;
+  const adapterWithInit = runtime.adapter as unknown as {
+    isReady(): Promise<boolean>;
+    init(): Promise<void>;
+  };
+  if (!runtime.adapter || (await adapterWithInit.isReady())) return;
 
   try {
-    await runtime.adapter.init();
+    await adapterWithInit.init();
     logger.info(
       "[milady] Database adapter initialized early (before plugin inits)",
     );
@@ -2373,7 +2363,7 @@ async function initializeDatabaseAdapter(
       process.env.PGLITE_DATA_DIR = pgliteDataDir;
     }
 
-    await runtime.adapter.init();
+    await adapterWithInit.init();
     logger.info(
       recoveryAction === "retry-without-reset"
         ? "[milady] Database adapter recovered after clearing a stale PGLite lock"
@@ -2666,7 +2656,7 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
   // to create the same entity in rapid succession; plugin-sql's batch insert is
   // non-idempotent and can fail entire writes on duplicate/conflicting rows.
   if (!runtimeWithBindings.__miladyEntityWriteDiagnosticsInstalled) {
-    type CreateEntitiesFn = (entities: Entity[]) => Promise<boolean>;
+    type CreateEntitiesFn = (entities: Entity[]) => Promise<string[]>;
     type GetEntitiesByIdsFn = (entityIds: UUID[]) => Promise<Entity[]>;
     type EnsureEntityExistsFn = (entity: Entity) => Promise<boolean>;
     const runtimeWithEntityWrites = runtime as AgentRuntime & {
@@ -2680,14 +2670,14 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
         runtimeWithEntityWrites.createEntities.bind(runtime);
       runtimeWithEntityWrites.createEntities = async (
         entities: Entity[],
-      ): Promise<boolean> => {
+      ): Promise<string[]> => {
         return withEntityCreateMutex(runtimeWithBindings, async () => {
           const uniqueById = new Map<UUID, Entity>();
           for (const entity of entities) {
             if (entity?.id) uniqueById.set(entity.id as UUID, entity);
           }
           const deduped = Array.from(uniqueById.values());
-          if (deduped.length === 0) return true;
+          if (deduped.length === 0) return [];
 
           let missing = deduped;
           if (typeof runtimeWithEntityWrites.getEntitiesByIds === "function") {
@@ -2709,10 +2699,10 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
               );
             }
           }
-          if (missing.length === 0) return true;
+          if (missing.length === 0) return deduped.map((e) => e.id as string);
 
-          const ok = await originalCreateEntities(missing);
-          if (ok) return true;
+          const createdIds = await originalCreateEntities(missing);
+          if (createdIds.length > 0) return createdIds;
 
           if (
             typeof runtimeWithEntityWrites.ensureEntityExists === "function"
@@ -2730,13 +2720,13 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
                 );
               }
             }
-            if (allRecovered) return true;
+            if (allRecovered) return missing.map((e) => e.id as string);
           }
 
           logger.warn(
             `[milady] createEntities unresolved after guarded retries (requested=${entities.length}, deduped=${deduped.length}, missing=${missing.length})`,
           );
-          return false;
+          return [];
         });
       };
     }
@@ -2998,7 +2988,7 @@ export function buildCharacterFromConfig(config: MiladyConfig): Character {
     ...(style ? { style } : {}),
     ...(adjectives ? { adjectives } : {}),
     ...(postExamples ? { postExamples } : {}),
-    ...(mappedExamples ? { messageExamples: mappedExamples } : {}),
+    ...(mappedExamples ? { messageExamples: mappedExamples as any } : {}),
     secrets,
   });
 }
@@ -4080,7 +4070,7 @@ export async function startEliza(
   let runtime = new AgentRuntime({
     character,
     // advancedCapabilities: true,
-    actionPlanning: true,
+    // actionPlanning: true, // Not supported in this version of AgentRuntime
     // advancedMemory: true, // Not supported in this version of AgentRuntime
     plugins: [miladyPlugin, ...pluginsForRuntime],
     ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
@@ -4219,7 +4209,7 @@ export async function startEliza(
     // so API + agent come online immediately.
     try {
       const skillServicePromise = runtime.getServiceLoadPromise(
-        "AGENT_SKILLS_SERVICE",
+        "AGENT_SKILLS_SERVICE" as any,
       );
       const timeout = new Promise<never>((_resolve, reject) => {
         setTimeout(() => {
@@ -4232,7 +4222,7 @@ export async function startEliza(
       });
       await Promise.race([skillServicePromise, timeout]);
 
-      const svc = runtime.getService("AGENT_SKILLS_SERVICE") as
+      const svc = runtime.getService("AGENT_SKILLS_SERVICE" as any) as
         | {
             getCatalogStats?: () => {
               loaded: number;

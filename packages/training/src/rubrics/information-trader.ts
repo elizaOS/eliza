@@ -75,10 +75,10 @@ The information trader must balance both sides:
 `;
 
 export const INFORMATION_TRADER_PRIORITY_METRICS = [
-  'trading.totalPnL',
-  'social.groupChatsJoined',
-  'social.dmsInitiated',
-  'behavior.socialToTradeRatio',
-  'information.infoRequestsSent',
-  'trading.winRate',
+  "trading.totalPnL",
+  "social.groupChatsJoined",
+  "social.dmsInitiated",
+  "behavior.socialToTradeRatio",
+  "information.infoRequestsSent",
+  "trading.winRate",
 ];

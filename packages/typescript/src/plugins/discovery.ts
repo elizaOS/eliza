@@ -627,10 +627,10 @@ function checkNpmPackage(
 }
 
 export {
-	resolveConfigDir,
-	resolveUserPath,
+	deriveIdHint,
+	getPackageManifestMetadata,
 	isExtensionFile,
 	readPackageManifest,
-	getPackageManifestMetadata,
-	deriveIdHint,
+	resolveConfigDir,
+	resolveUserPath,
 };

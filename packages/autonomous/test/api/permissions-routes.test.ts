@@ -107,7 +107,7 @@ describe("permissions-routes", () => {
       const ctx = buildCtx("PUT", "/api/permissions/shell", {
         readJsonBody: vi.fn(async () => ({ enabled: true })),
         state: {
-          runtime: {} as any,
+          runtime: {} as import("@elizaos/core").AgentRuntime,
           config: { features: {} },
           shellEnabled: false,
         },

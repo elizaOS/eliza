@@ -7,7 +7,6 @@ import {
   SkeletonText,
 } from "@elizaos/app-core/components";
 import type { Meta, StoryObj } from "@storybook/react";
-import React from "react";
 
 const meta: Meta = { title: "App Core/Skeletons" };
 export default meta;

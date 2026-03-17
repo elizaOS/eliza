@@ -17,7 +17,15 @@ export const sendMessageAction: Action = {
   validate: async () => true,
 
   handler: async (runtime, _message, _state, options) => {
-    const params = (options as HandlerOptions | undefined)?.parameters;
+    type SendMessageParams = {
+      targetType?: string;
+      source?: string;
+      target?: string;
+      text?: string;
+    };
+    const params = (options as HandlerOptions | undefined)?.parameters as
+      | SendMessageParams
+      | undefined;
     const targetType =
       params?.targetType === "user" || params?.targetType === "room"
         ? params.targetType

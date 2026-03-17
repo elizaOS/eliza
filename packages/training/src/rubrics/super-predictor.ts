@@ -88,10 +88,10 @@ Look for evidence of domain expertise:
 `;
 
 export const SUPER_PREDICTOR_PRIORITY_METRICS = [
-  'information.predictionAccuracy',
-  'trading.winRate',
-  'trading.totalPnL',
-  'information.researchActions',
-  'information.predictionsMade',
-  'information.correctPredictions',
+  "information.predictionAccuracy",
+  "trading.winRate",
+  "trading.totalPnL",
+  "information.researchActions",
+  "information.predictionsMade",
+  "information.correctPredictions",
 ];

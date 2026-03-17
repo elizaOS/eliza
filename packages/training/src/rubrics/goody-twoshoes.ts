@@ -75,10 +75,10 @@ For this archetype, reputation delta is the most important metric:
 `;
 
 export const GOODY_TWOSHOES_PRIORITY_METRICS = [
-  'influence.reputationDelta',
-  'information.infoShared',
-  'influence.positiveReactions',
-  'influence.followersGained',
-  'social.uniqueUsersInteracted',
-  'social.commentsMade',
+  "influence.reputationDelta",
+  "information.infoShared",
+  "influence.positiveReactions",
+  "influence.followersGained",
+  "social.uniqueUsersInteracted",
+  "social.commentsMade",
 ];

@@ -5,13 +5,13 @@
  */
 
 import {
-  getTrainingDataAdapter,
   type BenchmarkResultRecord,
+  getTrainingDataAdapter,
   type JsonValue,
-} from '../adapter';
-import { logger } from '../utils/logger';
-import { generateSnowflakeId } from '../utils/snowflake';
-import type { SimulationMetrics } from './SimulationEngine';
+} from "../adapter";
+import { logger } from "../utils/logger";
+import { generateSnowflakeId } from "../utils/snowflake";
+import type { SimulationMetrics } from "./SimulationEngine";
 
 export interface BenchmarkResultInput {
   modelId: string;
@@ -45,12 +45,13 @@ export interface BenchmarkTrendData {
 /**
  * Service for managing benchmark result history
  */
+// biome-ignore lint/complexity/noStaticOnlyClass: Service namespace - methods are logically grouped
 export class BenchmarkHistoryService {
   /**
    * Save a benchmark result to the database
    */
   static async saveResult(
-    input: BenchmarkResultInput
+    input: BenchmarkResultInput,
   ): Promise<BenchmarkResultRecord> {
     const id = await generateSnowflakeId();
     const now = new Date();
@@ -74,7 +75,7 @@ export class BenchmarkHistoryService {
 
     await getTrainingDataAdapter().insertBenchmarkResult(insertData);
 
-    logger.info('Saved benchmark result', {
+    logger.info("Saved benchmark result", {
       id,
       modelId: input.modelId,
       benchmarkId: input.benchmarkId,
@@ -88,7 +89,7 @@ export class BenchmarkHistoryService {
    * Get benchmark results by query
    */
   static async getResults(
-    query: BenchmarkHistoryQuery
+    query: BenchmarkHistoryQuery,
   ): Promise<BenchmarkResultRecord[]> {
     return getTrainingDataAdapter().queryBenchmarkResults({
       modelId: query.modelId,
@@ -103,7 +104,7 @@ export class BenchmarkHistoryService {
    * Get the latest result for a model
    */
   static async getLatestResult(
-    modelId: string
+    modelId: string,
   ): Promise<BenchmarkResultRecord | null> {
     const results = await getTrainingDataAdapter().queryBenchmarkResults({
       modelId,
@@ -117,7 +118,7 @@ export class BenchmarkHistoryService {
    */
   static async getTrendData(
     modelId: string,
-    limit = 20
+    limit = 20,
   ): Promise<BenchmarkTrendData> {
     const results = await getTrainingDataAdapter().queryBenchmarkResults({
       modelId,
@@ -141,7 +142,7 @@ export class BenchmarkHistoryService {
    */
   static async getModelComparison(
     modelIds: string[],
-    benchmarkId?: string
+    benchmarkId?: string,
   ): Promise<Map<string, BenchmarkResultRecord[]>> {
     const adapter = getTrainingDataAdapter();
     const comparison = new Map<string, BenchmarkResultRecord[]>();
@@ -181,7 +182,7 @@ export class BenchmarkHistoryService {
   static async checkImprovement(
     modelId: string,
     baselineModelId: string,
-    benchmarkId: string
+    benchmarkId: string,
   ): Promise<{
     improved: boolean;
     modelPnl: number;

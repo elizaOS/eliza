@@ -192,6 +192,7 @@ export const createTaskAction: Action = {
 
 			const existingTasks = await runtime.getTasks({
 				tags: [...TRIGGER_TASK_TAGS],
+				agentIds: [runtime.agentId],
 			});
 
 			if (

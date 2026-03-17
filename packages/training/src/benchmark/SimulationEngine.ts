@@ -12,14 +12,14 @@
  * - Tracks agent actions for performance evaluation
  */
 
-import type { JsonValue } from '../adapter';
-import { logger } from '../utils/logger';
+import type { JsonValue } from "../adapter";
+import { logger } from "../utils/logger";
 import type {
   BenchmarkGameSnapshot,
   GameState,
   Tick,
-} from './BenchmarkDataGenerator';
-import { MetricsValidator } from './MetricsValidator';
+} from "./BenchmarkDataGenerator";
+import { MetricsValidator } from "./MetricsValidator";
 
 export interface SimulationConfig {
   /** The benchmark snapshot to replay */
@@ -52,7 +52,7 @@ export interface AgentAction {
     perpCorrect?: boolean;
     sentimentAtTrade?: number;
     priceChange?: number;
-    expectedDirection?: 'up' | 'down';
+    expectedDirection?: "up" | "down";
 
     /** Sentiment analysis accuracy tracking */
     sentimentAccuracy?: number;
@@ -62,14 +62,14 @@ export interface AgentAction {
 }
 
 export type AgentActionType =
-  | 'query_state'
-  | 'buy_prediction'
-  | 'sell_prediction'
-  | 'open_perp'
-  | 'close_perp'
-  | 'create_post'
-  | 'join_group'
-  | 'send_message';
+  | "query_state"
+  | "buy_prediction"
+  | "sell_prediction"
+  | "open_perp"
+  | "close_perp"
+  | "create_post"
+  | "join_group"
+  | "send_message";
 
 export type AgentActionResult =
   | { positionId: string; shares: number } // buy_prediction
@@ -197,23 +197,23 @@ export class SimulationEngine {
     const validation = MetricsValidator.validate(
       metrics,
       this.actions,
-      this.config.snapshot.groundTruth
+      this.config.snapshot.groundTruth,
     );
 
     if (!validation.valid) {
-      logger.error('Metrics validation failed', {
+      logger.error("Metrics validation failed", {
         errors: validation.errors,
         warnings: validation.warnings,
       });
     }
     if (validation.warnings.length > 0) {
-      logger.warn('Metrics validation warnings', {
+      logger.warn("Metrics validation warnings", {
         warnings: validation.warnings,
       });
     }
     const trajectory = this.buildTrajectory();
 
-    logger.info('Simulation completed', {
+    logger.info("Simulation completed", {
       duration: endTime - this.startTime,
       ticksProcessed: this.currentTick,
       totalPnl: metrics.totalPnl,
@@ -243,7 +243,7 @@ export class SimulationEngine {
     this.currentTick = 0;
     this.pnlHistory = [];
 
-    logger.info('Simulation initialized', {
+    logger.info("Simulation initialized", {
       benchmarkId: this.config.snapshot.id,
       agentId: this.config.agentId,
       totalTicks: this.config.snapshot.ticks.length,
@@ -308,27 +308,27 @@ export class SimulationEngine {
    */
   async performAction(
     type: AgentActionType,
-    data: Record<string, JsonValue>
+    data: Record<string, JsonValue>,
   ): Promise<{ success: boolean; result?: AgentActionResult; error?: string }> {
     const actionStart = Date.now();
 
     let result: AgentActionResult;
-    let correctness: AgentAction['correctness'];
+    let correctness: AgentAction["correctness"];
 
     try {
       switch (type) {
-        case 'buy_prediction': {
+        case "buy_prediction": {
           result = this.handleBuyPrediction(data);
           const { marketId, outcome } = data as {
             marketId: string;
-            outcome: 'YES' | 'NO';
+            outcome: "YES" | "NO";
           };
 
           // Track correctness for prediction markets
           const marketOutcome =
             this.config.snapshot.groundTruth.marketOutcomes[marketId];
           if (marketOutcome !== undefined) {
-            const predictedOutcome = outcome === 'YES';
+            const predictedOutcome = outcome === "YES";
             const isCorrect = predictedOutcome === marketOutcome;
 
             correctness = {
@@ -340,17 +340,17 @@ export class SimulationEngine {
           break;
         }
 
-        case 'open_perp': {
+        case "open_perp": {
           result = this.handleOpenPerp(data);
           const { ticker, side } = data as {
             ticker: string;
-            side: 'LONG' | 'SHORT';
+            side: "LONG" | "SHORT";
           };
 
           // Track correctness for perp trades based on sentiment and price movement
           const state = this.getGameState();
           const market = state.perpetualMarkets.find(
-            (m: { ticker: string }) => m.ticker === ticker
+            (m: { ticker: string }) => m.ticker === ticker,
           );
 
           if (market) {
@@ -370,8 +370,8 @@ export class SimulationEngine {
               // Determine if trade was correct
               // If sentiment is negative and we went short, that's correct
               // If sentiment is positive and we went long, that's correct
-              const expectedDirection = sentimentAtTrade < 0 ? 'down' : 'up';
-              const tradeDirection = side === 'SHORT' ? 'down' : 'up';
+              const expectedDirection = sentimentAtTrade < 0 ? "down" : "up";
+              const tradeDirection = side === "SHORT" ? "down" : "up";
               const isCorrect = expectedDirection === tradeDirection;
 
               correctness = {
@@ -385,15 +385,15 @@ export class SimulationEngine {
           break;
         }
 
-        case 'close_perp':
+        case "close_perp":
           result = this.handleClosePerp(data);
           break;
 
-        case 'join_group':
+        case "join_group":
           result = this.handleJoinGroup(data);
           break;
 
-        case 'create_post':
+        case "create_post":
           result = this.handleCreatePost(data);
           break;
 
@@ -471,13 +471,13 @@ export class SimulationEngine {
   } {
     const { marketId, outcome, amount } = data as {
       marketId: string;
-      outcome: 'YES' | 'NO';
+      outcome: "YES" | "NO";
       amount: number;
     };
 
     const state = this.getGameState();
     const market = state.predictionMarkets.find(
-      (m: { id: string }) => m.id === marketId
+      (m: { id: string }) => m.id === marketId,
     );
 
     if (!market) {
@@ -485,7 +485,7 @@ export class SimulationEngine {
     }
 
     // Calculate shares based on current price
-    const price = outcome === 'YES' ? market.yesPrice : market.noPrice;
+    const price = outcome === "YES" ? market.yesPrice : market.noPrice;
     const shares = amount / price;
 
     // Record position
@@ -510,14 +510,14 @@ export class SimulationEngine {
   } {
     const { ticker, side, size, leverage } = data as {
       ticker: string;
-      side: 'LONG' | 'SHORT';
+      side: "LONG" | "SHORT";
       size: number;
       leverage: number;
     };
 
     const state = this.getGameState();
     const market = state.perpetualMarkets.find(
-      (m: { ticker: string }) => m.ticker === ticker
+      (m: { ticker: string }) => m.ticker === ticker,
     );
 
     if (!market) {
@@ -551,7 +551,7 @@ export class SimulationEngine {
 
     const state = this.getGameState();
     const market = state.perpetualMarkets.find(
-      (m: { ticker: string }) => m.ticker === position.ticker
+      (m: { ticker: string }) => m.ticker === position.ticker,
     );
 
     if (!market) {
@@ -561,7 +561,7 @@ export class SimulationEngine {
     // Calculate realized P&L
     const priceChange = market.price - position.entryPrice;
     const pnl =
-      position.side === 'LONG'
+      position.side === "LONG"
         ? priceChange * position.size * position.leverage
         : -priceChange * position.size * position.leverage;
 
@@ -601,13 +601,13 @@ export class SimulationEngine {
       if (position.closedAt) continue; // Skip closed positions
 
       const market = tick.state.perpetualMarkets.find(
-        (m: { ticker: string; price: number }) => m.ticker === position.ticker
+        (m: { ticker: string; price: number }) => m.ticker === position.ticker,
       );
       if (!market) continue;
 
       const priceChange = market.price - position.entryPrice;
       position.unrealizedPnl =
-        position.side === 'LONG'
+        position.side === "LONG"
           ? priceChange * position.size * position.leverage
           : -priceChange * position.size * position.leverage;
     }
@@ -629,8 +629,8 @@ export class SimulationEngine {
       const marketOutcome =
         this.config.snapshot.groundTruth.marketOutcomes[position.marketId];
       const isCorrect =
-        (position.outcome === 'YES' && marketOutcome) ||
-        (position.outcome === 'NO' && !marketOutcome);
+        (position.outcome === "YES" && marketOutcome) ||
+        (position.outcome === "NO" && !marketOutcome);
 
       if (isCorrect) {
         correctPredictions++;
@@ -736,12 +736,12 @@ export class SimulationEngine {
 
         // Match action type and target
         if (
-          optimalAction.type === 'buy_prediction' &&
-          a.type === 'buy_prediction'
+          optimalAction.type === "buy_prediction" &&
+          a.type === "buy_prediction"
         ) {
           return a.data.marketId === optimalAction.target;
         }
-        if (optimalAction.type === 'open_perp' && a.type === 'open_perp') {
+        if (optimalAction.type === "open_perp" && a.type === "open_perp") {
           return a.data.ticker === optimalAction.target;
         }
 
@@ -772,9 +772,9 @@ export class SimulationEngine {
         // Calculate reward based on action outcome
         let reward = 0;
 
-        if (action.type === 'buy_prediction') {
+        if (action.type === "buy_prediction") {
           const positionId = Object.keys(
-            Object.fromEntries(this.predictionPositions)
+            Object.fromEntries(this.predictionPositions),
           ).find((id) => {
             const pos = this.predictionPositions.get(id)!;
             return pos.openedAt === action.tick;
@@ -787,8 +787,8 @@ export class SimulationEngine {
                 position.marketId
               ];
             const isCorrect =
-              (position.outcome === 'YES' && marketOutcome) ||
-              (position.outcome === 'NO' && !marketOutcome);
+              (position.outcome === "YES" && marketOutcome) ||
+              (position.outcome === "NO" && !marketOutcome);
             reward = isCorrect ? 1.0 : -1.0;
           }
         }
@@ -812,7 +812,7 @@ export class SimulationEngine {
 
 interface PredictionPosition {
   marketId: string;
-  outcome: 'YES' | 'NO';
+  outcome: "YES" | "NO";
   shares: number;
   entryPrice: number;
   amount: number;
@@ -821,7 +821,7 @@ interface PredictionPosition {
 
 interface PerpPosition {
   ticker: string;
-  side: 'LONG' | 'SHORT';
+  side: "LONG" | "SHORT";
   size: number;
   leverage: number;
   entryPrice: number;

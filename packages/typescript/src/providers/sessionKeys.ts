@@ -15,23 +15,6 @@ import {
 	type State,
 } from "../types";
 
-type ElizaCoreSessionHelpers = {
-	buildAgentMainSessionKey?: (params: {
-		agentId: string;
-		mainKey: string;
-	}) => string;
-	ChannelType?: {
-		DM: number | string;
-		SELF: number | string;
-		GROUP: number | string;
-	};
-	parseAgentSessionKey?: (key: string) =>
-		| {
-				agentId?: string;
-		  }
-		| undefined;
-};
-
 // Internal helper to avoid circular dependency issues if needed,
 // though here we are in core so we can just implement logically.
 // The original code used `elizaCore as ElizaCoreSessionHelpers` which suggests

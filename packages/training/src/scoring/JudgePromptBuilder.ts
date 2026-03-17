@@ -7,10 +7,10 @@
  * @packageDocumentation
  */
 
-import type { BehavioralMetrics } from '../metrics/types';
-import { getMetricsSummary } from '../metrics/types';
-import { getPriorityMetrics, getRubric } from '../rubrics';
-import type { TrajectoryStep } from '../training/types';
+import type { BehavioralMetrics } from "../metrics/types";
+import { getMetricsSummary } from "../metrics/types";
+import { getPriorityMetrics, getRubric } from "../rubrics";
+import type { TrajectoryStep } from "../training/types";
 
 /**
  * Context for trajectory evaluation.
@@ -56,10 +56,10 @@ export class JudgePromptBuilder {
    */
   buildSinglePrompt(
     trajectory: TrajectoryContext,
-    options: JudgePromptOptions = {}
+    options: JudgePromptOptions = {},
   ): { system: string; user: string } {
     const opts = { ...DEFAULT_OPTIONS, ...options };
-    const archetype = trajectory.archetype || 'default';
+    const archetype = trajectory.archetype || "default";
     const rubric = getRubric(archetype);
     const priorityMetrics = getPriorityMetrics(archetype);
 
@@ -75,12 +75,12 @@ export class JudgePromptBuilder {
   buildComparisonPrompt(
     trajectories: TrajectoryContext[],
     scenarioId: string,
-    options: JudgePromptOptions = {}
+    options: JudgePromptOptions = {},
   ): { system: string; user: string } {
     const opts = { ...DEFAULT_OPTIONS, ...options };
 
     // Get archetype from first trajectory (assume all same archetype for comparison)
-    const archetype = trajectories[0]?.archetype || 'default';
+    const archetype = trajectories[0]?.archetype || "default";
     const rubric = getRubric(archetype);
     const priorityMetrics = getPriorityMetrics(archetype);
 
@@ -89,7 +89,7 @@ export class JudgePromptBuilder {
       trajectories,
       scenarioId,
       priorityMetrics,
-      opts
+      opts,
     );
 
     return { system, user };
@@ -115,7 +115,7 @@ IMPORTANT: The metrics provided are CONTEXT to inform your judgment. Use them to
    */
   private buildComparisonSystemPrompt(
     archetype: string,
-    rubric: string
+    rubric: string,
   ): string {
     return `You are an expert evaluator of AI agent performance. All trajectories below were given the same scenario and are from "${archetype}" archetype agents.
 
@@ -139,28 +139,28 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
   private buildUserPrompt(
     trajectory: TrajectoryContext,
     priorityMetrics: string[],
-    options: JudgePromptOptions
+    options: JudgePromptOptions,
   ): string {
     const parts: string[] = [];
 
     // Agent info
     parts.push(`## Agent Information`);
     parts.push(`- Agent ID: ${trajectory.agentId}`);
-    parts.push(`- Archetype: ${trajectory.archetype || 'unknown'}`);
+    parts.push(`- Archetype: ${trajectory.archetype || "unknown"}`);
     parts.push(
-      `- Episode Length: ${trajectory.episodeLength || trajectory.steps.length} ticks`
+      `- Episode Length: ${trajectory.episodeLength || trajectory.steps.length} ticks`,
     );
-    parts.push('');
+    parts.push("");
 
     // Metrics section
     parts.push(`## Behavioral Metrics`);
     parts.push(this.formatMetrics(trajectory.metrics, priorityMetrics));
-    parts.push('');
+    parts.push("");
 
     // Action summary
     parts.push(`## Action Summary`);
     parts.push(this.summarizeActions(trajectory.steps));
-    parts.push('');
+    parts.push("");
 
     // Key decisions (if requested)
     if (options.includeKeyDecisions) {
@@ -168,7 +168,7 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
       if (keyDecisions) {
         parts.push(`## Key Decisions`);
         parts.push(keyDecisions);
-        parts.push('');
+        parts.push("");
       }
     }
 
@@ -178,18 +178,18 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
       parts.push(
         this.formatRecentActions(
           trajectory.steps,
-          options.maxActionsToShow || 20
-        )
+          options.maxActionsToShow || 20,
+        ),
       );
-      parts.push('');
+      parts.push("");
     }
 
     // Instructions
     parts.push(`## Instructions`);
     parts.push(
-      `Score this trajectory on a scale of 0.0 to 1.0 based on how well it embodies the ${trajectory.archetype || 'agent'} archetype's values.`
+      `Score this trajectory on a scale of 0.0 to 1.0 based on how well it embodies the ${trajectory.archetype || "agent"} archetype's values.`,
     );
-    parts.push('');
+    parts.push("");
     parts.push(`Respond with JSON:`);
     parts.push(`{
   "score": <float 0-1>,
@@ -198,7 +198,7 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
   "weaknesses": ["<weakness 1>", "<weakness 2>"]
 }`);
 
-    return parts.join('\n');
+    return parts.join("\n");
   }
 
   /**
@@ -208,18 +208,18 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
     trajectories: TrajectoryContext[],
     scenarioId: string,
     priorityMetrics: string[],
-    _options: JudgePromptOptions
+    _options: JudgePromptOptions,
   ): string {
     const parts: string[] = [];
 
     parts.push(`## Scenario: ${scenarioId}`);
     parts.push(`## Number of Trajectories: ${trajectories.length}`);
-    parts.push('');
+    parts.push("");
 
     // Performance context for all trajectories
     parts.push(`## Trajectory Performance Context`);
     parts.push(`(Use this to inform your scoring)`);
-    parts.push('');
+    parts.push("");
 
     for (let i = 0; i < trajectories.length; i++) {
       const traj = trajectories[i];
@@ -227,30 +227,30 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
 
       const trajId = `trajectory-${i + 1}`;
       parts.push(`### ${trajId}`);
-      parts.push(`- Archetype: ${traj.archetype || 'unknown'}`);
+      parts.push(`- Archetype: ${traj.archetype || "unknown"}`);
       parts.push(
-        `- Episode Length: ${traj.episodeLength || traj.steps.length} steps`
+        `- Episode Length: ${traj.episodeLength || traj.steps.length} steps`,
       );
-      parts.push(`- Total Reward: ${traj.totalReward?.toFixed(2) || '0.00'}`);
-      parts.push('');
+      parts.push(`- Total Reward: ${traj.totalReward?.toFixed(2) || "0.00"}`);
+      parts.push("");
 
       // Key metrics for this trajectory
       parts.push(`**Key Metrics:**`);
       parts.push(this.formatMetrics(traj.metrics, priorityMetrics));
-      parts.push('');
+      parts.push("");
 
       // Action summary
       parts.push(`**Actions:**`);
       parts.push(this.summarizeActions(traj.steps));
-      parts.push('');
+      parts.push("");
     }
 
     // Instructions
     parts.push(`## Instructions`);
     parts.push(
-      `Score each trajectory from 0.0 to 1.0 RELATIVE to each other based on the archetype rubric.`
+      `Score each trajectory from 0.0 to 1.0 RELATIVE to each other based on the archetype rubric.`,
     );
-    parts.push('');
+    parts.push("");
     parts.push(`Respond with ONLY valid JSON:`);
     parts.push(`{
   "scores": [
@@ -267,7 +267,7 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
   ]
 }`);
 
-    return parts.join('\n');
+    return parts.join("\n");
   }
 
   /**
@@ -275,48 +275,48 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
    */
   private formatMetrics(
     metrics: BehavioralMetrics,
-    priorityMetrics: string[]
+    priorityMetrics: string[],
   ): string {
     const lines: string[] = [];
 
     // Show priority metrics first with emphasis
     if (priorityMetrics.length > 0) {
-      lines.push('### ⭐ KEY METRICS FOR THIS ARCHETYPE');
+      lines.push("### ⭐ KEY METRICS FOR THIS ARCHETYPE");
       for (const metricPath of priorityMetrics.slice(0, 6)) {
         const value = this.getMetricValue(metrics, metricPath);
         const label = this.formatMetricLabel(metricPath);
         lines.push(`- **${label}**: ${value}`);
       }
-      lines.push('');
+      lines.push("");
     }
 
     // Summary metrics
     const summary = getMetricsSummary(metrics);
-    lines.push('### Performance Summary');
+    lines.push("### Performance Summary");
     lines.push(`- Total P&L: $${summary.totalPnL.toFixed(2)}`);
     lines.push(`- Win Rate: ${(summary.winRate * 100).toFixed(1)}%`);
     lines.push(`- Trades Executed: ${summary.tradesExecuted}`);
     lines.push(
-      `- Action Success Rate: ${(summary.actionSuccessRate * 100).toFixed(1)}%`
+      `- Action Success Rate: ${(summary.actionSuccessRate * 100).toFixed(1)}%`,
     );
-    lines.push('');
+    lines.push("");
 
     // Social metrics
-    lines.push('### Social Activity');
+    lines.push("### Social Activity");
     lines.push(
-      `- Unique Users Interacted: ${metrics.social.uniqueUsersInteracted}`
+      `- Unique Users Interacted: ${metrics.social.uniqueUsersInteracted}`,
     );
     lines.push(`- Group Chats Joined: ${metrics.social.groupChatsJoined}`);
     lines.push(`- DMs Initiated: ${metrics.social.dmsInitiated}`);
     lines.push(`- Posts Created: ${metrics.social.postsCreated}`);
     lines.push(`- Comments Made: ${metrics.social.commentsMade}`);
     lines.push(
-      `- Social to Trade Ratio: ${metrics.behavior.socialToTradeRatio.toFixed(2)}`
+      `- Social to Trade Ratio: ${metrics.behavior.socialToTradeRatio.toFixed(2)}`,
     );
-    lines.push('');
+    lines.push("");
 
     // Trading metrics
-    lines.push('### Trading Performance');
+    lines.push("### Trading Performance");
     lines.push(`- Total P&L: $${metrics.trading.totalPnL.toFixed(2)}`);
     lines.push(`- Win Rate: ${(metrics.trading.winRate * 100).toFixed(1)}%`);
     lines.push(`- Sharpe Ratio: ${metrics.trading.sharpeRatio.toFixed(2)}`);
@@ -324,94 +324,94 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
     lines.push(`- Markets Traded: ${metrics.trading.marketsTraded}`);
     lines.push(`- Largest Win: $${metrics.trading.largestWin.toFixed(2)}`);
     lines.push(`- Largest Loss: $${metrics.trading.largestLoss.toFixed(2)}`);
-    lines.push('');
+    lines.push("");
 
     // Influence metrics
-    lines.push('### Influence');
+    lines.push("### Influence");
     lines.push(`- Followers Gained: ${metrics.influence.followersGained}`);
     lines.push(
-      `- Reputation Delta: ${metrics.influence.reputationDelta > 0 ? '+' : ''}${metrics.influence.reputationDelta}`
+      `- Reputation Delta: ${metrics.influence.reputationDelta > 0 ? "+" : ""}${metrics.influence.reputationDelta}`,
     );
     lines.push(`- Positive Reactions: ${metrics.influence.positiveReactions}`);
     lines.push(`- Information Spread: ${metrics.influence.informationSpread}`);
-    lines.push('');
+    lines.push("");
 
     // Behavior metrics
-    lines.push('### Behavior Patterns');
+    lines.push("### Behavior Patterns");
     lines.push(
-      `- Actions Per Tick: ${metrics.behavior.actionsPerTick.toFixed(2)}`
+      `- Actions Per Tick: ${metrics.behavior.actionsPerTick.toFixed(2)}`,
     );
     lines.push(
-      `- Consistency Score: ${(metrics.behavior.consistencyScore * 100).toFixed(1)}%`
+      `- Consistency Score: ${(metrics.behavior.consistencyScore * 100).toFixed(1)}%`,
     );
     lines.push(
-      `- Dominant Action: ${metrics.behavior.dominantActionType || 'none'}`
+      `- Dominant Action: ${metrics.behavior.dominantActionType || "none"}`,
     );
-    lines.push('');
+    lines.push("");
 
     // Information metrics
-    lines.push('### Information Activity');
+    lines.push("### Information Activity");
     lines.push(`- Research Actions: ${metrics.information.researchActions}`);
     lines.push(`- Predictions Made: ${metrics.information.predictionsMade}`);
     lines.push(
-      `- Prediction Accuracy: ${(metrics.information.predictionAccuracy * 100).toFixed(1)}%`
+      `- Prediction Accuracy: ${(metrics.information.predictionAccuracy * 100).toFixed(1)}%`,
     );
 
-    return lines.join('\n');
+    return lines.join("\n");
   }
 
   /**
    * Get a metric value from the metrics object using a dot-path
    */
   private getMetricValue(metrics: BehavioralMetrics, path: string): string {
-    const [category, key] = path.split('.');
-    if (!category || !key) return 'N/A';
+    const [category, key] = path.split(".");
+    if (!category || !key) return "N/A";
 
     // Access nested metric value based on category
     let value: number | string | string[] | undefined;
     switch (category) {
-      case 'trading':
+      case "trading":
         value = metrics.trading[key as keyof typeof metrics.trading];
         break;
-      case 'social':
+      case "social":
         value = metrics.social[key as keyof typeof metrics.social];
         break;
-      case 'influence':
+      case "influence":
         value = metrics.influence[key as keyof typeof metrics.influence];
         break;
-      case 'behavior':
+      case "behavior":
         value = metrics.behavior[key as keyof typeof metrics.behavior];
         break;
-      case 'information':
+      case "information":
         value = metrics.information[key as keyof typeof metrics.information];
         break;
       default:
-        return 'N/A';
+        return "N/A";
     }
 
-    if (value === undefined || value === null) return 'N/A';
+    if (value === undefined || value === null) return "N/A";
 
     // Format based on value type
-    if (typeof value === 'number') {
+    if (typeof value === "number") {
       // Check if it's a rate/percentage
       if (
-        key.includes('Rate') ||
-        key.includes('Accuracy') ||
-        key.includes('Score')
+        key.includes("Rate") ||
+        key.includes("Accuracy") ||
+        key.includes("Score")
       ) {
         return `${(value * 100).toFixed(1)}%`;
       }
       // Check if it's a currency
       if (
-        key.includes('PnL') ||
-        key.includes('Win') ||
-        key.includes('Loss') ||
-        key.includes('Drawdown')
+        key.includes("PnL") ||
+        key.includes("Win") ||
+        key.includes("Loss") ||
+        key.includes("Drawdown")
       ) {
         return `$${value.toFixed(2)}`;
       }
       // Check if it's a ratio
-      if (key.includes('Ratio')) {
+      if (key.includes("Ratio")) {
         return value.toFixed(2);
       }
       // Integer-like values
@@ -428,12 +428,12 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
    * Format a metric path into a human-readable label
    */
   private formatMetricLabel(path: string): string {
-    const [, key] = path.split('.');
+    const [, key] = path.split(".");
     if (!key) return path;
 
     // Convert camelCase to Title Case with spaces
     return key
-      .replace(/([A-Z])/g, ' $1')
+      .replace(/([A-Z])/g, " $1")
       .replace(/^./, (str) => str.toUpperCase())
       .trim();
   }
@@ -461,18 +461,18 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
     }
 
     const sortedActions = Array.from(actionCounts.entries()).sort(
-      (a, b) => b[1] - a[1]
+      (a, b) => b[1] - a[1],
     );
 
     const lines: string[] = [];
     lines.push(
-      `- Total Actions: ${steps.length} (${successCount} successful, ${errorCount} failed)`
+      `- Total Actions: ${steps.length} (${successCount} successful, ${errorCount} failed)`,
     );
     lines.push(
-      `- Action Types: ${sortedActions.map(([type, count]) => `${type}(${count})`).join(', ')}`
+      `- Action Types: ${sortedActions.map(([type, count]) => `${type}(${count})`).join(", ")}`,
     );
 
-    return lines.join('\n');
+    return lines.join("\n");
   }
 
   /**
@@ -481,12 +481,12 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
   private extractKeyDecisions(steps: TrajectoryStep[]): string | null {
     const keyActions: string[] = [];
     const keyActionTypes = new Set([
-      'trade',
-      'buy',
-      'sell',
-      'predict',
-      'create_group_chat',
-      'post',
+      "trade",
+      "buy",
+      "sell",
+      "predict",
+      "create_group_chat",
+      "post",
     ]);
 
     for (const step of steps) {
@@ -508,10 +508,10 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
         }
         if (result.pnl !== undefined) {
           const pnl = Number(result.pnl);
-          description += ` → P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+          description += ` → P&L: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`;
         }
 
-        keyActions.push(`- ${description} ${action.success ? '✓' : '✗'}`);
+        keyActions.push(`- ${description} ${action.success ? "✓" : "✗"}`);
       }
     }
 
@@ -520,7 +520,7 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
     }
 
     // Limit to most recent 10 key actions
-    return keyActions.slice(-10).join('\n');
+    return keyActions.slice(-10).join("\n");
   }
 
   /**
@@ -528,7 +528,7 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
    */
   private formatRecentActions(
     steps: TrajectoryStep[],
-    maxActions: number
+    maxActions: number,
   ): string {
     const recentSteps = steps.slice(-maxActions);
     const lines: string[] = [];
@@ -537,16 +537,16 @@ The metrics provided are CONTEXT to inform your judgment. Use them to understand
       const action = step.action;
       if (!action) continue;
 
-      const success = action.success ? '✓' : '✗';
+      const success = action.success ? "✓" : "✗";
       const reasoning = action.reasoning
         ? ` | Reason: ${action.reasoning.substring(0, 50)}...`
-        : '';
+        : "";
       lines.push(
-        `- [${step.stepNumber}] ${action.actionType} ${success}${reasoning}`
+        `- [${step.stepNumber}] ${action.actionType} ${success}${reasoning}`,
       );
     }
 
-    return lines.join('\n') || 'No actions recorded';
+    return lines.join("\n") || "No actions recorded";
   }
 }
 

@@ -34,7 +34,13 @@ export const switchStreamSourceAction: Action = {
 
   handler: async (_runtime, _message, _state, options) => {
     try {
-      const params = (options as HandlerOptions | undefined)?.parameters;
+      type SwitchStreamSourceParams = {
+        sourceType?: string;
+        customUrl?: string;
+      };
+      const params = (options as HandlerOptions | undefined)?.parameters as
+        | SwitchStreamSourceParams
+        | undefined;
 
       // ── Extract parameters ───────────────────────────────────────────
       const rawSourceType =

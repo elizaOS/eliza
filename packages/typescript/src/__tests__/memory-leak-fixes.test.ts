@@ -308,42 +308,40 @@ describe("recentMessages provider — autonomy cap", () => {
 		};
 	}
 
-	test(
-		"uses AUTONOMY_CONVERSATION_CAP (10) for autonomous messages",
-		{ timeout: 30000 },
-		async () => {
-			const { recentMessagesProvider } = await import(
-				"../basic-capabilities/providers/recentMessages"
-			);
+	test("uses AUTONOMY_CONVERSATION_CAP (10) for autonomous messages", {
+		timeout: 30000,
+	}, async () => {
+		const { recentMessagesProvider } = await import(
+			"../basic-capabilities/providers/recentMessages"
+		);
 
-			const { mockRuntime, getCapturedCount, roomId } =
-				createProviderMockRuntime();
+		const { mockRuntime, getCapturedCount, roomId } =
+			createProviderMockRuntime();
 
-			// Create a message with autonomy metadata
-			const autonomyMessage = {
-				id: uuidv4() as UUID,
-				entityId: uuidv4() as UUID,
-				roomId,
-				content: {
-					text: "autonomous thought",
-					metadata: {
-						isAutonomous: true,
-						type: "autonomous-prompt",
-					},
+		// Create a message with autonomy metadata
+		const autonomyMessage = {
+			id: uuidv4() as UUID,
+			entityId: uuidv4() as UUID,
+			roomId,
+			content: {
+				text: "autonomous thought",
+				metadata: {
+					isAutonomous: true,
+					type: "autonomous-prompt",
 				},
-				createdAt: Date.now(),
-			};
+			},
+			createdAt: Date.now(),
+		};
 
-			await recentMessagesProvider.get(mockRuntime, autonomyMessage, {
-				values: {},
-				data: {},
-				text: "",
-			});
+		await recentMessagesProvider.get(mockRuntime, autonomyMessage, {
+			values: {},
+			data: {},
+			text: "",
+		});
 
-			// Should have used the capped count (10) instead of default (100)
-			expect(getCapturedCount()).toBe(10);
-		},
-	);
+		// Should have used the capped count (10) instead of default (100)
+		expect(getCapturedCount()).toBe(10);
+	});
 
 	test("uses full conversationLength for regular messages", async () => {
 		const { recentMessagesProvider } = await import(

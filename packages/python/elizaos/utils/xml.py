@@ -33,10 +33,7 @@ def parse_key_value_xml(text: str) -> dict[str, str] | None:
     if start_idx != -1:
         content_start = start_idx + len(start_tag)
         end_idx = text.find(end_tag, content_start)
-        if end_idx != -1:
-            response_content = text[content_start:end_idx]
-        else:
-            response_content = text
+        response_content = text[content_start:end_idx] if end_idx != -1 else text
     else:
         response_content = text
 

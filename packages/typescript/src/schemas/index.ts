@@ -42,28 +42,28 @@ import { worldSchema } from "./world.ts";
 export {
 	agentSchema,
 	cacheSchema,
-	channelSchema,
 	channelParticipantSchema,
+	channelSchema,
 	componentSchema,
 	embeddingSchema,
 	entitySchema,
 	logSchema,
+	// Advanced memory schemas
+	longTermMemories,
+	memoryAccessLogs,
 	memorySchema,
 	messageSchema,
-	messageServerSchema,
 	messageServerAgentSchema,
+	messageServerSchema,
 	pairingAllowlistSchema,
 	pairingRequestSchema,
 	participantSchema,
 	relationshipSchema,
 	roomSchema,
 	serverSchema,
+	sessionSummaries,
 	taskSchema,
 	worldSchema,
-	// Advanced memory schemas
-	longTermMemories,
-	memoryAccessLogs,
-	sessionSummaries,
 };
 
 /**
@@ -71,26 +71,26 @@ export {
  * Represents all 20 core database tables as ORM table objects.
  */
 export interface BaseTables {
-	agent: any;
-	cache: any;
-	channel: any;
-	channelParticipant: any;
-	component: any;
-	embedding: any;
-	entity: any;
-	log: any;
-	memory: any;
-	message: any;
-	messageServer: any;
-	messageServerAgent: any;
-	pairingAllowlist: any;
-	pairingRequest: any;
-	participant: any;
-	relationship: any;
-	room: any;
-	server: any;
-	task: any;
-	world: any;
+	agent: unknown;
+	cache: unknown;
+	channel: unknown;
+	channelParticipant: unknown;
+	component: unknown;
+	embedding: unknown;
+	entity: unknown;
+	log: unknown;
+	memory: unknown;
+	message: unknown;
+	messageServer: unknown;
+	messageServerAgent: unknown;
+	pairingAllowlist: unknown;
+	pairingRequest: unknown;
+	participant: unknown;
+	relationship: unknown;
+	room: unknown;
+	server: unknown;
+	task: unknown;
+	world: unknown;
 }
 
 /**

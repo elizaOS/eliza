@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
+import type { IAgentRuntime, Service, Task, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import {
   buildTriggerMetadata,
@@ -128,10 +128,22 @@ export function getTriggerLimit(runtime?: IAgentRuntime): number {
   return DEFAULT_MAX_ACTIVE_TRIGGERS;
 }
 
+type AutonomyServiceLike = {
+  injectAutonomousInstruction?: (payload: {
+    instructions: string;
+    source: string;
+    wakeMode: TriggerConfig["wakeMode"];
+    triggerId: UUID;
+    triggerTaskId: UUID;
+    taskId?: UUID;
+    roomId?: UUID;
+  }) => Promise<void> | void;
+};
+
 function isAutonomyServiceAvailable(runtime: IAgentRuntime): boolean {
   const svc =
-    (runtime.getService("autonomy") as Record<string, unknown> | null) ??
-    (runtime.getService("AUTONOMY") as Record<string, unknown> | null);
+    runtime.getService<Service & AutonomyServiceLike>("autonomy") ??
+    runtime.getService<Service & AutonomyServiceLike>("AUTONOMY");
   return typeof svc?.injectAutonomousInstruction === "function";
 }
 

@@ -5,17 +5,17 @@
  * Monitors Python training process and W&B runs.
  */
 
-import { getTrainingDataAdapter } from '../adapter';
-import { logger } from '../utils/logger';
+import { getTrainingDataAdapter } from "../adapter";
+import { logger } from "../utils/logger";
 
 export type TrainingStatus =
-  | 'pending'
-  | 'preparing'
-  | 'scoring'
-  | 'training'
-  | 'uploading'
-  | 'completed'
-  | 'failed';
+  | "pending"
+  | "preparing"
+  | "scoring"
+  | "training"
+  | "uploading"
+  | "completed"
+  | "failed";
 
 export interface TrainingProgress {
   batchId: string;
@@ -36,12 +36,12 @@ export class TrainingMonitor {
    */
   async startMonitoring(batchId: string): Promise<void> {
     const adapter = getTrainingDataAdapter();
-    await adapter.updateBatchStatus(batchId, 'training');
+    await adapter.updateBatchStatus(batchId, "training");
 
     logger.info(
-      'Started monitoring training job',
+      "Started monitoring training job",
       { batchId },
-      'TrainingMonitor'
+      "TrainingMonitor",
     );
   }
 
@@ -50,23 +50,23 @@ export class TrainingMonitor {
    */
   async updateProgress(
     batchId: string,
-    progress: Partial<TrainingProgress>
+    progress: Partial<TrainingProgress>,
   ): Promise<void> {
     if (progress.status) {
       const adapter = getTrainingDataAdapter();
       const errorMsg =
-        progress.status === 'failed' ? progress.error : undefined;
+        progress.status === "failed" ? progress.error : undefined;
       await adapter.updateBatchStatus(batchId, progress.status, errorMsg);
     }
 
     logger.info(
-      'Updated training progress',
+      "Updated training progress",
       {
         batchId,
         status: progress.status,
         progress: progress.progress,
       },
-      'TrainingMonitor'
+      "TrainingMonitor",
     );
   }
 
@@ -84,32 +84,32 @@ export class TrainingMonitor {
     // Calculate progress based on status
     let progress = 0;
     switch (batch.status) {
-      case 'pending':
+      case "pending":
         progress = 0;
         break;
-      case 'preparing':
+      case "preparing":
         progress = 0.1;
         break;
-      case 'scoring':
+      case "scoring":
         progress = 0.3;
         break;
-      case 'training':
+      case "training":
         progress = 0.6;
         break;
-      case 'uploading':
+      case "uploading":
         progress = 0.9;
         break;
-      case 'completed':
+      case "completed":
         progress = 1.0;
         break;
-      case 'failed':
+      case "failed":
         progress = 0;
         break;
     }
 
     // Estimate ETA based on average training time
     let eta: number | undefined;
-    if (batch.status === 'training' && batch.startedAt) {
+    if (batch.status === "training" && batch.startedAt) {
       const avgTrainingTime = 2 * 60 * 60 * 1000; // 2 hours average
       const elapsed = Date.now() - batch.startedAt.getTime();
       eta = Math.max(0, avgTrainingTime - elapsed);
@@ -135,12 +135,12 @@ export class TrainingMonitor {
 
     if (stuckJobs.length > 0) {
       logger.warn(
-        'Found stuck training jobs',
+        "Found stuck training jobs",
         {
           count: stuckJobs.length,
           jobs: stuckJobs,
         },
-        'TrainingMonitor'
+        "TrainingMonitor",
       );
     }
 
@@ -152,12 +152,12 @@ export class TrainingMonitor {
    */
   async cancelJob(batchId: string, reason: string): Promise<void> {
     const adapter = getTrainingDataAdapter();
-    await adapter.updateBatchStatus(batchId, 'failed', `Cancelled: ${reason}`);
+    await adapter.updateBatchStatus(batchId, "failed", `Cancelled: ${reason}`);
 
     logger.warn(
-      'Training job cancelled',
+      "Training job cancelled",
       { batchId, reason },
-      'TrainingMonitor'
+      "TrainingMonitor",
     );
   }
 }

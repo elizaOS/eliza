@@ -14,19 +14,19 @@
  * @see BenchmarkService - For training pipeline evaluation
  */
 
-import { getTrainingDataAdapter } from '../adapter';
-import { ethers } from 'ethers';
-import { promises as fs } from 'fs';
-import * as path from 'path';
-import { getAgentRuntimeManager } from '../dependencies';
-import { logger } from '../utils/logger';
-import { generateSnowflakeId } from '../utils/snowflake';
-import { BenchmarkRunner } from './BenchmarkRunner';
+import { promises as fs } from "node:fs";
+import * as path from "node:path";
+import { ethers } from "ethers";
+import { getTrainingDataAdapter } from "../adapter";
+import { getAgentRuntimeManager } from "../dependencies";
+import { logger } from "../utils/logger";
+import { generateSnowflakeId } from "../utils/snowflake";
+import { BenchmarkRunner } from "./BenchmarkRunner";
 import {
   type JsonValue,
   parseSimulationMetrics,
-} from './parseSimulationMetrics';
-import type { SimulationMetrics, SimulationResult } from './SimulationEngine';
+} from "./parseSimulationMetrics";
+import type { SimulationMetrics, SimulationResult } from "./SimulationEngine";
 
 export interface ModelBenchmarkOptions {
   modelId: string;
@@ -66,7 +66,7 @@ export interface ModelComparisonResult {
     optimalityDelta: number;
     isImprovement: boolean;
   };
-  recommendation: 'deploy' | 'keep_training' | 'baseline_better';
+  recommendation: "deploy" | "keep_training" | "baseline_better";
 }
 
 export interface AverageMetrics {
@@ -82,9 +82,9 @@ export class ModelBenchmarkService {
    * Benchmark a trained model against standard benchmarks
    */
   static async benchmarkModel(
-    options: ModelBenchmarkOptions
+    options: ModelBenchmarkOptions,
   ): Promise<ModelBenchmarkResult[]> {
-    logger.info('Starting model benchmark', { modelId: options.modelId });
+    logger.info("Starting model benchmark", { modelId: options.modelId });
 
     // Load model from database
     const adapter = getTrainingDataAdapter();
@@ -95,9 +95,11 @@ export class ModelBenchmarkService {
     }
 
     // Check if model already benchmarked
-    const existingBenchmarks = await this.getModelBenchmarks(options.modelId);
+    const existingBenchmarks = await ModelBenchmarkService.getModelBenchmarks(
+      options.modelId,
+    );
     if (existingBenchmarks.length > 0 && !options.saveResults) {
-      logger.info('Model already benchmarked', {
+      logger.info("Model already benchmarked", {
         modelId: options.modelId,
         count: existingBenchmarks.length,
       });
@@ -105,13 +107,13 @@ export class ModelBenchmarkService {
     }
 
     // Create test agent for benchmarking
-    const testAgentId = await this.getOrCreateTestAgent();
+    const testAgentId = await ModelBenchmarkService.getOrCreateTestAgent();
 
     const results: ModelBenchmarkResult[] = [];
 
     // Run each benchmark
     for (const benchmarkPath of options.benchmarkPaths) {
-      logger.info('Running benchmark', {
+      logger.info("Running benchmark", {
         benchmark: benchmarkPath,
         modelId: options.modelId,
       });
@@ -131,9 +133,9 @@ export class ModelBenchmarkService {
               options.outputDir ||
               path.join(
                 process.cwd(),
-                'benchmarks',
-                'model-results',
-                model.version
+                "benchmarks",
+                "model-results",
+                model.version,
               ),
             forceModel: model.storagePath, // Use the RL model
           });
@@ -149,7 +151,8 @@ export class ModelBenchmarkService {
         };
 
         // Compare to baseline if available
-        const baseline = await this.getBaselineBenchmark(benchmarkPath);
+        const baseline =
+          await ModelBenchmarkService.getBaselineBenchmark(benchmarkPath);
         if (baseline) {
           benchmarkResult.comparisonToBaseline = {
             pnlDelta: simulationResult.metrics.totalPnl - baseline.totalPnl,
@@ -165,7 +168,7 @@ export class ModelBenchmarkService {
 
         results.push(benchmarkResult);
 
-        logger.info('Benchmark completed', {
+        logger.info("Benchmark completed", {
           benchmark: benchmarkPath,
           pnl: simulationResult.metrics.totalPnl,
           accuracy: simulationResult.metrics.predictionMetrics.accuracy,
@@ -173,11 +176,13 @@ export class ModelBenchmarkService {
 
         // Save result if requested (to both database and files)
         if (options.saveResults) {
-          await this.saveBenchmarkResultToDatabase(benchmarkResult);
-          await this.saveBenchmarkResult(benchmarkResult);
+          await ModelBenchmarkService.saveBenchmarkResultToDatabase(
+            benchmarkResult,
+          );
+          await ModelBenchmarkService.saveBenchmarkResult(benchmarkResult);
         }
       } catch (error) {
-        logger.error('Benchmark failed', { benchmark: benchmarkPath, error });
+        logger.error("Benchmark failed", { benchmark: benchmarkPath, error });
       }
     }
 
@@ -198,7 +203,7 @@ export class ModelBenchmarkService {
       );
     }
 
-    logger.info('Model benchmark complete', {
+    logger.info("Model benchmark complete", {
       modelId: options.modelId,
       benchmarksRun: results.length,
     });
@@ -210,22 +215,24 @@ export class ModelBenchmarkService {
    * Compare new model against baseline
    */
   static async compareToBaseline(
-    modelId: string
+    modelId: string,
   ): Promise<ModelComparisonResult> {
     // Get new model benchmarks
-    const newModelBenchmarks = await this.getModelBenchmarks(modelId);
+    const newModelBenchmarks =
+      await ModelBenchmarkService.getModelBenchmarks(modelId);
 
     if (newModelBenchmarks.length === 0) {
       throw new Error(`No benchmarks found for model: ${modelId}`);
     }
 
     // Calculate new model average metrics
-    const newModelMetrics = this.calculateAverageMetrics(
-      newModelBenchmarks.map((b) => b.metrics)
+    const newModelMetrics = ModelBenchmarkService.calculateAverageMetrics(
+      newModelBenchmarks.map((b) => b.metrics),
     );
 
     // Get baseline benchmarks (use best baseline model)
-    const baselineMetrics = await this.getBaselineAverageMetrics();
+    const baselineMetrics =
+      await ModelBenchmarkService.getBaselineAverageMetrics();
 
     // Calculate improvement
     const pnlDelta = newModelMetrics.totalPnl - baselineMetrics.totalPnl;
@@ -241,23 +248,23 @@ export class ModelBenchmarkService {
 
     const isImprovement = improvementScore > 0.5;
 
-    let recommendation: 'deploy' | 'keep_training' | 'baseline_better';
+    let recommendation: "deploy" | "keep_training" | "baseline_better";
     if (isImprovement && pnlDelta > 0) {
-      recommendation = 'deploy';
+      recommendation = "deploy";
     } else if (pnlDelta < -100) {
-      recommendation = 'baseline_better';
+      recommendation = "baseline_better";
     } else {
-      recommendation = 'keep_training';
+      recommendation = "keep_training";
     }
 
     return {
       newModel: {
         modelId,
-        version: newModelBenchmarks[0]!.modelVersion,
+        version: newModelBenchmarks[0]?.modelVersion,
         avgMetrics: newModelMetrics,
       },
       baseline: {
-        modelId: 'baseline',
+        modelId: "baseline",
         avgMetrics: baselineMetrics,
       },
       improvement: {
@@ -281,15 +288,15 @@ export class ModelBenchmarkService {
    * Get model benchmark results
    */
   private static async getModelBenchmarks(
-    modelId: string
+    modelId: string,
   ): Promise<ModelBenchmarkResult[]> {
     // For now, read from files
     // In production, you'd store these in a database table
 
     const benchmarksDir = path.join(
       process.cwd(),
-      'benchmarks',
-      'model-results'
+      "benchmarks",
+      "model-results",
     );
     const results: ModelBenchmarkResult[] = [];
 
@@ -302,9 +309,9 @@ export class ModelBenchmarkService {
       const files = await fs.readdir(modelDir).catch(() => []);
 
       for (const file of files) {
-        if (file.endsWith('.json')) {
+        if (file.endsWith(".json")) {
           const filePath = path.join(modelDir, file);
-          const data = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+          const data = JSON.parse(await fs.readFile(filePath, "utf-8"));
 
           if (data.modelId === modelId) {
             results.push(data);
@@ -312,7 +319,7 @@ export class ModelBenchmarkService {
         }
       }
     } catch (error) {
-      logger.warn('Could not load benchmark results', { error });
+      logger.warn("Could not load benchmark results", { error });
     }
 
     return results;
@@ -322,7 +329,7 @@ export class ModelBenchmarkService {
    * Save benchmark result to database
    */
   private static async saveBenchmarkResultToDatabase(
-    result: ModelBenchmarkResult
+    result: ModelBenchmarkResult,
   ): Promise<void> {
     await getTrainingDataAdapter().insertBenchmarkResult({
       id: await generateSnowflakeId(),
@@ -341,7 +348,7 @@ export class ModelBenchmarkService {
       duration: result.metrics.timing.totalDuration,
     });
 
-    logger.info('Benchmark result saved to database', {
+    logger.info("Benchmark result saved to database", {
       modelId: result.modelId,
       benchmarkId: result.benchmarkId,
     });
@@ -351,13 +358,13 @@ export class ModelBenchmarkService {
    * Save benchmark result to file
    */
   private static async saveBenchmarkResult(
-    result: ModelBenchmarkResult
+    result: ModelBenchmarkResult,
   ): Promise<void> {
     const outputDir = path.join(
       process.cwd(),
-      'benchmarks',
-      'model-results',
-      result.modelVersion
+      "benchmarks",
+      "model-results",
+      result.modelVersion,
     );
     await fs.mkdir(outputDir, { recursive: true });
 
@@ -366,20 +373,21 @@ export class ModelBenchmarkService {
 
     await fs.writeFile(filePath, JSON.stringify(result, null, 2));
 
-    logger.info('Benchmark result saved to file', { filePath });
+    logger.info("Benchmark result saved to file", { filePath });
   }
 
   /**
    * Get benchmark results from database
    */
   static async getBenchmarkResultsFromDatabase(
-    modelId: string
+    modelId: string,
   ): Promise<ModelBenchmarkResult[]> {
-    const results = await getTrainingDataAdapter().getBenchmarkResultsByModel(modelId);
+    const results =
+      await getTrainingDataAdapter().getBenchmarkResultsByModel(modelId);
 
     return results.map((r) => ({
       modelId: r.modelId,
-      modelVersion: '', // Not stored in results table
+      modelVersion: "", // Not stored in results table
       benchmarkId: r.benchmarkId,
       benchmarkPath: r.benchmarkPath,
       runAt: r.runAt,
@@ -400,17 +408,17 @@ export class ModelBenchmarkService {
    * Get baseline benchmark for comparison
    */
   private static async getBaselineBenchmark(
-    benchmarkPath: string
+    benchmarkPath: string,
   ): Promise<SimulationMetrics | null> {
     try {
       // Look for baseline result for this benchmark
-      const baselinesDir = path.join(process.cwd(), 'benchmarks', 'baselines');
+      const baselinesDir = path.join(process.cwd(), "benchmarks", "baselines");
       const files = await fs.readdir(baselinesDir).catch(() => []);
 
       for (const file of files) {
-        if (file.endsWith('.json')) {
+        if (file.endsWith(".json")) {
           const filePath = path.join(baselinesDir, file);
-          const data = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+          const data = JSON.parse(await fs.readFile(filePath, "utf-8"));
 
           if (
             data.benchmark?.path === benchmarkPath ||
@@ -421,7 +429,7 @@ export class ModelBenchmarkService {
         }
       }
     } catch (error) {
-      logger.warn('Could not load baseline benchmark', { error });
+      logger.warn("Could not load baseline benchmark", { error });
     }
 
     return null;
@@ -431,7 +439,7 @@ export class ModelBenchmarkService {
    * Calculate average metrics across multiple benchmark results
    */
   private static calculateAverageMetrics(
-    metricsArray: SimulationMetrics[]
+    metricsArray: SimulationMetrics[],
   ): AverageMetrics {
     if (metricsArray.length === 0) {
       return {
@@ -450,7 +458,7 @@ export class ModelBenchmarkService {
         winRate: acc.winRate + metrics.perpMetrics.winRate,
         optimality: acc.optimality + metrics.optimalityScore,
       }),
-      { pnl: 0, accuracy: 0, winRate: 0, optimality: 0 }
+      { pnl: 0, accuracy: 0, winRate: 0, optimality: 0 },
     );
 
     const count = metricsArray.length;
@@ -468,16 +476,16 @@ export class ModelBenchmarkService {
    * Get baseline average metrics
    */
   private static async getBaselineAverageMetrics(): Promise<AverageMetrics> {
-    const baselinesDir = path.join(process.cwd(), 'benchmarks', 'baselines');
+    const baselinesDir = path.join(process.cwd(), "benchmarks", "baselines");
     const metricsArray: SimulationMetrics[] = [];
 
     try {
       const files = await fs.readdir(baselinesDir).catch(() => []);
 
       for (const file of files) {
-        if (file.endsWith('.json')) {
+        if (file.endsWith(".json")) {
           const filePath = path.join(baselinesDir, file);
-          const data = JSON.parse(await fs.readFile(filePath, 'utf-8'));
+          const data = JSON.parse(await fs.readFile(filePath, "utf-8"));
 
           if (data.metrics) {
             metricsArray.push(data.metrics);
@@ -485,17 +493,17 @@ export class ModelBenchmarkService {
         }
       }
     } catch (error) {
-      logger.warn('Could not load baseline metrics', { error });
+      logger.warn("Could not load baseline metrics", { error });
     }
 
-    return this.calculateAverageMetrics(metricsArray);
+    return ModelBenchmarkService.calculateAverageMetrics(metricsArray);
   }
 
   /**
    * Get or create test agent for benchmarking
    */
   private static async getOrCreateTestAgent(): Promise<string> {
-    const testAgentUsername = 'model-benchmark-agent';
+    const testAgentUsername = "model-benchmark-agent";
     const adapter = getTrainingDataAdapter();
 
     const existing = await adapter.getUserByUsername(testAgentUsername);
@@ -510,10 +518,10 @@ export class ModelBenchmarkService {
       id: agentId,
       privyId: `did:privy:model-benchmark-${agentId}`,
       username: testAgentUsername,
-      displayName: 'Model Benchmark Agent',
+      displayName: "Model Benchmark Agent",
       walletAddress: ethers.Wallet.createRandom().address,
       isAgent: true,
-      virtualBalance: '10000',
+      virtualBalance: "10000",
       reputationPoints: 1000,
       isTest: true,
       updatedAt: new Date(),
@@ -528,17 +536,17 @@ export class ModelBenchmarkService {
         autonomousPosting: false,
         autonomousCommenting: false,
         systemPrompt:
-          'You are a test agent for benchmarking model performance.',
-        modelTier: 'pro',
+          "You are a test agent for benchmarking model performance.",
+        modelTier: "pro",
         updatedAt: new Date(),
       });
     }
 
     if (!agent) {
-      throw new Error('Failed to create model benchmark test agent');
+      throw new Error("Failed to create model benchmark test agent");
     }
 
-    logger.info('Created model benchmark test agent', { agentId: agent.id });
+    logger.info("Created model benchmark test agent", { agentId: agent.id });
 
     return agent.id;
   }
@@ -547,12 +555,12 @@ export class ModelBenchmarkService {
    * Get standard benchmark paths for model evaluation
    */
   static async getStandardBenchmarkPaths(): Promise<string[]> {
-    const benchmarksDir = path.join(process.cwd(), 'benchmarks');
+    const benchmarksDir = path.join(process.cwd(), "benchmarks");
     const standardBenchmarks: string[] = [];
 
     try {
       // First, look in benchmarks/standard/ directory
-      const standardDir = path.join(benchmarksDir, 'standard');
+      const standardDir = path.join(benchmarksDir, "standard");
       if (
         await fs
           .access(standardDir)
@@ -561,7 +569,7 @@ export class ModelBenchmarkService {
       ) {
         const standardFiles = await fs.readdir(standardDir);
         for (const file of standardFiles) {
-          if (file.startsWith('standard-') && file.endsWith('.json')) {
+          if (file.startsWith("standard-") && file.endsWith(".json")) {
             standardBenchmarks.push(path.join(standardDir, file));
           }
         }
@@ -570,7 +578,7 @@ export class ModelBenchmarkService {
       // If standard benchmarks found, use those
       if (standardBenchmarks.length > 0) {
         logger.info(
-          `Using ${standardBenchmarks.length} standard benchmarks from benchmarks/standard/`
+          `Using ${standardBenchmarks.length} standard benchmarks from benchmarks/standard/`,
         );
         return standardBenchmarks;
       }
@@ -578,7 +586,7 @@ export class ModelBenchmarkService {
       // Fallback: Look for week-long benchmarks in main directory
       const files = await fs.readdir(benchmarksDir);
       for (const file of files) {
-        if (file.startsWith('benchmark-week-') && file.endsWith('.json')) {
+        if (file.startsWith("benchmark-week-") && file.endsWith(".json")) {
           standardBenchmarks.push(path.join(benchmarksDir, file));
         }
       }
@@ -587,9 +595,9 @@ export class ModelBenchmarkService {
       if (standardBenchmarks.length === 0) {
         for (const file of files) {
           if (
-            file.startsWith('benchmark-') &&
-            file.endsWith('.json') &&
-            !file.includes('comparison')
+            file.startsWith("benchmark-") &&
+            file.endsWith(".json") &&
+            !file.includes("comparison")
           ) {
             const filePath = path.join(benchmarksDir, file);
             standardBenchmarks.push(filePath);
@@ -597,12 +605,12 @@ export class ModelBenchmarkService {
         }
       }
     } catch (error) {
-      logger.error('Could not load standard benchmarks', { error });
+      logger.error("Could not load standard benchmarks", { error });
     }
 
     if (standardBenchmarks.length === 0) {
       logger.warn(
-        'No standard benchmarks found. Generate benchmark fixtures before upload.'
+        "No standard benchmarks found. Generate benchmark fixtures before upload.",
       );
     }
 

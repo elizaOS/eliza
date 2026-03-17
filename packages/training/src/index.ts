@@ -19,17 +19,6 @@
  * @packageDocumentation
  */
 
-// Data adapter (must be registered before DB-dependent operations)
-export {
-  getTrainingDataAdapter,
-  getMarketDataAdapter,
-  getLlmLogAdapter,
-  isDataAdapterRegistered,
-  resetAdapters,
-  setLlmLogAdapter,
-  setMarketDataAdapter,
-  setTrainingDataAdapter,
-} from './adapter';
 export type {
   BenchmarkResultRecord,
   ILlmLogAdapter,
@@ -40,14 +29,25 @@ export type {
   TrainedModelRecord,
   TrainingBatchRecord,
   TrajectoryRecord,
-  UUID,
   UserRecord,
-} from './adapter';
+  UUID,
+} from "./adapter";
+// Data adapter (must be registered before DB-dependent operations)
+export {
+  getLlmLogAdapter,
+  getMarketDataAdapter,
+  getTrainingDataAdapter,
+  isDataAdapterRegistered,
+  resetAdapters,
+  setLlmLogAdapter,
+  setMarketDataAdapter,
+  setTrainingDataAdapter,
+} from "./adapter";
 
 // Archetypes
-export * from './archetypes';
+export * from "./archetypes";
 // Re-export all sub-modules
-export * from './benchmark';
+export * from "./benchmark";
 export type {
   CreateAgentParams,
   ExportGroupedForGRPOFn,
@@ -60,7 +60,7 @@ export type {
   TrainingMessage,
   TrajectoryForTraining,
   TrajectoryStepForTraining,
-} from './dependencies';
+} from "./dependencies";
 // Dependencies configuration
 export {
   areAgentDependenciesConfigured,
@@ -73,16 +73,21 @@ export {
   getExportToHuggingFace,
   getLLMCaller,
   getToTrainingMessages,
-} from './dependencies';
+} from "./dependencies";
 // Generation
-export * from './generation';
-export * from './huggingface';
+export * from "./generation";
+export * from "./huggingface";
 // Training initialization
 export {
   initializeTrainingPackage,
   isTrainingInitialized,
   resetTrainingInitialization,
-} from './init-training';
+} from "./init-training";
+// Metrics (re-export for backwards compatibility, prefer import from './metrics')
+export * from "./metrics";
+export * from "./rubrics";
+export * from "./scoring";
+export * from "./training";
 export {
   benchmarkAndMaybeDeployModel,
   checkTrainingReadiness,
@@ -92,11 +97,6 @@ export {
   monitorTrainingJob,
   rollbackModelVersion,
   triggerTraining,
-} from './training/pipeline';
-// Metrics (re-export for backwards compatibility, prefer import from './metrics')
-export * from './metrics';
-export * from './rubrics';
-export * from './scoring';
-export * from './training';
+} from "./training/pipeline";
 // Utilities
-export * from './utils';
+export * from "./utils";
