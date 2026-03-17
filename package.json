@@ -115,7 +115,6 @@
     "@biomejs/biome",
     "@bufbuild/buf",
     "@discordjs/opus",
-    "@elizaos/plugin-ollama",
     "@elizaos/plugin-starter",
     "@nestjs/core",
     "@openapitools/openapi-generator-cli",
