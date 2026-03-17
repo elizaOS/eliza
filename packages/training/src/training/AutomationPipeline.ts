@@ -474,7 +474,8 @@ export class AutomationPipeline {
       .substring(1)
       .split(".")
       .map(Number);
-    return `v${major}.${minor}.${patch! + 1}`;
+    const patchNum = patch ?? 0;
+    return `v${major}.${minor}.${patchNum + 1}`;
   }
 
   /**
@@ -520,22 +521,24 @@ export class AutomationPipeline {
       const logContent = await fs.readFile(metricsLogPath, "utf-8");
       const lines = logContent.trim().split("\n").filter(Boolean);
       if (lines.length > 0) {
-        const lastLine = lines[lines.length - 1]!;
-        const lastMetric = JSON.parse(lastLine) as {
-          step?: number;
-          total_steps?: number;
-          elapsed_ms?: number;
-        };
-        if (
-          typeof lastMetric.step === "number" &&
-          typeof lastMetric.total_steps === "number" &&
-          lastMetric.total_steps > 0
-        ) {
-          progress = lastMetric.step / lastMetric.total_steps;
-          // Estimate remaining time from elapsed
-          if (typeof lastMetric.elapsed_ms === "number" && progress > 0) {
-            const totalEstimatedMs = lastMetric.elapsed_ms / progress;
-            eta = Math.max(0, totalEstimatedMs - lastMetric.elapsed_ms);
+        const lastLine = lines[lines.length - 1];
+        if (lastLine) {
+          const lastMetric = JSON.parse(lastLine) as {
+            step?: number;
+            total_steps?: number;
+            elapsed_ms?: number;
+          };
+          if (
+            typeof lastMetric.step === "number" &&
+            typeof lastMetric.total_steps === "number" &&
+            lastMetric.total_steps > 0
+          ) {
+            progress = lastMetric.step / lastMetric.total_steps;
+            // Estimate remaining time from elapsed
+            if (typeof lastMetric.elapsed_ms === "number" && progress > 0) {
+              const totalEstimatedMs = lastMetric.elapsed_ms / progress;
+              eta = Math.max(0, totalEstimatedMs - lastMetric.elapsed_ms);
+            }
           }
         }
       }

@@ -776,12 +776,13 @@ export class SimulationEngine {
           const positionId = Object.keys(
             Object.fromEntries(this.predictionPositions),
           ).find((id) => {
-            const pos = this.predictionPositions.get(id)!;
-            return pos.openedAt === action.tick;
+            const pos = this.predictionPositions.get(id);
+            return pos !== undefined && pos.openedAt === action.tick;
           });
 
           if (positionId) {
-            const position = this.predictionPositions.get(positionId)!;
+            const position = this.predictionPositions.get(positionId);
+            if (!position) continue;
             const marketOutcome =
               this.config.snapshot.groundTruth.marketOutcomes[
                 position.marketId

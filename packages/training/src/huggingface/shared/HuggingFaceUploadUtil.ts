@@ -52,11 +52,10 @@ export function requireHuggingFaceToken(): string {
   return token;
 }
 
-export class HuggingFaceUploadUtil {
-  /**
-   * Upload a single file to HuggingFace Hub
-   */
-  static async uploadFile(
+/**
+ * Upload a single file to HuggingFace Hub
+ */
+export async function uploadFileToHub(
     repoName: string,
     repoType: "model" | "dataset",
     filePath: string,
@@ -80,12 +79,12 @@ export class HuggingFaceUploadUtil {
       repo: repoName,
       type: repoType,
     });
-  }
+}
 
-  /**
-   * Upload directory to HuggingFace Hub
-   */
-  static async uploadDirectory(
+/**
+ * Upload directory to HuggingFace Hub
+ */
+export async function uploadDirectoryToHub(
     repoName: string,
     repoType: "model" | "dataset",
     localDir: string,
@@ -101,7 +100,7 @@ export class HuggingFaceUploadUtil {
       if (stats.isFile()) {
         const content = await fs.readFile(filePath, "utf-8");
 
-        await HuggingFaceUploadUtil.uploadFile(
+        await uploadFileToHub(
           repoName,
           repoType,
           file,
@@ -118,12 +117,12 @@ export class HuggingFaceUploadUtil {
     });
 
     return uploadCount;
-  }
+}
 
-  /**
-   * Ensure repository exists (create if needed)
-   */
-  static async ensureRepository(
+/**
+ * Ensure repository exists (create if needed)
+ */
+export async function ensureHubRepository(
     repoName: string,
     repoType: "model" | "dataset",
     token: string,
@@ -155,12 +154,12 @@ export class HuggingFaceUploadUtil {
         });
       }
     }
-  }
+}
 
-  /**
-   * Upload using huggingface-cli (fallback method)
-   */
-  static async uploadViaCLI(
+/**
+ * Upload using huggingface-cli (fallback method)
+ */
+export async function uploadViaCLI(
     repoName: string,
     repoType: "model" | "dataset",
     localDir: string,
@@ -187,12 +186,12 @@ export class HuggingFaceUploadUtil {
       logger.error("CLI upload failed", { error });
       throw error;
     }
-  }
+}
 
-  /**
-   * Provide manual upload instructions
-   */
-  static getManualUploadInstructions(
+/**
+ * Provide manual upload instructions
+ */
+export function getManualUploadInstructions(
     repoName: string,
     repoType: "model" | "dataset",
     localDir: string,
@@ -202,5 +201,13 @@ export class HuggingFaceUploadUtil {
       "2. Login: huggingface-cli login",
       `3. Upload: huggingface-cli upload ${repoName} ${localDir} --repo-type ${repoType}`,
     ];
-  }
 }
+
+/** @deprecated Use uploadFileToHub, uploadDirectoryToHub, etc. instead */
+export const HuggingFaceUploadUtil = {
+  uploadFile: uploadFileToHub,
+  uploadDirectory: uploadDirectoryToHub,
+  ensureRepository: ensureHubRepository,
+  uploadViaCLI,
+  getManualUploadInstructions,
+};

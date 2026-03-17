@@ -134,61 +134,6 @@ fn format_action_parameters(params: &[ActionParameterDoc]) -> String {
     lines.join("\n")
 }
 
-fn format_action_examples(docs: &[ActionDoc], max_examples: usize) -> String {
-    if max_examples == 0 {
-        return String::new();
-    }
-    let mut blocks: Vec<String> = Vec::new();
-    for action in docs.iter() {
-        for ex in action.example_calls.iter() {
-            if blocks.len() >= max_examples {
-                break;
-            }
-            let actions_xml = ex
-                .actions
-                .iter()
-                .map(|a| format!("  <action>{}</action>", a))
-                .collect::<Vec<String>>()
-                .join("\n");
-
-            let mut params_blocks: Vec<String> = Vec::new();
-            for (action_name, params) in ex.params.iter() {
-                let mut inner: Vec<String> = Vec::new();
-                for (k, v) in params.iter() {
-                    let raw = if v.is_string() {
-                        v.as_str().unwrap_or_default().to_string()
-                    } else {
-                        v.to_string()
-                    };
-                    inner.push(format!("    <{}>{}</{}>", k, raw, k));
-                }
-                params_blocks.push(format!(
-                    "  <{}>\n{}\n  </{}>",
-                    action_name,
-                    inner.join("\n"),
-                    action_name
-                ));
-            }
-
-            let params_xml = if params_blocks.is_empty() {
-                String::new()
-            } else {
-                format!("\n<params>\n{}\n</params>", params_blocks.join("\n"))
-            };
-
-            let b = format!(
-                "User: {}\nAssistant:\n<actions>\n{}\n</actions>{}",
-                ex.user, actions_xml, params_xml
-            );
-            blocks.push(b);
-        }
-        if blocks.len() >= max_examples {
-            break;
-        }
-    }
-    blocks.join("\n\n")
-}
-
 /// Provider for available actions.
 pub struct ActionsProvider;
 
@@ -256,22 +201,11 @@ impl Provider for ActionsProvider {
             formatted_actions.push(line);
         }
 
-        // Optional parameter examples section sourced from canonical docs.
-        let docs_for_examples: Vec<ActionDoc> = actions
-            .iter()
-            .filter_map(|a| docs_by_name.get(&a.name).cloned())
-            .collect();
-        let examples_text = format_action_examples(&docs_for_examples, 10);
-
-        let mut text = format!(
+        let text = format!(
             "Possible response actions: {}\n\n# Available Actions\n{}",
             names_text,
             formatted_actions.join("\n")
         );
-        if !examples_text.is_empty() {
-            text.push_str("\n\n# Action Examples\n");
-            text.push_str(&examples_text);
-        }
 
         Ok(ProviderResult::new(text)
             .with_value("actionNames", names_text)

@@ -2413,6 +2413,9 @@ export class AgentRuntime implements IAgentRuntime {
 		if (!worldId && messageServerId) {
 			worldId = createUniqueUuid(this as IAgentRuntime, messageServerId);
 		}
+		if (!worldId) {
+			worldId = this.agentId;
+		}
 		const names = [name, userName].filter(Boolean) as string[];
 		if (!source) {
 			throw new Error("Source is required for ensureEntityExists");
@@ -2635,7 +2638,7 @@ export class AgentRuntime implements IAgentRuntime {
 		worldId,
 		metadata,
 	}: Room) {
-		if (!worldId) throw new Error("worldId is required");
+		const resolvedWorldId = worldId ?? this.agentId;
 
 		// Check if room exists (for logging only)
 		const room = await this.getRoom(id);
@@ -2650,7 +2653,7 @@ export class AgentRuntime implements IAgentRuntime {
 				type,
 				channelId,
 				messageServerId,
-				worldId,
+				worldId: resolvedWorldId,
 				metadata,
 			},
 		]);
@@ -4172,7 +4175,17 @@ export class AgentRuntime implements IAgentRuntime {
 			const templateFunction = Handlebars.compile(
 				this.upgradeDoubleToTriple(templateStr),
 			);
-			const output = templateFunction({ ...filteredState, ...state.values });
+			const rawOutput = templateFunction({ ...filteredState, ...state.values });
+			// Strip any <output>...</output> section from the compiled template.
+			// dynamicPromptExecFromState appends its own <output> block with
+			// validation codes; keeping the template's copy creates duplicate
+			// conflicting format instructions that cause the model to follow the
+			// first block and ignore the validation-code echo-back request.
+			// Templates used via composePromptFromState (e.g. post generation) are
+			// unaffected because they never reach this code path.
+			const output = rawOutput
+				.replace(/<output>[\s\S]*?<\/output>\s*/g, "")
+				.trimEnd();
 
 			// Process format options
 			const hasNestedSchema = this.schemaHasNestedStructure(schema);
@@ -5859,7 +5872,7 @@ ${section_end}`;
 		messageServerId,
 		worldId,
 	}: Room): Promise<UUID> {
-		if (!worldId) throw new Error("worldId is required");
+		const resolvedWorldId = worldId ?? this.agentId;
 		const res = await this.adapter.createRooms([
 			{
 				id,
@@ -5868,7 +5881,7 @@ ${section_end}`;
 				type,
 				channelId,
 				messageServerId,
-				worldId,
+				worldId: resolvedWorldId,
 			},
 		]);
 		if (!res.length) throw new Error("Failed to create room");
@@ -6600,8 +6613,11 @@ ${section_end}`;
 		if (Array.isArray(queriesOrChannel)) {
 			return await this.adapter.getPairingRequests(queriesOrChannel);
 		}
+		if (agentId === undefined || agentId === null) {
+			return [];
+		}
 		const result = await this.adapter.getPairingRequests([
-			{ channel: queriesOrChannel, agentId: agentId! },
+			{ channel: queriesOrChannel, agentId },
 		]);
 		return result[0]?.requests ?? [];
 	}

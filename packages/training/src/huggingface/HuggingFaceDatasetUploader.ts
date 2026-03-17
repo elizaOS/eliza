@@ -475,7 +475,8 @@ For questions or issues, please open an issue on the repository.
           optimality: [],
         });
       }
-      const stats = modelStats.get(benchmark.modelName)!;
+      const stats = modelStats.get(benchmark.modelName);
+      if (!stats) continue;
       stats.pnl.push(benchmark.metrics.totalPnl);
       stats.accuracy.push(benchmark.metrics.predictionMetrics.accuracy);
       stats.optimality.push(benchmark.metrics.optimalityScore);

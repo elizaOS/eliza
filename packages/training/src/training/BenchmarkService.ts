@@ -78,7 +78,9 @@ export class BenchmarkService {
       );
 
       if (benchmarkFiles.length > 0) {
-        const fallbackPath = path.join(benchmarkDir, benchmarkFiles[0]!);
+        const firstFile = benchmarkFiles[0];
+        if (!firstFile) throw new Error("Benchmark files array empty");
+        const fallbackPath = path.join(benchmarkDir, firstFile);
         logger.warn(
           `Default benchmark not found, using: ${fallbackPath}`,
           undefined,
@@ -277,7 +279,7 @@ export class BenchmarkService {
       };
     }
 
-    const previousScore = previousBest.benchmarkScore!;
+    const previousScore = previousBest.benchmarkScore ?? 0;
     const improvement = ((newScore - previousScore) / previousScore) * 100;
     const thresholdScore = previousScore * threshold;
     const shouldDeploy = newScore >= thresholdScore;

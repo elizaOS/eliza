@@ -123,6 +123,7 @@ export class EmbeddingGenerationService extends Service {
 		this.drainTaskId = await rt.createTask({
 			name: EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
 			tags: ["queue", "repeat"],
+			worldId: agentId,
 			metadata: {
 				updateInterval: this.processingIntervalMs,
 				baseInterval: this.processingIntervalMs,

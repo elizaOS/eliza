@@ -192,8 +192,11 @@ export function buildQueryText(message: Memory, state: State): string {
 		| undefined;
 	if (steps) {
 		const pending = steps
-			.filter((s) => s.status === "pending" && s.action)
-			.map((s) => s.action!);
+			.filter(
+				(s): s is typeof s & { action: string } =>
+					s.status === "pending" && Boolean(s.action),
+			)
+			.map((s) => s.action);
 		if (pending.length > 0) {
 			parts.push(`Planned actions: ${pending.join(", ")}`);
 		}

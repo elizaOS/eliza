@@ -4,10 +4,8 @@ from typing import TYPE_CHECKING
 
 from google.protobuf.json_format import MessageToDict
 
-from elizaos.action_docs import get_canonical_action_example_calls
 from elizaos.generated.spec_helpers import require_provider_spec
 from elizaos.types import Provider, ProviderResult
-from elizaos.types.components import ActionExample
 
 if TYPE_CHECKING:
     from elizaos.types import (
@@ -76,112 +74,6 @@ def format_actions(actions: list[Action]) -> str:
     return "\n".join(lines)
 
 
-def _replace_name_placeholders(text: str) -> str:
-    names = ["Alex", "Jordan", "Sam", "Taylor", "Riley"]
-    for i, name in enumerate(names, start=1):
-        text = text.replace(f"{{{{name{i}}}}}", name)
-    return text
-
-
-def format_action_examples(actions: list[Action], max_examples: int = 10) -> str:
-    """
-    Format a deterministic subset of action examples for prompt context.
-
-    Deterministic ordering is important to keep tests stable and avoid prompt churn.
-    """
-    if max_examples <= 0:
-        return ""
-
-    examples: list[list[ActionExample]] = []
-    for action in sorted(actions, key=lambda a: a.name):
-        if not action.examples:
-            continue
-        for ex in action.examples:
-            if isinstance(ex, list) and ex:
-                examples.append(ex)
-            if len(examples) >= max_examples:
-                break
-        if len(examples) >= max_examples:
-            break
-
-    if not examples:
-        return ""
-
-    blocks: list[str] = []
-    for ex in examples:
-        lines: list[str] = []
-        for msg in ex:
-            msg_text = msg.content.text if msg.content and msg.content.text else ""
-            lines.append(f"{msg.name}: {_replace_name_placeholders(msg_text)}")
-        blocks.append("\n".join(lines))
-
-    return "\n\n".join(blocks)
-
-
-def _escape_xml_text(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-
-def format_action_call_examples(actions: list[Action], max_examples: int = 5) -> str:
-    """
-    Format canonical action-call examples (including optional <params> blocks).
-
-    Deterministic ordering is important to keep tests stable and avoid prompt churn.
-    """
-    if max_examples <= 0:
-        return ""
-
-    blocks: list[str] = []
-    for action in sorted(actions, key=lambda a: a.name):
-        calls = get_canonical_action_example_calls(action.name)
-        for call in calls:
-            user = call.get("user")
-            action_names = call.get("actions")
-            params = call.get("params")
-
-            if not isinstance(user, str) or not isinstance(action_names, list):
-                continue
-            if not all(isinstance(a, str) for a in action_names):
-                continue
-
-            actions_xml = "\n".join(
-                f"  <action>{_escape_xml_text(a)}</action>" for a in action_names
-            )
-
-            params_xml = ""
-            if isinstance(params, dict):
-                blocks_xml: list[str] = []
-                for act_name, act_params in params.items():
-                    if not isinstance(act_name, str) or not isinstance(act_params, dict):
-                        continue
-                    inner: list[str] = []
-                    for k, v in act_params.items():
-                        if not isinstance(k, str):
-                            continue
-                        if isinstance(v, str):
-                            raw = v
-                        elif v is None:
-                            raw = "null"
-                        elif isinstance(v, bool):
-                            raw = "true" if v else "false"
-                        elif isinstance(v, (int, float)):
-                            raw = str(v)
-                        else:
-                            raw = repr(v)
-                        inner.append(f"    <{k}>{_escape_xml_text(raw)}</{k}>")
-                    blocks_xml.append(f"  <{act_name}>\n" + "\n".join(inner) + f"\n  </{act_name}>")
-                if blocks_xml:
-                    params_xml = "\n<params>\n" + "\n".join(blocks_xml) + "\n</params>"
-
-            blocks.append(
-                f"User: {user}\nAssistant:\n<actions>\n{actions_xml}\n</actions>{params_xml}"
-            )
-            if len(blocks) >= max_examples:
-                return "\n\n".join(blocks)
-
-    return "\n\n".join(blocks)
-
-
 async def get_actions(
     runtime: IAgentRuntime,
     message: Memory,
@@ -202,16 +94,10 @@ async def get_actions(
 
     action_names = format_action_names(validated_actions)
     actions_text = format_actions(validated_actions)
-    examples_text = format_action_examples(validated_actions, max_examples=10)
-    call_examples_text = format_action_call_examples(validated_actions, max_examples=5)
 
     text_parts: list[str] = [f"Possible response actions: {action_names}"]
     if actions_text:
         text_parts.append(f"# Available Actions\n{actions_text}")
-    if examples_text:
-        text_parts.append(f"# Action Examples\n{examples_text}")
-    if call_examples_text:
-        text_parts.append(f"# Action Call Examples (with <params>)\n{call_examples_text}")
 
     return ProviderResult(
         text="\n\n".join(text_parts),
@@ -224,18 +110,6 @@ async def get_actions(
                 {
                     "name": a.name,
                     "description": a.description,
-                    "examples": [
-                        [
-                            {
-                                "name": ex.name,
-                                "content": MessageToDict(
-                                    ex.content, preserving_proto_field_name=False
-                                ),
-                            }
-                            for ex in example
-                        ]
-                        for example in (a.examples or [])
-                    ],
                     "parameters": [
                         {
                             "name": p.name,

@@ -52,14 +52,17 @@ export type {
   CreateAgentParams,
   ExportGroupedForGRPOFn,
   ExportToHuggingFaceFn,
+  IAgentRuntimeLike,
   IAgentRuntimeManager,
   IAgentService,
   IAutonomousCoordinator,
   ILLMCaller,
+  ITaskInteractor,
   ToTrainingMessagesFn,
   TrainingMessage,
   TrajectoryForTraining,
   TrajectoryStepForTraining,
+  UserLike,
 } from "./dependencies";
 // Dependencies configuration
 export {

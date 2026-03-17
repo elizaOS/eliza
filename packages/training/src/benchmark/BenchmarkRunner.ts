@@ -114,8 +114,13 @@ export class BenchmarkRunner {
 
     // 1. Load or generate benchmark
     const snapshot = config.benchmarkPath
-      ? await BenchmarkRunner.loadBenchmark(config.benchmarkPath)
-      : await BenchmarkRunner.generateBenchmark(config.generatorConfig!);
+      ? await loadBenchmark(config.benchmarkPath)
+      : await generateBenchmark(
+          config.generatorConfig ??
+            (() => {
+              throw new Error("generatorConfig required when benchmarkPath not provided");
+            })(),
+        );
 
     // 2. Create simulation engine
     const simConfig: SimulationConfig = {
@@ -574,7 +579,7 @@ export class BenchmarkRunner {
    * @returns Parsed benchmark snapshot
    * @throws Error if file cannot be read or parsed
    */
-  private static async loadBenchmark(
+  static async loadBenchmark(
     benchmarkPath: string,
   ): Promise<BenchmarkGameSnapshot> {
     try {
@@ -612,7 +617,7 @@ export class BenchmarkRunner {
    * @returns Generated benchmark snapshot
    * @throws Error if generation fails
    */
-  private static async generateBenchmark(
+  static async generateBenchmark(
     config: BenchmarkConfig,
   ): Promise<BenchmarkGameSnapshot> {
     logger.info("Generating new benchmark", config);

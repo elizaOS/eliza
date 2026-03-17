@@ -39,7 +39,23 @@
       }
     }
   },
-  "overrides": [],
+  "overrides": [
+    {
+      "includes": [
+        "packages/training/src/benchmark/BenchmarkRunner.ts",
+        "packages/training/src/benchmark/MetricsVisualizer.ts",
+        "packages/training/src/benchmark/ModelBenchmarkService.ts",
+        "packages/training/src/training/ModelUsageVerifier.ts"
+      ],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noStaticOnlyClass": "off"
+          }
+        }
+      }
+    }
+  ],
   "formatter": {
     "enabled": true,
     "indentStyle": "space",

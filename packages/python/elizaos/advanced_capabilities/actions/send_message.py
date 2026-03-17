@@ -164,9 +164,7 @@ class SendMessageAction:
 
         # Send message to target
         entity_id_for_target: UUID | None = (
-            UUID(str(target_entity_id))
-            if isinstance(target_entity_id, (str, UUID))
-            else None
+            UUID(str(target_entity_id)) if isinstance(target_entity_id, (str, UUID)) else None
         )
         send_target = TargetInfo(
             roomId=target_room_id,  # type: ignore[call-arg]

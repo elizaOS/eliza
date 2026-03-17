@@ -501,41 +501,40 @@ const ARCHETYPE_CONFIGS: Record<string, ArchetypeConfig> = {
   },
 };
 
-export class ArchetypeConfigService {
-  /**
-   * Get configuration for a specific archetype
-   */
-  static getConfig(archetypeId: string): ArchetypeConfig {
-    const config = ARCHETYPE_CONFIGS[archetypeId];
-    if (!config) {
-      throw new Error(`Unknown archetype: ${archetypeId}`);
-    }
-    return config;
+/**
+ * Get configuration for a specific archetype
+ */
+export function getArchetypeConfig(archetypeId: string): ArchetypeConfig {
+  const config = ARCHETYPE_CONFIGS[archetypeId];
+  if (!config) {
+    throw new Error(`Unknown archetype: ${archetypeId}`);
   }
+  return config;
+}
 
-  /**
-   * Get all available archetype IDs
-   */
-  static getAvailableArchetypes(): string[] {
-    return Object.keys(ARCHETYPE_CONFIGS);
-  }
+/**
+ * Get all available archetype IDs
+ */
+export function getAvailableArchetypes(): string[] {
+  return Object.keys(ARCHETYPE_CONFIGS);
+}
 
-  /**
-   * Apply archetype configuration to agent creation params
-   */
-  static applyToAgentParams<T extends Record<string, JsonValue>>(
-    archetypeId: string,
-    baseParams: T,
-  ): T & {
-    name: string;
-    description: string;
-    system: string;
-    bio: string[];
-    personality: string;
-    tradingStrategy: string;
-    metadata: Record<string, JsonValue>;
-  } {
-    const config = ArchetypeConfigService.getConfig(archetypeId);
+/**
+ * Apply archetype configuration to agent creation params
+ */
+export function applyArchetypeToAgentParams<T extends Record<string, JsonValue>>(
+  archetypeId: string,
+  baseParams: T,
+): T & {
+  name: string;
+  description: string;
+  system: string;
+  bio: string[];
+  personality: string;
+  tradingStrategy: string;
+  metadata: Record<string, JsonValue>;
+} {
+  const config = getArchetypeConfig(archetypeId);
     const baseMetadata =
       (baseParams as { metadata?: Record<string, JsonValue> }).metadata || {};
 
@@ -559,71 +558,81 @@ export class ArchetypeConfigService {
         maxLeverage: config.maxLeverage,
       },
     };
-  }
-
-  /**
-   * Get action weight for decision making
-   */
-  static getActionProbability(
-    archetypeId: string,
-    actionType: "trade" | "post" | "research" | "social",
-  ): number {
-    const config = ArchetypeConfigService.getConfig(archetypeId);
-    return config.actionWeights[actionType];
-  }
-
-  /**
-   * Determine if agent should take an action based on archetype
-   */
-  static shouldTakeAction(
-    archetypeId: string,
-    actionType: "trade" | "post" | "research" | "social",
-    randomValue: number = Math.random(),
-  ): boolean {
-    const probability = ArchetypeConfigService.getActionProbability(
-      archetypeId,
-      actionType,
-    );
-    return randomValue < probability;
-  }
-
-  /**
-   * Get personality traits for behavior modification
-   */
-  static getTraits(archetypeId: string): ArchetypeTraits {
-    const config = ArchetypeConfigService.getConfig(archetypeId);
-    return config.traits;
-  }
-
-  /**
-   * Calculate risk-adjusted position size based on archetype
-   */
-  static calculatePositionSize(
-    archetypeId: string,
-    balance: number,
-    marketVolatility: number = 0.5,
-  ): number {
-    const config = ArchetypeConfigService.getConfig(archetypeId);
-    const baseSize = balance * 0.1; // Base 10% of balance
-
-    // Adjust based on risk tolerance
-    const riskMultiplier = config.riskTolerance;
-
-    // Adjust based on position sizing strategy
-    const sizingMultiplier =
-      config.positionSizing === "aggressive"
-        ? 3
-        : config.positionSizing === "moderate"
-          ? 1.5
-          : 0.5;
-
-    // Reduce size in high volatility for conservative archetypes
-    const volatilityAdjustment =
-      config.riskTolerance > 0.7 ? 1 : 1 - marketVolatility * 0.5;
-
-    return baseSize * riskMultiplier * sizingMultiplier * volatilityAdjustment;
-  }
 }
 
-// Export singleton instance
-export const archetypeConfigService = new ArchetypeConfigService();
+/**
+ * Get action weight for decision making
+ */
+export function getArchetypeActionProbability(
+  archetypeId: string,
+  actionType: "trade" | "post" | "research" | "social",
+): number {
+  const config = getArchetypeConfig(archetypeId);
+  return config.actionWeights[actionType];
+}
+
+/**
+ * Determine if agent should take an action based on archetype
+ */
+export function shouldArchetypeTakeAction(
+  archetypeId: string,
+  actionType: "trade" | "post" | "research" | "social",
+  randomValue: number = Math.random(),
+): boolean {
+  const probability = getArchetypeActionProbability(
+    archetypeId,
+    actionType,
+  );
+  return randomValue < probability;
+}
+
+/**
+ * Get personality traits for behavior modification
+ */
+export function getArchetypeTraits(archetypeId: string): ArchetypeTraits {
+  const config = getArchetypeConfig(archetypeId);
+  return config.traits;
+}
+
+/**
+ * Calculate risk-adjusted position size based on archetype
+ */
+export function calculateArchetypePositionSize(
+  archetypeId: string,
+  balance: number,
+  marketVolatility: number = 0.5,
+): number {
+  const config = getArchetypeConfig(archetypeId);
+  const baseSize = balance * 0.1; // Base 10% of balance
+
+  // Adjust based on risk tolerance
+  const riskMultiplier = config.riskTolerance;
+
+  // Adjust based on position sizing strategy
+  const sizingMultiplier =
+    config.positionSizing === "aggressive"
+      ? 3
+      : config.positionSizing === "moderate"
+        ? 1.5
+        : 0.5;
+
+  // Reduce size in high volatility for conservative archetypes
+  const volatilityAdjustment =
+    config.riskTolerance > 0.7 ? 1 : 1 - marketVolatility * 0.5;
+
+  return baseSize * riskMultiplier * sizingMultiplier * volatilityAdjustment;
+}
+
+/** @deprecated Use getArchetypeConfig instead */
+export const ArchetypeConfigService = {
+  getConfig: getArchetypeConfig,
+  getAvailableArchetypes,
+  applyToAgentParams: applyArchetypeToAgentParams,
+  getActionProbability: getArchetypeActionProbability,
+  shouldTakeAction: shouldArchetypeTakeAction,
+  getTraits: getArchetypeTraits,
+  calculatePositionSize: calculateArchetypePositionSize,
+};
+
+/** @deprecated Use individual functions instead */
+export const archetypeConfigService = ArchetypeConfigService;

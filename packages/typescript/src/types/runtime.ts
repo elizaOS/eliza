@@ -248,7 +248,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		channelId?: string;
 		messageServerId?: UUID;
 		type?: ChannelType | string;
-		worldId: UUID;
+		worldId?: UUID;
 		userId?: UUID;
 		metadata?: Record<string, JsonValue>;
 	}): Promise<void>;
