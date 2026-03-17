@@ -112,8 +112,9 @@ export const replyAction = {
         state.data.providers.includes(provider)
       );
     
-    // Never reuse state if it lacks required chain context providers
-    const hasRequestedInState = hasAllRequiredProviders;
+    // Always refresh RECENT_MESSAGES and ACTION_STATE in multi-action chains
+    // to capture earlier action results and agent replies
+    const hasRequestedInState = hasAllRequiredProviders && isFirstAction;
 
     state =
       hasRequestedInState && state != null
