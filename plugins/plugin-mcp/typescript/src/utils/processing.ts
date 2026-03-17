@@ -1,30 +1,27 @@
 import {
   type Content,
   ContentType,
+  composePromptFromState,
+  createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
   type Media,
   type Memory,
   ModelType,
   type State,
-  composePromptFromState,
-  createUniqueUuid,
 } from "@elizaos/core";
 import { resourceAnalysisTemplate } from "../templates/resourceAnalysisTemplate";
 import { toolReasoningTemplate } from "../templates/toolReasoningTemplate";
 import type { McpProviderData, McpResourceContent } from "../types";
 import { createMcpMemory } from "./mcp";
 
-function getMimeTypeToContentType(
-  mimeType: string | undefined,
-): ContentType | undefined {
+function getMimeTypeToContentType(mimeType: string | undefined): ContentType | undefined {
   if (!mimeType) return undefined;
 
   if (mimeType.startsWith("image/")) return ContentType.IMAGE;
   if (mimeType.startsWith("video/")) return ContentType.VIDEO;
   if (mimeType.startsWith("audio/")) return ContentType.AUDIO;
-  if (mimeType.includes("pdf") || mimeType.includes("document"))
-    return ContentType.DOCUMENT;
+  if (mimeType.includes("pdf") || mimeType.includes("document")) return ContentType.DOCUMENT;
 
   return undefined;
 }
@@ -35,7 +32,7 @@ interface ResourceResult {
 
 export function processResourceResult(
   result: ResourceResult,
-  uri: string,
+  uri: string
 ): { resourceContent: string; resourceMeta: string } {
   let resourceContent = "";
   let resourceMeta = "";
@@ -44,9 +41,7 @@ export function processResourceResult(
     if (content.text) {
       resourceContent += content.text;
     } else if (content.blob) {
-      resourceContent += `[Binary data${
-        content.mimeType ? ` - ${content.mimeType}` : ""
-      }]`;
+      resourceContent += `[Binary data${content.mimeType ? ` - ${content.mimeType}` : ""}]`;
     }
 
     resourceMeta += `Resource: ${content.uri ?? uri}\n`;
@@ -80,7 +75,7 @@ export function processToolResult(
   serverName: string,
   toolName: string,
   runtime: IAgentRuntime,
-  messageEntityId: string,
+  messageEntityId: string
 ): { toolOutput: string; hasAttachments: boolean; attachments: Media[] } {
   let toolOutput = "";
   let hasAttachments = false;
@@ -120,25 +115,18 @@ export async function handleResourceAnalysis(
   serverName: string,
   resourceContent: string,
   resourceMeta: string,
-  callback?: HandlerCallback,
+  callback?: HandlerCallback
 ): Promise<void> {
-  await createMcpMemory(
-    runtime,
-    message,
-    "resource",
-    serverName,
-    resourceContent,
-    {
-      uri,
-      isResourceAccess: true,
-    },
-  );
+  await createMcpMemory(runtime, message, "resource", serverName, resourceContent, {
+    uri,
+    isResourceAccess: true,
+  });
 
   const analysisPrompt = createAnalysisPrompt(
     uri,
     message.content.text ?? "",
     resourceContent,
-    resourceMeta,
+    resourceMeta
   );
 
   const analyzedResponse = (await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -170,7 +158,7 @@ export async function handleToolResponse(
   attachments: readonly Media[],
   state: State,
   mcpProvider: McpProviderArg,
-  callback?: HandlerCallback,
+  callback?: HandlerCallback
 ): Promise<Memory> {
   await createMcpMemory(runtime, message, "tool", serverName, toolOutput, {
     toolName,
@@ -185,7 +173,7 @@ export async function handleToolResponse(
     serverName,
     message.content.text ?? "",
     toolOutput,
-    hasAttachments,
+    hasAttachments
   );
 
   const reasonedResponse = (await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -200,8 +188,7 @@ export async function handleToolResponse(
     content: {
       text: reasonedResponse,
       actions: ["CALL_MCP_TOOL"],
-      attachments:
-        hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
+      attachments: hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
     },
   };
 
@@ -211,17 +198,14 @@ export async function handleToolResponse(
     await callback({
       text: reasonedResponse,
       actions: ["CALL_MCP_TOOL"],
-      attachments:
-        hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
+      attachments: hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
     });
   }
 
   return replyMemory;
 }
 
-export async function sendInitialResponse(
-  callback?: HandlerCallback,
-): Promise<void> {
+export async function sendInitialResponse(callback?: HandlerCallback): Promise<void> {
   if (callback) {
     const responseContent: Content = {
       text: "I'll retrieve that information for you. Let me access the resource...",
@@ -235,7 +219,7 @@ function createAnalysisPrompt(
   uri: string,
   userMessage: string,
   resourceContent: string,
-  resourceMeta: string,
+  resourceMeta: string
 ): string {
   const enhancedState: State = {
     data: {},
@@ -261,7 +245,7 @@ function createReasoningPrompt(
   serverName: string,
   userMessage: string,
   toolOutput: string,
-  hasAttachments: boolean,
+  hasAttachments: boolean
 ): string {
   const enhancedState: State = {
     ...state,

@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { type McpToolCompatibility, detectModelProvider } from "./base";
+import { detectModelProvider, type McpToolCompatibility } from "./base";
 
 export {
   type ArrayConstraints,
@@ -15,7 +15,7 @@ export {
 export { detectModelProvider };
 
 export async function createMcpToolCompatibility(
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<McpToolCompatibility | null> {
   const modelInfo = detectModelProvider(runtime);
 
@@ -25,9 +25,7 @@ export async function createMcpToolCompatibility(
       return new OpenAIMcpCompatibility(modelInfo);
     }
     case "anthropic": {
-      const { AnthropicMcpCompatibility } = await import(
-        "./providers/anthropic.js"
-      );
+      const { AnthropicMcpCompatibility } = await import("./providers/anthropic.js");
       return new AnthropicMcpCompatibility(modelInfo);
     }
     case "google": {
@@ -40,7 +38,7 @@ export async function createMcpToolCompatibility(
 }
 
 export function createMcpToolCompatibilitySync(
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): McpToolCompatibility | null {
   const modelInfo = detectModelProvider(runtime);
 

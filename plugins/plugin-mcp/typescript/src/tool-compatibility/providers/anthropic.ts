@@ -29,11 +29,9 @@ export class AnthropicMcpCompatibility extends McpToolCompatibility {
 
   protected mergeDescription(
     originalDescription: string | undefined,
-    constraints: SchemaConstraints,
+    constraints: SchemaConstraints
   ): string {
-    const constraintHints = this.formatConstraintsForAnthropic(
-      constraints as AnthropicConstraints,
-    );
+    const constraintHints = this.formatConstraintsForAnthropic(constraints as AnthropicConstraints);
     if (originalDescription && constraintHints) {
       return `${originalDescription}. ${constraintHints}`;
     } else if (constraintHints) {
@@ -42,9 +40,7 @@ export class AnthropicMcpCompatibility extends McpToolCompatibility {
     return originalDescription ?? "";
   }
 
-  private formatConstraintsForAnthropic(
-    constraints: AnthropicConstraints,
-  ): string {
+  private formatConstraintsForAnthropic(constraints: AnthropicConstraints): string {
     const hints: string[] = [];
 
     if (constraints.additionalProperties === false) {
