@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { describe, expect, test } from "vitest";
 import type { PlanningService } from "../advanced-planning";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
 import type { Character, Memory, State, UUID } from "../types";
 import { ModelType } from "../types";
@@ -38,7 +39,9 @@ describe("advanced planning (built-in)", () => {
       secrets: {},
     };
 
-    const runtime = new AgentRuntime({ character });
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+    const runtime = new AgentRuntime({ character, adapter });
 
     runtime.registerModel(
       ModelType.TEXT_SMALL,
@@ -78,7 +81,7 @@ describe("advanced planning (built-in)", () => {
       10,
     );
 
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await runtime.initialize();
 
     // Provider registered
     expect(runtime.providers.some((p) => p.name === "messageClassifier")).toBe(
@@ -138,8 +141,10 @@ describe("advanced planning (built-in)", () => {
       secrets: {},
     };
 
-    const runtime = new AgentRuntime({ character });
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+    const runtime = new AgentRuntime({ character, adapter });
+    await runtime.initialize();
 
     expect(runtime.hasService("planning")).toBe(false);
     expect(runtime.providers.some((p) => p.name === "messageClassifier")).toBe(
@@ -162,7 +167,9 @@ describe("advanced planning (built-in)", () => {
       secrets: {},
     };
 
-    const runtime = new AgentRuntime({ character });
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+    const runtime = new AgentRuntime({ character, adapter });
     const executionOrder: string[] = [];
 
     runtime.registerAction({
@@ -201,7 +208,7 @@ describe("advanced planning (built-in)", () => {
       },
     });
 
-    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+    await runtime.initialize();
 
     const svc = (await runtime.getServiceLoadPromise(
       "planning",
