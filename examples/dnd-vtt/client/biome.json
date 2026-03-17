@@ -1,0 +1,22 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.3.14/schema.json",
+  "root": false,
+  "linter": {
+    "rules": {
+      "a11y": {
+        "useButtonType": "warn",
+        "noLabelWithoutControl": "warn"
+      },
+      "style": {
+        "noNonNullAssertion": "warn"
+      },
+      "correctness": {
+        "noInvalidUseBeforeDeclaration": "warn"
+      },
+      "suspicious": {
+        "noArrayIndexKey": "warn",
+        "noUnknownAtRules": "off"
+      }
+    }
+  }
+}
