@@ -6,7 +6,7 @@ authors = ["elizaOS Contributors"]
 description = "elizaOS ACP Plugin - Agentic Commerce Protocol for checkout and commerce"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
-keywords = ["ai", "agent", "acp", "commerce", "checkout", "elizaos"]
+keywords = ["ai", "agent", "acp", "commerce", "checkout"]
 categories = ["data-structures", "asynchronous"]
 readme = "README.md"
 

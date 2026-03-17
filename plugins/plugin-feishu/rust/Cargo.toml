@@ -6,7 +6,7 @@ authors = ["elizaOS Contributors"]
 description = "Feishu/Lark plugin for elizaOS - Rust implementation"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
-keywords = ["ai", "agent", "feishu", "lark", "bot", "bytedance"]
+keywords = ["ai", "agent", "feishu", "lark", "bot"]
 categories = ["api-bindings", "asynchronous", "web-programming"]
 
 [lib]

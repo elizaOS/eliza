@@ -6,7 +6,7 @@ description = "Free text-to-speech plugin for elizaOS using Microsoft Edge TTS -
 license = "MIT"
 authors = ["elizaOS Contributors"]
 repository = "https://github.com/elizaos-plugins/plugin-edge-tts"
-keywords = ["elizaos", "plugin", "tts", "text-to-speech", "edge-tts", "microsoft", "free"]
+keywords = ["elizaos", "plugin", "tts", "text-to-speech", "edge-tts"]
 categories = ["multimedia::audio"]
 
 [lib]

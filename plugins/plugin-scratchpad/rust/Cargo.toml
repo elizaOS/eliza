@@ -6,7 +6,7 @@ authors = ["elizaOS Contributors"]
 description = "elizaOS Scratchpad Plugin - File-based persistent memory storage with markdown frontmatter and TF-IDF search"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
-keywords = ["ai", "agent", "scratchpad", "memory", "notes", "elizaos"]
+keywords = ["ai", "agent", "scratchpad", "memory", "notes"]
 categories = ["data-structures", "asynchronous"]
 readme = "README.md"
 

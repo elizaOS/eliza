@@ -6,7 +6,7 @@ authors = ["elizaOS Contributors"]
 description = "elizaOS Cloud plugin - Multi-model AI generation with text, image, and audio support"
 license = "MIT"
 repository = "https://github.com/elizaos-plugins/plugin-elizacloud"
-keywords = ["ai", "agent", "llm", "openai", "embeddings", "elizaos"]
+keywords = ["ai", "agent", "llm", "openai", "embeddings"]
 categories = ["science", "api-bindings", "web-programming"]
 readme = "README.md"
 

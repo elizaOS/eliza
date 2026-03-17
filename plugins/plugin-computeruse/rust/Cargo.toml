@@ -7,7 +7,7 @@ description = "Computer automation plugin for elizaOS - enables AI agents to con
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
 homepage = "https://elizaos.ai"
-keywords = ["elizaos", "plugin", "computeruse", "automation", "desktop", "mcp"]
+keywords = ["elizaos", "plugin", "computeruse", "automation", "desktop"]
 
 [lib]
 name = "elizaos_computeruse"
@@ -26,7 +26,7 @@ tracing = "0.1"
 computeruse-rs = { package = "computeruse-rs", path = "../../../packages/computeruse/crates/computeruse" }
 
 # MCP client (stdio transport)
-elizaos-plugin-mcp = { path = "../../plugin-mcp/rust" }
+elizaos-plugin-mcp = { version = "2.0.0", path = "../../plugin-mcp/rust" }
 regex = "1"
 
 [dev-dependencies]

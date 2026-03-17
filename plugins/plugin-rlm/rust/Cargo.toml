@@ -5,7 +5,7 @@ edition = "2021"
 description = "RLM (Recursive Language Model) plugin for elizaOS"
 license = "MIT"
 authors = ["elizaOS Contributors"]
-keywords = ["elizaos", "plugin", "rlm", "recursive-language-model", "ai", "agent"]
+keywords = ["elizaos", "plugin", "rlm", "recursive-language-model", "ai"]
 repository = "https://github.com/elizaos/eliza"
 
 [lib]
@@ -13,7 +13,7 @@ name = "elizaos_plugin_rlm"
 path = "src/lib.rs"
 
 [dependencies]
-elizaos = { path = "../../../packages/rust" }
+elizaos = { version = "2.0.0", path = "../../../packages/rust" }
 anyhow = "1.0"
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }

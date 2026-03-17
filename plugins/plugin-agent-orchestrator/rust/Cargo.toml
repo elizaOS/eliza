@@ -6,7 +6,7 @@ authors = ["elizaOS Contributors"]
 description = "Agent Orchestrator Plugin for elizaOS - orchestrates tasks across agent providers"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
-keywords = ["eliza", "elizaos", "plugin", "orchestrator", "agents", "tasks"]
+keywords = ["eliza", "elizaos", "plugin", "orchestrator", "agents"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

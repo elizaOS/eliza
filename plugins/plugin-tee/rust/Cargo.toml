@@ -6,7 +6,7 @@ authors = ["elizaOS Contributors"]
 description = "elizaOS TEE Plugin - Trusted Execution Environment integration for secure key management and remote attestation"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
-keywords = ["ai", "agent", "tee", "attestation", "security", "phala"]
+keywords = ["ai", "agent", "tee", "attestation", "security"]
 categories = ["cryptography", "api-bindings", "web-programming"]
 readme = "README.md"
 

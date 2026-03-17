@@ -6,7 +6,7 @@ authors = ["elizaOS Contributors"]
 description = "Google GenAI Gemini API client for elizaOS - Rust implementation with text generation, embeddings, and image analysis"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
-keywords = ["ai", "agent", "google", "gemini", "genai", "llm", "embeddings"]
+keywords = ["ai", "agent", "google", "gemini", "genai"]
 categories = ["api-bindings", "web-programming"]
 readme = "README.md"
 

@@ -9,7 +9,7 @@ repository = "https://github.com/elizaos/eliza"
 homepage = "https://elizaos.ai"
 documentation = "https://docs.rs/elizaos-plugin-openai"
 readme = "README.md"
-keywords = ["ai", "openai", "gpt", "embeddings", "elizaos", "llm"]
+keywords = ["ai", "openai", "gpt", "embeddings", "elizaos"]
 categories = ["api-bindings", "asynchronous", "web-programming"]
 
 [lib]
