@@ -297,7 +297,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 describe("RESET_SESSION action", () => {
 	it("should set lastCompactionAt in room metadata", async () => {
 		const { resetSessionAction } = await import(
-			"../basic-capabilities/actions/resetSession.ts"
+			"../advanced-memory/actions/resetSession.ts"
 		);
 
 		let updatedRoom: Room | null = null;
@@ -347,7 +347,7 @@ describe("RESET_SESSION action", () => {
 
 	it("should maintain compaction history", async () => {
 		const { resetSessionAction } = await import(
-			"../basic-capabilities/actions/resetSession.ts"
+			"../advanced-memory/actions/resetSession.ts"
 		);
 
 		const existingRoom = createMockRoom({ lastCompactionAt: 1000 });
@@ -397,7 +397,7 @@ describe("RESET_SESSION action", () => {
 
 	it("should limit compaction history to 10 entries", async () => {
 		const { resetSessionAction } = await import(
-			"../basic-capabilities/actions/resetSession.ts"
+			"../advanced-memory/actions/resetSession.ts"
 		);
 
 		// Create room with 10 existing entries
@@ -441,7 +441,7 @@ describe("RESET_SESSION action", () => {
 
 	it("should handle room not found error", async () => {
 		const { resetSessionAction } = await import(
-			"../basic-capabilities/actions/resetSession.ts"
+			"../advanced-memory/actions/resetSession.ts"
 		);
 
 		const mockRuntime = {
@@ -478,7 +478,7 @@ describe("RESET_SESSION action", () => {
 
 	it("should track triggeredBy entity", async () => {
 		const { resetSessionAction } = await import(
-			"../basic-capabilities/actions/resetSession.ts"
+			"../advanced-memory/actions/resetSession.ts"
 		);
 
 		let updatedRoom: Room | null = null;
@@ -511,7 +511,7 @@ describe("RESET_SESSION action", () => {
 
 	it("should include previous compaction timestamp in result", async () => {
 		const { resetSessionAction } = await import(
-			"../basic-capabilities/actions/resetSession.ts"
+			"../advanced-memory/actions/resetSession.ts"
 		);
 
 		const previousCompaction = 5000;
@@ -542,7 +542,7 @@ describe("RESET_SESSION action", () => {
 
 	it("should always validate to true (any role can reset)", async () => {
 		const { resetSessionAction } = await import(
-			"../basic-capabilities/actions/resetSession.ts"
+			"../advanced-memory/actions/resetSession.ts"
 		);
 
 		const mockRuntime = {
@@ -570,330 +570,6 @@ describe("RESET_SESSION action", () => {
 });
 
 // ============================================
-// STATUS Action Tests
-// ============================================
-describe("STATUS action", () => {
-	it("should show agent name and ID", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
-
-		const mockRuntime = {
-			agentId: "agent-12345678" as UUID,
-			character: { name: "MyTestAgent" },
-			getRoom: vi.fn(async () => createMockRoom()),
-			getService: vi.fn(() => null),
-			getTasks: vi.fn(async () => []),
-		} as unknown as IAgentRuntime;
-
-		const mockMessage: Memory = {
-			id: "msg-1" as UUID,
-			entityId: "user-1" as UUID,
-			agentId: "agent-1" as UUID,
-			roomId: "room-1" as UUID,
-			content: { text: "/status" },
-		};
-
-		const mockCallback = vi.fn();
-
-		await statusAction.handler(
-			mockRuntime,
-			mockMessage,
-			{ data: { room: createMockRoom() } } as never,
-			undefined,
-			mockCallback,
-		);
-
-		const text = mockCallback.mock.calls[0][0].text;
-		expect(text).toContain("MyTestAgent");
-		expect(text).toContain("agent-12");
-	});
-
-	it("should show compaction timestamp when available", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
-
-		const compactionTime = Date.now() - 3600000; // 1 hour ago
-		const mockRoom = createMockRoom({ lastCompactionAt: compactionTime });
-
-		const mockRuntime = {
-			agentId: "agent-1" as UUID,
-			character: { name: "TestAgent" },
-			getRoom: vi.fn(async () => mockRoom),
-			getService: vi.fn(() => null),
-			getTasks: vi.fn(async () => []),
-		} as unknown as IAgentRuntime;
-
-		const mockMessage: Memory = {
-			id: "msg-1" as UUID,
-			entityId: "user-1" as UUID,
-			agentId: "agent-1" as UUID,
-			roomId: "room-1" as UUID,
-			content: { text: "/status" },
-		};
-
-		const mockCallback = vi.fn();
-
-		await statusAction.handler(
-			mockRuntime,
-			mockMessage,
-			{ data: { room: mockRoom } } as never,
-			undefined,
-			mockCallback,
-		);
-
-		const text = mockCallback.mock.calls[0][0].text;
-		expect(text).toContain("Last Reset:");
-	});
-
-	it("should not show Last Reset when no compaction", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
-
-		const mockRoom = createMockRoom(); // No lastCompactionAt
-
-		const mockRuntime = {
-			agentId: "agent-1" as UUID,
-			character: { name: "TestAgent" },
-			getRoom: vi.fn(async () => mockRoom),
-			getService: vi.fn(() => null),
-			getTasks: vi.fn(async () => []),
-		} as unknown as IAgentRuntime;
-
-		const mockMessage: Memory = {
-			id: "msg-1" as UUID,
-			entityId: "user-1" as UUID,
-			agentId: "agent-1" as UUID,
-			roomId: "room-1" as UUID,
-			content: { text: "/status" },
-		};
-
-		const mockCallback = vi.fn();
-
-		await statusAction.handler(
-			mockRuntime,
-			mockMessage,
-			{ data: { room: mockRoom } } as never,
-			undefined,
-			mockCallback,
-		);
-
-		const text = mockCallback.mock.calls[0][0].text;
-		expect(text).not.toContain("Last Reset:");
-	});
-
-	it("should list pending AWAITING_CHOICE tasks with options", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
-
-		const mockRuntime = {
-			agentId: "agent-1" as UUID,
-			character: { name: "TestAgent" },
-			getRoom: vi.fn(async () => createMockRoom()),
-			getService: vi.fn(() => null),
-			getTasks: vi.fn(async () => [
-				{
-					id: "task-1" as UUID,
-					name: "Confirm Tweet",
-					tags: ["AWAITING_CHOICE"],
-					metadata: {
-						options: [
-							{ name: "post", description: "Post the tweet" },
-							{ name: "cancel", description: "Cancel" },
-						],
-					},
-				},
-				{
-					id: "task-2" as UUID,
-					name: "Approve Exec",
-					tags: ["AWAITING_CHOICE"],
-					metadata: {
-						options: [{ name: "allow-once" }, { name: "deny" }],
-					},
-				},
-			]),
-		} as unknown as IAgentRuntime;
-
-		const mockMessage: Memory = {
-			id: "msg-1" as UUID,
-			entityId: "user-1" as UUID,
-			agentId: "agent-1" as UUID,
-			roomId: "room-1" as UUID,
-			content: { text: "/status" },
-		};
-
-		const mockCallback = vi.fn();
-
-		await statusAction.handler(
-			mockRuntime,
-			mockMessage,
-			{ data: { room: createMockRoom() } } as never,
-			undefined,
-			mockCallback,
-		);
-
-		const text = mockCallback.mock.calls[0][0].text;
-		expect(text).toContain("Pending Tasks");
-		expect(text).toContain("Awaiting choice: 2");
-		expect(text).toContain("Confirm Tweet");
-	});
-
-	it("should show 'No pending tasks' when empty", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
-
-		const mockRuntime = {
-			agentId: "agent-1" as UUID,
-			character: { name: "TestAgent" },
-			getRoom: vi.fn(async () => createMockRoom()),
-			getService: vi.fn(() => null),
-			getTasks: vi.fn(async () => []),
-		} as unknown as IAgentRuntime;
-
-		const mockMessage: Memory = {
-			id: "msg-1" as UUID,
-			entityId: "user-1" as UUID,
-			agentId: "agent-1" as UUID,
-			roomId: "room-1" as UUID,
-			content: { text: "/status" },
-		};
-
-		const mockCallback = vi.fn();
-
-		await statusAction.handler(
-			mockRuntime,
-			mockMessage,
-			{ data: { room: createMockRoom() } } as never,
-			undefined,
-			mockCallback,
-		);
-
-		const text = mockCallback.mock.calls[0][0].text;
-		expect(text).toContain("No pending tasks");
-	});
-
-	it("should show queued tasks separately", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
-
-		const mockRuntime = {
-			agentId: "agent-1" as UUID,
-			character: { name: "TestAgent" },
-			getRoom: vi.fn(async () => createMockRoom()),
-			getService: vi.fn(() => null),
-			getTasks: vi.fn(async () => [
-				{
-					id: "task-1" as UUID,
-					name: "Queued Task 1",
-					tags: ["queue"],
-					metadata: {},
-				},
-				{
-					id: "task-2" as UUID,
-					name: "Queued Task 2",
-					tags: ["queue", "repeat"],
-					metadata: {},
-				},
-			]),
-		} as unknown as IAgentRuntime;
-
-		const mockMessage: Memory = {
-			id: "msg-1" as UUID,
-			entityId: "user-1" as UUID,
-			agentId: "agent-1" as UUID,
-			roomId: "room-1" as UUID,
-			content: { text: "/status" },
-		};
-
-		const mockCallback = vi.fn();
-
-		await statusAction.handler(
-			mockRuntime,
-			mockMessage,
-			{ data: { room: createMockRoom() } } as never,
-			undefined,
-			mockCallback,
-		);
-
-		const text = mockCallback.mock.calls[0][0].text;
-		expect(text).toContain("Queued: 2");
-	});
-
-	it("should show room information", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
-
-		const mockRoom = createMockRoom({ name: "My Cool Room" });
-
-		const mockRuntime = {
-			agentId: "agent-1" as UUID,
-			character: { name: "TestAgent" },
-			getRoom: vi.fn(async () => mockRoom),
-			getService: vi.fn(() => null),
-			getTasks: vi.fn(async () => []),
-		} as unknown as IAgentRuntime;
-
-		const mockMessage: Memory = {
-			id: "msg-1" as UUID,
-			entityId: "user-1" as UUID,
-			agentId: "agent-1" as UUID,
-			roomId: "room-1" as UUID,
-			content: { text: "/status" },
-		};
-
-		const mockCallback = vi.fn();
-
-		await statusAction.handler(
-			mockRuntime,
-			mockMessage,
-			{ data: { room: mockRoom } } as never,
-			undefined,
-			mockCallback,
-		);
-
-		const text = mockCallback.mock.calls[0][0].text;
-		expect(text).toContain("Room");
-		expect(text).toContain("My Cool Room");
-	});
-
-	it("should always validate to true", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
-
-		const mockRuntime = {} as unknown as IAgentRuntime;
-
-		const isValid = await statusAction.validate(mockRuntime);
-		expect(isValid).toBe(true);
-	});
-
-	it("should return status data in result values", async () => {
-		const { statusAction } = await import("../basic-capabilities/actions/status.ts");
-
-		const mockRuntime = {
-			agentId: "agent-1" as UUID,
-			character: { name: "TestAgent" },
-			getRoom: vi.fn(async () => createMockRoom()),
-			getService: vi.fn(() => null),
-			getTasks: vi.fn(async () => [
-				{
-					id: "task-1" as UUID,
-					name: "Test Task",
-					tags: ["AWAITING_CHOICE"],
-					metadata: { options: [{ name: "yes" }, { name: "no" }] },
-				},
-			]),
-		} as unknown as IAgentRuntime;
-
-		const mockMessage: Memory = {
-			id: "msg-1" as UUID,
-			entityId: "user-1" as UUID,
-			agentId: "agent-1" as UUID,
-			roomId: "room-1" as UUID,
-			content: { text: "/status" },
-		};
-
-		const result = await statusAction.handler(mockRuntime, mockMessage, {
-			data: { room: createMockRoom() },
-		} as never);
-
-		expect(result.success).toBe(true);
-		expect(result.values?.agentId).toBe("agent-1");
-		expect(result.values?.agentName).toBe("TestAgent");
-		expect((result.values?.tasks as { total: number }).total).toBe(1);
-	});
-});
-
 // ============================================
 // Integration Tests
 // ============================================
@@ -1021,7 +697,7 @@ describe("Edge cases", () => {
 
 	it("should handle empty room metadata gracefully", async () => {
 		const { resetSessionAction } = await import(
-			"../basic-capabilities/actions/resetSession.ts"
+			"../advanced-memory/actions/resetSession.ts"
 		);
 
 		const roomWithNoMetadata = {

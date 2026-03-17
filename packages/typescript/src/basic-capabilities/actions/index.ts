@@ -9,4 +9,3 @@ export { compactSessionAction } from "./compactSession.ts";
 export { ignoreAction } from "./ignore.ts";
 export { noneAction } from "./none.ts";
 export { replyAction } from "./reply.ts";
-export { statusAction } from "./status.ts";

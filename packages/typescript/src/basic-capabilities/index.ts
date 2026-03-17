@@ -1263,7 +1263,6 @@ export const basicActions = [
 	withCanonicalActionDocs(actions.replyAction),
 	withCanonicalActionDocs(actions.ignoreAction),
 	withCanonicalActionDocs(actions.noneAction),
-	withCanonicalActionDocs(actions.statusAction),
 ];
 
 /**

@@ -7,7 +7,7 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/core#build": {
-      "dependsOn": [],
+      "dependsOn": ["@elizaos/schemas#build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"],
       "inputs": ["src/**", "build.ts", "tsconfig.declarations.json"]
@@ -276,7 +276,7 @@
     },
     "@elizaos/schemas#build": {
       "dependsOn": [],
-      "outputs": []
+      "outputs": ["../typescript/src/types/generated/**", "../python/elizaos/types/generated/**", "../rust/src/types/generated/**"]
     },
     "@elizaos/plugin-auto-trader-root#build": {
       "dependsOn": ["^build"],
