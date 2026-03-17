@@ -1,16 +1,9 @@
-import { describe, expect, test, vi, beforeEach } from "vitest";
-import type {
-  ActionResult,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  State,
-} from "@elizaos/core";
-
-import { sendMessage } from "../actions/sendMessage";
-import { sendDM } from "../actions/sendDM";
+import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { readChannel } from "../actions/readChannel";
 import { searchMessages } from "../actions/searchMessages";
+import { sendDM } from "../actions/sendDM";
+import { sendMessage } from "../actions/sendMessage";
 
 // ---------------------------------------------------------------------------
 // Mock helpers
@@ -19,7 +12,7 @@ import { searchMessages } from "../actions/searchMessages";
 function createMessage(
   source: string,
   text = "hello",
-  overrides: Partial<Memory["content"]> = {},
+  overrides: Partial<Memory["content"]> = {}
 ): Memory {
   return {
     id: "00000000-0000-0000-0000-000000000001",
@@ -29,10 +22,9 @@ function createMessage(
   } as Memory;
 }
 
-function createMockRuntime(opts: {
-  service?: unknown;
-  useModelResponse?: string;
-} = {}): IAgentRuntime {
+function createMockRuntime(
+  opts: { service?: unknown; useModelResponse?: string } = {}
+): IAgentRuntime {
   const {
     service = null,
     useModelResponse = '{"text": "hello from bot", "channelRef": "current"}',
@@ -62,9 +54,7 @@ function createMockState(data: Record<string, unknown> = {}): State {
   } as unknown as State;
 }
 
-function createMockDiscordService(
-  clientExists = true,
-): Record<string, unknown> {
+function createMockDiscordService(clientExists = true): Record<string, unknown> {
   const mockChannel = {
     id: "123456789012345678",
     name: "test-channel",
@@ -74,11 +64,21 @@ function createMockDiscordService(
       content: "hello from bot",
     }),
     messages: {
-      fetch: vi.fn().mockResolvedValue(
-        new Map([
-          ["1", { id: "1", content: "message1", author: { username: "user1" }, createdTimestamp: Date.now() }],
-        ]),
-      ),
+      fetch: vi
+        .fn()
+        .mockResolvedValue(
+          new Map([
+            [
+              "1",
+              {
+                id: "1",
+                content: "message1",
+                author: { username: "user1" },
+                createdTimestamp: Date.now(),
+              },
+            ],
+          ])
+        ),
     },
     permissionsFor: vi.fn().mockReturnValue({
       has: vi.fn().mockReturnValue(true),
@@ -87,11 +87,7 @@ function createMockDiscordService(
 
   const mockGuild = {
     channels: {
-      fetch: vi.fn().mockResolvedValue(
-        new Map([
-          ["123456789012345678", mockChannel],
-        ]),
-      ),
+      fetch: vi.fn().mockResolvedValue(new Map([["123456789012345678", mockChannel]])),
     },
   };
 
@@ -144,11 +140,9 @@ describe("SEND_MESSAGE action", () => {
     const runtime = createMockRuntime({ service: null });
     const msg = createMessage("discord", "send hello");
     const callback = vi.fn();
-    const result = await sendMessage.handler(
-      runtime, msg, createMockState(), undefined, callback,
-    );
+    const result = await sendMessage.handler(runtime, msg, createMockState(), undefined, callback);
     expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringContaining("not available") }),
+      expect.objectContaining({ text: expect.stringContaining("not available") })
     );
   });
 
@@ -159,7 +153,7 @@ describe("SEND_MESSAGE action", () => {
     const callback = vi.fn();
     await sendMessage.handler(runtime, msg, createMockState(), undefined, callback);
     expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringContaining("not available") }),
+      expect.objectContaining({ text: expect.stringContaining("not available") })
     );
   });
 });
@@ -201,9 +195,7 @@ describe("SEND_DM action", () => {
     const runtime = createMockRuntime({ service });
     const msg = createMessage("discord", "DM user");
     const callback = vi.fn();
-    const result = await sendDM.handler(
-      runtime, msg, undefined, undefined, callback,
-    );
+    const result = await sendDM.handler(runtime, msg, undefined, undefined, callback);
     expect(result?.success).toBe(false);
   });
 });
@@ -237,9 +229,7 @@ describe("READ_CHANNEL action", () => {
     const runtime = createMockRuntime({ service });
     const msg = createMessage("discord", "read channel");
     const callback = vi.fn();
-    const result = await readChannel.handler(
-      runtime, msg, undefined, undefined, callback,
-    );
+    const result = await readChannel.handler(runtime, msg, undefined, undefined, callback);
     expect(result?.success).toBe(false);
   });
 });
@@ -265,11 +255,9 @@ describe("SEARCH_MESSAGES action", () => {
     const runtime = createMockRuntime({ service: null });
     const msg = createMessage("discord", "search messages");
     const callback = vi.fn();
-    await searchMessages.handler(
-      runtime, msg, createMockState(), undefined, callback,
-    );
+    await searchMessages.handler(runtime, msg, createMockState(), undefined, callback);
     expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringContaining("not available") }),
+      expect.objectContaining({ text: expect.stringContaining("not available") })
     );
   });
 });

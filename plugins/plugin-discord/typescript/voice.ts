@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { pipeline, Readable, Transform } from "node:stream";
+import { pipeline, Readable, type Transform } from "node:stream";
 import {
   type AudioPlayer,
   type AudioReceiveStream,

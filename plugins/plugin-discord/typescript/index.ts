@@ -127,25 +127,6 @@ const discordPlugin: Plugin = {
 
 export default discordPlugin;
 
-// Channel configuration types (comprehensive config schema)
-export type {
-  DiscordActionConfig,
-  DiscordChannelConfig,
-  DiscordConfig,
-  DiscordExecApprovalConfig,
-  DiscordIntentsConfig,
-  DiscordPluralKitConfig,
-  DiscordReactionNotificationMode,
-} from "./config";
-
-// Re-export config types that were in accounts.ts for backward compatibility
-export type {
-  DiscordAccountConfig,
-  DiscordDmConfig,
-  DiscordGuildChannelConfig,
-  DiscordGuildEntry,
-} from "./config";
-
 // Account management exports (runtime utilities)
 export {
   DEFAULT_ACCOUNT_ID,
@@ -186,6 +167,21 @@ export {
   shouldEmitDiscordReactionNotification,
   validateMessageAllowed,
 } from "./allowlist";
+// Channel configuration types (comprehensive config schema)
+// Re-export config types that were in accounts.ts for backward compatibility
+export type {
+  DiscordAccountConfig,
+  DiscordActionConfig,
+  DiscordChannelConfig,
+  DiscordConfig,
+  DiscordDmConfig,
+  DiscordExecApprovalConfig,
+  DiscordGuildChannelConfig,
+  DiscordGuildEntry,
+  DiscordIntentsConfig,
+  DiscordPluralKitConfig,
+  DiscordReactionNotificationMode,
+} from "./config";
 export { DISCORD_SERVICE_NAME } from "./constants";
 // Messaging utilities exports
 export {

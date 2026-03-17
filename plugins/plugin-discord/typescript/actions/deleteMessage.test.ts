@@ -1,6 +1,6 @@
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import deleteMessage from "./deleteMessage";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
 
 describe("deleteMessage action", () => {
   it("should have correct name and description", () => {
@@ -10,11 +10,11 @@ describe("deleteMessage action", () => {
 
   it("should validate only for discord source", async () => {
     const mockRuntime = {} as IAgentRuntime;
-    
+
     const discordMessage = {
       content: { source: "discord" },
     } as Memory;
-    
+
     const telegramMessage = {
       content: { source: "telegram" },
     } as Memory;
