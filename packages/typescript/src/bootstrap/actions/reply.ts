@@ -98,8 +98,12 @@ export const replyAction = {
 
     // For subsequent REPLY actions (end of chain), regenerate using LLM
     // to produce a response that incorporates previous action results.
+    // Include any additional providers that were requested in the initial responses.
+    const additionalProviders = responses?.flatMap(res => res.content?.providers || []) || [];
+    const requiredProviders = ["RECENT_MESSAGES", "ACTION_STATE"];
+    const allProviders = [...new Set([...requiredProviders, ...additionalProviders])];
     
-    state = await runtime.composeState(message, ["RECENT_MESSAGES", "ACTION_STATE"]);
+    state = await runtime.composeState(message, allProviders);
 
     const prompt = composePromptFromState({
       state,
