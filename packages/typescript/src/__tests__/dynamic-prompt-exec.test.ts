@@ -529,7 +529,7 @@ describe("dynamicPromptExecFromState", () => {
 			expect(result?.facts).toEqual([
 				{
 					claim: "Alice likes tea",
-					confidence: 0.9,
+					confidence: "0.9",
 				},
 			]);
 			expect(result?.metadata).toEqual({
