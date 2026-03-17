@@ -6,7 +6,7 @@ authors = ["elizaOS Contributors"]
 description = "Nextcloud Talk plugin for elizaOS - Rust implementation with webhook bot integration"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
-keywords = ["ai", "agent", "nextcloud", "nextcloud-talk", "chat", "webhook"]
+keywords = ["ai", "agent", "nextcloud", "nextcloud-talk", "chat"]
 categories = ["api-bindings", "asynchronous", "web-programming"]
 
 [lib]

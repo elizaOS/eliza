@@ -9,7 +9,7 @@ repository = "https://github.com/elizaos/eliza"
 homepage = "https://elizaos.ai"
 documentation = "https://docs.rs/elizaos-plugin-local-ai"
 readme = "README.md"
-keywords = ["ai", "llama", "local-ai", "embeddings", "elizaos", "llm"]
+keywords = ["ai", "llama", "local-ai", "embeddings", "elizaos"]
 categories = ["api-bindings", "asynchronous", "machine-learning"]
 
 [lib]

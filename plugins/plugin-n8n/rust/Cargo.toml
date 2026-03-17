@@ -6,7 +6,7 @@ authors = ["elizaOS Contributors"]
 description = "elizaOS N8n Plugin - AI-powered plugin creation using Claude models"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
-keywords = ["ai", "agent", "anthropic", "claude", "llm", "n8n", "plugin-creation"]
+keywords = ["ai", "agent", "anthropic", "claude", "llm"]
 categories = ["api-bindings", "web-programming"]
 readme = "README.md"
 

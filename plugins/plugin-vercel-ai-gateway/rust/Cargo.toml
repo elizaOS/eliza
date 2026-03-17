@@ -9,7 +9,7 @@ repository = "https://github.com/elizaos/eliza"
 homepage = "https://elizaos.ai"
 documentation = "https://docs.rs/elizaos-plugin-gateway"
 readme = "README.md"
-keywords = ["ai", "vercel", "gateway", "openai", "anthropic", "elizaos", "llm"]
+keywords = ["ai", "vercel", "gateway", "openai", "anthropic"]
 categories = ["api-bindings", "asynchronous", "web-programming"]
 
 [lib]

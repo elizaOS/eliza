@@ -6,7 +6,7 @@ authors = ["elizaOS Contributors"]
 description = "EVM blockchain plugin for elizaOS - Rust implementation with alloy-rs"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
-keywords = ["ai", "agent", "ethereum", "evm", "blockchain", "web3"]
+keywords = ["ai", "agent", "ethereum", "evm", "blockchain"]
 categories = ["cryptography::cryptocurrencies", "web-programming"]
 readme = "README.md"
 

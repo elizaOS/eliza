@@ -6,7 +6,7 @@ authors = ["elizaOS Contributors"]
 description = "Microsoft Teams plugin for elizaOS - Rust implementation with Bot Framework support"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
-keywords = ["ai", "agent", "msteams", "teams", "bot-framework", "microsoft"]
+keywords = ["ai", "agent", "msteams", "teams", "bot-framework"]
 categories = ["api-bindings", "asynchronous", "web-programming"]
 
 [lib]

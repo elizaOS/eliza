@@ -8,7 +8,7 @@ license = "MIT"
 repository = "https://github.com/elizaos/eliza"
 homepage = "https://elizaos.ai"
 readme = "README.md"
-keywords = ["ai", "coding", "filesystem", "shell", "git", "elizaos"]
+keywords = ["ai", "coding", "filesystem", "shell", "git"]
 categories = ["command-line-utilities", "asynchronous"]
 
 [lib]

@@ -6,7 +6,7 @@ description = "High-quality text-to-speech and speech-to-text plugin for elizaOS
 license = "MIT"
 authors = ["elizaOS Contributors"]
 repository = "https://github.com/elizaos-plugins/plugin-elevenlabs"
-keywords = ["elizaos", "plugin", "tts", "stt", "text-to-speech", "speech-to-text", "elevenlabs"]
+keywords = ["elizaos", "plugin", "tts", "stt", "text-to-speech"]
 categories = ["multimedia::audio", "api-bindings"]
 
 [lib]

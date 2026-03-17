@@ -6,7 +6,7 @@ description = "Retro 1980s SAM Text-to-Speech plugin for elizaOS agents"
 license = "MIT"
 authors = ["elizaOS Contributors"]
 repository = "https://github.com/elizaos/eliza"
-keywords = ["elizaos", "plugin", "tts", "text-to-speech", "sam", "retro"]
+keywords = ["elizaos", "plugin", "tts", "text-to-speech", "sam"]
 categories = ["multimedia::audio", "api-bindings"]
 
 [lib]

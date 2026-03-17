@@ -9,7 +9,7 @@ repository = "https://github.com/elizaos/eliza"
 homepage = "https://elizaos.ai"
 documentation = "https://docs.rs/elizaos-plugin-xai"
 readme = "README.md"
-keywords = ["ai", "xai", "grok", "x", "twitter", "elizaos", "llm"]
+keywords = ["ai", "xai", "grok", "x", "twitter"]
 categories = ["api-bindings", "asynchronous", "web-programming"]
 
 [lib]

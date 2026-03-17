@@ -6,7 +6,7 @@ authors = ["elizaOS Contributors"]
 description = "Farcaster plugin for elizaOS - Rust implementation for casting and receiving messages via Neynar API"
 license = "MIT"
 repository = "https://github.com/elizaos/eliza"
-keywords = ["ai", "agent", "farcaster", "social", "neynar", "web3"]
+keywords = ["ai", "agent", "farcaster", "social", "neynar"]
 categories = ["api-bindings", "web-programming", "asynchronous"]
 readme = "README.md"
 

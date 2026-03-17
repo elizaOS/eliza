@@ -9,7 +9,7 @@ repository = "https://github.com/elizaos/eliza"
 homepage = "https://elizaos.ai"
 documentation = "https://docs.rs/elizaos-plugin-copilot-proxy"
 readme = "README.md"
-keywords = ["ai", "copilot", "proxy", "openai", "elizaos", "llm"]
+keywords = ["ai", "copilot", "proxy", "openai", "elizaos"]
 categories = ["api-bindings", "asynchronous", "web-programming"]
 
 [lib]
@@ -22,7 +22,7 @@ native = ["tokio/full"]
 
 [dependencies]
 # elizaOS core for Plugin type
-elizaos = { path = "../../../packages/rust" }
+elizaos = { version = "2.0.0", path = "../../../packages/rust" }
 
 # HTTP client
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
