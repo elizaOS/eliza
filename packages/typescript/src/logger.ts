@@ -399,7 +399,9 @@ function ensureFileLog(): boolean {
     const logFilePath = isBooleanFlag
       ? pathMod.join(process.cwd(), "output.log") 
       : logFileEnv.trim();
-    const logDir = pathMod.dirname(logFilePath);
+    const logDir = isBooleanFlag 
+      ? process.cwd() 
+      : pathMod.dirname(logFilePath);
     
         // Ensure log directory exists
         fs.mkdirSync(logDir, { recursive: true });
@@ -533,7 +535,8 @@ export function logPrompt(
   const agentName = metadata?.agentName ?? "unknown"; 
   const slug = promptSlug(counter, agentName, modelType);
   // Store prompt slug for correlation with response
-  metadata = { ...metadata, promptSlug: slug };
+  // Store counter with slug to allow response to use same counter
+  metadata = { ...metadata, promptSlug: slug, promptCounter: counter };
   writeToPromptLog(slug, "PROMPT", modelType, prompt, metadata);
   return slug;
 }
@@ -555,12 +558,12 @@ export function logResponse(
   },
 ): string {
   if (!ensureFileLog()) return "";
-  // If promptSlug not provided in metadata, log entries can't be correlated
-  // Don't increment counter - use same slug as prompt
+  // Use the same counter and slug as the prompt for correlation
   const agentName = metadata?.agentName ?? "unknown";
-  // Require promptSlug in metadata for correlation
+  // Require promptSlug and counter in metadata for correlation
   const slug = metadata?.promptSlug;
-  if (!slug) {
+  const counter = metadata?.promptCounter as number | undefined;
+  if (!slug || counter === undefined) {
     logger.warn({ src: "core:logger" }, "logResponse missing promptSlug - responses can't be correlated");
     return "";
   }
