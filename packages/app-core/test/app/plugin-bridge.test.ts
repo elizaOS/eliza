@@ -14,7 +14,7 @@ import {
   isWeb,
   platform,
 } from "@elizaos/app-core/bridge";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 describe("plugin-bridge", () => {
   // -- Platform --

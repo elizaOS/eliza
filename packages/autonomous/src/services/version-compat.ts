@@ -47,36 +47,6 @@ export interface VersionCompatReport {
 // ---------------------------------------------------------------------------
 
 /**
- * Exports introduced in specific core versions.
- *
- * When a plugin imports a symbol from @elizaos/core, we can check whether
- * the installed core version actually contains that export. This map records
- * which version first introduced each critical export.
- *
- * Key: export name. Value: minimum core version that includes it.
- */
-const CORE_EXPORT_INTRODUCED_IN: Readonly<Record<string, string>> = {
-  MAX_EMBEDDING_TOKENS: "2.0.0-alpha.4",
-  MAX_EMBEDDING_CHARS: "2.0.0-alpha.4",
-};
-
-/**
- * Map of plugin → list of core exports the plugin requires.
- *
- * These are the imports that caused issue #10. If more cross-version
- * import issues are discovered, add them here.
- */
-const PLUGIN_REQUIRED_CORE_EXPORTS: Readonly<
-  Record<string, readonly string[]>
-> = {
-  "@elizaos/plugin-openrouter": ["MAX_EMBEDDING_TOKENS"],
-  "@elizaos/plugin-openai": ["MAX_EMBEDDING_TOKENS"],
-  "@elizaos/plugin-ollama": ["MAX_EMBEDDING_TOKENS"],
-  "@elizaos/plugin-google-genai": ["MAX_EMBEDDING_TOKENS"],
-  "@elizaos/plugin-knowledge": ["MAX_EMBEDDING_TOKENS"],
-};
-
-/**
  * Plugins that provide AI model capabilities. If ALL of these fail to load
  * the agent is completely non-functional — no responses can be generated.
  */
@@ -222,40 +192,7 @@ export async function validatePluginCompat(
   pluginName: string,
   coreVersion: string,
 ): Promise<PluginCompatResult> {
-  const requiredExports = PLUGIN_REQUIRED_CORE_EXPORTS[pluginName];
-
-  // If we don't track this plugin's requirements, assume compatible.
-  if (!requiredExports || requiredExports.length === 0) {
-    return {
-      plugin: pluginName,
-      compatible: true,
-      pluginVersion: await getInstalledVersion(pluginName),
-      coreVersion,
-      missingExports: [],
-      message: "",
-    };
-  }
-
   const missingExports: string[] = [];
-
-  for (const exportName of requiredExports) {
-    const minVersion = CORE_EXPORT_INTRODUCED_IN[exportName];
-
-    if (minVersion) {
-      // Fast path: compare versions without importing.
-      if (!versionSatisfies(coreVersion, minVersion)) {
-        missingExports.push(exportName);
-        continue;
-      }
-    }
-
-    // Slow path: probe the actual module to be sure.
-    const exists = await coreExportExists(exportName);
-    if (!exists) {
-      missingExports.push(exportName);
-    }
-  }
-
   const pluginVersion = await getInstalledVersion(pluginName);
   const compatible = missingExports.length === 0;
 
@@ -277,37 +214,6 @@ export async function validatePluginCompat(
     message,
   };
 }
-
-/**
- * Validate all known critical plugins against the installed core.
- *
- * Returns a report with per-plugin results and an overall advisory.
- */
-export async function validateVersionCompat(): Promise<VersionCompatReport> {
-  const coreVersion = (await getInstalledVersion("@elizaos/core")) ?? "unknown";
-  const pluginNames = Object.keys(PLUGIN_REQUIRED_CORE_EXPORTS);
-
-  const results = await Promise.all(
-    pluginNames.map((name) => validatePluginCompat(name, coreVersion)),
-  );
-
-  const failures = results.filter((r) => !r.compatible);
-  const compatible = failures.length === 0;
-
-  let advisory = "";
-  if (!compatible) {
-    const affectedNames = failures.map((f) => f.plugin).join(", ");
-    const allMissing = [...new Set(failures.flatMap((f) => f.missingExports))];
-    advisory =
-      `Version skew detected: @elizaos/core@${coreVersion} is missing ` +
-      `${allMissing.join(", ")} required by ${affectedNames}. ` +
-      `Fix: pin affected plugins to versions compatible with core@${coreVersion}, ` +
-      `or upgrade @elizaos/core to a version that exports these symbols.`;
-  }
-
-  return { compatible, results, failures, advisory };
-}
-
 /**
  * After plugin resolution, check whether at least one AI provider plugin
  * loaded successfully. If none loaded, return a diagnostic message explaining

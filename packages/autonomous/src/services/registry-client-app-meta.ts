@@ -42,23 +42,6 @@ const LOCAL_APP_OVERRIDES: Readonly<Record<string, LocalAppOverride>> = {
       sandbox: "allow-scripts allow-same-origin allow-popups allow-forms",
     },
   },
-  "@elizaos/app-hyperscape": {
-    launchType: "connect",
-    launchUrl: "http://localhost:3333",
-    uiExtension: {
-      detailPanelId: "hyperscape-embedded-agents",
-    },
-    viewer: {
-      url: "http://localhost:3333",
-      embedParams: {
-        embedded: "true",
-        mode: "spectator",
-        quality: "medium",
-      },
-      postMessageAuth: true,
-      sandbox: "allow-scripts allow-same-origin allow-popups allow-forms",
-    },
-  },
   "@elizaos/app-hyperfy": {
     launchType: "connect",
     launchUrl: "http://localhost:3003",

@@ -14,11 +14,10 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { handleAppsHyperscapeRoutes } from "@elizaos/app-hyperscape/routes";
+
 import {
   type AgentRuntime,
   ChannelType,
-  type Character,
   type Content,
   ContentType,
   createMessageMemory,
@@ -2163,17 +2162,17 @@ async function discoverSkills(
     try {
       const service = runtime.getService("AGENT_SKILLS_SERVICE");
       const svc = service as {
-            getLoadedSkills?: () => Array<{
-              slug: string;
-              name: string;
-              description: string;
-              source: string;
-              path: string;
-            }>;
-            getSkillScanStatus?: (
-              slug: string,
-            ) => "clean" | "warning" | "critical" | "blocked" | null;
-          } | null;
+        getLoadedSkills?: () => Array<{
+          slug: string;
+          name: string;
+          description: string;
+          source: string;
+          path: string;
+        }>;
+        getSkillScanStatus?: (
+          slug: string,
+        ) => "clean" | "warning" | "critical" | "blocked" | null;
+      } | null;
       if (svc && typeof svc.getLoadedSkills === "function") {
         const loadedSkills = svc.getLoadedSkills();
 
@@ -5581,22 +5580,6 @@ function isSharedTerminalClientId(clientId: string): boolean {
   return SHARED_TERMINAL_CLIENT_IDS.has(clientId);
 }
 
-/**
- * Resolve Authorization for Hyperscape API relays.
- *
- * Security: never forward the incoming request Authorization header
- * (which typically carries MILADY_API_TOKEN for this API). Hyperscape relay
- * auth must come from the dedicated HYPERSCAPE_AUTH_TOKEN secret instead.
- */
-export function resolveHyperscapeAuthorizationHeader(
-  req: Pick<http.IncomingMessage, "headers">,
-): string | null {
-  void req;
-  const envToken = process.env.HYPERSCAPE_AUTH_TOKEN?.trim();
-  if (!envToken) return null;
-  return /^Bearer\s+/i.test(envToken) ? envToken : `Bearer ${envToken}`;
-}
-
 function tokenMatches(expected: string, provided: string): boolean {
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(provided, "utf8");
@@ -6069,9 +6052,8 @@ function toWorkbenchTask(task: Task): WorkbenchTaskView | null {
   if (!id) return null;
   const metadata = readTaskMetadata(task);
   const updatedAt =
-    normalizeTimestamp(
-      task.updatedAt,
-    ) ?? normalizeTimestamp(metadata.updatedAt);
+    normalizeTimestamp(task.updatedAt) ??
+    normalizeTimestamp(metadata.updatedAt);
   return {
     id,
     name:
@@ -7258,9 +7240,7 @@ async function handleCodingAgentsFallback(
  */
 function getPtyConsoleBridge(st: ServerState) {
   if (!st.runtime) return null;
-  const ptyService = st.runtime.getService(
-    "PTY_SERVICE",
-  ) as PTYService | null;
+  const ptyService = st.runtime.getService("PTY_SERVICE") as PTYService | null;
   return ptyService?.consoleBridge ?? null;
 }
 
@@ -7343,94 +7323,6 @@ async function handleRequest(
       type: "restart-required",
       reasons: [...state.pendingRestartReasons],
     });
-  };
-
-  const resolveHyperscapeApiBaseUrl = async (): Promise<string> => {
-    const fromEnv = process.env.HYPERSCAPE_API_URL?.trim();
-    if (fromEnv) {
-      return fromEnv.replace(/\/+$/, "");
-    }
-    // Default to the local Hyperscape API server. Viewer URLs can point at a
-    // client dev server (for example :3333) which does not expose API routes.
-    return "http://localhost:5555";
-  };
-
-  const relayHyperscapeApi = async (
-    outboundMethod: "GET" | "POST",
-    outboundPath: string,
-    options?: {
-      rawBodyOverride?: string;
-      contentTypeOverride?: string | null;
-    },
-  ): Promise<void> => {
-    const baseUrl = await resolveHyperscapeApiBaseUrl();
-
-    let upstreamUrl: URL;
-    try {
-      upstreamUrl = new URL(outboundPath, baseUrl);
-      upstreamUrl.search = url.search;
-    } catch {
-      error(res, `Invalid Hyperscape API URL: ${baseUrl}`, 500);
-      return;
-    }
-
-    let rawBody: string | undefined;
-    if (options?.rawBodyOverride !== undefined) {
-      rawBody = options.rawBodyOverride;
-    } else if (outboundMethod === "POST") {
-      try {
-        rawBody = await readBody(req);
-        if (rawBody.trim().length === 0) {
-          rawBody = undefined;
-        }
-      } catch (err) {
-        error(
-          res,
-          `Failed to read request body: ${err instanceof Error ? err.message : String(err)}`,
-          400,
-        );
-        return;
-      }
-    }
-
-    const outboundHeaders: Record<string, string> = {};
-    const contentType =
-      options?.contentTypeOverride !== undefined
-        ? options.contentTypeOverride
-        : typeof req.headers["content-type"] === "string"
-          ? req.headers["content-type"]
-          : null;
-    if (contentType && rawBody !== undefined) {
-      outboundHeaders["Content-Type"] = contentType;
-    }
-    const authorization = resolveHyperscapeAuthorizationHeader(req);
-    if (authorization) {
-      outboundHeaders.Authorization = authorization;
-    }
-
-    let upstreamResponse: Response;
-    try {
-      upstreamResponse = await fetch(upstreamUrl.toString(), {
-        method: outboundMethod,
-        headers: outboundHeaders,
-        body: rawBody !== undefined ? rawBody : undefined,
-      });
-    } catch (err) {
-      error(
-        res,
-        `Failed to reach Hyperscape API: ${err instanceof Error ? err.message : String(err)}`,
-        502,
-      );
-      return;
-    }
-
-    const responseText = await upstreamResponse.text();
-    const responseType = upstreamResponse.headers.get("content-type");
-    if (responseType) {
-      res.setHeader("Content-Type", responseType);
-    }
-    res.statusCode = upstreamResponse.status;
-    res.end(responseText);
   };
 
   // ── DNS rebinding protection ──────────────────────────────────────────
@@ -9118,7 +9010,10 @@ async function handleRequest(
       }
 
       // Check if plugin exposes a test/health method
-      const pluginExt = plugin as typeof plugin & { testConnection?: () => Promise<{ ok: boolean; message?: string }>; healthCheck?: () => Promise<{ ok: boolean; message?: string }> };
+      const pluginExt = plugin as typeof plugin & {
+        testConnection?: () => Promise<{ ok: boolean; message?: string }>;
+        healthCheck?: () => Promise<{ ok: boolean; message?: string }>;
+      };
       const testFn = pluginExt.testConnection ?? pluginExt.healthCheck;
       if (testFn) {
         const result = await testFn();
@@ -13067,9 +12962,7 @@ async function handleRequest(
       const timeout = new Promise<void>((_, reject) =>
         setTimeout(
           () =>
-            reject(
-              new Error("Conversation restore timed out after 5000ms"),
-            ),
+            reject(new Error("Conversation restore timed out after 5000ms")),
           5000,
         ),
       );
@@ -14688,9 +14581,17 @@ async function handleRequest(
         const orchestratorPlugin = (await import(
           "@elizaos/plugin-agent-orchestrator"
         )) as Record<string, unknown>;
-        const createHandler = orchestratorPlugin.createCodingAgentRouteHandler as
-          | ((runtime: unknown, coordinator: unknown) => (req: unknown, res: unknown, pathname: string) => Promise<boolean>)
-          | undefined;
+        const createHandler =
+          orchestratorPlugin.createCodingAgentRouteHandler as
+            | ((
+                runtime: unknown,
+                coordinator: unknown,
+              ) => (
+                req: unknown,
+                res: unknown,
+                pathname: string,
+              ) => Promise<boolean>)
+            | undefined;
         if (createHandler) {
           const getCoordinator = orchestratorPlugin.getCoordinator as
             | ((runtime: unknown) => unknown)
@@ -14747,21 +14648,6 @@ async function handleRequest(
       json,
       error,
       runtime: state.runtime,
-    })
-  ) {
-    return;
-  }
-
-  // ── Hyperscape control proxy routes ──────────────────────────────────
-  if (
-    await handleAppsHyperscapeRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      relayHyperscapeApi,
-      readJsonBody,
-      error,
     })
   ) {
     return;
@@ -17242,8 +17128,16 @@ export async function startApiServer(opts?: {
                   );
                 }
               };
-              bridge.on("session_output", listener as (...args: unknown[]) => void);
-              subs.set(targetId, () => bridge.off("session_output", listener as (...args: unknown[]) => void));
+              bridge.on(
+                "session_output",
+                listener as (...args: unknown[]) => void,
+              );
+              subs.set(targetId, () =>
+                bridge.off(
+                  "session_output",
+                  listener as (...args: unknown[]) => void,
+                ),
+              );
             }
           }
         } else if (
@@ -17446,8 +17340,7 @@ export async function startApiServer(opts?: {
 
         state.conversations.set(convId, {
           id: convId,
-          title:
-            room.name || "Chat",
+          title: room.name || "Chat",
           roomId: room.id as UUID,
           createdAt: updatedAt,
           updatedAt,

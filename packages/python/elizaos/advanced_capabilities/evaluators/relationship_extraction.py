@@ -4,9 +4,8 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from elizaos.types import EvaluatorResult
 from elizaos.generated.spec_helpers import require_evaluator_spec
-from elizaos.types import ActionResult, Evaluator, HandlerOptions
+from elizaos.types import ActionResult, Evaluator, EvaluatorResult, HandlerOptions
 
 if TYPE_CHECKING:
     from elizaos.types import Content, IAgentRuntime, Memory, State

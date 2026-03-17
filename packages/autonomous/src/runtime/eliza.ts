@@ -41,16 +41,16 @@ import {
   ChannelType,
   type Character,
   type Component,
-  type MessageExampleGroup,
-  type ServiceTypeName,
   createMessageMemory,
   type Entity,
   type LogEntry,
   logger,
+  type MessageExampleGroup,
   // loggerScope, // removed
   mergeCharacterDefaults,
   type Plugin,
   type Provider,
+  type ServiceTypeName,
   stringToUuid,
   type TargetInfo,
   type UUID,
@@ -2990,7 +2990,9 @@ export function buildCharacterFromConfig(config: MiladyConfig): Character {
     ...(style ? { style } : {}),
     ...(adjectives ? { adjectives } : {}),
     ...(postExamples ? { postExamples } : {}),
-    ...(mappedExamples ? { messageExamples: mappedExamples as MessageExampleGroup[] } : {}),
+    ...(mappedExamples
+      ? { messageExamples: mappedExamples as MessageExampleGroup[] }
+      : {}),
     secrets,
   });
 }
@@ -3419,7 +3421,7 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
       process.env.SKILLS_REGISTRY?.trim() ||
         process.env.CLAWHUB_REGISTRY?.trim(),
     );
-    const hasSkillsmpKey = Boolean(process.env.SKILLSMP_API_KEY?.trim());
+    const _hasSkillsmpKey = Boolean(process.env.SKILLSMP_API_KEY?.trim());
     if (!hasSkillsRegistry) {
       process.env.SKILLS_REGISTRY = "https://clawhub.ai";
     }
@@ -3659,15 +3661,12 @@ export const logToChatListener = (entry: LogEntry) => {
 
       // Prevent infinite loops by suppressing logs from this action
       runtime
-        .sendMessageToTarget(
-          { roomId: entry.roomId } as TargetInfo,
-          {
-            text: `\`\`\`\n${content}\n\`\`\``,
-            source: "system",
+        .sendMessageToTarget({ roomId: entry.roomId } as TargetInfo, {
+          text: `\`\`\`\n${content}\n\`\`\``,
+          source: "system",
 
-            isLog: "true",
-          },
-        )
+          isLog: "true",
+        })
         .catch(() => {});
     }
   }

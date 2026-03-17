@@ -4,7 +4,13 @@
 
 import { Keyboard } from "@capacitor/keyboard";
 import { isIOS, isLifoPopoutValue, isNative } from "@elizaos/app-core/platform";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   AdvancedPageView,
   AppsPageView,
@@ -333,6 +339,10 @@ export function App() {
 
   const bugReport = useBugReportState();
   const agentStarting = agentStatus?.state === "starting";
+  const shouldLoad = onboardingLoading || agentStarting;
+  const [loaderFadingOut, setLoaderFadingOut] = useState(false);
+  const showLoaderRef = useRef(true);
+  const [showLoader, setShowLoader] = useState(true);
 
   useEffect(() => {
     const STARTUP_TIMEOUT_MS = 300_000;
@@ -343,25 +353,6 @@ export function App() {
       return () => clearTimeout(timer);
     }
   }, [startupPhase, startupError, retryStartup]);
-
-  // Pop-out mode — render only StreamView, skip startup gates.
-  // Platform init is skipped in main.tsx; AppProvider hydrates WS in background.
-  if (isPopout) {
-    return (
-      <div className="flex flex-col h-screen w-screen font-body text-txt bg-bg overflow-hidden">
-        <StreamView />
-      </div>
-    );
-  }
-
-  if (startupError) {
-    return <StartupFailureView error={startupError} onRetry={retryStartup} />;
-  }
-
-  const shouldLoad = onboardingLoading || agentStarting;
-  const [loaderFadingOut, setLoaderFadingOut] = useState(false);
-  const showLoaderRef = useRef(true);
-  const [showLoader, setShowLoader] = useState(true);
 
   useEffect(() => {
     if (shouldLoad) {
@@ -378,6 +369,20 @@ export function App() {
       return () => clearTimeout(timer);
     }
   }, [shouldLoad]);
+
+  // Pop-out mode — render only StreamView, skip startup gates.
+  // Platform init is skipped in main.tsx; AppProvider hydrates WS in background.
+  if (isPopout) {
+    return (
+      <div className="flex flex-col h-screen w-screen font-body text-txt bg-bg overflow-hidden">
+        <StreamView />
+      </div>
+    );
+  }
+
+  if (startupError) {
+    return <StartupFailureView error={startupError} onRetry={retryStartup} />;
+  }
 
   if (authRequired && !shouldLoad) return <PairingView />;
   if (!onboardingComplete && !shouldLoad) return <OnboardingWizard />;

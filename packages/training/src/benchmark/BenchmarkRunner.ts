@@ -114,8 +114,8 @@ export class BenchmarkRunner {
 
     // 1. Load or generate benchmark
     const snapshot = config.benchmarkPath
-      ? await loadBenchmark(config.benchmarkPath)
-      : await generateBenchmark(
+      ? await BenchmarkRunner.loadBenchmark(config.benchmarkPath)
+      : await BenchmarkRunner.generateBenchmark(
           config.generatorConfig ??
             (() => {
               throw new Error("generatorConfig required when benchmarkPath not provided");
@@ -200,7 +200,7 @@ export class BenchmarkRunner {
     // Create seeded RNG for baseline strategies (reproducibility)
     // Use snapshot ID hash as seed for deterministic behavior across runs
     const baselineSeed = config.forceStrategy
-      ? snapshot.id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0)
+      ? snapshot.id.split("").reduce((acc: number, c: string) => acc + c.charCodeAt(0), 0)
       : 0;
     const baselineRng = config.forceStrategy
       ? new SeededRandom(baselineSeed)

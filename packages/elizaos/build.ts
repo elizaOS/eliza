@@ -160,7 +160,11 @@ function copyDir(src: string, dest: string): void {
   }
 }
 
-function copyExamplesDir(src: string, dest: string, examples: Example[]): void {
+function _copyExamplesDir(
+  src: string,
+  dest: string,
+  examples: Example[],
+): void {
   fs.mkdirSync(dest, { recursive: true });
 
   for (const example of examples) {
@@ -253,7 +257,7 @@ function detectLanguage(langDir: string): ExampleLanguage | null {
   };
 }
 
-function scanExamples(): ExamplesManifest {
+function _scanExamples(): ExamplesManifest {
   const examples: Example[] = [];
   const categoriesSet = new Set<string>();
   const languagesSet = new Set<string>();
@@ -371,34 +375,10 @@ function scanExamples(): ExamplesManifest {
 }
 
 async function main() {
-  console.log("🔍 Scanning examples directory...");
-  const manifest = scanExamples();
-
-  console.log(
-    `📦 Found ${manifest.examples.length} examples with ${manifest.languages.length} languages`,
-  );
-
-  // Write manifest
-  const manifestPath = path.join(PACKAGE_DIR, "examples-manifest.json");
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-  console.log(`✅ Generated ${manifestPath}`);
-
   // Create dist directory
   if (!fs.existsSync(DIST_DIR)) {
     fs.mkdirSync(DIST_DIR, { recursive: true });
   }
-
-  // Copy manifest to dist
-  fs.copyFileSync(manifestPath, path.join(DIST_DIR, "examples-manifest.json"));
-
-  // Copy examples to package for bundling
-  const pkgExamplesDir = path.join(PACKAGE_DIR, "examples");
-  if (fs.existsSync(pkgExamplesDir)) {
-    fs.rmSync(pkgExamplesDir, { recursive: true, force: true });
-  }
-
-  console.log("📦 Bundling examples...");
-  copyExamplesDir(EXAMPLES_DIR, pkgExamplesDir, manifest.examples);
 
   // Compile TypeScript
   console.log("🔨 Compiling TypeScript...");
@@ -423,10 +403,6 @@ async function main() {
   }
 
   console.log("\n🎉 Build complete!");
-  console.log(
-    `   Examples: ${manifest.examples.map((e) => e.name).join(", ")}`,
-  );
-  console.log(`   Languages: ${manifest.languages.join(", ")}`);
 }
 
 main().catch(console.error);

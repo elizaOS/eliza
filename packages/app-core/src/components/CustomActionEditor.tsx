@@ -997,7 +997,9 @@ export function CustomActionEditor({
                 <input
                   type="text"
                   value={param.name}
-                  onChange={(e) => updateParameter(paramIdx, "name", e.target.value)}
+                  onChange={(e) =>
+                    updateParameter(paramIdx, "name", e.target.value)
+                  }
                   placeholder={t("customactioneditor.paramName")}
                   className="w-32 bg-surface border border-border px-2 py-1.5 text-sm text-txt placeholder:text-muted/50 outline-none focus:border-accent"
                 />

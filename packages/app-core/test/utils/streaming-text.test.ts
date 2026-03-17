@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  mergeStreamingText,
   computeStreamingDelta,
+  mergeStreamingText,
 } from "../../src/utils/streaming-text";
 
 describe("mergeStreamingText", () => {

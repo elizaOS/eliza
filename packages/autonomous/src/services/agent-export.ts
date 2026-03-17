@@ -702,12 +702,14 @@ async function restoreAgentData(
   // 8. Create relationships
   let relationshipsImported = 0;
   for (const rel of payload.relationships) {
-    await db.createRelationships([{
-      sourceEntityId: remap(rel.sourceEntityId ?? "") as UUID,
-      targetEntityId: remap(rel.targetEntityId ?? "") as UUID,
-      tags: rel.tags,
-      metadata: rel.metadata,
-    }]);
+    await db.createRelationships([
+      {
+        sourceEntityId: remap(rel.sourceEntityId ?? "") as UUID,
+        targetEntityId: remap(rel.targetEntityId ?? "") as UUID,
+        tags: rel.tags,
+        metadata: rel.metadata,
+      },
+    ]);
     relationshipsImported++;
   }
   logger.info(`[agent-import] Imported ${relationshipsImported} relationships`);
@@ -734,16 +736,18 @@ async function restoreAgentData(
   // 10. Create logs
   let logsImported = 0;
   for (const logEntry of payload.logs) {
-    await db.createLogs([{
-      body: logEntry.body,
-      entityId: (logEntry.entityId
-        ? (remap(logEntry.entityId) as UUID)
-        : logEntry.entityId) as UUID,
-      roomId: logEntry.roomId
-        ? (remap(logEntry.roomId) as UUID)
-        : (newAgentId as UUID),
-      type: logEntry.type ?? "action",
-    }]);
+    await db.createLogs([
+      {
+        body: logEntry.body,
+        entityId: (logEntry.entityId
+          ? (remap(logEntry.entityId) as UUID)
+          : logEntry.entityId) as UUID,
+        roomId: logEntry.roomId
+          ? (remap(logEntry.roomId) as UUID)
+          : (newAgentId as UUID),
+        type: logEntry.type ?? "action",
+      },
+    ]);
     logsImported++;
   }
   logger.info(`[agent-import] Imported ${logsImported} logs`);
@@ -955,7 +959,10 @@ export async function estimateExportSize(
   const roomIds = await db.getRoomsForParticipants([agentId]);
   const entityIdSet = new Set<string>();
   if (roomIds.length > 0) {
-    const entitiesResult = await db.getEntitiesForRooms(roomIds as UUID[], true);
+    const entitiesResult = await db.getEntitiesForRooms(
+      roomIds as UUID[],
+      true,
+    );
     for (const result of entitiesResult) {
       for (const e of result.entities) {
         if (e.id) entityIdSet.add(e.id);

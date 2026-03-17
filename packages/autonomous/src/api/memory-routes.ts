@@ -9,10 +9,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { parsePositiveInteger } from "../utils/number-parsing";
-import {
-  getKnowledgeService,
-  type KnowledgeServiceLike,
-} from "./knowledge-service-loader";
+import { getKnowledgeService } from "./knowledge-service-loader";
 import type { RouteRequestContext } from "./route-helpers";
 
 const HASH_MEMORY_SOURCE = "hash_memory";
