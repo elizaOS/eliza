@@ -8,11 +8,7 @@
 import { useApp } from "@elizaos/app-core/state";
 import { useCallback, useState } from "react";
 import { TradePanel } from "./BscTradePanel";
-import {
-  CHAIN_CONFIGS,
-  resolveChainKey,
-  type ChainKey,
-} from "./chainConfig";
+import { CHAIN_CONFIGS, resolveChainKey, type ChainKey } from "./chainConfig";
 import {
   BSC_GAS_THRESHOLD,
   loadTrackedBscTokens,
@@ -110,9 +106,7 @@ export function InventoryView({ inModal }: { inModal?: boolean } = {}) {
   const evmChainErrors = new Map(
     (walletBalances?.evm?.chains ?? [])
       .map((chain) => [resolveChainKey(chain.chain), chain.error] as const)
-      .filter(
-        (entry): entry is [ChainKey, string | null] => entry[0] !== null,
-      ),
+      .filter((entry): entry is [ChainKey, string | null] => entry[0] !== null),
   );
   const ethereumReady = Boolean(
     evmAddr &&
@@ -174,35 +168,48 @@ export function InventoryView({ inModal }: { inModal?: boolean } = {}) {
       : null;
 
   const headerWarning =
-    chainFocus === "bsc" && evmAddr && !bscReady
+    chainFocus !== "all" && cfg?.legacyCustomChains?.includes(chainFocus)
       ? {
-          title: t("wallet.setup.rpcNotConfigured"),
-          body: t("portfolioheader.ConnectViaElizaCl"),
+          title: `${
+            focusedChainLabel ??
+            (chainFocus === "bsc"
+              ? "BSC"
+              : chainFocus === "solana"
+                ? "Solana"
+                : "EVM")
+          } is using legacy raw RPC config.`,
+          body: "Re-save a supported provider in Settings to migrate fully.",
           actionLabel: t("wallet.setup.configureRpc"),
         }
-      : chainFocus === "solana" && solAddr && !solanaReady
+      : chainFocus === "bsc" && evmAddr && !bscReady
         ? {
-            title: "Solana RPC is not configured.",
-            body: "Connect via Eliza Cloud or configure HELIUS_API_KEY / SOLANA_RPC_URL in Settings to load Solana balances.",
+            title: t("wallet.setup.rpcNotConfigured"),
+            body: t("portfolioheader.ConnectViaElizaCl"),
             actionLabel: t("wallet.setup.configureRpc"),
           }
-        : chainFocus !== "all" &&
-            chainFocus !== "bsc" &&
-            chainFocus !== "solana" &&
-            evmAddr &&
-            !(chainFocus === "ethereum"
-              ? ethereumReady
-              : chainFocus === "base"
-                ? baseReady
-                : chainFocus === "avax"
-                  ? avaxReady
-                  : false)
+        : chainFocus === "solana" && solAddr && !solanaReady
           ? {
-              title: `${focusedChainLabel ?? "Chain"} access is not configured.`,
-              body: `Connect via Eliza Cloud or configure ${focusedChainLabel ?? "this chain"} RPC access in Settings to load balances.`,
+              title: "Solana RPC is not configured.",
+              body: "Connect via Eliza Cloud or configure HELIUS_API_KEY / SOLANA_RPC_URL in Settings to load Solana balances.",
               actionLabel: t("wallet.setup.configureRpc"),
             }
-          : null;
+          : chainFocus !== "all" &&
+              chainFocus !== "bsc" &&
+              chainFocus !== "solana" &&
+              evmAddr &&
+              !(chainFocus === "ethereum"
+                ? ethereumReady
+                : chainFocus === "base"
+                  ? baseReady
+                  : chainFocus === "avax"
+                    ? avaxReady
+                    : false)
+            ? {
+                title: `${focusedChainLabel ?? "Chain"} access is not configured.`,
+                body: `Connect via Eliza Cloud or configure ${focusedChainLabel ?? "this chain"} RPC access in Settings to load balances.`,
+                actionLabel: t("wallet.setup.configureRpc"),
+              }
+            : null;
 
   // ── Tracked token handlers ────────────────────────────────────────
   const handleAddToken = useCallback(

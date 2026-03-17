@@ -64,6 +64,7 @@ export type ShellView = "companion" | "character" | "desktop";
 
 export type OnboardingStep =
   | "wakeUp"
+  | "identity"
   | "connection"
   | "rpc"
   | "senses"
@@ -80,6 +81,11 @@ export const ONBOARDING_STEPS: OnboardingStepMeta[] = [
     id: "wakeUp",
     name: "onboarding.stepName.wakeUp",
     subtitle: "onboarding.stepSub.wakeUp",
+  },
+  {
+    id: "identity",
+    name: "onboarding.stepName.identity",
+    subtitle: "onboarding.stepSub.identity",
   },
   {
     id: "connection",

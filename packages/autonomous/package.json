@@ -133,7 +133,7 @@
     "./config/types.gateway": "./src/config/types.gateway.ts",
     "./config/types.hooks": "./src/config/types.hooks.ts",
     "./config/types.messages": "./src/config/types.messages.ts",
-    "./config/types.autonomous": "./src/config/types.autonomous.ts",
+    "./config/types.milady": "./src/config/types.milady.ts",
     "./config/types.tools": "./src/config/types.tools.ts",
     "./config/zod-schema": "./src/config/zod-schema.ts",
     "./contracts": "./src/contracts/index.ts",
@@ -169,7 +169,8 @@
     "./runtime/agent-event-service": "./src/runtime/agent-event-service.ts",
     "./runtime/eliza": "./src/runtime/eliza.ts",
     "./runtime/custom-actions": "./src/runtime/custom-actions.ts",
-    "./runtime/autonomous-plugin": "./src/runtime/autonomous-plugin.ts",
+    "./runtime/milady-plugin": "./src/runtime/milady-plugin.ts",
+    "./runtime/cloud-onboarding": "./src/runtime/cloud-onboarding.ts",
     "./runtime/onboarding-names": "./src/runtime/onboarding-names.ts",
     "./runtime/restart": "./src/runtime/restart.ts",
     "./runtime/release-plugin-policy": "./src/runtime/release-plugin-policy.ts",
@@ -212,25 +213,60 @@
     "./version-resolver": "./src/version-resolver.ts"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/signal-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "@elizaos/signal-native": {
+      "optional": true
+    }
   },
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
+    "@elizaos/plugin-agent-orchestrator": "0.3.15",
+    "@elizaos/plugin-agent-skills": "alpha",
+    "@elizaos/plugin-anthropic": "alpha",
+    "@elizaos/plugin-coding-agent": "0.1.0-next.1",
+    "@elizaos/plugin-cron": "alpha",
+    "@elizaos/plugin-elizacloud": "alpha",
+    "@elizaos/plugin-experience": "alpha",
+    "@elizaos/plugin-form": "alpha",
+    "@elizaos/plugin-knowledge": "alpha",
+    "@elizaos/plugin-local-embedding": "alpha",
+    "@elizaos/plugin-ollama": "alpha",
+    "@elizaos/plugin-openai": "alpha",
+    "@elizaos/plugin-pdf": "alpha",
+    "@elizaos/plugin-personality": "alpha",
+    "@elizaos/plugin-pi-ai": "alpha",
+    "@elizaos/plugin-plugin-manager": "alpha",
+    "@elizaos/plugin-rolodex": "alpha",
+    "@elizaos/plugin-secrets-manager": "alpha",
+    "@elizaos/plugin-shell": "alpha",
+    "@elizaos/plugin-sql": "alpha",
+    "@elizaos/plugin-todo": "alpha",
+    "@elizaos/plugin-trajectory-logger": "alpha",
+    "@elizaos/plugin-trust": "alpha",
     "@elizaos/prompts": "workspace:*",
+    "@elizaos/skills": "alpha",
     "@hapi/boom": "^10.0.1",
     "@mariozechner/pi-ai": "0.52.12",
     "@noble/curves": "^2.0.1",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
-    "drizzle-orm": "^0.44.7",
+    "coding-agent-adapters": "0.12.0",
+    "drizzle-orm": "0.45.1",
     "ethers": "^6.16.0",
+    "git-workspace-service": "0.4.4",
     "json5": "^2.2.3",
     "pg": "^8.16.3",
     "pino": "^10.3.1",
+    "pty-manager": "1.9.8",
     "puppeteer-core": "^24.37.5",
-    "ws": "^8.19.0"
+    "qrcode": "^1.5.4",
+    "ws": "^8.19.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

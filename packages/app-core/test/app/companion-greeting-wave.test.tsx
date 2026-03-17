@@ -4,6 +4,7 @@ import {
   APP_EMOTE_EVENT,
   type AppEmoteEventDetail,
 } from "@elizaos/app-core/events";
+import type { Tab } from "@elizaos/app-core/navigation";
 import React, { useEffect } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -128,20 +129,27 @@ vi.mock("@elizaos/app-core/api", () => ({
 
 import { AppProvider, useApp } from "@elizaos/app-core/state";
 
-const UI_SHELL_MODE_STORAGE_KEY = "milady:ui-shell-mode";
+type Snapshot = { tab: Tab; uiShellMode: "native" | "companion" };
 
 type ProbeApi = {
   handleNewConversation: () => Promise<void>;
 };
 
-function Probe(props: { onReady: (api: ProbeApi) => void }) {
+function Probe(props: {
+  onReady: (api: ProbeApi) => void;
+  onChange: (snapshot: Snapshot) => void;
+}) {
   const app = useApp();
+
+  useEffect(() => {
+    props.onChange({ tab: app.tab, uiShellMode: app.uiShellMode });
+  }, [app.tab, app.uiShellMode, props]);
 
   useEffect(() => {
     props.onReady({
       handleNewConversation: () => app.handleNewConversation(),
     });
-  }, [app, props]);
+  }, [app.handleNewConversation, props]);
 
   return null;
 }
@@ -302,18 +310,14 @@ describe("companion greeting wave", () => {
     vi.restoreAllMocks();
   });
 
-  async function renderAppWithShellMode(
-    mode: "companion" | "native",
-    options?: {
-      bootstrapConversation?: boolean;
-    },
-  ): Promise<{
+  async function renderApp(options?: {
+    bootstrapConversation?: boolean;
+  }): Promise<{
     api: ProbeApi;
     tree: TestRenderer.ReactTestRenderer;
     events: AppEmoteEventDetail[];
+    snapshot: () => Snapshot | null;
   }> {
-    localStorage.setItem(UI_SHELL_MODE_STORAGE_KEY, mode);
-
     const events: AppEmoteEventDetail[] = [];
     const handler = (event: Event) => {
       events.push((event as CustomEvent<AppEmoteEventDetail>).detail);
@@ -321,6 +325,7 @@ describe("companion greeting wave", () => {
     window.addEventListener(APP_EMOTE_EVENT, handler);
 
     let api: ProbeApi | null = null;
+    let snapshot: Snapshot | null = null;
     let tree!: TestRenderer.ReactTestRenderer;
 
     await act(async () => {
@@ -331,6 +336,9 @@ describe("companion greeting wave", () => {
           React.createElement(Probe, {
             onReady: (nextApi) => {
               api = nextApi;
+            },
+            onChange: (nextSnapshot) => {
+              snapshot = nextSnapshot;
             },
           }),
         ),
@@ -346,11 +354,19 @@ describe("companion greeting wave", () => {
             bootstrapGreeting: true,
           }),
         );
+        expect(snapshot).toMatchObject({
+          tab: "character-select",
+          uiShellMode: "native",
+        });
         return;
       }
       expect(mockClient.getConversationMessages).toHaveBeenCalledWith(
         "conv-existing",
       );
+      expect(snapshot).toMatchObject({
+        tab: "character-select",
+        uiShellMode: "native",
+      });
     });
 
     const resolvedApi = api;
@@ -364,42 +380,15 @@ describe("companion greeting wave", () => {
       originalUnmount();
     };
 
-    return { api: resolvedApi, tree, events };
+    return { api: resolvedApi, tree, events, snapshot: () => snapshot };
   }
 
-  it("waves after creating a new chat in companion mode", async () => {
-    const { api, tree, events } = await renderAppWithShellMode("companion");
-
-    await act(async () => {
-      await api.handleNewConversation();
-    });
-
-    expect(events).toHaveLength(0);
-
-    await act(async () => {
-      vi.advanceTimersByTime(1400);
-    });
-
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      emoteId: "wave",
-      path: "/animations/emotes/waving-both-hands.glb",
-      duration: 2.5,
-      loop: false,
-      showOverlay: false,
-    });
-
-    await act(async () => {
-      tree.unmount();
-    });
-  });
-
-  it("shows the wave emoji for the bootstrap greeting on initial companion load", async () => {
+  it("does not wave for a bootstrap greeting while launch resumes on character select", async () => {
     mockClient.listConversations.mockResolvedValue({
       conversations: [],
     });
 
-    const { tree, events } = await renderAppWithShellMode("companion", {
+    const { tree, events } = await renderApp({
       bootstrapConversation: true,
     });
 
@@ -409,22 +398,15 @@ describe("companion greeting wave", () => {
       vi.advanceTimersByTime(1400);
     });
 
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      emoteId: "wave",
-      path: "/animations/emotes/waving-both-hands.glb",
-      duration: 2.5,
-      loop: false,
-      showOverlay: true,
-    });
+    expect(events).toHaveLength(0);
 
     await act(async () => {
       tree.unmount();
     });
   });
 
-  it("does not wave after creating a new chat in native mode", async () => {
-    const { api, tree, events } = await renderAppWithShellMode("native");
+  it("does not wave after creating a new chat outside companion mode", async () => {
+    const { api, tree, events } = await renderApp();
 
     await act(async () => {
       await api.handleNewConversation();

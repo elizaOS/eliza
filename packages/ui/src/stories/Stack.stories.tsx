@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import React from "react";
 import { Stack } from "../components/ui/stack";
 
 const meta: Meta<typeof Stack> = { title: "Atoms/Stack", component: Stack };

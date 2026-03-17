@@ -841,6 +841,12 @@ export function findRuntimePluginExport(mod: PluginModuleShape): Plugin | null {
 /** @internal Exported for testing. */
 export function collectPluginNames(config: MiladyConfig): Set<string> {
   const shellPluginDisabled = config.features?.shellEnabled === false;
+  const localEmbeddingsExplicitlyDisabled = (() => {
+    const raw = process.env.MILADY_DISABLE_LOCAL_EMBEDDINGS;
+    if (!raw) return false;
+    const normalized = raw.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "yes";
+  })();
   const cloudMode = config.cloud?.enabled;
   const cloudHasApiKey = Boolean(config.cloud?.apiKey);
   const cloudExplicitlyDisabled = cloudMode === false;
@@ -918,6 +924,9 @@ export function collectPluginNames(config: MiladyConfig): Set<string> {
   // Allow-list entries are additive (extra plugins), not exclusive.
   const allowList = config.plugins?.allow;
   const pluginsToLoad = new Set<string>(CORE_PLUGINS);
+  if (localEmbeddingsExplicitlyDisabled) {
+    pluginsToLoad.delete("@elizaos/plugin-local-embedding");
+  }
 
   // Allow list is additive — extra plugins on top of auto-detection,
   // not an exclusive whitelist that blocks everything else.
@@ -2873,9 +2882,10 @@ export function buildCharacterFromConfig(config: MiladyConfig): Character {
   // bootstrap or configs created before this change). For built-in default
   // characters, fall back to the bundled preset so legacy name-only configs
   // still retain their default posts/messages.
-  const bio = agentEntry?.bio ?? bundledPreset?.bio ?? [
-    "{{name}} is an AI assistant powered by Milady and elizaOS.",
-  ];
+  const bio = agentEntry?.bio ??
+    bundledPreset?.bio ?? [
+      "{{name}} is an AI assistant powered by Milady and elizaOS.",
+    ];
   const systemPrompt =
     agentEntry?.system ??
     bundledPreset?.system ??
@@ -3116,7 +3126,9 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
   // ── Step 3.5: Runtime selection (Cloud vs Local) ───────────────────────
   // Present the user with a choice of where to run their agent. Cloud mode
   // skips the local AI provider, wallet, and GitHub steps.
-  let cloudOnboardingResult: import("./cloud-onboarding").CloudOnboardingResult | null = null;
+  let cloudOnboardingResult:
+    | import("./cloud-onboarding").CloudOnboardingResult
+    | null = null;
   let isCloudMode = false;
 
   const runtimeChoice = await clack.select({
@@ -3157,9 +3169,7 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
 
     if (cloudOnboardingResult?.agentId) {
       isCloudMode = true;
-      clack.log.success(
-        `${name} is now running in the cloud! ☁️`,
-      );
+      clack.log.success(`${name} is now running in the cloud! ☁️`);
     } else if (cloudOnboardingResult) {
       // Auth succeeded but no agent provisioned — save auth for later
       clack.log.info(
@@ -3185,284 +3195,287 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
   const hasSolKey = Boolean(process.env.SOLANA_PRIVATE_KEY?.trim());
 
   if (!isCloudMode) {
+    // ── Step 4: Model provider ───────────────────────────────────────────────
+    // Skip provider selection in cloud mode — Eliza Cloud handles inference.
+    // Check whether an API key is already set in the environment (from .env or
+    // shell).  If none is found, ask the user to pick a provider and enter a key.
+    const PROVIDER_OPTIONS = [
+      {
+        id: "anthropic",
+        label: "Anthropic (Claude)",
+        envKey: "ANTHROPIC_API_KEY",
+        detectKeys: ["ANTHROPIC_API_KEY"],
+        hint: "sk-ant-...",
+      },
+      {
+        id: "openai",
+        label: "OpenAI (GPT)",
+        envKey: "OPENAI_API_KEY",
+        detectKeys: ["OPENAI_API_KEY"],
+        hint: "sk-...",
+      },
+      {
+        id: "openrouter",
+        label: "OpenRouter",
+        envKey: "OPENROUTER_API_KEY",
+        detectKeys: ["OPENROUTER_API_KEY"],
+        hint: "sk-or-...",
+      },
+      {
+        id: "vercel-ai-gateway",
+        label: "Vercel AI Gateway",
+        envKey: "AI_GATEWAY_API_KEY",
+        detectKeys: ["AI_GATEWAY_API_KEY", "AIGATEWAY_API_KEY"],
+        hint: "aigw_...",
+      },
+      {
+        id: "gemini",
+        label: "Google Gemini",
+        envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
+        detectKeys: [
+          "GOOGLE_GENERATIVE_AI_API_KEY",
+          "GOOGLE_API_KEY",
+          "GEMINI_API_KEY",
+        ],
+        hint: "AI...",
+      },
+      {
+        id: "grok",
+        label: "xAI (Grok)",
+        envKey: "XAI_API_KEY",
+        detectKeys: ["XAI_API_KEY"],
+        hint: "xai-...",
+      },
+      {
+        id: "groq",
+        label: "Groq",
+        envKey: "GROQ_API_KEY",
+        detectKeys: ["GROQ_API_KEY"],
+        hint: "gsk_...",
+      },
+      {
+        id: "deepseek",
+        label: "DeepSeek",
+        envKey: "DEEPSEEK_API_KEY",
+        detectKeys: ["DEEPSEEK_API_KEY"],
+        hint: "sk-...",
+      },
+      {
+        id: "mistral",
+        label: "Mistral",
+        envKey: "MISTRAL_API_KEY",
+        detectKeys: ["MISTRAL_API_KEY"],
+        hint: "",
+      },
+      {
+        id: "together",
+        label: "Together AI",
+        envKey: "TOGETHER_API_KEY",
+        detectKeys: ["TOGETHER_API_KEY"],
+        hint: "",
+      },
+      {
+        id: "ollama",
+        label: "Ollama (local, free)",
+        envKey: "OLLAMA_BASE_URL",
+        detectKeys: ["OLLAMA_BASE_URL"],
+        hint: "http://localhost:11434",
+      },
+    ] as const;
 
-  // ── Step 4: Model provider ───────────────────────────────────────────────
-  // Skip provider selection in cloud mode — Eliza Cloud handles inference.
-  // Check whether an API key is already set in the environment (from .env or
-  // shell).  If none is found, ask the user to pick a provider and enter a key.
-  const PROVIDER_OPTIONS = [
-    {
-      id: "anthropic",
-      label: "Anthropic (Claude)",
-      envKey: "ANTHROPIC_API_KEY",
-      detectKeys: ["ANTHROPIC_API_KEY"],
-      hint: "sk-ant-...",
-    },
-    {
-      id: "openai",
-      label: "OpenAI (GPT)",
-      envKey: "OPENAI_API_KEY",
-      detectKeys: ["OPENAI_API_KEY"],
-      hint: "sk-...",
-    },
-    {
-      id: "openrouter",
-      label: "OpenRouter",
-      envKey: "OPENROUTER_API_KEY",
-      detectKeys: ["OPENROUTER_API_KEY"],
-      hint: "sk-or-...",
-    },
-    {
-      id: "vercel-ai-gateway",
-      label: "Vercel AI Gateway",
-      envKey: "AI_GATEWAY_API_KEY",
-      detectKeys: ["AI_GATEWAY_API_KEY", "AIGATEWAY_API_KEY"],
-      hint: "aigw_...",
-    },
-    {
-      id: "gemini",
-      label: "Google Gemini",
-      envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
-      detectKeys: [
-        "GOOGLE_GENERATIVE_AI_API_KEY",
-        "GOOGLE_API_KEY",
-        "GEMINI_API_KEY",
-      ],
-      hint: "AI...",
-    },
-    {
-      id: "grok",
-      label: "xAI (Grok)",
-      envKey: "XAI_API_KEY",
-      detectKeys: ["XAI_API_KEY"],
-      hint: "xai-...",
-    },
-    {
-      id: "groq",
-      label: "Groq",
-      envKey: "GROQ_API_KEY",
-      detectKeys: ["GROQ_API_KEY"],
-      hint: "gsk_...",
-    },
-    {
-      id: "deepseek",
-      label: "DeepSeek",
-      envKey: "DEEPSEEK_API_KEY",
-      detectKeys: ["DEEPSEEK_API_KEY"],
-      hint: "sk-...",
-    },
-    {
-      id: "mistral",
-      label: "Mistral",
-      envKey: "MISTRAL_API_KEY",
-      detectKeys: ["MISTRAL_API_KEY"],
-      hint: "",
-    },
-    {
-      id: "together",
-      label: "Together AI",
-      envKey: "TOGETHER_API_KEY",
-      detectKeys: ["TOGETHER_API_KEY"],
-      hint: "",
-    },
-    {
-      id: "ollama",
-      label: "Ollama (local, free)",
-      envKey: "OLLAMA_BASE_URL",
-      detectKeys: ["OLLAMA_BASE_URL"],
-      hint: "http://localhost:11434",
-    },
-  ] as const;
-
-  // Detect if any provider key is already configured
-  const detectedProvider = PROVIDER_OPTIONS.find((p) =>
-    p.detectKeys.some((key) => process.env[key]?.trim()),
-  );
-
-  if (detectedProvider) {
-    clack.log.success(
-      `Found existing ${detectedProvider.label} key in environment (${detectedProvider.envKey})`,
+    // Detect if any provider key is already configured
+    const detectedProvider = PROVIDER_OPTIONS.find((p) =>
+      p.detectKeys.some((key) => process.env[key]?.trim()),
     );
-  } else {
-    const providerChoice = await clack.select({
-      message: `${name}: One more thing — which AI provider should I use?`,
-      options: [
-        ...PROVIDER_OPTIONS.map((p) => ({
-          value: p.id,
-          label: p.label,
-          hint: p.id === "ollama" ? "no API key needed" : undefined,
-        })),
-        {
-          value: "_skip_",
-          label: "Skip for now",
-          hint: "set an API key later via env or config",
-        },
-      ],
-    });
 
-    if (clack.isCancel(providerChoice)) cancelOnboarding();
+    if (detectedProvider) {
+      clack.log.success(
+        `Found existing ${detectedProvider.label} key in environment (${detectedProvider.envKey})`,
+      );
+    } else {
+      const providerChoice = await clack.select({
+        message: `${name}: One more thing — which AI provider should I use?`,
+        options: [
+          ...PROVIDER_OPTIONS.map((p) => ({
+            value: p.id,
+            label: p.label,
+            hint: p.id === "ollama" ? "no API key needed" : undefined,
+          })),
+          {
+            value: "_skip_",
+            label: "Skip for now",
+            hint: "set an API key later via env or config",
+          },
+        ],
+      });
 
-    if (providerChoice !== "_skip_") {
-      const chosen = PROVIDER_OPTIONS.find((p) => p.id === providerChoice);
-      if (chosen) {
-        providerEnvKey = chosen.envKey;
+      if (clack.isCancel(providerChoice)) cancelOnboarding();
 
-        if (chosen.id === "ollama") {
-          // Ollama just needs a base URL, default to localhost
-          const ollamaUrl = await clack.text({
-            message: "Ollama base URL:",
-            placeholder: "http://localhost:11434",
-            defaultValue: "http://localhost:11434",
-          });
+      if (providerChoice !== "_skip_") {
+        const chosen = PROVIDER_OPTIONS.find((p) => p.id === providerChoice);
+        if (chosen) {
+          providerEnvKey = chosen.envKey;
 
-          if (clack.isCancel(ollamaUrl)) cancelOnboarding();
+          if (chosen.id === "ollama") {
+            // Ollama just needs a base URL, default to localhost
+            const ollamaUrl = await clack.text({
+              message: "Ollama base URL:",
+              placeholder: "http://localhost:11434",
+              defaultValue: "http://localhost:11434",
+            });
 
-          providerApiKey = ollamaUrl.trim() || "http://localhost:11434";
-        } else {
-          const apiKeyInput = await clack.password({
-            message: `Paste your ${chosen.label} API key:`,
-          });
+            if (clack.isCancel(ollamaUrl)) cancelOnboarding();
 
-          if (clack.isCancel(apiKeyInput)) cancelOnboarding();
+            providerApiKey = ollamaUrl.trim() || "http://localhost:11434";
+          } else {
+            const apiKeyInput = await clack.password({
+              message: `Paste your ${chosen.label} API key:`,
+            });
 
-          providerApiKey = apiKeyInput.trim();
+            if (clack.isCancel(apiKeyInput)) cancelOnboarding();
+
+            providerApiKey = apiKeyInput.trim();
+          }
         }
       }
     }
-  }
 
-  // ── Step 4b: Embedding model preset ────────────────────────────────────
-  // (Simplified: always use the standard/reliable model preset. No user choice.)
+    // ── Step 4b: Embedding model preset ────────────────────────────────────
+    // (Simplified: always use the standard/reliable model preset. No user choice.)
 
-  // ── Step 5: Wallet setup ───────────────────────────────────────────────
-  // Offer to generate or import wallets for EVM and Solana. Keys are
-  // stored in config.env and process.env, making them available to
-  // plugins at runtime.
-  const { generateWalletKeys, importWallet } = await import("../api/wallet");
+    // ── Step 5: Wallet setup ───────────────────────────────────────────────
+    // Offer to generate or import wallets for EVM and Solana. Keys are
+    // stored in config.env and process.env, making them available to
+    // plugins at runtime.
+    const { generateWalletKeys, importWallet } = await import("../api/wallet");
 
-  // hasEvmKey and hasSolKey are hoisted above the if (!isCloudMode) block
-  // so they're also available in the persistence section.
-  if (!hasEvmKey || !hasSolKey) {
-    const walletAction = await clack.select({
-      message: `${name}: Do you want me to set up crypto wallets? (for trading, NFTs, DeFi)`,
-      options: [
-        {
-          value: "generate",
-          label: "Generate new wallets",
-          hint: "creates fresh EVM + Solana keypairs",
-        },
-        {
-          value: "import",
-          label: "Import existing wallets",
-          hint: "paste your private keys",
-        },
+    // hasEvmKey and hasSolKey are hoisted above the if (!isCloudMode) block
+    // so they're also available in the persistence section.
+    if (!hasEvmKey || !hasSolKey) {
+      const walletAction = await clack.select({
+        message: `${name}: Do you want me to set up crypto wallets? (for trading, NFTs, DeFi)`,
+        options: [
+          {
+            value: "generate",
+            label: "Generate new wallets",
+            hint: "creates fresh EVM + Solana keypairs",
+          },
+          {
+            value: "import",
+            label: "Import existing wallets",
+            hint: "paste your private keys",
+          },
+          {
+            value: "skip",
+            label: "Skip for now",
+            hint: "wallets can be added later",
+          },
+        ],
+      });
+
+      if (clack.isCancel(walletAction)) cancelOnboarding();
+
+      if (walletAction === "generate") {
+        const keys = generateWalletKeys();
+
+        if (!hasEvmKey) {
+          process.env.EVM_PRIVATE_KEY = keys.evmPrivateKey;
+          clack.log.success(`Generated EVM wallet: ${keys.evmAddress}`);
+        }
+        if (!hasSolKey) {
+          process.env.SOLANA_PRIVATE_KEY = keys.solanaPrivateKey;
+          clack.log.success(`Generated Solana wallet: ${keys.solanaAddress}`);
+        }
+      } else if (walletAction === "import") {
+        // EVM import
+        if (!hasEvmKey) {
+          const evmKeyInput = await clack.password({
+            message: "Paste your EVM private key (0x... hex, or skip):",
+          });
+
+          if (!clack.isCancel(evmKeyInput) && evmKeyInput.trim()) {
+            const result = importWallet("evm", evmKeyInput.trim());
+            if (result.success) {
+              clack.log.success(`Imported EVM wallet: ${result.address}`);
+            } else {
+              clack.log.warn(`EVM import failed: ${result.error}`);
+            }
+          }
+        }
+
+        // Solana import
+        if (!hasSolKey) {
+          const solKeyInput = await clack.password({
+            message: "Paste your Solana private key (base58, or skip):",
+          });
+
+          if (!clack.isCancel(solKeyInput) && solKeyInput.trim()) {
+            const result = importWallet("solana", solKeyInput.trim());
+            if (result.success) {
+              clack.log.success(`Imported Solana wallet: ${result.address}`);
+            } else {
+              clack.log.warn(`Solana import failed: ${result.error}`);
+            }
+          }
+        }
+      }
+      // "skip" — do nothing
+    }
+
+    // ── Step 6: Skills Registry (ClawHub default) ──────────────────────────
+    const hasSkillsRegistry = Boolean(
+      process.env.SKILLS_REGISTRY?.trim() ||
+        process.env.CLAWHUB_REGISTRY?.trim(),
+    );
+    const hasSkillsmpKey = Boolean(process.env.SKILLSMP_API_KEY?.trim());
+    if (!hasSkillsRegistry) {
+      process.env.SKILLS_REGISTRY = "https://clawhub.ai";
+    }
+
+    // ── Step 7: GitHub access (for coding agents, issue management) ─────────
+    const hasGithubToken = Boolean(process.env.GITHUB_TOKEN?.trim());
+    const hasGithubOAuth = Boolean(process.env.GITHUB_OAUTH_CLIENT_ID?.trim());
+    if (!hasGithubToken) {
+      const options: Array<{ value: string; label: string; hint?: string }> = [
         {
           value: "skip",
           label: "Skip for now",
-          hint: "wallets can be added later",
+          hint: "you can add this later",
         },
-      ],
-    });
-
-    if (clack.isCancel(walletAction)) cancelOnboarding();
-
-    if (walletAction === "generate") {
-      const keys = generateWalletKeys();
-
-      if (!hasEvmKey) {
-        process.env.EVM_PRIVATE_KEY = keys.evmPrivateKey;
-        clack.log.success(`Generated EVM wallet: ${keys.evmAddress}`);
-      }
-      if (!hasSolKey) {
-        process.env.SOLANA_PRIVATE_KEY = keys.solanaPrivateKey;
-        clack.log.success(`Generated Solana wallet: ${keys.solanaAddress}`);
-      }
-    } else if (walletAction === "import") {
-      // EVM import
-      if (!hasEvmKey) {
-        const evmKeyInput = await clack.password({
-          message: "Paste your EVM private key (0x... hex, or skip):",
+        {
+          value: "pat",
+          label: "Paste a Personal Access Token",
+          hint: "github.com/settings/tokens",
+        },
+      ];
+      if (hasGithubOAuth) {
+        options.push({
+          value: "oauth",
+          label: "Use OAuth (authorize in browser)",
+          hint: "recommended",
         });
-
-        if (!clack.isCancel(evmKeyInput) && evmKeyInput.trim()) {
-          const result = importWallet("evm", evmKeyInput.trim());
-          if (result.success) {
-            clack.log.success(`Imported EVM wallet: ${result.address}`);
-          } else {
-            clack.log.warn(`EVM import failed: ${result.error}`);
-          }
-        }
       }
 
-      // Solana import
-      if (!hasSolKey) {
-        const solKeyInput = await clack.password({
-          message: "Paste your Solana private key (base58, or skip):",
+      const githubChoice = await clack.select({
+        message:
+          "Configure GitHub access? (needed for coding agents, issue management, PRs)",
+        options,
+      });
+
+      if (!clack.isCancel(githubChoice) && githubChoice === "pat") {
+        const tokenInput = await clack.password({
+          message: "Paste your GitHub token (or skip):",
         });
-
-        if (!clack.isCancel(solKeyInput) && solKeyInput.trim()) {
-          const result = importWallet("solana", solKeyInput.trim());
-          if (result.success) {
-            clack.log.success(`Imported Solana wallet: ${result.address}`);
-          } else {
-            clack.log.warn(`Solana import failed: ${result.error}`);
-          }
+        if (!clack.isCancel(tokenInput) && tokenInput.trim()) {
+          process.env.GITHUB_TOKEN = tokenInput.trim();
+          clack.log.success("GitHub token configured.");
         }
+      } else if (!clack.isCancel(githubChoice) && githubChoice === "oauth") {
+        clack.log.info(
+          "GitHub OAuth will activate when coding agents need access.",
+        );
       }
     }
-    // "skip" — do nothing
-  }
-
-  // ── Step 6: Skills Registry (ClawHub default) ──────────────────────────
-  const hasSkillsRegistry = Boolean(
-    process.env.SKILLS_REGISTRY?.trim() || process.env.CLAWHUB_REGISTRY?.trim(),
-  );
-  const hasSkillsmpKey = Boolean(process.env.SKILLSMP_API_KEY?.trim());
-  if (!hasSkillsRegistry) {
-    process.env.SKILLS_REGISTRY = "https://clawhub.ai";
-  }
-
-  // ── Step 7: GitHub access (for coding agents, issue management) ─────────
-  const hasGithubToken = Boolean(process.env.GITHUB_TOKEN?.trim());
-  const hasGithubOAuth = Boolean(process.env.GITHUB_OAUTH_CLIENT_ID?.trim());
-  if (!hasGithubToken) {
-    const options: Array<{ value: string; label: string; hint?: string }> = [
-      { value: "skip", label: "Skip for now", hint: "you can add this later" },
-      {
-        value: "pat",
-        label: "Paste a Personal Access Token",
-        hint: "github.com/settings/tokens",
-      },
-    ];
-    if (hasGithubOAuth) {
-      options.push({
-        value: "oauth",
-        label: "Use OAuth (authorize in browser)",
-        hint: "recommended",
-      });
-    }
-
-    const githubChoice = await clack.select({
-      message:
-        "Configure GitHub access? (needed for coding agents, issue management, PRs)",
-      options,
-    });
-
-    if (!clack.isCancel(githubChoice) && githubChoice === "pat") {
-      const tokenInput = await clack.password({
-        message: "Paste your GitHub token (or skip):",
-      });
-      if (!clack.isCancel(tokenInput) && tokenInput.trim()) {
-        process.env.GITHUB_TOKEN = tokenInput.trim();
-        clack.log.success("GitHub token configured.");
-      }
-    } else if (!clack.isCancel(githubChoice) && githubChoice === "oauth") {
-      clack.log.info(
-        "GitHub OAuth will activate when coding agents need access.",
-      );
-    }
-  }
-
   } // end if (!isCloudMode)
 
   // ── Step 8: Persist agent + style + provider + embedding config ─────────
@@ -3559,7 +3572,9 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
     clack.log.warn(`Could not save config: ${formatError(err)}`);
   }
   clack.log.message(`${name}: ${styleChoice} Alright, that's me.`);
-  clack.outro(isCloudMode ? "Your agent is live in the cloud! ☁️" : "Let's get started!");
+  clack.outro(
+    isCloudMode ? "Your agent is live in the cloud! ☁️" : "Let's get started!",
+  );
 
   return updated;
 }
@@ -4899,7 +4914,7 @@ export async function startInCloudMode(
     logger.error(`[milady] Failed to connect to cloud agent: ${msg}`);
     throw new Error(
       `Failed to connect to cloud agent: ${msg}\n` +
-      "You can retry with `milady start`, or switch to local mode with `milady config set cloud.runtime local`",
+        "You can retry with `milady start`, or switch to local mode with `milady config set cloud.runtime local`",
     );
   }
 }

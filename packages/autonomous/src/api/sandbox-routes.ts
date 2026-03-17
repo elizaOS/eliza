@@ -560,7 +560,7 @@ function resolveSigningRequestPayload(
     };
   }
 
-  const gasLimit = (rawGasLimit as string | undefined)?.trim();
+  const gasLimit = rawGasLimit?.trim();
   if (gasLimit === "") {
     return {
       error: "Signing payload 'gasLimit' cannot be empty when provided",

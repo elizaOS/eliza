@@ -137,7 +137,6 @@ import {
   loadLastNativeTab,
   loadPersistedOnboardingStep,
   loadUiLanguage,
-  loadUiShellMode,
   loadUiTheme,
   mergeStreamingText,
   normalizeAvatarIndex,
@@ -170,6 +169,14 @@ import {
   type UiShellMode,
   type UiTheme,
 } from "./internal";
+import {
+  deriveUiShellModeForTab,
+  getTabForShellView,
+  shouldStartAtCharacterSelectOnLaunch,
+} from "./shell-routing";
+
+const AGENT_STATUS_POLL_INTERVAL_MS = 500;
+const ONBOARDING_GREETING_READY_TIMEOUT_MS = 15_000;
 
 export {
   type ActionNotice,
@@ -403,8 +410,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     useState<Tab>(loadLastNativeTab);
   // --- Core state ---
   const [tab, setTabRaw] = useState<Tab>("chat");
-  const [uiShellMode, setUiShellModeState] =
-    useState<UiShellMode>(loadUiShellMode);
   const [uiLanguage, setUiLanguageState] = useState<UiLanguage>(loadUiLanguage);
   const [uiTheme, setUiThemeState] = useState<UiTheme>(loadUiTheme);
   const [connected, setConnected] = useState(false);
@@ -449,6 +454,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setBackendDisconnectedBannerDismissed,
   ] = useState(false);
   const [systemWarnings, setSystemWarnings] = useState<string[]>([]);
+  const uiShellMode = deriveUiShellModeForTab(tab);
 
   // --- Pairing ---
   const [pairingEnabled, setPairingEnabled] = useState(false);
@@ -954,6 +960,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const greetingInFlightConversationRef = useRef<string | null>(null);
   const greetingEmoteTimerRef = useRef<number | null>(null);
   const companionStaleConversationRefreshRef = useRef<string | null>(null);
+  const onboardingCompletionCommittedRef = useRef(false);
   const chatAbortRef = useRef<AbortController | null>(null);
   /** Synchronous lock so same-tick chat submits cannot double-send. */
   const chatSendBusyRef = useRef(false);
@@ -1063,10 +1070,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [uiLanguage]);
 
-  const setUiShellMode = useCallback((mode: UiShellMode) => {
-    setUiShellModeState(normalizeUiShellMode(mode));
-  }, []);
-
   useEffect(() => {
     saveUiShellMode(uiShellMode);
   }, [uiShellMode]);
@@ -1101,28 +1104,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setAppsSubTab(activeGameViewerUrl.trim() ? "games" : "browse");
       }
       const path = pathForTab(newTab);
-      // In Electron packaged builds (file:// URLs), use hash routing to avoid
-      // "Not allowed to load local resource: file:///..." errors.
-      if (window.location.protocol === "file:") {
-        window.location.hash = path;
-      } else {
-        window.history.pushState(null, "", path);
+      try {
+        // In Electron packaged builds (file:// URLs), use hash routing to avoid
+        // "Not allowed to load local resource: file:///..." errors.
+        if (window.location.protocol === "file:") {
+          window.location.hash = path;
+        } else {
+          window.history.pushState(null, "", path);
+        }
+      } catch (err) {
+        console.warn("[milady][nav] failed to update browser location", err);
       }
     },
     [activeGameViewerUrl],
   );
 
+  const setUiShellMode = useCallback(
+    (mode: UiShellMode) => {
+      const nextMode = normalizeUiShellMode(mode);
+      if (nextMode === "companion") {
+        setTab("companion");
+        return;
+      }
+      setTab(lastNativeTab);
+    },
+    [lastNativeTab, setTab],
+  );
+
   useEffect(() => {
     const shouldRememberTab =
-      uiShellMode === "native" &&
-      tab !== "companion" &&
-      tab !== "character" &&
-      tab !== "character-select";
+      tab !== "companion" && tab !== "character" && tab !== "character-select";
     if (!shouldRememberTab) {
       return;
     }
     setLastNativeTabState((prev) => (prev === tab ? prev : tab));
-  }, [tab, uiShellMode]);
+  }, [tab]);
 
   const switchUiShellMode = useCallback(
     (mode: UiShellMode) => {
@@ -1132,12 +1148,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       if (nextMode === "native") {
-        setUiShellModeState("native");
         setTab(lastNativeTab);
         return;
       }
 
-      setUiShellModeState("companion");
       setTab("companion");
     },
     [lastNativeTab, setTab, uiShellMode],
@@ -1145,19 +1159,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const switchShellView = useCallback(
     (view: ShellView) => {
-      if (view === "companion") {
-        setUiShellModeState("companion");
-        setTab("companion");
-        return;
-      }
-
-      setUiShellModeState("native");
-      if (view === "character") {
-        setTab("character-select");
-        return;
-      }
-
-      setTab(lastNativeTab);
+      setTab(getTabForShellView(view, lastNativeTab));
     },
     [lastNativeTab, setTab],
   );
@@ -1773,7 +1775,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false;
       }
       greetingInFlightConversationRef.current = convId;
-      setChatSending(true);
       try {
         const data = await client.requestGreeting(convId, uiLanguage);
         if (data.text) {
@@ -1815,7 +1816,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (greetingInFlightConversationRef.current === convId) {
           greetingInFlightConversationRef.current = null;
         }
-        setChatSending(false);
       }
       return false;
     },
@@ -1846,6 +1846,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [fetchGreeting],
   );
+
+  const waitForOnboardingGreetingBootstrap = useCallback(async () => {
+    const deadlineAt = Date.now() + ONBOARDING_GREETING_READY_TIMEOUT_MS;
+
+    while (Date.now() < deadlineAt) {
+      try {
+        const status = await client.getStatus();
+        setAgentStatus(status);
+        setConnected(true);
+
+        if (status.pendingRestart) {
+          setPendingRestart(true);
+          setPendingRestartReasons(status.pendingRestartReasons ?? []);
+        }
+
+        if (status.state === "running" || status.state === "error") {
+          return;
+        }
+      } catch {
+        setConnected(false);
+      }
+
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, AGENT_STATUS_POLL_INTERVAL_MS);
+      });
+    }
+  }, []);
 
   const hydrateInitialConversationState = useCallback(async (): Promise<
     string | null
@@ -2119,6 +2146,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       await client.resetAgent();
       setAgentStatus(null);
+      onboardingCompletionCommittedRef.current = false;
       setOnboardingComplete(false);
       onboardingResumeConnectionRef.current = null;
       setOnboardingStep("wakeUp");
@@ -3955,12 +3983,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } catch {
         /* ignore */
       }
+      await waitForOnboardingGreetingBootstrap();
       const greetConvId = await hydrateInitialConversationState();
-      await requestGreetingWhenRunning(greetConvId, { showOverlay: true });
+      if (greetConvId) {
+        void requestGreetingWhenRunning(greetConvId, { showOverlay: true });
+      }
       clearPersistedOnboardingStep();
       onboardingResumeConnectionRef.current = null;
+      onboardingCompletionCommittedRef.current = true;
       setOnboardingComplete(true);
-      setTab("chat");
+      setTab("character-select");
     } catch (err) {
       await alertDesktopMessage({
         title: "Setup Failed",
@@ -3996,6 +4028,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     hydrateInitialConversationState,
     setTab,
     requestGreetingWhenRunning,
+    waitForOnboardingGreetingBootstrap,
   ]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: t is stable but defined later
@@ -4003,24 +4036,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (options?: OnboardingNextOptions) => {
       const STEP_ORDER: OnboardingStep[] = [
         "wakeUp",
+        "identity",
         "connection",
         "rpc",
         "senses",
         "activate",
       ];
 
-      // Hardcode agent name to Eliza
-      if (onboardingStep === "wakeUp" && !onboardingName) {
-        setState("onboardingName", "Eliza");
-      }
-
-      // Auto-select first style if none chosen
+      // Auto-select first style if none chosen (identity step will let user change)
       if (
         onboardingStep === "wakeUp" &&
         !onboardingStyle &&
         onboardingOptions?.styles?.length
       ) {
         setState("onboardingStyle", onboardingOptions.styles[0].catchphrase);
+      }
+
+      // Default agent name to Rin if none set after identity step
+      if (onboardingStep === "identity" && !onboardingName) {
+        setState("onboardingName", "Rin");
       }
 
       // At activate step, finish onboarding
@@ -4078,6 +4112,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const handleOnboardingBack = useCallback(() => {
     const STEP_ORDER: OnboardingStep[] = [
       "wakeUp",
+      "identity",
       "connection",
       "rpc",
       "senses",
@@ -4446,7 +4481,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         chatMode: setChatMode,
         chatAvatarSpeaking: setChatAvatarSpeaking,
         companionMessageCutoffTs: setCompanionMessageCutoffTs,
-        uiShellMode: setUiShellModeState,
+        uiShellMode: setUiShellMode,
         uiLanguage: setUiLanguageState,
         autonomousRunHealthByRunId: setAutonomousRunHealthByRunId,
         startupError: setStartupError,
@@ -4567,7 +4602,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const setter = setterMap[key];
       if (setter) setter(value);
     },
-    [setOnboardingStep, setSelectedVrmIndex],
+    [setOnboardingStep, setSelectedVrmIndex, setUiShellMode],
   );
 
   // ── Initialization ─────────────────────────────────────────────────
@@ -4710,12 +4745,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             break;
           }
           const { complete } = await client.getOnboardingStatus();
+          const sessionOnboardingComplete =
+            complete || onboardingCompletionCommittedRef.current;
           if (complete) {
             clearPersistedOnboardingStep();
             onboardingResumeConnectionRef.current = null;
           }
-          setOnboardingComplete(complete);
-          onboardingNeedsOptions = !complete;
+          setOnboardingComplete(sessionOnboardingComplete);
+          onboardingNeedsOptions = !sessionOnboardingComplete;
           break;
         } catch (err) {
           const apiErr = asApiLikeError(err);
@@ -4765,6 +4802,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
               client.getOnboardingOptions(),
               client.getConfig().catch(() => null),
             ]);
+            if (onboardingCompletionCommittedRef.current) {
+              setOnboardingLoading(false);
+              return;
+            }
             const resumeConnection = deriveOnboardingResumeConnection(config);
             const resumeFields = deriveOnboardingResumeFields(resumeConnection);
             onboardingResumeConnectionRef.current = resumeConnection;
@@ -5337,7 +5378,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? window.location.hash.replace(/^#/, "") || "/"
           : window.location.pathname;
       const urlTab = tabFromPath(navPath);
-      if (urlTab) {
+      const shouldStartAtCharacterSelect = shouldStartAtCharacterSelectOnLaunch(
+        {
+          onboardingNeedsOptions,
+          navPath,
+          urlTab,
+        },
+      );
+      if (shouldStartAtCharacterSelect) {
+        setTab("character-select");
+        void loadCharacter();
+      } else if (urlTab) {
         setTabRaw(urlTab);
         if (urlTab === "plugins" || urlTab === "connectors") {
           void loadPlugins();

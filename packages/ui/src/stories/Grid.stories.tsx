@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import React from "react";
 import { Grid } from "../components/ui/grid";
 
 const meta: Meta<typeof Grid> = { title: "Atoms/Grid", component: Grid };

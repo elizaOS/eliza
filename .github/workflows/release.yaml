@@ -69,10 +69,10 @@ jobs:
             git checkout -b release/production-${{ github.sha }}
           fi
 
-      - name: Install PostgreSQL client libraries
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpq-dev postgresql-client
+          sudo apt-get install -y libpq-dev postgresql-client protobuf-compiler
 
       - name: Setup Node
         uses: actions/setup-node@v4

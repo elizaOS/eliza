@@ -130,8 +130,8 @@ export function getTriggerLimit(runtime?: IAgentRuntime): number {
 
 function isAutonomyServiceAvailable(runtime: IAgentRuntime): boolean {
   const svc =
-    (runtime.getService("autonomy") as unknown as Record<string, unknown> | null) ??
-    (runtime.getService("AUTONOMY") as unknown as Record<string, unknown> | null);
+    (runtime.getService("autonomy") as Record<string, unknown> | null) ??
+    (runtime.getService("AUTONOMY") as Record<string, unknown> | null);
   return typeof svc?.injectAutonomousInstruction === "function";
 }
 
