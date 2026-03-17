@@ -1,10 +1,10 @@
 import {
+  composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   ModelType,
   type State,
-  composePromptFromState,
 } from "@elizaos/core";
 import {
   toolSelectionArgumentTemplate,
@@ -51,22 +51,14 @@ export async function createToolSelectionName({
     callback,
     input: toolSelectionName,
     validationFn: (parsed) => validateToolSelectionName(parsed, state),
-    createFeedbackPromptFn: (
-      originalResponse,
-      errorMessage,
-      composedState,
-      userMessage,
-    ) =>
+    createFeedbackPromptFn: (originalResponse, errorMessage, composedState, userMessage) =>
       createToolSelectionFeedbackPrompt(
-        typeof originalResponse === "string"
-          ? originalResponse
-          : JSON.stringify(originalResponse),
+        typeof originalResponse === "string" ? originalResponse : JSON.stringify(originalResponse),
         errorMessage,
         composedState,
-        userMessage,
+        userMessage
       ),
-    failureMsg:
-      "I'm having trouble figuring out the best way to help with your request.",
+    failureMsg: "I'm having trouble figuring out the best way to help with your request.",
   });
 }
 
@@ -79,9 +71,7 @@ export async function createToolSelectionArgument({
   toolSelectionName,
 }: CreateToolSelectionOptions): Promise<ToolSelectionArgument | null> {
   if (!toolSelectionName) {
-    throw new Error(
-      "Tool selection name is required to create tool selection argument",
-    );
+    throw new Error("Tool selection name is required to create tool selection argument");
   }
 
   const { serverName, toolName } = toolSelectionName;
@@ -120,23 +110,14 @@ export async function createToolSelectionArgument({
     state,
     callback,
     input: toolSelectionArgument,
-    validationFn: (parsed) =>
-      validateToolSelectionArgument(parsed, toolInputSchema),
-    createFeedbackPromptFn: (
-      originalResponse,
-      errorMessage,
-      composedState,
-      userMessage,
-    ) =>
+    validationFn: (parsed) => validateToolSelectionArgument(parsed, toolInputSchema),
+    createFeedbackPromptFn: (originalResponse, errorMessage, composedState, userMessage) =>
       createToolSelectionFeedbackPrompt(
-        typeof originalResponse === "string"
-          ? originalResponse
-          : JSON.stringify(originalResponse),
+        typeof originalResponse === "string" ? originalResponse : JSON.stringify(originalResponse),
         errorMessage,
         composedState,
-        userMessage,
+        userMessage
       ),
-    failureMsg:
-      "I'm having trouble figuring out the best way to help with your request.",
+    failureMsg: "I'm having trouble figuring out the best way to help with your request.",
   });
 }

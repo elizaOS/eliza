@@ -72,9 +72,7 @@ export interface ResourceSelection {
   readonly noResourceAvailable?: boolean;
 }
 
-export function isToolSelectionName(
-  value: unknown,
-): value is ToolSelectionName {
+export function isToolSelectionName(value: unknown): value is ToolSelectionName {
   if (typeof value !== "object" || value === null) {
     return false;
   }
@@ -87,9 +85,7 @@ export function isToolSelectionName(
   );
 }
 
-export function isToolSelectionArgument(
-  value: unknown,
-): value is ToolSelectionArgument {
+export function isToolSelectionArgument(value: unknown): value is ToolSelectionArgument {
   if (typeof value !== "object" || value === null) {
     return false;
   }
@@ -97,9 +93,7 @@ export function isToolSelectionArgument(
   return typeof obj.toolArguments === "object" && obj.toolArguments !== null;
 }
 
-export function isResourceSelection(
-  value: unknown,
-): value is ResourceSelection {
+export function isResourceSelection(value: unknown): value is ResourceSelection {
   if (typeof value !== "object" || value === null) {
     return false;
   }

@@ -22,11 +22,7 @@ export interface PingConfig {
   readonly failuresBeforeDisconnect: number;
 }
 
-export type ConnectionStatus =
-  | "connecting"
-  | "connected"
-  | "disconnected"
-  | "failed";
+export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "failed";
 
 export interface ConnectionState {
   status: ConnectionStatus;
@@ -79,9 +75,7 @@ export interface McpConnection {
 }
 
 export interface McpToolResult {
-  readonly content: ReadonlyArray<
-    TextContent | ImageContent | EmbeddedResource
-  >;
+  readonly content: ReadonlyArray<TextContent | ImageContent | EmbeddedResource>;
   readonly isError?: boolean;
 }
 
@@ -139,10 +133,7 @@ export interface McpProvider {
 }
 
 export type JsonSchemaPrimitive = string | number | boolean | null;
-export type JsonSchemaValue =
-  | JsonSchemaPrimitive
-  | JsonSchemaObject
-  | JsonSchemaArray;
+export type JsonSchemaValue = JsonSchemaPrimitive | JsonSchemaObject | JsonSchemaArray;
 export interface JsonSchemaObject {
   readonly [key: string]: JsonSchemaValue;
 }
@@ -241,10 +232,7 @@ interface ErrorResult {
 
 export type ValidationResult<T> = SuccessResult<T> | ErrorResult;
 
-export function assertNonNull<T>(
-  value: T | null | undefined,
-  message: string,
-): T {
+export function assertNonNull<T>(value: T | null | undefined, message: string): T {
   if (value === null || value === undefined) {
     throw new Error(message);
   }
@@ -265,10 +253,7 @@ export function assertNonEmptyString(value: unknown, message: string): string {
   return value;
 }
 
-export function assertObject(
-  value: unknown,
-  message: string,
-): Record<string, unknown> {
+export function assertObject(value: unknown, message: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(message);
   }

@@ -5,11 +5,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import {
-  DEFAULT_MAX_RETRIES,
-  type McpSettings,
-  type ValidationResult,
-} from "../types";
+import { DEFAULT_MAX_RETRIES, type McpSettings, type ValidationResult } from "../types";
 import { parseJSON } from "./json";
 
 export type Input = string | Record<string, unknown>;
@@ -18,7 +14,7 @@ type CreateFeedbackPromptFn = (
   originalResponse: Input,
   errorMessage: string,
   composedState: State,
-  userMessage: string,
+  userMessage: string
 ) => string;
 
 export interface WithModelRetryOptions<T> {
@@ -46,10 +42,7 @@ export async function withModelRetry<T>({
 }: WithModelRetryOptions<T>): Promise<T | null> {
   const maxRetries = getMaxRetries(runtime);
 
-  const parsedJson =
-    typeof input === "string"
-      ? parseJSON<Record<string, unknown>>(input)
-      : input;
+  const parsedJson = typeof input === "string" ? parseJSON<Record<string, unknown>>(input) : input;
 
   const validationResult = validationFn(parsedJson);
 
@@ -57,15 +50,14 @@ export async function withModelRetry<T>({
     return validationResult.data;
   }
 
-  const errorMessage = (validationResult as { success: false; error: string })
-    .error;
+  const errorMessage = (validationResult as { success: false; error: string }).error;
 
   if (retryCount < maxRetries) {
     const feedbackPrompt: string = createFeedbackPromptFn(
       input,
       errorMessage,
       state,
-      message.content.text ?? "",
+      message.content.text ?? ""
     );
 
     const retrySelection = (await runtime.useModel(ModelType.OBJECT_LARGE, {

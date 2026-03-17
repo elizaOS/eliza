@@ -12,7 +12,15 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-
+import {
+  DEFAULT_POLLING_TIMEOUT,
+  DEFAULT_WEBHOOK_PATH,
+  DEFAULT_WEBHOOK_PORT,
+  MAX_MESSAGE_LENGTH,
+  ZALO_OA_API_BASE,
+  ZALO_OAUTH_API_BASE,
+} from "../constants";
+import { type ZaloConfig, zaloEnvSchema } from "../environment";
 // ── Plugin entry ──────────────────────────────────────────────────
 import zaloPlugin, {
   buildZaloSettings,
@@ -25,17 +33,6 @@ import zaloPlugin, {
   ZaloEventTypes,
   ZaloService,
 } from "../index";
-
-import {
-  DEFAULT_POLLING_TIMEOUT,
-  DEFAULT_WEBHOOK_PATH,
-  DEFAULT_WEBHOOK_PORT,
-  MAX_MESSAGE_LENGTH,
-  ZALO_OA_API_BASE,
-  ZALO_OAUTH_API_BASE,
-} from "../constants";
-
-import { zaloEnvSchema, type ZaloConfig } from "../environment";
 
 // ══════════════════════════════════════════════════════════════════
 // 1. Plugin metadata

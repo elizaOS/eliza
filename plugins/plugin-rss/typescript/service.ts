@@ -3,7 +3,7 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
-  MemoryMetadata,
+  type MemoryMetadata,
   MemoryType,
   Service,
   type Task,

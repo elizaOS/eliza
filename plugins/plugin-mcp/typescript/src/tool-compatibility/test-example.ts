@@ -1,4 +1,4 @@
-import { type IAgentRuntime, createCharacter } from "@elizaos/core";
+import { createCharacter, type IAgentRuntime } from "@elizaos/core";
 import type { JSONSchema7 } from "json-schema";
 import { createMcpToolCompatibility, detectModelProvider } from "./index";
 
@@ -147,18 +147,13 @@ export async function demonstrateToolCompatibility() {
       console.log("✅ Compatibility layer applied");
 
       // Transform the schema
-      const transformedSchema = compatibility.transformToolSchema(
-        problematicToolSchema,
-      );
+      const transformedSchema = compatibility.transformToolSchema(problematicToolSchema);
 
       console.log("Transformed schema:");
       console.log(JSON.stringify(transformedSchema, null, 2));
 
       // Show what changed
-      const changes = findSchemaChanges(
-        problematicToolSchema,
-        transformedSchema,
-      );
+      const changes = findSchemaChanges(problematicToolSchema, transformedSchema);
       if (changes.length > 0) {
         console.log("\nKey changes made:");
         for (const change of changes) {
@@ -176,10 +171,7 @@ export async function demonstrateToolCompatibility() {
 }
 
 // Helper function to identify what changed in the schema
-function findSchemaChanges(
-  original: JSONSchema7,
-  transformed: JSONSchema7,
-): string[] {
+function findSchemaChanges(original: JSONSchema7, transformed: JSONSchema7): string[] {
   const changes: string[] = [];
 
   if (original.properties && transformed.properties) {
@@ -193,18 +185,11 @@ function findSchemaChanges(
         const removedKeys = origKeys.filter((key) => !transKeys.includes(key));
 
         if (removedKeys.length > 0) {
-          changes.push(
-            `${propName}: Removed unsupported properties: ${removedKeys.join(
-              ", ",
-            )}`,
-          );
+          changes.push(`${propName}: Removed unsupported properties: ${removedKeys.join(", ")}`);
         }
 
         // Check for description changes (indicating constraint embedding)
-        if (
-          origProp.description !== transProp.description &&
-          transProp.description
-        ) {
+        if (origProp.description !== transProp.description && transProp.description) {
           if (
             transProp.description.includes("{") ||
             transProp.description.includes("Constraints:")

@@ -29,13 +29,7 @@ export class GoogleMcpCompatibility extends McpToolCompatibility {
   }
 
   protected getUnsupportedNumberProperties(): readonly string[] {
-    return [
-      "minimum",
-      "maximum",
-      "exclusiveMinimum",
-      "exclusiveMaximum",
-      "multipleOf",
-    ];
+    return ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"];
   }
 
   protected getUnsupportedArrayProperties(): readonly string[] {
@@ -48,11 +42,9 @@ export class GoogleMcpCompatibility extends McpToolCompatibility {
 
   protected mergeDescription(
     originalDescription: string | undefined,
-    constraints: SchemaConstraints,
+    constraints: SchemaConstraints
   ): string {
-    const constraintText = this.formatConstraintsForGoogle(
-      constraints as GoogleConstraints,
-    );
+    const constraintText = this.formatConstraintsForGoogle(constraints as GoogleConstraints);
     if (originalDescription && constraintText) {
       return `${originalDescription}\n\nConstraints: ${constraintText}`;
     } else if (constraintText) {
@@ -65,14 +57,10 @@ export class GoogleMcpCompatibility extends McpToolCompatibility {
     const rules: string[] = [];
 
     if (constraints.minLength) {
-      rules.push(
-        `text must be at least ${constraints.minLength} characters long`,
-      );
+      rules.push(`text must be at least ${constraints.minLength} characters long`);
     }
     if (constraints.maxLength) {
-      rules.push(
-        `text must be no more than ${constraints.maxLength} characters long`,
-      );
+      rules.push(`text must be no more than ${constraints.maxLength} characters long`);
     }
     if (constraints.minimum !== undefined) {
       rules.push(`number must be at least ${constraints.minimum}`);
@@ -96,49 +84,35 @@ export class GoogleMcpCompatibility extends McpToolCompatibility {
       rules.push(`must be a valid URL starting with http:// or https://`);
     }
     if (constraints.format === "uuid") {
-      rules.push(
-        `must be a valid UUID in the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`,
-      );
+      rules.push(`must be a valid UUID in the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`);
     }
     if (constraints.format === "date-time") {
-      rules.push(
-        `must be a valid ISO 8601 date-time (e.g., 2023-12-25T10:30:00Z)`,
-      );
+      rules.push(`must be a valid ISO 8601 date-time (e.g., 2023-12-25T10:30:00Z)`);
     }
     if (constraints.pattern) {
-      rules.push(
-        `must match the regular expression pattern: ${constraints.pattern}`,
-      );
+      rules.push(`must match the regular expression pattern: ${constraints.pattern}`);
     }
     if (constraints.enum && Array.isArray(constraints.enum)) {
-      rules.push(
-        `must be exactly one of these values: ${constraints.enum.join(", ")}`,
-      );
+      rules.push(`must be exactly one of these values: ${constraints.enum.join(", ")}`);
     }
     if (constraints.minItems) {
       rules.push(`array must contain at least ${constraints.minItems} items`);
     }
     if (constraints.maxItems) {
-      rules.push(
-        `array must contain no more than ${constraints.maxItems} items`,
-      );
+      rules.push(`array must contain no more than ${constraints.maxItems} items`);
     }
     if (constraints.uniqueItems === true) {
       rules.push(`array items must all be unique (no duplicates)`);
     }
     if (constraints.minProperties) {
-      rules.push(
-        `object must have at least ${constraints.minProperties} properties`,
-      );
+      rules.push(`object must have at least ${constraints.minProperties} properties`);
     }
     if (constraints.maxProperties) {
-      rules.push(
-        `object must have no more than ${constraints.maxProperties} properties`,
-      );
+      rules.push(`object must have no more than ${constraints.maxProperties} properties`);
     }
     if (constraints.additionalProperties === false) {
       rules.push(
-        `object must only contain the specified properties, no additional properties allowed`,
+        `object must only contain the specified properties, no additional properties allowed`
       );
     }
 

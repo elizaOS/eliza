@@ -1,4 +1,4 @@
-import { type IAgentRuntime, Service, type UUID, logger } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -10,8 +10,8 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { JSONSchema7 } from "json-schema";
 import {
-  type McpToolCompatibility,
   createMcpToolCompatibilitySync as createMcpToolCompatibility,
+  type McpToolCompatibility,
 } from "./tool-compatibility";
 import {
   BACKOFF_MULTIPLIER,
@@ -35,8 +35,7 @@ import { buildMcpProviderData } from "./utils/mcp";
 
 export class McpService extends Service {
   static serviceType: string = MCP_SERVICE_NAME;
-  capabilityDescription =
-    "Enables the agent to interact with MCP (Model Context Protocol) servers";
+  capabilityDescription = "Enables the agent to interact with MCP (Model Context Protocol) servers";
 
   private connections: Map<string, McpConnection> = new Map();
   private connectionStates: Map<string, ConnectionState> = new Map();
@@ -95,11 +94,7 @@ export class McpService extends Service {
   private async initializeMcpServers(): Promise<void> {
     const mcpSettings = this.getMcpSettings();
 
-    if (
-      !mcpSettings ||
-      !mcpSettings.servers ||
-      Object.keys(mcpSettings.servers).length === 0
-    ) {
+    if (!mcpSettings || !mcpSettings.servers || Object.keys(mcpSettings.servers).length === 0) {
       this.mcpProvider = buildMcpProviderData([]);
       return;
     }
@@ -113,17 +108,9 @@ export class McpService extends Service {
     const rawSettings = this.runtime.getSetting("mcp");
     let settings: McpSettings | null | undefined = null;
 
-    if (
-      rawSettings &&
-      typeof rawSettings === "object" &&
-      !Array.isArray(rawSettings)
-    ) {
+    if (rawSettings && typeof rawSettings === "object" && !Array.isArray(rawSettings)) {
       const parsed = rawSettings as Record<string, unknown>;
-      if (
-        "servers" in parsed &&
-        typeof parsed.servers === "object" &&
-        parsed.servers !== null
-      ) {
+      if ("servers" in parsed && typeof parsed.servers === "object" && parsed.servers !== null) {
         settings = parsed as unknown as McpSettings;
       }
     }
@@ -154,7 +141,7 @@ export class McpService extends Service {
   }
 
   private async updateServerConnections(
-    serverConfigs: Readonly<Record<string, McpServerConfig>>,
+    serverConfigs: Readonly<Record<string, McpServerConfig>>
   ): Promise<void> {
     const currentNames = new Set(this.connections.keys());
     const newNames = new Set(Object.keys(serverConfigs));
@@ -165,25 +152,20 @@ export class McpService extends Service {
       }
     }
 
-    const connectionPromises = Object.entries(serverConfigs).map(
-      async ([name, config]) => {
-        const currentConnection = this.connections.get(name);
-        if (!currentConnection) {
-          await this.initializeConnection(name, config);
-        } else if (JSON.stringify(config) !== currentConnection.server.config) {
-          await this.deleteConnection(name);
-          await this.initializeConnection(name, config);
-        }
-      },
-    );
+    const connectionPromises = Object.entries(serverConfigs).map(async ([name, config]) => {
+      const currentConnection = this.connections.get(name);
+      if (!currentConnection) {
+        await this.initializeConnection(name, config);
+      } else if (JSON.stringify(config) !== currentConnection.server.config) {
+        await this.deleteConnection(name);
+        await this.initializeConnection(name, config);
+      }
+    });
 
     await Promise.allSettled(connectionPromises);
   }
 
-  private async initializeConnection(
-    name: string,
-    config: McpServerConfig,
-  ): Promise<void> {
+  private async initializeConnection(name: string, config: McpServerConfig): Promise<void> {
     await this.deleteConnection(name);
     const state: ConnectionState = {
       status: "connecting",
@@ -192,10 +174,7 @@ export class McpService extends Service {
     };
     this.connectionStates.set(name, state);
 
-    const client = new Client(
-      { name: "elizaOS", version: "1.0.0" },
-      { capabilities: {} },
-    );
+    const client = new Client({ name: "elizaOS", version: "1.0.0" }, { capabilities: {} });
     const transport: StdioClientTransport | SSEClientTransport =
       config.type === "stdio"
         ? await this.buildStdioClientTransport(name, config)
@@ -216,9 +195,7 @@ export class McpService extends Service {
 
     const capabilities = client.getServerCapabilities();
     const tools = await this.fetchToolsList(name);
-    const resources = capabilities?.resources
-      ? await this.fetchResourcesList(name)
-      : [];
+    const resources = capabilities?.resources ? await this.fetchResourcesList(name) : [];
     const resourceTemplates = capabilities?.resources
       ? await this.fetchResourceTemplatesList(name)
       : [];
@@ -242,7 +219,7 @@ export class McpService extends Service {
   private setupTransportHandlers(
     name: string,
     connection: McpConnection,
-    _state: ConnectionState,
+    _state: ConnectionState
   ): void {
     const config = JSON.parse(connection.server.config) as McpServerConfig;
     const isHttpTransport = config.type !== "stdio";
@@ -257,10 +234,7 @@ export class McpService extends Service {
           errorMessage.includes("timeout"));
 
       if (!isExpectedTimeout) {
-        logger.error(
-          { error, serverName: name },
-          `Transport error for "${name}"`,
-        );
+        logger.error({ error, serverName: name }, `Transport error for "${name}"`);
         connection.server.status = "disconnected";
         this.appendErrorMessage(connection, error.message);
       }
@@ -292,18 +266,13 @@ export class McpService extends Service {
           const connection = this.connections.get(name);
           if (!connection) continue;
           try {
-            const config = JSON.parse(
-              connection.server.config,
-            ) as McpServerConfig;
+            const config = JSON.parse(connection.server.config) as McpServerConfig;
             if (config.type !== "stdio") continue;
           } catch {
             continue;
           }
           this.sendPing(name).catch((err: Error) => {
-            logger.warn(
-              { error: err.message, serverName: name },
-              `Ping failed for ${name}`,
-            );
+            logger.warn({ error: err.message, serverName: name }, `Ping failed for ${name}`);
             this.handlePingFailure(name, err);
           });
         }
@@ -313,16 +282,10 @@ export class McpService extends Service {
 
   private async ensurePingTask(): Promise<void> {
     const rt = this.runtime;
-    if (
-      typeof rt.getTasksByName !== "function" ||
-      typeof rt.createTask !== "function"
-    )
-      return;
+    if (typeof rt.getTasksByName !== "function" || typeof rt.createTask !== "function") return;
     const agentId = rt.agentId;
     const existing = await rt.getTasksByName(McpService.MCP_PING_TASK);
-    const mine = existing.find(
-      (t) => t.agentId != null && String(t.agentId) === String(agentId),
-    );
+    const mine = existing.find((t) => t.agentId != null && String(t.agentId) === String(agentId));
     if (mine?.id) {
       this.pingTaskId = mine.id;
       return;
@@ -345,10 +308,7 @@ export class McpService extends Service {
     await Promise.race([
       connection.client.listTools(),
       new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Ping timeout")),
-          this.pingConfig.timeoutMs,
-        ),
+        setTimeout(() => reject(new Error("Ping timeout")), this.pingConfig.timeoutMs)
       ),
     ]);
 
@@ -360,9 +320,7 @@ export class McpService extends Service {
     const state = this.connectionStates.get(name);
     if (!state) return;
     state.consecutivePingFailures++;
-    if (
-      state.consecutivePingFailures >= this.pingConfig.failuresBeforeDisconnect
-    ) {
+    if (state.consecutivePingFailures >= this.pingConfig.failuresBeforeDisconnect) {
       this.handleDisconnection(name, error);
     }
   }
@@ -376,8 +334,7 @@ export class McpService extends Service {
     if (state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       return;
     }
-    const delay =
-      INITIAL_RETRY_DELAY * BACKOFF_MULTIPLIER ** state.reconnectAttempts;
+    const delay = INITIAL_RETRY_DELAY * BACKOFF_MULTIPLIER ** state.reconnectAttempts;
     state.reconnectTimeout = setTimeout(async () => {
       state.reconnectAttempts++;
       const connection = this.connections.get(name);
@@ -412,7 +369,7 @@ export class McpService extends Service {
 
   private async buildStdioClientTransport(
     name: string,
-    config: StdioMcpServerConfig,
+    config: StdioMcpServerConfig
   ): Promise<StdioClientTransport> {
     if (!config.command) {
       throw new Error(`Missing command for stdio MCP server ${name}`);
@@ -432,7 +389,7 @@ export class McpService extends Service {
 
   private async buildHttpClientTransport(
     name: string,
-    config: HttpMcpServerConfig,
+    config: HttpMcpServerConfig
   ): Promise<SSEClientTransport> {
     if (!config.url) {
       throw new Error(`Missing URL for HTTP MCP server ${name}`);
@@ -442,9 +399,7 @@ export class McpService extends Service {
   }
 
   private appendErrorMessage(connection: McpConnection, error: string): void {
-    const newError = connection.server.error
-      ? `${connection.server.error}\n${error}`
-      : error;
+    const newError = connection.server.error ? `${connection.server.error}\n${error}` : error;
     connection.server.error = newError;
   }
 
@@ -465,7 +420,7 @@ export class McpService extends Service {
         }
 
         processedTool.inputSchema = this.applyToolCompatibility(
-          tool.inputSchema as JSONSchema7,
+          tool.inputSchema as JSONSchema7
         ) as typeof tool.inputSchema;
       }
 
@@ -485,9 +440,7 @@ export class McpService extends Service {
     return response?.resources ?? [];
   }
 
-  private async fetchResourceTemplatesList(
-    serverName: string,
-  ): Promise<ResourceTemplate[]> {
+  private async fetchResourceTemplatesList(serverName: string): Promise<ResourceTemplate[]> {
     const connection = this.getServerConnection(serverName);
     if (!connection) {
       return [];
@@ -510,7 +463,7 @@ export class McpService extends Service {
   public async callTool(
     serverName: string,
     toolName: string,
-    toolArguments?: Readonly<Record<string, unknown>>,
+    toolArguments?: Readonly<Record<string, unknown>>
   ): Promise<CallToolResult> {
     const connection = this.connections.get(serverName);
     if (!connection) {
@@ -532,7 +485,7 @@ export class McpService extends Service {
         arguments: toolArguments ? { ...toolArguments } : undefined,
       },
       undefined,
-      { timeout },
+      { timeout }
     );
     if (!result.content) {
       throw new Error("Invalid tool result: missing content array");
@@ -540,10 +493,7 @@ export class McpService extends Service {
     return result as CallToolResult;
   }
 
-  public async readResource(
-    serverName: string,
-    uri: string,
-  ): Promise<McpResourceResponse> {
+  public async readResource(serverName: string, uri: string): Promise<McpResourceResponse> {
     const connection = this.connections.get(serverName);
     if (!connection) {
       throw new Error(`No connection found for server: ${serverName}`);

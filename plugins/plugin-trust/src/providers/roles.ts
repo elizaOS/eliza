@@ -1,15 +1,3 @@
-<<<<<<<< HEAD:packages/typescript/src/bootstrap/providers/roles.ts
-import { logger } from "../../logger.ts";
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
-  UUID,
-} from "../../types/index.ts";
-import { ChannelType } from "../../types/index.ts";
-========
 import {
   ChannelType,
   createUniqueUuid,
@@ -21,7 +9,6 @@ import {
   type State,
   type UUID,
 } from '@elizaos/core';
->>>>>>>> origin/odi-dev:plugins/plugin-trust/src/providers/roles.ts
 
 /**
  * Role provider that retrieves roles in the server based on the provided runtime, message, and state.
@@ -81,26 +68,11 @@ export const roleProvider: Provider = {
 
     const serverId = room.serverId;
 
-<<<<<<<< HEAD:packages/typescript/src/bootstrap/providers/roles.ts
-    if (!worldId) {
-      throw new Error("No world ID found for room");
-    }
-
-    logger.info(
-      {
-        src: "plugin:core:provider:roles",
-        agentId: runtime.agentId,
-        worldId,
-      },
-      "Using world ID",
-    );
-========
     if (!serverId) {
       throw new Error('No server ID found');
     }
 
     logger.info(`Using server ID: ${serverId}`);
->>>>>>>> origin/odi-dev:plugins/plugin-trust/src/providers/roles.ts
 
     // Get world data instead of using cache
     const worldId = createUniqueUuid(runtime, serverId);
@@ -108,16 +80,7 @@ export const roleProvider: Provider = {
 
     if (!world || !world.metadata?.ownership?.ownerId) {
       logger.info(
-<<<<<<<< HEAD:packages/typescript/src/bootstrap/providers/roles.ts
-        {
-          src: "plugin:core:provider:roles",
-          agentId: runtime.agentId,
-          worldId,
-        },
-        "No ownership data found for world, initializing empty role hierarchy",
-========
         `No ownership data found for server ${serverId}, initializing empty role hierarchy`
->>>>>>>> origin/odi-dev:plugins/plugin-trust/src/providers/roles.ts
       );
       return {
         data: {
@@ -133,18 +96,7 @@ export const roleProvider: Provider = {
     const roles = world.metadata.roles || {};
 
     if (Object.keys(roles).length === 0) {
-<<<<<<<< HEAD:packages/typescript/src/bootstrap/providers/roles.ts
-      logger.info(
-        {
-          src: "plugin:core:provider:roles",
-          agentId: runtime.agentId,
-          worldId,
-        },
-        "No roles found for world",
-      );
-========
       logger.info(`No roles found for server ${serverId}`);
->>>>>>>> origin/odi-dev:plugins/plugin-trust/src/providers/roles.ts
       return {
         data: {
           roles: [],
@@ -152,25 +104,10 @@ export const roleProvider: Provider = {
         values: {
           roles: "No role information available for this server.",
         },
-<<<<<<<< HEAD:packages/typescript/src/bootstrap/providers/roles.ts
-        text: "No role information available for this server.",
-      };
-    }
-
-    logger.info(
-      {
-        src: "plugin:core:provider:roles",
-        agentId: runtime.agentId,
-        roleCount: Object.keys(roles).length,
-      },
-      "Found roles",
-    );
-========
       };
     }
 
     logger.info(`Found ${Object.keys(roles).length} roles`);
->>>>>>>> origin/odi-dev:plugins/plugin-trust/src/providers/roles.ts
 
     // Group users by role
     const owners: { name: string; username: string; names: string[] }[] = [];
@@ -208,20 +145,8 @@ export const roleProvider: Provider = {
         continue;
       }
 
-<<<<<<<< HEAD:packages/typescript/src/bootstrap/providers/roles.ts
-      if (!name || !username || !names) {
-        logger.warn(
-          {
-            src: "plugin:core:provider:roles",
-            agentId: runtime.agentId,
-            entityId,
-          },
-          "User has no name or username, skipping",
-        );
-========
       if (!name || !username || !names || names.length === 0) {
         logger.warn(`User ${entityId} (role: ${userRole}) has no name or username, skipping`);
->>>>>>>> origin/odi-dev:plugins/plugin-trust/src/providers/roles.ts
         continue;
       }
 

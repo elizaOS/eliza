@@ -6,7 +6,7 @@
  * into the McpService and automatically applies transformations.
  */
 
-import { type IAgentRuntime, createCharacter } from "@elizaos/core";
+import { createCharacter, type IAgentRuntime } from "@elizaos/core";
 import type { JSONSchema7 } from "json-schema";
 import { createMcpToolCompatibility, detectModelProvider } from "./index";
 
@@ -128,8 +128,7 @@ async function testIntegration() {
 
   for (const [providerName, runtime] of Object.entries(testRuntimes)) {
     const mockRuntime = runtime as MockRuntime;
-    const runtimeModelInfo =
-      mockRuntime.model ?? mockRuntime.modelProvider ?? "unknown";
+    const runtimeModelInfo = mockRuntime.model ?? mockRuntime.modelProvider ?? "unknown";
     console.log(`📋 Testing ${providerName} (${runtimeModelInfo})`);
     console.log("-".repeat(40));
 
@@ -141,9 +140,7 @@ async function testIntegration() {
     const compatibility = await createMcpToolCompatibility(runtime);
 
     if (compatibility) {
-      console.log(
-        `✅ Compatibility layer created: ${compatibility.constructor.name}`,
-      );
+      console.log(`✅ Compatibility layer created: ${compatibility.constructor.name}`);
       console.log(`✅ Should apply: ${compatibility.shouldApply()}`);
 
       // Test schema transformation
@@ -170,20 +167,14 @@ async function testIntegration() {
               if (JSON.stringify(origProp) !== JSON.stringify(transProp)) {
                 const origKeys = Object.keys(origProp);
                 const transKeys = Object.keys(transProp);
-                const removedProps = origKeys.filter(
-                  (k) => !transKeys.includes(k),
-                );
+                const removedProps = origKeys.filter((k) => !transKeys.includes(k));
                 if (removedProps.length > 0) {
-                  console.log(
-                    `   • ${prop}: Removed ${removedProps.join(", ")}`,
-                  );
+                  console.log(`   • ${prop}: Removed ${removedProps.join(", ")}`);
                 }
                 const origDescription =
                   "description" in origProp ? origProp.description : undefined;
                 const transDescription =
-                  "description" in transProp
-                    ? transProp.description
-                    : undefined;
+                  "description" in transProp ? transProp.description : undefined;
                 if (transDescription && !origDescription) {
                   console.log(`   • ${prop}: Added constraint description`);
                 }
@@ -195,9 +186,7 @@ async function testIntegration() {
         console.log("⚪ No transformation needed");
       }
     } else {
-      console.log(
-        "❌ No compatibility layer (as expected for unknown providers)",
-      );
+      console.log("❌ No compatibility layer (as expected for unknown providers)");
     }
 
     console.log("");
@@ -221,13 +210,9 @@ async function testServiceIntegration() {
     description: string;
     inputSchema: JSONSchema7;
   }
-  async function simulateFetchToolsList(
-    runtime: IAgentRuntime,
-    tools: MockTool[],
-  ) {
+  async function simulateFetchToolsList(runtime: IAgentRuntime, tools: MockTool[]) {
     const mockRuntime = runtime as MockRuntime;
-    const modelProvider =
-      mockRuntime.modelProvider ?? mockRuntime.model ?? "unknown";
+    const modelProvider = mockRuntime.modelProvider ?? mockRuntime.model ?? "unknown";
     console.log(`📡 Simulating fetchToolsList for ${modelProvider}...`);
 
     const compatibility = await createMcpToolCompatibility(runtime);
@@ -237,9 +222,7 @@ async function testServiceIntegration() {
 
       if (tool.inputSchema && compatibility) {
         console.log(`🔄 Applying compatibility to tool: ${tool.name}`);
-        processedTool.inputSchema = compatibility.transformToolSchema(
-          tool.inputSchema,
-        );
+        processedTool.inputSchema = compatibility.transformToolSchema(tool.inputSchema);
       }
 
       return processedTool;
@@ -254,23 +237,17 @@ async function testServiceIntegration() {
     const processedTools = await simulateFetchToolsList(runtime, [mockMcpTool]);
 
     const originalHasFormat = JSON.stringify(mockMcpTool).includes('"format"');
-    const processedHasFormat = JSON.stringify(processedTools[0]).includes(
-      '"format"',
-    );
+    const processedHasFormat = JSON.stringify(processedTools[0]).includes('"format"');
 
     if (originalHasFormat && !processedHasFormat) {
-      console.log(
-        `✅ Format constraints removed (expected for ${providerName})`,
-      );
+      console.log(`✅ Format constraints removed (expected for ${providerName})`);
     } else if (!originalHasFormat && !processedHasFormat) {
       console.log(`⚪ No format constraints to process`);
     } else {
       console.log(`📝 Format constraints preserved`);
     }
 
-    const hasConstraintDescription = JSON.stringify(processedTools[0]).includes(
-      "minLength",
-    );
+    const hasConstraintDescription = JSON.stringify(processedTools[0]).includes("minLength");
     if (hasConstraintDescription) {
       console.log(`✅ Constraints embedded in description`);
     }

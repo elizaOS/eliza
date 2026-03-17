@@ -1,23 +1,9 @@
-<<<<<<<< HEAD:packages/typescript/src/basic-capabilities/providers/actions.ts
-import { formatActionNames, formatActions } from "../../actions.ts";
-import { buildConversationSeed } from "../../deterministic";
-import { requireProviderSpec } from "../../generated/spec-helpers.ts";
-import { logger } from "../../logger.ts";
-========
->>>>>>>> origin/odi-dev:eliza-cloud-v2/lib/eliza/plugin-character-builder/providers/actions.ts
 import type {
   Action,
   IAgentRuntime,
   Memory,
   Provider,
   State,
-<<<<<<<< HEAD:packages/typescript/src/basic-capabilities/providers/actions.ts
-} from "../../types/index.ts";
-import { addHeader } from "../../utils.ts";
-
-// Get text content from centralized specs
-const spec = requireProviderSpec("ACTIONS");
-========
 } from "@elizaos/core";
 import {
   addHeader,
@@ -25,7 +11,6 @@ import {
   formatActionNames,
   formatActions,
 } from "@elizaos/core";
->>>>>>>> origin/odi-dev:eliza-cloud-v2/lib/eliza/plugin-character-builder/providers/actions.ts
 
 /**
  * A provider object that fetches possible response actions based on the provided runtime, message, and state.
@@ -60,31 +45,6 @@ import {
  * @returns {Object} Object containing data, values, and text related to actions
  */
 export const actionsProvider: Provider = {
-<<<<<<<< HEAD:packages/typescript/src/basic-capabilities/providers/actions.ts
-  name: spec.name,
-  description: spec.description,
-  position: spec.position ?? -1,
-  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    // Get actions that validate for this message
-    const actionPromises = runtime.actions.map(async (action: Action) => {
-      try {
-        const result = await action.validate(runtime, message, state);
-        if (result) {
-          return action;
-        }
-        return null;
-      } catch (error) {
-        logger.warn(
-          {
-            src: "provider:actions",
-            agentId: runtime.agentId,
-            action: action.name,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "Action validation threw — excluding action from prompt",
-        );
-        return null;
-========
   name: "ACTIONS",
   description: "Possible response actions",
   position: -1,
@@ -94,7 +54,6 @@ export const actionsProvider: Provider = {
       const result = await action.validate(runtime, message, state);
       if (result) {
         return action;
->>>>>>>> origin/odi-dev:eliza-cloud-v2/lib/eliza/plugin-character-builder/providers/actions.ts
       }
     });
 
@@ -108,28 +67,6 @@ export const actionsProvider: Provider = {
       surface: "provider:actions",
     });
 
-<<<<<<<< HEAD:packages/typescript/src/basic-capabilities/providers/actions.ts
-    // Format action-related texts
-    const actionNames = `\n ## Possible response actions: ${formatActionNames(actionsData, `${actionSeed}:names`)}`;
-
-    const actionsWithDescriptions =
-      actionsData.length > 0
-        ? addHeader(
-            "# Available Actions",
-            formatActions(actionsData, `${actionSeed}:descriptions`),
-          )
-        : "";
-
-    const values = {
-      actionNames,
-      actionsWithDescriptions,
-    };
-
-    // Combine all text sections - now including actionsWithDescriptions
-    const text = [actionNames, actionsWithDescriptions]
-      .filter(Boolean)
-      .join("\n\n");
-========
     const actionsWithDescriptions =
       actionsData.length > 0
         ? addHeader("# Available Actions", formatActions(actionsData))
@@ -152,7 +89,6 @@ export const actionsProvider: Provider = {
       actionsWithDescriptions,
       formattedActionsWithDescriptions: text,
     };
->>>>>>>> origin/odi-dev:eliza-cloud-v2/lib/eliza/plugin-character-builder/providers/actions.ts
 
     return {
       data: {
