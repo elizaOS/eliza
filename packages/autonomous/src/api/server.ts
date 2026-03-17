@@ -3555,6 +3555,22 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set([
   "image/webp",
 ]);
 
+export const IMAGE_ONLY_CHAT_FALLBACK_PROMPT =
+  "Please describe the attached image.";
+
+export function normalizeIncomingChatPrompt(
+  text: string | null | undefined,
+  images: ChatImageAttachment[] | null | undefined,
+): string | null {
+  const normalizedText = typeof text === "string" ? text.trim() : "";
+  if (normalizedText.length > 0) {
+    return normalizedText;
+  }
+  return Array.isArray(images) && images.length > 0
+    ? IMAGE_ONLY_CHAT_FALLBACK_PROMPT
+    : null;
+}
+
 /** Returns an error message string, or null if valid. Exported for unit tests. */
 export function validateChatImages(images: unknown): string | null {
   if (!Array.isArray(images) || images.length === 0) return null;
@@ -3722,7 +3738,8 @@ async function readChatRequestPayload(
     conversationMode?: string;
   }>(req, res, { maxBytes });
   if (!body) return null;
-  if (!body.text?.trim()) {
+  const normalizedPrompt = normalizeIncomingChatPrompt(body.text, body.images);
+  if (!normalizedPrompt) {
     helpers.error(res, "text is required");
     return null;
   }
@@ -3751,7 +3768,7 @@ async function readChatRequestPayload(
       }))
     : undefined;
   return {
-    prompt: body.text.trim(),
+    prompt: normalizedPrompt,
     channelType,
     images,
     ...(conversationMode ? { conversationMode } : {}),
@@ -4269,7 +4286,7 @@ function getProviderOptions(): Array<{
 }> {
   return [
     {
-      id: "elizacloud",
+      id: "eliza-cloud",
       name: "Eliza Cloud",
       envKey: null,
       pluginName: "@elizaos/plugin-elizacloud",
@@ -4401,7 +4418,7 @@ function getCloudProviderOptions(): Array<{
 }> {
   return [
     {
-      id: "elizacloud",
+      id: "eliza-cloud",
       name: "Eliza Cloud",
       description:
         "Managed cloud infrastructure. Wallets, LLMs, and RPCs included.",
@@ -4986,7 +5003,7 @@ function getInventoryProviderOptions(): Array<{
       description: "Ethereum, Base, Arbitrum, Optimism, Polygon.",
       rpcProviders: [
         {
-          id: "elizacloud",
+          id: "eliza-cloud",
           name: "Eliza Cloud",
           description: "Managed RPC. No setup needed.",
           envKey: null,
@@ -5016,21 +5033,63 @@ function getInventoryProviderOptions(): Array<{
       ],
     },
     {
-      id: "solana",
-      name: "Solana",
-      description: "Solana mainnet tokens and NFTs.",
+      id: "bsc",
+      name: "BNB Smart Chain",
+      description: "BNB Smart Chain tokens, NFTs, and trades.",
       rpcProviders: [
         {
-          id: "elizacloud",
+          id: "eliza-cloud",
           name: "Eliza Cloud",
           description: "Managed RPC. No setup needed.",
           envKey: null,
           requiresKey: false,
         },
         {
-          id: "helius",
-          name: "Helius",
-          description: "Solana-native data platform.",
+          id: "alchemy",
+          name: "Alchemy",
+          description: "Full-featured BSC data platform.",
+          envKey: "ALCHEMY_API_KEY",
+          requiresKey: true,
+        },
+        {
+          id: "ankr",
+          name: "Ankr",
+          description: "Decentralized RPC provider.",
+          envKey: "ANKR_API_KEY",
+          requiresKey: true,
+        },
+        {
+          id: "nodereal",
+          name: "NodeReal",
+          description: "BSC-native infrastructure provider.",
+          envKey: "NODEREAL_API_KEY",
+          requiresKey: true,
+        },
+        {
+          id: "quicknode",
+          name: "QuickNode",
+          description: "High-performance BSC RPC.",
+          envKey: "QUICKNODE_API_KEY",
+          requiresKey: true,
+        },
+      ],
+    },
+    {
+      id: "solana",
+      name: "Solana",
+      description: "Solana mainnet tokens and NFTs.",
+      rpcProviders: [
+        {
+          id: "eliza-cloud",
+          name: "Eliza Cloud",
+          description: "Managed RPC. No setup needed.",
+          envKey: null,
+          requiresKey: false,
+        },
+        {
+          id: "helius-birdeye",
+          name: "Helius + Birdeye",
+          description: "Solana balances and NFT metadata.",
           envKey: "HELIUS_API_KEY",
           requiresKey: true,
         },
