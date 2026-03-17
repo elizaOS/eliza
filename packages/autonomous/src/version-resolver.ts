@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import process from "node:process";
 
-declare const __MILADY_VERSION__: string | undefined;
+declare const __ELIZA_VERSION__: string | undefined;
 
 const PACKAGE_JSON_CANDIDATE = "../../package.json";
 const BUILD_INFO_CANDIDATES = [
@@ -47,12 +47,15 @@ function readVersionFromBuildInfo(requireFn: NodeRequire): string | null {
   return null;
 }
 
-export function resolveMiladyVersion(moduleUrl: string): string {
+/** @deprecated Use resolveElizaVersion instead */
+export const resolveMiladyVersion = resolveElizaVersion;
+
+export function resolveElizaVersion(moduleUrl: string): string {
   const requireFn = createRequire(moduleUrl);
 
   return (
-    (typeof __MILADY_VERSION__ === "string" && __MILADY_VERSION__) ||
-    process.env.MILADY_BUNDLED_VERSION ||
+    (typeof __ELIZA_VERSION__ === "string" && __ELIZA_VERSION__) ||
+    process.env.ELIZA_BUNDLED_VERSION ||
     readVersionFromPackageJson(requireFn) ||
     readVersionFromBuildInfo(requireFn) ||
     "0.0.0"
