@@ -2480,25 +2480,26 @@ export class AgentRuntime implements IAgentRuntime {
     const providerData = await Promise.all(
       providersToGet.map(async (provider) => {
         const providerStart = Date.now();
-    let timerId: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const timeoutPromise = new Promise<never>((_, reject) => {
+        let timerId: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const timeoutPromise = new Promise<never>((_, reject) => {
             timerId = setTimeout(
               () => reject(new Error(`Provider ${provider.name} timed out after ${PROVIDER_TIMEOUT}ms`)),
               PROVIDER_TIMEOUT
             );
-            
-            // Execute provider with timeout race
-            const result = await Promise.race([
-              provider.get(runtime, message, state),
-              timeoutPromise 
-            ]);
-            
-            clearTimeout(timerId); // Clear on success
-            const duration = Date.now() - providerStart;
-            providerTimings.push({ name: provider.name, durationMs: duration });
-            if (duration > 100) {
-              this.logger.debug(
+          });
+
+          // Execute provider with timeout race
+          const result = await Promise.race([
+            provider.get(runtime, message, state),
+            timeoutPromise
+          ]);
+
+          clearTimeout(timerId); // Clear on success
+          const duration = Date.now() - providerStart;
+          providerTimings.push({ name: provider.name, durationMs: duration });
+          if (duration > 100) {
+            this.logger.debug(
                 {
                   src: "agent", 
                   agentId: this.agentId,
@@ -2514,7 +2515,7 @@ export class AgentRuntime implements IAgentRuntime {
             };
           } catch (error: unknown) {
             clearTimeout(timerId);
-            const duration = Date.now() - start;
+            const duration = Date.now() - providerStart;
             this.logger.error(
               {
                 src: "agent",
