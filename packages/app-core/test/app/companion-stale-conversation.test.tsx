@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
 
+import {
+  APP_EMOTE_EVENT,
+  type AppEmoteEventDetail,
+} from "@elizaos/app-core/events";
 import React, { useEffect } from "react";
 import TestRenderer, { act } from "react-test-renderer";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const UI_SHELL_MODE_STORAGE_KEY = "milady:ui-shell-mode";
 const THIRTY_ONE_MINUTES_MS = 31 * 60 * 1000;
@@ -181,6 +185,7 @@ async function waitFor(assertion: () => void): Promise<void> {
 
 describe("companion stale conversation rollover", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     localStorage.clear();
     sessionStorage.clear();
     window.history.replaceState({}, "", "/chat");
@@ -301,6 +306,11 @@ describe("companion stale conversation rollover", () => {
     mockClient.hasCustomBackground.mockResolvedValue(false);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it("starts a fresh tagged conversation when entering companion with stale history", async () => {
     const staleTimestamp = Date.now() - THIRTY_ONE_MINUTES_MS;
     mockClient.getConversationMessages.mockResolvedValue({
@@ -323,6 +333,11 @@ describe("companion stale conversation rollover", () => {
 
     let api: ProbeApi | null = null;
     let snapshot: Snapshot | null = null;
+    const events: AppEmoteEventDetail[] = [];
+    const handler = (event: Event) => {
+      events.push((event as CustomEvent<AppEmoteEventDetail>).detail);
+    };
+    window.addEventListener(APP_EMOTE_EVENT, handler);
 
     await act(async () => {
       TestRenderer.create(
@@ -372,6 +387,14 @@ describe("companion stale conversation rollover", () => {
       expect(mockClient.requestGreeting).not.toHaveBeenCalled();
       expect(snapshot?.onboardingLoading).toBe(false);
     });
+
+    expect(events).toHaveLength(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1400);
+    });
+
+    expect(events).toHaveLength(1);
   });
 
   it("keeps a lone persisted greeting conversation even when it is old", async () => {

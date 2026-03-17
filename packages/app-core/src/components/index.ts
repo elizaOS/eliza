@@ -56,6 +56,7 @@ export * from "./labels";
 export * from "./MediaGalleryView";
 export * from "./MediaSettingsSection";
 export * from "./MessageContent";
+export * from "./ElizaCloudDashboard";
 export * from "./OnboardingWizard";
 export * from "./PairingView";
 export * from "./PermissionsSection";

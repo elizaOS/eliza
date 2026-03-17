@@ -95,7 +95,10 @@ export function Header({ mobileLeft, transparent = false }: HeaderProps) {
       ? "border-warn text-warn bg-warn/10"
       : "border-ok text-ok bg-ok/10";
 
-  const shellMode = uiShellMode ?? "companion";
+  const shellMode =
+    tab === "character" || tab === "character-select"
+      ? "native"
+      : (uiShellMode ?? "companion");
   const activeShellView =
     shellMode === "companion"
       ? "companion"

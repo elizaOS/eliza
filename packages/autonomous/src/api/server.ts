@@ -188,14 +188,12 @@ import {
 import {
   applySubscriptionProviderConfig,
   clearSubscriptionProviderConfig,
+  resolveExistingOnboardingConnection,
 } from "./provider-switch-config";
 import { handleRegistryRoutes } from "./registry-routes";
 import { RegistryService } from "./registry-service";
 import { handleSandboxRoute } from "./sandbox-routes";
-import {
-  applySignalQrOverride,
-  handleSignalRoute,
-} from "./signal-routes";
+import { applySignalQrOverride, handleSignalRoute } from "./signal-routes";
 import { resolveStreamingUpdate } from "./streaming-text";
 import { handleSubscriptionRoutes } from "./subscription-routes";
 import { resolveTerminalRunLimits } from "./terminal-run-limits";
@@ -399,6 +397,23 @@ export interface ConversationMeta {
 function hasPersistedOnboardingState(config: MiladyConfig): boolean {
   if (config.meta?.onboardingComplete === true) {
     return true;
+  }
+
+  const existingConnection = resolveExistingOnboardingConnection(
+    config as Record<string, unknown>,
+  );
+  if (existingConnection?.kind === "local-provider") {
+    return true;
+  }
+  if (existingConnection?.kind === "remote-provider") {
+    return Boolean(existingConnection.remoteApiBase.trim());
+  }
+  if (existingConnection?.kind === "cloud-managed") {
+    return Boolean(
+      existingConnection.apiKey?.trim() &&
+        existingConnection.smallModel?.trim() &&
+        existingConnection.largeModel?.trim(),
+    );
   }
 
   const agents = config.agents;
@@ -3558,19 +3573,6 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set([
 export const IMAGE_ONLY_CHAT_FALLBACK_PROMPT =
   "Please describe the attached image.";
 
-export function normalizeIncomingChatPrompt(
-  text: string | null | undefined,
-  images: ChatImageAttachment[] | null | undefined,
-): string | null {
-  const normalizedText = typeof text === "string" ? text.trim() : "";
-  if (normalizedText.length > 0) {
-    return normalizedText;
-  }
-  return Array.isArray(images) && images.length > 0
-    ? IMAGE_ONLY_CHAT_FALLBACK_PROMPT
-    : null;
-}
-
 /** Returns an error message string, or null if valid. Exported for unit tests. */
 export function validateChatImages(images: unknown): string | null {
   if (!Array.isArray(images) || images.length === 0) return null;
@@ -3649,6 +3651,19 @@ export function buildChatAttachments(
     ({ _data: _d, _mimeType: _m, ...rest }) => rest,
   );
   return { attachments, compactAttachments };
+}
+
+export function normalizeIncomingChatPrompt(
+  text: string | null | undefined,
+  images: ChatImageAttachment[] | null | undefined,
+): string | null {
+  const normalizedText = typeof text === "string" ? text.trim() : "";
+  if (normalizedText.length > 0) {
+    return normalizedText;
+  }
+  return Array.isArray(images) && images.length > 0
+    ? IMAGE_ONLY_CHAT_FALLBACK_PROMPT
+    : null;
 }
 
 type MessageMemory = ReturnType<typeof createMessageMemory>;
@@ -4286,7 +4301,7 @@ function getProviderOptions(): Array<{
 }> {
   return [
     {
-      id: "eliza-cloud",
+      id: "elizacloud",
       name: "Eliza Cloud",
       envKey: null,
       pluginName: "@elizaos/plugin-elizacloud",
@@ -4418,7 +4433,7 @@ function getCloudProviderOptions(): Array<{
 }> {
   return [
     {
-      id: "eliza-cloud",
+      id: "elizacloud",
       name: "Eliza Cloud",
       description:
         "Managed cloud infrastructure. Wallets, LLMs, and RPCs included.",
@@ -5034,7 +5049,7 @@ function getInventoryProviderOptions(): Array<{
     },
     {
       id: "bsc",
-      name: "BNB Smart Chain",
+      name: "BSC",
       description: "BNB Smart Chain tokens, NFTs, and trades.",
       rpcProviders: [
         {
@@ -5047,29 +5062,29 @@ function getInventoryProviderOptions(): Array<{
         {
           id: "alchemy",
           name: "Alchemy",
-          description: "Full-featured BSC data platform.",
+          description: "Managed BSC RPC via Alchemy.",
           envKey: "ALCHEMY_API_KEY",
           requiresKey: true,
         },
         {
           id: "ankr",
           name: "Ankr",
-          description: "Decentralized RPC provider.",
+          description: "Decentralized BSC RPC provider.",
           envKey: "ANKR_API_KEY",
           requiresKey: true,
         },
         {
           id: "nodereal",
           name: "NodeReal",
-          description: "BSC-native infrastructure provider.",
-          envKey: "NODEREAL_API_KEY",
+          description: "Dedicated BSC RPC endpoint.",
+          envKey: "NODEREAL_BSC_RPC_URL",
           requiresKey: true,
         },
         {
           id: "quicknode",
           name: "QuickNode",
-          description: "High-performance BSC RPC.",
-          envKey: "QUICKNODE_API_KEY",
+          description: "Managed BSC RPC endpoint.",
+          envKey: "QUICKNODE_BSC_RPC_URL",
           requiresKey: true,
         },
       ],
@@ -7581,7 +7596,7 @@ async function handleRequest(
       openai: "OPENAI_API_KEY",
       anthropic: "ANTHROPIC_API_KEY",
       deepseek: "DEEPSEEK_API_KEY",
-      google: "GOOGLE_API_KEY",
+      google: "GOOGLE_GENERATIVE_AI_API_KEY",
       groq: "GROQ_API_KEY",
       xai: "XAI_API_KEY",
       openrouter: "OPENROUTER_API_KEY",
@@ -7600,6 +7615,20 @@ async function handleRequest(
             unknown
           >;
           delete secrets[envKey];
+        }
+      }
+
+      // Clear the legacy Gemini alias too so provider switches don't leave
+      // multiple Google keys behind.
+      if (keepKey !== "GOOGLE_API_KEY") {
+        delete process.env.GOOGLE_API_KEY;
+        delete envCfg.GOOGLE_API_KEY;
+        if (state.runtime?.character?.secrets) {
+          const secrets = state.runtime.character.secrets as Record<
+            string,
+            unknown
+          >;
+          delete secrets.GOOGLE_API_KEY;
         }
       }
     };
@@ -7791,7 +7820,8 @@ async function handleRequest(
       json,
       error,
       saveConfig: saveMiladyConfig,
-      loadSubscriptionAuth: async () => (await import("../auth/index")) as never,
+      loadSubscriptionAuth: async () =>
+        (await import("../auth/index")) as never,
     } as never)
   ) {
     return;
@@ -8013,9 +8043,7 @@ async function handleRequest(
   // ── GET /api/onboarding/status ──────────────────────────────────────────
   if (method === "GET" && pathname === "/api/onboarding/status") {
     let config = state.config;
-    let complete =
-      Boolean(state.runtime) ||
-      (configFileExists() && hasPersistedOnboardingState(config));
+    let complete = configFileExists() && hasPersistedOnboardingState(config);
 
     // Hot restarts and transient config-load failures can leave state.config
     // stale even though the persisted config is valid. Re-read from disk once
@@ -8023,8 +8051,7 @@ async function handleRequest(
     if (!complete && configFileExists()) {
       try {
         config = loadMiladyConfig();
-        complete =
-          Boolean(state.runtime) || hasPersistedOnboardingState(config);
+        complete = hasPersistedOnboardingState(config);
         if (complete) {
           state.config = config;
         }
@@ -16292,10 +16319,7 @@ async function handleRequest(
 // the entire server dependency graph into lightweight consumers (e.g. the
 // headless `startEliza()` path).
 // ---------------------------------------------------------------------------
-import {
-  type captureEarlyLogs,
-  flushEarlyLogs,
-} from "./early-logs";
+import { type captureEarlyLogs, flushEarlyLogs } from "./early-logs";
 export type { captureEarlyLogs };
 
 // ---------------------------------------------------------------------------
@@ -17055,13 +17079,13 @@ export async function startApiServer(opts?: {
             const cfg = state.config as Record<string, unknown> | undefined;
             const msgs = cfg?.messages as Record<string, unknown> | undefined;
             return msgs
-                ? {
-                    messages: {
-                      tts: msgs.tts as
+              ? {
+                  messages: {
+                    tts: msgs.tts as
                       | import("../config/types.messages").TtsConfig
                       | undefined,
-                    },
-                  }
+                  },
+                }
               : undefined;
           },
         };

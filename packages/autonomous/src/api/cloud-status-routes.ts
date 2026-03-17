@@ -92,7 +92,7 @@ export async function handleCloudStatusRoutes(
     const hasApiKey = Boolean(config.cloud?.apiKey?.trim());
     const effectivelyEnabled = cloudEnabled;
     const cloudAuth = runtime
-      ? (runtime.getService("CLOUD_AUTH") as unknown as CloudAuthIdentityService | null)
+      ? (runtime.getService("CLOUD_AUTH") as CloudAuthIdentityService | null)
       : null;
     const authConnected = Boolean(cloudAuth?.isAuthenticated());
 
@@ -136,7 +136,7 @@ export async function handleCloudStatusRoutes(
 
   if (method === "GET" && pathname === "/api/cloud/credits") {
     const cloudAuth = runtime
-      ? (runtime.getService("CLOUD_AUTH") as unknown as CloudAuthCreditsService | null)
+      ? (runtime.getService("CLOUD_AUTH") as CloudAuthCreditsService | null)
       : null;
     const configApiKey = config.cloud?.apiKey?.trim();
 

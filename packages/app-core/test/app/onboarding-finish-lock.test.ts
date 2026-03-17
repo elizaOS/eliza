@@ -130,6 +130,8 @@ type ProbeApi = {
   setState: (key: string, value: unknown) => void;
   snapshot: () => {
     onboardingComplete: boolean;
+    tab: string;
+    uiShellMode: string;
     activeConversationId: string | null;
     conversationMessages: Array<{
       role: "user" | "assistant";
@@ -151,6 +153,8 @@ function Probe(props: { onReady: (api: ProbeApi) => void }) {
       setState: app.setState,
       snapshot: () => ({
         onboardingComplete: app.onboardingComplete,
+        tab: app.tab,
+        uiShellMode: app.uiShellMode,
         activeConversationId: app.activeConversationId,
         conversationMessages: app.conversationMessages.map((message) => ({
           role: message.role,
@@ -206,6 +210,18 @@ async function waitForOnboardingOptions(getApi: () => ProbeApi) {
   throw new Error("Onboarding options did not load");
 }
 
+async function waitForOnboardingCompletion(getApi: () => ProbeApi) {
+  for (let i = 0; i < 20; i += 1) {
+    if (getApi().snapshot().onboardingComplete) {
+      return;
+    }
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+  throw new Error("Onboarding did not complete");
+}
+
 function configureOnboardingConnection(api: ProbeApi) {
   api.setState("onboardingRunMode", "local");
   api.setState("onboardingProvider", "openai");
@@ -214,7 +230,7 @@ function configureOnboardingConnection(api: ProbeApi) {
 
 describe("onboarding finish locking", () => {
   beforeEach(() => {
-    Object.assign(window.location, { protocol: "file:", pathname: "/chat" });
+    Object.assign(window.location, { protocol: "http:", pathname: "/chat" });
     Object.assign(window, {
       setTimeout: globalThis.setTimeout,
       clearTimeout: globalThis.clearTimeout,
@@ -490,8 +506,12 @@ describe("onboarding finish locking", () => {
       await api?.handleOnboardingNext();
     });
 
+    await waitForOnboardingCompletion(requireApi);
+
     const snapshot = requireApi().snapshot();
     expect(snapshot.onboardingComplete).toBe(true);
+    expect(snapshot.tab).toBe("character-select");
+    expect(snapshot.uiShellMode).toBe("native");
     expect(snapshot.activeConversationId).toBe("conv-created");
     expect(snapshot.conversationMessages).toEqual([
       {
@@ -501,8 +521,140 @@ describe("onboarding finish locking", () => {
       },
     ]);
     expect(mockClient.restartAgent).toHaveBeenCalledTimes(1);
-    expect(mockClient.createConversation).toHaveBeenCalledTimes(1);
+    expect(mockClient.createConversation).toHaveBeenCalled();
+    expect(mockClient.createConversation.mock.calls.at(-1)?.[1]).toMatchObject({
+      bootstrapGreeting: true,
+      lang: "en",
+    });
     expect(mockClient.requestGreeting).not.toHaveBeenCalled();
+
+    await act(async () => {
+      tree?.unmount();
+    });
+  });
+
+  it("waits for the restarted agent before bootstrapping the starter greeting", async () => {
+    let runtimeReady = false;
+    mockClient.restartAgent.mockResolvedValue({
+      state: "restarting",
+      agentName: "Milady",
+      model: undefined,
+      startedAt: undefined,
+      uptime: undefined,
+    });
+    mockClient.getStatus.mockImplementation(async () => {
+      runtimeReady = true;
+      return {
+        state: "running",
+        agentName: "Milady",
+        model: undefined,
+        startedAt: undefined,
+        uptime: undefined,
+      };
+    });
+    mockClient.createConversation.mockImplementation(async () => ({
+      conversation: {
+        id: "conv-created",
+        title: "New Chat",
+        roomId: "room-created",
+        createdAt: "2026-02-01T00:00:00.000Z",
+        updatedAt: "2026-02-01T00:00:00.000Z",
+      },
+      greeting: runtimeReady
+        ? {
+            text: "Welcome to the conversation.",
+            agentName: "Milady",
+            generated: true,
+          }
+        : undefined,
+    }));
+
+    let api: ProbeApi | null = null;
+    let tree: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(
+        React.createElement(
+          AppProvider,
+          null,
+          React.createElement(Probe, {
+            onReady: (nextApi) => {
+              api = nextApi;
+            },
+          }),
+        ),
+      );
+    });
+
+    expect(api).not.toBeNull();
+    const requireApi = () => {
+      if (!api) throw new Error("onboarding probe API was not initialized");
+      return api;
+    };
+
+    await waitForOnboardingOptions(requireApi);
+    configureOnboardingConnection(requireApi());
+    await advanceToActivate(requireApi);
+
+    await act(async () => {
+      await api?.handleOnboardingNext();
+    });
+
+    await waitForOnboardingCompletion(requireApi);
+
+    const snapshot = requireApi().snapshot();
+    expect(snapshot.onboardingComplete).toBe(true);
+    expect(snapshot.tab).toBe("character-select");
+    expect(snapshot.uiShellMode).toBe("native");
+    expect(snapshot.conversationMessages).toEqual([
+      {
+        role: "assistant",
+        text: "Welcome to the conversation.",
+        source: "agent_greeting",
+      },
+    ]);
+    expect(mockClient.getStatus).toHaveBeenCalled();
+    expect(mockClient.getStatus.mock.invocationCallOrder[0]).toBeLessThan(
+      mockClient.createConversation.mock.invocationCallOrder[0],
+    );
+    expect(mockClient.requestGreeting).not.toHaveBeenCalled();
+
+    await act(async () => {
+      tree?.unmount();
+    });
+  });
+
+  it("starts completed onboarding sessions at character select from the root route", async () => {
+    Object.assign(window.location, { protocol: "http:", pathname: "/" });
+    mockClient.getOnboardingStatus.mockResolvedValue({ complete: true });
+    mockClient.listConversations.mockResolvedValue({ conversations: [] });
+
+    let api: ProbeApi | null = null;
+    let tree: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      tree = TestRenderer.create(
+        React.createElement(
+          AppProvider,
+          null,
+          React.createElement(Probe, {
+            onReady: (nextApi) => {
+              api = nextApi;
+            },
+          }),
+        ),
+      );
+    });
+
+    expect(api).not.toBeNull();
+
+    await vi.waitFor(() => {
+      expect(api?.snapshot()).toEqual(
+        expect.objectContaining({
+          onboardingComplete: true,
+          tab: "character-select",
+        }),
+      );
+    });
 
     await act(async () => {
       tree?.unmount();

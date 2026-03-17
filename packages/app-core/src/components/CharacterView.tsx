@@ -8,6 +8,7 @@ import {
   type StylePreset,
   type VoiceConfig,
 } from "@elizaos/app-core/api";
+import { AvatarSelector } from "./AvatarSelector";
 import {
   dispatchWindowEvent,
   VOICE_CONFIG_UPDATED_EVENT,
@@ -19,13 +20,14 @@ import {
   type VoicePreset,
 } from "@elizaos/app-core/voice";
 import { Button, Input, Textarea, ThemedSelect } from "@elizaos/ui";
-import { Lock, LockOpen, Volume2, VolumeX } from "lucide-react";
+import { BookOpen, FileText, Lock, LockOpen, Palette, Volume2, VolumeX } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 const DEFAULT_ELEVEN_FAST_MODEL = "eleven_flash_v2_5";
 
 type StyleSectionKey = "all" | "chat" | "post";
-type CustomizeStep = "core" | "style" | "examples";
+type CustomizeStep = "core" | "examples";
+type ActiveSection = "aboutMe" | "directions" | "styleRules";
 const STYLE_SECTION_KEYS: StyleSectionKey[] = ["all", "chat", "post"];
 const STYLE_SECTION_PLACEHOLDERS: Record<StyleSectionKey, string> = {
   all: "Add shared rule",
@@ -74,13 +76,10 @@ const CHARACTER_PRESET_META: Record<
     voicePresetId?: string;
   }
 > = {
-  "uwu~": { name: "Reimu", avatarIndex: 1, voicePresetId: "sarah" },
-  "hell yeah": { name: "Marisa", avatarIndex: 2, voicePresetId: "adam" },
-  "lol k": { name: "Yukari", avatarIndex: 3, voicePresetId: "liam" },
-  "Noted.": { name: "Sakuya", avatarIndex: 4, voicePresetId: "alice" },
-  "hehe~": { name: "Koishi", avatarIndex: 2, voicePresetId: "gigi" },
-  "...": { name: "Remilia", avatarIndex: 4, voicePresetId: "lily" },
-  "locked in": { name: "Reisen", avatarIndex: 3, voicePresetId: "josh" },
+  "Noted.": { name: "Rin", avatarIndex: 1, voicePresetId: "alice" },
+  "uwu~": { name: "Ai", avatarIndex: 2, voicePresetId: "sarah" },
+  "lol k": { name: "Anzu", avatarIndex: 3, voicePresetId: "lily" },
+  "hehe~": { name: "Aya", avatarIndex: 4, voicePresetId: "gigi" },
 };
 
 type CharacterRosterEntry = {
@@ -373,6 +372,7 @@ export function CharacterView({
     post: [],
   });
   const [customizeStep, setCustomizeStep] = useState<CustomizeStep>("core");
+  const [activeSection, setActiveSection] = useState<ActiveSection>("aboutMe");
   const [customOverridesEnabled, setCustomOverridesEnabled] = useState(false);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(
     null,
@@ -851,13 +851,36 @@ export function CharacterView({
   const cardCls = sceneOverlay
     ? "p-5 border border-white/10 bg-black/15 backdrop-blur-md rounded-2xl shadow-[0_18px_48px_rgba(0,0,0,0.28)]"
     : "p-5 border border-border/40 bg-card/40 backdrop-blur-xl rounded-2xl shadow-sm";
-  const editorCardCls = `${cardCls} flex min-h-0 flex-col overflow-hidden`;
   const sectionCls =
     sceneOverlay && !inModal ? "relative z-10 mt-4 px-1" : `mt-4 ${cardCls}`;
-  const labelCls = "font-medium text-xs text-muted mb-1 block";
-  const hintCls = "text-[11px] text-muted";
   const scrollPaneCls =
     "min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable] custom-scrollbar";
+
+  const SIDEBAR_TABS: { key: ActiveSection; icon: typeof FileText; labelKey: string }[] = [
+    { key: "aboutMe", icon: FileText, labelKey: "characterview.aboutMe" },
+    { key: "directions", icon: BookOpen, labelKey: "characterview.directionsAndThing" },
+    { key: "styleRules", icon: Palette, labelKey: "characterview.StyleRules" },
+  ];
+
+  const bookPageCls = sceneOverlay
+    ? "relative overflow-hidden bg-[linear-gradient(180deg,rgba(255,251,242,0.98)_0%,rgba(243,233,214,0.96)_100%)] backdrop-blur-md dark:bg-[linear-gradient(180deg,rgba(46,43,38,0.98)_0%,rgba(31,28,25,0.96)_100%)]"
+    : "relative overflow-hidden bg-[linear-gradient(180deg,#fffaf1_0%,#f4ead7_100%)] dark:bg-[linear-gradient(180deg,hsl(35,14%,18%)_0%,hsl(35,10%,13%)_100%)]";
+  const bookSidebarCls =
+    "relative overflow-hidden bg-[linear-gradient(180deg,#333842_0%,#23272f_42%,#191c22_100%)] dark:bg-[linear-gradient(180deg,hsl(220,14%,15%)_0%,hsl(220,16%,10%)_42%,hsl(220,20%,7%)_100%)]";
+  const notebookShellCls =
+    "relative isolate flex h-[34.75rem] w-full max-w-[29rem] overflow-visible";
+  const notebookFrameCls = sceneOverlay
+    ? "relative flex h-full w-full overflow-hidden rounded-[1.75rem] border border-[#2f261b]/20 bg-[#f8f0df]/70 shadow-[0_24px_60px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.5)]"
+    : "relative flex h-full w-full overflow-hidden rounded-[1.75rem] border border-[#2f261b]/14 bg-[#f8f0df] shadow-[0_26px_60px_rgba(36,28,18,0.2),inset_0_1px_0_rgba(255,255,255,0.58)]";
+
+  const handleCustomVrmUpload = useCallback(
+    (file: File) => {
+      const url = URL.createObjectURL(file);
+      setState("customVrmUrl", url);
+      setState("selectedVrmIndex", 0);
+    },
+    [setState],
+  );
 
   if (characterLoading && !characterData) {
     return (
@@ -896,358 +919,6 @@ export function CharacterView({
       : `${inModal || sceneOverlay ? "pb-8" : ""} ${
           sceneOverlay ? "relative z-10" : ""
         }`;
-  const coreFieldsPanel = (
-    <div
-      className={`${editorCardCls} min-h-[24rem]`}
-      data-testid="character-core-editor"
-    >
-      <div className="flex min-h-0 flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className={labelCls}>{t("characterview.aboutMe")}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 rounded-md px-2 text-[10px] font-bold text-accent"
-            onClick={() => void handleGenerate("bio")}
-            disabled={generating === "bio"}
-          >
-            {generating === "bio" ? "generating..." : "regenerate"}
-          </Button>
-        </div>
-        <Textarea
-          value={bioText}
-          rows={6}
-          placeholder={t("characterview.describeWhoYourAg")}
-          onChange={(e) => handleFieldEdit("bio", e.target.value)}
-          className="min-h-[10rem] flex-1 resize-none overflow-y-auto rounded-lg border-border/50 bg-bg p-3 text-sm leading-relaxed focus-visible:border-accent focus-visible:ring-accent/50"
-        />
-      </div>
-
-      <div className="flex min-h-0 flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className={labelCls}>
-            {t("characterview.directionsAndThing")}
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 rounded-md px-2 text-[10px] font-bold text-accent"
-            onClick={() => void handleGenerate("system")}
-            disabled={generating === "system"}
-          >
-            {generating === "system" ? "generating..." : "regenerate"}
-          </Button>
-        </div>
-        <Textarea
-          value={d.system ?? ""}
-          rows={7}
-          maxLength={10000}
-          placeholder={t("characterview.writeInFirstPerso")}
-          onChange={(e) => handleFieldEdit("system", e.target.value)}
-          className="min-h-[10rem] flex-1 resize-none overflow-y-auto rounded-lg border-border/50 bg-bg p-3 font-mono text-xs leading-relaxed focus-visible:border-accent focus-visible:ring-accent/50"
-        />
-      </div>
-    </div>
-  );
-  const styleEditorPanel = (
-    <div
-      className={`${editorCardCls} min-h-[24rem]`}
-      data-testid="character-customize-sidebar"
-    >
-      <div
-        className="flex min-h-0 flex-col gap-3"
-        data-testid="character-style-editor"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-bold tracking-wide text-txt">
-            {t("characterview.StyleRules")}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 shrink-0 rounded-md px-2.5 text-[11px] font-bold"
-            onClick={() => void handleGenerate("style", "replace")}
-            disabled={generating === "style"}
-          >
-            {generating === "style" ? "generating..." : "regenerate"}
-          </Button>
-        </div>
-
-        <div
-          className="grid min-h-0 flex-1 gap-3 xl:grid-cols-1 2xl:grid-cols-3"
-          data-testid="character-style-editor-scroll"
-        >
-          {STYLE_SECTION_KEYS.map((key) => {
-            const items = d.style?.[key] ?? [];
-            return (
-              <div
-                key={key}
-                className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border/30 bg-bg/30"
-                data-testid={`style-section-${key}`}
-              >
-                <div className="flex items-center justify-between gap-2 border-b border-border/20 px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted">
-                      {key}
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted/70">
-                      {items.length} rule{items.length === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className={`${scrollPaneCls} flex-1 p-3 pr-2`}>
-                  <div className="flex flex-col gap-2">
-                    {items.length > 0 ? (
-                      items.map((item, index) => (
-                        <div
-                          key={getStyleEntryRenderKey(key, items, item, index)}
-                          className="flex items-start gap-2 rounded-md border border-border/20 bg-bg/50 p-2"
-                          data-testid={`style-entry-${key}-${index}`}
-                        >
-                          <span className="mt-0.5 shrink-0 text-[10px] font-bold text-muted/70">
-                            {index + 1}
-                          </span>
-                          <Textarea
-                            value={styleEntryDrafts[key]?.[index] ?? item}
-                            rows={2}
-                            onChange={(e) =>
-                              handleStyleEntryDraftChange(
-                                key,
-                                index,
-                                e.target.value,
-                              )
-                            }
-                            onBlur={() => handleCommitStyleEntry(key, index)}
-                            className="min-h-[72px] min-w-0 flex-1 resize-none rounded-md border-border/40 bg-bg p-2 text-xs leading-relaxed text-txt focus-visible:border-accent/50 focus-visible:ring-accent/50"
-                            data-testid={`style-entry-editor-${key}-${index}`}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0 text-muted hover:bg-danger/10 hover:text-danger"
-                            onClick={() => handleRemoveStyleEntry(key, index)}
-                            title={t("characterview.remove")}
-                          >
-                            ×
-                          </Button>
-                        </div>
-                      ))
-                    ) : (
-                      <div
-                        className={`${hintCls} rounded-md border border-dashed border-border/30 bg-bg/40 px-3 py-2`}
-                      >
-                        {STYLE_SECTION_EMPTY_STATES[key]}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="border-t border-border/20 p-3">
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="text"
-                      value={pendingStyleEntries[key]}
-                      placeholder={STYLE_SECTION_PLACEHOLDERS[key]}
-                      onChange={(e) =>
-                        handlePendingStyleEntryChange(key, e.target.value)
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleAddStyleEntry(key);
-                        }
-                      }}
-                      className="h-8 min-w-0 flex-1 rounded-md border-border/40 bg-bg focus-visible:border-accent focus-visible:ring-accent/50"
-                      data-testid={`style-entry-input-${key}`}
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 shrink-0 rounded-md px-3 text-[11px] font-bold"
-                      onClick={() => handleAddStyleEntry(key)}
-                      disabled={!pendingStyleEntries[key].trim()}
-                    >
-                      + add
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-  const chatExamplesPanel = (
-    <div
-      className={`${editorCardCls} min-h-[24rem]`}
-      data-testid="character-chat-examples-card"
-    >
-      <div className="mb-4 flex items-center justify-between gap-3 border-b border-border/40 pb-3">
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-          <div className="text-sm font-bold tracking-wide text-txt">
-            {t("characterview.chatExamples")}
-          </div>
-          <span className="rounded-full border border-white/5 bg-black/10 px-2 py-0.5 text-[11px] font-medium text-muted">
-            {t("characterview.HowTheAgentResp")}
-          </span>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 shrink-0 border-border/50 bg-bg/50 text-[11px] font-bold text-accent shadow-inner transition-all hover:border-accent/40 hover:text-accent"
-          onClick={() => void handleGenerate("chatExamples", "replace")}
-          disabled={generating === "chatExamples"}
-        >
-          {generating === "chatExamples" ? "generating..." : "generate"}
-        </Button>
-      </div>
-
-      <div className={`${scrollPaneCls} flex flex-1 flex-col gap-3 pr-2`}>
-        {(d.messageExamples ?? []).map((convo, ci) => (
-          <div
-            key={convo.examples
-              .map((msg) => `${msg.name}:${msg.content?.text ?? ""}`)
-              .join("|")}
-            className="rounded-xl border border-border/40 bg-black/10 p-4 shadow-inner backdrop-blur-sm"
-          >
-            <div className="mb-3 flex items-center justify-between border-b border-border/30 pb-2">
-              <span className="text-[11px] font-bold uppercase tracking-widest text-muted">
-                {t("characterview.conversation")} {ci + 1}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-[10px] font-bold text-muted transition-all hover:bg-danger/10 hover:text-danger"
-                onClick={() => {
-                  const updated = [...(d.messageExamples ?? [])];
-                  updated.splice(ci, 1);
-                  handleFieldEdit("messageExamples", updated);
-                }}
-              >
-                {t("characterview.remove")}
-              </Button>
-            </div>
-            <div className="flex flex-col gap-2">
-              {convo.examples.map((msg, mi) => (
-                <div
-                  key={`${msg.name}:${msg.content?.text ?? ""}`}
-                  className="flex items-center gap-3"
-                >
-                  <span
-                    className={`w-12 shrink-0 text-right text-[11px] font-bold uppercase tracking-wider ${msg.name === "{{user1}}" ? "text-muted" : "text-accent"}`}
-                  >
-                    {msg.name === "{{user1}}" ? "user" : "agent"}
-                  </span>
-                  <Input
-                    type="text"
-                    value={msg.content?.text ?? ""}
-                    onChange={(e) => {
-                      const updated = [...(d.messageExamples ?? [])];
-                      const convoClone = {
-                        examples: [...updated[ci].examples],
-                      };
-                      convoClone.examples[mi] = {
-                        ...convoClone.examples[mi],
-                        content: { text: e.target.value },
-                      };
-                      updated[ci] = convoClone;
-                      handleFieldEdit("messageExamples", updated);
-                    }}
-                    className="h-9 flex-1 rounded-lg border-border/50 bg-bg/50 text-xs shadow-inner backdrop-blur-md transition-all focus-visible:border-accent/50 focus-visible:ring-accent/50"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-        {(d.messageExamples ?? []).length === 0 && (
-          <div
-            className={`${hintCls} rounded-xl border border-white/5 bg-black/5 py-3 text-center`}
-          >
-            {t("characterview.noChatExamplesYet")}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-  const postExamplesPanel = (
-    <div
-      className={`${editorCardCls} min-h-[24rem]`}
-      data-testid="character-post-examples-card"
-    >
-      <div className="mb-4 flex items-center justify-between gap-3 border-b border-border/40 pb-3">
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-          <div className="text-sm font-bold tracking-wide text-txt">
-            {t("characterview.postExamples")}
-          </div>
-          <span className="rounded-full border border-white/5 bg-black/10 px-2 py-0.5 text-[11px] font-medium text-muted">
-            {t("characterview.SocialMediaVoice")}
-          </span>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 shrink-0 border-border/50 bg-bg/50 text-[11px] font-bold text-accent shadow-inner transition-all hover:border-accent/40 hover:text-accent"
-          onClick={() => void handleGenerate("postExamples", "replace")}
-          disabled={generating === "postExamples"}
-        >
-          {generating === "postExamples" ? "generating..." : "generate"}
-        </Button>
-      </div>
-
-      <div className={`${scrollPaneCls} flex flex-1 flex-col gap-2 pr-2`}>
-        {(d.postExamples ?? []).map((post: string, pi: number) => (
-          <div key={post || `post-${pi}`} className="flex items-center gap-2">
-            <Input
-              type="text"
-              value={post}
-              onChange={(e) => {
-                const updated = [...(d.postExamples ?? [])];
-                updated[pi] = e.target.value;
-                handleFieldEdit("postExamples", updated);
-              }}
-              className="h-9 flex-1 rounded-lg border-border/50 bg-bg/50 text-xs shadow-inner backdrop-blur-md transition-all focus-visible:border-accent/50 focus-visible:ring-accent/50"
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted hover:bg-danger/10 hover:text-danger"
-              onClick={() => {
-                const updated = [...(d.postExamples ?? [])];
-                updated.splice(pi, 1);
-                handleFieldEdit("postExamples", updated);
-              }}
-            >
-              ×
-            </Button>
-          </div>
-        ))}
-        {(d.postExamples ?? []).length === 0 && (
-          <div
-            className={`${hintCls} rounded-xl border border-white/5 bg-black/5 py-3 text-center`}
-          >
-            {t("characterview.noPostExamplesYet")}
-          </div>
-        )}
-      </div>
-
-      <div className="border-t border-border/40 pt-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="self-start rounded-md border border-transparent text-[11px] font-bold text-accent transition-all hover:border-accent/30 hover:bg-accent/10"
-          onClick={() => {
-            const updated = [...(d.postExamples ?? []), ""];
-            handleFieldEdit("postExamples", updated);
-          }}
-        >
-          {t("characterview.AddPost")}
-        </Button>
-      </div>
-    </div>
-  );
 
   return (
     <div className={rootCls}>
@@ -1428,73 +1099,428 @@ export function CharacterView({
       ) : null}
 
       {customOverridesEnabled && (
-        <div className="mt-3 flex flex-col gap-4">
+        <div className="mt-3 flex justify-end">
+          {/* ── Book container ── */}
           <div
-            className="flex items-center justify-start"
-            data-testid="character-edit-toolbar"
+            className={notebookShellCls}
+            data-testid="character-notebook"
           >
-            <div className="inline-flex items-center gap-2">
-              <Button
-                type="button"
-                variant={customizeStep === "core" ? "default" : "outline"}
-                size="sm"
-                className="h-8 rounded-lg px-3 text-xs font-semibold"
-                onClick={() => setCustomizeStep("core")}
-              >
-                {t("characterview.core")}
-              </Button>
-              <Button
-                type="button"
-                variant={customizeStep === "style" ? "default" : "outline"}
-                size="sm"
-                className="h-8 rounded-lg px-3 text-xs font-semibold xl:hidden"
-                onClick={() => setCustomizeStep("style")}
-              >
-                {t("characterview.style")}
-              </Button>
-              <Button
-                type="button"
-                variant={customizeStep === "examples" ? "default" : "outline"}
-                size="sm"
-                className="h-8 rounded-lg px-3 text-xs font-semibold"
-                onClick={() => setCustomizeStep("examples")}
-              >
-                {t("characterview.examples")}
-              </Button>
+            <div className="pointer-events-none absolute inset-x-5 bottom-[-1.2rem] top-6 rounded-[1.9rem] bg-[linear-gradient(180deg,rgba(35,27,18,0.12)_0%,rgba(16,12,9,0.32)_100%)] blur-xl" />
+            <div className="pointer-events-none absolute inset-[0.35rem] translate-x-2 translate-y-2 rounded-[1.9rem] border border-[#d7c5a4]/50 bg-[linear-gradient(180deg,rgba(251,246,235,0.86)_0%,rgba(236,224,198,0.7)_100%)] shadow-[0_12px_26px_rgba(62,44,21,0.12)]" />
+            <div className="pointer-events-none absolute bottom-[-0.95rem] left-8 h-14 w-4 rounded-b-sm bg-[linear-gradient(180deg,#ddb45e_0%,#be8530_100%)] [clip-path:polygon(0_0,100%_0,100%_78%,50%_100%,0_78%)] shadow-[0_10px_20px_rgba(141,97,34,0.28)]" />
+            <div className={notebookFrameCls}>
+              <div className="pointer-events-none absolute left-4 top-4 h-2 w-2 rounded-full border border-[#d8c295]/70 bg-[#fff9eb]/85 shadow-[0_0_0_2px_rgba(150,116,61,0.08)]" />
+              <div className="pointer-events-none absolute bottom-4 left-4 h-2 w-2 rounded-full border border-[#d8c295]/70 bg-[#fff9eb]/85 shadow-[0_0_0_2px_rgba(150,116,61,0.08)]" />
+              <div className="pointer-events-none absolute right-4 top-4 h-2 w-2 rounded-full border border-white/10 bg-white/10 shadow-[0_0_0_2px_rgba(255,255,255,0.03)]" />
+              <div className="pointer-events-none absolute bottom-4 right-4 h-2 w-2 rounded-full border border-white/10 bg-white/10 shadow-[0_0_0_2px_rgba(255,255,255,0.03)]" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-[linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(104,77,39,0.07)_100%)]" />
+              <div className="pointer-events-none absolute bottom-3 right-[4.95rem] top-3 w-[0.7rem] rounded-full bg-[linear-gradient(90deg,rgba(116,92,55,0.16)_0%,rgba(255,255,255,0.5)_45%,rgba(112,88,52,0.2)_100%)] shadow-[inset_0_0_7px_rgba(89,67,37,0.16),0_0_18px_rgba(255,246,220,0.16)]" />
+            {/* ── Book page (left) ── */}
+            <div
+              className={`${bookPageCls} flex flex-1 flex-col rounded-l-[1.75rem] border-r border-[#cdbb98]/60 text-[#1e2329] dark:border-white/[0.08] dark:text-[hsl(40,10%,84%)]`}
+            >
+              <div className="pointer-events-none absolute inset-[0.7rem] rounded-[1.25rem] border border-[#efe3cc]/85 shadow-[inset_0_0_0_1px_rgba(207,184,141,0.24)] dark:border-white/5 dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]" />
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.72)_0%,rgba(255,255,255,0)_36%),linear-gradient(180deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0)_24%),repeating-linear-gradient(0deg,rgba(168,139,87,0.035)_0px,rgba(168,139,87,0.035)_1px,transparent_1px,transparent_11px)] opacity-85 dark:opacity-25" />
+              <div className="pointer-events-none absolute bottom-0 right-0 top-0 w-5 bg-[linear-gradient(90deg,rgba(123,98,61,0)_0%,rgba(123,98,61,0.08)_55%,rgba(255,255,255,0.14)_100%)] dark:bg-[linear-gradient(90deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.03)_60%,rgba(255,255,255,0.08)_100%)]" />
+              {/* Mode toggle: Core / Examples */}
+              <div className="relative z-10 flex items-end gap-2 bg-[linear-gradient(180deg,rgba(255,255,255,0.26)_0%,rgba(255,255,255,0)_100%)] px-5 pb-3 pt-4 dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0)_100%)]">
+                <button
+                  type="button"
+                  className={`relative h-9 rounded-b-md rounded-t-[1rem] border px-3.5 text-[10px] font-bold uppercase tracking-[0.18em] transition-all ${
+                    customizeStep === "core"
+                      ? "border-[#c59b47] bg-[linear-gradient(180deg,#f4cf79_0%,#d69f45_100%)] text-[#2d2418] shadow-[0_10px_18px_rgba(137,97,36,0.22)]"
+                      : "border-[#d4c6ad]/90 bg-[linear-gradient(180deg,rgba(255,252,245,0.96)_0%,rgba(243,235,222,0.82)_100%)] text-[#7b7365] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(248,240,226,0.9)_100%)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.1)_0%,rgba(255,255,255,0.04)_100%)] dark:text-muted dark:shadow-none dark:hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0.05)_100%)]"
+                  }`}
+                  onClick={() => setCustomizeStep("core")}
+                >
+                  {t("characterview.core")}
+                </button>
+                {activeSection !== "styleRules" && (
+                  <button
+                    type="button"
+                    className={`relative h-9 rounded-b-md rounded-t-[1rem] border px-3.5 text-[10px] font-bold uppercase tracking-[0.18em] transition-all ${
+                      customizeStep === "examples"
+                        ? "border-[#c59b47] bg-[linear-gradient(180deg,#f4cf79_0%,#d69f45_100%)] text-[#2d2418] shadow-[0_10px_18px_rgba(137,97,36,0.22)]"
+                        : "border-[#d4c6ad]/90 bg-[linear-gradient(180deg,rgba(255,252,245,0.96)_0%,rgba(243,235,222,0.82)_100%)] text-[#7b7365] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(248,240,226,0.9)_100%)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.1)_0%,rgba(255,255,255,0.04)_100%)] dark:text-muted dark:shadow-none dark:hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0.05)_100%)]"
+                    }`}
+                    onClick={() => setCustomizeStep("examples")}
+                  >
+                    {t("characterview.examples")}
+                  </button>
+                )}
+                <div className="pointer-events-none absolute inset-x-4 bottom-0 h-px bg-[linear-gradient(90deg,rgba(209,193,165,0)_0%,rgba(209,193,165,0.92)_10%,rgba(209,193,165,0.92)_90%,rgba(209,193,165,0)_100%)] dark:bg-[linear-gradient(90deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.08)_10%,rgba(255,255,255,0.08)_90%,rgba(255,255,255,0)_100%)]" />
+              </div>
+
+              {/* Content area */}
+              <div className="relative z-10 flex flex-1 flex-col overflow-y-auto p-5 custom-scrollbar" role="tabpanel" aria-labelledby={`notebook-tab-${activeSection}`}>
+                {/* ── About Me (Core) ── */}
+                {activeSection === "aboutMe" && customizeStep === "core" && (
+                  <div className="flex flex-1 flex-col gap-3" data-testid="character-core-editor">
+                    {/* Name */}
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-xs font-medium text-[#6d737a] dark:text-muted">Name</span>
+                      <Input
+                        type="text"
+                        value={d.name ?? ""}
+                        placeholder="Agent name"
+                        onChange={(e) => handleFieldEdit("name", e.target.value)}
+                        className="h-8 rounded-lg border-[#d6d3c6] dark:border-border/40 bg-white/60 dark:bg-white/5 text-sm text-[#1e2329] dark:text-[hsl(40,10%,84%)] focus-visible:border-accent focus-visible:ring-accent/50"
+                      />
+                    </div>
+
+                    {/* Avatar */}
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-xs font-medium text-[#6d737a] dark:text-muted">Avatar</span>
+                      <AvatarSelector
+                        selected={selectedVrmIndex}
+                        onSelect={(index: number) => setState("selectedVrmIndex", index)}
+                        onUpload={handleCustomVrmUpload}
+                        showUpload={true}
+                        fullWidth={true}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[#6d737a] dark:text-muted">{t("characterview.aboutMe")}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 rounded-md px-2 text-[10px] font-bold text-accent"
+                        onClick={() => void handleGenerate("bio")}
+                        disabled={generating === "bio"}
+                      >
+                        {generating === "bio" ? "generating..." : "regenerate"}
+                      </Button>
+                    </div>
+                    <Textarea
+                      value={bioText}
+                      placeholder={t("characterview.describeWhoYourAg")}
+                      onChange={(e) => handleFieldEdit("bio", e.target.value)}
+                      className="flex-1 resize-none overflow-y-auto rounded-lg border-[#d6d3c6] dark:border-border/40 bg-white/60 dark:bg-white/5 p-3 font-mono text-xs leading-relaxed text-[#1e2329] dark:text-[hsl(40,10%,84%)] focus-visible:border-accent focus-visible:ring-accent/50"
+                    />
+                  </div>
+                )}
+
+                {/* ── Directions (Core) ── */}
+                {activeSection === "directions" && customizeStep === "core" && (
+                  <div className="flex flex-1 flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[#6d737a] dark:text-muted">{t("characterview.directionsAndThing")}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 rounded-md px-2 text-[10px] font-bold text-accent"
+                        onClick={() => void handleGenerate("system")}
+                        disabled={generating === "system"}
+                      >
+                        {generating === "system" ? "generating..." : "regenerate"}
+                      </Button>
+                    </div>
+                    <Textarea
+                      value={d.system ?? ""}
+                      maxLength={10000}
+                      placeholder={t("characterview.writeInFirstPerso")}
+                      onChange={(e) => handleFieldEdit("system", e.target.value)}
+                      className="flex-1 resize-none overflow-y-auto rounded-lg border-[#d6d3c6] dark:border-border/40 bg-white/60 dark:bg-white/5 p-3 font-mono text-xs leading-relaxed text-[#1e2329] dark:text-[hsl(40,10%,84%)] focus-visible:border-accent focus-visible:ring-accent/50"
+                    />
+                  </div>
+                )}
+
+                {/* ── Style Rules (Core) ── */}
+                {activeSection === "styleRules" && customizeStep === "core" && (
+                  <div className="flex flex-col gap-3" data-testid="character-style-editor">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[#6d737a] dark:text-muted">{t("characterview.StyleRules")}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 rounded-md px-2 text-[10px] font-bold text-accent"
+                        onClick={() => void handleGenerate("style", "replace")}
+                        disabled={generating === "style"}
+                      >
+                        {generating === "style" ? "generating..." : "regenerate"}
+                      </Button>
+                    </div>
+                    {STYLE_SECTION_KEYS.map((key) => {
+                      const items = d.style?.[key] ?? [];
+                      return (
+                        <div
+                          key={key}
+                          className="flex flex-col gap-1.5"
+                          data-testid={`style-section-${key}`}
+                        >
+                          <div className="flex items-center gap-2 border-b border-[#d6d3c6]/60 dark:border-border/30 pb-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-[#6d737a] dark:text-muted">{key}</span>
+                            <span className="text-[9px] font-medium uppercase tracking-wider text-[#9ca3af] dark:text-muted/60">
+                              {items.length} rule{items.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                          <div className={`${scrollPaneCls} max-h-[12rem]`}>
+                            <div className="flex flex-col gap-1">
+                              {items.length > 0 ? (
+                                items.map((item, index) => (
+                                  <div
+                                    key={getStyleEntryRenderKey(key, items, item, index)}
+                                    className="group flex items-start gap-2 rounded-md border border-[#d6d3c6]/40 dark:border-border/20 bg-white/50 dark:bg-white/3 px-2.5 py-2"
+                                    data-testid={`style-entry-${key}-${index}`}
+                                  >
+                                    <span className="mt-0.5 shrink-0 text-[10px] font-bold text-accent">
+                                      {index + 1}
+                                    </span>
+                                    <Textarea
+                                      value={styleEntryDrafts[key]?.[index] ?? item}
+                                      rows={1}
+                                      onChange={(e) => handleStyleEntryDraftChange(key, index, e.target.value)}
+                                      onBlur={() => handleCommitStyleEntry(key, index)}
+                                      className="min-h-[2rem] min-w-0 flex-1 resize-none rounded border-0 bg-transparent p-0 font-mono text-xs leading-relaxed text-[#1e2329] dark:text-[hsl(40,10%,84%)] focus-visible:ring-0"
+                                      data-testid={`style-entry-editor-${key}-${index}`}
+                                    />
+                                    <button
+                                      type="button"
+                                      className="mt-0.5 shrink-0 text-[#9ca3af] opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-500"
+                                      onClick={() => handleRemoveStyleEntry(key, index)}
+                                      title={t("characterview.remove")}
+                                    >
+                                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l6 6M8 2l-6 6" /></svg>
+                                    </button>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="rounded-md border border-dashed border-[#d6d3c6]/60 dark:border-border/30 px-3 py-2 text-[11px] text-[#9ca3af] dark:text-muted">
+                                  {STYLE_SECTION_EMPTY_STATES[key]}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="text"
+                              value={pendingStyleEntries[key]}
+                              placeholder={STYLE_SECTION_PLACEHOLDERS[key]}
+                              onChange={(e) => handlePendingStyleEntryChange(key, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleAddStyleEntry(key);
+                                }
+                              }}
+                              className="h-7 min-w-0 flex-1 rounded-md border-[#d6d3c6]/60 dark:border-border/30 bg-white/50 dark:bg-white/5 text-xs text-[#1e2329] dark:text-[hsl(40,10%,84%)] focus-visible:border-accent focus-visible:ring-accent/50"
+                              data-testid={`style-entry-input-${key}`}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 shrink-0 rounded-md px-2 text-[10px] font-bold text-accent"
+                              onClick={() => handleAddStyleEntry(key)}
+                              disabled={!pendingStyleEntries[key].trim()}
+                            >
+                              + add
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* ── Chat Examples (About Me + Examples mode) ── */}
+                {activeSection === "aboutMe" && customizeStep === "examples" && (
+                  <div className="flex flex-col gap-2" data-testid="character-chat-examples-card">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[#6d737a] dark:text-muted">{t("characterview.chatExamples")}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 rounded-md px-2 text-[10px] font-bold text-accent"
+                        onClick={() => void handleGenerate("chatExamples", "replace")}
+                        disabled={generating === "chatExamples"}
+                      >
+                        {generating === "chatExamples" ? "generating..." : "generate"}
+                      </Button>
+                    </div>
+                    <div className={`${scrollPaneCls} flex flex-col gap-2`}>
+                      {(d.messageExamples ?? []).map((convo, ci) => (
+                        <div
+                          key={convo.examples.map((msg) => `${msg.name}:${msg.content?.text ?? ""}`).join("|")}
+                          className="rounded-lg border border-[#d6d3c6]/40 dark:border-border/30 p-2.5"
+                        >
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-[9px] font-bold uppercase tracking-widest text-[#9ca3af] dark:text-muted/60">
+                              {t("characterview.conversation")} {ci + 1}
+                            </span>
+                            <button
+                              type="button"
+                              className="text-[#9ca3af] hover:text-red-500 transition-colors"
+                              onClick={() => {
+                                const updated = [...(d.messageExamples ?? [])];
+                                updated.splice(ci, 1);
+                                handleFieldEdit("messageExamples", updated);
+                              }}
+                            >
+                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l6 6M8 2l-6 6" /></svg>
+                            </button>
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            {convo.examples.map((msg, mi) => (
+                              <div key={`${msg.name}:${msg.content?.text ?? ""}`} className="flex items-center gap-2">
+                                <span className={`w-10 shrink-0 text-right text-[9px] font-bold uppercase tracking-wider ${msg.name === "{{user1}}" ? "text-[#9ca3af] dark:text-muted" : "text-accent"}`}>
+                                  {msg.name === "{{user1}}" ? "user" : "agent"}
+                                </span>
+                                <input
+                                  type="text"
+                                  value={msg.content?.text ?? ""}
+                                  onChange={(e) => {
+                                    const updated = [...(d.messageExamples ?? [])];
+                                    const convoClone = { examples: [...updated[ci].examples] };
+                                    convoClone.examples[mi] = { ...convoClone.examples[mi], content: { text: e.target.value } };
+                                    updated[ci] = convoClone;
+                                    handleFieldEdit("messageExamples", updated);
+                                  }}
+                                  className="h-7 flex-1 rounded-md border border-[#d6d3c6]/40 dark:border-border/30 bg-white/60 dark:bg-white/5 px-2 font-mono text-[11px] text-[#1e2329] dark:text-[hsl(40,10%,84%)] outline-none focus:border-accent"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {(d.messageExamples ?? []).length === 0 && (
+                        <div className="rounded-md border border-dashed border-[#d6d3c6]/60 dark:border-border/30 py-2 text-center text-[11px] text-[#9ca3af] dark:text-muted">
+                          {t("characterview.noChatExamplesYet")}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Post Examples (Directions + Examples mode) ── */}
+                {activeSection === "directions" && customizeStep === "examples" && (
+                  <div className="flex flex-col gap-2" data-testid="character-post-examples-card">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[#6d737a] dark:text-muted">{t("characterview.postExamples")}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 rounded-md px-2 text-[10px] font-bold text-accent"
+                        onClick={() => void handleGenerate("postExamples", "replace")}
+                        disabled={generating === "postExamples"}
+                      >
+                        {generating === "postExamples" ? "generating..." : "generate"}
+                      </Button>
+                    </div>
+                    <div className={`${scrollPaneCls} flex flex-col gap-1.5`}>
+                      {(d.postExamples ?? []).map((post: string, pi: number) => (
+                        <div key={post || `post-${pi}`} className="group flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={post}
+                            onChange={(e) => {
+                              const updated = [...(d.postExamples ?? [])];
+                              updated[pi] = e.target.value;
+                              handleFieldEdit("postExamples", updated);
+                            }}
+                            className="h-7 flex-1 rounded-md border border-[#d6d3c6]/40 dark:border-border/30 bg-white/60 dark:bg-white/5 px-2 font-mono text-[11px] text-[#1e2329] dark:text-[hsl(40,10%,84%)] outline-none focus:border-accent"
+                          />
+                          <button
+                            type="button"
+                            className="shrink-0 text-[#9ca3af] opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-500"
+                            onClick={() => {
+                              const updated = [...(d.postExamples ?? [])];
+                              updated.splice(pi, 1);
+                              handleFieldEdit("postExamples", updated);
+                            }}
+                          >
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l6 6M8 2l-6 6" /></svg>
+                          </button>
+                        </div>
+                      ))}
+                      {(d.postExamples ?? []).length === 0 && (
+                        <div className="rounded-md border border-dashed border-[#d6d3c6]/60 dark:border-border/30 py-2 text-center text-[11px] text-[#9ca3af] dark:text-muted">
+                          {t("characterview.noPostExamplesYet")}
+                        </div>
+                      )}
+                    </div>
+                    <div className="border-t border-[#d6d3c6]/40 dark:border-border/30 pt-2">
+                      <button
+                        type="button"
+                        className="text-[10px] font-bold text-accent hover:underline"
+                        onClick={() => {
+                          const updated = [...(d.postExamples ?? []), ""];
+                          handleFieldEdit("postExamples", updated);
+                        }}
+                      >
+                        {t("characterview.AddPost")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── Sidebar (right) ── */}
+            <div
+              className={`${bookSidebarCls} flex w-20 flex-col items-center rounded-r-[1.75rem] border-l border-white/[0.08] py-3`}
+              role="tablist"
+              aria-orientation="vertical"
+            >
+              <div className="pointer-events-none absolute inset-x-2 top-2 h-10 rounded-full bg-[linear-gradient(180deg,rgba(255,255,255,0.12)_0%,rgba(255,255,255,0)_100%)] blur-sm" />
+              <div className="pointer-events-none absolute inset-y-0 left-0 w-px bg-white/[0.08]" />
+              <div className="pointer-events-none absolute inset-y-0 right-0 w-px bg-black/35" />
+              {SIDEBAR_TABS.map(({ key, icon: Icon, labelKey }) => {
+                const isActive = activeSection === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    className={`relative flex w-full items-center justify-center px-2 py-3.5 transition-colors border-b border-white/[0.06] last:border-b-0 ${
+                      isActive ? "text-[#f7e7bf]" : "text-[#999da7] hover:text-white/80"
+                    }`}
+                    onClick={() => {
+                      setActiveSection(key);
+                      if (key === "styleRules" && customizeStep === "examples") {
+                        setCustomizeStep("core");
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      const keys = SIDEBAR_TABS.map((tab) => tab.key);
+                      const idx = keys.indexOf(key);
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        const next = keys[(idx + 1) % keys.length];
+                        setActiveSection(next);
+                      } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        const prev = keys[(idx - 1 + keys.length) % keys.length];
+                        setActiveSection(prev);
+                      }
+                    }}
+                    id={`notebook-tab-${key}`}
+                    data-testid={`notebook-tab-${key}`}
+                  >
+                    {isActive && (
+                      <div className="absolute inset-y-2 left-0 w-[4px] rounded-r-full bg-[#d4a14c] shadow-[0_0_12px_rgba(212,161,76,0.45)]" />
+                    )}
+                    <div className="relative z-10 flex flex-col items-center gap-1.5">
+                      <div
+                        className={`flex h-10 w-10 items-center justify-center rounded-full border transition-all ${
+                          isActive
+                            ? "border-[#f0ce85]/55 bg-[radial-gradient(circle_at_30%_30%,rgba(255,236,195,0.28)_0%,rgba(255,236,195,0.05)_42%,rgba(255,255,255,0)_100%)] shadow-[0_0_18px_rgba(220,176,90,0.22)]"
+                            : "border-white/10 bg-white/[0.03]"
+                        }`}
+                      >
+                        <Icon className="h-4.5 w-4.5" />
+                      </div>
+                      <span className="max-w-[4.1rem] text-center text-[8px] font-semibold uppercase tracking-[0.16em] leading-[1.22]">
+                        {t(labelKey)}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
             </div>
           </div>
-
-          {customizeStep === "examples" ? (
-            <div
-              className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)_minmax(0,24rem)] xl:items-start xl:gap-6"
-              data-testid="character-examples-grid"
-            >
-              {chatExamplesPanel}
-              <div aria-hidden className="hidden xl:block" />
-              {postExamplesPanel}
-            </div>
-          ) : (
-            <div
-              className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,23rem)_minmax(0,1fr)_minmax(0,32rem)] xl:items-start xl:gap-6"
-              data-testid="character-customize-grid"
-            >
-              <div
-                className={
-                  customizeStep === "style" ? "hidden xl:block" : "block"
-                }
-              >
-                {coreFieldsPanel}
-              </div>
-              <div aria-hidden className="hidden xl:block" />
-              <div
-                className={
-                  customizeStep === "core" ? "hidden xl:block" : "block"
-                }
-              >
-                {styleEditorPanel}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -1516,75 +1542,71 @@ export function CharacterView({
 
         <div className="relative flex flex-col gap-3 md:min-h-10 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center justify-center md:justify-start">
-            {!customOverridesEnabled && (
-              <div
-                className="flex min-w-0 items-center gap-2"
-                data-testid="character-voice-picker"
+            <div
+              className="flex min-w-0 items-center gap-2"
+              data-testid="character-voice-picker"
+            >
+              <Button
+                type="button"
+                variant={voiceSelectionLocked ? "default" : "outline"}
+                size="icon"
+                className="h-8 w-8 rounded-full border-border/50 bg-bg/65 p-0 shadow-inner backdrop-blur-sm"
+                onClick={() => setVoiceSelectionLocked((value) => !value)}
+                aria-label={
+                  voiceSelectionLocked
+                    ? "Unlock voice selection"
+                    : "Lock voice selection"
+                }
+                title={
+                  voiceSelectionLocked
+                    ? "Voice stays pinned when switching characters"
+                    : "Lock current voice"
+                }
               >
-                <Button
-                  type="button"
-                  variant={voiceSelectionLocked ? "default" : "outline"}
-                  size="icon"
-                  className="h-8 w-8 rounded-full border-border/50 bg-bg/65 p-0 shadow-inner backdrop-blur-sm"
-                  onClick={() => setVoiceSelectionLocked((value) => !value)}
-                  aria-label={
-                    voiceSelectionLocked
-                      ? "Unlock voice selection"
-                      : "Lock voice selection"
-                  }
-                  title={
-                    voiceSelectionLocked
-                      ? "Voice stays pinned when switching characters"
-                      : "Lock current voice"
-                  }
-                >
-                  {voiceSelectionLocked ? (
-                    <Lock className="h-3.5 w-3.5" />
-                  ) : (
-                    <LockOpen className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-                <ThemedSelect
-                  value={voiceSelectValue}
-                  groups={VOICE_SELECT_GROUPS}
-                  onChange={(id) => {
-                    const preset = PREMADE_VOICES.find(
-                      (voicePreset) => voicePreset.id === id,
-                    );
-                    if (preset) handleSelectPreset(preset);
-                  }}
-                  placeholder={t("characterview.selectAVoice")}
-                  menuPlacement="top"
-                  className="w-[11rem] max-w-[58vw]"
-                  triggerClassName="h-8 rounded-full border-border/50 bg-bg/65 px-4 py-0 text-[11px] shadow-inner backdrop-blur-sm"
-                  menuClassName="border-border/60 bg-bg/92 shadow-2xl backdrop-blur-md"
-                />
-                <Button
-                  type="button"
-                  variant={voiceTesting ? "destructive" : "outline"}
-                  size="icon"
-                  className="h-8 w-8 rounded-full border-border/50 bg-bg/65 p-0 shadow-inner backdrop-blur-sm"
-                  onClick={() =>
-                    voiceTesting
-                      ? handleStopTest()
-                      : activeVoicePreset
-                        ? handleTestVoice(activeVoicePreset.previewUrl)
-                        : undefined
-                  }
-                  aria-label={
-                    voiceTesting ? "Stop voice preview" : "Preview voice"
-                  }
-                  title={voiceTesting ? "Stop voice preview" : "Preview voice"}
-                  disabled={!activeVoicePreset || voiceLoading}
-                >
-                  {voiceTesting ? (
-                    <VolumeX className="h-3.5 w-3.5" />
-                  ) : (
-                    <Volume2 className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </div>
-            )}
+                {voiceSelectionLocked ? (
+                  <Lock className="h-3.5 w-3.5" />
+                ) : (
+                  <LockOpen className="h-3.5 w-3.5" />
+                )}
+              </Button>
+              <ThemedSelect
+                value={voiceSelectValue}
+                groups={VOICE_SELECT_GROUPS}
+                onChange={(id) => {
+                  const preset = PREMADE_VOICES.find(
+                    (voicePreset) => voicePreset.id === id,
+                  );
+                  if (preset) handleSelectPreset(preset);
+                }}
+                placeholder={t("characterview.selectAVoice")}
+                menuPlacement="top"
+                className="w-[11rem] max-w-[58vw]"
+                triggerClassName="h-8 rounded-full border-border/50 bg-bg/65 px-4 py-0 text-[11px] shadow-inner backdrop-blur-sm"
+                menuClassName="border-border/60 bg-bg/92 shadow-2xl backdrop-blur-md"
+              />
+              <Button
+                type="button"
+                variant={voiceTesting ? "destructive" : "outline"}
+                size="icon"
+                className="h-8 w-8 rounded-full border-border/50 bg-bg/65 p-0 shadow-inner backdrop-blur-sm"
+                onClick={() =>
+                  voiceTesting
+                    ? handleStopTest()
+                    : activeVoicePreset
+                      ? handleTestVoice(activeVoicePreset.previewUrl)
+                      : undefined
+                }
+                aria-label={voiceTesting ? "Stop voice preview" : "Preview voice"}
+                title={voiceTesting ? "Stop voice preview" : "Preview voice"}
+                disabled={!activeVoicePreset || voiceLoading}
+              >
+                {voiceTesting ? (
+                  <VolumeX className="h-3.5 w-3.5" />
+                ) : (
+                  <Volume2 className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </div>
           </div>
 
           <div className="flex items-center justify-center md:absolute md:left-1/2 md:top-1/2 md:z-10 md:-translate-x-1/2 md:-translate-y-1/2">

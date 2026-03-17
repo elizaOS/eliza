@@ -16,6 +16,7 @@ import { OnboardingPanel } from "./onboarding/OnboardingPanel";
 import { OnboardingStepNav } from "./onboarding/OnboardingStepNav";
 import { PermissionsStep } from "./onboarding/PermissionsStep";
 import { RpcStep } from "./onboarding/RpcStep";
+import { IdentityStep } from "./onboarding/IdentityStep";
 import { WakeUpStep } from "./onboarding/WakeUpStep";
 
 export function OnboardingWizard() {
@@ -56,6 +57,8 @@ export function OnboardingWizard() {
     switch (onboardingStep) {
       case "wakeUp":
         return <WakeUpStep />;
+      case "identity":
+        return <IdentityStep />;
 
       case "connection":
         return <ConnectionStep />;

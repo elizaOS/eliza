@@ -2,7 +2,6 @@ import type http from "node:http";
 import { logger } from "@elizaos/core";
 import type { MiladyConfig } from "../config/config";
 import {
-  DEFAULT_WALLET_RPC_SELECTIONS,
   normalizeWalletRpcSelections,
   type WalletConfigUpdateRequest,
   type WalletRpcSelections,
@@ -24,7 +23,11 @@ import {
   type WalletConfigStatus,
   type WalletNftsResponse,
 } from "./wallet";
-import { resolveWalletRpcReadiness } from "./wallet-rpc";
+import {
+  applyWalletRpcConfigUpdate,
+  getStoredWalletRpcSelections,
+  resolveWalletRpcReadiness,
+} from "./wallet-rpc";
 
 interface WalletExportRequestBody {
   confirm?: boolean;
@@ -50,17 +53,6 @@ const WALLET_CONFIG_COMPAT_KEYS = new Set([
   "BSC_RPC_URL",
   "SOLANA_RPC_URL",
 ]);
-
-function getStoredWalletRpcSelections(
-  config: MiladyConfig,
-): WalletRpcSelections {
-  const storedSelections = (
-    config as MiladyConfig & {
-      wallet?: { rpcProviders?: Partial<Record<keyof WalletRpcSelections, string>> };
-    }
-  ).wallet?.rpcProviders;
-  return normalizeWalletRpcSelections(storedSelections);
-}
 
 function resolveWalletConfigUpdateRequest(
   body: unknown,
@@ -415,8 +407,8 @@ export async function handleWalletRoutes(
     const nodeRealSet = Boolean(process.env.NODEREAL_BSC_RPC_URL?.trim());
     const quickNodeSet = Boolean(process.env.QUICKNODE_BSC_RPC_URL?.trim());
     const configStatus: WalletConfigStatus = {
-      selectedRpcProviders: getStoredWalletRpcSelections(config),
-      legacyCustomChains: [],
+      selectedRpcProviders: rpcReadiness.selectedRpcProviders,
+      legacyCustomChains: rpcReadiness.legacyCustomChains,
       alchemyKeySet,
       infuraKeySet: Boolean(process.env.INFURA_API_KEY?.trim()),
       ankrKeySet,
@@ -464,64 +456,7 @@ export async function handleWalletRoutes(
       return true;
     }
 
-    const allowedKeys = [
-      "ALCHEMY_API_KEY",
-      "INFURA_API_KEY",
-      "ANKR_API_KEY",
-      "ETHEREUM_RPC_URL",
-      "BASE_RPC_URL",
-      "AVALANCHE_RPC_URL",
-      "HELIUS_API_KEY",
-      "BIRDEYE_API_KEY",
-      "NODEREAL_BSC_RPC_URL",
-      "QUICKNODE_BSC_RPC_URL",
-      "BSC_RPC_URL",
-      "SOLANA_RPC_URL",
-    ];
-
-    if (!config.env) config.env = {};
-    (
-      config as MiladyConfig & {
-        wallet?: { rpcProviders?: WalletRpcSelections };
-      }
-    ).wallet = {
-      ...(
-        config as MiladyConfig & {
-          wallet?: { rpcProviders?: WalletRpcSelections };
-        }
-      ).wallet,
-      rpcProviders: updateRequest.selections,
-    };
-
-    for (const key of allowedKeys) {
-      const value = updateRequest.credentials?.[
-        key as keyof NonNullable<typeof updateRequest.credentials>
-      ];
-      if (typeof value === "string" && value.trim()) {
-        const normalizedValue = value.trim();
-        process.env[key] = normalizedValue;
-        (config.env as Record<string, string>)[key] = normalizedValue;
-        continue;
-      }
-      if (typeof value === "string") {
-        delete process.env[key];
-        delete (config.env as Record<string, string>)[key];
-      }
-    }
-
-    const heliusValue = updateRequest.credentials?.HELIUS_API_KEY;
-    if (typeof heliusValue === "string" && heliusValue.trim()) {
-      const rpcUrl = `https://mainnet.helius-rpc.com/?api-key=${heliusValue.trim()}`;
-      process.env.SOLANA_RPC_URL = rpcUrl;
-      (config.env as Record<string, string>).SOLANA_RPC_URL = rpcUrl;
-    } else if (
-      typeof heliusValue === "string" &&
-      !heliusValue.trim() &&
-      typeof updateRequest.credentials?.SOLANA_RPC_URL !== "string"
-    ) {
-      delete process.env.SOLANA_RPC_URL;
-      delete (config.env as Record<string, string>).SOLANA_RPC_URL;
-    }
+    applyWalletRpcConfigUpdate(config, updateRequest);
 
     ensureWalletKeysInEnvAndConfig(config);
 

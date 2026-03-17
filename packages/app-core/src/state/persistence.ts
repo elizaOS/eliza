@@ -69,6 +69,7 @@ const ONBOARDING_STEP_STORAGE_KEY = "milady:onboarding:step";
 function normalizeOnboardingStep(value: unknown): OnboardingStep | null {
   switch (value) {
     case "wakeUp":
+    case "identity":
     case "connection":
     case "rpc":
     case "senses":

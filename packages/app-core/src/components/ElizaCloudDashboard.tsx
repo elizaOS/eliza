@@ -93,7 +93,7 @@ function CloudAgentCard({
   return (
     // biome-ignore lint/a11y/useSemanticElements: cannot use button due to nested buttons
     <div
-      className="rounded-2xl border border-border/50 bg-bg/30 p-4 flex flex-col justify-between gap-3 hover:border-accent/30 transition-all duration-200 cursor-pointer"
+      className="rounded-2xl border border-border/50 bg-bg/30 p-5 flex flex-col justify-between gap-4 hover:border-accent/30 transition-all duration-200 cursor-pointer"
       onClick={() => onSelect?.(agent.agent_id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -896,10 +896,10 @@ export function CloudDashboard() {
   }
 
   return (
-    <div className="custom-scrollbar p-6 lg:p-10 space-y-8 max-w-7xl mx-auto animate-in fade-in duration-500">
+    <div className="custom-scrollbar p-6 lg:p-10 space-y-10 max-w-7xl mx-auto animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-4 mb-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-accent p-2.5 shadow-lg shadow-accent/20">
               <LayoutDashboard className="h-5 w-5 shrink-0 text-accent-fg" />
             </div>
@@ -907,7 +907,7 @@ export function CloudDashboard() {
               {t("elizaclouddashboard.CloudDashboard")}
             </h1>
           </div>
-          <p className="text-muted">
+          <p className="text-muted mt-1">
             {t("elizaclouddashboard.ManageInstance")}
           </p>
         </div>
@@ -1359,9 +1359,9 @@ export function CloudDashboard() {
               title={t("elizaclouddashboard.AccountDetails")}
               className="border-border/50 bg-bg/40 backdrop-blur-xl rounded-3xl shadow-sm"
             >
-              <div className="space-y-4 mt-2">
-                <div className="p-3 rounded-2xl bg-bg/30 border border-border/30">
-                  <span className="text-[10px] text-muted uppercase font-bold tracking-wider mb-1 block">
+              <div className="space-y-5 mt-4">
+                <div className="p-4 rounded-2xl bg-bg/30 border border-border/30">
+                  <span className="text-[10px] text-muted uppercase font-bold tracking-wider mb-2 block">
                     {t("elizaclouddashboard.CloudUserID")}
                   </span>
                   <code className="text-xs text-txt-strong break-all font-mono">
@@ -1369,7 +1369,7 @@ export function CloudDashboard() {
                   </code>
                 </div>
 
-                <div className="flex items-center justify-between p-3">
+                <div className="flex items-center justify-between p-4">
                   <div className="flex items-center gap-2">
                     <Shield className="w-4 h-4 text-ok" />
                     <span className="text-xs font-medium">
@@ -1404,13 +1404,13 @@ export function CloudDashboard() {
               className="border-border/50 bg-bg/40 backdrop-blur-xl rounded-3xl overflow-hidden shadow-sm"
             >
               {agentsError && (
-                <div className="mt-4 flex items-center gap-2 text-sm text-danger bg-danger/10 rounded-xl p-3 border border-danger/20">
+                <div className="mt-6 flex items-center gap-3 text-sm text-danger bg-danger/10 rounded-xl p-4 border border-danger/20">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   {agentsError}
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
                 {agentsLoading && cloudAgents.length === 0 ? (
                   <div className="col-span-full flex items-center justify-center py-12">
                     <Loader2 className="w-6 h-6 text-txt animate-spin" />
@@ -1429,7 +1429,7 @@ export function CloudDashboard() {
                       />
                     ))}
                     {showDeployForm ? (
-                      <div className="aspect-[4/3] rounded-2xl border border-border/50 bg-bg/30 p-6 flex flex-col items-center justify-center text-center">
+                      <div className="aspect-[4/3] rounded-2xl border border-border/50 bg-bg/30 p-8 flex flex-col items-center justify-center text-center">
                         <div className="w-full space-y-3">
                           <input
                             placeholder={t("elizaclouddashboard.AgentName")}
@@ -1471,16 +1471,16 @@ export function CloudDashboard() {
                     ) : (
                       <button
                         type="button"
-                        className="aspect-[4/3] rounded-2xl border border-dashed border-border/60 flex flex-col items-center justify-center p-6 text-center group hover:border-accent/50 hover:bg-accent/5 transition-all duration-300 cursor-pointer"
+                        className="aspect-[4/3] rounded-2xl border border-dashed border-border/60 flex flex-col items-center justify-center p-8 lg:p-12 text-center group hover:border-accent/50 hover:bg-accent/5 transition-all duration-300 cursor-pointer"
                         onClick={() => setShowDeployForm(true)}
                       >
-                        <div className="w-12 h-12 rounded-full bg-bg-accent flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                          <Plus className="w-6 h-6 text-muted group-hover:text-txt" />
+                        <div className="w-12 h-12 lg:w-10 lg:h-10 rounded-full bg-bg-accent flex items-center justify-center mb-5 lg:mb-6 group-hover:scale-110 transition-transform">
+                          <Plus className="w-6 h-6 lg:w-5 lg:h-5 text-muted group-hover:text-txt" />
                         </div>
-                        <h3 className="font-bold text-txt-strong mb-1">
+                        <h3 className="font-bold text-txt-strong mb-2">
                           {t("elizaclouddashboard.DeployNewAgent")}
                         </h3>
-                        <p className="text-xs text-muted">
+                        <p className="text-xs text-muted max-w-[16rem]">
                           {t("elizaclouddashboard.InitializeInstance")}
                         </p>
                       </button>
@@ -1495,7 +1495,7 @@ export function CloudDashboard() {
               description={t("elizaclouddashboard.UsageMetricsDesc")}
               className="border-border/50 bg-bg/40 backdrop-blur-xl rounded-3xl shadow-sm"
             >
-              <div className="h-48 flex items-center justify-center text-muted italic text-sm border border-border/30 rounded-2xl bg-bg/20 mt-4">
+              <div className="h-48 flex items-center justify-center text-muted italic text-sm border border-border/30 rounded-2xl bg-bg/20 mt-6 p-6">
                 {t("elizaclouddashboard.MetricsPlaceholder")}
               </div>
             </SectionCard>
@@ -1512,9 +1512,9 @@ export function CloudDashboard() {
                 title={t("elizaclouddashboard.AccountDetails")}
                 className="border-border/50 bg-bg/40 backdrop-blur-xl rounded-3xl shadow-sm"
               >
-                <div className="space-y-4 mt-2">
-                  <div className="p-3 rounded-2xl bg-bg/30 border border-border/30">
-                    <span className="text-[10px] text-muted uppercase font-bold tracking-wider mb-1 block">
+                <div className="space-y-5 mt-4">
+                  <div className="p-4 rounded-2xl bg-bg/30 border border-border/30">
+                    <span className="text-[10px] text-muted uppercase font-bold tracking-wider mb-2 block">
                       {t("elizaclouddashboard.CloudUserID")}
                     </span>
                     <code className="text-xs text-txt-strong break-all font-mono">
@@ -1523,12 +1523,12 @@ export function CloudDashboard() {
                     </code>
                   </div>
 
-                  <div className="rounded-2xl border border-accent/20 bg-accent/8 p-4">
+                  <div className="rounded-2xl border border-accent/20 bg-accent/8 p-5">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-muted">
                       {t("elizaclouddashboard.AvailableBalance")}
                     </div>
                     <div
-                      className={`mt-2 text-3xl font-bold ${creditStatusColor}`}
+                      className={`mt-3 text-3xl font-bold ${creditStatusColor}`}
                     >
                       ${cloudBalance.toFixed(2)}
                     </div>
@@ -1539,7 +1539,7 @@ export function CloudDashboard() {
 
                   <Button
                     variant="outline"
-                    className="w-full justify-start rounded-2xl border-border/40 bg-bg/30 px-4 py-3 text-sm"
+                    className="w-full justify-start rounded-2xl border-border/40 bg-bg/30 px-5 py-4 text-sm"
                     onClick={() => setState("cloudDashboardView", "billing")}
                   >
                     <CircleDollarSign className="mr-2 h-4 w-4" />

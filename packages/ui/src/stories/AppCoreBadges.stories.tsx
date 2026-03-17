@@ -1,5 +1,6 @@
 import { StatCard, StatusBadge, StatusDot } from "@elizaos/app-core/components";
 import type { Meta, StoryObj } from "@storybook/react";
+import React from "react";
 
 const meta: Meta<typeof StatusBadge> = {
   title: "App Core/UiBadges",

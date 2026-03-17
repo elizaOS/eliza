@@ -1,5 +1,5 @@
 /**
- * Ambient type declarations for @elizaos/app-core.
+ * Ambient type declarations for @milady/app-core.
  *
  * Provides Vite `import.meta.env` types for modules that use env vars.
  */

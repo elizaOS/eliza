@@ -200,7 +200,10 @@ export function App() {
   } = useApp();
 
   const isPopout = useIsPopout();
-  const shellMode = uiShellMode ?? "companion";
+  const shellMode =
+    tab === "character" || tab === "character-select"
+      ? "native"
+      : (uiShellMode ?? "companion");
   const effectiveTab: Tab =
     shellMode === "companion"
       ? "companion"

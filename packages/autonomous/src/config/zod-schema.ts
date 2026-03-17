@@ -291,8 +291,7 @@ export const CharacterSchema = z
     messageExamples: z.array(MessageExampleGroupSchema).optional(),
     postExamples: z.array(z.string()).optional(),
   })
-  .strict()
-  .optional();
+  .strict();
 
 // --- Main config schema ---
 

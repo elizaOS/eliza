@@ -723,14 +723,7 @@ export function ChatView({ variant = "default" }: ChatViewProps) {
       >
         {visibleMsgs.length === 0 && !chatSending ? (
           isGameModal ? (
-            <div className="flex h-full items-end px-1 py-4">
-              <div className="w-full">
-                <TypingIndicator
-                  agentName={agentName}
-                  agentAvatarSrc={agentAvatarSrc}
-                />
-              </div>
-            </div>
+            <div className="flex h-full items-end px-1 py-4" />
           ) : (
             <ChatEmptyState agentName={agentName} />
           )
