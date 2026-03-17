@@ -102,29 +102,13 @@ export const replyAction = {
     const allProviders =
       responses?.flatMap((res) => res.content?.providers || []) || [];
 
-    // Required providers that must always be freshly retrieved for proper action context
-    const requiredProviders = ["RECENT_MESSAGES", "ACTION_STATE"]; 
-
-    // Safely check if state has all required providers
-    const hasAllRequiredProviders = state?.data?.providers != null &&
-      typeof state.data.providers === 'object' &&
-      requiredProviders.every(provider => 
-        provider in state.data.providers
-      );
-    
-    // Always refresh RECENT_MESSAGES and ACTION_STATE in multi-action chains
-    // to capture earlier action results and agent replies
-    const hasRequestedInState = hasAllRequiredProviders && isFirstAction;
-
-    state =
-      hasRequestedInState && state != null
-        ? state
-        : await runtime.composeState(message, [
-            ...(allProviders ?? []),
-            "RECENT_MESSAGES",
-            "ACTION_STATE",
-          // Note: optimization relies on existing state to reduce unnecessary data retrieval.
-          ]);
+    // Always compose fresh state for REPLY actions after the first one
+    // to ensure we have latest context from previous action results
+    state = await runtime.composeState(message, [
+      ...(allProviders ?? []),
+      "RECENT_MESSAGES",
+      "ACTION_STATE",
+    ]);
 
     const prompt = composePromptFromState({
       state,
