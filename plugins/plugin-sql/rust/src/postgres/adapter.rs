@@ -57,7 +57,9 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn get_connection(&self) -> Result<DatabaseConnection> {
-        Ok(DatabaseConnection::Postgres(self.manager.get_pool().clone()))
+        Ok(DatabaseConnection::Postgres(
+            self.manager.get_pool().clone(),
+        ))
     }
 
     // =========================================================================

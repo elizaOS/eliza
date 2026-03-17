@@ -4,14 +4,14 @@ use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
-    
+
     // Proto files are in the @schemas package, relative to this crate
     let schemas_dir = PathBuf::from("../@schemas");
     let proto_dir = schemas_dir.join("eliza/v1");
-    
+
     // Check for bundled proto files (included in crates.io package)
     let bundled_proto_dir = PathBuf::from("proto/eliza/v1");
-    
+
     let (proto_files, include_dir): (Vec<PathBuf>, PathBuf) = if bundled_proto_dir.exists() {
         // Use bundled protos (crates.io build)
         let files: Vec<PathBuf> = fs::read_dir(&bundled_proto_dir)?
@@ -47,24 +47,24 @@ pub struct DefaultUuid {}
         println!("cargo:warning=Proto files not found, using stub types");
         return Ok(());
     };
-    
+
     if proto_files.is_empty() {
         println!("cargo:warning=No proto files found");
         return Ok(());
     }
-    
+
     // Configure prost-build
     let mut config = prost_build::Config::new();
     config.out_dir(&out_dir);
-    
+
     // Compile protos
     config.compile_protos(&proto_files, &[&include_dir])?;
-    
+
     // Tell Cargo to rerun if proto files change
     for proto in &proto_files {
         println!("cargo:rerun-if-changed={}", proto.display());
     }
     println!("cargo:rerun-if-changed=build.rs");
-    
+
     Ok(())
 }

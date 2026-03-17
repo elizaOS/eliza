@@ -22,8 +22,8 @@ pub fn init_wasm() {
 pub fn test_json_round_trip(json: &str) -> Result<bool, JsValue> {
     let value: serde_json::Value = serde_json::from_str(json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse JSON: {e}")))?;
-    let serialized =
-        serde_json::to_string(&value).map_err(|e| JsValue::from_str(&format!("Failed to serialize JSON: {e}")))?;
+    let serialized = serde_json::to_string(&value)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize JSON: {e}")))?;
     let reparsed: serde_json::Value = serde_json::from_str(&serialized)
         .map_err(|e| JsValue::from_str(&format!("Failed to reparse JSON: {e}")))?;
     Ok(value == reparsed)

@@ -138,7 +138,11 @@ pub trait UnifiedDatabaseAdapter: Send + Sync {
     async fn get_memory_by_id(&self, id: &UUID) -> Result<Option<Memory>>;
 
     /// Get memories by IDs (batch; aligned with TypeScript getMemoriesByIds).
-    async fn get_memories_by_ids(&self, ids: &[UUID], table_name: Option<&str>) -> Result<Vec<Memory>> {
+    async fn get_memories_by_ids(
+        &self,
+        ids: &[UUID],
+        table_name: Option<&str>,
+    ) -> Result<Vec<Memory>> {
         let _ = table_name;
         let mut out = Vec::with_capacity(ids.len());
         for id in ids {
