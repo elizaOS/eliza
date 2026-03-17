@@ -487,25 +487,32 @@ describe("Bridge Action", () => {
     });
 
     it("should handle bridge cost estimation", async () => {
+      let balance: string | null = null;
       try {
-        const balance = await wp.getWalletBalanceForChain("sepolia");
-
-        if (balance && parseFloat(balance) > 0.001) {
-          const bridgeParams = {
-            fromChain: "sepolia" as SupportedChain,
-            toChain: "baseSepolia" as SupportedChain,
-            fromToken: TESTNET_TOKENS.ETH,
-            toToken: TESTNET_TOKENS.ETH,
-            amount: "0.001",
-          };
-
-          expect(parseFloat(bridgeParams.amount)).toBeGreaterThan(0);
-          expect(bridgeParams.fromChain).not.toBe(bridgeParams.toChain);
-        }
-      } catch (error) {
-        // RPC/balance/network errors in CI - treat as skip
-        console.warn("Skipping bridge cost estimation - insufficient balance or RPC error");
+        balance = await wp.getWalletBalanceForChain("sepolia");
+      } catch (err) {
+        console.warn("Skipping bridge cost estimation - RPC unavailable:", err);
+        return; // explicit skip, not a silent pass
       }
+
+      if (!balance || parseFloat(balance) <= 0.001) {
+        console.warn("Skipping bridge cost estimation - insufficient balance");
+        return; // explicit skip
+      }
+
+      // Validate we actually have a meaningful balance
+      expect(parseFloat(balance)).toBeGreaterThan(0.001);
+
+      const bridgeParams = {
+        fromChain: "sepolia" as SupportedChain,
+        toChain: "baseSepolia" as SupportedChain,
+        fromToken: TESTNET_TOKENS.ETH,
+        toToken: TESTNET_TOKENS.ETH,
+        amount: "0.001",
+      };
+
+      expect(parseFloat(bridgeParams.amount)).toBeGreaterThan(0);
+      expect(bridgeParams.fromChain).not.toBe(bridgeParams.toChain);
     });
   });
 });
