@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-planning",
-  "version": "2.0.0-alpha.5",
+  "version": "2.0.0-alpha.6",
   "description": "Planning and task management plugin for elizaOS (TypeScript)",
   "main": "dist/index.js",
   "module": "dist/index.js",

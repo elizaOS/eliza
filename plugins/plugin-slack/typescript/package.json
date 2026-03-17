@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-slack",
-  "version": "2.0.0-alpha.5",
+  "version": "2.0.0-alpha.6",
   "description": "Slack integration plugin for elizaOS agents with Socket Mode support",
   "type": "module",
   "main": "dist/index.js",

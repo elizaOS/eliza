@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-nextcloud-talk",
-  "version": "2.0.0-alpha.5",
+  "version": "2.0.0-alpha.6",
   "description": "Nextcloud Talk plugin for elizaOS - TypeScript implementation",
   "type": "module",
   "main": "dist/index.js",
