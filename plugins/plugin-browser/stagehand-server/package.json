@@ -30,7 +30,7 @@
     "tar": "^7.5.11",
     "unzipper": "^0.10.14",
     "postject": "^1.0.0-alpha.6",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.27.4",
     "vitest": "^4.1.0",
     "@vitest/coverage-v8": "^3.1.0"
   },
