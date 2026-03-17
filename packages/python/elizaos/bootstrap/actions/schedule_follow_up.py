@@ -117,9 +117,32 @@ class ScheduleFollowUpAction:
         priority = str(parsed.get("priority", "medium"))
         follow_up_message = str(parsed.get("message", ""))
 
-        scheduled_at = datetime.fromisoformat(scheduled_at_str.replace("Z", "+00:00"))
+        # Normalize priority to valid values
+        if priority not in ("low", "medium", "high"):
+            priority = "medium"
 
-        entity_id = message.entity_id
+        # Validate scheduled_at
+        try:
+            scheduled_at = datetime.fromisoformat(scheduled_at_str.replace("Z", "+00:00"))
+        except ValueError:
+            return ActionResult(
+                text="Invalid date format for scheduled time",
+                success=False,
+                values={"error": True},
+                data={"error": "Invalid scheduledAt date format"},
+            )
+
+        # Resolve contact via rolodex
+        contacts = await rolodex_service.search_contacts(search_term=contact_name)
+        if not contacts:
+            return ActionResult(
+                text=f"Could not find contact '{contact_name}' in rolodex",
+                success=False,
+                values={"error": True},
+                data={"error": f"Contact '{contact_name}' not found"},
+            )
+
+        entity_id = contacts[0].entity_id
         await follow_up_service.schedule_follow_up(
             entity_id=entity_id,
             scheduled_at=scheduled_at,

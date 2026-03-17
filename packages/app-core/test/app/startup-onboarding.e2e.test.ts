@@ -528,7 +528,7 @@ describe("app startup onboarding flow (e2e)", () => {
     const handleOnboardingNext = async () => {
       if (state.onboardingStep === "activate") {
         state.onboardingComplete = true;
-        state.tab = "chat";
+        state.tab = "character-select";
         return;
       }
       const idx = STEP_ORDER.indexOf(state.onboardingStep);
@@ -562,6 +562,12 @@ describe("app startup onboarding flow (e2e)", () => {
       },
       handleOnboardingRemoteConnect: async () => {},
       handleOnboardingUseLocalBackend: () => {},
+      requestGreeting: vi.fn(async () => ({
+        text: "hello",
+        agentName: "Eliza",
+        generated: true,
+        persisted: false,
+      })),
     }));
   });
 

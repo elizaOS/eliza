@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from elizaos.types import ModelType, Service, ServiceType
@@ -21,6 +22,8 @@ class EmbeddingService(Service):
         self._cache: dict[str, list[float]] = {}
         self._cache_enabled: bool = True
         self._max_cache_size: int = 1000
+        self._queue: asyncio.Queue[object] = asyncio.Queue()
+        self._pending_payload_keys: set[str] = set()
 
     @classmethod
     async def start(cls, runtime: IAgentRuntime) -> EmbeddingService:
@@ -41,6 +44,13 @@ class EmbeddingService(Service):
                 agentId=str(self._runtime.agent_id),
             )
         self._cache.clear()
+        # Drain the queue
+        while not self._queue.empty():
+            try:
+                self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+        self._pending_payload_keys.clear()
         self._runtime = None
 
     async def embed(self, text: str) -> list[float]:
@@ -48,6 +58,8 @@ class EmbeddingService(Service):
             raise ValueError("Embedding service not started - no runtime available")
 
         if self._cache_enabled and text in self._cache:
+            # Move to end for LRU behavior
+            self._cache[text] = self._cache.pop(text)
             return self._cache[text]
 
         embedding = await self._runtime.use_model(
@@ -106,3 +118,14 @@ class EmbeddingService(Service):
             return 0.0
 
         return dot_product / (magnitude1 * magnitude2)
+
+    async def _handle_embedding_request(self, payload: object) -> None:
+        extra = getattr(payload, "extra", {})
+        memory = extra.get("memory", {})
+        memory_id = memory.get("id") if isinstance(memory, dict) else getattr(memory, "id", None)
+        key = str(memory_id) if memory_id else None
+        if key and key in self._pending_payload_keys:
+            return
+        if key:
+            self._pending_payload_keys.add(key)
+        await self._queue.put(payload)
