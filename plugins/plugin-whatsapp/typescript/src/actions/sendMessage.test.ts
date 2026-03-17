@@ -1,6 +1,6 @@
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { sendMessageAction, WHATSAPP_SEND_MESSAGE_ACTION } from "./sendMessage";
-import type { IAgentRuntime, Memory } from "@elizaos/core";
 
 describe("sendMessageAction", () => {
   it("should have correct name and description", () => {
@@ -10,11 +10,11 @@ describe("sendMessageAction", () => {
 
   it("should validate only for whatsapp source", async () => {
     const mockRuntime = {} as IAgentRuntime;
-    
+
     const whatsappMessage = {
       content: { source: "whatsapp" },
     } as Memory;
-    
+
     const telegramMessage = {
       content: { source: "telegram" },
     } as Memory;
@@ -55,7 +55,7 @@ describe("sendMessageAction", () => {
   it("should have valid examples", () => {
     expect(sendMessageAction.examples).toBeDefined();
     expect(sendMessageAction.examples.length).toBeGreaterThan(0);
-    
+
     for (const example of sendMessageAction.examples) {
       expect(Array.isArray(example)).toBe(true);
       expect(example.length).toBeGreaterThan(0);

@@ -12,7 +12,6 @@ from elizaos_plugin_line.types import (
     LineMessage,
     LinePluginError,
     LineSendResult,
-    LineSettings,
     LineTemplateMessage,
     LineUser,
     get_chat_type_from_id,
@@ -23,7 +22,6 @@ from elizaos_plugin_line.types import (
     normalize_line_target,
     split_message_for_line,
 )
-
 
 # ---------------------------------------------------------------------------
 # Constants

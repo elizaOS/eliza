@@ -7,7 +7,6 @@ from elizaos_plugin_line.actions import (
 )
 from elizaos_plugin_line.actions.send_flex_message import create_info_bubble
 
-
 # ---------------------------------------------------------------------------
 # Action metadata
 # ---------------------------------------------------------------------------

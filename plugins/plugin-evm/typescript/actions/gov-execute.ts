@@ -31,15 +31,13 @@ export class ExecuteAction {
       const chainConfig = this.walletProvider.getChainConfigs(params.chain);
       const publicClient = this.walletProvider.getPublicClient(params.chain);
 
-      const hash = await walletClient.sendTransaction(
-        {
-          account,
-          to: params.governor,
-          value: BigInt(0),
-          data: txData as Hex,
-          chain: chainConfig,
-        } as unknown as Parameters<typeof walletClient.sendTransaction>[0]
-      );
+      const hash = await walletClient.sendTransaction({
+        account,
+        to: params.governor,
+        value: BigInt(0),
+        data: txData as Hex,
+        chain: chainConfig,
+      } as unknown as Parameters<typeof walletClient.sendTransaction>[0]);
 
       const receipt = await publicClient.waitForTransactionReceipt({
         hash,

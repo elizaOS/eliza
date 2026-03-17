@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { solanaEnvSchema, validateSolanaConfig } from "../environment";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

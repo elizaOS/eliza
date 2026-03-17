@@ -512,11 +512,7 @@ export class PolymarketService extends Service {
       CACHE_REFRESH_INTERVAL_MS,
       "accountStateTaskId",
     );
-    await ensureOne(
-      PolymarketService.POLYMARKET_WS_PING_TASK,
-      WS_PING_INTERVAL_MS,
-      "wsPingTaskId",
-    );
+    await ensureOne(PolymarketService.POLYMARKET_WS_PING_TASK, WS_PING_INTERVAL_MS, "wsPingTaskId");
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {

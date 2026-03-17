@@ -1,22 +1,22 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { experiencePlugin } from "../index";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { recordExperienceAction } from "../actions/record-experience";
-import { experienceProvider } from "../providers/experienceProvider";
 import { experienceEvaluator } from "../evaluators/experienceEvaluator";
+import { experiencePlugin } from "../index";
+import { experienceProvider } from "../providers/experienceProvider";
 import { ExperienceService } from "../service";
-import { ExperienceType, OutcomeType, type Experience } from "../types";
+import { type Experience, ExperienceType, OutcomeType } from "../types";
 import { ConfidenceDecayManager } from "../utils/confidenceDecay";
-import { ExperienceRelationshipManager } from "../utils/experienceRelationships";
 import {
+  extractKeywords,
   formatExperienceForDisplay,
+  formatExperienceForRAG,
   formatExperienceList,
   formatExperienceSummary,
   getExperienceStats,
   groupExperiencesByDomain,
-  extractKeywords,
-  formatExperienceForRAG,
 } from "../utils/experienceFormatter";
+import { ExperienceRelationshipManager } from "../utils/experienceRelationships";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -58,19 +58,14 @@ function createMockRuntime(): IAgentRuntime {
     setSetting: vi.fn(),
     getMemories: vi.fn(async () => []),
     createMemory: vi.fn(async () => {}),
-    useModel: vi.fn(
-      async (
-        _type: string,
-        params: { text?: string; prompt?: string }
-      ) => {
-        // TEXT_EMBEDDING requests have a `text` field
-        if (typeof params === "object" && params !== null && "text" in params) {
-          return fakeEmbedding(String(params.text ?? ""));
-        }
-        // TEXT_LARGE (evaluator) returns a string
-        return "[]";
+    useModel: vi.fn(async (_type: string, params: { text?: string; prompt?: string }) => {
+      // TEXT_EMBEDDING requests have a `text` field
+      if (typeof params === "object" && params !== null && "text" in params) {
+        return fakeEmbedding(String(params.text ?? ""));
       }
-    ),
+      // TEXT_LARGE (evaluator) returns a string
+      return "[]";
+    }),
     getService: vi.fn(() => null),
     getCache: vi.fn(async (key: string) => cache.get(key) ?? null),
     setCache: vi.fn(async (key: string, value: string) => {
@@ -209,9 +204,7 @@ describe("ExperienceService", () => {
       });
 
       expect(exp.id).toBeDefined();
-      expect(exp.learning).toBe(
-        "Install dependencies before running Python scripts"
-      );
+      expect(exp.learning).toBe("Install dependencies before running Python scripts");
       expect(exp.domain).toBe("coding");
       expect(exp.confidence).toBe(0.9);
       expect(exp.type).toBe(ExperienceType.LEARNING);
@@ -370,8 +363,7 @@ describe("ExperienceService", () => {
         context: "debugging build failure",
         action: "install packages",
         result: "build succeeded",
-        learning:
-          "Always install dependencies before building Python projects",
+        learning: "Always install dependencies before building Python projects",
         domain: "coding",
         confidence: 0.9,
         importance: 0.8,
@@ -452,9 +444,7 @@ describe("experienceProvider", () => {
 
     vi.mocked(runtime.getService).mockReturnValue(service);
 
-    const msg = createMessage(
-      "How do I install dependencies for Python scripts?"
-    );
+    const msg = createMessage("How do I install dependencies for Python scripts?");
     const result = await experienceProvider.get(runtime, msg);
 
     expect(result.text).toContain("[RELEVANT EXPERIENCES]");
@@ -478,10 +468,7 @@ describe("experienceEvaluator", () => {
 
   describe("validate", () => {
     it("rejects non-agent messages", async () => {
-      const msg = createMessage(
-        "test",
-        "00000000-0000-0000-0000-000000000099" as UUID
-      );
+      const msg = createMessage("test", "00000000-0000-0000-0000-000000000099" as UUID);
       const result = await experienceEvaluator.validate(runtime, msg);
       expect(result).toBe(false);
     });
@@ -593,16 +580,11 @@ describe("ConfidenceDecayManager", () => {
       createdAt: Date.now() - 60 * 24 * 60 * 60 * 1000,
     });
 
-    const needingReinforcement =
-      manager.getExperiencesNeedingReinforcement([fresh, old], 0.3);
+    const needingReinforcement = manager.getExperiencesNeedingReinforcement([fresh, old], 0.3);
 
     // The old experience should need reinforcement
-    expect(
-      needingReinforcement.some((e) => e.id === old.id)
-    ).toBe(true);
-    expect(
-      needingReinforcement.some((e) => e.id === fresh.id)
-    ).toBe(false);
+    expect(needingReinforcement.some((e) => e.id === old.id)).toBe(true);
+    expect(needingReinforcement.some((e) => e.id === fresh.id)).toBe(false);
   });
 
   it("returns confidence trend over time", () => {

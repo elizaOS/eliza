@@ -16,7 +16,7 @@
     "local": "sam local start-api",
     "logs": "sam logs --tail",
     "delete": "sam delete",
-    "lint": "bunx @biomejs/biome check --apply .",
+    "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit"
   },

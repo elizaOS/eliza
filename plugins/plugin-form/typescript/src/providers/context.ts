@@ -54,13 +54,9 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { FormService } from "../service";
+import type { FormService } from "../service";
+import { buildTemplateValues, renderTemplate, resolveControlTemplates } from "../template";
 import type { FormContextState } from "../types";
-import {
-  buildTemplateValues,
-  renderTemplate,
-  resolveControlTemplates,
-} from "../template";
 
 /**
  * Form Context Provider
@@ -86,11 +82,7 @@ export const formContextProvider: Provider = {
    * @param _state - Current agent state (unused)
    * @returns Provider result with form context (data, values, text)
    */
-  get: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state: State,
-  ): Promise<ProviderResult> => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
     try {
       // Get form service
       // WHY type cast: Runtime returns unknown, we know it's FormService
@@ -135,8 +127,7 @@ export const formContextProvider: Provider = {
         // Build template values from session (for {{placeholders}} in labels, askPrompt, etc.)
         const templateValues = buildTemplateValues(session);
         // WHY resolve: Form definitions may use {{variable}} in label, description, askPrompt; renderTemplate substitutes from session
-        const resolve = (v?: string): string | undefined =>
-          renderTemplate(v, templateValues);
+        const resolve = (v?: string): string | undefined => renderTemplate(v, templateValues);
 
         // Apply template resolution to all user-facing strings
         // WHY: Agent and user see resolved labels (e.g. "{{discoveryQuestion1Text}}" → actual question text)
@@ -169,13 +160,13 @@ export const formContextProvider: Provider = {
         const controlByKey = new Map(controls.map((c) => [c.key, c]));
 
         const requiredFilled = contextState.filledFields.filter(
-          (f) => controlByKey.get(f.key)?.required,
+          (f) => controlByKey.get(f.key)?.required
         );
         const optionalFilled = contextState.filledFields.filter(
-          (f) => !controlByKey.get(f.key)?.required,
+          (f) => !controlByKey.get(f.key)?.required
         );
         const optionalMissing = controls.filter(
-          (c) => !c.hidden && !c.required && !filledKeys.has(c.key),
+          (c) => !c.hidden && !c.required && !filledKeys.has(c.key)
         );
 
         // Format field list as "key (displayValue)" or "key" for missing; "none" when empty
@@ -184,9 +175,7 @@ export const formContextProvider: Provider = {
           items.length === 0
             ? "none"
             : items
-                .map((i) =>
-                  i.displayValue ? `${i.key} (${i.displayValue})` : i.key,
-                )
+                .map((i) => (i.displayValue ? `${i.key} (${i.displayValue})` : i.key))
                 .join(", ");
 
         // Build human-readable context for agent

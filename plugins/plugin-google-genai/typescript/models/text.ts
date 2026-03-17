@@ -1,8 +1,4 @@
-import type {
-  GenerateTextParams,
-  IAgentRuntime,
-  PromptSegment,
-} from "@elizaos/core";
+import type { GenerateTextParams, IAgentRuntime, PromptSegment } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import {
   createGoogleGenAI,

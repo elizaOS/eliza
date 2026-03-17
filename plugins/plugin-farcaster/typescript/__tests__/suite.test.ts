@@ -1,32 +1,30 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { farcasterPlugin } from "../index";
-import { sendCastAction } from "../actions/sendCast";
-import { replyCastAction } from "../actions/replyCast";
+import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { farcasterActions } from "../actions";
-import { farcasterTimelineProvider } from "../providers/timelineProvider";
-import { farcasterThreadProvider } from "../providers/threadProvider";
-import { farcasterProfileProvider } from "../providers/profileProvider";
+import { replyCastAction } from "../actions/replyCast";
+import { sendCastAction } from "../actions/sendCast";
+import { farcasterPlugin } from "../index";
 import { farcasterProviders } from "../providers";
+import { farcasterProfileProvider } from "../providers/profileProvider";
+import { farcasterThreadProvider } from "../providers/threadProvider";
+import { farcasterTimelineProvider } from "../providers/timelineProvider";
 import {
-  FarcasterConfigSchema,
-  FarcasterMessageType,
-  FarcasterEventTypes,
-  FARCASTER_SERVICE_NAME,
-  FARCASTER_SOURCE,
   DEFAULT_MAX_CAST_LENGTH,
   DEFAULT_POLL_INTERVAL,
+  FARCASTER_SERVICE_NAME,
+  FARCASTER_SOURCE,
+  FarcasterConfigSchema,
+  FarcasterEventTypes,
+  FarcasterMessageType,
 } from "../types";
-import { splitPostContent, splitParagraph, formatCastTimestamp } from "../utils";
+import { formatCastTimestamp, splitParagraph, splitPostContent } from "../utils";
 import { formatCast, formatTimeline } from "../utils/prompts";
-import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 
 // ---------------------------------------------------------------------------
 // Helpers – lightweight stubs that satisfy the interfaces without credentials
 // ---------------------------------------------------------------------------
 
-function createMockRuntime(
-  settings: Record<string, string> = {},
-): IAgentRuntime {
+function createMockRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-000000000001" as UUID,
     getSetting: (key: string) => settings[key] ?? null,
@@ -43,10 +41,7 @@ function createMockRuntime(
   } as Partial<IAgentRuntime> as IAgentRuntime;
 }
 
-function createMessage(
-  text: string,
-  metadata?: Record<string, string>,
-): Memory {
+function createMessage(text: string, metadata?: Record<string, string>): Memory {
   return {
     id: "00000000-0000-0000-0000-000000000010" as UUID,
     agentId: "00000000-0000-0000-0000-000000000001" as UUID,
@@ -244,7 +239,8 @@ describe("Cast Formatting and Validation", () => {
     it("should split long text into multiple chunks", () => {
       // Build text with paragraph breaks that exceeds 1024 chars total
       const paragraph = "This is a test paragraph with some content. ";
-      const longText = Array(30).fill(paragraph).join("") + "\n\n" + Array(30).fill(paragraph).join("");
+      const longText =
+        Array(30).fill(paragraph).join("") + "\n\n" + Array(30).fill(paragraph).join("");
       const result = splitPostContent(longText);
       expect(result.length).toBeGreaterThan(1);
       for (const chunk of result) {
@@ -268,8 +264,7 @@ describe("Cast Formatting and Validation", () => {
 
   describe("splitParagraph", () => {
     it("should split a long paragraph by sentences", () => {
-      const paragraph =
-        "This is sentence one. This is sentence two. This is sentence three.";
+      const paragraph = "This is sentence one. This is sentence two. This is sentence three.";
       const result = splitParagraph(paragraph, 50);
       expect(result.length).toBeGreaterThan(0);
       for (const chunk of result) {
@@ -678,11 +673,7 @@ describe("ReplyCast Action", () => {
       const msg = createMessage("reply to them", {
         parentCastHash: "0xparenthash",
       });
-      const result = await replyCastAction.handler(
-        runtime,
-        msg,
-        {} as State,
-      );
+      const result = await replyCastAction.handler(runtime, msg, {} as State);
       expect(result).toMatchObject({ success: true });
       expect(sendMessage).toHaveBeenCalledTimes(1);
     });
@@ -745,18 +736,14 @@ describe("Timeline Provider", () => {
   it("should have correct metadata", () => {
     expect(farcasterTimelineProvider.name).toBeDefined();
     expect(farcasterTimelineProvider.description).toBe(
-      "Provides recent casts from the agent's Farcaster timeline",
+      "Provides recent casts from the agent's Farcaster timeline"
     );
   });
 
   it("should return unavailable when service is missing", async () => {
     const runtime = createMockRuntime();
     const msg = createMessage("show timeline");
-    const result = await farcasterTimelineProvider.get(
-      runtime,
-      msg,
-      {} as State,
-    );
+    const result = await farcasterTimelineProvider.get(runtime, msg, {} as State);
     expect(result.text).toContain("not available");
     expect(result.data).toMatchObject({ available: false });
   });
@@ -772,11 +759,7 @@ describe("Timeline Provider", () => {
       getService: () => mockService,
     } as Partial<IAgentRuntime> as IAgentRuntime;
     const msg = createMessage("show timeline");
-    const result = await farcasterTimelineProvider.get(
-      runtime,
-      msg,
-      {} as State,
-    );
+    const result = await farcasterTimelineProvider.get(runtime, msg, {} as State);
     expect(result.text).toContain("No recent casts");
     expect(result.data).toMatchObject({ available: true, casts: [], count: 0 });
   });
@@ -806,11 +789,7 @@ describe("Timeline Provider", () => {
       getService: () => mockService,
     } as Partial<IAgentRuntime> as IAgentRuntime;
     const msg = createMessage("show timeline");
-    const result = await farcasterTimelineProvider.get(
-      runtime,
-      msg,
-      {} as State,
-    );
+    const result = await farcasterTimelineProvider.get(runtime, msg, {} as State);
     expect(result.text).toContain("Recent casts");
     expect(result.text).toContain("@user1");
     expect(result.text).toContain("Hello timeline!");
@@ -836,11 +815,7 @@ describe("Thread Provider", () => {
       ...createMessage("text"),
       content: { text: "text", source: "discord" },
     } as Memory;
-    const result = await farcasterThreadProvider.get(
-      runtime,
-      msg,
-      {} as State,
-    );
+    const result = await farcasterThreadProvider.get(runtime, msg, {} as State);
     expect(result.text).toBe("");
     expect(result.data).toMatchObject({ available: false });
   });
@@ -849,11 +824,7 @@ describe("Thread Provider", () => {
     const runtime = createMockRuntime();
     const msg = createMessage("text");
     msg.content.source = "farcaster";
-    const result = await farcasterThreadProvider.get(
-      runtime,
-      msg,
-      {} as State,
-    );
+    const result = await farcasterThreadProvider.get(runtime, msg, {} as State);
     expect(result.data).toMatchObject({ available: false });
   });
 
@@ -885,11 +856,7 @@ describe("Thread Provider", () => {
     msg.content.source = "farcaster";
     (msg.content as Record<string, string>).castHash = "0xthreadhash";
 
-    const result = await farcasterThreadProvider.get(
-      runtime,
-      msg,
-      {} as State,
-    );
+    const result = await farcasterThreadProvider.get(runtime, msg, {} as State);
     expect(result.text).toContain("Farcaster Thread Context");
     expect(result.data).toMatchObject({
       available: true,
@@ -918,11 +885,7 @@ describe("Profile Provider", () => {
       getService: () => mockService,
     } as Partial<IAgentRuntime> as IAgentRuntime;
     const msg = createMessage("show profile");
-    const result = await farcasterProfileProvider.get(
-      runtime,
-      msg,
-      {} as State,
-    );
+    const result = await farcasterProfileProvider.get(runtime, msg, {} as State);
     expect(result.text).toContain("not available");
     expect(result.data).toMatchObject({ available: false });
   });
@@ -948,11 +911,7 @@ describe("Profile Provider", () => {
       getService: () => mockService,
     } as Partial<IAgentRuntime> as IAgentRuntime;
     const msg = createMessage("show profile");
-    const result = await farcasterProfileProvider.get(
-      runtime,
-      msg,
-      {} as State,
-    );
+    const result = await farcasterProfileProvider.get(runtime, msg, {} as State);
     expect(result.text).toContain("@testuser");
     expect(result.text).toContain("12345");
     expect(result.data).toMatchObject({
@@ -992,16 +951,12 @@ describe("Providers Collection", () => {
 
 describe("FarcasterService Lifecycle", () => {
   it("should have a static serviceType", async () => {
-    const { FarcasterService } = await import(
-      "../services/FarcasterService"
-    );
+    const { FarcasterService } = await import("../services/FarcasterService");
     expect(FarcasterService.serviceType).toBe("farcaster");
   });
 
   it("should return service from start even when not enabled", async () => {
-    const { FarcasterService } = await import(
-      "../services/FarcasterService"
-    );
+    const { FarcasterService } = await import("../services/FarcasterService");
     // No FARCASTER_FID set, so hasFarcasterEnabled returns false
     const runtime = createMockRuntime();
     const service = await FarcasterService.start(runtime);
@@ -1009,9 +964,7 @@ describe("FarcasterService Lifecycle", () => {
   });
 
   it("should handle stop gracefully when not running", async () => {
-    const { FarcasterService } = await import(
-      "../services/FarcasterService"
-    );
+    const { FarcasterService } = await import("../services/FarcasterService");
     const runtime = createMockRuntime();
     // stop should not throw when not running
     await expect(FarcasterService.stop(runtime)).resolves.toBeUndefined();
@@ -1024,22 +977,18 @@ describe("FarcasterService Lifecycle", () => {
 
 describe("Client Parameter Validation", () => {
   it("FarcasterClient constructor requires neynar and signerUuid", async () => {
-    const { FarcasterClient } = await import(
-      "../client/FarcasterClient"
-    );
+    const { FarcasterClient } = await import("../client/FarcasterClient");
     // Passing minimal valid params should not throw
     const neynarMock = {} as Parameters<typeof FarcasterClient.prototype.sendCast>[0] extends never
       ? never
       : Record<string, Function>;
     expect(
-      () => new FarcasterClient({ neynar: neynarMock as never, signerUuid: "uuid" }),
+      () => new FarcasterClient({ neynar: neynarMock as never, signerUuid: "uuid" })
     ).not.toThrow();
   });
 
   it("sendCast returns empty array for empty text", async () => {
-    const { FarcasterClient } = await import(
-      "../client/FarcasterClient"
-    );
+    const { FarcasterClient } = await import("../client/FarcasterClient");
     const neynarMock = {} as never;
     const client = new FarcasterClient({
       neynar: neynarMock,
@@ -1050,9 +999,7 @@ describe("Client Parameter Validation", () => {
   });
 
   it("sendCast returns empty array for whitespace-only text", async () => {
-    const { FarcasterClient } = await import(
-      "../client/FarcasterClient"
-    );
+    const { FarcasterClient } = await import("../client/FarcasterClient");
     const neynarMock = {} as never;
     const client = new FarcasterClient({
       neynar: neynarMock,

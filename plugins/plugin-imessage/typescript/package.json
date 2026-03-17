@@ -7,7 +7,7 @@
   "scripts": {
     "build": "bun run build.ts",
     "test": "vitest run --passWithNoTests",
-    "lint": "biome check --apply src"
+    "lint": "biome check --write src"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

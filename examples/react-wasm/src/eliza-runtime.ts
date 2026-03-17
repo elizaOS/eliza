@@ -817,7 +817,10 @@ async function initializeRuntime(): Promise<WasmAgentRuntime> {
     { prefix: "elizaos-wasm" } as { dataDir?: string },
     agentId,
   );
-  if ("init" in dbAdapter && typeof (dbAdapter as { init(): Promise<void> }).init === "function") {
+  if (
+    "init" in dbAdapter &&
+    typeof (dbAdapter as { init(): Promise<void> }).init === "function"
+  ) {
     await (dbAdapter as { init(): Promise<void> }).init();
   }
 
@@ -879,7 +882,8 @@ export async function sendMessage(text: string): Promise<string> {
       {
         memory: {
           id: messageId as `${string}-${string}-${string}-${string}-${string}`,
-          entityId: userId as `${string}-${string}-${string}-${string}-${string}`,
+          entityId:
+            userId as `${string}-${string}-${string}-${string}-${string}`,
           roomId: roomId as `${string}-${string}-${string}-${string}-${string}`,
           agentId:
             runtime.agentId as `${string}-${string}-${string}-${string}-${string}`,

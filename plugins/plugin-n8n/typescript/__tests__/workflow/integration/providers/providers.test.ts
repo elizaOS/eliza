@@ -5,10 +5,10 @@ import { workflowStatusProvider } from "../../../workflow/providers/workflowStat
 import { N8N_WORKFLOW_SERVICE_TYPE } from "../../../workflow/services/n8n-workflow-service";
 import {
   createExecution,
-  createWorkflowResponse,
-  createTriggerNode,
   createGmailNode,
   createSlackNode,
+  createTriggerNode,
+  createWorkflowResponse,
 } from "../../fixtures/workflows";
 import { createMockMessage, createMockRuntime, createMockState } from "../../helpers/mockRuntime";
 import { createMockService } from "../../helpers/mockService";

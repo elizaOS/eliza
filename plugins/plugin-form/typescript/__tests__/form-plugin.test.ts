@@ -5,65 +5,59 @@
  * Runner: bun test (Jest-compatible API via bun:test)
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { UUID } from "@elizaos/core";
 
 // ── Source module imports ────────────────────────────────────────────────────
 
-import {
-  validateField,
-  parseValue,
-  formatValue,
-  matchesMimeType,
-  registerTypeHandler,
-  getTypeHandler,
-  clearTypeHandlers,
-} from "../src/validation.ts";
 
+import { C, ControlBuilder, Form, FormBuilder } from "../src/builder.ts";
 import {
-  quickIntentDetect,
+  BUILTIN_TYPE_MAP,
+  BUILTIN_TYPES,
+  getBuiltinType,
+  isBuiltinType,
+  registerBuiltinTypes,
+} from "../src/builtins.ts";
+import { applyControlDefaults, applyFormDefaults, prettify } from "../src/defaults.ts";
+import {
+  hasDataToExtract,
   isLifecycleIntent,
   isUXIntent,
-  hasDataToExtract,
+  quickIntentDetect,
 } from "../src/intent.ts";
-
-import {
-  calculateTTL,
-  shouldNudge,
-  isExpiringSoon,
-  isExpired,
-  shouldConfirmCancel,
-  formatTimeRemaining,
-  formatEffort,
-} from "../src/ttl.ts";
-
-import { applyControlDefaults, applyFormDefaults, prettify } from "../src/defaults.ts";
-
-import { ControlBuilder, FormBuilder, Form, C } from "../src/builder.ts";
-
 import {
   buildTemplateValues,
   renderTemplate,
   resolveControlTemplates,
 } from "../src/template.ts";
-
 import {
-  registerBuiltinTypes,
-  getBuiltinType,
-  isBuiltinType,
-  BUILTIN_TYPES,
-  BUILTIN_TYPE_MAP,
-} from "../src/builtins.ts";
-
+  calculateTTL,
+  formatEffort,
+  formatTimeRemaining,
+  isExpired,
+  isExpiringSoon,
+  shouldConfirmCancel,
+  shouldNudge,
+} from "../src/ttl.ts";
 import type {
+  ControlType,
+  FieldState,
   FormControl,
-  FormSession,
   FormDefinition,
   FormIntent,
+  FormSession,
   SessionEffort,
-  FieldState,
-  ControlType,
 } from "../src/types.ts";
+import {
+  clearTypeHandlers,
+  formatValue,
+  getTypeHandler,
+  matchesMimeType,
+  parseValue,
+  registerTypeHandler,
+  validateField,
+} from "../src/validation.ts";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 

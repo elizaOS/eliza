@@ -21,7 +21,11 @@ import type {
 // Reaction Configuration
 // ============================================================
 
-export type FeishuReactionNotificationMode = "off" | "own" | "all" | "allowlist";
+export type FeishuReactionNotificationMode =
+  | "off"
+  | "own"
+  | "all"
+  | "allowlist";
 
 // ============================================================
 // Action Configuration

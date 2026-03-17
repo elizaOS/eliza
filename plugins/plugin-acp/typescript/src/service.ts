@@ -51,7 +51,7 @@ export class ACPService extends Service {
   constructor(runtime?: IAgentRuntime, acpConfig: ACPServiceConfig = {}) {
     super(runtime);
     this.acpConfig = acpConfig;
-    
+
     // Create session store based on configuration
     if (acpConfig.persistSessions) {
       this.sessionStore = createPersistentSessionStore({

@@ -9,7 +9,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "copy-wasm": "mkdir -p public/wasm && cp ../../packages/rust/pkg/elizaos_bg.wasm public/wasm/",
-    "lint": "bunx @biomejs/biome check --apply .",
+    "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit"
   },

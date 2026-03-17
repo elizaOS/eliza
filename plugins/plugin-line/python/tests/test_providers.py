@@ -2,7 +2,6 @@
 
 from elizaos_plugin_line.providers import chat_context_provider, user_context_provider
 
-
 # ---------------------------------------------------------------------------
 # Provider metadata
 # ---------------------------------------------------------------------------

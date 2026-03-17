@@ -294,7 +294,9 @@ export async function create(
   // Step 4: Confirmation
   if (!options.yes) {
     const confirmed = await clack.confirm({
-      message: `Create ${pc.cyan(selectedExample.name)} (${LANGUAGE_NAMES[selectedLanguage] || selectedLanguage}) in ${pc.cyan(finalProjectName)}?`,
+      message: `Create ${pc.cyan(selectedExample.name)} (${
+        LANGUAGE_NAMES[selectedLanguage] || selectedLanguage
+      }) in ${pc.cyan(finalProjectName)}?`,
     });
 
     if (clack.isCancel(confirmed) || !confirmed) {

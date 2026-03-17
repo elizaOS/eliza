@@ -155,16 +155,10 @@ export class N8nWorkflowService extends Service {
   }
 
   async generateWorkflowDraft(prompt: string): Promise<N8nWorkflow> {
-    logger.info(
-      { src: "plugin:n8n:service:main" },
-      "Generating workflow draft from prompt"
-    );
+    logger.info({ src: "plugin:n8n:service:main" }, "Generating workflow draft from prompt");
 
     const keywords = await extractKeywords(this.runtime, prompt);
-    logger.debug(
-      { src: "plugin:n8n:service:main" },
-      `Extracted keywords: ${keywords.join(", ")}`
-    );
+    logger.debug({ src: "plugin:n8n:service:main" }, `Extracted keywords: ${keywords.join(", ")}`);
 
     let relevantNodes = searchNodes(keywords, 15);
     logger.debug(
@@ -352,10 +346,7 @@ export class N8nWorkflowService extends Service {
     try {
       await client.activateWorkflow(createdWorkflow.id);
       active = true;
-      logger.info(
-        { src: "plugin:n8n:service:main" },
-        `Workflow ${createdWorkflow.id} activated`
-      );
+      logger.info({ src: "plugin:n8n:service:main" }, `Workflow ${createdWorkflow.id} activated`);
     } catch (error) {
       logger.warn(
         { src: "plugin:n8n:service:main" },

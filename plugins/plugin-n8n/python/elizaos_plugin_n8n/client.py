@@ -277,7 +277,7 @@ class PluginCreationClient:
             "scripts": {
                 "build": "tsc",
                 "test": "vitest run",
-                "lint": "bunx @biomejs/biome check --apply .",
+                "lint": "bunx @biomejs/biome check --write .",
                 "lint:check": "bunx @biomejs/biome check .",
             },
             "dependencies": {

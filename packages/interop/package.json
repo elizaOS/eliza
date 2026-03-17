@@ -23,7 +23,7 @@
     "test": "vitest run --pool=threads",
     "test:watch": "vitest --pool=threads",
     "test:python": "cd python && pytest tests/ -v -p no:anchorpy --asyncio-mode=auto || echo 'Python tests skipped'",
-    "lint": "bunx @biomejs/biome check --apply .",
+    "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit"
   },

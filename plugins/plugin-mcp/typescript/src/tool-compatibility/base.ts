@@ -108,7 +108,10 @@ export abstract class McpToolCompatibility {
     }
 
     if (Object.keys(constraints).length > 0) {
-      processed.description = this.mergeDescription(schema.description, constraints);
+      processed.description = this.mergeDescription(
+        schema.description,
+        constraints,
+      );
     }
 
     return processed as JSONSchema7;
@@ -142,7 +145,10 @@ export abstract class McpToolCompatibility {
     }
 
     if (Object.keys(constraints).length > 0) {
-      processed.description = this.mergeDescription(schema.description, constraints);
+      processed.description = this.mergeDescription(
+        schema.description,
+        constraints,
+      );
     }
 
     return processed as JSONSchema7;
@@ -162,7 +168,11 @@ export abstract class McpToolCompatibility {
       constraints.uniqueItems = schema.uniqueItems;
     }
 
-    if (schema.items && typeof schema.items === "object" && !Array.isArray(schema.items)) {
+    if (
+      schema.items &&
+      typeof schema.items === "object" &&
+      !Array.isArray(schema.items)
+    ) {
       processed.items = this.processSchema(schema.items as JSONSchema7);
     }
 
@@ -174,7 +184,10 @@ export abstract class McpToolCompatibility {
     }
 
     if (Object.keys(constraints).length > 0) {
-      processed.description = this.mergeDescription(schema.description, constraints);
+      processed.description = this.mergeDescription(
+        schema.description,
+        constraints,
+      );
     }
 
     return processed as JSONSchema7;
@@ -214,7 +227,10 @@ export abstract class McpToolCompatibility {
     }
 
     if (Object.keys(constraints).length > 0) {
-      processed.description = this.mergeDescription(schema.description, constraints);
+      processed.description = this.mergeDescription(
+        schema.description,
+        constraints,
+      );
     }
 
     return processed as JSONSchema7;
@@ -225,17 +241,17 @@ export abstract class McpToolCompatibility {
 
     if (Array.isArray(schema.oneOf)) {
       processed.oneOf = schema.oneOf.map((s) =>
-        typeof s === "object" ? this.processSchema(s as JSONSchema7) : s
+        typeof s === "object" ? this.processSchema(s as JSONSchema7) : s,
       );
     }
     if (Array.isArray(schema.anyOf)) {
       processed.anyOf = schema.anyOf.map((s) =>
-        typeof s === "object" ? this.processSchema(s as JSONSchema7) : s
+        typeof s === "object" ? this.processSchema(s as JSONSchema7) : s,
       );
     }
     if (Array.isArray(schema.allOf)) {
       processed.allOf = schema.allOf.map((s) =>
-        typeof s === "object" ? this.processSchema(s as JSONSchema7) : s
+        typeof s === "object" ? this.processSchema(s as JSONSchema7) : s,
       );
     }
 
@@ -244,7 +260,7 @@ export abstract class McpToolCompatibility {
 
   protected mergeDescription(
     originalDescription: string | undefined,
-    constraints: SchemaConstraints
+    constraints: SchemaConstraints,
   ): string {
     const constraintJson = JSON.stringify(constraints);
     if (originalDescription) {
@@ -307,7 +323,9 @@ export function detectModelProvider(runtime: IAgentRuntime): ModelInfo {
   ) {
     provider = "openai";
     supportsStructuredOutputs =
-      modelId.includes("gpt-5") || modelId.includes("o1") || modelId.includes("o3");
+      modelId.includes("gpt-5") ||
+      modelId.includes("o1") ||
+      modelId.includes("o3");
     isReasoningModel = modelId.includes("o1") || modelId.includes("o3");
   } else if (modelId.includes("anthropic") || modelId.includes("claude")) {
     provider = "anthropic";

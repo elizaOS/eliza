@@ -1,8 +1,4 @@
-import type {
-  GenerateTextParams,
-  IAgentRuntime,
-  PromptSegment,
-} from "@elizaos/core";
+import type { GenerateTextParams, IAgentRuntime, PromptSegment } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";
 import { createAnthropicClientWithTopPSupport } from "../providers";
@@ -110,8 +106,7 @@ async function generateTextWithModel(
 
   // When core provides segments, use Messages API with cache_control on stable blocks so Anthropic can cache them.
   const promptSegments = params.promptSegments;
-  const useSegments =
-    Array.isArray(promptSegments) && promptSegments.length > 0;
+  const useSegments = Array.isArray(promptSegments) && promptSegments.length > 0;
 
   const generateParams: Record<string, unknown> = {
     model: anthropic(modelName),
@@ -132,16 +127,12 @@ async function generateTextWithModel(
       text: seg.content,
       ...(seg.stable ? { cache_control: { type: "ephemeral" as const } } : {}),
     }));
-    (generateParams as Record<string, unknown>).messages = [
-      { role: "user" as const, content },
-    ];
+    (generateParams as Record<string, unknown>).messages = [{ role: "user" as const, content }];
   } else {
     (generateParams as Record<string, unknown>).prompt = resolved.prompt;
   }
 
-  const { text, usage } = await generateText(
-    generateParams as Parameters<typeof generateText>[0],
-  );
+  const { text, usage } = await generateText(generateParams as Parameters<typeof generateText>[0]);
 
   if (usage) {
     emitModelUsageEvent(runtime, modelType, resolved.prompt, usage);

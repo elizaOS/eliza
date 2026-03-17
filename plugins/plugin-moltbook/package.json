@@ -20,7 +20,7 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch",
     "clean": "rm -rf dist",
-    "lint": "biome check --apply .",
+    "lint": "biome check --write .",
     "test": "bun test"
   },
   "dependencies": {

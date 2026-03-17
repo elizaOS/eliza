@@ -66,24 +66,36 @@ export const getExecutionsAction: Action = {
 
   examples: [
     [
-      { name: "{{user1}}", content: { text: "Show me the execution history for the Stripe workflow" } },
+      {
+        name: "{{user1}}",
+        content: { text: "Show me the execution history for the Stripe workflow" },
+      },
       {
         name: "{{agent}}",
-        content: { text: "I'll fetch the execution history for that workflow.", actions: ["GET_N8N_EXECUTIONS"] },
+        content: {
+          text: "I'll fetch the execution history for that workflow.",
+          actions: ["GET_N8N_EXECUTIONS"],
+        },
       },
     ],
     [
       { name: "{{user1}}", content: { text: "How did the email automation run last time?" } },
       {
         name: "{{agent}}",
-        content: { text: "Let me check the recent runs for that workflow.", actions: ["GET_N8N_EXECUTIONS"] },
+        content: {
+          text: "Let me check the recent runs for that workflow.",
+          actions: ["GET_N8N_EXECUTIONS"],
+        },
       },
     ],
     [
       { name: "{{user1}}", content: { text: "Did the payment workflow succeed?" } },
       {
         name: "{{agent}}",
-        content: { text: "I'll check the latest execution status.", actions: ["GET_N8N_EXECUTIONS"] },
+        content: {
+          text: "I'll check the latest execution status.",
+          actions: ["GET_N8N_EXECUTIONS"],
+        },
       },
     ],
   ] as ActionExample[][],

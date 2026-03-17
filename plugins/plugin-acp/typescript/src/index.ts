@@ -14,8 +14,8 @@ import { logger } from "@elizaos/core";
 import {
   ACP_SERVICE_TYPE,
   ACPService,
-  serveAcpGateway,
   type ServeAcpGatewayOptions,
+  serveAcpGateway,
 } from "./service.js";
 
 // Client utilities
@@ -35,20 +35,23 @@ export { createGatewayClient, GatewayClient } from "./gateway-client.js";
 
 // Meta utilities
 export { readBool, readNumber, readString } from "./meta.js";
-export type { AcpSessionStore, PersistentSessionStoreOptions } from "./session.js";
+export type {
+  AcpSessionStore,
+  PersistentSessionStoreOptions,
+} from "./session.js";
 // Session management
 export {
   createInMemorySessionStore,
   createPersistentSessionStore,
+  createSessionEntry,
   defaultAcpSessionStore,
+  getSessionEntry,
+  listSessionKeys,
+  loadSessionStore,
+  resolveDefaultSessionStorePath,
   // Re-exported from @elizaos/core for convenience
   type SessionEntry,
   upsertSessionEntry,
-  getSessionEntry,
-  loadSessionStore,
-  listSessionKeys,
-  resolveDefaultSessionStorePath,
-  createSessionEntry,
 } from "./session.js";
 // Session mapper utilities
 export {

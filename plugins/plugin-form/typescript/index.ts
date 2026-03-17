@@ -7,7 +7,7 @@
  * @license MIT
  */
 
-import type { Plugin, IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 
 // ============================================================================
 // TYPE EXPORTS
@@ -22,11 +22,11 @@ export * from "./src/types";
 // ============================================================================
 
 export {
-  BUILTIN_TYPES,
   BUILTIN_TYPE_MAP,
-  registerBuiltinTypes,
+  BUILTIN_TYPES,
   getBuiltinType,
   isBuiltinType,
+  registerBuiltinTypes,
 } from "./src/builtins";
 
 // ============================================================================
@@ -35,15 +35,13 @@ export {
 // ============================================================================
 
 export {
-  validateField,
-  formatValue,
-  parseValue,
-  matchesMimeType,
-} from "./src/validation";
-export {
-  registerTypeHandler,
-  getTypeHandler,
   clearTypeHandlers,
+  formatValue,
+  getTypeHandler,
+  matchesMimeType,
+  parseValue,
+  registerTypeHandler,
+  validateField,
 } from "./src/validation";
 
 // ============================================================================
@@ -52,10 +50,10 @@ export {
 // ============================================================================
 
 export {
-  quickIntentDetect,
+  hasDataToExtract,
   isLifecycleIntent,
   isUXIntent,
-  hasDataToExtract,
+  quickIntentDetect,
 } from "./src/intent";
 
 // ============================================================================
@@ -64,15 +62,15 @@ export {
 // ============================================================================
 
 export {
+  deleteSession,
   getActiveSession,
   getAllActiveSessions,
-  getStashedSessions,
-  saveSession,
-  deleteSession,
-  saveSubmission,
-  getSubmissions,
   getAutofillData,
+  getStashedSessions,
+  getSubmissions,
   saveAutofillData,
+  saveSession,
+  saveSubmission,
 } from "./src/storage";
 
 // ============================================================================
@@ -81,9 +79,9 @@ export {
 // ============================================================================
 
 export {
-  llmIntentAndExtract,
-  extractSingleField,
   detectCorrection,
+  extractSingleField,
+  llmIntentAndExtract,
 } from "./src/extraction";
 
 // ============================================================================
@@ -93,12 +91,12 @@ export {
 
 export {
   calculateTTL,
-  shouldNudge,
-  isExpiringSoon,
-  isExpired,
-  shouldConfirmCancel,
-  formatTimeRemaining,
   formatEffort,
+  formatTimeRemaining,
+  isExpired,
+  isExpiringSoon,
+  shouldConfirmCancel,
+  shouldNudge,
 } from "./src/ttl";
 
 // ============================================================================
@@ -113,7 +111,7 @@ export { applyControlDefaults, applyFormDefaults, prettify } from "./src/default
 // Fluent API for defining forms and controls
 // ============================================================================
 
-export { FormBuilder, ControlBuilder, Form, C } from "./src/builder";
+export { C, ControlBuilder, Form, FormBuilder } from "./src/builder";
 
 // ============================================================================
 // SERVICE EXPORT
@@ -127,14 +125,13 @@ export { FormService } from "./src/service";
 // Provider, Evaluator, Action, Tasks
 // ============================================================================
 
-// Provider - injects form context into agent state
-export { formContextProvider } from "./src/providers/context";
+// Action - fast-path restore for stashed forms
+export { formRestoreAction } from "./src/actions/restore";
 
 // Evaluator - extracts fields and handles intents
 export { formEvaluator } from "./src/evaluators/extractor";
-
-// Action - fast-path restore for stashed forms
-export { formRestoreAction } from "./src/actions/restore";
+// Provider - injects form context into agent state
+export { formContextProvider } from "./src/providers/context";
 
 // Tasks - background processing for nudges and cleanup
 export { formNudgeWorker, processEntityNudges } from "./src/tasks/nudge";
@@ -205,13 +202,7 @@ export const formPlugin: Plugin = {
       },
       handler: async (runtime, message, state, options, callback) => {
         const { formRestoreAction } = await import("./src/actions/restore");
-        return formRestoreAction.handler(
-          runtime,
-          message,
-          state,
-          options,
-          callback,
-        );
+        return formRestoreAction.handler(runtime, message, state, options, callback);
       },
       examples: [
         [

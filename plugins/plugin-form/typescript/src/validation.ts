@@ -142,10 +142,7 @@ export function clearTypeHandlers(): void {
  * @param control - The field definition with validation rules
  * @returns Validation result with error message if invalid
  */
-export function validateField(
-  value: JsonValue,
-  control: FormControl,
-): ValidationResult {
+export function validateField(value: JsonValue, control: FormControl): ValidationResult {
   // Check required first - fastest check
   if (control.required) {
     if (value === undefined || value === null || value === "") {
@@ -200,10 +197,7 @@ export function validateField(
  *
  * Applies: pattern, minLength, maxLength, enum
  */
-function validateText(
-  value: JsonValue,
-  control: FormControl,
-): ValidationResult {
+function validateText(value: JsonValue, control: FormControl): ValidationResult {
   const strValue = String(value);
 
   // Pattern validation
@@ -256,10 +250,7 @@ function validateText(
  * - This catches most typos (missing @, missing domain)
  * - Further validation via confirmation email
  */
-function validateEmail(
-  value: JsonValue,
-  control: FormControl,
-): ValidationResult {
+function validateEmail(value: JsonValue, control: FormControl): ValidationResult {
   const strValue = String(value);
 
   // Basic email regex - intentionally simple
@@ -281,16 +272,11 @@ function validateEmail(
  *
  * Applies: min, max (as numeric values, not length)
  */
-function validateNumber(
-  value: JsonValue,
-  control: FormControl,
-): ValidationResult {
+function validateNumber(value: JsonValue, control: FormControl): ValidationResult {
   // Parse number, handling commas and currency symbols
   // WHY: Users type "1,234" or "$50" and expect it to work
   const numValue =
-    typeof value === "number"
-      ? value
-      : parseFloat(String(value).replace(/[,$]/g, ""));
+    typeof value === "number" ? value : parseFloat(String(value).replace(/[,$]/g, ""));
 
   if (isNaN(numValue)) {
     return {
@@ -325,10 +311,7 @@ function validateNumber(
  * - Agent might extract any of these
  * - All should be valid booleans
  */
-function validateBoolean(
-  value: JsonValue,
-  _control: FormControl,
-): ValidationResult {
+function validateBoolean(value: JsonValue, _control: FormControl): ValidationResult {
   if (typeof value === "boolean") {
     return { valid: true };
   }
@@ -353,10 +336,7 @@ function validateBoolean(
  * - LLM should normalize to parseable format
  * - We accept anything Date() can parse
  */
-function validateDate(
-  value: JsonValue,
-  control: FormControl,
-): ValidationResult {
+function validateDate(value: JsonValue, control: FormControl): ValidationResult {
   let dateValue: Date;
 
   if (value instanceof Date) {
@@ -405,10 +385,7 @@ function validateDate(
  * - Invalid selections are likely extraction errors
  * - Should reject and re-ask rather than accept garbage
  */
-function validateSelect(
-  value: JsonValue,
-  control: FormControl,
-): ValidationResult {
+function validateSelect(value: JsonValue, control: FormControl): ValidationResult {
   if (!control.options || control.options.length === 0) {
     // No options defined - treat as text
     return { valid: true };
@@ -435,10 +412,7 @@ function validateSelect(
  * - This validates the metadata (size, type)
  * - Runs during session, not file upload
  */
-function validateFile(
-  value: JsonValue,
-  control: FormControl,
-): ValidationResult {
+function validateFile(value: JsonValue, control: FormControl): ValidationResult {
   if (!control.file) {
     return { valid: true };
   }
@@ -460,11 +434,7 @@ function validateFile(
     const fileObj = file as { size?: number; mimeType?: string };
 
     // Check file size
-    if (
-      control.file.maxSize &&
-      fileObj.size &&
-      fileObj.size > control.file.maxSize
-    ) {
+    if (control.file.maxSize && fileObj.size && fileObj.size > control.file.maxSize) {
       return {
         valid: false,
         error: `File size exceeds maximum of ${formatBytes(control.file.maxSize)}`,
@@ -474,7 +444,7 @@ function validateFile(
     // Check accepted MIME types
     if (control.file.accept && fileObj.mimeType) {
       const accepted = control.file.accept.some((pattern) =>
-        matchesMimeType(fileObj.mimeType!, pattern),
+        matchesMimeType(fileObj.mimeType!, pattern)
       );
       if (!accepted) {
         return {
@@ -517,8 +487,7 @@ export function matchesMimeType(mimeType: string, pattern: string): boolean {
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024)
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
@@ -558,9 +527,7 @@ export function parseValue(value: string, control: FormControl): JsonValue {
 
     case "date": {
       const timestamp = Date.parse(value);
-      return Number.isFinite(timestamp)
-        ? new Date(timestamp).toISOString()
-        : value;
+      return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : value;
     }
 
     case "text":
@@ -625,9 +592,7 @@ export function formatValue(value: JsonValue, control: FormControl): string {
       // Show option label instead of value
       // WHY: User sees "United States" not "US"
       if (control.options) {
-        const option = control.options.find(
-          (opt) => opt.value === String(value),
-        );
+        const option = control.options.find((opt) => opt.value === String(value));
         if (option) return option.label;
       }
       return String(value);
@@ -635,9 +600,7 @@ export function formatValue(value: JsonValue, control: FormControl): string {
     case "file":
       // Show file names
       if (Array.isArray(value)) {
-        return value
-          .map((f) => (f as { name?: string }).name || "file")
-          .join(", ");
+        return value.map((f) => (f as { name?: string }).name || "file").join(", ");
       }
       return (value as { name?: string }).name || "file";
 

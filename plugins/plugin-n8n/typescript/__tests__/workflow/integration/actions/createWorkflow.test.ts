@@ -8,9 +8,8 @@ import {
   createMockRuntime,
   createMockState,
   createUseModelMock,
-  getLastCallbackResult,
-  getAllCallbackResults,
   getCallbackCallCount,
+  getLastCallbackResult,
 } from "../../helpers/mockRuntime";
 import { createMockService } from "../../helpers/mockService";
 

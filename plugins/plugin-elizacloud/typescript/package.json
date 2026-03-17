@@ -53,7 +53,7 @@
   "scripts": {
     "dev": "bun run build.ts --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "bunx @biomejs/biome check --apply .",
+    "lint": "bunx @biomejs/biome check --write .",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",

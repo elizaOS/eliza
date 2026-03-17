@@ -15,8 +15,8 @@
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "test": "vitest run",
-    "lint": "biome check --apply typescript/src",
-    "lint:fix": "biome check --apply typescript/src"
+    "lint": "biome check --write typescript/src",
+    "lint:fix": "biome check --write typescript/src"
   },
   "keywords": [
     "eliza",

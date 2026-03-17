@@ -23,7 +23,7 @@
     "build:plugin-action-spec": "node scripts/generate-plugin-action-spec.js",
     "check:secrets": "node scripts/check-secrets.js",
     "clean": "rm -rf dist",
-    "lint": "bunx @biomejs/biome check --apply .",
+    "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "echo 'No TypeScript source files to check'"
   },

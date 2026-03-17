@@ -395,13 +395,7 @@ export const cancelPluginCreationAction: Action = {
     "Cancel an active plugin creation job that is currently running or pending. " +
     "Use this when the user wants to stop or abort a plugin build in progress. " +
     "Do NOT use this to cancel n8n workflow drafts — use CREATE_N8N_WORKFLOW with a cancel message instead.",
-  similes: [
-    "STOP_PLUGIN",
-    "ABORT_PLUGIN",
-    "CANCEL_BUILD",
-    "STOP_BUILD",
-    "CANCEL_PLUGIN_CREATION",
-  ],
+  similes: ["STOP_PLUGIN", "ABORT_PLUGIN", "CANCEL_BUILD", "STOP_BUILD", "CANCEL_PLUGIN_CREATION"],
   examples: [
     [
       {

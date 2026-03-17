@@ -41,18 +41,17 @@ vi.mock("../../keypairUtils", () => ({
 
 // ── Imports (use mocked modules) ────────────────────────────────────────────
 
-import { parseJSONObjectFromText } from "@elizaos/core";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/core";
 import { executeSwap } from "../../actions/swap";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 const SOLANA_SERVICE_NAME = "chain_solana";
 
-function createMockRuntime(opts: {
-  service?: unknown;
-  settings?: Record<string, string>;
-} = {}): IAgentRuntime {
+function createMockRuntime(
+  opts: { service?: unknown; settings?: Record<string, string> } = {}
+): IAgentRuntime {
   const { service = null, settings = {} } = opts;
 
   return {

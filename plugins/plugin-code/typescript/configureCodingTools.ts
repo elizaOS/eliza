@@ -141,7 +141,9 @@ export function configureCodingTools(
             content: [
               {
                 type: "text",
-                text: `Command still running (session ${result.sessionId}, pid ${
+                text: `Command still running (session ${
+                  result.sessionId
+                }, pid ${
                   result.pid ?? "n/a"
                 }). Use process action (list/poll/log/write/kill) for follow-up.`,
               },

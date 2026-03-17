@@ -90,8 +90,8 @@
 import type { JsonValue } from "@elizaos/core";
 import type {
   FormControl,
-  FormControlOption,
   FormControlDependency,
+  FormControlOption,
   FormDefinition,
   FormDefinitionHooks,
 } from "./types";
@@ -337,7 +337,7 @@ export class ControlBuilder {
   dependsOn(
     field: string,
     condition: FormControlDependency["condition"] = "exists",
-    value?: JsonValue,
+    value?: JsonValue
   ): this {
     this.control.dependsOn = { field, condition, value };
     return this;
@@ -393,7 +393,7 @@ export class ControlBuilder {
       description?: string;
       askPrompt?: string;
       helpText?: string;
-    },
+    }
   ): this {
     this.control.i18n = { ...this.control.i18n, [locale]: translations };
     return this;
@@ -569,11 +569,7 @@ export class FormBuilder {
   // ═══ TTL ═══
 
   /** Configure TTL (time-to-live) settings */
-  ttl(config: {
-    minDays?: number;
-    maxDays?: number;
-    effortMultiplier?: number;
-  }): this {
+  ttl(config: { minDays?: number; maxDays?: number; effortMultiplier?: number }): this {
     this.form.ttl = { ...this.form.ttl, ...config };
     return this;
   }
@@ -654,10 +650,7 @@ export class FormBuilder {
   // ═══ I18N ═══
 
   /** Add localized form text */
-  i18n(
-    locale: string,
-    translations: { name?: string; description?: string },
-  ): this {
+  i18n(locale: string, translations: { name?: string; description?: string }): this {
     this.form.i18n = { ...this.form.i18n, [locale]: translations };
     return this;
   }

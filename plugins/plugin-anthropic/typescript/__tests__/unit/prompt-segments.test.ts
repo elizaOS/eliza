@@ -39,7 +39,10 @@ describe("Anthropic promptSegments", () => {
     const call = generateTextMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(call.messages).toBeDefined();
     expect(call.prompt).toBeUndefined();
-    const messages = call.messages as Array<{ role: string; content: Array<{ type: string; text: string; cache_control?: unknown }> }>;
+    const messages = call.messages as Array<{
+      role: string;
+      content: Array<{ type: string; text: string; cache_control?: unknown }>;
+    }>;
     expect(messages.length).toBe(1);
     expect(messages[0]?.role).toBe("user");
     const content = messages[0]?.content ?? [];

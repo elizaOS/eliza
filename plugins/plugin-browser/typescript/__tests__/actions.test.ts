@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { browserNavigateAction } from "../src/actions/navigate.js";
 import { browserClickAction } from "../src/actions/click.js";
-import { browserTypeAction } from "../src/actions/type.js";
-import { browserSelectAction } from "../src/actions/select.js";
 import { browserExtractAction } from "../src/actions/extract.js";
+import { browserNavigateAction } from "../src/actions/navigate.js";
 import { browserScreenshotAction } from "../src/actions/screenshot.js";
+import { browserSelectAction } from "../src/actions/select.js";
+import { browserTypeAction } from "../src/actions/type.js";
 import { browserStateProvider } from "../src/providers/browser-state.js";
 
 // ---------------------------------------------------------------------------
@@ -117,7 +117,11 @@ describe("BROWSER_NAVIGATE handler", () => {
     const callback = vi.fn();
 
     const result = await browserNavigateAction.handler(
-      runtime, msg, undefined, undefined, callback
+      runtime,
+      msg,
+      undefined,
+      undefined,
+      callback
     );
 
     expect(result).toBeDefined();
@@ -136,7 +140,11 @@ describe("BROWSER_NAVIGATE handler", () => {
     const callback = vi.fn();
 
     const result = await browserNavigateAction.handler(
-      runtime, msg, undefined, undefined, callback
+      runtime,
+      msg,
+      undefined,
+      undefined,
+      callback
     );
 
     expect(result).toBeDefined();
@@ -161,7 +169,11 @@ describe("BROWSER_NAVIGATE handler", () => {
     const callback = vi.fn();
 
     const result = await browserNavigateAction.handler(
-      runtime, msg, undefined, undefined, callback
+      runtime,
+      msg,
+      undefined,
+      undefined,
+      callback
     );
 
     expect(result).toBeDefined();
@@ -182,7 +194,11 @@ describe("BROWSER_NAVIGATE handler", () => {
     const callback = vi.fn();
 
     const result = await browserNavigateAction.handler(
-      runtime, msg, undefined, undefined, callback
+      runtime,
+      msg,
+      undefined,
+      undefined,
+      callback
     );
 
     expect(result).toBeDefined();
@@ -201,9 +217,7 @@ describe("BROWSER_CLICK handler", () => {
     const msg = createMessage("Click on the submit button");
     const callback = vi.fn();
 
-    const result = await browserClickAction.handler(
-      runtime, msg, undefined, undefined, callback
-    );
+    const result = await browserClickAction.handler(runtime, msg, undefined, undefined, callback);
 
     expect(result).toBeDefined();
     expect(result!.success).toBe(false);
@@ -227,9 +241,7 @@ describe("BROWSER_CLICK handler", () => {
     const msg = createMessage("Click on the submit button");
     const callback = vi.fn();
 
-    const result = await browserClickAction.handler(
-      runtime, msg, undefined, undefined, callback
-    );
+    const result = await browserClickAction.handler(runtime, msg, undefined, undefined, callback);
 
     expect(result).toBeDefined();
     expect(result!.success).toBe(true);
@@ -270,9 +282,7 @@ describe("BROWSER_TYPE handler", () => {
     const msg = createMessage('Type "hello" in the search box');
     const callback = vi.fn();
 
-    const result = await browserTypeAction.handler(
-      runtime, msg, undefined, undefined, callback
-    );
+    const result = await browserTypeAction.handler(runtime, msg, undefined, undefined, callback);
 
     expect(result).toBeDefined();
     expect(result!.success).toBe(false);
@@ -311,9 +321,7 @@ describe("BROWSER_TYPE handler", () => {
     const msg = createMessage('Type "hello world" in the search box');
     const callback = vi.fn();
 
-    const result = await browserTypeAction.handler(
-      runtime, msg, undefined, undefined, callback
-    );
+    const result = await browserTypeAction.handler(runtime, msg, undefined, undefined, callback);
 
     expect(result).toBeDefined();
     expect(result!.success).toBe(true);
@@ -332,9 +340,7 @@ describe("BROWSER_SELECT handler", () => {
     const msg = createMessage('Select "USA" from the country dropdown');
     const callback = vi.fn();
 
-    const result = await browserSelectAction.handler(
-      runtime, msg, undefined, undefined, callback
-    );
+    const result = await browserSelectAction.handler(runtime, msg, undefined, undefined, callback);
 
     expect(result).toBeDefined();
     expect(result!.success).toBe(false);
@@ -373,9 +379,7 @@ describe("BROWSER_SELECT handler", () => {
     const msg = createMessage('Select "United States" from the country dropdown');
     const callback = vi.fn();
 
-    const result = await browserSelectAction.handler(
-      runtime, msg, undefined, undefined, callback
-    );
+    const result = await browserSelectAction.handler(runtime, msg, undefined, undefined, callback);
 
     expect(result).toBeDefined();
     expect(result!.success).toBe(true);
@@ -394,9 +398,7 @@ describe("BROWSER_EXTRACT handler", () => {
     const msg = createMessage("Extract the main heading");
     const callback = vi.fn();
 
-    const result = await browserExtractAction.handler(
-      runtime, msg, undefined, undefined, callback
-    );
+    const result = await browserExtractAction.handler(runtime, msg, undefined, undefined, callback);
 
     expect(result).toBeDefined();
     expect(result!.success).toBe(false);
@@ -420,9 +422,7 @@ describe("BROWSER_EXTRACT handler", () => {
     const msg = createMessage("Extract the main heading from the page");
     const callback = vi.fn();
 
-    const result = await browserExtractAction.handler(
-      runtime, msg, undefined, undefined, callback
-    );
+    const result = await browserExtractAction.handler(runtime, msg, undefined, undefined, callback);
 
     expect(result).toBeDefined();
     expect(result!.success).toBe(true);
@@ -448,9 +448,7 @@ describe("BROWSER_EXTRACT handler", () => {
     const msg = createMessage("Extract the sidebar content from the page");
     const callback = vi.fn();
 
-    const result = await browserExtractAction.handler(
-      runtime, msg, undefined, undefined, callback
-    );
+    const result = await browserExtractAction.handler(runtime, msg, undefined, undefined, callback);
 
     expect(result).toBeDefined();
     expect(result!.success).toBe(true);
@@ -469,7 +467,11 @@ describe("BROWSER_SCREENSHOT handler", () => {
     const callback = vi.fn();
 
     const result = await browserScreenshotAction.handler(
-      runtime, msg, undefined, undefined, callback
+      runtime,
+      msg,
+      undefined,
+      undefined,
+      callback
     );
 
     expect(result).toBeDefined();
@@ -500,7 +502,11 @@ describe("BROWSER_SCREENSHOT handler", () => {
     const callback = vi.fn();
 
     const result = await browserScreenshotAction.handler(
-      runtime, msg, undefined, undefined, callback
+      runtime,
+      msg,
+      undefined,
+      undefined,
+      callback
     );
 
     expect(result).toBeDefined();

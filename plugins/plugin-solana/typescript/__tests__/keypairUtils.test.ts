@@ -14,9 +14,9 @@ vi.mock("@elizaos/core", () => ({
 
 // ── Imports (real crypto, mocked logger) ────────────────────────────────────
 
+import type { IAgentRuntime } from "@elizaos/core";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
-import type { IAgentRuntime } from "@elizaos/core";
 import { getWalletKey } from "../keypairUtils";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -328,7 +328,9 @@ describe("keypairUtils", () => {
 
     it("should throw for invalid base58 that decodes to wrong-size key", async () => {
       // A short base58 string that decodes but isn't 64 bytes
-      const runtime = createMockRuntime({ SOLANA_PRIVATE_KEY: "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNL" });
+      const runtime = createMockRuntime({
+        SOLANA_PRIVATE_KEY: "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNL",
+      });
 
       await expect(getWalletKey(runtime, true)).rejects.toThrow();
     });

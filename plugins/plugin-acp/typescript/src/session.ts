@@ -1,16 +1,15 @@
 import { randomUUID } from "node:crypto";
-import type { AcpSession } from "./types.js";
-
 // Import core session utilities from @elizaos/core
 import {
+  createSessionEntry,
+  getSessionEntry,
+  listSessionKeys,
+  loadSessionStore,
+  resolveDefaultSessionStorePath,
   type SessionEntry,
   upsertSessionEntry,
-  getSessionEntry,
-  loadSessionStore,
-  listSessionKeys,
-  resolveDefaultSessionStorePath,
-  createSessionEntry,
 } from "@elizaos/core";
+import type { AcpSession } from "./types.js";
 
 /**
  * Interface for ACP session storage
@@ -154,13 +153,16 @@ function acpSessionToEntryPatch(session: AcpSession): Partial<SessionEntry> {
 /**
  * Convert a core SessionEntry to an ACP session
  */
-function entryToAcpSession(entry: SessionEntry, sessionKey: string): AcpSession {
+function entryToAcpSession(
+  entry: SessionEntry,
+  sessionKey: string,
+): AcpSession {
   // Extract cwd from label if it was stored there
   let cwd = process.cwd();
   if (entry.label?.startsWith("ACP: ")) {
     cwd = entry.label.slice(5);
   }
-  
+
   return {
     sessionId: entry.sessionId,
     sessionKey,
@@ -174,7 +176,7 @@ function entryToAcpSession(entry: SessionEntry, sessionKey: string): AcpSession 
 
 /**
  * Create a persistent session store that syncs with the core Eliza session store.
- * 
+ *
  * This store maintains an in-memory cache for fast access and active run tracking,
  * while persisting session data to the Eliza session store file.
  */
@@ -182,8 +184,9 @@ export function createPersistentSessionStore(
   options: PersistentSessionStoreOptions = {},
 ): AcpSessionStore {
   const agentId = options.agentId ?? "main";
-  const storePath = options.storePath ?? resolveDefaultSessionStorePath(agentId);
-  
+  const storePath =
+    options.storePath ?? resolveDefaultSessionStorePath(agentId);
+
   // In-memory cache for sessions and active run tracking
   const sessions = new Map<string, AcpSession>();
   const runIdToSessionId = new Map<string, string>();
@@ -201,14 +204,14 @@ export function createPersistentSessionStore(
     };
     sessions.set(sessionId, session);
     sessionIdToKey.set(sessionId, params.sessionKey);
-    
+
     // Sync to persistent store asynchronously
     void upsertSessionEntry({
       storePath,
       sessionKey: params.sessionKey,
       patch: acpSessionToEntryPatch(session),
     });
-    
+
     return session;
   };
 
@@ -270,7 +273,9 @@ export function createPersistentSessionStore(
       sessionIdToKey.clear();
     };
 
-  const syncToCoreStore: AcpSessionStore["syncToCoreStore"] = async (sessionId) => {
+  const syncToCoreStore: AcpSessionStore["syncToCoreStore"] = async (
+    sessionId,
+  ) => {
     const session = sessions.get(sessionId);
     const sessionKey = sessionIdToKey.get(sessionId);
     if (!session || !sessionKey) {
@@ -286,13 +291,13 @@ export function createPersistentSessionStore(
   const loadFromCoreStore: AcpSessionStore["loadFromCoreStore"] = async () => {
     const store = loadSessionStore(storePath);
     const keys = listSessionKeys(storePath);
-    
+
     for (const key of keys) {
       const entry = store[key];
       if (!entry || entry.channel !== "acp") {
         continue;
       }
-      
+
       // Only load ACP sessions
       const session = entryToAcpSession(entry, key);
       sessions.set(session.sessionId, session);
@@ -325,11 +330,11 @@ export const defaultAcpSessionStore = createInMemorySessionStore();
 
 // Re-export core session utilities for plugins that need full session support
 export {
+  createSessionEntry,
+  getSessionEntry,
+  listSessionKeys,
+  loadSessionStore,
+  resolveDefaultSessionStorePath,
   type SessionEntry,
   upsertSessionEntry,
-  getSessionEntry,
-  loadSessionStore,
-  listSessionKeys,
-  resolveDefaultSessionStorePath,
-  createSessionEntry,
 } from "@elizaos/core";

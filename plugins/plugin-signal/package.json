@@ -40,7 +40,7 @@
     "clean": "rm -rf typescript/dist .turbo typescript/node_modules .turbo-tsconfig.json typescript/tsconfig.tsbuildinfo",
     "test": "cd typescript && vitest run --passWithNoTests",
     "typecheck": "cd typescript && tsc --noEmit -p tsconfig.json",
-    "lint": "bunx @biomejs/biome check --apply typescript/",
+    "lint": "bunx @biomejs/biome check --write typescript/",
     "lint:check": "bunx @biomejs/biome check typescript/",
     "format": "bunx @biomejs/biome format --write typescript/",
     "format:check": "bunx @biomejs/biome format typescript/"
