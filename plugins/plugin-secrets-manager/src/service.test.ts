@@ -77,7 +77,6 @@ const createMockRuntime = (): IAgentRuntime => {
         service,
       );
     }),
-    registerDatabaseAdapter: vi.fn(),
     setSetting: vi.fn((key: string, value: string | null) => {
       settings.set(key, value);
     }),

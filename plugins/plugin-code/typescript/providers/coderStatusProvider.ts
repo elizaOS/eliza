@@ -21,7 +21,7 @@ export const coderStatusProvider: Provider = {
     "Provides current working directory, allowed directory, and recent shell/file operations",
   position: 99,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    const svc = runtime.getService<CoderService>("coder");
+    const svc = await runtime.getService<CoderService>("coder");
 
     if (!svc) {
       logger.warn("[coderStatusProvider] Coder service not found");

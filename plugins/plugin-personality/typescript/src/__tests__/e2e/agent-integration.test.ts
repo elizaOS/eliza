@@ -215,7 +215,7 @@ export class AgentIntegrationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing file manager integration...');
 
-        const fileManager = runtime.getService('character-file-manager');
+        const fileManager = await runtime.getService('character-file-manager');
         if (!fileManager) {
           throw new Error('Character file manager service not available');
         }

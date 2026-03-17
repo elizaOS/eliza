@@ -9,7 +9,7 @@ export const rolodexE2ETests: TestSuite = {
       name: 'should add and retrieve a contact',
       fn: async (runtime) => {
         try {
-          const rolodexService = runtime.getService('rolodex') as RolodexService;
+          const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
 
           if (!rolodexService) {
             throw new Error('RolodexService not found');
@@ -57,7 +57,7 @@ export const rolodexE2ETests: TestSuite = {
       name: 'should search contacts by category',
       fn: async (runtime) => {
         try {
-          const rolodexService = runtime.getService('rolodex') as RolodexService;
+          const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
 
           if (!rolodexService) {
             throw new Error('RolodexService not found');
@@ -103,8 +103,8 @@ export const rolodexE2ETests: TestSuite = {
       name: 'should schedule and retrieve follow-ups',
       fn: async (runtime) => {
         try {
-          const rolodexService = runtime.getService('rolodex') as RolodexService;
-          const followUpService = runtime.getService('follow_up') as FollowUpService;
+          const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
+          const followUpService = (await runtime.getService('follow_up')) as FollowUpService;
 
           if (!rolodexService || !followUpService) {
             throw new Error('Required services not found');
@@ -148,7 +148,7 @@ export const rolodexE2ETests: TestSuite = {
       name: 'should update contact information',
       fn: async (runtime) => {
         try {
-          const rolodexService = runtime.getService('rolodex') as RolodexService;
+          const rolodexService = (await runtime.getService('rolodex')) as RolodexService;
 
           if (!rolodexService) {
             throw new Error('RolodexService not found');

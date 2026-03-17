@@ -356,7 +356,7 @@ class LazyTeeWalletProvider extends WalletProvider {
   }
 
   private async initializeTeeWallet(): Promise<void> {
-    const teeService = this.teeRuntime.getService(ServiceType.TEE);
+    const teeService = await this.teeRuntime.getService(ServiceType.TEE);
 
     if (!teeService) {
       throw new EVMError(
@@ -437,7 +437,7 @@ export const evmWalletProvider: Provider = {
   name: spec.name,
   async get(runtime: IAgentRuntime, _message: Memory, state?: State): Promise<ProviderResult> {
     try {
-      const evmService = runtime.getService(EVM_SERVICE_NAME);
+      const evmService = await runtime.getService(EVM_SERVICE_NAME);
 
       if (!evmService) {
         logger.warn("EVM service not found, falling back to direct fetching");

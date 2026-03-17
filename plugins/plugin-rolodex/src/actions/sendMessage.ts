@@ -289,7 +289,7 @@ export const sendMessageAction: Action = {
           };
         }
 
-        const sendDirectMessage = (runtime.getService(source) as any)?.sendDirectMessage;
+        const sendDirectMessage = (await runtime.getService(source) as any)?.sendDirectMessage;
 
         if (!sendDirectMessage) {
           await callback({
@@ -361,7 +361,7 @@ export const sendMessageAction: Action = {
           };
         }
 
-        const sendRoomMessage = (runtime.getService(source) as any)?.sendRoomMessage;
+        const sendRoomMessage = (await runtime.getService(source) as any)?.sendRoomMessage;
 
         if (!sendRoomMessage) {
           await callback({

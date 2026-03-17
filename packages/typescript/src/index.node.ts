@@ -46,6 +46,12 @@ export * from "./plugin";
 // Export plugin discovery and manifest utilities
 export * from "./plugins";
 export * from "./prompts";
+// Provisioning (migrations, agent/entity/room, embedding dimension) - node only
+export * from "./provisioning";
+// Runtime composition (loadCharacters, createRuntimes, getBootstrapSettings, mergeSettingsInto) - node only
+export * from "./runtime-composition";
+// Connection management (ensureConnection/ensureConnections) - standalone batch helpers
+export * from "./connection";
 export * from "./roles";
 export * from "./runtime";
 // Export base table schemas (abstract SchemaTable definitions + buildBaseTables factory)

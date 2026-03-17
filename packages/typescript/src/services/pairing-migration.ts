@@ -106,9 +106,9 @@ function isExpired(
 /**
  * Get the PairingService from the runtime.
  */
-function getPairingService(runtime: IAgentRuntime): PairingService | null {
+async function getPairingService(runtime: IAgentRuntime): Promise<PairingService | null> {
   try {
-    return runtime.getService(ServiceType.PAIRING) as PairingService | null;
+    return (await runtime.getService(ServiceType.PAIRING)) as PairingService | null;
   } catch {
     return null;
   }
@@ -138,7 +138,7 @@ export async function migrateChannelPairingData(
     errors: [],
   };
 
-  const pairingService = getPairingService(runtime);
+  const pairingService = await getPairingService(runtime);
   if (!pairingService) {
     result.errors.push("PairingService not available");
     return result;

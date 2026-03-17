@@ -51,8 +51,8 @@ export class TodoReminderService extends Service {
     this.notificationManager = new NotificationManager(this.runtime);
     this.cacheManager = new CacheManager();
 
-    this.rolodexMessageService = this.runtime.getService("MESSAGE_DELIVERY" as ServiceTypeName);
-    this.rolodexEntityService = this.runtime.getService("ENTITY_RELATIONSHIP" as ServiceTypeName);
+    this.rolodexMessageService = await this.runtime.getService("MESSAGE_DELIVERY" as ServiceTypeName);
+    this.rolodexEntityService = await this.runtime.getService("ENTITY_RELATIONSHIP" as ServiceTypeName);
 
     if (this.rolodexMessageService && this.rolodexEntityService) {
       logger.info("Rolodex services found - external message delivery enabled");
@@ -268,7 +268,7 @@ export class TodoReminderService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(TodoReminderService.serviceType);
+    const service = await runtime.getService(TodoReminderService.serviceType);
     if (service) await service.stop();
   }
 }

@@ -30,7 +30,7 @@ export const identityContextProvider: Provider = {
       };
     }
 
-    const nostrService = runtime.getService<NostrService>(NOSTR_SERVICE_NAME);
+    const nostrService = await runtime.getService<NostrService>(NOSTR_SERVICE_NAME);
 
     if (!nostrService || !nostrService.isConnected()) {
       return {

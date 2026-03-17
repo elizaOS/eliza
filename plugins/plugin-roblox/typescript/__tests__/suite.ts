@@ -10,7 +10,7 @@ export class RobloxTestSuite implements TestSuite {
     {
       name: "Service initialization",
       fn: async (runtime: IAgentRuntime) => {
-        const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
+        const service = await runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
 
         const apiKey = runtime.getSetting("ROBLOX_API_KEY");
         const universeId = runtime.getSetting("ROBLOX_UNIVERSE_ID");
@@ -33,7 +33,7 @@ export class RobloxTestSuite implements TestSuite {
         const universeId = runtime.getSetting("ROBLOX_UNIVERSE_ID");
 
         if (apiKey && universeId) {
-          const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
+          const service = await runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
           if (!service) {
             throw new Error("Service should exist when properly configured");
           }

@@ -11,7 +11,7 @@ export const ReminderDeliveryE2ETestSuite: TestSuite = {
         logger.info("🧪 Testing reminder delivery to actual platforms...");
 
         // Check if rolodex is available
-        const messageDeliveryService = runtime.getService("MESSAGE_DELIVERY" as ServiceType);
+        const messageDeliveryService = await runtime.getService("MESSAGE_DELIVERY" as ServiceType);
         if (!messageDeliveryService) {
           logger.warn("⚠️ Rolodex MESSAGE_DELIVERY service not available");
           logger.info("This test requires the rolodex plugin to be loaded");
@@ -81,7 +81,7 @@ export const ReminderDeliveryE2ETestSuite: TestSuite = {
           logger.info("Daily reminders should be sent now");
 
           // Trigger reminder check
-          const reminderService = runtime.getService("TODO_REMINDER" as ServiceType);
+          const reminderService = await runtime.getService("TODO_REMINDER" as ServiceType);
           if (
             reminderService &&
             typeof reminderService === "object" &&
@@ -138,7 +138,7 @@ export const ReminderDeliveryE2ETestSuite: TestSuite = {
         logger.info("✓ Created overdue task");
 
         // Get reminder service
-        const reminderService = runtime.getService("TODO_REMINDER" as ServiceType);
+        const reminderService = await runtime.getService("TODO_REMINDER" as ServiceType);
         if (
           !reminderService ||
           typeof reminderService !== "object" ||
@@ -229,7 +229,7 @@ export const ReminderDeliveryE2ETestSuite: TestSuite = {
 
         // Trigger reminder check
         logger.info("\n🔔 Checking for reminders...");
-        const reminderService = runtime.getService("TODO_REMINDER" as ServiceType);
+        const reminderService = await runtime.getService("TODO_REMINDER" as ServiceType);
         if (
           reminderService &&
           typeof reminderService === "object" &&

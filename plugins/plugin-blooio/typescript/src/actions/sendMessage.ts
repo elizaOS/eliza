@@ -22,7 +22,7 @@ const sendMessageAction: Action = {
   name: "SEND_MESSAGE",
   description: "Send a message via Blooio to a chat (phone, email, or group)",
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
-    const blooioService = runtime.getService(BLOOIO_SERVICE_NAME);
+    const blooioService = await runtime.getService(BLOOIO_SERVICE_NAME);
     if (!blooioService) {
       logger.error("Blooio service not found");
       return false;
@@ -40,7 +40,7 @@ const sendMessageAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
-      const blooioService = runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
+      const blooioService = await runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
       if (!blooioService) {
         throw new Error("Blooio service not available");
       }

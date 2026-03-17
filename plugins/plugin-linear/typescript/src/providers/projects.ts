@@ -7,7 +7,7 @@ export const linearProjectsProvider: Provider = {
   description: "Provides context about active Linear projects",
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
-      const linearService = runtime.getService<LinearService>("linear");
+      const linearService = await runtime.getService<LinearService>("linear");
       if (!linearService) {
         return {
           text: "Linear service is not available",

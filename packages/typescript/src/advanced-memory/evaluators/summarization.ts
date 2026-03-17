@@ -84,7 +84,7 @@ export const summarizationEvaluator: Evaluator = {
   ): Promise<boolean> => {
     if (!message.content?.text) return false;
 
-    const memoryService = runtime.getService("memory") as MemoryService | null;
+    const memoryService = await runtime.getService("memory") as MemoryService | null;
     if (!memoryService) return false;
 
     const config = memoryService.getConfig();
@@ -105,7 +105,7 @@ export const summarizationEvaluator: Evaluator = {
   },
 
   handler: async (runtime: IAgentRuntime, message: Memory) => {
-    const memoryService = runtime.getService("memory") as MemoryService;
+    const memoryService = await runtime.getService("memory") as MemoryService;
     if (!memoryService) {
       logger.error({ src: "evaluator:memory" }, "MemoryService not found");
       return undefined;

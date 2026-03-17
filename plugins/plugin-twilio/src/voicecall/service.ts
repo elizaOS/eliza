@@ -383,7 +383,7 @@ export class VoiceCallService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime) {
-    const service = runtime.getService(VOICE_CALL_SERVICE_NAME);
+    const service = await runtime.getService(VOICE_CALL_SERVICE_NAME);
     if (service) {
       await service.stop();
     }

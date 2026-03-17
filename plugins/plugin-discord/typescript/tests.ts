@@ -81,7 +81,7 @@ export class DiscordTestSuite implements TestSuite {
    */
   async testCreatingDiscordClient(runtime: IAgentRuntime) {
     try {
-      this.discordClient = runtime.getService(ServiceType.DISCORD) as DiscordService;
+      this.discordClient = (await runtime.getService(ServiceType.DISCORD)) as DiscordService;
       if (!this.discordClient) {
         throw new Error("Failed to get DiscordService from runtime.");
       }

@@ -34,7 +34,7 @@ export const freezeCloudAgentAction: Action = {
   ],
 
   async validate(runtime: IAgentRuntime): Promise<boolean> {
-    return !!(runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined)?.isAuthenticated();
+    return !!(await runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined)?.isAuthenticated();
   },
 
   async handler(
@@ -44,9 +44,9 @@ export const freezeCloudAgentAction: Action = {
     options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> {
-    const containers = runtime.getService("CLOUD_CONTAINER") as CloudContainerService;
-    const bridge = runtime.getService("CLOUD_BRIDGE") as CloudBridgeService | undefined;
-    const backup = runtime.getService("CLOUD_BACKUP") as CloudBackupService | undefined;
+    const containers = await runtime.getService("CLOUD_CONTAINER") as CloudContainerService;
+    const bridge = await runtime.getService("CLOUD_BRIDGE") as CloudBridgeService | undefined;
+    const backup = await runtime.getService("CLOUD_BACKUP") as CloudBackupService | undefined;
 
     const containerId = getContainerId(message, options);
     if (!containerId) return { success: false, error: "Missing containerId" };

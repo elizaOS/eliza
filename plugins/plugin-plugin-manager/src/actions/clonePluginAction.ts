@@ -49,7 +49,7 @@ export const clonePluginAction: Action = {
   ): Promise<void> => {
     logger.info('[clonePluginAction] Starting plugin clone');
 
-    const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
+    const pluginManager = await runtime.getService('plugin_manager') as PluginManagerService;
 
     if (!pluginManager) {
       if (callback) {

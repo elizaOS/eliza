@@ -13,7 +13,7 @@ export class VisionBasicE2ETestSuite {
       fn: async (runtime: IAgentRuntime) => {
         console.log("Testing vision service initialization...");
 
-        const visionService = runtime.getService<VisionService>("VISION" as ServiceTypeName);
+        const visionService = await runtime.getService<VisionService>("VISION" as ServiceTypeName);
         if (!visionService) {
           throw new Error("Vision service not available - service must be registered");
         }
@@ -56,7 +56,7 @@ export class VisionBasicE2ETestSuite {
         const state: State = { values: {}, data: {}, text: "" };
 
         // Get vision service to check if active
-        const visionService = runtime.getService<VisionService>("VISION" as ServiceTypeName);
+        const visionService = await runtime.getService<VisionService>("VISION" as ServiceTypeName);
 
         // Validate the action
         const isValid = await describeSceneAction.validate(runtime, message, state);
@@ -151,7 +151,7 @@ export class VisionBasicE2ETestSuite {
         const state: State = { values: {}, data: {}, text: "" };
 
         // Get vision service to check if active
-        const visionService = runtime.getService<VisionService>("VISION" as ServiceTypeName);
+        const visionService = await runtime.getService<VisionService>("VISION" as ServiceTypeName);
 
         // Validate the action
         const isValid = await captureImageAction.validate(runtime, message, state);
@@ -278,7 +278,7 @@ export class VisionBasicE2ETestSuite {
       fn: async (runtime: IAgentRuntime) => {
         console.log("Testing scene change detection...");
 
-        const visionService = runtime.getService<VisionService>("VISION" as ServiceTypeName);
+        const visionService = await runtime.getService<VisionService>("VISION" as ServiceTypeName);
         if (!visionService) {
           throw new Error("Vision service not available");
         }
@@ -318,7 +318,7 @@ export class VisionBasicE2ETestSuite {
       fn: async (runtime: IAgentRuntime) => {
         console.log("Testing object and person detection...");
 
-        const visionService = runtime.getService<VisionService>("VISION" as ServiceTypeName);
+        const visionService = await runtime.getService<VisionService>("VISION" as ServiceTypeName);
         if (!visionService) {
           throw new Error("Vision service not available");
         }

@@ -24,7 +24,7 @@ function sendError(
 }
 
 const getWalletAddressHandler: RouteHandler = async (_req, res, runtime) => {
-  const solanaService = runtime.getService<SolanaService>("chain_solana");
+  const solanaService = await runtime.getService<SolanaService>("chain_solana");
 
   if (!solanaService) {
     sendError(res, 500, "SERVICE_NOT_FOUND", "SolanaService not found");
@@ -50,7 +50,7 @@ const getWalletAddressHandler: RouteHandler = async (_req, res, runtime) => {
 };
 
 const getWalletBalanceHandler: RouteHandler = async (_req, res, runtime) => {
-  const solanaService = runtime.getService<SolanaService>("chain_solana");
+  const solanaService = await runtime.getService<SolanaService>("chain_solana");
 
   if (!solanaService) {
     sendError(res, 500, "SERVICE_NOT_FOUND", "SolanaService not found");
@@ -83,7 +83,7 @@ const getWalletBalanceHandler: RouteHandler = async (_req, res, runtime) => {
 
 const getTokenBalanceHandler: RouteHandler = async (req, res, runtime) => {
   const token = req.params?.token;
-  const solanaService = runtime.getService<SolanaService>("chain_solana");
+  const solanaService = await runtime.getService<SolanaService>("chain_solana");
 
   if (!solanaService) {
     sendError(res, 500, "SERVICE_NOT_FOUND", "SolanaService not found");
@@ -133,7 +133,7 @@ const getTokenBalanceHandler: RouteHandler = async (req, res, runtime) => {
 };
 
 const getWalletPortfolioHandler: RouteHandler = async (_req, res, runtime) => {
-  const solanaService = runtime.getService<SolanaService>("chain_solana");
+  const solanaService = await runtime.getService<SolanaService>("chain_solana");
 
   if (!solanaService) {
     sendError(res, 500, "SERVICE_NOT_FOUND", "SolanaService not found");
@@ -203,7 +203,7 @@ const getWalletPortfolioHandler: RouteHandler = async (_req, res, runtime) => {
 };
 
 const getWalletTokensHandler: RouteHandler = async (_req, res, runtime) => {
-  const solanaService = runtime.getService<SolanaService>("chain_solana");
+  const solanaService = await runtime.getService<SolanaService>("chain_solana");
 
   if (!solanaService) {
     sendError(res, 500, "SERVICE_NOT_FOUND", "SolanaService not found");

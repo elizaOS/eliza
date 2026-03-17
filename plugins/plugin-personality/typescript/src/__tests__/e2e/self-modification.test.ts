@@ -17,7 +17,7 @@ export class SelfModificationTestSuite implements TestSuite {
         console.log('Testing plugin initialization...');
 
         // Verify services are available
-        const fileManager = runtime.getService('character-file-manager');
+        const fileManager = await runtime.getService('character-file-manager');
         if (!fileManager) {
           throw new Error('CharacterFileManager service not available');
         }
@@ -226,7 +226,7 @@ export class SelfModificationTestSuite implements TestSuite {
       fn: async (runtime: any) => {
         console.log('Testing character file manager validation...');
 
-        const fileManager = runtime.getService('character-file-manager');
+        const fileManager = await runtime.getService('character-file-manager');
 
         // Test valid modification
         const validModification = {

@@ -176,6 +176,8 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   deletePairingRequests: vi.fn().mockResolvedValue(undefined),
   createPairingAllowlistEntries: vi.fn().mockResolvedValue([]),
   deletePairingAllowlistEntries: vi.fn().mockResolvedValue(undefined),
+
+  runPluginMigrations: vi.fn().mockResolvedValue(undefined),
 } as IDatabaseAdapter;
 
 // Mock action creator (matches your example)
@@ -602,13 +604,13 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
     });
 
     it("should throw if adapter is not available during initialize", async () => {
-      // Create runtime without passing adapter
+      // Adapter is required in the type; use assertion to test runtime behavior when adapter is missing
       const runtimeWithoutAdapter = new AgentRuntime({
         character: mockCharacter,
         agentId: agentId,
-      });
+        // @ts-expect-error - testing runtime behavior when adapter is omitted
+      } as { character: Character; agentId: UUID });
 
-      // Prevent unhandled rejection from internal initPromise used by services waiting on initialization
       runtimeWithoutAdapter.initPromise.catch(() => {});
 
       await expect(runtimeWithoutAdapter.initialize()).rejects.toThrow(
@@ -616,41 +618,17 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       );
     });
 
-    it("should skip plugin migrations when skipMigrations option is true", async () => {
+    it("initialize() does not run plugin migrations (provisioning is separate)", async () => {
       const runtimeWithMigrations = new AgentRuntime({
         character: mockCharacter,
         agentId: agentId,
         adapter: mockDatabaseAdapter,
       });
 
-      // Spy on runPluginMigrations
-      const runMigrationsSpy = vi.spyOn(
-        runtimeWithMigrations,
-        "runPluginMigrations",
-      );
-
-      // Initialize with skipMigrations = true
-      await runtimeWithMigrations.initialize({ skipMigrations: true });
-
-      // Verify migrations were not called
-      expect(runMigrationsSpy).not.toHaveBeenCalled();
-    });
-
-    it("should run plugin migrations by default when skipMigrations is not specified", async () => {
-      const runtimeDefault = new AgentRuntime({
-        character: mockCharacter,
-        agentId: agentId,
-        adapter: mockDatabaseAdapter,
-      });
-
-      // Spy on runPluginMigrations
-      const runMigrationsSpy = vi.spyOn(runtimeDefault, "runPluginMigrations");
-
-      // Initialize without skipMigrations option (default behavior)
-      await runtimeDefault.initialize();
-
-      // Verify migrations were called
-      expect(runMigrationsSpy).toHaveBeenCalled();
+      // initialize() no longer runs migrations; provisionAgent() does that
+      await runtimeWithMigrations.initialize();
+      // Adapter's runPluginMigrations is never called by initialize()
+      expect(mockDatabaseAdapter.runPluginMigrations).not.toHaveBeenCalled();
     });
 
     // Add more tests for initialize: existing entity, existing room, knowledge processing etc.

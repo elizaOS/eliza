@@ -7,7 +7,7 @@ const conversationHistoryProvider: Provider = {
   description: "Provides recent Blooio conversation history with a chat",
   get: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
     try {
-      const blooioService = runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
+      const blooioService = await runtime.getService(BLOOIO_SERVICE_NAME) as BlooioService | null;
       if (!blooioService) {
         return {
           text: "No Blooio conversation history available - service not initialized",

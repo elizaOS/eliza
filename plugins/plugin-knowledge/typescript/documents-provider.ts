@@ -10,7 +10,7 @@ export const documentsProvider: Provider = {
   dynamic: false,
   get: async (runtime: IAgentRuntime) => {
     try {
-      const knowledgeService = runtime.getService("knowledge") as KnowledgeService;
+      const knowledgeService = (await runtime.getService("knowledge")) as KnowledgeService;
 
       if (!knowledgeService) {
         logger.warn("Knowledge service not available for documents provider");

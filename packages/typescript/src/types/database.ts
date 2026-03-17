@@ -372,8 +372,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
   // Single-item wrappers live on AgentRuntime.
   getAgentsByIds(agentIds: UUID[]): Promise<Agent[]>;
   createAgents(agents: Partial<Agent>[]): Promise<UUID[]>;
-  updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<void>;
-  deleteAgents(agentIds: UUID[]): Promise<void>;
+  updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean>;
+  deleteAgents(agentIds: UUID[]): Promise<boolean>;
   
   /**
    * Upsert agents (insert or update by ID)
@@ -456,7 +456,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
   ): Promise<T>;
 
   /** Delete participants from rooms */
-  deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<void>;
+  deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean>;
 
   /** Get entities for room */
   getEntitiesForRoom(
@@ -1015,7 +1015,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
   // (adding multiple users to a channel is common). deleteParticipants
   // accepts {entityId, roomId} pairs for flexibility -- you might remove
   // different entities from different rooms in one call.
-  deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<void>;
+  deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean>;
   
   /**
    * Update participants (batch)
