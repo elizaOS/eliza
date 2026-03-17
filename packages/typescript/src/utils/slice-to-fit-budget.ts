@@ -40,5 +40,5 @@ export function sliceToFitBudget<T>(
   }
 
   const take = count > 0 ? count : 0;
-      return items.slice(-take);
+  return items.slice(0, take);
 }
