@@ -155,6 +155,7 @@ export const recentMessagesProvider: Provider = {
         },
         RECENT_ACTION_RUNS_TARGET_CHARS,
         { fromEnd: true }, // Select newest runs, not oldest
+        { fromEnd: true }, // Select newest runs, not oldest
       );
 
       const formattedActionResults = recentRuns
