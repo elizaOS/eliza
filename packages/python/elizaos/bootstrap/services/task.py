@@ -11,8 +11,9 @@ This module provides parity with the TypeScript TaskService, including:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from uuid import UUID, uuid4
@@ -236,10 +237,8 @@ class TaskService(Service):
 
         if self._loop_task:
             self._loop_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._loop_task
-            except asyncio.CancelledError:
-                pass
             self._loop_task = None
 
         if self._runtime:
@@ -476,10 +475,8 @@ class TaskService(Service):
             metadata_updated_at = task.metadata.updated_at if task.metadata else None
             metadata_created_at = None
             if task.metadata and task.metadata.created_at:
-                try:
+                with contextlib.suppress(ValueError):
                     metadata_created_at = int(task.metadata.created_at)
-                except ValueError:
-                    pass
 
             if metadata_updated_at == metadata_created_at:
                 if task.tags and "immediate" in task.tags:

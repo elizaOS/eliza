@@ -275,6 +275,7 @@ __all__ = [
     "Memory",
     "MessageMemory",
     "MemoryMetadata",
+    "MemoryType",
     "BaseMetadata",
     "DocumentMetadata",
     "FragmentMetadata",
