@@ -30,7 +30,7 @@ export function sliceToFitBudget<T>(
       total += sizes[index];
       count++;
     }
-    const take = count > 0 ? count : 1;
+    const take = count > 0 ? count : 0;
     return items.slice(-take);
   }
 
@@ -39,6 +39,6 @@ export function sliceToFitBudget<T>(
     total += sizes[count];
   }
 
-  const take = count > 0 ? count : 1;
-  return items.slice(0, take);
+  const take = count > 0 ? count : 0;
+      return items.slice(-take);
 }
