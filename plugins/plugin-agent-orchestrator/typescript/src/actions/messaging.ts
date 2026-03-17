@@ -647,7 +647,7 @@ export const listMessagingChannelsAction: Action = {
       return { success: false, error: "Messaging service not available" };
     }
 
-    const channels = messagingService.getAvailableChannels();
+    const channels = await messagingService.getAvailableChannels();
 
     if (callback) {
       if (channels.length > 0) {

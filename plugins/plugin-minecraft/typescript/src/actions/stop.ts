@@ -18,7 +18,7 @@ export const minecraftStopAction: Action = {
   similes: ["MINECRAFT_STOP", "STOP_PATHFINDER", "STOP_MOVING"],
   description: "Stop pathfinding / movement goals.",
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    const service = runtime.getService<MinecraftService>(
+    const service = await runtime.getService<MinecraftService>(
       MINECRAFT_SERVICE_TYPE,
     );
     return Boolean(service);
@@ -30,7 +30,7 @@ export const minecraftStopAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
-    const service = runtime.getService<MinecraftService>(
+    const service = await runtime.getService<MinecraftService>(
       MINECRAFT_SERVICE_TYPE,
     );
     if (!service)

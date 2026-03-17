@@ -15,7 +15,7 @@ export const pluginStateProvider: Provider = {
     'Provides information about the current state of all plugins including loaded status, missing environment variables, and errors',
 
   async get(runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> {
-    const pluginManager = runtime.getService('plugin_manager') as PluginManagerService;
+    const pluginManager = (await runtime.getService('plugin_manager')) as PluginManagerService | null;
 
     if (!pluginManager) {
       return {

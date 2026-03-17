@@ -19,7 +19,7 @@ export const minecraftVisionProvider: Provider = {
     _message: Memory,
     _state?: State,
   ): Promise<ProviderResult> => {
-    const mc = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+    const mc = await runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
     if (!mc) {
       return {
         text: "Minecraft service not available",

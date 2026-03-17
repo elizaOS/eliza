@@ -152,21 +152,25 @@ describe("Bluesky Agent Unit Tests", () => {
   });
 
   it("should create runtime with character", async () => {
-    const { AgentRuntime } = await import("@elizaos/core");
+    const { AgentRuntime, InMemoryDatabaseAdapter } = await import("@elizaos/core");
     const { character } = await import("../character");
 
-    const runtime = new AgentRuntime({ character });
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+    const runtime = new AgentRuntime({ character, adapter });
 
     expect(runtime.character.name).toBe(character.name);
     expect(runtime.agentId).toBeDefined();
   });
 
   it("should register all event handlers", async () => {
-    const { AgentRuntime } = await import("@elizaos/core");
+    const { AgentRuntime, InMemoryDatabaseAdapter } = await import("@elizaos/core");
     const { character } = await import("../character");
     const { registerBlueskyHandlers } = await import("../handlers");
 
-    const runtime = new AgentRuntime({ character });
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+    const runtime = new AgentRuntime({ character, adapter });
     const registerSpy = vi.spyOn(runtime, "registerEvent");
 
     registerBlueskyHandlers(runtime);
@@ -187,10 +191,12 @@ describe("Bluesky Agent Unit Tests", () => {
   });
 
   it("should have messageService after initialization", async () => {
-    const { AgentRuntime } = await import("@elizaos/core");
+    const { AgentRuntime, InMemoryDatabaseAdapter } = await import("@elizaos/core");
     const { character } = await import("../character");
 
-    const runtime = new AgentRuntime({ character });
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+    const runtime = new AgentRuntime({ character, adapter });
 
     // messageService is attached during initialization
     // For this unit test, we just verify the runtime has the property slot

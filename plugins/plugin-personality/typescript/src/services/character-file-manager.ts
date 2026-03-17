@@ -355,9 +355,9 @@ export class CharacterFileManager extends Service {
 
       if (modification.messageExamples) {
         const currentExamples = currentCharacter.messageExamples || [];
-        const newGroups: MessageExampleGroup[] = modification.messageExamples.map(
-          (examples) => ({ examples })
-        );
+        const newGroups = modification.messageExamples.map((examples) => ({
+          examples,
+        })) as MessageExampleGroup[];
         currentCharacter.messageExamples = [...currentExamples, ...newGroups];
       }
 

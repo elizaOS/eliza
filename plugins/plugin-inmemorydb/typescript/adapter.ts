@@ -199,20 +199,22 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return true;
   }
 
-  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<void> {
+  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
     for (const { agentId, agent } of updates) {
       await this.updateAgent(agentId, agent);
     }
+    return true;
   }
 
   async deleteAgent(agentId: UUID): Promise<boolean> {
     return this.storage.delete(COLLECTIONS.AGENTS, agentId);
   }
 
-  async deleteAgents(agentIds: UUID[]): Promise<void> {
+  async deleteAgents(agentIds: UUID[]): Promise<boolean> {
     for (const id of agentIds) {
       await this.deleteAgent(id);
     }
+    return true;
   }
   
   async countAgents(): Promise<number> {
@@ -1339,10 +1341,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async deleteParticipants(
     participants: Array<{ entityId: UUID; roomId: UUID }>
-  ): Promise<void> {
+  ): Promise<boolean> {
     for (const { entityId, roomId } of participants) {
       await this.removeParticipant(entityId, roomId);
     }
+    return true;
   }
 
   async updateParticipants(participants: Array<{

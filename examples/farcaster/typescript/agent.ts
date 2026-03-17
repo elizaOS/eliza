@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { AgentRuntime } from "@elizaos/core";
+import { AgentRuntime, InMemoryDatabaseAdapter } from "@elizaos/core";
 import { config as loadDotEnv } from "dotenv";
 
 import { character } from "./character";
@@ -46,8 +46,11 @@ async function main(): Promise<void> {
   const openaiPlugin = (await import("@elizaos/plugin-openai")).default;
   const farcasterPlugin = (await import("@elizaos/plugin-farcaster")).default;
 
+  const adapter = new InMemoryDatabaseAdapter();
+  await adapter.initialize();
   const runtime = new AgentRuntime({
     character,
+    adapter,
     plugins: [sqlPlugin, openaiPlugin, farcasterPlugin],
   });
 

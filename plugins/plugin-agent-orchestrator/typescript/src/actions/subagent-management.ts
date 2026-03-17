@@ -15,8 +15,8 @@ import {
   sessionKeyToRoomId,
 } from "../utils/session.js";
 
-function getSubagentService(runtime: IAgentRuntime): SubagentService {
-  const svc = runtime.getService("SUBAGENT") as SubagentService | null;
+async function getSubagentService(runtime: IAgentRuntime): Promise<SubagentService> {
+  const svc = (await runtime.getService("SUBAGENT")) as SubagentService | null;
   if (!svc) {
     throw new Error("SubagentService not available (SUBAGENT)");
   }
@@ -54,7 +54,7 @@ export const spawnSubagentAction: Action = {
     "Spawn a background sub-agent run to execute a task asynchronously. The subagent will complete the task and announce results back.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if subagent service is available
-    const svc = runtime.getService("SUBAGENT");
+    const svc = await runtime.getService("SUBAGENT");
     if (!svc) {
       return false;
     }
@@ -80,7 +80,7 @@ export const spawnSubagentAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = getSubagentService(runtime);
+    const svc = await getSubagentService(runtime);
     const context = extractSessionContext(runtime, message);
 
     const opts = options as
@@ -149,7 +149,7 @@ export const sendToSessionAction: Action = {
     "Send a message to another agent session. Use sessionKey or label to identify the target.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if subagent service is available
-    const svc = runtime.getService("SUBAGENT");
+    const svc = await runtime.getService("SUBAGENT");
     if (!svc) {
       return false;
     }
@@ -169,7 +169,7 @@ export const sendToSessionAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = getSubagentService(runtime);
+    const svc = await getSubagentService(runtime);
     const context = extractSessionContext(runtime, message);
 
     const opts = options as
@@ -252,7 +252,7 @@ export const listSubagentsAction: Action = {
   description: "List active and recent subagent runs.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if subagent service is available
-    const svc = runtime.getService("SUBAGENT");
+    const svc = await runtime.getService("SUBAGENT");
     if (!svc) {
       return false;
     }
@@ -273,7 +273,7 @@ export const listSubagentsAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = getSubagentService(runtime);
+    const svc = await getSubagentService(runtime);
     const context = extractSessionContext(runtime, message);
 
     const runs = svc.listSubagentRuns(context.sessionKey);
@@ -316,7 +316,7 @@ export const cancelSubagentAction: Action = {
   description: "Cancel a running subagent by its run ID.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if subagent service is available
-    const svc = runtime.getService("SUBAGENT");
+    const svc = await runtime.getService("SUBAGENT");
     if (!svc) {
       return false;
     }
@@ -334,7 +334,7 @@ export const cancelSubagentAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = getSubagentService(runtime);
+    const svc = await getSubagentService(runtime);
 
     const opts = options as { runId?: string } | undefined;
     const runId = opts?.runId;
@@ -371,7 +371,7 @@ export const getSubagentStatusAction: Action = {
   description: "Get detailed status of a specific subagent run.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if subagent service is available
-    const svc = runtime.getService("SUBAGENT");
+    const svc = await runtime.getService("SUBAGENT");
     if (!svc) {
       return false;
     }
@@ -391,7 +391,7 @@ export const getSubagentStatusAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const svc = getSubagentService(runtime);
+    const svc = await getSubagentService(runtime);
 
     const opts = options as { runId?: string } | undefined;
     const runId = opts?.runId;

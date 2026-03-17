@@ -137,17 +137,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
   }
 
-  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<void> {
+  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
     for (const { agentId, agent } of updates) {
       const existing = this.agents.get(String(agentId)) ?? {};
       this.agents.set(String(agentId), { ...existing, ...agent, id: agentId });
     }
+    return true;
   }
 
-  async deleteAgents(agentIds: UUID[]): Promise<void> {
+  async deleteAgents(agentIds: UUID[]): Promise<boolean> {
     for (const id of agentIds) {
       this.agents.delete(String(id));
     }
+    return true;
   }
   
   async countAgents(): Promise<number> {
@@ -792,7 +794,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
   }
 
   // Batch participant methods
-  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<void> {
+  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean> {
     for (const { entityId, roomId } of participants) {
       const roomKey = String(roomId);
       const entityKey = String(entityId);
@@ -808,6 +810,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
       }
       this.participantUserState.delete(`${roomKey}:${entityKey}`);
     }
+    return true;
   }
 
   async updateParticipants(participants: Array<{

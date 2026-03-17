@@ -93,9 +93,9 @@ function createUniqueUuid(runtime: IAgentRuntime, baseId: string): UUID {
 /**
  * Get the BlueSky service from the runtime
  */
-function getBlueSkyService(runtime: IAgentRuntime): BlueSkyServiceType | null {
-  const service = runtime.getService(BLUESKY_SERVICE_NAME);
-  return service as BlueSkyServiceType | null;
+async function getBlueSkyService(runtime: IAgentRuntime): Promise<BlueSkyServiceType | null> {
+  const service = await runtime.getService(BLUESKY_SERVICE_NAME);
+  return service as unknown as BlueSkyServiceType | null;
 }
 
 /**
@@ -206,7 +206,7 @@ export async function handleMentionReceived(
   });
 
   // Get the BlueSky service for posting replies
-  const blueskyService = getBlueSkyService(runtime);
+  const blueskyService = await getBlueSkyService(runtime);
   if (!blueskyService) {
     runtime.logger.error("BlueSky service not available, cannot post reply");
     return;
@@ -361,7 +361,7 @@ export async function handleCreatePost(
   runtime.logger.info("Generating automated Bluesky post via elizaOS pipeline");
 
   // Get the BlueSky service
-  const blueskyService = getBlueSkyService(runtime);
+  const blueskyService = await getBlueSkyService(runtime);
   if (!blueskyService) {
     runtime.logger.error("BlueSky service not available for automated posting");
     return;

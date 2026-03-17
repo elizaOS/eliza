@@ -139,10 +139,11 @@ export class MessagingService extends Service {
   /**
    * Lists available messaging channels.
    */
-  getAvailableChannels(): MessagingChannel[] {
+  async getAvailableChannels(): Promise<MessagingChannel[]> {
     const channels: MessagingChannel[] = [];
     for (const [channel, adapter] of this.adapters) {
-      if (adapter.isAvailable()) {
+      const available = adapter.isAvailable();
+      if (typeof available === "boolean" ? available : await available) {
         channels.push(channel);
       }
     }
@@ -213,7 +214,8 @@ export class MessagingService extends Service {
       return result;
     }
 
-    if (!adapter.isAvailable()) {
+    const available = adapter.isAvailable();
+    if (!(typeof available === "boolean" ? available : await available)) {
       const errorMsg = `${channel} service is not available`;
       const result: SendMessageResult = {
         success: false,
@@ -389,7 +391,7 @@ export class MessagingService extends Service {
    */
   private async sendViaDiscord(params: SendMessageParams): Promise<SendMessageResult> {
     // Get Discord service
-    const discordService = (await this.runtime.getService("DISCORD")) as
+    const discordService = (await this.runtime.getService("DISCORD")) as unknown as
       | { client: { channels: { fetch: (id: string) => Promise<unknown> } } }
       | undefined;
 

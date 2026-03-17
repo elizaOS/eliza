@@ -27,7 +27,7 @@ export const computeruseOpenApplicationAction: Action = {
   ],
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    const service = runtime.getService<ComputerUseService>("computeruse");
+    const service = await runtime.getService<ComputerUseService>("computeruse");
     if (!service || !service.isEnabled()) return false;
 
     const text = message.content?.text?.toLowerCase() ?? "";
@@ -41,7 +41,7 @@ export const computeruseOpenApplicationAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const service = runtime.getService<ComputerUseService>("computeruse");
+    const service = await runtime.getService<ComputerUseService>("computeruse");
     if (!service) return { success: false, text: "ComputerUse service not available" };
 
     const name = getStringParam(options?.parameters, "name");

@@ -4,6 +4,7 @@ import {
   createCharacter,
   type Content,
   createMessageMemory,
+  InMemoryDatabaseAdapter,
   LLMMode,
   type Memory,
   type Plugin,
@@ -140,8 +141,11 @@ export async function getOrCreateRuntime(
       currentMode = null;
     }
 
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
     const runtime = new AgentRuntime({
       character: CHAT_CHARACTER,
+      adapter,
       plugins: await buildPlugins(effectiveMode),
       actionPlanning: false,
       llmMode: LLMMode.SMALL,

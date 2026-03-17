@@ -81,7 +81,7 @@ export const pushCodeAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const service = runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
+    const service = await runtime.getService<GitHubService>(GITHUB_SERVICE_NAME);
 
     if (!service) {
       logger.error("GitHub service not available");

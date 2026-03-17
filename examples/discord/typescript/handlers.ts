@@ -124,7 +124,7 @@ export async function registerSlashCommands(
     { name: "help", description: "Show available commands" },
   ];
 
-  const discordService = runtime.getService<DiscordServiceLike>("discord");
+  const discordService = await runtime.getService<DiscordServiceLike>("discord");
 
   if (!discordService?.clientReadyPromise) {
     logger.warn(

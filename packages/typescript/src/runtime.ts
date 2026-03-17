@@ -4239,11 +4239,11 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   async upsertAgents(agents: Partial<Agent>[]): Promise<void> {
     return await this.adapter.upsertAgents(agents);
   }
-  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<void> {
-    await this.adapter.updateAgents(updates);
+  async updateAgents(updates: Array<{ agentId: UUID; agent: Partial<Agent> }>): Promise<boolean> {
+    return await this.adapter.updateAgents(updates);
   }
-  async deleteAgents(agentIds: UUID[]): Promise<void> {
-    await this.adapter.deleteAgents(agentIds);
+  async deleteAgents(agentIds: UUID[]): Promise<boolean> {
+    return await this.adapter.deleteAgents(agentIds);
   }
 
   async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
@@ -5107,8 +5107,8 @@ IMPORTANT: Your response must ONLY contain the ${CONTAINER_START}${CONTAINER_END
   }
 
   // ── Participant passthroughs & wrappers ──────────────────────────────
-  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<void> {
-    await this.adapter.deleteParticipants(participants);
+  async deleteParticipants(participants: Array<{ entityId: UUID; roomId: UUID }>): Promise<boolean> {
+    return await this.adapter.deleteParticipants(participants);
   }
 
   async updateParticipants(participants: Array<{
