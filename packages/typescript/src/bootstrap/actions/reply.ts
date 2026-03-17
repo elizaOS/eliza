@@ -99,10 +99,10 @@ export const replyAction = {
     // For subsequent REPLY actions (end of chain), regenerate using LLM
     // to produce a response that incorporates previous action results.
     
-    // Check if we already have all needed providers in state before recomposing
+    // Check if we already have all needed providers in state before recomposing 
     const neededProviders = ["RECENT_MESSAGES", "ACTION_STATE"];
-    const hasAllProviders = state && neededProviders.every(provider => 
-      state.values[provider] !== undefined || state.data[provider] !== undefined
+    const hasAllProviders = state && Object.keys(state.data).length > 0 && neededProviders.every(provider => 
+      provider in state.values || provider in state.data
     );
     
     if (!hasAllProviders) {
