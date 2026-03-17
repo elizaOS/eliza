@@ -1,1 +1,0 @@
-export { polymarketProvider } from "./polymarket";

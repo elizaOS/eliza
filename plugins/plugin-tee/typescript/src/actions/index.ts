@@ -1,1 +1,0 @@
-export { remoteAttestationAction } from "./remoteAttestation";

@@ -1,1 +1,0 @@
-export { GatewayClient } from "./client";
