@@ -1241,7 +1241,6 @@ export const basicProviders = [
 	providers.actionsProvider,
 	providers.actionStateProvider,
 	providers.attachmentsProvider,
-	providers.capabilitiesProvider,
 	providers.characterProvider,
 	providers.choiceProvider,
 	providers.contextBenchProvider,
@@ -1263,7 +1262,6 @@ export const basicActions = [
 	withCanonicalActionDocs(actions.replyAction),
 	withCanonicalActionDocs(actions.ignoreAction),
 	withCanonicalActionDocs(actions.noneAction),
-	withCanonicalActionDocs(actions.statusAction),
 ];
 
 /**
