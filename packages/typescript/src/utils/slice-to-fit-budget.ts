@@ -31,7 +31,7 @@ export function sliceToFitBudget<T>(
       count++;
     }
     const take = count > 0 ? count : 0;
-    return items.slice(0, take);
+    return items.slice(items.length - take);
   }
 
   for (; count < items.length; count++) {
