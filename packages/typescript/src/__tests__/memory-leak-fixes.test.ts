@@ -7,7 +7,7 @@
  * - RECENT_MESSAGES autonomy cap (recentMessages.ts)
  */
 
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, test, vi } from "vitest";
 import { addLogListener, type LogListener, removeLogListener } from "../logger";
 
 // ===========================================================================
