@@ -178,12 +178,32 @@ jobs:
               
           elif [[ "${RELEASE_TYPE}" == "alpha" ]]; then
             echo "🚀 Alpha release workflow..."
-            PRERELEASE_TYPE=$(get_prerelease_type "$CURRENT_VERSION")
             BASE_VERSION=$(get_base_version "$CURRENT_VERSION")
-            
-            if [[ "$PRERELEASE_TYPE" == "alpha" ]]; then
-              # Already on alpha, just increment the alpha counter
-              echo "Incrementing alpha version from ${CURRENT_VERSION}..."
+
+            # Always check existing tags to find the true highest alpha version
+            # This prevents tag conflicts when lerna.json is out of sync with tags
+            echo "Checking for existing alpha tags for base version ${BASE_VERSION}..."
+            git fetch --tags
+
+            HIGHEST_TAG=$(git tag -l "v${BASE_VERSION}-alpha.*" 2>/dev/null | sort -V | tail -n 1)
+
+            if [[ -n "$HIGHEST_TAG" ]]; then
+              HIGHEST_VERSION=${HIGHEST_TAG#v}
+              echo "Highest existing alpha tag: ${HIGHEST_VERSION}"
+
+              # If lerna.json is behind the tags, sync it first
+              if [[ "$CURRENT_VERSION" != "$HIGHEST_VERSION" ]]; then
+                echo "Syncing lerna.json from ${CURRENT_VERSION} to ${HIGHEST_VERSION}..."
+                bunx lerna version ${HIGHEST_VERSION} \
+                  --force-publish \
+                  --yes \
+                  --no-private \
+                  --no-git-tag-version \
+                  --no-push
+              fi
+
+              # Now increment to the next alpha
+              echo "Incrementing from ${HIGHEST_VERSION}..."
               bunx lerna version prerelease \
                 --preid alpha \
                 --force-publish \
@@ -192,58 +212,43 @@ jobs:
                 --no-git-tag-version \
                 --no-push
             else
-              # Not on alpha (could be stable, beta, etc)
-              # Check if there are existing alpha tags for this base version
-              echo "Checking for existing alpha tags for base version ${BASE_VERSION}..."
-              
-              # Fetch all tags to ensure we have the complete history
-              git fetch --tags
-              
-              # Find the highest existing alpha version for this base
-              EXISTING_ALPHAS=$(git tag -l "v${BASE_VERSION}-alpha.*" 2>/dev/null | sort -V | tail -n 1)
-              
-              if [[ -n "$EXISTING_ALPHAS" ]]; then
-                # Found existing alpha tags, continue from there
-                LAST_ALPHA_VERSION=${EXISTING_ALPHAS#v}
-                echo "Found existing alpha version: ${LAST_ALPHA_VERSION}"
-                
-                # Set to the last version, then increment
-                bunx lerna version ${LAST_ALPHA_VERSION} \
-                  --force-publish \
-                  --yes \
-                  --no-private \
-                  --no-git-tag-version \
-                  --no-push
-                
-                # Now increment to get the next alpha
-                echo "Incrementing from ${LAST_ALPHA_VERSION}..."
-                bunx lerna version prerelease \
-                  --preid alpha \
-                  --force-publish \
-                  --yes \
-                  --no-private \
-                  --no-git-tag-version \
-                  --no-push
-              else
-                # No existing alpha tags, safe to start at .0
-                echo "No existing alpha tags found, starting at ${BASE_VERSION}-alpha.0"
-                bunx lerna version "${BASE_VERSION}-alpha.0" \
+              # No existing alpha tags, safe to start at .0
+              echo "No existing alpha tags found, starting at ${BASE_VERSION}-alpha.0"
+              bunx lerna version "${BASE_VERSION}-alpha.0" \
+                --force-publish \
+                --yes \
+                --no-private \
+                --no-git-tag-version \
+                --no-push
+            fi
+
+          elif [[ "${RELEASE_TYPE}" == "beta" ]]; then
+            echo "🔵 Beta release workflow..."
+            BASE_VERSION=$(get_base_version "$CURRENT_VERSION")
+
+            # Always check existing tags to find the true highest beta version
+            echo "Checking for existing beta tags for base version ${BASE_VERSION}..."
+            git fetch --tags
+
+            HIGHEST_TAG=$(git tag -l "v${BASE_VERSION}-beta.*" 2>/dev/null | sort -V | tail -n 1)
+
+            if [[ -n "$HIGHEST_TAG" ]]; then
+              HIGHEST_VERSION=${HIGHEST_TAG#v}
+              echo "Highest existing beta tag: ${HIGHEST_VERSION}"
+
+              # If lerna.json is behind the tags, sync it first
+              if [[ "$CURRENT_VERSION" != "$HIGHEST_VERSION" ]]; then
+                echo "Syncing lerna.json from ${CURRENT_VERSION} to ${HIGHEST_VERSION}..."
+                bunx lerna version ${HIGHEST_VERSION} \
                   --force-publish \
                   --yes \
                   --no-private \
                   --no-git-tag-version \
                   --no-push
               fi
-            fi
-            
-          elif [[ "${RELEASE_TYPE}" == "beta" ]]; then
-            echo "🔵 Beta release workflow..."
-            PRERELEASE_TYPE=$(get_prerelease_type "$CURRENT_VERSION")
-            BASE_VERSION=$(get_base_version "$CURRENT_VERSION")
-            
-            if [[ "$PRERELEASE_TYPE" == "beta" ]]; then
-              # Already on beta, just increment the beta counter
-              echo "Incrementing beta version from ${CURRENT_VERSION}..."
+
+              # Now increment to the next beta
+              echo "Incrementing from ${HIGHEST_VERSION}..."
               bunx lerna version prerelease \
                 --preid beta \
                 --force-publish \
@@ -252,48 +257,14 @@ jobs:
                 --no-git-tag-version \
                 --no-push
             else
-              # Not on beta (could be stable, alpha, etc)
-              # Check if there are existing beta tags for this base version
-              echo "Checking for existing beta tags for base version ${BASE_VERSION}..."
-              
-              # Fetch all tags to ensure we have the complete history
-              git fetch --tags
-              
-              # Find the highest existing beta version for this base
-              EXISTING_BETAS=$(git tag -l "v${BASE_VERSION}-beta.*" 2>/dev/null | sort -V | tail -n 1)
-              
-              if [[ -n "$EXISTING_BETAS" ]]; then
-                # Found existing beta tags, continue from there
-                LAST_BETA_VERSION=${EXISTING_BETAS#v}
-                echo "Found existing beta version: ${LAST_BETA_VERSION}"
-                
-                # Set to the last version, then increment
-                bunx lerna version ${LAST_BETA_VERSION} \
-                  --force-publish \
-                  --yes \
-                  --no-private \
-                  --no-git-tag-version \
-                  --no-push
-                
-                # Now increment to get the next beta
-                echo "Incrementing from ${LAST_BETA_VERSION}..."
-                bunx lerna version prerelease \
-                  --preid beta \
-                  --force-publish \
-                  --yes \
-                  --no-private \
-                  --no-git-tag-version \
-                  --no-push
-              else
-                # No existing beta tags, safe to start at .0
-                echo "No existing beta tags found, starting at ${BASE_VERSION}-beta.0"
-                bunx lerna version "${BASE_VERSION}-beta.0" \
-                  --force-publish \
-                  --yes \
-                  --no-private \
-                  --no-git-tag-version \
-                  --no-push
-              fi
+              # No existing beta tags, safe to start at .0
+              echo "No existing beta tags found, starting at ${BASE_VERSION}-beta.0"
+              bunx lerna version "${BASE_VERSION}-beta.0" \
+                --force-publish \
+                --yes \
+                --no-private \
+                --no-git-tag-version \
+                --no-push
             fi
             
           elif [[ "${RELEASE_TYPE}" == "latest" ]]; then
