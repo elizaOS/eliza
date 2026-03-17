@@ -98,17 +98,14 @@ function PasswordFieldInner({ fp: props }: { fp: FieldRenderProps }) {
 
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [fieldValue, setFieldValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const onReveal = props.onReveal;
 
   const handleToggle = useCallback(async () => {
-    const input = inputRef.current;
-    if (!input) return;
-
     if (visible) {
-      // Currently showing -- hide it
+      // Hide — just toggle visibility, value stays in React state
       setVisible(false);
-      input.value = "";
       return;
     }
 
@@ -119,13 +116,14 @@ function PasswordFieldInner({ fp: props }: { fp: FieldRenderProps }) {
       setBusy(false);
       if (realValue != null) {
         setVisible(true);
-        input.value = realValue;
+        setFieldValue(realValue);
+        props.onChange(realValue);
       }
     } else {
       // Fallback: just toggle type (shows whatever is in the input)
       setVisible(true);
     }
-  }, [visible, onReveal]);
+  }, [visible, onReveal, props]);
 
   return (
     <div className="flex">
@@ -133,11 +131,12 @@ function PasswordFieldInner({ fp: props }: { fp: FieldRenderProps }) {
         ref={inputRef}
         className="flex-1 px-3 py-2 border border-[var(--border)] border-r-0 bg-[var(--card)] text-[13px] font-[var(--mono)] transition-all focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] box-border h-[36px] rounded-l-sm placeholder:text-[var(--muted)] placeholder:opacity-60"
         type={visible ? "text" : "password"}
-        defaultValue=""
+        value={fieldValue}
         placeholder={placeholder}
         data-config-key={props.key}
         data-field-type="password"
         onChange={(e) => {
+          setFieldValue(e.target.value);
           props.onChange(e.target.value);
           fireAction(props, "change");
         }}

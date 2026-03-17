@@ -149,6 +149,11 @@ export async function validateCloudBaseUrl(
     return `Cloud base URL "${rawUrl}" points to a blocked local hostname.`;
   }
 
+  // Dev-mode bypass: skip IP-range blocking but keep URL format checks above.
+  if (process.env.NODE_ENV === "development" || process.env.MILADY_DEV) {
+    return null;
+  }
+
   if (isBlockedIp(hostname)) {
     return `Cloud base URL "${rawUrl}" points to a blocked address.`;
   }

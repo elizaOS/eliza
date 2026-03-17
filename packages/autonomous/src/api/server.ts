@@ -2161,9 +2161,7 @@ async function discoverSkills(
   if (runtime) {
     try {
       const service = runtime.getService("AGENT_SKILLS_SERVICE");
-      // eslint-disable-next-line -- runtime service is loosely typed; cast via unknown
-      const svc = service as unknown as
-        | {
+      const svc = service as {
             getLoadedSkills?: () => Array<{
               slug: string;
               name: string;
@@ -2174,8 +2172,7 @@ async function discoverSkills(
             getSkillScanStatus?: (
               slug: string,
             ) => "clean" | "warning" | "critical" | "blocked" | null;
-          }
-        | undefined;
+          } | null;
       if (svc && typeof svc.getLoadedSkills === "function") {
         const loadedSkills = svc.getLoadedSkills();
 
@@ -13070,11 +13067,20 @@ async function handleRequest(
     const pending = state.conversationRestorePromise;
     if (!pending) return;
     try {
-      await pending;
+      const timeout = new Promise<void>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error("Conversation restore timed out after 5000ms"),
+            ),
+          5000,
+        ),
+      );
+      await Promise.race([pending, timeout]);
     } catch {
-      // Restore failures are logged at the source. Routes should continue with
-      // the best available in-memory state instead of surfacing the restore
-      // implementation detail as an API error.
+      // Restore failures (including timeout) are logged at the source.
+      // Routes should continue with the best available in-memory state
+      // instead of surfacing the restore implementation detail as an API error.
     }
   };
 

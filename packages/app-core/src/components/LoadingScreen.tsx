@@ -24,6 +24,7 @@ export function LoadingScreen({
   vrmUrl,
 }: LoadingScreenProps) {
   const [vrmCached, setVrmCached] = useState(false);
+  const [fetchProgress, setFetchProgress] = useState(0);
   const [, setRuntimeElapsedSeconds] = useState(0);
 
   useEffect(() => {
@@ -40,16 +41,45 @@ export function LoadingScreen({
   useEffect(() => {
     if (!vrmUrl) return;
     const controller = new AbortController();
-    fetch(vrmUrl, { signal: controller.signal })
-      .then(() => setVrmCached(true))
-      .catch(() => {
+
+    (async () => {
+      try {
+        const response = await fetch(vrmUrl, { signal: controller.signal });
+        const contentLength = Number(response.headers.get("content-length") || 0);
+
+        if (!contentLength || !response.body) {
+          setVrmCached(true);
+          return;
+        }
+
+        const reader = response.body.getReader();
+        let received = 0;
+
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          received += value.byteLength;
+          setFetchProgress(Math.min(received / contentLength, 1));
+        }
+
+        setVrmCached(true);
+      } catch {
         // Non-blocking — VRM will load normally later.
-      });
+      }
+    })();
+
     return () => controller.abort();
   }, [vrmUrl]);
 
   const meta = PHASE_META[phase];
-  const progress = vrmCached ? Math.max(meta.progress, 80) : meta.progress;
+  let progress: number;
+  if (vrmCached) {
+    progress = Math.max(meta.progress, 80);
+  } else if (fetchProgress > 0) {
+    progress = Math.max(meta.progress, Math.round(55 + fetchProgress * 25));
+  } else {
+    progress = meta.progress;
+  }
   const label = vrmCached && phase !== "ready" ? "Loading avatar" : meta.label;
 
   return (
@@ -64,7 +94,10 @@ export function LoadingScreen({
           <div className="loading-screen__progress-track">
             <div
               className="loading-screen__progress-fill"
-              style={{ width: `${progress}%` }}
+              style={{
+                width: `${progress}%`,
+                transition: "width 1.5s ease-out",
+              }}
             />
           </div>
           <div className="loading-screen__percent">{progress} %</div>

@@ -120,7 +120,7 @@ export function ShellHeaderControls({
     >
       <div className="flex shrink-0 items-center">
         <fieldset
-          className="inline-flex items-center gap-0.5 rounded-xl border border-border/60 bg-transparent p-0.5 shadow-sm dark:border-border/70 dark:bg-transparent"
+          className="inline-flex items-center gap-0.5 rounded-xl border border-border/60 bg-transparent p-0.5 shadow-sm dark:border-border dark:bg-transparent"
           data-testid="ui-shell-toggle"
           aria-label="Switch shell view"
         >

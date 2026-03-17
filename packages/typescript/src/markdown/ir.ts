@@ -910,7 +910,7 @@ export function markdownToIRWithMeta(
 ): { ir: MarkdownIR; hasTables: boolean } {
 	const env: RenderEnv = { listStack: [] };
 	const md = createMarkdownIt(options);
-	const tokens = md.parse(markdown ?? "", env as unknown as object);
+	const tokens = md.parse(markdown ?? "", env as object);
 	if (options.enableSpoilers) {
 		applySpoilerTokens(tokens as MarkdownToken[]);
 	}

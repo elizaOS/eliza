@@ -338,7 +338,7 @@ async function gunzipWithSizeLimit(
 
 /** Read agentId from a Task, accounting for proto vs DB naming. */
 function taskAgentId(t: Task): string | undefined {
-  const rec = t as unknown as Record<string, unknown>;
+  const rec = t as Task & { agent_id?: string };
   return (rec.agentId ?? rec.agent_id) as string | undefined;
 }
 
@@ -780,8 +780,7 @@ function resolveMemoryTableName(mem: Memory): string {
 
   // Fallback: use the "type" field on the memory itself (elizaOS stores it
   // as a top-level field in the DB row, which the proto Memory type inherits).
-  // Access via unknown to satisfy strict type checking.
-  const memType = (mem as unknown as Record<string, unknown>).type;
+  const memType = (mem as Memory & { type?: string }).type;
   if (typeof memType === "string" && memType.length > 0) return memType;
 
   return "messages";
@@ -913,7 +912,7 @@ export async function importAgent(
     );
   }
 
-  const payload = rawPayload as unknown as AgentExportPayload;
+  const payload = parseResult.data as AgentExportPayload;
 
   if (payload.version > EXPORT_VERSION) {
     throw new AgentExportError(

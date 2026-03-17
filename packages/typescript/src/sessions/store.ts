@@ -207,7 +207,7 @@ export function loadSessionStore(
 		if (!entry || typeof entry !== "object") {
 			continue;
 		}
-		const rec = entry as unknown as Record<string, unknown>;
+		const rec = entry as SessionEntry & Record<string, unknown>;
 		if (typeof rec.channel !== "string" && typeof rec.provider === "string") {
 			rec.channel = rec.provider;
 			delete rec.provider;

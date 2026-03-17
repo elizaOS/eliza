@@ -926,6 +926,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // --- Refs for timers ---
   const actionNoticeTimer = useRef<number | null>(null);
+  /** Session-scoped set of notice texts that have been shown with once=true. */
+  const shownOnceNotices = useRef<Set<string>>(new Set());
   const elizaCloudPollInterval = useRef<number | null>(null);
   const elizaCloudLoginPollTimer = useRef<number | null>(null);
   const prevAgentStateRef = useRef<string | null>(null);
@@ -989,7 +991,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       text: string,
       tone: "info" | "success" | "error" = "info",
       ttlMs = 2800,
+      once = false,
     ) => {
+      if (once && shownOnceNotices.current.has(text)) return;
+      if (once) shownOnceNotices.current.add(text);
       setActionNoticeState({ tone, text });
       if (actionNoticeTimer.current != null) {
         window.clearTimeout(actionNoticeTimer.current);
@@ -3092,6 +3097,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
         conversationMessagesRef.current.length > 0
       )
         return;
+
+      // Clean up empty conversations: if the previous conversation has only
+      // system/greeting messages and no user messages, delete it silently.
+      const prevId = activeConversationId;
+      if (prevId && prevId !== id) {
+        const prevMessages = conversationMessagesRef.current;
+        const hasUserMessage = prevMessages.some((m) => m.role === "user");
+        if (!hasUserMessage && prevMessages.length <= 1) {
+          void client.deleteConversation(prevId).catch(() => {});
+          setConversations((prev) => prev.filter((c) => c.id !== prevId));
+          setUnreadConversations((prev) => {
+            const next = new Set(prev);
+            next.delete(prevId);
+            return next;
+          });
+        }
+      }
+
       const previousActive = activeConversationId;
       setActiveConversationId(id);
       activeConversationIdRef.current = id;

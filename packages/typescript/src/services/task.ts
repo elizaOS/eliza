@@ -292,7 +292,7 @@ export class TaskService extends Service {
 			} else if (typeof task.updatedAt === "bigint") {
 				lastRan = Number(task.updatedAt);
 			} else if (task.updatedAt) {
-				lastRan = new Date(task.updatedAt as unknown as string).getTime();
+				lastRan = new Date(String(task.updatedAt)).getTime();
 			} else {
 				lastRan = 0;
 			}
