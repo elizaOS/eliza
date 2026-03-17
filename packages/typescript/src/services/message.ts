@@ -16,6 +16,7 @@ import type {
   ActionResult,
   HandlerCallback,
 } from "../types/components";
+import type { Room } from "../types/environment";
 import type { RunEventPayload } from "../types/events";
 import { EventType } from "../types/events";
 import type { Memory } from "../types/memory";
@@ -23,9 +24,10 @@ import type {
   IMessageService,
   MessageProcessingOptions,
   MessageProcessingResult,
+  ResponseDecision,
 } from "../types/message-service";
 import { ModelType } from "../types/model";
-import type { Content, Media, UUID } from "../types/primitives";
+import type { Content, Media, MentionContext, UUID } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
@@ -759,8 +761,9 @@ export class DefaultMessageService implements IMessageService {
 
       // Save response memory to database (respect DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS).
       const allowedSources = getAllowedMemorySources(runtime);
-      const responseSourceId = typeof responseContent?.metadata?.sourceId === "string" 
-        ? responseContent.metadata.sourceId 
+      const metaSourceId = (responseContent?.metadata as Record<string, unknown> | undefined)?.sourceId;
+      const responseSourceId = typeof metaSourceId === "string"
+        ? metaSourceId
         : "agent_response"; // Use semantic default that can be added to allowlist
       // Agent responses bypass source validation since they're internally generated
       const isSourceAllowed = !allowedSources || allowedSources.includes(responseSourceId) || responseSourceId === "agent_response";
@@ -2359,7 +2362,7 @@ Output ONLY the continuation, starting immediately after the last character abov
    * @param message - The message memory to delete
    * @returns Promise resolving when deletion is complete
    */
-  async deleteMessage(runtime: IAgentRuntime, message: Memory): Promise<void> 
+  async deleteMessage(runtime: IAgentRuntime, message: Memory): Promise<void> {
     if (!message.id) {
       runtime.logger.error(
         { src: "service:message", agentId: runtime.agentId },
@@ -2382,6 +2385,7 @@ Output ONLY the continuation, starting immediately after the last character abov
       { src: "service:message", messageId: message.id },
       "Successfully deleted memory",
     );
+  }
 
   /**
    * Clears all messages from a channel/room.

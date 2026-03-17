@@ -74,8 +74,9 @@ export class TaskService extends Service {
 			name: "BATCHER_DRAIN",
 			execute: async (rt, options) => {
 				const affinityKey = options.affinityKey as string;
-				if (!rt.promptBatcher || !affinityKey) return;
+				if (!rt.promptBatcher || !affinityKey) return undefined;
 				await rt.promptBatcher.drainAffinityGroup(affinityKey);
+				return undefined;
 			},
 		});
 		await service.startTimer();
@@ -109,6 +110,7 @@ export class TaskService extends Service {
 					},
 					"Executing repeating test task",
 				);
+				return undefined;
 			},
 		});
 
@@ -133,6 +135,7 @@ export class TaskService extends Service {
 					},
 					"Executing one-time test task",
 				);
+				return undefined;
 			},
 		});
 

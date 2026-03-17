@@ -382,7 +382,7 @@ export class FollowUpService extends Service {
 						logger.warn(
 							`[FollowUpService] Entity ${targetEntityId} not found for follow-up`,
 						);
-						return;
+						return undefined;
 					}
 
 					// Create a follow-up memory/reminder
@@ -433,6 +433,7 @@ export class FollowUpService extends Service {
 					);
 					throw error;
 				}
+				return undefined;
 			},
 		};
 
