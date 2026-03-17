@@ -40,25 +40,25 @@ class TestAsyncEmbedding(unittest.IsolatedAsyncioTestCase):
 
         await service.stop()
 
-    async def test_handle_embedding_request_deduplicates(self):
-        """Test that _handle_embedding_request deduplicates by memory id."""
+    async def test_embed_caching_different_texts(self):
         runtime = MagicMock()
         runtime.agent_id = uuid.uuid4()
         runtime.logger = MagicMock()
-        runtime.use_model = AsyncMock(return_value=[0.1] * 384)
+
+        async def use_model(model_type, **kwargs):
+            if model_type == ModelType.TEXT_EMBEDDING:
+                return [0.1] * 384
+            return None
+
+        runtime.use_model = AsyncMock(side_effect=use_model)
 
         service = await EmbeddingService.start(runtime)
 
-        from types import SimpleNamespace
-
-        payload = SimpleNamespace(extra={"memory": {"id": "memory-1"}})
-
-        await service._handle_embedding_request(payload)
-        await service._handle_embedding_request(payload)
-
-        # Should only queue once due to deduplication
-        self.assertEqual(service._queue.qsize(), 1)
-        self.assertEqual(service._pending_payload_keys, {"memory-1"})
+        result1 = await service.embed("text one")
+        result2 = await service.embed("text two")
+        self.assertEqual(len(result1), 384)
+        self.assertEqual(len(result2), 384)
+        self.assertEqual(runtime.use_model.await_count, 2)
 
         await service.stop()
 

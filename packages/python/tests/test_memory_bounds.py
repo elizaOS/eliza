@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -48,22 +47,16 @@ async def test_embedding_services_use_lru_eviction() -> None:
 
 
 @pytest.mark.asyncio
-async def test_bootstrap_embedding_queue_deduplicates_and_clears_on_stop() -> None:
+async def test_bootstrap_embedding_cache_clears_on_stop() -> None:
     service = BootstrapEmbeddingService()
     service._runtime = _mock_runtime()
 
-    payload = SimpleNamespace(extra={"memory": {"id": "memory-1"}})
-
-    await service._handle_embedding_request(payload)
-    await service._handle_embedding_request(payload)
-
-    assert service._queue.qsize() == 1
-    assert service._pending_payload_keys == {"memory-1"}
+    await service.embed("hello")
+    assert len(service._cache) == 1
 
     await service.stop()
 
-    assert service._queue.qsize() == 0
-    assert service._pending_payload_keys == set()
+    assert len(service._cache) == 0
 
 
 @pytest.mark.asyncio
