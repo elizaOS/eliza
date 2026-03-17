@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@browserbasehq/stagehand": "^3.0.8",
-    "playwright": "^1.49.1",
+    "playwright": "^1.58.2",
     "ws": "^8.18.0",
     "dotenv": "^16.4.5",
     "zod": "^4.3.6"
@@ -27,11 +27,11 @@
     "@types/ws": "^8.5.13",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3",
-    "tar": "^6.2.0",
+    "tar": "^7.5.11",
     "unzipper": "^0.10.14",
     "postject": "^1.0.0-alpha.6",
-    "esbuild": "^0.20.0",
-    "vitest": "^3.1.0",
+    "esbuild": "^0.25.0",
+    "vitest": "^4.1.0",
     "@vitest/coverage-v8": "^3.1.0"
   },
   "engines": {

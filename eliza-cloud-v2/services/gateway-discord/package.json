@@ -20,8 +20,8 @@
   },
   "dependencies": {
     "discord.js": "14.25.1",
-    "hono": "4.10.8",
-    "@hono/node-server": "1.19.7",
+    "hono": "4.12.7",
+    "@hono/node-server": "1.19.10",
     "@upstash/redis": "1.35.8",
     "@vercel/blob": "^0.25.0"
   },
