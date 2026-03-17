@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
+import type { ReactTestRenderer } from "react-test-renderer";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -39,7 +40,7 @@ vi.mock("./avatar/VrmViewer", () => ({
 import { ChatAvatar } from "./ChatAvatar";
 
 describe("ChatAvatar", () => {
-  let renderer: TestRenderer.ReactTestRenderer | null = null;
+  let renderer: ReactTestRenderer | null = null;
 
   beforeEach(() => {
     testState.viewerProps = null;

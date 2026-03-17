@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import React from "react";
+import type { ReactTestRenderer } from "react-test-renderer";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -86,7 +87,7 @@ describe("OnboardingWizard", () => {
       t: (key: string) => key,
     });
 
-    let tree: TestRenderer.ReactTestRenderer | undefined;
+    let tree: ReactTestRenderer | undefined;
     await act(async () => {
       tree = TestRenderer.create(<OnboardingWizard />);
     });
