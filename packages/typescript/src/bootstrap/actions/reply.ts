@@ -107,9 +107,9 @@ export const replyAction = {
 
     // Safely check if state has all required providers
     const hasAllRequiredProviders = state?.data?.providers != null &&
-      Array.isArray(state.data.providers) &&
+      typeof state.data.providers === 'object' &&
       requiredProviders.every(provider => 
-        state.data.providers.includes(provider)
+        provider in state.data.providers
       );
     
     // Always refresh RECENT_MESSAGES and ACTION_STATE in multi-action chains
