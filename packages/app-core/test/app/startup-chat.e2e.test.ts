@@ -11,9 +11,9 @@ const { mockUseApp } = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/app-core/state", async () => {
-  const actual = await vi.importActual<typeof import("@elizaos/app-core/state")>(
-    "@elizaos/app-core/state",
-  );
+  const actual = await vi.importActual<
+    typeof import("@elizaos/app-core/state")
+  >("@elizaos/app-core/state");
   return {
     ...actual,
     useApp: () => mockUseApp(),

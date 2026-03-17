@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let files: Vec<PathBuf> = fs::read_dir(&bundled_proto_dir)?
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.path())
-            .filter(|path| path.extension().map_or(false, |ext| ext == "proto"))
+            .filter(|path| path.extension().is_some_and(|ext| ext == "proto"))
             .collect();
         (files, PathBuf::from("proto"))
     } else if proto_dir.exists() {
@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let files: Vec<PathBuf> = fs::read_dir(&proto_dir)?
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.path())
-            .filter(|path| path.extension().map_or(false, |ext| ext == "proto"))
+            .filter(|path| path.extension().is_some_and(|ext| ext == "proto"))
             .collect();
         (files, schemas_dir.clone())
     } else {

@@ -14,9 +14,9 @@ const { mockUseBugReport, mockClient } = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/app-core/hooks", async () => {
-  const actual = await vi.importActual<typeof import("@elizaos/app-core/hooks")>(
-    "@elizaos/app-core/hooks",
-  );
+  const actual = await vi.importActual<
+    typeof import("@elizaos/app-core/hooks")
+  >("@elizaos/app-core/hooks");
   return {
     ...actual,
     useBugReport: () => mockUseBugReport(),

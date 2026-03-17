@@ -503,9 +503,10 @@ async function extractAgentData(
   if (runtime.character) {
     // Clone and strip secrets/sensitive fields
     const { secrets, ...safeChar } = runtime.character;
-    characterConfig = Object.fromEntries(
-      Object.entries(safeChar),
-    ) as Record<string, unknown>;
+    characterConfig = Object.fromEntries(Object.entries(safeChar)) as Record<
+      string,
+      unknown
+    >;
     logger.info(
       `[agent-export] Captured runtime character config (${Object.keys(safeChar).length} fields)`,
     );

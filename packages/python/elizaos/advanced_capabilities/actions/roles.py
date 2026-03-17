@@ -5,10 +5,10 @@ from enum import Enum
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from elizaos.utils.xml import parse_key_value_xml
 from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.prompts import UPDATE_ROLE_TEMPLATE
 from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
+from elizaos.utils.xml import parse_key_value_xml
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State

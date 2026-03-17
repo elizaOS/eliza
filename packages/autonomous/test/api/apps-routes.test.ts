@@ -1,14 +1,14 @@
-import { describe, test, expect, vi } from "vitest";
-import {
-  createMockIncomingMessage,
-  createMockHttpResponse,
-} from "../../src/test-support/test-helpers";
+import { describe, expect, test, vi } from "vitest";
 import type {
-  AppsRouteContext,
   AppManagerLike,
+  AppsRouteContext,
   PluginManagerLike,
 } from "../../src/api/apps-routes";
 import { handleAppsRoutes } from "../../src/api/apps-routes";
+import {
+  createMockHttpResponse,
+  createMockIncomingMessage,
+} from "../../src/test-support/test-helpers";
 
 function buildPluginManager(
   overrides: Partial<PluginManagerLike> = {},
@@ -67,9 +67,7 @@ function buildAppManager(
   };
 }
 
-function buildCtx(
-  overrides: Partial<AppsRouteContext> = {},
-): AppsRouteContext {
+function buildCtx(overrides: Partial<AppsRouteContext> = {}): AppsRouteContext {
   const { res } = createMockHttpResponse();
   return {
     req: createMockIncomingMessage({ method: "GET", url: "/" }),

@@ -850,9 +850,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       enabledRef.current = false;
 
       if (sttBackendRef.current === "talkmode") {
-        await getTalkModePlugin().stop().catch(() => {
-          /* ignore */
-        });
+        await getTalkModePlugin()
+          .stop()
+          .catch(() => {
+            /* ignore */
+          });
         await new Promise((resolve) =>
           window.setTimeout(resolve, TALKMODE_STOP_SETTLE_MS),
         );

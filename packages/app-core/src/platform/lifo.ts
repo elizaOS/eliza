@@ -77,7 +77,12 @@ function parseLocationParams(locationLike: LocationLike): {
 export function isLifoPopoutValue(value: string | null | undefined): boolean {
   if (typeof value !== "string") return false;
   const normalized = value.trim().toLowerCase();
-  return normalized === "" || normalized === "1" || normalized === "true" || normalized === "lifo";
+  return (
+    normalized === "" ||
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "lifo"
+  );
 }
 
 export function getPopoutValueFromLocation(
@@ -87,7 +92,9 @@ export function getPopoutValueFromLocation(
   return search.get("popout") ?? hash.get("popout");
 }
 
-export function isLifoPopoutModeAtLocation(locationLike: LocationLike): boolean {
+export function isLifoPopoutModeAtLocation(
+  locationLike: LocationLike,
+): boolean {
   return isLifoPopoutValue(getPopoutValueFromLocation(locationLike));
 }
 
@@ -121,7 +128,9 @@ export function generateLifoSessionId(): string {
       bytes[index] = Math.floor(Math.random() * 256);
     }
   }
-  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 export function getLifoSyncChannelName(sessionId: string | null): string {
@@ -205,7 +214,8 @@ export async function createLifoRuntime(
           options?.onStdout?.("Command dispatched to sandbox runtime.\n");
           return { exitCode: 0 };
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message =
+            error instanceof Error ? error.message : String(error);
           options?.onStderr?.(`${message}\n`);
           throw error;
         }

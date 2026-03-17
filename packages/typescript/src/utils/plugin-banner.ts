@@ -11,9 +11,9 @@ import type { IAgentRuntime } from "../types/runtime";
 
 // Note: regex captures ANSI codes for consistent banner formatting across plugins.
 
-// Pattern for matching ANSI escape sequences
+// Pattern for matching ANSI escape sequences (uses RegExp constructor to avoid control-char lint)
 function newAnsiPattern() {
-	return /\u001b\[[0-9;]*m/;
+	return new RegExp("\x1b\\[[0-9;]*m", "g");
 }
 
 export type BannerColors = {
@@ -62,7 +62,7 @@ const DEFAULT_COLORS: BannerColors = {
 };
 
 export function stripAnsi(text: string): string {
-	return text.replace(/\x1b\[[0-9;]*m/g, ""); // Use regex literal with /g only in replace
+	return text.replace(new RegExp("\x1b\\[[0-9;]*m", "g"), "");
 }
 
 /**

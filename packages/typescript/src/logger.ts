@@ -340,13 +340,17 @@ function getFs(): typeof import("node:fs") | null {
 
 /**
  * Strip ANSI escape codes from a string for plain-text logging.
+ * Uses RegExp constructor to avoid control-character-in-regex lint; the pattern
+ * must match ANSI escape sequences (\x1B = ESC, \x07 = BEL).
  */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: control chars required for ANSI escape matching
 function stripAnsi(str: string): string {
-	return str.replace(
-		/\x1B(?:\[[\x20-\x3F]*[\x40-\x7E]|\].*?(?:\x07|\x1B\\)|\(B)/g,
-		"",
+	const ESC = "\x1b";
+	const BEL = "\x07";
+	const re = new RegExp(
+		`${ESC}(?:\\[[\\x20-\\x3F]*[\\x40-\\x7E]|\\].*?(?:${BEL}|${ESC}\\\\|\\\\(B))`,
+		"g",
 	);
+	return str.replace(re, "");
 }
 
 /**

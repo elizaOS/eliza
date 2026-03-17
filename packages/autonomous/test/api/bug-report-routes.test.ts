@@ -1,8 +1,4 @@
-import { describe, test, expect, vi } from "vitest";
-import {
-  createMockIncomingMessage,
-  createMockHttpResponse,
-} from "../../src/test-support/test-helpers";
+import { describe, expect, test, vi } from "vitest";
 import {
   handleBugReportRoutes,
   rateLimitBugReport,
@@ -10,6 +6,10 @@ import {
   sanitize,
 } from "../../src/api/bug-report-routes";
 import type { RouteRequestContext } from "../../src/api/route-helpers";
+import {
+  createMockHttpResponse,
+  createMockIncomingMessage,
+} from "../../src/test-support/test-helpers";
 
 function buildCtx(
   overrides: Partial<RouteRequestContext> = {},

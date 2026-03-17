@@ -1,10 +1,10 @@
-import { describe, test, expect, vi } from "vitest";
-import {
-  createMockIncomingMessage,
-  createMockHttpResponse,
-} from "../../src/test-support/test-helpers";
-import { handleModelsRoutes } from "../../src/api/models-routes";
+import { describe, expect, test, vi } from "vitest";
 import type { ModelsRouteContext } from "../../src/api/models-routes";
+import { handleModelsRoutes } from "../../src/api/models-routes";
+import {
+  createMockHttpResponse,
+  createMockIncomingMessage,
+} from "../../src/test-support/test-helpers";
 
 function buildCtx(
   method: string,
@@ -24,7 +24,9 @@ function buildCtx(
       r.writeHead(status);
       r.end(JSON.stringify(data));
     }),
-    providerCachePath: vi.fn((provider: string) => `/tmp/cache/${provider}.json`),
+    providerCachePath: vi.fn(
+      (provider: string) => `/tmp/cache/${provider}.json`,
+    ),
     getOrFetchProvider: vi.fn(async (provider: string) => [
       { id: `${provider}/model-a`, name: "Model A" },
     ]),

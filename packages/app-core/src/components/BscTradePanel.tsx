@@ -545,5 +545,5 @@ export function TradePanel({
   );
 }
 
-export { TradePanel as BscTradePanel };
 export type { TradePanelProps as BscTradePanelProps };
+export { TradePanel as BscTradePanel };

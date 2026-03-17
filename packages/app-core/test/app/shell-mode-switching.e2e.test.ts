@@ -49,9 +49,9 @@ vi.mock("@elizaos/app-core/platform", async () => {
 /* ── Mock every leaf component ────────────────────────────────────── */
 
 vi.mock("@elizaos/app-core/state", async () => {
-  const actual = await vi.importActual<typeof import("@elizaos/app-core/state")>(
-    "@elizaos/app-core/state",
-  );
+  const actual = await vi.importActual<
+    typeof import("@elizaos/app-core/state")
+  >("@elizaos/app-core/state");
   return {
     ...actual,
     useApp: () => mockUseApp(),
@@ -308,9 +308,9 @@ vi.mock("../../../packages/app-core/src/components/LifoSandboxView", () => ({
 }));
 
 vi.mock("@elizaos/app-core/hooks", async () => {
-  const actual = await vi.importActual<typeof import("@elizaos/app-core/hooks")>(
-    "@elizaos/app-core/hooks",
-  );
+  const actual = await vi.importActual<
+    typeof import("@elizaos/app-core/hooks")
+  >("@elizaos/app-core/hooks");
   return {
     ...actual,
     useContextMenu: () => ({

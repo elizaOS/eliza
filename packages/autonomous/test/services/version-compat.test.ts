@@ -1,10 +1,10 @@
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
-  parseSemver,
-  compareSemver,
-  versionSatisfies,
-  diagnoseNoAIProvider,
   AI_PROVIDER_PLUGINS,
+  compareSemver,
+  diagnoseNoAIProvider,
+  parseSemver,
+  versionSatisfies,
 } from "../../src/services/version-compat";
 
 describe("parseSemver", () => {
@@ -17,9 +17,7 @@ describe("parseSemver", () => {
   });
 
   test("parses a nightly pre-release", () => {
-    expect(parseSemver("2.0.0-nightly.20260208")).toEqual([
-      2, 0, 0, 20260208,
-    ]);
+    expect(parseSemver("2.0.0-nightly.20260208")).toEqual([2, 0, 0, 20260208]);
   });
 
   test("returns null for unparseable version", () => {
@@ -95,23 +93,29 @@ describe("diagnoseNoAIProvider", () => {
   });
 
   test("detects version skew signature in failed plugins", () => {
-    const result = diagnoseNoAIProvider([], [
-      {
-        name: "@elizaos/plugin-openai",
-        error: "does not provide an export named 'MAX_EMBEDDING_TOKENS'",
-      },
-    ]);
+    const result = diagnoseNoAIProvider(
+      [],
+      [
+        {
+          name: "@elizaos/plugin-openai",
+          error: "does not provide an export named 'MAX_EMBEDDING_TOKENS'",
+        },
+      ],
+    );
     expect(result).toContain("Version skew detected");
     expect(result).toContain("@elizaos/plugin-openai");
   });
 
   test("returns generic failure message for non-version-skew errors", () => {
-    const result = diagnoseNoAIProvider([], [
-      {
-        name: "@elizaos/plugin-openai",
-        error: "Connection refused",
-      },
-    ]);
+    const result = diagnoseNoAIProvider(
+      [],
+      [
+        {
+          name: "@elizaos/plugin-openai",
+          error: "Connection refused",
+        },
+      ],
+    );
     expect(result).toContain("All AI provider plugins failed to load");
     expect(result).toContain("Connection refused");
   });

@@ -3,23 +3,25 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
+import { isIOS, isLifoPopoutValue, isNative } from "@elizaos/app-core/platform";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   AdvancedPageView,
   AppsPageView,
   AvatarLoader,
   CharacterView,
   ChatView,
-  ConnectionFailedBanner,
-  ConversationsSidebar,
-  ConnectorsPageView,
   CompanionShell,
   CompanionView,
+  ConnectionFailedBanner,
+  ConnectorsPageView,
+  ConversationsSidebar,
   CustomActionEditor,
   CustomActionsPanel,
   ErrorBoundary,
   GameViewOverlay,
-  HeartbeatsView,
   Header,
+  HeartbeatsView,
   InventoryView,
   KnowledgeView,
   OnboardingWizard,
@@ -40,9 +42,7 @@ import {
 } from "./hooks";
 import type { Tab } from "./navigation";
 import { APPS_ENABLED, COMPANION_ENABLED } from "./navigation";
-import { isIOS, isLifoPopoutValue, isNative } from "@elizaos/app-core/platform";
 import { useApp } from "./state";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 const CHAT_MOBILE_BREAKPOINT_PX = 1024;
 

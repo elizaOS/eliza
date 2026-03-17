@@ -28,16 +28,7 @@ export interface AgentLifecycleRouteContext
 export async function handleAgentLifecycleRoutes(
   ctx: AgentLifecycleRouteContext,
 ): Promise<boolean> {
-  const {
-    req,
-    res,
-    method,
-    pathname,
-    state,
-    error,
-    json,
-    readJsonBody,
-  } = ctx;
+  const { req, res, method, pathname, state, error, json, readJsonBody } = ctx;
   const runtime = state.runtime as
     | (AgentRuntime & { enableAutonomy?: boolean })
     | null;

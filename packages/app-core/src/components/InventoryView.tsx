@@ -8,7 +8,7 @@
 import { useApp } from "@elizaos/app-core/state";
 import { useCallback, useState } from "react";
 import { TradePanel } from "./BscTradePanel";
-import { CHAIN_CONFIGS, resolveChainKey, type ChainKey } from "./chainConfig";
+import { CHAIN_CONFIGS, type ChainKey, resolveChainKey } from "./chainConfig";
 import {
   BSC_GAS_THRESHOLD,
   loadTrackedBscTokens,

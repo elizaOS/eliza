@@ -74,8 +74,8 @@ vi.mock("@elizaos/app-core/api", () => ({
   SkillScanReportSummary: {},
 }));
 
-import { AppProvider, useApp } from "@elizaos/app-core/state";
 import type { AppState } from "@elizaos/app-core/state";
+import { AppProvider, useApp } from "@elizaos/app-core/state";
 
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;

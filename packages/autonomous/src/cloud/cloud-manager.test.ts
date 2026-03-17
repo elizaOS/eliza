@@ -99,9 +99,9 @@ describe("CloudManager", () => {
         cfg({ baseUrl: "https://test.elizacloud.ai/api/v1" }),
       );
       await mgr.init();
-      expect((mgr.getClient() as unknown as Record<string, string>)._baseUrl).toBe(
-        "https://test.elizacloud.ai",
-      );
+      expect(
+        (mgr.getClient() as unknown as Record<string, string>)._baseUrl,
+      ).toBe("https://test.elizacloud.ai");
     });
 
     it("strips trailing slashes", async () => {
@@ -109,17 +109,17 @@ describe("CloudManager", () => {
         cfg({ baseUrl: "https://test.elizacloud.ai///" }),
       );
       await mgr.init();
-      expect((mgr.getClient() as unknown as Record<string, string>)._baseUrl).toBe(
-        "https://test.elizacloud.ai",
-      );
+      expect(
+        (mgr.getClient() as unknown as Record<string, string>)._baseUrl,
+      ).toBe("https://test.elizacloud.ai");
     });
 
     it("defaults to elizacloud.ai when no baseUrl", async () => {
       const mgr = new CloudManager(cfg({ baseUrl: undefined }));
       await mgr.init();
-      expect((mgr.getClient() as unknown as Record<string, string>)._baseUrl).toBe(
-        "https://www.elizacloud.ai",
-      );
+      expect(
+        (mgr.getClient() as unknown as Record<string, string>)._baseUrl,
+      ).toBe("https://www.elizacloud.ai");
     });
   });
 

@@ -6,11 +6,11 @@
  *   2. Secrets (modal)
  */
 
-import { useCallback, useEffect, useState } from "react";
 import {
   WALLET_RPC_PROVIDER_OPTIONS,
   type WalletRpcSelections,
 } from "@elizaos/autonomous/contracts/wallet";
+import { useCallback, useEffect, useState } from "react";
 import { client } from "../api";
 import {
   ConfigRenderer,

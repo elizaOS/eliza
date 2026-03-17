@@ -16,10 +16,7 @@ import {
   type VoiceMode,
   type VoiceProvider,
 } from "../api";
-import {
-  getSwabblePlugin,
-  type SwabbleConfig,
-} from "../bridge/native-plugins";
+import { getSwabblePlugin, type SwabbleConfig } from "../bridge/native-plugins";
 import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../events";
 import { useTimeout } from "../hooks";
 import { useApp } from "../state";
@@ -165,7 +162,9 @@ function WakeWordSection({
         await getSwabblePlugin().stop();
         setEnabled(false);
       } else {
-        const result = await getSwabblePlugin().start({ config: buildConfig() });
+        const result = await getSwabblePlugin().start({
+          config: buildConfig(),
+        });
         if (result.started) setEnabled(true);
       }
     } catch {

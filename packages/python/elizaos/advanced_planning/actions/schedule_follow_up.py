@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID as StdUUID
 
-from elizaos.utils.xml import parse_key_value_xml
 from elizaos.deterministic import get_prompt_reference_datetime
 from elizaos.generated.spec_helpers import require_action_spec
 from elizaos.prompts import SCHEDULE_FOLLOW_UP_TEMPLATE
@@ -16,6 +15,7 @@ from elizaos.types import (
     Content,
     ModelType,
 )
+from elizaos.utils.xml import parse_key_value_xml
 
 if TYPE_CHECKING:
     from elizaos.types import (

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { MiladyConfig } from "../../src/config/config";
 import {
   handleWalletRoutes,
   type WalletRouteDependencies,
 } from "../../src/api/wallet-routes";
+import type { MiladyConfig } from "../../src/config/config";
 
 const ENV_KEYS = [
   "ALCHEMY_API_KEY",

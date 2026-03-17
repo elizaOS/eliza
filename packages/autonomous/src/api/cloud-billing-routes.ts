@@ -24,7 +24,9 @@ function resolveCloudBaseUrl(config: CloudProxyConfigLike): string {
   return normalizeCloudSiteUrl(config.cloud?.baseUrl);
 }
 
-function buildAuthHeaders(config: CloudProxyConfigLike): Record<string, string> {
+function buildAuthHeaders(
+  config: CloudProxyConfigLike,
+): Record<string, string> {
   const serviceKey = config.cloud?.serviceKey?.trim();
   const apiKey = config.cloud?.apiKey?.trim();
 

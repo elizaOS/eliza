@@ -14,7 +14,9 @@ Commands:
 `);
 }
 
-export async function runAutonomousCli(argv: string[] = process.argv): Promise<void> {
+export async function runAutonomousCli(
+  argv: string[] = process.argv,
+): Promise<void> {
   const command = argv[2] ?? "serve";
 
   if (command === "--help" || command === "-h" || command === "help") {

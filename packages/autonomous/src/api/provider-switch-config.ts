@@ -4,6 +4,7 @@ import {
 } from "@elizaos/autonomous/auth";
 import type { SubscriptionProvider } from "../auth/types";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types";
+import type { MiladyConfig } from "../config/types.milady";
 import {
   getOnboardingProviderOption,
   isCloudManagedConnection,
@@ -13,7 +14,6 @@ import {
   type OnboardingConnection,
   type OnboardingLocalProviderId,
 } from "../contracts/onboarding";
-import type { MiladyConfig } from "../config/types.milady";
 
 const REDACTED_SECRET = "[REDACTED]";
 
