@@ -15,9 +15,9 @@ import {
   formatPlan,
   generatePlanId,
   generateTaskId,
-  type Plan,
   PLAN_SOURCE,
   PLUGIN_PLANS_TABLE,
+  type Plan,
   PlanStatus,
   type Task,
   TaskStatus,
@@ -158,7 +158,9 @@ User request: "${content}"`;
       const memoryEntry: Memory = {
         agentId: runtime.agentId,
         roomId: message.roomId,
-        entityId: (message as Memory & { entityId?: string; userId?: string }).entityId ?? (message as { userId?: string }).userId,
+        entityId:
+          (message as Memory & { entityId?: string; userId?: string }).entityId ??
+          (message as { userId?: string }).userId,
         content: {
           text: encodePlan(plan),
           source: PLAN_SOURCE,

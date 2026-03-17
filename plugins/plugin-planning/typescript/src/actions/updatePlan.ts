@@ -120,7 +120,10 @@ Return ONLY: {"index": <number>}`;
         const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: matchPrompt });
         if (response) {
           try {
-            const cleaned = response.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+            const cleaned = response
+              .replace(/^```(?:json)?\n?/, "")
+              .replace(/\n?```$/, "")
+              .trim();
             const match: { index: number } = JSON.parse(cleaned);
             if (match.index >= 0 && match.index < planMemories.length) {
               targetMemory = planMemories[match.index];
@@ -158,7 +161,10 @@ Return ONLY a JSON object with fields to change (omit unchanged fields):
         const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: updatePrompt });
         if (response) {
           try {
-            const cleaned = response.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+            const cleaned = response
+              .replace(/^```(?:json)?\n?/, "")
+              .replace(/\n?```$/, "")
+              .trim();
             const updates: { title?: string; description?: string; status?: string } =
               JSON.parse(cleaned);
             if (updates.title) targetPlan.title = updates.title;

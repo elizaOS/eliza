@@ -93,7 +93,9 @@ const createMockDatabaseAdapter = (): IDatabaseAdapter =>
     deleteRun: vi.fn().mockResolvedValue(undefined),
     getAgentRuns: vi.fn().mockResolvedValue([]),
     getCurrentRunSummary: vi.fn().mockResolvedValue(null),
-    getAgentRunSummaries: vi.fn().mockResolvedValue({ runs: [], totalCount: 0 }),
+    getAgentRunSummaries: vi
+      .fn()
+      .mockResolvedValue({ runs: [], totalCount: 0 }),
     getAgentById: vi.fn().mockResolvedValue(null),
     setSettingsByAgentId: vi.fn().mockResolvedValue(undefined),
     getSettingsByAgentId: vi.fn().mockResolvedValue(null),

@@ -1,7 +1,13 @@
 import { v4 as uuidv4 } from "uuid";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
-import type { Agent, Character, Entity, IDatabaseAdapter, UUID } from "../types";
+import type {
+  Agent,
+  Character,
+  Entity,
+  IDatabaseAdapter,
+  UUID,
+} from "../types";
 
 const stringToUuid = (id: string): UUID => id as UUID;
 
@@ -53,41 +59,47 @@ describe("Agent UUID Identification", () => {
       getAgents: vi.fn().mockImplementation(async () => {
         return Array.from(agentStore.values());
       }),
-      createAgents: vi.fn().mockImplementation(async (agents: Partial<Agent>[]) => {
-        const ids: UUID[] = [];
-        for (const agent of agents) {
-          if (!agent.id) continue;
-          const rawBio = agent.bio;
-          const normalizedBio = Array.isArray(rawBio)
-            ? rawBio
-            : [rawBio ?? "An AI agent"];
-          const fullAgent: Agent = {
-            ...baseCharacterDefaults,
-            id: agent.id,
-            name: agent.name || "Unknown",
-            username: agent.username,
-            bio: normalizedBio,
-            createdAt: agent.createdAt || Date.now(),
-            updatedAt: agent.updatedAt || Date.now(),
-          };
-          agentStore.set(agent.id, fullAgent);
-          ids.push(agent.id);
-        }
-        return ids;
-      }),
-      upsertAgents: vi.fn().mockImplementation(async (agents: Partial<Agent>[]) => {
-        for (const agent of agents) {
-          if (agent.id) {
-            agentStore.set(agent.id, { ...baseCharacterDefaults, ...agent, id: agent.id } as Agent);
+      createAgents: vi
+        .fn()
+        .mockImplementation(async (agents: Partial<Agent>[]) => {
+          const ids: UUID[] = [];
+          for (const agent of agents) {
+            if (!agent.id) continue;
+            const rawBio = agent.bio;
+            const normalizedBio = Array.isArray(rawBio)
+              ? rawBio
+              : [rawBio ?? "An AI agent"];
+            const fullAgent: Agent = {
+              ...baseCharacterDefaults,
+              id: agent.id,
+              name: agent.name || "Unknown",
+              username: agent.username,
+              bio: normalizedBio,
+              createdAt: agent.createdAt || Date.now(),
+              updatedAt: agent.updatedAt || Date.now(),
+            };
+            agentStore.set(agent.id, fullAgent);
+            ids.push(agent.id);
           }
-        }
-      }),
+          return ids;
+        }),
+      upsertAgents: vi
+        .fn()
+        .mockImplementation(async (agents: Partial<Agent>[]) => {
+          for (const agent of agents) {
+            if (agent.id) {
+              agentStore.set(agent.id, {
+                ...baseCharacterDefaults,
+                ...agent,
+                id: agent.id,
+              } as Agent);
+            }
+          }
+        }),
       updateAgents: vi
         .fn()
         .mockImplementation(
-          async (
-            updates: Array<{ agentId: UUID; agent: Partial<Agent> }>,
-          ) => {
+          async (updates: Array<{ agentId: UUID; agent: Partial<Agent> }>) => {
             for (const { agentId, agent: updates2 } of updates) {
               const existing = agentStore.get(agentId);
               if (existing) {
@@ -119,9 +131,11 @@ describe("Agent UUID Identification", () => {
             metadata: {},
           }));
         }),
-      createEntities: vi.fn().mockImplementation(async (entities: Entity[]) =>
-        entities.map((e) => e.id ?? (uuidv4() as UUID)),
-      ),
+      createEntities: vi
+        .fn()
+        .mockImplementation(async (entities: Entity[]) =>
+          entities.map((e) => e.id ?? (uuidv4() as UUID)),
+        ),
       getMemories: vi.fn().mockResolvedValue([]),
       getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
       getMemoriesByIds: vi.fn().mockResolvedValue([]),
@@ -138,8 +152,10 @@ describe("Agent UUID Identification", () => {
       deleteRooms: vi.fn().mockResolvedValue(undefined),
       getRoomsForParticipant: vi.fn().mockResolvedValue([]),
       getRoomsForParticipants: vi.fn().mockResolvedValue([]),
-    createRoomParticipants: vi.fn().mockImplementation(async (entityIds: UUID[]) => entityIds),
-    deleteParticipants: vi.fn().mockResolvedValue(true),
+      createRoomParticipants: vi
+        .fn()
+        .mockImplementation(async (entityIds: UUID[]) => entityIds),
+      deleteParticipants: vi.fn().mockResolvedValue(true),
       getParticipantsForEntity: vi.fn().mockResolvedValue([]),
       getParticipantsForRoom: vi.fn().mockResolvedValue([]),
       getParticipantsForRooms: vi.fn().mockResolvedValue([]),
@@ -188,7 +204,9 @@ describe("Agent UUID Identification", () => {
       deletePairingRequests: vi.fn().mockResolvedValue(undefined),
       createPairingAllowlistEntries: vi.fn().mockResolvedValue([]),
       deletePairingAllowlistEntries: vi.fn().mockResolvedValue(undefined),
-      getAgentRunSummaries: vi.fn().mockResolvedValue({ runs: [], totalCount: 0 }),
+      getAgentRunSummaries: vi
+        .fn()
+        .mockResolvedValue({ runs: [], totalCount: 0 }),
       deleteWorlds: vi.fn().mockResolvedValue(undefined),
       deleteRoomsByWorldId: vi.fn().mockResolvedValue(undefined),
       getMemoriesByWorldId: vi.fn().mockResolvedValue([]),

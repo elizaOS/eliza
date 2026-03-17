@@ -1,11 +1,11 @@
 import {
   ChannelType,
+  createUniqueUuid,
   EventType,
   type IAgentRuntime,
+  logger,
   type Memory,
   type UUID,
-  createUniqueUuid,
-  logger,
 } from "@elizaos/core";
 import type * as lark from "@larksuiteoapi/node-sdk";
 import { MAX_MESSAGE_LENGTH } from "./constants";

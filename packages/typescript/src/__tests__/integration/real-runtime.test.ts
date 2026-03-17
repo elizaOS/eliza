@@ -45,8 +45,13 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
     isReady: vi.fn().mockResolvedValue(true),
 
     // Agent methods
-    getAgentsByIds: vi.fn(async (ids: UUID[]) =>
-      ids.map((id) => agents.get(String(id))).filter((a): a is Partial<Agent> => a != null && a.id != null) as Agent[],
+    getAgentsByIds: vi.fn(
+      async (ids: UUID[]) =>
+        ids
+          .map((id) => agents.get(String(id)))
+          .filter(
+            (a): a is Partial<Agent> => a != null && a.id != null,
+          ) as Agent[],
     ),
     getAgents: vi.fn(async () => Array.from(agents.values())),
     createAgents: vi.fn(async (agentsToCreate: Partial<Agent>[]) => {
@@ -85,15 +90,19 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
     getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
     getCachedEmbeddings: vi.fn().mockResolvedValue([]),
     searchMemories: vi.fn().mockResolvedValue([]),
-    createMemories: vi.fn(async (batch: Array<{ memory: Memory; tableName: string; unique?: boolean }>) => {
-      const ids: UUID[] = [];
-      for (const { memory } of batch) {
-        const id = memory.id || (stringToUuid(uuidv4()) as UUID);
-        memories.set(id, { ...memory, id });
-        ids.push(id);
-      }
-      return ids;
-    }),
+    createMemories: vi.fn(
+      async (
+        batch: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+      ) => {
+        const ids: UUID[] = [];
+        for (const { memory } of batch) {
+          const id = memory.id || (stringToUuid(uuidv4()) as UUID);
+          memories.set(id, { ...memory, id });
+          ids.push(id);
+        }
+        return ids;
+      },
+    ),
     updateMemories: vi.fn().mockResolvedValue([true]),
     deleteMemories: vi.fn(async (ids: UUID[]) => {
       for (const id of ids) {
@@ -226,8 +235,9 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
     }),
     isRoomParticipant: vi.fn().mockResolvedValue(false),
     getParticipantUserState: vi.fn().mockResolvedValue(null),
-    getParticipantUserStates: vi.fn(async (pairs: Array<{ roomId: UUID; entityId: UUID }>) =>
-      pairs.map(() => null),
+    getParticipantUserStates: vi.fn(
+      async (pairs: Array<{ roomId: UUID; entityId: UUID }>) =>
+        pairs.map(() => null),
     ),
     updateParticipantUserState: vi.fn().mockResolvedValue(undefined),
     setParticipantUserState: vi.fn().mockResolvedValue(undefined),
@@ -242,8 +252,9 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
       }
       return ids;
     }),
-    getWorldsByIds: vi.fn(async (ids: UUID[]) =>
-      ids.map((id) => worlds.get(id)).filter(Boolean) as World[],
+    getWorldsByIds: vi.fn(
+      async (ids: UUID[]) =>
+        ids.map((id) => worlds.get(id)).filter(Boolean) as World[],
     ),
     deleteWorlds: vi.fn(async (ids: UUID[]) => {
       for (const id of ids) {
@@ -297,8 +308,9 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
       }
       return ids;
     }),
-    getTasksByIds: vi.fn(async (ids: UUID[]) =>
-      ids.map((id) => tasks.get(id)).filter(Boolean) as Task[],
+    getTasksByIds: vi.fn(
+      async (ids: UUID[]) =>
+        ids.map((id) => tasks.get(id)).filter(Boolean) as Task[],
     ),
     updateTasks: vi.fn().mockResolvedValue(undefined),
     deleteTasks: vi.fn(async (ids: UUID[]) => {
@@ -309,7 +321,9 @@ function createMockDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
     getLogs: vi.fn().mockResolvedValue([]),
     createLogs: vi.fn().mockResolvedValue(undefined),
     deleteLogs: vi.fn().mockResolvedValue(undefined),
-    getAgentRunSummaries: vi.fn().mockResolvedValue({ runs: [], totalCount: 0 }),
+    getAgentRunSummaries: vi
+      .fn()
+      .mockResolvedValue({ runs: [], totalCount: 0 }),
 
     // Pairing methods
     getPairingRequests: vi.fn().mockResolvedValue([]),

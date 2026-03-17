@@ -24,14 +24,14 @@ vi.mock("../generated/specs/spec-helpers", () => ({
   }),
 }));
 
+import { allActions } from "../actions";
+import { createBranchAction } from "../actions/createBranch";
+import { createCommentAction } from "../actions/createComment";
 import { createIssueAction } from "../actions/createIssue";
 import { createPullRequestAction } from "../actions/createPullRequest";
-import { createCommentAction } from "../actions/createComment";
-import { createBranchAction } from "../actions/createBranch";
 import { mergePullRequestAction } from "../actions/mergePullRequest";
 import { pushCodeAction } from "../actions/pushCode";
 import { reviewPullRequestAction } from "../actions/reviewPullRequest";
-import { allActions } from "../actions";
 
 // =============================================================================
 // Helpers

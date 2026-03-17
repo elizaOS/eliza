@@ -98,9 +98,7 @@ describe("GitHubPluginConfig", () => {
     });
 
     it("should throw when apiToken is empty", () => {
-      expect(() =>
-        GitHubPluginConfig.fromSettings({ apiToken: "" })
-      ).toThrow();
+      expect(() => GitHubPluginConfig.fromSettings({ apiToken: "" })).toThrow();
     });
   });
 
@@ -132,9 +130,7 @@ describe("GitHubPluginConfig", () => {
 
     it("should throw MissingSettingError when GITHUB_API_TOKEN is missing from runtime", () => {
       const runtime = mockRuntime({});
-      expect(() => GitHubPluginConfig.fromRuntime(runtime as never)).toThrow(
-        MissingSettingError
-      );
+      expect(() => GitHubPluginConfig.fromRuntime(runtime as never)).toThrow(MissingSettingError);
     });
 
     it("should default branch to 'main' when not in runtime settings", () => {
@@ -263,9 +259,7 @@ describe("GitHubPluginConfig", () => {
         apiToken: "some_other_token_format",
       });
       config.validate();
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("not recognized")
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("not recognized"));
       consoleSpy.mockRestore();
     });
 

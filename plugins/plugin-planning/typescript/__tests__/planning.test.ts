@@ -12,8 +12,8 @@ import {
   generatePlanId,
   generateTaskId,
   getPlanProgress,
-  type Plan,
   PLAN_SOURCE,
+  type Plan,
   PlanStatus,
   type Task,
   TaskStatus,
@@ -100,13 +100,9 @@ describe("Plan Type Utilities", () => {
     expect(getPlanProgress(makePlan([]))).toBe(0);
     expect(getPlanProgress(makePlan([TaskStatus.PENDING]))).toBe(0);
     expect(getPlanProgress(makePlan([TaskStatus.COMPLETED]))).toBe(100);
+    expect(getPlanProgress(makePlan([TaskStatus.COMPLETED, TaskStatus.PENDING]))).toBe(50);
     expect(
-      getPlanProgress(makePlan([TaskStatus.COMPLETED, TaskStatus.PENDING]))
-    ).toBe(50);
-    expect(
-      getPlanProgress(
-        makePlan([TaskStatus.COMPLETED, TaskStatus.COMPLETED, TaskStatus.PENDING])
-      )
+      getPlanProgress(makePlan([TaskStatus.COMPLETED, TaskStatus.COMPLETED, TaskStatus.PENDING]))
     ).toBe(67);
   });
 

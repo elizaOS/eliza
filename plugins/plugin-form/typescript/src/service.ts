@@ -106,7 +106,6 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { registerBuiltinTypes } from "./builtins";
 import {
-  deleteSession,
   getAutofillData,
   getSessionById,
   saveAutofillData,
@@ -131,7 +130,6 @@ import type {
   FormSubmission,
   MissingFieldSummary,
   PendingExternalFieldSummary,
-  SessionEffort,
   TypeHandler,
   UncertainFieldSummary,
 } from "./types";
@@ -1042,7 +1040,7 @@ export class FormService extends Service {
         value,
         externalData,
       } as EventPayload);
-    } catch (error) {
+    } catch (_error) {
       logger.debug(`[FormService] No event handler for FORM_FIELD_CONFIRMED`);
     }
 
@@ -1110,7 +1108,7 @@ export class FormService extends Service {
         field,
         reason,
       } as EventPayload);
-    } catch (error) {
+    } catch (_error) {
       logger.debug(`[FormService] No event handler for FORM_FIELD_CANCELLED`);
     }
 

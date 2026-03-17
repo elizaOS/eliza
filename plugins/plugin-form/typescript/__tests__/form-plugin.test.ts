@@ -5,11 +5,10 @@
  * Runner: bun test (Jest-compatible API via bun:test)
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import type { UUID } from "@elizaos/core";
 
 // ── Source module imports ────────────────────────────────────────────────────
-
 
 import { C, ControlBuilder, Form, FormBuilder } from "../src/builder.ts";
 import {
@@ -26,11 +25,7 @@ import {
   isUXIntent,
   quickIntentDetect,
 } from "../src/intent.ts";
-import {
-  buildTemplateValues,
-  renderTemplate,
-  resolveControlTemplates,
-} from "../src/template.ts";
+import { buildTemplateValues, renderTemplate, resolveControlTemplates } from "../src/template.ts";
 import {
   calculateTTL,
   formatEffort,
@@ -316,12 +311,18 @@ describe("Validation Module", () => {
         expect(validateField(false, boolControl).valid).toBe(true);
       });
 
-      it.each(["true", "false", "yes", "no", "1", "0", "on", "off"])(
-        'accepts boolean-like string "%s"',
-        (val) => {
-          expect(validateField(val, boolControl).valid).toBe(true);
-        },
-      );
+      it.each([
+        "true",
+        "false",
+        "yes",
+        "no",
+        "1",
+        "0",
+        "on",
+        "off",
+      ])('accepts boolean-like string "%s"', (val) => {
+        expect(validateField(val, boolControl).valid).toBe(true);
+      });
 
       it("is case-insensitive for boolean strings", () => {
         expect(validateField("YES", boolControl).valid).toBe(true);
@@ -527,13 +528,10 @@ describe("Validation Module", () => {
         });
         // Valid MIME type
         expect(
-          validateField([{ name: "pic.png", size: 100, mimeType: "image/png" }], ctrl).valid,
+          validateField([{ name: "pic.png", size: 100, mimeType: "image/png" }], ctrl).valid
         ).toBe(true);
         // Invalid MIME type
-        const result = validateField(
-          [{ name: "data.csv", size: 100, mimeType: "text/csv" }],
-          ctrl,
-        );
+        const result = validateField([{ name: "data.csv", size: 100, mimeType: "text/csv" }], ctrl);
         expect(result.valid).toBe(false);
         expect(result.error).toContain("not accepted");
       });
@@ -727,7 +725,7 @@ describe("Validation Module", () => {
       });
       const handler = getTypeHandler("phone");
       expect(handler).toBeDefined();
-      expect(handler!.validate).toBeDefined();
+      expect(handler?.validate).toBeDefined();
     });
 
     it("returns undefined for unregistered types", () => {
@@ -742,7 +740,7 @@ describe("Validation Module", () => {
         validate: () => ({ valid: false, error: "always fails" }),
       });
       const handler = getTypeHandler("phone");
-      const result = handler!.validate!("anything", makeControl());
+      const result = handler?.validate?.("anything", makeControl());
       expect(result.valid).toBe(false);
     });
 
@@ -828,12 +826,16 @@ describe("Intent Detection Module", () => {
     // ── Stash intents ──────────────────────────────────────────────────────
 
     describe("stash intents", () => {
-      it.each(["save", "save for later", "pause", "later", "hold on", "come back"])(
-        'detects "%s" as stash',
-        (text) => {
-          expect(quickIntentDetect(text)).toBe("stash");
-        },
-      );
+      it.each([
+        "save",
+        "save for later",
+        "pause",
+        "later",
+        "hold on",
+        "come back",
+      ])('detects "%s" as stash', (text) => {
+        expect(quickIntentDetect(text)).toBe("stash");
+      });
 
       it('does NOT detect "save and submit" as stash (returns submit)', () => {
         // "submit" keyword is checked before stash, so it matches submit first
@@ -850,12 +852,15 @@ describe("Intent Detection Module", () => {
     // ── Restore intents ────────────────────────────────────────────────────
 
     describe("restore intents", () => {
-      it.each(["resume", "continue", "pick up where", "go back to", "get back to"])(
-        'detects "%s" as restore',
-        (text) => {
-          expect(quickIntentDetect(text)).toBe("restore");
-        },
-      );
+      it.each([
+        "resume",
+        "continue",
+        "pick up where",
+        "go back to",
+        "get back to",
+      ])('detects "%s" as restore', (text) => {
+        expect(quickIntentDetect(text)).toBe("restore");
+      });
 
       it('detects "pick up where I left off" as restore', () => {
         expect(quickIntentDetect("pick up where I left off")).toBe("restore");
@@ -865,23 +870,30 @@ describe("Intent Detection Module", () => {
     // ── Undo intents ───────────────────────────────────────────────────────
 
     describe("undo intents", () => {
-      it.each(["undo", "go back", "wait no", "change that", "oops", "that's wrong"])(
-        'detects "%s" as undo',
-        (text) => {
-          expect(quickIntentDetect(text)).toBe("undo");
-        },
-      );
+      it.each([
+        "undo",
+        "go back",
+        "wait no",
+        "change that",
+        "oops",
+        "that's wrong",
+      ])('detects "%s" as undo', (text) => {
+        expect(quickIntentDetect(text)).toBe("undo");
+      });
     });
 
     // ── Skip intents ───────────────────────────────────────────────────────
 
     describe("skip intents", () => {
-      it.each(["skip", "pass", "don't know", "next", "don't have"])(
-        'detects "%s" as skip',
-        (text) => {
-          expect(quickIntentDetect(text)).toBe("skip");
-        },
-      );
+      it.each([
+        "skip",
+        "pass",
+        "don't know",
+        "next",
+        "don't have",
+      ])('detects "%s" as skip', (text) => {
+        expect(quickIntentDetect(text)).toBe("skip");
+      });
 
       it('does NOT detect "skip to" as skip', () => {
         // "skip to" is navigation, not skipping current field
@@ -940,23 +952,26 @@ describe("Intent Detection Module", () => {
     // ── Progress intents ───────────────────────────────────────────────────
 
     describe("progress intents", () => {
-      it.each(["how far", "how many left", "progress", "status"])(
-        'detects "%s" as progress',
-        (text) => {
-          expect(quickIntentDetect(text)).toBe("progress");
-        },
-      );
+      it.each([
+        "how far",
+        "how many left",
+        "progress",
+        "status",
+      ])('detects "%s" as progress', (text) => {
+        expect(quickIntentDetect(text)).toBe("progress");
+      });
     });
 
     // ── Autofill intents ───────────────────────────────────────────────────
 
     describe("autofill intents", () => {
-      it.each(["same as last time", "like before", "use my usual"])(
-        'detects "%s" as autofill',
-        (text) => {
-          expect(quickIntentDetect(text)).toBe("autofill");
-        },
-      );
+      it.each([
+        "same as last time",
+        "like before",
+        "use my usual",
+      ])('detects "%s" as autofill', (text) => {
+        expect(quickIntentDetect(text)).toBe("autofill");
+      });
     });
 
     // ── Edge cases ─────────────────────────────────────────────────────────
@@ -983,37 +998,53 @@ describe("Intent Detection Module", () => {
   // ── isLifecycleIntent ────────────────────────────────────────────────────
 
   describe("isLifecycleIntent", () => {
-    it.each(["submit", "stash", "restore", "cancel"] as FormIntent[])(
-      'returns true for lifecycle intent "%s"',
-      (intent) => {
-        expect(isLifecycleIntent(intent)).toBe(true);
-      },
-    );
+    it.each([
+      "submit",
+      "stash",
+      "restore",
+      "cancel",
+    ] as FormIntent[])('returns true for lifecycle intent "%s"', (intent) => {
+      expect(isLifecycleIntent(intent)).toBe(true);
+    });
 
-    it.each(["undo", "skip", "explain", "example", "progress", "autofill", "fill_form", "other"] as FormIntent[])(
-      'returns false for non-lifecycle intent "%s"',
-      (intent) => {
-        expect(isLifecycleIntent(intent)).toBe(false);
-      },
-    );
+    it.each([
+      "undo",
+      "skip",
+      "explain",
+      "example",
+      "progress",
+      "autofill",
+      "fill_form",
+      "other",
+    ] as FormIntent[])('returns false for non-lifecycle intent "%s"', (intent) => {
+      expect(isLifecycleIntent(intent)).toBe(false);
+    });
   });
 
   // ── isUXIntent ───────────────────────────────────────────────────────────
 
   describe("isUXIntent", () => {
-    it.each(["undo", "skip", "explain", "example", "progress", "autofill"] as FormIntent[])(
-      'returns true for UX intent "%s"',
-      (intent) => {
-        expect(isUXIntent(intent)).toBe(true);
-      },
-    );
+    it.each([
+      "undo",
+      "skip",
+      "explain",
+      "example",
+      "progress",
+      "autofill",
+    ] as FormIntent[])('returns true for UX intent "%s"', (intent) => {
+      expect(isUXIntent(intent)).toBe(true);
+    });
 
-    it.each(["submit", "stash", "restore", "cancel", "fill_form", "other"] as FormIntent[])(
-      'returns false for non-UX intent "%s"',
-      (intent) => {
-        expect(isUXIntent(intent)).toBe(false);
-      },
-    );
+    it.each([
+      "submit",
+      "stash",
+      "restore",
+      "cancel",
+      "fill_form",
+      "other",
+    ] as FormIntent[])('returns false for non-UX intent "%s"', (intent) => {
+      expect(isUXIntent(intent)).toBe(false);
+    });
   });
 
   // ── hasDataToExtract ─────────────────────────────────────────────────────
@@ -1027,12 +1058,20 @@ describe("Intent Detection Module", () => {
       expect(hasDataToExtract("other")).toBe(true);
     });
 
-    it.each(["submit", "cancel", "stash", "restore", "undo", "skip", "explain", "example", "progress", "autofill"] as FormIntent[])(
-      'returns false for "%s" intent',
-      (intent) => {
-        expect(hasDataToExtract(intent)).toBe(false);
-      },
-    );
+    it.each([
+      "submit",
+      "cancel",
+      "stash",
+      "restore",
+      "undo",
+      "skip",
+      "explain",
+      "example",
+      "progress",
+      "autofill",
+    ] as FormIntent[])('returns false for "%s" intent', (intent) => {
+      expect(hasDataToExtract(intent)).toBe(false);
+    });
   });
 });
 
@@ -1515,7 +1554,7 @@ describe("Builder Module", () => {
         const ctrl = ControlBuilder.select("choice", opts).build();
         expect(ctrl.type).toBe("select");
         expect(ctrl.options).toHaveLength(1);
-        expect(ctrl.options![0].value).toBe("a");
+        expect(ctrl.options?.[0].value).toBe("a");
       });
 
       it("creates a date field", () => {
@@ -1631,7 +1670,9 @@ describe("Builder Module", () => {
       });
 
       it("sets maxSize", () => {
-        const ctrl = C.file("doc").maxSize(5 * 1024 * 1024).build();
+        const ctrl = C.file("doc")
+          .maxSize(5 * 1024 * 1024)
+          .build();
         expect(ctrl.file?.maxSize).toBe(5 * 1024 * 1024);
       });
 
@@ -1641,11 +1682,7 @@ describe("Builder Module", () => {
       });
 
       it("combines multiple file options", () => {
-        const ctrl = C.file("upload")
-          .accept(["image/*"])
-          .maxSize(1024)
-          .maxFiles(5)
-          .build();
+        const ctrl = C.file("upload").accept(["image/*"]).maxSize(1024).maxFiles(5).build();
         expect(ctrl.file?.accept).toEqual(["image/*"]);
         expect(ctrl.file?.maxSize).toBe(1024);
         expect(ctrl.file?.maxFiles).toBe(5);
@@ -1735,10 +1772,7 @@ describe("Builder Module", () => {
       });
 
       it("adds meta key-value pairs", () => {
-        const ctrl = C.text("name")
-          .meta("priority", "high")
-          .meta("category", "identity")
-          .build();
+        const ctrl = C.text("name").meta("priority", "high").meta("category", "identity").build();
         expect(ctrl.meta?.priority).toBe("high");
         expect(ctrl.meta?.category).toBe("identity");
       });
@@ -1799,9 +1833,7 @@ describe("Builder Module", () => {
 
     describe("controls", () => {
       it("adds a single control from ControlBuilder", () => {
-        const form = Form.create("test")
-          .control(C.email("email").required())
-          .build();
+        const form = Form.create("test").control(C.email("email").required()).build();
         expect(form.controls).toHaveLength(1);
         expect(form.controls[0].key).toBe("email");
         expect(form.controls[0].type).toBe("email");
@@ -1817,11 +1849,7 @@ describe("Builder Module", () => {
 
       it("adds multiple controls via controls()", () => {
         const form = Form.create("test")
-          .controls(
-            C.text("name"),
-            C.email("email"),
-            C.number("age"),
-          )
+          .controls(C.text("name"), C.email("email"), C.number("age"))
           .build();
         expect(form.controls).toHaveLength(3);
       });
@@ -1953,17 +1981,12 @@ describe("Builder Module", () => {
       });
 
       it("adds i18n translations", () => {
-        const form = Form.create("test")
-          .i18n("es", { name: "Formulario de prueba" })
-          .build();
+        const form = Form.create("test").i18n("es", { name: "Formulario de prueba" }).build();
         expect(form.i18n?.es?.name).toBe("Formulario de prueba");
       });
 
       it("adds meta key-value pairs", () => {
-        const form = Form.create("test")
-          .meta("category", "onboarding")
-          .meta("priority", 1)
-          .build();
+        const form = Form.create("test").meta("category", "onboarding").meta("priority", 1).build();
         expect(form.meta?.category).toBe("onboarding");
         expect(form.meta?.priority).toBe(1);
       });
@@ -2142,23 +2165,19 @@ describe("Template Module", () => {
     it("resolves templates in option labels and descriptions", () => {
       const ctrl = makeControl({
         type: "select",
-        options: [
-          { value: "a", label: "Option for {{name}}", description: "{{product}} tier" },
-        ],
+        options: [{ value: "a", label: "Option for {{name}}", description: "{{product}} tier" }],
       });
       const resolved = resolveControlTemplates(ctrl, values);
-      expect(resolved.options![0].label).toBe("Option for Alice");
-      expect(resolved.options![0].description).toBe("Widget tier");
+      expect(resolved.options?.[0].label).toBe("Option for Alice");
+      expect(resolved.options?.[0].description).toBe("Widget tier");
     });
 
     it("recursively resolves nested fields", () => {
       const ctrl = makeControl({
-        fields: [
-          makeControl({ key: "sub", label: "Sub for {{name}}" }),
-        ],
+        fields: [makeControl({ key: "sub", label: "Sub for {{name}}" })],
       });
       const resolved = resolveControlTemplates(ctrl, values);
-      expect(resolved.fields![0].label).toBe("Sub for Alice");
+      expect(resolved.fields?.[0].label).toBe("Sub for Alice");
     });
 
     it("preserves non-template fields unchanged", () => {
@@ -2210,12 +2229,17 @@ describe("Builtins Module", () => {
   // ── isBuiltinType ────────────────────────────────────────────────────────
 
   describe("isBuiltinType", () => {
-    it.each(["text", "number", "email", "boolean", "select", "date", "file"])(
-      'returns true for built-in type "%s"',
-      (typeId) => {
-        expect(isBuiltinType(typeId)).toBe(true);
-      },
-    );
+    it.each([
+      "text",
+      "number",
+      "email",
+      "boolean",
+      "select",
+      "date",
+      "file",
+    ])('returns true for built-in type "%s"', (typeId) => {
+      expect(isBuiltinType(typeId)).toBe(true);
+    });
 
     it("returns false for a non-built-in type", () => {
       expect(isBuiltinType("custom_phone")).toBe(false);
@@ -2229,11 +2253,11 @@ describe("Builtins Module", () => {
     it("returns the ControlType for a known type", () => {
       const emailType = getBuiltinType("email");
       expect(emailType).toBeDefined();
-      expect(emailType!.id).toBe("email");
-      expect(emailType!.validate).toBeDefined();
-      expect(emailType!.parse).toBeDefined();
-      expect(emailType!.format).toBeDefined();
-      expect(emailType!.extractionPrompt).toBeDefined();
+      expect(emailType?.id).toBe("email");
+      expect(emailType?.validate).toBeDefined();
+      expect(emailType?.parse).toBeDefined();
+      expect(emailType?.format).toBeDefined();
+      expect(emailType?.extractionPrompt).toBeDefined();
     });
 
     it("returns undefined for an unknown type", () => {
@@ -2263,45 +2287,45 @@ describe("Builtins Module", () => {
     const textType = getBuiltinType("text")!;
 
     it("validates null/undefined as valid (empty check is separate)", () => {
-      expect(textType.validate!(null, makeControl()).valid).toBe(true);
-      expect(textType.validate!(undefined as never, makeControl()).valid).toBe(true);
+      expect(textType.validate?.(null, makeControl()).valid).toBe(true);
+      expect(textType.validate?.(undefined as never, makeControl()).valid).toBe(true);
     });
 
     it("validates a plain string as valid", () => {
-      expect(textType.validate!("hello", makeControl()).valid).toBe(true);
+      expect(textType.validate?.("hello", makeControl()).valid).toBe(true);
     });
 
     it("validates minLength constraint", () => {
       const ctrl = makeControl({ minLength: 5 });
-      expect(textType.validate!("ab", ctrl).valid).toBe(false);
-      expect(textType.validate!("abcde", ctrl).valid).toBe(true);
+      expect(textType.validate?.("ab", ctrl).valid).toBe(false);
+      expect(textType.validate?.("abcde", ctrl).valid).toBe(true);
     });
 
     it("validates maxLength constraint", () => {
       const ctrl = makeControl({ maxLength: 3 });
-      expect(textType.validate!("abcd", ctrl).valid).toBe(false);
-      expect(textType.validate!("abc", ctrl).valid).toBe(true);
+      expect(textType.validate?.("abcd", ctrl).valid).toBe(false);
+      expect(textType.validate?.("abc", ctrl).valid).toBe(true);
     });
 
     it("validates pattern constraint", () => {
       const ctrl = makeControl({ pattern: "^[0-9]+$" });
-      expect(textType.validate!("123", ctrl).valid).toBe(true);
-      expect(textType.validate!("abc", ctrl).valid).toBe(false);
+      expect(textType.validate?.("123", ctrl).valid).toBe(true);
+      expect(textType.validate?.("abc", ctrl).valid).toBe(false);
     });
 
     it("validates enum constraint", () => {
       const ctrl = makeControl({ enum: ["red", "green", "blue"] });
-      expect(textType.validate!("red", ctrl).valid).toBe(true);
-      expect(textType.validate!("yellow", ctrl).valid).toBe(false);
+      expect(textType.validate?.("red", ctrl).valid).toBe(true);
+      expect(textType.validate?.("yellow", ctrl).valid).toBe(false);
     });
 
     it("parses by trimming whitespace", () => {
-      expect(textType.parse!("  hello  ")).toBe("hello");
+      expect(textType.parse?.("  hello  ")).toBe("hello");
     });
 
     it("formats value to string", () => {
-      expect(textType.format!(42)).toBe("42");
-      expect(textType.format!(null)).toBe("");
+      expect(textType.format?.(42)).toBe("42");
+      expect(textType.format?.(null)).toBe("");
     });
   });
 
@@ -2309,48 +2333,48 @@ describe("Builtins Module", () => {
     const numberType = getBuiltinType("number")!;
 
     it("validates null/undefined/empty as valid", () => {
-      expect(numberType.validate!(null, makeControl()).valid).toBe(true);
-      expect(numberType.validate!("", makeControl()).valid).toBe(true);
+      expect(numberType.validate?.(null, makeControl()).valid).toBe(true);
+      expect(numberType.validate?.("", makeControl()).valid).toBe(true);
     });
 
     it("validates a valid number", () => {
-      expect(numberType.validate!(42, makeControl()).valid).toBe(true);
-      expect(numberType.validate!(3.14, makeControl()).valid).toBe(true);
+      expect(numberType.validate?.(42, makeControl()).valid).toBe(true);
+      expect(numberType.validate?.(3.14, makeControl()).valid).toBe(true);
     });
 
     it("rejects non-numeric strings", () => {
-      const result = numberType.validate!("abc", makeControl());
+      const result = numberType.validate?.("abc", makeControl());
       expect(result.valid).toBe(false);
       expect(result.error).toContain("valid number");
     });
 
     it("validates min constraint", () => {
       const ctrl = makeControl({ min: 10 });
-      expect(numberType.validate!(5, ctrl).valid).toBe(false);
-      expect(numberType.validate!(10, ctrl).valid).toBe(true);
-      expect(numberType.validate!(15, ctrl).valid).toBe(true);
+      expect(numberType.validate?.(5, ctrl).valid).toBe(false);
+      expect(numberType.validate?.(10, ctrl).valid).toBe(true);
+      expect(numberType.validate?.(15, ctrl).valid).toBe(true);
     });
 
     it("validates max constraint", () => {
       const ctrl = makeControl({ max: 100 });
-      expect(numberType.validate!(150, ctrl).valid).toBe(false);
-      expect(numberType.validate!(100, ctrl).valid).toBe(true);
+      expect(numberType.validate?.(150, ctrl).valid).toBe(false);
+      expect(numberType.validate?.(100, ctrl).valid).toBe(true);
     });
 
     it("parses numeric strings, removing formatting characters", () => {
-      expect(numberType.parse!("1,234.56")).toBe(1234.56);
-      expect(numberType.parse!("$50")).toBe(50);
-      expect(numberType.parse!(" 42 ")).toBe(42);
+      expect(numberType.parse?.("1,234.56")).toBe(1234.56);
+      expect(numberType.parse?.("$50")).toBe(50);
+      expect(numberType.parse?.(" 42 ")).toBe(42);
     });
 
     it("formats numbers with locale string", () => {
-      const result = numberType.format!(1234);
+      const result = numberType.format?.(1234);
       expect(result).toContain("1");
       expect(result).toContain("234");
     });
 
     it("formats null as empty string", () => {
-      expect(numberType.format!(null)).toBe("");
+      expect(numberType.format?.(null)).toBe("");
     });
   });
 
@@ -2358,28 +2382,28 @@ describe("Builtins Module", () => {
     const emailType = getBuiltinType("email")!;
 
     it("validates null/undefined/empty as valid", () => {
-      expect(emailType.validate!(null, makeControl()).valid).toBe(true);
-      expect(emailType.validate!("", makeControl()).valid).toBe(true);
+      expect(emailType.validate?.(null, makeControl()).valid).toBe(true);
+      expect(emailType.validate?.("", makeControl()).valid).toBe(true);
     });
 
     it("validates a proper email", () => {
-      expect(emailType.validate!("user@example.com", makeControl()).valid).toBe(true);
+      expect(emailType.validate?.("user@example.com", makeControl()).valid).toBe(true);
     });
 
     it("rejects an email without @", () => {
-      expect(emailType.validate!("userexample.com", makeControl()).valid).toBe(false);
+      expect(emailType.validate?.("userexample.com", makeControl()).valid).toBe(false);
     });
 
     it("rejects an email without domain", () => {
-      expect(emailType.validate!("user@", makeControl()).valid).toBe(false);
+      expect(emailType.validate?.("user@", makeControl()).valid).toBe(false);
     });
 
     it("parses by trimming and lowercasing", () => {
-      expect(emailType.parse!("  User@Example.COM  ")).toBe("user@example.com");
+      expect(emailType.parse?.("  User@Example.COM  ")).toBe("user@example.com");
     });
 
     it("formats by lowercasing", () => {
-      expect(emailType.format!("USER@EXAMPLE.COM")).toBe("user@example.com");
+      expect(emailType.format?.("USER@EXAMPLE.COM")).toBe("user@example.com");
     });
   });
 
@@ -2387,45 +2411,51 @@ describe("Builtins Module", () => {
     const booleanType = getBuiltinType("boolean")!;
 
     it("validates null/undefined as valid", () => {
-      expect(booleanType.validate!(null, makeControl()).valid).toBe(true);
+      expect(booleanType.validate?.(null, makeControl()).valid).toBe(true);
     });
 
     it("validates native booleans", () => {
-      expect(booleanType.validate!(true, makeControl()).valid).toBe(true);
-      expect(booleanType.validate!(false, makeControl()).valid).toBe(true);
+      expect(booleanType.validate?.(true, makeControl()).valid).toBe(true);
+      expect(booleanType.validate?.(false, makeControl()).valid).toBe(true);
     });
 
-    it.each(["true", "false", "yes", "no", "1", "0", "on", "off"])(
-      'validates string "%s" as valid boolean',
-      (val) => {
-        expect(booleanType.validate!(val, makeControl()).valid).toBe(true);
-      },
-    );
+    it.each([
+      "true",
+      "false",
+      "yes",
+      "no",
+      "1",
+      "0",
+      "on",
+      "off",
+    ])('validates string "%s" as valid boolean', (val) => {
+      expect(booleanType.validate?.(val, makeControl()).valid).toBe(true);
+    });
 
     it("rejects invalid boolean strings", () => {
-      expect(booleanType.validate!("maybe", makeControl()).valid).toBe(false);
+      expect(booleanType.validate?.("maybe", makeControl()).valid).toBe(false);
     });
 
     it("parses truthy strings to true", () => {
-      expect(booleanType.parse!("yes")).toBe(true);
-      expect(booleanType.parse!("1")).toBe(true);
-      expect(booleanType.parse!("on")).toBe(true);
-      expect(booleanType.parse!("true")).toBe(true);
+      expect(booleanType.parse?.("yes")).toBe(true);
+      expect(booleanType.parse?.("1")).toBe(true);
+      expect(booleanType.parse?.("on")).toBe(true);
+      expect(booleanType.parse?.("true")).toBe(true);
     });
 
     it("parses falsy strings to false", () => {
-      expect(booleanType.parse!("no")).toBe(false);
-      expect(booleanType.parse!("0")).toBe(false);
-      expect(booleanType.parse!("off")).toBe(false);
-      expect(booleanType.parse!("false")).toBe(false);
+      expect(booleanType.parse?.("no")).toBe(false);
+      expect(booleanType.parse?.("0")).toBe(false);
+      expect(booleanType.parse?.("off")).toBe(false);
+      expect(booleanType.parse?.("false")).toBe(false);
     });
 
     it('formats true as "Yes"', () => {
-      expect(booleanType.format!(true)).toBe("Yes");
+      expect(booleanType.format?.(true)).toBe("Yes");
     });
 
     it('formats false as "No"', () => {
-      expect(booleanType.format!(false)).toBe("No");
+      expect(booleanType.format?.(false)).toBe("No");
     });
   });
 
@@ -2433,8 +2463,8 @@ describe("Builtins Module", () => {
     const selectType = getBuiltinType("select")!;
 
     it("validates null/undefined/empty as valid", () => {
-      expect(selectType.validate!(null, makeControl()).valid).toBe(true);
-      expect(selectType.validate!("", makeControl()).valid).toBe(true);
+      expect(selectType.validate?.(null, makeControl()).valid).toBe(true);
+      expect(selectType.validate?.("", makeControl()).valid).toBe(true);
     });
 
     it("validates a value matching defined options", () => {
@@ -2444,34 +2474,34 @@ describe("Builtins Module", () => {
           { value: "CA", label: "Canada" },
         ],
       });
-      expect(selectType.validate!("US", ctrl).valid).toBe(true);
+      expect(selectType.validate?.("US", ctrl).valid).toBe(true);
     });
 
     it("rejects a value not in defined options", () => {
       const ctrl = makeControl({
         options: [{ value: "US", label: "United States" }],
       });
-      const result = selectType.validate!("XX", ctrl);
+      const result = selectType.validate?.("XX", ctrl);
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Must be one of");
     });
 
     it("validates against enum when no options defined", () => {
       const ctrl = makeControl({ enum: ["small", "medium", "large"] });
-      expect(selectType.validate!("small", ctrl).valid).toBe(true);
-      expect(selectType.validate!("huge", ctrl).valid).toBe(false);
+      expect(selectType.validate?.("small", ctrl).valid).toBe(true);
+      expect(selectType.validate?.("huge", ctrl).valid).toBe(false);
     });
 
     it("accepts any value when no options or enum defined", () => {
-      expect(selectType.validate!("anything", makeControl()).valid).toBe(true);
+      expect(selectType.validate?.("anything", makeControl()).valid).toBe(true);
     });
 
     it("parses by trimming whitespace", () => {
-      expect(selectType.parse!("  US  ")).toBe("US");
+      expect(selectType.parse?.("  US  ")).toBe("US");
     });
 
     it("formats value as string", () => {
-      expect(selectType.format!("US")).toBe("US");
+      expect(selectType.format?.("US")).toBe("US");
     });
   });
 
@@ -2479,46 +2509,46 @@ describe("Builtins Module", () => {
     const dateType = getBuiltinType("date")!;
 
     it("validates null/undefined/empty as valid", () => {
-      expect(dateType.validate!(null, makeControl()).valid).toBe(true);
-      expect(dateType.validate!("", makeControl()).valid).toBe(true);
+      expect(dateType.validate?.(null, makeControl()).valid).toBe(true);
+      expect(dateType.validate?.("", makeControl()).valid).toBe(true);
     });
 
     it("validates an ISO date string", () => {
-      expect(dateType.validate!("2024-06-15", makeControl()).valid).toBe(true);
+      expect(dateType.validate?.("2024-06-15", makeControl()).valid).toBe(true);
     });
 
     it("rejects a non-ISO date format", () => {
-      const result = dateType.validate!("June 15, 2024", makeControl());
+      const result = dateType.validate?.("June 15, 2024", makeControl());
       expect(result.valid).toBe(false);
       expect(result.error).toContain("YYYY-MM-DD");
     });
 
     it("rejects an impossible date (passes regex but invalid Date)", () => {
       // "2024-13-45" matches \d{4}-\d{2}-\d{2} but is not a valid date
-      const result = dateType.validate!("2024-13-45", makeControl());
+      const result = dateType.validate?.("2024-13-45", makeControl());
       expect(result.valid).toBe(false);
     });
 
     it("parses a date string to ISO format", () => {
-      const result = dateType.parse!("2024-06-15");
+      const result = dateType.parse?.("2024-06-15");
       expect(result).toBe("2024-06-15");
     });
 
     it("normalizes non-ISO input to ISO", () => {
-      const result = dateType.parse!("June 15, 2024");
+      const result = dateType.parse?.("June 15, 2024");
       // Should parse to ISO YYYY-MM-DD
       expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 
     it("formats a date for locale display", () => {
-      const result = dateType.format!("2024-06-15");
+      const result = dateType.format?.("2024-06-15");
       // Locale-dependent, but should be a non-empty string
       expect(result.length).toBeGreaterThan(0);
       expect(result).not.toBe("Invalid Date");
     });
 
     it("formats null as empty string", () => {
-      expect(dateType.format!(null)).toBe("");
+      expect(dateType.format?.(null)).toBe("");
     });
   });
 
@@ -2526,39 +2556,39 @@ describe("Builtins Module", () => {
     const fileType = getBuiltinType("file")!;
 
     it("validates null/undefined as valid", () => {
-      expect(fileType.validate!(null, makeControl()).valid).toBe(true);
+      expect(fileType.validate?.(null, makeControl()).valid).toBe(true);
     });
 
     it("validates an object as valid file metadata", () => {
-      expect(fileType.validate!({ name: "doc.pdf" }, makeControl()).valid).toBe(true);
+      expect(fileType.validate?.({ name: "doc.pdf" }, makeControl()).valid).toBe(true);
     });
 
     it("validates an array (multiple files) as valid", () => {
-      expect(
-        fileType.validate!([{ name: "a.pdf" }, { name: "b.pdf" }], makeControl()).valid,
-      ).toBe(true);
+      expect(fileType.validate?.([{ name: "a.pdf" }, { name: "b.pdf" }], makeControl()).valid).toBe(
+        true
+      );
     });
 
     it("rejects a non-object value (string)", () => {
-      const result = fileType.validate!("not a file", makeControl());
+      const result = fileType.validate?.("not a file", makeControl());
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Invalid file data");
     });
 
     it("formats an array as file count", () => {
-      expect(fileType.format!([{ name: "a" }, { name: "b" }])).toBe("2 file(s)");
+      expect(fileType.format?.([{ name: "a" }, { name: "b" }])).toBe("2 file(s)");
     });
 
     it("formats a single object with name", () => {
-      expect(fileType.format!({ name: "report.pdf" })).toBe("report.pdf");
+      expect(fileType.format?.({ name: "report.pdf" })).toBe("report.pdf");
     });
 
-    it('formats null as empty string', () => {
-      expect(fileType.format!(null)).toBe("");
+    it("formats null as empty string", () => {
+      expect(fileType.format?.(null)).toBe("");
     });
 
     it('formats unknown object as "File attached"', () => {
-      expect(fileType.format!({ size: 1024 })).toBe("File attached");
+      expect(fileType.format?.({ size: 1024 })).toBe("File attached");
     });
   });
 
@@ -2569,7 +2599,7 @@ describe("Builtins Module", () => {
       for (const type of BUILTIN_TYPES) {
         expect(type.extractionPrompt).toBeDefined();
         expect(typeof type.extractionPrompt).toBe("string");
-        expect(type.extractionPrompt!.length).toBeGreaterThan(0);
+        expect(type.extractionPrompt?.length).toBeGreaterThan(0);
       }
     });
   });

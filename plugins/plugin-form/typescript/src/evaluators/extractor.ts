@@ -160,7 +160,7 @@ export const formEvaluator: Evaluator = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state?: State
+    _state?: State
   ): Promise<ActionResult | undefined> => {
     try {
       const formService = runtime.getService("FORM") as FormService;
@@ -284,10 +284,6 @@ export const formEvaluator: Evaluator = {
           // WHY here: Just in case it does, log and skip
           logger.debug("[FormEvaluator] Restore intent - deferring to action");
           break;
-
-        // --- Data Intents ---
-
-        case "fill_form":
         default:
           // Process extractions - update field values
           // This handles both simple fields and subfields for composite types

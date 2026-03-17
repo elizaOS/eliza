@@ -43,9 +43,7 @@ export const planStatusProvider: Provider = {
 
         const progress = getPlanProgress(plan);
         const statusLabel = PLAN_STATUS_LABELS[plan.status] ?? plan.status;
-        const completedCount = plan.tasks.filter(
-          (t) => t.status === TaskStatus.COMPLETED
-        ).length;
+        const completedCount = plan.tasks.filter((t) => t.status === TaskStatus.COMPLETED).length;
         const inProgressCount = plan.tasks.filter(
           (t) => t.status === TaskStatus.IN_PROGRESS
         ).length;

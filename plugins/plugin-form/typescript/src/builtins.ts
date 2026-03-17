@@ -188,7 +188,7 @@ const numberType: ControlType = {
 
     const num = typeof value === "number" ? value : parseFloat(String(value));
 
-    if (isNaN(num)) {
+    if (Number.isNaN(num)) {
       return { valid: false, error: "Must be a valid number" };
     }
 
@@ -213,7 +213,7 @@ const numberType: ControlType = {
   format: (value: JsonValue): string => {
     if (value === null || value === undefined) return "";
     const num = typeof value === "number" ? value : parseFloat(String(value));
-    if (isNaN(num)) return String(value);
+    if (Number.isNaN(num)) return String(value);
     return num.toLocaleString();
   },
 
@@ -410,7 +410,7 @@ const dateType: ControlType = {
 
     // Check if it's a valid date
     const date = new Date(str);
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       return { valid: false, error: "Invalid date" };
     }
 
@@ -420,7 +420,7 @@ const dateType: ControlType = {
   parse: (value: string): string => {
     // Try to parse and normalize to ISO
     const date = new Date(value);
-    if (!isNaN(date.getTime())) {
+    if (!Number.isNaN(date.getTime())) {
       return date.toISOString().split("T")[0];
     }
     return value.trim();
@@ -429,7 +429,7 @@ const dateType: ControlType = {
   format: (value: JsonValue): string => {
     if (!value) return "";
     const date = new Date(String(value));
-    if (isNaN(date.getTime())) return String(value);
+    if (Number.isNaN(date.getTime())) return String(value);
     return date.toLocaleDateString();
   },
 
@@ -462,7 +462,7 @@ const fileType: ControlType = {
   id: "file",
   builtin: true,
 
-  validate: (value: JsonValue, control: FormControl): ValidationResult => {
+  validate: (value: JsonValue, _control: FormControl): ValidationResult => {
     if (value === null || value === undefined) {
       return { valid: true }; // Empty is valid; required check is separate
     }

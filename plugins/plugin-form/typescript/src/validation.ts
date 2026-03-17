@@ -184,7 +184,6 @@ export function validateField(value: JsonValue, control: FormControl): Validatio
       return validateSelect(value, control);
     case "file":
       return validateFile(value, control);
-    case "text":
     default:
       // Default to text validation for unknown types
       // WHY: Text validation handles pattern, length - applicable to most types
@@ -278,7 +277,7 @@ function validateNumber(value: JsonValue, control: FormControl): ValidationResul
   const numValue =
     typeof value === "number" ? value : parseFloat(String(value).replace(/[,$]/g, ""));
 
-  if (isNaN(numValue)) {
+  if (Number.isNaN(numValue)) {
     return {
       valid: false,
       error: `${control.label || control.key} must be a number`,
@@ -351,7 +350,7 @@ function validateDate(value: JsonValue, control: FormControl): ValidationResult 
   }
 
   // Invalid Date check
-  if (isNaN(dateValue.getTime())) {
+  if (Number.isNaN(dateValue.getTime())) {
     return {
       valid: false,
       error: `${control.label || control.key} must be a valid date`,
@@ -529,10 +528,6 @@ export function parseValue(value: string, control: FormControl): JsonValue {
       const timestamp = Date.parse(value);
       return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : value;
     }
-
-    case "text":
-    case "email":
-    case "select":
     default:
       // Keep as string for text-like types
       return value;

@@ -279,7 +279,7 @@ function parseExtractionResponse(response: string): IntentResult {
         }
       }
     }
-  } catch (error) {
+  } catch (_error) {
     // Fallback: try regex extraction
     // WHY fallback: LLM might produce slightly malformed XML
     const intentMatch = response.match(/<intent>([^<]+)<\/intent>/);

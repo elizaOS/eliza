@@ -8,9 +8,9 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
-import { createTestCharacter } from "./test-utils";
 import type { IDatabaseAdapter } from "../types";
 import { LLMMode, ModelType } from "../types";
+import { createTestCharacter } from "./test-utils";
 
 /**
  * Minimal mock adapter for testing AgentRuntime.
