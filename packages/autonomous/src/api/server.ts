@@ -17242,8 +17242,8 @@ export async function startApiServer(opts?: {
                   );
                 }
               };
-              bridge.on("session_output", listener);
-              subs.set(targetId, () => bridge.off("session_output", listener));
+              bridge.on("session_output", listener as (...args: unknown[]) => void);
+              subs.set(targetId, () => bridge.off("session_output", listener as (...args: unknown[]) => void));
             }
           }
         } else if (
