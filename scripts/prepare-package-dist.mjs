@@ -67,6 +67,7 @@ delete publishManifest.private;
 delete publishManifest.scripts;
 delete publishManifest.devDependencies;
 delete publishManifest.workspaces;
+delete publishManifest.files;
 
 if (!publishManifest.exports?.["./package.json"]) {
   publishManifest.exports = {
@@ -257,7 +258,10 @@ function transformAssetPath(sourcePath, prefix) {
 }
 
 function stripSrcPrefix(sourcePath) {
-  return sourcePath.replace(/^[.][/]/, "").replace(/^src\//, "");
+  return sourcePath
+    .replace(/^[.][/]/, "")
+    .replace(/^dist\//, "")
+    .replace(/^src\//, "");
 }
 
 function replaceSourceExtension(relPath, nextExt) {
@@ -265,8 +269,22 @@ function replaceSourceExtension(relPath, nextExt) {
     return relPath.endsWith(nextExt) ? relPath : `${relPath}${nextExt}`;
   }
 
+  const declarationExtMatch = relPath.match(/\.d\.(ts|mts|cts)$/);
+  if (declarationExtMatch) {
+    return `${relPath.slice(0, -declarationExtMatch[0].length)}${nextExt}`;
+  }
+
   const ext = path.posix.extname(relPath);
-  if (ext === ".ts" || ext === ".tsx" || ext === ".mts" || ext === ".cts") {
+  if (
+    ext === ".ts" ||
+    ext === ".tsx" ||
+    ext === ".mts" ||
+    ext === ".cts" ||
+    ext === ".js" ||
+    ext === ".jsx" ||
+    ext === ".mjs" ||
+    ext === ".cjs"
+  ) {
     return `${relPath.slice(0, -ext.length)}${nextExt}`;
   }
   if (!ext) {

@@ -99,10 +99,23 @@ export interface StatCardProps extends React.HTMLAttributes<HTMLDivElement> {
   label: string;
   value: React.ReactNode;
   accent?: boolean;
+  valueClassName?: string;
+  labelClassName?: string;
 }
 
 export const StatCard = React.forwardRef<HTMLDivElement, StatCardProps>(
-  ({ label, value, accent = false, className, ...props }, ref) => (
+  (
+    {
+      label,
+      value,
+      accent = false,
+      valueClassName,
+      labelClassName,
+      className,
+      ...props
+    },
+    ref,
+  ) => (
     <div
       ref={ref}
       className={cn(
@@ -115,11 +128,17 @@ export const StatCard = React.forwardRef<HTMLDivElement, StatCardProps>(
         className={cn(
           "text-lg font-bold tabular-nums",
           accent && "text-accent",
+          valueClassName,
         )}
       >
         {value}
       </div>
-      <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted">
+      <div
+        className={cn(
+          "mt-0.5 text-[10px] uppercase tracking-wide text-muted",
+          labelClassName,
+        )}
+      >
         {label}
       </div>
     </div>

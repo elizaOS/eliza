@@ -1,6 +1,4 @@
 export {
-  startApiServer,
-} from "../api/server";
-export type {
   captureEarlyLogs,
+  startApiServer,
 } from "../api/server";
