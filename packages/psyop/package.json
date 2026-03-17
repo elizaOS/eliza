@@ -1,6 +1,6 @@
 {
   "name": "psyop",
-  "version": "1.0.1",
+  "version": "2.0.0-alpha.3",
   "description": "This is parked",
   "bin": {
     "psyop": "cli.js"

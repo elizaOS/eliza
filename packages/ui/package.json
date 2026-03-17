@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/ui",
-  "version": "2.0.0-alpha.43",
+  "version": "2.0.0-alpha.3",
   "description": "Reusable UI primitives and components for elizaOS applications.",
   "type": "module",
   "main": "dist/index.js",

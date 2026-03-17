@@ -1,6 +1,6 @@
 {
   "name": "samantha",
-  "version": "1.0.0",
+  "version": "2.0.0-alpha.3",
   "description": "This is parked",
   "bin": {
     "samantha": "cli.js"

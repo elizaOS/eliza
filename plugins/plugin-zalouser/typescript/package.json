@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-zalouser",
-  "version": "2.0.0-alpha",
+  "version": "2.0.0-alpha.3",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -24,8 +24,8 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "vitest": "^4.0.0",
-    "@biomejs/biome": "^2.3.11"
+    "@biomejs/biome": "^2.3.11",
+    "vitest": "^4.0.0"
   },
   "scripts": {
     "build": "bun run build.ts",
