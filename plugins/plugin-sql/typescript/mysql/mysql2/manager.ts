@@ -1,9 +1,9 @@
+import { join } from "node:path";
 import { logger, type UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle, type MySql2Database } from "drizzle-orm/mysql2";
 import { migrate } from "drizzle-orm/mysql2/migrator";
 import mysql, { type Pool, type PoolConnection } from "mysql2/promise";
-import { join } from "node:path";
 
 export class MySql2ConnectionManager {
   private pool: Pool;

@@ -18,7 +18,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   // overhead that provided no benefit. Pass db directly.
   public async withIsolationContext<T>(
     _entityId: UUID | null,
-    callback: (tx: DrizzleDatabase) => Promise<T>,
+    callback: (tx: DrizzleDatabase) => Promise<T>
   ): Promise<T> {
     return callback(this.db as DrizzleDatabase);
   }
@@ -27,14 +27,8 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     return this.getEntitiesByIds(entityIds);
   }
 
-  async getMemoriesByServerId(_params: {
-    serverId: UUID;
-    count?: number;
-  }): Promise<Memory[]> {
-    logger.warn(
-      { src: "plugin:sql" },
-      "getMemoriesByServerId called but not implemented",
-    );
+  async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
+    logger.warn({ src: "plugin:sql" }, "getMemoriesByServerId called but not implemented");
     return [];
   }
 
@@ -43,7 +37,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
       const error = new Error("Database is shutting down - operation rejected");
       logger.warn(
         { src: "plugin:sql", error: error.message },
-        "Database operation rejected during shutdown",
+        "Database operation rejected during shutdown"
       );
       throw error;
     }

@@ -3,7 +3,6 @@ import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { agentTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
 
-
 /**
  * Retrieves a list of agents from the database.
  */
@@ -27,8 +26,6 @@ export async function getAgents(db: DrizzleDatabase): Promise<Partial<Agent>[]> 
       }) as Partial<Agent>
   );
 }
-
-
 
 /**
  * Merges updated agent settings with existing settings,
@@ -74,9 +71,7 @@ export async function mergeAgentSettings<T extends Record<string, unknown>>(
 
     // Initialize output
     const output =
-      typeof target === "object" && target !== null && !Array.isArray(target)
-        ? { ...target }
-        : {};
+      typeof target === "object" && target !== null && !Array.isArray(target) ? { ...target } : {};
 
     for (const key of Object.keys(source)) {
       const sourceValue = source[key];
@@ -125,10 +120,7 @@ export async function mergeAgentSettings<T extends Record<string, unknown>>(
 export async function getAgentsByIds(db: DrizzleDatabase, agentIds: UUID[]): Promise<Agent[]> {
   if (agentIds.length === 0) return [];
 
-  const rows = await db
-    .select()
-    .from(agentTable)
-    .where(inArray(agentTable.id, agentIds));
+  const rows = await db.select().from(agentTable).where(inArray(agentTable.id, agentIds));
 
   return rows.map((row) => {
     const bioValue = !row.bio ? "" : Array.isArray(row.bio) ? row.bio : row.bio;
@@ -152,8 +144,8 @@ export async function createAgents(db: DrizzleDatabase, agents: Agent[]): Promis
 
   try {
     // Check for existing agents
-    if (agents.some(a => a.id)) {
-      const ids = agents.map(a => a.id).filter(Boolean) as UUID[];
+    if (agents.some((a) => a.id)) {
+      const ids = agents.map((a) => a.id).filter(Boolean) as UUID[];
       if (ids.length > 0) {
         const existing = await db
           .select({ id: agentTable.id })
@@ -171,7 +163,7 @@ export async function createAgents(db: DrizzleDatabase, agents: Agent[]): Promis
     }
 
     await db.transaction(async (tx) => {
-      const agentsData = agents.map(agent => ({
+      const agentsData = agents.map((agent) => ({
         ...agent,
         createdAt: new Date(
           typeof agent.createdAt === "bigint"
@@ -189,7 +181,7 @@ export async function createAgents(db: DrizzleDatabase, agents: Agent[]): Promis
         .values(agentsData as unknown as (typeof agentTable.$inferInsert)[]);
     });
 
-    return agents.map(a => a.id);
+    return agents.map((a) => a.id);
   } catch (error) {
     logger.error(
       {
@@ -205,15 +197,15 @@ export async function createAgents(db: DrizzleDatabase, agents: Agent[]): Promis
 
 /**
  * Upsert agents (insert or update by ID) - MySQL version
- * 
+ *
  * WHY: Same rationale as PostgreSQL version - eliminates race conditions in
  * ensureAgentExists. MySQL uses ON DUPLICATE KEY UPDATE instead of ON CONFLICT.
- * 
+ *
  * WHY different SQL syntax: MySQL 8.0.20 deprecated VALUES() in ON DUPLICATE KEY,
  * but Drizzle doesn't yet support the new alias syntax. We use sql`VALUES(column)`
  * which still works but generates deprecation warnings. This will be fixed when
  * Drizzle adds support for the new MySQL 8.0.20+ syntax.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {Agent[]} agents - Array of agents to upsert (id required for each)
  */
@@ -223,14 +215,10 @@ export async function upsertAgents(db: DrizzleDatabase, agents: Partial<Agent>[]
   const agentsData = agents.map((agent) => ({
     ...agent,
     createdAt: new Date(
-      typeof agent.createdAt === "bigint"
-        ? Number(agent.createdAt)
-        : agent.createdAt || Date.now()
+      typeof agent.createdAt === "bigint" ? Number(agent.createdAt) : agent.createdAt || Date.now()
     ),
     updatedAt: new Date(
-      typeof agent.updatedAt === "bigint"
-        ? Number(agent.updatedAt)
-        : agent.updatedAt || Date.now()
+      typeof agent.updatedAt === "bigint" ? Number(agent.updatedAt) : agent.updatedAt || Date.now()
     ),
   }));
 
@@ -239,14 +227,14 @@ export async function upsertAgents(db: DrizzleDatabase, agents: Partial<Agent>[]
     .values(agentsData as unknown as (typeof agentTable.$inferInsert)[])
     .onDuplicateKeyUpdate({
       set: {
-        name: sql.raw('VALUES(`name`)'),
-        bio: sql.raw('VALUES(`bio`)'),
-        username: sql.raw('VALUES(`username`)'),
-        system: sql.raw('VALUES(`system`)'),
-        clients: sql.raw('VALUES(`clients`)'),
-        config: sql.raw('VALUES(`config`)'),
-        settings: sql.raw('VALUES(`settings`)'),
-        secrets: sql.raw('VALUES(`secrets`)'),
+        name: sql.raw("VALUES(`name`)"),
+        bio: sql.raw("VALUES(`bio`)"),
+        username: sql.raw("VALUES(`username`)"),
+        system: sql.raw("VALUES(`system`)"),
+        clients: sql.raw("VALUES(`clients`)"),
+        config: sql.raw("VALUES(`config`)"),
+        settings: sql.raw("VALUES(`settings`)"),
+        secrets: sql.raw("VALUES(`secrets`)"),
         updatedAt: sql`NOW()`,
       },
     });
@@ -281,9 +269,7 @@ export async function updateAgents(
         .select({ id: agentTable.id, settings: agentTable.settings })
         .from(agentTable)
         .where(inArray(agentTable.id, sIds));
-      const sMap = new Map(
-        rows.map((r) => [r.id, (r.settings ?? {}) as Record<string, unknown>])
-      );
+      const sMap = new Map(rows.map((r) => [r.id, (r.settings ?? {}) as Record<string, unknown>]));
       for (const u of settingsUpdates) {
         const existing = sMap.get(u.agentId) || {};
         u.agent.settings = await mergeAgentSettings(db, u.agentId, u.agent.settings!, existing);
@@ -323,7 +309,8 @@ export async function updateAgents(
     const bioItems = field("bio");
     if (bioItems.length > 0) setObj.bio = jsonCaseFn(agentTable.bio, bioItems);
     const msgItems = field("messageExamples");
-    if (msgItems.length > 0) setObj.messageExamples = jsonCaseFn(agentTable.messageExamples, msgItems);
+    if (msgItems.length > 0)
+      setObj.messageExamples = jsonCaseFn(agentTable.messageExamples, msgItems);
     const postItems = field("postExamples");
     if (postItems.length > 0) setObj.postExamples = jsonCaseFn(agentTable.postExamples, postItems);
     const topicItems = field("topics");
@@ -339,10 +326,7 @@ export async function updateAgents(
 
     setObj.updatedAt = new Date();
 
-    await db
-      .update(agentTable)
-      .set(setObj)
-      .where(inArray(agentTable.id, ids));
+    await db.update(agentTable).set(setObj).where(inArray(agentTable.id, ids));
 
     return true;
   } catch (error) {

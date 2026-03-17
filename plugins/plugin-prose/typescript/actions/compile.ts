@@ -1,8 +1,8 @@
 import * as path from "node:path";
 import type { Action, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { ModelType, generateText, logger } from "@elizaos/core";
+import { generateText, logger, ModelType } from "@elizaos/core";
 import { requireActionSpec } from "../generated/specs/specs";
-import { type ProseService, createProseService } from "../services/proseService";
+import { createProseService, type ProseService } from "../services/proseService";
 import type { ProseCompileResult } from "../types";
 
 const spec = requireActionSpec("PROSE_COMPILE");
@@ -107,7 +107,7 @@ export const proseCompileAction: Action = {
         ex.map((msg) => ({
           name: msg.role,
           content: { text: msg.content },
-        })),
+        }))
       )
     : [],
 
@@ -130,7 +130,7 @@ export const proseCompileAction: Action = {
     message: Memory,
     _state: State | undefined,
     _options: Record<string, unknown>,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<boolean> => {
     const service = getService(runtime);
     const content =
@@ -182,7 +182,7 @@ export const proseCompileAction: Action = {
       // Run validation
       const compilePrompt = COMPILE_TEMPLATE.replace("{{compiler_spec}}", compilerSpec).replace(
         "{{program}}",
-        programContent,
+        programContent
       );
 
       const validation = await generateText({

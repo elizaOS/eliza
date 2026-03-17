@@ -5,7 +5,7 @@ import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
 import { PGliteClientManager } from "./pglite/manager";
-import * as schema from './tables';
+import * as schema from "./tables";
 import { resolvePgliteDir } from "./utils.node";
 
 const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");

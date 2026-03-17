@@ -14,12 +14,7 @@ import { deriveSchemaName } from "./schema-transformer";
 import { JournalStorage } from "./storage/journal-storage";
 import { MigrationTracker } from "./storage/migration-tracker";
 import { SnapshotStorage } from "./storage/snapshot-storage";
-import type {
-  DrizzleDB,
-  RuntimeMigrationOptions,
-  SchemaSnapshot,
-  SchemaTable,
-} from "./types";
+import type { DrizzleDB, RuntimeMigrationOptions, SchemaSnapshot, SchemaTable } from "./types";
 import { getMysqlRow } from "./types";
 
 export class RuntimeMigrator {
@@ -193,10 +188,7 @@ export class RuntimeMigrator {
 
             logger.info({ src: "plugin:mysql", pluginName }, "Lock acquired");
           } else {
-            logger.debug(
-              { src: "plugin:mysql", pluginName, lockName },
-              "Named lock acquired"
-            );
+            logger.debug({ src: "plugin:mysql", pluginName, lockName }, "Named lock acquired");
           }
         } catch (lockError) {
           if (lockError instanceof Error && lockError.message.includes("Could not acquire")) {
@@ -536,15 +528,9 @@ export class RuntimeMigrator {
   async reset(pluginName: string): Promise<void> {
     logger.warn({ src: "plugin:mysql", pluginName }, "Resetting migrations");
 
-    await this.db.execute(
-      sql`DELETE FROM _eliza_migrations WHERE plugin_name = ${pluginName}`
-    );
-    await this.db.execute(
-      sql`DELETE FROM _eliza_journal WHERE plugin_name = ${pluginName}`
-    );
-    await this.db.execute(
-      sql`DELETE FROM _eliza_snapshots WHERE plugin_name = ${pluginName}`
-    );
+    await this.db.execute(sql`DELETE FROM _eliza_migrations WHERE plugin_name = ${pluginName}`);
+    await this.db.execute(sql`DELETE FROM _eliza_journal WHERE plugin_name = ${pluginName}`);
+    await this.db.execute(sql`DELETE FROM _eliza_snapshots WHERE plugin_name = ${pluginName}`);
 
     logger.warn({ src: "plugin:mysql", pluginName }, "Reset complete");
   }

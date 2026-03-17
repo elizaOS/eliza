@@ -1,5 +1,5 @@
-import { type Entity, type Metadata, type UUID, logger } from "@elizaos/core";
-import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
+import { type Entity, logger, type Metadata, type UUID } from "@elizaos/core";
+import { and, eq, inArray, or, type SQL, sql } from "drizzle-orm";
 import { componentTable, entityTable, participantTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
 
@@ -10,11 +10,7 @@ import type { DrizzleDatabase } from "../types";
 function toPgTextArray(arr: string[]): string {
   if (!arr || arr.length === 0) return "{}";
   return (
-    "{" +
-    arr
-      .map((s) => '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"')
-      .join(",") +
-    "}"
+    "{" + arr.map((s) => '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"').join(",") + "}"
   );
 }
 
@@ -157,10 +153,7 @@ export async function getEntitiesForRoom(
  * @param {Entity[]} entities - The entity objects to be created.
  * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating the success of the operation.
  */
-export async function createEntities(
-  db: DrizzleDatabase,
-  entities: Entity[]
-): Promise<UUID[]> {
+export async function createEntities(db: DrizzleDatabase, entities: Entity[]): Promise<UUID[]> {
   try {
     return await db.transaction(async (tx) => {
       // Normalize entity data to ensure names is a proper array
@@ -172,7 +165,7 @@ export async function createEntities(
 
       await tx.insert(entityTable).values(normalizedEntities);
 
-      return entities.map(e => e.id);
+      return entities.map((e) => e.id);
     });
   } catch (error) {
     logger.error(
@@ -189,25 +182,22 @@ export async function createEntities(
 
 /**
  * Upsert entities (insert or update by ID)
- * 
+ *
  * WHY: Entities may be created concurrently from multiple sources (client
  * plugins, RPC handlers, background jobs). Atomic upsert prevents duplicates
  * and race conditions.
- * 
+ *
  * WHY ON CONFLICT DO UPDATE: Entities can change over time (name updates,
  * metadata changes). DO UPDATE ensures we keep the latest version.
- * 
+ *
  * WHY normalize names: The names field must be a proper array for indexing
  * and searching. Array normalization happens here (not in caller) to ensure
  * consistency across all code paths.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {Entity[]} entities - Array of entities to upsert (id, agentId required)
  */
-export async function upsertEntities(
-  db: DrizzleDatabase,
-  entities: Entity[]
-): Promise<void> {
+export async function upsertEntities(db: DrizzleDatabase, entities: Entity[]): Promise<void> {
   if (entities.length === 0) return;
 
   const normalizedEntities = entities.map((entity) => ({
@@ -243,10 +233,7 @@ export async function upsertEntities(
  * plus all components just to check existence. This is called on every incoming
  * message. SELECT 1 LIMIT 1 touches only the primary key index.
  */
-export async function ensureEntityExists(
-  db: DrizzleDatabase,
-  entity: Entity
-): Promise<boolean> {
+export async function ensureEntityExists(db: DrizzleDatabase, entity: Entity): Promise<boolean> {
   if (!entity.id) {
     logger.error({ src: "plugin:sql" }, "Entity ID is required for ensureEntityExists");
     return false;
@@ -284,10 +271,7 @@ export async function ensureEntityExists(
  * @param {Entity} entity - The entity object to be updated.
  * @returns {Promise<void>} A Promise that resolves when the entity is updated.
  */
-export async function updateEntity(
-  db: DrizzleDatabase,
-  entity: Entity
-): Promise<void> {
+export async function updateEntity(db: DrizzleDatabase, entity: Entity): Promise<void> {
   if (!entity.id) {
     throw new Error("Entity ID is required for update");
   }
@@ -311,10 +295,7 @@ export async function updateEntity(
  * @param {UUID} entityId - The ID of the entity to delete.
  * @returns {Promise<void>} A Promise that resolves when the entity is deleted.
  */
-export async function deleteEntity(
-  db: DrizzleDatabase,
-  entityId: UUID
-): Promise<void> {
+export async function deleteEntity(db: DrizzleDatabase, entityId: UUID): Promise<void> {
   await db.transaction(async (tx) => {
     // Delete related components first
     await tx
@@ -431,15 +412,15 @@ export async function searchEntitiesByName(
 
 /**
  * Query entities by component properties (type and/or JSONB data filter).
- * 
+ *
  * WHY: Collapses multi-hop fetch patterns (get IDs → getEntitiesByIds → filter components)
  * into a single database-optimized query. Uses GIN index on components.data for fast
  * JSONB containment queries.
- * 
- * TWO-QUERY APPROACH (correctness): 
+ *
+ * TWO-QUERY APPROACH (correctness):
  * 1. Get distinct entity IDs matching component filter (with LIMIT/OFFSET)
  * 2. Fetch full entity+component data for those IDs
- * 
+ *
  * WHY two queries: Single SELECT DISTINCT ... JOIN ... LIMIT can return fewer than
  * LIMIT entities if some entities have multiple components (DISTINCT dedupes AFTER LIMIT).
  */
@@ -456,34 +437,47 @@ export async function queryEntities(
     includeAllComponents?: boolean;
   }
 ): Promise<Entity[]> {
-  const { componentType, componentDataFilter, agentId, entityIds, worldId, limit, offset, includeAllComponents = false } = params;
+  const {
+    componentType,
+    componentDataFilter,
+    agentId,
+    entityIds,
+    worldId,
+    limit,
+    offset,
+    includeAllComponents = false,
+  } = params;
 
   // TRAP: Prevent full table scans - require at least one meaningful filter OR explicit limit
   const hasFilter = componentType || componentDataFilter || entityIds || agentId || worldId;
   if (!hasFilter && !limit) {
-    throw new Error('queryEntities requires at least one filter (componentType, componentDataFilter, entityIds, agentId, worldId) or an explicit limit');
+    throw new Error(
+      "queryEntities requires at least one filter (componentType, componentDataFilter, entityIds, agentId, worldId) or an explicit limit"
+    );
   }
 
   // ── Query 1: Get matching entity IDs (with LIMIT/OFFSET applied here) ──
   const conditions: SQL[] = [];
-  
+
   if (componentType) {
     conditions.push(eq(componentTable.type, componentType));
   }
-  
+
   if (componentDataFilter) {
     // JSONB containment using @> operator (GIN indexed)
-    conditions.push(sql`${componentTable.data}::jsonb @> ${JSON.stringify(componentDataFilter)}::jsonb`);
+    conditions.push(
+      sql`${componentTable.data}::jsonb @> ${JSON.stringify(componentDataFilter)}::jsonb`
+    );
   }
-  
+
   if (agentId) {
     conditions.push(eq(componentTable.agentId, agentId));
   }
-  
+
   if (worldId) {
     conditions.push(eq(componentTable.worldId, worldId));
   }
-  
+
   if (entityIds && entityIds.length > 0) {
     // TRAP: Chunk large entityIds arrays to avoid WASM statement size limits
     const CHUNK = 1000;
@@ -496,16 +490,24 @@ export async function queryEntities(
           .from(componentTable)
           .where(and(...conditions, inArray(componentTable.entityId, chunk)))
           .groupBy(componentTable.entityId);
-        allMatchingIds.push(...chunkResult.map(r => r.entityId as UUID));
+        allMatchingIds.push(...chunkResult.map((r) => r.entityId as UUID));
       }
-      
+
       if (allMatchingIds.length === 0) return [];
-      
+
       // Apply LIMIT/OFFSET to the chunked results
-      const paginatedIds = allMatchingIds.slice(offset ?? 0, (offset ?? 0) + (limit ?? allMatchingIds.length));
-      
+      const paginatedIds = allMatchingIds.slice(
+        offset ?? 0,
+        (offset ?? 0) + (limit ?? allMatchingIds.length)
+      );
+
       // ── Query 2: Fetch full entity+component data ──
-      return getEntitiesByIdsWithComponentFilter(db, paginatedIds, componentType, includeAllComponents);
+      return getEntitiesByIdsWithComponentFilter(
+        db,
+        paginatedIds,
+        componentType,
+        includeAllComponents
+      );
     } else {
       conditions.push(inArray(componentTable.entityId, entityIds));
     }
@@ -520,19 +522,24 @@ export async function queryEntities(
   if (limit) {
     query1 = query1.limit(limit) as typeof query1;
   }
-  
+
   if (offset) {
     query1 = query1.offset(offset) as typeof query1;
   }
 
   const matchingEntityIds = await query1;
-  
+
   if (matchingEntityIds.length === 0) return [];
 
-  const entityIdsToFetch = matchingEntityIds.map(r => r.entityId as UUID);
+  const entityIdsToFetch = matchingEntityIds.map((r) => r.entityId as UUID);
 
   // ── Query 2: Fetch full entity+component data for matched entity IDs ──
-  return getEntitiesByIdsWithComponentFilter(db, entityIdsToFetch, componentType, includeAllComponents);
+  return getEntitiesByIdsWithComponentFilter(
+    db,
+    entityIdsToFetch,
+    componentType,
+    includeAllComponents
+  );
 }
 
 /**
@@ -549,7 +556,7 @@ async function getEntitiesByIdsWithComponentFilter(
 
   // Build JOIN query with optional component type filter
   const componentJoinConditions = [eq(componentTable.entityId, entityTable.id)];
-  
+
   if (!includeAllComponents && componentType) {
     // TRAP: When includeAllComponents=false, only return the matched component type
     componentJoinConditions.push(eq(componentTable.type, componentType));
@@ -569,7 +576,7 @@ async function getEntitiesByIdsWithComponentFilter(
   // Group components by entity (reuse existing pattern)
   const entities: Record<UUID, Entity> = {};
   const entityComponents: Record<UUID, Entity["components"]> = {};
-  
+
   for (const e of result) {
     const key = e.entity.id;
     entities[key] = e.entity;
@@ -579,7 +586,7 @@ async function getEntitiesByIdsWithComponentFilter(
       entityComponents[key] = [...entityComponents[key], ...componentsArray];
     }
   }
-  
+
   for (const k of Object.keys(entityComponents)) {
     entities[k].components = entityComponents[k];
   }
@@ -596,10 +603,7 @@ async function getEntitiesByIdsWithComponentFilter(
  * normalized in JS, then a single UPDATE … SET names = CASE …, metadata = CASE …
  * WHERE id IN (…) touches all rows at once.
  */
-export async function updateEntities(
-  db: DrizzleDatabase,
-  entities: Entity[]
-): Promise<void> {
+export async function updateEntities(db: DrizzleDatabase, entities: Entity[]): Promise<void> {
   if (entities.length === 0) return;
 
   const valid = entities.filter((e) => {
@@ -635,10 +639,7 @@ export async function updateEntities(
 /**
  * Deletes multiple entities from the database.
  */
-export async function deleteEntities(
-  db: DrizzleDatabase,
-  entityIds: UUID[]
-): Promise<void> {
+export async function deleteEntities(db: DrizzleDatabase, entityIds: UUID[]): Promise<void> {
   if (entityIds.length === 0) return;
 
   await db.transaction(async (tx) => {

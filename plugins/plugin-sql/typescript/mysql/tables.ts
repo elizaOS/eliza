@@ -4,8 +4,7 @@
  */
 
 import { buildBaseTables } from "@elizaos/core";
-import { buildTable } from "../schema-builders";
-import { mysqlAdapter } from "../schema-builders";
+import { buildTable, mysqlAdapter } from "../schema-builders";
 
 // Build all tables once using the MySQL adapter
 const tables = buildBaseTables(buildTable, mysqlAdapter);

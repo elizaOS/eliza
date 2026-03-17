@@ -99,9 +99,7 @@ describe("PostgresConnectionManager", () => {
       const connectionUrl = "postgresql://user:pass@localhost:5432/testdb";
       const manager = new PostgresConnectionManager(connectionUrl);
 
-      mockPoolInstance.connect.mockRejectedValue(
-        new Error("Connection failed"),
-      );
+      mockPoolInstance.connect.mockRejectedValue(new Error("Connection failed"));
 
       await expect(manager.getClient()).rejects.toThrow("Connection failed");
     });
@@ -130,9 +128,7 @@ describe("PostgresConnectionManager", () => {
       const connectionUrl = "postgresql://user:pass@localhost:5432/testdb";
       const manager = new PostgresConnectionManager(connectionUrl);
 
-      mockPoolInstance.connect.mockRejectedValue(
-        new Error("Connection failed"),
-      );
+      mockPoolInstance.connect.mockRejectedValue(new Error("Connection failed"));
 
       const result = await manager.testConnection();
       expect(result).toBe(false);
@@ -197,18 +193,13 @@ describe("PostgresConnectionManager", () => {
       };
 
       const originalTransaction = db.transaction;
-      db.transaction = vi.fn(
-        async (callback: (tx: typeof mockTx) => Promise<string>) => {
-          return callback(mockTx);
-        },
-      ) as typeof db.transaction;
+      db.transaction = vi.fn(async (callback: (tx: typeof mockTx) => Promise<string>) => {
+        return callback(mockTx);
+      }) as typeof db.transaction;
 
-      const result = await manager.withIsolationContext(
-        testEntityId as UUID,
-        async (_tx) => {
-          return "success";
-        },
-      );
+      const result = await manager.withIsolationContext(testEntityId as UUID, async (_tx) => {
+        return "success";
+      });
 
       expect(result).toBe("success");
       // SET LOCAL should NOT be called when ENABLE_DATA_ISOLATION is not true
@@ -228,11 +219,9 @@ describe("PostgresConnectionManager", () => {
       };
 
       const originalTransaction = db.transaction;
-      db.transaction = vi.fn(
-        async (callback: (tx: typeof mockTx) => Promise<string>) => {
-          return callback(mockTx);
-        },
-      ) as typeof db.transaction;
+      db.transaction = vi.fn(async (callback: (tx: typeof mockTx) => Promise<string>) => {
+        return callback(mockTx);
+      }) as typeof db.transaction;
 
       const result = await manager.withIsolationContext(null, async (_tx) => {
         return "success";
@@ -256,11 +245,9 @@ describe("PostgresConnectionManager", () => {
       };
 
       const originalTransaction = db.transaction;
-      db.transaction = vi.fn(
-        async (callback: (tx: typeof mockTx) => Promise<string>) => {
-          return callback(mockTx);
-        },
-      ) as typeof db.transaction;
+      db.transaction = vi.fn(async (callback: (tx: typeof mockTx) => Promise<string>) => {
+        return callback(mockTx);
+      }) as typeof db.transaction;
 
       await manager.withIsolationContext(testEntityId as UUID, async (_tx) => {
         return "success";
@@ -283,16 +270,14 @@ describe("PostgresConnectionManager", () => {
       };
 
       const originalTransaction = db.transaction;
-      db.transaction = vi.fn(
-        async (callback: (tx: typeof mockTx) => Promise<string>) => {
-          return callback(mockTx);
-        },
-      ) as typeof db.transaction;
+      db.transaction = vi.fn(async (callback: (tx: typeof mockTx) => Promise<string>) => {
+        return callback(mockTx);
+      }) as typeof db.transaction;
 
       await expect(
         manager.withIsolationContext(testEntityId as UUID, async (_tx) => {
           throw new Error("Callback error");
-        }),
+        })
       ).rejects.toThrow("Callback error");
 
       db.transaction = originalTransaction;

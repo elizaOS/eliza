@@ -3,8 +3,8 @@ import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { createIsolatedTestDatabase } from "../test-helpers";
 import { mockCharacter } from "../fixtures";
+import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("Cascade Delete Tests", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;

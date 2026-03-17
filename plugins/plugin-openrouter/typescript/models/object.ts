@@ -35,7 +35,7 @@ async function generateObjectWithModel(
     };
 
     const { object, usage } = await generateObject(
-      generateParams as Parameters<typeof generateObject>[0],
+      generateParams as Parameters<typeof generateObject>[0]
     );
 
     if (usage) {

@@ -1,8 +1,7 @@
-import { type Agent, type UUID, logger } from "@elizaos/core";
+import { type Agent, logger, type UUID } from "@elizaos/core";
 import { count, eq, inArray, sql } from "drizzle-orm";
 import { agentTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
-
 
 /**
  * Asynchronously retrieves a list of agents from the database.
@@ -30,8 +29,6 @@ export async function getAgents(db: DrizzleDatabase): Promise<Partial<Agent>[]> 
       }) as Partial<Agent>
   );
 }
-
-
 
 /**
  * Merges updated agent settings with existing settings,
@@ -87,9 +84,7 @@ export async function mergeAgentSettings<T extends Record<string, unknown>>(
 
     // Initialize output. If target is not an object, start with an empty one to merge source into.
     const output =
-      typeof target === "object" && target !== null && !Array.isArray(target)
-        ? { ...target }
-        : {};
+      typeof target === "object" && target !== null && !Array.isArray(target) ? { ...target } : {};
 
     for (const key of Object.keys(source)) {
       // Iterate over source keys
@@ -133,7 +128,6 @@ export async function mergeAgentSettings<T extends Record<string, unknown>>(
   return (finalSettings ?? {}) as T;
 }
 
-
 // ====== BATCH METHODS ======
 
 /**
@@ -145,10 +139,7 @@ export async function mergeAgentSettings<T extends Record<string, unknown>>(
 export async function getAgentsByIds(db: DrizzleDatabase, agentIds: UUID[]): Promise<Agent[]> {
   if (agentIds.length === 0) return [];
 
-  const rows = await db
-    .select()
-    .from(agentTable)
-    .where(inArray(agentTable.id, agentIds));
+  const rows = await db.select().from(agentTable).where(inArray(agentTable.id, agentIds));
 
   return rows.map((row) => {
     const bioValue = !row.bio ? "" : Array.isArray(row.bio) ? row.bio : row.bio;
@@ -210,19 +201,19 @@ export async function createAgents(db: DrizzleDatabase, agents: Agent[]): Promis
 
 /**
  * Upsert agents (insert or update by ID)
- * 
+ *
  * WHY: Atomic insert-or-update eliminates race conditions in ensureAgentExists.
  * PostgreSQL's ON CONFLICT DO UPDATE is a single atomic SQL statement - no
  * SELECT-then-INSERT race window where two concurrent calls could both try
  * to insert the same agent.
- * 
+ *
  * WHY DO UPDATE SET instead of DO NOTHING: We want to update existing agents
  * with new values if they've changed (name, bio, system config). DO NOTHING
  * would skip updates entirely, leaving stale data.
- * 
+ *
  * PERFORMANCE: Single multi-row INSERT with ON CONFLICT is 10-100x faster than
  * N separate get-check-create cycles.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {Agent[]} agents - Array of agents to upsert (id required for each)
  */
@@ -232,14 +223,10 @@ export async function upsertAgents(db: DrizzleDatabase, agents: Partial<Agent>[]
   const agentsData = agents.map((agent) => ({
     ...agent,
     createdAt: new Date(
-      typeof agent.createdAt === "bigint"
-        ? Number(agent.createdAt)
-        : agent.createdAt || Date.now()
+      typeof agent.createdAt === "bigint" ? Number(agent.createdAt) : agent.createdAt || Date.now()
     ),
     updatedAt: new Date(
-      typeof agent.updatedAt === "bigint"
-        ? Number(agent.updatedAt)
-        : agent.updatedAt || Date.now()
+      typeof agent.updatedAt === "bigint" ? Number(agent.updatedAt) : agent.updatedAt || Date.now()
     ),
   }));
 
@@ -293,9 +280,7 @@ export async function updateAgents(
         .select({ id: agentTable.id, settings: agentTable.settings })
         .from(agentTable)
         .where(inArray(agentTable.id, sIds));
-      const sMap = new Map(
-        rows.map((r) => [r.id, (r.settings ?? {}) as Record<string, unknown>])
-      );
+      const sMap = new Map(rows.map((r) => [r.id, (r.settings ?? {}) as Record<string, unknown>]));
       for (const u of settingsUpdates) {
         const existing = sMap.get(u.agentId) || {};
         u.agent.settings = await mergeAgentSettings(db, u.agentId, u.agent.settings!, existing);
@@ -335,7 +320,8 @@ export async function updateAgents(
     const bioItems = field("bio");
     if (bioItems.length > 0) setObj.bio = jsonbCaseFn(agentTable.bio, bioItems);
     const msgItems = field("messageExamples");
-    if (msgItems.length > 0) setObj.messageExamples = jsonbCaseFn(agentTable.messageExamples, msgItems);
+    if (msgItems.length > 0)
+      setObj.messageExamples = jsonbCaseFn(agentTable.messageExamples, msgItems);
     const postItems = field("postExamples");
     if (postItems.length > 0) setObj.postExamples = jsonbCaseFn(agentTable.postExamples, postItems);
     const topicItems = field("topics");
@@ -351,10 +337,7 @@ export async function updateAgents(
 
     setObj.updatedAt = new Date();
 
-    await db
-      .update(agentTable)
-      .set(setObj)
-      .where(inArray(agentTable.id, ids));
+    await db.update(agentTable).set(setObj).where(inArray(agentTable.id, ids));
 
     return true;
   } catch (error) {

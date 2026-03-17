@@ -1,8 +1,8 @@
 import * as path from "node:path";
 import type { Action, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { ModelType, generateText, logger } from "@elizaos/core";
+import { generateText, logger, ModelType } from "@elizaos/core";
 import { requireActionSpec } from "../generated/specs/specs";
-import { type ProseService, createProseService } from "../services/proseService";
+import { createProseService, type ProseService } from "../services/proseService";
 import type { ProseRunResult, ProseStateMode } from "../types";
 
 const spec = requireActionSpec("PROSE_RUN");
@@ -64,7 +64,7 @@ function buildExecutionContext(
   runId: string,
   runDir: string,
   stateMode: ProseStateMode,
-  inputs: Record<string, unknown> | undefined,
+  inputs: Record<string, unknown> | undefined
 ): string {
   const parts: string[] = [];
 
@@ -139,7 +139,7 @@ export const proseRunAction: Action = {
         ex.map((msg) => ({
           name: msg.role,
           content: { text: msg.content },
-        })),
+        }))
       )
     : [],
 
@@ -152,7 +152,7 @@ export const proseRunAction: Action = {
     if (lower.includes("prose run")) return true;
     if (lower.includes("run") && lower.includes(".prose")) return true;
     if (lower.includes("execute") && lower.includes(".prose")) return true;
-    if (lower.match(/run\s+[\w./\-]+\.prose/)) return true;
+    if (lower.match(/run\s+[\w./-]+\.prose/)) return true;
 
     return false;
   },
@@ -162,7 +162,7 @@ export const proseRunAction: Action = {
     message: Memory,
     state: State | undefined,
     _options: Record<string, unknown>,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<boolean> => {
     const service = getService(runtime);
     const content =
@@ -220,7 +220,7 @@ export const proseRunAction: Action = {
             const workspaceDir = await service.ensureWorkspace(cwd);
             const { runId, runDir } = await service.createRunDirectory(
               workspaceDir,
-              exampleContent,
+              exampleContent
             );
 
             const execContext = buildExecutionContext(
@@ -229,7 +229,7 @@ export const proseRunAction: Action = {
               runId,
               runDir,
               stateMode,
-              inputs,
+              inputs
             );
 
             if (callback) {
@@ -274,7 +274,7 @@ export const proseRunAction: Action = {
         runId,
         runDir,
         stateMode,
-        inputs,
+        inputs
       );
 
       // Return the context - the agent will now "become" the VM

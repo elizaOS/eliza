@@ -1,7 +1,7 @@
 import type { Action, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { requireActionSpec } from "../generated/specs/specs";
-import { type ProseService, createProseService } from "../services/proseService";
+import { createProseService, type ProseService } from "../services/proseService";
 
 const spec = requireActionSpec("PROSE_HELP");
 
@@ -80,7 +80,7 @@ export const proseHelpAction: Action = {
         ex.map((msg) => ({
           name: msg.role,
           content: { text: msg.content },
-        })),
+        }))
       )
     : [],
 
@@ -105,7 +105,7 @@ export const proseHelpAction: Action = {
     message: Memory,
     _state: State | undefined,
     _options: Record<string, unknown>,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<boolean> => {
     const service = getService(runtime);
     const content =
@@ -161,7 +161,7 @@ export const proseHelpAction: Action = {
         } else {
           parts.push("No example programs found in the skills directory.");
           parts.push(
-            "\nExamples should be placed in the `examples/` subdirectory of the prose skill.",
+            "\nExamples should be placed in the `examples/` subdirectory of the prose skill."
           );
         }
 

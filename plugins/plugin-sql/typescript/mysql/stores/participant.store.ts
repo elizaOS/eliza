@@ -1,5 +1,12 @@
-import { type Entity, type Metadata, type Participant, type ParticipantUpdateFields, type UUID, logger } from "@elizaos/core";
-import { and, eq, or, sql, type SQL } from "drizzle-orm";
+import {
+  type Entity,
+  logger,
+  type Metadata,
+  type Participant,
+  type ParticipantUpdateFields,
+  type UUID,
+} from "@elizaos/core";
+import { and, eq, or, type SQL, sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import { entityTable, participantTable } from "../tables";
 import type { DrizzleDatabase } from "../types";
@@ -27,7 +34,10 @@ export async function createRoomParticipants(
       agentId,
     }));
     // MySQL: use ON DUPLICATE KEY UPDATE to emulate ON CONFLICT DO NOTHING
-    await db.insert(participantTable).values(values).onDuplicateKeyUpdate({ set: { id: sql`id` } });
+    await db
+      .insert(participantTable)
+      .values(values)
+      .onDuplicateKeyUpdate({ set: { id: sql`id` } });
     return entityIds;
   } catch (error) {
     logger.error(
@@ -89,8 +99,12 @@ export async function getParticipantsForEntity(
   const entity: Entity = {
     id: entityRow.id as UUID,
     agentId: entityRow.agentId as UUID,
-    names: (Array.isArray(entityRow.names) ? entityRow.names : JSON.parse(entityRow.names as string || "[]")) as string[],
-    metadata: (typeof entityRow.metadata === "string" ? JSON.parse(entityRow.metadata) : entityRow.metadata ?? {}) as Metadata,
+    names: (Array.isArray(entityRow.names)
+      ? entityRow.names
+      : JSON.parse((entityRow.names as string) || "[]")) as string[],
+    metadata: (typeof entityRow.metadata === "string"
+      ? JSON.parse(entityRow.metadata)
+      : (entityRow.metadata ?? {})) as Metadata,
   };
 
   return participantRows.map((row) => ({
@@ -105,10 +119,7 @@ export async function getParticipantsForEntity(
  * @param {UUID} roomId - The ID of the room to retrieve participants for.
  * @returns {Promise<UUID[]>} A Promise that resolves to an array of entity IDs.
  */
-export async function getParticipantsForRoom(
-  db: DrizzleDatabase,
-  roomId: UUID
-): Promise<UUID[]> {
+export async function getParticipantsForRoom(db: DrizzleDatabase, roomId: UUID): Promise<UUID[]> {
   const result = await db
     .select({ entityId: participantTable.entityId })
     .from(participantTable)
@@ -230,20 +241,12 @@ export async function deleteParticipants(
 
   try {
     const pairConditions = participants.map(({ entityId, roomId }) =>
-      and(
-        eq(participantTable.entityId, entityId),
-        eq(participantTable.roomId, roomId)
-      )
+      and(eq(participantTable.entityId, entityId), eq(participantTable.roomId, roomId))
     );
 
     await db
       .delete(participantTable)
-      .where(
-        and(
-          eq(participantTable.agentId, agentId),
-          or(...pairConditions)
-        )
-      );
+      .where(and(eq(participantTable.agentId, agentId), or(...pairConditions)));
 
     return true;
   } catch (error) {
@@ -262,12 +265,12 @@ export async function deleteParticipants(
 
 /**
  * Update participants (batch) - MySQL version
- * 
+ *
  * WHY: Same rationale as PostgreSQL - general-purpose participant field updates
  * beyond just roomState.
- * 
+ *
  * WHY CASE expression: MySQL supports batch updates with CASE like PostgreSQL.
- * 
+ *
  * @param {DrizzleDatabase} db - The database instance
  * @param {UUID} agentId - The agent ID
  * @param {Array<{ entityId: UUID; roomId: UUID; updates: ParticipantUpdateFields }>} participants - Updates
@@ -283,50 +286,63 @@ export async function updateParticipants(
 ): Promise<void> {
   if (participants.length === 0) return;
 
-  const hasRoomStateUpdates = participants.some(p => 'roomState' in p.updates);
-  const hasMetadataUpdates = participants.some(p => 'metadata' in p.updates);
-  
+  const hasRoomStateUpdates = participants.some((p) => "roomState" in p.updates);
+  const hasMetadataUpdates = participants.some((p) => "metadata" in p.updates);
+
   const setClauses: SQL<unknown>[] = [];
-  
+
   if (hasRoomStateUpdates) {
     const roomStateCases = participants
-      .filter((p): p is typeof p & { updates: ParticipantUpdateFields & { roomState: NonNullable<ParticipantUpdateFields["roomState"]> } } => p.updates.roomState !== undefined)
-      .map(p => sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${p.updates.roomState}`);
-    
+      .filter(
+        (
+          p
+        ): p is typeof p & {
+          updates: ParticipantUpdateFields & {
+            roomState: NonNullable<ParticipantUpdateFields["roomState"]>;
+          };
+        } => p.updates.roomState !== undefined
+      )
+      .map(
+        (p) =>
+          sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN ${p.updates.roomState}`
+      );
+
     if (roomStateCases.length > 0) {
-      setClauses.push(sql`${participantTable.roomState} = CASE ${sql.join(roomStateCases, sql` `)} ELSE ${participantTable.roomState} END`);
+      setClauses.push(
+        sql`${participantTable.roomState} = CASE ${sql.join(roomStateCases, sql` `)} ELSE ${participantTable.roomState} END`
+      );
     }
   }
-  
+
   if (hasMetadataUpdates) {
     const metadataCases = participants
-      .filter((p): p is typeof p & { updates: ParticipantUpdateFields & { metadata: Record<string, unknown> } } => p.updates.metadata !== undefined)
-      .map(p => {
+      .filter(
+        (
+          p
+        ): p is typeof p & {
+          updates: ParticipantUpdateFields & { metadata: Record<string, unknown> };
+        } => p.updates.metadata !== undefined
+      )
+      .map((p) => {
         const jsonString = JSON.stringify(p.updates.metadata);
         return sql`WHEN (${participantTable.entityId} = ${p.entityId} AND ${participantTable.roomId} = ${p.roomId}) THEN CAST(${jsonString} AS JSON)`;
       });
-    
+
     if (metadataCases.length > 0) {
-      setClauses.push(sql`${participantTable.metadata} = CASE ${sql.join(metadataCases, sql` `)} ELSE ${participantTable.metadata} END`);
+      setClauses.push(
+        sql`${participantTable.metadata} = CASE ${sql.join(metadataCases, sql` `)} ELSE ${participantTable.metadata} END`
+      );
     }
   }
-  
+
   if (setClauses.length === 0) return;
-  
+
   const pairConditions = participants.map(({ entityId, roomId }) =>
-    and(
-      eq(participantTable.entityId, entityId),
-      eq(participantTable.roomId, roomId)
-    )
+    and(eq(participantTable.entityId, entityId), eq(participantTable.roomId, roomId))
   );
-  
+
   await db
     .update(participantTable)
     .set(sql`${sql.join(setClauses, sql`, `)}`)
-    .where(
-      and(
-        eq(participantTable.agentId, agentId),
-        or(...pairConditions)
-      )
-    );
+    .where(and(eq(participantTable.agentId, agentId), or(...pairConditions)));
 }

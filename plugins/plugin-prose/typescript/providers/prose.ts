@@ -1,6 +1,6 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { type ProseService, createProseService } from "../services/proseService";
+import { createProseService, type ProseService } from "../services/proseService";
 import type { ProseStateMode } from "../types";
 
 // Cache service per runtime
@@ -24,7 +24,7 @@ function getService(runtime: IAgentRuntime): ProseService {
  */
 export async function initProseService(
   runtime: IAgentRuntime,
-  skillsDir?: string,
+  skillsDir?: string
 ): Promise<ProseService> {
   const service = getService(runtime);
   await service.init(skillsDir);

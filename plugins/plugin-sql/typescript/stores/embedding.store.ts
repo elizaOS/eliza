@@ -1,7 +1,11 @@
-import { type UUID, logger } from "@elizaos/core";
+import { logger, type UUID } from "@elizaos/core";
 import { eq } from "drizzle-orm";
-import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../tables";
-import { embeddingTable, memoryTable } from "../tables";
+import {
+  DIMENSION_MAP,
+  type EmbeddingDimensionColumn,
+  embeddingTable,
+  memoryTable,
+} from "../tables";
 import type { DrizzleDatabase } from "../types";
 
 /**

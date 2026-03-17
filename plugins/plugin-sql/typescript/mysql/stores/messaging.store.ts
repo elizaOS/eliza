@@ -1,8 +1,4 @@
-import {
-  ChannelType,
-  type Metadata,
-  type UUID,
-} from "@elizaos/core";
+import { ChannelType, type Metadata, type UUID } from "@elizaos/core";
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import {
@@ -82,9 +78,7 @@ export async function createMessageServer(
 /**
  * Gets all message servers.
  */
-export async function getMessageServers(
-  db: DrizzleDatabase
-): Promise<
+export async function getMessageServers(db: DrizzleDatabase): Promise<
   Array<{
     id: UUID;
     name: string;
@@ -164,9 +158,7 @@ export async function getMessageServerByRlsServerId(
     LIMIT 1
   `);
 
-  const rows = Array.isArray(results)
-    ? (results[0] as unknown as Record<string, unknown>[])
-    : [];
+  const rows = Array.isArray(results) ? (results[0] as unknown as Record<string, unknown>[]) : [];
   return rows.length > 0
     ? {
         id: rows[0].id as UUID,
@@ -457,10 +449,7 @@ export async function updateChannel(
 /**
  * Deletes a channel and all its associated data.
  */
-export async function deleteChannel(
-  db: DrizzleDatabase,
-  channelId: UUID
-): Promise<void> {
+export async function deleteChannel(db: DrizzleDatabase, channelId: UUID): Promise<void> {
   await db.transaction(async (tx) => {
     // Delete all messages in the channel
     await tx.delete(messageTable).where(eq(messageTable.channelId, channelId));
@@ -611,11 +600,7 @@ export async function getMessageById(
   createdAt: Date;
   updatedAt: Date;
 } | null> {
-  const rows = await db
-    .select()
-    .from(messageTable)
-    .where(eq(messageTable.id, id))
-    .limit(1);
+  const rows = await db.select().from(messageTable).where(eq(messageTable.id, id)).limit(1);
   if (!rows || rows.length === 0) return null;
   const row = rows[0];
   return {
@@ -674,7 +659,8 @@ export async function updateMessage(
   if (patch.sourceType !== undefined) setData.sourceType = patch.sourceType;
   if (patch.sourceId !== undefined) setData.sourceId = patch.sourceId;
   if (patch.metadata !== undefined) setData.metadata = patch.metadata;
-  if (patch.inReplyToRootMessageId !== undefined) setData.inReplyToRootMessageId = patch.inReplyToRootMessageId;
+  if (patch.inReplyToRootMessageId !== undefined)
+    setData.inReplyToRootMessageId = patch.inReplyToRootMessageId;
 
   await db.update(messageTable).set(setData).where(eq(messageTable.id, id));
 
@@ -736,10 +722,7 @@ export async function getMessagesForChannel(
 /**
  * Deletes a message.
  */
-export async function deleteMessage(
-  db: DrizzleDatabase,
-  messageId: UUID
-): Promise<void> {
+export async function deleteMessage(db: DrizzleDatabase, messageId: UUID): Promise<void> {
   await db.delete(messageTable).where(eq(messageTable.id, messageId));
 }
 

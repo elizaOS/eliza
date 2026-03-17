@@ -1,7 +1,11 @@
 import type { UUID } from "@elizaos/core";
 import { eq } from "drizzle-orm";
-import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../tables";
-import { embeddingTable, memoryTable } from "../tables";
+import {
+  DIMENSION_MAP,
+  type EmbeddingDimensionColumn,
+  embeddingTable,
+  memoryTable,
+} from "../tables";
 import type { DrizzleDatabase } from "../types";
 
 /**
@@ -11,9 +15,7 @@ import type { DrizzleDatabase } from "../types";
  * @param dimension - The numeric embedding dimension (e.g. 384, 512, 768, 1024, 1536, 3072)
  * @returns The DIMENSION_MAP column name (e.g. "dim384", "dim512", etc.)
  */
-export function setEmbeddingDimension(
-  dimension: number
-): EmbeddingDimensionColumn {
+export function setEmbeddingDimension(dimension: number): EmbeddingDimensionColumn {
   return DIMENSION_MAP[dimension as keyof typeof DIMENSION_MAP];
 }
 

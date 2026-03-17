@@ -1,10 +1,4 @@
-import {
-  type Agent,
-  type Entity,
-  logger,
-  type Memory,
-  type UUID,
-} from "@elizaos/core";
+import { type Agent, type Entity, logger, type Memory, type UUID } from "@elizaos/core";
 import type { MySql2Database } from "drizzle-orm/mysql2";
 import { BaseDrizzleAdapter } from "../base";
 import type { MySql2ConnectionManager } from "./manager";
@@ -15,11 +9,7 @@ export class MySql2DatabaseAdapter extends BaseDrizzleAdapter {
   // property, causing ensureEmbeddingDimension() to update a different field.
   private manager: MySql2ConnectionManager;
 
-  constructor(
-    agentId: UUID,
-    manager: MySql2ConnectionManager,
-    _schema?: Record<string, unknown>
-  ) {
+  constructor(agentId: UUID, manager: MySql2ConnectionManager, _schema?: Record<string, unknown>) {
     super(agentId);
     this.manager = manager;
     this.db = manager.getDatabase();

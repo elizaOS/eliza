@@ -7,7 +7,7 @@ import {
 } from "@elizaos/core";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
 import { PGliteClientManager } from "./pglite/manager";
-import * as schema from './tables';
+import * as schema from "./tables";
 
 const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
 

@@ -57,7 +57,9 @@ export class TokenizerManager {
       );
 
       if (this.tokenizers.has(tokenizerKey)) {
-        logger.info(`Using cached tokenizer: ${JSON.stringify({ key: tokenizerKey })}`);
+        logger.info(
+          `Using cached tokenizer: ${JSON.stringify({ key: tokenizerKey })}`,
+        );
         const cachedTokenizer = this.tokenizers.get(tokenizerKey);
         if (!cachedTokenizer) {
           throw new Error(
@@ -92,13 +94,19 @@ export class TokenizerManager {
         );
 
         this.tokenizers.set(tokenizerKey, tokenizer);
-        logger.success(`Tokenizer loaded successfully: ${JSON.stringify({ key: tokenizerKey })}`);
+        logger.success(
+          `Tokenizer loaded successfully: ${JSON.stringify({ key: tokenizerKey })}`,
+        );
         return tokenizer;
       } catch (tokenizeError) {
         logger.error(
           `Failed to load tokenizer from HuggingFace: ${JSON.stringify({
-            error: tokenizeError instanceof Error ? tokenizeError.message : String(tokenizeError),
-            stack: tokenizeError instanceof Error ? tokenizeError.stack : undefined,
+            error:
+              tokenizeError instanceof Error
+                ? tokenizeError.message
+                : String(tokenizeError),
+            stack:
+              tokenizeError instanceof Error ? tokenizeError.stack : undefined,
             tokenizer: modelConfig.tokenizer.name,
             modelsDir: this.modelsDir,
           })}`,
@@ -115,7 +123,9 @@ export class TokenizerManager {
         );
 
         this.tokenizers.set(tokenizerKey, tokenizer);
-        logger.success(`Tokenizer loaded successfully on retry: ${JSON.stringify({ key: tokenizerKey })}`);
+        logger.success(
+          `Tokenizer loaded successfully on retry: ${JSON.stringify({ key: tokenizerKey })}`,
+        );
         return tokenizer;
       }
     } catch (error) {

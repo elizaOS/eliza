@@ -1,4 +1,4 @@
-import { type Metadata, type Relationship, type UUID, logger } from "@elizaos/core";
+import { logger, type Metadata, type Relationship, type UUID } from "@elizaos/core";
 import { and, eq, inArray, type SQL, sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import { relationshipTable } from "../tables";
@@ -120,7 +120,7 @@ export async function createRelationships(
   if (relationships.length === 0) return [];
 
   try {
-    const values = relationships.map(rel => ({
+    const values = relationships.map((rel) => ({
       id: v4(),
       sourceEntityId: rel.sourceEntityId,
       targetEntityId: rel.targetEntityId,
@@ -130,7 +130,7 @@ export async function createRelationships(
     }));
 
     await db.insert(relationshipTable).values(values);
-    return values.map(v => v.id);
+    return values.map((v) => v.id);
   } catch (error) {
     logger.error(
       {
@@ -200,7 +200,10 @@ export async function updateRelationships(
     const tagsLiteral =
       tags.length === 0
         ? sql`'{}'::text[]`
-        : sql`ARRAY[${sql.join(tags.map((t) => sql`${t}`), sql`, `)}]::text[]`;
+        : sql`ARRAY[${sql.join(
+            tags.map((t) => sql`${t}`),
+            sql`, `
+          )}]::text[]`;
     return sql`WHEN ${relationshipTable.id} = ${r.id} THEN ${tagsLiteral}`;
   });
 

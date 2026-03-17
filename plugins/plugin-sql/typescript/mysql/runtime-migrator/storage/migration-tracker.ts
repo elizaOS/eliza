@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
-import { getMysqlRow } from "../types";
 import type { DrizzleDB } from "../types";
+import { getMysqlRow } from "../types";
 
 /**
  * MySQL migration tracker.
@@ -12,27 +12,32 @@ export class MigrationTracker {
 
   async ensureTables(): Promise<void> {
     // Create migrations tracking table
-    await this.db.execute(sql.raw(`
+    await this.db.execute(
+      sql.raw(`
       CREATE TABLE IF NOT EXISTS _eliza_migrations (
         id INT AUTO_INCREMENT PRIMARY KEY,
         plugin_name VARCHAR(255) NOT NULL,
         hash VARCHAR(255) NOT NULL,
         created_at BIGINT NOT NULL
       )
-    `));
+    `)
+    );
 
     // Create journal table (replaces _journal.json)
-    await this.db.execute(sql.raw(`
+    await this.db.execute(
+      sql.raw(`
       CREATE TABLE IF NOT EXISTS _eliza_journal (
         plugin_name VARCHAR(255) PRIMARY KEY,
         version VARCHAR(50) NOT NULL,
         dialect VARCHAR(50) NOT NULL DEFAULT 'mysql',
         entries JSON NOT NULL
       )
-    `));
+    `)
+    );
 
     // Create snapshots table (replaces snapshot JSON files)
-    await this.db.execute(sql.raw(`
+    await this.db.execute(
+      sql.raw(`
       CREATE TABLE IF NOT EXISTS _eliza_snapshots (
         id INT AUTO_INCREMENT PRIMARY KEY,
         plugin_name VARCHAR(255) NOT NULL,
@@ -41,7 +46,8 @@ export class MigrationTracker {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uq_plugin_idx (plugin_name, idx)
       )
-    `));
+    `)
+    );
   }
 
   async getLastMigration(pluginName: string): Promise<{

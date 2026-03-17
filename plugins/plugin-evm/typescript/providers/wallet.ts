@@ -10,6 +10,7 @@ import {
 } from "@elizaos/core";
 
 const TEE_MODE_OFF = "off";
+
 import type {
   Account,
   Address,

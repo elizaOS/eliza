@@ -284,7 +284,9 @@ function formatDefaultValue(value: DefaultValue, type: string): string {
   }
 
   // Handle numeric types
-  if (type?.match(/^(int|integer|bigint|smallint|tinyint|mediumint|numeric|decimal|float|double)/i)) {
+  if (
+    type?.match(/^(int|integer|bigint|smallint|tinyint|mediumint|numeric|decimal|float|double)/i)
+  ) {
     return String(value);
   }
 
@@ -761,9 +763,7 @@ function generateAlterColumnSQL(
         `ALTER TABLE ${quotedTable} ALTER COLUMN ${quoteId(column)} SET DEFAULT ${defaultValue};`
       );
     } else {
-      statements.push(
-        `ALTER TABLE ${quotedTable} ALTER COLUMN ${quoteId(column)} DROP DEFAULT;`
-      );
+      statements.push(`ALTER TABLE ${quotedTable} ALTER COLUMN ${quoteId(column)} DROP DEFAULT;`);
     }
   }
 
@@ -807,7 +807,8 @@ function generateCreateIndexSQL(index: SchemaIndexWithTableRef): string {
   const tableRef = quoteTableName(indexTable);
 
   // MySQL USING clause comes after column list
-  const method = index.method && index.method.toLowerCase() !== "btree" ? ` USING ${index.method}` : "";
+  const method =
+    index.method && index.method.toLowerCase() !== "btree" ? ` USING ${index.method}` : "";
 
   return `CREATE ${unique}INDEX ${quoteId(indexName)} ON ${tableRef} (${columns})${method};`;
 }

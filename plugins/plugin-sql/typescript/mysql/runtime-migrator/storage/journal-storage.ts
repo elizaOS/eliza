@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
-import { getMysqlRow } from "../types";
 import type { DrizzleDB, Journal, JournalEntry } from "../types";
+import { getMysqlRow } from "../types";
 
 export class JournalStorage {
   constructor(private db: DrizzleDB) {}
@@ -23,8 +23,7 @@ export class JournalStorage {
     }
 
     // MySQL JSON columns may return a string or parsed object
-    const entries =
-      typeof row.entries === "string" ? JSON.parse(row.entries) : row.entries;
+    const entries = typeof row.entries === "string" ? JSON.parse(row.entries) : row.entries;
 
     return {
       version: row.version,

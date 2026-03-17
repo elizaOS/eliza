@@ -76,8 +76,7 @@ function detectAPI(adapter: any): DetectedAPI {
     // Old: updateAgent(id, data) -> boolean
     // New: updateAgents([{agentId, agent}]) -> boolean
     updateOneAgent: isNewAPI
-      ? (id: UUID, data: any) =>
-          adapter.updateAgents([{ agentId: id, agent: data }])
+      ? (id: UUID, data: any) => adapter.updateAgents([{ agentId: id, agent: data }])
       : (id: UUID, data: any) => adapter.updateAgent(id, data),
 
     updateManyAgents: isNewAPI
@@ -96,16 +95,13 @@ function detectAPI(adapter: any): DetectedAPI {
     // Old: createMemory(memory, tableName) -> UUID
     // New: createMemories([{memory, tableName}]) -> UUID[]
     createOneMemory: isNewAPI
-      ? (memory: any, tableName: string) =>
-          adapter.createMemories([{ memory, tableName }])
-      : (memory: any, tableName: string) =>
-          adapter.createMemory(memory, tableName),
+      ? (memory: any, tableName: string) => adapter.createMemories([{ memory, tableName }])
+      : (memory: any, tableName: string) => adapter.createMemory(memory, tableName),
 
     createManyMemories: isNewAPI
       ? (items: any[]) => adapter.createMemories(items)
       : async (items: any[]) => {
-          for (const { memory, tableName } of items)
-            await adapter.createMemory(memory, tableName);
+          for (const { memory, tableName } of items) await adapter.createMemory(memory, tableName);
         },
 
     // Both have createRooms (same signature)
@@ -162,7 +158,7 @@ async function cleanTable(db: any, table: string) {
 async function cleanAgentsAndRestore(
   db: any,
   api: ReturnType<typeof detectAPI>,
-  testAgentId: UUID,
+  testAgentId: UUID
 ) {
   await cleanTable(db, "agents");
   // Restore via raw SQL to avoid adapter silently swallowing errors on old code
@@ -218,9 +214,7 @@ function makeMemoryItem(agentId: UUID, roomId: UUID, entityId?: UUID) {
 function median(values: number[]): number {
   const sorted = values.slice().sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1] + sorted[mid]) / 2
-    : sorted[mid];
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
 async function bench(name: string, fn: () => Promise<void>): Promise<number> {
@@ -285,9 +279,7 @@ async function main() {
     {
       const label = "createEntities";
       const entLoop = Array.from({ length: N }, () => makeEntity(testAgentId));
-      const entBatch = Array.from({ length: N }, () =>
-        makeEntity(testAgentId)
-      );
+      const entBatch = Array.from({ length: N }, () => makeEntity(testAgentId));
 
       const loopMs = await bench(`${label} loop`, async () => {
         for (const e of entLoop) await api.createEntities([e]);
@@ -311,20 +303,13 @@ async function main() {
     {
       const label = "createMemories";
       const roomId = v4() as UUID;
-      await api.createRooms([
-        { id: roomId, agentId: testAgentId, source: "test", type: "GROUP" },
-      ]);
+      await api.createRooms([{ id: roomId, agentId: testAgentId, source: "test", type: "GROUP" }]);
 
-      const memLoop = Array.from({ length: N }, () =>
-        makeMemoryItem(testAgentId, roomId)
-      );
-      const memBatch = Array.from({ length: N }, () =>
-        makeMemoryItem(testAgentId, roomId)
-      );
+      const memLoop = Array.from({ length: N }, () => makeMemoryItem(testAgentId, roomId));
+      const memBatch = Array.from({ length: N }, () => makeMemoryItem(testAgentId, roomId));
 
       const loopMs = await bench(`${label} loop`, async () => {
-        for (const m of memLoop)
-          await api.createOneMemory(m.memory, m.tableName);
+        for (const m of memLoop) await api.createOneMemory(m.memory, m.tableName);
         await cleanTable(db, "memories");
       });
 
@@ -353,8 +338,7 @@ async function main() {
       }));
 
       const loopMs = await bench(`${label} loop`, async () => {
-        for (const u of updates)
-          await api.updateOneAgent(u.agentId, u.agent);
+        for (const u of updates) await api.updateOneAgent(u.agentId, u.agent);
       });
 
       const batchMs = await bench(`${label} batch`, async () => {
@@ -425,9 +409,7 @@ async function main() {
     for (let i = 0; i < ROOMS_COUNT; i++) {
       const rid = v4() as UUID;
       seedRooms.push(rid);
-      await api.createRooms([
-        { id: rid, agentId: testAgentId, source: "test", type: "GROUP" },
-      ]);
+      await api.createRooms([{ id: rid, agentId: testAgentId, source: "test", type: "GROUP" }]);
     }
     // Entities — insert in chunks to avoid PGLite statement-size limits
     const seedEntities = Array.from({ length: N }, () => makeEntity(testAgentId));
@@ -439,8 +421,8 @@ async function main() {
 
     // Add participants to rooms (old: addParticipantsRoom, new: createRoomParticipants)
     const addParticipants: (eIds: UUID[], rId: UUID) => Promise<any> =
-      (adapter as any).createRoomParticipants?.bind(adapter)
-      ?? (adapter as any).addParticipantsRoom?.bind(adapter);
+      (adapter as any).createRoomParticipants?.bind(adapter) ??
+      (adapter as any).addParticipantsRoom?.bind(adapter);
 
     if (addParticipants) {
       for (const rid of seedRooms) {
@@ -451,11 +433,11 @@ async function main() {
 
     // Memories: N memories spread across rooms — chunked
     const seedMemories = seedRooms.flatMap((rid) =>
-      Array.from({ length: Math.ceil(N / ROOMS_COUNT) }, () =>
-        makeMemoryItem(testAgentId, rid)
-      )
+      Array.from({ length: Math.ceil(N / ROOMS_COUNT) }, () => makeMemoryItem(testAgentId, rid))
     );
-    console.log(`  seeding ${seedMemories.length} memories (${Math.ceil(seedMemories.length / CHUNK)} chunks)…`);
+    console.log(
+      `  seeding ${seedMemories.length} memories (${Math.ceil(seedMemories.length / CHUNK)} chunks)…`
+    );
     for (let i = 0; i < seedMemories.length; i += CHUNK) {
       await api.createManyMemories(seedMemories.slice(i, i + CHUNK));
     }
@@ -463,8 +445,7 @@ async function main() {
     // Also seed some worlds for getRoomsByWorld
     const worldId = v4() as UUID;
     const createWorld: (w: any) => Promise<any> =
-      (adapter as any).createWorlds?.bind(adapter)
-      ?? (adapter as any).createWorld?.bind(adapter);
+      (adapter as any).createWorlds?.bind(adapter) ?? (adapter as any).createWorld?.bind(adapter);
     if (createWorld) {
       const worldObj = {
         id: worldId,
@@ -486,8 +467,16 @@ async function main() {
     // Assign some rooms to the world via updateRoom
     for (const rid of seedRooms.slice(0, 5)) {
       try {
-        await (adapter as any).updateRoom({ id: rid, worldId, agentId: testAgentId, source: "test", type: "GROUP" });
-      } catch (_e) { /* ok */ }
+        await (adapter as any).updateRoom({
+          id: rid,
+          worldId,
+          agentId: testAgentId,
+          source: "test",
+          type: "GROUP",
+        });
+      } catch (_e) {
+        /* ok */
+      }
     }
 
     // ─── 6. getMemories by room + type (idx_memories_type_room) ───────
@@ -510,7 +499,11 @@ async function main() {
       const label = "countMemories";
       const targetRoom = seedRooms[0];
       const ms = await bench(label, async () => {
-        await adapter.countMemories({ roomIds: [targetRoom], unique: false, tableName: "memories" });
+        await adapter.countMemories({
+          roomIds: [targetRoom],
+          unique: false,
+          tableName: "memories",
+        });
       });
       if (!isDryRun) console.log(`${label} (room+type idx): ${ms.toFixed(1)}ms`);
     }
@@ -599,14 +592,14 @@ async function main() {
     }
 
     // Seed components, tasks, logs, relationships for the new index tests
-    const createComponents: (c: any[]) => Promise<any> =
-      (adapter as any).createComponents?.bind(adapter);
-    const createTasks: (t: any[]) => Promise<any> =
-      (adapter as any).createTasks?.bind(adapter);
-    const createLogs: (l: any[]) => Promise<any> =
-      (adapter as any).createLogs?.bind(adapter);
-    const createRelationships: (r: any[]) => Promise<any> =
-      (adapter as any).createRelationships?.bind(adapter);
+    const createComponents: (c: any[]) => Promise<any> = (adapter as any).createComponents?.bind(
+      adapter
+    );
+    const createTasks: (t: any[]) => Promise<any> = (adapter as any).createTasks?.bind(adapter);
+    const createLogs: (l: any[]) => Promise<any> = (adapter as any).createLogs?.bind(adapter);
+    const createRelationships: (r: any[]) => Promise<any> = (
+      adapter as any
+    ).createRelationships?.bind(adapter);
 
     const seedComponentCount = Math.min(N, 1000);
 
@@ -619,7 +612,11 @@ async function main() {
         type: i % 2 === 0 ? "profile" : "settings",
         data: { idx: i },
       }));
-      try { await createComponents(comps); } catch (_e) { /* ok */ }
+      try {
+        await createComponents(comps);
+      } catch (_e) {
+        /* ok */
+      }
     }
 
     if (createTasks) {
@@ -631,7 +628,11 @@ async function main() {
         tags: ["bench"],
         metadata: { idx: i },
       }));
-      try { await createTasks(tasks); } catch (_e) { /* ok */ }
+      try {
+        await createTasks(tasks);
+      } catch (_e) {
+        /* ok */
+      }
     }
 
     if (createLogs) {
@@ -641,7 +642,11 @@ async function main() {
         roomId: seedRooms[i % seedRooms.length],
         type: i % 2 === 0 ? "info" : "error",
       }));
-      try { await createLogs(logs); } catch (_e) { /* ok */ }
+      try {
+        await createLogs(logs);
+      } catch (_e) {
+        /* ok */
+      }
     }
 
     if (createRelationships) {
@@ -652,7 +657,11 @@ async function main() {
         tags: ["bench"],
         metadata: {},
       }));
-      try { await createRelationships(rels); } catch (_e) { /* ok */ }
+      try {
+        await createRelationships(rels);
+      } catch (_e) {
+        /* ok */
+      }
     }
 
     // ─── 15. getComponents by entity+type (idx_components_entity_type) NEW ─
@@ -664,7 +673,8 @@ async function main() {
         const ms = await bench(label, async () => {
           await getComps(targetEntity, worldId);
         });
-        if (!isDryRun) console.log(`\n${label}: ${ms.toFixed(1)}ms  [idx_components_entity_type] NEW`);
+        if (!isDryRun)
+          console.log(`\n${label}: ${ms.toFixed(1)}ms  [idx_components_entity_type] NEW`);
       } else {
         if (!isDryRun) console.log(`\n${label}: [NOT AVAILABLE]`);
       }
@@ -679,7 +689,8 @@ async function main() {
         const ms = await bench(label, async () => {
           await getComp(targetEntity, "profile", worldId);
         });
-        if (!isDryRun) console.log(`${label}: ${ms.toFixed(1)}ms  [idx_components_entity_type] NEW`);
+        if (!isDryRun)
+          console.log(`${label}: ${ms.toFixed(1)}ms  [idx_components_entity_type] NEW`);
       } else {
         if (!isDryRun) console.log(`${label}: [NOT AVAILABLE]`);
       }
@@ -707,7 +718,8 @@ async function main() {
         const ms = await bench(label, async () => {
           await getLogs({ roomId: seedRooms[0], type: "info", count: 50 });
         });
-        if (!isDryRun) console.log(`${label}: ${ms.toFixed(1)}ms  [idx_logs_room_type_created] NEW`);
+        if (!isDryRun)
+          console.log(`${label}: ${ms.toFixed(1)}ms  [idx_logs_room_type_created] NEW`);
       } else {
         if (!isDryRun) console.log(`${label}: [NOT AVAILABLE]`);
       }
