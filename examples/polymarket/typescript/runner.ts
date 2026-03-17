@@ -493,6 +493,7 @@ async function buildLlmPlugins(
   provider: LlmProvider | null
 ): Promise<Array<typeof openaiPlugin>> {
   if (!provider || provider === "openai") return [openaiPlugin];
+  // Note: dynamic imports allow for optional plugins, preventing failures if not installed
   switch (provider) {
     case "anthropic": {
       try {

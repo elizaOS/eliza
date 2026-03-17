@@ -1,3 +1,4 @@
+// Note: vitest is chosen to align with repo testing framework guidelines.
 import { describe, expect, test } from "vitest";
 import { character } from "../character";
 
