@@ -791,11 +791,8 @@ export function parseJSONObjectFromText(
       
     for (const key in obj) {
       const val = obj[key];
-      if (typeof val === 'number') {
-        // Convert to string only if number appears unquoted in source
-        if (unquotedRegExp(key, val).test(sourceText)) {
-          obj[key] = String(val);
-        }
+      // Keep numbers as numbers - do not convert to strings
+      // This preserves the original JSON semantics
       } else if (val && typeof val === 'object') {
         if (Array.isArray(val)) {
           val.forEach((item, i) => {
