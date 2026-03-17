@@ -217,9 +217,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     }
 
     if (includeComponents) {
-      for (const entity of entities) {
-        entity.components = await this.getComponents(entity.id!);
-      }
+      return Promise.all(
+        entities.map(async (entity) => ({
+          ...entity,
+          components: await this.getComponents(entity.id!),
+        })),
+      );
     }
 
     return entities;
@@ -349,7 +352,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
     for (const c of components) {
       this.components.set(String(c.id), {
         ...c,
-        createdAt: c.createdAt ?? new Date(),
+        createdAt: c.createdAt ?? Date.now(),
       });
       ids.push(c.id);
     }
@@ -413,7 +416,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
       } else {
         this.components.set(String(c.id), {
           ...c,
-          createdAt: c.createdAt ?? new Date(),
+          createdAt: c.createdAt ?? Date.now(),
         });
       }
     }
@@ -426,11 +429,20 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
   ): Promise<void> {
     if (ops.length === 0) return;
     const c = this.components.get(String(componentId));
-    if (!c) return;
+    if (!c) throw new Error(`Component not found: ${componentId}`);
     const data = (c.data ?? {}) as Metadata;
 
     for (const op of ops) {
       const segments = op.path.split(".");
+      if (
+        segments.some(
+          (seg) => !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(seg) && !/^\d+$/.test(seg),
+        )
+      ) {
+        throw new Error(
+          `Invalid patch path: "${op.path}". Only alphanumeric, underscore, and numeric indices allowed.`,
+        );
+      }
       const last = segments.pop()!;
       // Walk to parent object, creating intermediate objects as needed
       let target = data as Record<string, unknown>;
